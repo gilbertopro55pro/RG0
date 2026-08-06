@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "photographer-flow",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-lc",
+        "export PATH=\"/Users/gilbertoprophotography/.nvm/versions/node/v24.18.1/bin:$PATH\" && cd /Users/gilbertoprophotography/Desktop/photographer-flow && npm run dev"
+      ],
+      "port": 3000
+    }
+  ]
+}

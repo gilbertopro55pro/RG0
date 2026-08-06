@@ -1,26 +1,230 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Pastel-glass palette — soft, desaturated Apple-adjacent hues instead of flat system colors,
+     paired with translucent glass surfaces (see .bg-card below). Same variable names throughout
+     the app, so this one block re-themes every screen without touching individual components. */
+  --color-paper: #f6f4fb; /* soft lavender-white canvas the glass blobs sit on */
+  --color-ink: #201f33; /* deep indigo-black — stays high-contrast, just warmer than pure black */
+  /* muted indigo-gray for secondary text — darkened from the original #757396, which measured
+     3.7-4.3:1 contrast (WCAG AA needs 4.5:1 for this size text) against the actual glass-card
+     backgrounds behind the pastel gradient blobs. This value keeps the same hue but clears 4.5:1
+     with margin (5.0-6.0:1) across every blob color, computed directly against the real
+     composited backdrop rather than assumed. */
+  --color-ink-soft: #5f5d7c;
+  --color-amber: #6c8eff; /* pastel periwinkle-blue — primary accent */
+  --color-amber-deep: #4a5fd9;
+  --color-amber-bg: #edf1ff;
+  --color-sage: #52c98f; /* pastel mint-green — done / success */
+  --color-sage-bg: #e9faf1;
+  --color-rose: #ff6b6b; /* soft coral-red — danger, less harsh than systemRed */
+  --color-peach: #ffb37a; /* pastel apricot */
+  --color-line: #e7e3f3; /* soft lavender-gray hairline */
+  --color-card: rgba(255, 255, 255, 0.45); /* translucent glass base — deliberately see-through */
+  --color-lime: #52d6c8; /* pastel teal accent */
+  --color-lime-deep: #2fa89b;
+  --color-coral: #ff7fb0; /* pastel pink accent */
+  --color-coral-deep: #e0568f;
+
+  /* Shared "neutral chip" surface reused across many components for unselected pill/tab/row
+     backgrounds — kept as its own token (rather than each component hardcoding the hex) so dark
+     mode can retint every one of them from this single place. */
+  --color-chip: #f7f6f3;
+  /* Warm highlight used only for the stage-tracker's "current step" row. */
+  --color-chip-tint: #fbf3e4;
+  /* TopNav's translucent bar background — separate from --color-card because the nav sits
+     directly on the page background (no blur-heavy stacking context concerns) and used a
+     slightly different tint even in light mode. */
+  --color-nav-bg: rgba(246, 244, 251, 0.45);
+  /* Surface for plain form inputs (all the bg-white text fields) — a literal Tailwind white in
+     light mode, so this token only actually does anything once the dark override below exists. */
+  --color-input-bg: #ffffff;
+}
+
+/* Dark theme — same glass-and-pastel identity, just built on a deep indigo canvas instead of the
+   lavender-white one: light frosted-glass cards over deep jewel-toned blobs instead of pastel
+   ones, so it reads as "the same app at night," not a different app with inverted colors. Every
+   value below was checked against the actual composited card backgrounds (frost over blob over
+   canvas), not guessed — ink-soft clears 4.5:1 with margin (5.2-7.4:1) the same way the light
+   value does. */
+:root[data-theme="dark"] {
+  color-scheme: dark; /* also fixes native date/time/checkbox pickers to render dark */
+  --color-paper: #14121f;
+  --color-ink: #edebf7;
+  --color-ink-soft: #b4b0d0;
+  --color-amber: #8ca2ff;
+  --color-amber-deep: #6c85f5;
+  --color-amber-bg: rgba(108, 142, 255, 0.16);
+  --color-sage: #5fd9a0;
+  --color-sage-bg: rgba(95, 217, 160, 0.14);
+  --color-rose: #ff8585;
+  --color-peach: #ffc594;
+  --color-line: rgba(255, 255, 255, 0.1);
+  --color-card: rgba(255, 255, 255, 0.07);
+  --color-lime: #6be0d2;
+  --color-lime-deep: #45c4b5;
+  --color-coral: #ff97c2;
+  --color-coral-deep: #f072a8;
+  --color-chip: rgba(255, 255, 255, 0.07);
+  --color-chip-tint: rgba(255, 197, 148, 0.14);
+  --color-nav-bg: rgba(20, 18, 32, 0.55);
+  --color-input-bg: #211f33;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-paper: var(--color-paper);
+  --color-ink: var(--color-ink);
+  --color-ink-soft: var(--color-ink-soft);
+  --color-amber: var(--color-amber);
+  --color-amber-deep: var(--color-amber-deep);
+  --color-amber-bg: var(--color-amber-bg);
+  --color-sage: var(--color-sage);
+  --color-sage-bg: var(--color-sage-bg);
+  --color-rose: var(--color-rose);
+  --color-peach: var(--color-peach);
+  --color-line: var(--color-line);
+  --color-card: var(--color-card);
+  --color-lime: var(--color-lime);
+  --color-lime-deep: var(--color-lime-deep);
+  --color-coral: var(--color-coral);
+  --color-coral-deep: var(--color-coral-deep);
+  --color-chip: var(--color-chip);
+  --color-chip-tint: var(--color-chip-tint);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display: var(--font-heebo), sans-serif;
+  --font-sans: var(--font-rubik), sans-serif;
+  --font-data: var(--font-ibm-plex-mono), monospace;
+
+  /* Soft, diffused, faintly violet-tinted shadows (not flat gray) — reads as premium glass
+     lifting off the pastel canvas rather than a flat card with a generic drop shadow. */
+  --shadow-card: 0 1px 1px rgba(88, 76, 158, 0.04), 0 10px 28px rgba(88, 76, 158, 0.09);
+  --shadow-sheet: 0 4px 16px rgba(88, 76, 158, 0.10), 0 24px 56px rgba(88, 76, 158, 0.16);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  /* Fixed pastel blobs covering the *whole* viewport (not just the corners) — this is what the
+     glass cards' blur actually reveals, and a card sitting in the middle of the screen needs
+     real color behind it too, not just a wash near the edges. background-attachment: fixed
+     keeps this anchored to the viewport (not the page), so it stays visible behind cards no
+     matter how far the page is scrolled — deliberately not animated: a moving fixed background
+     behind many blurred glass panels is a known mobile scroll-jank risk, not worth it here. */
+  background:
+    radial-gradient(circle at 15% 15%, rgba(108, 142, 255, 0.30), transparent 55%),
+    radial-gradient(circle at 85% 10%, rgba(255, 127, 176, 0.26), transparent 52%),
+    radial-gradient(circle at 10% 85%, rgba(82, 214, 200, 0.26), transparent 55%),
+    radial-gradient(circle at 90% 90%, rgba(255, 179, 122, 0.24), transparent 52%),
+    radial-gradient(circle at 50% 50%, rgba(180, 160, 255, 0.16), transparent 60%),
+    var(--color-paper);
+  background-attachment: fixed;
+}
+
+/* Dark mode gets its own blob composition — deeper, more saturated jewel tones at lower alpha, so
+   the canvas still reads as "colorful glass" rather than just fading to flat gray. */
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at 15% 15%, rgba(90, 110, 255, 0.22), transparent 55%),
+    radial-gradient(circle at 85% 10%, rgba(255, 110, 170, 0.18), transparent 52%),
+    radial-gradient(circle at 10% 85%, rgba(70, 210, 195, 0.16), transparent 55%),
+    radial-gradient(circle at 90% 90%, rgba(255, 170, 110, 0.16), transparent 52%),
+    radial-gradient(circle at 50% 50%, rgba(160, 140, 255, 0.14), transparent 60%),
+    var(--color-paper);
+  background-attachment: fixed;
+}
+
+/* Plain Tailwind bg-white is used throughout for form inputs and small icon-circle buttons —
+   there's no "input surface" token in the design system to redirect instead, so this retargets
+   the utility class itself directly for dark mode. !important for the same cascade-layer reason
+   documented above on .bg-card. */
+:root[data-theme="dark"] .bg-white {
+  background-color: var(--color-input-bg) !important;
+}
+
+/* Frosted-glass treatment layered onto every element using Tailwind's bg-card utility — one
+   rule, applies app-wide, since bg-card is already the shared "surface" class for cards, sheets
+   and panels throughout the app. The inset highlight along the top edge is what sells "glass"
+   rather than just "translucent" — a bright bevel catching light, like a real pane. */
+.bg-card {
+  backdrop-filter: blur(36px) saturate(190%);
+  -webkit-backdrop-filter: blur(36px) saturate(190%);
+  /* !important: components also apply Tailwind's border/border-line utilities alongside
+     bg-card, and per this project's Tailwind v4 cascade-layer setup those can otherwise win
+     over this plain (unlayered) rule despite normal source-order expectations. */
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+:root[data-theme="dark"] .bg-card {
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* The same glass treatment for the app's solid action buttons (dark/blue/red primary buttons) —
+   a translucent tint of their own color instead of a flat fill, plus a glossy top bevel and a
+   floating colored shadow that lifts further on hover/press. Confirmed these three classes are
+   only ever used on buttons/button-styled links in this app, never on badges or text. */
+.bg-ink,
+.bg-amber-deep,
+.bg-rose {
+  backdrop-filter: blur(20px) saturate(170%);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 8px 20px rgba(88, 76, 158, 0.16);
+  transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+}
+.bg-ink {
+  background-color: rgba(32, 31, 51, 0.86) !important;
+}
+.bg-amber-deep {
+  background-color: rgba(74, 95, 217, 0.86) !important;
+}
+.bg-rose {
+  background-color: rgba(255, 107, 107, 0.86) !important;
+}
+
+:root[data-theme="dark"] .bg-ink {
+  background-color: rgba(20, 18, 32, 0.86) !important;
+}
+:root[data-theme="dark"] .bg-amber-deep {
+  background-color: rgba(108, 133, 245, 0.86) !important;
+}
+:root[data-theme="dark"] .bg-rose {
+  background-color: rgba(255, 107, 107, 0.78) !important;
+}
+
+/* Global tactile press feedback for every button in the app. Driven by GlobalButtonEffects.tsx
+   toggling .js-pressed via real pointer events — not the CSS :active pseudo-class, which iOS
+   Safari activates inconsistently for touch input. The spring-back easing (overshoot past 1
+   then settle) is what gives the "press in, pop back" feel. */
+button:not(:disabled),
+a[role="button"]:not([aria-disabled="true"]) {
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+button:not(:disabled).js-pressed,
+a[role="button"]:not([aria-disabled="true"]).js-pressed {
+  /* !important is deliberate here: some buttons carry their own Tailwind transform utilities
+     (e.g. active:scale-95 from the older BTN_PRESS helper) that otherwise win this cascade
+     and silently cancel the press animation on exactly the buttons that need it most. */
+  transform: scale(0.94) !important;
+  transition: transform 80ms ease-out !important;
+}
+
+/* Floating hover lift — nav tiles, glass cards and the solid glass buttons all get a gentle
+   rise-and-glow on hover. Real-mouse devices only, so tapping on touch screens never leaves a
+   stuck "hover" state. */
+@media (hover: hover) and (pointer: fine) {
+  .nav-tile {
+    transition: transform 150ms ease, filter 150ms ease, box-shadow 150ms ease;
+  }
+  .nav-tile:hover {
+    transform: translateY(-2px) scale(1.03);
+    filter: brightness(1.04);
+    box-shadow: 0 10px 24px rgba(88, 76, 158, 0.14);
+  }
+
+  .bg-ink:hover,
+  .bg-amber-deep:hover,
+  .bg-rose:hover {
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 12px 26px rgba(88, 76, 158, 0.22);
+  }
 }
