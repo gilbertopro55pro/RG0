@@ -151,23 +151,29 @@ export type EventNotificationRow = {
   event_id: string;
   text: string;
   created_at: string;
+  is_client_action: boolean;
+  read_at: string | null;
 };
 
 export type GalleryRow = {
   id: string;
-  event_id: string;
+  event_id: string | null;
   photographer_id: string;
   title: string;
   access_token: string;
   password: string | null;
   published: boolean;
   cover_photo_id: string | null;
-  expiry_months: 1 | 3 | 6;
+  expiry_months: 1 | 3 | 6 | null;
   published_at: string | null;
   expires_at: string | null;
   archived_at: string | null;
   permanent_delete_at: string | null;
   selection_confirmed_at: string | null;
+  shoot_date: string | null;
+  client_email: string | null;
+  allow_downloads: boolean;
+  reminder_sent_at: string | null;
   created_at: string;
 };
 

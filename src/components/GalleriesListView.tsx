@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import NewGalleryModal from "@/components/NewGalleryModal";
 
 export type GalleryListItem = {
   id: string;
@@ -23,6 +24,7 @@ export default function GalleriesListView({ items }: { items: GalleryListItem[] 
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("event_date");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showNewGallery, setShowNewGallery] = useState(false);
 
   const copyLink = async (item: GalleryListItem, e: React.MouseEvent) => {
     e.preventDefault();
@@ -61,7 +63,15 @@ export default function GalleriesListView({ items }: { items: GalleryListItem[] 
       <Link href="/" className="flex items-center gap-1 text-sm mb-5 tracking-wide text-ink-soft">
         ← חזרה לדף הבית
       </Link>
-      <h1 className="text-[26px] font-bold mb-5 font-display">גלריות</h1>
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-[26px] font-bold font-display">גלריות</h1>
+        <button
+          onClick={() => setShowNewGallery(true)}
+          className="rounded-full px-4 py-2 text-sm font-semibold bg-ink text-white"
+        >
+          + גלריה חדשה
+        </button>
+      </div>
 
       <div className="flex gap-2 mb-5">
         <input
@@ -83,7 +93,7 @@ export default function GalleriesListView({ items }: { items: GalleryListItem[] 
 
       {filtered.length === 0 && (
         <div className="text-center py-16 text-sm text-ink-soft">
-          {items.length === 0 ? "עדיין אין גלריות — ניתן ליצור גלריה מתוך כרטיס האירוע" : "לא נמצאו תוצאות"}
+          {items.length === 0 ? "עדיין אין גלריות — אפשר ליצור גלריה חדשה כאן, או מתוך כרטיס האירוע" : "לא נמצאו תוצאות"}
         </div>
       )}
 
@@ -129,6 +139,8 @@ export default function GalleriesListView({ items }: { items: GalleryListItem[] 
           </Link>
         ))}
       </div>
+
+      {showNewGallery && <NewGalleryModal onClose={() => setShowNewGallery(false)} />}
     </div>
   );
 }

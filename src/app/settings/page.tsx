@@ -11,6 +11,7 @@ import BillingSettings from "@/components/BillingSettings";
 import CustomPackagesSettings from "@/components/CustomPackagesSettings";
 import AppearanceSettings from "@/components/AppearanceSettings";
 import SettingsTabs from "@/components/SettingsTabs";
+import { CURRENT_VERSION } from "@/lib/changelog";
 
 export default async function SettingsPage({
   searchParams,
@@ -116,6 +117,7 @@ export default async function SettingsPage({
           },
         ]}
       />
+      <p className="text-center text-xs font-data text-ink-soft mt-8">גרסה {CURRENT_VERSION}</p>
     </div>
   );
 }

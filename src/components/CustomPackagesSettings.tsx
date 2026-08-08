@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { CustomPackageRow, CustomPackageStageRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
+import { useModalEntered } from "@/lib/useModalEntered";
 
 type StageDraft = {
   clientId: string;
@@ -189,6 +190,7 @@ function CustomPackageBuilder({
   onEventTypeDeleted: (eventTypeId: string) => void;
 }) {
   const supabase = createClient();
+  const entered = useModalEntered();
   const [name, setName] = useState(pkg?.name ?? "");
   const [price, setPrice] = useState(pkg?.price?.toString() ?? "");
   const [topics, setTopics] = useState<TopicDraft[]>(() =>
@@ -418,7 +420,12 @@ function CustomPackageBuilder({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(46,49,66,0.45)" }}
+      style={{
+        background: "rgba(46,49,66,0.45)",
+        backdropFilter: entered ? "blur(16px)" : "blur(0px)",
+        WebkitBackdropFilter: entered ? "blur(16px)" : "blur(0px)",
+        transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
+      }}
     >
       <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">

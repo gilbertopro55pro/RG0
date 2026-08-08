@@ -30,7 +30,9 @@ export default async function PublicGalleryPage({ params }: { params: Promise<{ 
   }
 
   const [{ data: event }, { data: photos }, { data: folders }] = await Promise.all([
-    supabase.from("events").select("client_name, event_date").eq("id", gallery.event_id).maybeSingle<Pick<EventRow, "client_name" | "event_date">>(),
+    gallery.event_id
+      ? supabase.from("events").select("client_name, event_date").eq("id", gallery.event_id).maybeSingle<Pick<EventRow, "client_name" | "event_date">>()
+      : Promise.resolve({ data: null }),
     supabase
       .from("gallery_photos")
       .select("*")
@@ -60,10 +62,14 @@ export default async function PublicGalleryPage({ params }: { params: Promise<{ 
   return (
     <div className="max-w-2xl lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <h1 className="text-[22px] font-bold mb-1 font-display">{gallery.title}</h1>
-      {event && (
+      {event ? (
         <p className="text-xs mb-5 text-ink-soft">
           {event.client_name} · {new Date(event.event_date).toLocaleDateString("he-IL")}
         </p>
+      ) : (
+        gallery.shoot_date && (
+          <p className="text-xs mb-5 text-ink-soft">{new Date(gallery.shoot_date).toLocaleDateString("he-IL")}</p>
+        )
       )}
 
       <PublicGalleryView
@@ -71,6 +77,7 @@ export default async function PublicGalleryPage({ params }: { params: Promise<{ 
         initialPhotos={photosWithUrls}
         initialFolders={folders ?? []}
         initiallyConfirmed={!!gallery.selection_confirmed_at}
+        allowDownloads={gallery.allow_downloads}
       />
     </div>
   );

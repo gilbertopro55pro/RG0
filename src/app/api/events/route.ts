@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { EVENT_BOOKING_CONFIRMATION_TEMPLATE, PACKAGE_FLOWS, PACKAGE_LABELS, type PackageType } from "@/lib/stages";
+import { EVENT_BOOKING_CONFIRMATION_TEMPLATE, PACKAGE_FLOWS, PACKAGE_LABELS, PORTAL_LINK_TEMPLATE, type PackageType } from "@/lib/stages";
 import { syncEventToGoogleCalendar } from "@/lib/googleCalendarSync";
 import { friendlyWhatsAppError, sendWhatsAppTemplate } from "@/lib/whatsapp";
 import type { CustomPackageRow, CustomPackageStageRow } from "@/lib/types";
@@ -192,6 +192,21 @@ export async function POST(request: Request) {
       const raw = e instanceof Error ? e.message : "שגיאה לא ידועה";
       notifications.push({ event_id: event.id, text: friendlyWhatsAppError(raw) });
     }
+
+    // Sent as its own message (separate template) right after booking confirmation, so the client
+    // gets the portal link automatically without the photographer having to remember to share it —
+    // PortalLinkSection's "שליחת קישור בוואטסאפ" button reuses the same template for a resend.
+    try {
+      const portalLink = `${new URL(request.url).origin}/portal/${event.client_access_token}`;
+      await sendWhatsAppTemplate(clientPhone, PORTAL_LINK_TEMPLATE, [clientName, portalLink]);
+      notifications.push({
+        event_id: event.id,
+        text: `נשלח קישור לפורטל הלקוח בוואטסאפ ל-${clientPhone}`,
+      });
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : "שגיאה לא ידועה";
+      notifications.push({ event_id: event.id, text: `שליחת קישור הפורטל נכשלה — ${friendlyWhatsAppError(raw)}` });
+    }
   } else {
     notifications.push({
       event_id: event.id,
@@ -233,10 +248,11 @@ export async function POST(request: Request) {
         text: `האירוע נוסף אוטומטית ליומן Google של הצלם: "${calendarDescription}"`,
       });
     }
-  } catch {
+  } catch (e) {
+    const rawError = e instanceof Error ? e.message : "שגיאה לא ידועה";
     notifications.push({
       event_id: event.id,
-      text: "שגיאה בהוספת האירוע ליומן Google — נסה/י לחבר מחדש את היומן בהגדרות",
+      text: `שגיאה בהוספת האירוע ליומן Google: ${rawError}`,
     });
   }
 

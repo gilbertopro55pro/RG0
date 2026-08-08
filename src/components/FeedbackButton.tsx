@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useModalEntered } from "@/lib/useModalEntered";
 
 export default function FeedbackButton() {
   const [open, setOpen] = useState(false);
+  const entered = useModalEntered();
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -47,7 +49,12 @@ export default function FeedbackButton() {
       {open && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{
+            background: "rgba(46,49,66,0.45)",
+            backdropFilter: entered ? "blur(16px)" : "blur(0px)",
+            WebkitBackdropFilter: entered ? "blur(16px)" : "blur(0px)",
+            transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
+          }}
           onClick={close}
         >
           <div

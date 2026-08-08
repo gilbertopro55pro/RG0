@@ -5,6 +5,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { PACKAGE_LABELS, type PackageType } from "@/lib/stages";
 import type { CustomPackageRow, LeadRow, LeadStatus } from "@/lib/types";
+import { useModalEntered } from "@/lib/useModalEntered";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
 
@@ -274,6 +275,7 @@ function AddLeadModal({ onClose, onAdded }: { onClose: () => void; onAdded: (lea
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const entered = useModalEntered();
 
   const submit = async () => {
     if (!name.trim()) return;
@@ -300,7 +302,15 @@ function AddLeadModal({ onClose, onAdded }: { onClose: () => void; onAdded: (lea
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(46,49,66,0.45)" }}>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{
+        background: "rgba(46,49,66,0.45)",
+        backdropFilter: entered ? "blur(16px)" : "blur(0px)",
+        WebkitBackdropFilter: entered ? "blur(16px)" : "blur(0px)",
+        transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
+      }}
+    >
       <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl font-bold font-display">ליד חדש</h2>

@@ -26,6 +26,7 @@ import type {
 import ContractSection from "@/components/ContractSection";
 import PortalLinkSection from "@/components/PortalLinkSection";
 import GallerySection from "@/components/GallerySection";
+import { useModalEntered } from "@/lib/useModalEntered";
 
 const EditEventModal = dynamic(() => import("@/components/EditEventModal"), { ssr: false });
 
@@ -43,6 +44,34 @@ function parseStageKey(key: string): { stageKey: string | null; customStageId: s
   return key.startsWith("custom:")
     ? { stageKey: null, customStageId: key.slice(7) }
     : { stageKey: key, customStageId: null };
+}
+
+// supabase-js's storage `.upload()` doesn't expose upload progress, so this talks to the same
+// Storage REST endpoint directly via XMLHttpRequest (the only browser upload API with a real
+// progress event) purely to drive the 0–100% indicator during large PDF uploads.
+function uploadFileWithProgress(
+  bucket: string,
+  path: string,
+  file: File,
+  accessToken: string,
+  onProgress: (pct: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${bucket}/${path}`);
+    xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+    xhr.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`העלאת הקובץ נכשלה (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error("שגיאת רשת בהעלאת הקובץ"));
+    xhr.send(file);
+  });
 }
 
 export default function EventDetailView({
@@ -83,9 +112,11 @@ export default function EventDetailView({
   const [showNav, setShowNav] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showReviewPrompt, setShowReviewPrompt] = useState(false);
+  const reviewPromptEntered = useModalEntered();
   const [error, setError] = useState<string | null>(null);
   const [albumDesignFilename, setAlbumDesignFilename] = useState(event.album_design_pdf_filename);
   const [uploadingAlbumDesign, setUploadingAlbumDesign] = useState(false);
+  const [albumUploadProgress, setAlbumUploadProgress] = useState<number | null>(null);
   // Tracks which stage keys currently have an in-flight toggle/undo/notify request — a rapid
   // double-tap before the first request resolves used to fire a second real WhatsApp message and
   // a duplicate log entry for the same action, since neither button disabled itself meanwhile.
@@ -155,23 +186,41 @@ export default function EventDetailView({
   const toggleStage = (key: string) => setStageDone(key, true);
   const undoStage = (key: string) => setStageDone(key, false);
 
-  const uploadAlbumDesignAndComplete = async (key: string, file: File) => {
+  const uploadAlbumDesign = async (key: string, file: File) => {
     setError(null);
     setUploadingAlbumDesign(true);
+    setAlbumUploadProgress(0);
     try {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("יש להתחבר מחדש");
-      const path = `${user.id}/${event.id}/${crypto.randomUUID()}-${file.name}`;
-      const { error: uploadError } = await supabase.storage.from("album-designs").upload(path, file);
-      if (uploadError) throw uploadError;
-      await setStageDone(key, true, { albumDesignPdfPath: path, albumDesignPdfFilename: file.name });
-      setAlbumDesignFilename(file.name);
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error("יש להתחבר מחדש");
+      const path = `${session.user.id}/${event.id}/${crypto.randomUUID()}-${file.name}`;
+      await uploadFileWithProgress("album-designs", path, file, session.access_token, setAlbumUploadProgress);
+
+      if (key === "album_approval") {
+        // Standard checkpoint — attach the file and notify the client, but leave the stage for
+        // the client to confirm via their portal (or the photographer can toggle it manually now
+        // that a PDF exists).
+        const res = await fetch(`/api/events/${event.id}/album-design`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ albumDesignPdfPath: path, albumDesignPdfFilename: file.name }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירת קובץ העיצוב");
+        setAlbumDesignFilename(file.name);
+        await refreshNotifications();
+      } else {
+        // Custom-package stage — keeps the original combined upload+complete behavior.
+        await setStageDone(key, true, { albumDesignPdfPath: path, albumDesignPdfFilename: file.name });
+        setAlbumDesignFilename(file.name);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה בהעלאת קובץ עיצוב האלבום");
     } finally {
       setUploadingAlbumDesign(false);
+      setAlbumUploadProgress(null);
     }
   };
 
@@ -270,7 +319,12 @@ export default function EventDetailView({
       {showReviewPrompt && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{
+            background: "rgba(46,49,66,0.45)",
+            backdropFilter: reviewPromptEntered ? "blur(16px)" : "blur(0px)",
+            WebkitBackdropFilter: reviewPromptEntered ? "blur(16px)" : "blur(0px)",
+            transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
+          }}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet">
             <h2 className="text-lg font-bold mb-2 font-display">האירוע נמסר! 🎉</h2>
@@ -356,7 +410,14 @@ export default function EventDetailView({
         </div>
       )}
 
-      {isOwner && <PortalLinkSection token={event.client_access_token} />}
+      {isOwner && (
+        <PortalLinkSection
+          token={event.client_access_token}
+          eventId={event.id}
+          hasClientPhone={!!event.client_phone}
+          onSent={refreshNotifications}
+        />
+      )}
 
       {isOwner && (
         <GallerySection
@@ -405,7 +466,8 @@ export default function EventDetailView({
         onSendWhatsApp={sendWhatsAppUpdate}
         albumDesignFilename={albumDesignFilename}
         uploadingAlbumDesign={uploadingAlbumDesign}
-        onUploadAlbumDesign={uploadAlbumDesignAndComplete}
+        albumUploadProgress={albumUploadProgress}
+        onUploadAlbumDesign={uploadAlbumDesign}
         pendingStageKeys={pendingStageKeys}
       />
 
@@ -437,6 +499,7 @@ function FilmStrip({
   onSendWhatsApp,
   albumDesignFilename,
   uploadingAlbumDesign,
+  albumUploadProgress,
   onUploadAlbumDesign,
   pendingStageKeys,
 }: {
@@ -448,6 +511,7 @@ function FilmStrip({
   onSendWhatsApp: (key: string) => void;
   albumDesignFilename: string | null;
   uploadingAlbumDesign: boolean;
+  albumUploadProgress: number | null;
   onUploadAlbumDesign: (key: string, file: File) => void;
   pendingStageKeys: Set<string>;
 }) {
@@ -463,10 +527,13 @@ function FilmStrip({
         const isNotifyPending = pendingStageKeys.has(`notify:${d.key}`);
         // Stages can be marked done in any order — clients often pick photos before songs for
         // the clip, etc. "current" is only a suggestion for what's typically next, never a lock.
-        // A stage requiring an album-design PDF can't be toggled directly from the header — it's
-        // only marked done once a PDF is uploaded below, which triggers completion itself.
+        // A stage requiring an album-design PDF can't be toggled directly from the header until a
+        // PDF exists — for the standard "אישור עיצוב אלבום" checkpoint specifically, uploading no
+        // longer auto-completes it (the client confirms via their portal), so once a file has been
+        // attached the toggle opens up for a manual override too.
         const canUndo = st.done && d.key !== "event_closing";
-        const disabled = d.key === "event_closing" || (requiresAlbumPdf && !st.done) || isTogglePending;
+        const albumPdfAttached = d.key === "album_approval" && !!albumDesignFilename;
+        const disabled = d.key === "event_closing" || (requiresAlbumPdf && !st.done && !albumPdfAttached) || isTogglePending;
 
         return (
           <div
@@ -510,7 +577,12 @@ function FilmStrip({
               )}
             </button>
             {requiresAlbumPdf && !st.done && (
-              <div className="border-t border-line px-3.5 py-3 bg-white">
+              <div className="border-t border-line px-3.5 py-3 bg-white album-upload-panel">
+                {albumPdfAttached && !uploadingAlbumDesign && (
+                  <p className="text-[11px] mb-1.5 text-center" style={{ color: "var(--color-sage)" }}>
+                    📄 {albumDesignFilename} — נשלח, ממתין לאישור הלקוח
+                  </p>
+                )}
                 <label
                   className="flex items-center justify-center gap-1.5 text-xs font-medium py-2.5 rounded-lg cursor-pointer"
                   style={{
@@ -519,7 +591,11 @@ function FilmStrip({
                     pointerEvents: uploadingAlbumDesign ? "none" : "auto",
                   }}
                 >
-                  {uploadingAlbumDesign ? "מעלה..." : "העלאת קובץ PDF עם עיצוב האלבום"}
+                  {uploadingAlbumDesign
+                    ? `מעלה... ${albumUploadProgress ?? 0}%`
+                    : albumPdfAttached
+                      ? "החלפת קובץ PDF"
+                      : "העלאת קובץ PDF עם עיצוב האלבום"}
                   <input
                     type="file"
                     accept="application/pdf"
@@ -532,8 +608,18 @@ function FilmStrip({
                     }}
                   />
                 </label>
+                {uploadingAlbumDesign && (
+                  <div className="h-1.5 rounded-full mt-2 overflow-hidden bg-line">
+                    <div
+                      className="h-1.5 rounded-full"
+                      style={{ width: `${albumUploadProgress ?? 0}%`, background: "var(--color-amber)", transition: "width 150ms ease" }}
+                    />
+                  </div>
+                )}
                 <p className="text-[11px] text-ink-soft mt-1.5 text-center">
-                  לאחר ההעלאה הקובץ יישלח אוטומטית ללקוח בוואטסאפ והשלב יסומן כבוצע
+                  {d.key === "album_approval"
+                    ? "לאחר ההעלאה הקובץ יישלח ללקוח בוואטסאפ, והלקוח יוכל לאשר את העיצוב דרך הפורטל שלו (או שאפשר לסמן כבוצע ידנית כאן)"
+                    : "לאחר ההעלאה הקובץ יישלח אוטומטית ללקוח בוואטסאפ והשלב יסומן כבוצע"}
                 </p>
               </div>
             )}
@@ -573,7 +659,7 @@ function SendUpdateButton({ onSend, pending }: { onSend: () => void; pending: bo
         setSent(true);
         setTimeout(() => setSent(false), 2000);
       }}
-      className="w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2.5 disabled:opacity-60"
+      className={`whatsapp-update-btn w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2.5 disabled:opacity-60${sent ? " whatsapp-update-btn--sent" : ""}`}
       style={{ background: sent ? "var(--color-sage)" : "#fff", color: sent ? "#fff" : "var(--color-sage)" }}
     >
       {pending ? "שולח..." : sent ? "העדכון נשלח ✓" : "שליחת עדכון ללקוח בוואטסאפ"}
@@ -583,6 +669,7 @@ function SendUpdateButton({ onSend, pending }: { onSend: () => void; pending: bo
 
 function NavAppSheet({ location, onClose }: { location: string; onClose: () => void }) {
   const encoded = encodeURIComponent(location);
+  const entered = useModalEntered();
   const apps = [
     { key: "waze", label: "Waze", url: `https://waze.com/ul?q=${encoded}&navigate=yes` },
     { key: "gmaps", label: "Google Maps", url: `https://www.google.com/maps/search/?api=1&query=${encoded}` },
@@ -590,7 +677,12 @@ function NavAppSheet({ location, onClose }: { location: string; onClose: () => v
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(46,49,66,0.45)" }}
+      style={{
+        background: "rgba(46,49,66,0.45)",
+        backdropFilter: entered ? "blur(16px)" : "blur(0px)",
+        WebkitBackdropFilter: entered ? "blur(16px)" : "blur(0px)",
+        transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
+      }}
       onClick={onClose}
     >
       <div

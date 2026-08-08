@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -13,6 +13,8 @@ import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
+
+const CLOSE_ANIMATION_MS = 220;
 
 const CELL_SIZE_MIN = 80;
 const CELL_SIZE_MAX = 260;
@@ -46,7 +48,7 @@ export default function GalleryManageView({
   initialPhotos,
   initialFolders,
 }: {
-  eventId: string;
+  eventId: string | null;
   clientName: string;
   eventDate: string | null;
   initialGallery: GalleryRow;
@@ -95,12 +97,18 @@ export default function GalleryManageView({
     activeTouchesRef,
   } = usePinchSize(CELL_SIZE_DEFAULT, CELL_SIZE_MIN, CELL_SIZE_MAX, cancelPendingGestures);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(searchParams.get("favorites") === "1");
-  const [expiryMonths, setExpiryMonths] = useState<1 | 3 | 6>(initialGallery.expiry_months);
+  const [expiryMonths, setExpiryMonths] = useState<1 | 3 | 6 | null>(initialGallery.expiry_months);
   const [uploading, setUploading] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [renewing, setRenewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showEditDetails, setShowEditDetails] = useState(false);
+  const [editTitle, setEditTitle] = useState(initialGallery.title);
+  const [editShootDate, setEditShootDate] = useState(initialGallery.shoot_date ?? "");
+  const [editClientEmail, setEditClientEmail] = useState(initialGallery.client_email ?? "");
+  const [editAllowDownloads, setEditAllowDownloads] = useState(initialGallery.allow_downloads);
+  const [savingDetails, setSavingDetails] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [actionSheetPhoto, setActionSheetPhoto] = useState<PhotoWithUrl | null>(null);
   const [deleteConfirmPhoto, setDeleteConfirmPhoto] = useState<PhotoWithUrl | null>(null);
@@ -373,32 +381,36 @@ export default function GalleryManageView({
   const publish = async () => {
     setPublishing(true);
     const now = new Date();
-    const expiresAt = addMonths(now, expiryMonths);
+    const expiresAt = expiryMonths ? addMonths(now, expiryMonths) : null;
     const patch = {
       published: true,
       expiry_months: expiryMonths,
       published_at: now.toISOString(),
-      expires_at: expiresAt.toISOString(),
+      expires_at: expiresAt ? expiresAt.toISOString() : null,
     };
     await supabase.from("galleries").update(patch).eq("id", gallery.id);
     setGallery((g) => ({ ...g, ...patch }));
-    await fetch(`/api/events/${eventId}/stages`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stageKey: "gallery_upload", done: true }),
-    });
+    // Standalone galleries (no event) have no stage tracker to sync.
+    if (eventId) {
+      await fetch(`/api/events/${eventId}/stages`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stageKey: "gallery_upload", done: true }),
+      });
+    }
     setPublishing(false);
   };
 
   const renew = async () => {
     setRenewing(true);
     const now = new Date();
-    const expiresAt = addMonths(now, expiryMonths);
+    const expiresAt = expiryMonths ? addMonths(now, expiryMonths) : null;
     const patch = {
       published_at: now.toISOString(),
-      expires_at: expiresAt.toISOString(),
+      expires_at: expiresAt ? expiresAt.toISOString() : null,
       archived_at: null,
       permanent_delete_at: null,
+      reminder_sent_at: null,
     };
     await supabase.from("galleries").update(patch).eq("id", gallery.id);
     setGallery((g) => ({ ...g, ...patch }));
@@ -409,6 +421,25 @@ export default function GalleryManageView({
     await navigator.clipboard.writeText(`${window.location.origin}/gallery/${gallery.access_token}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const saveDetails = async () => {
+    setSavingDetails(true);
+    const patch = {
+      title: editTitle.trim() || "הגלריה שלכם",
+      shoot_date: eventId ? gallery.shoot_date : editShootDate || null,
+      client_email: editClientEmail.trim() || null,
+      allow_downloads: editAllowDownloads,
+    };
+    const { error: updateError } = await supabase.from("galleries").update(patch).eq("id", gallery.id);
+    if (updateError) {
+      setError(updateError.message);
+      setSavingDetails(false);
+      return;
+    }
+    setGallery((g) => ({ ...g, ...patch }));
+    setSavingDetails(false);
+    setShowEditDetails(false);
   };
 
   const isArchived = !!gallery.archived_at;
@@ -423,19 +454,33 @@ export default function GalleryManageView({
         <Link href="/galleries" className="flex items-center gap-1 text-sm tracking-wide text-ink-soft">
           ← כל הגלריות
         </Link>
-        {gallery.published && (
-          <a
-            href={`/gallery/${gallery.access_token}`}
-            target="_blank"
-            rel="noopener noreferrer"
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowEditDetails(true)}
             className="text-xs font-medium text-amber-deep underline"
           >
-            תצוגה מקדימה ←
-          </a>
-        )}
+            עריכת פרטי הגלריה
+          </button>
+          {gallery.published && (
+            <a
+              href={`/gallery/${gallery.access_token}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium text-amber-deep underline"
+            >
+              תצוגה מקדימה ←
+            </a>
+          )}
+        </div>
       </div>
       <h1 className="text-[22px] font-bold mb-1 font-display">{clientName || gallery.title}</h1>
-      {eventDate && <p className="text-xs mb-5 text-ink-soft">{new Date(eventDate).toLocaleDateString("he-IL")}</p>}
+      {eventDate ? (
+        <p className="text-xs mb-5 text-ink-soft">{new Date(eventDate).toLocaleDateString("he-IL")}</p>
+      ) : (
+        gallery.shoot_date && (
+          <p className="text-xs mb-5 text-ink-soft">{new Date(gallery.shoot_date).toLocaleDateString("he-IL")}</p>
+        )
+      )}
 
       {isArchived && (
         <div className="rounded-xl px-3.5 py-2.5 mb-3.5 text-xs bg-[#FBEEEC] text-rose">
@@ -705,20 +750,9 @@ export default function GalleryManageView({
 
       <div className="mt-3 space-y-2">
         {!gallery.published && (
-          <div>
-            <label className="text-xs block mb-1 text-ink-soft">תוקף הגלריה (מתי היא תעבור לארכיון)</label>
-            <select
-              value={expiryMonths}
-              onChange={(e) => setExpiryMonths(Number(e.target.value) as 1 | 3 | 6)}
-              className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-            >
-              {EXPIRY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <p className="text-[11px] text-ink-soft text-center">
+            משך שמירת הגלריה: {expiryMonths ? EXPIRY_OPTIONS.find((o) => o.value === expiryMonths)?.label : "ללא הגבלת זמן"} — ניתן לשנות בעריכת פרטי הגלריה
+          </p>
         )}
 
         {gallery.published && !isArchived && (
@@ -920,6 +954,208 @@ export default function GalleryManageView({
           </button>
         </div>
       )}
+
+      {showEditDetails && (
+        <EditGalleryDetailsModal
+          isStandalone={!eventId}
+          title={editTitle}
+          setTitle={setEditTitle}
+          shootDate={editShootDate}
+          setShootDate={setEditShootDate}
+          clientEmail={editClientEmail}
+          setClientEmail={setEditClientEmail}
+          allowDownloads={editAllowDownloads}
+          setAllowDownloads={setEditAllowDownloads}
+          expiryMonths={expiryMonths}
+          setExpiryMonths={setExpiryMonths}
+          canEditExpiry={!gallery.published}
+          saving={savingDetails}
+          onSave={saveDetails}
+          onClose={() => setShowEditDetails(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditGalleryDetailsModal({
+  isStandalone,
+  title,
+  setTitle,
+  shootDate,
+  setShootDate,
+  clientEmail,
+  setClientEmail,
+  allowDownloads,
+  setAllowDownloads,
+  expiryMonths,
+  setExpiryMonths,
+  canEditExpiry,
+  saving,
+  onSave,
+  onClose,
+}: {
+  isStandalone: boolean;
+  title: string;
+  setTitle: (v: string) => void;
+  shootDate: string;
+  setShootDate: (v: string) => void;
+  clientEmail: string;
+  setClientEmail: (v: string) => void;
+  allowDownloads: boolean;
+  setAllowDownloads: (v: boolean) => void;
+  expiryMonths: 1 | 3 | 6 | null;
+  setExpiryMonths: (v: 1 | 3 | 6 | null) => void;
+  canEditExpiry: boolean;
+  saving: boolean;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<"details" | "permissions">("details");
+  const [entered, setEntered] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const closeWithAnimation = () => {
+    setClosing(true);
+    setTimeout(onClose, CLOSE_ANIMATION_MS);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{
+        background: "rgba(46,49,66,0.45)",
+        backdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
+        WebkitBackdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
+        transition: `backdrop-filter ${CLOSE_ANIMATION_MS + 60}ms ease, -webkit-backdrop-filter ${CLOSE_ANIMATION_MS + 60}ms ease`,
+      }}
+      onClick={closeWithAnimation}
+    >
+      <style>{`
+        @keyframes editGalleryZoomOut { from { transform: scale(1); opacity: 1; } to { transform: scale(0.85); opacity: 0; } }
+        .edit-gallery-closing { animation: editGalleryZoomOut ${CLOSE_ANIMATION_MS}ms ease forwards; }
+      `}</style>
+      <div
+        className={`w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto ${closing ? "edit-gallery-closing" : ""}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold font-display">עריכת פרטי הגלריה</h2>
+          <button onClick={closeWithAnimation} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
+            ✕
+          </button>
+        </div>
+
+        <div className="flex gap-1.5 mb-4">
+          <button
+            onClick={() => setTab("details")}
+            className="flex-1 rounded-full py-2 text-xs font-semibold"
+            style={{
+              background: tab === "details" ? "var(--color-ink)" : "var(--color-chip)",
+              color: tab === "details" ? "var(--color-paper)" : "var(--color-ink-soft)",
+            }}
+          >
+            פרטים
+          </button>
+          <button
+            onClick={() => setTab("permissions")}
+            className="flex-1 rounded-full py-2 text-xs font-semibold"
+            style={{
+              background: tab === "permissions" ? "var(--color-ink)" : "var(--color-chip)",
+              color: tab === "permissions" ? "var(--color-paper)" : "var(--color-ink-soft)",
+            }}
+          >
+            הרשאות ושמירה
+          </button>
+        </div>
+
+        {tab === "details" ? (
+          <div className="space-y-3.5">
+            <div>
+              <label className="text-xs block mb-1 text-ink-soft">שם הגלריה</label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              {isStandalone && (
+                <div className="flex-1 min-w-0">
+                  <label className="text-xs block mb-1 text-ink-soft">תאריך הצילום</label>
+                  <input
+                    type="date"
+                    value={shootDate}
+                    onChange={(e) => setShootDate(e.target.value)}
+                    className="w-full min-w-0 rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                  />
+                </div>
+              )}
+              {canEditExpiry && (
+                <div className="flex-1 min-w-0">
+                  <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
+                  <select
+                    value={expiryMonths ?? "indefinite"}
+                    onChange={(e) => setExpiryMonths(e.target.value === "indefinite" ? null : (Number(e.target.value) as 1 | 3 | 6))}
+                    className="w-full min-w-0 rounded-lg px-2 py-2 text-sm border border-line bg-white"
+                  >
+                    <option value={1}>חודש</option>
+                    <option value={3}>3 חודשים</option>
+                    <option value={6}>חצי שנה</option>
+                    <option value="indefinite">ללא הגבלת זמן</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת)</label>
+              <input
+                type="email"
+                value={clientEmail}
+                onChange={(e) => setClientEmail(e.target.value)}
+                placeholder="example@gmail.com"
+                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3.5">
+            <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
+              <div>
+                <div className="text-sm font-semibold">אפשרות הורדת קבצים מקוריים</div>
+                <div className="text-xs text-ink-soft mt-0.5">כשמכובה, הלקוח/ה יוכלו רק לצפות בתמונות, לא להוריד</div>
+              </div>
+              <button
+                onClick={() => setAllowDownloads(!allowDownloads)}
+                role="switch"
+                aria-checked={allowDownloads}
+                className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
+                style={{
+                  background: allowDownloads ? "var(--color-amber-deep)" : "var(--color-line)",
+                  justifyContent: allowDownloads ? "flex-start" : "flex-end",
+                }}
+              >
+                <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60 mt-5"
+        >
+          {saving ? "שומר..." : "שמירת שינויים"}
+        </button>
+      </div>
     </div>
   );
 }

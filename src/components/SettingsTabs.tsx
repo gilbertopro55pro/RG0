@@ -12,7 +12,7 @@ export default function SettingsTabs({
 
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-5 overflow-x-auto">
+      <div className="flex flex-wrap items-center gap-1.5 mb-5">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -20,7 +20,7 @@ export default function SettingsTabs({
             className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${BTN_PRESS}`}
             style={{
               background: active === tab.id ? "var(--color-ink)" : "var(--color-chip)",
-              color: active === tab.id ? "#fff" : "var(--color-ink-soft)",
+              color: active === tab.id ? "var(--color-paper)" : "var(--color-ink-soft)",
             }}
           >
             {tab.label}

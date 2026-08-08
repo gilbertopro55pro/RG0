@@ -31,6 +31,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!gallery) {
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
+  if (!gallery.allow_downloads) {
+    return NextResponse.json({ error: "הורדת תמונות מכובה עבור גלריה זו" }, { status: 403 });
+  }
 
   const { data: photos } = await supabase
     .from("gallery_photos")

@@ -7,6 +7,7 @@ import TopNav from "@/components/TopNav";
 import GlobalButtonEffects from "@/components/GlobalButtonEffects";
 import GlobalLoadingBar from "@/components/GlobalLoadingBar";
 import InstallPrompt from "@/components/InstallPrompt";
+import ChangelogModal from "@/components/ChangelogModal";
 
 const heebo = Heebo({
   variable: "--font-heebo",
@@ -167,6 +168,7 @@ export default function RootLayout({
         <TopNav />
         {children}
         <InstallPrompt />
+        <ChangelogModal />
       </body>
     </html>
   );

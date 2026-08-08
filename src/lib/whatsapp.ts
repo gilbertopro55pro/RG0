@@ -1,9 +1,26 @@
+import crypto from "node:crypto";
+
 const GRAPH_API_VERSION = "v21.0";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
+}
+
+// Meta signs every webhook POST body with the app secret (HMAC-SHA256, hex, prefixed "sha256=").
+// Without this check, anyone who finds the webhook URL can POST fabricated "incoming messages"
+// with any phone number in `from`, which the bot would treat as a real client — creating fake
+// leads/waitlist rows and, via sendWhatsAppMessage, sending real outbound messages to that number.
+export function verifyWhatsAppSignature(rawBody: string, signatureHeader: string | null): boolean {
+  if (!signatureHeader?.startsWith("sha256=")) return false;
+  const secret = requireEnv("WHATSAPP_APP_SECRET");
+  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const provided = signatureHeader.slice("sha256=".length);
+  const expectedBuf = Buffer.from(expected, "hex");
+  const providedBuf = Buffer.from(provided, "hex");
+  if (expectedBuf.length !== providedBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, providedBuf);
 }
 
 // Meta's Graph API errors come back as terse, code-prefixed English strings ("(#132001) Template

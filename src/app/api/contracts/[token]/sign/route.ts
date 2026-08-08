@@ -49,6 +49,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   await supabase.from("event_notifications").insert({
     event_id: contract.event_id,
     text: `החוזה נחתם על ידי ${signerName.trim()} ✓`,
+    is_client_action: true,
   });
 
   return NextResponse.json({ contract: updated });

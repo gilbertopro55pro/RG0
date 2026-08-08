@@ -65,8 +65,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     requiresAlbumPdf = stageKey === "album_approval";
   }
 
+  // For the standard "אישור עיצוב אלבום" stage, the PDF is now attached separately (via
+  // /api/events/[id]/album-design) before this stage is ever marked done, so a plain toggle here
+  // won't carry albumDesignPdfPath in the request body — fall back to what's already saved on the
+  // event itself instead of wrongly blocking the toggle. Custom-package stages keep the older
+  // combined upload+complete flow, which always sends the path in this same request, so no fallback
+  // lookup applies there.
   if (requiresAlbumPdf && done && !albumDesignPdfPath) {
-    return NextResponse.json({ error: "יש להעלות את קובץ עיצוב האלבום לפני סימון השלב כבוצע" }, { status: 400 });
+    const hasStoredPdf =
+      !customStageId &&
+      !!(
+        await supabase.from("events").select("album_design_pdf_path").eq("id", eventId).single<{
+          album_design_pdf_path: string | null;
+        }>()
+      ).data?.album_design_pdf_path;
+    if (!hasStoredPdf) {
+      return NextResponse.json({ error: "יש להעלות את קובץ עיצוב האלבום לפני סימון השלב כבוצע" }, { status: 400 });
+    }
   }
 
   const { data: stage, error: updateError } = await supabase

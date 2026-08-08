@@ -76,6 +76,7 @@ export const ALBUM_DESIGN_TEMPLATE = "album_design_ready_v1";
 
 export const GENERIC_STAGE_UPDATE_TEMPLATE = "stage_update_v2";
 export const EVENT_BOOKING_CONFIRMATION_TEMPLATE = "event_booking_confirmation_v2";
+export const PORTAL_LINK_TEMPLATE = "portal_link_ready_v1";
 export const REVIEW_REQUEST_TEMPLATE = "review_request_v1";
 export const REVIEW_REQUEST_DELAY_DAYS = 3;
 export const PAYMENT_REMINDER_TEMPLATE = "payment_reminder_v1";

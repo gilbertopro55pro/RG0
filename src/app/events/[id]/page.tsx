@@ -38,6 +38,13 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
 
   if (!event) notFound();
 
+  // Opening the event is what "reading" the progress badge means — clear any unread client-action
+  // notifications now so the dashboard badge reflects that the photographer has seen them.
+  const unreadIds = (notifications ?? []).filter((n) => n.is_client_action && !n.read_at).map((n) => n.id);
+  if (unreadIds.length > 0) {
+    await supabase.from("event_notifications").update({ read_at: new Date().toISOString() }).in("id", unreadIds);
+  }
+
   let customStages: CustomPackageStageRow[] = [];
   let customPackageName: string | null = null;
   if (event.custom_package_id) {

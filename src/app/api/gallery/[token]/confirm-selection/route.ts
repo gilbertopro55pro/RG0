@@ -32,45 +32,51 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   const now = new Date().toISOString();
   await supabase.from("galleries").update({ selection_confirmed_at: now }).eq("id", gallery.id);
 
-  await supabase
-    .from("event_stages")
-    .update({ done: true, done_at: now })
-    .eq("event_id", gallery.event_id)
-    .eq("stage_key", "client_photo_selection");
+  // Standalone galleries (no event) have no event_stages row or event_notifications feed to
+  // update — the stage/notification side only applies when a real event owns this gallery.
+  let clientLabel = gallery.title;
+  let formattedDate = gallery.shoot_date ? new Date(gallery.shoot_date).toLocaleDateString("he-IL") : "";
+  if (gallery.event_id) {
+    await supabase
+      .from("event_stages")
+      .update({ done: true, done_at: now })
+      .eq("event_id", gallery.event_id)
+      .eq("stage_key", "client_photo_selection");
 
-  const [{ data: event }, { data: photographer }] = await Promise.all([
-    supabase
+    const { data: event } = await supabase
       .from("events")
       .select("client_name, event_date")
       .eq("id", gallery.event_id)
-      .maybeSingle<Pick<EventRow, "client_name" | "event_date">>(),
-    supabase
-      .from("photographers")
-      .select("name, email")
-      .eq("id", gallery.photographer_id)
-      .maybeSingle<Pick<Photographer, "name" | "email">>(),
-  ]);
+      .maybeSingle<Pick<EventRow, "client_name" | "event_date">>();
 
-  await supabase.from("event_notifications").insert({
-    event_id: gallery.event_id,
-    text: `${event?.client_name ?? "הלקוח/ה"} סיימו לבחור תמונות מהגלריה — נבחרו ${count ?? 0} תמונות`,
-  });
+    clientLabel = event?.client_name ?? clientLabel;
+    formattedDate = event?.event_date ? new Date(event.event_date).toLocaleDateString("he-IL") : formattedDate;
+
+    await supabase.from("event_notifications").insert({
+      event_id: gallery.event_id,
+      text: `${clientLabel} סיימו לבחור תמונות מהגלריה — נבחרו ${count ?? 0} תמונות`,
+      is_client_action: true,
+    });
+  }
+
+  const { data: photographer } = await supabase
+    .from("photographers")
+    .select("name, email")
+    .eq("id", gallery.photographer_id)
+    .maybeSingle<Pick<Photographer, "name" | "email">>();
 
   if (photographer?.email) {
     const origin = new URL(request.url).origin;
     const favoritesLink = `${origin}/galleries/${gallery.id}?favorites=1`;
-    const formattedDate = event?.event_date
-      ? new Date(event.event_date).toLocaleDateString("he-IL")
-      : "";
     try {
       await sendEmail({
         to: photographer.email,
-        subject: `${event?.client_name ?? "לקוח"} סיימו לבחור תמונות מהגלריה`,
+        subject: `${clientLabel} סיימו לבחור תמונות מהגלריה`,
         text:
           `שלום ${photographer.name},\n\n` +
-          `הלקוח/ה של האירוע "${event?.client_name ?? ""}"${formattedDate ? ` (${formattedDate})` : ""} סיימו לבחור תמונות מהגלריה.\n` +
+          `הלקוח/ה של "${clientLabel}"${formattedDate ? ` (${formattedDate})` : ""} סיימו לבחור תמונות מהגלריה.\n` +
           `נבחרו ${count ?? 0} תמונות.\n\n` +
-          `לצפייה והורדה של התמונות שנבחרו:\n${favoritesLink}`,
+          `לצפייה והורדה של התמונות שנבחרו:\n${favoritesLink}\n`,
       });
     } catch (e) {
       console.error("Selection confirmation email failed:", e);

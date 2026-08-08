@@ -1,7 +1,8 @@
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { PACKAGE_FLOWS, STAGE_LABELS, STAGE_TYPE, currentStageIndex, packageLabel } from "@/lib/stages";
 import { normalizeIsraeliPhone } from "@/lib/whatsapp";
-import type { CustomPackageStageRow, EventPaymentRow, EventRow, EventStageRow } from "@/lib/types";
+import type { CustomPackageStageRow, EventPaymentRow, EventRow, EventStageRow, GalleryRow } from "@/lib/types";
+import PortalStageActions from "@/components/PortalStageActions";
 
 export default async function ClientPortalPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -21,7 +22,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
     );
   }
 
-  const [{ data: stages }, { data: payments }, { data: customStagesData }, { data: customPackageData }] =
+  const [{ data: stages }, { data: payments }, { data: customStagesData }, { data: customPackageData }, { data: gallery }] =
     await Promise.all([
       supabase
         .from("event_stages")
@@ -41,7 +42,28 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
       event.custom_package_id
         ? supabase.from("custom_packages").select("name").eq("id", event.custom_package_id).maybeSingle<{ name: string }>()
         : Promise.resolve({ data: null }),
+      supabase
+        .from("galleries")
+        .select("access_token, published, archived_at")
+        .eq("event_id", event.id)
+        .maybeSingle<Pick<GalleryRow, "access_token" | "published" | "archived_at">>(),
     ]);
+
+  const galleryLink = gallery && gallery.published && !gallery.archived_at ? `/gallery/${gallery.access_token}` : null;
+
+  let albumDesignUrl: string | null = null;
+  if (event.album_design_pdf_path) {
+    const { data } = await supabase.storage
+      .from("album-designs")
+      .createSignedUrl(event.album_design_pdf_path, 3600);
+    albumDesignUrl = data?.signedUrl ?? null;
+  }
+
+  const whatsappSongLink = event.photographers?.phone
+    ? `https://wa.me/${normalizeIsraeliPhone(event.photographers.phone)}?text=${encodeURIComponent(
+        `היי! רציתי לשלוח את השיר לקליפ עבור האירוע של ${event.client_name}: `
+      )}`
+    : null;
 
   const allStages = stages ?? [];
   const curIdx = currentStageIndex(allStages);
@@ -66,27 +88,18 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
         <div className="text-sm font-semibold tracking-wide mb-3.5">סטטוס האירוע</div>
-        <div className="space-y-1.5">
-          {clientStages.map(({ key, label, stage, index }) => (
-            <div
-              key={key}
-              className="flex items-center gap-3 rounded-xl px-3.5 py-2.5"
-              style={{ background: stage.done ? "var(--color-sage-bg)" : index === curIdx ? "var(--color-chip-tint)" : "var(--color-chip)" }}
-            >
-              <span
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px]"
-                style={{
-                  background: stage.done ? "var(--color-sage)" : "#fff",
-                  border: `1px solid ${stage.done ? "var(--color-sage)" : "var(--color-line)"}`,
-                  color: stage.done ? "#fff" : "var(--color-ink-soft)",
-                }}
-              >
-                {stage.done ? "✓" : ""}
-              </span>
-              <span className="text-sm">{label}</span>
-            </div>
-          ))}
-        </div>
+        <PortalStageActions
+          eventToken={token}
+          stages={clientStages.map(({ key, label, stage, index }) => ({
+            key,
+            label,
+            done: stage.done,
+            isCurrent: index === curIdx,
+          }))}
+          galleryLink={galleryLink}
+          albumDesignUrl={albumDesignUrl}
+          whatsappLink={whatsappSongLink}
+        />
       </div>
 
       {payments && (

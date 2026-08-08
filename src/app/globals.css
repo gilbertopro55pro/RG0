@@ -191,6 +191,45 @@ body {
   background-color: rgba(255, 107, 107, 0.78) !important;
 }
 
+/* iOS Safari auto-zooms the whole page in when a focused input's computed font-size is under
+   16px, then leaves it zoomed in after the input blurs (e.g. closing a modal) — the user has to
+   manually pinch back out. Forcing 16px on every form field on mobile prevents the zoom from
+   triggering in the first place, without touching maximum-scale/user-scalable (which would kill
+   pinch-zoom for everyone, an accessibility regression). Desktop is unaffected. */
+@media (max-width: 767px) {
+  /* date/time inputs are excluded: they open a native wheel picker on focus rather than a
+     zoomable text caret, so they don't trigger the zoom bug — and forcing 16px here only made
+     their intrinsic rendered width wider, fighting the min-w-0 fix on the side-by-side time
+     fields and reintroducing the overlap it was meant to fix. */
+  input:not([type="date"]):not([type="time"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* The album-design upload panel is the "send the client a message" row — in dark mode its plain
+   .bg-white (already retargeted to the dark input-field color by the override above) reads as an
+   unrelated dark rectangle. Giving it WhatsApp's own green makes it instantly legible as the
+   "this goes out to the client" action, with black text since the app's usual light ink tokens
+   don't have enough contrast against that specific green. */
+:root[data-theme="dark"] .album-upload-panel {
+  background-color: #25d366 !important;
+}
+:root[data-theme="dark"] .album-upload-panel,
+:root[data-theme="dark"] .album-upload-panel * {
+  color: #000 !important;
+}
+
+/* Same reasoning for the per-stage "שליחת עדכון ללקוח בוואטסאפ" button — its default state is a
+   literal inline white background (not the .bg-white utility, so the global override above doesn't
+   touch it) with green text, which reads as a plain, half-invisible white bar in dark mode. The
+   ":not(--sent)" scope leaves the post-send sage/white "✓ נשלח" confirmation state untouched. */
+:root[data-theme="dark"] .whatsapp-update-btn:not(.whatsapp-update-btn--sent) {
+  background-color: #25d366 !important;
+  color: #000 !important;
+}
+
 /* Global tactile press feedback for every button in the app. Driven by GlobalButtonEffects.tsx
    toggling .js-pressed via real pointer events — not the CSS :active pseudo-class, which iOS
    Safari activates inconsistently for touch input. The spring-back easing (overshoot past 1

@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { createClient } from "@/lib/supabase/client";
 import type { GalleryRow } from "@/lib/types";
+import NewGalleryModal from "@/components/NewGalleryModal";
 
 export default function GallerySection({
   eventId,
@@ -18,31 +17,8 @@ export default function GallerySection({
   photoCount: number;
   coverUrl: string | null;
 }) {
-  const router = useRouter();
-  const supabase = createClient();
-  const [gallery, setGallery] = useState(initialGallery);
-  const [creating, setCreating] = useState(false);
-
-  const createAndOpen = async () => {
-    setCreating(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setCreating(false);
-      return;
-    }
-    const { data: created } = await supabase
-      .from("galleries")
-      .insert({ event_id: eventId, photographer_id: user.id })
-      .select()
-      .single<GalleryRow>();
-    setCreating(false);
-    if (created) {
-      setGallery(created);
-      router.push(`/galleries/${created.id}`);
-    }
-  };
+  const [gallery] = useState(initialGallery);
+  const [showNewGallery, setShowNewGallery] = useState(false);
 
   const isArchived = !!gallery?.archived_at;
 
@@ -73,13 +49,14 @@ export default function GallerySection({
         </Link>
       ) : (
         <button
-          onClick={createAndOpen}
-          disabled={creating}
-          className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-60"
+          onClick={() => setShowNewGallery(true)}
+          className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
         >
-          {creating ? "יוצר..." : "יצירת גלריה"}
+          יצירת גלריה
         </button>
       )}
+
+      {showNewGallery && <NewGalleryModal eventId={eventId} onClose={() => setShowNewGallery(false)} />}
     </div>
   );
 }

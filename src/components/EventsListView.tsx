@@ -13,11 +13,13 @@ export default function EventsListView({
   events,
   doneCountByEvent,
   totalCountByEvent,
+  unreadCountByEvent,
   isPhotographer,
 }: {
   events: EventWithCustomPackage[];
   doneCountByEvent: Record<string, number>;
   totalCountByEvent: Record<string, number>;
+  unreadCountByEvent: Record<string, number>;
   isPhotographer: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -90,6 +92,7 @@ export default function EventsListView({
               event={event}
               doneCount={doneCountByEvent[event.id] ?? 0}
               totalCount={totalCountByEvent[event.id] ?? 1}
+              unreadCount={unreadCountByEvent[event.id] ?? 0}
             />
           ))}
           {hasMore && (
@@ -118,10 +121,12 @@ function EventCard({
   event,
   doneCount,
   totalCount,
+  unreadCount,
 }: {
   event: EventWithCustomPackage;
   doneCount: number;
   totalCount: number;
+  unreadCount: number;
 }) {
   const total = totalCount;
   const pct = Math.round((doneCount / total) * 100);
@@ -133,7 +138,17 @@ function EventCard({
       className="block w-full text-right rounded-2xl p-4 mb-3.5 bg-card border border-line shadow-card"
     >
       <div className="flex items-center justify-between mb-2.5">
-        <span className="font-semibold text-base font-display">{event.client_name}</span>
+        <span className="relative inline-block">
+          <span className="font-semibold text-base font-display">{event.client_name}</span>
+          {unreadCount > 0 && (
+            <span
+              className="absolute -top-2 -left-3 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-bold flex items-center justify-center leading-none shadow"
+              style={{ background: "var(--color-rose)" }}
+            >
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </span>
         <span className="text-[10.5px] px-2.5 py-1 rounded-full tracking-wide bg-amber-bg text-amber-deep font-data">
           {packageLabel(event.package, event.custom_packages?.name)}
         </span>

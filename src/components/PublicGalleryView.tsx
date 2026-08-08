@@ -21,11 +21,13 @@ export default function PublicGalleryView({
   initialPhotos,
   initialFolders,
   initiallyConfirmed,
+  allowDownloads,
 }: {
   token: string;
   initialPhotos: PhotoWithUrl[];
   initialFolders: GalleryFolderRow[];
   initiallyConfirmed: boolean;
+  allowDownloads: boolean;
 }) {
   const [photos, setPhotos] = useState(initialPhotos);
   const [savedFavoriteIds, setSavedFavoriteIds] = useState(
@@ -283,14 +285,16 @@ export default function PublicGalleryView({
             />
             <IconGallery className="h-5 w-5 shrink-0 text-ink-soft" />
           </div>
-          <button
-            onClick={() => downloadZip(photos.map((p) => p.id))}
-            disabled={zipping}
-            className={`w-full flex items-center justify-center gap-2 rounded-xl py-2.5 mb-4 text-sm font-semibold bg-card border border-line shadow-card disabled:opacity-60 ${BTN_PRESS}`}
-          >
-            <DownloadIcon size={16} />
-            {zipping ? "מכין הורדה..." : `הורדת כל התמונות (${photos.length})`}
-          </button>
+          {allowDownloads && (
+            <button
+              onClick={() => downloadZip(photos.map((p) => p.id))}
+              disabled={zipping}
+              className={`w-full flex items-center justify-center gap-2 rounded-xl py-2.5 mb-4 text-sm font-semibold bg-card border border-line shadow-card disabled:opacity-60 ${BTN_PRESS}`}
+            >
+              <DownloadIcon size={16} />
+              {zipping ? "מכין הורדה..." : `הורדת כל התמונות (${photos.length})`}
+            </button>
+          )}
           <div
             ref={pinchContainerRef}
             className="grid gap-2.5"
@@ -369,7 +373,7 @@ export default function PublicGalleryView({
             {favoriteCount} מועדפים
           </button>
 
-          {favoriteCount > 0 && (
+          {favoriteCount > 0 && allowDownloads && (
             <button
               onClick={() => setDownloadSelectedConfirmOpen(true)}
               disabled={zipping}
@@ -554,7 +558,7 @@ export default function PublicGalleryView({
                 ✕
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid gap-3 ${allowDownloads ? "grid-cols-2" : "grid-cols-1"}`}>
               <button
                 onClick={() => sharePhoto(shareMenuPhoto)}
                 className={`flex flex-col items-center gap-2 rounded-2xl py-5 bg-card border border-line shadow-card ${BTN_PRESS}`}
@@ -562,16 +566,18 @@ export default function PublicGalleryView({
                 <ShareIcon />
                 <span className="text-sm font-semibold">שיתוף</span>
               </button>
-              <button
-                onClick={() => {
-                  downloadPhoto(shareMenuPhoto);
-                  setShareMenuPhoto(null);
-                }}
-                className={`flex flex-col items-center gap-2 rounded-2xl py-5 bg-card border border-line shadow-card ${BTN_PRESS}`}
-              >
-                <DownloadIcon />
-                <span className="text-sm font-semibold">הורדה</span>
-              </button>
+              {allowDownloads && (
+                <button
+                  onClick={() => {
+                    downloadPhoto(shareMenuPhoto);
+                    setShareMenuPhoto(null);
+                  }}
+                  className={`flex flex-col items-center gap-2 rounded-2xl py-5 bg-card border border-line shadow-card ${BTN_PRESS}`}
+                >
+                  <DownloadIcon />
+                  <span className="text-sm font-semibold">הורדה</span>
+                </button>
+              )}
             </div>
             {shareFeedback && (
               <p className="text-xs text-sage text-center mt-3 font-medium">{shareFeedback}</p>
@@ -595,15 +601,17 @@ export default function PublicGalleryView({
           >
             ✕
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              downloadPhoto(visiblePhotos[lightboxIndex]);
-            }}
-            className={`absolute top-4 right-4 h-9 px-3 rounded-full bg-white/10 text-white flex items-center justify-center text-xs font-semibold ${BTN_PRESS}`}
-          >
-            ⬇ הורדה
-          </button>
+          {allowDownloads && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                downloadPhoto(visiblePhotos[lightboxIndex]);
+              }}
+              className={`absolute top-4 right-4 h-9 px-3 rounded-full bg-white/10 text-white flex items-center justify-center text-xs font-semibold ${BTN_PRESS}`}
+            >
+              ⬇ הורדה
+            </button>
+          )}
           {lightboxIndex > 0 && (
             <button
               onClick={(e) => {

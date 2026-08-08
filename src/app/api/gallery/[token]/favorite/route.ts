@@ -44,10 +44,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   // Only notify the photographer for post-confirmation edits — the first-ever confirmation
   // already sends its own (louder) email via /confirm-selection, so this stays in-app only.
-  if (gallery.selection_confirmed_at) {
+  // Standalone galleries (no event) have no event_notifications feed to write to.
+  if (gallery.selection_confirmed_at && gallery.event_id) {
     await supabase.from("event_notifications").insert({
       event_id: gallery.event_id,
       text: `הלקוח/ה עדכנו את בחירת התמונות מהגלריה — נבחרו כעת ${favoritePhotoIds.length} תמונות`,
+      is_client_action: true,
     });
   }
 

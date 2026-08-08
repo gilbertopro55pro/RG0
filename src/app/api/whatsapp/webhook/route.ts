@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
+import { sendWhatsAppMessage, verifyWhatsAppSignature } from "@/lib/whatsapp";
 import { getOrCreateConversation, runBotTurn } from "@/lib/whatsappBot";
 import type { Photographer } from "@/lib/types";
 
@@ -18,7 +18,11 @@ export async function GET(request: NextRequest) {
 type InboundMessage = { from: string; type: string; text?: { body: string } };
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
+  const rawBody = await request.text();
+  if (!verifyWhatsAppSignature(rawBody, request.headers.get("x-hub-signature-256"))) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+  const body = JSON.parse(rawBody);
   const supabase = createServiceRoleClient();
   await supabase.from("whatsapp_webhook_events").insert({ payload: body });
 

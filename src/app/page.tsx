@@ -37,6 +37,7 @@ export default async function DashboardPage() {
     { data: customPackages },
     { data: payments },
     { data: scheduledReminders },
+    { data: unreadNotifications },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase.from("team_members").select("*").eq("id", user!.id).maybeSingle<TeamMember>(),
@@ -54,6 +55,14 @@ export default async function DashboardPage() {
       .eq("kind", "payment_reminder")
       .eq("status", "awaiting_confirmation")
       .returns<{ id: string; event_id: string; events: { client_name: string } | null }[]>(),
+    // Powers the progress badge on each event card — only client-initiated steps (contract
+    // signed, gallery selection) the photographer hasn't opened the event to see yet.
+    supabase
+      .from("event_notifications")
+      .select("event_id")
+      .eq("is_client_action", true)
+      .is("read_at", null)
+      .returns<{ event_id: string }[]>(),
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
@@ -68,6 +77,11 @@ export default async function DashboardPage() {
       totalCountByEvent.set(event.id, (totalCountByEvent.get(event.id) ?? 0) + 1);
       if (s.done) doneCountByEvent.set(event.id, (doneCountByEvent.get(event.id) ?? 0) + 1);
     });
+  });
+
+  const unreadCountByEvent = new Map<string, number>();
+  (unreadNotifications ?? []).forEach((n) => {
+    unreadCountByEvent.set(n.event_id, (unreadCountByEvent.get(n.event_id) ?? 0) + 1);
   });
 
   const isPhotographer = !!photographer;
@@ -153,6 +167,7 @@ export default async function DashboardPage() {
         events={events ?? []}
         doneCountByEvent={Object.fromEntries(doneCountByEvent)}
         totalCountByEvent={Object.fromEntries(totalCountByEvent)}
+        unreadCountByEvent={Object.fromEntries(unreadCountByEvent)}
         isPhotographer={isPhotographer}
       />
       <FeedbackButton />

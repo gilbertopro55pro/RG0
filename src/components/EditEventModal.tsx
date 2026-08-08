@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { EventRow } from "@/lib/types";
+import { useModalEntered } from "@/lib/useModalEntered";
 
 export default function EditEventModal({
   event,
@@ -26,6 +27,7 @@ export default function EditEventModal({
   const [dateConflict, setDateConflict] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const entered = useModalEntered();
 
   const submit = async (allowDoubleBooking = false) => {
     if (!clientName || !eventDate) return;
@@ -84,7 +86,12 @@ export default function EditEventModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(46,49,66,0.45)" }}
+      style={{
+        background: "rgba(46,49,66,0.45)",
+        backdropFilter: entered ? "blur(16px)" : "blur(0px)",
+        WebkitBackdropFilter: entered ? "blur(16px)" : "blur(0px)",
+        transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
+      }}
     >
       <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
@@ -124,22 +131,22 @@ export default function EditEventModal({
             />
           </div>
           <div className="flex gap-2">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <label className="text-xs block mb-1 text-ink-soft">שעת התחלה</label>
               <input
                 type="time"
                 value={eventStartTime}
                 onChange={(e) => setEventStartTime(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                className="w-full min-w-0 rounded-lg px-1.5 py-2 text-sm border border-line bg-white"
               />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <label className="text-xs block mb-1 text-ink-soft">שעת סיום</label>
               <input
                 type="time"
                 value={eventEndTime}
                 onChange={(e) => setEventEndTime(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                className="w-full min-w-0 rounded-lg px-1.5 py-2 text-sm border border-line bg-white"
               />
             </div>
           </div>

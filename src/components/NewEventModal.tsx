@@ -253,7 +253,7 @@ export default function NewEventModal({
                     type="time"
                     value={eventStartTime}
                     onChange={(e) => setEventStartTime(e.target.value)}
-                    className="w-full min-w-0 rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                    className="w-full min-w-0 rounded-lg px-1.5 py-2 text-sm border border-line bg-white"
                   />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -262,7 +262,7 @@ export default function NewEventModal({
                     type="time"
                     value={eventEndTime}
                     onChange={(e) => setEventEndTime(e.target.value)}
-                    className="w-full min-w-0 rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                    className="w-full min-w-0 rounded-lg px-1.5 py-2 text-sm border border-line bg-white"
                   />
                 </div>
               </div>
