@@ -10,6 +10,7 @@ import BotSettings from "@/components/BotSettings";
 import BillingSettings from "@/components/BillingSettings";
 import CustomPackagesSettings from "@/components/CustomPackagesSettings";
 import AppearanceSettings from "@/components/AppearanceSettings";
+import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
 import { CURRENT_VERSION } from "@/lib/changelog";
 
@@ -114,6 +115,11 @@ export default async function SettingsPage({
                 )}
               </>
             ),
+          },
+          {
+            id: "updates",
+            label: "עדכונים",
+            content: <UpdatesSettings />,
           },
         ]}
       />

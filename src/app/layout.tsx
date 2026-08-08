@@ -70,7 +70,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#6c8eff",
+  themeColor: "#caab6d",
 };
 
 export default function RootLayout({
@@ -105,7 +105,6 @@ export default function RootLayout({
             on a cold PWA launch on mobile; it self-removes via a CSS animation timer so it never
             depends on JS finishing to disappear. */}
         <style>{`
-          @keyframes bootGradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
           @keyframes bootIconPulse { 0%, 100% { transform: scale(1); opacity: 0.88; } 50% { transform: scale(1.1); opacity: 1; } }
           #boot-splash {
             position: fixed;
@@ -114,9 +113,7 @@ export default function RootLayout({
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(120deg, #6c8eff, #ff7fb0, #52d6c8, #ffb37a, #6c8eff);
-            background-size: 300% 300%;
-            animation: bootGradientShift 6s ease-in-out infinite;
+            background: #caab6d;
             opacity: 1;
             visibility: visible;
             transition: opacity 0.4s ease;

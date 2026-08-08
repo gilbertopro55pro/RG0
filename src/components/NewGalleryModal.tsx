@@ -149,24 +149,27 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
               />
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              {/* Real px min-width (not min-w-0) — iOS Safari's native date-input control can
+                  render with zero visible width when its flex item is allowed to shrink past
+                  its comfortable size. flex-wrap is the fallback if both truly don't fit. */}
               {!eventId && (
-                <div className="flex-1 min-w-0">
+                <div className="flex-1" style={{ minWidth: 150 }}>
                   <label className="text-xs block mb-1 text-ink-soft">תאריך הצילום</label>
                   <input
                     type="date"
                     value={shootDate}
                     onChange={(e) => setShootDate(e.target.value)}
-                    className="w-full min-w-0 rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                    className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
                   />
                 </div>
               )}
-              <div className="flex-1 min-w-0">
+              <div className="flex-1" style={{ minWidth: 150 }}>
                 <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
                 <select
                   value={expiryMonths ?? "indefinite"}
                   onChange={(e) => setExpiryMonths(e.target.value === "indefinite" ? null : (Number(e.target.value) as 1 | 3 | 6))}
-                  className="w-full min-w-0 rounded-lg px-2 py-2 text-sm border border-line bg-white"
+                  className="w-full rounded-lg px-2 py-2 text-sm border border-line bg-white"
                 >
                   {EXPIRY_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
