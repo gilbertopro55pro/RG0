@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ZipArchive } from "archiver";
 import { Readable } from "node:stream";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { downloadObjectBuffer } from "@/lib/storage";
 import type { GalleryPhotoRow, GalleryRow } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -63,9 +64,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   (async () => {
     for (const photo of photos) {
-      const { data: blob } = await supabase.storage.from("galleries").download(photo.storage_path);
-      if (!blob) continue;
-      const buffer = Buffer.from(await blob.arrayBuffer());
+      const buffer = await downloadObjectBuffer("galleries", photo.storage_path);
+      if (!buffer) continue;
       archive.append(buffer, { name: uniqueName(photo.original_filename) });
     }
     archive.finalize();

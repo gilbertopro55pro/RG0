@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { EventRow, GalleryPhotoRow, GalleryRow, Photographer } from "@/lib/types";
 import GalleriesListView, { type GalleryListItem } from "@/components/GalleriesListView";
+import { getSignedDownloadUrl } from "@/lib/storage";
 
 export default async function GalleriesPage() {
   const supabase = await createClient();
@@ -36,8 +37,7 @@ export default async function GalleriesPage() {
 
       let coverUrl: string | null = null;
       if (coverPhoto) {
-        const { data } = await supabase.storage.from("galleries").createSignedUrl(coverPhoto.storage_path, 3600);
-        coverUrl = data?.signedUrl ?? null;
+        coverUrl = await getSignedDownloadUrl("galleries", coverPhoto.storage_path, 3600);
       }
 
       return {

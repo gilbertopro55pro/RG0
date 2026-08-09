@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
 import GalleryManageView from "@/components/GalleryManageView";
+import { getSignedDownloadUrls } from "@/lib/storage";
 
 export default async function GalleryManagePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,10 +31,8 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
   // main reason gallery pages felt slow to load with a lot of photos.
   let photosWithUrls: (GalleryPhotoRow & { url: string })[] = [];
   if (photos && photos.length > 0) {
-    const { data: signed } = await supabase.storage
-      .from("galleries")
-      .createSignedUrls(photos.map((p) => p.storage_path), 3600);
-    const urlByPath = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
+    const signed = await getSignedDownloadUrls("galleries", photos.map((p) => p.storage_path), 3600);
+    const urlByPath = new Map(signed.map((s) => [s.path, s.signedUrl]));
     photosWithUrls = photos.map((p) => ({ ...p, url: urlByPath.get(p.storage_path) ?? "" }));
   }
 

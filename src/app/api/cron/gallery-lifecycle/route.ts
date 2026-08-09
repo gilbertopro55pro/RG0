@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
+import { removeObjects } from "@/lib/storage";
 import type { GalleryRow } from "@/lib/types";
 
 type GalleryWithRelations = GalleryRow & {
@@ -121,7 +122,7 @@ export async function GET(request: NextRequest) {
       .returns<{ storage_path: string }[]>();
 
     if (photos && photos.length > 0) {
-      await supabase.storage.from("galleries").remove(photos.map((p) => p.storage_path));
+      await removeObjects("galleries", photos.map((p) => p.storage_path));
     }
 
     if (gallery.event_id) {

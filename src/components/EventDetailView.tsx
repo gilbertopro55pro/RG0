@@ -46,21 +46,27 @@ function parseStageKey(key: string): { stageKey: string | null; customStageId: s
     : { stageKey: key, customStageId: null };
 }
 
-// supabase-js's storage `.upload()` doesn't expose upload progress, so this talks to the same
-// Storage REST endpoint directly via XMLHttpRequest (the only browser upload API with a real
-// progress event) purely to drive the 0–100% indicator during large PDF uploads.
-function uploadFileWithProgress(
+// XMLHttpRequest is the only browser upload API with a real progress event, so this PUTs
+// directly to a short-lived presigned R2 URL (minted server-side via /api/storage/upload-url,
+// since the R2 credentials themselves are secret) purely to drive the 0–100% indicator during
+// large PDF uploads.
+async function uploadFileWithProgress(
   bucket: string,
   path: string,
   file: File,
-  accessToken: string,
   onProgress: (pct: number) => void
 ): Promise<void> {
+  const urlRes = await fetch("/api/storage/upload-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bucket, path, contentType: file.type || "application/octet-stream" }),
+  });
+  const urlData = await urlRes.json();
+  if (!urlRes.ok || !urlData.url) throw new Error(urlData.error ?? "יצירת קישור להעלאה נכשלה");
+
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${bucket}/${path}`);
-    xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
-    xhr.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    xhr.open("PUT", urlData.url);
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
@@ -196,7 +202,7 @@ export default function EventDetailView({
       } = await supabase.auth.getSession();
       if (!session) throw new Error("יש להתחבר מחדש");
       const path = `${session.user.id}/${event.id}/${crypto.randomUUID()}-${file.name}`;
-      await uploadFileWithProgress("album-designs", path, file, session.access_token, setAlbumUploadProgress);
+      await uploadFileWithProgress("album-designs", path, file, setAlbumUploadProgress);
 
       if (key === "album_approval") {
         // Standard checkpoint — attach the file and notify the client, but leave the stage for

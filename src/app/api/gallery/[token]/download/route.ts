@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { getSignedDownloadUrl } from "@/lib/storage";
 import type { GalleryPhotoRow, GalleryRow } from "@/lib/types";
 
 // Display URLs (fetched once per page load, batched) are generated without a per-file download
@@ -40,13 +41,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "התמונה לא נמצאה" }, { status: 404 });
   }
 
-  const { data: signed } = await supabase.storage
-    .from("galleries")
-    .createSignedUrl(photo.storage_path, 300, { download: photo.original_filename });
+  const signedUrl = await getSignedDownloadUrl("galleries", photo.storage_path, 300, photo.original_filename);
 
-  if (!signed?.signedUrl) {
+  if (!signedUrl) {
     return NextResponse.json({ error: "יצירת קישור להורדה נכשלה" }, { status: 500 });
   }
 
-  return NextResponse.json({ url: signed.signedUrl });
+  return NextResponse.json({ url: signedUrl });
 }

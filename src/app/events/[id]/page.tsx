@@ -12,6 +12,7 @@ import type {
   TeamMember,
 } from "@/lib/types";
 import EventDetailView from "@/components/EventDetailView";
+import { getSignedDownloadUrl } from "@/lib/storage";
 
 export default async function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -106,8 +107,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
         ? photos.find((p) => p.id === galleryRow.cover_photo_id) ?? photos[0]
         : photos[0];
       if (coverPhoto) {
-        const { data } = await supabase.storage.from("galleries").createSignedUrl(coverPhoto.storage_path, 3600);
-        galleryCoverUrl = data?.signedUrl ?? null;
+        galleryCoverUrl = await getSignedDownloadUrl("galleries", coverPhoto.storage_path, 3600);
       }
     }
   }

@@ -129,12 +129,15 @@ export default function GalleryManageView({
   // freshly-named signed URL on demand instead, since that only happens for the handful of
   // photos actually being downloaded, not the whole gallery.
   const downloadPhotoNow = async (photo: PhotoWithUrl) => {
-    const { data } = await supabase.storage
-      .from("galleries")
-      .createSignedUrl(photo.storage_path, 300, { download: photo.original_filename });
-    if (!data?.signedUrl) return;
+    const res = await fetch("/api/storage/download-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bucket: "galleries", path: photo.storage_path, filename: photo.original_filename }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) return;
     const a = document.createElement("a");
-    a.href = data.signedUrl;
+    a.href = data.url;
     a.download = photo.original_filename;
     a.click();
   };
@@ -235,9 +238,23 @@ export default function GalleryManageView({
       const { file, folderId } = items[i];
       setUploading(`מעלה ${i + 1} מתוך ${items.length}...`);
       const path = `${user.id}/${gallery.id}/${crypto.randomUUID()}-${file.name}`;
-      const { error: uploadError } = await supabase.storage.from("galleries").upload(path, file);
-      if (uploadError) {
-        setError(`שגיאה בהעלאת ${file.name}: ${uploadError.message}`);
+      const urlRes = await fetch("/api/storage/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bucket: "galleries", path, contentType: file.type || "application/octet-stream" }),
+      });
+      const urlData = await urlRes.json();
+      if (!urlRes.ok || !urlData.url) {
+        setError(`שגיאה בהעלאת ${file.name}: ${urlData.error ?? "שגיאה לא ידועה"}`);
+        continue;
+      }
+      const putRes = await fetch(urlData.url, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!putRes.ok) {
+        setError(`שגיאה בהעלאת ${file.name}`);
         continue;
       }
       const { data: photoRow, error: insertError } = await supabase
@@ -344,7 +361,11 @@ export default function GalleryManageView({
     if (!photo) return;
     setDeleteConfirmPhoto(null);
     setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
-    await supabase.storage.from("galleries").remove([photo.storage_path]);
+    await fetch("/api/storage/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bucket: "galleries", paths: [photo.storage_path] }),
+    });
     await supabase.from("gallery_photos").delete().eq("id", photo.id);
     if (gallery.cover_photo_id === photo.id) {
       await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);

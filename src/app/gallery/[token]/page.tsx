@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
 import PublicGalleryView from "@/components/PublicGalleryView";
+import { getSignedDownloadUrls } from "@/lib/storage";
 
 export default async function PublicGalleryPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -52,10 +53,8 @@ export default async function PublicGalleryPage({ params }: { params: Promise<{ 
   // freshly-named signed URL on demand instead (see /api/gallery/[token]/download).
   let photosWithUrls: (GalleryPhotoRow & { url: string })[] = [];
   if (photos && photos.length > 0) {
-    const { data: signed } = await supabase.storage
-      .from("galleries")
-      .createSignedUrls(photos.map((p) => p.storage_path), 3600);
-    const urlByPath = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
+    const signed = await getSignedDownloadUrls("galleries", photos.map((p) => p.storage_path), 3600);
+    const urlByPath = new Map(signed.map((s) => [s.path, s.signedUrl]));
     photosWithUrls = photos.map((p) => ({ ...p, url: urlByPath.get(p.storage_path) ?? "" }));
   }
 

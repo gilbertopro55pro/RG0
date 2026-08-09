@@ -3,6 +3,7 @@ import { PACKAGE_FLOWS, STAGE_LABELS, STAGE_TYPE, currentStageIndex, packageLabe
 import { normalizeIsraeliPhone } from "@/lib/whatsapp";
 import type { CustomPackageStageRow, EventPaymentRow, EventRow, EventStageRow, GalleryRow } from "@/lib/types";
 import PortalStageActions from "@/components/PortalStageActions";
+import { getSignedDownloadUrl } from "@/lib/storage";
 
 export default async function ClientPortalPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -53,10 +54,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
 
   let albumDesignUrl: string | null = null;
   if (event.album_design_pdf_path) {
-    const { data } = await supabase.storage
-      .from("album-designs")
-      .createSignedUrl(event.album_design_pdf_path, 3600);
-    albumDesignUrl = data?.signedUrl ?? null;
+    albumDesignUrl = await getSignedDownloadUrl("album-designs", event.album_design_pdf_path, 3600);
   }
 
   const whatsappSongLink = event.photographers?.phone

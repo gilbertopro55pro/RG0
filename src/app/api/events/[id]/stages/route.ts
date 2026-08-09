@@ -9,6 +9,7 @@ import {
   type StageKey,
 } from "@/lib/stages";
 import { friendlyWhatsAppError, sendWhatsAppDocumentTemplate, sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { getSignedDownloadUrl } from "@/lib/storage";
 import type { CustomPackageStageRow } from "@/lib/types";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -126,14 +127,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (event?.client_phone) {
       try {
         if (isAlbumSend) {
-          const { data: signed } = await supabase.storage
-            .from("album-designs")
-            .createSignedUrl(albumDesignPdfPath!, 3600, { download: albumDesignPdfFilename ?? "album-design.pdf" });
-          if (!signed?.signedUrl) throw new Error("יצירת קישור לקובץ נכשלה");
+          const signedUrl = await getSignedDownloadUrl(
+            "album-designs",
+            albumDesignPdfPath!,
+            3600,
+            albumDesignPdfFilename ?? "album-design.pdf"
+          );
+          if (!signedUrl) throw new Error("יצירת קישור לקובץ נכשלה");
           await sendWhatsAppDocumentTemplate(
             event.client_phone,
             ALBUM_DESIGN_TEMPLATE,
-            signed.signedUrl,
+            signedUrl,
             albumDesignPdfFilename ?? "album-design.pdf",
             [event.client_name]
           );

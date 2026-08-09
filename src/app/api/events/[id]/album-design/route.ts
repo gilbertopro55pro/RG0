@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { ALBUM_DESIGN_TEMPLATE } from "@/lib/stages";
 import { friendlyWhatsAppError, sendWhatsAppDocumentTemplate } from "@/lib/whatsapp";
+import { getSignedDownloadUrl } from "@/lib/storage";
 import type { EventRow } from "@/lib/types";
 
 // Attaching the album design PDF is deliberately separate from marking "אישור עיצוב אלבום" done —
@@ -44,14 +45,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   if (event.client_phone) {
     try {
-      const { data: signed } = await supabase.storage
-        .from("album-designs")
-        .createSignedUrl(albumDesignPdfPath, 3600, { download: albumDesignPdfFilename ?? "album-design.pdf" });
-      if (!signed?.signedUrl) throw new Error("יצירת קישור לקובץ נכשלה");
+      const signedUrl = await getSignedDownloadUrl(
+        "album-designs",
+        albumDesignPdfPath,
+        3600,
+        albumDesignPdfFilename ?? "album-design.pdf"
+      );
+      if (!signedUrl) throw new Error("יצירת קישור לקובץ נכשלה");
       await sendWhatsAppDocumentTemplate(
         event.client_phone,
         ALBUM_DESIGN_TEMPLATE,
-        signed.signedUrl,
+        signedUrl,
         albumDesignPdfFilename ?? "album-design.pdf",
         [event.client_name]
       );
