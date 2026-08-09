@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconHome, IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics, IconSettings } from "@/components/icons/NavIcons";
+import { CURRENT_VERSION } from "@/lib/changelog";
 
 // One shared glass-pill treatment for every tile — only the small icon badge carries color, so
 // the row reads as a cohesive, muted set of shortcuts rather than a strip of rainbow buttons.
@@ -21,6 +23,29 @@ const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal
 
 export default function TopNav() {
   const pathname = usePathname();
+  const [settingsBadgeCount, setSettingsBadgeCount] = useState(0);
+
+  // Combines two unrelated "you have something to look at" signals into one number on the
+  // settings tile: unread client-initiated event activity (same data as the per-event badges
+  // on the dashboard, just summed instead of shown per card) plus 1 if there's an app update
+  // the user hasn't opened the "מה חדש" popup/tab for yet.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/notifications/summary")
+      .then((res) => res.json())
+      .then((data: { unreadEvents: number }) => {
+        if (cancelled) return;
+        let hasUnseenUpdate = false;
+        try {
+          hasUnseenUpdate = localStorage.getItem("changelog-seen-version") !== CURRENT_VERSION;
+        } catch {}
+        setSettingsBadgeCount((data.unreadEvents ?? 0) + (hasUnseenUpdate ? 1 : 0));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isHidden =
     pathname === "/" || HIDDEN_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -46,7 +71,7 @@ export default function TopNav() {
             <Link
               key={item.href}
               href={item.href}
-              className="nav-tile shrink-0 flex items-center justify-center md:justify-start h-8 w-8 md:h-auto md:w-auto gap-0 md:gap-1.5 rounded-full md:pl-3 md:pr-1.5 md:py-1 text-xs font-semibold whitespace-nowrap"
+              className="nav-tile relative shrink-0 flex items-center justify-center md:justify-start h-8 w-8 md:h-auto md:w-auto gap-0 md:gap-1.5 rounded-full md:pl-3 md:pr-1.5 md:py-1 text-xs font-semibold whitespace-nowrap"
               style={{
                 background: active ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)",
                 border: `1px solid ${active ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)"}`,
@@ -54,6 +79,14 @@ export default function TopNav() {
                 boxShadow: active ? "0 4px 14px rgba(88,76,158,0.14)" : "none",
               }}
             >
+              {item.href === "/settings" && settingsBadgeCount > 0 && (
+                <span
+                  className="absolute -top-1 -left-1 min-w-[16px] h-[16px] px-1 rounded-full text-white text-[9px] font-bold flex items-center justify-center leading-none shadow z-10"
+                  style={{ background: "var(--color-rose)" }}
+                >
+                  {settingsBadgeCount > 99 ? "99+" : settingsBadgeCount}
+                </span>
+              )}
               <span
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
                 style={{ background: item.badge, color: "#ffffff" }}
