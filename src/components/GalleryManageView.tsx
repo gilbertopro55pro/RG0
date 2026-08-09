@@ -112,6 +112,7 @@ export default function GalleryManageView({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [actionSheetPhoto, setActionSheetPhoto] = useState<PhotoWithUrl | null>(null);
   const [deleteConfirmPhoto, setDeleteConfirmPhoto] = useState<PhotoWithUrl | null>(null);
+  const [deleteSelectedConfirmOpen, setDeleteSelectedConfirmOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   const toggleSelect = (photoId: string) => {
@@ -368,6 +369,26 @@ export default function GalleryManageView({
     });
     await supabase.from("gallery_photos").delete().eq("id", photo.id);
     if (gallery.cover_photo_id === photo.id) {
+      await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
+      setGallery((g) => ({ ...g, cover_photo_id: null }));
+    }
+  };
+
+  const confirmDeleteSelectedPhotos = async () => {
+    const selected = photos.filter((p) => selectedIds.has(p.id));
+    if (selected.length === 0) return;
+    setDeleteSelectedConfirmOpen(false);
+    const ids = selected.map((p) => p.id);
+    const paths = selected.map((p) => p.storage_path);
+    setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+    clearSelection();
+    await fetch("/api/storage/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bucket: "galleries", paths }),
+    });
+    await supabase.from("gallery_photos").delete().in("id", ids);
+    if (gallery.cover_photo_id && ids.includes(gallery.cover_photo_id)) {
       await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
       setGallery((g) => ({ ...g, cover_photo_id: null }));
     }
@@ -946,6 +967,37 @@ export default function GalleryManageView({
         </div>
       )}
 
+      {/* Delete-selected confirmation */}
+      {deleteSelectedConfirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: "rgba(46,49,66,0.45)" }}
+          onClick={() => setDeleteSelectedConfirmOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold mb-2 font-display">למחוק {selectedIds.size} תמונות?</h2>
+            <p className="text-sm text-ink-soft mb-5">הפעולה תמחק את התמונות שנבחרו לצמיתות מהגלריה ולא ניתן יהיה לשחזר אותן.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={confirmDeleteSelectedPhotos}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white"
+              >
+                כן, מחק לצמיתות
+              </button>
+              <button
+                onClick={() => setDeleteSelectedConfirmOpen(false)}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {shareStatus && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 rounded-full px-4 py-2 text-xs font-semibold bg-ink text-white shadow-sheet">
           {shareStatus}
@@ -960,6 +1012,12 @@ export default function GalleryManageView({
             className={`flex items-center gap-0.5 text-[10px] font-semibold whitespace-nowrap ${BTN_PRESS}`}
           >
             ⬇ הורדה
+          </button>
+          <button
+            onClick={() => setDeleteSelectedConfirmOpen(true)}
+            className={`flex items-center gap-0.5 text-[10px] font-semibold whitespace-nowrap text-rose ${BTN_PRESS}`}
+          >
+            🗑 מחיקה
           </button>
           <button onClick={selectAllVisible} className={`text-[10px] font-semibold whitespace-nowrap ${BTN_PRESS}`}>
             בחירת הכל
