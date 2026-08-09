@@ -113,6 +113,7 @@ export default function GalleryManageView({
   const [actionSheetPhoto, setActionSheetPhoto] = useState<PhotoWithUrl | null>(null);
   const [deleteConfirmPhoto, setDeleteConfirmPhoto] = useState<PhotoWithUrl | null>(null);
   const [deleteSelectedConfirmOpen, setDeleteSelectedConfirmOpen] = useState(false);
+  const [deleteSelectedConfirmClosing, setDeleteSelectedConfirmClosing] = useState(false);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   const toggleSelect = (photoId: string) => {
@@ -392,6 +393,16 @@ export default function GalleryManageView({
       await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
       setGallery((g) => ({ ...g, cover_photo_id: null }));
     }
+  };
+
+  // Fades the confirmation question out, and — since selection is left untouched — the floating
+  // toolbar cross-fades back in at the same time so the user can keep adjusting their selection.
+  const cancelDeleteSelected = () => {
+    setDeleteSelectedConfirmClosing(true);
+    setTimeout(() => {
+      setDeleteSelectedConfirmOpen(false);
+      setDeleteSelectedConfirmClosing(false);
+    }, CLOSE_ANIMATION_MS);
   };
 
   const setCoverPhoto = async (photo: PhotoWithUrl) => {
@@ -971,11 +982,16 @@ export default function GalleryManageView({
       {deleteSelectedConfirmOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
-          onClick={() => setDeleteSelectedConfirmOpen(false)}
+          style={{
+            background: "rgba(46,49,66,0.45)",
+            opacity: deleteSelectedConfirmClosing ? 0 : 1,
+            transition: `opacity ${CLOSE_ANIMATION_MS}ms ease`,
+          }}
+          onClick={cancelDeleteSelected}
         >
           <div
             className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet"
+            style={{ opacity: deleteSelectedConfirmClosing ? 0 : 1, transition: `opacity ${CLOSE_ANIMATION_MS}ms ease` }}
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-bold mb-2 font-display">למחוק {selectedIds.size} תמונות?</h2>
@@ -988,7 +1004,7 @@ export default function GalleryManageView({
                 כן, מחק לצמיתות
               </button>
               <button
-                onClick={() => setDeleteSelectedConfirmOpen(false)}
+                onClick={cancelDeleteSelected}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
                 ביטול
@@ -1004,30 +1020,39 @@ export default function GalleryManageView({
         </div>
       )}
 
-      {/* Multi-select floating toolbar */}
+      {/* Multi-select floating toolbar — fades out while the delete-selected question is open
+          (fully, not just while animating in) and cross-fades back in the moment the user cancels,
+          since the selection itself is left untouched the whole time. */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 w-1/2 min-w-[220px] rounded-full px-2.5 py-2 bg-ink text-white shadow-sheet flex items-center justify-between gap-1.5">
+        <div
+          className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 w-auto max-w-[92vw] rounded-full px-4 py-3 bg-ink text-white shadow-sheet flex items-center justify-between gap-3"
+          style={{
+            opacity: deleteSelectedConfirmOpen && !deleteSelectedConfirmClosing ? 0 : 1,
+            pointerEvents: deleteSelectedConfirmOpen && !deleteSelectedConfirmClosing ? "none" : "auto",
+            transition: `opacity ${CLOSE_ANIMATION_MS}ms ease`,
+          }}
+        >
           <button
             onClick={downloadSelectedPhotos}
-            className={`flex items-center gap-0.5 text-[10px] font-semibold whitespace-nowrap ${BTN_PRESS}`}
+            className={`flex items-center gap-1 text-sm font-semibold whitespace-nowrap ${BTN_PRESS}`}
           >
             ⬇ הורדה
           </button>
           <button
             onClick={() => setDeleteSelectedConfirmOpen(true)}
-            className={`flex items-center gap-0.5 text-[10px] font-semibold whitespace-nowrap text-rose ${BTN_PRESS}`}
+            className={`flex items-center gap-1 text-sm font-semibold whitespace-nowrap text-rose ${BTN_PRESS}`}
           >
             🗑 מחיקה
           </button>
-          <button onClick={selectAllVisible} className={`text-[10px] font-semibold whitespace-nowrap ${BTN_PRESS}`}>
+          <button onClick={selectAllVisible} className={`text-sm font-semibold whitespace-nowrap ${BTN_PRESS}`}>
             בחירת הכל
           </button>
-          <span className="text-[10px] font-data font-semibold whitespace-nowrap">{selectedIds.size} נבחרו</span>
+          <span className="text-sm font-data font-semibold whitespace-nowrap">{selectedIds.size} נבחרו</span>
           <button
             onClick={clearSelection}
             aria-label="ביטול בחירה"
             title="ביטול בחירה"
-            className={`shrink-0 h-5 w-5 rounded-full bg-white/15 flex items-center justify-center text-[10px] ${BTN_PRESS}`}
+            className={`shrink-0 h-6 w-6 rounded-full bg-white/15 flex items-center justify-center text-xs ${BTN_PRESS}`}
           >
             ✕
           </button>
