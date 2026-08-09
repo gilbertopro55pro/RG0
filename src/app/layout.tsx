@@ -70,7 +70,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f4e7d3",
+  themeColor: "#d5c9bb",
 };
 
 export default function RootLayout({
@@ -113,7 +113,7 @@ export default function RootLayout({
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #f4e7d3;
+            background: #d5c9bb;
             opacity: 1;
             visibility: visible;
             transition: opacity 0.4s ease;
