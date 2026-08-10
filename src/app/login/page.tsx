@@ -111,6 +111,9 @@ export default function LoginPage() {
           </Link>
         </p>
       </div>
+      <p className="text-center text-[11px] text-ink-soft mt-5">
+        © {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט — צילום אירועים
+      </p>
 
       {showForgotPassword && (
         <div
