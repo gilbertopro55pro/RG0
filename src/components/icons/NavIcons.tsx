@@ -60,6 +60,17 @@ export function IconWaitlist({ className }: IconProps) {
   );
 }
 
+export function IconCalendar({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <rect x="3.5" y="5.5" width="17" height="15" rx="2.5" />
+      <path d="M3.5 10h17" />
+      <path d="M8 3.5v4" />
+      <path d="M16 3.5v4" />
+    </svg>
+  );
+}
+
 export function IconAnalytics({ className }: IconProps) {
   return (
     <svg {...base} className={className}>

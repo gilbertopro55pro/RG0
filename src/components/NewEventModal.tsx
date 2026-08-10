@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PACKAGE_LABELS, type PackageType } from "@/lib/stages";
-import type { CustomPackageRow } from "@/lib/types";
+import type { CustomPackageRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
+import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
+
+const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
 const selectArrowStyle = {
   background:
@@ -19,18 +22,26 @@ export default function NewEventModal({
   initial,
   leadId,
   waitlistId,
-  customPackages,
+  customPackages: initialCustomPackages,
+  eventTypes: initialEventTypes,
+  prices: initialPrices,
 }: {
   onClose: () => void;
   initial?: { clientName?: string; clientPhone?: string; eventDate?: string; pkg?: PackageType };
   leadId?: string;
   waitlistId?: string;
   customPackages: CustomPackageRow[];
+  eventTypes?: EventTypeRow[];
+  prices?: PackagePriceRow[];
 }) {
   const router = useRouter();
   const [clientName, setClientName] = useState(initial?.clientName ?? "");
   const [clientPhone, setClientPhone] = useState(initial?.clientPhone ?? "");
   const [pkgValue, setPkgValue] = useState<string>(initial?.pkg ?? "full");
+  const [customPackages, setCustomPackages] = useState(initialCustomPackages);
+  const [eventTypes, setEventTypes] = useState(initialEventTypes ?? []);
+  const [prices, setPrices] = useState(initialPrices ?? []);
+  const [showCustomPackageBuilder, setShowCustomPackageBuilder] = useState(false);
   const [eventDate, setEventDate] = useState(initial?.eventDate ?? "");
   const [eventStartTime, setEventStartTime] = useState("");
   const [eventEndTime, setEventEndTime] = useState("");
@@ -201,7 +212,13 @@ export default function NewEventModal({
                 <label className="text-xs block mb-1 text-ink-soft">חבילה</label>
                 <select
                   value={pkgValue}
-                  onChange={(e) => setPkgValue(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === CREATE_CUSTOM_PACKAGE_VALUE) {
+                      setShowCustomPackageBuilder(true);
+                      return;
+                    }
+                    setPkgValue(e.target.value);
+                  }}
                   className="w-full rounded-lg px-3 py-2.5 text-sm appearance-none font-medium text-ink"
                   style={selectArrowStyle}
                 >
@@ -215,6 +232,7 @@ export default function NewEventModal({
                       {cp.name}
                     </option>
                   ))}
+                  <option value={CREATE_CUSTOM_PACKAGE_VALUE}>+ חבילה מותאמת אישית חדשה</option>
                 </select>
               </div>
 
@@ -444,6 +462,27 @@ export default function NewEventModal({
             </div>
           </div>
         </div>
+      )}
+
+      {showCustomPackageBuilder && (
+        <CustomPackageBuilder
+          pkg={null}
+          initialStages={[]}
+          eventTypes={eventTypes}
+          prices={prices}
+          onClose={() => setShowCustomPackageBuilder(false)}
+          onSaved={(pkg, _stages, updatedEventTypes, updatedPrices) => {
+            setCustomPackages((prev) => [...prev, pkg]);
+            setEventTypes(updatedEventTypes);
+            setPrices(updatedPrices);
+            setPkgValue(`custom:${pkg.id}`);
+            setShowCustomPackageBuilder(false);
+          }}
+          onEventTypeDeleted={(eventTypeId) => {
+            setEventTypes((prev) => prev.filter((t) => t.id !== eventTypeId));
+            setPrices((prev) => prev.filter((p) => p.event_type_id !== eventTypeId));
+          }}
+        />
       )}
     </div>
   );

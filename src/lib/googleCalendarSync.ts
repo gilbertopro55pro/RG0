@@ -1,5 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createCalendarEvent, deleteCalendarEvent, refreshAccessToken, updateCalendarEvent } from "@/lib/google";
+import {
+  createCalendarEvent,
+  deleteCalendarEvent,
+  listCalendarEvents,
+  refreshAccessToken,
+  updateCalendarEvent,
+  type GoogleCalendarEvent,
+} from "@/lib/google";
 
 type PhotographerTokens = {
   google_calendar_connected: boolean;
@@ -91,6 +98,25 @@ export async function updateEventInGoogleCalendar(
 
   const accessToken = await getValidAccessToken(supabase, photographerId, photographer);
   return updateCalendarEvent(accessToken, googleCalendarEventId, { summary, description, date, startTime, endTime });
+}
+
+export async function listSyncedCalendarEvents(
+  supabase: SupabaseClient,
+  photographerId: string,
+  { timeMin, timeMax }: { timeMin: string; timeMax: string }
+): Promise<GoogleCalendarEvent[] | null> {
+  const { data: photographer } = await supabase
+    .from("photographers")
+    .select("google_calendar_connected, google_access_token, google_refresh_token, google_token_expiry")
+    .eq("id", photographerId)
+    .single<PhotographerTokens>();
+
+  if (!photographer?.google_calendar_connected || !photographer.google_refresh_token) {
+    return null;
+  }
+
+  const accessToken = await getValidAccessToken(supabase, photographerId, photographer);
+  return listCalendarEvents(accessToken, { timeMin, timeMax });
 }
 
 export async function deleteEventFromGoogleCalendar(

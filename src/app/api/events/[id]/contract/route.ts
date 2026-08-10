@@ -25,6 +25,51 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   return NextResponse.json({ contract });
 }
 
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id: eventId } = await params;
+  const { contractText }: { contractText: string } = await request.json();
+  if (!contractText?.trim()) {
+    return NextResponse.json({ error: "טקסט החוזה לא יכול להיות ריק" }, { status: 400 });
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
+  }
+
+  const { data: existing } = await supabase
+    .from("event_contracts")
+    .select("id, status")
+    .eq("event_id", eventId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ id: string; status: string }>();
+
+  if (!existing) {
+    return NextResponse.json({ error: "לא נמצא חוזה לעריכה" }, { status: 404 });
+  }
+  if (existing.status === "signed") {
+    return NextResponse.json({ error: "החוזה כבר נחתם, לא ניתן לערוך אותו" }, { status: 400 });
+  }
+
+  // RLS (owner-only) scopes this update — no separate ownership check needed.
+  const { data: contract, error } = await supabase
+    .from("event_contracts")
+    .update({ contract_text: contractText })
+    .eq("id", existing.id)
+    .select()
+    .single();
+
+  if (error || !contract) {
+    return NextResponse.json({ error: error?.message ?? "שגיאה בשמירת החוזה" }, { status: 500 });
+  }
+
+  return NextResponse.json({ contract });
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
   const supabase = await createClient();

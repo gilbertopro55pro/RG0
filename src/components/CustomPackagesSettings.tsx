@@ -167,7 +167,7 @@ type TopicDraft = {
   price: string;
 };
 
-function CustomPackageBuilder({
+export function CustomPackageBuilder({
   pkg,
   initialStages,
   eventTypes,

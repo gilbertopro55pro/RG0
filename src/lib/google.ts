@@ -137,6 +137,36 @@ export async function updateCalendarEvent(
   return res.json();
 }
 
+export type GoogleCalendarEvent = {
+  id: string;
+  summary: string;
+  description?: string;
+  htmlLink: string;
+  start: { date?: string; dateTime?: string };
+  end: { date?: string; dateTime?: string };
+};
+
+// Bounded to the trailing/leading window the calendar view actually shows — a full unbounded
+// listing isn't needed and would just slow the page down on an account with calendar history.
+export async function listCalendarEvents(
+  accessToken: string,
+  { timeMin, timeMax }: { timeMin: string; timeMax: string }
+): Promise<GoogleCalendarEvent[]> {
+  const params = new URLSearchParams({
+    timeMin,
+    timeMax,
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: "250",
+  });
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`Google Calendar events list failed: ${await res.text()}`);
+  const data = await res.json();
+  return data.items ?? [];
+}
+
 export async function deleteCalendarEvent(accessToken: string, eventId: string): Promise<void> {
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
     method: "DELETE",

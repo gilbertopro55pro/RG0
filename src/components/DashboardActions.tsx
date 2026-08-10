@@ -2,11 +2,19 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import type { CustomPackageRow } from "@/lib/types";
+import type { CustomPackageRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
 
-export default function NewEventButton({ customPackages }: { customPackages: CustomPackageRow[] }) {
+export default function NewEventButton({
+  customPackages,
+  eventTypes,
+  prices,
+}: {
+  customPackages: CustomPackageRow[];
+  eventTypes?: EventTypeRow[];
+  prices?: PackagePriceRow[];
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -17,7 +25,14 @@ export default function NewEventButton({ customPackages }: { customPackages: Cus
       >
         +
       </button>
-      {open && <NewEventModal onClose={() => setOpen(false)} customPackages={customPackages} />}
+      {open && (
+        <NewEventModal
+          onClose={() => setOpen(false)}
+          customPackages={customPackages}
+          eventTypes={eventTypes}
+          prices={prices}
+        />
+      )}
     </>
   );
 }

@@ -1,7 +1,16 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { timeOfDayGreeting } from "@/lib/greeting";
-import type { CustomPackageRow, EventPaymentRow, EventRow, EventStageRow, Photographer, TeamMember } from "@/lib/types";
+import type {
+  CustomPackageRow,
+  EventPaymentRow,
+  EventRow,
+  EventStageRow,
+  EventTypeRow,
+  PackagePriceRow,
+  Photographer,
+  TeamMember,
+} from "@/lib/types";
 import LogoutButton from "@/components/LogoutButton";
 import NewEventButton from "@/components/DashboardActions";
 import FeedbackButton from "@/components/FeedbackButton";
@@ -35,6 +44,8 @@ export default async function DashboardPage() {
     { data: teamMember },
     { data: events },
     { data: customPackages },
+    { data: eventTypes },
+    { data: prices },
     { data: payments },
     { data: scheduledReminders },
     { data: unreadNotifications },
@@ -48,6 +59,8 @@ export default async function DashboardPage() {
       .order("event_date", { ascending: true })
       .returns<(EventWithCustomPackage & { event_stages: Pick<EventStageRow, "event_id" | "done">[] })[]>(),
     supabase.from("custom_packages").select("*").order("sort_order", { ascending: true }).returns<CustomPackageRow[]>(),
+    supabase.from("event_types").select("*").order("sort_order", { ascending: true }).returns<EventTypeRow[]>(),
+    supabase.from("package_prices").select("*").returns<PackagePriceRow[]>(),
     supabase.from("event_payments").select("*").returns<EventPaymentRow[]>(),
     supabase
       .from("scheduled_messages")
@@ -149,7 +162,9 @@ export default async function DashboardPage() {
             {isPhotographer ? "האירועים שלי" : "האירועים שהוקצו לי"}
           </h1>
         </div>
-        {isPhotographer && <NewEventButton customPackages={customPackages ?? []} />}
+        {isPhotographer && (
+          <NewEventButton customPackages={customPackages ?? []} eventTypes={eventTypes ?? []} prices={prices ?? []} />
+        )}
       </div>
 
       {isPhotographer && heroData && (
