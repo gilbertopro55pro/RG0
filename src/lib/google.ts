@@ -66,6 +66,12 @@ type CalendarEventTiming = {
   endTime?: string | null;
 };
 
+// The Calendar API silently 400s on a dateTime missing seconds (e.g. "18:00" from a native
+// <input type="time">, which never includes them) — it needs the full "HH:MM:SS".
+function withSeconds(time: string): string {
+  return time.length === 5 ? `${time}:00` : time;
+}
+
 // Timed events use start/end dateTime + timeZone; all-day events (no times given) use start/end
 // date, with end exclusive (next day) per the Calendar API's all-day convention.
 function buildEventTiming({ date, startTime, endTime }: CalendarEventTiming) {
@@ -74,10 +80,10 @@ function buildEventTiming({ date, startTime, endTime }: CalendarEventTiming) {
     endDate.setUTCDate(endDate.getUTCDate() + 1);
     return { start: { date }, end: { date: endDate.toISOString().slice(0, 10) } };
   }
-  const start = { dateTime: `${date}T${startTime}`, timeZone: CALENDAR_TIME_ZONE };
+  const start = { dateTime: `${date}T${withSeconds(startTime)}`, timeZone: CALENDAR_TIME_ZONE };
   const end = endTime
-    ? { dateTime: `${date}T${endTime}`, timeZone: CALENDAR_TIME_ZONE }
-    : { dateTime: `${date}T${startTime}`, timeZone: CALENDAR_TIME_ZONE };
+    ? { dateTime: `${date}T${withSeconds(endTime)}`, timeZone: CALENDAR_TIME_ZONE }
+    : { dateTime: `${date}T${withSeconds(startTime)}`, timeZone: CALENDAR_TIME_ZONE };
   return { start, end };
 }
 
