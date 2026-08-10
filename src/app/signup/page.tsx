@@ -39,6 +39,11 @@ export default function SignupPage() {
       setError(signUpError.message);
       return;
     }
+    fetch("/api/auth/signup-emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email }),
+    }).catch(() => {});
     if (data.session) {
       router.push("/");
       router.refresh();

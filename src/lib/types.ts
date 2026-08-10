@@ -16,6 +16,9 @@ export type Photographer = {
   payplus_recurring_uid: string | null;
   subscription_status: SubscriptionStatus;
   current_period_end: string | null;
+  auto_renew: boolean;
+  cancel_at_period_end: boolean;
+  renewal_reminder_sent_at: string | null;
   created_at: string;
 };
 

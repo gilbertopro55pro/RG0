@@ -25,9 +25,15 @@ export async function POST() {
   }
 
   try {
+    // Stops the NEXT charge immediately. Access itself stays "active" until current_period_end —
+    // the subscription-lifecycle cron flips subscription_status to "canceled" only once that
+    // already-paid-for period actually elapses.
     await deletePayplusRecurring(photographer.payplus_recurring_uid);
-    await supabase.from("photographers").update({ subscription_status: "canceled" }).eq("id", user.id);
-    return NextResponse.json({ ok: true });
+    await supabase
+      .from("photographers")
+      .update({ cancel_at_period_end: true, auto_renew: false })
+      .eq("id", user.id);
+    return NextResponse.json({ ok: true, current_period_end: photographer.current_period_end });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "ביטול המנוי נכשל" }, { status: 500 });
   }
