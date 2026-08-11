@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import LandingFaq from "@/components/LandingFaq";
+import PricingAnchor from "@/components/PricingAnchor";
 import {
   IconCalendar,
   IconGallery,
@@ -59,7 +60,10 @@ export default function LandingPage() {
       <header className="max-w-5xl mx-auto px-4 pt-6 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Image src="/icons/icon-192.png" alt="גילברטו" width={36} height={36} className="rounded-xl shadow-card" />
-          <span className="font-display font-bold text-lg">גילברטו</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="font-display font-bold text-lg">גילברטו</span>
+            <span className="text-xs text-ink-soft hidden sm:inline">— ניהול אירועים לצלמים</span>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/login" className="text-sm text-ink-soft hidden sm:inline">
@@ -153,6 +157,9 @@ export default function LandingPage() {
           ))}
         </div>
       </section>
+
+      {/* Price anchoring — real category costs stacking up, landing on the real price below */}
+      <PricingAnchor />
 
       {/* Pricing */}
       <section id="pricing" className="max-w-3xl mx-auto px-4 py-10">
