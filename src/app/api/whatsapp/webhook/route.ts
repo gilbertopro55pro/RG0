@@ -17,6 +17,13 @@ export async function GET(request: NextRequest) {
 
 type InboundMessage = { from: string; type: string; text?: { body: string } };
 
+// Paused pending Meta's approval of the message templates the bot's free-text replies rely on,
+// and until it sits behind the planned paid add-on (to cover the per-conversation Claude API
+// cost) rather than every photographer's base plan. Flip to true once both are in place — the
+// per-photographer whatsapp_bot_enabled toggle is intentionally not enough on its own to bring
+// this back, so it can't turn back on by accident from a stray DB value.
+const BOT_LIVE = false;
+
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   if (!verifyWhatsAppSignature(rawBody, request.headers.get("x-hub-signature-256"))) {
@@ -29,7 +36,7 @@ export async function POST(request: NextRequest) {
   const messages: InboundMessage[] =
     body?.entry?.[0]?.changes?.[0]?.value?.messages ?? [];
 
-  if (messages.length > 0) {
+  if (BOT_LIVE && messages.length > 0) {
     // Single shared WhatsApp Business number for now (no per-photographer WABA routing yet) —
     // the bot only ever answers for whichever photographer has explicitly opted in.
     const { data: photographer } = await supabase

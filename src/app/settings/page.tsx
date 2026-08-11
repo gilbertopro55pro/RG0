@@ -85,7 +85,7 @@ export default async function SettingsPage({
           {
             id: "automation",
             label: "אוטומציה",
-            content: <BotSettings photographer={photographer} />,
+            content: <BotSettings />,
           },
           {
             id: "appearance",
