@@ -13,6 +13,17 @@ const STATUS_LABELS: Record<SubscriptionStatus, string> = {
   incomplete: "ממתין להשלמת תשלום",
 };
 
+// current_period_end is only set once a real PayPlus charge webhook has fired — an account still
+// in its first, not-yet-billed period (or one activated manually) would otherwise show no date at
+// all. Falling back to created_at + one plan period keeps the date meaningful in every case.
+function computePeriodEnd(photographer: Photographer): Date {
+  if (photographer.current_period_end) return new Date(photographer.current_period_end);
+  const start = new Date(photographer.created_at);
+  return photographer.plan === "annual"
+    ? new Date(start.getFullYear() + 1, start.getMonth(), start.getDate())
+    : new Date(start.getFullYear(), start.getMonth() + 1, start.getDate());
+}
+
 export default function BillingSettings({ photographer }: { photographer: Photographer }) {
   const [status, setStatus] = useState(photographer.subscription_status);
   const [autoRenew, setAutoRenew] = useState(photographer.auto_renew);
@@ -20,16 +31,16 @@ export default function BillingSettings({ photographer }: { photographer: Photog
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [canceledAccessUntil, setCanceledAccessUntil] = useState<string | null>(null);
   const plan = SUBSCRIPTION_PLANS[photographer.plan];
   const isActive = status === "active" || status === "trialing";
-  const periodEndHe = photographer.current_period_end
-    ? new Date(photographer.current_period_end).toLocaleDateString("he-IL")
-    : null;
+  const periodEndHe = computePeriodEnd(photographer).toLocaleDateString("he-IL");
+  const autoRenewOn = autoRenew && !cancelAtPeriodEnd;
 
-  // A "turn auto-renew off" toggle and "cancel subscription" are the same operation under the
-  // hood — the only way to guarantee no future charge is to actually cancel the PayPlus
-  // recurring charge, so both paths call this. Turning auto-renew back on isn't offered here:
-  // once the recurring charge is gone, re-subscribing goes through /billing like any new signup.
+  // Turning the switch off IS the cancellation — the only way to guarantee no future charge is
+  // to actually cancel the PayPlus recurring charge, not just flip a local flag. Turning it back
+  // on isn't offered here: once the recurring charge is gone, re-subscribing goes through
+  // /billing like any new signup.
   const cancelAutoRenew = async () => {
     setCanceling(true);
     setError(null);
@@ -44,6 +55,8 @@ export default function BillingSettings({ photographer }: { photographer: Photog
     setCancelAtPeriodEnd(true);
     setConfirmingCancel(false);
     setCanceling(false);
+    const accessUntil = data.current_period_end ? new Date(data.current_period_end) : computePeriodEnd(photographer);
+    setCanceledAccessUntil(accessUntil.toLocaleDateString("he-IL"));
   };
 
   return (
@@ -60,12 +73,18 @@ export default function BillingSettings({ photographer }: { photographer: Photog
         </span>
       </div>
 
-      {isActive && periodEndHe && (
+      {isActive && (
         <p className="text-xs mb-3 text-ink-soft">
           {cancelAtPeriodEnd
             ? `החידוש האוטומטי כבוי — הגישה למערכת פעילה עד ${periodEndHe}.`
-            : `מחזור החיוב הנוכחי מסתיים ומתחדש אוטומטית ב-${periodEndHe}.`}
+            : `מחזור החיוב הנוכחי (${plan.label}) מסתיים ומתחדש אוטומטית ב-${periodEndHe}.`}
         </p>
+      )}
+
+      {canceledAccessUntil && (
+        <div className="rounded-xl px-3.5 py-2.5 mb-3 text-xs bg-[#FBEEEC] text-rose font-medium">
+          החידוש האוטומטי כובה. הגישה למערכת תישאר פעילה עד {canceledAccessUntil}.
+        </div>
       )}
 
       {error && <p className="text-xs text-rose mb-2">{error}</p>}
@@ -78,25 +97,30 @@ export default function BillingSettings({ photographer }: { photographer: Photog
 
       {isActive && (
         <div className="pt-3 mt-1 border-t border-line">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between">
             <span className="text-xs text-ink-soft">חידוש אוטומטי</span>
-            <span
-              className="rounded-full px-3 py-1 text-xs font-semibold"
+            <button
+              onClick={() => autoRenewOn && setConfirmingCancel(true)}
+              disabled={!autoRenewOn || canceling}
+              role="switch"
+              aria-checked={autoRenewOn}
+              aria-label="חידוש אוטומטי"
+              className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5 disabled:opacity-70"
               style={{
-                background: autoRenew && !cancelAtPeriodEnd ? "var(--color-sage-bg)" : "var(--color-chip)",
-                color: autoRenew && !cancelAtPeriodEnd ? "var(--color-sage)" : "var(--color-ink-soft)",
+                background: autoRenewOn ? "var(--color-amber-deep)" : "var(--color-line)",
+                justifyContent: autoRenewOn ? "flex-start" : "flex-end",
               }}
             >
-              {autoRenew && !cancelAtPeriodEnd ? "פעיל ✓" : "כבוי"}
-            </span>
+              <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+            </button>
           </div>
 
-          {confirmingCancel ? (
-            <div className="rounded-xl p-3 bg-[#FBEEEC]">
+          {confirmingCancel && (
+            <div className="rounded-xl p-3 mt-3 bg-[#FBEEEC]">
               <p className="text-xs mb-3 text-rose">
                 לכבות את החידוש האוטומטי? החיוב הבא יבוטל, אך הגישה למערכת תישאר פעילה עד תום מחזור החיוב
-                הנוכחי{periodEndHe ? ` (${periodEndHe})` : ""}. האירועים, הגלריות והחוזים שלכם יישמרו
-                במערכת ויחכו לכם — הם לא נמחקים, ואפשר להפעיל את המנוי מחדש בכל עת.
+                הנוכחי ({periodEndHe}). האירועים, הגלריות והחוזים שלכם יישמרו במערכת ויחכו לכם — הם לא
+                נמחקים, ואפשר להפעיל את המנוי מחדש בכל עת.
               </p>
               <div className="flex gap-2">
                 <button
@@ -115,12 +139,6 @@ export default function BillingSettings({ photographer }: { photographer: Photog
                 </button>
               </div>
             </div>
-          ) : (
-            !cancelAtPeriodEnd && (
-              <button onClick={() => setConfirmingCancel(true)} className="w-full rounded-lg py-2.5 text-sm font-semibold text-rose">
-                ביטול המנוי
-              </button>
-            )
           )}
         </div>
       )}
