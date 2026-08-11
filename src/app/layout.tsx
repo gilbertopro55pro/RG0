@@ -51,9 +51,22 @@ const SPLASH_DEVICES: { cssW: number; cssH: number; dpr: number; file: string }[
 ];
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://photographer-flow.vercel.app"),
   title: "ניהול תהליך צילום אירועים",
   description: "מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה",
   manifest: "/manifest.json",
+  openGraph: {
+    title: "גילברטו — ניהול תהליך צילום אירועים",
+    description: "מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה",
+    siteName: "גילברטו",
+    images: [{ url: "/icons/icon-512.png", width: 512, height: 512 }],
+  },
+  twitter: {
+    card: "summary",
+    title: "גילברטו — ניהול תהליך צילום אירועים",
+    description: "מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה",
+    images: ["/icons/icon-512.png"],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
