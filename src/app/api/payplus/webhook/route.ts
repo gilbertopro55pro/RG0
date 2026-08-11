@@ -11,9 +11,10 @@ type PayplusCallbackBody = {
   more_info?: string; // photographer_id, set at checkout creation
   customer_uid?: string;
   recurring_charge_information?: { recurring_uid?: string };
-  // PayPlus's other endpoints wrap fields under "data" — the callback docs show top-level
-  // fields, but real payload shape is being verified via payplus_webhook_events, so both
-  // locations are checked defensively until confirmed.
+  // Confirmed against a real callback (payplus_webhook_events, 2026-08-11): more_info,
+  // status_code and recurring_charge_information live under "transaction", customer_uid under
+  // "data" — not top-level as PayPlus's docs suggested. extractField() checks all three
+  // locations so it keeps working regardless of which wrapper a given callback type uses.
   data?: PayplusCallbackBody;
   transaction?: PayplusCallbackBody;
 };
@@ -46,9 +47,9 @@ export async function POST(request: NextRequest) {
 
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("name, email, plan")
+    .select("name, email, phone, plan")
     .eq("id", photographerId)
-    .maybeSingle<Pick<Photographer, "name" | "email" | "plan">>();
+    .maybeSingle<Pick<Photographer, "name" | "email" | "phone" | "plan">>();
 
   // Every successful charge (first payment or a recurring renewal alike) pushes the paid-through
   // date out by one more full period from today — realigns with the actual billing date each
@@ -83,8 +84,9 @@ export async function POST(request: NextRequest) {
       await issueReceipt({
         customerName: photographer.name,
         customerEmail: photographer.email,
+        customerPhone: photographer.phone,
         amount,
-        description: `מנוי ${planInfo.label} — photographer-flow`,
+        description: `מנוי ${planInfo.label} למערכת גילברטו - ניהול צילום אירועים`,
       });
     } catch (e) {
       console.error("Finbot receipt issuance failed:", e);

@@ -19,12 +19,14 @@ function requireEnv(name: string): string {
 export async function issueReceipt({
   customerName,
   customerEmail,
+  customerPhone,
   amount,
   description,
   date = new Date(),
 }: {
   customerName: string;
   customerEmail: string;
+  customerPhone?: string;
   amount: number;
   description: string;
   date?: Date;
@@ -52,6 +54,7 @@ export async function issueReceipt({
       customer: {
         name: customerName,
         email: customerEmail,
+        ...(customerPhone ? { phone: customerPhone } : {}),
         save: false,
       },
       items: [{ name: description, amount: 1, price: amount }],
@@ -63,8 +66,8 @@ export async function issueReceipt({
       payments: [{ type: "7", date: dateStr, sum: amount }],
       email: {
         to: customerEmail,
-        subject: "קבלה על תשלום — photographer-flow",
-        body: "שלום, מצורפת קבלה על התשלום שהתקבל. תודה!",
+        subject: "קבלה על תשלום — מערכת גילברטו",
+        body: "שלום, מצורפת קבלה על התשלום שהתקבל עבור המנוי במערכת גילברטו - ניהול צילום אירועים. תודה!",
       },
     }),
   });

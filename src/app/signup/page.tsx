@@ -57,9 +57,13 @@ export default function SignupPage() {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="w-full max-w-sm rounded-2xl p-6 text-center bg-card border border-line shadow-card">
-          <h1 className="text-xl font-bold mb-2 font-display">כמעט סיימנו</h1>
-          <p className="text-sm text-ink-soft">
-            שלחנו לך מייל אישור ל-{email}. לחצו על הקישור במייל כדי להשלים את ההרשמה ולהתחבר.
+          <h1 className="text-xl font-bold mb-2 font-display">כמעט סיימנו — נדרש אימות מייל</h1>
+          <p className="text-sm text-ink-soft mb-3">
+            שלחנו מייל אימות לכתובת <span className="font-medium text-ink">{email}</span>. יש ללחוץ על
+            הקישור שבתוך המייל כדי לאמת את הכתובת — רק לאחר האימות ניתן יהיה להתחבר למערכת.
+          </p>
+          <p className="text-xs text-ink-soft">
+            לא רואים את המייל תוך דקה-שתיים? בדקו גם בתיקיית הספאם / קידומי מכירות.
           </p>
         </div>
       </div>
