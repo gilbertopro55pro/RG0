@@ -18,6 +18,7 @@ import PaymentReminderPrompts, { type PendingPaymentReminder } from "@/component
 import DashboardHero from "@/components/DashboardHero";
 import QuickActionsGrid from "@/components/QuickActionsGrid";
 import EventsListView from "@/components/EventsListView";
+import LandingPage from "@/components/LandingPage";
 
 const HEBREW_MONTHS_SHORT = [
   "ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ",
@@ -30,6 +31,10 @@ export default async function DashboardPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Logged-out visitors get the marketing landing page instead of a bare redirect to /login —
+  // this is now the page prospective photographers actually land on from ads/social links.
+  if (!user) return <LandingPage />;
 
   // Every one of these is independent of the others' *values* — they only depend on user.id,
   // which we already have — so they're fired as a single parallel batch instead of five-plus

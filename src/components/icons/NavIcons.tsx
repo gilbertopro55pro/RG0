@@ -99,3 +99,23 @@ export function IconTrend({ className }: IconProps) {
     </svg>
   );
 }
+
+export function IconContract({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M6.5 3.5h8l3 3v14a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1z" />
+      <path d="M14 3.5v3.5h3.5" />
+      <path d="M8.5 12.5l2.2 2.2 4.3-4.7" />
+    </svg>
+  );
+}
+
+export function IconChat({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4 12c0-4.4 3.6-8 8-8s8 3.6 8 8-3.6 8-8 8c-1.2 0-2.4-.3-3.4-.8L4 20.5l1.3-4.4C4.5 14.9 4 13.5 4 12z" />
+      <path d="M8.5 11.5h7" />
+      <path d="M8.5 14h4.5" />
+    </svg>
+  );
+}
