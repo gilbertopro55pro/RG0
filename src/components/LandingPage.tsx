@@ -60,9 +60,9 @@ export default function LandingPage() {
       <header className="max-w-5xl mx-auto px-4 pt-6 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Image src="/icons/icon-192.png" alt="גילברטו" width={36} height={36} className="rounded-xl shadow-card" />
-          <div className="flex items-baseline gap-1.5">
+          <div className="flex flex-col leading-tight">
             <span className="font-display font-bold text-lg">גילברטו</span>
-            <span className="text-xs text-ink-soft hidden sm:inline">— ניהול אירועים לצלמים</span>
+            <span className="text-[10px] text-ink-soft">ניהול אירועים לצלמים</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
