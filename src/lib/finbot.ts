@@ -35,13 +35,17 @@ export async function issueReceipt({
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const yyyy = date.getFullYear();
 
+  const dateStr = `${dd}/${mm}/${yyyy}`;
+
   const res = await fetch(FINBOT_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", secret: apiKey },
     body: JSON.stringify({
       type: RECEIPT_DOCUMENT_TYPE,
-      date: `${dd}/${mm}/${yyyy}`,
-      language: "he",
+      date: dateStr,
+      // Finbot's real API rejects lowercase "he"/"en" (code 109) despite the docs page showing
+      // lowercase — the actual enum, confirmed against the live Swagger schema, is uppercase.
+      language: "HE",
       currency: "ILS",
       vatType: false,
       rounding: true,
@@ -51,6 +55,12 @@ export async function issueReceipt({
         save: false,
       },
       items: [{ name: description, amount: 1, price: amount }],
+      // A receipt can't be issued without a payments entry (Finbot: "לא ניתן להפיק מסמך זה ללא
+      // אמצעי תשלום"). Using type "7" (Other) rather than "2" (credit card) — credit card entries
+      // require a real cardNumber + numberPayments, which PayPlus's webhook callback doesn't
+      // currently surface to us, and fabricating a card number on a real customer receipt would
+      // be wrong bookkeeping.
+      payments: [{ type: "7", date: dateStr, sum: amount }],
       email: {
         to: customerEmail,
         subject: "קבלה על תשלום — photographer-flow",
