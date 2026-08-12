@@ -150,6 +150,7 @@ export type GoogleCalendarEvent = {
   htmlLink: string;
   start: { date?: string; dateTime?: string };
   end: { date?: string; dateTime?: string };
+  colorId?: string;
 };
 
 // Bounded to the trailing/leading window the calendar view actually shows — a full unbounded

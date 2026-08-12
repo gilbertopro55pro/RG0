@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { EVENT_BOOKING_CONFIRMATION_TEMPLATE, PACKAGE_FLOWS, PACKAGE_LABELS, PORTAL_LINK_TEMPLATE, type PackageType } from "@/lib/stages";
 import { syncEventToGoogleCalendar } from "@/lib/googleCalendarSync";
+import { syncEventToAppleCalendar } from "@/lib/appleCalendarSync";
 import { friendlyWhatsAppError, sendWhatsAppTemplate } from "@/lib/whatsapp";
 import type { CustomPackageRow, CustomPackageStageRow } from "@/lib/types";
 
@@ -98,11 +99,11 @@ export async function POST(request: Request) {
     )
   );
 
-  if (conflicting && !body.allowDoubleBooking) {
+  if (conflicting) {
     return NextResponse.json(
       {
         conflict: true,
-        error: `כבר קיים אירוע בתאריך זה (${conflicting.client_name}). אפשר לשמור בכל זאת, או להוסיף לרשימת המתנה.`,
+        error: `כבר קיים אירוע בתאריך זה (${conflicting.client_name}).`,
       },
       { status: 409 }
     );
@@ -254,6 +255,23 @@ export async function POST(request: Request) {
       event_id: event.id,
       text: `שגיאה בהוספת האירוע ליומן Google: ${rawError}`,
     });
+  }
+
+  try {
+    const appleUid = await syncEventToAppleCalendar(supabase, user.id, event.id, {
+      summary: `${packageLabelText} · ${clientName}`,
+      description: calendarDescription,
+      date: eventDate,
+      startTime: eventStartTime,
+      endTime: eventEndTime,
+    });
+    if (appleUid) {
+      await supabase.from("events").update({ apple_calendar_event_uid: appleUid }).eq("id", event.id);
+      notifications.push({ event_id: event.id, text: "האירוע נוסף גם ליומן Apple שלך" });
+    }
+  } catch (e) {
+    const rawError = e instanceof Error ? e.message : "שגיאה לא ידועה";
+    notifications.push({ event_id: event.id, text: `שגיאה בהוספת האירוע ליומן Apple: ${rawError}` });
   }
 
   await supabase.from("event_notifications").insert(notifications);

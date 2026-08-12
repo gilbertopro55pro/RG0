@@ -90,7 +90,7 @@ export default function NewEventModal({
     setStep((s) => (s === 3 ? 2 : 1) as Step);
   };
 
-  const submit = async (allowDoubleBooking = false) => {
+  const submit = async () => {
     if (!clientName || !eventDate) return;
     setSaving(true);
     setError(null);
@@ -112,7 +112,6 @@ export default function NewEventModal({
         deposit: Number(deposit) || 0,
         balance: Number(balance) || 0,
         paymentReminderDate: wantsPaymentReminder ? paymentReminderDate : null,
-        allowDoubleBooking,
       }),
     });
     const data = await res.json();
@@ -376,55 +375,21 @@ export default function NewEventModal({
 
               {error && <p className="text-xs text-rose">{error}</p>}
 
-              {dateConflict ? (
-                <div className="space-y-2 mt-2">
-                  <button
-                    onClick={async () => {
-                      setAddingToWaitlist(true);
-                      await fetch("/api/waitlist", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ clientName, clientPhone, requestedDate: eventDate }),
-                      });
-                      setAddingToWaitlist(false);
-                      closeWithAnimation();
-                    }}
-                    disabled={addingToWaitlist}
-                    className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-                  >
-                    {addingToWaitlist ? "מוסיף..." : "הוספה לרשימת המתנה"}
-                  </button>
-                  <button
-                    onClick={() => submit(true)}
-                    disabled={saving}
-                    className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
-                  >
-                    {saving ? "שומר..." : "שמירה בכל זאת (הזמנה כפולה)"}
-                  </button>
-                  <button
-                    onClick={goBack}
-                    className="w-full rounded-lg py-2.5 text-sm font-semibold text-ink-soft"
-                  >
-                    חזרה
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={goBack}
-                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
-                  >
-                    חזרה
-                  </button>
-                  <button
-                    onClick={() => setConfirmSaveOpen(true)}
-                    disabled={saving}
-                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-                  >
-                    {saving ? "שומר..." : "שמירת האירוע"}
-                  </button>
-                </div>
-              )}
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={goBack}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+                >
+                  חזרה
+                </button>
+                <button
+                  onClick={() => setConfirmSaveOpen(true)}
+                  disabled={saving}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                >
+                  {saving ? "שומר..." : "שמירת האירוע"}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -456,6 +421,47 @@ export default function NewEventModal({
               <button
                 onClick={() => setConfirmSaveOpen(false)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dateConflict && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          onClick={() => setDateConflict(false)}
+        >
+          <div
+            className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold mb-2 font-display">קיים אירוע נוסף בתאריך זה</h2>
+            <p className="text-sm text-ink-soft mb-5">האם להכניס את האירוע לרשימת המתנה?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  setAddingToWaitlist(true);
+                  await fetch("/api/waitlist", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ clientName, clientPhone, requestedDate: eventDate }),
+                  });
+                  setAddingToWaitlist(false);
+                  closeWithAnimation();
+                }}
+                disabled={addingToWaitlist}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+              >
+                {addingToWaitlist ? "מוסיף..." : "אישור"}
+              </button>
+              <button
+                onClick={() => setDateConflict(false)}
+                disabled={addingToWaitlist}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
               >
                 ביטול
               </button>

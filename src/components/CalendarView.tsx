@@ -74,7 +74,7 @@ export default function CalendarView({
 
       {connected && !loadError && events && events.length === 0 && (
         <div className="rounded-2xl p-5 bg-card border border-line shadow-card text-center">
-          <p className="text-sm text-ink-soft">אין אירועים ביומן ב-60 הימים הקרובים.</p>
+          <p className="text-sm text-ink-soft">אין אירועים ביומן ב-180 הימים הקרובים.</p>
         </div>
       )}
 

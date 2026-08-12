@@ -6,7 +6,7 @@ import { packageLabel } from "@/lib/stages";
 import type { EventRow } from "@/lib/types";
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
-type StatusFilter = "upcoming" | "completed" | "all";
+type StatusFilter = "upcoming" | "completed" | "all" | "duplicates";
 const PAGE_SIZE = 10;
 
 export default function EventsListView({
@@ -40,6 +40,7 @@ export default function EventsListView({
         const matchesPhone = (event.client_phone ?? "").includes(q);
         if (!matchesName && !matchesPhone) return false;
       }
+      if (statusFilter === "duplicates") return !!event.resolution_note;
       const done = isEventDone(event);
       if (statusFilter === "upcoming" && done) return false;
       if (statusFilter === "completed" && !done) return false;
@@ -80,6 +81,7 @@ export default function EventsListView({
             <option value="upcoming">פעילים</option>
             <option value="completed">הושלמו</option>
             <option value="all">הכל</option>
+            <option value="duplicates">כפילויות / פרילנס</option>
           </select>
         </div>
       )}
@@ -156,6 +158,14 @@ function EventCard({
       <div className="flex items-center gap-1.5 mb-3.5 text-xs text-ink-soft">
         {new Date(event.event_date).toLocaleDateString("he-IL")}
       </div>
+      {event.resolution_note && (
+        <div
+          className="text-[10.5px] px-2.5 py-1 rounded-full tracking-wide font-medium mb-2.5 inline-block"
+          style={{ background: "var(--color-chip-tint)", color: "var(--color-coral-deep)" }}
+        >
+          כפילות — {event.resolution_note}
+        </div>
+      )}
       <div className="h-[5px] rounded-full mb-2.5 bg-line">
         <div
           className="h-[5px] rounded-full"

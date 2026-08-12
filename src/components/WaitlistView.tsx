@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { CustomPackageRow, WaitlistRow } from "@/lib/types";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
+
+const RESOLUTION_OPTIONS = ["שלחתי צלם אחר", "שלחתי צוות שלם"];
 
 export default function WaitlistView({
   initialEntries,
@@ -14,11 +17,15 @@ export default function WaitlistView({
   initialEntries: WaitlistRow[];
   customPackages: CustomPackageRow[];
 }) {
+  const router = useRouter();
   const [entries, setEntries] = useState(initialEntries);
   const [convertEntry, setConvertEntry] = useState<WaitlistRow | null>(null);
+  const [confirmEntry, setConfirmEntry] = useState<WaitlistRow | null>(null);
+  const [deleteEntry, setDeleteEntry] = useState<WaitlistRow | null>(null);
 
   const remove = async (id: string) => {
     setEntries((prev) => prev.filter((e) => e.id !== id));
+    setDeleteEntry(null);
     await fetch(`/api/waitlist/${id}`, { method: "DELETE" });
   };
 
@@ -55,8 +62,17 @@ export default function WaitlistView({
               >
                 התאריך התפנה — יצירת אירוע
               </button>
-              <button onClick={() => remove(entry.id)} className="text-xs font-medium px-3 py-1.5 rounded-lg text-rose">
-                הסרה מהרשימה
+              <button
+                onClick={() => setConfirmEntry(entry)}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-deep text-white"
+              >
+                אישור האירוע
+              </button>
+              <button
+                onClick={() => setDeleteEntry(entry)}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg text-rose"
+              >
+                מחיקת האירוע
               </button>
             </div>
           </div>
@@ -75,6 +91,137 @@ export default function WaitlistView({
           }}
         />
       )}
+
+      {confirmEntry && (
+        <ConfirmEventDialog
+          entry={confirmEntry}
+          onClose={() => setConfirmEntry(null)}
+          onConfirmed={() => {
+            router.push("/");
+            router.refresh();
+          }}
+        />
+      )}
+
+      {deleteEntry && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          onClick={() => setDeleteEntry(null)}
+        >
+          <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2 font-display">למחוק את {deleteEntry.client_name}?</h2>
+            <p className="text-sm text-ink-soft mb-5">הרשומה תוסר לצמיתות מרשימת ההמתנה.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => remove(deleteEntry.id)}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white"
+              >
+                כן, מחיקה
+              </button>
+              <button
+                onClick={() => setDeleteEntry(null)}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfirmEventDialog({
+  entry,
+  onClose,
+  onConfirmed,
+}: {
+  entry: WaitlistRow;
+  onClose: () => void;
+  onConfirmed: () => void;
+}) {
+  const [selected, setSelected] = useState<string>(RESOLUTION_OPTIONS[0]);
+  const [customText, setCustomText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isCustom = selected === "custom";
+  const resolution = isCustom ? customText.trim() : selected;
+
+  const confirm = async () => {
+    if (!resolution) return;
+    setSaving(true);
+    setError(null);
+    const res = await fetch(`/api/waitlist/${entry.id}/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resolution }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error ?? "שגיאה באישור האירוע");
+      setSaving(false);
+      return;
+    }
+    onConfirmed();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+      onClick={onClose}
+    >
+      <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold mb-2 font-display">אישור האירוע — {entry.client_name}</h2>
+        <p className="text-xs text-ink-soft mb-4">
+          התאריך ({new Date(entry.requested_date).toLocaleDateString("he-IL")}) כבר תפוס — איך האירוע כוסה?
+        </p>
+        <div className="space-y-2 mb-3">
+          {RESOLUTION_OPTIONS.map((option) => (
+            <label
+              key={option}
+              className="flex items-center gap-2 text-sm rounded-lg border border-line bg-white px-3 py-2.5 cursor-pointer"
+            >
+              <input type="radio" name="resolution" checked={selected === option} onChange={() => setSelected(option)} />
+              {option}
+            </label>
+          ))}
+          <label className="flex items-center gap-2 text-sm rounded-lg border border-line bg-white px-3 py-2.5 cursor-pointer">
+            <input type="radio" name="resolution" checked={isCustom} onChange={() => setSelected("custom")} />
+            טקסט חופשי
+          </label>
+          {isCustom && (
+            <input
+              value={customText}
+              onChange={(e) => setCustomText(e.target.value)}
+              placeholder="לדוגמה: חברת צילום חיצונית"
+              className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+              autoFocus
+            />
+          )}
+        </div>
+
+        {error && <p className="text-xs text-rose mb-3">{error}</p>}
+
+        <div className="flex gap-2">
+          <button
+            onClick={confirm}
+            disabled={saving || !resolution}
+            className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+          >
+            {saving ? "מאשר..." : "אישור והעברה לאירועים"}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
+          >
+            ביטול
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

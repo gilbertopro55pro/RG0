@@ -19,13 +19,20 @@ export default async function CalendarPage() {
 
   const now = new Date();
   const timeMin = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-  const timeMax = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 60).toISOString();
+  const timeMax = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 180).toISOString();
 
   let events = null;
   let loadError = false;
   if (photographer.google_calendar_connected) {
     try {
       events = await listSyncedCalendarEvents(supabase, user!.id, { timeMin, timeMax });
+      // Only the color the photographer configured in Settings (the one the app itself stamps
+      // on every event it creates) — otherwise unrelated personal events on the same Google
+      // Calendar would show up here too. No color configured yet → show everything, since
+      // there's nothing to filter by.
+      if (events && photographer.google_calendar_color_id) {
+        events = events.filter((e) => e.colorId === photographer.google_calendar_color_id);
+      }
     } catch {
       // A revoked/expired Google token surfaces here — don't crash the page, just show a
       // friendly retry message and let the user reconnect from Settings if it persists.

@@ -10,6 +10,11 @@ export type Photographer = {
   plan: "monthly" | "annual";
   google_calendar_connected: boolean;
   google_calendar_color_id: string | null;
+  apple_calendar_connected: boolean;
+  apple_calendar_email: string | null;
+  apple_calendar_app_password: string | null;
+  apple_calendar_url: string | null;
+  apple_calendar_display_name: string | null;
   whatsapp_signature: string | null;
   whatsapp_bot_enabled: boolean;
   payplus_customer_uid: string | null;
@@ -35,9 +40,11 @@ export type EventRow = {
   event_start_time: string | null;
   event_end_time: string | null;
   google_calendar_event_id: string | null;
+  apple_calendar_event_uid: string | null;
   client_access_token: string;
   album_design_pdf_path: string | null;
   album_design_pdf_filename: string | null;
+  resolution_note: string | null;
   created_at: string;
 };
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { deleteEventFromGoogleCalendar, syncEventToGoogleCalendar, updateEventInGoogleCalendar } from "@/lib/googleCalendarSync";
+import { deleteEventFromAppleCalendar, syncEventToAppleCalendar, updateEventInAppleCalendar } from "@/lib/appleCalendarSync";
 import { packageLabel } from "@/lib/stages";
 import type { EventRow } from "@/lib/types";
 
@@ -149,6 +150,34 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     notifications.push({ event_id: eventId, text: `שגיאה בעדכון האירוע ביומן Google: ${googleCalendarError}` });
   }
 
+  try {
+    if (existing.apple_calendar_event_uid) {
+      await updateEventInAppleCalendar(supabase, user.id, existing.apple_calendar_event_uid, {
+        summary,
+        description,
+        date: eventDate,
+        startTime: eventStartTime,
+        endTime: eventEndTime,
+      });
+      notifications.push({ event_id: eventId, text: "האירוע עודכן גם ביומן Apple" });
+    } else {
+      const appleUid = await syncEventToAppleCalendar(supabase, user.id, eventId, {
+        summary,
+        description,
+        date: eventDate,
+        startTime: eventStartTime,
+        endTime: eventEndTime,
+      });
+      if (appleUid) {
+        await supabase.from("events").update({ apple_calendar_event_uid: appleUid }).eq("id", eventId);
+        notifications.push({ event_id: eventId, text: "האירוע נוסף גם ליומן Apple שלך" });
+      }
+    }
+  } catch (e) {
+    const appleError = e instanceof Error ? e.message : "שגיאה לא ידועה";
+    notifications.push({ event_id: eventId, text: `שגיאה בעדכון האירוע ביומן Apple: ${appleError}` });
+  }
+
   await supabase.from("event_notifications").insert(notifications);
 
   return NextResponse.json({ event: updated, googleCalendarError });
@@ -167,9 +196,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   // RLS (events_all_own) already scopes this select to the owning photographer.
   const { data: event } = await supabase
     .from("events")
-    .select("id, google_calendar_event_id")
+    .select("id, google_calendar_event_id, apple_calendar_event_uid")
     .eq("id", eventId)
-    .single<{ id: string; google_calendar_event_id: string | null }>();
+    .single<{ id: string; google_calendar_event_id: string | null; apple_calendar_event_uid: string | null }>();
 
   if (!event) {
     return NextResponse.json({ error: "האירוע לא נמצא" }, { status: 404 });
@@ -186,10 +215,19 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     }
   }
 
+  let appleCalendarError: string | null = null;
+  if (event.apple_calendar_event_uid) {
+    try {
+      await deleteEventFromAppleCalendar(supabase, user.id, event.apple_calendar_event_uid);
+    } catch (e) {
+      appleCalendarError = e instanceof Error ? e.message : "שגיאה לא ידועה";
+    }
+  }
+
   const { error: deleteError } = await supabase.from("events").delete().eq("id", eventId);
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, googleCalendarError });
+  return NextResponse.json({ ok: true, googleCalendarError, appleCalendarError });
 }

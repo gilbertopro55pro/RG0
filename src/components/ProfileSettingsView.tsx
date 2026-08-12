@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Photographer } from "@/lib/types";
 import { GOOGLE_EVENT_COLORS } from "@/lib/googleColors";
 import { setHapticsEnabled, subscribeHaptics, getHapticsSnapshot, getHapticsServerSnapshot } from "@/lib/haptics";
+import type { AppleCalendarOption } from "@/lib/appleCalendar";
 
 export default function ProfileSettingsView({
   photographer,
@@ -25,6 +26,15 @@ export default function ProfileSettingsView({
   const [disconnecting, setDisconnecting] = useState(false);
   const [colorId, setColorId] = useState(photographer.google_calendar_color_id);
   const [savingColor, setSavingColor] = useState<string | null>(null);
+  const [appleConnected, setAppleConnected] = useState(photographer.apple_calendar_connected);
+  const [appleDisplayName, setAppleDisplayName] = useState(photographer.apple_calendar_display_name);
+  const [appleEmail, setAppleEmail] = useState("");
+  const [applePassword, setApplePassword] = useState("");
+  const [appleCalendars, setAppleCalendars] = useState<AppleCalendarOption[] | null>(null);
+  const [appleDiscovering, setAppleDiscovering] = useState(false);
+  const [appleSelecting, setAppleSelecting] = useState(false);
+  const [appleDisconnecting, setAppleDisconnecting] = useState(false);
+  const [appleError, setAppleError] = useState<string | null>(null);
   const hapticsOn = useSyncExternalStore(subscribeHaptics, getHapticsSnapshot, getHapticsServerSnapshot);
 
   const toggleHaptics = () => {
@@ -55,6 +65,61 @@ export default function ProfileSettingsView({
       .eq("id", photographer.id);
     setConnected(false);
     setDisconnecting(false);
+  };
+
+  const discoverAppleCalendars = async () => {
+    setAppleDiscovering(true);
+    setAppleError(null);
+    const res = await fetch("/api/apple-calendar/discover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: appleEmail, appPassword: applePassword }),
+    });
+    const data = await res.json();
+    setAppleDiscovering(false);
+    if (!res.ok) {
+      setAppleError(data.error ?? "החיבור ל-iCloud נכשל");
+      return;
+    }
+    setAppleCalendars(data.calendars);
+  };
+
+  const selectAppleCalendar = async (calendar: AppleCalendarOption) => {
+    setAppleSelecting(true);
+    setAppleError(null);
+    const res = await fetch("/api/apple-calendar/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ calendarUrl: calendar.url, displayName: calendar.displayName }),
+    });
+    const data = await res.json();
+    setAppleSelecting(false);
+    if (!res.ok) {
+      setAppleError(data.error ?? "החיבור נכשל");
+      return;
+    }
+    setAppleConnected(true);
+    setAppleDisplayName(calendar.displayName);
+    setAppleCalendars(null);
+  };
+
+  const disconnectApple = async () => {
+    setAppleDisconnecting(true);
+    await supabase
+      .from("photographers")
+      .update({
+        apple_calendar_connected: false,
+        apple_calendar_email: null,
+        apple_calendar_app_password: null,
+        apple_calendar_url: null,
+        apple_calendar_display_name: null,
+      })
+      .eq("id", photographer.id);
+    setAppleConnected(false);
+    setAppleDisplayName(null);
+    setAppleEmail("");
+    setApplePassword("");
+    setAppleDisconnecting(false);
   };
 
   const chooseColor = async (id: string) => {
@@ -166,6 +231,77 @@ export default function ProfileSettingsView({
           >
             התחברות ליומן Google
           </a>
+        )}
+      </div>
+
+      <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
+        <div className="text-sm font-semibold tracking-wide mb-3.5">יומן Apple (iCloud)</div>
+        {appleConnected ? (
+          <div className="space-y-3">
+            <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
+              מחובר ליומן &quot;{appleDisplayName}&quot; ✓
+            </div>
+            <button
+              onClick={disconnectApple}
+              disabled={appleDisconnecting}
+              className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-rose disabled:opacity-60"
+            >
+              {appleDisconnecting ? "מתנתק..." : "ניתוק היומן"}
+            </button>
+          </div>
+        ) : appleCalendars ? (
+          <div className="space-y-2">
+            <p className="text-xs text-ink-soft mb-1">באיזה יומן ב-iCloud לשמור את האירועים?</p>
+            {appleCalendars.map((cal) => (
+              <button
+                key={cal.url}
+                onClick={() => selectAppleCalendar(cal)}
+                disabled={appleSelecting}
+                className="w-full text-right rounded-lg px-3.5 py-2.5 text-sm border border-line bg-white disabled:opacity-60"
+              >
+                {cal.displayName}
+              </button>
+            ))}
+            {appleError && <p className="text-xs text-rose">{appleError}</p>}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-ink-soft">
+              נדרשת סיסמה ייעודית לאפליקציה (App-Specific Password) — לא הסיסמה הרגילה של Apple ID.
+              יוצרים אחת ב-
+              <a href="https://appleid.apple.com" target="_blank" rel="noopener noreferrer" className="underline text-amber-deep">
+                appleid.apple.com
+              </a>
+              , תחת &quot;App-Specific Passwords&quot;.
+            </p>
+            <div>
+              <label className="text-xs block mb-1 text-ink-soft">Apple ID (כתובת מייל)</label>
+              <input
+                type="email"
+                value={appleEmail}
+                onChange={(e) => setAppleEmail(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+              />
+            </div>
+            <div>
+              <label className="text-xs block mb-1 text-ink-soft">App-Specific Password</label>
+              <input
+                type="password"
+                value={applePassword}
+                onChange={(e) => setApplePassword(e.target.value)}
+                placeholder="xxxx-xxxx-xxxx-xxxx"
+                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data"
+              />
+            </div>
+            {appleError && <p className="text-xs text-rose">{appleError}</p>}
+            <button
+              onClick={discoverAppleCalendars}
+              disabled={appleDiscovering || !appleEmail || !applePassword}
+              className="w-full rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
+            >
+              {appleDiscovering ? "מתחבר..." : "גילוי יומנים"}
+            </button>
+          </div>
         )}
       </div>
 
