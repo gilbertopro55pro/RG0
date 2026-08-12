@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.2.1",
+    date: "2026-08-12",
+    changes: [
+      "תיקון: התראת \"עדכון חדש\" ליד סמל ההגדרות נעלמת מיד אחרי לחיצה על אישור, במקום להישאר עד רענון הדף",
+      "מדריך מדויק ומעודכן להוספת סיסמה ייעודית לחיבור יומן Apple, כולל הקישור הנכון והשלבים המדויקים",
+    ],
+  },
+  {
     version: "1.2.0",
     date: "2026-08-12",
     changes: [
