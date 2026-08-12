@@ -266,14 +266,21 @@ export default function ProfileSettingsView({
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-ink-soft">
-              נדרשת סיסמה ייעודית לאפליקציה (App-Specific Password) — לא הסיסמה הרגילה של Apple ID.
-              יוצרים אחת ב-
-              <a href="https://appleid.apple.com" target="_blank" rel="noopener noreferrer" className="underline text-amber-deep">
-                appleid.apple.com
-              </a>
-              , תחת &quot;App-Specific Passwords&quot;.
-            </p>
+            <div className="rounded-lg px-3 py-2.5 bg-white border border-line">
+              <p className="text-xs font-semibold mb-1.5">איך יוצרים סיסמה ייעודית לאפליקציה:</p>
+              <ol className="text-xs text-ink-soft space-y-1 list-decimal pr-4">
+                <li>
+                  נכנסים ל-
+                  <a href="https://account.apple.com" target="_blank" rel="noopener noreferrer" className="underline text-amber-deep">
+                    account.apple.com
+                  </a>{" "}
+                  ומתחברים עם ה-Apple ID (נדרש אימות דו-שלבי פעיל בחשבון)
+                </li>
+                <li>בקטע &quot;Sign-In and Security&quot; לוחצים על &quot;App-Specific Passwords&quot;</li>
+                <li>לוחצים &quot;Generate an app-specific password&quot; ופועלים לפי ההוראות במסך</li>
+                <li>מעתיקים את הסיסמה שנוצרת (בפורמט xxxx-xxxx-xxxx-xxxx) ומדביקים אותה כאן למטה</li>
+              </ol>
+            </div>
             <div>
               <label className="text-xs block mb-1 text-ink-soft">Apple ID (כתובת מייל)</label>
               <input
