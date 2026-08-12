@@ -267,19 +267,18 @@ export default function ProfileSettingsView({
         ) : (
           <div className="space-y-3">
             <div className="rounded-lg px-3 py-2.5 bg-white border border-line">
-              <p className="text-xs font-semibold mb-1.5">איך יוצרים סיסמה ייעודית לאפליקציה:</p>
-              <ol className="text-xs text-ink-soft space-y-1 list-decimal pr-4">
-                <li>
-                  נכנסים ל-
-                  <a href="https://account.apple.com" target="_blank" rel="noopener noreferrer" className="underline text-amber-deep">
-                    account.apple.com
-                  </a>{" "}
-                  ומתחברים עם ה-Apple ID (נדרש אימות דו-שלבי פעיל בחשבון)
-                </li>
-                <li>בקטע &quot;Sign-In and Security&quot; לוחצים על &quot;App-Specific Passwords&quot;</li>
-                <li>לוחצים &quot;Generate an app-specific password&quot; ופועלים לפי ההוראות במסך</li>
-                <li>מעתיקים את הסיסמה שנוצרת (בפורמט xxxx-xxxx-xxxx-xxxx) ומדביקים אותה כאן למטה</li>
-              </ol>
+              <p className="text-xs text-ink-soft mb-2">
+                נדרשת סיסמה ייעודית לאפליקציה (App-Specific Password) מ-Apple — לא הסיסמה הרגילה של Apple ID.
+                לוקח כדקה ליצור, ויש מדריך מלא עם כל שלב בנפרד.
+              </p>
+              <a
+                href="https://claude.ai/code/artifact/4666897f-1c2f-4b31-b477-c49589aefd17"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-bg text-amber-deep"
+              >
+                מדריך מלא לחיבור יומן Apple ←
+              </a>
             </div>
             <div>
               <label className="text-xs block mb-1 text-ink-soft">Apple ID (כתובת מייל)</label>
