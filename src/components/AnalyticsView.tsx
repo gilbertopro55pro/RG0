@@ -76,6 +76,42 @@ export default function AnalyticsView({
 
   const selectedKey = monthKey(selectedYear, selectedMonth);
   const selectedRevenue = revenueByMonth.get(selectedKey) ?? 0;
+
+  const monthTransactions = useMemo(() => {
+    const rows: { date: string; clientName: string; label: string; pkg: string; amount: number }[] = [];
+    for (const p of payments) {
+      const event = eventById.get(p.event_id);
+      if (!event) continue;
+      const pkgLabel = PACKAGE_LABELS[event.package as keyof typeof PACKAGE_LABELS] ?? event.package;
+      if (p.deposit_paid_at && monthKey(new Date(p.deposit_paid_at).getFullYear(), new Date(p.deposit_paid_at).getMonth() + 1) === selectedKey) {
+        rows.push({ date: p.deposit_paid_at, clientName: event.client_name, label: "מקדמה", pkg: pkgLabel, amount: Number(p.deposit_amount) });
+      }
+      if (p.balance_paid_at && monthKey(new Date(p.balance_paid_at).getFullYear(), new Date(p.balance_paid_at).getMonth() + 1) === selectedKey) {
+        rows.push({ date: p.balance_paid_at, clientName: event.client_name, label: "יתרה", pkg: pkgLabel, amount: Number(p.balance_amount) });
+      }
+    }
+    rows.sort((a, b) => a.date.localeCompare(b.date));
+    return rows;
+  }, [payments, eventById, selectedKey]);
+
+  const exportMonthCsv = () => {
+    const header = ["תאריך", "שם לקוח", "סוג תשלום", "חבילה", 'סכום (₪)'];
+    const lines = [header, ...monthTransactions.map((r) => [
+      new Date(r.date).toLocaleDateString("he-IL"),
+      r.clientName,
+      r.label,
+      r.pkg,
+      String(r.amount),
+    ])];
+    const csv = lines.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `הכנסות-${HEBREW_MONTHS[selectedMonth - 1]}-${selectedYear}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const prevDate = new Date(selectedYear, selectedMonth - 2, 1);
   const prevKey = monthKey(prevDate.getFullYear(), prevDate.getMonth() + 1);
   const prevRevenue = revenueByMonth.get(prevKey) ?? 0;
@@ -129,11 +165,11 @@ export default function AnalyticsView({
       </Link>
       <h1 className="text-[26px] font-bold mb-5 font-display">ניתוח עסקי</h1>
 
-      <div className="flex gap-2 mb-5">
+      <div className="flex flex-wrap gap-2 mb-5">
         <select
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(Number(e.target.value))}
-          className="flex-1 rounded-lg px-3 py-2 text-sm border border-line bg-white"
+          className="flex-1 min-w-[90px] rounded-lg px-2.5 py-2 text-xs sm:text-sm border border-line bg-white"
         >
           {HEBREW_MONTHS.map((label, i) => (
             <option key={i} value={i + 1}>
@@ -144,7 +180,7 @@ export default function AnalyticsView({
         <select
           value={selectedYear}
           onChange={(e) => setSelectedYear(Number(e.target.value))}
-          className="rounded-lg px-3 py-2 text-sm border border-line bg-white font-data"
+          className="shrink-0 rounded-lg px-2.5 py-2 text-xs sm:text-sm border border-line bg-white font-data"
         >
           {years.map((y) => (
             <option key={y} value={y}>
@@ -152,6 +188,14 @@ export default function AnalyticsView({
             </option>
           ))}
         </select>
+        <button
+          onClick={exportMonthCsv}
+          disabled={monthTransactions.length === 0}
+          title="ייצוא לרואה חשבון (CSV)"
+          className="shrink-0 rounded-lg px-2.5 py-2 text-xs sm:text-sm font-semibold bg-card border border-line text-ink-soft disabled:opacity-40"
+        >
+          ייצוא ל-CSV
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-5">
