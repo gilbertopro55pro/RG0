@@ -10,6 +10,7 @@ import {
   IconChat,
   IconLeads,
   IconTrend,
+  IconAnalytics,
 } from "@/components/icons/NavIcons";
 
 const FEATURES = [
@@ -42,6 +43,11 @@ const FEATURES = [
     icon: IconLeads,
     title: "לידים, הצעות מחיר ורשימת המתנה",
     text: "כל פנייה חדשה נכנסת למערכת ומקבלת מעקב מסודר — גם אם התאריך המבוקש כבר תפוס.",
+  },
+  {
+    icon: IconAnalytics,
+    title: "ניתוח עסקי וייצוא לרואה חשבון",
+    text: "מעקב הכנסות חודשי, ולחיצה אחת לייצוא כל תשלומי החודש כקובץ מסודר, ישר לרואה החשבון שלכם.",
   },
 ];
 
