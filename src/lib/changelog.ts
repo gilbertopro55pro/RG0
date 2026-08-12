@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.3.1",
+    date: "2026-08-12",
+    changes: [
+      "שורת החיפוש ותאי המיון של רשימת האירועים אוחדו לשורה אחת קומפקטית, גם בנייד וגם במחשב",
+    ],
+  },
+  {
     version: "1.3.0",
     date: "2026-08-12",
     changes: [

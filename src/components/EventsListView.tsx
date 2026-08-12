@@ -76,44 +76,39 @@ export default function EventsListView({
       </div>
 
       {events.length > 0 && (
-        <div className="flex gap-2 mb-3.5">
-          <input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setVisibleCount(PAGE_SIZE);
-            }}
-            placeholder="חיפוש לפי שם לקוח או טלפון..."
-            className="flex-1 rounded-lg px-3 py-2 text-sm border border-line bg-white"
-          />
+        <div className="flex flex-wrap gap-1.5 mb-3.5">
           <select
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value as StatusFilter);
               setVisibleCount(PAGE_SIZE);
             }}
-            className="rounded-lg px-2 py-2 text-sm border border-line bg-white"
+            className="shrink-0 w-[74px] sm:w-auto rounded-lg px-1.5 py-2 text-xs sm:text-sm border border-line bg-white"
           >
             <option value="upcoming">פעילים</option>
             <option value="completed">הושלמו</option>
             <option value="all">הכל</option>
             <option value="duplicates">כפילויות / פרילנס</option>
           </select>
-        </div>
-      )}
-
-      {events.length > 0 && (
-        <div className="flex gap-2 mb-3.5">
+          <input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setVisibleCount(PAGE_SIZE);
+            }}
+            placeholder="חיפוש..."
+            className="flex-1 min-w-[64px] rounded-lg px-2.5 py-2 text-xs sm:text-sm border border-line bg-white"
+          />
           <select
             value={sortOrder}
             onChange={(e) => {
               setSortOrder(e.target.value as SortOrder);
               setVisibleCount(PAGE_SIZE);
             }}
-            className="rounded-lg px-2 py-2 text-sm border border-line bg-white"
+            className="shrink-0 w-[92px] sm:w-auto rounded-lg px-1.5 py-2 text-xs sm:text-sm border border-line bg-white"
           >
-            <option value="asc">תאריך: מהקרוב לרחוק</option>
-            <option value="desc">תאריך: מהרחוק לקרוב</option>
+            <option value="asc">מהקרוב לרחוק</option>
+            <option value="desc">מהרחוק לקרוב</option>
             <option value="month">חודש מסוים</option>
           </select>
           {sortOrder === "month" && (
@@ -124,7 +119,7 @@ export default function EventsListView({
                 setSelectedMonth(e.target.value);
                 setVisibleCount(PAGE_SIZE);
               }}
-              className="rounded-lg px-2 py-2 text-sm border border-line bg-white font-data"
+              className="shrink-0 w-full sm:w-auto rounded-lg px-2 py-2 text-xs sm:text-sm border border-line bg-white font-data"
             />
           )}
         </div>
