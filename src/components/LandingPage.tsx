@@ -20,8 +20,8 @@ const FEATURES = [
   },
   {
     icon: IconCalendar,
-    title: "סנכרון אוטומטי עם Google Calendar",
-    text: "כל אירוע חדש נכנס ליומן שלכם אוטומטית, כולל עדכון תאריך ומחיקה בזמן אמת.",
+    title: "סנכרון אוטומטי עם Google ו-Apple Calendar",
+    text: "כל אירוע חדש נכנס ליומן שלכם אוטומטית — Google, Apple (iCloud), או שניהם יחד — כולל עדכון תאריך ומחיקה בזמן אמת.",
   },
   {
     icon: IconGallery,
