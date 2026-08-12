@@ -164,7 +164,7 @@ export default function LandingPage() {
       {/* Pricing */}
       <section id="pricing" className="max-w-3xl mx-auto px-4 py-10">
         <h2 className="text-2xl font-bold font-display text-center mb-2">מחיר פשוט, בלי הפתעות</h2>
-        <p className="text-sm text-ink-soft text-center mb-8">מנוי אחד לכל היכולות של המערכת — בלי חבילות נסתרות.</p>
+        <p className="text-sm text-ink-soft text-center mb-8">מחיר קבוע וברור מראש — בלי עמלות נסתרות ובלי הפתעות בחיוב.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="rounded-2xl p-6 bg-card border border-line shadow-card">
             <div className="text-sm font-semibold text-ink-soft mb-2">מסלול {monthly.label}</div>
