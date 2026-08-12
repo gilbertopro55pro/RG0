@@ -7,7 +7,13 @@ import type { EventRow } from "@/lib/types";
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
 type StatusFilter = "upcoming" | "completed" | "all" | "duplicates";
+type SortOrder = "asc" | "desc" | "month";
 const PAGE_SIZE = 10;
+
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
 
 export default function EventsListView({
   events,
@@ -24,6 +30,8 @@ export default function EventsListView({
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("upcoming");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthValue());
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const isEventDone = (event: EventWithCustomPackage) => {
@@ -34,20 +42,28 @@ export default function EventsListView({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return events.filter((event) => {
+    const result = events.filter((event) => {
       if (q) {
         const matchesName = event.client_name.toLowerCase().includes(q);
         const matchesPhone = (event.client_phone ?? "").includes(q);
         if (!matchesName && !matchesPhone) return false;
       }
-      if (statusFilter === "duplicates") return !!event.resolution_note;
-      const done = isEventDone(event);
-      if (statusFilter === "upcoming" && done) return false;
-      if (statusFilter === "completed" && !done) return false;
+      if (statusFilter === "duplicates" && !event.resolution_note) return false;
+      if (statusFilter !== "duplicates" && statusFilter !== "all") {
+        const done = isEventDone(event);
+        if (statusFilter === "upcoming" && done) return false;
+        if (statusFilter === "completed" && !done) return false;
+      }
+      if (sortOrder === "month" && !event.event_date.startsWith(selectedMonth)) return false;
       return true;
     });
+    result.sort((a, b) => {
+      if (sortOrder === "desc") return b.event_date.localeCompare(a.event_date);
+      return a.event_date.localeCompare(b.event_date);
+    });
+    return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, query, statusFilter, doneCountByEvent, totalCountByEvent]);
+  }, [events, query, statusFilter, sortOrder, selectedMonth, doneCountByEvent, totalCountByEvent]);
 
   const visible = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visible.length;
@@ -83,6 +99,34 @@ export default function EventsListView({
             <option value="all">הכל</option>
             <option value="duplicates">כפילויות / פרילנס</option>
           </select>
+        </div>
+      )}
+
+      {events.length > 0 && (
+        <div className="flex gap-2 mb-3.5">
+          <select
+            value={sortOrder}
+            onChange={(e) => {
+              setSortOrder(e.target.value as SortOrder);
+              setVisibleCount(PAGE_SIZE);
+            }}
+            className="rounded-lg px-2 py-2 text-sm border border-line bg-white"
+          >
+            <option value="asc">תאריך: מהקרוב לרחוק</option>
+            <option value="desc">תאריך: מהרחוק לקרוב</option>
+            <option value="month">חודש מסוים</option>
+          </select>
+          {sortOrder === "month" && (
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                setVisibleCount(PAGE_SIZE);
+              }}
+              className="rounded-lg px-2 py-2 text-sm border border-line bg-white font-data"
+            />
+          )}
         </div>
       )}
 

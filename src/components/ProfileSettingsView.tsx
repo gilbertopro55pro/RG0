@@ -6,6 +6,7 @@ import type { Photographer } from "@/lib/types";
 import { GOOGLE_EVENT_COLORS } from "@/lib/googleColors";
 import { setHapticsEnabled, subscribeHaptics, getHapticsSnapshot, getHapticsServerSnapshot } from "@/lib/haptics";
 import type { AppleCalendarOption } from "@/lib/appleCalendar";
+import AppleCalendarGuideModal from "@/components/AppleCalendarGuideModal";
 
 export default function ProfileSettingsView({
   photographer,
@@ -35,6 +36,7 @@ export default function ProfileSettingsView({
   const [appleSelecting, setAppleSelecting] = useState(false);
   const [appleDisconnecting, setAppleDisconnecting] = useState(false);
   const [appleError, setAppleError] = useState<string | null>(null);
+  const [showAppleGuide, setShowAppleGuide] = useState(false);
   const hapticsOn = useSyncExternalStore(subscribeHaptics, getHapticsSnapshot, getHapticsServerSnapshot);
 
   const toggleHaptics = () => {
@@ -271,14 +273,13 @@ export default function ProfileSettingsView({
                 נדרשת סיסמה ייעודית לאפליקציה (App-Specific Password) מ-Apple — לא הסיסמה הרגילה של Apple ID.
                 לוקח כדקה ליצור, ויש מדריך מלא עם כל שלב בנפרד.
               </p>
-              <a
-                href="https://claude.ai/code/artifact/4666897f-1c2f-4b31-b477-c49589aefd17"
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => setShowAppleGuide(true)}
                 className="inline-block text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-bg text-amber-deep"
               >
                 מדריך מלא לחיבור יומן Apple ←
-              </a>
+              </button>
             </div>
             <div>
               <label className="text-xs block mb-1 text-ink-soft">Apple ID (כתובת מייל)</label>
@@ -332,6 +333,8 @@ export default function ProfileSettingsView({
           </button>
         </div>
       </div>
+
+      {showAppleGuide && <AppleCalendarGuideModal onClose={() => setShowAppleGuide(false)} />}
     </div>
   );
 }

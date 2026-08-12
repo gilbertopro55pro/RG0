@@ -1,5 +1,9 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics, IconSettings } from "@/components/icons/NavIcons";
+import { CURRENT_VERSION } from "@/lib/changelog";
 
 // Same glass-pill + small colored icon-badge language as TopNav, laid out as a spacious grid
 // instead of a cramped sidebar column — the shortcuts a photographer actually taps often.
@@ -14,6 +18,20 @@ const ACTIONS = [
 ] as const;
 
 export default function QuickActionsGrid() {
+  const [hasUnseenUpdate, setHasUnseenUpdate] = useState(false);
+
+  useEffect(() => {
+    const recompute = () => {
+      try {
+        setHasUnseenUpdate(localStorage.getItem("changelog-seen-version") !== CURRENT_VERSION);
+      } catch {}
+    };
+    recompute();
+    // Fired by ChangelogModal on dismiss — same cross-component notify pattern TopNav uses.
+    window.addEventListener("changelog-seen-change", recompute);
+    return () => window.removeEventListener("changelog-seen-change", recompute);
+  }, []);
+
   return (
     <div className="grid grid-cols-3 lg:grid-cols-6 gap-2.5 mb-5">
       {ACTIONS.map((item) => {
@@ -22,8 +40,14 @@ export default function QuickActionsGrid() {
           <Link
             key={item.href}
             href={item.href}
-            className="nav-tile rounded-2xl p-3 flex flex-col items-center justify-center gap-1.5 text-center bg-card shadow-card"
+            className="nav-tile relative rounded-2xl p-3 flex flex-col items-center justify-center gap-1.5 text-center bg-card shadow-card"
           >
+            {item.href === "/settings" && hasUnseenUpdate && (
+              <span
+                className="absolute top-2 left-2 h-2.5 w-2.5 rounded-full shadow"
+                style={{ background: "var(--color-rose)" }}
+              />
+            )}
             <span
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
               style={{ background: item.badge, color: "#ffffff" }}
