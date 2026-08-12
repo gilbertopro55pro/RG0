@@ -31,19 +31,31 @@ export default function TopNav() {
   // the user hasn't opened the "מה חדש" popup/tab for yet.
   useEffect(() => {
     let cancelled = false;
+    let unreadEvents = 0;
+
+    const recomputeBadge = () => {
+      let hasUnseenUpdate = false;
+      try {
+        hasUnseenUpdate = localStorage.getItem("changelog-seen-version") !== CURRENT_VERSION;
+      } catch {}
+      setSettingsBadgeCount(unreadEvents + (hasUnseenUpdate ? 1 : 0));
+    };
+
     fetch("/api/notifications/summary")
       .then((res) => res.json())
       .then((data: { unreadEvents: number }) => {
         if (cancelled) return;
-        let hasUnseenUpdate = false;
-        try {
-          hasUnseenUpdate = localStorage.getItem("changelog-seen-version") !== CURRENT_VERSION;
-        } catch {}
-        setSettingsBadgeCount((data.unreadEvents ?? 0) + (hasUnseenUpdate ? 1 : 0));
+        unreadEvents = data.unreadEvents ?? 0;
+        recomputeBadge();
       })
       .catch(() => {});
+
+    // Fired by ChangelogModal on dismiss — without this the badge only clears on the next full
+    // page load, since the count above is otherwise only computed once on mount.
+    window.addEventListener("changelog-seen-change", recomputeBadge);
     return () => {
       cancelled = true;
+      window.removeEventListener("changelog-seen-change", recomputeBadge);
     };
   }, []);
 

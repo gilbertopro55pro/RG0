@@ -41,6 +41,9 @@ export default function ChangelogModal() {
     setTimeout(() => {
       try {
         localStorage.setItem(SEEN_KEY, CURRENT_VERSION);
+        // TopNav computes its settings badge count once on mount and has no other way to learn
+        // the seen-version changed — same cross-component notify pattern haptics.ts uses.
+        window.dispatchEvent(new Event("changelog-seen-change"));
       } catch {}
       setVisible(false);
     }, CLOSE_ANIMATION_MS);
