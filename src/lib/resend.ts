@@ -9,11 +9,13 @@ export async function sendEmail({
   subject,
   text,
   replyTo,
+  attachments,
 }: {
   to: string;
   subject: string;
   text: string;
   replyTo?: string;
+  attachments?: { filename: string; content: string }[];
 }): Promise<void> {
   const apiKey = requireEnv("RESEND_API_KEY");
   const from = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
@@ -30,6 +32,7 @@ export async function sendEmail({
       subject,
       text,
       ...(replyTo ? { reply_to: replyTo } : {}),
+      ...(attachments ? { attachments } : {}),
     }),
   });
 

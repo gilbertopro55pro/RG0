@@ -36,6 +36,12 @@ export default function AnalyticsView({
   const currentYear = initialYear;
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareStep, setShareStep] = useState<"options" | "email">("options");
+  const [emailValue, setEmailValue] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailSent, setEmailSent] = useState(false);
 
   const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
 
@@ -94,7 +100,9 @@ export default function AnalyticsView({
     return rows;
   }, [payments, eventById, selectedKey]);
 
-  const exportMonthCsv = () => {
+  const monthLabel = `${HEBREW_MONTHS[selectedMonth - 1]} ${selectedYear}`;
+
+  const buildCsv = () => {
     const header = ["תאריך", "שם לקוח", "סוג תשלום", "חבילה", 'סכום (₪)'];
     const lines = [header, ...monthTransactions.map((r) => [
       new Date(r.date).toLocaleDateString("he-IL"),
@@ -103,14 +111,68 @@ export default function AnalyticsView({
       r.pkg,
       String(r.amount),
     ])];
-    const csv = lines.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\r\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const csv = "﻿" + lines.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    const filename = `הכנסות-${monthLabel}.csv`;
+    return { csv, filename };
+  };
+
+  const downloadCsv = () => {
+    const { csv, filename } = buildCsv();
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `הכנסות-${HEBREW_MONTHS[selectedMonth - 1]}-${selectedYear}.csv`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const shareViaWhatsapp = () => {
+    const total = monthTransactions.reduce((sum, r) => sum + r.amount, 0);
+    const text = `נתוני הכנסות — ${monthLabel}\n${monthTransactions.length} תשלומים · סה"כ ${currency(total)}\n\nנשלח ממערכת גילברטו`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    setShareOpen(false);
+  };
+
+  const shareViaOther = async () => {
+    const { csv, filename } = buildCsv();
+    const file = new File([csv], filename, { type: "text/csv" });
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: `הכנסות — ${monthLabel}` });
+      } catch {
+        // user canceled the native share sheet — nothing to do
+      }
+    } else {
+      downloadCsv();
+    }
+    setShareOpen(false);
+  };
+
+  const closeShare = () => {
+    setShareOpen(false);
+    setShareStep("options");
+    setEmailValue("");
+    setEmailError(null);
+    setEmailSent(false);
+  };
+
+  const sendEmailExport = async () => {
+    setEmailSending(true);
+    setEmailError(null);
+    const { csv, filename } = buildCsv();
+    const res = await fetch("/api/analytics/export-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: emailValue.trim(), csv, filename, monthLabel }),
+    });
+    setEmailSending(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setEmailError(data.error ?? "שליחת המייל נכשלה");
+      return;
+    }
+    setEmailSent(true);
   };
   const prevDate = new Date(selectedYear, selectedMonth - 2, 1);
   const prevKey = monthKey(prevDate.getFullYear(), prevDate.getMonth() + 1);
@@ -189,7 +251,7 @@ export default function AnalyticsView({
           ))}
         </select>
         <button
-          onClick={exportMonthCsv}
+          onClick={() => setShareOpen(true)}
           disabled={monthTransactions.length === 0}
           title="ייצוא לרואה חשבון (CSV)"
           className="shrink-0 rounded-lg px-2.5 py-2 text-xs sm:text-sm font-semibold bg-card border border-line text-ink-soft disabled:opacity-40"
@@ -307,6 +369,88 @@ export default function AnalyticsView({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          onClick={closeShare}
+        >
+          <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+            {shareStep === "options" && (
+              <>
+                <h2 className="text-lg font-bold font-display mb-1">שליחת נתוני {monthLabel}</h2>
+                <p className="text-xs text-ink-soft mb-4">{monthTransactions.length} תשלומים — איך לשלוח?</p>
+                <div className="space-y-2.5">
+                  <button
+                    onClick={() => setShareStep("email")}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
+                  >
+                    מייל
+                  </button>
+                  <button
+                    onClick={shareViaWhatsapp}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-sage-bg text-sage"
+                  >
+                    וואטסאפ
+                  </button>
+                  <button
+                    onClick={shareViaOther}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink"
+                  >
+                    אחר
+                  </button>
+                </div>
+                <button onClick={closeShare} className="w-full text-center mt-4 text-xs text-ink-soft">
+                  ביטול
+                </button>
+              </>
+            )}
+
+            {shareStep === "email" && !emailSent && (
+              <>
+                <h2 className="text-lg font-bold font-display mb-1">שליחה במייל</h2>
+                <p className="text-xs text-ink-soft mb-4">נתוני {monthLabel} יישלחו כקובץ מצורף</p>
+                <input
+                  type="email"
+                  value={emailValue}
+                  onChange={(e) => setEmailValue(e.target.value)}
+                  placeholder="כתובת מייל"
+                  autoFocus
+                  className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-2"
+                />
+                {emailError && <p className="text-xs text-rose mb-2">{emailError}</p>}
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={sendEmailExport}
+                    disabled={emailSending || !emailValue.trim()}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-50"
+                  >
+                    {emailSending ? "שולח..." : "שלח נתונים"}
+                  </button>
+                  <button
+                    onClick={closeShare}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
+                  >
+                    ביטול
+                  </button>
+                </div>
+              </>
+            )}
+
+            {shareStep === "email" && emailSent && (
+              <>
+                <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium mb-4">
+                  הנתונים נשלחו ל-{emailValue.trim()} ✓
+                </div>
+                <button onClick={closeShare} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
+                  סגירה
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
