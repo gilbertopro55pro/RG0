@@ -24,6 +24,14 @@ export type GalleryThemeTokens = {
   titleWeight: number;
   titleTracking: string;
   titleTransform?: "uppercase";
+  // Layout — the part that makes each theme feel like a different gallery, not just a recolor.
+  gridStyle: "masonry" | "grid" | "framed";
+  gap: number;
+  photoRadius: string;
+  photoBorder: boolean;
+  bannerDivider: boolean;
+  bannerFramed: boolean;
+  bannerFullBleed: boolean;
 };
 
 // Five complete, self-contained looks — each bundles its own palette, typography treatment and
@@ -44,6 +52,13 @@ export const GALLERY_THEMES: GalleryThemeTokens[] = [
     titleFont: "serif",
     titleWeight: 600,
     titleTracking: "0em",
+    gridStyle: "masonry",
+    gap: 10,
+    photoRadius: "14px",
+    photoBorder: false,
+    bannerDivider: true,
+    bannerFramed: false,
+    bannerFullBleed: false,
   },
   {
     id: "editorial",
@@ -60,6 +75,13 @@ export const GALLERY_THEMES: GalleryThemeTokens[] = [
     titleFont: "sans",
     titleWeight: 800,
     titleTracking: "-0.02em",
+    gridStyle: "masonry",
+    gap: 2,
+    photoRadius: "0px",
+    photoBorder: false,
+    bannerDivider: false,
+    bannerFramed: false,
+    bannerFullBleed: true,
   },
   {
     id: "minimal",
@@ -77,6 +99,13 @@ export const GALLERY_THEMES: GalleryThemeTokens[] = [
     titleWeight: 300,
     titleTracking: "0.1em",
     titleTransform: "uppercase",
+    gridStyle: "grid",
+    gap: 24,
+    photoRadius: "0px",
+    photoBorder: false,
+    bannerDivider: false,
+    bannerFramed: false,
+    bannerFullBleed: false,
   },
   {
     id: "warm",
@@ -93,6 +122,13 @@ export const GALLERY_THEMES: GalleryThemeTokens[] = [
     titleFont: "serif",
     titleWeight: 500,
     titleTracking: "0em",
+    gridStyle: "masonry",
+    gap: 8,
+    photoRadius: "22px",
+    photoBorder: false,
+    bannerDivider: false,
+    bannerFramed: true,
+    bannerFullBleed: false,
   },
   {
     id: "romantic",
@@ -109,6 +145,13 @@ export const GALLERY_THEMES: GalleryThemeTokens[] = [
     titleFont: "serif",
     titleWeight: 500,
     titleTracking: "0.01em",
+    gridStyle: "framed",
+    gap: 14,
+    photoRadius: "18px",
+    photoBorder: true,
+    bannerDivider: true,
+    bannerFramed: false,
+    bannerFullBleed: false,
   },
 ];
 
@@ -131,6 +174,8 @@ export function galleryThemeVars(id: string): Record<string, string> {
     "--gt-accent-ink": t.accentInk,
     "--gt-border": t.border,
     "--gt-radius": t.radius,
+    "--gt-gap": `${t.gap}px`,
+    "--gt-photo-radius": t.photoRadius,
   };
 }
 

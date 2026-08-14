@@ -106,6 +106,7 @@ export default async function PublicGalleryPage({
         initialFolders={folders ?? []}
         initiallyConfirmed={!!gallery.selection_confirmed_at}
         allowDownloads={gallery.allow_downloads}
+        themeId={gallery.theme}
       />
     </div>
   );

@@ -1,10 +1,10 @@
-import { coverAspectRatio, galleryTitleStyle, isOverlayPosition } from "@/lib/galleryTheme";
+import { coverAspectRatio, galleryTitleStyle, galleryThemeById, isOverlayPosition } from "@/lib/galleryTheme";
 
 export default function GalleryCoverBanner({
   photoUrl,
   title,
   dateLabel,
-  theme,
+  theme: themeId,
   textPosition,
   shape,
 }: {
@@ -15,15 +15,19 @@ export default function GalleryCoverBanner({
   textPosition: string;
   shape: string;
 }) {
+  const theme = galleryThemeById(themeId);
   const overlay = isOverlayPosition(textPosition);
   const isCircle = shape === "circle";
   const align = textPosition === "center-right" ? "flex-end" : "flex-start";
 
   const textBlock = (
     <div style={{ color: overlay ? "#ffffff" : "var(--gt-ink)" }}>
-      <div className="text-xl" style={galleryTitleStyle(theme)}>
+      <div className="text-xl" style={galleryTitleStyle(themeId)}>
         {title}
       </div>
+      {theme.bannerDivider && !overlay && (
+        <div className="my-2" style={{ width: 40, height: 2, background: "var(--gt-accent)" }} />
+      )}
       {dateLabel && (
         <div className="text-xs mt-1" style={{ opacity: 0.75 }}>
           {dateLabel}
@@ -34,33 +38,43 @@ export default function GalleryCoverBanner({
 
   const image = photoUrl ? (
     <div
-      className="relative overflow-hidden"
       style={{
-        aspectRatio: coverAspectRatio(shape),
-        borderRadius: isCircle ? "50%" : "var(--gt-radius)",
-        width: isCircle ? "min(60%, 260px)" : "100%",
-        margin: isCircle ? "0 auto" : undefined,
-        background: "var(--gt-surface-soft)",
+        padding: theme.bannerFramed ? "10px" : undefined,
+        background: theme.bannerFramed ? "var(--gt-surface)" : undefined,
+        borderRadius: theme.bannerFramed ? "var(--gt-radius)" : undefined,
+        boxShadow: theme.bannerFramed ? "0 4px 18px rgba(0,0,0,0.08)" : undefined,
+        marginInline: theme.bannerFullBleed ? "-1rem" : undefined,
       }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={photoUrl} alt="" className="w-full h-full object-cover" />
-      {overlay && (
-        <>
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                textPosition === "center-right"
-                  ? "linear-gradient(to left, rgba(0,0,0,0.55), rgba(0,0,0,0) 55%)"
-                  : "linear-gradient(to right, rgba(0,0,0,0.55), rgba(0,0,0,0) 55%)",
-            }}
-          />
-          <div className="absolute inset-0 flex items-center p-5" style={{ justifyContent: align }}>
-            {textBlock}
-          </div>
-        </>
-      )}
+      <div
+        className="relative overflow-hidden"
+        style={{
+          aspectRatio: coverAspectRatio(shape),
+          borderRadius: isCircle ? "50%" : theme.bannerFullBleed ? "0px" : "var(--gt-radius)",
+          width: isCircle ? "min(60%, 260px)" : "100%",
+          margin: isCircle ? "0 auto" : undefined,
+          background: "var(--gt-surface-soft)",
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={photoUrl} alt="" className="w-full h-full object-cover" />
+        {overlay && (
+          <>
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  textPosition === "center-right"
+                    ? "linear-gradient(to left, rgba(0,0,0,0.55), rgba(0,0,0,0) 55%)"
+                    : "linear-gradient(to right, rgba(0,0,0,0.55), rgba(0,0,0,0) 55%)",
+              }}
+            />
+            <div className="absolute inset-0 flex items-center p-5" style={{ justifyContent: align }}>
+              {textBlock}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   ) : null;
 

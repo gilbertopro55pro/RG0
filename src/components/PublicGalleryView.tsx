@@ -7,6 +7,7 @@ import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
+import { galleryThemeById } from "@/lib/galleryTheme";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
 
@@ -22,13 +23,16 @@ export default function PublicGalleryView({
   initialFolders,
   initiallyConfirmed,
   allowDownloads,
+  themeId = "classic",
 }: {
   token: string;
   initialPhotos: PhotoWithUrl[];
   initialFolders: GalleryFolderRow[];
   initiallyConfirmed: boolean;
   allowDownloads: boolean;
+  themeId?: string;
 }) {
+  const theme = galleryThemeById(themeId);
   const [photos, setPhotos] = useState(initialPhotos);
   const [savedFavoriteIds, setSavedFavoriteIds] = useState(
     () => new Set(initialPhotos.filter((p) => p.is_favorite).map((p) => p.id))
@@ -303,64 +307,94 @@ export default function PublicGalleryView({
               {zipping ? "מכין הורדה..." : `הורדת כל התמונות (${photos.length})`}
             </button>
           )}
-          <div ref={pinchContainerRef} style={{ touchAction: "pan-y", columnWidth: `${cellSize}px`, columnGap: "10px" }}>
-          {visiblePhotos.map((photo, i) => {
-            const isSelected = photo.is_favorite;
-            return (
-              <div
-                key={photo.id}
-                className="relative mb-2.5 block break-inside-avoid overflow-hidden"
-                style={{ background: "var(--gt-surface-soft)", borderRadius: "var(--gt-radius)" }}
-              >
-                <button
-                  onPointerDown={() => handlePointerDown(photo)}
-                  onPointerUp={clearLongPressTimer}
-                  onPointerLeave={clearLongPressTimer}
-                  onContextMenu={(e) => e.preventDefault()}
-                  onClick={() => handleTileClick(photo, i)}
-                  className="relative block w-full select-none"
-                  style={{ WebkitTouchCallout: "none" }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={optimizedImageUrl(photo.url, 640)}
-                    alt={photo.original_filename}
-                    className="w-full h-auto block"
-                    style={lightboxIndex !== i ? { viewTransitionName: `photo-${photo.id}` } : undefined}
-                  />
-                  {selectionMode && (
-                    <div
-                      className="absolute inset-0"
-                      style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent" }}
-                    />
-                  )}
-                </button>
-                {selectionMode && (
+          {theme.gridStyle === "grid" ? (
+            <div
+              ref={pinchContainerRef}
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(auto-fill, minmax(${cellSize}px, 1fr))`,
+                gap: "var(--gt-gap)",
+                touchAction: "pan-y",
+              }}
+            >
+              {visiblePhotos.map((photo, i) => {
+                const isSelected = photo.is_favorite;
+                return (
                   <div
-                    className={`absolute top-1.5 left-1.5 h-7 w-7 rounded-full flex items-center justify-center border-2 backdrop-blur-md pointer-events-none ${
-                      isSelected ? "border-amber-deep" : "border-white/70"
-                    }`}
-                    style={{ background: isSelected ? "var(--color-amber-deep)" : "rgba(255,255,255,0.25)" }}
+                    key={photo.id}
+                    className="relative aspect-square overflow-hidden"
+                    style={{ background: "var(--gt-surface-soft)", borderRadius: "var(--gt-photo-radius)" }}
                   >
-                    {isSelected && <CheckIcon />}
+                    <button
+                      onPointerDown={() => handlePointerDown(photo)}
+                      onPointerUp={clearLongPressTimer}
+                      onPointerLeave={clearLongPressTimer}
+                      onContextMenu={(e) => e.preventDefault()}
+                      onClick={() => handleTileClick(photo, i)}
+                      className="relative block w-full h-full select-none"
+                      style={{ WebkitTouchCallout: "none" }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={optimizedImageUrl(photo.url, 640)}
+                        alt={photo.original_filename}
+                        className="absolute inset-0 w-full h-full object-cover block"
+                        style={lightboxIndex !== i ? { viewTransitionName: `photo-${photo.id}` } : undefined}
+                      />
+                      {selectionMode && (
+                        <div className="absolute inset-0" style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent" }} />
+                      )}
+                    </button>
+                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} />
                   </div>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleFavorite(photo);
-                  }}
-                  className={`absolute top-1.5 right-1.5 h-8 w-8 rounded-full flex items-center justify-center backdrop-blur-md ${
-                    photo.is_favorite ? "bg-black/30" : "bg-white/20"
-                  } ${BTN_PRESS}`}
-                  aria-label="סמן כמועדף"
-                >
-                  <HeartIcon filled={photo.is_favorite} />
-                </button>
-              </div>
-            );
-          })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div ref={pinchContainerRef} style={{ touchAction: "pan-y", columnWidth: `${cellSize}px`, columnGap: "var(--gt-gap)" }}>
+              {visiblePhotos.map((photo, i) => {
+                const isSelected = photo.is_favorite;
+                const framed = theme.gridStyle === "framed";
+                return (
+                  <div
+                    key={photo.id}
+                    className="relative block break-inside-avoid overflow-hidden"
+                    style={{
+                      marginBottom: "var(--gt-gap)",
+                      background: "var(--gt-surface-soft)",
+                      borderRadius: "var(--gt-photo-radius)",
+                      ...(framed ? { padding: "8px", border: "1px solid var(--gt-border)" } : {}),
+                    }}
+                  >
+                    <button
+                      onPointerDown={() => handlePointerDown(photo)}
+                      onPointerUp={clearLongPressTimer}
+                      onPointerLeave={clearLongPressTimer}
+                      onContextMenu={(e) => e.preventDefault()}
+                      onClick={() => handleTileClick(photo, i)}
+                      className="relative block w-full select-none"
+                      style={{ WebkitTouchCallout: "none" }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={optimizedImageUrl(photo.url, 640)}
+                        alt={photo.original_filename}
+                        className="w-full h-auto block"
+                        style={{
+                          borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined,
+                          ...(lightboxIndex !== i ? { viewTransitionName: `photo-${photo.id}` } : undefined),
+                        }}
+                      />
+                      {selectionMode && (
+                        <div className="absolute inset-0" style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent", borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined }} />
+                      )}
+                    </button>
+                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} inset={framed ? 8 : 0} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
@@ -691,6 +725,49 @@ function DownloadIcon({ size = 22 }: { size?: number }) {
       <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
       <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
     </svg>
+  );
+}
+
+function PhotoTileOverlays({
+  photo,
+  selectionMode,
+  isSelected,
+  toggleFavorite,
+  inset = 0,
+}: {
+  photo: PhotoWithUrl;
+  selectionMode: boolean;
+  isSelected: boolean;
+  toggleFavorite: (photo: PhotoWithUrl) => void;
+  inset?: number;
+}) {
+  const offset = 6 + inset;
+  return (
+    <>
+      {selectionMode && (
+        <div
+          className={`absolute h-7 w-7 rounded-full flex items-center justify-center border-2 backdrop-blur-md pointer-events-none ${
+            isSelected ? "border-amber-deep" : "border-white/70"
+          }`}
+          style={{ top: offset, left: offset, background: isSelected ? "var(--color-amber-deep)" : "rgba(255,255,255,0.25)" }}
+        >
+          {isSelected && <CheckIcon />}
+        </div>
+      )}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleFavorite(photo);
+        }}
+        className={`absolute h-8 w-8 rounded-full flex items-center justify-center backdrop-blur-md ${
+          photo.is_favorite ? "bg-black/30" : "bg-white/20"
+        } ${BTN_PRESS}`}
+        style={{ top: offset, right: offset }}
+        aria-label="סמן כמועדף"
+      >
+        <HeartIcon filled={photo.is_favorite} />
+      </button>
+    </>
   );
 }
 
