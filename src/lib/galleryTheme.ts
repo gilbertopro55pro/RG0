@@ -36,3 +36,38 @@ export function galleryTitleStyle(theme: string): Record<string, string | number
       return { fontFamily: "var(--font-display)", fontWeight: 700 };
   }
 }
+
+export const COVER_TEXT_POSITIONS = [
+  { id: "above", label: "מעל התמונה" },
+  { id: "below", label: "מתחת לתמונה" },
+  { id: "center-left", label: "מרכז שמאל" },
+  { id: "center-right", label: "מרכז ימין" },
+] as const;
+
+export type CoverTextPosition = (typeof COVER_TEXT_POSITIONS)[number]["id"];
+
+export const COVER_SHAPES = [
+  { id: "banner", label: "באנר" },
+  { id: "rectangle", label: "מלבן" },
+  { id: "square", label: "ריבוע" },
+  { id: "circle", label: "עיגול" },
+] as const;
+
+export type CoverShape = (typeof COVER_SHAPES)[number]["id"];
+
+export function coverAspectRatio(shape: string): string {
+  switch (shape as CoverShape) {
+    case "banner":
+      return "3 / 1";
+    case "square":
+    case "circle":
+      return "1 / 1";
+    case "rectangle":
+    default:
+      return "16 / 9";
+  }
+}
+
+export function isOverlayPosition(position: string): boolean {
+  return position === "center-left" || position === "center-right";
+}

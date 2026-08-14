@@ -11,7 +11,8 @@ import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
-import { GALLERY_THEMES, GALLERY_PALETTES, paletteById, galleryTitleStyle } from "@/lib/galleryTheme";
+import { GALLERY_THEMES, GALLERY_PALETTES, COVER_TEXT_POSITIONS, COVER_SHAPES, paletteById, galleryTitleStyle } from "@/lib/galleryTheme";
+import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
 
@@ -143,6 +144,8 @@ export default function GalleryManageView({
   const [styleOpen, setStyleOpen] = useState(false);
   const [theme, setTheme] = useState(initialGallery.theme);
   const [palette, setPalette] = useState(initialGallery.palette);
+  const [coverTextPosition, setCoverTextPosition] = useState(initialGallery.cover_text_position);
+  const [coverShape, setCoverShape] = useState(initialGallery.cover_shape);
   const [savingStyle, setSavingStyle] = useState(false);
 
   const toggleSelect = (photoId: string) => {
@@ -622,7 +625,7 @@ export default function GalleryManageView({
 
   const saveStyle = async () => {
     setSavingStyle(true);
-    const patch = { theme, palette };
+    const patch = { theme, palette, cover_text_position: coverTextPosition, cover_shape: coverShape };
     const { error: updateError } = await supabase.from("galleries").update(patch).eq("id", gallery.id);
     setSavingStyle(false);
     if (updateError) {
@@ -645,10 +648,10 @@ export default function GalleryManageView({
         <Link href="/galleries" className="flex items-center gap-1 text-sm tracking-wide text-ink-soft">
           ← כל הגלריות
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setShowEditDetails(true)}
-            className="text-xs font-medium text-amber-deep underline"
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink ${BTN_PRESS}`}
           >
             עריכת פרטי הגלריה
           </button>
@@ -656,9 +659,11 @@ export default function GalleryManageView({
             onClick={() => {
               setTheme(gallery.theme);
               setPalette(gallery.palette);
+              setCoverTextPosition(gallery.cover_text_position);
+              setCoverShape(gallery.cover_shape);
               setStyleOpen(true);
             }}
-            className="text-xs font-medium text-amber-deep underline"
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-bg text-amber-deep ${BTN_PRESS}`}
           >
             עיצוב הגלריה
           </button>
@@ -1247,26 +1252,54 @@ export default function GalleryManageView({
           >
             <h2 className="text-lg font-bold font-display mb-4">עיצוב הגלריה</h2>
 
-            {/* Live preview — mirrors the public gallery's cover header with the current
-                selection, using a real photo when one exists so the preview isn't misleading. */}
-            <div
-              className="rounded-2xl overflow-hidden mb-5 border border-line"
-              style={{ background: paletteById(palette).bg }}
-            >
-              <div className="relative h-32 bg-chip">
-                {photos[0]?.url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={photos[0].url} alt="" className="w-full h-full object-cover" />
-                )}
-              </div>
-              <div className="p-3.5">
-                <div className="text-base mb-0.5" style={{ ...galleryTitleStyle(theme), color: paletteById(palette).ink }}>
-                  {clientName || gallery.title}
-                </div>
-                <div className="text-xs" style={{ color: paletteById(palette).ink, opacity: 0.7 }}>
-                  {eventDate ? new Date(eventDate).toLocaleDateString("he-IL") : ""}
-                </div>
-              </div>
+            {/* Live preview — the exact same component the real public gallery page renders,
+                so what photographers see here is what clients actually get. */}
+            <div className="rounded-2xl overflow-hidden mb-5 border border-line p-3.5" style={{ background: paletteById(palette).bg }}>
+              <GalleryCoverBanner
+                photoUrl={(photos.find((p) => p.id === gallery.cover_photo_id) ?? photos[0])?.url ?? null}
+                title={clientName || gallery.title}
+                dateLabel={eventDate ? new Date(eventDate).toLocaleDateString("he-IL") : null}
+                theme={theme}
+                textPosition={coverTextPosition}
+                shape={coverShape}
+                palette={palette}
+              />
+            </div>
+
+            <p className="text-xs text-ink-soft mb-2.5">מיקום הכיתוב</p>
+            <div className="grid grid-cols-2 gap-2 mb-5">
+              {COVER_TEXT_POSITIONS.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setCoverTextPosition(p.id)}
+                  className="rounded-lg px-3 py-2.5 text-sm font-semibold border"
+                  style={{
+                    borderColor: coverTextPosition === p.id ? "var(--color-amber-deep)" : "var(--color-line)",
+                    background: coverTextPosition === p.id ? "var(--color-amber-bg)" : "var(--color-card)",
+                    color: coverTextPosition === p.id ? "var(--color-amber-deep)" : "var(--color-ink)",
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            <p className="text-xs text-ink-soft mb-2.5">צורת התמונה</p>
+            <div className="grid grid-cols-2 gap-2 mb-5">
+              {COVER_SHAPES.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setCoverShape(s.id)}
+                  className="rounded-lg px-3 py-2.5 text-sm font-semibold border"
+                  style={{
+                    borderColor: coverShape === s.id ? "var(--color-amber-deep)" : "var(--color-line)",
+                    background: coverShape === s.id ? "var(--color-amber-bg)" : "var(--color-card)",
+                    color: coverShape === s.id ? "var(--color-amber-deep)" : "var(--color-ink)",
+                  }}
+                >
+                  {s.label}
+                </button>
+              ))}
             </div>
 
             <p className="text-xs text-ink-soft mb-2.5">סגנון</p>

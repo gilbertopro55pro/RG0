@@ -1,8 +1,9 @@
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
 import PublicGalleryView from "@/components/PublicGalleryView";
+import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import { getSignedDownloadUrls } from "@/lib/storage";
-import { paletteById, galleryTitleStyle } from "@/lib/galleryTheme";
+import { paletteById } from "@/lib/galleryTheme";
 
 export default async function PublicGalleryPage({
   params,
@@ -78,26 +79,27 @@ export default async function PublicGalleryPage({
   }
 
   const palette = paletteById(gallery.palette);
+  const coverPhoto = gallery.cover_photo_id ? photosWithUrls.find((p) => p.id === gallery.cover_photo_id) : null;
+  const dateLabel = event
+    ? `${event.client_name} · ${new Date(event.event_date).toLocaleDateString("he-IL")}`
+    : gallery.shoot_date
+      ? new Date(gallery.shoot_date).toLocaleDateString("he-IL")
+      : null;
 
   return (
     <div
       className="max-w-2xl lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full min-h-screen"
       style={{ background: palette.bg }}
     >
-      <h1 className="text-[22px] mb-1" style={{ ...galleryTitleStyle(gallery.theme), color: palette.ink }}>
-        {gallery.title}
-      </h1>
-      {event ? (
-        <p className="text-xs mb-5" style={{ color: palette.ink, opacity: 0.7 }}>
-          {event.client_name} · {new Date(event.event_date).toLocaleDateString("he-IL")}
-        </p>
-      ) : (
-        gallery.shoot_date && (
-          <p className="text-xs mb-5" style={{ color: palette.ink, opacity: 0.7 }}>
-            {new Date(gallery.shoot_date).toLocaleDateString("he-IL")}
-          </p>
-        )
-      )}
+      <GalleryCoverBanner
+        photoUrl={coverPhoto?.url ?? null}
+        title={gallery.title}
+        dateLabel={dateLabel}
+        theme={gallery.theme}
+        textPosition={gallery.cover_text_position}
+        shape={gallery.cover_shape}
+        palette={gallery.palette}
+      />
 
       <PublicGalleryView
         token={token}

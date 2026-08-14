@@ -187,6 +187,8 @@ export type GalleryRow = {
   reminder_sent_at: string | null;
   theme: string;
   palette: string;
+  cover_text_position: string;
+  cover_shape: string;
   created_at: string;
 };
 

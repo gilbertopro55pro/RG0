@@ -295,30 +295,25 @@ export default function PublicGalleryView({
               {zipping ? "מכין הורדה..." : `הורדת כל התמונות (${photos.length})`}
             </button>
           )}
-          <div
-            ref={pinchContainerRef}
-            className="grid gap-2.5"
-            style={{ touchAction: "pan-y", gridTemplateColumns: `repeat(auto-fill, minmax(${cellSize}px, 1fr))` }}
-          >
+          <div ref={pinchContainerRef} style={{ touchAction: "pan-y", columnWidth: `${cellSize}px`, columnGap: "10px" }}>
           {visiblePhotos.map((photo, i) => {
             const isSelected = photo.is_favorite;
             return (
-              <div key={photo.id} className="relative aspect-square rounded-xl overflow-hidden bg-line">
+              <div key={photo.id} className="relative mb-2.5 block break-inside-avoid rounded-xl overflow-hidden bg-line">
                 <button
                   onPointerDown={() => handlePointerDown(photo)}
                   onPointerUp={clearLongPressTimer}
                   onPointerLeave={clearLongPressTimer}
                   onContextMenu={(e) => e.preventDefault()}
                   onClick={() => handleTileClick(photo, i)}
-                  className="relative block w-full h-full select-none"
+                  className="relative block w-full select-none"
                   style={{ WebkitTouchCallout: "none" }}
                 >
-                  <Image
-                    src={photo.url}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={optimizedImageUrl(photo.url, 640)}
                     alt={photo.original_filename}
-                    fill
-                    sizes="(max-width: 768px) 50vw, 25vw"
-                    className="object-cover"
+                    className="w-full h-auto block"
                     style={lightboxIndex !== i ? { viewTransitionName: `photo-${photo.id}` } : undefined}
                   />
                   {selectionMode && (
