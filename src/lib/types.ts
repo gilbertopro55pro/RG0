@@ -45,6 +45,7 @@ export type EventRow = {
   album_design_pdf_path: string | null;
   album_design_pdf_filename: string | null;
   resolution_note: string | null;
+  notes: string | null;
   created_at: string;
 };
 

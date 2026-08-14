@@ -37,6 +37,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     eventEndTime,
     eventLocation,
     arrivalTime,
+    notes,
     allowDoubleBooking,
   }: {
     clientName: string;
@@ -46,6 +47,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     eventEndTime: string | null;
     eventLocation: string;
     arrivalTime: string;
+    notes: string;
     allowDoubleBooking?: boolean;
   } = body;
 
@@ -96,6 +98,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       event_end_time: eventEndTime || null,
       event_location: eventLocation || null,
       arrival_time: arrivalTime || null,
+      notes: notes || null,
     })
     .eq("id", eventId)
     .select()

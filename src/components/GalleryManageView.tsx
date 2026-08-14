@@ -115,6 +115,11 @@ export default function GalleryManageView({
   const [deleteSelectedConfirmOpen, setDeleteSelectedConfirmOpen] = useState(false);
   const [deleteSelectedConfirmClosing, setDeleteSelectedConfirmClosing] = useState(false);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareView, setShareView] = useState<"main" | "qr">("main");
+  const [shareSelectedFolders, setShareSelectedFolders] = useState<Set<string>>(new Set());
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const NO_FOLDER_KEY = "none";
 
   const toggleSelect = (photoId: string) => {
     setSelectedIds((prev) => {
@@ -474,6 +479,71 @@ export default function GalleryManageView({
     await navigator.clipboard.writeText(`${window.location.origin}/gallery/${gallery.access_token}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const hasUnfoldered = photos.some((p) => !p.folder_id);
+  const allShareOptionKeys = [...folders.map((f) => f.id), ...(hasUnfoldered ? [NO_FOLDER_KEY] : [])];
+
+  const openShare = () => {
+    setShareSelectedFolders(new Set(allShareOptionKeys));
+    setShareView("main");
+    setQrDataUrl(null);
+    setShareOpen(true);
+  };
+
+  const toggleShareFolder = (key: string) => {
+    setShareSelectedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const showFolderPicker = folders.length > 0;
+  const shareDisabled = showFolderPicker && shareSelectedFolders.size === 0;
+
+  const buildShareUrl = () => {
+    const base = `${window.location.origin}/gallery/${gallery.access_token}`;
+    if (!showFolderPicker) return base;
+    const allSelected = allShareOptionKeys.every((k) => shareSelectedFolders.has(k));
+    if (allSelected) return base;
+    return `${base}?folders=${[...shareSelectedFolders].join(",")}`;
+  };
+
+  const buildShareMessage = (url: string) => {
+    const name = clientName ? `${clientName}, ` : "";
+    return `${name}הגלריה מהאירוע שלכם מוכנה לצפייה ובחירת תמונות 📸\n${url}`;
+  };
+
+  const shareViaWhatsapp = () => {
+    const text = buildShareMessage(buildShareUrl());
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    setShareOpen(false);
+  };
+
+  const shareViaQr = async () => {
+    const QRCode = (await import("qrcode")).default;
+    const dataUrl = await QRCode.toDataURL(buildShareUrl(), { width: 280, margin: 1 });
+    setQrDataUrl(dataUrl);
+    setShareView("qr");
+  };
+
+  const shareViaOther = async () => {
+    const url = buildShareUrl();
+    const text = buildShareMessage(url);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "גלריה מהאירוע", text, url });
+      } catch {
+        // user canceled the native share sheet — nothing to do
+      }
+    } else {
+      await navigator.clipboard.writeText(text);
+      setShareStatus("הקישור הועתק ✓");
+      setTimeout(() => setShareStatus(null), 2000);
+    }
+    setShareOpen(false);
   };
 
   const saveDetails = async () => {
@@ -840,12 +910,20 @@ export default function GalleryManageView({
         )}
 
         {gallery.published && (
-          <button
-            onClick={copyLink}
-            className={`w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink ${BTN_PRESS}`}
-          >
-            {copied ? "הקישור הועתק ✓" : "העתקת קישור לגלריה"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={openShare}
+              className={`flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink ${BTN_PRESS}`}
+            >
+              שיתוף
+            </button>
+            <button
+              onClick={copyLink}
+              className={`shrink-0 rounded-lg px-3.5 py-2.5 text-xs font-semibold bg-white border border-line text-ink-soft ${BTN_PRESS}`}
+            >
+              {copied ? "✓ הועתק" : "העתקת קישור"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -1077,6 +1155,103 @@ export default function GalleryManageView({
           onSave={saveDetails}
           onClose={() => setShowEditDetails(false)}
         />
+      )}
+
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          onClick={() => setShareOpen(false)}
+        >
+          <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            {shareView === "main" ? (
+              <>
+                <h2 className="text-lg font-bold font-display mb-4">שיתוף הגלריה</h2>
+
+                {showFolderPicker && (
+                  <div className="mb-5">
+                    <p className="text-xs text-ink-soft mb-2.5">אילו לשוניות לשתף?</p>
+                    <div className="space-y-1.5">
+                      {folders.map((folder) => (
+                        <label
+                          key={folder.id}
+                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={shareSelectedFolders.has(folder.id)}
+                            onChange={() => toggleShareFolder(folder.id)}
+                          />
+                          {folder.name}
+                        </label>
+                      ))}
+                      {hasUnfoldered && (
+                        <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
+                          <input
+                            type="checkbox"
+                            checked={shareSelectedFolders.has(NO_FOLDER_KEY)}
+                            onChange={() => toggleShareFolder(NO_FOLDER_KEY)}
+                          />
+                          כללי (ללא לשונית)
+                        </label>
+                      )}
+                    </div>
+                    {shareDisabled && <p className="text-xs text-rose mt-2">יש לבחור לפחות לשונית אחת לשיתוף</p>}
+                  </div>
+                )}
+
+                <div className="space-y-2.5">
+                  <button
+                    onClick={shareViaWhatsapp}
+                    disabled={shareDisabled}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-sage-bg text-sage disabled:opacity-40"
+                  >
+                    וואטסאפ
+                  </button>
+                  <button
+                    onClick={shareViaQr}
+                    disabled={shareDisabled}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink disabled:opacity-40"
+                  >
+                    קוד QR
+                  </button>
+                  <button
+                    onClick={shareViaOther}
+                    disabled={shareDisabled}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink disabled:opacity-40"
+                  >
+                    אחר
+                  </button>
+                </div>
+                <button onClick={() => setShareOpen(false)} className="w-full text-center mt-4 text-xs text-ink-soft">
+                  ביטול
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-bold font-display mb-4">קוד QR לגלריה</h2>
+                {qrDataUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={qrDataUrl} alt="קוד QR לגלריה" className="w-full rounded-2xl mb-4" />
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShareView("main")}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
+                  >
+                    חזרה
+                  </button>
+                  <button
+                    onClick={() => setShareOpen(false)}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white"
+                  >
+                    סגירה
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

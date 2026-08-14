@@ -375,6 +375,12 @@ export default function EventDetailView({
         <NavAppSheet location={event.event_location} onClose={() => setShowNav(false)} />
       )}
 
+      {event.notes && (
+        <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-[#F1EFE9] text-ink-soft whitespace-pre-wrap">
+          📝 {event.notes}
+        </div>
+      )}
+
       {error && <p className="text-xs text-rose mb-3">{error}</p>}
 
       {isOwner && payments && (

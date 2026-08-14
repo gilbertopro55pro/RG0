@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     eventEndTime,
     eventLocation,
     arrivalTime,
+    notes,
     deposit,
     balance,
     paymentReminderDate,
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
     eventEndTime: string | null;
     eventLocation: string;
     arrivalTime: string;
+    notes: string;
     deposit: number;
     balance: number;
     paymentReminderDate: string | null;
@@ -122,6 +124,7 @@ export async function POST(request: Request) {
       event_end_time: eventEndTime || null,
       event_location: eventLocation || null,
       arrival_time: arrivalTime || null,
+      notes: notes || null,
     })
     .select()
     .single();

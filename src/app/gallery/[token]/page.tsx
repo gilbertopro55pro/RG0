@@ -3,8 +3,15 @@ import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/
 import PublicGalleryView from "@/components/PublicGalleryView";
 import { getSignedDownloadUrls } from "@/lib/storage";
 
-export default async function PublicGalleryPage({ params }: { params: Promise<{ token: string }> }) {
+export default async function PublicGalleryPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ folders?: string }>;
+}) {
   const { token } = await params;
+  const { folders: foldersParam } = await searchParams;
   const supabase = createServiceRoleClient();
 
   const { data: gallery } = await supabase
@@ -30,7 +37,7 @@ export default async function PublicGalleryPage({ params }: { params: Promise<{ 
     );
   }
 
-  const [{ data: event }, { data: photos }, { data: folders }] = await Promise.all([
+  const [{ data: event }, { data: photosRaw }, { data: foldersRaw }] = await Promise.all([
     gallery.event_id
       ? supabase.from("events").select("client_name, event_date").eq("id", gallery.event_id).maybeSingle<Pick<EventRow, "client_name" | "event_date">>()
       : Promise.resolve({ data: null }),
@@ -47,6 +54,17 @@ export default async function PublicGalleryPage({ params }: { params: Promise<{ 
       .order("sort_order", { ascending: true })
       .returns<GalleryFolderRow[]>(),
   ]);
+
+  // A share link can restrict the visible tabs (see the share modal in GalleryManageView) —
+  // filter folders/photos down before signing URLs, so excluded photos never even get a
+  // signed URL generated or sent to the client.
+  let folders = foldersRaw ?? [];
+  let photos = photosRaw ?? [];
+  if (foldersParam) {
+    const selected = new Set(foldersParam.split(","));
+    folders = folders.filter((f) => selected.has(f.id));
+    photos = photos.filter((p) => (p.folder_id ? selected.has(p.folder_id) : selected.has("none")));
+  }
 
   // One batched request for every signed URL instead of N individual round-trips — this was the
   // main reason gallery pages felt slow to load with a lot of photos. Downloads fetch their own

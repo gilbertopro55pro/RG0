@@ -47,6 +47,7 @@ export default function NewEventModal({
   const [eventEndTime, setEventEndTime] = useState("");
   const [eventLocation, setEventLocation] = useState("");
   const [arrivalTime, setArrivalTime] = useState("");
+  const [notes, setNotes] = useState("");
   const [deposit, setDeposit] = useState("");
   const [balance, setBalance] = useState("");
   const [wantsPaymentReminder, setWantsPaymentReminder] = useState(false);
@@ -109,6 +110,7 @@ export default function NewEventModal({
         eventEndTime: eventEndTime || null,
         eventLocation,
         arrivalTime,
+        notes,
         deposit: Number(deposit) || 0,
         balance: Number(balance) || 0,
         paymentReminderDate: wantsPaymentReminder ? paymentReminderDate : null,
@@ -299,6 +301,16 @@ export default function NewEventModal({
                   value={arrivalTime}
                   onChange={(e) => setArrivalTime(e.target.value)}
                   className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1 text-ink-soft">הערות</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none"
+                  placeholder="כל מידע נוסף שכדאי לזכור על האירוע"
                 />
               </div>
 

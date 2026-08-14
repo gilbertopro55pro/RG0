@@ -22,6 +22,7 @@ export default function EditEventModal({
   const [eventEndTime, setEventEndTime] = useState(event.event_end_time ?? "");
   const [eventLocation, setEventLocation] = useState(event.event_location ?? "");
   const [arrivalTime, setArrivalTime] = useState(event.arrival_time ?? "");
+  const [notes, setNotes] = useState(event.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateConflict, setDateConflict] = useState(false);
@@ -46,6 +47,7 @@ export default function EditEventModal({
         eventEndTime: eventEndTime || null,
         eventLocation,
         arrivalTime,
+        notes,
         allowDoubleBooking,
       }),
     });
@@ -165,6 +167,16 @@ export default function EditEventModal({
               value={arrivalTime}
               onChange={(e) => setArrivalTime(e.target.value)}
               className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+            />
+          </div>
+          <div>
+            <label className="text-xs block mb-1 text-ink-soft">הערות</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none"
+              placeholder="כל מידע נוסף שכדאי לזכור על האירוע"
             />
           </div>
           {error && <p className="text-xs text-rose">{error}</p>}
