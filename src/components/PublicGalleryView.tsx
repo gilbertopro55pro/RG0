@@ -223,7 +223,10 @@ export default function PublicGalleryView({
   return (
     <>
       {!hintDismissed && (
-        <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-amber-bg text-amber-deep">
+        <div
+          className="flex items-start gap-2 px-3.5 py-2.5 mb-4 text-xs"
+          style={{ background: "var(--gt-surface-soft)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
+        >
           <span className="flex-1">
             ❤️ לחיצה לתמונה בגודל מלא · לחיצה ארוכה לבחירה מרובה · לחיצה כפולה לשיתוף/הורדה של תמונה בודדת
           </span>
@@ -234,7 +237,10 @@ export default function PublicGalleryView({
       )}
 
       {submitted && (
-        <div className="rounded-xl px-3.5 py-2.5 mb-4 text-sm bg-sage-bg text-sage font-medium text-center">
+        <div
+          className="px-3.5 py-2.5 mb-4 text-sm font-medium text-center"
+          style={{ background: "var(--gt-surface-soft)", color: "var(--gt-accent)", borderRadius: "var(--gt-radius)" }}
+        >
           תודה! הבחירה שלכם ({favoriteCount} תמונות) נשלחה לצלם/ת ✓ אפשר עדיין לשנות ולעדכן בכל שלב.
         </div>
       )}
@@ -245,8 +251,8 @@ export default function PublicGalleryView({
             onClick={() => setActiveFolderId(null)}
             className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
             style={{
-              background: activeFolderId === null ? "var(--color-ink)" : "var(--color-chip)",
-              color: activeFolderId === null ? "#fff" : "var(--color-ink-soft)",
+              background: activeFolderId === null ? "var(--gt-accent)" : "var(--gt-surface-soft)",
+              color: activeFolderId === null ? "var(--gt-accent-ink)" : "var(--gt-ink-soft)",
             }}
           >
             הכל
@@ -257,8 +263,8 @@ export default function PublicGalleryView({
               onClick={() => setActiveFolderId(folder.id)}
               className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
               style={{
-                background: activeFolderId === folder.id ? "var(--color-ink)" : "var(--color-chip)",
-                color: activeFolderId === folder.id ? "#fff" : "var(--color-ink-soft)",
+                background: activeFolderId === folder.id ? "var(--gt-accent)" : "var(--gt-surface-soft)",
+                color: activeFolderId === folder.id ? "var(--gt-accent-ink)" : "var(--gt-ink-soft)",
               }}
             >
               {folder.name}
@@ -268,11 +274,11 @@ export default function PublicGalleryView({
       )}
 
       {visiblePhotos.length === 0 ? (
-        <p className="text-sm text-ink-soft text-center py-16">אין עדיין תמונות בגלריה.</p>
+        <p className="text-sm text-center py-16" style={{ color: "var(--gt-ink-soft)" }}>אין עדיין תמונות בגלריה.</p>
       ) : (
         <>
           <div className="flex items-center gap-2 mb-3">
-            <IconGallery className="h-3 w-3 shrink-0 text-ink-soft" />
+            <IconGallery className="h-3 w-3 shrink-0 text-[var(--gt-ink-soft)]" />
             <input
               type="range"
               min={CELL_SIZE_MIN}
@@ -280,16 +286,18 @@ export default function PublicGalleryView({
               step={1}
               value={cellSize}
               onChange={(e) => setCellSize(Number(e.target.value))}
-              className="w-full accent-[var(--color-amber-deep)]"
+              className="w-full"
+              style={{ accentColor: "var(--gt-accent)" }}
               aria-label="גודל תמונות בגלריה"
             />
-            <IconGallery className="h-5 w-5 shrink-0 text-ink-soft" />
+            <IconGallery className="h-5 w-5 shrink-0 text-[var(--gt-ink-soft)]" />
           </div>
           {allowDownloads && (
             <button
               onClick={() => downloadZip(photos.map((p) => p.id))}
               disabled={zipping}
-              className={`w-full flex items-center justify-center gap-2 rounded-xl py-2.5 mb-4 text-sm font-semibold bg-card border border-line shadow-card disabled:opacity-60 ${BTN_PRESS}`}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 mb-4 text-sm font-semibold border disabled:opacity-60 ${BTN_PRESS}`}
+              style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
             >
               <DownloadIcon size={16} />
               {zipping ? "מכין הורדה..." : `הורדת כל התמונות (${photos.length})`}
@@ -299,7 +307,11 @@ export default function PublicGalleryView({
           {visiblePhotos.map((photo, i) => {
             const isSelected = photo.is_favorite;
             return (
-              <div key={photo.id} className="relative mb-2.5 block break-inside-avoid rounded-xl overflow-hidden bg-line">
+              <div
+                key={photo.id}
+                className="relative mb-2.5 block break-inside-avoid overflow-hidden"
+                style={{ background: "var(--gt-surface-soft)", borderRadius: "var(--gt-radius)" }}
+              >
                 <button
                   onPointerDown={() => handlePointerDown(photo)}
                   onPointerUp={clearLongPressTimer}
@@ -359,7 +371,10 @@ export default function PublicGalleryView({
           favorites count instead of a separate "selected" count. Sized up with bigger text on
           both mobile and desktop so it can't be missed. */}
       {(favoriteCount > 0 || selectionMode) && (
-        <div className="fixed bottom-3 right-3 left-3 md:left-auto z-40 flex flex-col gap-2 rounded-2xl px-4 py-3 md:py-3.5 md:min-w-[240px] bg-white shadow-sheet border border-line">
+        <div
+          className="fixed bottom-3 right-3 left-3 md:left-auto z-40 flex flex-col gap-2 rounded-2xl px-4 py-3 md:py-3.5 md:min-w-[240px] shadow-sheet border"
+          style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)" }}
+        >
           <button
             onClick={() => setFavoritesPanelOpen(true)}
             className={`flex items-center gap-2 text-sm md:text-base font-bold ${BTN_PRESS}`}
@@ -372,7 +387,8 @@ export default function PublicGalleryView({
             <button
               onClick={() => setDownloadSelectedConfirmOpen(true)}
               disabled={zipping}
-              className={`w-full flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm md:text-base font-semibold bg-white border border-line text-ink disabled:opacity-60 ${BTN_PRESS}`}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 text-sm md:text-base font-semibold border disabled:opacity-60 ${BTN_PRESS}`}
+              style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
             >
               <DownloadIcon size={16} />
               הורדת התמונות שנבחרו
@@ -382,7 +398,8 @@ export default function PublicGalleryView({
           {!selectionMode && !submitted && (
             <button
               onClick={() => setConfirmOpen(true)}
-              className={`w-full rounded-lg py-2.5 text-sm md:text-base font-semibold bg-amber-deep text-white ${BTN_PRESS}`}
+              className={`w-full py-2.5 text-sm md:text-base font-semibold ${BTN_PRESS}`}
+              style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
             >
               סיימת לבחור
             </button>
@@ -391,19 +408,21 @@ export default function PublicGalleryView({
             <button
               onClick={saveFavorites}
               disabled={saving}
-              className={`w-full rounded-lg py-2.5 text-sm md:text-base font-semibold bg-amber-deep text-white disabled:opacity-60 ${BTN_PRESS}`}
+              className={`w-full py-2.5 text-sm md:text-base font-semibold disabled:opacity-60 ${BTN_PRESS}`}
+              style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
             >
               {saving ? "שומר..." : "עדכון הבחירה"}
             </button>
           )}
           {!selectionMode && submitted && !hasUnsavedChanges && (
-            <span className="text-xs md:text-sm font-semibold text-sage">נשמר ✓</span>
+            <span className="text-xs md:text-sm font-semibold" style={{ color: "var(--gt-accent)" }}>נשמר ✓</span>
           )}
 
           {selectionMode && (
             <button
               onClick={exitSelectionMode}
-              className={`w-full text-xs md:text-sm font-semibold text-ink-soft ${BTN_PRESS}`}
+              className={`w-full text-xs md:text-sm font-semibold ${BTN_PRESS}`}
+              style={{ color: "var(--gt-ink-soft)" }}
             >
               סיום בחירה מרובה
             </button>
@@ -419,24 +438,26 @@ export default function PublicGalleryView({
           onClick={() => setFavoritesPanelOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[80vh] overflow-y-auto"
+            className="w-full max-w-md rounded-t-3xl p-5 pb-8 shadow-sheet max-h-[80vh] overflow-y-auto"
+            style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold font-display">התמונות שבחרתם ({favoriteCount})</h2>
               <button
                 onClick={() => setFavoritesPanelOpen(false)}
-                className={`h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line ${BTN_PRESS}`}
+                className={`h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
+                style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
               >
                 ✕
               </button>
             </div>
             {favorites.length === 0 ? (
-              <p className="text-sm text-ink-soft text-center py-8">עדיין לא נבחרו תמונות.</p>
+              <p className="text-sm text-center py-8" style={{ color: "var(--gt-ink-soft)" }}>עדיין לא נבחרו תמונות.</p>
             ) : (
               <div className="grid grid-cols-3 gap-1.5 mb-4">
                 {favorites.map((photo) => (
-                  <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-line">
+                  <div key={photo.id} className="relative aspect-square overflow-hidden" style={{ background: "var(--gt-surface-soft)", borderRadius: "var(--gt-radius)" }}>
                     <Image src={photo.url} alt={photo.original_filename} fill sizes="33vw" className="object-cover" />
                   </div>
                 ))}
@@ -445,7 +466,8 @@ export default function PublicGalleryView({
             {!submitted ? (
               <button
                 onClick={() => setConfirmOpen(true)}
-                className={`w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white ${BTN_PRESS}`}
+                className={`w-full py-3 text-sm font-semibold ${BTN_PRESS}`}
+                style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
               >
                 סיימת לבחור
               </button>
@@ -453,7 +475,8 @@ export default function PublicGalleryView({
               <button
                 onClick={saveFavorites}
                 disabled={saving}
-                className={`w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60 ${BTN_PRESS}`}
+                className={`w-full py-3 text-sm font-semibold disabled:opacity-60 ${BTN_PRESS}`}
+                style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
               >
                 {saving ? "שומר..." : "עדכון הבחירה"}
               </button>
@@ -470,24 +493,27 @@ export default function PublicGalleryView({
           onClick={() => setConfirmOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet"
+            className="w-full max-w-md rounded-t-3xl p-5 pb-8 shadow-sheet"
+            style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-bold mb-2 font-display">לאשר את הבחירה?</h2>
-            <p className="text-sm text-ink-soft mb-5">
+            <p className="text-sm mb-5" style={{ color: "var(--gt-ink-soft)" }}>
               נבחרו {favoriteCount} תמונות. הבחירה תישלח לצלם/ת — ותמיד אפשר לחזור ולעדכן אותה אחר כך.
             </p>
             <div className="flex gap-2">
               <button
                 onClick={confirmSelection}
                 disabled={submitting}
-                className={`flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60 ${BTN_PRESS}`}
+                className={`flex-1 py-3 text-sm font-semibold disabled:opacity-60 ${BTN_PRESS}`}
+                style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
               >
                 {submitting ? "שולח..." : "כן, זו הבחירה הסופית"}
               </button>
               <button
                 onClick={() => setConfirmOpen(false)}
-                className={`flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft ${BTN_PRESS}`}
+                className={`flex-1 py-3 text-sm font-semibold border ${BTN_PRESS}`}
+                style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)", borderRadius: "var(--gt-radius)" }}
               >
                 חזרה
               </button>
@@ -504,11 +530,12 @@ export default function PublicGalleryView({
           onClick={() => setDownloadSelectedConfirmOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet"
+            className="w-full max-w-md rounded-t-3xl p-5 pb-8 shadow-sheet"
+            style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-bold mb-2 font-display">להוריד את התמונות המסומנות?</h2>
-            <p className="text-sm text-ink-soft mb-5">
+            <p className="text-sm mb-5" style={{ color: "var(--gt-ink-soft)" }}>
               יורדו {favoriteCount} תמונות כקובץ ZIP אחד.
             </p>
             <div className="flex gap-2">
@@ -518,13 +545,15 @@ export default function PublicGalleryView({
                   await downloadZip([...currentFavoriteIds]);
                 }}
                 disabled={zipping}
-                className={`flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60 ${BTN_PRESS}`}
+                className={`flex-1 py-3 text-sm font-semibold disabled:opacity-60 ${BTN_PRESS}`}
+                style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
               >
                 {zipping ? "מכין הורדה..." : "כן, הורד"}
               </button>
               <button
                 onClick={() => setDownloadSelectedConfirmOpen(false)}
-                className={`flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft ${BTN_PRESS}`}
+                className={`flex-1 py-3 text-sm font-semibold border ${BTN_PRESS}`}
+                style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)", borderRadius: "var(--gt-radius)" }}
               >
                 ביטול
               </button>
@@ -541,14 +570,16 @@ export default function PublicGalleryView({
           onClick={() => setShareMenuPhoto(null)}
         >
           <div
-            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet"
+            className="w-full max-w-md rounded-t-3xl p-5 pb-8 shadow-sheet"
+            style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold font-display">אפשרויות תמונה</h2>
               <button
                 onClick={() => setShareMenuPhoto(null)}
-                className={`h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line ${BTN_PRESS}`}
+                className={`h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
+                style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
               >
                 ✕
               </button>
@@ -556,7 +587,8 @@ export default function PublicGalleryView({
             <div className={`grid gap-3 ${allowDownloads ? "grid-cols-2" : "grid-cols-1"}`}>
               <button
                 onClick={() => sharePhoto(shareMenuPhoto)}
-                className={`flex flex-col items-center gap-2 rounded-2xl py-5 bg-card border border-line shadow-card ${BTN_PRESS}`}
+                className={`flex flex-col items-center gap-2 rounded-2xl py-5 border shadow-card ${BTN_PRESS}`}
+                style={{ background: "var(--gt-surface-soft)", borderColor: "var(--gt-border)" }}
               >
                 <ShareIcon />
                 <span className="text-sm font-semibold">שיתוף</span>
@@ -567,7 +599,8 @@ export default function PublicGalleryView({
                     downloadPhoto(shareMenuPhoto);
                     setShareMenuPhoto(null);
                   }}
-                  className={`flex flex-col items-center gap-2 rounded-2xl py-5 bg-card border border-line shadow-card ${BTN_PRESS}`}
+                  className={`flex flex-col items-center gap-2 rounded-2xl py-5 border shadow-card ${BTN_PRESS}`}
+                  style={{ background: "var(--gt-surface-soft)", borderColor: "var(--gt-border)" }}
                 >
                   <DownloadIcon />
                   <span className="text-sm font-semibold">הורדה</span>
@@ -575,7 +608,7 @@ export default function PublicGalleryView({
               )}
             </div>
             {shareFeedback && (
-              <p className="text-xs text-sage text-center mt-3 font-medium">{shareFeedback}</p>
+              <p className="text-xs text-center mt-3 font-medium" style={{ color: "var(--gt-accent)" }}>{shareFeedback}</p>
             )}
           </div>
         </div>
@@ -645,7 +678,7 @@ export default function PublicGalleryView({
 
 function ShareIcon({ size = 22 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--color-ink)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--gt-ink)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 15V3m0 0l-4 4m4-4l4 4" />
       <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
     </svg>
@@ -654,7 +687,7 @@ function ShareIcon({ size = 22 }: { size?: number }) {
 
 function DownloadIcon({ size = 22 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--color-ink)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--gt-ink)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
       <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
     </svg>

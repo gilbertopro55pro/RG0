@@ -1,4 +1,4 @@
-import { coverAspectRatio, galleryTitleStyle, isOverlayPosition, paletteById } from "@/lib/galleryTheme";
+import { coverAspectRatio, galleryTitleStyle, isOverlayPosition } from "@/lib/galleryTheme";
 
 export default function GalleryCoverBanner({
   photoUrl,
@@ -7,7 +7,6 @@ export default function GalleryCoverBanner({
   theme,
   textPosition,
   shape,
-  palette,
 }: {
   photoUrl: string | null;
   title: string;
@@ -15,15 +14,13 @@ export default function GalleryCoverBanner({
   theme: string;
   textPosition: string;
   shape: string;
-  palette: string;
 }) {
-  const pal = paletteById(palette);
   const overlay = isOverlayPosition(textPosition);
   const isCircle = shape === "circle";
   const align = textPosition === "center-right" ? "flex-end" : "flex-start";
 
   const textBlock = (
-    <div style={{ color: overlay ? "#ffffff" : pal.ink }}>
+    <div style={{ color: overlay ? "#ffffff" : "var(--gt-ink)" }}>
       <div className="text-xl" style={galleryTitleStyle(theme)}>
         {title}
       </div>
@@ -37,12 +34,13 @@ export default function GalleryCoverBanner({
 
   const image = photoUrl ? (
     <div
-      className="relative overflow-hidden bg-chip"
+      className="relative overflow-hidden"
       style={{
         aspectRatio: coverAspectRatio(shape),
-        borderRadius: isCircle ? "50%" : "20px",
+        borderRadius: isCircle ? "50%" : "var(--gt-radius)",
         width: isCircle ? "min(60%, 260px)" : "100%",
         margin: isCircle ? "0 auto" : undefined,
+        background: "var(--gt-surface-soft)",
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}

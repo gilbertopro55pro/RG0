@@ -11,7 +11,7 @@ import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
-import { GALLERY_THEMES, GALLERY_PALETTES, COVER_TEXT_POSITIONS, COVER_SHAPES, paletteById, galleryTitleStyle } from "@/lib/galleryTheme";
+import { GALLERY_THEMES, COVER_TEXT_POSITIONS, COVER_SHAPES, galleryThemeById, galleryThemeVars, galleryTitleStyle, galleryFont } from "@/lib/galleryTheme";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
@@ -143,7 +143,6 @@ export default function GalleryManageView({
   const NO_FOLDER_KEY = "none";
   const [styleOpen, setStyleOpen] = useState(false);
   const [theme, setTheme] = useState(initialGallery.theme);
-  const [palette, setPalette] = useState(initialGallery.palette);
   const [coverTextPosition, setCoverTextPosition] = useState(initialGallery.cover_text_position);
   const [coverShape, setCoverShape] = useState(initialGallery.cover_shape);
   const [savingStyle, setSavingStyle] = useState(false);
@@ -625,7 +624,7 @@ export default function GalleryManageView({
 
   const saveStyle = async () => {
     setSavingStyle(true);
-    const patch = { theme, palette, cover_text_position: coverTextPosition, cover_shape: coverShape };
+    const patch = { theme, cover_text_position: coverTextPosition, cover_shape: coverShape };
     const { error: updateError } = await supabase.from("galleries").update(patch).eq("id", gallery.id);
     setSavingStyle(false);
     if (updateError) {
@@ -658,12 +657,11 @@ export default function GalleryManageView({
           <button
             onClick={() => {
               setTheme(gallery.theme);
-              setPalette(gallery.palette);
               setCoverTextPosition(gallery.cover_text_position);
               setCoverShape(gallery.cover_shape);
               setStyleOpen(true);
             }}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-bg text-amber-deep ${BTN_PRESS}`}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-deep text-white ${BTN_PRESS}`}
           >
             עיצוב הגלריה
           </button>
@@ -701,8 +699,8 @@ export default function GalleryManageView({
           onClick={() => setShowFavoritesOnly((v) => !v)}
           className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 mb-3 text-xs font-semibold ${BTN_PRESS}`}
           style={{
-            background: showFavoritesOnly ? "var(--color-amber-bg)" : "var(--color-chip)",
-            color: showFavoritesOnly ? "var(--color-amber-deep)" : "var(--color-ink-soft)",
+            background: showFavoritesOnly ? "var(--color-amber-deep)" : "var(--color-chip)",
+            color: showFavoritesOnly ? "#fff" : "var(--color-ink-soft)",
           }}
         >
           💜 {showFavoritesOnly ? "מציג רק מועדפים" : "הצגת מועדפים בלבד"} ({favoriteCount})
@@ -715,7 +713,7 @@ export default function GalleryManageView({
             onClick={() => setActiveFolderId(null)}
             className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
             style={{
-              background: activeFolderId === null ? "var(--color-ink)" : "var(--color-chip)",
+              background: activeFolderId === null ? "var(--color-amber-deep)" : "var(--color-chip)",
               color: activeFolderId === null ? "#fff" : "var(--color-ink-soft)",
             }}
           >
@@ -727,7 +725,7 @@ export default function GalleryManageView({
               onClick={() => setActiveFolderId(folder.id)}
               className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
               style={{
-                background: activeFolderId === folder.id ? "var(--color-ink)" : "var(--color-chip)",
+                background: activeFolderId === folder.id ? "var(--color-amber-deep)" : "var(--color-chip)",
                 color: activeFolderId === folder.id ? "#fff" : "var(--color-ink-soft)",
               }}
             >
@@ -780,14 +778,14 @@ export default function GalleryManageView({
           <button
             onClick={() => setLayout("grid")}
             className={`px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
-            style={{ background: layout === "grid" ? "var(--color-ink)" : "#fff", color: layout === "grid" ? "#fff" : "var(--color-ink-soft)" }}
+            style={{ background: layout === "grid" ? "var(--color-amber-deep)" : "var(--color-input-bg)", color: layout === "grid" ? "#fff" : "var(--color-ink-soft)" }}
           >
             רשת
           </button>
           <button
             onClick={() => setLayout("mosaic")}
             className={`px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
-            style={{ background: layout === "mosaic" ? "var(--color-ink)" : "#fff", color: layout === "mosaic" ? "#fff" : "var(--color-ink-soft)" }}
+            style={{ background: layout === "mosaic" ? "var(--color-amber-deep)" : "var(--color-input-bg)", color: layout === "mosaic" ? "#fff" : "var(--color-ink-soft)" }}
           >
             פסיפס
           </button>
@@ -1254,7 +1252,10 @@ export default function GalleryManageView({
 
             {/* Live preview — the exact same component the real public gallery page renders,
                 so what photographers see here is what clients actually get. */}
-            <div className="rounded-2xl overflow-hidden mb-5 border border-line p-3.5" style={{ background: paletteById(palette).bg }}>
+            <div
+              className={`${galleryFont.variable} rounded-2xl overflow-hidden mb-5 border p-3.5`}
+              style={{ background: galleryThemeById(theme).bg, borderColor: "var(--color-line)", ...galleryThemeVars(theme) }}
+            >
               <GalleryCoverBanner
                 photoUrl={(photos.find((p) => p.id === gallery.cover_photo_id) ?? photos[0])?.url ?? null}
                 title={clientName || gallery.title}
@@ -1262,7 +1263,6 @@ export default function GalleryManageView({
                 theme={theme}
                 textPosition={coverTextPosition}
                 shape={coverShape}
-                palette={palette}
               />
             </div>
 
@@ -1302,39 +1302,40 @@ export default function GalleryManageView({
               ))}
             </div>
 
-            <p className="text-xs text-ink-soft mb-2.5">סגנון</p>
-            <div className="grid grid-cols-2 gap-2 mb-5">
+            <p className="text-xs text-ink-soft mb-2.5">ערכת נושא</p>
+            <div className="grid grid-cols-1 gap-2.5 mb-5">
               {GALLERY_THEMES.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setTheme(t.id)}
-                  className="rounded-lg px-3 py-2.5 text-sm font-semibold border"
+                  className="flex items-center gap-3 rounded-2xl p-2.5 border text-right"
                   style={{
                     borderColor: theme === t.id ? "var(--color-amber-deep)" : "var(--color-line)",
-                    background: theme === t.id ? "var(--color-amber-bg)" : "var(--color-card)",
-                    color: theme === t.id ? "var(--color-amber-deep)" : "var(--color-ink)",
-                    ...galleryTitleStyle(t.id),
+                    borderWidth: theme === t.id ? "2px" : "1px",
+                    background: "var(--color-card)",
                   }}
                 >
-                  {t.label}
+                  <span
+                    className="shrink-0 h-11 w-11 rounded-xl overflow-hidden grid grid-cols-2"
+                    style={{ background: t.bg }}
+                  >
+                    <span style={{ background: t.surface }} />
+                    <span style={{ background: t.accent }} />
+                  </span>
+                  <span className="flex-1">
+                    <span className="block text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
+                      {t.label}
+                    </span>
+                    <span className={`${galleryFont.variable} block text-xs`} style={{ ...galleryTitleStyle(t.id), color: "var(--color-ink-soft)" }}>
+                      Aa לדוגמה
+                    </span>
+                  </span>
+                  {theme === t.id && (
+                    <span className="shrink-0 h-5 w-5 rounded-full flex items-center justify-center text-xs" style={{ background: "var(--color-amber-deep)", color: "#fff" }}>
+                      ✓
+                    </span>
+                  )}
                 </button>
-              ))}
-            </div>
-
-            <p className="text-xs text-ink-soft mb-2.5">צבעים</p>
-            <div className="flex gap-2.5 mb-5">
-              {GALLERY_PALETTES.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setPalette(p.id)}
-                  aria-label={p.label}
-                  title={p.label}
-                  className="h-9 w-9 shrink-0 rounded-full"
-                  style={{
-                    background: `linear-gradient(135deg, ${p.bg} 50%, ${p.ink} 50%)`,
-                    boxShadow: palette === p.id ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)",
-                  }}
-                />
               ))}
             </div>
 

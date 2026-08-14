@@ -3,7 +3,7 @@ import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/
 import PublicGalleryView from "@/components/PublicGalleryView";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import { getSignedDownloadUrls } from "@/lib/storage";
-import { paletteById } from "@/lib/galleryTheme";
+import { galleryThemeById, galleryThemeVars, galleryFont } from "@/lib/galleryTheme";
 
 export default async function PublicGalleryPage({
   params,
@@ -78,7 +78,7 @@ export default async function PublicGalleryPage({
     photosWithUrls = photos.map((p) => ({ ...p, url: urlByPath.get(p.storage_path) ?? "" }));
   }
 
-  const palette = paletteById(gallery.palette);
+  const theme = galleryThemeById(gallery.theme);
   const coverPhoto = gallery.cover_photo_id ? photosWithUrls.find((p) => p.id === gallery.cover_photo_id) : null;
   const dateLabel = event
     ? `${event.client_name} · ${new Date(event.event_date).toLocaleDateString("he-IL")}`
@@ -88,8 +88,8 @@ export default async function PublicGalleryPage({
 
   return (
     <div
-      className="max-w-2xl lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full min-h-screen"
-      style={{ background: palette.bg }}
+      className={`${galleryFont.variable} max-w-2xl lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full min-h-screen`}
+      style={{ background: theme.bg, ...galleryThemeVars(gallery.theme) }}
     >
       <GalleryCoverBanner
         photoUrl={coverPhoto?.url ?? null}
@@ -98,7 +98,6 @@ export default async function PublicGalleryPage({
         theme={gallery.theme}
         textPosition={gallery.cover_text_position}
         shape={gallery.cover_shape}
-        palette={gallery.palette}
       />
 
       <PublicGalleryView

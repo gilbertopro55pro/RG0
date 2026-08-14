@@ -1,40 +1,147 @@
-export const GALLERY_THEMES = [
-  { id: "classic", label: "קלאסי" },
-  { id: "editorial", label: "דרמטי" },
-  { id: "minimal", label: "מינימלי" },
-  { id: "warm", label: "חם" },
-] as const;
+import { Frank_Ruhl_Libre } from "next/font/google";
 
-export type GalleryTheme = (typeof GALLERY_THEMES)[number]["id"];
+// Scoped to gallery pages only (not the main app) — a serif display face reserved for the
+// client-facing gallery experience, where a more editorial/premium feel is worth the extra font.
+export const galleryFont = Frank_Ruhl_Libre({
+  subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
+  variable: "--font-gallery-serif",
+});
 
-export const GALLERY_PALETTES = [
-  { id: "light", label: "לבן", bg: "#ffffff", ink: "#201f33" },
-  { id: "dark", label: "כהה", bg: "#14121f", ink: "#f6f4fb" },
-  { id: "cream", label: "קרם", bg: "#f6f1e7", ink: "#4a3b2a" },
-  { id: "sage", label: "מרווה", bg: "#eef5ef", ink: "#2f4a3a" },
-  { id: "blush", label: "פודרה", bg: "#fbeef0", ink: "#5a2f3a" },
-] as const;
+export type GalleryThemeTokens = {
+  id: string;
+  label: string;
+  bg: string;
+  surface: string;
+  surfaceSoft: string;
+  ink: string;
+  inkSoft: string;
+  accent: string;
+  accentInk: string;
+  border: string;
+  radius: string;
+  titleFont: "serif" | "sans";
+  titleWeight: number;
+  titleTracking: string;
+  titleTransform?: "uppercase";
+};
 
-export type GalleryPalette = (typeof GALLERY_PALETTES)[number]["id"];
+// Five complete, self-contained looks — each bundles its own palette, typography treatment and
+// corner radius so choosing one theme is choosing a whole finished style, not assembling parts.
+export const GALLERY_THEMES: GalleryThemeTokens[] = [
+  {
+    id: "classic",
+    label: "קלאסי",
+    bg: "#faf9f6",
+    surface: "#ffffff",
+    surfaceSoft: "#f3f1ec",
+    ink: "#2b2621",
+    inkSoft: "#7a7266",
+    accent: "#b08d57",
+    accentInk: "#ffffff",
+    border: "#e8e3d9",
+    radius: "16px",
+    titleFont: "serif",
+    titleWeight: 600,
+    titleTracking: "0em",
+  },
+  {
+    id: "editorial",
+    label: "דרמטי",
+    bg: "#121212",
+    surface: "#1c1c1c",
+    surfaceSoft: "#272727",
+    ink: "#f5f5f5",
+    inkSoft: "#aeaeae",
+    accent: "#e0a94c",
+    accentInk: "#121212",
+    border: "#343434",
+    radius: "6px",
+    titleFont: "sans",
+    titleWeight: 800,
+    titleTracking: "-0.02em",
+  },
+  {
+    id: "minimal",
+    label: "מינימלי",
+    bg: "#ffffff",
+    surface: "#ffffff",
+    surfaceSoft: "#f7f7f7",
+    ink: "#1a1a1a",
+    inkSoft: "#8a8a8a",
+    accent: "#1a1a1a",
+    accentInk: "#ffffff",
+    border: "#ececec",
+    radius: "4px",
+    titleFont: "sans",
+    titleWeight: 300,
+    titleTracking: "0.1em",
+    titleTransform: "uppercase",
+  },
+  {
+    id: "warm",
+    label: "חם",
+    bg: "#f7ede0",
+    surface: "#fffaf3",
+    surfaceSoft: "#f0e2cf",
+    ink: "#5a3e2b",
+    inkSoft: "#97795f",
+    accent: "#c1662f",
+    accentInk: "#ffffff",
+    border: "#e6d5bd",
+    radius: "20px",
+    titleFont: "serif",
+    titleWeight: 500,
+    titleTracking: "0em",
+  },
+  {
+    id: "romantic",
+    label: "רומנטי",
+    bg: "#fdf1f2",
+    surface: "#fffbfb",
+    surfaceSoft: "#fbe4e7",
+    ink: "#5c3742",
+    inkSoft: "#9c7883",
+    accent: "#c97b8f",
+    accentInk: "#ffffff",
+    border: "#f3d9dd",
+    radius: "24px",
+    titleFont: "serif",
+    titleWeight: 500,
+    titleTracking: "0.01em",
+  },
+];
 
-export function paletteById(id: string) {
-  return GALLERY_PALETTES.find((p) => p.id === id) ?? GALLERY_PALETTES[0];
+export function galleryThemeById(id: string): GalleryThemeTokens {
+  return GALLERY_THEMES.find((t) => t.id === id) ?? GALLERY_THEMES[0];
 }
 
-// Reuses the app's own two already-loaded font families (Heebo/display, Rubik/sans) — each
-// theme only varies weight, size, tracking and case, never pulls in a new typeface.
-export function galleryTitleStyle(theme: string): Record<string, string | number> {
-  switch (theme as GalleryTheme) {
-    case "editorial":
-      return { fontFamily: "var(--font-display)", fontWeight: 800, letterSpacing: "-0.02em" };
-    case "minimal":
-      return { fontFamily: "var(--font-sans)", fontWeight: 300, letterSpacing: "0.08em", textTransform: "uppercase" };
-    case "warm":
-      return { fontFamily: "var(--font-display)", fontWeight: 600 };
-    case "classic":
-    default:
-      return { fontFamily: "var(--font-display)", fontWeight: 700 };
-  }
+// One CSS custom-property map per theme, meant to be spread onto the page's outer wrapper style —
+// every themed class downstream reads these vars (e.g. bg-[var(--gt-surface)]) instead of the
+// app's own light/dark tokens, so the whole gallery — not just the background — follows the theme.
+export function galleryThemeVars(id: string): Record<string, string> {
+  const t = galleryThemeById(id);
+  return {
+    "--gt-bg": t.bg,
+    "--gt-surface": t.surface,
+    "--gt-surface-soft": t.surfaceSoft,
+    "--gt-ink": t.ink,
+    "--gt-ink-soft": t.inkSoft,
+    "--gt-accent": t.accent,
+    "--gt-accent-ink": t.accentInk,
+    "--gt-border": t.border,
+    "--gt-radius": t.radius,
+  };
+}
+
+export function galleryTitleStyle(id: string): Record<string, string | number> {
+  const t = galleryThemeById(id);
+  return {
+    fontFamily: t.titleFont === "serif" ? "var(--font-gallery-serif)" : "var(--font-sans)",
+    fontWeight: t.titleWeight,
+    letterSpacing: t.titleTracking,
+    ...(t.titleTransform ? { textTransform: t.titleTransform } : {}),
+  };
 }
 
 export const COVER_TEXT_POSITIONS = [
