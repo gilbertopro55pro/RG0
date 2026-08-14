@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.10.1",
+    date: "2026-08-14",
+    changes: [
+      "תיקון: הבאנר של הגלריה לא הופיע כשלא נבחרה במפורש תמונת שער — כעת ברירת המחדל היא התמונה הראשונה שהועלתה",
+      "אפשר לבחור את תמונת השער ישירות בתוך \"עיצוב הגלריה\", בלי צורך בלחיצה ארוכה על תמונה בנפרד",
+    ],
+  },
+  {
     version: "1.10.0",
     date: "2026-08-14",
     changes: [

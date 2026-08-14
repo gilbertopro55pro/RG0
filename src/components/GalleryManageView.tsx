@@ -145,6 +145,7 @@ export default function GalleryManageView({
   const [theme, setTheme] = useState(initialGallery.theme);
   const [coverTextPosition, setCoverTextPosition] = useState(initialGallery.cover_text_position);
   const [coverShape, setCoverShape] = useState(initialGallery.cover_shape);
+  const [coverPhotoId, setCoverPhotoId] = useState(initialGallery.cover_photo_id);
   const [savingStyle, setSavingStyle] = useState(false);
 
   const toggleSelect = (photoId: string) => {
@@ -624,7 +625,7 @@ export default function GalleryManageView({
 
   const saveStyle = async () => {
     setSavingStyle(true);
-    const patch = { theme, cover_text_position: coverTextPosition, cover_shape: coverShape };
+    const patch = { theme, cover_text_position: coverTextPosition, cover_shape: coverShape, cover_photo_id: coverPhotoId };
     const { error: updateError } = await supabase.from("galleries").update(patch).eq("id", gallery.id);
     setSavingStyle(false);
     if (updateError) {
@@ -659,6 +660,7 @@ export default function GalleryManageView({
               setTheme(gallery.theme);
               setCoverTextPosition(gallery.cover_text_position);
               setCoverShape(gallery.cover_shape);
+              setCoverPhotoId(gallery.cover_photo_id);
               setStyleOpen(true);
             }}
             className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-deep text-white ${BTN_PRESS}`}
@@ -1257,7 +1259,7 @@ export default function GalleryManageView({
               style={{ background: galleryThemeById(theme).bg, borderColor: "var(--color-line)", ...galleryThemeVars(theme) }}
             >
               <GalleryCoverBanner
-                photoUrl={(photos.find((p) => p.id === gallery.cover_photo_id) ?? photos[0])?.url ?? null}
+                photoUrl={(photos.find((p) => p.id === coverPhotoId) ?? photos[0])?.url ?? null}
                 title={clientName || gallery.title}
                 dateLabel={eventDate ? new Date(eventDate).toLocaleDateString("he-IL") : null}
                 theme={theme}
@@ -1265,6 +1267,30 @@ export default function GalleryManageView({
                 shape={coverShape}
               />
             </div>
+
+            {photos.length > 0 && (
+              <>
+                <p className="text-xs text-ink-soft mb-2.5">תמונת שער</p>
+                <div className="flex gap-2 mb-5 overflow-x-auto">
+                  {photos.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setCoverPhotoId(p.id)}
+                      className="shrink-0 h-14 w-14 rounded-lg overflow-hidden"
+                      style={{
+                        boxShadow:
+                          (coverPhotoId ?? photos[0]?.id) === p.id
+                            ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
+                            : "0 0 0 1px var(--color-line)",
+                      }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.url} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <p className="text-xs text-ink-soft mb-2.5">מיקום הכיתוב</p>
             <div className="grid grid-cols-2 gap-2 mb-5">
