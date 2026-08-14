@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.6.0",
+    date: "2026-08-14",
+    changes: [
+      "כפתור \"עיצוב הגלריה\" חדש: בחירת סגנון (קלאסי / דרמטי / מינימלי / חם) וצבע רקע לגלריה, עם תצוגה מקדימה חיה, שמשתקפים ישירות בגלריה שרואים הלקוחות",
+    ],
+  },
+  {
     version: "1.5.1",
     date: "2026-08-14",
     changes: [

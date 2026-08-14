@@ -11,6 +11,7 @@ import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
+import { GALLERY_THEMES, GALLERY_PALETTES, paletteById, galleryTitleStyle } from "@/lib/galleryTheme";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
 
@@ -120,6 +121,10 @@ export default function GalleryManageView({
   const [shareSelectedFolders, setShareSelectedFolders] = useState<Set<string>>(new Set());
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const NO_FOLDER_KEY = "none";
+  const [styleOpen, setStyleOpen] = useState(false);
+  const [theme, setTheme] = useState(initialGallery.theme);
+  const [palette, setPalette] = useState(initialGallery.palette);
+  const [savingStyle, setSavingStyle] = useState(false);
 
   const toggleSelect = (photoId: string) => {
     setSelectedIds((prev) => {
@@ -576,6 +581,19 @@ export default function GalleryManageView({
     setShowEditDetails(false);
   };
 
+  const saveStyle = async () => {
+    setSavingStyle(true);
+    const patch = { theme, palette };
+    const { error: updateError } = await supabase.from("galleries").update(patch).eq("id", gallery.id);
+    setSavingStyle(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    setGallery((g) => ({ ...g, ...patch }));
+    setStyleOpen(false);
+  };
+
   const isArchived = !!gallery.archived_at;
   const favoriteCount = photos.filter((p) => p.is_favorite).length;
   const visiblePhotos = photos
@@ -594,6 +612,16 @@ export default function GalleryManageView({
             className="text-xs font-medium text-amber-deep underline"
           >
             עריכת פרטי הגלריה
+          </button>
+          <button
+            onClick={() => {
+              setTheme(gallery.theme);
+              setPalette(gallery.palette);
+              setStyleOpen(true);
+            }}
+            className="text-xs font-medium text-amber-deep underline"
+          >
+            עיצוב הגלריה
           </button>
           {gallery.published && (
             <a
@@ -1166,6 +1194,96 @@ export default function GalleryManageView({
           onSave={saveDetails}
           onClose={() => setShowEditDetails(false)}
         />
+      )}
+
+      {styleOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          onClick={() => setStyleOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold font-display mb-4">עיצוב הגלריה</h2>
+
+            {/* Live preview — mirrors the public gallery's cover header with the current
+                selection, using a real photo when one exists so the preview isn't misleading. */}
+            <div
+              className="rounded-2xl overflow-hidden mb-5 border border-line"
+              style={{ background: paletteById(palette).bg }}
+            >
+              <div className="relative h-32 bg-chip">
+                {photos[0]?.url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={photos[0].url} alt="" className="w-full h-full object-cover" />
+                )}
+              </div>
+              <div className="p-3.5">
+                <div className="text-base mb-0.5" style={{ ...galleryTitleStyle(theme), color: paletteById(palette).ink }}>
+                  {clientName || gallery.title}
+                </div>
+                <div className="text-xs" style={{ color: paletteById(palette).ink, opacity: 0.7 }}>
+                  {eventDate ? new Date(eventDate).toLocaleDateString("he-IL") : ""}
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-ink-soft mb-2.5">סגנון</p>
+            <div className="grid grid-cols-2 gap-2 mb-5">
+              {GALLERY_THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  className="rounded-lg px-3 py-2.5 text-sm font-semibold border"
+                  style={{
+                    borderColor: theme === t.id ? "var(--color-amber-deep)" : "var(--color-line)",
+                    background: theme === t.id ? "var(--color-amber-bg)" : "var(--color-card)",
+                    color: theme === t.id ? "var(--color-amber-deep)" : "var(--color-ink)",
+                    ...galleryTitleStyle(t.id),
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <p className="text-xs text-ink-soft mb-2.5">צבעים</p>
+            <div className="flex gap-2.5 mb-5">
+              {GALLERY_PALETTES.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setPalette(p.id)}
+                  aria-label={p.label}
+                  title={p.label}
+                  className="h-9 w-9 shrink-0 rounded-full"
+                  style={{
+                    background: `linear-gradient(135deg, ${p.bg} 50%, ${p.ink} 50%)`,
+                    boxShadow: palette === p.id ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)",
+                  }}
+                />
+              ))}
+            </div>
+
+            {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={saveStyle}
+                disabled={savingStyle}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+              >
+                {savingStyle ? "שומר..." : "שמירה"}
+              </button>
+              <button
+                onClick={() => setStyleOpen(false)}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {shareOpen && (

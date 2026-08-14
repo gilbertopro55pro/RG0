@@ -2,6 +2,7 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
 import PublicGalleryView from "@/components/PublicGalleryView";
 import { getSignedDownloadUrls } from "@/lib/storage";
+import { paletteById, galleryTitleStyle } from "@/lib/galleryTheme";
 
 export default async function PublicGalleryPage({
   params,
@@ -76,16 +77,25 @@ export default async function PublicGalleryPage({
     photosWithUrls = photos.map((p) => ({ ...p, url: urlByPath.get(p.storage_path) ?? "" }));
   }
 
+  const palette = paletteById(gallery.palette);
+
   return (
-    <div className="max-w-2xl lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <h1 className="text-[22px] font-bold mb-1 font-display">{gallery.title}</h1>
+    <div
+      className="max-w-2xl lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full min-h-screen"
+      style={{ background: palette.bg }}
+    >
+      <h1 className="text-[22px] mb-1" style={{ ...galleryTitleStyle(gallery.theme), color: palette.ink }}>
+        {gallery.title}
+      </h1>
       {event ? (
-        <p className="text-xs mb-5 text-ink-soft">
+        <p className="text-xs mb-5" style={{ color: palette.ink, opacity: 0.7 }}>
           {event.client_name} · {new Date(event.event_date).toLocaleDateString("he-IL")}
         </p>
       ) : (
         gallery.shoot_date && (
-          <p className="text-xs mb-5 text-ink-soft">{new Date(gallery.shoot_date).toLocaleDateString("he-IL")}</p>
+          <p className="text-xs mb-5" style={{ color: palette.ink, opacity: 0.7 }}>
+            {new Date(gallery.shoot_date).toLocaleDateString("he-IL")}
+          </p>
         )
       )}
 

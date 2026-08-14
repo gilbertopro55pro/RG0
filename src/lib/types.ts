@@ -185,6 +185,8 @@ export type GalleryRow = {
   client_email: string | null;
   allow_downloads: boolean;
   reminder_sent_at: string | null;
+  theme: string;
+  palette: string;
   created_at: string;
 };
 
