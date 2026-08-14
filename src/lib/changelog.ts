@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.6.1",
+    date: "2026-08-14",
+    changes: [
+      "תמיכה בהעלאת תמונות HEIC/HEIF (הפורמט שאייפון שומר בו תמונות כברירת מחדל) — הן מומרות אוטומטית ל-JPG לפני ההעלאה",
+      "תיקון: כשל בהעלאת תמונה (לדוגמה בעיית רשת) היה משאיר את המסך תקוע על \"מעלה...\" בלי הודעה — כעת מוצגת שגיאה ברורה וההעלאה ממשיכה לתמונה הבאה",
+    ],
+  },
+  {
     version: "1.6.0",
     date: "2026-08-14",
     changes: [

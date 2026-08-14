@@ -27,12 +27,31 @@ const EXPIRY_OPTIONS: { value: 1 | 3 | 6; label: string }[] = [
   { value: 6, label: "חצי שנה" },
 ];
 
-const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "bmp"];
-const ALLOWED_ACCEPT = "image/jpeg,image/png,image/gif,image/bmp";
+const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "bmp", "heic", "heif"];
+// iPhones save photos as HEIC by default — an accept list of only "safe" web formats hides those
+// photos from Safari's picker entirely (Files/Photos on iOS filters by this exact string), which
+// looks like "nothing happens" when uploading from a phone. HEIC/HEIF files are converted to JPEG
+// client-side before upload (see convertHeicIfNeeded) so nothing HEIC ever reaches storage.
+const ALLOWED_EXTENSIONS_SET = new Set(ALLOWED_EXTENSIONS);
+const ALLOWED_ACCEPT = "image/jpeg,image/png,image/gif,image/bmp,image/heic,image/heif";
 
 function isAllowedImageFile(file: File): boolean {
   const ext = file.name.split(".").pop()?.toLowerCase();
-  return !!ext && ALLOWED_EXTENSIONS.includes(ext);
+  return !!ext && ALLOWED_EXTENSIONS_SET.has(ext);
+}
+
+function isHeicFile(file: File): boolean {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  return ext === "heic" || ext === "heif" || file.type === "image/heic" || file.type === "image/heif";
+}
+
+async function convertHeicIfNeeded(file: File): Promise<File> {
+  if (!isHeicFile(file)) return file;
+  const heic2any = (await import("heic2any")).default;
+  const result = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+  const blob = Array.isArray(result) ? result[0] : result;
+  const newName = file.name.replace(/\.(heic|heif)$/i, ".jpg");
+  return new File([blob], newName, { type: "image/jpeg" });
 }
 
 function addMonths(date: Date, months: number): Date {
@@ -246,49 +265,69 @@ export default function GalleryManageView({
     if (!user) return;
 
     const sortBase = photos.length;
-    for (let i = 0; i < items.length; i++) {
-      const { file, folderId } = items[i];
-      setUploading(`מעלה ${i + 1} מתוך ${items.length}...`);
-      const path = `${user.id}/${gallery.id}/${crypto.randomUUID()}-${file.name}`;
-      const urlRes = await fetch("/api/storage/upload-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bucket: "galleries", path, contentType: file.type || "application/octet-stream" }),
-      });
-      const urlData = await urlRes.json();
-      if (!urlRes.ok || !urlData.url) {
-        setError(`שגיאה בהעלאת ${file.name}: ${urlData.error ?? "שגיאה לא ידועה"}`);
-        continue;
+    try {
+      for (let i = 0; i < items.length; i++) {
+        const { folderId } = items[i];
+        let file = items[i].file;
+        try {
+          if (isHeicFile(file)) {
+            setUploading(`ממיר ${i + 1} מתוך ${items.length}...`);
+            try {
+              file = await convertHeicIfNeeded(file);
+            } catch {
+              setError(`לא ניתן היה להמיר את ${file.name} — נסו לצלם/לשמור כ-JPG ולהעלות שוב`);
+              continue;
+            }
+          }
+          setUploading(`מעלה ${i + 1} מתוך ${items.length}...`);
+          const path = `${user.id}/${gallery.id}/${crypto.randomUUID()}-${file.name}`;
+          const urlRes = await fetch("/api/storage/upload-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bucket: "galleries", path, contentType: file.type || "application/octet-stream" }),
+          });
+          const urlData = await urlRes.json();
+          if (!urlRes.ok || !urlData.url) {
+            setError(`שגיאה בהעלאת ${file.name}: ${urlData.error ?? "שגיאה לא ידועה"}`);
+            continue;
+          }
+          const putRes = await fetch(urlData.url, {
+            method: "PUT",
+            headers: { "Content-Type": file.type || "application/octet-stream" },
+            body: file,
+          });
+          if (!putRes.ok) {
+            setError(`שגיאה בהעלאת ${file.name}`);
+            continue;
+          }
+          const { data: photoRow, error: insertError } = await supabase
+            .from("gallery_photos")
+            .insert({
+              gallery_id: gallery.id,
+              photographer_id: user.id,
+              storage_path: path,
+              original_filename: file.name,
+              file_size_bytes: file.size,
+              sort_order: sortBase + i,
+              folder_id: folderId,
+            })
+            .select()
+            .single<GalleryPhotoRow>();
+          if (insertError || !photoRow) {
+            setError(insertError?.message ?? "שגיאה בשמירת התמונה");
+            continue;
+          }
+          setPhotos((prev) => [...prev, { ...photoRow, url: URL.createObjectURL(file) }]);
+        } catch (e) {
+          // A network-level failure (e.g. a CORS-misconfigured storage bucket) throws instead of
+          // resolving to a response — without this, the whole loop would abort silently and leave
+          // "מעלה..." on screen forever with no indication anything went wrong.
+          setError(`שגיאה בהעלאת ${file.name}: ${e instanceof Error ? e.message : "שגיאת רשת"}`);
+        }
       }
-      const putRes = await fetch(urlData.url, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!putRes.ok) {
-        setError(`שגיאה בהעלאת ${file.name}`);
-        continue;
-      }
-      const { data: photoRow, error: insertError } = await supabase
-        .from("gallery_photos")
-        .insert({
-          gallery_id: gallery.id,
-          photographer_id: user.id,
-          storage_path: path,
-          original_filename: file.name,
-          file_size_bytes: file.size,
-          sort_order: sortBase + i,
-          folder_id: folderId,
-        })
-        .select()
-        .single<GalleryPhotoRow>();
-      if (insertError || !photoRow) {
-        setError(insertError?.message ?? "שגיאה בשמירת התמונה");
-        continue;
-      }
-      setPhotos((prev) => [...prev, { ...photoRow, url: URL.createObjectURL(file) }]);
+    } finally {
+      setUploading(null);
     }
-    setUploading(null);
   };
 
   const reportRejectedFormats = (rejected: File[]) => {
