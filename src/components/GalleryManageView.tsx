@@ -344,6 +344,17 @@ export default function GalleryManageView({
   const createFolder = async () => {
     const name = newFolderName.trim();
     if (!name) return;
+
+    // A tab with this name may already exist (gallery_folders has a unique gallery_id+name
+    // constraint) — reuse it instead of round-tripping to a duplicate-key error.
+    const existingFolder = folders.find((f) => f.name === name);
+    if (existingFolder) {
+      setActiveFolderId(existingFolder.id);
+      setNewFolderName("");
+      setAddingFolder(false);
+      return;
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -354,7 +365,7 @@ export default function GalleryManageView({
       .select()
       .single<GalleryFolderRow>();
     if (insertError || !folderRow) {
-      setError(insertError?.message ?? "שגיאה ביצירת התיקייה");
+      setError(insertError?.code === "23505" ? "כבר קיימת לשונית בשם הזה" : insertError?.message ?? "שגיאה ביצירת התיקייה");
       return;
     }
     setFolders((prev) => [...prev, folderRow]);
