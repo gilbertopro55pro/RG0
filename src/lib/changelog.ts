@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.20.0",
+    date: "2026-08-15",
+    changes: [
+      "50 תבניות פריסה חדשות בספריית התבניות המובנות של עיצוב האלבום — 10 עם 5 תמונות, 10 עם 8 תמונות, 10 עם 10 תמונות, ועוד 20 תבניות יצירתיות (בין 2 ל-20 תמונות בעמוד)",
+    ],
+  },
+  {
     version: "1.19.0",
     date: "2026-08-15",
     changes: [
