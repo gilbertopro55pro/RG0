@@ -99,8 +99,8 @@ export default function GalleryManageView({
   const [addingFolder, setAddingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
-  const [layout, setLayout] = useState<"grid" | "mosaic">("grid");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [mgrAspectRatios, setMgrAspectRatios] = useState<Record<string, number>>({});
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
@@ -633,6 +633,18 @@ export default function GalleryManageView({
   // single patch avoids the awkwardness of "which tab's changes actually got saved".
   const saveSettings = async () => {
     setSavingSettings(true);
+    // Once published, the duration is counted from the original publish date, not from whenever
+    // settings happen to be saved — otherwise every unrelated settings edit would silently push
+    // the expiry date out. Archived galleries have no active expiry to recompute here; use
+    // "חידוש תוקף הגלריה" for those instead.
+    const expiresAtPatch =
+      gallery.published && !gallery.archived_at && gallery.published_at
+        ? {
+            expires_at: expiryMonths
+              ? addMonths(new Date(gallery.published_at), expiryMonths).toISOString()
+              : null,
+          }
+        : {};
     const patch = {
       title: editTitle.trim() || "הגלריה שלכם",
       shoot_date: eventId ? gallery.shoot_date : editShootDate || null,
@@ -644,6 +656,8 @@ export default function GalleryManageView({
       cover_photo_id: coverPhotoId,
       title_font_override: titleFontOverride,
       grid_style_override: gridStyleOverride,
+      expiry_months: expiryMonths,
+      ...expiresAtPatch,
     };
     const { error: updateError } = await supabase.from("galleries").update(patch).eq("id", gallery.id);
     setSavingSettings(false);
@@ -673,6 +687,9 @@ export default function GalleryManageView({
   const visiblePhotos = photos
     .filter((p) => (showFavoritesOnly ? p.is_favorite : true))
     .filter((p) => (activeFolderId ? p.folder_id === activeFolderId : true));
+  // The photographer's own management grid mirrors the same resolved style the client actually
+  // sees — no separate local toggle, so there's only ever one layout control to reason about.
+  const resolvedGridStyle = gallery.grid_style_override ?? galleryThemeById(gallery.theme).gridStyle;
 
   return (
     <div className="pb-8">
@@ -819,22 +836,9 @@ export default function GalleryManageView({
 
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs text-ink-soft font-data">{visiblePhotos.length} תמונות</span>
-        <div className="flex rounded-lg border border-line overflow-hidden">
-          <button
-            onClick={() => setLayout("grid")}
-            className={`px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
-            style={{ background: layout === "grid" ? "var(--color-amber-deep)" : "var(--color-input-bg)", color: layout === "grid" ? "#fff" : "var(--color-ink-soft)" }}
-          >
-            רשת
-          </button>
-          <button
-            onClick={() => setLayout("mosaic")}
-            className={`px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
-            style={{ background: layout === "mosaic" ? "var(--color-amber-deep)" : "var(--color-input-bg)", color: layout === "mosaic" ? "#fff" : "var(--color-ink-soft)" }}
-          >
-            פסיפס
-          </button>
-        </div>
+        <span className="text-[11px] text-ink-soft">
+          פריסה: {GRID_STYLE_OPTIONS.find((g) => g.id === resolvedGridStyle)?.label} — משתנה ב״הגדרות גלריה״
+        </span>
       </div>
 
       {visiblePhotos.length > 0 && (
@@ -856,96 +860,89 @@ export default function GalleryManageView({
 
       {visiblePhotos.length > 0 && (
         <div ref={pinchContainerRef} className="mb-4" style={{ touchAction: "pan-y" }}>
-          {layout === "grid" ? (
-          <div
-            className="grid gap-1.5"
-            style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cellSize}px, 1fr))` }}
-          >
-            {visiblePhotos.map((photo, i) => (
-              <button
-                key={photo.id}
-                onPointerDown={() => startPress(photo)}
-                onPointerUp={cancelPress}
-                onPointerLeave={cancelPress}
-                onClick={() => handlePhotoClick(photo, i)}
-                className="relative aspect-square rounded-lg overflow-hidden bg-line"
-              >
-                <Image
-                  src={photo.url}
-                  alt={photo.original_filename}
-                  fill
-                  sizes="(max-width: 768px) 33vw, 20vw"
-                  className="object-cover"
-                  style={lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
-                />
-                {gallery.cover_photo_id === photo.id && (
-                  <span className="absolute top-1 right-1 text-[9px] px-1.5 py-0.5 rounded-full bg-black/60 text-white">
-                    שער
-                  </span>
-                )}
-                {selectedIds.size > 0 ? (
-                  <span
-                    className="absolute top-1 left-1 h-5 w-5 rounded-full border-2 flex items-center justify-center"
-                    style={{
-                      borderColor: "#ffffff",
-                      background: selectedIds.has(photo.id) ? "var(--color-amber-deep)" : "rgba(0,0,0,0.35)",
-                    }}
+          {resolvedGridStyle === "grid" ? (
+            <div
+              className="grid gap-1.5"
+              style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cellSize}px, 1fr))` }}
+            >
+              {visiblePhotos.map((photo, i) => (
+                <button
+                  key={photo.id}
+                  onPointerDown={() => startPress(photo)}
+                  onPointerUp={cancelPress}
+                  onPointerLeave={cancelPress}
+                  onClick={() => handlePhotoClick(photo, i)}
+                  className="relative aspect-square rounded-lg overflow-hidden bg-line"
+                >
+                  <Image
+                    src={photo.url}
+                    alt={photo.original_filename}
+                    fill
+                    sizes="(max-width: 768px) 33vw, 20vw"
+                    className="object-cover"
+                    style={lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
+                  />
+                  <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} />
+                </button>
+              ))}
+            </div>
+          ) : resolvedGridStyle === "justified" ? (
+            <div className="flex flex-wrap gap-1.5">
+              {visiblePhotos.map((photo, i) => {
+                const ratio = mgrAspectRatios[photo.id] ?? 1.5;
+                return (
+                  <button
+                    key={photo.id}
+                    onPointerDown={() => startPress(photo)}
+                    onPointerUp={cancelPress}
+                    onPointerLeave={cancelPress}
+                    onClick={() => handlePhotoClick(photo, i)}
+                    className="relative rounded-lg overflow-hidden bg-line"
+                    style={{ height: cellSize, width: ratio * cellSize, flexGrow: 1 }}
                   >
-                    {selectedIds.has(photo.id) && <span className="text-white text-[10px] leading-none">✓</span>}
-                  </span>
-                ) : (
-                  photo.is_favorite && (
-                    <span className="absolute top-1 left-1 text-[11px] h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center">
-                      💜
-                    </span>
-                  )
-                )}
-              </button>
-            ))}
-          </div>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={optimizedImageUrl(photo.url, 640)}
+                      alt={photo.original_filename}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      style={lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
+                      onLoad={(e) => {
+                        const img = e.currentTarget;
+                        const r = img.naturalWidth / img.naturalHeight;
+                        setMgrAspectRatios((prev) => (prev[photo.id] ? prev : { ...prev, [photo.id]: r }));
+                      }}
+                    />
+                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} />
+                  </button>
+                );
+              })}
+            </div>
           ) : (
-          <div className="gap-1.5" style={{ columnWidth: `${cellSize}px` }}>
-            {visiblePhotos.map((photo, i) => (
-              <button
-                key={photo.id}
-                onPointerDown={() => startPress(photo)}
-                onPointerUp={cancelPress}
-                onPointerLeave={cancelPress}
-                onClick={() => handlePhotoClick(photo, i)}
-                className="relative w-full mb-1.5 rounded-lg overflow-hidden bg-line block break-inside-avoid"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={optimizedImageUrl(photo.url, 640)}
-                  alt={photo.original_filename}
-                  className="w-full h-auto block"
-                  style={lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
-                />
-                {gallery.cover_photo_id === photo.id && (
-                  <span className="absolute top-1 right-1 text-[9px] px-1.5 py-0.5 rounded-full bg-black/60 text-white">
-                    שער
-                  </span>
-                )}
-                {selectedIds.size > 0 ? (
-                  <span
-                    className="absolute top-1 left-1 h-5 w-5 rounded-full border-2 flex items-center justify-center"
-                    style={{
-                      borderColor: "#ffffff",
-                      background: selectedIds.has(photo.id) ? "var(--color-amber-deep)" : "rgba(0,0,0,0.35)",
-                    }}
+            <div className="gap-1.5" style={{ columnWidth: `${cellSize}px` }}>
+              {visiblePhotos.map((photo, i) => {
+                const framed = resolvedGridStyle === "framed";
+                return (
+                  <button
+                    key={photo.id}
+                    onPointerDown={() => startPress(photo)}
+                    onPointerUp={cancelPress}
+                    onPointerLeave={cancelPress}
+                    onClick={() => handlePhotoClick(photo, i)}
+                    className="relative w-full mb-1.5 rounded-lg overflow-hidden bg-line block break-inside-avoid"
+                    style={framed ? { padding: 4, border: "1px solid var(--color-line)" } : undefined}
                   >
-                    {selectedIds.has(photo.id) && <span className="text-white text-[10px] leading-none">✓</span>}
-                  </span>
-                ) : (
-                  photo.is_favorite && (
-                    <span className="absolute top-1 left-1 text-[11px] h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center">
-                      💜
-                    </span>
-                  )
-                )}
-              </button>
-            ))}
-          </div>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={optimizedImageUrl(photo.url, 640)}
+                      alt={photo.original_filename}
+                      className="w-full h-auto block"
+                      style={lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
+                    />
+                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} offset={framed ? 8 : 4} />
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
@@ -1000,7 +997,7 @@ export default function GalleryManageView({
       <div className="mt-3 space-y-2">
         {!gallery.published && (
           <p className="text-[11px] text-ink-soft text-center">
-            משך שמירת הגלריה: {expiryMonths ? EXPIRY_OPTIONS.find((o) => o.value === expiryMonths)?.label : "ללא הגבלת זמן"} — ניתן לשנות בעריכת פרטי הגלריה
+            משך שמירת הגלריה: {expiryMonths ? EXPIRY_OPTIONS.find((o) => o.value === expiryMonths)?.label : "ללא הגבלת זמן"} — ניתן לשנות בהגדרות הגלריה
           </p>
         )}
 
@@ -1276,7 +1273,6 @@ export default function GalleryManageView({
           setAllowDownloads={setEditAllowDownloads}
           expiryMonths={expiryMonths}
           setExpiryMonths={setExpiryMonths}
-          canEditExpiry={!gallery.published}
           theme={theme}
           setTheme={setTheme}
           coverTextPosition={coverTextPosition}
@@ -1483,6 +1479,53 @@ export default function GalleryManageView({
   );
 }
 
+function MgrPhotoOverlays({
+  photo,
+  isCover,
+  selectedIds,
+  offset = 4,
+}: {
+  photo: PhotoWithUrl;
+  isCover: boolean;
+  selectedIds: Set<string>;
+  offset?: number;
+}) {
+  return (
+    <>
+      {isCover && (
+        <span
+          className="absolute text-[9px] px-1.5 py-0.5 rounded-full bg-black/60 text-white"
+          style={{ top: offset, right: offset }}
+        >
+          שער
+        </span>
+      )}
+      {selectedIds.size > 0 ? (
+        <span
+          className="absolute h-5 w-5 rounded-full border-2 flex items-center justify-center"
+          style={{
+            top: offset,
+            left: offset,
+            borderColor: "#ffffff",
+            background: selectedIds.has(photo.id) ? "var(--color-amber-deep)" : "rgba(0,0,0,0.35)",
+          }}
+        >
+          {selectedIds.has(photo.id) && <span className="text-white text-[10px] leading-none">✓</span>}
+        </span>
+      ) : (
+        photo.is_favorite && (
+          <span
+            className="absolute text-[11px] h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
+            style={{ top: offset, left: offset }}
+          >
+            💜
+          </span>
+        )
+      )}
+    </>
+  );
+}
+
 function GallerySettingsModal({
   isStandalone,
   title,
@@ -1495,7 +1538,6 @@ function GallerySettingsModal({
   setAllowDownloads,
   expiryMonths,
   setExpiryMonths,
-  canEditExpiry,
   theme,
   setTheme,
   coverTextPosition,
@@ -1526,7 +1568,6 @@ function GallerySettingsModal({
   setAllowDownloads: (v: boolean) => void;
   expiryMonths: 1 | 3 | 6 | null;
   setExpiryMonths: (v: 1 | 3 | 6 | null) => void;
-  canEditExpiry: boolean;
   theme: string;
   setTheme: (v: string) => void;
   coverTextPosition: string;
@@ -1589,23 +1630,25 @@ function GallerySettingsModal({
           </button>
         </div>
 
-        <div className="flex gap-1.5 mb-4">
+        {/* Primary tabs — a segmented control (inset pill on a tinted track) so it reads
+            unambiguously as the main navigation, distinct from the smaller sub-tabs below. */}
+        <div className="flex gap-1 p-1 rounded-2xl mb-4" style={{ background: "var(--color-chip)" }}>
           <button
             onClick={() => setTopTab("details")}
-            className="flex-1 rounded-full py-2 text-xs font-semibold"
+            className="flex-1 rounded-xl py-2.5 text-sm font-bold"
             style={{
-              background: topTab === "details" ? "var(--color-ink)" : "var(--color-chip)",
-              color: topTab === "details" ? "var(--color-paper)" : "var(--color-ink-soft)",
+              background: topTab === "details" ? "var(--color-amber-deep)" : "transparent",
+              color: topTab === "details" ? "#fff" : "var(--color-ink-soft)",
             }}
           >
             פרטי הגלריה
           </button>
           <button
             onClick={() => setTopTab("style")}
-            className="flex-1 rounded-full py-2 text-xs font-semibold"
+            className="flex-1 rounded-xl py-2.5 text-sm font-bold"
             style={{
-              background: topTab === "style" ? "var(--color-ink)" : "var(--color-chip)",
-              color: topTab === "style" ? "var(--color-paper)" : "var(--color-ink-soft)",
+              background: topTab === "style" ? "var(--color-amber-deep)" : "transparent",
+              color: topTab === "style" ? "#fff" : "var(--color-ink-soft)",
             }}
           >
             עיצוב הגלריה
@@ -1619,8 +1662,8 @@ function GallerySettingsModal({
                 onClick={() => setDetailsTab("details")}
                 className="flex-1 rounded-full py-2 text-xs font-semibold"
                 style={{
-                  background: detailsTab === "details" ? "var(--color-amber-deep)" : "var(--color-chip)",
-                  color: detailsTab === "details" ? "#fff" : "var(--color-ink-soft)",
+                  background: detailsTab === "details" ? "var(--color-ink)" : "var(--color-chip)",
+                  color: detailsTab === "details" ? "var(--color-paper)" : "var(--color-ink-soft)",
                 }}
               >
                 פרטים
@@ -1629,8 +1672,8 @@ function GallerySettingsModal({
                 onClick={() => setDetailsTab("permissions")}
                 className="flex-1 rounded-full py-2 text-xs font-semibold"
                 style={{
-                  background: detailsTab === "permissions" ? "var(--color-amber-deep)" : "var(--color-chip)",
-                  color: detailsTab === "permissions" ? "#fff" : "var(--color-ink-soft)",
+                  background: detailsTab === "permissions" ? "var(--color-ink)" : "var(--color-chip)",
+                  color: detailsTab === "permissions" ? "var(--color-paper)" : "var(--color-ink-soft)",
                 }}
               >
                 הרשאות ושמירה
@@ -1663,21 +1706,19 @@ function GallerySettingsModal({
                       />
                     </div>
                   )}
-                  {canEditExpiry && (
-                    <div className="flex-1" style={{ minWidth: 150 }}>
-                      <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
-                      <select
-                        value={expiryMonths ?? "indefinite"}
-                        onChange={(e) => setExpiryMonths(e.target.value === "indefinite" ? null : (Number(e.target.value) as 1 | 3 | 6))}
-                        className="w-full rounded-lg px-2 py-2 text-sm border border-line bg-white"
-                      >
-                        <option value={1}>חודש</option>
-                        <option value={3}>3 חודשים</option>
-                        <option value={6}>חצי שנה</option>
-                        <option value="indefinite">ללא הגבלת זמן</option>
-                      </select>
-                    </div>
-                  )}
+                  <div className="flex-1" style={{ minWidth: 150 }}>
+                    <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
+                    <select
+                      value={expiryMonths ?? "indefinite"}
+                      onChange={(e) => setExpiryMonths(e.target.value === "indefinite" ? null : (Number(e.target.value) as 1 | 3 | 6))}
+                      className="w-full rounded-lg px-2 py-2 text-sm border border-line bg-white"
+                    >
+                      <option value={1}>חודש</option>
+                      <option value={3}>3 חודשים</option>
+                      <option value={6}>חצי שנה</option>
+                      <option value="indefinite">ללא הגבלת זמן</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div>
