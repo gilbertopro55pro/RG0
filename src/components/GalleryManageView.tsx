@@ -207,6 +207,9 @@ export default function GalleryManageView({
   const [focalEditTarget, setFocalEditTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
   const [replaceTarget, setReplaceTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
   const [exportingAlbumPdf, setExportingAlbumPdf] = useState(false);
+  const [exportingAlbumJpg, setExportingAlbumJpg] = useState(false);
+  const [exportingAlbumPsd, setExportingAlbumPsd] = useState(false);
+  const [savingAlbumSize, setSavingAlbumSize] = useState(false);
   const [canvasEditorTarget, setCanvasEditorTarget] = useState<{ spreadId: string; mode: "overlay" | "custom" } | null>(null);
   const [albumTemplates, setAlbumTemplates] = useState<AlbumTemplateRow[]>([]);
   const [savingAlbum, setSavingAlbum] = useState(false);
@@ -507,6 +510,41 @@ export default function GalleryManageView({
     } finally {
       setExportingAlbumPdf(false);
     }
+  };
+
+  const downloadFromRoute = async (path: string, fallbackName: string, setBusy: (v: boolean) => void) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/galleries/${gallery.id}/album/${path}`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "שגיאה בייצוא הקבצים");
+        return;
+      }
+      const disposition = res.headers.get("content-disposition") ?? "";
+      const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : fallbackName;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportAlbumJpg = () => downloadFromRoute("export-jpg", "album-jpg.zip", setExportingAlbumJpg);
+  const exportAlbumPsd = () => downloadFromRoute("export-psd", "album-psd.zip", setExportingAlbumPsd);
+
+  const updateAlbumSize = async (widthCm: number, heightCm: number) => {
+    if (!album) return;
+    setAlbum({ ...album, width_cm: widthCm, height_cm: heightCm });
+    setSavingAlbumSize(true);
+    await supabase.from("gallery_albums").update({ width_cm: widthCm, height_cm: heightCm }).eq("id", album.id);
+    setSavingAlbumSize(false);
   };
 
   const startPress = (photo: PhotoWithUrl) => {
@@ -1821,6 +1859,30 @@ export default function GalleryManageView({
                   </div>
                 )}
 
+                <div className="mb-4">
+                  <p className="text-xs text-ink-soft mb-2">גודל האלבום להדפסה (ס״מ) — לצורך ייצוא JPG / PSD</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={album.width_cm}
+                      onChange={(e) => updateAlbumSize(Number(e.target.value) || album.width_cm, album.height_cm)}
+                      className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
+                    />
+                    <span className="text-xs text-ink-soft">רוחב</span>
+                    <span className="text-ink-soft">×</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={album.height_cm}
+                      onChange={(e) => updateAlbumSize(album.width_cm, Number(e.target.value) || album.height_cm)}
+                      className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
+                    />
+                    <span className="text-xs text-ink-soft">גובה</span>
+                    {savingAlbumSize && <span className="text-[11px] text-ink-soft">שומר...</span>}
+                  </div>
+                </div>
+
                 {albumSpreads.length === 0 ? (
                   <p className="text-sm text-ink-soft text-center py-4 mb-4">אין עדיין עמודים באלבום.</p>
                 ) : (
@@ -2107,6 +2169,20 @@ export default function GalleryManageView({
                   className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60"
                 >
                   {exportingAlbumPdf ? "מייצא..." : "📄 ייצוא PDF להדפסה"}
+                </button>
+                <button
+                  onClick={exportAlbumJpg}
+                  disabled={exportingAlbumJpg || albumSpreads.length === 0}
+                  className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60"
+                >
+                  {exportingAlbumJpg ? "מייצא..." : "🖼 ייצוא JPG (כל העמודים)"}
+                </button>
+                <button
+                  onClick={exportAlbumPsd}
+                  disabled={exportingAlbumPsd || albumSpreads.length === 0}
+                  className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60"
+                >
+                  {exportingAlbumPsd ? "מייצא..." : "🎨 ייצוא PSD (פוטושופ)"}
                 </button>
                 {album.status !== "approved" && (
                   <button

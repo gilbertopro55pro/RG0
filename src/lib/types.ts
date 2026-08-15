@@ -287,6 +287,8 @@ export type GalleryAlbumRow = {
   title: string;
   status: AlbumStatus;
   cover_photo_id: string | null;
+  width_cm: number;
+  height_cm: number;
   approved_at: string | null;
   created_at: string;
 };
