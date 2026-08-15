@@ -15,9 +15,31 @@ import {
   endPath,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import sharp from "sharp";
 import { downloadObjectBuffer } from "@/lib/storage";
 import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
-import type { AlbumTextElement, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
+import type { AlbumPhotoFilter, AlbumTextElement, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
+
+function hexToRgbTuple(hex: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return [1, 1, 1];
+  return [parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255];
+}
+
+// Applied server-side via sharp before the buffer ever reaches pdf-lib — pdf-lib itself has no
+// image color-transform primitive, so this is the only way the PDF's B&W/sepia frames actually
+// match what the CSS `filter: grayscale()/sepia()` preview shows in the builder and proofing view.
+async function applyPhotoFilter(buffer: Buffer, filter: AlbumPhotoFilter | undefined): Promise<Buffer> {
+  if (!filter || filter === "none") return buffer;
+  const img = sharp(buffer).rotate(); // .rotate() with no args auto-applies EXIF orientation first
+  // Sepia = tinted — sharp's tint() already desaturates internally before recoloring, so this is
+  // the standard sepia approximation. Chaining an explicit .grayscale() *before* .tint() looks
+  // like the obvious way to write it, but empirically neutralizes the tint entirely (confirmed:
+  // grayscale().tint() produces pure gray, R=G=B, while tint() alone produces the expected warm
+  // tone) — so grayscale must never precede tint in this pipeline.
+  const processed = filter === "sepia" ? img.tint({ r: 112, g: 66, b: 20 }) : img.grayscale();
+  return processed.jpeg({ quality: 90 }).toBuffer();
+}
 
 // One "spread" page in the exported PDF, in points — a landscape rectangle standing in for one
 // printed album opening. Not tied to any specific print lab's trim/bleed spec (this app has no
@@ -135,13 +157,21 @@ export async function generateAlbumPdf({
   ]);
 
   const imageCache = new Map<string, PDFImage | null>();
-  const embedByPhotoId = async (photoId: string | null): Promise<PDFImage | null> => {
+  const embedByPhotoId = async (photoId: string | null, filter?: AlbumPhotoFilter): Promise<PDFImage | null> => {
     if (!photoId) return null;
-    if (imageCache.has(photoId)) return imageCache.get(photoId)!;
+    const cacheKey = `${photoId}:${filter ?? "none"}`;
+    if (imageCache.has(cacheKey)) return imageCache.get(cacheKey)!;
     const photo = photosById.get(photoId);
-    const buffer = photo ? await downloadObjectBuffer("galleries", photo.storage_path) : null;
+    let buffer = photo ? await downloadObjectBuffer("galleries", photo.storage_path) : null;
+    if (buffer && filter && filter !== "none") {
+      try {
+        buffer = await applyPhotoFilter(buffer, filter);
+      } catch {
+        // Fall back to the unfiltered image rather than dropping it entirely.
+      }
+    }
     const image = buffer ? await embedImageAuto(pdfDoc, buffer) : null;
-    imageCache.set(photoId, image);
+    imageCache.set(cacheKey, image);
     return image;
   };
 
@@ -172,13 +202,23 @@ export async function generateAlbumPdf({
           drawTextElement(page, el, { hebrewFont, latinFont });
           continue;
         }
-        const image = await embedByPhotoId(el.photoId);
+        const image = await embedByPhotoId(el.photoId, el.filter);
         if (!image) continue;
         const width = (el.widthPct / 100) * PAGE_WIDTH;
         const height = (el.heightPct / 100) * PAGE_HEIGHT;
         const x = (el.xPct / 100) * PAGE_WIDTH;
         const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - height;
         drawCoverImage(page, image, { x, y, width, height }, el.focalX, el.focalY);
+        if (el.borderWidth) {
+          page.drawRectangle({
+            x,
+            y,
+            width,
+            height,
+            borderWidth: el.borderWidth,
+            borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")),
+          });
+        }
       }
       continue;
     }

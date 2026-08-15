@@ -236,16 +236,23 @@ export type AlbumSpreadLayout = "split" | "feature" | "stack" | "custom";
 // coordinates regardless of the app's RTL UI, since a free-form canvas has no inherent reading
 // direction to inherit and this keeps the same math correct in the builder, the client viewer,
 // and the PDF export (which also works in a top-left-ish coordinate convention once flipped).
+export type AlbumPhotoFilter = "none" | "bw" | "sepia";
+
 export type AlbumPhotoElement = {
   id: string;
   type: "photo";
-  photoId: string;
+  // null = an empty frame, shown as a "+" placeholder until the photographer assigns a photo —
+  // this is what a template application creates before anything is filled in.
+  photoId: string | null;
   xPct: number;
   yPct: number;
   widthPct: number;
   heightPct: number;
   focalX: number;
   focalY: number;
+  filter?: AlbumPhotoFilter;
+  borderWidth?: number;
+  borderColor?: string;
 };
 
 export type AlbumTextElement = {
@@ -261,6 +268,17 @@ export type AlbumTextElement = {
 };
 
 export type AlbumElement = AlbumPhotoElement | AlbumTextElement;
+
+// A frame is a photo element's shape only (position/size) — the reusable unit a template stores.
+export type AlbumFrame = Pick<AlbumPhotoElement, "id" | "xPct" | "yPct" | "widthPct" | "heightPct">;
+
+export type AlbumTemplateRow = {
+  id: string;
+  photographer_id: string;
+  name: string;
+  frames: AlbumFrame[];
+  created_at: string;
+};
 
 export type GalleryAlbumRow = {
   id: string;

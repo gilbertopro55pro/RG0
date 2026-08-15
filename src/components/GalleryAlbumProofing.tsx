@@ -6,8 +6,27 @@ type SpreadPhoto = { id: string; url: string };
 type SpreadLayout = "split" | "feature" | "stack" | "custom";
 
 export type ClientAlbumElement =
-  | { id: string; type: "photo"; url: string; xPct: number; yPct: number; widthPct: number; heightPct: number; focalX: number; focalY: number }
+  | {
+      id: string;
+      type: "photo";
+      url: string;
+      xPct: number;
+      yPct: number;
+      widthPct: number;
+      heightPct: number;
+      focalX: number;
+      focalY: number;
+      filter?: "none" | "bw" | "sepia";
+      borderWidth?: number;
+      borderColor?: string;
+    }
   | { id: string; type: "text"; text: string; xPct: number; yPct: number; widthPct: number; fontSize: number; color: "white" | "black"; align: "right" | "center" | "left" };
+
+export function cssFilterFor(filter: "none" | "bw" | "sepia" | undefined): string | undefined {
+  if (filter === "bw") return "grayscale(1)";
+  if (filter === "sepia") return "sepia(0.85)";
+  return undefined;
+}
 
 type Spread = {
   id: string;
@@ -132,10 +151,22 @@ export default function GalleryAlbumProofing({
                 <div
                   key={el.id}
                   className="absolute overflow-hidden"
-                  style={{ left: `${el.xPct}%`, top: `${el.yPct}%`, width: `${el.widthPct}%`, height: `${el.heightPct}%` }}
+                  style={{
+                    left: `${el.xPct}%`,
+                    top: `${el.yPct}%`,
+                    width: `${el.widthPct}%`,
+                    height: `${el.heightPct}%`,
+                    outline: el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
+                    outlineOffset: el.borderWidth ? `-${el.borderWidth}px` : undefined,
+                  }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={el.url} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: `${el.focalX}% ${el.focalY}%` }} />
+                  <img
+                    src={el.url}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
+                    style={{ objectPosition: `${el.focalX}% ${el.focalY}%`, filter: cssFilterFor(el.filter) }}
+                  />
                 </div>
               ) : (
                 <TextOverlay key={el.id} el={el} />

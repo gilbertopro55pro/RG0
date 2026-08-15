@@ -134,6 +134,9 @@ export default async function PublicGalleryPage({
         const elements: ClientAlbumElement[] = s.elements
           .map((el): ClientAlbumElement | null => {
             if (el.type === "text") return el;
+            // An empty frame (no photo assigned yet) never reaches the client — it's a
+            // photographer-only work-in-progress placeholder.
+            if (!el.photoId) return null;
             const photo = photoById.get(el.photoId);
             if (!photo) return null;
             return { ...el, url: photo.url };

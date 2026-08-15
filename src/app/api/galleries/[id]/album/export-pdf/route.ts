@@ -55,7 +55,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ...(album.cover_photo_id ? [album.cover_photo_id] : []),
       ...spreads.flatMap((s) => [s.photo_id_1, s.photo_id_2].filter((id): id is string => !!id)),
       // Custom-layout spreads can reference photos that never touch photo_id_1/photo_id_2 at all.
-      ...spreads.flatMap((s) => s.elements.filter((el) => el.type === "photo").map((el) => el.photoId)),
+      // An empty frame (photoId null — not yet assigned) has nothing to fetch.
+      ...spreads.flatMap((s) =>
+        s.elements.filter((el): el is typeof el & { type: "photo"; photoId: string } => el.type === "photo" && !!el.photoId).map((el) => el.photoId)
+      ),
     ])
   );
   const { data: photos } = await supabase

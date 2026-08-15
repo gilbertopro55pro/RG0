@@ -7,6 +7,8 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type {
   AlbumElement,
+  AlbumFrame,
+  AlbumTemplateRow,
   GalleryAlbumCommentRow,
   GalleryAlbumRow,
   GalleryAlbumSpreadRow,
@@ -206,6 +208,7 @@ export default function GalleryManageView({
   const [replaceTarget, setReplaceTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
   const [exportingAlbumPdf, setExportingAlbumPdf] = useState(false);
   const [canvasEditorTarget, setCanvasEditorTarget] = useState<{ spreadId: string; mode: "overlay" | "custom" } | null>(null);
+  const [albumTemplates, setAlbumTemplates] = useState<AlbumTemplateRow[]>([]);
   const [savingAlbum, setSavingAlbum] = useState(false);
   const [savingSlideshow, setSavingSlideshow] = useState(false);
 
@@ -324,6 +327,21 @@ export default function GalleryManageView({
     setAlbumManageOpen(true);
     setAlbumSelectedOrder([]);
     loadAlbum();
+    supabase
+      .from("album_templates")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .returns<AlbumTemplateRow[]>()
+      .then(({ data }) => setAlbumTemplates(data ?? []));
+  };
+
+  const saveAlbumTemplate = async (name: string, frames: AlbumFrame[]) => {
+    const { data, error } = await supabase
+      .from("album_templates")
+      .insert({ photographer_id: gallery.photographer_id, name, frames })
+      .select()
+      .single<AlbumTemplateRow>();
+    if (!error && data) setAlbumTemplates((prev) => [data, ...prev]);
   };
 
   const toggleAlbumPickerPhoto = (id: string) => {
@@ -2143,7 +2161,9 @@ export default function GalleryManageView({
               photo1={photo1}
               photo2={photo2}
               mode={canvasEditorTarget.mode}
+              templates={albumTemplates}
               onSave={saveSpreadElements}
+              onSaveTemplate={saveAlbumTemplate}
               onClose={() => setCanvasEditorTarget(null)}
             />
           );
