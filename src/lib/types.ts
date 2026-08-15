@@ -25,6 +25,8 @@ export type Photographer = {
   cancel_at_period_end: boolean;
   renewal_reminder_sent_at: string | null;
   lead_follow_up_enabled: boolean;
+  finbot_api_key: string | null;
+  business_tax_status: "exempt" | "licensed";
   created_at: string;
 };
 
@@ -33,6 +35,7 @@ export type EventRow = {
   photographer_id: string;
   client_name: string;
   client_phone: string | null;
+  client_email: string | null;
   package: PackageType | null;
   custom_package_id: string | null;
   event_date: string;
@@ -146,6 +149,8 @@ export type EventPaymentRow = {
   balance_due_date: string | null;
   deposit_paid_at: string | null;
   balance_paid_at: string | null;
+  deposit_document_url: string | null;
+  balance_document_url: string | null;
 };
 
 export type EventStageRow = {

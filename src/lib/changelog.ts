@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.13.0",
+    date: "2026-08-15",
+    changes: [
+      "חשבוניות אמיתיות ללקוחות: מחברים חשבון Finbot אישי בהגדרות (עם סטטוס עוסק פטור/מורשה), ומפיקים קבלה/חשבונית אוטומטית ברגע שמסמנים תשלום כ\"שולם\" בכרטיס האירוע",
+      "המסמך יוצא תחת הפרטים העסקיים שלכם ונשלח ישירות ללקוח/ה במייל",
+    ],
+  },
+  {
     version: "1.12.0",
     date: "2026-08-15",
     changes: [

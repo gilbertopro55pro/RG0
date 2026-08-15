@@ -277,6 +277,37 @@ export default function EventDetailView({
     setPayments({ ...payments, [field]: nextValue, [paidAtField]: paidAtValue });
   };
 
+  const [issuingDocument, setIssuingDocument] = useState<"deposit" | "balance" | null>(null);
+  const [documentEmailPrompt, setDocumentEmailPrompt] = useState<"deposit" | "balance" | null>(null);
+  const [documentEmailInput, setDocumentEmailInput] = useState(event.client_email ?? "");
+  const [clientEmail, setClientEmail] = useState(event.client_email);
+
+  const issueDocument = async (field: "deposit" | "balance", clientEmailOverride?: string) => {
+    if (!clientEmailOverride && !clientEmail) {
+      setDocumentEmailPrompt(field);
+      return;
+    }
+    setIssuingDocument(field);
+    setError(null);
+    const res = await fetch(`/api/events/${event.id}/issue-document`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ field, clientEmail: clientEmailOverride }),
+    });
+    const data = await res.json();
+    setIssuingDocument(null);
+    if (!res.ok) {
+      setError(data.error ?? "הפקת המסמך נכשלה");
+      return;
+    }
+    if (clientEmailOverride) setClientEmail(clientEmailOverride);
+    setDocumentEmailPrompt(null);
+    if (payments) {
+      const column = field === "deposit" ? "deposit_document_url" : "balance_document_url";
+      setPayments({ ...payments, [column]: data.documentUrl });
+    }
+  };
+
   const toggleAssignee = async (teamMemberId: string) => {
     setError(null);
     const isAssigned = assignedIds.has(teamMemberId);
@@ -394,30 +425,104 @@ export default function EventDetailView({
             </div>
           )}
           <div className="space-y-2">
-            <button
-              onClick={() => togglePayment("deposit_paid")}
-              className="w-full flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5"
-              style={{ background: payments.deposit_paid ? "var(--color-sage-bg)" : "var(--color-chip)" }}
-            >
-              <span>מקדמה — ₪{payments.deposit_amount}</span>
-              <span style={{ color: payments.deposit_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
-                {payments.deposit_paid ? "שולם ✓" : "ממתין"}
-              </span>
-            </button>
-            <button
-              onClick={() => togglePayment("balance_paid")}
-              className="w-full flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5"
-              style={{ background: payments.balance_paid ? "var(--color-sage-bg)" : "var(--color-chip)" }}
-            >
-              <span>יתרה — ₪{payments.balance_amount}</span>
-              <span style={{ color: payments.balance_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
-                {payments.balance_paid
-                  ? "שולם ✓"
-                  : payments.balance_due_date
-                    ? `עד ${new Date(payments.balance_due_date).toLocaleDateString("he-IL")}`
-                    : "ממתין"}
-              </span>
-            </button>
+            <div>
+              <button
+                onClick={() => togglePayment("deposit_paid")}
+                className="w-full flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5"
+                style={{ background: payments.deposit_paid ? "var(--color-sage-bg)" : "var(--color-chip)" }}
+              >
+                <span>מקדמה — ₪{payments.deposit_amount}</span>
+                <span style={{ color: payments.deposit_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
+                  {payments.deposit_paid ? "שולם ✓" : "ממתין"}
+                </span>
+              </button>
+              {payments.deposit_paid && (
+                <div className="flex justify-end mt-1">
+                  {payments.deposit_document_url ? (
+                    <a href={payments.deposit_document_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-deep underline">
+                      📄 צפייה במסמך
+                    </a>
+                  ) : (
+                    <button
+                      onClick={() => issueDocument("deposit")}
+                      disabled={issuingDocument === "deposit"}
+                      className="text-xs text-amber-deep underline disabled:opacity-60"
+                    >
+                      {issuingDocument === "deposit" ? "מפיק מסמך..." : "📄 הפקת מסמך"}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
+              <button
+                onClick={() => togglePayment("balance_paid")}
+                className="w-full flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5"
+                style={{ background: payments.balance_paid ? "var(--color-sage-bg)" : "var(--color-chip)" }}
+              >
+                <span>יתרה — ₪{payments.balance_amount}</span>
+                <span style={{ color: payments.balance_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
+                  {payments.balance_paid
+                    ? "שולם ✓"
+                    : payments.balance_due_date
+                      ? `עד ${new Date(payments.balance_due_date).toLocaleDateString("he-IL")}`
+                      : "ממתין"}
+                </span>
+              </button>
+              {payments.balance_paid && (
+                <div className="flex justify-end mt-1">
+                  {payments.balance_document_url ? (
+                    <a href={payments.balance_document_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-deep underline">
+                      📄 צפייה במסמך
+                    </a>
+                  ) : (
+                    <button
+                      onClick={() => issueDocument("balance")}
+                      disabled={issuingDocument === "balance"}
+                      className="text-xs text-amber-deep underline disabled:opacity-60"
+                    >
+                      {issuingDocument === "balance" ? "מפיק מסמך..." : "📄 הפקת מסמך"}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {documentEmailPrompt && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: "rgba(46,49,66,0.45)" }}
+          onClick={() => setDocumentEmailPrompt(null)}
+        >
+          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2 font-display">אימייל הלקוח/ה</h2>
+            <p className="text-sm text-ink-soft mb-3.5">נדרש אימייל כדי לשלוח את המסמך.</p>
+            <input
+              type="email"
+              value={documentEmailInput}
+              onChange={(e) => setDocumentEmailInput(e.target.value)}
+              placeholder="example@gmail.com"
+              className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-3.5"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => issueDocument(documentEmailPrompt, documentEmailInput.trim())}
+                disabled={!documentEmailInput.trim() || issuingDocument !== null}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+              >
+                {issuingDocument ? "מפיק..." : "הפקת מסמך"}
+              </button>
+              <button
+                onClick={() => setDocumentEmailPrompt(null)}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+              >
+                ביטול
+              </button>
+            </div>
           </div>
         </div>
       )}
