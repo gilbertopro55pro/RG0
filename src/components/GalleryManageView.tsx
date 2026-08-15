@@ -130,6 +130,7 @@ export default function GalleryManageView({
     activeTouchesRef,
   } = usePinchSize(CELL_SIZE_DEFAULT, CELL_SIZE_MIN, CELL_SIZE_MAX, cancelPendingGestures);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(searchParams.get("favorites") === "1");
+  const [zippingFavorites, setZippingFavorites] = useState(false);
   const [expiryMonths, setExpiryMonths] = useState<1 | 3 | 6 | null>(initialGallery.expiry_months);
   const [uploading, setUploading] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -206,6 +207,39 @@ export default function GalleryManageView({
     selected.forEach((photo, i) => {
       setTimeout(() => downloadPhotoNow(photo), i * 150);
     });
+  };
+
+  // One zip, organized into a subfolder per tab — same shared endpoint the client-facing gallery
+  // uses, except the photographer's own session bypasses the published/allow-downloads gates
+  // (those control what the client can do, not what the photographer can do with their own data).
+  const downloadFavoritesZip = async () => {
+    const favoriteIds = photos.filter((p) => p.is_favorite).map((p) => p.id);
+    if (favoriteIds.length === 0 || zippingFavorites) return;
+    setZippingFavorites(true);
+    try {
+      const res = await fetch(`/api/gallery/${gallery.access_token}/download-zip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoIds: favoriteIds }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "שגיאה בהורדת התמונות");
+        return;
+      }
+      const disposition = res.headers.get("content-disposition") ?? "";
+      const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : "favorites.zip";
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setZippingFavorites(false);
+    }
   };
 
   const startPress = (photo: PhotoWithUrl) => {
@@ -695,7 +729,7 @@ export default function GalleryManageView({
     <div className="pb-8">
       <div className="flex items-center justify-between mb-1.5">
         <Link href="/galleries" className="flex items-center gap-1 text-sm tracking-wide text-ink-soft">
-          ← כל הגלריות
+          → כל הגלריות
         </Link>
         <div className="flex items-center gap-2">
           <button
@@ -732,9 +766,14 @@ export default function GalleryManageView({
               href={`/gallery/${gallery.access_token}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs font-medium text-amber-deep underline"
+              aria-label="תצוגה מקדימה של הגלריה"
+              title="תצוגה מקדימה של הגלריה"
+              className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-amber-deep ${BTN_PRESS}`}
             >
-              תצוגה מקדימה ←
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z" />
+                <circle cx={12} cy={12} r={3} />
+              </svg>
             </a>
           )}
         </div>
@@ -757,16 +796,30 @@ export default function GalleryManageView({
       )}
 
       {favoriteCount > 0 && (
-        <button
-          onClick={() => setShowFavoritesOnly((v) => !v)}
-          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 mb-3 text-xs font-semibold ${BTN_PRESS}`}
-          style={{
-            background: showFavoritesOnly ? "var(--color-amber-deep)" : "var(--color-chip)",
-            color: showFavoritesOnly ? "#fff" : "var(--color-ink-soft)",
-          }}
-        >
-          💜 {showFavoritesOnly ? "מציג רק מועדפים" : "הצגת מועדפים בלבד"} ({favoriteCount})
-        </button>
+        <div className="flex items-center gap-2 mb-3">
+          <button
+            onClick={() => setShowFavoritesOnly((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
+            style={{
+              background: showFavoritesOnly ? "var(--color-amber-deep)" : "var(--color-chip)",
+              color: showFavoritesOnly ? "#fff" : "var(--color-ink-soft)",
+            }}
+          >
+            💜 {showFavoritesOnly ? "מציג רק מועדפים" : "הצגת מועדפים בלבד"} ({favoriteCount})
+          </button>
+          <button
+            onClick={downloadFavoritesZip}
+            disabled={zippingFavorites}
+            aria-label="הורדת כל התמונות המועדפות"
+            title="הורדת כל התמונות המועדפות, מאורגנות לפי לשוניות"
+            className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
+          >
+            <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
+              <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
+            </svg>
+          </button>
+        </div>
       )}
 
       <div className="flex items-center gap-1.5 mb-3">

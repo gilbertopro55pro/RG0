@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ZipArchive } from "archiver";
 import { Readable } from "node:stream";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { downloadObjectBuffer } from "@/lib/storage";
 import type { GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
 
@@ -33,15 +34,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .from("galleries")
     .select("*")
     .eq("access_token", token)
-    .eq("published", true)
-    .is("archived_at", null)
     .maybeSingle<GalleryRow>();
 
   if (!gallery) {
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
-  if (!gallery.allow_downloads) {
-    return NextResponse.json({ error: "הורדת תמונות מכובה עבור גלריה זו" }, { status: 403 });
+
+  // The photographer downloading their own gallery (e.g. exporting the client's favorites for
+  // retouching) isn't bound by the client-facing publish/downloads-enabled gates — those settings
+  // control what the client can see, not what the photographer can do with their own data.
+  const serverAuthClient = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await serverAuthClient.auth.getUser();
+  const isOwner = !!user && user.id === gallery.photographer_id;
+
+  if (!isOwner) {
+    if (!gallery.published || gallery.archived_at) {
+      return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
+    }
+    if (!gallery.allow_downloads) {
+      return NextResponse.json({ error: "הורדת תמונות מכובה עבור גלריה זו" }, { status: 403 });
+    }
   }
 
   const [{ data: photos }, { data: folders }] = await Promise.all([
