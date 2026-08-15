@@ -3,7 +3,12 @@
 import { useState } from "react";
 
 type SpreadPhoto = { id: string; url: string };
-type SpreadLayout = "split" | "feature" | "stack";
+type SpreadLayout = "split" | "feature" | "stack" | "custom";
+
+export type ClientAlbumElement =
+  | { id: string; type: "photo"; url: string; xPct: number; yPct: number; widthPct: number; heightPct: number; focalX: number; focalY: number }
+  | { id: string; type: "text"; text: string; xPct: number; yPct: number; widthPct: number; fontSize: number; color: "white" | "black"; align: "right" | "center" | "left" };
+
 type Spread = {
   id: string;
   photo1: SpreadPhoto;
@@ -13,8 +18,28 @@ type Spread = {
   focalY1: number;
   focalX2: number;
   focalY2: number;
+  elements: ClientAlbumElement[];
   comments: { id: string; text: string }[];
 };
+
+function TextOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "text" }> }) {
+  return (
+    <div
+      className="absolute px-1 font-bold"
+      style={{
+        left: `${el.xPct}%`,
+        top: `${el.yPct}%`,
+        width: `${el.widthPct}%`,
+        textAlign: el.align,
+        color: el.color === "white" ? "#fff" : "#000",
+        fontSize: `${el.fontSize}cqw`,
+        textShadow: el.color === "white" ? "0 1px 4px rgba(0,0,0,0.7)" : "0 1px 4px rgba(255,255,255,0.7)",
+      }}
+    >
+      {el.text}
+    </div>
+  );
+}
 
 export default function GalleryAlbumProofing({
   token,
@@ -100,35 +125,60 @@ export default function GalleryAlbumProofing({
               </p>
             </div>
           </div>
+        ) : spread!.layout === "custom" ? (
+          <div className="relative w-full max-w-full aspect-[16/10]" style={{ containerType: "inline-size" }}>
+            {spread!.elements.map((el) =>
+              el.type === "photo" ? (
+                <div
+                  key={el.id}
+                  className="absolute overflow-hidden"
+                  style={{ left: `${el.xPct}%`, top: `${el.yPct}%`, width: `${el.widthPct}%`, height: `${el.heightPct}%` }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={el.url} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: `${el.focalX}% ${el.focalY}%` }} />
+                </div>
+              ) : (
+                <TextOverlay key={el.id} el={el} />
+              )
+            )}
+          </div>
         ) : spread!.photo2 ? (
           // Two photos share a spread — shown as a real "cover" crop (object-cover, aimed via the
           // photographer's chosen focal point) inside a fixed-ratio frame, rather than shrunk to
           // fit whole, so what the client approves here matches what the exported PDF prints.
-          <div
-            className={`w-full max-w-full aspect-[16/10] flex gap-1.5 ${spread!.layout === "stack" ? "flex-col" : "flex-row"}`}
-          >
-            <div className="relative overflow-hidden rounded-sm" style={{ flex: spread!.layout === "feature" ? 1.6 : 1 }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={spread!.photo1.url}
-                alt=""
-                className="absolute inset-0 w-full h-full object-cover"
-                style={{ objectPosition: `${spread!.focalX1}% ${spread!.focalY1}%` }}
-              />
+          <div className="relative w-full max-w-full aspect-[16/10]" style={{ containerType: "inline-size" }}>
+            <div className={`absolute inset-0 flex gap-1.5 ${spread!.layout === "stack" ? "flex-col" : "flex-row"}`}>
+              <div className="relative overflow-hidden rounded-sm" style={{ flex: spread!.layout === "feature" ? 1.6 : 1 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={spread!.photo1.url}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{ objectPosition: `${spread!.focalX1}% ${spread!.focalY1}%` }}
+                />
+              </div>
+              <div className="relative overflow-hidden rounded-sm" style={{ flex: 1 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={spread!.photo2.url}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{ objectPosition: `${spread!.focalX2}% ${spread!.focalY2}%` }}
+                />
+              </div>
             </div>
-            <div className="relative overflow-hidden rounded-sm" style={{ flex: 1 }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={spread!.photo2.url}
-                alt=""
-                className="absolute inset-0 w-full h-full object-cover"
-                style={{ objectPosition: `${spread!.focalX2}% ${spread!.focalY2}%` }}
-              />
-            </div>
+            {spread!.elements.filter((el) => el.type === "text").map((el) => (
+              <TextOverlay key={el.id} el={el} />
+            ))}
           </div>
         ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={spread!.photo1.url} alt="" className="h-full max-w-full object-contain" />
+          <div className="relative w-full h-full flex items-center justify-center" style={{ containerType: "inline-size" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={spread!.photo1.url} alt="" className="h-full max-w-full object-contain" />
+            {spread!.elements.filter((el) => el.type === "text").map((el) => (
+              <TextOverlay key={el.id} el={el} />
+            ))}
+          </div>
         )}
       </div>
 

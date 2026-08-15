@@ -8,6 +8,7 @@ import type {
   GalleryPhotoRow,
   GalleryRow,
 } from "@/lib/types";
+import type { ClientAlbumElement } from "@/components/GalleryAlbumProofing";
 import PublicGalleryView from "@/components/PublicGalleryView";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import { getSignedDownloadUrls } from "@/lib/storage";
@@ -105,6 +106,7 @@ export default async function PublicGalleryPage({
     focalY1: number;
     focalX2: number;
     focalY2: number;
+    elements: ClientAlbumElement[];
     comments: { id: string; text: string }[];
   }[] = [];
   let albumCoverUrl: string | null = null;
@@ -129,6 +131,14 @@ export default async function PublicGalleryPage({
         const photo1 = photoById.get(s.photo_id_1);
         if (!photo1) return null;
         const photo2 = s.photo_id_2 ? photoById.get(s.photo_id_2) : null;
+        const elements: ClientAlbumElement[] = s.elements
+          .map((el): ClientAlbumElement | null => {
+            if (el.type === "text") return el;
+            const photo = photoById.get(el.photoId);
+            if (!photo) return null;
+            return { ...el, url: photo.url };
+          })
+          .filter((el): el is ClientAlbumElement => el !== null);
         return {
           id: s.id,
           photo1: { id: photo1.id, url: photo1.url },
@@ -138,6 +148,7 @@ export default async function PublicGalleryPage({
           focalY1: s.focal_y_1,
           focalX2: s.focal_x_2,
           focalY2: s.focal_y_2,
+          elements,
           comments: (commentsRaw ?? []).filter((c) => c.spread_id === s.id).map((c) => ({ id: c.id, text: c.text })),
         };
       })

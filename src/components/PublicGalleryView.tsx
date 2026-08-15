@@ -9,7 +9,7 @@ import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
 import { resolveGalleryTheme } from "@/lib/galleryTheme";
 import GallerySlideshow from "@/components/GallerySlideshow";
-import GalleryAlbumProofing from "@/components/GalleryAlbumProofing";
+import GalleryAlbumProofing, { type ClientAlbumElement } from "@/components/GalleryAlbumProofing";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
 
@@ -64,11 +64,12 @@ export default function PublicGalleryView({
     id: string;
     photo1: { id: string; url: string };
     photo2: { id: string; url: string } | null;
-    layout: "split" | "feature" | "stack";
+    layout: "split" | "feature" | "stack" | "custom";
     focalX1: number;
     focalY1: number;
     focalX2: number;
     focalY2: number;
+    elements: ClientAlbumElement[];
     comments: { id: string; text: string }[];
   }[];
 }) {

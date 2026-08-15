@@ -54,6 +54,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     new Set([
       ...(album.cover_photo_id ? [album.cover_photo_id] : []),
       ...spreads.flatMap((s) => [s.photo_id_1, s.photo_id_2].filter((id): id is string => !!id)),
+      // Custom-layout spreads can reference photos that never touch photo_id_1/photo_id_2 at all.
+      ...spreads.flatMap((s) => s.elements.filter((el) => el.type === "photo").map((el) => el.photoId)),
     ])
   );
   const { data: photos } = await supabase

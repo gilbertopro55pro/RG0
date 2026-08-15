@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   PDFDocument,
+  PDFFont,
   PDFImage,
   PDFPage,
   rgb,
@@ -15,8 +16,8 @@ import {
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { downloadObjectBuffer } from "@/lib/storage";
-import { drawCenteredBidiText } from "@/lib/pdfText";
-import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
+import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
+import type { AlbumTextElement, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 // One "spread" page in the exported PDF, in points — a landscape rectangle standing in for one
 // printed album opening. Not tied to any specific print lab's trim/bleed spec (this app has no
@@ -84,6 +85,37 @@ function drawCoverImage(
   page.pushOperators(popGraphicsState());
 }
 
+// `el.fontSize` is stored in the same unit the web UI uses (cqw — percent of the container's
+// width), so it converts to points the same way xPct/widthPct do: as a fraction of PAGE_WIDTH.
+// Drawn twice — a shadow pass offset by a couple points, then the real text on top — since pdf-lib
+// has no text-shadow primitive and a flat color alone can vanish against a busy photo background.
+function drawTextElement(
+  page: PDFPage,
+  el: AlbumTextElement,
+  fonts: { hebrewFont: PDFFont; latinFont: PDFFont }
+) {
+  const boxX = (el.xPct / 100) * PAGE_WIDTH;
+  const boxWidth = (el.widthPct / 100) * PAGE_WIDTH;
+  const size = (el.fontSize / 100) * PAGE_WIDTH;
+  const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - size;
+  const mainColor = el.color === "white" ? rgb(1, 1, 1) : rgb(0, 0, 0);
+  const shadowColor = el.color === "white" ? rgb(0, 0, 0) : rgb(1, 1, 1);
+  for (const [dx, dy, color] of [
+    [2, -2, shadowColor],
+    [0, 0, mainColor],
+  ] as const) {
+    drawAlignedBidiText(page, el.text, {
+      boxX: boxX + dx,
+      boxWidth,
+      y: y + dy,
+      size,
+      align: el.align,
+      color,
+      ...fonts,
+    });
+  }
+}
+
 export async function generateAlbumPdf({
   album,
   spreads,
@@ -131,6 +163,26 @@ export async function generateAlbumPdf({
   }
 
   for (const spread of spreads) {
+    if (spread.layout === "custom") {
+      // A free-form page can be text-only (no photo elements at all) — unlike the preset
+      // layouts, it always gets a page even if every photo element fails to embed.
+      const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      for (const el of spread.elements) {
+        if (el.type === "text") {
+          drawTextElement(page, el, { hebrewFont, latinFont });
+          continue;
+        }
+        const image = await embedByPhotoId(el.photoId);
+        if (!image) continue;
+        const width = (el.widthPct / 100) * PAGE_WIDTH;
+        const height = (el.heightPct / 100) * PAGE_HEIGHT;
+        const x = (el.xPct / 100) * PAGE_WIDTH;
+        const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - height;
+        drawCoverImage(page, image, { x, y, width, height }, el.focalX, el.focalY);
+      }
+      continue;
+    }
+
     const image1 = await embedByPhotoId(spread.photo_id_1);
     if (!image1) continue;
     const image2 = await embedByPhotoId(spread.photo_id_2);
@@ -139,10 +191,7 @@ export async function generateAlbumPdf({
 
     if (!image2) {
       drawCoverImage(page, image1, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }, spread.focal_x_1, spread.focal_y_1);
-      continue;
-    }
-
-    if (spread.layout === "stack") {
+    } else if (spread.layout === "stack") {
       const halfH = (PAGE_HEIGHT - GAP) / 2;
       // Vertical stacking order is unaffected by RTL (dir only reorders the inline/horizontal
       // axis) — photo1 on top, photo2 below, same as the app's flex-col rendering.
@@ -156,6 +205,10 @@ export async function generateAlbumPdf({
       // mirrored here so the exported PDF matches what was actually reviewed and approved.
       drawCoverImage(page, image2, { x: 0, y: 0, width: width2, height: PAGE_HEIGHT }, spread.focal_x_2, spread.focal_y_2);
       drawCoverImage(page, image1, { x: width2 + GAP, y: 0, width: width1, height: PAGE_HEIGHT }, spread.focal_x_1, spread.focal_y_1);
+    }
+
+    for (const el of spread.elements) {
+      if (el.type === "text") drawTextElement(page, el, { hebrewFont, latinFont });
     }
   }
 

@@ -230,7 +230,37 @@ export type GalleryFolderRow = {
 
 export type AlbumStatus = "draft" | "sent" | "approved" | "changes_requested";
 
-export type AlbumSpreadLayout = "split" | "feature" | "stack";
+export type AlbumSpreadLayout = "split" | "feature" | "stack" | "custom";
+
+// Positions/sizes are percentages of the page box (0-100, origin top-left) — plain LTR
+// coordinates regardless of the app's RTL UI, since a free-form canvas has no inherent reading
+// direction to inherit and this keeps the same math correct in the builder, the client viewer,
+// and the PDF export (which also works in a top-left-ish coordinate convention once flipped).
+export type AlbumPhotoElement = {
+  id: string;
+  type: "photo";
+  photoId: string;
+  xPct: number;
+  yPct: number;
+  widthPct: number;
+  heightPct: number;
+  focalX: number;
+  focalY: number;
+};
+
+export type AlbumTextElement = {
+  id: string;
+  type: "text";
+  text: string;
+  xPct: number;
+  yPct: number;
+  widthPct: number;
+  fontSize: number;
+  color: "white" | "black";
+  align: "right" | "center" | "left";
+};
+
+export type AlbumElement = AlbumPhotoElement | AlbumTextElement;
 
 export type GalleryAlbumRow = {
   id: string;
@@ -254,6 +284,7 @@ export type GalleryAlbumSpreadRow = {
   focal_y_1: number;
   focal_x_2: number;
   focal_y_2: number;
+  elements: AlbumElement[];
   created_at: string;
 };
 

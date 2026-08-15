@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  AlbumElement,
   GalleryAlbumCommentRow,
   GalleryAlbumRow,
   GalleryAlbumSpreadRow,
@@ -18,6 +19,7 @@ import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
+import AlbumSpreadCanvasEditor from "@/components/AlbumSpreadCanvasEditor";
 import {
   GALLERY_THEMES,
   COVER_TEXT_POSITIONS,
@@ -203,6 +205,7 @@ export default function GalleryManageView({
   const [focalEditTarget, setFocalEditTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
   const [replaceTarget, setReplaceTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
   const [exportingAlbumPdf, setExportingAlbumPdf] = useState(false);
+  const [canvasEditorTarget, setCanvasEditorTarget] = useState<{ spreadId: string; mode: "overlay" | "custom" } | null>(null);
   const [savingAlbum, setSavingAlbum] = useState(false);
   const [savingSlideshow, setSavingSlideshow] = useState(false);
 
@@ -434,6 +437,15 @@ export default function GalleryManageView({
   // Swaps in a different photo for one slot of an existing spread without disturbing the other
   // slot, the spread's position, layout, or the client's comments (comments are tied to spread_id,
   // not to a specific photo, so a swapped-in photo still shows prior feedback in context).
+  const saveSpreadElements = async (elements: AlbumElement[]) => {
+    if (!canvasEditorTarget) return;
+    const { spreadId, mode } = canvasEditorTarget;
+    const patch = mode === "custom" ? { elements, layout: "custom" as const } : { elements };
+    setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, ...patch } : s)));
+    await supabase.from("gallery_album_spreads").update(patch).eq("id", spreadId);
+    setCanvasEditorTarget(null);
+  };
+
   const replaceSpreadPhoto = async (photoId: string) => {
     if (!replaceTarget) return;
     const { spreadId, slot } = replaceTarget;
@@ -1813,9 +1825,44 @@ export default function GalleryManageView({
                           style={{ opacity: draggedSpreadId === spread.id ? 0.4 : 1 }}
                         >
                           <div className="flex items-center gap-2">
-                            <div
-                              className={`flex flex-1 ${spread.layout === "stack" ? "flex-col" : "flex-row"} gap-1`}
-                            >
+                            {spread.layout === "custom" ? (
+                              <button
+                                onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" })}
+                                className="relative flex-1 aspect-[16/10] rounded-lg overflow-hidden bg-line"
+                              >
+                                {spread.elements.map((el) => {
+                                  const photo = el.type === "photo" ? photos.find((p) => p.id === el.photoId) : null;
+                                  return (
+                                    <div
+                                      key={el.id}
+                                      className="absolute overflow-hidden"
+                                      style={{
+                                        left: `${el.xPct}%`,
+                                        top: `${el.yPct}%`,
+                                        width: `${el.widthPct}%`,
+                                        height: el.type === "photo" ? `${el.heightPct}%` : undefined,
+                                        fontSize: el.type === "text" ? `${el.fontSize}px` : undefined,
+                                        color: el.type === "text" ? (el.color === "white" ? "#fff" : "#000") : undefined,
+                                        textAlign: el.type === "text" ? el.align : undefined,
+                                        fontWeight: el.type === "text" ? 700 : undefined,
+                                      }}
+                                    >
+                                      {el.type === "photo" && photo && (
+                                        /* eslint-disable-next-line @next/next/no-img-element */
+                                        <img src={photo.url} alt="" className="w-full h-full object-cover" style={{ objectPosition: `${el.focalX}% ${el.focalY}%` }} />
+                                      )}
+                                      {el.type === "text" && el.text}
+                                    </div>
+                                  );
+                                })}
+                                <span className="absolute bottom-1 left-1 rounded-full bg-black/60 text-white text-[10px] px-2 py-0.5">
+                                  🎨 עריכת עיצוב חופשי
+                                </span>
+                              </button>
+                            ) : (
+                              <div
+                                className={`flex flex-1 ${spread.layout === "stack" ? "flex-col" : "flex-row"} gap-1`}
+                              >
                               {photo1 && (
                                 <div
                                   className="relative aspect-square rounded-lg overflow-hidden bg-line"
@@ -1890,7 +1937,8 @@ export default function GalleryManageView({
                                   )}
                                 </div>
                               )}
-                            </div>
+                              </div>
+                            )}
                             <div className="flex flex-col gap-1 shrink-0">
                               <span
                                 className="h-6 w-6 hidden sm:flex items-center justify-center text-ink-soft text-xs cursor-grab"
@@ -1937,6 +1985,22 @@ export default function GalleryManageView({
                               ))}
                             </div>
                           )}
+                          <div className="flex gap-1 mt-2">
+                            <button
+                              onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" })}
+                              className="flex-1 rounded-full py-1.5 text-[10px] font-semibold bg-chip text-ink-soft"
+                            >
+                              🎨 עיצוב חופשי
+                            </button>
+                            <button
+                              onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "overlay" })}
+                              className="flex-1 rounded-full py-1.5 text-[10px] font-semibold bg-chip text-ink-soft"
+                              disabled={spread.layout === "custom"}
+                              style={{ opacity: spread.layout === "custom" ? 0.4 : 1 }}
+                            >
+                              🔤 טקסט
+                            </button>
+                          </div>
                           {comments.length > 0 && (
                             <div className="mt-2 space-y-1">
                               {comments.map((c) => (
@@ -2065,6 +2129,25 @@ export default function GalleryManageView({
           </div>
         </div>
       )}
+
+      {canvasEditorTarget &&
+        (() => {
+          const spread = albumSpreads.find((s) => s.id === canvasEditorTarget.spreadId);
+          if (!spread) return null;
+          const photo1 = photos.find((p) => p.id === spread.photo_id_1);
+          const photo2 = spread.photo_id_2 ? photos.find((p) => p.id === spread.photo_id_2) : null;
+          return (
+            <AlbumSpreadCanvasEditor
+              spread={spread}
+              photos={photos}
+              photo1={photo1}
+              photo2={photo2}
+              mode={canvasEditorTarget.mode}
+              onSave={saveSpreadElements}
+              onClose={() => setCanvasEditorTarget(null)}
+            />
+          );
+        })()}
 
       {shareOpen && (
         <div
