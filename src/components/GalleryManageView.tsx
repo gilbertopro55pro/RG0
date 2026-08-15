@@ -24,7 +24,7 @@ import {
 } from "@/lib/galleryTheme";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import GallerySlideshow from "@/components/GallerySlideshow";
-import { TextPositionIcon, ShapeIcon, GridStyleIcon } from "@/components/GalleryStyleIcons";
+import { TextPositionIcon, ShapeIcon, GridStyleIcon, PlayIcon } from "@/components/GalleryStyleIcons";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
 
@@ -136,12 +136,12 @@ export default function GalleryManageView({
   const [publishing, setPublishing] = useState(false);
   const [renewing, setRenewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showEditDetails, setShowEditDetails] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(initialGallery.title);
   const [editShootDate, setEditShootDate] = useState(initialGallery.shoot_date ?? "");
   const [editClientEmail, setEditClientEmail] = useState(initialGallery.client_email ?? "");
   const [editAllowDownloads, setEditAllowDownloads] = useState(initialGallery.allow_downloads);
-  const [savingDetails, setSavingDetails] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [actionSheetPhoto, setActionSheetPhoto] = useState<PhotoWithUrl | null>(null);
   const [deleteConfirmPhoto, setDeleteConfirmPhoto] = useState<PhotoWithUrl | null>(null);
@@ -153,16 +153,16 @@ export default function GalleryManageView({
   const [shareSelectedFolders, setShareSelectedFolders] = useState<Set<string>>(new Set());
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const NO_FOLDER_KEY = "none";
-  const [styleOpen, setStyleOpen] = useState(false);
   const [theme, setTheme] = useState(initialGallery.theme);
   const [coverTextPosition, setCoverTextPosition] = useState(initialGallery.cover_text_position);
   const [coverShape, setCoverShape] = useState(initialGallery.cover_shape);
   const [coverPhotoId, setCoverPhotoId] = useState(initialGallery.cover_photo_id);
   const [titleFontOverride, setTitleFontOverride] = useState(initialGallery.title_font_override);
   const [gridStyleOverride, setGridStyleOverride] = useState(initialGallery.grid_style_override);
+  const [slideshowManageOpen, setSlideshowManageOpen] = useState(false);
   const [slideshowPhotoIds, setSlideshowPhotoIds] = useState<Set<string>>(new Set(initialGallery.slideshow_photo_ids));
   const [slideshowPreviewOpen, setSlideshowPreviewOpen] = useState(false);
-  const [savingStyle, setSavingStyle] = useState(false);
+  const [savingSlideshow, setSavingSlideshow] = useState(false);
 
   const toggleSlideshowPhoto = (id: string) => {
     setSlideshowPhotoIds((prev) => {
@@ -629,44 +629,43 @@ export default function GalleryManageView({
     setShareOpen(false);
   };
 
-  const saveDetails = async () => {
-    setSavingDetails(true);
+  // One combined save for both settings tabs (details + style) — they're one form now, so a
+  // single patch avoids the awkwardness of "which tab's changes actually got saved".
+  const saveSettings = async () => {
+    setSavingSettings(true);
     const patch = {
       title: editTitle.trim() || "הגלריה שלכם",
       shoot_date: eventId ? gallery.shoot_date : editShootDate || null,
       client_email: editClientEmail.trim() || null,
       allow_downloads: editAllowDownloads,
-    };
-    const { error: updateError } = await supabase.from("galleries").update(patch).eq("id", gallery.id);
-    if (updateError) {
-      setError(updateError.message);
-      setSavingDetails(false);
-      return;
-    }
-    setGallery((g) => ({ ...g, ...patch }));
-    setSavingDetails(false);
-    setShowEditDetails(false);
-  };
-
-  const saveStyle = async () => {
-    setSavingStyle(true);
-    const patch = {
       theme,
       cover_text_position: coverTextPosition,
       cover_shape: coverShape,
       cover_photo_id: coverPhotoId,
       title_font_override: titleFontOverride,
       grid_style_override: gridStyleOverride,
-      slideshow_photo_ids: [...slideshowPhotoIds],
     };
     const { error: updateError } = await supabase.from("galleries").update(patch).eq("id", gallery.id);
-    setSavingStyle(false);
+    setSavingSettings(false);
     if (updateError) {
       setError(updateError.message);
       return;
     }
     setGallery((g) => ({ ...g, ...patch }));
-    setStyleOpen(false);
+    setSettingsOpen(false);
+  };
+
+  const saveSlideshow = async () => {
+    setSavingSlideshow(true);
+    const patch = { slideshow_photo_ids: [...slideshowPhotoIds] };
+    const { error: updateError } = await supabase.from("galleries").update(patch).eq("id", gallery.id);
+    setSavingSlideshow(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    setGallery((g) => ({ ...g, ...patch }));
+    setSlideshowManageOpen(false);
   };
 
   const isArchived = !!gallery.archived_at;
@@ -683,26 +682,34 @@ export default function GalleryManageView({
         </Link>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowEditDetails(true)}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink ${BTN_PRESS}`}
-          >
-            עריכת פרטי הגלריה
-          </button>
-          <button
             onClick={() => {
+              setEditTitle(gallery.title);
+              setEditShootDate(gallery.shoot_date ?? "");
+              setEditClientEmail(gallery.client_email ?? "");
+              setEditAllowDownloads(gallery.allow_downloads);
               setTheme(gallery.theme);
               setCoverTextPosition(gallery.cover_text_position);
               setCoverShape(gallery.cover_shape);
               setCoverPhotoId(gallery.cover_photo_id);
               setTitleFontOverride(gallery.title_font_override);
               setGridStyleOverride(gallery.grid_style_override);
-              setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
-              setStyleOpen(true);
+              setSettingsOpen(true);
             }}
             className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-deep text-white ${BTN_PRESS}`}
           >
-            עיצוב הגלריה
+            הגדרות גלריה
           </button>
+          {photos.length > 0 && (
+            <button
+              onClick={() => {
+                setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
+                setSlideshowManageOpen(true);
+              }}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink ${BTN_PRESS}`}
+            >
+              מצגת תמונות
+            </button>
+          )}
           {gallery.published && (
             <a
               href={`/gallery/${gallery.access_token}`}
@@ -1256,8 +1263,8 @@ export default function GalleryManageView({
         </div>
       )}
 
-      {showEditDetails && (
-        <EditGalleryDetailsModal
+      {settingsOpen && (
+        <GallerySettingsModal
           isStandalone={!eventId}
           title={editTitle}
           setTitle={setEditTitle}
@@ -1270,26 +1277,448 @@ export default function GalleryManageView({
           expiryMonths={expiryMonths}
           setExpiryMonths={setExpiryMonths}
           canEditExpiry={!gallery.published}
-          saving={savingDetails}
-          onSave={saveDetails}
-          onClose={() => setShowEditDetails(false)}
+          theme={theme}
+          setTheme={setTheme}
+          coverTextPosition={coverTextPosition}
+          setCoverTextPosition={setCoverTextPosition}
+          coverShape={coverShape}
+          setCoverShape={setCoverShape}
+          coverPhotoId={coverPhotoId}
+          setCoverPhotoId={setCoverPhotoId}
+          titleFontOverride={titleFontOverride}
+          setTitleFontOverride={setTitleFontOverride}
+          gridStyleOverride={gridStyleOverride}
+          setGridStyleOverride={setGridStyleOverride}
+          photos={photos}
+          previewTitle={clientName || gallery.title}
+          previewDateLabel={eventDate ? new Date(eventDate).toLocaleDateString("he-IL") : null}
+          saving={savingSettings}
+          onSave={saveSettings}
+          onClose={() => setSettingsOpen(false)}
         />
       )}
 
-      {styleOpen && (
+      {slideshowManageOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
           style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
-          onClick={() => setStyleOpen(false)}
+          onClick={() => setSlideshowManageOpen(false)}
         >
           <div
-            className={`${galleryFont.variable} w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto`}
+            className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold font-display mb-4">עיצוב הגלריה</h2>
+            <h2 className="text-lg font-bold font-display mb-4">מצגת תמונות</h2>
+            <p className="text-xs text-ink-soft mb-3.5">
+              בוחרים אילו תמונות ייכנסו למצגת ללקוח — היא תוצג במסך מלא עם אפקטים רנדומליים.
+            </p>
 
-            {/* Live preview — the exact same component the real public gallery page renders,
-                so what photographers see here is what clients actually get. */}
+            <div className="flex items-center justify-between mb-2.5">
+              <p className="text-xs text-ink-soft">בחירת תמונות</p>
+              {slideshowPhotoIds.size > 0 && (
+                <button
+                  onClick={() => setSlideshowPreviewOpen(true)}
+                  aria-label="תצוגה מקדימה של המצגת"
+                  title="תצוגה מקדימה"
+                  className={`h-8 w-8 rounded-full flex items-center justify-center bg-amber-deep text-white ${BTN_PRESS}`}
+                >
+                  <PlayIcon />
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-4 gap-2 mb-2.5">
+              {photos.map((p) => {
+                const active = slideshowPhotoIds.has(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => toggleSlideshowPhoto(p.id)}
+                    className="relative aspect-square rounded-lg overflow-hidden"
+                    style={{
+                      boxShadow: active
+                        ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
+                        : "0 0 0 1px var(--color-line)",
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt="" className="w-full h-full object-cover" />
+                    {active && (
+                      <span
+                        className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
+                        style={{ background: "var(--color-amber-deep)", color: "#fff" }}
+                      >
+                        ✓
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-ink-soft mb-5">{slideshowPhotoIds.size} תמונות נבחרו</p>
+
+            {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={saveSlideshow}
+                disabled={savingSlideshow}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+              >
+                {savingSlideshow ? "שומר..." : "שמירה"}
+              </button>
+              <button
+                onClick={() => setSlideshowManageOpen(false)}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {slideshowPreviewOpen && (
+        <GallerySlideshow
+          photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: p.url }))}
+          onClose={() => setSlideshowPreviewOpen(false)}
+        />
+      )}
+
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          onClick={() => setShareOpen(false)}
+        >
+          <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            {shareView === "main" ? (
+              <>
+                <h2 className="text-lg font-bold font-display mb-4">שיתוף הגלריה</h2>
+
+                {showFolderPicker && (
+                  <div className="mb-5">
+                    <p className="text-xs text-ink-soft mb-2.5">אילו לשוניות לשתף?</p>
+                    <div className="space-y-1.5">
+                      {folders.map((folder) => (
+                        <label
+                          key={folder.id}
+                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={shareSelectedFolders.has(folder.id)}
+                            onChange={() => toggleShareFolder(folder.id)}
+                          />
+                          {folder.name}
+                        </label>
+                      ))}
+                      {hasUnfoldered && (
+                        <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
+                          <input
+                            type="checkbox"
+                            checked={shareSelectedFolders.has(NO_FOLDER_KEY)}
+                            onChange={() => toggleShareFolder(NO_FOLDER_KEY)}
+                          />
+                          כללי (ללא לשונית)
+                        </label>
+                      )}
+                    </div>
+                    {shareDisabled && <p className="text-xs text-rose mt-2">יש לבחור לפחות לשונית אחת לשיתוף</p>}
+                  </div>
+                )}
+
+                <div className="space-y-2.5">
+                  <button
+                    onClick={shareViaWhatsapp}
+                    disabled={shareDisabled}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-sage-bg text-sage disabled:opacity-40"
+                  >
+                    וואטסאפ
+                  </button>
+                  <button
+                    onClick={shareViaQr}
+                    disabled={shareDisabled}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink disabled:opacity-40"
+                  >
+                    קוד QR
+                  </button>
+                  <button
+                    onClick={shareViaOther}
+                    disabled={shareDisabled}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink disabled:opacity-40"
+                  >
+                    אחר
+                  </button>
+                </div>
+                <button onClick={() => setShareOpen(false)} className="w-full text-center mt-4 text-xs text-ink-soft">
+                  ביטול
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-bold font-display mb-4">קוד QR לגלריה</h2>
+                {qrDataUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={qrDataUrl} alt="קוד QR לגלריה" className="w-full rounded-2xl mb-4" />
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShareView("main")}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
+                  >
+                    חזרה
+                  </button>
+                  <button
+                    onClick={() => setShareOpen(false)}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white"
+                  >
+                    סגירה
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GallerySettingsModal({
+  isStandalone,
+  title,
+  setTitle,
+  shootDate,
+  setShootDate,
+  clientEmail,
+  setClientEmail,
+  allowDownloads,
+  setAllowDownloads,
+  expiryMonths,
+  setExpiryMonths,
+  canEditExpiry,
+  theme,
+  setTheme,
+  coverTextPosition,
+  setCoverTextPosition,
+  coverShape,
+  setCoverShape,
+  coverPhotoId,
+  setCoverPhotoId,
+  titleFontOverride,
+  setTitleFontOverride,
+  gridStyleOverride,
+  setGridStyleOverride,
+  photos,
+  previewTitle,
+  previewDateLabel,
+  saving,
+  onSave,
+  onClose,
+}: {
+  isStandalone: boolean;
+  title: string;
+  setTitle: (v: string) => void;
+  shootDate: string;
+  setShootDate: (v: string) => void;
+  clientEmail: string;
+  setClientEmail: (v: string) => void;
+  allowDownloads: boolean;
+  setAllowDownloads: (v: boolean) => void;
+  expiryMonths: 1 | 3 | 6 | null;
+  setExpiryMonths: (v: 1 | 3 | 6 | null) => void;
+  canEditExpiry: boolean;
+  theme: string;
+  setTheme: (v: string) => void;
+  coverTextPosition: string;
+  setCoverTextPosition: (v: string) => void;
+  coverShape: string;
+  setCoverShape: (v: string) => void;
+  coverPhotoId: string | null;
+  setCoverPhotoId: (v: string) => void;
+  titleFontOverride: string | null;
+  setTitleFontOverride: (v: string | null) => void;
+  gridStyleOverride: string | null;
+  setGridStyleOverride: (v: string | null) => void;
+  photos: PhotoWithUrl[];
+  previewTitle: string;
+  previewDateLabel: string | null;
+  saving: boolean;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const [topTab, setTopTab] = useState<"details" | "style">("details");
+  const [detailsTab, setDetailsTab] = useState<"details" | "permissions">("details");
+  const [entered, setEntered] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const closeWithAnimation = () => {
+    setClosing(true);
+    setTimeout(onClose, CLOSE_ANIMATION_MS);
+  };
+
+  const resolvedGridStyle = gridStyleOverride ?? galleryThemeById(theme).gridStyle;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{
+        background: "rgba(46,49,66,0.45)",
+        backdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
+        WebkitBackdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
+        transition: `backdrop-filter ${CLOSE_ANIMATION_MS + 60}ms ease, -webkit-backdrop-filter ${CLOSE_ANIMATION_MS + 60}ms ease`,
+      }}
+      onClick={closeWithAnimation}
+    >
+      <style>{`
+        @keyframes editGalleryZoomOut { from { transform: scale(1); opacity: 1; } to { transform: scale(0.85); opacity: 0; } }
+        .edit-gallery-closing { animation: editGalleryZoomOut ${CLOSE_ANIMATION_MS}ms ease forwards; }
+      `}</style>
+      <div
+        className={`${galleryFont.variable} w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto ${closing ? "edit-gallery-closing" : ""}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold font-display">הגדרות גלריה</h2>
+          <button onClick={closeWithAnimation} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
+            ✕
+          </button>
+        </div>
+
+        <div className="flex gap-1.5 mb-4">
+          <button
+            onClick={() => setTopTab("details")}
+            className="flex-1 rounded-full py-2 text-xs font-semibold"
+            style={{
+              background: topTab === "details" ? "var(--color-ink)" : "var(--color-chip)",
+              color: topTab === "details" ? "var(--color-paper)" : "var(--color-ink-soft)",
+            }}
+          >
+            פרטי הגלריה
+          </button>
+          <button
+            onClick={() => setTopTab("style")}
+            className="flex-1 rounded-full py-2 text-xs font-semibold"
+            style={{
+              background: topTab === "style" ? "var(--color-ink)" : "var(--color-chip)",
+              color: topTab === "style" ? "var(--color-paper)" : "var(--color-ink-soft)",
+            }}
+          >
+            עיצוב הגלריה
+          </button>
+        </div>
+
+        {topTab === "details" ? (
+          <>
+            <div className="flex gap-1.5 mb-4">
+              <button
+                onClick={() => setDetailsTab("details")}
+                className="flex-1 rounded-full py-2 text-xs font-semibold"
+                style={{
+                  background: detailsTab === "details" ? "var(--color-amber-deep)" : "var(--color-chip)",
+                  color: detailsTab === "details" ? "#fff" : "var(--color-ink-soft)",
+                }}
+              >
+                פרטים
+              </button>
+              <button
+                onClick={() => setDetailsTab("permissions")}
+                className="flex-1 rounded-full py-2 text-xs font-semibold"
+                style={{
+                  background: detailsTab === "permissions" ? "var(--color-amber-deep)" : "var(--color-chip)",
+                  color: detailsTab === "permissions" ? "#fff" : "var(--color-ink-soft)",
+                }}
+              >
+                הרשאות ושמירה
+              </button>
+            </div>
+
+            {detailsTab === "details" ? (
+              <div className="space-y-3.5">
+                <div>
+                  <label className="text-xs block mb-1 text-ink-soft">שם הגלריה</label>
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {/* Real px min-width (not min-w-0) — iOS Safari's native date-input control can
+                      render with zero visible width when its flex item is allowed to shrink past
+                      its comfortable size. flex-wrap is the fallback if both truly don't fit. */}
+                  {isStandalone && (
+                    <div className="flex-1" style={{ minWidth: 150 }}>
+                      <label className="text-xs block mb-1 text-ink-soft">תאריך הצילום</label>
+                      <input
+                        type="date"
+                        value={shootDate}
+                        onChange={(e) => setShootDate(e.target.value)}
+                        className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                      />
+                    </div>
+                  )}
+                  {canEditExpiry && (
+                    <div className="flex-1" style={{ minWidth: 150 }}>
+                      <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
+                      <select
+                        value={expiryMonths ?? "indefinite"}
+                        onChange={(e) => setExpiryMonths(e.target.value === "indefinite" ? null : (Number(e.target.value) as 1 | 3 | 6))}
+                        className="w-full rounded-lg px-2 py-2 text-sm border border-line bg-white"
+                      >
+                        <option value={1}>חודש</option>
+                        <option value={3}>3 חודשים</option>
+                        <option value={6}>חצי שנה</option>
+                        <option value="indefinite">ללא הגבלת זמן</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת)</label>
+                  <input
+                    type="email"
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                    placeholder="example@gmail.com"
+                    className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
+                  <div>
+                    <div className="text-sm font-semibold">אפשרות הורדת קבצים מקוריים</div>
+                    <div className="text-xs text-ink-soft mt-0.5">כשמכובה, הלקוח/ה יוכלו רק לצפות בתמונות, לא להוריד</div>
+                  </div>
+                  <button
+                    onClick={() => setAllowDownloads(!allowDownloads)}
+                    role="switch"
+                    aria-checked={allowDownloads}
+                    className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
+                    style={{
+                      background: allowDownloads ? "var(--color-amber-deep)" : "var(--color-line)",
+                      justifyContent: allowDownloads ? "flex-start" : "flex-end",
+                    }}
+                  >
+                    <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Live preview — the exact same components the real public gallery page renders,
+                including a sample of the actual photo grid, so a layout change is visible right
+                here instead of only after leaving the modal to check the real gallery. */}
             <div
               className="rounded-2xl overflow-hidden mb-5 border p-3.5"
               style={{
@@ -1300,13 +1729,18 @@ export default function GalleryManageView({
             >
               <GalleryCoverBanner
                 photoUrl={(photos.find((p) => p.id === coverPhotoId) ?? photos[0])?.url ?? null}
-                title={clientName || gallery.title}
-                dateLabel={eventDate ? new Date(eventDate).toLocaleDateString("he-IL") : null}
+                title={previewTitle}
+                dateLabel={previewDateLabel}
                 theme={theme}
                 textPosition={coverTextPosition}
                 shape={coverShape}
                 titleFontOverride={titleFontOverride}
               />
+              {photos.length > 0 && (
+                <div className="mt-3">
+                  <GridStylePreview photos={photos} gridStyle={resolvedGridStyle} />
+                </div>
+              )}
             </div>
 
             {photos.length > 0 && (
@@ -1452,7 +1886,7 @@ export default function GalleryManageView({
             <p className="text-xs text-ink-soft mb-2.5">פריסת תמונות</p>
             <div className="grid grid-cols-4 gap-2 mb-5">
               {GRID_STYLE_OPTIONS.map((g) => {
-                const active = (gridStyleOverride ?? galleryThemeById(theme).gridStyle) === g.id;
+                const active = resolvedGridStyle === g.id;
                 return (
                   <button
                     key={g.id}
@@ -1472,347 +1906,7 @@ export default function GalleryManageView({
                 );
               })}
             </div>
-
-            {photos.length > 0 && (
-              <>
-                <p className="text-xs text-ink-soft mb-2.5">מצגת תמונות ללקוח (אפקטים רנדומליים)</p>
-                <div className="flex gap-2 mb-2.5 overflow-x-auto">
-                  {photos.map((p) => {
-                    const active = slideshowPhotoIds.has(p.id);
-                    return (
-                      <button
-                        key={p.id}
-                        onClick={() => toggleSlideshowPhoto(p.id)}
-                        className="relative shrink-0 h-14 w-14 rounded-lg overflow-hidden"
-                        style={{
-                          boxShadow: active
-                            ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
-                            : "0 0 0 1px var(--color-line)",
-                        }}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={p.url} alt="" className="w-full h-full object-cover" />
-                        {active && (
-                          <span
-                            className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
-                            style={{ background: "var(--color-amber-deep)", color: "#fff" }}
-                          >
-                            ✓
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex items-center justify-between mb-5">
-                  <span className="text-[11px] text-ink-soft">{slideshowPhotoIds.size} תמונות נבחרו למצגת</span>
-                  {slideshowPhotoIds.size > 0 && (
-                    <button onClick={() => setSlideshowPreviewOpen(true)} className="text-[11px] font-semibold text-amber-deep">
-                      ▶ תצוגה מקדימה
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-
-            {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
-            <div className="flex gap-2">
-              <button
-                onClick={saveStyle}
-                disabled={savingStyle}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-              >
-                {savingStyle ? "שומר..." : "שמירה"}
-              </button>
-              <button
-                onClick={() => setStyleOpen(false)}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
-              >
-                ביטול
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {slideshowPreviewOpen && (
-        <GallerySlideshow
-          photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: p.url }))}
-          onClose={() => setSlideshowPreviewOpen(false)}
-        />
-      )}
-
-      {shareOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
-          onClick={() => setShareOpen(false)}
-        >
-          <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            {shareView === "main" ? (
-              <>
-                <h2 className="text-lg font-bold font-display mb-4">שיתוף הגלריה</h2>
-
-                {showFolderPicker && (
-                  <div className="mb-5">
-                    <p className="text-xs text-ink-soft mb-2.5">אילו לשוניות לשתף?</p>
-                    <div className="space-y-1.5">
-                      {folders.map((folder) => (
-                        <label
-                          key={folder.id}
-                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={shareSelectedFolders.has(folder.id)}
-                            onChange={() => toggleShareFolder(folder.id)}
-                          />
-                          {folder.name}
-                        </label>
-                      ))}
-                      {hasUnfoldered && (
-                        <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
-                          <input
-                            type="checkbox"
-                            checked={shareSelectedFolders.has(NO_FOLDER_KEY)}
-                            onChange={() => toggleShareFolder(NO_FOLDER_KEY)}
-                          />
-                          כללי (ללא לשונית)
-                        </label>
-                      )}
-                    </div>
-                    {shareDisabled && <p className="text-xs text-rose mt-2">יש לבחור לפחות לשונית אחת לשיתוף</p>}
-                  </div>
-                )}
-
-                <div className="space-y-2.5">
-                  <button
-                    onClick={shareViaWhatsapp}
-                    disabled={shareDisabled}
-                    className="w-full rounded-lg py-3 text-sm font-semibold bg-sage-bg text-sage disabled:opacity-40"
-                  >
-                    וואטסאפ
-                  </button>
-                  <button
-                    onClick={shareViaQr}
-                    disabled={shareDisabled}
-                    className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink disabled:opacity-40"
-                  >
-                    קוד QR
-                  </button>
-                  <button
-                    onClick={shareViaOther}
-                    disabled={shareDisabled}
-                    className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink disabled:opacity-40"
-                  >
-                    אחר
-                  </button>
-                </div>
-                <button onClick={() => setShareOpen(false)} className="w-full text-center mt-4 text-xs text-ink-soft">
-                  ביטול
-                </button>
-              </>
-            ) : (
-              <>
-                <h2 className="text-lg font-bold font-display mb-4">קוד QR לגלריה</h2>
-                {qrDataUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qrDataUrl} alt="קוד QR לגלריה" className="w-full rounded-2xl mb-4" />
-                )}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShareView("main")}
-                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
-                  >
-                    חזרה
-                  </button>
-                  <button
-                    onClick={() => setShareOpen(false)}
-                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white"
-                  >
-                    סגירה
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EditGalleryDetailsModal({
-  isStandalone,
-  title,
-  setTitle,
-  shootDate,
-  setShootDate,
-  clientEmail,
-  setClientEmail,
-  allowDownloads,
-  setAllowDownloads,
-  expiryMonths,
-  setExpiryMonths,
-  canEditExpiry,
-  saving,
-  onSave,
-  onClose,
-}: {
-  isStandalone: boolean;
-  title: string;
-  setTitle: (v: string) => void;
-  shootDate: string;
-  setShootDate: (v: string) => void;
-  clientEmail: string;
-  setClientEmail: (v: string) => void;
-  allowDownloads: boolean;
-  setAllowDownloads: (v: boolean) => void;
-  expiryMonths: 1 | 3 | 6 | null;
-  setExpiryMonths: (v: 1 | 3 | 6 | null) => void;
-  canEditExpiry: boolean;
-  saving: boolean;
-  onSave: () => void;
-  onClose: () => void;
-}) {
-  const [tab, setTab] = useState<"details" | "permissions">("details");
-  const [entered, setEntered] = useState(false);
-  const [closing, setClosing] = useState(false);
-
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setEntered(true));
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  const closeWithAnimation = () => {
-    setClosing(true);
-    setTimeout(onClose, CLOSE_ANIMATION_MS);
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{
-        background: "rgba(46,49,66,0.45)",
-        backdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
-        WebkitBackdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
-        transition: `backdrop-filter ${CLOSE_ANIMATION_MS + 60}ms ease, -webkit-backdrop-filter ${CLOSE_ANIMATION_MS + 60}ms ease`,
-      }}
-      onClick={closeWithAnimation}
-    >
-      <style>{`
-        @keyframes editGalleryZoomOut { from { transform: scale(1); opacity: 1; } to { transform: scale(0.85); opacity: 0; } }
-        .edit-gallery-closing { animation: editGalleryZoomOut ${CLOSE_ANIMATION_MS}ms ease forwards; }
-      `}</style>
-      <div
-        className={`w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto ${closing ? "edit-gallery-closing" : ""}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold font-display">עריכת פרטי הגלריה</h2>
-          <button onClick={closeWithAnimation} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
-            ✕
-          </button>
-        </div>
-
-        <div className="flex gap-1.5 mb-4">
-          <button
-            onClick={() => setTab("details")}
-            className="flex-1 rounded-full py-2 text-xs font-semibold"
-            style={{
-              background: tab === "details" ? "var(--color-ink)" : "var(--color-chip)",
-              color: tab === "details" ? "var(--color-paper)" : "var(--color-ink-soft)",
-            }}
-          >
-            פרטים
-          </button>
-          <button
-            onClick={() => setTab("permissions")}
-            className="flex-1 rounded-full py-2 text-xs font-semibold"
-            style={{
-              background: tab === "permissions" ? "var(--color-ink)" : "var(--color-chip)",
-              color: tab === "permissions" ? "var(--color-paper)" : "var(--color-ink-soft)",
-            }}
-          >
-            הרשאות ושמירה
-          </button>
-        </div>
-
-        {tab === "details" ? (
-          <div className="space-y-3.5">
-            <div>
-              <label className="text-xs block mb-1 text-ink-soft">שם הגלריה</label>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {/* Real px min-width (not min-w-0) — iOS Safari's native date-input control can
-                  render with zero visible width when its flex item is allowed to shrink past
-                  its comfortable size. flex-wrap is the fallback if both truly don't fit. */}
-              {isStandalone && (
-                <div className="flex-1" style={{ minWidth: 150 }}>
-                  <label className="text-xs block mb-1 text-ink-soft">תאריך הצילום</label>
-                  <input
-                    type="date"
-                    value={shootDate}
-                    onChange={(e) => setShootDate(e.target.value)}
-                    className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-                  />
-                </div>
-              )}
-              {canEditExpiry && (
-                <div className="flex-1" style={{ minWidth: 150 }}>
-                  <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
-                  <select
-                    value={expiryMonths ?? "indefinite"}
-                    onChange={(e) => setExpiryMonths(e.target.value === "indefinite" ? null : (Number(e.target.value) as 1 | 3 | 6))}
-                    className="w-full rounded-lg px-2 py-2 text-sm border border-line bg-white"
-                  >
-                    <option value={1}>חודש</option>
-                    <option value={3}>3 חודשים</option>
-                    <option value={6}>חצי שנה</option>
-                    <option value="indefinite">ללא הגבלת זמן</option>
-                  </select>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת)</label>
-              <input
-                type="email"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-                placeholder="example@gmail.com"
-                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3.5">
-            <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
-              <div>
-                <div className="text-sm font-semibold">אפשרות הורדת קבצים מקוריים</div>
-                <div className="text-xs text-ink-soft mt-0.5">כשמכובה, הלקוח/ה יוכלו רק לצפות בתמונות, לא להוריד</div>
-              </div>
-              <button
-                onClick={() => setAllowDownloads(!allowDownloads)}
-                role="switch"
-                aria-checked={allowDownloads}
-                className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
-                style={{
-                  background: allowDownloads ? "var(--color-amber-deep)" : "var(--color-line)",
-                  justifyContent: allowDownloads ? "flex-start" : "flex-end",
-                }}
-              >
-                <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
-              </button>
-            </div>
-          </div>
+          </>
         )}
 
         <button
@@ -1823,6 +1917,67 @@ function EditGalleryDetailsModal({
           {saving ? "שומר..." : "שמירת שינויים"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// A small live sample of the actual grid style — not a literal WYSIWYG crop, just enough real
+// photos in the real layout shape that a picked layout is visibly different from the others,
+// since the layout picker used to have no visual feedback at all until leaving the modal.
+function GridStylePreview({ photos, gridStyle }: { photos: PhotoWithUrl[]; gridStyle: string }) {
+  const sample = photos.slice(0, 6);
+  if (gridStyle === "grid") {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--gt-gap)" }}>
+        {sample.map((p) => (
+          <div key={p.id} className="aspect-square overflow-hidden" style={{ borderRadius: "var(--gt-photo-radius)", background: "var(--gt-surface-soft)" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={p.url} alt="" className="w-full h-full object-cover" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (gridStyle === "justified") {
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--gt-gap)" }}>
+        {sample.map((p) => (
+          <div
+            key={p.id}
+            className="overflow-hidden"
+            style={{ height: 46, width: 62, flexGrow: 1, borderRadius: "var(--gt-photo-radius)", background: "var(--gt-surface-soft)" }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={p.url} alt="" className="w-full h-full object-cover" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  const framed = gridStyle === "framed";
+  return (
+    <div style={{ columnWidth: 72, columnGap: "var(--gt-gap)" }}>
+      {sample.map((p, i) => (
+        <div
+          key={p.id}
+          className="break-inside-avoid overflow-hidden"
+          style={{
+            marginBottom: "var(--gt-gap)",
+            height: i % 2 === 0 ? 58 : 84,
+            borderRadius: "var(--gt-photo-radius)",
+            background: "var(--gt-surface-soft)",
+            ...(framed ? { padding: 4, border: "1px solid var(--gt-border)" } : {}),
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={p.url}
+            alt=""
+            className="w-full h-full object-cover"
+            style={{ borderRadius: framed ? "calc(var(--gt-photo-radius) - 3px)" : undefined }}
+          />
+        </div>
+      ))}
     </div>
   );
 }

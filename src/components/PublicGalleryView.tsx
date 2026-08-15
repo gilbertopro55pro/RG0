@@ -542,7 +542,7 @@ export default function PublicGalleryView({
           onClick={() => setFavoritesPanelOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-t-3xl p-5 pb-8 shadow-sheet max-h-[80vh] overflow-y-auto"
+            className="relative w-full max-w-md rounded-t-3xl p-5 pb-8 shadow-sheet max-h-[80vh] overflow-y-auto"
             style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -566,6 +566,23 @@ export default function PublicGalleryView({
                   </div>
                 ))}
               </div>
+            )}
+            {/* Floating download button — the outer bottom bar's download button is hidden
+                behind this panel while it's open, so browsing favorites here needs its own. */}
+            {allowDownloads && favorites.length > 0 && (
+              <button
+                onClick={() => setDownloadSelectedConfirmOpen(true)}
+                disabled={zipping}
+                aria-label="הורדת כל התמונות המועדפות"
+                title="הורדת כל התמונות המועדפות"
+                className={`absolute bottom-24 left-5 h-12 w-12 rounded-full shadow-sheet flex items-center justify-center disabled:opacity-60 ${BTN_PRESS}`}
+                style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)" }}
+              >
+                <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
+                  <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
+                </svg>
+              </button>
             )}
             {!submitted ? (
               <button

@@ -12,6 +12,14 @@ function Base({ children }: { children: ReactNode }) {
   );
 }
 
+export function PlayIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" stroke="none">
+      <path d="M8 5.5v13l11-6.5-11-6.5z" />
+    </svg>
+  );
+}
+
 export function TextPositionIcon({ position }: { position: string }) {
   if (position === "center-left" || position === "center-right") {
     const onRight = position === "center-right";
