@@ -935,6 +935,7 @@ export default function GalleryManageView({
                     src={photo.url}
                     alt={photo.original_filename}
                     fill
+                    unoptimized={photo.url.startsWith("blob:")}
                     sizes="(max-width: 768px) 33vw, 20vw"
                     className="object-cover"
                     style={lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
