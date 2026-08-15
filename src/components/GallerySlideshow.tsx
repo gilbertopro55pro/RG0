@@ -4,18 +4,33 @@ import { useEffect, useMemo, useState } from "react";
 
 type SlidePhoto = { id: string; url: string };
 
-const EFFECTS = ["kenburns-in", "kenburns-out", "fade-punch", "slide-left", "slide-right"] as const;
+const EFFECTS = [
+  "kenburns-in",
+  "kenburns-out",
+  "fade-punch",
+  "slide-left",
+  "slide-right",
+  "slide-up",
+  "slide-down",
+  "rotate-in",
+  "circle-reveal",
+] as const;
 type Effect = (typeof EFFECTS)[number];
 
 const SLIDE_MS = 3000;
 const ENTRANCE_MS = 1100;
+const ENTRANCE = `${ENTRANCE_MS}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`;
 
 const ANIMATIONS: Record<Effect, string> = {
   "kenburns-in": `gs-kenburns-in ${SLIDE_MS}ms ease-out forwards`,
   "kenburns-out": `gs-kenburns-out ${SLIDE_MS}ms ease-out forwards`,
-  "fade-punch": `gs-fade-punch ${ENTRANCE_MS}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
-  "slide-left": `gs-slide-left ${ENTRANCE_MS}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
-  "slide-right": `gs-slide-right ${ENTRANCE_MS}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
+  "fade-punch": `gs-fade-punch ${ENTRANCE}`,
+  "slide-left": `gs-slide-left ${ENTRANCE}`,
+  "slide-right": `gs-slide-right ${ENTRANCE}`,
+  "slide-up": `gs-slide-up ${ENTRANCE}`,
+  "slide-down": `gs-slide-down ${ENTRANCE}`,
+  "rotate-in": `gs-rotate-in ${ENTRANCE}`,
+  "circle-reveal": `gs-circle-reveal ${ENTRANCE}`,
 };
 
 // A different random effect per photo per mount (not per render) — picked once up front so the
@@ -76,6 +91,10 @@ export default function GallerySlideshow({
         @keyframes gs-fade-punch { from { opacity: 0; transform: scale(0.88); } to { opacity: 1; transform: scale(1); } }
         @keyframes gs-slide-left { from { transform: translateX(22%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         @keyframes gs-slide-right { from { transform: translateX(-22%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes gs-slide-up { from { transform: translateY(18%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes gs-slide-down { from { transform: translateY(-18%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes gs-rotate-in { from { opacity: 0; transform: rotate(-9deg) scale(0.9); } to { opacity: 1; transform: rotate(0deg) scale(1); } }
+        @keyframes gs-circle-reveal { from { clip-path: circle(0% at 50% 50%); } to { clip-path: circle(75% at 50% 50%); } }
       `}</style>
 
       {/* eslint-disable-next-line @next/next/no-img-element */}
