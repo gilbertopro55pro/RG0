@@ -3,7 +3,15 @@ import { ZipArchive } from "archiver";
 import { Readable } from "node:stream";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { downloadObjectBuffer } from "@/lib/storage";
-import type { GalleryPhotoRow, GalleryRow } from "@/lib/types";
+import type { GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
+
+const NO_FOLDER_LABEL = "כללי";
+
+// Filesystem/zip-safe: strips characters that break directory entries on common archive tools
+// (slashes would silently create extra nested folders, control chars confuse some unzippers).
+function sanitizeSegment(name: string): string {
+  return name.replace(/[/\\:*?"<>|]/g, "-").trim() || "תיקייה";
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -36,21 +44,43 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "הורדת תמונות מכובה עבור גלריה זו" }, { status: 403 });
   }
 
-  const { data: photos } = await supabase
-    .from("gallery_photos")
-    .select("storage_path, original_filename")
-    .eq("gallery_id", gallery.id)
-    .in("id", photoIds)
-    .returns<Pick<GalleryPhotoRow, "storage_path" | "original_filename">[]>();
+  const [{ data: photos }, { data: folders }] = await Promise.all([
+    supabase
+      .from("gallery_photos")
+      .select("storage_path, original_filename, folder_id")
+      .eq("gallery_id", gallery.id)
+      .in("id", photoIds)
+      .returns<Pick<GalleryPhotoRow, "storage_path" | "original_filename" | "folder_id">[]>(),
+    supabase
+      .from("gallery_folders")
+      .select("id, name")
+      .eq("gallery_id", gallery.id)
+      .returns<Pick<GalleryFolderRow, "id" | "name">[]>(),
+  ]);
 
   if (!photos || photos.length === 0) {
     return NextResponse.json({ error: "התמונות לא נמצאו" }, { status: 404 });
   }
 
+  const folderNameById = new Map((folders ?? []).map((f) => [f.id, f.name]));
+  const distinctFolderIds = new Set(photos.map((p) => p.folder_id ?? null));
+  // Only nest into per-tab subfolders when the selection actually spans more than one tab —
+  // a single-tab (or tab-less) download stays a flat archive, matching what the person expects
+  // from downloading "the photos", not an empty layer of folders around them.
+  const useSubfolders = distinctFolderIds.size > 1;
+
+  const dateLabel = new Date().toLocaleDateString("he-IL");
+  const rootDir = sanitizeSegment(`${gallery.title} - ${dateLabel}`);
+
   const archive = new ZipArchive({ zlib: { level: 6 } });
 
-  const usedNames = new Set<string>();
-  const uniqueName = (name: string) => {
+  const usedNamesByDir = new Map<string, Set<string>>();
+  const uniqueName = (dir: string, name: string) => {
+    let usedNames = usedNamesByDir.get(dir);
+    if (!usedNames) {
+      usedNames = new Set<string>();
+      usedNamesByDir.set(dir, usedNames);
+    }
     let candidate = name;
     let i = 1;
     while (usedNames.has(candidate)) {
@@ -66,7 +96,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     for (const photo of photos) {
       const buffer = await downloadObjectBuffer("galleries", photo.storage_path);
       if (!buffer) continue;
-      archive.append(buffer, { name: uniqueName(photo.original_filename) });
+      const folderName = photo.folder_id ? folderNameById.get(photo.folder_id) ?? NO_FOLDER_LABEL : NO_FOLDER_LABEL;
+      const dir = useSubfolders ? `${rootDir}/${sanitizeSegment(folderName)}` : rootDir;
+      archive.append(buffer, { name: `${dir}/${uniqueName(dir, photo.original_filename)}` });
     }
     archive.finalize();
   })();
@@ -74,7 +106,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   return new Response(Readable.toWeb(archive) as ReadableStream, {
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="gallery-photos.zip"`,
+      // A plain ASCII fallback plus the real (Hebrew) name via the UTF-8 filename* form — a bare
+      // non-ASCII filename= value is invalid per RFC 6266 and some browsers mishandle it.
+      "Content-Disposition": `attachment; filename="gallery-photos.zip"; filename*=UTF-8''${encodeURIComponent(`${rootDir}.zip`)}`,
     },
   });
 }

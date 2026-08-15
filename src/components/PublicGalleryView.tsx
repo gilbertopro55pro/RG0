@@ -18,6 +18,24 @@ const CELL_SIZE_DEFAULT = 160;
 const LONG_PRESS_MS = 480;
 const DOUBLE_TAP_MS = 280;
 
+// The zip endpoint names the file after the gallery (e.g. "האירוע שלי - 15.8.2026.zip") via the
+// UTF-8 filename* form — the plain ASCII filename= is just a fallback, so it has to be parsed out
+// explicitly instead of relying on the browser to pick it up from the response automatically.
+function zipFilenameFromResponse(res: Response): string | null {
+  const header = res.headers.get("content-disposition");
+  if (!header) return null;
+  const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      // malformed percent-encoding — fall through to the plain filename
+    }
+  }
+  const plainMatch = header.match(/filename="([^"]+)"/i);
+  return plainMatch ? plainMatch[1] : null;
+}
+
 export default function PublicGalleryView({
   token,
   initialPhotos,
@@ -172,7 +190,7 @@ export default function PublicGalleryView({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "gallery-photos.zip";
+      a.download = zipFilenameFromResponse(res) ?? "gallery-photos.zip";
       a.click();
       URL.revokeObjectURL(url);
     } finally {
