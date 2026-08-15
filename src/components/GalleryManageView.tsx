@@ -807,20 +807,20 @@ export default function GalleryManageView({
               color: showFavoritesOnly ? "#fff" : "var(--color-ink-soft)",
             }}
           >
-            💜 {showFavoritesOnly ? "מציג רק מועדפים" : "הצגת מועדפים בלבד"} ({favoriteCount})
+            💜 מועדפים ({favoriteCount})
           </button>
           {showFavoritesOnly && (
             <button
               onClick={downloadFavoritesZip}
               disabled={zippingFavorites}
+              aria-label="הורדת כל התמונות המועדפות"
               title="הורדת כל התמונות המועדפות, מאורגנות לפי לשוניות"
-              className={`shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold bg-white border border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
+              className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
             >
-              <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
                 <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
               </svg>
-              מועדפים
             </button>
           )}
         </div>
