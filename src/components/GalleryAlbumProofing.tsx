@@ -9,6 +9,10 @@ type Spread = {
   photo1: SpreadPhoto;
   photo2: SpreadPhoto | null;
   layout: SpreadLayout;
+  focalX1: number;
+  focalY1: number;
+  focalX2: number;
+  focalY2: number;
   comments: { id: string; text: string }[];
 };
 
@@ -96,27 +100,35 @@ export default function GalleryAlbumProofing({
               </p>
             </div>
           </div>
-        ) : (
-          <div className={`flex gap-1.5 h-full w-full items-center justify-center py-2 ${spread!.layout === "stack" ? "flex-col" : "flex-row"}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={spread!.photo1.url}
-              alt=""
-              className={`object-contain ${spread!.layout === "stack" ? "w-full h-1/2" : "h-full"} ${
-                spread!.photo2 ? (spread!.layout === "feature" ? "w-3/5" : "w-1/2") : "max-w-full"
-              }`}
-            />
-            {spread!.photo2 && (
-              // eslint-disable-next-line @next/next/no-img-element
+        ) : spread!.photo2 ? (
+          // Two photos share a spread — shown as a real "cover" crop (object-cover, aimed via the
+          // photographer's chosen focal point) inside a fixed-ratio frame, rather than shrunk to
+          // fit whole, so what the client approves here matches what the exported PDF prints.
+          <div
+            className={`w-full max-w-full aspect-[16/10] flex gap-1.5 ${spread!.layout === "stack" ? "flex-col" : "flex-row"}`}
+          >
+            <div className="relative overflow-hidden rounded-sm" style={{ flex: spread!.layout === "feature" ? 1.6 : 1 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={spread!.photo1.url}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{ objectPosition: `${spread!.focalX1}% ${spread!.focalY1}%` }}
+              />
+            </div>
+            <div className="relative overflow-hidden rounded-sm" style={{ flex: 1 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={spread!.photo2.url}
                 alt=""
-                className={`object-contain ${spread!.layout === "stack" ? "w-full h-1/2" : "h-full"} ${
-                  spread!.layout === "feature" ? "w-2/5" : "w-1/2"
-                }`}
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{ objectPosition: `${spread!.focalX2}% ${spread!.focalY2}%` }}
               />
-            )}
+            </div>
           </div>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={spread!.photo1.url} alt="" className="h-full max-w-full object-contain" />
         )}
       </div>
 

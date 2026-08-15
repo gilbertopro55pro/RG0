@@ -65,6 +65,10 @@ export default function PublicGalleryView({
     photo1: { id: string; url: string };
     photo2: { id: string; url: string } | null;
     layout: "split" | "feature" | "stack";
+    focalX1: number;
+    focalY1: number;
+    focalX2: number;
+    focalY2: number;
     comments: { id: string; text: string }[];
   }[];
 }) {

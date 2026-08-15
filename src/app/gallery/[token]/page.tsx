@@ -101,6 +101,10 @@ export default async function PublicGalleryPage({
     photo1: { id: string; url: string };
     photo2: { id: string; url: string } | null;
     layout: GalleryAlbumSpreadRow["layout"];
+    focalX1: number;
+    focalY1: number;
+    focalX2: number;
+    focalY2: number;
     comments: { id: string; text: string }[];
   }[] = [];
   let albumCoverUrl: string | null = null;
@@ -130,6 +134,10 @@ export default async function PublicGalleryPage({
           photo1: { id: photo1.id, url: photo1.url },
           photo2: photo2 ? { id: photo2.id, url: photo2.url } : null,
           layout: s.layout,
+          focalX1: s.focal_x_1,
+          focalY1: s.focal_y_1,
+          focalX2: s.focal_x_2,
+          focalY2: s.focal_y_2,
           comments: (commentsRaw ?? []).filter((c) => c.spread_id === s.id).map((c) => ({ id: c.id, text: c.text })),
         };
       })

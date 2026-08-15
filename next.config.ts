@@ -10,6 +10,13 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // The album PDF export route reads Hebrew/Latin font files off disk at runtime (pdf-lib needs
+  // real font bytes — its built-in standard fonts have no Hebrew glyphs). Output file tracing's
+  // static analysis usually catches fs.readFile calls with literal paths, but this makes it
+  // explicit so the font files are never silently dropped from the deployed function bundle.
+  outputFileTracingIncludes: {
+    "/api/galleries/\\[id\\]/album/export-pdf": ["src/assets/fonts/**/*"],
+  },
 };
 
 export default nextConfig;

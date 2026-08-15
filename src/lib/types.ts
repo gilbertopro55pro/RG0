@@ -250,6 +250,10 @@ export type GalleryAlbumSpreadRow = {
   photo_id_1: string;
   photo_id_2: string | null;
   layout: AlbumSpreadLayout;
+  focal_x_1: number;
+  focal_y_1: number;
+  focal_x_2: number;
+  focal_y_2: number;
   created_at: string;
 };
 

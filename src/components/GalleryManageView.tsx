@@ -80,6 +80,28 @@ function addMonths(date: Date, months: number): Date {
   return d;
 }
 
+// A 3x3 preset grid for picking a photo's focal point (0/50/100 on each axis) — simpler and more
+// reliable than click-anywhere-on-the-crop math, which would need to account for the crop's own
+// zoom factor to translate a click back into original-image percentages.
+function FocalGrid({ onPick }: { onPick: (x: number, y: number) => void }) {
+  const positions = [0, 50, 100];
+  return (
+    <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 gap-px bg-black/50" onClick={(e) => e.stopPropagation()}>
+      {positions.map((y) =>
+        positions.map((x) => (
+          <button
+            key={`${x}-${y}`}
+            onClick={() => onPick(x, y)}
+            className="flex items-center justify-center bg-transparent hover:bg-white/10"
+          >
+            <span className="h-2 w-2 rounded-full bg-white/80" />
+          </button>
+        ))
+      )}
+    </div>
+  );
+}
+
 export default function GalleryManageView({
   eventId,
   clientName,
@@ -178,6 +200,9 @@ export default function GalleryManageView({
   const [albumPickerOpen, setAlbumPickerOpen] = useState(false);
   const [albumSelectedOrder, setAlbumSelectedOrder] = useState<string[]>([]);
   const [draggedSpreadId, setDraggedSpreadId] = useState<string | null>(null);
+  const [focalEditTarget, setFocalEditTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
+  const [replaceTarget, setReplaceTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
+  const [exportingAlbumPdf, setExportingAlbumPdf] = useState(false);
   const [savingAlbum, setSavingAlbum] = useState(false);
   const [savingSlideshow, setSavingSlideshow] = useState(false);
 
@@ -399,12 +424,59 @@ export default function GalleryManageView({
     await supabase.from("gallery_albums").update({ cover_photo_id: photoId }).eq("id", album.id);
   };
 
+  const setSpreadFocal = async (spreadId: string, slot: 1 | 2, x: number, y: number) => {
+    const patch = slot === 1 ? { focal_x_1: x, focal_y_1: y } : { focal_x_2: x, focal_y_2: y };
+    setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, ...patch } : s)));
+    await supabase.from("gallery_album_spreads").update(patch).eq("id", spreadId);
+    setFocalEditTarget(null);
+  };
+
+  // Swaps in a different photo for one slot of an existing spread without disturbing the other
+  // slot, the spread's position, layout, or the client's comments (comments are tied to spread_id,
+  // not to a specific photo, so a swapped-in photo still shows prior feedback in context).
+  const replaceSpreadPhoto = async (photoId: string) => {
+    if (!replaceTarget) return;
+    const { spreadId, slot } = replaceTarget;
+    const patch =
+      slot === 1
+        ? { photo_id_1: photoId, focal_x_1: 50, focal_y_1: 50 }
+        : { photo_id_2: photoId, focal_x_2: 50, focal_y_2: 50 };
+    setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, ...patch } : s)));
+    await supabase.from("gallery_album_spreads").update(patch).eq("id", spreadId);
+    setReplaceTarget(null);
+  };
+
   const sendAlbumToClient = async () => {
     if (!album) return;
     setSavingAlbum(true);
     await supabase.from("gallery_albums").update({ status: "sent" }).eq("id", album.id);
     setAlbum({ ...album, status: "sent" });
     setSavingAlbum(false);
+  };
+
+  const exportAlbumPdf = async () => {
+    if (exportingAlbumPdf) return;
+    setExportingAlbumPdf(true);
+    try {
+      const res = await fetch(`/api/galleries/${gallery.id}/album/export-pdf`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "שגיאה בייצוא ה-PDF");
+        return;
+      }
+      const disposition = res.headers.get("content-disposition") ?? "";
+      const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : "album.pdf";
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportingAlbumPdf(false);
+    }
   };
 
   const startPress = (photo: PhotoWithUrl) => {
@@ -1746,20 +1818,76 @@ export default function GalleryManageView({
                             >
                               {photo1 && (
                                 <div
-                                  className="aspect-square rounded-lg overflow-hidden bg-line"
+                                  className="relative aspect-square rounded-lg overflow-hidden bg-line"
                                   style={{ flex: photo2 && spread.layout === "feature" ? "1.6" : "1" }}
                                 >
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={photo1.url} alt="" className="w-full h-full object-cover" />
+                                  <img
+                                    src={photo1.url}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    style={{ objectPosition: `${spread.focal_x_1}% ${spread.focal_y_1}%` }}
+                                  />
+                                  <div className="absolute top-1 left-1 flex gap-1">
+                                    <button
+                                      onClick={() =>
+                                        setFocalEditTarget((prev) =>
+                                          prev?.spreadId === spread.id && prev.slot === 1 ? null : { spreadId: spread.id, slot: 1 }
+                                        )
+                                      }
+                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center text-[10px]"
+                                      title="מיקוד"
+                                    >
+                                      🎯
+                                    </button>
+                                    <button
+                                      onClick={() => setReplaceTarget({ spreadId: spread.id, slot: 1 })}
+                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center text-[10px]"
+                                      title="החלפת תמונה"
+                                    >
+                                      🔄
+                                    </button>
+                                  </div>
+                                  {focalEditTarget?.spreadId === spread.id && focalEditTarget.slot === 1 && (
+                                    <FocalGrid onPick={(x, y) => setSpreadFocal(spread.id, 1, x, y)} />
+                                  )}
                                 </div>
                               )}
                               {photo2 && (
                                 <div
-                                  className="aspect-square rounded-lg overflow-hidden bg-line"
+                                  className="relative aspect-square rounded-lg overflow-hidden bg-line"
                                   style={{ flex: spread.layout === "feature" ? "1" : "1" }}
                                 >
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={photo2.url} alt="" className="w-full h-full object-cover" />
+                                  <img
+                                    src={photo2.url}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    style={{ objectPosition: `${spread.focal_x_2}% ${spread.focal_y_2}%` }}
+                                  />
+                                  <div className="absolute top-1 left-1 flex gap-1">
+                                    <button
+                                      onClick={() =>
+                                        setFocalEditTarget((prev) =>
+                                          prev?.spreadId === spread.id && prev.slot === 2 ? null : { spreadId: spread.id, slot: 2 }
+                                        )
+                                      }
+                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center text-[10px]"
+                                      title="מיקוד"
+                                    >
+                                      🎯
+                                    </button>
+                                    <button
+                                      onClick={() => setReplaceTarget({ spreadId: spread.id, slot: 2 })}
+                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center text-[10px]"
+                                      title="החלפת תמונה"
+                                    >
+                                      🔄
+                                    </button>
+                                  </div>
+                                  {focalEditTarget?.spreadId === spread.id && focalEditTarget.slot === 2 && (
+                                    <FocalGrid onPick={(x, y) => setSpreadFocal(spread.id, 2, x, y)} />
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -1884,7 +2012,20 @@ export default function GalleryManageView({
                   </button>
                 )}
 
+                {albumSpreads.length % 2 !== 0 && (
+                  <p className="text-[11px] text-amber-deep mb-2.5">
+                    ⚠️ מספר אי-זוגי של עמודים ({albumSpreads.length}) — חלק ממעבדות הדפוס דורשות מספר זוגי. מומלץ להוסיף או להסיר עמוד אחד.
+                  </p>
+                )}
+
                 {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
+                <button
+                  onClick={exportAlbumPdf}
+                  disabled={exportingAlbumPdf || albumSpreads.length === 0}
+                  className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60"
+                >
+                  {exportingAlbumPdf ? "מייצא..." : "📄 ייצוא PDF להדפסה"}
+                </button>
                 {album.status !== "approved" && (
                   <button
                     onClick={sendAlbumToClient}
@@ -1896,6 +2037,31 @@ export default function GalleryManageView({
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {replaceTarget && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          onClick={() => setReplaceTarget(null)}
+        >
+          <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3.5">
+              <h2 className="text-base font-bold font-display">החלפת תמונה</h2>
+              <button onClick={() => setReplaceTarget(null)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
+                ✕
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {photos.map((p) => (
+                <button key={p.id} onClick={() => replaceSpreadPhoto(p.id)} className="aspect-square rounded-lg overflow-hidden" style={{ boxShadow: "0 0 0 1px var(--color-line)" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
