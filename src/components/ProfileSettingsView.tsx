@@ -39,11 +39,19 @@ export default function ProfileSettingsView({
   const [showAppleGuide, setShowAppleGuide] = useState(false);
   const [leadFollowUpEnabled, setLeadFollowUpEnabled] = useState(photographer.lead_follow_up_enabled);
   const [savingLeadFollowUp, setSavingLeadFollowUp] = useState(false);
+  const [invoiceProvider, setInvoiceProvider] = useState(photographer.invoice_provider);
   const [finbotConnected, setFinbotConnected] = useState(!!photographer.finbot_api_key);
   const [finbotApiKey, setFinbotApiKey] = useState("");
+  const [greenInvoiceConnected, setGreenInvoiceConnected] = useState(
+    !!(photographer.green_invoice_api_id && photographer.green_invoice_api_secret)
+  );
+  const [greenInvoiceApiId, setGreenInvoiceApiId] = useState("");
+  const [greenInvoiceApiSecret, setGreenInvoiceApiSecret] = useState("");
   const [taxStatus, setTaxStatus] = useState(photographer.business_tax_status);
   const [savingInvoicing, setSavingInvoicing] = useState(false);
   const [disconnectingFinbot, setDisconnectingFinbot] = useState(false);
+  const [disconnectingGreenInvoice, setDisconnectingGreenInvoice] = useState(false);
+  const invoiceProviderConnected = invoiceProvider === "green_invoice" ? greenInvoiceConnected : finbotConnected;
   const hapticsOn = useSyncExternalStore(subscribeHaptics, getHapticsSnapshot, getHapticsServerSnapshot);
 
   const toggleHaptics = () => {
@@ -131,23 +139,20 @@ export default function ProfileSettingsView({
     setAppleDisconnecting(false);
   };
 
+  const chooseInvoiceProvider = async (provider: typeof invoiceProvider) => {
+    setInvoiceProvider(provider);
+    await supabase.from("photographers").update({ invoice_provider: provider }).eq("id", photographer.id);
+  };
+
   const connectFinbot = async () => {
     if (!finbotApiKey.trim()) return;
     setSavingInvoicing(true);
     await supabase
       .from("photographers")
-      .update({ finbot_api_key: finbotApiKey.trim(), business_tax_status: taxStatus })
+      .update({ finbot_api_key: finbotApiKey.trim(), business_tax_status: taxStatus, invoice_provider: "finbot" })
       .eq("id", photographer.id);
     setFinbotConnected(true);
     setFinbotApiKey("");
-    setSavingInvoicing(false);
-  };
-
-  const saveTaxStatus = async (status: "exempt" | "licensed") => {
-    setTaxStatus(status);
-    if (!finbotConnected) return;
-    setSavingInvoicing(true);
-    await supabase.from("photographers").update({ business_tax_status: status }).eq("id", photographer.id);
     setSavingInvoicing(false);
   };
 
@@ -156,6 +161,42 @@ export default function ProfileSettingsView({
     await supabase.from("photographers").update({ finbot_api_key: null }).eq("id", photographer.id);
     setFinbotConnected(false);
     setDisconnectingFinbot(false);
+  };
+
+  const connectGreenInvoice = async () => {
+    if (!greenInvoiceApiId.trim() || !greenInvoiceApiSecret.trim()) return;
+    setSavingInvoicing(true);
+    await supabase
+      .from("photographers")
+      .update({
+        green_invoice_api_id: greenInvoiceApiId.trim(),
+        green_invoice_api_secret: greenInvoiceApiSecret.trim(),
+        business_tax_status: taxStatus,
+        invoice_provider: "green_invoice",
+      })
+      .eq("id", photographer.id);
+    setGreenInvoiceConnected(true);
+    setGreenInvoiceApiId("");
+    setGreenInvoiceApiSecret("");
+    setSavingInvoicing(false);
+  };
+
+  const disconnectGreenInvoice = async () => {
+    setDisconnectingGreenInvoice(true);
+    await supabase
+      .from("photographers")
+      .update({ green_invoice_api_id: null, green_invoice_api_secret: null })
+      .eq("id", photographer.id);
+    setGreenInvoiceConnected(false);
+    setDisconnectingGreenInvoice(false);
+  };
+
+  const saveTaxStatus = async (status: "exempt" | "licensed") => {
+    setTaxStatus(status);
+    if (!invoiceProviderConnected) return;
+    setSavingInvoicing(true);
+    await supabase.from("photographers").update({ business_tax_status: status }).eq("id", photographer.id);
+    setSavingInvoicing(false);
   };
 
   const toggleLeadFollowUp = async () => {
@@ -379,89 +420,125 @@ export default function ProfileSettingsView({
       <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
         <div className="text-sm font-semibold tracking-wide mb-1">חשבוניות ללקוחות</div>
         <p className="text-xs text-ink-soft mb-3.5">
-          כדי להפיק ללקוחות שלך קבלות/חשבוניות אמיתיות (לא של המערכת אלא של העסק שלך), יש לחבר
-          חשבון Finbot משלך. המסמך יוצא תחת הפרטים העסקיים שרשומים באותו חשבון.
+          כדי להפיק ללקוחות שלך קבלות/חשבוניות אמיתיות (לא של המערכת אלא של העסק שלך), יש לבחור
+          ספק ולחבר את החשבון שלך אצלו. המסמך יוצא תחת הפרטים העסקיים שרשומים באותו חשבון.
         </p>
-        {finbotConnected ? (
+
+        <div className="mb-3.5">
+          <label className="text-xs block mb-1 text-ink-soft">ספק חשבוניות</label>
+          <select
+            value={invoiceProvider}
+            onChange={(e) => chooseInvoiceProvider(e.target.value as typeof invoiceProvider)}
+            className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+          >
+            <option value="finbot">Finbot</option>
+            <option value="green_invoice">חשבונית ירוקה (מורנינג)</option>
+          </select>
+        </div>
+
+        <div>
+          <p className="text-xs mb-2 text-ink-soft">סטטוס עוסק (קובע אם מונפקת קבלה או חשבונית מס)</p>
+          <div className="flex gap-1.5 mb-3.5">
+            <button
+              onClick={() => saveTaxStatus("exempt")}
+              disabled={savingInvoicing}
+              className="flex-1 rounded-full py-2 text-xs font-semibold disabled:opacity-60"
+              style={{
+                background: taxStatus === "exempt" ? "var(--color-amber-deep)" : "var(--color-chip)",
+                color: taxStatus === "exempt" ? "#fff" : "var(--color-ink-soft)",
+              }}
+            >
+              עוסק פטור
+            </button>
+            <button
+              onClick={() => saveTaxStatus("licensed")}
+              disabled={savingInvoicing}
+              className="flex-1 rounded-full py-2 text-xs font-semibold disabled:opacity-60"
+              style={{
+                background: taxStatus === "licensed" ? "var(--color-amber-deep)" : "var(--color-chip)",
+                color: taxStatus === "licensed" ? "#fff" : "var(--color-ink-soft)",
+              }}
+            >
+              עוסק מורשה
+            </button>
+          </div>
+        </div>
+
+        {invoiceProvider === "finbot" ? (
+          finbotConnected ? (
+            <div className="space-y-3">
+              <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
+                חשבון Finbot מחובר ✓
+              </div>
+              <button
+                onClick={disconnectFinbot}
+                disabled={disconnectingFinbot}
+                className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-rose disabled:opacity-60"
+              >
+                {disconnectingFinbot ? "מנתק..." : "ניתוק חשבון Finbot"}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs block mb-1 text-ink-soft">מפתח API של Finbot</label>
+                <input
+                  type="password"
+                  value={finbotApiKey}
+                  onChange={(e) => setFinbotApiKey(e.target.value)}
+                  placeholder="secret key"
+                  className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data"
+                />
+              </div>
+              <button
+                onClick={connectFinbot}
+                disabled={savingInvoicing || !finbotApiKey.trim()}
+                className="w-full rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
+              >
+                {savingInvoicing ? "מחבר..." : "חיבור חשבון"}
+              </button>
+            </div>
+          )
+        ) : greenInvoiceConnected ? (
           <div className="space-y-3">
             <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
-              חשבון Finbot מחובר ✓
-            </div>
-            <div>
-              <p className="text-xs mb-2 text-ink-soft">סטטוס עוסק (קובע אם מונפקת קבלה או חשבונית מס)</p>
-              <div className="flex gap-1.5">
-                <button
-                  onClick={() => saveTaxStatus("exempt")}
-                  disabled={savingInvoicing}
-                  className="flex-1 rounded-full py-2 text-xs font-semibold disabled:opacity-60"
-                  style={{
-                    background: taxStatus === "exempt" ? "var(--color-amber-deep)" : "var(--color-chip)",
-                    color: taxStatus === "exempt" ? "#fff" : "var(--color-ink-soft)",
-                  }}
-                >
-                  עוסק פטור
-                </button>
-                <button
-                  onClick={() => saveTaxStatus("licensed")}
-                  disabled={savingInvoicing}
-                  className="flex-1 rounded-full py-2 text-xs font-semibold disabled:opacity-60"
-                  style={{
-                    background: taxStatus === "licensed" ? "var(--color-amber-deep)" : "var(--color-chip)",
-                    color: taxStatus === "licensed" ? "#fff" : "var(--color-ink-soft)",
-                  }}
-                >
-                  עוסק מורשה
-                </button>
-              </div>
+              חשבון חשבונית ירוקה מחובר ✓
             </div>
             <button
-              onClick={disconnectFinbot}
-              disabled={disconnectingFinbot}
+              onClick={disconnectGreenInvoice}
+              disabled={disconnectingGreenInvoice}
               className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-rose disabled:opacity-60"
             >
-              {disconnectingFinbot ? "מנתק..." : "ניתוק חשבון Finbot"}
+              {disconnectingGreenInvoice ? "מנתק..." : "ניתוק חשבון חשבונית ירוקה"}
             </button>
           </div>
         ) : (
           <div className="space-y-3">
+            <p className="text-xs text-ink-soft">
+              את ה-Client ID וה-Secret מוציאים מ: הגדרות ← כלי פיתוח ← מפתחות API, בחשבון חשבונית
+              ירוקה שלך.
+            </p>
             <div>
-              <p className="text-xs mb-2 text-ink-soft">סטטוס עוסק</p>
-              <div className="flex gap-1.5">
-                <button
-                  onClick={() => setTaxStatus("exempt")}
-                  className="flex-1 rounded-full py-2 text-xs font-semibold"
-                  style={{
-                    background: taxStatus === "exempt" ? "var(--color-amber-deep)" : "var(--color-chip)",
-                    color: taxStatus === "exempt" ? "#fff" : "var(--color-ink-soft)",
-                  }}
-                >
-                  עוסק פטור
-                </button>
-                <button
-                  onClick={() => setTaxStatus("licensed")}
-                  className="flex-1 rounded-full py-2 text-xs font-semibold"
-                  style={{
-                    background: taxStatus === "licensed" ? "var(--color-amber-deep)" : "var(--color-chip)",
-                    color: taxStatus === "licensed" ? "#fff" : "var(--color-ink-soft)",
-                  }}
-                >
-                  עוסק מורשה
-                </button>
-              </div>
+              <label className="text-xs block mb-1 text-ink-soft">Client ID</label>
+              <input
+                type="text"
+                value={greenInvoiceApiId}
+                onChange={(e) => setGreenInvoiceApiId(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data"
+              />
             </div>
             <div>
-              <label className="text-xs block mb-1 text-ink-soft">מפתח API של Finbot</label>
+              <label className="text-xs block mb-1 text-ink-soft">Secret</label>
               <input
                 type="password"
-                value={finbotApiKey}
-                onChange={(e) => setFinbotApiKey(e.target.value)}
-                placeholder="secret key"
+                value={greenInvoiceApiSecret}
+                onChange={(e) => setGreenInvoiceApiSecret(e.target.value)}
                 className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data"
               />
             </div>
             <button
-              onClick={connectFinbot}
-              disabled={savingInvoicing || !finbotApiKey.trim()}
+              onClick={connectGreenInvoice}
+              disabled={savingInvoicing || !greenInvoiceApiId.trim() || !greenInvoiceApiSecret.trim()}
               className="w-full rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
             >
               {savingInvoicing ? "מחבר..." : "חיבור חשבון"}

@@ -2,6 +2,8 @@ import type { PackageType, StageKey } from "@/lib/stages";
 
 export type SubscriptionStatus = "incomplete" | "active" | "past_due" | "canceled" | "trialing";
 
+export type InvoiceProvider = "finbot" | "green_invoice";
+
 export type Photographer = {
   id: string;
   name: string;
@@ -27,6 +29,9 @@ export type Photographer = {
   lead_follow_up_enabled: boolean;
   finbot_api_key: string | null;
   business_tax_status: "exempt" | "licensed";
+  invoice_provider: InvoiceProvider;
+  green_invoice_api_id: string | null;
+  green_invoice_api_secret: string | null;
   created_at: string;
 };
 
@@ -225,12 +230,15 @@ export type GalleryFolderRow = {
 
 export type AlbumStatus = "draft" | "sent" | "approved" | "changes_requested";
 
+export type AlbumSpreadLayout = "split" | "feature" | "stack";
+
 export type GalleryAlbumRow = {
   id: string;
   gallery_id: string;
   photographer_id: string;
   title: string;
   status: AlbumStatus;
+  cover_photo_id: string | null;
   approved_at: string | null;
   created_at: string;
 };
@@ -241,6 +249,7 @@ export type GalleryAlbumSpreadRow = {
   sort_order: number;
   photo_id_1: string;
   photo_id_2: string | null;
+  layout: AlbumSpreadLayout;
   created_at: string;
 };
 

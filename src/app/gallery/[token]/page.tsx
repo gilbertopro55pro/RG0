@@ -100,8 +100,10 @@ export default async function PublicGalleryPage({
     id: string;
     photo1: { id: string; url: string };
     photo2: { id: string; url: string } | null;
+    layout: GalleryAlbumSpreadRow["layout"];
     comments: { id: string; text: string }[];
   }[] = [];
+  let albumCoverUrl: string | null = null;
   if (album) {
     const [{ data: spreadsRaw }, { data: commentsRaw }] = await Promise.all([
       supabase
@@ -127,10 +129,13 @@ export default async function PublicGalleryPage({
           id: s.id,
           photo1: { id: photo1.id, url: photo1.url },
           photo2: photo2 ? { id: photo2.id, url: photo2.url } : null,
+          layout: s.layout,
           comments: (commentsRaw ?? []).filter((c) => c.spread_id === s.id).map((c) => ({ id: c.id, text: c.text })),
         };
       })
       .filter((s): s is NonNullable<typeof s> => s !== null);
+    const coverPhotoId = album.cover_photo_id ?? spreadsRaw?.[0]?.photo_id_1 ?? null;
+    albumCoverUrl = (coverPhotoId ? photoById.get(coverPhotoId)?.url : null) ?? null;
   }
 
   const styleOverrides: GalleryStyleOverrides = {
@@ -172,7 +177,11 @@ export default async function PublicGalleryPage({
         titleFontOverride={gallery.title_font_override}
         gridStyleOverride={gallery.grid_style_override}
         slideshowPhotoIds={gallery.slideshow_photo_ids}
-        album={album && album.status !== "draft" ? { status: album.status as "sent" | "approved" | "changes_requested" } : null}
+        album={
+          album && album.status !== "draft"
+            ? { status: album.status as "sent" | "approved" | "changes_requested", title: album.title, coverUrl: albumCoverUrl }
+            : null
+        }
         albumSpreads={albumSpreadsForClient}
       />
     </div>

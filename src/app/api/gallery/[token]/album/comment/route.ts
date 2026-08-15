@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { notifyPhotographerOfAlbumActivity } from "@/lib/albumNotify";
 import type { GalleryAlbumRow, GalleryRow } from "@/lib/types";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
@@ -61,6 +62,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       text: `הלקוח/ה הוסיפו הערה על האלבום`,
       is_client_action: true,
     });
+    await notifyPhotographerOfAlbumActivity(supabase, gallery.event_id, "הערה חדשה על עיצוב האלבום");
   }
 
   return NextResponse.json({ ok: true });

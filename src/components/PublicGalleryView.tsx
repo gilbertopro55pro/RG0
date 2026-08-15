@@ -59,11 +59,12 @@ export default function PublicGalleryView({
   titleFontOverride?: string | null;
   gridStyleOverride?: string | null;
   slideshowPhotoIds?: string[];
-  album?: { status: "sent" | "approved" | "changes_requested" } | null;
+  album?: { status: "sent" | "approved" | "changes_requested"; title: string; coverUrl: string | null } | null;
   albumSpreads?: {
     id: string;
     photo1: { id: string; url: string };
     photo2: { id: string; url: string } | null;
+    layout: "split" | "feature" | "stack";
     comments: { id: string; text: string }[];
   }[];
 }) {
@@ -835,7 +836,14 @@ export default function PublicGalleryView({
       )}
 
       {albumOpen && album && (
-        <GalleryAlbumProofing token={token} status={album.status} spreads={albumSpreads} onClose={() => setAlbumOpen(false)} />
+        <GalleryAlbumProofing
+          token={token}
+          status={album.status}
+          title={album.title}
+          coverUrl={album.coverUrl}
+          spreads={albumSpreads}
+          onClose={() => setAlbumOpen(false)}
+        />
       )}
     </>
   );

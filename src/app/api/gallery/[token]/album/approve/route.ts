@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { notifyPhotographerOfAlbumActivity } from "@/lib/albumNotify";
 import type { GalleryAlbumRow, GalleryRow } from "@/lib/types";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
@@ -39,6 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       text: "הלקוח/ה אישרו את עיצוב האלבום ✓",
       is_client_action: true,
     });
+    await notifyPhotographerOfAlbumActivity(supabase, gallery.event_id, "אישרו את עיצוב האלבום הסופי ✓");
   }
 
   return NextResponse.json({ ok: true });

@@ -177,6 +177,7 @@ export default function GalleryManageView({
   const [albumComments, setAlbumComments] = useState<GalleryAlbumCommentRow[]>([]);
   const [albumPickerOpen, setAlbumPickerOpen] = useState(false);
   const [albumSelectedOrder, setAlbumSelectedOrder] = useState<string[]>([]);
+  const [draggedSpreadId, setDraggedSpreadId] = useState<string | null>(null);
   const [savingAlbum, setSavingAlbum] = useState(false);
   const [savingSlideshow, setSavingSlideshow] = useState(false);
 
@@ -370,6 +371,32 @@ export default function GalleryManageView({
       supabase.from("gallery_album_spreads").update({ sort_order: b.sort_order }).eq("id", a.id),
       supabase.from("gallery_album_spreads").update({ sort_order: a.sort_order }).eq("id", b.id),
     ]);
+  };
+
+  // Drag-and-drop reorder: dropping spread `draggedSpreadId` onto `targetIndex` moves it there and
+  // shifts everything between the two positions — simplest correct approach for a short list is to
+  // just recompute sort_order for the whole array rather than diffing which pairs actually moved.
+  const reorderSpreads = async (targetIndex: number) => {
+    if (!draggedSpreadId) return;
+    const fromIndex = albumSpreads.findIndex((s) => s.id === draggedSpreadId);
+    if (fromIndex === -1 || fromIndex === targetIndex) return;
+    const next = [...albumSpreads];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    setAlbumSpreads(next);
+    setDraggedSpreadId(null);
+    await Promise.all(next.map((s, i) => supabase.from("gallery_album_spreads").update({ sort_order: i }).eq("id", s.id)));
+  };
+
+  const setSpreadLayout = async (spreadId: string, layout: GalleryAlbumSpreadRow["layout"]) => {
+    setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, layout } : s)));
+    await supabase.from("gallery_album_spreads").update({ layout }).eq("id", spreadId);
+  };
+
+  const setAlbumCoverPhoto = async (photoId: string) => {
+    if (!album) return;
+    setAlbum({ ...album, cover_photo_id: photoId });
+    await supabase.from("gallery_albums").update({ cover_photo_id: photoId }).eq("id", album.id);
   };
 
   const sendAlbumToClient = async () => {
@@ -1662,6 +1689,36 @@ export default function GalleryManageView({
                   {album.status === "changes_requested" && "הלקוח/ה ביקש/ה שינויים — ראו הערות למטה"}
                 </div>
 
+                {albumSpreads.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs text-ink-soft mb-2">תמונת שער האלבום</p>
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {Array.from(
+                        new Set(albumSpreads.flatMap((s) => [s.photo_id_1, s.photo_id_2].filter((id): id is string => !!id)))
+                      ).map((photoId) => {
+                        const photo = photos.find((p) => p.id === photoId);
+                        if (!photo) return null;
+                        const isCover = (album.cover_photo_id ?? albumSpreads[0]?.photo_id_1) === photoId;
+                        return (
+                          <button
+                            key={photoId}
+                            onClick={() => setAlbumCoverPhoto(photoId)}
+                            className="relative shrink-0 h-14 w-14 rounded-lg overflow-hidden"
+                            style={{
+                              boxShadow: isCover
+                                ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
+                                : "0 0 0 1px var(--color-line)",
+                            }}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={photo.url} alt="" className="w-full h-full object-cover" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {albumSpreads.length === 0 ? (
                   <p className="text-sm text-ink-soft text-center py-4 mb-4">אין עדיין עמודים באלבום.</p>
                 ) : (
@@ -1671,23 +1728,48 @@ export default function GalleryManageView({
                       const photo2 = spread.photo_id_2 ? photos.find((p) => p.id === spread.photo_id_2) : null;
                       const comments = albumComments.filter((c) => c.spread_id === spread.id);
                       return (
-                        <div key={spread.id} className="rounded-xl border border-line p-2">
+                        <div
+                          key={spread.id}
+                          draggable
+                          onDragStart={() => setDraggedSpreadId(spread.id)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            reorderSpreads(i);
+                          }}
+                          className="rounded-xl border border-line p-2"
+                          style={{ opacity: draggedSpreadId === spread.id ? 0.4 : 1 }}
+                        >
                           <div className="flex items-center gap-2">
-                            <div className="flex gap-1 flex-1">
+                            <div
+                              className={`flex flex-1 ${spread.layout === "stack" ? "flex-col" : "flex-row"} gap-1`}
+                            >
                               {photo1 && (
-                                <div className="flex-1 aspect-square rounded-lg overflow-hidden bg-line">
+                                <div
+                                  className="aspect-square rounded-lg overflow-hidden bg-line"
+                                  style={{ flex: photo2 && spread.layout === "feature" ? "1.6" : "1" }}
+                                >
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={photo1.url} alt="" className="w-full h-full object-cover" />
                                 </div>
                               )}
                               {photo2 && (
-                                <div className="flex-1 aspect-square rounded-lg overflow-hidden bg-line">
+                                <div
+                                  className="aspect-square rounded-lg overflow-hidden bg-line"
+                                  style={{ flex: spread.layout === "feature" ? "1" : "1" }}
+                                >
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={photo2.url} alt="" className="w-full h-full object-cover" />
                                 </div>
                               )}
                             </div>
                             <div className="flex flex-col gap-1 shrink-0">
+                              <span
+                                className="h-6 w-6 hidden sm:flex items-center justify-center text-ink-soft text-xs cursor-grab"
+                                title="גררו לשינוי סדר"
+                              >
+                                ⠿
+                              </span>
                               <button
                                 onClick={() => moveSpread(i, -1)}
                                 disabled={i === 0}
@@ -1710,6 +1792,23 @@ export default function GalleryManageView({
                               </button>
                             </div>
                           </div>
+                          {photo2 && (
+                            <div className="flex gap-1 mt-2">
+                              {(["split", "feature", "stack"] as const).map((layout) => (
+                                <button
+                                  key={layout}
+                                  onClick={() => setSpreadLayout(spread.id, layout)}
+                                  className="flex-1 rounded-full py-1 text-[10px] font-semibold"
+                                  style={{
+                                    background: spread.layout === layout ? "var(--color-amber-deep)" : "var(--color-chip)",
+                                    color: spread.layout === layout ? "#fff" : "var(--color-ink-soft)",
+                                  }}
+                                >
+                                  {layout === "split" ? "שווה" : layout === "feature" ? "מודגש" : "אנכי"}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           {comments.length > 0 && (
                             <div className="mt-2 space-y-1">
                               {comments.map((c) => (

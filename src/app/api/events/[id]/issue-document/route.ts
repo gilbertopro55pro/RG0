@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { documentTypeForTaxStatus, issueReceipt } from "@/lib/finbot";
+import { isInvoiceProviderConnected, issueClientDocument } from "@/lib/invoicing";
+import type { InvoiceProvider } from "@/lib/types";
 
 const FIELD_LABEL: Record<"deposit" | "balance", string> = {
   deposit: "מקדמה",
@@ -41,10 +42,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("name, finbot_api_key, business_tax_status")
+    .select("name, finbot_api_key, business_tax_status, invoice_provider, green_invoice_api_id, green_invoice_api_secret")
     .eq("id", user.id)
-    .single<{ name: string; finbot_api_key: string | null; business_tax_status: "exempt" | "licensed" }>();
-  if (!photographer?.finbot_api_key) {
+    .single<{
+      name: string;
+      finbot_api_key: string | null;
+      business_tax_status: "exempt" | "licensed";
+      invoice_provider: InvoiceProvider;
+      green_invoice_api_id: string | null;
+      green_invoice_api_secret: string | null;
+    }>();
+  if (!photographer || !isInvoiceProviderConnected(photographer.invoice_provider, photographer)) {
     return NextResponse.json({ error: "יש לחבר מערכת חשבוניות בהגדרות לפני הפקת מסמכים" }, { status: 400 });
   }
 
@@ -59,9 +67,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   try {
-    const { documentLink } = await issueReceipt({
-      apiKey: photographer.finbot_api_key,
-      documentType: documentTypeForTaxStatus(photographer.business_tax_status),
+    const { documentLink } = await issueClientDocument({
+      provider: photographer.invoice_provider,
+      taxStatus: photographer.business_tax_status,
+      photographer,
       customerName: event.client_name,
       customerEmail: email,
       amount,

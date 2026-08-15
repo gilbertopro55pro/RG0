@@ -90,6 +90,13 @@ export const LEAD_FOLLOW_UP_TEMPLATES = [
   { template: "lead_follow_up_3_v1", delayDays: 10 },
 ] as const;
 
+// Sent to the PHOTOGRAPHER's own phone (not the client) when a client acts on the in-gallery
+// album proofing tool — this is the first template in the app sent in that direction, so it goes
+// through the same shared WhatsApp number as everything else; Meta doesn't distinguish "our own
+// photographer" from any other recipient. {{1}} = client name, {{2}} = action (הערה חדשה על
+// האלבום / אישרו את עיצוב האלבום הסופי).
+export const ALBUM_ACTIVITY_TEMPLATE = "album_activity_v1";
+
 export const PACKAGE_FLOWS: Record<PackageType, StageKey[]> = {
   stills: ["event_closing", "shoot_day", "backup", "culling", "photo_editing", "gallery_upload", "final_delivery"],
   stills_reel: [

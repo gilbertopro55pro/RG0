@@ -3,20 +3,32 @@
 import { useState } from "react";
 
 type SpreadPhoto = { id: string; url: string };
-type Spread = { id: string; photo1: SpreadPhoto; photo2: SpreadPhoto | null; comments: { id: string; text: string }[] };
+type SpreadLayout = "split" | "feature" | "stack";
+type Spread = {
+  id: string;
+  photo1: SpreadPhoto;
+  photo2: SpreadPhoto | null;
+  layout: SpreadLayout;
+  comments: { id: string; text: string }[];
+};
 
 export default function GalleryAlbumProofing({
   token,
   status,
+  title,
+  coverUrl,
   spreads,
   onClose,
 }: {
   token: string;
   status: "sent" | "approved" | "changes_requested";
+  title: string;
+  coverUrl: string | null;
   spreads: Spread[];
   onClose: () => void;
 }) {
-  const [index, setIndex] = useState(0);
+  const hasCover = !!coverUrl;
+  const [index, setIndex] = useState(hasCover ? -1 : 0);
   const [commentText, setCommentText] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
   const [spreadComments, setSpreadComments] = useState(spreads.map((s) => s.comments));
@@ -25,13 +37,14 @@ export default function GalleryAlbumProofing({
   const [confirmApproveOpen, setConfirmApproveOpen] = useState(false);
 
   if (spreads.length === 0) return null;
-  const spread = spreads[index];
-  const comments = spreadComments[index];
+  const onCover = index === -1;
+  const spread = onCover ? null : spreads[index];
+  const comments = onCover ? [] : spreadComments[index];
 
-  const goTo = (i: number) => setIndex(Math.max(0, Math.min(spreads.length - 1, i)));
+  const goTo = (i: number) => setIndex(Math.max(hasCover ? -1 : 0, Math.min(spreads.length - 1, i)));
 
   const submitComment = async () => {
-    if (!commentText.trim()) return;
+    if (!commentText.trim() || !spread) return;
     setSubmittingComment(true);
     const res = await fetch(`/api/gallery/${token}/album/comment`, {
       method: "POST",
@@ -62,7 +75,7 @@ export default function GalleryAlbumProofing({
           ✕
         </button>
         <span dir="ltr" className="text-xs font-semibold text-white/70 font-data tracking-wide">
-          {index + 1} / {spreads.length}
+          {onCover ? "שער" : `${index + 1} / ${spreads.length}`}
         </span>
       </div>
 
@@ -73,20 +86,44 @@ export default function GalleryAlbumProofing({
       )}
 
       <div className="flex-1 flex items-center justify-center px-3 min-h-0">
-        <div className="flex gap-1.5 h-full w-full items-center justify-center py-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={spread.photo1.url} alt="" className={`h-full ${spread.photo2 ? "w-1/2" : "max-w-full"} object-contain`} />
-          {spread.photo2 && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={spread.photo2.url} alt="" className="h-full w-1/2 object-contain" />
-          )}
-        </div>
+        {onCover ? (
+          <div className="relative h-full w-full flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={coverUrl ?? undefined} alt="" className="h-full w-full object-contain" />
+            <div className="absolute bottom-6 inset-x-0 text-center px-6">
+              <p className="text-white text-lg font-bold font-display" style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}>
+                {title}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className={`flex gap-1.5 h-full w-full items-center justify-center py-2 ${spread!.layout === "stack" ? "flex-col" : "flex-row"}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={spread!.photo1.url}
+              alt=""
+              className={`object-contain ${spread!.layout === "stack" ? "w-full h-1/2" : "h-full"} ${
+                spread!.photo2 ? (spread!.layout === "feature" ? "w-3/5" : "w-1/2") : "max-w-full"
+              }`}
+            />
+            {spread!.photo2 && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={spread!.photo2.url}
+                alt=""
+                className={`object-contain ${spread!.layout === "stack" ? "w-full h-1/2" : "h-full"} ${
+                  spread!.layout === "feature" ? "w-2/5" : "w-1/2"
+                }`}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-center gap-4 py-2 shrink-0">
         <button
           onClick={() => goTo(index - 1)}
-          disabled={index === 0}
+          disabled={index === (hasCover ? -1 : 0)}
           className="h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center text-xl disabled:opacity-30"
         >
           ›
@@ -112,21 +149,23 @@ export default function GalleryAlbumProofing({
         )}
         {!approved && (
           <>
-            <div className="flex gap-2 mb-3">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="הערה על העמוד הזה..."
-                className="flex-1 rounded-lg px-3 py-2.5 text-sm border border-line bg-white"
-              />
-              <button
-                onClick={submitComment}
-                disabled={submittingComment || !commentText.trim()}
-                className="shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-              >
-                שליחה
-              </button>
-            </div>
+            {!onCover && (
+              <div className="flex gap-2 mb-3">
+                <input
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  placeholder="הערה על העמוד הזה..."
+                  className="flex-1 rounded-lg px-3 py-2.5 text-sm border border-line bg-white"
+                />
+                <button
+                  onClick={submitComment}
+                  disabled={submittingComment || !commentText.trim()}
+                  className="shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                >
+                  שליחה
+                </button>
+              </div>
+            )}
             <button
               onClick={() => setConfirmApproveOpen(true)}
               className="w-full rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white"
