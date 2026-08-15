@@ -5,7 +5,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
+import type {
+  GalleryAlbumCommentRow,
+  GalleryAlbumRow,
+  GalleryAlbumSpreadRow,
+  GalleryFolderRow,
+  GalleryPhotoRow,
+  GalleryRow,
+} from "@/lib/types";
 import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
 import { usePinchSize } from "@/lib/usePinchColumns";
@@ -163,6 +170,14 @@ export default function GalleryManageView({
   const [slideshowManageOpen, setSlideshowManageOpen] = useState(false);
   const [slideshowPhotoIds, setSlideshowPhotoIds] = useState<Set<string>>(new Set(initialGallery.slideshow_photo_ids));
   const [slideshowPreviewOpen, setSlideshowPreviewOpen] = useState(false);
+  const [albumManageOpen, setAlbumManageOpen] = useState(false);
+  const [albumLoading, setAlbumLoading] = useState(false);
+  const [album, setAlbum] = useState<GalleryAlbumRow | null>(null);
+  const [albumSpreads, setAlbumSpreads] = useState<GalleryAlbumSpreadRow[]>([]);
+  const [albumComments, setAlbumComments] = useState<GalleryAlbumCommentRow[]>([]);
+  const [albumPickerOpen, setAlbumPickerOpen] = useState(false);
+  const [albumSelectedOrder, setAlbumSelectedOrder] = useState<string[]>([]);
+  const [savingAlbum, setSavingAlbum] = useState(false);
   const [savingSlideshow, setSavingSlideshow] = useState(false);
 
   const toggleSlideshowPhoto = (id: string) => {
@@ -243,6 +258,127 @@ export default function GalleryManageView({
 
   const downloadFavoritesZip = () => downloadPhotosZip(photos.filter((p) => p.is_favorite).map((p) => p.id));
   const downloadSlideshowZip = () => downloadPhotosZip([...slideshowPhotoIds]);
+
+  const loadAlbum = async () => {
+    setAlbumLoading(true);
+    const { data: albumRow } = await supabase
+      .from("gallery_albums")
+      .select("*")
+      .eq("gallery_id", gallery.id)
+      .maybeSingle<GalleryAlbumRow>();
+    setAlbum(albumRow);
+    if (albumRow) {
+      const [{ data: spreads }, { data: comments }] = await Promise.all([
+        supabase
+          .from("gallery_album_spreads")
+          .select("*")
+          .eq("album_id", albumRow.id)
+          .order("sort_order")
+          .returns<GalleryAlbumSpreadRow[]>(),
+        supabase
+          .from("gallery_album_comments")
+          .select("*")
+          .eq("album_id", albumRow.id)
+          .order("created_at")
+          .returns<GalleryAlbumCommentRow[]>(),
+      ]);
+      setAlbumSpreads(spreads ?? []);
+      setAlbumComments(comments ?? []);
+    } else {
+      setAlbumSpreads([]);
+      setAlbumComments([]);
+    }
+    setAlbumLoading(false);
+  };
+
+  const openAlbumManage = () => {
+    setAlbumManageOpen(true);
+    setAlbumSelectedOrder([]);
+    loadAlbum();
+  };
+
+  const toggleAlbumPickerPhoto = (id: string) => {
+    setAlbumSelectedOrder((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+  };
+
+  // Pairs selected photos two-per-spread in the order they were picked — a lightweight
+  // "proofing" tool (order + pairing review), not a full drag-and-drop album designer.
+  const createAlbumFromSelection = async () => {
+    if (albumSelectedOrder.length === 0) return;
+    setSavingAlbum(true);
+    const { data: newAlbum, error: albumErr } = await supabase
+      .from("gallery_albums")
+      .insert({ gallery_id: gallery.id, photographer_id: gallery.photographer_id })
+      .select()
+      .single<GalleryAlbumRow>();
+    if (albumErr || !newAlbum) {
+      setError(albumErr?.message ?? "שגיאה ביצירת האלבום");
+      setSavingAlbum(false);
+      return;
+    }
+    const spreadRows = [];
+    for (let i = 0; i < albumSelectedOrder.length; i += 2) {
+      spreadRows.push({
+        album_id: newAlbum.id,
+        sort_order: spreadRows.length,
+        photo_id_1: albumSelectedOrder[i],
+        photo_id_2: albumSelectedOrder[i + 1] ?? null,
+      });
+    }
+    await supabase.from("gallery_album_spreads").insert(spreadRows);
+    setAlbum(newAlbum);
+    setAlbumPickerOpen(false);
+    setAlbumSelectedOrder([]);
+    setSavingAlbum(false);
+    await loadAlbum();
+  };
+
+  const addSpreadsFromSelection = async () => {
+    if (!album || albumSelectedOrder.length === 0) return;
+    setSavingAlbum(true);
+    const spreadRows = [];
+    let order = albumSpreads.length;
+    for (let i = 0; i < albumSelectedOrder.length; i += 2) {
+      spreadRows.push({
+        album_id: album.id,
+        sort_order: order++,
+        photo_id_1: albumSelectedOrder[i],
+        photo_id_2: albumSelectedOrder[i + 1] ?? null,
+      });
+    }
+    await supabase.from("gallery_album_spreads").insert(spreadRows);
+    setAlbumPickerOpen(false);
+    setAlbumSelectedOrder([]);
+    setSavingAlbum(false);
+    await loadAlbum();
+  };
+
+  const removeSpread = async (spreadId: string) => {
+    await supabase.from("gallery_album_spreads").delete().eq("id", spreadId);
+    setAlbumSpreads((prev) => prev.filter((s) => s.id !== spreadId));
+  };
+
+  const moveSpread = async (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= albumSpreads.length) return;
+    const a = albumSpreads[index];
+    const b = albumSpreads[targetIndex];
+    const next = [...albumSpreads];
+    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+    setAlbumSpreads(next);
+    await Promise.all([
+      supabase.from("gallery_album_spreads").update({ sort_order: b.sort_order }).eq("id", a.id),
+      supabase.from("gallery_album_spreads").update({ sort_order: a.sort_order }).eq("id", b.id),
+    ]);
+  };
+
+  const sendAlbumToClient = async () => {
+    if (!album) return;
+    setSavingAlbum(true);
+    await supabase.from("gallery_albums").update({ status: "sent" }).eq("id", album.id);
+    setAlbum({ ...album, status: "sent" });
+    setSavingAlbum(false);
+  };
 
   const startPress = (photo: PhotoWithUrl) => {
     if (activeTouchesRef.current >= 2) return;
@@ -761,6 +897,14 @@ export default function GalleryManageView({
               className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink ${BTN_PRESS}`}
             >
               מצגת תמונות
+            </button>
+          )}
+          {photos.length > 0 && (
+            <button
+              onClick={openAlbumManage}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink ${BTN_PRESS}`}
+            >
+              עיצוב אלבום
             </button>
           )}
           {gallery.published && (
@@ -1437,6 +1581,224 @@ export default function GalleryManageView({
           onDownload={downloadSlideshowZip}
           downloading={zippingFavorites}
         />
+      )}
+
+      {albumManageOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          onClick={() => setAlbumManageOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold font-display">עיצוב אלבום</h2>
+              <button onClick={() => setAlbumManageOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
+                ✕
+              </button>
+            </div>
+
+            {albumLoading ? (
+              <p className="text-sm text-ink-soft text-center py-8">טוען...</p>
+            ) : !album ? (
+              <>
+                <p className="text-xs text-ink-soft mb-3.5">
+                  בוחרים תמונות מהגלריה — הן יסודרו לעמודי אלבום (זוג תמונות לעמוד, לפי סדר הבחירה), והלקוח/ה יוכלו לעבור עליהן, להעיר הערות ולאשר את העיצוב הסופי.
+                </p>
+                <div className="grid grid-cols-4 gap-2 mb-2.5">
+                  {photos.map((p) => {
+                    const idx = albumSelectedOrder.indexOf(p.id);
+                    const active = idx !== -1;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => toggleAlbumPickerPhoto(p.id)}
+                        className="relative aspect-square rounded-lg overflow-hidden"
+                        style={{
+                          boxShadow: active
+                            ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
+                            : "0 0 0 1px var(--color-line)",
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={p.url} alt="" className="w-full h-full object-cover" />
+                        {active && (
+                          <span
+                            className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-data"
+                            style={{ background: "var(--color-amber-deep)", color: "#fff" }}
+                          >
+                            {idx + 1}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-ink-soft mb-5">{albumSelectedOrder.length} תמונות נבחרו, לפי סדר הבחירה</p>
+                {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
+                <button
+                  onClick={createAlbumFromSelection}
+                  disabled={savingAlbum || albumSelectedOrder.length === 0}
+                  className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                >
+                  {savingAlbum ? "יוצר..." : "יצירת אלבום"}
+                </button>
+              </>
+            ) : (
+              <>
+                <div
+                  className="rounded-xl px-3.5 py-2.5 mb-4 text-xs font-semibold"
+                  style={{
+                    background:
+                      album.status === "approved" ? "var(--color-sage-bg)" : album.status === "changes_requested" ? "#FBEEEC" : "var(--color-chip)",
+                    color: album.status === "approved" ? "var(--color-sage)" : album.status === "changes_requested" ? "var(--color-rose)" : "var(--color-ink-soft)",
+                  }}
+                >
+                  {album.status === "draft" && "טיוטה — עדיין לא נשלח ללקוח/ה"}
+                  {album.status === "sent" && "נשלח ללקוח/ה — ממתין לאישור"}
+                  {album.status === "approved" && "✓ האלבום אושר ע\"י הלקוח/ה"}
+                  {album.status === "changes_requested" && "הלקוח/ה ביקש/ה שינויים — ראו הערות למטה"}
+                </div>
+
+                {albumSpreads.length === 0 ? (
+                  <p className="text-sm text-ink-soft text-center py-4 mb-4">אין עדיין עמודים באלבום.</p>
+                ) : (
+                  <div className="space-y-2 mb-4">
+                    {albumSpreads.map((spread, i) => {
+                      const photo1 = photos.find((p) => p.id === spread.photo_id_1);
+                      const photo2 = spread.photo_id_2 ? photos.find((p) => p.id === spread.photo_id_2) : null;
+                      const comments = albumComments.filter((c) => c.spread_id === spread.id);
+                      return (
+                        <div key={spread.id} className="rounded-xl border border-line p-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex gap-1 flex-1">
+                              {photo1 && (
+                                <div className="flex-1 aspect-square rounded-lg overflow-hidden bg-line">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={photo1.url} alt="" className="w-full h-full object-cover" />
+                                </div>
+                              )}
+                              {photo2 && (
+                                <div className="flex-1 aspect-square rounded-lg overflow-hidden bg-line">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={photo2.url} alt="" className="w-full h-full object-cover" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-1 shrink-0">
+                              <button
+                                onClick={() => moveSpread(i, -1)}
+                                disabled={i === 0}
+                                className="h-6 w-6 rounded-full bg-chip text-ink-soft flex items-center justify-center text-xs disabled:opacity-30"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                onClick={() => moveSpread(i, 1)}
+                                disabled={i === albumSpreads.length - 1}
+                                className="h-6 w-6 rounded-full bg-chip text-ink-soft flex items-center justify-center text-xs disabled:opacity-30"
+                              >
+                                ↓
+                              </button>
+                              <button
+                                onClick={() => removeSpread(spread.id)}
+                                className="h-6 w-6 rounded-full bg-chip text-rose flex items-center justify-center text-xs"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                          {comments.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {comments.map((c) => (
+                                <p key={c.id} className="text-xs rounded-lg px-2.5 py-1.5 bg-amber-bg text-amber-deep">
+                                  💬 {c.text}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {albumPickerOpen ? (
+                  <>
+                    <p className="text-xs text-ink-soft mb-2.5">הוספת תמונות</p>
+                    <div className="grid grid-cols-4 gap-2 mb-2.5">
+                      {photos.map((p) => {
+                        const idx = albumSelectedOrder.indexOf(p.id);
+                        const active = idx !== -1;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => toggleAlbumPickerPhoto(p.id)}
+                            className="relative aspect-square rounded-lg overflow-hidden"
+                            style={{
+                              boxShadow: active
+                                ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
+                                : "0 0 0 1px var(--color-line)",
+                            }}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={p.url} alt="" className="w-full h-full object-cover" />
+                            {active && (
+                              <span
+                                className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-data"
+                                style={{ background: "var(--color-amber-deep)", color: "#fff" }}
+                              >
+                                {idx + 1}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-2 mb-4">
+                      <button
+                        onClick={addSpreadsFromSelection}
+                        disabled={savingAlbum || albumSelectedOrder.length === 0}
+                        className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                      >
+                        {savingAlbum ? "מוסיף..." : "הוספה"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAlbumPickerOpen(false);
+                          setAlbumSelectedOrder([]);
+                        }}
+                        className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-card border border-line text-ink-soft"
+                      >
+                        ביטול
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setAlbumPickerOpen(true)}
+                    className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5"
+                  >
+                    + הוספת תמונות לאלבום
+                  </button>
+                )}
+
+                {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
+                {album.status !== "approved" && (
+                  <button
+                    onClick={sendAlbumToClient}
+                    disabled={savingAlbum || albumSpreads.length === 0}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
+                  >
+                    {savingAlbum ? "שולח..." : album.status === "draft" ? "שליחה לאישור הלקוח/ה" : "שליחה מחדש לאישור"}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {shareOpen && (

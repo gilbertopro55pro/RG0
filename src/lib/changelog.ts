@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.14.0",
+    date: "2026-08-15",
+    changes: [
+      "כלי proofing לעיצוב אלבום: בוחרים תמונות לפי סדר בחירה, המערכת מסדרת אותן אוטומטית לעמודי אלבום (זוג תמונות לעמוד), ושולחים ללקוח/ה לאישור מתוך הגלריה",
+      "הלקוח/ה יכולים לעבור על עיצוב האלבום, לכתוב הערות על כל עמוד ולאשר את העיצוב הסופי — הערה מחזירה את האלבום אוטומטית לטיפולכם",
+    ],
+  },
+  {
     version: "1.13.0",
     date: "2026-08-15",
     changes: [

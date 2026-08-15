@@ -223,6 +223,35 @@ export type GalleryFolderRow = {
   created_at: string;
 };
 
+export type AlbumStatus = "draft" | "sent" | "approved" | "changes_requested";
+
+export type GalleryAlbumRow = {
+  id: string;
+  gallery_id: string;
+  photographer_id: string;
+  title: string;
+  status: AlbumStatus;
+  approved_at: string | null;
+  created_at: string;
+};
+
+export type GalleryAlbumSpreadRow = {
+  id: string;
+  album_id: string;
+  sort_order: number;
+  photo_id_1: string;
+  photo_id_2: string | null;
+  created_at: string;
+};
+
+export type GalleryAlbumCommentRow = {
+  id: string;
+  album_id: string;
+  spread_id: string;
+  text: string;
+  created_at: string;
+};
+
 export type TeamMember = {
   id: string;
   photographer_id: string;

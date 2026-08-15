@@ -9,6 +9,7 @@ import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
 import { resolveGalleryTheme } from "@/lib/galleryTheme";
 import GallerySlideshow from "@/components/GallerySlideshow";
+import GalleryAlbumProofing from "@/components/GalleryAlbumProofing";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
 
@@ -46,6 +47,8 @@ export default function PublicGalleryView({
   titleFontOverride = null,
   gridStyleOverride = null,
   slideshowPhotoIds = [],
+  album = null,
+  albumSpreads = [],
 }: {
   token: string;
   initialPhotos: PhotoWithUrl[];
@@ -56,10 +59,18 @@ export default function PublicGalleryView({
   titleFontOverride?: string | null;
   gridStyleOverride?: string | null;
   slideshowPhotoIds?: string[];
+  album?: { status: "sent" | "approved" | "changes_requested" } | null;
+  albumSpreads?: {
+    id: string;
+    photo1: { id: string; url: string };
+    photo2: { id: string; url: string } | null;
+    comments: { id: string; text: string }[];
+  }[];
 }) {
   const theme = resolveGalleryTheme(themeId, { titleFontOverride, gridStyleOverride });
   const [photos, setPhotos] = useState(initialPhotos);
   const [slideshowOpen, setSlideshowOpen] = useState(false);
+  const [albumOpen, setAlbumOpen] = useState(false);
   const [aspectRatios, setAspectRatios] = useState<Record<string, number>>({});
   const [savedFavoriteIds, setSavedFavoriteIds] = useState(
     () => new Set(initialPhotos.filter((p) => p.is_favorite).map((p) => p.id))
@@ -334,6 +345,20 @@ export default function PublicGalleryView({
               style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
             >
               ▶ מצגת תמונות
+            </button>
+          )}
+          {album && albumSpreads.length > 0 && (
+            <button
+              onClick={() => setAlbumOpen(true)}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 mb-3 text-sm font-semibold border ${BTN_PRESS}`}
+              style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
+            >
+              📖{" "}
+              {album.status === "approved"
+                ? "צפייה באלבום המאושר"
+                : album.status === "changes_requested"
+                  ? "עיצוב האלבום"
+                  : "אישור עיצוב האלבום"}
             </button>
           )}
           {allowDownloads && (
@@ -807,6 +832,10 @@ export default function PublicGalleryView({
           onDownload={allowDownloads ? () => downloadZip(slideshowPhotos.map((p) => p.id)) : undefined}
           downloading={zipping}
         />
+      )}
+
+      {albumOpen && album && (
+        <GalleryAlbumProofing token={token} status={album.status} spreads={albumSpreads} onClose={() => setAlbumOpen(false)} />
       )}
     </>
   );

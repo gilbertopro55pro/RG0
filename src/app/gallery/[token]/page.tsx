@@ -1,5 +1,13 @@
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
+import type {
+  EventRow,
+  GalleryAlbumCommentRow,
+  GalleryAlbumRow,
+  GalleryAlbumSpreadRow,
+  GalleryFolderRow,
+  GalleryPhotoRow,
+  GalleryRow,
+} from "@/lib/types";
 import PublicGalleryView from "@/components/PublicGalleryView";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import { getSignedDownloadUrls } from "@/lib/storage";
@@ -79,6 +87,52 @@ export default async function PublicGalleryPage({
     photosWithUrls = photos.map((p) => ({ ...p, url: urlByPath.get(p.storage_path) ?? "" }));
   }
 
+  // The album is only shown to the client once the photographer has sent it — a draft is a
+  // photographer-only work-in-progress.
+  const { data: album } = await supabase
+    .from("gallery_albums")
+    .select("*")
+    .eq("gallery_id", gallery.id)
+    .neq("status", "draft")
+    .maybeSingle<GalleryAlbumRow>();
+
+  let albumSpreadsForClient: {
+    id: string;
+    photo1: { id: string; url: string };
+    photo2: { id: string; url: string } | null;
+    comments: { id: string; text: string }[];
+  }[] = [];
+  if (album) {
+    const [{ data: spreadsRaw }, { data: commentsRaw }] = await Promise.all([
+      supabase
+        .from("gallery_album_spreads")
+        .select("*")
+        .eq("album_id", album.id)
+        .order("sort_order", { ascending: true })
+        .returns<GalleryAlbumSpreadRow[]>(),
+      supabase
+        .from("gallery_album_comments")
+        .select("*")
+        .eq("album_id", album.id)
+        .order("created_at", { ascending: true })
+        .returns<GalleryAlbumCommentRow[]>(),
+    ]);
+    const photoById = new Map(photosWithUrls.map((p) => [p.id, p]));
+    albumSpreadsForClient = (spreadsRaw ?? [])
+      .map((s) => {
+        const photo1 = photoById.get(s.photo_id_1);
+        if (!photo1) return null;
+        const photo2 = s.photo_id_2 ? photoById.get(s.photo_id_2) : null;
+        return {
+          id: s.id,
+          photo1: { id: photo1.id, url: photo1.url },
+          photo2: photo2 ? { id: photo2.id, url: photo2.url } : null,
+          comments: (commentsRaw ?? []).filter((c) => c.spread_id === s.id).map((c) => ({ id: c.id, text: c.text })),
+        };
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null);
+  }
+
   const styleOverrides: GalleryStyleOverrides = {
     titleFontOverride: gallery.title_font_override,
     gridStyleOverride: gallery.grid_style_override,
@@ -118,6 +172,8 @@ export default async function PublicGalleryPage({
         titleFontOverride={gallery.title_font_override}
         gridStyleOverride={gallery.grid_style_override}
         slideshowPhotoIds={gallery.slideshow_photo_ids}
+        album={album && album.status !== "draft" ? { status: album.status as "sent" | "approved" | "changes_requested" } : null}
+        albumSpreads={albumSpreadsForClient}
       />
     </div>
   );
