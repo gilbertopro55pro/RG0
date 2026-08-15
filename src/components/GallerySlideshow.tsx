@@ -4,17 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 
 type SlidePhoto = { id: string; url: string };
 
-const EFFECTS = ["kenburns-in", "kenburns-out", "fade", "slide-left", "slide-right"] as const;
+const EFFECTS = ["kenburns-in", "kenburns-out", "fade-punch", "slide-left", "slide-right"] as const;
 type Effect = (typeof EFFECTS)[number];
 
-const SLIDE_MS = 5000;
+const SLIDE_MS = 3000;
+const ENTRANCE_MS = 1100;
 
 const ANIMATIONS: Record<Effect, string> = {
   "kenburns-in": `gs-kenburns-in ${SLIDE_MS}ms ease-out forwards`,
   "kenburns-out": `gs-kenburns-out ${SLIDE_MS}ms ease-out forwards`,
-  fade: "gs-fade 900ms ease-out forwards",
-  "slide-left": "gs-slide-left 900ms ease-out forwards",
-  "slide-right": "gs-slide-right 900ms ease-out forwards",
+  "fade-punch": `gs-fade-punch ${ENTRANCE_MS}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
+  "slide-left": `gs-slide-left ${ENTRANCE_MS}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
+  "slide-right": `gs-slide-right ${ENTRANCE_MS}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
 };
 
 // A different random effect per photo per mount (not per render) — picked once up front so the
@@ -23,7 +24,17 @@ function randomEffects(count: number): Effect[] {
   return Array.from({ length: count }, () => EFFECTS[Math.floor(Math.random() * EFFECTS.length)]);
 }
 
-export default function GallerySlideshow({ photos, onClose }: { photos: SlidePhoto[]; onClose: () => void }) {
+export default function GallerySlideshow({
+  photos,
+  onClose,
+  onDownload,
+  downloading = false,
+}: {
+  photos: SlidePhoto[];
+  onClose: () => void;
+  onDownload?: () => void;
+  downloading?: boolean;
+}) {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
   const effects = useMemo(() => randomEffects(photos.length), [photos.length]);
@@ -60,11 +71,11 @@ export default function GallerySlideshow({ photos, onClose }: { photos: SlidePho
   return (
     <div className="fixed inset-0 z-[80] bg-black flex items-center justify-center overflow-hidden select-none">
       <style>{`
-        @keyframes gs-kenburns-in { from { transform: scale(1); } to { transform: scale(1.16); } }
-        @keyframes gs-kenburns-out { from { transform: scale(1.16); } to { transform: scale(1); } }
-        @keyframes gs-fade { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes gs-slide-left { from { transform: translateX(5%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        @keyframes gs-slide-right { from { transform: translateX(-5%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes gs-kenburns-in { from { transform: scale(1); } to { transform: scale(1.32); } }
+        @keyframes gs-kenburns-out { from { transform: scale(1.32); } to { transform: scale(1); } }
+        @keyframes gs-fade-punch { from { opacity: 0; transform: scale(0.88); } to { opacity: 1; transform: scale(1); } }
+        @keyframes gs-slide-left { from { transform: translateX(22%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes gs-slide-right { from { transform: translateX(-22%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
       `}</style>
 
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -76,13 +87,29 @@ export default function GallerySlideshow({ photos, onClose }: { photos: SlidePho
         style={{ animation: ANIMATIONS[effect] }}
       />
 
-      <button
-        onClick={onClose}
-        aria-label="סגירת מצגת"
-        className="absolute top-4 left-4 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg"
-      >
-        ✕
-      </button>
+      <div className="absolute top-4 left-4 flex items-center gap-2">
+        <button
+          onClick={onClose}
+          aria-label="סגירת מצגת"
+          className="h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg"
+        >
+          ✕
+        </button>
+        {onDownload && (
+          <button
+            onClick={onDownload}
+            disabled={downloading}
+            aria-label="הורדת כל תמונות המצגת"
+            title="הורדת כל תמונות המצגת"
+            className="h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center disabled:opacity-50"
+          >
+            <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
+              <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       <button
         onClick={() => setPlaying((p) => !p)}

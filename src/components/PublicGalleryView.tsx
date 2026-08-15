@@ -813,7 +813,12 @@ export default function PublicGalleryView({
       )}
 
       {slideshowOpen && (
-        <GallerySlideshow photos={slideshowPhotos} onClose={() => setSlideshowOpen(false)} />
+        <GallerySlideshow
+          photos={slideshowPhotos}
+          onClose={() => setSlideshowOpen(false)}
+          onDownload={allowDownloads ? () => downloadZip(slideshowPhotos.map((p) => p.id)) : undefined}
+          downloading={zipping}
+        />
       )}
     </>
   );

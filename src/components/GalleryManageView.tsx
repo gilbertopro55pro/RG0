@@ -212,15 +212,14 @@ export default function GalleryManageView({
   // One zip, organized into a subfolder per tab — same shared endpoint the client-facing gallery
   // uses, except the photographer's own session bypasses the published/allow-downloads gates
   // (those control what the client can do, not what the photographer can do with their own data).
-  const downloadFavoritesZip = async () => {
-    const favoriteIds = photos.filter((p) => p.is_favorite).map((p) => p.id);
-    if (favoriteIds.length === 0 || zippingFavorites) return;
+  const downloadPhotosZip = async (photoIds: string[]) => {
+    if (photoIds.length === 0 || zippingFavorites) return;
     setZippingFavorites(true);
     try {
       const res = await fetch(`/api/gallery/${gallery.access_token}/download-zip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoIds: favoriteIds }),
+        body: JSON.stringify({ photoIds }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -229,7 +228,7 @@ export default function GalleryManageView({
       }
       const disposition = res.headers.get("content-disposition") ?? "";
       const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-      const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : "favorites.zip";
+      const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : "photos.zip";
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -241,6 +240,9 @@ export default function GalleryManageView({
       setZippingFavorites(false);
     }
   };
+
+  const downloadFavoritesZip = () => downloadPhotosZip(photos.filter((p) => p.is_favorite).map((p) => p.id));
+  const downloadSlideshowZip = () => downloadPhotosZip([...slideshowPhotoIds]);
 
   const startPress = (photo: PhotoWithUrl) => {
     if (activeTouchesRef.current >= 2) return;
@@ -1429,6 +1431,8 @@ export default function GalleryManageView({
         <GallerySlideshow
           photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: p.url }))}
           onClose={() => setSlideshowPreviewOpen(false)}
+          onDownload={downloadSlideshowZip}
+          downloading={zippingFavorites}
         />
       )}
 

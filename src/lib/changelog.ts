@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.11.5",
+    date: "2026-08-15",
+    changes: [
+      "מצגת התמונות מציגה כל תמונה 3 שניות (במקום 5), עם אפקטי מעבר בולטים ורנדומליים יותר בין תמונה לתמונה",
+      "כפתור הורדה חדש במצגת, ליד כפתור הסגירה — מוריד את כל תמונות המצגת כקובץ ZIP מאורגן לפי לשוניות",
+    ],
+  },
+  {
     version: "1.11.4",
     date: "2026-08-15",
     changes: [
