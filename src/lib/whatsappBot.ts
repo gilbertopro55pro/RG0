@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { PACKAGE_LABELS, type PackageType } from "@/lib/stages";
 import type { EventTypeRow, PackagePriceRow } from "@/lib/types";
+import { scheduleLeadFollowUps } from "@/lib/leadFollowUp";
 
 const ANTHROPIC_MODEL = "claude-sonnet-5";
 const MAX_TOOL_ROUNDS = 4;
@@ -130,9 +131,14 @@ async function executeTool(
       quote_sent_at: amount !== null ? new Date().toISOString() : null,
     };
 
-    const { data: lead } = conversation.lead_id
-      ? await supabase.from("leads").update(leadFields).eq("id", conversation.lead_id).select().single<{ id: string }>()
-      : await supabase.from("leads").insert(leadFields).select().single<{ id: string }>();
+    const isNewLead = !conversation.lead_id;
+    const { data: lead } = isNewLead
+      ? await supabase.from("leads").insert(leadFields).select().single<{ id: string }>()
+      : await supabase.from("leads").update(leadFields).eq("id", conversation.lead_id).select().single<{ id: string }>();
+
+    if (isNewLead && lead?.id) {
+      await scheduleLeadFollowUps(supabase, lead.id, photographerId);
+    }
 
     return {
       result:

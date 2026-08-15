@@ -81,6 +81,15 @@ export const REVIEW_REQUEST_TEMPLATE = "review_request_v1";
 export const REVIEW_REQUEST_DELAY_DAYS = 3;
 export const PAYMENT_REMINDER_TEMPLATE = "payment_reminder_v1";
 
+// Three fixed-body templates, sent days apart to a lead who hasn't replied — only the client's
+// name varies (WhatsApp template review doesn't allow free-form body text per-photographer, the
+// same constraint review_request_v1 already lives within). Delays are from lead creation.
+export const LEAD_FOLLOW_UP_TEMPLATES = [
+  { template: "lead_follow_up_1_v1", delayDays: 2 },
+  { template: "lead_follow_up_2_v1", delayDays: 5 },
+  { template: "lead_follow_up_3_v1", delayDays: 10 },
+] as const;
+
 export const PACKAGE_FLOWS: Record<PackageType, StageKey[]> = {
   stills: ["event_closing", "shoot_day", "backup", "culling", "photo_editing", "gallery_upload", "final_delivery"],
   stills_reel: [

@@ -24,6 +24,7 @@ export type Photographer = {
   auto_renew: boolean;
   cancel_at_period_end: boolean;
   renewal_reminder_sent_at: string | null;
+  lead_follow_up_enabled: boolean;
   created_at: string;
 };
 

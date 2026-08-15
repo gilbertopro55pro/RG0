@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { LeadStatus } from "@/lib/types";
+import { cancelLeadFollowUps } from "@/lib/leadFollowUp";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: leadId } = await params;
@@ -36,6 +37,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (error || !lead) {
     return NextResponse.json({ error: error?.message ?? "שגיאה בעדכון הליד" }, { status: 500 });
+  }
+
+  // A won/lost lead is done deciding — stop nudging it.
+  if (body.status === "won" || body.status === "lost") {
+    await cancelLeadFollowUps(supabase, leadId);
   }
 
   return NextResponse.json({ lead });

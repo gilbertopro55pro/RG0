@@ -37,6 +37,8 @@ export default function ProfileSettingsView({
   const [appleDisconnecting, setAppleDisconnecting] = useState(false);
   const [appleError, setAppleError] = useState<string | null>(null);
   const [showAppleGuide, setShowAppleGuide] = useState(false);
+  const [leadFollowUpEnabled, setLeadFollowUpEnabled] = useState(photographer.lead_follow_up_enabled);
+  const [savingLeadFollowUp, setSavingLeadFollowUp] = useState(false);
   const hapticsOn = useSyncExternalStore(subscribeHaptics, getHapticsSnapshot, getHapticsServerSnapshot);
 
   const toggleHaptics = () => {
@@ -122,6 +124,14 @@ export default function ProfileSettingsView({
     setAppleEmail("");
     setApplePassword("");
     setAppleDisconnecting(false);
+  };
+
+  const toggleLeadFollowUp = async () => {
+    const next = !leadFollowUpEnabled;
+    setSavingLeadFollowUp(true);
+    await supabase.from("photographers").update({ lead_follow_up_enabled: next }).eq("id", photographer.id);
+    setLeadFollowUpEnabled(next);
+    setSavingLeadFollowUp(false);
   };
 
   const chooseColor = async (id: string) => {
@@ -327,6 +337,31 @@ export default function ProfileSettingsView({
             style={{
               background: hapticsOn ? "var(--color-amber-deep)" : "var(--color-line)",
               justifyContent: hapticsOn ? "flex-start" : "flex-end",
+            }}
+          >
+            <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold tracking-wide">מעקב אוטומטי אחר לידים</div>
+            <div className="text-xs text-ink-soft mt-0.5">
+              כשליד לא הופך ללקוח/מתעניין שאבד, נשלחות אוטומטית עד 3 הודעות מעקב בוואטסאפ (אחרי יומיים, 5 ימים ו-10 ימים)
+            </div>
+          </div>
+          <button
+            onClick={toggleLeadFollowUp}
+            disabled={savingLeadFollowUp}
+            role="switch"
+            aria-checked={leadFollowUpEnabled}
+            aria-label="הפעלת מעקב אוטומטי אחר לידים"
+            className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5 disabled:opacity-60"
+            style={{
+              background: leadFollowUpEnabled ? "var(--color-amber-deep)" : "var(--color-line)",
+              justifyContent: leadFollowUpEnabled ? "flex-start" : "flex-end",
             }}
           >
             <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />

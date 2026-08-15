@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.12.0",
+    date: "2026-08-15",
+    changes: [
+      "רצף מעקב אוטומטי אחר לידים: עד 3 הודעות וואטסאפ נשלחות אוטומטית לליד שלא הפך ללקוח (אחרי יומיים, 5 ימים ו-10 ימים) — נעצר אוטומטית ברגע שהליד מסומן כלקוח/כאבוד",
+      "אפשר להפעיל/לכבות את המעקב האוטומטי בהגדרות",
+    ],
+  },
+  {
     version: "1.11.6",
     date: "2026-08-15",
     changes: [
