@@ -505,18 +505,6 @@ export default function PublicGalleryView({
             {favoriteCount} מועדפים
           </button>
 
-          {favoriteCount > 0 && allowDownloads && (
-            <button
-              onClick={() => setDownloadSelectedConfirmOpen(true)}
-              disabled={zipping}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 text-sm md:text-base font-semibold border disabled:opacity-60 ${BTN_PRESS}`}
-              style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
-            >
-              <DownloadIcon size={16} />
-              הורדת התמונות שנבחרו
-            </button>
-          )}
-
           {!selectionMode && !submitted && (
             <button
               onClick={() => setConfirmOpen(true)}

@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.11.6",
+    date: "2026-08-15",
+    changes: [
+      "בגלריה שרואה הלקוח, כפתור הורדת המועדפים מוצג רק בתוך חלון \"התמונות שבחרתם\" — לא מופיע מראש בסרגל התחתון לפני שנפתח",
+    ],
+  },
+  {
     version: "1.11.5",
     date: "2026-08-15",
     changes: [
