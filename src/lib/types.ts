@@ -189,6 +189,9 @@ export type GalleryRow = {
   palette: string;
   cover_text_position: string;
   cover_shape: string;
+  title_font_override: string | null;
+  grid_style_override: string | null;
+  slideshow_photo_ids: string[];
   created_at: string;
 };
 

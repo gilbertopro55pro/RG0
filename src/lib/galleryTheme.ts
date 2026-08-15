@@ -8,6 +8,9 @@ export const galleryFont = Frank_Ruhl_Libre({
   variable: "--font-gallery-serif",
 });
 
+export type GridStyle = "masonry" | "grid" | "framed" | "justified";
+export type TitleFont = "serif" | "sans";
+
 export type GalleryThemeTokens = {
   id: string;
   label: string;
@@ -25,7 +28,7 @@ export type GalleryThemeTokens = {
   titleTracking: string;
   titleTransform?: "uppercase";
   // Layout — the part that makes each theme feel like a different gallery, not just a recolor.
-  gridStyle: "masonry" | "grid" | "framed";
+  gridStyle: GridStyle;
   gap: number;
   photoRadius: string;
   photoBorder: boolean;
@@ -159,11 +162,28 @@ export function galleryThemeById(id: string): GalleryThemeTokens {
   return GALLERY_THEMES.find((t) => t.id === id) ?? GALLERY_THEMES[0];
 }
 
+// A theme is just a starting point — the photographer can deviate from its default font and
+// photo layout without losing the rest of the theme (colors, radius, banner treatment). Null
+// overrides mean "use whatever this theme normally uses".
+export type GalleryStyleOverrides = {
+  titleFontOverride?: string | null;
+  gridStyleOverride?: string | null;
+};
+
+export function resolveGalleryTheme(id: string, overrides?: GalleryStyleOverrides): GalleryThemeTokens {
+  const base = galleryThemeById(id);
+  return {
+    ...base,
+    titleFont: (overrides?.titleFontOverride as TitleFont | null | undefined) || base.titleFont,
+    gridStyle: (overrides?.gridStyleOverride as GridStyle | null | undefined) || base.gridStyle,
+  };
+}
+
 // One CSS custom-property map per theme, meant to be spread onto the page's outer wrapper style —
 // every themed class downstream reads these vars (e.g. bg-[var(--gt-surface)]) instead of the
 // app's own light/dark tokens, so the whole gallery — not just the background — follows the theme.
-export function galleryThemeVars(id: string): Record<string, string> {
-  const t = galleryThemeById(id);
+export function galleryThemeVars(id: string, overrides?: GalleryStyleOverrides): Record<string, string> {
+  const t = resolveGalleryTheme(id, overrides);
   return {
     "--gt-bg": t.bg,
     "--gt-surface": t.surface,
@@ -179,8 +199,8 @@ export function galleryThemeVars(id: string): Record<string, string> {
   };
 }
 
-export function galleryTitleStyle(id: string): Record<string, string | number> {
-  const t = galleryThemeById(id);
+export function galleryTitleStyle(id: string, overrides?: GalleryStyleOverrides): Record<string, string | number> {
+  const t = resolveGalleryTheme(id, overrides);
   return {
     fontFamily: t.titleFont === "serif" ? "var(--font-gallery-serif)" : "var(--font-sans)",
     fontWeight: t.titleWeight,
@@ -188,6 +208,18 @@ export function galleryTitleStyle(id: string): Record<string, string | number> {
     ...(t.titleTransform ? { textTransform: t.titleTransform } : {}),
   };
 }
+
+export const FONT_OPTIONS: { id: TitleFont; label: string }[] = [
+  { id: "serif", label: "סריף" },
+  { id: "sans", label: "סאנס" },
+];
+
+export const GRID_STYLE_OPTIONS: { id: GridStyle; label: string }[] = [
+  { id: "masonry", label: "פסיפס" },
+  { id: "grid", label: "רשת" },
+  { id: "framed", label: "ממוסגר" },
+  { id: "justified", label: "שורות" },
+];
 
 export const COVER_TEXT_POSITIONS = [
   { id: "above", label: "מעל התמונה" },

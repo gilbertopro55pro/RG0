@@ -7,7 +7,8 @@ import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
-import { galleryThemeById } from "@/lib/galleryTheme";
+import { resolveGalleryTheme } from "@/lib/galleryTheme";
+import GallerySlideshow from "@/components/GallerySlideshow";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
 
@@ -24,6 +25,9 @@ export default function PublicGalleryView({
   initiallyConfirmed,
   allowDownloads,
   themeId = "classic",
+  titleFontOverride = null,
+  gridStyleOverride = null,
+  slideshowPhotoIds = [],
 }: {
   token: string;
   initialPhotos: PhotoWithUrl[];
@@ -31,9 +35,14 @@ export default function PublicGalleryView({
   initiallyConfirmed: boolean;
   allowDownloads: boolean;
   themeId?: string;
+  titleFontOverride?: string | null;
+  gridStyleOverride?: string | null;
+  slideshowPhotoIds?: string[];
 }) {
-  const theme = galleryThemeById(themeId);
+  const theme = resolveGalleryTheme(themeId, { titleFontOverride, gridStyleOverride });
   const [photos, setPhotos] = useState(initialPhotos);
+  const [slideshowOpen, setSlideshowOpen] = useState(false);
+  const [aspectRatios, setAspectRatios] = useState<Record<string, number>>({});
   const [savedFavoriteIds, setSavedFavoriteIds] = useState(
     () => new Set(initialPhotos.filter((p) => p.is_favorite).map((p) => p.id))
   );
@@ -223,6 +232,10 @@ export default function PublicGalleryView({
 
   const favorites = photos.filter((p) => p.is_favorite);
   const visiblePhotos = activeFolderId ? photos.filter((p) => p.folder_id === activeFolderId) : photos;
+  const photoById = new Map(photos.map((p) => [p.id, p]));
+  const slideshowPhotos = slideshowPhotoIds
+    .map((id) => photoById.get(id))
+    .filter((p): p is PhotoWithUrl => !!p);
 
   return (
     <>
@@ -296,6 +309,15 @@ export default function PublicGalleryView({
             />
             <IconGallery className="h-5 w-5 shrink-0 text-[var(--gt-ink-soft)]" />
           </div>
+          {slideshowPhotos.length > 0 && (
+            <button
+              onClick={() => setSlideshowOpen(true)}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 mb-3 text-sm font-semibold ${BTN_PRESS}`}
+              style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
+            >
+              ▶ מצגת תמונות
+            </button>
+          )}
           {allowDownloads && (
             <button
               onClick={() => downloadZip(photos.map((p) => p.id))}
@@ -340,6 +362,54 @@ export default function PublicGalleryView({
                         alt={photo.original_filename}
                         className="absolute inset-0 w-full h-full object-cover block"
                         style={lightboxIndex !== i ? { viewTransitionName: `photo-${photo.id}` } : undefined}
+                      />
+                      {selectionMode && (
+                        <div className="absolute inset-0" style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent" }} />
+                      )}
+                    </button>
+                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} />
+                  </div>
+                );
+              })}
+            </div>
+          ) : theme.gridStyle === "justified" ? (
+            <div ref={pinchContainerRef} style={{ touchAction: "pan-y", display: "flex", flexWrap: "wrap", gap: "var(--gt-gap)" }}>
+              {visiblePhotos.map((photo, i) => {
+                const isSelected = photo.is_favorite;
+                const ratio = aspectRatios[photo.id] ?? 1.5;
+                return (
+                  <div
+                    key={photo.id}
+                    className="relative overflow-hidden"
+                    style={{
+                      height: cellSize,
+                      width: ratio * cellSize,
+                      flexGrow: 1,
+                      flexShrink: 1,
+                      background: "var(--gt-surface-soft)",
+                      borderRadius: "var(--gt-photo-radius)",
+                    }}
+                  >
+                    <button
+                      onPointerDown={() => handlePointerDown(photo)}
+                      onPointerUp={clearLongPressTimer}
+                      onPointerLeave={clearLongPressTimer}
+                      onContextMenu={(e) => e.preventDefault()}
+                      onClick={() => handleTileClick(photo, i)}
+                      className="relative block w-full h-full select-none"
+                      style={{ WebkitTouchCallout: "none" }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={optimizedImageUrl(photo.url, 640)}
+                        alt={photo.original_filename}
+                        className="absolute inset-0 w-full h-full object-cover block"
+                        style={lightboxIndex !== i ? { viewTransitionName: `photo-${photo.id}` } : undefined}
+                        onLoad={(e) => {
+                          const img = e.currentTarget;
+                          const r = img.naturalWidth / img.naturalHeight;
+                          setAspectRatios((prev) => (prev[photo.id] ? prev : { ...prev, [photo.id]: r }));
+                        }}
                       />
                       {selectionMode && (
                         <div className="absolute inset-0" style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent" }} />
@@ -705,6 +775,10 @@ export default function PublicGalleryView({
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+
+      {slideshowOpen && (
+        <GallerySlideshow photos={slideshowPhotos} onClose={() => setSlideshowOpen(false)} />
       )}
     </>
   );

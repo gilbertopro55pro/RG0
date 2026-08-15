@@ -11,8 +11,20 @@ import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
-import { GALLERY_THEMES, COVER_TEXT_POSITIONS, COVER_SHAPES, galleryThemeById, galleryThemeVars, galleryTitleStyle, galleryFont } from "@/lib/galleryTheme";
+import {
+  GALLERY_THEMES,
+  COVER_TEXT_POSITIONS,
+  COVER_SHAPES,
+  FONT_OPTIONS,
+  GRID_STYLE_OPTIONS,
+  galleryThemeById,
+  galleryThemeVars,
+  galleryTitleStyle,
+  galleryFont,
+} from "@/lib/galleryTheme";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
+import GallerySlideshow from "@/components/GallerySlideshow";
+import { TextPositionIcon, ShapeIcon, GridStyleIcon } from "@/components/GalleryStyleIcons";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
 
@@ -146,7 +158,20 @@ export default function GalleryManageView({
   const [coverTextPosition, setCoverTextPosition] = useState(initialGallery.cover_text_position);
   const [coverShape, setCoverShape] = useState(initialGallery.cover_shape);
   const [coverPhotoId, setCoverPhotoId] = useState(initialGallery.cover_photo_id);
+  const [titleFontOverride, setTitleFontOverride] = useState(initialGallery.title_font_override);
+  const [gridStyleOverride, setGridStyleOverride] = useState(initialGallery.grid_style_override);
+  const [slideshowPhotoIds, setSlideshowPhotoIds] = useState<Set<string>>(new Set(initialGallery.slideshow_photo_ids));
+  const [slideshowPreviewOpen, setSlideshowPreviewOpen] = useState(false);
   const [savingStyle, setSavingStyle] = useState(false);
+
+  const toggleSlideshowPhoto = (id: string) => {
+    setSlideshowPhotoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const toggleSelect = (photoId: string) => {
     setSelectedIds((prev) => {
@@ -625,7 +650,15 @@ export default function GalleryManageView({
 
   const saveStyle = async () => {
     setSavingStyle(true);
-    const patch = { theme, cover_text_position: coverTextPosition, cover_shape: coverShape, cover_photo_id: coverPhotoId };
+    const patch = {
+      theme,
+      cover_text_position: coverTextPosition,
+      cover_shape: coverShape,
+      cover_photo_id: coverPhotoId,
+      title_font_override: titleFontOverride,
+      grid_style_override: gridStyleOverride,
+      slideshow_photo_ids: [...slideshowPhotoIds],
+    };
     const { error: updateError } = await supabase.from("galleries").update(patch).eq("id", gallery.id);
     setSavingStyle(false);
     if (updateError) {
@@ -661,6 +694,9 @@ export default function GalleryManageView({
               setCoverTextPosition(gallery.cover_text_position);
               setCoverShape(gallery.cover_shape);
               setCoverPhotoId(gallery.cover_photo_id);
+              setTitleFontOverride(gallery.title_font_override);
+              setGridStyleOverride(gallery.grid_style_override);
+              setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
               setStyleOpen(true);
             }}
             className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-deep text-white ${BTN_PRESS}`}
@@ -1247,7 +1283,7 @@ export default function GalleryManageView({
           onClick={() => setStyleOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto"
+            className={`${galleryFont.variable} w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto`}
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-bold font-display mb-4">עיצוב הגלריה</h2>
@@ -1255,8 +1291,12 @@ export default function GalleryManageView({
             {/* Live preview — the exact same component the real public gallery page renders,
                 so what photographers see here is what clients actually get. */}
             <div
-              className={`${galleryFont.variable} rounded-2xl overflow-hidden mb-5 border p-3.5`}
-              style={{ background: galleryThemeById(theme).bg, borderColor: "var(--color-line)", ...galleryThemeVars(theme) }}
+              className="rounded-2xl overflow-hidden mb-5 border p-3.5"
+              style={{
+                background: galleryThemeById(theme).bg,
+                borderColor: "var(--color-line)",
+                ...galleryThemeVars(theme, { titleFontOverride, gridStyleOverride }),
+              }}
             >
               <GalleryCoverBanner
                 photoUrl={(photos.find((p) => p.id === coverPhotoId) ?? photos[0])?.url ?? null}
@@ -1265,6 +1305,7 @@ export default function GalleryManageView({
                 theme={theme}
                 textPosition={coverTextPosition}
                 shape={coverShape}
+                titleFontOverride={titleFontOverride}
               />
             </div>
 
@@ -1293,77 +1334,186 @@ export default function GalleryManageView({
             )}
 
             <p className="text-xs text-ink-soft mb-2.5">מיקום הכיתוב</p>
-            <div className="grid grid-cols-2 gap-2 mb-5">
-              {COVER_TEXT_POSITIONS.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setCoverTextPosition(p.id)}
-                  className="rounded-lg px-3 py-2.5 text-sm font-semibold border"
-                  style={{
-                    borderColor: coverTextPosition === p.id ? "var(--color-amber-deep)" : "var(--color-line)",
-                    background: coverTextPosition === p.id ? "var(--color-amber-bg)" : "var(--color-card)",
-                    color: coverTextPosition === p.id ? "var(--color-amber-deep)" : "var(--color-ink)",
-                  }}
-                >
-                  {p.label}
-                </button>
-              ))}
+            <div className="grid grid-cols-4 gap-2 mb-5">
+              {COVER_TEXT_POSITIONS.map((p) => {
+                const active = coverTextPosition === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setCoverTextPosition(p.id)}
+                    title={p.label}
+                    aria-label={p.label}
+                    className={`aspect-square rounded-2xl flex items-center justify-center border ${BTN_PRESS}`}
+                    style={{
+                      borderColor: active ? "var(--color-amber-deep)" : "var(--color-line)",
+                      borderWidth: active ? "2px" : "1px",
+                      background: active ? "var(--color-amber-bg)" : "var(--color-card)",
+                      color: active ? "var(--color-amber-deep)" : "var(--color-ink-soft)",
+                    }}
+                  >
+                    <TextPositionIcon position={p.id} />
+                  </button>
+                );
+              })}
             </div>
 
             <p className="text-xs text-ink-soft mb-2.5">צורת התמונה</p>
-            <div className="grid grid-cols-2 gap-2 mb-5">
-              {COVER_SHAPES.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => setCoverShape(s.id)}
-                  className="rounded-lg px-3 py-2.5 text-sm font-semibold border"
-                  style={{
-                    borderColor: coverShape === s.id ? "var(--color-amber-deep)" : "var(--color-line)",
-                    background: coverShape === s.id ? "var(--color-amber-bg)" : "var(--color-card)",
-                    color: coverShape === s.id ? "var(--color-amber-deep)" : "var(--color-ink)",
-                  }}
-                >
-                  {s.label}
-                </button>
-              ))}
+            <div className="grid grid-cols-4 gap-2 mb-5">
+              {COVER_SHAPES.map((s) => {
+                const active = coverShape === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setCoverShape(s.id)}
+                    title={s.label}
+                    aria-label={s.label}
+                    className={`aspect-square rounded-2xl flex items-center justify-center border ${BTN_PRESS}`}
+                    style={{
+                      borderColor: active ? "var(--color-amber-deep)" : "var(--color-line)",
+                      borderWidth: active ? "2px" : "1px",
+                      background: active ? "var(--color-amber-bg)" : "var(--color-card)",
+                      color: active ? "var(--color-amber-deep)" : "var(--color-ink-soft)",
+                    }}
+                  >
+                    <ShapeIcon shape={s.id} />
+                  </button>
+                );
+              })}
             </div>
 
             <p className="text-xs text-ink-soft mb-2.5">ערכת נושא</p>
-            <div className="grid grid-cols-1 gap-2.5 mb-5">
-              {GALLERY_THEMES.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTheme(t.id)}
-                  className="flex items-center gap-3 rounded-2xl p-2.5 border text-right"
-                  style={{
-                    borderColor: theme === t.id ? "var(--color-amber-deep)" : "var(--color-line)",
-                    borderWidth: theme === t.id ? "2px" : "1px",
-                    background: "var(--color-card)",
-                  }}
-                >
-                  <span
-                    className="shrink-0 h-11 w-11 rounded-xl overflow-hidden grid grid-cols-2"
-                    style={{ background: t.bg }}
+            <div className="grid grid-cols-5 gap-1.5 mb-5">
+              {GALLERY_THEMES.map((t) => {
+                const active = theme === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setTheme(t.id);
+                      setTitleFontOverride(null);
+                      setGridStyleOverride(null);
+                    }}
+                    className={`flex flex-col items-center gap-1.5 ${BTN_PRESS}`}
                   >
-                    <span style={{ background: t.surface }} />
-                    <span style={{ background: t.accent }} />
-                  </span>
-                  <span className="flex-1">
-                    <span className="block text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
+                    <span
+                      className="relative h-12 w-12 rounded-2xl overflow-hidden grid grid-cols-2"
+                      style={{
+                        background: t.bg,
+                        boxShadow: active
+                          ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
+                          : "0 0 0 1px var(--color-line)",
+                      }}
+                    >
+                      <span style={{ background: t.surface }} />
+                      <span style={{ background: t.accent }} />
+                      {active && (
+                        <span
+                          className="absolute -top-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
+                          style={{ background: "var(--color-amber-deep)", color: "#fff" }}
+                        >
+                          ✓
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className="text-[11px] font-semibold text-center leading-tight"
+                      style={{ ...galleryTitleStyle(t.id), color: active ? "var(--color-amber-deep)" : "var(--color-ink)" }}
+                    >
                       {t.label}
                     </span>
-                    <span className={`${galleryFont.variable} block text-xs`} style={{ ...galleryTitleStyle(t.id), color: "var(--color-ink-soft)" }}>
-                      Aa לדוגמה
-                    </span>
-                  </span>
-                  {theme === t.id && (
-                    <span className="shrink-0 h-5 w-5 rounded-full flex items-center justify-center text-xs" style={{ background: "var(--color-amber-deep)", color: "#fff" }}>
-                      ✓
-                    </span>
-                  )}
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
+
+            <p className="text-xs text-ink-soft mb-2.5">סוג פונט</p>
+            <div className="grid grid-cols-2 gap-2 mb-5">
+              {FONT_OPTIONS.map((f) => {
+                const active = (titleFontOverride ?? galleryThemeById(theme).titleFont) === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => setTitleFontOverride(f.id)}
+                    className={`rounded-xl px-3 py-2.5 text-sm font-semibold border ${BTN_PRESS}`}
+                    style={{
+                      borderColor: active ? "var(--color-amber-deep)" : "var(--color-line)",
+                      borderWidth: active ? "2px" : "1px",
+                      background: active ? "var(--color-amber-bg)" : "var(--color-card)",
+                      color: active ? "var(--color-amber-deep)" : "var(--color-ink)",
+                      fontFamily: f.id === "serif" ? "var(--font-gallery-serif)" : "var(--font-sans)",
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-xs text-ink-soft mb-2.5">פריסת תמונות</p>
+            <div className="grid grid-cols-4 gap-2 mb-5">
+              {GRID_STYLE_OPTIONS.map((g) => {
+                const active = (gridStyleOverride ?? galleryThemeById(theme).gridStyle) === g.id;
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => setGridStyleOverride(g.id)}
+                    title={g.label}
+                    aria-label={g.label}
+                    className={`aspect-square rounded-2xl flex items-center justify-center border ${BTN_PRESS}`}
+                    style={{
+                      borderColor: active ? "var(--color-amber-deep)" : "var(--color-line)",
+                      borderWidth: active ? "2px" : "1px",
+                      background: active ? "var(--color-amber-bg)" : "var(--color-card)",
+                      color: active ? "var(--color-amber-deep)" : "var(--color-ink-soft)",
+                    }}
+                  >
+                    <GridStyleIcon style={g.id} />
+                  </button>
+                );
+              })}
+            </div>
+
+            {photos.length > 0 && (
+              <>
+                <p className="text-xs text-ink-soft mb-2.5">מצגת תמונות ללקוח (אפקטים רנדומליים)</p>
+                <div className="flex gap-2 mb-2.5 overflow-x-auto">
+                  {photos.map((p) => {
+                    const active = slideshowPhotoIds.has(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => toggleSlideshowPhoto(p.id)}
+                        className="relative shrink-0 h-14 w-14 rounded-lg overflow-hidden"
+                        style={{
+                          boxShadow: active
+                            ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
+                            : "0 0 0 1px var(--color-line)",
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={p.url} alt="" className="w-full h-full object-cover" />
+                        {active && (
+                          <span
+                            className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
+                            style={{ background: "var(--color-amber-deep)", color: "#fff" }}
+                          >
+                            ✓
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between mb-5">
+                  <span className="text-[11px] text-ink-soft">{slideshowPhotoIds.size} תמונות נבחרו למצגת</span>
+                  {slideshowPhotoIds.size > 0 && (
+                    <button onClick={() => setSlideshowPreviewOpen(true)} className="text-[11px] font-semibold text-amber-deep">
+                      ▶ תצוגה מקדימה
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
 
             {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
             <div className="flex gap-2">
@@ -1383,6 +1533,13 @@ export default function GalleryManageView({
             </div>
           </div>
         </div>
+      )}
+
+      {slideshowPreviewOpen && (
+        <GallerySlideshow
+          photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: p.url }))}
+          onClose={() => setSlideshowPreviewOpen(false)}
+        />
       )}
 
       {shareOpen && (

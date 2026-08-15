@@ -1,4 +1,4 @@
-import { coverAspectRatio, galleryTitleStyle, galleryThemeById, isOverlayPosition } from "@/lib/galleryTheme";
+import { coverAspectRatio, galleryTitleStyle, resolveGalleryTheme, isOverlayPosition } from "@/lib/galleryTheme";
 
 export default function GalleryCoverBanner({
   photoUrl,
@@ -7,6 +7,7 @@ export default function GalleryCoverBanner({
   theme: themeId,
   textPosition,
   shape,
+  titleFontOverride = null,
 }: {
   photoUrl: string | null;
   title: string;
@@ -14,15 +15,16 @@ export default function GalleryCoverBanner({
   theme: string;
   textPosition: string;
   shape: string;
+  titleFontOverride?: string | null;
 }) {
-  const theme = galleryThemeById(themeId);
+  const theme = resolveGalleryTheme(themeId, { titleFontOverride });
   const overlay = isOverlayPosition(textPosition);
   const isCircle = shape === "circle";
   const align = textPosition === "center-right" ? "flex-end" : "flex-start";
 
   const textBlock = (
     <div style={{ color: overlay ? "#ffffff" : "var(--gt-ink)" }}>
-      <div className="text-xl" style={galleryTitleStyle(themeId)}>
+      <div className="text-xl" style={galleryTitleStyle(themeId, { titleFontOverride })}>
         {title}
       </div>
       {theme.bannerDivider && !overlay && (

@@ -4,6 +4,7 @@ import PublicGalleryView from "@/components/PublicGalleryView";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import { getSignedDownloadUrls } from "@/lib/storage";
 import { galleryThemeById, galleryThemeVars, galleryFont } from "@/lib/galleryTheme";
+import type { GalleryStyleOverrides } from "@/lib/galleryTheme";
 
 export default async function PublicGalleryPage({
   params,
@@ -78,6 +79,10 @@ export default async function PublicGalleryPage({
     photosWithUrls = photos.map((p) => ({ ...p, url: urlByPath.get(p.storage_path) ?? "" }));
   }
 
+  const styleOverrides: GalleryStyleOverrides = {
+    titleFontOverride: gallery.title_font_override,
+    gridStyleOverride: gallery.grid_style_override,
+  };
   const theme = galleryThemeById(gallery.theme);
   // Falls back to the first photo when the photographer hasn't explicitly chosen a cover — a
   // banner-less gallery reads as broken, and most galleries only ever need one obvious hero shot.
@@ -91,7 +96,7 @@ export default async function PublicGalleryPage({
   return (
     <div
       className={`${galleryFont.variable} max-w-2xl lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full min-h-screen`}
-      style={{ background: theme.bg, ...galleryThemeVars(gallery.theme) }}
+      style={{ background: theme.bg, ...galleryThemeVars(gallery.theme, styleOverrides) }}
     >
       <GalleryCoverBanner
         photoUrl={coverPhoto?.url ?? null}
@@ -100,6 +105,7 @@ export default async function PublicGalleryPage({
         theme={gallery.theme}
         textPosition={gallery.cover_text_position}
         shape={gallery.cover_shape}
+        titleFontOverride={gallery.title_font_override}
       />
 
       <PublicGalleryView
@@ -109,6 +115,9 @@ export default async function PublicGalleryPage({
         initiallyConfirmed={!!gallery.selection_confirmed_at}
         allowDownloads={gallery.allow_downloads}
         themeId={gallery.theme}
+        titleFontOverride={gallery.title_font_override}
+        gridStyleOverride={gallery.grid_style_override}
+        slideshowPhotoIds={gallery.slideshow_photo_ids}
       />
     </div>
   );
