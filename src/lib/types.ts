@@ -253,7 +253,16 @@ export type AlbumPhotoElement = {
   filter?: AlbumPhotoFilter;
   borderWidth?: number;
   borderColor?: string;
+  rotation?: number; // degrees, -180..180, default 0
+  opacity?: number; // 0-100, default 100
+  blur?: number; // 0-100 (an arbitrary intensity scale, not raw px), default 0
 };
+
+// Points on the album's fixed 1600pt-wide PDF reference canvas (same canvas the PDF proof export
+// already uses) — every renderer (builder CSS, client viewer CSS, JPG/PSD raster, PDF) converts
+// this one absolute unit to its own pixel/point space, so a given size looks the same proportion
+// of the page everywhere regardless of the album's physical cm dimensions.
+export type AlbumFontSizePt = number; // 2-96
 
 export type AlbumTextElement = {
   id: string;
@@ -262,7 +271,9 @@ export type AlbumTextElement = {
   xPct: number;
   yPct: number;
   widthPct: number;
-  fontSize: number;
+  heightPct?: number; // resize-handle box height; font size is independent (set via fontSize)
+  fontSize: AlbumFontSizePt;
+  fontFamily?: string; // key into ALBUM_FONTS (src/lib/albumFonts.ts) — default "heebo"
   color: "white" | "black";
   align: "right" | "center" | "left";
 };
@@ -305,6 +316,9 @@ export type GalleryAlbumSpreadRow = {
   focal_x_2: number;
   focal_y_2: number;
   elements: AlbumElement[];
+  background_photo_id: string | null;
+  background_blur: number; // 0-100
+  background_opacity: number; // 0-100
   created_at: string;
 };
 

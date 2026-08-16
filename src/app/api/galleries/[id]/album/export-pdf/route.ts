@@ -53,7 +53,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const photoIds = Array.from(
     new Set([
       ...(album.cover_photo_id ? [album.cover_photo_id] : []),
-      ...spreads.flatMap((s) => [s.photo_id_1, s.photo_id_2].filter((id): id is string => !!id)),
+      ...spreads.flatMap((s) => [s.photo_id_1, s.photo_id_2, s.background_photo_id].filter((id): id is string => !!id)),
       // Custom-layout spreads can reference photos that never touch photo_id_1/photo_id_2 at all.
       // An empty frame (photoId null — not yet assigned) has nothing to fetch.
       ...spreads.flatMap((s) =>

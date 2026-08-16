@@ -458,10 +458,11 @@ export default function GalleryManageView({
   // Swaps in a different photo for one slot of an existing spread without disturbing the other
   // slot, the spread's position, layout, or the client's comments (comments are tied to spread_id,
   // not to a specific photo, so a swapped-in photo still shows prior feedback in context).
-  const saveSpreadElements = async (elements: AlbumElement[]) => {
+  const saveSpreadElements = async (elements: AlbumElement[], background: { photoId: string | null; blur: number; opacity: number }) => {
     if (!canvasEditorTarget) return;
     const { spreadId, mode } = canvasEditorTarget;
-    const patch = mode === "custom" ? { elements, layout: "custom" as const } : { elements };
+    const backgroundPatch = { background_photo_id: background.photoId, background_blur: background.blur, background_opacity: background.opacity };
+    const patch = mode === "custom" ? { elements, layout: "custom" as const, ...backgroundPatch } : { elements, ...backgroundPatch };
     setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, ...patch } : s)));
     await supabase.from("gallery_album_spreads").update(patch).eq("id", spreadId);
     setCanvasEditorTarget(null);

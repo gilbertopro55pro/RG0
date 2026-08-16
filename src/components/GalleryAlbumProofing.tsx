@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
+import { ALBUM_BLUR_MAX_PX } from "@/components/AlbumSpreadCanvasEditor";
 
 type SpreadPhoto = { id: string; url: string };
 type SpreadLayout = "split" | "feature" | "stack" | "custom";
@@ -19,14 +21,33 @@ export type ClientAlbumElement =
       filter?: "none" | "bw" | "sepia";
       borderWidth?: number;
       borderColor?: string;
+      rotation?: number;
+      opacity?: number;
+      blur?: number;
     }
-  | { id: string; type: "text"; text: string; xPct: number; yPct: number; widthPct: number; fontSize: number; color: "white" | "black"; align: "right" | "center" | "left" };
+  | {
+      id: string;
+      type: "text";
+      text: string;
+      xPct: number;
+      yPct: number;
+      widthPct: number;
+      heightPct?: number;
+      fontSize: number;
+      fontFamily?: string;
+      color: "white" | "black";
+      align: "right" | "center" | "left";
+    };
 
-export function cssFilterFor(filter: "none" | "bw" | "sepia" | undefined): string | undefined {
-  if (filter === "bw") return "grayscale(1)";
-  if (filter === "sepia") return "sepia(0.85)";
-  return undefined;
+export function cssFilterFor(filter: "none" | "bw" | "sepia" | undefined, blurPct?: number): string | undefined {
+  const parts: string[] = [];
+  if (filter === "bw") parts.push("grayscale(1)");
+  else if (filter === "sepia") parts.push("sepia(0.85)");
+  if (blurPct) parts.push(`blur(${(blurPct / 100) * ALBUM_BLUR_MAX_PX}px)`);
+  return parts.length ? parts.join(" ") : undefined;
 }
+
+type SpreadBackground = { url: string; blur: number; opacity: number } | null;
 
 type Spread = {
   id: string;
@@ -38,24 +59,41 @@ type Spread = {
   focalX2: number;
   focalY2: number;
   elements: ClientAlbumElement[];
+  background: SpreadBackground;
   comments: { id: string; text: string }[];
 };
+
+function BackgroundLayer({ background }: { background: SpreadBackground }) {
+  if (!background) return null;
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      src={background.url}
+      alt=""
+      className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+      style={{ opacity: background.opacity / 100, filter: background.blur ? `blur(${(background.blur / 100) * ALBUM_BLUR_MAX_PX}px)` : undefined }}
+    />
+  );
+}
 
 function TextOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "text" }> }) {
   return (
     <div
-      className="absolute px-1 font-bold"
+      className="absolute px-1 font-bold flex items-center"
       style={{
         left: `${el.xPct}%`,
         top: `${el.yPct}%`,
         width: `${el.widthPct}%`,
+        height: `${el.heightPct ?? 15}%`,
+        justifyContent: el.align === "right" ? "flex-end" : el.align === "left" ? "flex-start" : "center",
         textAlign: el.align,
         color: el.color === "white" ? "#fff" : "#000",
-        fontSize: `${el.fontSize}cqw`,
+        fontSize: `calc(${el.fontSize} / 1600 * 100cqw)`,
+        fontFamily: albumFontFamilyCss(el.fontFamily),
         textShadow: el.color === "white" ? "0 1px 4px rgba(0,0,0,0.7)" : "0 1px 4px rgba(255,255,255,0.7)",
       }}
     >
-      {el.text}
+      <span>{el.text}</span>
     </div>
   );
 }
@@ -117,7 +155,7 @@ export default function GalleryAlbumProofing({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black flex flex-col select-none">
+    <div className={`fixed inset-0 z-[80] bg-black flex flex-col select-none ${ALBUM_FONT_CLASS_NAMES}`}>
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
         <button onClick={onClose} aria-label="סגירה" className="h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg">
           ✕
@@ -146,6 +184,7 @@ export default function GalleryAlbumProofing({
           </div>
         ) : spread!.layout === "custom" ? (
           <div className="relative w-full max-w-full aspect-[16/10]" style={{ containerType: "inline-size" }}>
+            <BackgroundLayer background={spread!.background} />
             {spread!.elements.map((el) =>
               el.type === "photo" ? (
                 <div
@@ -165,7 +204,12 @@ export default function GalleryAlbumProofing({
                     src={el.url}
                     alt=""
                     className="absolute inset-0 w-full h-full object-cover"
-                    style={{ objectPosition: `${el.focalX}% ${el.focalY}%`, filter: cssFilterFor(el.filter) }}
+                    style={{
+                      objectPosition: `${el.focalX}% ${el.focalY}%`,
+                      filter: cssFilterFor(el.filter, el.blur),
+                      opacity: (el.opacity ?? 100) / 100,
+                      transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+                    }}
                   />
                 </div>
               ) : (
@@ -178,6 +222,7 @@ export default function GalleryAlbumProofing({
           // photographer's chosen focal point) inside a fixed-ratio frame, rather than shrunk to
           // fit whole, so what the client approves here matches what the exported PDF prints.
           <div className="relative w-full max-w-full aspect-[16/10]" style={{ containerType: "inline-size" }}>
+            <BackgroundLayer background={spread!.background} />
             <div className={`absolute inset-0 flex gap-1.5 ${spread!.layout === "stack" ? "flex-col" : "flex-row"}`}>
               <div className="relative overflow-hidden rounded-sm" style={{ flex: spread!.layout === "feature" ? 1.6 : 1 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -204,6 +249,7 @@ export default function GalleryAlbumProofing({
           </div>
         ) : (
           <div className="relative w-full h-full flex items-center justify-center" style={{ containerType: "inline-size" }}>
+            <BackgroundLayer background={spread!.background} />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={spread!.photo1.url} alt="" className="h-full max-w-full object-contain" />
             {spread!.elements.filter((el) => el.type === "text").map((el) => (

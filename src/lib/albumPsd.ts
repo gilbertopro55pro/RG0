@@ -64,11 +64,39 @@ export async function renderAlbumPagePsd({
   }
 
   if (!spread) return null;
+
+  if (spread.background_photo_id) {
+    const bgPhoto = photosById.get(spread.background_photo_id);
+    const bgBuffer = bgPhoto ? await downloadObjectBuffer("galleries", bgPhoto.storage_path) : null;
+    const bgCropped = bgBuffer ? await coverCropRaw(bgBuffer, pageWidthPx, pageHeightPx, 50, 50, undefined, false, { blur: spread.background_blur }) : null;
+    if (bgCropped) {
+      children.push({
+        name: "רקע עמוד",
+        top: 0,
+        left: 0,
+        bottom: pageHeightPx,
+        right: pageWidthPx,
+        opacity: spread.background_opacity / 100,
+        imageData: { data: bgCropped.data, width: bgCropped.width, height: bgCropped.height },
+      });
+    }
+  }
+
   const elements = resolvePageElements(spread, pageWidthPx, pageHeightPx);
   let any = false;
   for (const el of elements) {
     if (el.kind === "text") {
-      const png = await svgTextLayer(el.text, { xPx: el.x, yPx: el.y, widthPx: el.width, fontSizePx: el.fontSizePx, color: el.color === "white" ? "#ffffff" : "#000000", align: el.align, pageWidthPx, pageHeightPx });
+      const png = await svgTextLayer(el.text, {
+        xPx: el.x,
+        yPx: el.y,
+        widthPx: el.width,
+        fontSizePx: el.fontSizePx,
+        color: el.color === "white" ? "#ffffff" : "#000000",
+        align: el.align,
+        pageWidthPx,
+        pageHeightPx,
+        fontFamily: el.fontFamily,
+      });
       const rgba = await pngToRawRgba(png);
       children.push({ name: "טקסט", top: 0, left: 0, bottom: rgba.height, right: rgba.width, imageData: { data: rgba.data, width: rgba.width, height: rgba.height } });
       continue;
@@ -79,13 +107,26 @@ export async function renderAlbumPagePsd({
     if (!buffer) continue;
     const width = Math.max(1, Math.round(el.width));
     const height = Math.max(1, Math.round(el.height));
-    // Never bake B&W into the pixels here — it becomes a real adjustment layer below instead.
-    const cropped = await coverCropRaw(buffer, width, height, el.focalX, el.focalY, el.filter === "sepia" ? "sepia" : undefined, false);
+    // Never bake B&W or opacity into the pixels here — B&W becomes a real adjustment layer below,
+    // and opacity stays a live, editable PSD layer property instead (rotation/blur still have to
+    // be baked in — Photoshop layers have no native "rotate" field in the file format itself).
+    const cropped = await coverCropRaw(buffer, width, height, el.focalX, el.focalY, el.filter === "sepia" ? "sepia" : undefined, false, {
+      rotation: el.rotation,
+      blur: el.blur,
+    });
     if (!cropped) continue;
     any = true;
     const top = Math.round(el.y);
     const left = Math.round(el.x);
-    children.push({ name: "תמונה", top, left, bottom: top + height, right: left + width, imageData: { data: cropped.data, width: cropped.width, height: cropped.height } });
+    children.push({
+      name: "תמונה",
+      top,
+      left,
+      bottom: top + height,
+      right: left + width,
+      opacity: (el.opacity ?? 100) / 100,
+      imageData: { data: cropped.data, width: cropped.width, height: cropped.height },
+    });
     if (el.filter === "bw") {
       children.push({ name: "שחור-לבן", clipping: true, adjustment: { type: "black & white" } });
     }
@@ -95,7 +136,7 @@ export async function renderAlbumPagePsd({
       children.push({ name: "מסגרת", top, left, bottom: top + height, right: left + width, imageData: { data: strokeRgba.data, width: strokeRgba.width, height: strokeRgba.height } });
     }
   }
-  if (!any && !elements.some((e) => e.kind === "text")) return null;
+  if (!any && !elements.some((e) => e.kind === "text") && !spread.background_photo_id) return null;
 
   return writePsdBuffer({ width: pageWidthPx, height: pageHeightPx, children });
 }

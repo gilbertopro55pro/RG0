@@ -54,7 +54,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const photoIds = Array.from(
     new Set([
       ...(album.cover_photo_id ? [album.cover_photo_id] : []),
-      ...spreads.flatMap((s) => [s.photo_id_1, s.photo_id_2].filter((id): id is string => !!id)),
+      ...spreads.flatMap((s) => [s.photo_id_1, s.photo_id_2, s.background_photo_id].filter((id): id is string => !!id)),
       ...spreads.flatMap((s) =>
         s.elements.filter((el): el is typeof el & { type: "photo"; photoId: string } => el.type === "photo" && !!el.photoId).map((el) => el.photoId)
       ),

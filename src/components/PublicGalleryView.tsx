@@ -70,6 +70,7 @@ export default function PublicGalleryView({
     focalX2: number;
     focalY2: number;
     elements: ClientAlbumElement[];
+    background: { url: string; blur: number; opacity: number } | null;
     comments: { id: string; text: string }[];
   }[];
 }) {

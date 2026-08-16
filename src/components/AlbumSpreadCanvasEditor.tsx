@@ -2,10 +2,55 @@
 
 import { useRef, useState } from "react";
 import type { AlbumElement, AlbumFrame, AlbumPhotoElement, AlbumPhotoFilter, AlbumTemplateRow, GalleryAlbumSpreadRow } from "@/lib/types";
+import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 
 type PhotoWithUrl = { id: string; url: string; is_favorite?: boolean };
 
 const BORDER_COLORS = ["#ffffff", "#000000", "#d4af37", "#e07a5f"];
+// A shared cap so a given blur % looks (and exports) the same whether it's applied to a framed
+// photo or the full-page background — also the sigma sharp/PDF baking uses server-side, since
+// CSS blur(px) and sharp's Gaussian blur sigma are both "pixels of std-deviation" and line up
+// closely enough in practice not to need a separate conversion factor.
+export const ALBUM_BLUR_MAX_PX = 40;
+
+function SliderControl({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  unit = "",
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  unit?: string;
+  onChange: (v: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-[10px] font-semibold bg-chip text-ink-soft"
+      >
+        <span>{label}</span>
+        <span dir="ltr" className="font-data">
+          {value}
+          {unit}
+        </span>
+      </button>
+      {open && (
+        <div className="absolute z-10 top-full inset-x-0 mt-1 rounded-lg border border-line bg-white p-2.5 shadow-sheet">
+          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 const BUILT_IN_TEMPLATES: { name: string; frames: AlbumFrame[] }[] = [
   {
@@ -96,10 +141,12 @@ const BUILT_IN_TEMPLATES: { name: string; frames: AlbumFrame[] }[] = [
   { name: "טור זכרונות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 100, heightPct: 18.4 }, { id: "f2", xPct: 0, yPct: 20.4, widthPct: 100, heightPct: 18.4 }, { id: "f3", xPct: 0, yPct: 40.8, widthPct: 100, heightPct: 18.4 }, { id: "f4", xPct: 0, yPct: 61.2, widthPct: 100, heightPct: 18.4 }, { id: "f5", xPct: 0, yPct: 81.6, widthPct: 100, heightPct: 18.4 }] },
 ];
 
-function cssFilterFor(filter: AlbumPhotoFilter | undefined): string | undefined {
-  if (filter === "bw") return "grayscale(1)";
-  if (filter === "sepia") return "sepia(0.85)";
-  return undefined;
+function cssFilterFor(filter: AlbumPhotoFilter | undefined, blurPct: number | undefined): string | undefined {
+  const parts: string[] = [];
+  if (filter === "bw") parts.push("grayscale(1)");
+  else if (filter === "sepia") parts.push("sepia(0.85)");
+  if (blurPct) parts.push(`blur(${(blurPct / 100) * ALBUM_BLUR_MAX_PX}px)`);
+  return parts.length ? parts.join(" ") : undefined;
 }
 
 // Seeds a brand-new "custom" canvas from the spread's existing preset-layout photos (matching the
@@ -162,13 +209,17 @@ export default function AlbumSpreadCanvasEditor({
   photo2: PhotoWithUrl | undefined | null;
   mode: "overlay" | "custom";
   templates: AlbumTemplateRow[];
-  onSave: (elements: AlbumElement[]) => void;
+  onSave: (elements: AlbumElement[], background: { photoId: string | null; blur: number; opacity: number }) => void;
   onSaveTemplate: (name: string, frames: AlbumFrame[]) => Promise<void>;
   onClose: () => void;
 }) {
   const [elements, setElements] = useState<AlbumElement[]>(() => (mode === "custom" ? seedElementsFromPreset(spread) : spread.elements));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [frameTargetId, setFrameTargetId] = useState<string | null>(null);
+  const [pickingBackground, setPickingBackground] = useState(false);
+  const [backgroundPhotoId, setBackgroundPhotoId] = useState(spread.background_photo_id);
+  const [backgroundBlur, setBackgroundBlur] = useState(spread.background_blur);
+  const [backgroundOpacity, setBackgroundOpacity] = useState(spread.background_opacity);
   const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
   const [showAllInPicker, setShowAllInPicker] = useState(false);
   const [textDraftOpen, setTextDraftOpen] = useState(false);
@@ -193,6 +244,7 @@ export default function AlbumSpreadCanvasEditor({
   const usedPhotoIds = new Set(elements.filter((e): e is AlbumPhotoElement => e.type === "photo" && !!e.photoId).map((e) => e.photoId as string));
   const favoritePhotos = photos.filter((p) => p.is_favorite);
   const pickerPhotos = showAllInPicker || favoritePhotos.length === 0 ? photos : favoritePhotos;
+  const backgroundPhoto = backgroundPhotoId ? photos.find((p) => p.id === backgroundPhotoId) : null;
 
   const updateElement = (id: string, patch: Partial<AlbumElement>) => {
     setElements((prev) => prev.map((e) => (e.id === id ? ({ ...e, ...patch } as AlbumElement) : e)));
@@ -205,6 +257,13 @@ export default function AlbumSpreadCanvasEditor({
 
   const openPickerForNewPhoto = () => {
     setFrameTargetId(null);
+    setPickingBackground(false);
+    setPhotoPickerOpen(true);
+  };
+
+  const openPickerForBackground = () => {
+    setFrameTargetId(null);
+    setPickingBackground(true);
     setPhotoPickerOpen(true);
   };
 
@@ -214,7 +273,9 @@ export default function AlbumSpreadCanvasEditor({
   };
 
   const choosePhoto = (photoId: string) => {
-    if (frameTargetId) {
+    if (pickingBackground) {
+      setBackgroundPhotoId(photoId);
+    } else if (frameTargetId) {
       updateElement(frameTargetId, { photoId, focalX: 50, focalY: 50 });
     } else {
       const id = `el-${Date.now()}`;
@@ -223,14 +284,17 @@ export default function AlbumSpreadCanvasEditor({
     }
     setPhotoPickerOpen(false);
     setFrameTargetId(null);
+    setPickingBackground(false);
   };
+
+  const removeBackground = () => setBackgroundPhotoId(null);
 
   const addText = () => {
     if (!textDraft.trim()) return;
     const id = `el-${Date.now()}`;
     setElements((prev) => [
       ...prev,
-      { id, type: "text", text: textDraft.trim(), xPct: 10, yPct: 40, widthPct: 80, fontSize: 6, color: "white", align: "center" },
+      { id, type: "text", text: textDraft.trim(), xPct: 10, yPct: 40, widthPct: 80, heightPct: 15, fontSize: 40, fontFamily: "heebo", color: "white", align: "center" },
     ]);
     setTextDraft("");
     setTextDraftOpen(false);
@@ -283,7 +347,7 @@ export default function AlbumSpreadCanvasEditor({
       startXPct: el.xPct,
       startYPct: el.yPct,
       startWidthPct: el.widthPct,
-      startHeightPct: el.type === "photo" ? el.heightPct : 0,
+      startHeightPct: el.type === "photo" ? el.heightPct : (el.heightPct ?? 15),
     };
   };
 
@@ -300,12 +364,12 @@ export default function AlbumSpreadCanvasEditor({
         yPct: Math.max(0, Math.min(95, drag.startYPct + dyPct)),
       });
     } else {
+      // Every element type resizes freely in both dimensions from its corner handle now — text
+      // used to be width-only, but a box height it can't control makes vertical centering (and
+      // the "square handle enlarges/shrinks it" request) meaningless.
       const widthPct = Math.max(8, Math.min(100 - drag.startXPct, drag.startWidthPct + dxPct));
-      const patch: Partial<AlbumElement> =
-        elements.find((el) => el.id === drag.id)?.type === "photo"
-          ? { widthPct, heightPct: Math.max(8, Math.min(100 - drag.startYPct, drag.startHeightPct + dyPct)) }
-          : { widthPct };
-      updateElement(drag.id, patch);
+      const heightPct = Math.max(6, Math.min(100 - drag.startYPct, drag.startHeightPct + dyPct));
+      updateElement(drag.id, { widthPct, heightPct });
     }
   };
 
@@ -317,7 +381,7 @@ export default function AlbumSpreadCanvasEditor({
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+      className={`fixed inset-0 z-[80] flex items-center justify-center p-4 ${ALBUM_FONT_CLASS_NAMES}`}
       style={{ background: "rgba(46,49,66,0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
     >
       <div className="w-full max-w-sm rounded-3xl p-4 bg-paper shadow-sheet max-h-[92vh] overflow-y-auto">
@@ -343,6 +407,15 @@ export default function AlbumSpreadCanvasEditor({
           className="relative w-full aspect-[16/10] rounded-xl overflow-hidden bg-line select-none"
           style={{ containerType: "inline-size" }}
         >
+          {backgroundPhoto && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={backgroundPhoto.url}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+              style={{ opacity: backgroundOpacity / 100, filter: backgroundBlur ? `blur(${(backgroundBlur / 100) * ALBUM_BLUR_MAX_PX}px)` : undefined }}
+            />
+          )}
           {mode === "overlay" && (
             <div className={`absolute inset-0 flex ${spread.layout === "stack" ? "flex-col" : "flex-row"} gap-0.5 pointer-events-none`}>
               {photo1 && (
@@ -392,7 +465,12 @@ export default function AlbumSpreadCanvasEditor({
                         src={photo.url}
                         alt=""
                         className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-                        style={{ objectPosition: `${el.focalX}% ${el.focalY}%`, filter: cssFilterFor(el.filter) }}
+                        style={{
+                          objectPosition: `${el.focalX}% ${el.focalY}%`,
+                          filter: cssFilterFor(el.filter, el.blur),
+                          opacity: (el.opacity ?? 100) / 100,
+                          transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+                        }}
                       />
                     ) : (
                       <span className="text-white text-2xl">+</span>
@@ -413,25 +491,30 @@ export default function AlbumSpreadCanvasEditor({
                 <div
                   key={el.id}
                   onPointerDown={(e) => startDrag(e, el, "move")}
-                  className="absolute cursor-move px-1"
+                  className="absolute cursor-move px-1 flex items-center overflow-visible"
                   style={{
                     left: `${el.xPct}%`,
                     top: `${el.yPct}%`,
                     width: `${el.widthPct}%`,
+                    height: `${el.heightPct ?? 15}%`,
+                    justifyContent: el.align === "right" ? "flex-end" : el.align === "left" ? "flex-start" : "center",
                     textAlign: el.align,
                     color: el.color === "white" ? "#fff" : "#000",
-                    fontSize: `${el.fontSize}cqw`,
+                    // fontSize is stored in points on the album's fixed 1600pt PDF reference canvas
+                    // (matches PAGE_WIDTH in albumPdf.ts) — cqw here is "% of this canvas's own
+                    // rendered width," so the same ratio keeps the same visual size everywhere.
+                    fontSize: `calc(${el.fontSize} / 1600 * 100cqw)`,
+                    fontFamily: albumFontFamilyCss(el.fontFamily),
                     fontWeight: 700,
                     textShadow: el.color === "white" ? "0 1px 4px rgba(0,0,0,0.7)" : "0 1px 4px rgba(255,255,255,0.7)",
                     outline: isSelected ? "2px dashed var(--color-amber-deep)" : "none",
                   }}
                 >
-                  {el.text}
+                  <span>{el.text}</span>
                   {isSelected && (
                     <span
                       onPointerDown={(e) => startDrag(e, el, "resize")}
-                      className="absolute bottom-0 left-0 h-4 w-4 bg-amber-deep cursor-ew-resize"
-                      style={{ transform: "translate(-50%, 50%)" }}
+                      className="absolute bottom-0.5 left-0.5 h-4 w-4 bg-amber-deep cursor-nwse-resize rounded-sm"
                     />
                   )}
                 </div>
@@ -442,29 +525,55 @@ export default function AlbumSpreadCanvasEditor({
         {selected && (
           <div className="space-y-2 mt-2.5">
             {selected.type === "text" && (
-              <div className="flex gap-1.5">
-                {(["white", "black"] as const).map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => updateElement(selected.id, { color: c })}
-                    className="h-7 w-7 rounded-full border border-line"
-                    style={{ background: c === "white" ? "#fff" : "#000" }}
-                  />
-                ))}
-                {(["right", "center", "left"] as const).map((a) => (
-                  <button
-                    key={a}
-                    onClick={() => updateElement(selected.id, { align: a })}
-                    className="flex-1 rounded-full py-1.5 text-[10px] font-semibold"
-                    style={{
-                      background: selected.align === a ? "var(--color-amber-deep)" : "var(--color-chip)",
-                      color: selected.align === a ? "#fff" : "var(--color-ink-soft)",
-                    }}
+              <>
+                <div className="flex gap-1.5">
+                  {(["white", "black"] as const).map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => updateElement(selected.id, { color: c })}
+                      className="h-7 w-7 rounded-full border border-line"
+                      style={{ background: c === "white" ? "#fff" : "#000" }}
+                    />
+                  ))}
+                  {(["right", "center", "left"] as const).map((a) => (
+                    <button
+                      key={a}
+                      onClick={() => updateElement(selected.id, { align: a })}
+                      className="flex-1 rounded-full py-1.5 text-[10px] font-semibold"
+                      style={{
+                        background: selected.align === a ? "var(--color-amber-deep)" : "var(--color-chip)",
+                        color: selected.align === a ? "#fff" : "var(--color-ink-soft)",
+                      }}
+                    >
+                      {a === "right" ? "ימין" : a === "center" ? "מרכז" : "שמאל"}
+                    </button>
+                  ))}
+                </div>
+                <div className="relative">
+                  <select
+                    value={selected.fontFamily ?? "heebo"}
+                    onChange={(e) => updateElement(selected.id, { fontFamily: e.target.value })}
+                    className="w-full rounded-lg px-2.5 py-2 text-xs font-semibold bg-white border border-line"
+                    style={{ fontFamily: albumFontFamilyCss(selected.fontFamily) }}
                   >
-                    {a === "right" ? "ימין" : a === "center" ? "מרכז" : "שמאל"}
-                  </button>
-                ))}
-              </div>
+                    <optgroup label="פונטים בעברית">
+                      {ALBUM_FONTS.filter((f) => f.category === "hebrew").map((f) => (
+                        <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="פונטים באנגלית">
+                      {ALBUM_FONTS.filter((f) => f.category === "latin").map((f) => (
+                        <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+                <SliderControl label="גודל טקסט" value={selected.fontSize} min={2} max={96} unit="pt" onChange={(v) => updateElement(selected.id, { fontSize: v })} />
+              </>
             )}
             {selected.type === "photo" && selected.photoId && (
               <>
@@ -484,34 +593,60 @@ export default function AlbumSpreadCanvasEditor({
                   ))}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-ink-soft shrink-0">עובי מסגרת</span>
-                  {[0, 2, 6, 12].map((w) => (
-                    <button
-                      key={w}
-                      onClick={() => updateElement(selected.id, { borderWidth: w })}
-                      className="flex-1 rounded-full py-1.5 text-[10px] font-semibold"
-                      style={{
-                        background: (selected.borderWidth ?? 0) === w ? "var(--color-amber-deep)" : "var(--color-chip)",
-                        color: (selected.borderWidth ?? 0) === w ? "#fff" : "var(--color-ink-soft)",
-                      }}
-                    >
-                      {w === 0 ? "ללא" : w}
-                    </button>
-                  ))}
+                  <button
+                    onClick={() => updateElement(selected.id, { borderWidth: 0 })}
+                    className="flex-1 rounded-full py-1.5 text-[10px] font-semibold"
+                    style={{
+                      background: !selected.borderWidth ? "var(--color-amber-deep)" : "var(--color-chip)",
+                      color: !selected.borderWidth ? "#fff" : "var(--color-ink-soft)",
+                    }}
+                  >
+                    ללא מסגרת
+                  </button>
+                  <button
+                    onClick={() => updateElement(selected.id, { borderWidth: selected.borderWidth || 8 })}
+                    className="flex-1 rounded-full py-1.5 text-[10px] font-semibold"
+                    style={{
+                      background: selected.borderWidth ? "var(--color-amber-deep)" : "var(--color-chip)",
+                      color: selected.borderWidth ? "#fff" : "var(--color-ink-soft)",
+                    }}
+                  >
+                    עם מסגרת
+                  </button>
                 </div>
                 {!!selected.borderWidth && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-ink-soft shrink-0">צבע מסגרת</span>
-                    {BORDER_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => updateElement(selected.id, { borderColor: c })}
-                        className="h-7 w-7 rounded-full"
-                        style={{ background: c, boxShadow: (selected.borderColor ?? "#ffffff") === c ? "0 0 0 2px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)" }}
-                      />
-                    ))}
-                  </div>
+                  <>
+                    <SliderControl label="עובי מסגרת" value={selected.borderWidth} min={2} max={50} unit="px" onChange={(v) => updateElement(selected.id, { borderWidth: v })} />
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-ink-soft shrink-0">צבע מסגרת</span>
+                      {BORDER_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => updateElement(selected.id, { borderColor: c })}
+                          className="h-7 w-7 rounded-full"
+                          style={{ background: c, boxShadow: (selected.borderColor ?? "#ffffff") === c ? "0 0 0 2px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)" }}
+                        />
+                      ))}
+                    </div>
+                  </>
                 )}
+                <SliderControl
+                  label="סיבוב"
+                  value={selected.rotation ?? 0}
+                  min={-180}
+                  max={180}
+                  unit="°"
+                  onChange={(v) => updateElement(selected.id, { rotation: v })}
+                />
+                <SliderControl
+                  label="שקיפות"
+                  value={selected.opacity ?? 100}
+                  min={0}
+                  max={100}
+                  unit="%"
+                  onChange={(v) => updateElement(selected.id, { opacity: v })}
+                />
+                <SliderControl label="טשטוש (Blur)" value={selected.blur ?? 0} min={0} max={100} unit="%" onChange={(v) => updateElement(selected.id, { blur: v })} />
               </>
             )}
             <button onClick={() => removeElement(selected.id)} className="w-full h-8 rounded-full bg-chip text-rose text-xs font-semibold">
@@ -519,6 +654,27 @@ export default function AlbumSpreadCanvasEditor({
             </button>
           </div>
         )}
+
+        <div className="mt-3 pt-3 border-t border-line">
+          <p className="text-[11px] font-bold text-ink-soft mb-1.5">רקע לכל העמוד</p>
+          {backgroundPhoto ? (
+            <div className="space-y-2">
+              <div className="relative h-16 rounded-lg overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={backgroundPhoto.url} alt="" className="w-full h-full object-cover" style={{ opacity: backgroundOpacity / 100 }} />
+                <button onClick={removeBackground} className="absolute top-1 left-1 h-6 w-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center">
+                  ✕
+                </button>
+              </div>
+              <SliderControl label="שקיפות רקע" value={backgroundOpacity} min={0} max={100} unit="%" onChange={setBackgroundOpacity} />
+              <SliderControl label="טשטוש רקע (Blur)" value={backgroundBlur} min={0} max={100} unit="%" onChange={setBackgroundBlur} />
+            </div>
+          ) : (
+            <button onClick={openPickerForBackground} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
+              + בחירת תמונת רקע
+            </button>
+          )}
+        </div>
 
         <div className="flex gap-2 mt-3">
           {mode === "custom" && (
@@ -546,7 +702,10 @@ export default function AlbumSpreadCanvasEditor({
           </button>
         )}
 
-        <button onClick={() => onSave(elements)} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white mt-2.5">
+        <button
+          onClick={() => onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity })}
+          className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white mt-2.5"
+        >
           שמירה
         </button>
       </div>
@@ -555,7 +714,10 @@ export default function AlbumSpreadCanvasEditor({
         <div className="fixed inset-0 z-[85] flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setPhotoPickerOpen(false)}>
           <div className="w-full max-w-sm rounded-3xl p-4 bg-paper max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold">{showAllInPicker || favoritePhotos.length === 0 ? "כל התמונות" : "תמונות מועדפות"}</h3>
+              <h3 className="text-sm font-bold">
+                {pickingBackground ? "בחירת תמונת רקע — " : ""}
+                {showAllInPicker || favoritePhotos.length === 0 ? "כל התמונות" : "תמונות מועדפות"}
+              </h3>
               {favoritePhotos.length > 0 && (
                 <button onClick={() => setShowAllInPicker((v) => !v)} className="text-xs font-semibold text-ink-soft underline">
                   {showAllInPicker ? "רק מועדפות" : "כל התמונות"}

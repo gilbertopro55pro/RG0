@@ -13,11 +13,14 @@ import {
   closePath,
   clip,
   endPath,
+  concatTransformationMatrix,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import sharp from "sharp";
 import { downloadObjectBuffer } from "@/lib/storage";
 import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
+import { getAlbumFontFiles } from "@/lib/albumFontFiles";
+import { ALBUM_BLUR_MAX_PX } from "@/lib/albumRaster";
 import type { AlbumPhotoFilter, AlbumTextElement, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 function hexToRgbTuple(hex: string): [number, number, number] {
@@ -29,16 +32,20 @@ function hexToRgbTuple(hex: string): [number, number, number] {
 // Applied server-side via sharp before the buffer ever reaches pdf-lib — pdf-lib itself has no
 // image color-transform primitive, so this is the only way the PDF's B&W/sepia frames actually
 // match what the CSS `filter: grayscale()/sepia()` preview shows in the builder and proofing view.
-async function applyPhotoFilter(buffer: Buffer, filter: AlbumPhotoFilter | undefined): Promise<Buffer> {
-  if (!filter || filter === "none") return buffer;
-  const img = sharp(buffer).rotate(); // .rotate() with no args auto-applies EXIF orientation first
+async function applyPhotoFilter(buffer: Buffer, filter: AlbumPhotoFilter | undefined, blurPct?: number): Promise<Buffer> {
+  if ((!filter || filter === "none") && !blurPct) return buffer;
+  let img = sharp(buffer).rotate(); // .rotate() with no args auto-applies EXIF orientation first
   // Sepia = tinted — sharp's tint() already desaturates internally before recoloring, so this is
   // the standard sepia approximation. Chaining an explicit .grayscale() *before* .tint() looks
   // like the obvious way to write it, but empirically neutralizes the tint entirely (confirmed:
   // grayscale().tint() produces pure gray, R=G=B, while tint() alone produces the expected warm
   // tone) — so grayscale must never precede tint in this pipeline.
-  const processed = filter === "sepia" ? img.tint({ r: 112, g: 66, b: 20 }) : img.grayscale();
-  return processed.jpeg({ quality: 90 }).toBuffer();
+  if (filter === "sepia") img = img.tint({ r: 112, g: 66, b: 20 });
+  else if (filter === "bw") img = img.grayscale();
+  // pdf-lib has no blur primitive at all, so this is the only place a blurred photo can come from
+  // for the PDF export — baked into the pixels before embedding, same as the filter above.
+  if (blurPct) img = img.blur(Math.max(0.3, (blurPct / 100) * ALBUM_BLUR_MAX_PX));
+  return img.jpeg({ quality: 90 }).toBuffer();
 }
 
 // One "spread" page in the exported PDF, in points — a landscape rectangle standing in for one
@@ -68,12 +75,17 @@ async function embedImageAuto(pdfDoc: PDFDocument, buffer: Buffer): Promise<PDFI
 // Places an image "cover-cropped" into a rect, clipped to that rect and aimed at the given focal
 // point (0-100 on each axis) — the same crop math as the CSS `object-fit: cover` +
 // `object-position` used in the builder and proofing views, so the PDF matches what was approved.
+// `rotation` (degrees, CSS convention — positive is clockwise) rotates only the image content
+// around the rect's own center while the clip stays a fixed, unrotated rectangle — exactly how
+// the browser preview looks (a `transform: rotate()` on the `<img>` inside an `overflow-hidden`
+// frame that itself never rotates).
 function drawCoverImage(
   page: PDFPage,
   image: PDFImage,
   rect: { x: number; y: number; width: number; height: number },
   focalXPct: number,
-  focalYPct: number
+  focalYPct: number,
+  opts?: { rotation?: number; opacity?: number }
 ) {
   const { x, y, width: w, height: h } = rect;
   const imgAspect = image.width / image.height;
@@ -93,7 +105,7 @@ function drawCoverImage(
   // PDF's y-axis runs bottom-up, while focalY follows the CSS convention (0 = top) — flip it.
   const dy = y - (drawH - h) * (1 - fy);
 
-  page.pushOperators(
+  const ops = [
     pushGraphicsState(),
     moveTo(x, y),
     lineTo(x + w, y),
@@ -101,14 +113,31 @@ function drawCoverImage(
     lineTo(x, y + h),
     closePath(),
     clip(),
-    endPath()
-  );
-  page.drawImage(image, { x: dx, y: dy, width: drawW, height: drawH });
+    endPath(),
+  ];
+  if (opts?.rotation) {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    // PDF's CTM rotation is counter-clockwise for a positive angle in its bottom-up y-axis space —
+    // negating the CSS-convention degrees here makes a positive value turn clockwise on screen,
+    // same as the CSS `rotate()` used everywhere else this value is applied.
+    const rad = (-opts.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    ops.push(
+      concatTransformationMatrix(1, 0, 0, 1, cx, cy),
+      concatTransformationMatrix(cos, sin, -sin, cos, 0, 0),
+      concatTransformationMatrix(1, 0, 0, 1, -cx, -cy)
+    );
+  }
+  page.pushOperators(...ops);
+  page.drawImage(image, { x: dx, y: dy, width: drawW, height: drawH, opacity: opts?.opacity });
   page.pushOperators(popGraphicsState());
 }
 
-// `el.fontSize` is stored in the same unit the web UI uses (cqw — percent of the container's
-// width), so it converts to points the same way xPct/widthPct do: as a fraction of PAGE_WIDTH.
+// `el.fontSize` is already points on this exact 1600pt-wide reference canvas (see the
+// AlbumFontSizePt comment in types.ts), so — unlike every other geometry field here — it needs no
+// scaling at all; it *is* the PDFFont size.
 // Drawn twice — a shadow pass offset by a couple points, then the real text on top — since pdf-lib
 // has no text-shadow primitive and a flat color alone can vanish against a busy photo background.
 function drawTextElement(
@@ -118,7 +147,7 @@ function drawTextElement(
 ) {
   const boxX = (el.xPct / 100) * PAGE_WIDTH;
   const boxWidth = (el.widthPct / 100) * PAGE_WIDTH;
-  const size = (el.fontSize / 100) * PAGE_WIDTH;
+  const size = el.fontSize;
   const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - size;
   const mainColor = el.color === "white" ? rgb(1, 1, 1) : rgb(0, 0, 0);
   const shadowColor = el.color === "white" ? rgb(0, 0, 0) : rgb(1, 1, 1);
@@ -155,17 +184,35 @@ export async function generateAlbumPdf({
     pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, "Heebo-Hebrew-Bold.ttf"))),
     pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, "Heebo-Latin-Bold.ttf"))),
   ]);
+  const defaultFonts = { hebrewFont, latinFont };
+
+  // Fonts are embedded lazily, one pair per distinct selection actually used in this album — a
+  // full 20-family embed on every export would bloat every single PDF regardless of use.
+  const fontPairCache = new Map<string, { hebrewFont: PDFFont; latinFont: PDFFont }>();
+  const getFontsForFamily = async (fontFamily: string | undefined): Promise<{ hebrewFont: PDFFont; latinFont: PDFFont }> => {
+    const key = fontFamily ?? "heebo";
+    if (key === "heebo") return defaultFonts;
+    const cached = fontPairCache.get(key);
+    if (cached) return cached;
+    const { hebrewFile, latinFile } = getAlbumFontFiles(key);
+    const pair = {
+      hebrewFont: hebrewFile === "Heebo-Hebrew-Bold.ttf" ? hebrewFont : await pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, hebrewFile))),
+      latinFont: latinFile === "Heebo-Latin-Bold.ttf" ? latinFont : await pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, latinFile))),
+    };
+    fontPairCache.set(key, pair);
+    return pair;
+  };
 
   const imageCache = new Map<string, PDFImage | null>();
-  const embedByPhotoId = async (photoId: string | null, filter?: AlbumPhotoFilter): Promise<PDFImage | null> => {
+  const embedByPhotoId = async (photoId: string | null, filter?: AlbumPhotoFilter, blurPct?: number): Promise<PDFImage | null> => {
     if (!photoId) return null;
-    const cacheKey = `${photoId}:${filter ?? "none"}`;
+    const cacheKey = `${photoId}:${filter ?? "none"}:${blurPct ?? 0}`;
     if (imageCache.has(cacheKey)) return imageCache.get(cacheKey)!;
     const photo = photosById.get(photoId);
     let buffer = photo ? await downloadObjectBuffer("galleries", photo.storage_path) : null;
-    if (buffer && filter && filter !== "none") {
+    if (buffer && ((filter && filter !== "none") || blurPct)) {
       try {
-        buffer = await applyPhotoFilter(buffer, filter);
+        buffer = await applyPhotoFilter(buffer, filter, blurPct);
       } catch {
         // Fall back to the unfiltered image rather than dropping it entirely.
       }
@@ -197,18 +244,22 @@ export async function generateAlbumPdf({
       // A free-form page can be text-only (no photo elements at all) — unlike the preset
       // layouts, it always gets a page even if every photo element fails to embed.
       const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      if (spread.background_photo_id) {
+        const bgImage = await embedByPhotoId(spread.background_photo_id, undefined, spread.background_blur);
+        if (bgImage) drawCoverImage(page, bgImage, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }, 50, 50, { opacity: spread.background_opacity / 100 });
+      }
       for (const el of spread.elements) {
         if (el.type === "text") {
-          drawTextElement(page, el, { hebrewFont, latinFont });
+          drawTextElement(page, el, await getFontsForFamily(el.fontFamily));
           continue;
         }
-        const image = await embedByPhotoId(el.photoId, el.filter);
+        const image = await embedByPhotoId(el.photoId, el.filter, el.blur);
         if (!image) continue;
         const width = (el.widthPct / 100) * PAGE_WIDTH;
         const height = (el.heightPct / 100) * PAGE_HEIGHT;
         const x = (el.xPct / 100) * PAGE_WIDTH;
         const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - height;
-        drawCoverImage(page, image, { x, y, width, height }, el.focalX, el.focalY);
+        drawCoverImage(page, image, { x, y, width, height }, el.focalX, el.focalY, { rotation: el.rotation, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
         if (el.borderWidth) {
           page.drawRectangle({
             x,
@@ -229,6 +280,11 @@ export async function generateAlbumPdf({
 
     const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
+    if (spread.background_photo_id) {
+      const bgImage = await embedByPhotoId(spread.background_photo_id, undefined, spread.background_blur);
+      if (bgImage) drawCoverImage(page, bgImage, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }, 50, 50, { opacity: spread.background_opacity / 100 });
+    }
+
     if (!image2) {
       drawCoverImage(page, image1, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }, spread.focal_x_1, spread.focal_y_1);
     } else if (spread.layout === "stack") {
@@ -248,7 +304,7 @@ export async function generateAlbumPdf({
     }
 
     for (const el of spread.elements) {
-      if (el.type === "text") drawTextElement(page, el, { hebrewFont, latinFont });
+      if (el.type === "text") drawTextElement(page, el, await getFontsForFamily(el.fontFamily));
     }
   }
 

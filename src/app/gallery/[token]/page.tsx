@@ -107,6 +107,7 @@ export default async function PublicGalleryPage({
     focalX2: number;
     focalY2: number;
     elements: ClientAlbumElement[];
+    background: { url: string; blur: number; opacity: number } | null;
     comments: { id: string; text: string }[];
   }[] = [];
   let albumCoverUrl: string | null = null;
@@ -142,6 +143,7 @@ export default async function PublicGalleryPage({
             return { ...el, url: photo.url };
           })
           .filter((el): el is ClientAlbumElement => el !== null);
+        const backgroundPhoto = s.background_photo_id ? photoById.get(s.background_photo_id) : null;
         return {
           id: s.id,
           photo1: { id: photo1.id, url: photo1.url },
@@ -152,6 +154,7 @@ export default async function PublicGalleryPage({
           focalX2: s.focal_x_2,
           focalY2: s.focal_y_2,
           elements,
+          background: backgroundPhoto ? { url: backgroundPhoto.url, blur: s.background_blur, opacity: s.background_opacity } : null,
           comments: (commentsRaw ?? []).filter((c) => c.spread_id === s.id).map((c) => ({ id: c.id, text: c.text })),
         };
       })
