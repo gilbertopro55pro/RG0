@@ -1,7 +1,7 @@
 import sharp from "sharp";
-import { writePsdBuffer, type Layer, type LayerEffectsInfo } from "ag-psd";
+import { writePsdBuffer, type Layer } from "ag-psd";
 import { downloadObjectBuffer } from "@/lib/storage";
-import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer } from "@/lib/albumRaster";
+import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng } from "@/lib/albumRaster";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 async function pngToRawRgba(buffer: Buffer): Promise<{ data: Buffer; width: number; height: number }> {
@@ -9,46 +9,14 @@ async function pngToRawRgba(buffer: Buffer): Promise<{ data: Buffer; width: numb
   return { data, width: info.width, height: info.height };
 }
 
-// Real, live Photoshop "Drop Shadow" Layer Style effect — editable in Photoshop's own Layer Style
-// dialog exactly as if applied by hand. The blur/offset/opacity numbers mirror boxShadowFor()
-// exactly, so it looks the same as the builder preview. Distance/angle approximate CSS's fixed
-// down-right offset as Photoshop's polar distance+angle form.
-//
-// The border/stroke is deliberately NOT a live effect here, despite ag-psd technically exposing
-// `effects.stroke` — tried it (round-tripped cleanly through ag-psd's own reader, and matched a
-// real Photoshop-authored fixture's field shapes as closely as could be verified from outside
-// Photoshop itself), but real Photoshop still reported "problems reading layers" and never
-// rendered the stroke. Without access to real Photoshop to iterate against, further attempts
-// would just be more blind guessing at the exact binary layer-effects encoding it expects — not
-// worth risking file corruption for. Border goes back to being baked into the photo's own pixels
-// via composePhotoTile below (the same proven-reliable approach used before this attempt, and
-// still what rotated photos need anyway, since a PSD layer has no rotation field of its own — the
-// border has to be part of the same rotated tile as the photo either way).
-function buildPhotoLayerEffects(shadowPct: number | undefined): LayerEffectsInfo | undefined {
-  if (!shadowPct) return undefined;
-  const blurPx = Math.max(1, (shadowPct / 100) * 24);
-  const offsetPx = Math.round((shadowPct / 100) * 10);
-  // ag-psd's `opacity` field is a 0-1 fraction (unitsPercent() multiplies by 100 internally to
-  // build the actual PSD Percent descriptor) — confirmed against a real Photoshop-authored test
-  // fixture in ag-psd's own repo, whose effect opacities all came back as 0-1 values.
-  const opacityFraction = 0.15 + (shadowPct / 100) * 0.45;
-  return {
-    dropShadow: [
-      {
-        enabled: true,
-        present: true,
-        showInDialog: false,
-        useGlobalLight: false,
-        angle: 135,
-        distance: { units: "Pixels", value: Math.round(offsetPx * Math.SQRT2) },
-        size: { units: "Pixels", value: Math.round(blurPx) },
-        color: { r: 0, g: 0, b: 0 },
-        opacity: opacityFraction,
-        blendMode: "multiply",
-      },
-    ],
-  };
-}
+// Both border and shadow are baked into raster layers here, NOT live Photoshop Layer Style
+// effects (`effects.stroke`/`effects.dropShadow`) — that was tried across several rounds
+// (correct field shapes verified against a real Photoshop-authored fixture, correct 0-1 opacity
+// scale, clean round-trips through ag-psd's own reader) and real Photoshop still reported
+// "problems reading layers" and rendered some pages as blank/black. Without access to real
+// Photoshop to iterate against, that gap can't be closed reliably from outside — this reverts
+// fully to the plain-raster-layers approach that was verified working (real photographer testing,
+// no errors) before that attempt.
 
 // Builds a real, layered .psd — each photo is its own positioned raster layer, and a black & white
 // filter becomes an actual clipped Photoshop "Black & White" adjustment layer (not baked into
@@ -154,8 +122,9 @@ export async function renderAlbumPagePsd({
     // Border is baked into the photo's own pixels (bundled into the same rotated tile as the
     // photo when rotated, so it spins together as one rigid unit — see composePhotoTile).
     // Opacity stays a live PSD layer property. Blur has no from-scratch-authorable Smart Filter
-    // equivalent, so it's baked into the pixels too. Shadow is the one still live (see
-    // buildPhotoLayerEffects).
+    // equivalent, so it's baked into the pixels too. Shadow is a separate baked raster layer,
+    // composited just underneath — see the module comment above for why none of these are live
+    // Layer Style effects.
     const tile = await composePhotoTile(buffer, width, height, el.focalX, el.focalY, el.filter === "sepia" ? "sepia" : undefined, false, {
       rotation: el.rotation,
       blur: el.blur,
@@ -165,9 +134,20 @@ export async function renderAlbumPagePsd({
     });
     if (!tile) continue;
     any = true;
+    const shadow = await shadowLayerPng(width, height, el.shadow, frameLeft, frameTop, el.rotation);
+    if (shadow) {
+      const shadowRgba = await pngToRawRgba(shadow.buffer);
+      children.push({
+        name: "צל",
+        top: shadow.top,
+        left: shadow.left,
+        bottom: shadow.top + shadowRgba.height,
+        right: shadow.left + shadowRgba.width,
+        imageData: { data: shadowRgba.data, width: shadowRgba.width, height: shadowRgba.height },
+      });
+    }
     const top = Math.round(frameTop + tile.top);
     const left = Math.round(frameLeft + tile.left);
-    const effects = buildPhotoLayerEffects(el.shadow);
     children.push({
       name: "תמונה",
       top,
@@ -176,7 +156,6 @@ export async function renderAlbumPagePsd({
       right: left + tile.width,
       opacity: (el.opacity ?? 100) / 100,
       imageData: { data: tile.data, width: tile.width, height: tile.height },
-      ...(effects ? { effects } : {}),
     });
     if (el.filter === "bw") {
       children.push({ name: "שחור-לבן", clipping: true, adjustment: { type: "black & white" } });

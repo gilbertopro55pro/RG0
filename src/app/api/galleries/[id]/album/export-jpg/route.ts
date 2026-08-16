@@ -50,11 +50,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "אין עדיין עמודים באלבום" }, { status: 400 });
   }
 
+  // Page range from the "which pages to export" modal — page 1 is the cover (when present),
+  // then each spread follows in sort order. Falls back to the full album when the caller sends
+  // no body (or an unparseable one).
+  const body: { from?: number; to?: number } = await request.json().catch(() => ({}));
+  const hasCover = !!album.cover_photo_id;
+  const totalPages = (hasCover ? 1 : 0) + spreads.length;
+  const rangeStart = Math.max(1, Math.min(body.from ?? 1, body.to ?? totalPages, totalPages));
+  const rangeEnd = Math.max(rangeStart, Math.min(Math.max(body.from ?? 1, body.to ?? totalPages), totalPages));
+  const includeCover = hasCover && rangeStart <= 1;
+  const rangedSpreads = spreads
+    .map((spread, i) => ({ spread, pageNumber: (hasCover ? 1 : 0) + i + 1 }))
+    .filter(({ pageNumber }) => pageNumber >= rangeStart && pageNumber <= rangeEnd)
+    .map(({ spread }) => spread);
+
   const photoIds = Array.from(
     new Set([
-      ...(album.cover_photo_id ? [album.cover_photo_id] : []),
-      ...spreads.flatMap((s) => [s.photo_id_1, s.photo_id_2, s.background_photo_id].filter((id): id is string => !!id)),
-      ...spreads.flatMap((s) =>
+      ...(includeCover && album.cover_photo_id ? [album.cover_photo_id] : []),
+      ...rangedSpreads.flatMap((s) => [s.photo_id_1, s.photo_id_2, s.background_photo_id].filter((id): id is string => !!id)),
+      ...rangedSpreads.flatMap((s) =>
         s.elements.filter((el): el is typeof el & { type: "photo"; photoId: string } => el.type === "photo" && !!el.photoId).map((el) => el.photoId)
       ),
     ])
@@ -74,20 +88,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   (async () => {
     try {
-      let pageNum = 1;
-      if (album.cover_photo_id) {
+      if (includeCover) {
         const jpeg = await renderAlbumPageJpeg({ album, spread: null, isCover: true, pageWidthPx, pageHeightPx, photosById });
-        if (jpeg) {
-          archive.append(jpeg, { name: `${rootDir}/${String(pageNum).padStart(2, "0")} - שער.jpg` });
-          pageNum++;
-        }
+        if (jpeg) archive.append(jpeg, { name: `${rootDir}/01 - שער.jpg` });
       }
-      for (const spread of spreads) {
+      for (const spread of rangedSpreads) {
+        const pageNumber = (hasCover ? 1 : 0) + spreads.indexOf(spread) + 1;
         const jpeg = await renderAlbumPageJpeg({ album, spread, isCover: false, pageWidthPx, pageHeightPx, photosById });
-        if (jpeg) {
-          archive.append(jpeg, { name: `${rootDir}/${String(pageNum).padStart(2, "0")}.jpg` });
-          pageNum++;
-        }
+        if (jpeg) archive.append(jpeg, { name: `${rootDir}/${String(pageNumber).padStart(2, "0")}.jpg` });
       }
     } finally {
       archive.finalize();

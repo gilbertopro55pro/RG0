@@ -256,6 +256,9 @@ export default function GalleryManageView({
   const [exportingAlbumPdf, setExportingAlbumPdf] = useState(false);
   const [exportingAlbumJpg, setExportingAlbumJpg] = useState(false);
   const [exportingAlbumPsd, setExportingAlbumPsd] = useState(false);
+  const [exportRangeFormat, setExportRangeFormat] = useState<"pdf" | "jpg" | "psd" | null>(null);
+  const [exportRangeFrom, setExportRangeFrom] = useState(1);
+  const [exportRangeTo, setExportRangeTo] = useState(1);
   const [savingAlbumSize, setSavingAlbumSize] = useState(false);
   const [canvasEditorTarget, setCanvasEditorTarget] = useState<{ spreadId: string; mode: "overlay" | "custom" } | null>(null);
   const [albumTemplates, setAlbumTemplates] = useState<AlbumTemplateRow[]>([]);
@@ -580,38 +583,25 @@ export default function GalleryManageView({
     setSavingAlbum(false);
   };
 
-  const exportAlbumPdf = async () => {
-    if (exportingAlbumPdf) return;
-    setExportingAlbumPdf(true);
-    try {
-      const res = await fetch(`/api/galleries/${gallery.id}/album/export-pdf`, { method: "POST" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        setError(data?.error ?? "שגיאה בייצוא ה-PDF");
-        return;
-      }
-      const disposition = res.headers.get("content-disposition") ?? "";
-      const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-      const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : "album.pdf";
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    } finally {
-      setExportingAlbumPdf(false);
-    }
-  };
-
-  const downloadFromRoute = async (path: string, fallbackName: string, setBusy: (v: boolean) => void) => {
-    // Opened BEFORE the export fetch — see openSaveHandle's comment for why order matters here.
-    const handleResult = await openSaveHandle(fallbackName, "application/zip");
+  // Shared by all three export formats: opens the native "Save As" dialog BEFORE the export
+  // fetch (see openSaveHandle's comment for why order matters), then POSTs the chosen page range
+  // and writes the response to the already-open handle.
+  const downloadFromRoute = async (
+    path: string,
+    fallbackName: string,
+    mimeType: string,
+    setBusy: (v: boolean) => void,
+    range: { from: number; to: number }
+  ) => {
+    const handleResult = await openSaveHandle(fallbackName, mimeType);
     if (handleResult === CANCELLED) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/galleries/${gallery.id}/album/${path}`, { method: "POST" });
+      const res = await fetch(`/api/galleries/${gallery.id}/album/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(range),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         setError(data?.error ?? "שגיאה בייצוא הקבצים");
@@ -627,8 +617,30 @@ export default function GalleryManageView({
     }
   };
 
-  const exportAlbumJpg = () => downloadFromRoute("export-jpg", "album-jpg.zip", setExportingAlbumJpg);
-  const exportAlbumPsd = () => downloadFromRoute("export-psd", "album-psd.zip", setExportingAlbumPsd);
+  const exportAlbumPdf = (range: { from: number; to: number }) => downloadFromRoute("export-pdf", "album.pdf", "application/pdf", setExportingAlbumPdf, range);
+  const exportAlbumJpg = (range: { from: number; to: number }) => downloadFromRoute("export-jpg", "album-jpg.zip", "application/zip", setExportingAlbumJpg, range);
+  const exportAlbumPsd = (range: { from: number; to: number }) => downloadFromRoute("export-psd", "album-psd.zip", "application/zip", setExportingAlbumPsd, range);
+
+  // Total exportable pages, matching how the export routes number them: the cover (if the album
+  // has one) counts as page 1, then each spread follows in sort order.
+  const albumTotalPages = (album?.cover_photo_id ? 1 : 0) + albumSpreads.length;
+
+  const openExportRangeModal = (format: "pdf" | "jpg" | "psd") => {
+    setExportRangeFormat(format);
+    setExportRangeFrom(1);
+    setExportRangeTo(albumTotalPages);
+  };
+
+  const confirmExportRange = () => {
+    if (!exportRangeFormat) return;
+    const from = Math.max(1, Math.min(exportRangeFrom, exportRangeTo));
+    const to = Math.min(albumTotalPages, Math.max(exportRangeFrom, exportRangeTo));
+    const range = { from, to };
+    setExportRangeFormat(null);
+    if (exportRangeFormat === "pdf") exportAlbumPdf(range);
+    else if (exportRangeFormat === "jpg") exportAlbumJpg(range);
+    else exportAlbumPsd(range);
+  };
 
   const updateAlbumSize = async (widthCm: number, heightCm: number) => {
     if (!album) return;
@@ -1675,6 +1687,57 @@ export default function GalleryManageView({
         </div>
       )}
 
+      {exportRangeFormat && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: "rgba(46,49,66,0.45)" }}
+          onClick={() => setExportRangeFormat(null)}
+        >
+          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2 font-display">
+              {exportRangeFormat === "pdf" ? "ייצוא PDF" : exportRangeFormat === "jpg" ? "ייצוא JPG" : "ייצוא PSD"} — טווח עמודים
+            </h2>
+            <p className="text-sm text-ink-soft mb-4">בחר/י מאיזה עמוד עד איזה עמוד לייצא (מתוך {albumTotalPages} עמודים).</p>
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex-1">
+                <label className="block text-xs font-semibold text-ink-soft mb-1">מעמוד</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={albumTotalPages}
+                  value={exportRangeFrom}
+                  onChange={(e) => setExportRangeFrom(Number(e.target.value))}
+                  className="w-full rounded-lg border border-line px-3 py-2 text-sm bg-white text-ink"
+                />
+              </div>
+              <span className="text-ink-soft mt-5">עד</span>
+              <div className="flex-1">
+                <label className="block text-xs font-semibold text-ink-soft mb-1">עד עמוד</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={albumTotalPages}
+                  value={exportRangeTo}
+                  onChange={(e) => setExportRangeTo(Number(e.target.value))}
+                  className="w-full rounded-lg border border-line px-3 py-2 text-sm bg-white text-ink"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={confirmExportRange} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white">
+                המשך לבחירת מיקום שמירה
+              </button>
+              <button
+                onClick={() => setExportRangeFormat(null)}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {shareStatus && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 rounded-full px-4 py-2 text-xs font-semibold bg-ink text-white shadow-sheet">
           {shareStatus}
@@ -2271,21 +2334,21 @@ export default function GalleryManageView({
 
                 {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
                 <button
-                  onClick={exportAlbumPdf}
+                  onClick={() => openExportRangeModal("pdf")}
                   disabled={exportingAlbumPdf || albumSpreads.length === 0}
                   className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60"
                 >
                   {exportingAlbumPdf ? "מייצא..." : "📄 ייצוא PDF להדפסה"}
                 </button>
                 <button
-                  onClick={exportAlbumJpg}
+                  onClick={() => openExportRangeModal("jpg")}
                   disabled={exportingAlbumJpg || albumSpreads.length === 0}
                   className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60"
                 >
                   {exportingAlbumJpg ? "מייצא..." : "🖼 ייצוא JPG (כל העמודים)"}
                 </button>
                 <button
-                  onClick={exportAlbumPsd}
+                  onClick={() => openExportRangeModal("psd")}
                   disabled={exportingAlbumPsd || albumSpreads.length === 0}
                   className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60"
                 >

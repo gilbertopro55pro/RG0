@@ -50,13 +50,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "אין עדיין עמודים באלבום" }, { status: 400 });
   }
 
+  // Page range from the "which pages to export" modal — page 1 is the cover (when present),
+  // then each spread follows in sort order. Falls back to the full album when the caller sends
+  // no body (or an unparseable one).
+  const body: { from?: number; to?: number } = await request.json().catch(() => ({}));
+  const hasCover = !!album.cover_photo_id;
+  const totalPages = (hasCover ? 1 : 0) + spreads.length;
+  const rangeStart = Math.max(1, Math.min(body.from ?? 1, body.to ?? totalPages, totalPages));
+  const rangeEnd = Math.max(rangeStart, Math.min(Math.max(body.from ?? 1, body.to ?? totalPages), totalPages));
+  const includeCover = hasCover && rangeStart <= 1;
+  const rangedSpreads = spreads
+    .map((spread, i) => ({ spread, pageNumber: (hasCover ? 1 : 0) + i + 1 }))
+    .filter(({ pageNumber }) => pageNumber >= rangeStart && pageNumber <= rangeEnd)
+    .map(({ spread }) => spread);
+  const rangedAlbum: GalleryAlbumRow = includeCover ? album : { ...album, cover_photo_id: null };
+
   const photoIds = Array.from(
     new Set([
-      ...(album.cover_photo_id ? [album.cover_photo_id] : []),
-      ...spreads.flatMap((s) => [s.photo_id_1, s.photo_id_2, s.background_photo_id].filter((id): id is string => !!id)),
+      ...(includeCover && album.cover_photo_id ? [album.cover_photo_id] : []),
+      ...rangedSpreads.flatMap((s) => [s.photo_id_1, s.photo_id_2, s.background_photo_id].filter((id): id is string => !!id)),
       // Custom-layout spreads can reference photos that never touch photo_id_1/photo_id_2 at all.
       // An empty frame (photoId null — not yet assigned) has nothing to fetch.
-      ...spreads.flatMap((s) =>
+      ...rangedSpreads.flatMap((s) =>
         s.elements.filter((el): el is typeof el & { type: "photo"; photoId: string } => el.type === "photo" && !!el.photoId).map((el) => el.photoId)
       ),
     ])
@@ -69,7 +84,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const photosById = new Map((photos ?? []).map((p) => [p.id, p]));
 
   try {
-    const pdfBytes = await generateAlbumPdf({ album, spreads, photosById });
+    const pdfBytes = await generateAlbumPdf({ album: rangedAlbum, spreads: rangedSpreads, photosById });
     const filename = sanitizeSegment(`${album.title} - ${gallery.title}`);
     return new Response(Buffer.from(pdfBytes), {
       headers: {
