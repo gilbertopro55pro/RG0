@@ -9,33 +9,31 @@ async function pngToRawRgba(buffer: Buffer): Promise<{ data: Buffer; width: numb
   return { data, width: info.width, height: info.height };
 }
 
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const clean = hex.replace("#", "");
-  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
-  const n = parseInt(full, 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-
-// Real, live Photoshop Layer Style effects — a Drop Shadow and a Stroke, editable in Photoshop's
-// own Layer Style dialog exactly as if applied by hand, instead of the old approach of baking a
-// separate flat "shadow"/"border" raster layer next to the photo. The blur/offset/opacity numbers
-// mirror boxShadowFor()/the old shadowLayerPng() exactly, so the shadow looks the same as the
-// builder preview and the JPG export; the border's `size` reuses the app's existing pixel-count
-// convention unchanged. Distance/angle approximate CSS's fixed down-right offset as Photoshop's
-// polar distance+angle form — close enough to land right, and it's live/editable in Photoshop if
-// a photographer wants to nudge it.
-function buildPhotoLayerEffects(shadowPct: number | undefined, borderWidth: number | undefined, borderColor: string | undefined): LayerEffectsInfo | undefined {
-  const effects: LayerEffectsInfo = {};
-  if (shadowPct) {
-    const blurPx = Math.max(1, (shadowPct / 100) * 24);
-    const offsetPx = Math.round((shadowPct / 100) * 10);
-    // ag-psd's `opacity` field is a 0-1 fraction (unitsPercent() multiplies by 100 internally to
-    // build the actual PSD Percent descriptor) — confirmed against a real Photoshop-authored test
-    // fixture in ag-psd's own repo, whose effect opacities all came back as 0-1 values. Passing a
-    // raw 0-100 percent here (as an earlier version of this code did) writes a wildly out-of-range
-    // Percent value into the file, which is what made real Photoshop refuse to read these layers.
-    const opacityFraction = 0.15 + (shadowPct / 100) * 0.45;
-    effects.dropShadow = [
+// Real, live Photoshop "Drop Shadow" Layer Style effect — editable in Photoshop's own Layer Style
+// dialog exactly as if applied by hand. The blur/offset/opacity numbers mirror boxShadowFor()
+// exactly, so it looks the same as the builder preview. Distance/angle approximate CSS's fixed
+// down-right offset as Photoshop's polar distance+angle form.
+//
+// The border/stroke is deliberately NOT a live effect here, despite ag-psd technically exposing
+// `effects.stroke` — tried it (round-tripped cleanly through ag-psd's own reader, and matched a
+// real Photoshop-authored fixture's field shapes as closely as could be verified from outside
+// Photoshop itself), but real Photoshop still reported "problems reading layers" and never
+// rendered the stroke. Without access to real Photoshop to iterate against, further attempts
+// would just be more blind guessing at the exact binary layer-effects encoding it expects — not
+// worth risking file corruption for. Border goes back to being baked into the photo's own pixels
+// via composePhotoTile below (the same proven-reliable approach used before this attempt, and
+// still what rotated photos need anyway, since a PSD layer has no rotation field of its own — the
+// border has to be part of the same rotated tile as the photo either way).
+function buildPhotoLayerEffects(shadowPct: number | undefined): LayerEffectsInfo | undefined {
+  if (!shadowPct) return undefined;
+  const blurPx = Math.max(1, (shadowPct / 100) * 24);
+  const offsetPx = Math.round((shadowPct / 100) * 10);
+  // ag-psd's `opacity` field is a 0-1 fraction (unitsPercent() multiplies by 100 internally to
+  // build the actual PSD Percent descriptor) — confirmed against a real Photoshop-authored test
+  // fixture in ag-psd's own repo, whose effect opacities all came back as 0-1 values.
+  const opacityFraction = 0.15 + (shadowPct / 100) * 0.45;
+  return {
+    dropShadow: [
       {
         enabled: true,
         present: true,
@@ -48,24 +46,8 @@ function buildPhotoLayerEffects(shadowPct: number | undefined, borderWidth: numb
         opacity: opacityFraction,
         blendMode: "multiply",
       },
-    ];
-  }
-  if (borderWidth) {
-    effects.stroke = [
-      {
-        enabled: true,
-        present: true,
-        showInDialog: false,
-        size: { units: "Pixels", value: borderWidth },
-        position: "center",
-        fillType: "color",
-        color: hexToRgb(borderColor ?? "#ffffff"),
-        opacity: 1,
-        blendMode: "normal",
-      },
-    ];
-  }
-  return Object.keys(effects).length > 0 ? effects : undefined;
+    ],
+  };
 }
 
 // Builds a real, layered .psd — each photo is its own positioned raster layer, and a black & white
@@ -169,21 +151,23 @@ export async function renderAlbumPagePsd({
     const frameTop = Math.round(el.y);
     const frameLeft = Math.round(el.x);
 
-    // Border, shadow, and opacity all stay live, editable Photoshop layer properties/Layer
-    // Style effects — never baked into pixels — for rotated photos exactly the same as
-    // unrotated ones now (composePhotoTile with no borderWidth just crops/zooms/rotates the
-    // photo itself, nothing more). Blur is the one exception: there's no from-scratch-authorable
-    // Smart Filter equivalent, so it's still baked into the pixels here.
+    // Border is baked into the photo's own pixels (bundled into the same rotated tile as the
+    // photo when rotated, so it spins together as one rigid unit — see composePhotoTile).
+    // Opacity stays a live PSD layer property. Blur has no from-scratch-authorable Smart Filter
+    // equivalent, so it's baked into the pixels too. Shadow is the one still live (see
+    // buildPhotoLayerEffects).
     const tile = await composePhotoTile(buffer, width, height, el.focalX, el.focalY, el.filter === "sepia" ? "sepia" : undefined, false, {
       rotation: el.rotation,
       blur: el.blur,
       zoom: el.zoom,
+      borderWidth: el.borderWidth,
+      borderColor: el.borderColor,
     });
     if (!tile) continue;
     any = true;
     const top = Math.round(frameTop + tile.top);
     const left = Math.round(frameLeft + tile.left);
-    const effects = buildPhotoLayerEffects(el.shadow, el.borderWidth, el.borderColor);
+    const effects = buildPhotoLayerEffects(el.shadow);
     children.push({
       name: "תמונה",
       top,
