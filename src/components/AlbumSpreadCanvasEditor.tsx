@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AlbumElement, AlbumFrame, AlbumPhotoElement, AlbumPhotoFilter, AlbumTemplateRow, GalleryAlbumSpreadRow } from "@/lib/types";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 
-type PhotoWithUrl = { id: string; url: string; is_favorite?: boolean };
+type PhotoWithUrl = { id: string; url: string; is_favorite?: boolean; folder_id?: string | null };
 
 const BORDER_COLORS = ["#ffffff", "#000000", "#d4af37", "#e07a5f"];
 // A shared cap so a given blur % looks (and exports) the same whether it's applied to a framed
@@ -531,6 +531,7 @@ export default function AlbumSpreadCanvasEditor({
   spread,
   album,
   photos,
+  folders,
   photo1,
   photo2,
   mode,
@@ -545,6 +546,9 @@ export default function AlbumSpreadCanvasEditor({
   // proportional to the page, same regardless of which album this is).
   album: { width_cm: number; height_cm: number };
   photos: PhotoWithUrl[];
+  // Gallery tabs/folders, used only to group the draggable favorites panel below the save button
+  // — an empty/omitted list just renders that panel as one flat, ungrouped area.
+  folders?: { id: string; name: string }[];
   photo1: PhotoWithUrl | undefined;
   photo2: PhotoWithUrl | undefined | null;
   mode: "overlay" | "custom";
@@ -571,6 +575,9 @@ export default function AlbumSpreadCanvasEditor({
   const [multiPhotoIds, setMultiPhotoIds] = useState<Set<string>>(new Set());
   const [loadingMultiLayout, setLoadingMultiLayout] = useState(false);
   const [showAllInPicker, setShowAllInPicker] = useState(false);
+  // Separate toggle for the drag-to-frame favorites panel below the save button — independent of
+  // the "+ תמונה" picker modal's own "show all" toggle above.
+  const [showAllDragPanel, setShowAllDragPanel] = useState(false);
   const [textDraftOpen, setTextDraftOpen] = useState(false);
   const [textDraft, setTextDraft] = useState("");
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
@@ -603,6 +610,20 @@ export default function AlbumSpreadCanvasEditor({
   const usedPhotoIds = new Set(elements.filter((e): e is AlbumPhotoElement => e.type === "photo" && !!e.photoId).map((e) => e.photoId as string));
   const favoritePhotos = photos.filter((p) => p.is_favorite);
   const pickerPhotos = showAllInPicker || favoritePhotos.length === 0 ? photos : favoritePhotos;
+  // Drag-to-frame panel: by default only favorites not yet used on THIS page (so a placed photo
+  // disappears once dragged in, preventing an accidental double-pick) — "הצג הכל" reveals the rest
+  // too, badged ✅, purely for review. Grouped by folder/tab when the gallery actually has any;
+  // otherwise every favorite sits in one flat, unlabeled group.
+  const dragPanelPool = favoritePhotos.filter((p) => showAllDragPanel || !usedPhotoIds.has(p.id));
+  const dragPanelGroups: { id: string; name: string | null; items: PhotoWithUrl[] }[] =
+    folders && folders.length > 0
+      ? [
+          ...folders.map((f) => ({ id: f.id, name: f.name, items: dragPanelPool.filter((p) => p.folder_id === f.id) })),
+          { id: "__none__", name: "ללא לשונית", items: dragPanelPool.filter((p) => !p.folder_id) },
+        ].filter((g) => g.items.length > 0)
+      : dragPanelPool.length > 0
+      ? [{ id: "__all__", name: null, items: dragPanelPool }]
+      : [];
   const backgroundPhoto = backgroundPhotoId ? photos.find((p) => p.id === backgroundPhotoId) : null;
   // A 0.5cm trim-safe inset expressed as a % of each axis — proportional, so it looks right on a
   // 20x30 album and a 60x40 one alike.
@@ -939,6 +960,12 @@ export default function AlbumSpreadCanvasEditor({
                         openPickerForFrame(el.id);
                       }
                     }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const droppedId = e.dataTransfer.getData("text/plain");
+                      if (droppedId) updateElement(el.id, { photoId: droppedId, focalX: 50, focalY: 50 });
+                    }}
                     className={`absolute overflow-hidden ${photo ? (panModeId === el.id ? "cursor-crosshair" : "cursor-move") : "cursor-pointer flex items-center justify-center bg-white/10"}`}
                     style={{
                       left: `${el.xPct}%`,
@@ -1192,6 +1219,58 @@ export default function AlbumSpreadCanvasEditor({
         >
           שמירה
         </button>
+
+        {mode === "custom" && (
+          <div className="mt-3 pt-3 border-t border-line">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[11px] font-bold text-ink-soft">גררו תמונה מועדפת אל המסגרת הרצויה</p>
+              {favoritePhotos.length > 0 && (
+                <button onClick={() => setShowAllDragPanel((v) => !v)} className="text-[11px] font-semibold text-ink-soft underline shrink-0">
+                  {showAllDragPanel ? "רק זמינות" : "הצג הכל"}
+                </button>
+              )}
+            </div>
+            {dragPanelGroups.length === 0 ? (
+              <p className="text-[11px] text-ink-soft text-center py-3">
+                {favoritePhotos.length === 0 ? "אין תמונות מועדפות בגלריה הזו עדיין." : "כל התמונות המועדפות כבר שובצו בעמוד."}
+              </p>
+            ) : (
+              <div className="space-y-2.5 max-h-56 overflow-y-auto pr-0.5">
+                {dragPanelGroups.map((group) => (
+                  <div key={group.id}>
+                    {group.name && <p className="text-[10px] font-semibold text-ink-soft mb-1">{group.name}</p>}
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {group.items.map((p) => {
+                        const alreadyUsed = usedPhotoIds.has(p.id);
+                        return (
+                          <div
+                            key={p.id}
+                            draggable
+                            onDragStart={(e) => e.dataTransfer.setData("text/plain", p.id)}
+                            className="relative aspect-square rounded-md overflow-hidden cursor-grab active:cursor-grabbing"
+                            style={{ boxShadow: "0 0 0 1px var(--color-line)", opacity: alreadyUsed ? 0.5 : 1 }}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={p.url} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" />
+                            {alreadyUsed && (
+                              <span
+                                className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px]"
+                                style={{ background: "var(--color-sage)", color: "#fff" }}
+                                title="כבר שובצה בעמוד הזה"
+                              >
+                                ✅
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         </div>
       </div>
 

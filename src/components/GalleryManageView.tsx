@@ -2291,6 +2291,7 @@ export default function GalleryManageView({
               spread={spread}
               album={{ width_cm: album.width_cm, height_cm: album.height_cm }}
               photos={photos}
+              folders={folders}
               photo1={photo1}
               photo2={photo2}
               mode={canvasEditorTarget.mode}
