@@ -11,6 +11,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,13 +84,35 @@ export default function LoginPage() {
           </div>
           <div>
             <label className="text-xs block mb-1 text-ink-soft">סיסמה</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-              className="w-full rounded-lg px-3 py-2 text-sm border border-line"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+                className="w-full rounded-lg px-3 py-2 pl-10 text-sm border border-line"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                tabIndex={-1}
+                className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md flex items-center justify-center text-ink-soft hover:text-ink"
+                aria-label={showPassword ? "הסתרת הסיסמה" : "הצגת הסיסמה"}
+              >
+                {showPassword ? (
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 3l18 18" />
+                    <path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6 0 9.5 5.5 9.9 6.5-.19.5-1.2 2.4-3 4M6.3 6.3C3.7 8 2.3 10.8 2.1 11.5c.4 1 3.9 6.5 9.9 6.5.9 0 1.7-.13 2.5-.35" />
+                    <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2.1 11.5C2.5 10.5 6 5 12 5s9.5 5.5 9.9 6.5c-.4 1-3.9 6.5-9.9 6.5S2.5 12.5 2.1 11.5Z" />
+                    <circle cx="12" cy="11.5" r="3" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
           {error && <p className="text-xs text-rose">{error}</p>}
           <button
