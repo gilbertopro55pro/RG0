@@ -25,6 +25,7 @@ export type ClientAlbumElement =
       opacity?: number;
       blur?: number;
       shadow?: number;
+      zoom?: number;
     }
   | {
       id: string;
@@ -209,6 +210,9 @@ export default function GalleryAlbumProofing({
                     outline: el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
                     outlineOffset: el.borderWidth ? `-${el.borderWidth}px` : undefined,
                     boxShadow: boxShadowFor(el.shadow),
+                    // Rotation lives on this box (not the <img>) so the outline/box-shadow rotate
+                    // with the clipped photo as one rigid tile — mirrors the builder.
+                    transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
                   }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -220,7 +224,7 @@ export default function GalleryAlbumProofing({
                       objectPosition: `${el.focalX}% ${el.focalY}%`,
                       filter: cssFilterFor(el.filter, el.blur),
                       opacity: (el.opacity ?? 100) / 100,
-                      transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+                      transform: el.zoom && el.zoom !== 100 ? `scale(${el.zoom / 100})` : undefined,
                     }}
                   />
                 </div>

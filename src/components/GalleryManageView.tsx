@@ -2273,7 +2273,7 @@ export default function GalleryManageView({
       {canvasEditorTarget &&
         (() => {
           const spread = albumSpreads.find((s) => s.id === canvasEditorTarget.spreadId);
-          if (!spread) return null;
+          if (!spread || !album) return null;
           const photo1 = photos.find((p) => p.id === spread.photo_id_1);
           const photo2 = spread.photo_id_2 ? photos.find((p) => p.id === spread.photo_id_2) : null;
           const usedElsewhere = new Set(
@@ -2289,6 +2289,7 @@ export default function GalleryManageView({
           return (
             <AlbumSpreadCanvasEditor
               spread={spread}
+              album={{ width_cm: album.width_cm, height_cm: album.height_cm }}
               photos={photos}
               photo1={photo1}
               photo2={photo2}

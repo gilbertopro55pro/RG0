@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AlbumElement, AlbumFrame, AlbumPhotoElement, AlbumPhotoFilter, AlbumTemplateRow, GalleryAlbumSpreadRow } from "@/lib/types";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 
@@ -52,16 +52,83 @@ function SliderControl({
   );
 }
 
+// Line-style icons matching the app's existing icon set (GalleryStyleIcons.tsx's Base pattern) —
+// 24x24 viewBox, currentColor stroke, no fill — used in the floating menu below instead of emoji,
+// which read as a mismatched, oversized, platform-dependent style next to everything else here.
+function MenuIconBase({ children }: { children: React.ReactNode }) {
+  return (
+    <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      {children}
+    </svg>
+  );
+}
+function IconBW() {
+  return (
+    <MenuIconBase>
+      <circle cx={12} cy={12} r={8} />
+      <path d="M12 4a8 8 0 000 16z" fill="currentColor" stroke="none" />
+    </MenuIconBase>
+  );
+}
+function IconSepia() {
+  return (
+    <MenuIconBase>
+      <path d="M12 3.5c3 3.6 5.5 6.9 5.5 9.8a5.5 5.5 0 11-11 0c0-2.9 2.5-6.2 5.5-9.8z" />
+    </MenuIconBase>
+  );
+}
+function IconOpacity() {
+  return (
+    <MenuIconBase>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx={12} cy={12} r={2.6} />
+    </MenuIconBase>
+  );
+}
+function IconBlur() {
+  return (
+    <MenuIconBase>
+      <path d="M3 8.5c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0" />
+      <path d="M3 13c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0" />
+      <path d="M3 17.5c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0" />
+    </MenuIconBase>
+  );
+}
+function IconRotate() {
+  return (
+    <MenuIconBase>
+      <path d="M4 12a8 8 0 1 1 2.6 5.9" />
+      <path d="M3 17.5v-4h4" />
+    </MenuIconBase>
+  );
+}
+function IconShadow() {
+  return (
+    <MenuIconBase>
+      <rect x={8.5} y={8.5} width={12} height={12} rx={1.5} opacity={0.4} />
+      <rect x={3.5} y={3.5} width={12} height={12} rx={1.5} />
+    </MenuIconBase>
+  );
+}
+function IconFocal() {
+  return (
+    <MenuIconBase>
+      <circle cx={12} cy={12} r={7.5} />
+      <path d="M12 3v3.2M12 17.8V21M3 12h3.2M17.8 12H21" />
+    </MenuIconBase>
+  );
+}
+
 function CircleButton({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
       title={label}
-      className="h-9 w-9 rounded-full flex items-center justify-center text-base shrink-0"
+      className="h-7 w-7 rounded-full flex items-center justify-center shrink-0"
       style={{
         background: active ? "var(--color-amber-deep)" : "#fff",
         color: active ? "#fff" : "var(--color-ink)",
-        boxShadow: "0 2px 8px rgba(46,49,66,0.25), 0 0 0 1px var(--color-line)",
+        boxShadow: "0 2px 6px rgba(46,49,66,0.22), 0 0 0 1px var(--color-line)",
       }}
     >
       {children}
@@ -69,7 +136,7 @@ function CircleButton({ label, active, onClick, children }: { label: string; act
   );
 }
 
-function FlyoutPanel({ side, width = 140, children }: { side: "left" | "right"; width?: number; children: React.ReactNode }) {
+function FlyoutPanel({ side, width = 130, children }: { side: "left" | "right"; width?: number; children: React.ReactNode }) {
   return (
     <div
       className="absolute top-1/2 -translate-y-1/2 rounded-xl border border-line bg-white p-2.5 space-y-2"
@@ -100,7 +167,17 @@ function MiniSlider({ label, value, min, max, step = 1, unit = "", onChange }: {
 // rendered outside the canvas's own overflow-hidden ancestor (see the wrapping <div> around
 // canvasRef in the main component) so it, and the flyout sliders it opens, can bleed past the
 // photo's own frame instead of getting cropped by it.
-function PhotoFloatingMenu({ el, onUpdate }: { el: AlbumPhotoElement; onUpdate: (patch: Partial<AlbumPhotoElement>) => void }) {
+function PhotoFloatingMenu({
+  el,
+  panning,
+  onTogglePan,
+  onUpdate,
+}: {
+  el: AlbumPhotoElement;
+  panning: boolean;
+  onTogglePan: () => void;
+  onUpdate: (patch: Partial<AlbumPhotoElement>) => void;
+}) {
   const [openPanel, setOpenPanel] = useState<null | "opacity" | "blur" | "rotation" | "shadow">(null);
   const onLeft = el.xPct + el.widthPct > 70;
   const side: "left" | "right" = onLeft ? "left" : "right";
@@ -109,7 +186,7 @@ function PhotoFloatingMenu({ el, onUpdate }: { el: AlbumPhotoElement; onUpdate: 
 
   return (
     <div
-      className="absolute z-20 flex flex-col gap-1.5"
+      className="absolute z-20 flex flex-col gap-1"
       style={{
         // Anchored to the frame's own top edge (not vertically centered) — a centered menu for a
         // photo near the canvas's top row pushes half its height above the canvas, past where the
@@ -117,20 +194,35 @@ function PhotoFloatingMenu({ el, onUpdate }: { el: AlbumPhotoElement; onUpdate: 
         // makes the top buttons genuinely unclickable. Anchoring downward instead means the worst
         // case is needing to scroll the dialog down, which is always possible.
         top: `${el.yPct}%`,
-        left: onLeft ? `calc(${el.xPct}% - 44px)` : `calc(${el.xPct + el.widthPct}% + 8px)`,
+        left: onLeft ? `calc(${el.xPct}% - 34px)` : `calc(${el.xPct + el.widthPct}% + 8px)`,
       }}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <CircleButton label="שחור-לבן" active={el.filter === "bw"} onClick={() => onUpdate({ filter: el.filter === "bw" ? "none" : "bw" })}>
-        ◐
+        <IconBW />
       </CircleButton>
       <CircleButton label="גווני ספיה" active={el.filter === "sepia"} onClick={() => onUpdate({ filter: el.filter === "sepia" ? "none" : "sepia" })}>
-        🟤
+        <IconSepia />
       </CircleButton>
       <div className="relative">
+        <CircleButton label="מיקום התמונה במסגרת — גררו את התמונה כדי למקם אותה" active={panning} onClick={onTogglePan}>
+          <IconFocal />
+        </CircleButton>
+        {panning && (
+          <FlyoutPanel side={side} width={120}>
+            <button
+              onClick={() => onUpdate({ focalX: 50, focalY: 50 })}
+              className="w-full rounded-lg py-1.5 text-[10px] font-semibold bg-chip text-ink-soft"
+            >
+              מרכז תמונה
+            </button>
+          </FlyoutPanel>
+        )}
+      </div>
+      <div className="relative">
         <CircleButton label="שקיפות" active={openPanel === "opacity" || (el.opacity ?? 100) < 100} onClick={() => toggle("opacity")}>
-          👁️
+          <IconOpacity />
         </CircleButton>
         {openPanel === "opacity" && (
           <FlyoutPanel side={side}>
@@ -140,7 +232,7 @@ function PhotoFloatingMenu({ el, onUpdate }: { el: AlbumPhotoElement; onUpdate: 
       </div>
       <div className="relative">
         <CircleButton label="טשטוש" active={openPanel === "blur" || !!el.blur} onClick={() => toggle("blur")}>
-          💧
+          <IconBlur />
         </CircleButton>
         {openPanel === "blur" && (
           <FlyoutPanel side={side}>
@@ -150,7 +242,7 @@ function PhotoFloatingMenu({ el, onUpdate }: { el: AlbumPhotoElement; onUpdate: 
       </div>
       <div className="relative">
         <CircleButton label="סיבוב" active={openPanel === "rotation" || !!el.rotation} onClick={() => toggle("rotation")}>
-          🔄
+          <IconRotate />
         </CircleButton>
         {openPanel === "rotation" && (
           <FlyoutPanel side={side}>
@@ -160,10 +252,10 @@ function PhotoFloatingMenu({ el, onUpdate }: { el: AlbumPhotoElement; onUpdate: 
       </div>
       <div className="relative">
         <CircleButton label="צל וקו מתאר" active={openPanel === "shadow" || !!el.shadow || !!el.borderWidth} onClick={() => toggle("shadow")}>
-          🖼️
+          <IconShadow />
         </CircleButton>
         {openPanel === "shadow" && (
-          <FlyoutPanel side={side} width={160}>
+          <FlyoutPanel side={side} width={150}>
             <MiniSlider label="צל" value={el.shadow ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ shadow: v })} />
             <MiniSlider label="קו מתאר" value={el.borderWidth ?? 0} min={0} max={50} unit="px" onChange={(v) => onUpdate({ borderWidth: v })} />
             {!!el.borderWidth && (
@@ -292,6 +384,106 @@ function boxShadowFor(shadowPct: number | undefined): string | undefined {
   return `${offsetPx}px ${offsetPx}px ${blurPx}px rgba(0,0,0,${alpha})`;
 }
 
+const SNAP_THRESHOLD = 1.2; // % of canvas
+
+function elementBox(el: AlbumElement): { left: number; top: number; right: number; bottom: number; centerX: number; centerY: number } {
+  const height = el.type === "photo" ? el.heightPct : (el.heightPct ?? 15);
+  return {
+    left: el.xPct,
+    top: el.yPct,
+    right: el.xPct + el.widthPct,
+    bottom: el.yPct + height,
+    centerX: el.xPct + el.widthPct / 2,
+    centerY: el.yPct + height / 2,
+  };
+}
+
+// While dragging an element, checks its candidate position against the page center and every
+// other element's edges/center on the same page — returns guide lines to draw plus a snapped
+// position when within SNAP_THRESHOLD, so aligning two frames (or centering one on the page)
+// is something the photographer can see and feel, not just eyeball.
+function computeAlignment(
+  dragging: { xPct: number; yPct: number; widthPct: number; heightPct: number },
+  others: AlbumElement[]
+): { guides: { axis: "v" | "h"; pos: number }[]; snapXPct?: number; snapYPct?: number } {
+  const guides: { axis: "v" | "h"; pos: number }[] = [];
+  let snapXPct: number | undefined;
+  let snapYPct: number | undefined;
+  const left = dragging.xPct;
+  const right = dragging.xPct + dragging.widthPct;
+  const centerX = dragging.xPct + dragging.widthPct / 2;
+  const top = dragging.yPct;
+  const bottom = dragging.yPct + dragging.heightPct;
+  const centerY = dragging.yPct + dragging.heightPct / 2;
+
+  if (Math.abs(centerX - 50) < SNAP_THRESHOLD) {
+    guides.push({ axis: "v", pos: 50 });
+    snapXPct = 50 - dragging.widthPct / 2;
+  }
+  if (Math.abs(centerY - 50) < SNAP_THRESHOLD) {
+    guides.push({ axis: "h", pos: 50 });
+    snapYPct = 50 - dragging.heightPct / 2;
+  }
+
+  for (const other of others) {
+    const box = elementBox(other);
+    const xChecks: [number, number, number][] = [
+      [left, box.left, box.left],
+      [right, box.right, box.right - dragging.widthPct],
+      [centerX, box.centerX, box.centerX - dragging.widthPct / 2],
+    ];
+    for (const [dragVal, otherVal, snapTo] of xChecks) {
+      if (Math.abs(dragVal - otherVal) < SNAP_THRESHOLD) {
+        guides.push({ axis: "v", pos: otherVal });
+        if (snapXPct === undefined) snapXPct = snapTo;
+      }
+    }
+    const yChecks: [number, number, number][] = [
+      [top, box.top, box.top],
+      [bottom, box.bottom, box.bottom - dragging.heightPct],
+      [centerY, box.centerY, box.centerY - dragging.heightPct / 2],
+    ];
+    for (const [dragVal, otherVal, snapTo] of yChecks) {
+      if (Math.abs(dragVal - otherVal) < SNAP_THRESHOLD) {
+        guides.push({ axis: "h", pos: otherVal });
+        if (snapYPct === undefined) snapYPct = snapTo;
+      }
+    }
+  }
+  return { guides, snapXPct, snapYPct };
+}
+
+// Lays out a set of photos into rows of UNIFORM height, with each photo's width inside its row
+// proportional to its own aspect ratio — a portrait photo (aspect < 1) ends up narrower than its
+// landscape row-mates (aspect > 1) for the same row height, i.e. a portrait-shaped frame, and vice
+// versa, without needing true justified-gallery math (which allows variable row heights but can't
+// guarantee the whole set fills an exact 100%x100% page). Returns exactly one frame per input item,
+// in the same order, so the caller can zip photoId back in by index.
+function generateOrientedFrames(items: { id: string; aspect: number }[]): AlbumFrame[] {
+  const n = items.length;
+  if (n === 0) return [];
+  const gap = 2; // pct
+  const rows = Math.max(1, Math.min(n, Math.round(Math.sqrt(n))));
+  const perRow = Math.ceil(n / rows);
+  const rowHeight = (100 - gap * (rows - 1)) / rows;
+  const frames: AlbumFrame[] = [];
+  let idx = 0;
+  for (let r = 0; r < rows; r++) {
+    const rowItems = items.slice(idx, idx + perRow);
+    if (rowItems.length === 0) break;
+    const sumAspect = rowItems.reduce((s, it) => s + it.aspect, 0) || rowItems.length;
+    const rowWidthAvail = 100 - gap * (rowItems.length - 1);
+    let x = 0;
+    for (const it of rowItems) {
+      const w = (it.aspect / sumAspect) * rowWidthAvail;
+      frames.push({ id: `auto-${idx}`, xPct: x, yPct: r * (rowHeight + gap), widthPct: w, heightPct: rowHeight });
+      x += w + gap;
+      idx++;
+    }
+  }
+  return frames;
+}
+
 // Seeds a brand-new "custom" canvas from the spread's existing preset-layout photos (matching the
 // same position math the split/feature/stack renderers use) so switching a page to free-form
 // never silently loses the photos it already had.
@@ -337,6 +529,7 @@ function seedElementsFromPreset(spread: GalleryAlbumSpreadRow): AlbumElement[] {
 //   draggable/resizable, giving a genuinely free-form page instead of the three presets.
 export default function AlbumSpreadCanvasEditor({
   spread,
+  album,
   photos,
   photo1,
   photo2,
@@ -348,6 +541,9 @@ export default function AlbumSpreadCanvasEditor({
   onClose,
 }: {
   spread: GalleryAlbumSpreadRow;
+  // Physical print dimensions — used only to size the print-safe margin guide (a 0.5cm inset
+  // proportional to the page, same regardless of which album this is).
+  album: { width_cm: number; height_cm: number };
   photos: PhotoWithUrl[];
   photo1: PhotoWithUrl | undefined;
   photo2: PhotoWithUrl | undefined | null;
@@ -368,6 +564,12 @@ export default function AlbumSpreadCanvasEditor({
   const [backgroundBlur, setBackgroundBlur] = useState(spread.background_blur);
   const [backgroundOpacity, setBackgroundOpacity] = useState(spread.background_opacity);
   const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
+  // "+ תמונה" opens the picker in multi-select mode — pick any number of photos, and the system
+  // builds a fresh orientation-aware layout for all of them at once (replacing the page's current
+  // photo elements, same as applying a template) instead of adding one photo at a fixed spot.
+  const [addingMultiplePhotos, setAddingMultiplePhotos] = useState(false);
+  const [multiPhotoIds, setMultiPhotoIds] = useState<Set<string>>(new Set());
+  const [loadingMultiLayout, setLoadingMultiLayout] = useState(false);
   const [showAllInPicker, setShowAllInPicker] = useState(false);
   const [textDraftOpen, setTextDraftOpen] = useState(false);
   const [textDraft, setTextDraft] = useState("");
@@ -375,6 +577,13 @@ export default function AlbumSpreadCanvasEditor({
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateNameDraft, setTemplateNameDraft] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
+  // "Position image" mode — while active for an element, dragging its photo pans the image's
+  // focal point inside the fixed frame instead of moving the frame itself.
+  const [panModeId, setPanModeId] = useState<string | null>(null);
+  // Smart guide lines shown (and lightly snapped to) while dragging a photo/text frame — page
+  // center and edges/centers of other elements on the same page, matching common design-tool
+  // "alignment guide" behavior so the photographer can see when things line up.
+  const [guides, setGuides] = useState<{ axis: "v" | "h"; pos: number }[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     id: string;
@@ -385,6 +594,9 @@ export default function AlbumSpreadCanvasEditor({
     startYPct: number;
     startWidthPct: number;
     startHeightPct: number;
+    startFocalX: number;
+    startFocalY: number;
+    startZoom: number;
   } | null>(null);
 
   const selected = elements.find((e) => e.id === selectedId) ?? null;
@@ -392,6 +604,16 @@ export default function AlbumSpreadCanvasEditor({
   const favoritePhotos = photos.filter((p) => p.is_favorite);
   const pickerPhotos = showAllInPicker || favoritePhotos.length === 0 ? photos : favoritePhotos;
   const backgroundPhoto = backgroundPhotoId ? photos.find((p) => p.id === backgroundPhotoId) : null;
+  // A 0.5cm trim-safe inset expressed as a % of each axis — proportional, so it looks right on a
+  // 20x30 album and a 60x40 one alike.
+  const marginInsetPct =
+    album.width_cm > 0 && album.height_cm > 0 ? { x: (0.5 / album.width_cm) * 100, y: (0.5 / album.height_cm) * 100 } : null;
+
+  // Leaving "position image" mode whenever the selection changes elsewhere keeps its green ring
+  // tied to whatever's actually selected, rather than lingering on a no-longer-selected element.
+  useEffect(() => {
+    setPanModeId((prev) => (prev && prev !== selectedId ? null : prev));
+  }, [selectedId]);
 
   const updateElement = (id: string, patch: Partial<AlbumElement>) => {
     setElements((prev) => prev.map((e) => (e.id === id ? ({ ...e, ...patch } as AlbumElement) : e)));
@@ -405,17 +627,21 @@ export default function AlbumSpreadCanvasEditor({
   const openPickerForNewPhoto = () => {
     setFrameTargetId(null);
     setPickingBackground(false);
+    setAddingMultiplePhotos(true);
+    setMultiPhotoIds(new Set());
     setPhotoPickerOpen(true);
   };
 
   const openPickerForBackground = () => {
     setFrameTargetId(null);
     setPickingBackground(true);
+    setAddingMultiplePhotos(false);
     setPhotoPickerOpen(true);
   };
 
   const openPickerForFrame = (id: string) => {
     setFrameTargetId(id);
+    setAddingMultiplePhotos(false);
     setPhotoPickerOpen(true);
   };
 
@@ -432,6 +658,54 @@ export default function AlbumSpreadCanvasEditor({
     setPhotoPickerOpen(false);
     setFrameTargetId(null);
     setPickingBackground(false);
+  };
+
+  const toggleMultiPhoto = (photoId: string) => {
+    setMultiPhotoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(photoId)) next.delete(photoId);
+      else next.add(photoId);
+      return next;
+    });
+  };
+
+  // Detects each selected photo's real orientation (client-side, via its actual pixel dimensions
+  // — the app doesn't store width/height for gallery photos) so the generated layout can give
+  // portrait photos a portrait-shaped frame and landscape photos a landscape-shaped one, instead
+  // of an orientation-blind uniform grid.
+  const loadImageAspect = (url: string): Promise<number> =>
+    new Promise((resolve) => {
+      const img = new window.Image();
+      img.onload = () => resolve(img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1);
+      img.onerror = () => resolve(1);
+      img.src = url;
+    });
+
+  const confirmMultiPhotos = async () => {
+    const ids = Array.from(multiPhotoIds);
+    if (ids.length === 0) return;
+    setLoadingMultiLayout(true);
+    const items = await Promise.all(
+      ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoById.get(id)?.url ?? "") }))
+    );
+    const frames = generateOrientedFrames(items); // same order/length as `items`
+    const newPhotoElements: AlbumPhotoElement[] = frames.map((f, i) => ({
+      id: f.id,
+      type: "photo",
+      photoId: items[i].id,
+      xPct: f.xPct,
+      yPct: f.yPct,
+      widthPct: f.widthPct,
+      heightPct: f.heightPct,
+      focalX: 50,
+      focalY: 50,
+    }));
+    setElements((prev) => [...newPhotoElements, ...prev.filter((e) => e.type === "text")]);
+    setLoadingMultiLayout(false);
+    setPhotoPickerOpen(false);
+    setAddingMultiplePhotos(false);
+    setMultiPhotoIds(new Set());
+    setSelectedId(null);
   };
 
   const removeBackground = () => setBackgroundPhotoId(null);
@@ -495,7 +769,22 @@ export default function AlbumSpreadCanvasEditor({
       startYPct: el.yPct,
       startWidthPct: el.widthPct,
       startHeightPct: el.type === "photo" ? el.heightPct : (el.heightPct ?? 15),
+      startFocalX: el.type === "photo" ? el.focalX : 50,
+      startFocalY: el.type === "photo" ? el.focalY : 50,
+      startZoom: el.type === "photo" ? (el.zoom ?? 100) : 100,
     };
+  };
+
+  // Alt/Cmd+click a photo to instantly center its frame on the page (size unchanged) — a quick
+  // shortcut for the same "reaches page center" alignment the guides highlight during a manual drag.
+  const centerElementOnPage = (id: string) => {
+    setElements((prev) =>
+      prev.map((e) => {
+        if (e.id !== id) return e;
+        const height = e.type === "photo" ? e.heightPct : (e.heightPct ?? 15);
+        return { ...e, xPct: Math.max(0, 50 - e.widthPct / 2), yPct: Math.max(0, 50 - height / 2) };
+      })
+    );
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -505,23 +794,55 @@ export default function AlbumSpreadCanvasEditor({
     const rect = canvas.getBoundingClientRect();
     const dxPct = ((e.clientX - drag.startClientX) / rect.width) * 100;
     const dyPct = ((e.clientY - drag.startClientY) / rect.height) * 100;
-    if (drag.kind === "move") {
-      updateElement(drag.id, {
-        xPct: Math.max(0, Math.min(95, drag.startXPct + dxPct)),
-        yPct: Math.max(0, Math.min(95, drag.startYPct + dyPct)),
-      });
-    } else {
+    const el = elements.find((x) => x.id === drag.id);
+
+    if (drag.kind === "resize") {
       // Every element type resizes freely in both dimensions from its corner handle now — text
       // used to be width-only, but a box height it can't control makes vertical centering (and
       // the "square handle enlarges/shrinks it" request) meaningless.
       const widthPct = Math.max(8, Math.min(100 - drag.startXPct, drag.startWidthPct + dxPct));
       const heightPct = Math.max(6, Math.min(100 - drag.startYPct, drag.startHeightPct + dyPct));
       updateElement(drag.id, { widthPct, heightPct });
+      return;
     }
+
+    if (el?.type === "photo" && e.ctrlKey) {
+      // Ctrl + horizontal drag = zoom — moving the mouse left zooms in, right zooms out, using raw
+      // pixel delta (not %) so the feel stays consistent regardless of canvas size.
+      const dxPx = e.clientX - drag.startClientX;
+      updateElement(drag.id, { zoom: Math.max(100, Math.min(400, drag.startZoom - dxPx * 0.5)) });
+      if (guides.length) setGuides([]);
+      return;
+    }
+
+    if (el?.type === "photo" && panModeId === el.id) {
+      // "Position image" mode — drag pans the focal point inside the fixed frame instead of
+      // moving the frame; distance is normalized to the frame's own size so a drag across the
+      // whole frame sweeps the full 0-100 focal range.
+      const focalX = Math.max(0, Math.min(100, drag.startFocalX + (dxPct / Math.max(1, drag.startWidthPct)) * 100));
+      const focalY = Math.max(0, Math.min(100, drag.startFocalY + (dyPct / Math.max(1, drag.startHeightPct)) * 100));
+      updateElement(drag.id, { focalX, focalY });
+      if (guides.length) setGuides([]);
+      return;
+    }
+
+    const candidateX = Math.max(0, Math.min(95, drag.startXPct + dxPct));
+    const candidateY = Math.max(0, Math.min(95, drag.startYPct + dyPct));
+    const others = elements.filter((x) => x.id !== drag.id);
+    const { guides: nextGuides, snapXPct, snapYPct } = computeAlignment(
+      { xPct: candidateX, yPct: candidateY, widthPct: drag.startWidthPct, heightPct: drag.startHeightPct },
+      others
+    );
+    setGuides(nextGuides);
+    updateElement(drag.id, {
+      xPct: snapXPct !== undefined ? snapXPct : candidateX,
+      yPct: snapYPct !== undefined ? snapYPct : candidateY,
+    });
   };
 
   const endDrag = () => {
     dragRef.current = null;
+    setGuides([]);
   };
 
   const photoById = new Map(photos.map((p) => [p.id, p]));
@@ -599,24 +920,47 @@ export default function AlbumSpreadCanvasEditor({
                 return (
                   <div
                     key={el.id}
-                    onPointerDown={(e) => (photo ? startDrag(e, el, "move") : e.stopPropagation())}
+                    onPointerDown={(e) => {
+                      if (!photo) {
+                        e.stopPropagation();
+                        return;
+                      }
+                      if (e.altKey || e.metaKey) {
+                        e.stopPropagation();
+                        setSelectedId(el.id);
+                        centerElementOnPage(el.id);
+                        return;
+                      }
+                      startDrag(e, el, "move");
+                    }}
                     onClick={(e) => {
                       if (!photo) {
                         e.stopPropagation();
                         openPickerForFrame(el.id);
                       }
                     }}
-                    className={`absolute overflow-hidden ${photo ? "cursor-move" : "cursor-pointer flex items-center justify-center bg-white/10"}`}
+                    className={`absolute overflow-hidden ${photo ? (panModeId === el.id ? "cursor-crosshair" : "cursor-move") : "cursor-pointer flex items-center justify-center bg-white/10"}`}
                     style={{
                       left: `${el.xPct}%`,
                       top: `${el.yPct}%`,
                       width: `${el.widthPct}%`,
                       height: `${el.heightPct}%`,
-                      outline: el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : isSelected ? "2px solid var(--color-amber-deep)" : "1px dashed rgba(255,255,255,0.6)",
+                      outline: el.borderWidth
+                        ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}`
+                        : panModeId === el.id
+                        ? "2px solid var(--color-sage)"
+                        : isSelected
+                        ? "2px solid var(--color-amber-deep)"
+                        : "1px dashed rgba(255,255,255,0.6)",
                       outlineOffset: el.borderWidth ? `-${el.borderWidth}px` : undefined,
                       // box-shadow (unlike a filter on the img) isn't clipped by this div's own
                       // overflow-hidden, so it's what lets the shadow actually bleed past the frame.
                       boxShadow: boxShadowFor(el.shadow),
+                      // Rotation lives on THIS element (not the <img>) so the outline and
+                      // box-shadow — both decorations of this same box — rotate along with the
+                      // clipped photo as one rigid tile, instead of only the image content
+                      // spinning inside a frame that stays visually fixed.
+                      transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
                     }}
                   >
                     {photo ? (
@@ -629,7 +973,10 @@ export default function AlbumSpreadCanvasEditor({
                           objectPosition: `${el.focalX}% ${el.focalY}%`,
                           filter: cssFilterFor(el.filter, el.blur),
                           opacity: (el.opacity ?? 100) / 100,
-                          transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+                          // Zoom is a crop-level operation (how much of the image shows inside the
+                          // already-fixed, already-rotated frame) so it stays on the image itself,
+                          // separate from the frame's own rotation above.
+                          transform: el.zoom && el.zoom !== 100 ? `scale(${el.zoom / 100})` : undefined,
                         }}
                       />
                     ) : (
@@ -680,9 +1027,45 @@ export default function AlbumSpreadCanvasEditor({
                 </div>
               );
             })}
+
+          {/* Print-safe margin guide — visual-only (never exported), shows where a 0.5cm trim
+              margin falls on every edge regardless of the album's physical size, so nothing
+              important gets designed too close to where a printer might trim it off. */}
+          {marginInsetPct && (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: `${marginInsetPct.x}%`,
+                top: `${marginInsetPct.y}%`,
+                right: `${marginInsetPct.x}%`,
+                bottom: `${marginInsetPct.y}%`,
+                border: "2px solid #2fae5c",
+                opacity: 0.55,
+              }}
+            />
+          )}
+
+          {/* Smart alignment guides — page-center and edge/center lines against other elements,
+              shown only while actively dragging a frame. */}
+          {guides.map((g, i) => (
+            <div
+              key={i}
+              className="absolute pointer-events-none"
+              style={
+                g.axis === "v"
+                  ? { left: `${g.pos}%`, top: 0, bottom: 0, width: 0, borderRight: "1px solid var(--color-rose)" }
+                  : { top: `${g.pos}%`, left: 0, right: 0, height: 0, borderBottom: "1px solid var(--color-rose)" }
+              }
+            />
+          ))}
         </div>
         {selected?.type === "photo" && selected.photoId && (
-          <PhotoFloatingMenu el={selected} onUpdate={(patch) => updateElement(selected.id, patch)} />
+          <PhotoFloatingMenu
+            el={selected}
+            panning={panModeId === selected.id}
+            onTogglePan={() => setPanModeId((prev) => (prev === selected.id ? null : selected.id))}
+            onUpdate={(patch) => updateElement(selected.id, patch)}
+          />
         )}
         </div>
         </div>
@@ -818,6 +1201,7 @@ export default function AlbumSpreadCanvasEditor({
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold">
                 {pickingBackground ? "בחירת תמונת רקע — " : ""}
+                {addingMultiplePhotos ? "בחירת תמונות להוספה — " : ""}
                 {showAllInPicker || favoritePhotos.length === 0 ? "כל התמונות" : "תמונות מועדפות"}
               </h3>
               {favoritePhotos.length > 0 && (
@@ -826,26 +1210,56 @@ export default function AlbumSpreadCanvasEditor({
                 </button>
               )}
             </div>
+            {addingMultiplePhotos && (
+              <p className="text-[11px] text-ink-soft mb-2.5">
+                אפשר לבחור כמה תמונות שרוצים — המערכת תסדר אותן בעמוד בפריסה אוטומטית, כשתמונות לאורך מקבלות מסגרת לאורך ותמונות לרוחב מקבלות מסגרת לרוחב.
+              </p>
+            )}
             {pickerPhotos.length === 0 ? (
               <p className="text-xs text-ink-soft text-center py-6">אין תמונות מועדפות בגלריה הזו עדיין.</p>
             ) : (
-              <div className="grid grid-cols-4 lg:grid-cols-7 gap-2">
-                {pickerPhotos.map((p) => (
-                  <button key={p.id} onClick={() => choosePhoto(p.id)} className="relative aspect-square rounded-lg overflow-hidden" style={{ boxShadow: "0 0 0 1px var(--color-line)" }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.url} alt="" className="w-full h-full object-cover" />
-                    {usedElsewhere?.has(p.id) && (
-                      <span
-                        className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
-                        style={{ background: "var(--color-sage)", color: "#fff" }}
-                        title="כבר נבחרה במקום אחר באלבום"
-                      >
-                        ✅
-                      </span>
-                    )}
-                  </button>
-                ))}
+              <div className="grid grid-cols-4 lg:grid-cols-7 gap-2 mb-2.5">
+                {pickerPhotos.map((p) => {
+                  const multiIdx = addingMultiplePhotos ? Array.from(multiPhotoIds).indexOf(p.id) : -1;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => (addingMultiplePhotos ? toggleMultiPhoto(p.id) : choosePhoto(p.id))}
+                      className="relative aspect-square rounded-lg overflow-hidden"
+                      style={{ boxShadow: multiIdx !== -1 ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)" }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.url} alt="" className="w-full h-full object-cover" />
+                      {multiIdx !== -1 && (
+                        <span
+                          className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-data"
+                          style={{ background: "var(--color-amber-deep)", color: "#fff" }}
+                        >
+                          {multiIdx + 1}
+                        </span>
+                      )}
+                      {usedElsewhere?.has(p.id) && multiIdx === -1 && (
+                        <span
+                          className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
+                          style={{ background: "var(--color-sage)", color: "#fff" }}
+                          title="כבר נבחרה במקום אחר באלבום"
+                        >
+                          ✅
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
+            )}
+            {addingMultiplePhotos && (
+              <button
+                onClick={confirmMultiPhotos}
+                disabled={multiPhotoIds.size === 0 || loadingMultiLayout}
+                className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+              >
+                {loadingMultiLayout ? "בונה פריסה..." : `הוספת ${multiPhotoIds.size || ""} תמונות`}
+              </button>
             )}
           </div>
         </div>

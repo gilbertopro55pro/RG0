@@ -78,20 +78,51 @@ async function embedImageAuto(pdfDoc: PDFDocument, buffer: Buffer): Promise<PDFI
   }
 }
 
+// Pushes a rotation transform (CSS convention degrees, positive = clockwise) pivoting around the
+// rect's own center — callers draw everything that should visually spin as one rigid piece (clip,
+// image, border, shadow) between this and popFrameRotation, all using the rect's ORIGINAL
+// (unrotated-local) coordinates; the active transform is what makes them appear rotated in
+// absolute page space. This is what makes the border/shadow rotate together with the photo instead
+// of only the image content spinning inside a frame that itself stays visually fixed.
+function pushFrameRotation(page: PDFPage, rect: { x: number; y: number; width: number; height: number }, rotationDeg: number | undefined) {
+  const ops = [pushGraphicsState()];
+  if (rotationDeg) {
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height / 2;
+    // PDF's CTM rotation is counter-clockwise for a positive angle in its bottom-up y-axis space —
+    // negating the CSS-convention degrees here makes a positive value turn clockwise on screen,
+    // same as the CSS `rotate()` used everywhere else this value is applied.
+    const rad = (-rotationDeg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    ops.push(
+      concatTransformationMatrix(1, 0, 0, 1, cx, cy),
+      concatTransformationMatrix(cos, sin, -sin, cos, 0, 0),
+      concatTransformationMatrix(1, 0, 0, 1, -cx, -cy)
+    );
+  }
+  page.pushOperators(...ops);
+}
+function popFrameRotation(page: PDFPage) {
+  page.pushOperators(popGraphicsState());
+}
+
 // Places an image "cover-cropped" into a rect, clipped to that rect and aimed at the given focal
 // point (0-100 on each axis) — the same crop math as the CSS `object-fit: cover` +
 // `object-position` used in the builder and proofing views, so the PDF matches what was approved.
-// `rotation` (degrees, CSS convention — positive is clockwise) rotates only the image content
-// around the rect's own center while the clip stays a fixed, unrotated rectangle — exactly how
-// the browser preview looks (a `transform: rotate()` on the `<img>` inside an `overflow-hidden`
-// frame that itself never rotates).
+// Any active rotation transform (see pushFrameRotation) must already be pushed by the caller —
+// this function only owns its OWN nested clip, which is scoped to just the image draw so a
+// border drawn after it (still inside the caller's rotation block) isn't clipped by it.
+// `zoom` (100 = cover-fit baseline) scales the already-positioned cover-fit image around the
+// rect's own center, mirroring the CSS `transform: scale()` applied to the <img> (whose CSS box —
+// for transform-origin purposes — is the frame, not the overflowing cover-fit content).
 function drawCoverImage(
   page: PDFPage,
   image: PDFImage,
   rect: { x: number; y: number; width: number; height: number },
   focalXPct: number,
   focalYPct: number,
-  opts?: { rotation?: number; opacity?: number }
+  opts?: { opacity?: number; zoom?: number }
 ) {
   const { x, y, width: w, height: h } = rect;
   const imgAspect = image.width / image.height;
@@ -107,36 +138,21 @@ function drawCoverImage(
   }
   const fx = focalXPct / 100;
   const fy = focalYPct / 100;
-  const dx = x - (drawW - w) * fx;
+  let dx = x - (drawW - w) * fx;
   // PDF's y-axis runs bottom-up, while focalY follows the CSS convention (0 = top) — flip it.
-  const dy = y - (drawH - h) * (1 - fy);
+  let dy = y - (drawH - h) * (1 - fy);
 
-  const ops = [
-    pushGraphicsState(),
-    moveTo(x, y),
-    lineTo(x + w, y),
-    lineTo(x + w, y + h),
-    lineTo(x, y + h),
-    closePath(),
-    clip(),
-    endPath(),
-  ];
-  if (opts?.rotation) {
+  if (opts?.zoom && opts.zoom !== 100) {
+    const zf = opts.zoom / 100;
     const cx = x + w / 2;
     const cy = y + h / 2;
-    // PDF's CTM rotation is counter-clockwise for a positive angle in its bottom-up y-axis space —
-    // negating the CSS-convention degrees here makes a positive value turn clockwise on screen,
-    // same as the CSS `rotate()` used everywhere else this value is applied.
-    const rad = (-opts.rotation * Math.PI) / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    ops.push(
-      concatTransformationMatrix(1, 0, 0, 1, cx, cy),
-      concatTransformationMatrix(cos, sin, -sin, cos, 0, 0),
-      concatTransformationMatrix(1, 0, 0, 1, -cx, -cy)
-    );
+    dx = cx - (cx - dx) * zf;
+    dy = cy - (cy - dy) * zf;
+    drawW *= zf;
+    drawH *= zf;
   }
-  page.pushOperators(...ops);
+
+  page.pushOperators(pushGraphicsState(), moveTo(x, y), lineTo(x + w, y), lineTo(x + w, y + h), lineTo(x, y + h), closePath(), clip(), endPath());
   page.drawImage(image, { x: dx, y: dy, width: drawW, height: drawH, opacity: opts?.opacity });
   page.pushOperators(popGraphicsState());
 }
@@ -145,7 +161,8 @@ function drawCoverImage(
 // builder/proofing views use) isn't reproducible here — this fakes softness by stacking a few
 // concentric, growing, increasingly-transparent rectangles behind the frame instead of one flat
 // one. Offset direction mirrors boxShadowFor's CSS convention (positive = shifts right and down on
-// screen), flipped on the y-axis since PDF space runs bottom-up.
+// screen), flipped on the y-axis since PDF space runs bottom-up. Draw this INSIDE the caller's
+// active rotation block (before the clipped image) so it rotates together with the frame too.
 function drawPhotoShadow(page: PDFPage, rect: { x: number; y: number; width: number; height: number }, shadowPct: number | undefined) {
   if (!shadowPct) return;
   const offsetPt = (shadowPct / 100) * 10;
@@ -291,8 +308,10 @@ export async function generateAlbumPdf({
         const height = (el.heightPct / 100) * PAGE_HEIGHT;
         const x = (el.xPct / 100) * PAGE_WIDTH;
         const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - height;
-        drawPhotoShadow(page, { x, y, width, height }, el.shadow);
-        drawCoverImage(page, image, { x, y, width, height }, el.focalX, el.focalY, { rotation: el.rotation, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
+        const rect = { x, y, width, height };
+        pushFrameRotation(page, rect, el.rotation);
+        drawPhotoShadow(page, rect, el.shadow);
+        drawCoverImage(page, image, rect, el.focalX, el.focalY, { opacity: el.opacity !== undefined ? el.opacity / 100 : undefined, zoom: el.zoom });
         if (el.borderWidth) {
           page.drawRectangle({
             x,
@@ -303,6 +322,7 @@ export async function generateAlbumPdf({
             borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")),
           });
         }
+        popFrameRotation(page);
       }
       continue;
     }

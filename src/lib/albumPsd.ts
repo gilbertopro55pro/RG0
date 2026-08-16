@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { writePsdBuffer, type Layer } from "ag-psd";
 import { downloadObjectBuffer } from "@/lib/storage";
-import { resolvePageElements, coverCropRaw, svgTextLayer, shadowLayerPng } from "@/lib/albumRaster";
+import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng } from "@/lib/albumRaster";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 async function pngToRawRgba(buffer: Buffer): Promise<{ data: Buffer; width: number; height: number }> {
@@ -107,18 +107,57 @@ export async function renderAlbumPagePsd({
     if (!buffer) continue;
     const width = Math.max(1, Math.round(el.width));
     const height = Math.max(1, Math.round(el.height));
+    const frameTop = Math.round(el.y);
+    const frameLeft = Math.round(el.x);
+
+    if (el.rotation) {
+      // Photoshop layers have no native "rotate" field, so a rotated element has to be fully
+      // baked (photo + border together, so they spin as one rigid tile — see composePhotoTile) —
+      // this trades away the border's normal live/editable layer for the rotated case only.
+      const tile = await composePhotoTile(buffer, width, height, el.focalX, el.focalY, el.filter, true, {
+        rotation: el.rotation,
+        blur: el.blur,
+        zoom: el.zoom,
+        borderWidth: el.borderWidth,
+        borderColor: el.borderColor,
+      });
+      if (!tile) continue;
+      any = true;
+      const shadow = await shadowLayerPng(width, height, el.shadow, frameLeft, frameTop, el.rotation);
+      if (shadow) {
+        const shadowRgba = await pngToRawRgba(shadow.buffer);
+        children.push({
+          name: "צל",
+          top: shadow.top,
+          left: shadow.left,
+          bottom: shadow.top + shadowRgba.height,
+          right: shadow.left + shadowRgba.width,
+          imageData: { data: shadowRgba.data, width: shadowRgba.width, height: shadowRgba.height },
+        });
+      }
+      const top = Math.round(frameTop + tile.top);
+      const left = Math.round(frameLeft + tile.left);
+      children.push({
+        name: "תמונה",
+        top,
+        left,
+        bottom: top + tile.height,
+        right: left + tile.width,
+        opacity: (el.opacity ?? 100) / 100,
+        imageData: { data: tile.data, width: tile.width, height: tile.height },
+      });
+      continue;
+    }
+
     // Never bake B&W or opacity into the pixels here — B&W becomes a real adjustment layer below,
-    // and opacity stays a live, editable PSD layer property instead (rotation/blur still have to
-    // be baked in — Photoshop layers have no native "rotate" field in the file format itself).
+    // and opacity stays a live, editable PSD layer property instead.
     const cropped = await coverCropRaw(buffer, width, height, el.focalX, el.focalY, el.filter === "sepia" ? "sepia" : undefined, false, {
-      rotation: el.rotation,
       blur: el.blur,
+      zoom: el.zoom,
     });
     if (!cropped) continue;
     any = true;
-    const top = Math.round(el.y);
-    const left = Math.round(el.x);
-    const shadow = await shadowLayerPng(width, height, el.shadow, left, top);
+    const shadow = await shadowLayerPng(width, height, el.shadow, frameLeft, frameTop);
     if (shadow) {
       const shadowRgba = await pngToRawRgba(shadow.buffer);
       children.push({
@@ -132,10 +171,10 @@ export async function renderAlbumPagePsd({
     }
     children.push({
       name: "תמונה",
-      top,
-      left,
-      bottom: top + height,
-      right: left + width,
+      top: frameTop,
+      left: frameLeft,
+      bottom: frameTop + height,
+      right: frameLeft + width,
       opacity: (el.opacity ?? 100) / 100,
       imageData: { data: cropped.data, width: cropped.width, height: cropped.height },
     });
@@ -145,7 +184,7 @@ export async function renderAlbumPagePsd({
     if (el.borderWidth) {
       const strokeSvg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${el.borderWidth / 2}" y="${el.borderWidth / 2}" width="${width - el.borderWidth}" height="${height - el.borderWidth}" fill="none" stroke="${el.borderColor ?? "#ffffff"}" stroke-width="${el.borderWidth}"/></svg>`;
       const strokeRgba = await pngToRawRgba(Buffer.from(strokeSvg));
-      children.push({ name: "מסגרת", top, left, bottom: top + height, right: left + width, imageData: { data: strokeRgba.data, width: strokeRgba.width, height: strokeRgba.height } });
+      children.push({ name: "מסגרת", top: frameTop, left: frameLeft, bottom: frameTop + height, right: frameLeft + width, imageData: { data: strokeRgba.data, width: strokeRgba.width, height: strokeRgba.height } });
     }
   }
   if (!any && !elements.some((e) => e.kind === "text") && !spread.background_photo_id) return null;

@@ -132,6 +132,7 @@ type ResolvedPhoto = {
   opacity?: number;
   blur?: number;
   shadow?: number;
+  zoom?: number;
 };
 type ResolvedText = { kind: "text"; text: string; x: number; y: number; width: number; fontSizePx: number; color: "white" | "black"; align: "right" | "center" | "left"; fontFamily?: string };
 type Resolved = ResolvedPhoto | ResolvedText;
@@ -179,6 +180,7 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
         opacity: el.opacity,
         blur: el.blur,
         shadow: el.shadow,
+        zoom: el.zoom,
       }));
     return [...photos, ...textElements];
   }
@@ -211,7 +213,9 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
 // Crops+scales a decoded image to exactly fill a target box (CSS object-fit:cover equivalent),
 // aimed at the given focal point, with the photo's filter baked into the pixels. Returns raw RGBA
 // — the caller either composites it straight into a flattened page (JPG) or hands it to ag-psd as
-// an independent layer (PSD), so it stays filter-agnostic about the destination.
+// an independent layer (PSD), so it stays filter-agnostic about the destination. Rotation is
+// intentionally NOT handled here any more (see composePhotoTile) — it needs the border baked in
+// first so the two rotate together as one rigid tile.
 async function coverCropRaw(
   buffer: Buffer,
   targetWidth: number,
@@ -220,7 +224,7 @@ async function coverCropRaw(
   focalYPct: number,
   filter: AlbumPhotoFilter | undefined,
   bakeInBw: boolean,
-  extra?: { rotation?: number; opacity?: number; blur?: number }
+  extra?: { opacity?: number; blur?: number; zoom?: number }
 ): Promise<{ data: Buffer; width: number; height: number } | null> {
   try {
     let img = sharp(buffer).rotate();
@@ -243,20 +247,18 @@ async function coverCropRaw(
     const top = Math.min(Math.max(0, Math.round((drawH - targetHeight) * (focalYPct / 100))), Math.max(0, drawH - targetHeight));
     let data = await img.extract({ left, top, width: targetWidth, height: targetHeight }).ensureAlpha().raw().toBuffer();
 
-    if (extra?.rotation) {
-      // Rotate the already-cropped box, then crop back to its original bounds from the center —
-      // clips the corners exactly the way the browser's overflow-hidden frame does, so the export
-      // matches the builder preview instead of ballooning to the rotated bounding box.
-      const rotated = await sharp(data, { raw: { width: targetWidth, height: targetHeight, channels: 4 } })
-        .rotate(extra.rotation, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-      const rw = rotated.info.width;
-      const rh = rotated.info.height;
-      const cropLeft = Math.max(0, Math.round((rw - targetWidth) / 2));
-      const cropTop = Math.max(0, Math.round((rh - targetHeight) / 2));
-      data = await sharp(rotated.data, { raw: { width: rw, height: rh, channels: 4 } })
-        .extract({ left: cropLeft, top: cropTop, width: Math.min(targetWidth, rw), height: Math.min(targetHeight, rh) })
+    if (extra?.zoom && extra.zoom !== 100) {
+      // Mirrors the CSS `transform: scale()` on the <img> — zooms in from the CENTER of the
+      // already focal-positioned cover-fit crop (not from the focal point itself), same as the
+      // browser: crop a smaller center window and blow it back up to the full target size.
+      const zf = extra.zoom / 100;
+      const subW = Math.max(1, Math.round(targetWidth / zf));
+      const subH = Math.max(1, Math.round(targetHeight / zf));
+      const subLeft = Math.round((targetWidth - subW) / 2);
+      const subTop = Math.round((targetHeight - subH) / 2);
+      data = await sharp(data, { raw: { width: targetWidth, height: targetHeight, channels: 4 } })
+        .extract({ left: subLeft, top: subTop, width: subW, height: subH })
+        .resize(targetWidth, targetHeight)
         .ensureAlpha()
         .raw()
         .toBuffer();
@@ -275,35 +277,107 @@ async function coverCropRaw(
   }
 }
 
+// Bakes the border stroke onto the cropped photo (so they become one flat tile) and, if rotated,
+// spins that whole tile via sharp's own .rotate() with canvas expansion — no corner clipping, and
+// the border/outline rotates together with the photo content as a single rigid rectangle, matching
+// the CSS fix of putting `transform: rotate()` on the frame div rather than just the <img>. left/top
+// are the offset to ADD to the frame's own unrotated (x,y) to place the (possibly now-larger) tile
+// so it stays centered on the frame's original center.
+async function composePhotoTile(
+  buffer: Buffer,
+  width: number,
+  height: number,
+  focalX: number,
+  focalY: number,
+  filter: AlbumPhotoFilter | undefined,
+  bakeInBw: boolean,
+  extra: { rotation?: number; opacity?: number; blur?: number; zoom?: number; borderWidth?: number; borderColor?: string }
+): Promise<{ data: Buffer; width: number; height: number; left: number; top: number } | null> {
+  const cropped = await coverCropRaw(buffer, width, height, focalX, focalY, filter, bakeInBw, { opacity: extra.opacity, blur: extra.blur, zoom: extra.zoom });
+  if (!cropped) return null;
+  let data = cropped.data;
+  let w = width;
+  let h = height;
+
+  if (extra.borderWidth) {
+    const strokeSvg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect x="${extra.borderWidth / 2}" y="${extra.borderWidth / 2}" width="${w - extra.borderWidth}" height="${h - extra.borderWidth}" fill="none" stroke="${extra.borderColor ?? "#ffffff"}" stroke-width="${extra.borderWidth}"/></svg>`;
+    data = await sharp(data, { raw: { width: w, height: h, channels: 4 } })
+      .composite([{ input: Buffer.from(strokeSvg) }])
+      .ensureAlpha()
+      .raw()
+      .toBuffer();
+  }
+
+  let left = 0;
+  let top = 0;
+  if (extra.rotation) {
+    const rotated = await sharp(data, { raw: { width: w, height: h, channels: 4 } })
+      .rotate(extra.rotation, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    left = -(rotated.info.width - w) / 2;
+    top = -(rotated.info.height - h) / 2;
+    w = rotated.info.width;
+    h = rotated.info.height;
+    data = rotated.data;
+  }
+  return { data, width: w, height: h, left, top };
+}
+
 // A soft blurred rectangle sized/offset to sit behind a photo frame, mirroring the CSS box-shadow
 // used in the builder/client preview (same offset/blur/alpha formula as boxShadowFor there) —
 // composited BEFORE the photo itself so it reads as a shadow cast behind it. The canvas is padded
-// on every side so the Gaussian blur has room to fall off without being clipped at its own edges;
-// sharp's composite() rejects negative left/top, so a frame near the page edge gets its shadow
-// pre-cropped to the visible portion (placeX/placeY are the frame's own page-pixel position).
-async function shadowLayerPng(width: number, height: number, shadowPct: number | undefined, placeX: number, placeY: number): Promise<{ buffer: Buffer; left: number; top: number } | null> {
+// on every side so the Gaussian blur has room to fall off without being clipped at its own edges.
+// If rotationDeg is set, the shadow rect is spun the same amount (matching composePhotoTile) so it
+// stays a rigid shadow of the tilted tile rather than a shadow of the frame's original axis-aligned
+// bounds; sharp's composite() rejects negative left/top, so a frame near the page edge gets its
+// shadow pre-cropped to the visible portion. frameX/frameY are the frame's own unrotated page-pixel
+// top-left — placement is computed from the frame's CENTER so it lines up with composePhotoTile's
+// (also center-based) rotated placement.
+async function shadowLayerPng(
+  width: number,
+  height: number,
+  shadowPct: number | undefined,
+  frameX: number,
+  frameY: number,
+  rotationDeg?: number
+): Promise<{ buffer: Buffer; left: number; top: number } | null> {
   if (!shadowPct) return null;
   const blurPx = Math.max(1, (shadowPct / 100) * 24);
   const offsetPx = Math.round((shadowPct / 100) * 10);
   const alpha = 0.15 + (shadowPct / 100) * 0.45;
   const pad = Math.ceil(blurPx * 3);
-  const canvasW = width + pad * 2;
-  const canvasH = height + pad * 2;
+  let canvasW = width + pad * 2;
+  let canvasH = height + pad * 2;
   const rectSvg = `<svg width="${canvasW}" height="${canvasH}" xmlns="http://www.w3.org/2000/svg"><rect x="${pad}" y="${pad}" width="${width}" height="${height}" fill="rgba(0,0,0,${alpha})"/></svg>`;
-  let left = placeX + offsetPx - pad;
-  let top = placeY + offsetPx - pad;
-  let img = sharp(Buffer.from(rectSvg)).blur(blurPx);
+  let buffer = await sharp(Buffer.from(rectSvg)).blur(blurPx).png().toBuffer();
+
+  if (rotationDeg) {
+    const rotated = await sharp(buffer)
+      .rotate(rotationDeg, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+    buffer = rotated.data;
+    canvasW = rotated.info.width;
+    canvasH = rotated.info.height;
+  }
+
+  const centerX = frameX + width / 2;
+  const centerY = frameY + height / 2;
+  let left = Math.round(centerX + offsetPx - canvasW / 2);
+  let top = Math.round(centerY + offsetPx - canvasH / 2);
   const cropLeft = Math.max(0, -left);
   const cropTop = Math.max(0, -top);
   if (cropLeft || cropTop) {
     const cropW = canvasW - cropLeft;
     const cropH = canvasH - cropTop;
     if (cropW <= 0 || cropH <= 0) return null;
-    img = sharp(await img.png().toBuffer()).extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH });
+    buffer = await sharp(buffer).extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH }).png().toBuffer();
     left = Math.max(0, left);
     top = Math.max(0, top);
   }
-  return { buffer: await img.png().toBuffer(), left, top };
+  return { buffer, left, top };
 }
 
 export type PageInput = { spread: GalleryAlbumSpreadRow | null; isCover?: boolean };
@@ -394,16 +468,21 @@ export async function renderAlbumPageJpeg({
     if (!buffer) continue;
     const width = Math.max(1, Math.round(el.width));
     const height = Math.max(1, Math.round(el.height));
-    const cropped = await coverCropRaw(buffer, width, height, el.focalX, el.focalY, el.filter, true, { rotation: el.rotation, opacity: el.opacity, blur: el.blur });
-    if (!cropped) continue;
+    const frameX = Math.round(el.x);
+    const frameY = Math.round(el.y);
+    const tile = await composePhotoTile(buffer, width, height, el.focalX, el.focalY, el.filter, true, {
+      rotation: el.rotation,
+      opacity: el.opacity,
+      blur: el.blur,
+      zoom: el.zoom,
+      borderWidth: el.borderWidth,
+      borderColor: el.borderColor,
+    });
+    if (!tile) continue;
     any = true;
-    const shadow = await shadowLayerPng(width, height, el.shadow, Math.round(el.x), Math.round(el.y));
+    const shadow = await shadowLayerPng(width, height, el.shadow, frameX, frameY, el.rotation);
     if (shadow) composites.push({ input: shadow.buffer, left: shadow.left, top: shadow.top });
-    composites.push({ input: cropped.data, raw: { width: cropped.width, height: cropped.height, channels: 4 }, left: Math.round(el.x), top: Math.round(el.y) });
-    if (el.borderWidth) {
-      const strokeSvg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${el.borderWidth / 2}" y="${el.borderWidth / 2}" width="${width - el.borderWidth}" height="${height - el.borderWidth}" fill="none" stroke="${el.borderColor ?? "#ffffff"}" stroke-width="${el.borderWidth}"/></svg>`;
-      composites.push({ input: Buffer.from(strokeSvg), left: Math.round(el.x), top: Math.round(el.y) });
-    }
+    composites.push({ input: tile.data, raw: { width: tile.width, height: tile.height, channels: 4 }, left: Math.round(frameX + tile.left), top: Math.round(frameY + tile.top) });
   }
   if (!any && !elements.some((e) => e.kind === "text") && !spread.background_photo_id) return null;
 
@@ -413,4 +492,4 @@ export async function renderAlbumPageJpeg({
     .toBuffer();
 }
 
-export { resolvePageElements, coverCropRaw, svgTextLayer, shadowLayerPng };
+export { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng };
