@@ -531,7 +531,13 @@ export default function AlbumSpreadCanvasEditor({
       className={`fixed inset-0 z-[80] flex items-center justify-center p-4 ${ALBUM_FONT_CLASS_NAMES}`}
       style={{ background: "rgba(46,49,66,0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
     >
-      <div className="w-full max-w-sm rounded-3xl p-4 bg-paper shadow-sheet max-h-[92vh] overflow-y-auto">
+      {/* Mobile keeps the original compact bottom-sheet-ish modal (single column, whole-panel
+          scroll). From the lg: breakpoint up, the panel expands to fill nearly the whole window
+          and splits into two flex columns — a large centered canvas on one side and a
+          scrollable controls sidebar on the other — since the cramped max-w-sm modal was a real
+          problem on desktop, where there's plenty of room to work more comfortably. */}
+      <div className="w-full max-w-sm lg:max-w-none lg:w-[95vw] lg:h-[92vh] rounded-3xl p-4 lg:p-6 bg-paper shadow-sheet max-h-[92vh] overflow-y-auto lg:overflow-visible lg:flex lg:flex-row lg:gap-6">
+        <div className="lg:flex-1 lg:flex lg:flex-col lg:min-w-0 lg:min-h-0">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold font-display">{mode === "custom" ? "עיצוב חופשי" : "הוספת טקסט לעמוד"}</h2>
           <button onClick={onClose} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
@@ -539,9 +545,10 @@ export default function AlbumSpreadCanvasEditor({
           </button>
         </div>
 
+        <div className="lg:flex-1 lg:flex lg:items-center lg:justify-center lg:min-h-0">
         {/* Not overflow-hidden (unlike the canvas below) so the floating photo menu — and the
             flyout sliders it opens — can bleed past the canvas's own edge, not just the photo's. */}
-        <div className="relative">
+        <div className="relative w-full lg:max-w-full">
         <div
           ref={canvasRef}
           onPointerMove={onPointerMove}
@@ -554,7 +561,7 @@ export default function AlbumSpreadCanvasEditor({
             // undid itself before the resize handle even had a chance to render.
             if (e.target === e.currentTarget) setSelectedId(null);
           }}
-          className="relative w-full aspect-[16/10] rounded-xl overflow-hidden bg-line select-none"
+          className="relative w-full lg:w-[min(100%,105.6vh)] lg:mx-auto aspect-[16/10] rounded-xl overflow-hidden bg-line select-none"
           style={{ containerType: "inline-size" }}
         >
           {backgroundPhoto && (
@@ -678,7 +685,13 @@ export default function AlbumSpreadCanvasEditor({
           <PhotoFloatingMenu el={selected} onUpdate={(patch) => updateElement(selected.id, patch)} />
         )}
         </div>
+        </div>
+        </div>
 
+        {/* Controls sidebar — stacks below the canvas on mobile same as before; becomes an
+            independently-scrolling side column on desktop so a tall control list never forces
+            the canvas itself to scroll out of view. */}
+        <div className="lg:w-[380px] lg:shrink-0 lg:overflow-y-auto lg:pr-1 lg:min-h-0">
         {selected && (
           <div className="space-y-2 mt-2.5">
             {selected.type === "text" && (
@@ -796,11 +809,12 @@ export default function AlbumSpreadCanvasEditor({
         >
           שמירה
         </button>
+        </div>
       </div>
 
       {photoPickerOpen && (
         <div className="fixed inset-0 z-[85] flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setPhotoPickerOpen(false)}>
-          <div className="w-full max-w-sm rounded-3xl p-4 bg-paper max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm lg:max-w-2xl rounded-3xl p-4 lg:p-6 bg-paper max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold">
                 {pickingBackground ? "בחירת תמונת רקע — " : ""}
@@ -815,7 +829,7 @@ export default function AlbumSpreadCanvasEditor({
             {pickerPhotos.length === 0 ? (
               <p className="text-xs text-ink-soft text-center py-6">אין תמונות מועדפות בגלריה הזו עדיין.</p>
             ) : (
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-4 lg:grid-cols-7 gap-2">
                 {pickerPhotos.map((p) => (
                   <button key={p.id} onClick={() => choosePhoto(p.id)} className="relative aspect-square rounded-lg overflow-hidden" style={{ boxShadow: "0 0 0 1px var(--color-line)" }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -855,10 +869,10 @@ export default function AlbumSpreadCanvasEditor({
       )}
 
       {templatePickerOpen && (
-        <div className="fixed inset-0 z-[85] flex items-end justify-center" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setTemplatePickerOpen(false)}>
-          <div className="w-full max-w-sm rounded-t-3xl p-5 bg-paper max-h-[75vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[85] flex items-end lg:items-center justify-center" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setTemplatePickerOpen(false)}>
+          <div className="w-full max-w-sm lg:max-w-4xl rounded-t-3xl lg:rounded-3xl p-5 lg:p-6 bg-paper max-h-[75vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-bold mb-3">תבניות מובנות</p>
-            <div className="grid grid-cols-2 gap-2.5 mb-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
               {BUILT_IN_TEMPLATES.map((t) => (
                 <button key={t.name} onClick={() => applyTemplate(t.frames)} className="rounded-xl border border-line p-2 text-center">
                   <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
@@ -873,7 +887,7 @@ export default function AlbumSpreadCanvasEditor({
             {templates.length > 0 && (
               <>
                 <p className="text-sm font-bold mb-3">התבניות שלי</p>
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
                   {templates.map((t) => (
                     <button key={t.id} onClick={() => applyTemplate(t.frames)} className="rounded-xl border border-line p-2 text-center">
                       <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
