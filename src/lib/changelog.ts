@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.29.0",
+    date: "2026-08-16",
+    changes: [
+      "כפתור \"זיהוי פרצופים\" חדש בניהול הגלריה: מזהה את כל הפרצופים השונים בתמונות (ריצה מלאה בדפדפן — אף תמונה לא נשלחת לשרת חיצוני), ומציג עיגול לכל אדם מתחת לשם הגלריה; לחיצה על עיגול מסננת לתמונות שלו בלבד",
+      "עורך עיצוב האלבום מוסתר עכשיו בגרסת הסלולר ומופיע רק בדסקטופ",
+    ],
+  },
+  {
     version: "1.28.0",
     date: "2026-08-16",
     changes: [

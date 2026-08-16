@@ -220,6 +220,19 @@ export type GalleryPhotoRow = {
   created_at: string;
 };
 
+export type GalleryPhotoFaceRow = {
+  id: string;
+  gallery_id: string;
+  photo_id: string;
+  cluster_id: string;
+  box_x: number;
+  box_y: number;
+  box_width: number;
+  box_height: number;
+  descriptor: number[];
+  created_at: string;
+};
+
 export type GalleryFolderRow = {
   id: string;
   gallery_id: string;

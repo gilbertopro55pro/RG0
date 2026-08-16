@@ -37,6 +37,8 @@ import {
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import GallerySlideshow from "@/components/GallerySlideshow";
 import { TextPositionIcon, ShapeIcon, GridStyleIcon, PlayIcon } from "@/components/GalleryStyleIcons";
+import FaceCircle from "@/components/FaceCircle";
+import { detectFacesInImageUrl, clusterFaces, type FaceBox } from "@/lib/faceRecognition";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string };
 
@@ -229,6 +231,11 @@ export default function GalleryManageView({
   } = usePinchSize(CELL_SIZE_DEFAULT, CELL_SIZE_MIN, CELL_SIZE_MAX, cancelPendingGestures);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(searchParams.get("favorites") === "1");
   const [zippingFavorites, setZippingFavorites] = useState(false);
+  const [faceClusters, setFaceClusters] = useState<{ clusterId: string; photoIds: Set<string>; representative: { photoId: string; box: FaceBox } }[]>([]);
+  const [faceFilterClusterId, setFaceFilterClusterId] = useState<string | null>(null);
+  const [detectingFaces, setDetectingFaces] = useState(false);
+  const [faceProgress, setFaceProgress] = useState<{ done: number; total: number } | null>(null);
+  const [faceError, setFaceError] = useState<string | null>(null);
   const [expiryMonths, setExpiryMonths] = useState<1 | 3 | 6 | null>(initialGallery.expiry_months);
   const [uploading, setUploading] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -327,6 +334,83 @@ export default function GalleryManageView({
     selected.forEach((photo, i) => {
       setTimeout(() => downloadPhotoNow(photo), i * 150);
     });
+  };
+
+  // Turns flat gallery_photo_faces rows into one summary per cluster: every photo id the cluster
+  // appears in (for filtering) plus a single representative face (the largest detected box, since
+  // that's usually the clearest/closest crop) to render as the circle's avatar.
+  const buildClusterSummaries = (
+    rows: { photo_id: string; cluster_id: string; box_x: number; box_y: number; box_width: number; box_height: number }[]
+  ) => {
+    const byCluster = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const list = byCluster.get(row.cluster_id) ?? [];
+      list.push(row);
+      byCluster.set(row.cluster_id, list);
+    }
+    return Array.from(byCluster.entries()).map(([clusterId, members]) => {
+      const best = members.reduce((a, b) => (a.box_width * a.box_height >= b.box_width * b.box_height ? a : b));
+      return {
+        clusterId,
+        photoIds: new Set(members.map((m) => m.photo_id)),
+        representative: { photoId: best.photo_id, box: { x: best.box_x, y: best.box_y, width: best.box_width, height: best.box_height } },
+      };
+    });
+  };
+
+  // Loads whatever face-detection results are already cached for this gallery (from a previous
+  // run) so the circles row appears instantly without re-running detection every visit.
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("gallery_photo_faces").select("photo_id, cluster_id, box_x, box_y, box_width, box_height").eq("gallery_id", gallery.id);
+      if (data && data.length > 0) setFaceClusters(buildClusterSummaries(data));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gallery.id]);
+
+  const runFaceDetection = async () => {
+    if (detectingFaces) return;
+    setDetectingFaces(true);
+    setFaceError(null);
+    setFaceProgress({ done: 0, total: photos.length });
+    try {
+      const allFaces: { photoId: string; box: FaceBox; descriptor: number[] }[] = [];
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        try {
+          const faces = await detectFacesInImageUrl(`/api/galleries/${gallery.id}/photos/${photo.id}/image`);
+          for (const face of faces) allFaces.push({ photoId: photo.id, ...face });
+        } catch {
+          // A single unreadable photo shouldn't sink detection for the rest of the gallery.
+        }
+        setFaceProgress({ done: i + 1, total: photos.length });
+      }
+      const clusters = clusterFaces(allFaces);
+      await supabase.from("gallery_photo_faces").delete().eq("gallery_id", gallery.id);
+      const rows = clusters.flatMap((cluster) =>
+        cluster.members.map((member) => ({
+          gallery_id: gallery.id,
+          photo_id: member.photoId,
+          cluster_id: cluster.clusterId,
+          box_x: member.box.x,
+          box_y: member.box.y,
+          box_width: member.box.width,
+          box_height: member.box.height,
+          descriptor: member.descriptor,
+        }))
+      );
+      if (rows.length > 0) {
+        const { error } = await supabase.from("gallery_photo_faces").insert(rows);
+        if (error) throw error;
+      }
+      setFaceClusters(buildClusterSummaries(rows));
+      setFaceFilterClusterId(null);
+    } catch {
+      setFaceError("שגיאה בזיהוי הפרצופים");
+    } finally {
+      setDetectingFaces(false);
+      setFaceProgress(null);
+    }
   };
 
   // One zip, organized into a subfolder per tab — same shared endpoint the client-facing gallery
@@ -1146,9 +1230,11 @@ export default function GalleryManageView({
 
   const isArchived = !!gallery.archived_at;
   const favoriteCount = photos.filter((p) => p.is_favorite).length;
+  const activeFaceCluster = faceFilterClusterId ? faceClusters.find((c) => c.clusterId === faceFilterClusterId) : null;
   const visiblePhotos = photos
     .filter((p) => (showFavoritesOnly ? p.is_favorite : true))
-    .filter((p) => (activeFolderId ? p.folder_id === activeFolderId : true));
+    .filter((p) => (activeFolderId ? p.folder_id === activeFolderId : true))
+    .filter((p) => (activeFaceCluster ? activeFaceCluster.photoIds.has(p.id) : true));
   // The photographer's own management grid mirrors the same resolved style the client actually
   // sees — no separate local toggle, so there's only ever one layout control to reason about.
   const resolvedGridStyle = gallery.grid_style_override ?? galleryThemeById(gallery.theme).gridStyle;
@@ -1190,11 +1276,31 @@ export default function GalleryManageView({
             </button>
           )}
           {photos.length > 0 && (
+            // Desktop-only: the album editor is a precise drag/zoom canvas tool that doesn't
+            // translate to a phone screen, so it's hidden below the lg breakpoint rather than
+            // shipping a cramped, hard-to-use mobile version of it.
             <button
               onClick={openAlbumManage}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink ${BTN_PRESS}`}
+              className={`hidden lg:block text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink ${BTN_PRESS}`}
             >
               עיצוב אלבום
+            </button>
+          )}
+          {photos.length > 0 && (
+            // Runs entirely in the browser (see src/lib/faceRecognition.ts) — no photo ever
+            // leaves the photographer's device for this except the already-cached results.
+            <button
+              onClick={runFaceDetection}
+              disabled={detectingFaces}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink disabled:opacity-60 ${BTN_PRESS}`}
+            >
+              {detectingFaces
+                ? faceProgress
+                  ? `מזהה... ${faceProgress.done}/${faceProgress.total}`
+                  : "מזהה..."
+                : faceClusters.length > 0
+                  ? "🔄 רענון זיהוי פרצופים"
+                  : "🙂 זיהוי פרצופים"}
             </button>
           )}
           {gallery.published && (
@@ -1216,12 +1322,34 @@ export default function GalleryManageView({
       </div>
       <h1 className="text-[22px] font-bold mb-1 font-display">{clientName || gallery.title}</h1>
       {eventDate ? (
-        <p className="text-xs mb-5 text-ink-soft">{new Date(eventDate).toLocaleDateString("he-IL")}</p>
+        <p className="text-xs mb-1 text-ink-soft">{new Date(eventDate).toLocaleDateString("he-IL")}</p>
       ) : (
         gallery.shoot_date && (
-          <p className="text-xs mb-5 text-ink-soft">{new Date(gallery.shoot_date).toLocaleDateString("he-IL")}</p>
+          <p className="text-xs mb-1 text-ink-soft">{new Date(gallery.shoot_date).toLocaleDateString("he-IL")}</p>
         )
       )}
+
+      {faceError && <p className="text-xs text-rose mb-2">{faceError}</p>}
+
+      {faceClusters.length > 0 && (
+        <div className="flex items-center gap-2 mb-5 overflow-x-auto">
+          {faceClusters.map((cluster) => {
+            const photo = photos.find((p) => p.id === cluster.representative.photoId);
+            if (!photo) return null;
+            return (
+              <FaceCircle
+                key={cluster.clusterId}
+                url={photo.url}
+                box={cluster.representative.box}
+                size={52}
+                selected={faceFilterClusterId === cluster.clusterId}
+                onClick={() => setFaceFilterClusterId(faceFilterClusterId === cluster.clusterId ? null : cluster.clusterId)}
+              />
+            );
+          })}
+        </div>
+      )}
+      {faceClusters.length === 0 && <div className="mb-4" />}
 
       {isArchived && (
         <div className="rounded-xl px-3.5 py-2.5 mb-3.5 text-xs bg-[#FBEEEC] text-rose">
