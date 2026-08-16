@@ -119,8 +119,8 @@ const CANCELLED = Symbol("save-dialog-cancelled");
 // picker even tried to open. Opening the picker first, then doing the slow export fetch, then
 // writing the already-fetched blob to the already-open handle, keeps it inside the activation
 // window. Returns `CANCELLED` if the user closes the dialog (distinct from `null`, which means
-// "this browser doesn't support it at all" — Safari/Firefox/mobile — so the caller can fall back
-// to plain auto-download for those, but do nothing when the user deliberately cancelled).
+// "this browser doesn't support it at all" — mobile/Safari/Firefox — so the caller falls back to
+// the OS share sheet for those, but does nothing when the user deliberately cancelled).
 async function openSaveHandle(suggestedName: string, mimeType: string): Promise<SaveHandle | null | typeof CANCELLED> {
   const picker = (window as unknown as { showSaveFilePicker?: (opts: unknown) => Promise<SaveHandle> }).showSaveFilePicker;
   if (!picker) return null;
@@ -136,12 +136,32 @@ async function openSaveHandle(suggestedName: string, mimeType: string): Promise<
   }
 }
 
-async function writeToHandleOrDownload(handle: SaveHandle | null, blob: Blob, filename: string): Promise<void> {
+// With a desktop handle (already open, see openSaveHandle) just writes to it. Otherwise — mobile,
+// where there's no save-file picker to pre-open — tries the OS share sheet (Web Share API) so the
+// user still gets to choose where the file goes (Save to Files, AirDrop, etc.) instead of it
+// silently landing in Downloads. Falls back to a plain <a download> when the share sheet isn't
+// available, the file type can't be shared, or the user backs out of it.
+async function writeToHandleOrDownload(handle: SaveHandle | null, blob: Blob, filename: string, mimeType: string): Promise<void> {
   if (handle) {
     const writable = await handle.createWritable();
     await writable.write(blob);
     await writable.close();
     return;
+  }
+  const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void>; canShare?: (data: ShareData) => boolean };
+  if (nav.share) {
+    try {
+      const file = new File([blob], filename, { type: mimeType });
+      if (!nav.canShare || nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file] });
+        return;
+      }
+    } catch (err) {
+      // AbortError = user backed out of the share sheet on purpose — respect that, don't fall
+      // back to a surprise auto-download. Any other error (unsupported file type, expired user
+      // activation, etc.) falls through to the plain-download path below.
+      if (err instanceof Error && err.name === "AbortError") return;
+    }
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -611,7 +631,7 @@ export default function GalleryManageView({
       const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
       const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : fallbackName;
       const blob = await res.blob();
-      await writeToHandleOrDownload(handleResult, blob, filename);
+      await writeToHandleOrDownload(handleResult, blob, filename, mimeType);
     } finally {
       setBusy(false);
     }

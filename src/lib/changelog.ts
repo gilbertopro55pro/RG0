@@ -8,6 +8,20 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.27.2",
+    date: "2026-08-16",
+    changes: [
+      "ייצוא PDF/JPG/PSD בטלפון: אחרי בחירת טווח העמודים נפתח כעת תפריט השיתוף הרגיל של המכשיר (כמו AirDrop / שמירה לקבצים) במקום הורדה שקטה לתיקיית ההורדות",
+    ],
+  },
+  {
+    version: "1.27.1",
+    date: "2026-08-16",
+    changes: [
+      "תוקן: חלון בחירת טווח העמודים לייצוא הופיע מאחורי חלון עיצוב האלבום במקום לפניו",
+    ],
+  },
+  {
     version: "1.27.0",
     date: "2026-08-16",
     changes: [
