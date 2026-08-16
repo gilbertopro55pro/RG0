@@ -21,7 +21,8 @@ import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
-import AlbumSpreadCanvasEditor from "@/components/AlbumSpreadCanvasEditor";
+import AlbumSpreadCanvasEditor, { BUILT_IN_TEMPLATES } from "@/components/AlbumSpreadCanvasEditor";
+import { generateGridFrames } from "@/lib/albumGrid";
 import {
   GALLERY_THEMES,
   COVER_TEXT_POSITIONS,
@@ -201,8 +202,10 @@ export default function GalleryManageView({
   const [album, setAlbum] = useState<GalleryAlbumRow | null>(null);
   const [albumSpreads, setAlbumSpreads] = useState<GalleryAlbumSpreadRow[]>([]);
   const [albumComments, setAlbumComments] = useState<GalleryAlbumCommentRow[]>([]);
-  const [albumPickerOpen, setAlbumPickerOpen] = useState(false);
-  const [albumSelectedOrder, setAlbumSelectedOrder] = useState<string[]>([]);
+  const [albumSizeDraft, setAlbumSizeDraft] = useState({ width: 30, height: 20 });
+  const [newPageStep, setNewPageStep] = useState<"choice" | "count" | null>(null);
+  const [customPageCount, setCustomPageCount] = useState(6);
+  const [creatingSpread, setCreatingSpread] = useState(false);
   const [draggedSpreadId, setDraggedSpreadId] = useState<string | null>(null);
   const [focalEditTarget, setFocalEditTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
   const [replaceTarget, setReplaceTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
@@ -328,7 +331,7 @@ export default function GalleryManageView({
 
   const openAlbumManage = () => {
     setAlbumManageOpen(true);
-    setAlbumSelectedOrder([]);
+    setNewPageStep(null);
     loadAlbum();
     supabase
       .from("album_templates")
@@ -347,18 +350,18 @@ export default function GalleryManageView({
     if (!error && data) setAlbumTemplates((prev) => [data, ...prev]);
   };
 
-  const toggleAlbumPickerPhoto = (id: string) => {
-    setAlbumSelectedOrder((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
-  };
-
-  // Pairs selected photos two-per-spread in the order they were picked — a lightweight
-  // "proofing" tool (order + pairing review), not a full drag-and-drop album designer.
-  const createAlbumFromSelection = async () => {
-    if (albumSelectedOrder.length === 0) return;
+  // Step 1 of album creation: the photographer sets the physical print dimensions up front, before
+  // picking any photos or pages — creates an empty album (no spreads yet) with those dimensions.
+  const createAlbumWithSize = async () => {
     setSavingAlbum(true);
     const { data: newAlbum, error: albumErr } = await supabase
       .from("gallery_albums")
-      .insert({ gallery_id: gallery.id, photographer_id: gallery.photographer_id })
+      .insert({
+        gallery_id: gallery.id,
+        photographer_id: gallery.photographer_id,
+        width_cm: albumSizeDraft.width,
+        height_cm: albumSizeDraft.height,
+      })
       .select()
       .single<GalleryAlbumRow>();
     if (albumErr || !newAlbum) {
@@ -366,41 +369,85 @@ export default function GalleryManageView({
       setSavingAlbum(false);
       return;
     }
-    const spreadRows = [];
-    for (let i = 0; i < albumSelectedOrder.length; i += 2) {
-      spreadRows.push({
-        album_id: newAlbum.id,
-        sort_order: spreadRows.length,
-        photo_id_1: albumSelectedOrder[i],
-        photo_id_2: albumSelectedOrder[i + 1] ?? null,
-      });
-    }
-    await supabase.from("gallery_album_spreads").insert(spreadRows);
     setAlbum(newAlbum);
-    setAlbumPickerOpen(false);
-    setAlbumSelectedOrder([]);
+    setAlbumSpreads([]);
+    setAlbumComments([]);
     setSavingAlbum(false);
-    await loadAlbum();
   };
 
-  const addSpreadsFromSelection = async () => {
-    if (!album || albumSelectedOrder.length === 0) return;
-    setSavingAlbum(true);
-    const spreadRows = [];
-    let order = albumSpreads.length;
-    for (let i = 0; i < albumSelectedOrder.length; i += 2) {
-      spreadRows.push({
-        album_id: album.id,
-        sort_order: order++,
-        photo_id_1: albumSelectedOrder[i],
-        photo_id_2: albumSelectedOrder[i + 1] ?? null,
-      });
+  // Every photo already placed anywhere in the album (any spread's slot photos, background, or
+  // free-form elements) — used to badge photos in every picker so the photographer doesn't
+  // accidentally place the same photo on two different pages.
+  const albumWideUsedPhotoIds = new Set<string>(
+    albumSpreads.flatMap((s) => [
+      s.photo_id_1,
+      s.photo_id_2,
+      s.background_photo_id,
+      ...s.elements.filter((el): el is typeof el & { type: "photo"; photoId: string } => el.type === "photo" && !!el.photoId).map((el) => el.photoId),
+    ].filter((id): id is string => !!id))
+  );
+
+  // "עמוד חדש" — creates exactly one new spread from a chosen template's empty frames, then opens
+  // the canvas editor on it so the photographer assigns photos to each frame.
+  const createSpreadFromTemplate = async (frames: AlbumFrame[]) => {
+    if (!album) return;
+    setCreatingSpread(true);
+    const elements: AlbumElement[] = frames.map((f) => ({
+      id: f.id,
+      type: "photo",
+      photoId: null,
+      xPct: f.xPct,
+      yPct: f.yPct,
+      widthPct: f.widthPct,
+      heightPct: f.heightPct,
+      focalX: 50,
+      focalY: 50,
+    }));
+    const firstPhotoId = frames.length > 0 ? (photos.find((p) => !albumWideUsedPhotoIds.has(p.id))?.id ?? photos[0]?.id) : null;
+    const { data: newSpread } = await supabase
+      .from("gallery_album_spreads")
+      .insert({ album_id: album.id, sort_order: albumSpreads.length, layout: "custom", elements, photo_id_1: firstPhotoId })
+      .select()
+      .single<GalleryAlbumSpreadRow>();
+    setCreatingSpread(false);
+    setNewPageStep(null);
+    if (newSpread) {
+      await loadAlbum();
+      setCanvasEditorTarget({ spreadId: newSpread.id, mode: "custom" });
     }
-    await supabase.from("gallery_album_spreads").insert(spreadRows);
-    setAlbumPickerOpen(false);
-    setAlbumSelectedOrder([]);
-    setSavingAlbum(false);
-    await loadAlbum();
+  };
+
+  // "עמוד חדש" → "עיצוב אישי" — the photographer only picks a photo COUNT; the system both lays
+  // out the grid (generateGridFrames) and auto-fills it with that many not-yet-used favorited
+  // photos (falling back to any not-yet-used photo if there aren't enough favorites).
+  const createSpreadFromCustomCount = async (count: number) => {
+    if (!album || count <= 0) return;
+    setCreatingSpread(true);
+    const frames = generateGridFrames(count);
+    const unused = photos.filter((p) => !albumWideUsedPhotoIds.has(p.id));
+    const favoritesFirst = [...unused.filter((p) => p.is_favorite), ...unused.filter((p) => !p.is_favorite)];
+    const elements: AlbumElement[] = frames.map((f, i) => ({
+      id: f.id,
+      type: "photo",
+      photoId: favoritesFirst[i]?.id ?? null,
+      xPct: f.xPct,
+      yPct: f.yPct,
+      widthPct: f.widthPct,
+      heightPct: f.heightPct,
+      focalX: 50,
+      focalY: 50,
+    }));
+    const { data: newSpread } = await supabase
+      .from("gallery_album_spreads")
+      .insert({ album_id: album.id, sort_order: albumSpreads.length, layout: "custom", elements, photo_id_1: favoritesFirst[0]?.id ?? photos[0]?.id })
+      .select()
+      .single<GalleryAlbumSpreadRow>();
+    setCreatingSpread(false);
+    setNewPageStep(null);
+    if (newSpread) {
+      await loadAlbum();
+      setCanvasEditorTarget({ spreadId: newSpread.id, mode: "custom" });
+    }
   };
 
   const removeSpread = async (spreadId: string) => {
@@ -1773,45 +1820,35 @@ export default function GalleryManageView({
             ) : !album ? (
               <>
                 <p className="text-xs text-ink-soft mb-3.5">
-                  בוחרים תמונות מהגלריה — הן יסודרו לעמודי אלבום (זוג תמונות לעמוד, לפי סדר הבחירה), והלקוח/ה יוכלו לעבור עליהן, להעיר הערות ולאשר את העיצוב הסופי.
+                  קודם כל, מה מידות האלבום להדפסה? אחר כך אפשר להוסיף עמודים — מתבניות מוכנות או בעיצוב אישי, והלקוח/ה יוכלו לעבור עליהם, להעיר הערות ולאשר את העיצוב הסופי.
                 </p>
-                <div className="grid grid-cols-4 gap-2 mb-2.5">
-                  {photos.map((p) => {
-                    const idx = albumSelectedOrder.indexOf(p.id);
-                    const active = idx !== -1;
-                    return (
-                      <button
-                        key={p.id}
-                        onClick={() => toggleAlbumPickerPhoto(p.id)}
-                        className="relative aspect-square rounded-lg overflow-hidden"
-                        style={{
-                          boxShadow: active
-                            ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
-                            : "0 0 0 1px var(--color-line)",
-                        }}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={p.url} alt="" className="w-full h-full object-cover" />
-                        {active && (
-                          <span
-                            className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-data"
-                            style={{ background: "var(--color-amber-deep)", color: "#fff" }}
-                          >
-                            {idx + 1}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
+                <p className="text-xs text-ink-soft mb-2">מידות האלבום (ס״מ)</p>
+                <div className="flex items-center gap-2 mb-5">
+                  <input
+                    type="number"
+                    min={1}
+                    value={albumSizeDraft.width}
+                    onChange={(e) => setAlbumSizeDraft((prev) => ({ ...prev, width: Number(e.target.value) || prev.width }))}
+                    className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
+                  />
+                  <span className="text-xs text-ink-soft">רוחב</span>
+                  <span className="text-ink-soft">×</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={albumSizeDraft.height}
+                    onChange={(e) => setAlbumSizeDraft((prev) => ({ ...prev, height: Number(e.target.value) || prev.height }))}
+                    className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
+                  />
+                  <span className="text-xs text-ink-soft">גובה</span>
                 </div>
-                <p className="text-[11px] text-ink-soft mb-5">{albumSelectedOrder.length} תמונות נבחרו, לפי סדר הבחירה</p>
                 {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
                 <button
-                  onClick={createAlbumFromSelection}
-                  disabled={savingAlbum || albumSelectedOrder.length === 0}
+                  onClick={createAlbumWithSize}
+                  disabled={savingAlbum}
                   className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                 >
-                  {savingAlbum ? "יוצר..." : "יצירת אלבום"}
+                  {savingAlbum ? "יוצר..." : "אישור והמשך"}
                 </button>
               </>
             ) : (
@@ -1884,9 +1921,10 @@ export default function GalleryManageView({
                   </div>
                 </div>
 
-                {albumSpreads.length === 0 ? (
-                  <p className="text-sm text-ink-soft text-center py-4 mb-4">אין עדיין עמודים באלבום.</p>
-                ) : (
+                {albumSpreads.length === 0 && newPageStep === null && (
+                  <p className="text-sm text-ink-soft text-center py-4 mb-2">אין עדיין עמודים באלבום.</p>
+                )}
+                {albumSpreads.length > 0 && (
                   <div className="space-y-2 mb-4">
                     {albumSpreads.map((spread, i) => {
                       const photo1 = photos.find((p) => p.id === spread.photo_id_1);
@@ -2097,64 +2135,71 @@ export default function GalleryManageView({
                   </div>
                 )}
 
-                {albumPickerOpen ? (
-                  <>
-                    <p className="text-xs text-ink-soft mb-2.5">הוספת תמונות</p>
-                    <div className="grid grid-cols-4 gap-2 mb-2.5">
-                      {photos.map((p) => {
-                        const idx = albumSelectedOrder.indexOf(p.id);
-                        const active = idx !== -1;
-                        return (
-                          <button
-                            key={p.id}
-                            onClick={() => toggleAlbumPickerPhoto(p.id)}
-                            className="relative aspect-square rounded-lg overflow-hidden"
-                            style={{
-                              boxShadow: active
-                                ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
-                                : "0 0 0 1px var(--color-line)",
-                            }}
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={p.url} alt="" className="w-full h-full object-cover" />
-                            {active && (
-                              <span
-                                className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-data"
-                                style={{ background: "var(--color-amber-deep)", color: "#fff" }}
-                              >
-                                {idx + 1}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="flex gap-2 mb-4">
-                      <button
-                        onClick={addSpreadsFromSelection}
-                        disabled={savingAlbum || albumSelectedOrder.length === 0}
-                        className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-                      >
-                        {savingAlbum ? "מוסיף..." : "הוספה"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setAlbumPickerOpen(false);
-                          setAlbumSelectedOrder([]);
-                        }}
-                        className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-card border border-line text-ink-soft"
-                      >
-                        ביטול
-                      </button>
-                    </div>
-                  </>
-                ) : (
+                {newPageStep === null && (
                   <button
-                    onClick={() => setAlbumPickerOpen(true)}
+                    onClick={() => setNewPageStep("choice")}
                     className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5"
                   >
-                    + הוספת תמונות לאלבום
+                    + עמוד חדש
                   </button>
+                )}
+                {newPageStep === "choice" && (
+                  <div className="mb-4">
+                    <p className="text-xs text-ink-soft mb-2.5">איך רוצים לעצב את העמוד החדש?</p>
+                    <div className="grid grid-cols-2 gap-2.5 mb-4 max-h-72 overflow-y-auto">
+                      {BUILT_IN_TEMPLATES.map((t) => (
+                        <button key={t.name} onClick={() => createSpreadFromTemplate(t.frames)} disabled={creatingSpread} className="rounded-xl border border-line p-2 text-center disabled:opacity-50">
+                          <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
+                            {t.frames.map((f) => (
+                              <div key={f.id} className="absolute rounded-sm bg-white border border-line" style={{ left: `${f.xPct}%`, top: `${f.yPct}%`, width: `${f.widthPct}%`, height: `${f.heightPct}%` }} />
+                            ))}
+                          </div>
+                          <span className="text-[11px] font-semibold">{t.name}</span>
+                        </button>
+                      ))}
+                      {albumTemplates.map((t) => (
+                        <button key={t.id} onClick={() => createSpreadFromTemplate(t.frames)} disabled={creatingSpread} className="rounded-xl border border-line p-2 text-center disabled:opacity-50">
+                          <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
+                            {t.frames.map((f) => (
+                              <div key={f.id} className="absolute rounded-sm bg-white border border-line" style={{ left: `${f.xPct}%`, top: `${f.yPct}%`, width: `${f.widthPct}%`, height: `${f.heightPct}%` }} />
+                            ))}
+                          </div>
+                          <span className="text-[11px] font-semibold">{t.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setNewPageStep("count")} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white mb-2">
+                      🎨 או: עיצוב אישי לפי מספר תמונות
+                    </button>
+                    <button onClick={() => setNewPageStep(null)} className="w-full rounded-lg py-2 text-sm font-semibold bg-card border border-line text-ink-soft">
+                      ביטול
+                    </button>
+                  </div>
+                )}
+                {newPageStep === "count" && (
+                  <div className="mb-4">
+                    <p className="text-xs text-ink-soft mb-2.5">כמה תמונות בעמוד? המערכת תסדר אותן בדף באופן אוטומטי, ותמלא אותן מתוך התמונות המועדפות שעדיין לא נבחרו באלבום.</p>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={customPageCount}
+                      onChange={(e) => setCustomPageCount(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
+                      className="w-24 rounded-lg border border-line px-2.5 py-2 text-sm text-center mb-3"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => createSpreadFromCustomCount(customPageCount)}
+                        disabled={creatingSpread}
+                        className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                      >
+                        {creatingSpread ? "יוצר..." : "יצירת העמוד"}
+                      </button>
+                      <button onClick={() => setNewPageStep("choice")} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-card border border-line text-ink-soft">
+                        חזרה
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {albumSpreads.length % 2 !== 0 && (
@@ -2231,6 +2276,16 @@ export default function GalleryManageView({
           if (!spread) return null;
           const photo1 = photos.find((p) => p.id === spread.photo_id_1);
           const photo2 = spread.photo_id_2 ? photos.find((p) => p.id === spread.photo_id_2) : null;
+          const usedElsewhere = new Set(
+            albumSpreads
+              .filter((s) => s.id !== spread.id)
+              .flatMap((s) => [
+                s.photo_id_1,
+                s.photo_id_2,
+                s.background_photo_id,
+                ...s.elements.filter((el): el is typeof el & { type: "photo"; photoId: string } => el.type === "photo" && !!el.photoId).map((el) => el.photoId),
+              ].filter((id): id is string => !!id))
+          );
           return (
             <AlbumSpreadCanvasEditor
               spread={spread}
@@ -2239,6 +2294,7 @@ export default function GalleryManageView({
               photo2={photo2}
               mode={canvasEditorTarget.mode}
               templates={albumTemplates}
+              usedElsewhere={usedElsewhere}
               onSave={saveSpreadElements}
               onSaveTemplate={saveAlbumTemplate}
               onClose={() => setCanvasEditorTarget(null)}

@@ -131,6 +131,7 @@ type ResolvedPhoto = {
   rotation?: number;
   opacity?: number;
   blur?: number;
+  shadow?: number;
 };
 type ResolvedText = { kind: "text"; text: string; x: number; y: number; width: number; fontSizePx: number; color: "white" | "black"; align: "right" | "center" | "left"; fontFamily?: string };
 type Resolved = ResolvedPhoto | ResolvedText;
@@ -177,6 +178,7 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
         rotation: el.rotation,
         opacity: el.opacity,
         blur: el.blur,
+        shadow: el.shadow,
       }));
     return [...photos, ...textElements];
   }
@@ -273,6 +275,37 @@ async function coverCropRaw(
   }
 }
 
+// A soft blurred rectangle sized/offset to sit behind a photo frame, mirroring the CSS box-shadow
+// used in the builder/client preview (same offset/blur/alpha formula as boxShadowFor there) —
+// composited BEFORE the photo itself so it reads as a shadow cast behind it. The canvas is padded
+// on every side so the Gaussian blur has room to fall off without being clipped at its own edges;
+// sharp's composite() rejects negative left/top, so a frame near the page edge gets its shadow
+// pre-cropped to the visible portion (placeX/placeY are the frame's own page-pixel position).
+async function shadowLayerPng(width: number, height: number, shadowPct: number | undefined, placeX: number, placeY: number): Promise<{ buffer: Buffer; left: number; top: number } | null> {
+  if (!shadowPct) return null;
+  const blurPx = Math.max(1, (shadowPct / 100) * 24);
+  const offsetPx = Math.round((shadowPct / 100) * 10);
+  const alpha = 0.15 + (shadowPct / 100) * 0.45;
+  const pad = Math.ceil(blurPx * 3);
+  const canvasW = width + pad * 2;
+  const canvasH = height + pad * 2;
+  const rectSvg = `<svg width="${canvasW}" height="${canvasH}" xmlns="http://www.w3.org/2000/svg"><rect x="${pad}" y="${pad}" width="${width}" height="${height}" fill="rgba(0,0,0,${alpha})"/></svg>`;
+  let left = placeX + offsetPx - pad;
+  let top = placeY + offsetPx - pad;
+  let img = sharp(Buffer.from(rectSvg)).blur(blurPx);
+  const cropLeft = Math.max(0, -left);
+  const cropTop = Math.max(0, -top);
+  if (cropLeft || cropTop) {
+    const cropW = canvasW - cropLeft;
+    const cropH = canvasH - cropTop;
+    if (cropW <= 0 || cropH <= 0) return null;
+    img = sharp(await img.png().toBuffer()).extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH });
+    left = Math.max(0, left);
+    top = Math.max(0, top);
+  }
+  return { buffer: await img.png().toBuffer(), left, top };
+}
+
 export type PageInput = { spread: GalleryAlbumSpreadRow | null; isCover?: boolean };
 
 export async function renderAlbumPageJpeg({
@@ -364,6 +397,8 @@ export async function renderAlbumPageJpeg({
     const cropped = await coverCropRaw(buffer, width, height, el.focalX, el.focalY, el.filter, true, { rotation: el.rotation, opacity: el.opacity, blur: el.blur });
     if (!cropped) continue;
     any = true;
+    const shadow = await shadowLayerPng(width, height, el.shadow, Math.round(el.x), Math.round(el.y));
+    if (shadow) composites.push({ input: shadow.buffer, left: shadow.left, top: shadow.top });
     composites.push({ input: cropped.data, raw: { width: cropped.width, height: cropped.height, channels: 4 }, left: Math.round(el.x), top: Math.round(el.y) });
     if (el.borderWidth) {
       const strokeSvg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${el.borderWidth / 2}" y="${el.borderWidth / 2}" width="${width - el.borderWidth}" height="${height - el.borderWidth}" fill="none" stroke="${el.borderColor ?? "#ffffff"}" stroke-width="${el.borderWidth}"/></svg>`;
@@ -378,4 +413,4 @@ export async function renderAlbumPageJpeg({
     .toBuffer();
 }
 
-export { resolvePageElements, coverCropRaw, svgTextLayer };
+export { resolvePageElements, coverCropRaw, svgTextLayer, shadowLayerPng };

@@ -52,7 +52,140 @@ function SliderControl({
   );
 }
 
-const BUILT_IN_TEMPLATES: { name: string; frames: AlbumFrame[] }[] = [
+function CircleButton({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      className="h-9 w-9 rounded-full flex items-center justify-center text-base shrink-0"
+      style={{
+        background: active ? "var(--color-amber-deep)" : "#fff",
+        color: active ? "#fff" : "var(--color-ink)",
+        boxShadow: "0 2px 8px rgba(46,49,66,0.25), 0 0 0 1px var(--color-line)",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FlyoutPanel({ side, width = 140, children }: { side: "left" | "right"; width?: number; children: React.ReactNode }) {
+  return (
+    <div
+      className="absolute top-1/2 -translate-y-1/2 rounded-xl border border-line bg-white p-2.5 space-y-2"
+      style={{ [side]: "calc(100% + 8px)", width, boxShadow: "0 4px 16px rgba(46,49,66,0.3)" } as React.CSSProperties}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MiniSlider({ label, value, min, max, step = 1, unit = "", onChange }: { label: string; value: number; min: number; max: number; step?: number; unit?: string; onChange: (v: number) => void }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[10px] font-semibold text-ink-soft mb-1">
+        <span>{label}</span>
+        <span dir="ltr" className="font-data">
+          {value}
+          {unit}
+        </span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full" />
+    </div>
+  );
+}
+
+// A vertical strip of circular controls that floats beside the selected photo — deliberately
+// rendered outside the canvas's own overflow-hidden ancestor (see the wrapping <div> around
+// canvasRef in the main component) so it, and the flyout sliders it opens, can bleed past the
+// photo's own frame instead of getting cropped by it.
+function PhotoFloatingMenu({ el, onUpdate }: { el: AlbumPhotoElement; onUpdate: (patch: Partial<AlbumPhotoElement>) => void }) {
+  const [openPanel, setOpenPanel] = useState<null | "opacity" | "blur" | "rotation" | "shadow">(null);
+  const onLeft = el.xPct + el.widthPct > 70;
+  const side: "left" | "right" = onLeft ? "left" : "right";
+  const rotationPct = Math.round((((el.rotation ?? 0) % 360) + 360) % 360 / 360 * 100);
+  const toggle = (panel: typeof openPanel) => setOpenPanel((p) => (p === panel ? null : panel));
+
+  return (
+    <div
+      className="absolute z-20 flex flex-col gap-1.5"
+      style={{
+        // Anchored to the frame's own top edge (not vertically centered) — a centered menu for a
+        // photo near the canvas's top row pushes half its height above the canvas, past where the
+        // dialog's own overflow-y-auto can scroll to (it can't scroll to a negative offset), which
+        // makes the top buttons genuinely unclickable. Anchoring downward instead means the worst
+        // case is needing to scroll the dialog down, which is always possible.
+        top: `${el.yPct}%`,
+        left: onLeft ? `calc(${el.xPct}% - 44px)` : `calc(${el.xPct + el.widthPct}% + 8px)`,
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <CircleButton label="שחור-לבן" active={el.filter === "bw"} onClick={() => onUpdate({ filter: el.filter === "bw" ? "none" : "bw" })}>
+        ◐
+      </CircleButton>
+      <CircleButton label="גווני ספיה" active={el.filter === "sepia"} onClick={() => onUpdate({ filter: el.filter === "sepia" ? "none" : "sepia" })}>
+        🟤
+      </CircleButton>
+      <div className="relative">
+        <CircleButton label="שקיפות" active={openPanel === "opacity" || (el.opacity ?? 100) < 100} onClick={() => toggle("opacity")}>
+          👁️
+        </CircleButton>
+        {openPanel === "opacity" && (
+          <FlyoutPanel side={side}>
+            <MiniSlider label="שקיפות" value={el.opacity ?? 100} min={0} max={100} unit="%" onChange={(v) => onUpdate({ opacity: v })} />
+          </FlyoutPanel>
+        )}
+      </div>
+      <div className="relative">
+        <CircleButton label="טשטוש" active={openPanel === "blur" || !!el.blur} onClick={() => toggle("blur")}>
+          💧
+        </CircleButton>
+        {openPanel === "blur" && (
+          <FlyoutPanel side={side}>
+            <MiniSlider label="טשטוש (Blur)" value={el.blur ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ blur: v })} />
+          </FlyoutPanel>
+        )}
+      </div>
+      <div className="relative">
+        <CircleButton label="סיבוב" active={openPanel === "rotation" || !!el.rotation} onClick={() => toggle("rotation")}>
+          🔄
+        </CircleButton>
+        {openPanel === "rotation" && (
+          <FlyoutPanel side={side}>
+            <MiniSlider label="סיבוב" value={rotationPct} min={0} max={100} unit="%" onChange={(pct) => onUpdate({ rotation: (pct / 100) * 360 })} />
+          </FlyoutPanel>
+        )}
+      </div>
+      <div className="relative">
+        <CircleButton label="צל וקו מתאר" active={openPanel === "shadow" || !!el.shadow || !!el.borderWidth} onClick={() => toggle("shadow")}>
+          🖼️
+        </CircleButton>
+        {openPanel === "shadow" && (
+          <FlyoutPanel side={side} width={160}>
+            <MiniSlider label="צל" value={el.shadow ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ shadow: v })} />
+            <MiniSlider label="קו מתאר" value={el.borderWidth ?? 0} min={0} max={50} unit="px" onChange={(v) => onUpdate({ borderWidth: v })} />
+            {!!el.borderWidth && (
+              <div className="flex items-center gap-1.5">
+                {BORDER_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => onUpdate({ borderColor: c })}
+                    className="h-5 w-5 rounded-full"
+                    style={{ background: c, boxShadow: (el.borderColor ?? "#ffffff") === c ? "0 0 0 2px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)" }}
+                  />
+                ))}
+              </div>
+            )}
+          </FlyoutPanel>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export const BUILT_IN_TEMPLATES: { name: string; frames: AlbumFrame[] }[] = [
   {
     name: "שתי תמונות שוות",
     frames: [
@@ -149,6 +282,16 @@ function cssFilterFor(filter: AlbumPhotoFilter | undefined, blurPct: number | un
   return parts.length ? parts.join(" ") : undefined;
 }
 
+// box-shadow (unlike filter: drop-shadow on a descendant) isn't clipped by the frame's own
+// overflow-hidden, so it's the one that can actually bleed outside a cropped photo frame.
+function boxShadowFor(shadowPct: number | undefined): string | undefined {
+  if (!shadowPct) return undefined;
+  const blurPx = (shadowPct / 100) * 24;
+  const offsetPx = (shadowPct / 100) * 10;
+  const alpha = 0.15 + (shadowPct / 100) * 0.45;
+  return `${offsetPx}px ${offsetPx}px ${blurPx}px rgba(0,0,0,${alpha})`;
+}
+
 // Seeds a brand-new "custom" canvas from the spread's existing preset-layout photos (matching the
 // same position math the split/feature/stack renderers use) so switching a page to free-form
 // never silently loses the photos it already had.
@@ -199,6 +342,7 @@ export default function AlbumSpreadCanvasEditor({
   photo2,
   mode,
   templates,
+  usedElsewhere,
   onSave,
   onSaveTemplate,
   onClose,
@@ -209,6 +353,9 @@ export default function AlbumSpreadCanvasEditor({
   photo2: PhotoWithUrl | undefined | null;
   mode: "overlay" | "custom";
   templates: AlbumTemplateRow[];
+  // Photo ids already placed elsewhere in the album (other pages) — badged with ✅ in every
+  // picker below so the photographer doesn't accidentally place the same photo twice.
+  usedElsewhere?: Set<string>;
   onSave: (elements: AlbumElement[], background: { photoId: string | null; blur: number; opacity: number }) => void;
   onSaveTemplate: (name: string, frames: AlbumFrame[]) => Promise<void>;
   onClose: () => void;
@@ -392,6 +539,9 @@ export default function AlbumSpreadCanvasEditor({
           </button>
         </div>
 
+        {/* Not overflow-hidden (unlike the canvas below) so the floating photo menu — and the
+            flyout sliders it opens — can bleed past the canvas's own edge, not just the photo's. */}
+        <div className="relative">
         <div
           ref={canvasRef}
           onPointerMove={onPointerMove}
@@ -457,6 +607,9 @@ export default function AlbumSpreadCanvasEditor({
                       height: `${el.heightPct}%`,
                       outline: el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : isSelected ? "2px solid var(--color-amber-deep)" : "1px dashed rgba(255,255,255,0.6)",
                       outlineOffset: el.borderWidth ? `-${el.borderWidth}px` : undefined,
+                      // box-shadow (unlike a filter on the img) isn't clipped by this div's own
+                      // overflow-hidden, so it's what lets the shadow actually bleed past the frame.
+                      boxShadow: boxShadowFor(el.shadow),
                     }}
                   >
                     {photo ? (
@@ -521,6 +674,10 @@ export default function AlbumSpreadCanvasEditor({
               );
             })}
         </div>
+        {selected?.type === "photo" && selected.photoId && (
+          <PhotoFloatingMenu el={selected} onUpdate={(patch) => updateElement(selected.id, patch)} />
+        )}
+        </div>
 
         {selected && (
           <div className="space-y-2 mt-2.5">
@@ -576,78 +733,9 @@ export default function AlbumSpreadCanvasEditor({
               </>
             )}
             {selected.type === "photo" && selected.photoId && (
-              <>
-                <div className="flex gap-1.5">
-                  {(["none", "bw", "sepia"] as const).map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => updateElement(selected.id, { filter: f })}
-                      className="flex-1 rounded-full py-1.5 text-[10px] font-semibold"
-                      style={{
-                        background: (selected.filter ?? "none") === f ? "var(--color-amber-deep)" : "var(--color-chip)",
-                        color: (selected.filter ?? "none") === f ? "#fff" : "var(--color-ink-soft)",
-                      }}
-                    >
-                      {f === "none" ? "צבע מלא" : f === "bw" ? "שחור-לבן" : "סאפיה"}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => updateElement(selected.id, { borderWidth: 0 })}
-                    className="flex-1 rounded-full py-1.5 text-[10px] font-semibold"
-                    style={{
-                      background: !selected.borderWidth ? "var(--color-amber-deep)" : "var(--color-chip)",
-                      color: !selected.borderWidth ? "#fff" : "var(--color-ink-soft)",
-                    }}
-                  >
-                    ללא מסגרת
-                  </button>
-                  <button
-                    onClick={() => updateElement(selected.id, { borderWidth: selected.borderWidth || 8 })}
-                    className="flex-1 rounded-full py-1.5 text-[10px] font-semibold"
-                    style={{
-                      background: selected.borderWidth ? "var(--color-amber-deep)" : "var(--color-chip)",
-                      color: selected.borderWidth ? "#fff" : "var(--color-ink-soft)",
-                    }}
-                  >
-                    עם מסגרת
-                  </button>
-                </div>
-                {!!selected.borderWidth && (
-                  <>
-                    <SliderControl label="עובי מסגרת" value={selected.borderWidth} min={2} max={50} unit="px" onChange={(v) => updateElement(selected.id, { borderWidth: v })} />
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-ink-soft shrink-0">צבע מסגרת</span>
-                      {BORDER_COLORS.map((c) => (
-                        <button
-                          key={c}
-                          onClick={() => updateElement(selected.id, { borderColor: c })}
-                          className="h-7 w-7 rounded-full"
-                          style={{ background: c, boxShadow: (selected.borderColor ?? "#ffffff") === c ? "0 0 0 2px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)" }}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-                <SliderControl
-                  label="סיבוב"
-                  value={selected.rotation ?? 0}
-                  min={-180}
-                  max={180}
-                  unit="°"
-                  onChange={(v) => updateElement(selected.id, { rotation: v })}
-                />
-                <SliderControl
-                  label="שקיפות"
-                  value={selected.opacity ?? 100}
-                  min={0}
-                  max={100}
-                  unit="%"
-                  onChange={(v) => updateElement(selected.id, { opacity: v })}
-                />
-                <SliderControl label="טשטוש (Blur)" value={selected.blur ?? 0} min={0} max={100} unit="%" onChange={(v) => updateElement(selected.id, { blur: v })} />
-              </>
+              <p className="text-[11px] text-ink-soft text-center">
+                💡 לחצו על התמונה כדי לפתוח את תפריט העיצוב הצף (שחור-לבן, ספיה, שקיפות, טשטוש, סיבוב, צל וקו מתאר)
+              </p>
             )}
             <button onClick={() => removeElement(selected.id)} className="w-full h-8 rounded-full bg-chip text-rose text-xs font-semibold">
               מחיקה
@@ -729,9 +817,18 @@ export default function AlbumSpreadCanvasEditor({
             ) : (
               <div className="grid grid-cols-4 gap-2">
                 {pickerPhotos.map((p) => (
-                  <button key={p.id} onClick={() => choosePhoto(p.id)} className="aspect-square rounded-lg overflow-hidden" style={{ boxShadow: "0 0 0 1px var(--color-line)" }}>
+                  <button key={p.id} onClick={() => choosePhoto(p.id)} className="relative aspect-square rounded-lg overflow-hidden" style={{ boxShadow: "0 0 0 1px var(--color-line)" }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={p.url} alt="" className="w-full h-full object-cover" />
+                    {usedElsewhere?.has(p.id) && (
+                      <span
+                        className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
+                        style={{ background: "var(--color-sage)", color: "#fff" }}
+                        title="כבר נבחרה במקום אחר באלבום"
+                      >
+                        ✅
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

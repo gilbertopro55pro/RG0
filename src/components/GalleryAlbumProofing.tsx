@@ -24,6 +24,7 @@ export type ClientAlbumElement =
       rotation?: number;
       opacity?: number;
       blur?: number;
+      shadow?: number;
     }
   | {
       id: string;
@@ -45,6 +46,16 @@ export function cssFilterFor(filter: "none" | "bw" | "sepia" | undefined, blurPc
   else if (filter === "sepia") parts.push("sepia(0.85)");
   if (blurPct) parts.push(`blur(${(blurPct / 100) * ALBUM_BLUR_MAX_PX}px)`);
   return parts.length ? parts.join(" ") : undefined;
+}
+
+// Mirrors AlbumSpreadCanvasEditor's boxShadowFor — box-shadow (unlike a filter on the img) isn't
+// clipped by the frame's own overflow-hidden, so it's the one that can bleed past a cropped photo.
+export function boxShadowFor(shadowPct: number | undefined): string | undefined {
+  if (!shadowPct) return undefined;
+  const blurPx = (shadowPct / 100) * 24;
+  const offsetPx = (shadowPct / 100) * 10;
+  const alpha = 0.15 + (shadowPct / 100) * 0.45;
+  return `${offsetPx}px ${offsetPx}px ${blurPx}px rgba(0,0,0,${alpha})`;
 }
 
 type SpreadBackground = { url: string; blur: number; opacity: number } | null;
@@ -197,6 +208,7 @@ export default function GalleryAlbumProofing({
                     height: `${el.heightPct}%`,
                     outline: el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
                     outlineOffset: el.borderWidth ? `-${el.borderWidth}px` : undefined,
+                    boxShadow: boxShadowFor(el.shadow),
                   }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}

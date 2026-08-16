@@ -32,8 +32,14 @@ function hexToRgbTuple(hex: string): [number, number, number] {
 // Applied server-side via sharp before the buffer ever reaches pdf-lib — pdf-lib itself has no
 // image color-transform primitive, so this is the only way the PDF's B&W/sepia frames actually
 // match what the CSS `filter: grayscale()/sepia()` preview shows in the builder and proofing view.
+// Always runs (even with no filter/blur at all) because pdf-lib's embedJpg has no concept of EXIF
+// orientation — it embeds the raw sensor-orientation pixels as-is — while a plain <img> tag (the
+// builder/proofing preview) and the JPG/PSD raster exports (via coverCropRaw's unconditional
+// sharp(...).rotate()) both auto-correct for it. Skipping this step whenever a photo had no other
+// filter applied (the common case) used to mean the PDF alone could show a photo cover-cropped
+// against its wrong (sensor-native) dimensions — visibly different rotation/crop from every other
+// surface, for any photo whose camera wrote an EXIF orientation flag.
 async function applyPhotoFilter(buffer: Buffer, filter: AlbumPhotoFilter | undefined, blurPct?: number): Promise<Buffer> {
-  if ((!filter || filter === "none") && !blurPct) return buffer;
   let img = sharp(buffer).rotate(); // .rotate() with no args auto-applies EXIF orientation first
   // Sepia = tinted — sharp's tint() already desaturates internally before recoloring, so this is
   // the standard sepia approximation. Chaining an explicit .grayscale() *before* .tint() looks
@@ -135,6 +141,30 @@ function drawCoverImage(
   page.pushOperators(popGraphicsState());
 }
 
+// pdf-lib has no blur primitive, so a true Gaussian-soft shadow (like the CSS box-shadow the
+// builder/proofing views use) isn't reproducible here — this fakes softness by stacking a few
+// concentric, growing, increasingly-transparent rectangles behind the frame instead of one flat
+// one. Offset direction mirrors boxShadowFor's CSS convention (positive = shifts right and down on
+// screen), flipped on the y-axis since PDF space runs bottom-up.
+function drawPhotoShadow(page: PDFPage, rect: { x: number; y: number; width: number; height: number }, shadowPct: number | undefined) {
+  if (!shadowPct) return;
+  const offsetPt = (shadowPct / 100) * 10;
+  const maxSpread = (shadowPct / 100) * 24;
+  const baseAlpha = 0.15 + (shadowPct / 100) * 0.45;
+  const layers = 4;
+  for (let i = layers; i >= 1; i--) {
+    const spread = (maxSpread * i) / layers;
+    page.drawRectangle({
+      x: rect.x - spread + offsetPt,
+      y: rect.y - spread - offsetPt,
+      width: rect.width + spread * 2,
+      height: rect.height + spread * 2,
+      color: rgb(0, 0, 0),
+      opacity: (baseAlpha / layers) * 0.9,
+    });
+  }
+}
+
 // `el.fontSize` is already points on this exact 1600pt-wide reference canvas (see the
 // AlbumFontSizePt comment in types.ts), so — unlike every other geometry field here — it needs no
 // scaling at all; it *is* the PDFFont size.
@@ -210,11 +240,13 @@ export async function generateAlbumPdf({
     if (imageCache.has(cacheKey)) return imageCache.get(cacheKey)!;
     const photo = photosById.get(photoId);
     let buffer = photo ? await downloadObjectBuffer("galleries", photo.storage_path) : null;
-    if (buffer && ((filter && filter !== "none") || blurPct)) {
+    // Always runs — even with no filter/blur — since this is also where EXIF orientation gets
+    // normalized (see applyPhotoFilter's comment); skipping it silently would un-fix that.
+    if (buffer) {
       try {
         buffer = await applyPhotoFilter(buffer, filter, blurPct);
       } catch {
-        // Fall back to the unfiltered image rather than dropping it entirely.
+        // Fall back to the unfiltered (and un-EXIF-corrected) image rather than dropping it entirely.
       }
     }
     const image = buffer ? await embedImageAuto(pdfDoc, buffer) : null;
@@ -259,6 +291,7 @@ export async function generateAlbumPdf({
         const height = (el.heightPct / 100) * PAGE_HEIGHT;
         const x = (el.xPct / 100) * PAGE_WIDTH;
         const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - height;
+        drawPhotoShadow(page, { x, y, width, height }, el.shadow);
         drawCoverImage(page, image, { x, y, width, height }, el.focalX, el.focalY, { rotation: el.rotation, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
         if (el.borderWidth) {
           page.drawRectangle({

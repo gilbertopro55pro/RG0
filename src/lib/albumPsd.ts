@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { writePsdBuffer, type Layer } from "ag-psd";
 import { downloadObjectBuffer } from "@/lib/storage";
-import { resolvePageElements, coverCropRaw, svgTextLayer } from "@/lib/albumRaster";
+import { resolvePageElements, coverCropRaw, svgTextLayer, shadowLayerPng } from "@/lib/albumRaster";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 async function pngToRawRgba(buffer: Buffer): Promise<{ data: Buffer; width: number; height: number }> {
@@ -118,6 +118,18 @@ export async function renderAlbumPagePsd({
     any = true;
     const top = Math.round(el.y);
     const left = Math.round(el.x);
+    const shadow = await shadowLayerPng(width, height, el.shadow, left, top);
+    if (shadow) {
+      const shadowRgba = await pngToRawRgba(shadow.buffer);
+      children.push({
+        name: "צל",
+        top: shadow.top,
+        left: shadow.left,
+        bottom: shadow.top + shadowRgba.height,
+        right: shadow.left + shadowRgba.width,
+        imageData: { data: shadowRgba.data, width: shadowRgba.width, height: shadowRgba.height },
+      });
+    }
     children.push({
       name: "תמונה",
       top,

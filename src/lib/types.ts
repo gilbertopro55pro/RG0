@@ -256,6 +256,7 @@ export type AlbumPhotoElement = {
   rotation?: number; // degrees, -180..180, default 0
   opacity?: number; // 0-100, default 100
   blur?: number; // 0-100 (an arbitrary intensity scale, not raw px), default 0
+  shadow?: number; // 0-100 drop-shadow intensity, default 0
 };
 
 // Points on the album's fixed 1600pt-wide PDF reference canvas (same canvas the PDF proof export
