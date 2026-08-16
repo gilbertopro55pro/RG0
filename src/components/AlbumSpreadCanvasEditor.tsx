@@ -118,6 +118,14 @@ function IconFocal() {
     </MenuIconBase>
   );
 }
+function IconTrueSize() {
+  return (
+    <MenuIconBase>
+      <rect x={3.5} y={6.5} width={17} height={11} rx={1} />
+      <path d="M3.5 3.5h4M3.5 3.5v4M20.5 3.5h-4M20.5 3.5v4M3.5 20.5h4M3.5 20.5v-4M20.5 20.5h-4M20.5 20.5v-4" />
+    </MenuIconBase>
+  );
+}
 
 function CircleButton({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -172,11 +180,13 @@ function PhotoFloatingMenu({
   panning,
   onTogglePan,
   onUpdate,
+  onTrueSize,
 }: {
   el: AlbumPhotoElement;
   panning: boolean;
   onTogglePan: () => void;
   onUpdate: (patch: Partial<AlbumPhotoElement>) => void;
+  onTrueSize: () => void;
 }) {
   const [openPanel, setOpenPanel] = useState<null | "opacity" | "blur" | "rotation" | "shadow">(null);
   const onLeft = el.xPct + el.widthPct > 70;
@@ -220,6 +230,9 @@ function PhotoFloatingMenu({
           </FlyoutPanel>
         )}
       </div>
+      <CircleButton label="הצגה בגודל נכון — מתאים את המסגרת ליחס הרוחב/גובה האמיתי של התמונה" onClick={onTrueSize}>
+        <IconTrueSize />
+      </CircleButton>
       <div className="relative">
         <CircleButton label="שקיפות" active={openPanel === "opacity" || (el.opacity ?? 100) < 100} onClick={() => toggle("opacity")}>
           <IconOpacity />
@@ -365,6 +378,31 @@ export const BUILT_IN_TEMPLATES: { name: string; frames: AlbumFrame[] }[] = [
   { name: "פס עליון משולש ותחתון כפול", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 40.83 }, { id: "f2", xPct: 34, yPct: 0, widthPct: 32, heightPct: 40.83 }, { id: "f3", xPct: 68, yPct: 0, widthPct: 32, heightPct: 40.83 }, { id: "f4", xPct: 0, yPct: 42.83, widthPct: 49, heightPct: 57.17 }, { id: "f5", xPct: 51, yPct: 42.83, widthPct: 49, heightPct: 57.17 }] },
   { name: "טור זכרונות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 100, heightPct: 18.4 }, { id: "f2", xPct: 0, yPct: 20.4, widthPct: 100, heightPct: 18.4 }, { id: "f3", xPct: 0, yPct: 40.8, widthPct: 100, heightPct: 18.4 }, { id: "f4", xPct: 0, yPct: 61.2, widthPct: 100, heightPct: 18.4 }, { id: "f5", xPct: 0, yPct: 81.6, widthPct: 100, heightPct: 18.4 }] },
 ];
+
+// The print-safe margin is a hard constraint for anything placed AUTOMATICALLY (templates, the
+// multi-photo auto-layout) — every frame designed on a nominal 0-100 full-bleed canvas gets
+// linearly rescaled into the album's actual safe-print box, so no automatically-generated layout
+// can ever cross the green line regardless of which album size it's applied to. Manual dragging is
+// deliberately NOT clamped by this — a photographer can always drag a photo past the margin on
+// purpose; only automatic placement is constrained.
+export function marginInsetPctFor(album: { width_cm: number; height_cm: number }): { x: number; y: number } | null {
+  return album.width_cm > 0 && album.height_cm > 0 ? { x: (0.5 / album.width_cm) * 100, y: (0.5 / album.height_cm) * 100 } : null;
+}
+
+export function fitFramesToSafeArea(frames: AlbumFrame[], marginInsetPct: { x: number; y: number } | null): AlbumFrame[] {
+  if (!marginInsetPct) return frames;
+  const { x: mx, y: my } = marginInsetPct;
+  const safeWidth = 100 - 2 * mx;
+  const safeHeight = 100 - 2 * my;
+  if (safeWidth <= 0 || safeHeight <= 0) return frames;
+  return frames.map((f) => ({
+    ...f,
+    xPct: mx + (f.xPct / 100) * safeWidth,
+    yPct: my + (f.yPct / 100) * safeHeight,
+    widthPct: (f.widthPct / 100) * safeWidth,
+    heightPct: (f.heightPct / 100) * safeHeight,
+  }));
+}
 
 function cssFilterFor(filter: AlbumPhotoFilter | undefined, blurPct: number | undefined): string | undefined {
   const parts: string[] = [];
@@ -627,8 +665,7 @@ export default function AlbumSpreadCanvasEditor({
   const backgroundPhoto = backgroundPhotoId ? photos.find((p) => p.id === backgroundPhotoId) : null;
   // A 0.5cm trim-safe inset expressed as a % of each axis — proportional, so it looks right on a
   // 20x30 album and a 60x40 one alike.
-  const marginInsetPct =
-    album.width_cm > 0 && album.height_cm > 0 ? { x: (0.5 / album.width_cm) * 100, y: (0.5 / album.height_cm) * 100 } : null;
+  const marginInsetPct = marginInsetPctFor(album);
 
   // Leaving "position image" mode whenever the selection changes elsewhere keeps its green ring
   // tied to whatever's actually selected, rather than lingering on a no-longer-selected element.
@@ -702,6 +739,24 @@ export default function AlbumSpreadCanvasEditor({
       img.src = url;
     });
 
+  // "הצגה בגודל נכון" — resizes the frame to the photo's own true aspect ratio (no crop needed
+  // once matched) instead of whatever ratio the frame happened to have. Keeps the frame's current
+  // WIDTH fixed and solves for the height that ratio implies in real cm, re-centered on the
+  // frame's previous vertical center — deliberately allowed to grow past other elements or the
+  // green safe-print margin, since this is a manual per-photo action, not automatic placement.
+  const showTrueSize = async (id: string) => {
+    const el = elements.find((e) => e.id === id);
+    if (!el || el.type !== "photo" || !el.photoId || album.width_cm <= 0 || album.height_cm <= 0) return;
+    const photo = photoById.get(el.photoId);
+    if (!photo) return;
+    const aspect = await loadImageAspect(photo.url);
+    const widthCm = (el.widthPct / 100) * album.width_cm;
+    const heightCm = widthCm / aspect;
+    const newHeightPct = (heightCm / album.height_cm) * 100;
+    const centerY = el.yPct + el.heightPct / 2;
+    updateElement(id, { heightPct: newHeightPct, yPct: centerY - newHeightPct / 2, focalX: 50, focalY: 50 });
+  };
+
   const confirmMultiPhotos = async () => {
     const ids = Array.from(multiPhotoIds);
     if (ids.length === 0) return;
@@ -709,7 +764,9 @@ export default function AlbumSpreadCanvasEditor({
     const items = await Promise.all(
       ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoById.get(id)?.url ?? "") }))
     );
-    const frames = generateOrientedFrames(items); // same order/length as `items`
+    // Rescaled into the album's print-safe area (see fitFramesToSafeArea) so an auto-generated
+    // multi-photo layout can never cross the green margin on its own.
+    const frames = fitFramesToSafeArea(generateOrientedFrames(items), marginInsetPct); // same order/length as `items`
     const newPhotoElements: AlbumPhotoElement[] = frames.map((f, i) => ({
       id: f.id,
       type: "photo",
@@ -745,8 +802,12 @@ export default function AlbumSpreadCanvasEditor({
 
   // Replaces the photo layout with the template's empty frames, best-effort auto-filling them in
   // order from favorited photos not already placed elsewhere on this page — text elements (which
-  // aren't part of any template) are kept as-is.
-  const applyTemplate = (frames: AlbumFrame[]) => {
+  // aren't part of any template) are kept as-is. Frames are rescaled into the album's print-safe
+  // area every time a template is applied — this re-fit happens regardless of the template's
+  // source (built-in or the photographer's own saved one), so a template built for one album size
+  // never crosses the green margin when applied to a differently-sized one.
+  const applyTemplate = (rawFrames: AlbumFrame[]) => {
+    const frames = fitFramesToSafeArea(rawFrames, marginInsetPct);
     const available = favoritePhotos.filter((p) => !usedPhotoIds.has(p.id));
     const newPhotoElements: AlbumPhotoElement[] = frames.map((f, i) => ({
       id: `frame-${Date.now()}-${i}`,
@@ -794,18 +855,6 @@ export default function AlbumSpreadCanvasEditor({
       startFocalY: el.type === "photo" ? el.focalY : 50,
       startZoom: el.type === "photo" ? (el.zoom ?? 100) : 100,
     };
-  };
-
-  // Alt/Cmd+click a photo to instantly center its frame on the page (size unchanged) — a quick
-  // shortcut for the same "reaches page center" alignment the guides highlight during a manual drag.
-  const centerElementOnPage = (id: string) => {
-    setElements((prev) =>
-      prev.map((e) => {
-        if (e.id !== id) return e;
-        const height = e.type === "photo" ? e.heightPct : (e.heightPct ?? 15);
-        return { ...e, xPct: Math.max(0, 50 - e.widthPct / 2), yPct: Math.max(0, 50 - height / 2) };
-      })
-    );
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -946,10 +995,12 @@ export default function AlbumSpreadCanvasEditor({
                         e.stopPropagation();
                         return;
                       }
+                      // Alt/Cmd+click centers the PHOTO inside its own fixed frame (resets its
+                      // focal point) — it never moves the frame itself across the page.
                       if (e.altKey || e.metaKey) {
                         e.stopPropagation();
                         setSelectedId(el.id);
-                        centerElementOnPage(el.id);
+                        updateElement(el.id, { focalX: 50, focalY: 50 });
                         return;
                       }
                       startDrag(e, el, "move");
@@ -959,6 +1010,15 @@ export default function AlbumSpreadCanvasEditor({
                         e.stopPropagation();
                         openPickerForFrame(el.id);
                       }
+                    }}
+                    onDoubleClick={(e) => {
+                      // A double-click is a fast shortcut into "position image" mode — the same
+                      // mode the floating menu's מיקום התמונה button opens — so a following drag
+                      // pans the photo inside its own fixed frame instead of moving the frame.
+                      if (!photo) return;
+                      e.stopPropagation();
+                      setSelectedId(el.id);
+                      setPanModeId(el.id);
                     }}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
@@ -1092,6 +1152,7 @@ export default function AlbumSpreadCanvasEditor({
             panning={panModeId === selected.id}
             onTogglePan={() => setPanModeId((prev) => (prev === selected.id ? null : selected.id))}
             onUpdate={(patch) => updateElement(selected.id, patch)}
+            onTrueSize={() => showTrueSize(selected.id)}
           />
         )}
         </div>
@@ -1152,7 +1213,7 @@ export default function AlbumSpreadCanvasEditor({
                     </optgroup>
                   </select>
                 </div>
-                <SliderControl label="גודל טקסט" value={selected.fontSize} min={2} max={96} unit="pt" onChange={(v) => updateElement(selected.id, { fontSize: v })} />
+                <SliderControl label="גודל טקסט" value={selected.fontSize} min={2} max={250} unit="pt" onChange={(v) => updateElement(selected.id, { fontSize: v })} />
               </>
             )}
             {selected.type === "photo" && selected.photoId && (
@@ -1277,17 +1338,22 @@ export default function AlbumSpreadCanvasEditor({
       {photoPickerOpen && (
         <div className="fixed inset-0 z-[85] flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setPhotoPickerOpen(false)}>
           <div className="w-full max-w-sm lg:max-w-2xl rounded-3xl p-4 lg:p-6 bg-paper max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-2">
               <h3 className="text-sm font-bold">
                 {pickingBackground ? "בחירת תמונת רקע — " : ""}
                 {addingMultiplePhotos ? "בחירת תמונות להוספה — " : ""}
                 {showAllInPicker || favoritePhotos.length === 0 ? "כל התמונות" : "תמונות מועדפות"}
               </h3>
-              {favoritePhotos.length > 0 && (
-                <button onClick={() => setShowAllInPicker((v) => !v)} className="text-xs font-semibold text-ink-soft underline">
-                  {showAllInPicker ? "רק מועדפות" : "כל התמונות"}
+              <div className="flex items-center gap-2 shrink-0">
+                {favoritePhotos.length > 0 && (
+                  <button onClick={() => setShowAllInPicker((v) => !v)} className="text-xs font-semibold text-ink-soft underline">
+                    {showAllInPicker ? "רק מועדפות" : "כל התמונות"}
+                  </button>
+                )}
+                <button onClick={() => setPhotoPickerOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+                  ✕
                 </button>
-              )}
+              </div>
             </div>
             {addingMultiplePhotos && (
               <p className="text-[11px] text-ink-soft mb-2.5">
@@ -1347,7 +1413,12 @@ export default function AlbumSpreadCanvasEditor({
       {textDraftOpen && (
         <div className="fixed inset-0 z-[85] flex items-end justify-center" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setTextDraftOpen(false)}>
           <div className="w-full max-w-sm rounded-t-3xl p-5 bg-paper" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold mb-2.5">טקסט חדש (עברית או אנגלית)</p>
+            <div className="flex items-center justify-between mb-2.5">
+              <p className="text-sm font-semibold">טקסט חדש (עברית או אנגלית)</p>
+              <button onClick={() => setTextDraftOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+                ✕
+              </button>
+            </div>
             <input
               value={textDraft}
               onChange={(e) => setTextDraft(e.target.value)}
@@ -1364,7 +1435,12 @@ export default function AlbumSpreadCanvasEditor({
       {templatePickerOpen && (
         <div className="fixed inset-0 z-[85] flex items-end lg:items-center justify-center" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setTemplatePickerOpen(false)}>
           <div className="w-full max-w-sm lg:max-w-4xl rounded-t-3xl lg:rounded-3xl p-5 lg:p-6 bg-paper max-h-[75vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-bold mb-3">תבניות מובנות</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-bold">תבניות מובנות</p>
+              <button onClick={() => setTemplatePickerOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+                ✕
+              </button>
+            </div>
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
               {BUILT_IN_TEMPLATES.map((t) => (
                 <button key={t.name} onClick={() => applyTemplate(t.frames)} className="rounded-xl border border-line p-2 text-center">
@@ -1401,7 +1477,12 @@ export default function AlbumSpreadCanvasEditor({
       {saveTemplateOpen && (
         <div className="fixed inset-0 z-[85] flex items-end justify-center" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setSaveTemplateOpen(false)}>
           <div className="w-full max-w-sm rounded-t-3xl p-5 bg-paper" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold mb-2.5">שם התבנית</p>
+            <div className="flex items-center justify-between mb-2.5">
+              <p className="text-sm font-semibold">שם התבנית</p>
+              <button onClick={() => setSaveTemplateOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+                ✕
+              </button>
+            </div>
             <input
               value={templateNameDraft}
               onChange={(e) => setTemplateNameDraft(e.target.value)}

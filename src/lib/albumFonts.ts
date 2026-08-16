@@ -85,8 +85,12 @@ export const ALBUM_FONTS: AlbumFontOption[] = ALBUM_FONT_DEFS.map((def) => ({
 
 const fontByKey = new Map(ALBUM_FONTS.map((f) => [f.key, f]));
 
-// Every className needs to be present on a shared ancestor for its CSS variable to be in scope —
-// callers spread this onto the canvas/viewer's outer wrapper.
+// Every font's `.variable` class needs to be present on a shared ancestor so its
+// `--font-af-<key>` custom property is actually in scope for albumFontFamilyCss()'s var()
+// references below — `.className` (a common mix-up, since it looks like the obvious choice) sets
+// a FIXED font-family directly instead, and stacking 20 of those on one element just means
+// whichever one wins the cascade "sticks" regardless of which font is actually selected per
+// element, which is exactly the "changing the font doesn't change the text" bug this fixes.
 export const ALBUM_FONT_CLASS_NAMES = [
   heebo,
   rubik,
@@ -111,7 +115,7 @@ export const ALBUM_FONT_CLASS_NAMES = [
   heeboHebrewFallback,
   heeboLatinFallback,
 ]
-  .map((f) => f.className)
+  .map((f) => f.variable)
   .join(" ");
 
 // The chosen font first, then the two Heebo faces as automatic per-glyph fallback (a script the
@@ -119,5 +123,10 @@ export const ALBUM_FONT_CLASS_NAMES = [
 // resolves through these instead of an unstyled system font).
 export function albumFontFamilyCss(key: string | undefined): string {
   const font = fontByKey.get(key ?? "heebo") ?? fontByKey.get("heebo")!;
-  return `var(${font.variable}), var(${heeboHebrewFallback.variable}), var(${heeboLatinFallback.variable}), sans-serif`;
+  // `font.variable` (like every ALBUM_FONTS entry's) is next/font's generated CLASSNAME for
+  // applying the CSS variable — the right thing to put inside var() is the variable's actual
+  // NAME, which every font here was declared with as `--font-af-<key>` (see the Heebo/Rubik/…
+  // calls above), not that classname. Using the classname inside var() used to be silently
+  // invalid CSS, which is why picking a font never visibly changed anything.
+  return `var(--font-af-${font.key}), var(--font-af-heebo-hebrew), var(--font-af-heebo-latin), sans-serif`;
 }

@@ -21,7 +21,7 @@ import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
-import AlbumSpreadCanvasEditor, { BUILT_IN_TEMPLATES } from "@/components/AlbumSpreadCanvasEditor";
+import AlbumSpreadCanvasEditor, { BUILT_IN_TEMPLATES, fitFramesToSafeArea, marginInsetPctFor } from "@/components/AlbumSpreadCanvasEditor";
 import { generateGridFrames } from "@/lib/albumGrid";
 import {
   GALLERY_THEMES,
@@ -389,9 +389,10 @@ export default function GalleryManageView({
 
   // "עמוד חדש" — creates exactly one new spread from a chosen template's empty frames, then opens
   // the canvas editor on it so the photographer assigns photos to each frame.
-  const createSpreadFromTemplate = async (frames: AlbumFrame[]) => {
+  const createSpreadFromTemplate = async (rawFrames: AlbumFrame[]) => {
     if (!album) return;
     setCreatingSpread(true);
+    const frames = fitFramesToSafeArea(rawFrames, marginInsetPctFor(album));
     const elements: AlbumElement[] = frames.map((f) => ({
       id: f.id,
       type: "photo",
@@ -423,7 +424,7 @@ export default function GalleryManageView({
   const createSpreadFromCustomCount = async (count: number) => {
     if (!album || count <= 0) return;
     setCreatingSpread(true);
-    const frames = generateGridFrames(count);
+    const frames = fitFramesToSafeArea(generateGridFrames(count), marginInsetPctFor(album));
     const unused = photos.filter((p) => !albumWideUsedPhotoIds.has(p.id));
     const favoritesFirst = [...unused.filter((p) => p.is_favorite), ...unused.filter((p) => !p.is_favorite)];
     const elements: AlbumElement[] = frames.map((f, i) => ({
@@ -1805,7 +1806,7 @@ export default function GalleryManageView({
           onClick={() => setAlbumManageOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-sm lg:max-w-none lg:w-[95vw] lg:h-[92vh] rounded-3xl p-5 lg:p-7 bg-paper shadow-sheet max-h-[85vh] lg:max-h-none overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
