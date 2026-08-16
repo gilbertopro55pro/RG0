@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 // pretending gilberto ever charged more than it does.
 const STACK_ITEMS = [
   { label: "תוכנת CRM לניהול אירועים ולקוחות", price: 89 },
+  { label: "תוכנת עיצוב אלבומים", price: 79 },
   { label: "שירות אחסון גלריות מאובטחות ללקוחות", price: 69 },
   { label: "תוכנת חוזים דיגיטליים לחתימה מרחוק", price: 69 },
   { label: "מערכת תזכורות תשלום אוטומטיות", price: 49 },
