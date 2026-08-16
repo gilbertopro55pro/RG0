@@ -107,6 +107,39 @@ function FocalGrid({ onPick }: { onPick: (x: number, y: number) => void }) {
   );
 }
 
+// Lets the photographer pick the save folder themselves (the File System Access API's native
+// "Save As" dialog) instead of the file silently landing in the browser's default downloads
+// folder — only Chromium desktop browsers support this, so everywhere else (Safari, Firefox,
+// mobile) falls back to the normal `<a download>` flow, unchanged.
+async function saveBlobLettingUserChooseLocation(blob: Blob, filename: string): Promise<void> {
+  const picker = (window as unknown as { showSaveFilePicker?: (opts: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker;
+  if (picker) {
+    try {
+      const ext = filename.includes(".") ? filename.slice(filename.lastIndexOf(".")) : "";
+      const handle = await picker({
+        suggestedName: filename,
+        types: ext
+          ? [{ description: `${ext.slice(1).toUpperCase()} file`, accept: { [blob.type || "application/octet-stream"]: [ext] } }]
+          : undefined,
+      });
+      const writable = await (handle as unknown as { createWritable: () => Promise<WritableStream & { write: (b: Blob) => Promise<void>; close: () => Promise<void> }> }).createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (err) {
+      // The user cancelling the picker isn't an error to recover from — it just means they
+      // changed their mind, so don't silently fall back to auto-downloading it anyway.
+      if (err instanceof Error && err.name === "AbortError") return;
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function GalleryManageView({
   eventId,
   clientName,
@@ -574,12 +607,7 @@ export default function GalleryManageView({
       const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
       const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : fallbackName;
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      await saveBlobLettingUserChooseLocation(blob, filename);
     } finally {
       setBusy(false);
     }

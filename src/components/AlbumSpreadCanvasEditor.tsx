@@ -181,12 +181,14 @@ function PhotoFloatingMenu({
   onTogglePan,
   onUpdate,
   onTrueSize,
+  onApplyShadowToAll,
 }: {
   el: AlbumPhotoElement;
   panning: boolean;
   onTogglePan: () => void;
   onUpdate: (patch: Partial<AlbumPhotoElement>) => void;
   onTrueSize: () => void;
+  onApplyShadowToAll: () => void;
 }) {
   const [openPanel, setOpenPanel] = useState<null | "opacity" | "blur" | "rotation" | "shadow">(null);
   const onLeft = el.xPct + el.widthPct > 70;
@@ -283,6 +285,12 @@ function PhotoFloatingMenu({
                 ))}
               </div>
             )}
+            <button
+              onClick={onApplyShadowToAll}
+              className="w-full rounded-lg py-1.5 text-[10px] font-semibold bg-chip text-ink-soft"
+            >
+              החל על כל התמונות בדף
+            </button>
           </FlyoutPanel>
         )}
       </div>
@@ -757,6 +765,18 @@ export default function AlbumSpreadCanvasEditor({
     updateElement(id, { heightPct: newHeightPct, yPct: centerY - newHeightPct / 2, focalX: 50, focalY: 50 });
   };
 
+  // "החל על כל התמונות בדף" — copies one photo's border/shadow styling onto every other photo
+  // element on this page, so matching a whole spread's frames doesn't mean opening each one's own
+  // flyout and re-entering the same shadow%/border-width/color by hand.
+  const applyShadowToAllPhotos = (id: string) => {
+    const source = elements.find((e) => e.id === id);
+    if (!source || source.type !== "photo") return;
+    const { shadow, borderWidth, borderColor } = source;
+    setElements((prev) =>
+      prev.map((e) => (e.type === "photo" ? { ...e, shadow, borderWidth, borderColor } : e))
+    );
+  };
+
   const confirmMultiPhotos = async () => {
     const ids = Array.from(multiPhotoIds);
     if (ids.length === 0) return;
@@ -1153,6 +1173,7 @@ export default function AlbumSpreadCanvasEditor({
             onTogglePan={() => setPanModeId((prev) => (prev === selected.id ? null : selected.id))}
             onUpdate={(patch) => updateElement(selected.id, patch)}
             onTrueSize={() => showTrueSize(selected.id)}
+            onApplyShadowToAll={() => applyShadowToAllPhotos(selected.id)}
           />
         )}
         </div>

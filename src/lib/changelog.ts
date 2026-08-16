@@ -8,6 +8,15 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.26.0",
+    date: "2026-08-16",
+    changes: [
+      "תפריט העיגולים, הגדרות צל וקו מתאר: כפתור \"החל על כל התמונות בדף\" שמעתיק את הערכים לכל התמונות בעמוד בבת אחת",
+      "ייצוא JPG ו-PSD: בדפדפנים שתומכים בכך (Chrome/Edge בדסקטופ) נפתח חלון בחירת מיקום שמירה אמיתי במקום שמירה אוטומטית לתיקיית ההורדות",
+      "ייצוא PSD: קו מתאר וצל הופכים לאפקטי Layer Style אמיתיים וניתנים לעריכה בפוטושופ (Stroke ו-Drop Shadow חיים על שכבת התמונה) במקום שכבות פיקסלים קפואות — כולל תמונות מסובבות, שקודם לא קיבלו את זה בכלל",
+    ],
+  },
+  {
     version: "1.25.0",
     date: "2026-08-16",
     changes: [

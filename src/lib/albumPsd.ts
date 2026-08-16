@@ -1,12 +1,66 @@
 import sharp from "sharp";
-import { writePsdBuffer, type Layer } from "ag-psd";
+import { writePsdBuffer, type Layer, type LayerEffectsInfo } from "ag-psd";
 import { downloadObjectBuffer } from "@/lib/storage";
-import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng } from "@/lib/albumRaster";
+import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer } from "@/lib/albumRaster";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 async function pngToRawRgba(buffer: Buffer): Promise<{ data: Buffer; width: number; height: number }> {
   const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   return { data, width: info.width, height: info.height };
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  const n = parseInt(full, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+// Real, live Photoshop Layer Style effects — a Drop Shadow and a Stroke, editable in Photoshop's
+// own Layer Style dialog exactly as if applied by hand, instead of the old approach of baking a
+// separate flat "shadow"/"border" raster layer next to the photo. The blur/offset/opacity numbers
+// mirror boxShadowFor()/the old shadowLayerPng() exactly, so the shadow looks the same as the
+// builder preview and the JPG export; the border's `size` reuses the app's existing pixel-count
+// convention unchanged. Distance/angle approximate CSS's fixed down-right offset as Photoshop's
+// polar distance+angle form — close enough to land right, and it's live/editable in Photoshop if
+// a photographer wants to nudge it.
+function buildPhotoLayerEffects(shadowPct: number | undefined, borderWidth: number | undefined, borderColor: string | undefined): LayerEffectsInfo | undefined {
+  const effects: LayerEffectsInfo = {};
+  if (shadowPct) {
+    const blurPx = Math.max(1, (shadowPct / 100) * 24);
+    const offsetPx = Math.round((shadowPct / 100) * 10);
+    const opacityPct = Math.round((0.15 + (shadowPct / 100) * 0.45) * 100);
+    effects.dropShadow = [
+      {
+        enabled: true,
+        present: true,
+        showInDialog: false,
+        useGlobalLight: false,
+        angle: 135,
+        distance: { units: "Pixels", value: Math.round(offsetPx * Math.SQRT2) },
+        size: { units: "Pixels", value: Math.round(blurPx) },
+        color: { r: 0, g: 0, b: 0 },
+        opacity: opacityPct,
+        blendMode: "multiply",
+      },
+    ];
+  }
+  if (borderWidth) {
+    effects.stroke = [
+      {
+        enabled: true,
+        present: true,
+        showInDialog: false,
+        size: { units: "Pixels", value: borderWidth },
+        position: "center",
+        fillType: "color",
+        color: hexToRgb(borderColor ?? "#ffffff"),
+        opacity: 100,
+        blendMode: "normal",
+      },
+    ];
+  }
+  return Object.keys(effects).length > 0 ? effects : undefined;
 }
 
 // Builds a real, layered .psd — each photo is its own positioned raster layer, and a black & white
@@ -110,81 +164,33 @@ export async function renderAlbumPagePsd({
     const frameTop = Math.round(el.y);
     const frameLeft = Math.round(el.x);
 
-    if (el.rotation) {
-      // Photoshop layers have no native "rotate" field, so a rotated element has to be fully
-      // baked (photo + border together, so they spin as one rigid tile — see composePhotoTile) —
-      // this trades away the border's normal live/editable layer for the rotated case only.
-      const tile = await composePhotoTile(buffer, width, height, el.focalX, el.focalY, el.filter, true, {
-        rotation: el.rotation,
-        blur: el.blur,
-        zoom: el.zoom,
-        borderWidth: el.borderWidth,
-        borderColor: el.borderColor,
-      });
-      if (!tile) continue;
-      any = true;
-      const shadow = await shadowLayerPng(width, height, el.shadow, frameLeft, frameTop, el.rotation);
-      if (shadow) {
-        const shadowRgba = await pngToRawRgba(shadow.buffer);
-        children.push({
-          name: "צל",
-          top: shadow.top,
-          left: shadow.left,
-          bottom: shadow.top + shadowRgba.height,
-          right: shadow.left + shadowRgba.width,
-          imageData: { data: shadowRgba.data, width: shadowRgba.width, height: shadowRgba.height },
-        });
-      }
-      const top = Math.round(frameTop + tile.top);
-      const left = Math.round(frameLeft + tile.left);
-      children.push({
-        name: "תמונה",
-        top,
-        left,
-        bottom: top + tile.height,
-        right: left + tile.width,
-        opacity: (el.opacity ?? 100) / 100,
-        imageData: { data: tile.data, width: tile.width, height: tile.height },
-      });
-      continue;
-    }
-
-    // Never bake B&W or opacity into the pixels here — B&W becomes a real adjustment layer below,
-    // and opacity stays a live, editable PSD layer property instead.
-    const cropped = await coverCropRaw(buffer, width, height, el.focalX, el.focalY, el.filter === "sepia" ? "sepia" : undefined, false, {
+    // Border, shadow, and opacity all stay live, editable Photoshop layer properties/Layer
+    // Style effects — never baked into pixels — for rotated photos exactly the same as
+    // unrotated ones now (composePhotoTile with no borderWidth just crops/zooms/rotates the
+    // photo itself, nothing more). Blur is the one exception: there's no from-scratch-authorable
+    // Smart Filter equivalent, so it's still baked into the pixels here.
+    const tile = await composePhotoTile(buffer, width, height, el.focalX, el.focalY, el.filter === "sepia" ? "sepia" : undefined, false, {
+      rotation: el.rotation,
       blur: el.blur,
       zoom: el.zoom,
     });
-    if (!cropped) continue;
+    if (!tile) continue;
     any = true;
-    const shadow = await shadowLayerPng(width, height, el.shadow, frameLeft, frameTop);
-    if (shadow) {
-      const shadowRgba = await pngToRawRgba(shadow.buffer);
-      children.push({
-        name: "צל",
-        top: shadow.top,
-        left: shadow.left,
-        bottom: shadow.top + shadowRgba.height,
-        right: shadow.left + shadowRgba.width,
-        imageData: { data: shadowRgba.data, width: shadowRgba.width, height: shadowRgba.height },
-      });
-    }
+    const top = Math.round(frameTop + tile.top);
+    const left = Math.round(frameLeft + tile.left);
+    const effects = buildPhotoLayerEffects(el.shadow, el.borderWidth, el.borderColor);
     children.push({
       name: "תמונה",
-      top: frameTop,
-      left: frameLeft,
-      bottom: frameTop + height,
-      right: frameLeft + width,
+      top,
+      left,
+      bottom: top + tile.height,
+      right: left + tile.width,
       opacity: (el.opacity ?? 100) / 100,
-      imageData: { data: cropped.data, width: cropped.width, height: cropped.height },
+      imageData: { data: tile.data, width: tile.width, height: tile.height },
+      ...(effects ? { effects } : {}),
     });
     if (el.filter === "bw") {
       children.push({ name: "שחור-לבן", clipping: true, adjustment: { type: "black & white" } });
-    }
-    if (el.borderWidth) {
-      const strokeSvg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${el.borderWidth / 2}" y="${el.borderWidth / 2}" width="${width - el.borderWidth}" height="${height - el.borderWidth}" fill="none" stroke="${el.borderColor ?? "#ffffff"}" stroke-width="${el.borderWidth}"/></svg>`;
-      const strokeRgba = await pngToRawRgba(Buffer.from(strokeSvg));
-      children.push({ name: "מסגרת", top: frameTop, left: frameLeft, bottom: frameTop + height, right: frameLeft + width, imageData: { data: strokeRgba.data, width: strokeRgba.width, height: strokeRgba.height } });
     }
   }
   if (!any && !elements.some((e) => e.kind === "text") && !spread.background_photo_id) return null;
