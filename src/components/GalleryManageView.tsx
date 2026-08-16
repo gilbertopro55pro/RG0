@@ -21,7 +21,7 @@ import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
-import AlbumSpreadCanvasEditor, { BUILT_IN_TEMPLATES, fitFramesToSafeArea, marginInsetPctFor } from "@/components/AlbumSpreadCanvasEditor";
+import AlbumSpreadCanvasEditor, { BUILT_IN_TEMPLATES, fitFramesToSafeArea, marginInsetPctFor, boxShadowFor, cssFilterFor } from "@/components/AlbumSpreadCanvasEditor";
 import { generateGridFrames } from "@/lib/albumGrid";
 import {
   GALLERY_THEMES,
@@ -107,30 +107,41 @@ function FocalGrid({ onPick }: { onPick: (x: number, y: number) => void }) {
   );
 }
 
-// Lets the photographer pick the save folder themselves (the File System Access API's native
-// "Save As" dialog) instead of the file silently landing in the browser's default downloads
-// folder — only Chromium desktop browsers support this, so everywhere else (Safari, Firefox,
-// mobile) falls back to the normal `<a download>` flow, unchanged.
-async function saveBlobLettingUserChooseLocation(blob: Blob, filename: string): Promise<void> {
-  const picker = (window as unknown as { showSaveFilePicker?: (opts: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker;
-  if (picker) {
-    try {
-      const ext = filename.includes(".") ? filename.slice(filename.lastIndexOf(".")) : "";
-      const handle = await picker({
-        suggestedName: filename,
-        types: ext
-          ? [{ description: `${ext.slice(1).toUpperCase()} file`, accept: { [blob.type || "application/octet-stream"]: [ext] } }]
-          : undefined,
-      });
-      const writable = await (handle as unknown as { createWritable: () => Promise<WritableStream & { write: (b: Blob) => Promise<void>; close: () => Promise<void> }> }).createWritable();
-      await writable.write(blob);
-      await writable.close();
-      return;
-    } catch (err) {
-      // The user cancelling the picker isn't an error to recover from — it just means they
-      // changed their mind, so don't silently fall back to auto-downloading it anyway.
-      if (err instanceof Error && err.name === "AbortError") return;
-    }
+type SaveHandle = { createWritable: () => Promise<{ write: (b: Blob) => Promise<void>; close: () => Promise<void> }> };
+const CANCELLED = Symbol("save-dialog-cancelled");
+
+// Opens the native "Save As" dialog IMMEDIATELY on click and returns the chosen file handle —
+// must happen before any `await fetch(...)`, not after. Chrome only allows showSaveFilePicker()
+// while the click's "transient user activation" is still fresh (a few seconds); the album export
+// itself can take longer than that to generate, so calling the picker only after the export
+// finished meant activation had already expired — Chrome throws a SecurityError in that case
+// (not AbortError), which silently fell through to auto-downloading with no visible sign the
+// picker even tried to open. Opening the picker first, then doing the slow export fetch, then
+// writing the already-fetched blob to the already-open handle, keeps it inside the activation
+// window. Returns `CANCELLED` if the user closes the dialog (distinct from `null`, which means
+// "this browser doesn't support it at all" — Safari/Firefox/mobile — so the caller can fall back
+// to plain auto-download for those, but do nothing when the user deliberately cancelled).
+async function openSaveHandle(suggestedName: string, mimeType: string): Promise<SaveHandle | null | typeof CANCELLED> {
+  const picker = (window as unknown as { showSaveFilePicker?: (opts: unknown) => Promise<SaveHandle> }).showSaveFilePicker;
+  if (!picker) return null;
+  const ext = suggestedName.includes(".") ? suggestedName.slice(suggestedName.lastIndexOf(".")) : "";
+  try {
+    return await picker({
+      suggestedName,
+      types: ext ? [{ description: `${ext.slice(1).toUpperCase()} file`, accept: { [mimeType]: [ext] } }] : undefined,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") return CANCELLED;
+    return null;
+  }
+}
+
+async function writeToHandleOrDownload(handle: SaveHandle | null, blob: Blob, filename: string): Promise<void> {
+  if (handle) {
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return;
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -595,6 +606,9 @@ export default function GalleryManageView({
   };
 
   const downloadFromRoute = async (path: string, fallbackName: string, setBusy: (v: boolean) => void) => {
+    // Opened BEFORE the export fetch — see openSaveHandle's comment for why order matters here.
+    const handleResult = await openSaveHandle(fallbackName, "application/zip");
+    if (handleResult === CANCELLED) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/galleries/${gallery.id}/album/${path}`, { method: "POST" });
@@ -607,7 +621,7 @@ export default function GalleryManageView({
       const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
       const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : fallbackName;
       const blob = await res.blob();
-      await saveBlobLettingUserChooseLocation(blob, filename);
+      await writeToHandleOrDownload(handleResult, blob, filename);
     } finally {
       setBusy(false);
     }
@@ -1993,11 +2007,29 @@ export default function GalleryManageView({
                                         color: el.type === "text" ? (el.color === "white" ? "#fff" : "#000") : undefined,
                                         textAlign: el.type === "text" ? el.align : undefined,
                                         fontWeight: el.type === "text" ? 700 : undefined,
+                                        // Mirrors the free-design canvas editor's own photo-frame styling so this
+                                        // quick-glance thumbnail (the only view of the page once you close the
+                                        // editor) actually reflects border/shadow/rotation instead of silently
+                                        // dropping them.
+                                        outline: el.type === "photo" && el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
+                                        outlineOffset: el.type === "photo" && el.borderWidth ? `-${el.borderWidth}px` : undefined,
+                                        boxShadow: el.type === "photo" ? boxShadowFor(el.shadow) : undefined,
+                                        transform: el.type === "photo" && el.rotation ? `rotate(${el.rotation}deg)` : undefined,
                                       }}
                                     >
                                       {el.type === "photo" && photo && (
                                         /* eslint-disable-next-line @next/next/no-img-element */
-                                        <img src={photo.url} alt="" className="w-full h-full object-cover" style={{ objectPosition: `${el.focalX}% ${el.focalY}%` }} />
+                                        <img
+                                          src={photo.url}
+                                          alt=""
+                                          className="w-full h-full object-cover"
+                                          style={{
+                                            objectPosition: `${el.focalX}% ${el.focalY}%`,
+                                            filter: cssFilterFor(el.filter, el.blur),
+                                            opacity: (el.opacity ?? 100) / 100,
+                                            transform: el.zoom && el.zoom !== 100 ? `scale(${el.zoom / 100})` : undefined,
+                                          }}
+                                        />
                                       )}
                                       {el.type === "text" && el.text}
                                     </div>

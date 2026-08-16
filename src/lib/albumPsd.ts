@@ -29,7 +29,12 @@ function buildPhotoLayerEffects(shadowPct: number | undefined, borderWidth: numb
   if (shadowPct) {
     const blurPx = Math.max(1, (shadowPct / 100) * 24);
     const offsetPx = Math.round((shadowPct / 100) * 10);
-    const opacityPct = Math.round((0.15 + (shadowPct / 100) * 0.45) * 100);
+    // ag-psd's `opacity` field is a 0-1 fraction (unitsPercent() multiplies by 100 internally to
+    // build the actual PSD Percent descriptor) — confirmed against a real Photoshop-authored test
+    // fixture in ag-psd's own repo, whose effect opacities all came back as 0-1 values. Passing a
+    // raw 0-100 percent here (as an earlier version of this code did) writes a wildly out-of-range
+    // Percent value into the file, which is what made real Photoshop refuse to read these layers.
+    const opacityFraction = 0.15 + (shadowPct / 100) * 0.45;
     effects.dropShadow = [
       {
         enabled: true,
@@ -40,7 +45,7 @@ function buildPhotoLayerEffects(shadowPct: number | undefined, borderWidth: numb
         distance: { units: "Pixels", value: Math.round(offsetPx * Math.SQRT2) },
         size: { units: "Pixels", value: Math.round(blurPx) },
         color: { r: 0, g: 0, b: 0 },
-        opacity: opacityPct,
+        opacity: opacityFraction,
         blendMode: "multiply",
       },
     ];
@@ -55,7 +60,7 @@ function buildPhotoLayerEffects(shadowPct: number | undefined, borderWidth: numb
         position: "center",
         fillType: "color",
         color: hexToRgb(borderColor ?? "#ffffff"),
-        opacity: 100,
+        opacity: 1,
         blendMode: "normal",
       },
     ];

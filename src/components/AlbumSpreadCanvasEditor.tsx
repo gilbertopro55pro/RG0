@@ -412,7 +412,7 @@ export function fitFramesToSafeArea(frames: AlbumFrame[], marginInsetPct: { x: n
   }));
 }
 
-function cssFilterFor(filter: AlbumPhotoFilter | undefined, blurPct: number | undefined): string | undefined {
+export function cssFilterFor(filter: AlbumPhotoFilter | undefined, blurPct: number | undefined): string | undefined {
   const parts: string[] = [];
   if (filter === "bw") parts.push("grayscale(1)");
   else if (filter === "sepia") parts.push("sepia(0.85)");
@@ -422,7 +422,7 @@ function cssFilterFor(filter: AlbumPhotoFilter | undefined, blurPct: number | un
 
 // box-shadow (unlike filter: drop-shadow on a descendant) isn't clipped by the frame's own
 // overflow-hidden, so it's the one that can actually bleed outside a cropped photo frame.
-function boxShadowFor(shadowPct: number | undefined): string | undefined {
+export function boxShadowFor(shadowPct: number | undefined): string | undefined {
   if (!shadowPct) return undefined;
   const blurPx = (shadowPct / 100) * 24;
   const offsetPx = (shadowPct / 100) * 10;
