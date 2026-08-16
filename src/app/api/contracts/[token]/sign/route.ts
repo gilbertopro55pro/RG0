@@ -4,10 +4,13 @@ import type { EventContractRow } from "@/lib/types";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const { signerName }: { signerName: string } = await request.json();
+  const { signerName, signatureDataUrl }: { signerName: string; signatureDataUrl?: string } = await request.json();
 
   if (!signerName?.trim()) {
     return NextResponse.json({ error: "יש להקליד שם מלא" }, { status: 400 });
+  }
+  if (!signatureDataUrl?.startsWith("data:image/png;base64,")) {
+    return NextResponse.json({ error: "יש לחתום בשדה החתימה" }, { status: 400 });
   }
 
   const supabase = createServiceRoleClient();
@@ -37,6 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       signer_name: signerName.trim(),
       signer_ip: signerIp,
       signed_at: new Date().toISOString(),
+      signature_data_url: signatureDataUrl,
     })
     .eq("id", contract.id)
     .select()

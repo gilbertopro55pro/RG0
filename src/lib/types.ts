@@ -90,6 +90,7 @@ export type EventContractRow = {
   signer_name: string | null;
   signer_ip: string | null;
   signed_at: string | null;
+  signature_data_url: string | null;
   created_at: string;
 };
 

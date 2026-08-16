@@ -120,6 +120,10 @@ export default function ContractSection({
             נחתם ✓ על ידי {contract.signer_name}
             {contract.signed_at && ` · ${new Date(contract.signed_at).toLocaleDateString("he-IL")}`}
           </div>
+          {contract.signature_data_url && (
+            // eslint-disable-next-line @next/next/no-img-element -- a stored data URL, no benefit from next/image's remote optimization
+            <img src={contract.signature_data_url} alt="חתימת הלקוח" className="h-16 rounded-lg border border-line bg-white" />
+          )}
           <button
             onClick={() => setShowPreview(true)}
             className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"

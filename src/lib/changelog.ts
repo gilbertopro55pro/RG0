@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.28.0",
+    date: "2026-08-16",
+    changes: [
+      "חוזים דיגיטליים: נוסף שדה חתימה ידנית — הלקוח/ה חותמים עם האצבע או העכבר, והחתימה נשמרת ומוצגת גם בצד הצלם/ת",
+    ],
+  },
+  {
     version: "1.27.2",
     date: "2026-08-16",
     changes: [
