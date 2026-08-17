@@ -5,6 +5,7 @@ import type { AlbumElement, AlbumFrame, AlbumPhotoElement, AlbumPhotoFilter, Alb
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { TEXT_COLOR_PALETTE, isLightTextColor } from "@/lib/textColor";
 import { TEMPLATE_TABS, TEMPLATE_BANK, type TemplateTabKey } from "@/lib/albumTemplateBank";
+import { ALBUM_MASKS, maskCssUrl, findMask } from "@/lib/albumMasks";
 
 type PhotoWithUrl = { id: string; url: string; is_favorite?: boolean; folder_id?: string | null };
 
@@ -170,6 +171,14 @@ function IconGrid({ size }: { size?: number }) {
       <rect x={13.5} y={3.5} width={7} height={7} rx={1} />
       <rect x={3.5} y={13.5} width={7} height={7} rx={1} />
       <rect x={13.5} y={13.5} width={7} height={7} rx={1} />
+    </UiIconBase>
+  );
+}
+function IconMask({ size }: { size?: number }) {
+  return (
+    <UiIconBase size={size}>
+      <circle cx={9} cy={12} r={6.5} />
+      <path d="M13.5 6.7A6.5 6.5 0 1113.5 17.3" />
     </UiIconBase>
   );
 }
@@ -833,6 +842,7 @@ export default function AlbumSpreadCanvasEditor({
   const [textDraftOpen, setTextDraftOpen] = useState(false);
   const [textDraft, setTextDraft] = useState("");
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [masksPickerOpen, setMasksPickerOpen] = useState(false);
   const [templateTab, setTemplateTab] = useState<TemplateTabKey>("2");
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateNameDraft, setTemplateNameDraft] = useState("");
@@ -1436,8 +1446,14 @@ export default function AlbumSpreadCanvasEditor({
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
-                      const droppedId = e.dataTransfer.getData("text/plain");
-                      if (droppedId) updateElement(el.id, { photoId: droppedId, focalX: 50, focalY: 50 });
+                      const dropped = e.dataTransfer.getData("text/plain");
+                      if (!dropped) return;
+                      if (dropped.startsWith("mask:")) {
+                        const maskId = dropped.slice(5);
+                        updateElement(el.id, { maskId: maskId === "__none__" ? undefined : maskId });
+                      } else {
+                        updateElement(el.id, { photoId: dropped, focalX: 50, focalY: 50 });
+                      }
                     }}
                     className={`absolute overflow-hidden ${photo ? (panModeId === el.id ? "cursor-crosshair" : "cursor-move") : "cursor-move flex items-center justify-center bg-chip"}`}
                     style={{
@@ -1477,6 +1493,16 @@ export default function AlbumSpreadCanvasEditor({
                           // already-fixed, already-rotated frame) so it stays on the image itself,
                           // separate from the frame's own rotation above.
                           transform: el.zoom && el.zoom !== 100 ? `scale(${el.zoom / 100})` : undefined,
+                          ...(el.maskId
+                            ? {
+                                WebkitMaskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
+                                maskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
+                                WebkitMaskSize: "100% 100%",
+                                maskSize: "100% 100%",
+                                WebkitMaskRepeat: "no-repeat",
+                                maskRepeat: "no-repeat",
+                              }
+                            : null),
                         }}
                       />
                     ) : (
@@ -1737,6 +1763,15 @@ export default function AlbumSpreadCanvasEditor({
             + טקסט
           </button>
         </div>
+        {mode === "custom" && (
+          <button
+            onClick={() => setMasksPickerOpen(true)}
+            className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mt-2 flex items-center justify-center gap-1.5"
+          >
+            <IconMask size={14} />
+            מסכות — גררו על תמונה כדי להחיל
+          </button>
+        )}
 
         {mode === "custom" && (
           <button
@@ -1951,6 +1986,59 @@ export default function AlbumSpreadCanvasEditor({
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {masksPickerOpen && (
+        <div className="fixed inset-0 z-[85] flex items-end lg:items-center justify-center" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setMasksPickerOpen(false)}>
+          <div className="w-full max-w-sm lg:max-w-4xl rounded-t-3xl lg:rounded-3xl p-5 lg:p-6 bg-paper max-h-[75vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-bold">מסכות — גררו מסכה אל תמונה בעמוד, או לחצו כשתמונה נבחרת</p>
+              <button onClick={() => setMasksPickerOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+                <IconClose />
+              </button>
+            </div>
+            <div className="grid grid-cols-3 lg:grid-cols-6 gap-2.5">
+              <button
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("text/plain", "mask:__none__")}
+                onClick={() => {
+                  if (selected?.type === "photo") updateElement(selected.id, { maskId: undefined });
+                }}
+                className="rounded-xl border border-line p-2 text-center cursor-grab active:cursor-grabbing"
+              >
+                <div className="aspect-square rounded-md bg-chip mb-1.5 flex items-center justify-center text-ink-soft text-[10px] font-semibold">
+                  ללא
+                </div>
+                <span className="text-[10px] font-semibold">הסרת מסכה</span>
+              </button>
+              {ALBUM_MASKS.map((mask) => (
+                <div
+                  key={mask.id}
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", `mask:${mask.id}`)}
+                  onClick={() => {
+                    if (selected?.type === "photo" && selected.photoId) updateElement(selected.id, { maskId: mask.id });
+                  }}
+                  className="rounded-xl border border-line p-2 text-center cursor-grab active:cursor-grabbing"
+                >
+                  <div
+                    className="aspect-square rounded-md mb-1.5"
+                    style={{
+                      background: "linear-gradient(135deg, var(--color-amber-deep), var(--color-sage))",
+                      WebkitMaskImage: maskCssUrl(mask.svg),
+                      maskImage: maskCssUrl(mask.svg),
+                      WebkitMaskSize: "100% 100%",
+                      maskSize: "100% 100%",
+                      WebkitMaskRepeat: "no-repeat",
+                      maskRepeat: "no-repeat",
+                    }}
+                  />
+                  <span className="text-[10px] font-semibold">{mask.label}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

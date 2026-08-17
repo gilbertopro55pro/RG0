@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { ALBUM_BLUR_MAX_PX } from "@/components/AlbumSpreadCanvasEditor";
 import { isLightTextColor } from "@/lib/textColor";
+import { maskCssUrl, findMask } from "@/lib/albumMasks";
 
 type SpreadPhoto = { id: string; url: string };
 type SpreadLayout = "split" | "feature" | "stack" | "custom";
@@ -27,6 +28,7 @@ export type ClientAlbumElement =
       blur?: number;
       shadow?: number;
       zoom?: number;
+      maskId?: string;
     }
   | {
       id: string;
@@ -226,6 +228,16 @@ export default function GalleryAlbumProofing({
                       filter: cssFilterFor(el.filter, el.blur),
                       opacity: (el.opacity ?? 100) / 100,
                       transform: el.zoom && el.zoom !== 100 ? `scale(${el.zoom / 100})` : undefined,
+                      ...(el.maskId
+                        ? {
+                            WebkitMaskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
+                            maskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
+                            WebkitMaskSize: "100% 100%",
+                            maskSize: "100% 100%",
+                            WebkitMaskRepeat: "no-repeat",
+                            maskRepeat: "no-repeat",
+                          }
+                        : null),
                     }}
                   />
                 </div>

@@ -273,6 +273,7 @@ export type AlbumPhotoElement = {
   shadow?: number; // 0-100 drop-shadow intensity, default 0
   zoom?: number; // 100-400, extra scale on top of the object-fit:cover baseline, default 100
   lockAspect?: boolean; // when true, corner-handle resizing preserves the width/height ratio
+  maskId?: string; // id into ALBUM_MASKS (src/lib/albumMasks.ts) — an alpha mask applied over the cropped photo
 };
 
 // Points on the album's fixed 1600pt-wide PDF reference canvas (same canvas the PDF proof export

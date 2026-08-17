@@ -21,7 +21,7 @@ import { downloadObjectBuffer } from "@/lib/storage";
 import { textColorRgb01, isLightTextColor } from "@/lib/textColor";
 import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
-import { ALBUM_BLUR_MAX_PX } from "@/lib/albumRaster";
+import { ALBUM_BLUR_MAX_PX, coverCropRaw, applyMaskToRaw } from "@/lib/albumRaster";
 import type { AlbumPhotoFilter, AlbumTextElement, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 function hexToRgbTuple(hex: string): [number, number, number] {
@@ -272,6 +272,44 @@ export async function generateAlbumPdf({
     return image;
   };
 
+  // Masked photos take a completely different path from every other PDF photo: the rest of this
+  // exporter places images by embedding the FULL, uncropped photo once and letting pdf-lib's own
+  // vector clip do the cover-fit crop at draw time (see drawCoverImage) — there's no pixel-level
+  // cropping step to hook a mask into. A mask, though, has to end up pixel-aligned to the exact
+  // cropped frame content (same as the JPG/PSD exports' composePhotoTile), so this pre-crops via
+  // the SAME coverCropRaw used there, applies the mask as a dest-in alpha composite, and embeds
+  // the result as a PNG sized exactly to the frame — pdf-lib then just places it 1:1, no clip
+  // needed. Rendered at 2x the frame's point size for reasonable sharpness on this proof export
+  // (not a certified press file — see the PAGE_WIDTH/PAGE_HEIGHT comment above).
+  const embedMaskedPhoto = async (
+    photoId: string | null,
+    maskId: string,
+    widthPt: number,
+    heightPt: number,
+    focalX: number,
+    focalY: number,
+    filter: AlbumPhotoFilter | undefined,
+    blurPct: number | undefined,
+    zoom: number | undefined
+  ): Promise<PDFImage | null> => {
+    if (!photoId) return null;
+    const photo = photosById.get(photoId);
+    const buffer = photo ? await downloadObjectBuffer("galleries", photo.storage_path) : null;
+    if (!buffer) return null;
+    const scale = 2;
+    const pxW = Math.max(1, Math.round(widthPt * scale));
+    const pxH = Math.max(1, Math.round(heightPt * scale));
+    try {
+      const cropped = await coverCropRaw(buffer, pxW, pxH, focalX, focalY, filter, true, { blur: blurPct, zoom });
+      if (!cropped) return null;
+      const masked = await applyMaskToRaw(cropped.data, pxW, pxH, maskId);
+      const png = await sharp(masked, { raw: { width: pxW, height: pxH, channels: 4 } }).png().toBuffer();
+      return await embedImageAuto(pdfDoc, png);
+    } catch {
+      return null;
+    }
+  };
+
   if (album.cover_photo_id) {
     const coverImage = await embedByPhotoId(album.cover_photo_id);
     if (coverImage) {
@@ -303,13 +341,30 @@ export async function generateAlbumPdf({
           drawTextElement(page, el, await getFontsForFamily(el.fontFamily));
           continue;
         }
-        const image = await embedByPhotoId(el.photoId, el.filter, el.blur);
-        if (!image) continue;
         const width = (el.widthPct / 100) * PAGE_WIDTH;
         const height = (el.heightPct / 100) * PAGE_HEIGHT;
         const x = (el.xPct / 100) * PAGE_WIDTH;
         const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - height;
         const rect = { x, y, width, height };
+
+        if (el.maskId) {
+          // Pre-cropped and pre-masked to the frame's exact box (see embedMaskedPhoto) — opacity
+          // still applies at draw time same as the unmasked path, but no cover-fit clip is needed
+          // since the raster already fills the rect exactly.
+          const maskedImage = await embedMaskedPhoto(el.photoId, el.maskId, width, height, el.focalX, el.focalY, el.filter, el.blur, el.zoom);
+          if (!maskedImage) continue;
+          pushFrameRotation(page, rect, el.rotation);
+          drawPhotoShadow(page, rect, el.shadow);
+          page.drawImage(maskedImage, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
+          if (el.borderWidth) {
+            page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
+          }
+          popFrameRotation(page);
+          continue;
+        }
+
+        const image = await embedByPhotoId(el.photoId, el.filter, el.blur);
+        if (!image) continue;
         pushFrameRotation(page, rect, el.rotation);
         drawPhotoShadow(page, rect, el.shadow);
         drawCoverImage(page, image, rect, el.focalX, el.focalY, { opacity: el.opacity !== undefined ? el.opacity / 100 : undefined, zoom: el.zoom });

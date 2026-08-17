@@ -5,6 +5,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { downloadObjectBuffer } from "@/lib/storage";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
 import type { AlbumElement, AlbumPhotoFilter, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
+import { ALBUM_MASKS } from "@/lib/albumMasks";
 
 const DPI = 300;
 
@@ -133,6 +134,7 @@ type ResolvedPhoto = {
   blur?: number;
   shadow?: number;
   zoom?: number;
+  maskId?: string;
 };
 type ResolvedText = { kind: "text"; text: string; x: number; y: number; width: number; fontSizePx: number; color: string; align: "right" | "center" | "left"; fontFamily?: string };
 type Resolved = ResolvedPhoto | ResolvedText;
@@ -181,6 +183,7 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
         blur: el.blur,
         shadow: el.shadow,
         zoom: el.zoom,
+        maskId: el.maskId,
       }));
     return [...photos, ...textElements];
   }
@@ -208,6 +211,22 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
     { kind: "photo", photoId: spread.photo_id_1, x: width2 + gap, y: 0, width: width1, height: pageHeightPx, focalX: spread.focal_x_1, focalY: spread.focal_y_1 },
     ...textElements,
   ];
+}
+
+// Rasterizes a mask's 0-100 viewBox SVG (see albumMasks.ts) to an alpha PNG at the tile's exact
+// pixel size, then keeps the photo only where the mask is opaque — a plain sharp 'dest-in'
+// composite, which is the raster equivalent of the CSS `mask-image` the builder/proofing preview
+// uses on the same SVG string, so the export matches what the photographer designed.
+async function applyMaskToRaw(data: Buffer, width: number, height: number, maskId: string): Promise<Buffer> {
+  const mask = ALBUM_MASKS.find((m) => m.id === maskId);
+  if (!mask) return data;
+  const sized = mask.svg.replace("<svg ", `<svg width="${Math.round(width)}" height="${Math.round(height)}" `);
+  const maskPng = await sharp(Buffer.from(sized)).ensureAlpha().png().toBuffer();
+  return sharp(data, { raw: { width, height, channels: 4 } })
+    .composite([{ input: maskPng, blend: "dest-in" }])
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
 }
 
 // Crops+scales a decoded image to exactly fill a target box (CSS object-fit:cover equivalent),
@@ -291,7 +310,7 @@ async function composePhotoTile(
   focalY: number,
   filter: AlbumPhotoFilter | undefined,
   bakeInBw: boolean,
-  extra: { rotation?: number; opacity?: number; blur?: number; zoom?: number; borderWidth?: number; borderColor?: string }
+  extra: { rotation?: number; opacity?: number; blur?: number; zoom?: number; borderWidth?: number; borderColor?: string; maskId?: string }
 ): Promise<{ data: Buffer; width: number; height: number; left: number; top: number } | null> {
   const cropped = await coverCropRaw(buffer, width, height, focalX, focalY, filter, bakeInBw, { opacity: extra.opacity, blur: extra.blur, zoom: extra.zoom });
   if (!cropped) return null;
@@ -306,6 +325,10 @@ async function composePhotoTile(
       .ensureAlpha()
       .raw()
       .toBuffer();
+  }
+
+  if (extra.maskId) {
+    data = await applyMaskToRaw(data, w, h, extra.maskId);
   }
 
   let left = 0;
@@ -477,6 +500,7 @@ export async function renderAlbumPageJpeg({
       zoom: el.zoom,
       borderWidth: el.borderWidth,
       borderColor: el.borderColor,
+      maskId: el.maskId,
     });
     if (!tile) continue;
     any = true;
@@ -492,4 +516,4 @@ export async function renderAlbumPageJpeg({
     .toBuffer();
 }
 
-export { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng };
+export { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng, applyMaskToRaw };

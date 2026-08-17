@@ -131,6 +131,7 @@ export async function renderAlbumPagePsd({
       zoom: el.zoom,
       borderWidth: el.borderWidth,
       borderColor: el.borderColor,
+      maskId: el.maskId,
     });
     if (!tile) continue;
     any = true;

@@ -28,6 +28,7 @@ import { IconClose as IconAlbumClose, IconPalette, IconTarget, IconRefresh, Icon
 import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor, boxShadowFor, cssFilterFor } from "@/components/AlbumSpreadCanvasEditor";
 import { TEMPLATE_TABS, TEMPLATE_BANK, type TemplateTabKey } from "@/lib/albumTemplateBank";
 import { isLightTextColor } from "@/lib/textColor";
+import { maskCssUrl, findMask } from "@/lib/albumMasks";
 import { generateGridFrames } from "@/lib/albumGrid";
 import {
   GALLERY_THEMES,
@@ -2443,26 +2444,11 @@ export default function GalleryManageView({
                         />
                       </div>
                     </div>
-                    <p className="text-xs text-ink-soft mb-2">סגנון</p>
-                    <div className="grid grid-cols-2 gap-2 mb-5">
-                      {ALBUM_STYLE_OPTIONS.map((s) => (
-                        <button
-                          key={s.id}
-                          onClick={() => setAlbumStyleDraft(s.id)}
-                          className={`rounded-lg p-2.5 text-right ${BTN_PRESS}`}
-                          style={{
-                            background: albumStyleDraft === s.id ? "var(--color-amber-deep)" : "var(--color-chip)",
-                            color: albumStyleDraft === s.id ? "#fff" : "var(--color-ink)",
-                          }}
-                        >
-                          <div className="text-xs font-semibold mb-0.5">{s.label}</div>
-                          <div className="text-[10px] leading-tight" style={{ opacity: 0.85 }}>
-                            {s.description}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                    {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
+                    {/* Style picker (מגזין/קלאסי/מקושקש/אורבני/קו נקי) is temporarily hidden per
+                        photographer request — the generators still work and need more real-world
+                        tuning before they're worth exposing as a choice; albumStyleDraft stays
+                        fixed at its "classic" default so buildStyledAlbum still has a style to use. */}
+                    {error && <p className="text-xs text-rose mb-2.5 mt-2">{error}</p>}
                     <button
                       onClick={buildStyledAlbum}
                       disabled={buildingAlbumBook}
@@ -2643,6 +2629,16 @@ export default function GalleryManageView({
                                             filter: cssFilterFor(el.filter, el.blur),
                                             opacity: (el.opacity ?? 100) / 100,
                                             transform: el.zoom && el.zoom !== 100 ? `scale(${el.zoom / 100})` : undefined,
+                                            ...(el.maskId
+                                              ? {
+                                                  WebkitMaskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
+                                                  maskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
+                                                  WebkitMaskSize: "100% 100%",
+                                                  maskSize: "100% 100%",
+                                                  WebkitMaskRepeat: "no-repeat",
+                                                  maskRepeat: "no-repeat",
+                                                }
+                                              : null),
                                           }}
                                         />
                                       )}
