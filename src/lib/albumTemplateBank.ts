@@ -64,6 +64,16 @@ function randomPartition(n: number, rng: () => number): number[] {
     parts.push(size);
     remaining -= size;
   }
+  // Avoid a pure single-column layout (every row exactly 1 photo, stacked top to bottom) once
+  // there are enough photos that it reads as one long vertical strip rather than a couple of
+  // deliberate rows. Every row is >=1 by construction, so `parts.length === n` alone already
+  // means every row is exactly 1 (n rows of >=1 summing to n forces each to be 1) — merge the
+  // last two singles into a row of 2 instead of re-rolling.
+  if (n >= 3 && parts.length === n) {
+    parts.pop();
+    parts.pop();
+    parts.push(2);
+  }
   return parts;
 }
 

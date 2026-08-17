@@ -136,6 +136,14 @@ function IconAspectLock() {
     </MenuIconBase>
   );
 }
+function IconTrash() {
+  return (
+    <MenuIconBase>
+      <path d="M4.5 7h15M9.5 7V4.8a1 1 0 011-1h3a1 1 0 011 1V7m-8 0l.8 12.2a1.5 1.5 0 001.5 1.4h5.4a1.5 1.5 0 001.5-1.4L18.5 7" />
+      <path d="M10 11v6M14 11v6" />
+    </MenuIconBase>
+  );
+}
 
 // Matches the app's canonical icon convention (NavIcons.tsx / GalleryStyleIcons.tsx: 24x24
 // viewBox, currentColor stroke, no fill, strokeWidth 1.6) — used for the editor's own chrome
@@ -198,7 +206,10 @@ function CircleButton({ label, active, onClick, children }: { label: string; act
       className="h-7 w-7 rounded-full flex items-center justify-center shrink-0"
       style={{
         background: active ? "var(--color-amber-deep)" : "#fff",
-        color: active ? "#fff" : "var(--color-ink)",
+        // Fixed dark icon color, not the theme-flipped --color-ink token — this button's own
+        // background stays white in both themes, so the icon must too or it goes near-invisible
+        // (light-on-white) once --color-ink flips light for dark mode's page text.
+        color: active ? "#fff" : "#201f33",
         boxShadow: "0 2px 6px rgba(46,49,66,0.22), 0 0 0 1px var(--color-line)",
       }}
     >
@@ -245,6 +256,7 @@ function PhotoFloatingMenu({
   onUpdate,
   onTrueSize,
   onApplyShadowToAll,
+  onDeleteSelected,
 }: {
   el: AlbumPhotoElement;
   panning: boolean;
@@ -252,6 +264,7 @@ function PhotoFloatingMenu({
   onUpdate: (patch: Partial<AlbumPhotoElement>) => void;
   onTrueSize: () => void;
   onApplyShadowToAll: () => void;
+  onDeleteSelected: () => void;
 }) {
   const [openPanel, setOpenPanel] = useState<null | "opacity" | "blur" | "rotation" | "shadow">(null);
   const onLeft = el.xPct + el.widthPct > 70;
@@ -364,6 +377,9 @@ function PhotoFloatingMenu({
           </FlyoutPanel>
         )}
       </div>
+      <CircleButton label="מחיקת התמונה/ות שנבחרו" onClick={onDeleteSelected}>
+        <IconTrash />
+      </CircleButton>
     </div>
   );
 }
@@ -577,6 +593,61 @@ function computeAlignment(
   return { guides, snapXPct, snapYPct };
 }
 
+function boxesIntersect(a: { left: number; top: number; right: number; bottom: number }, b: { left: number; top: number; right: number; bottom: number }): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+// Detects the classic "sandwiched between two neighbors" equal-spacing case on each axis
+// independently: the nearest same-row (or same-column) neighbor on either side of the dragged
+// element. When both gaps are already close to equal, snaps the drag so they become EXACTLY
+// equal and returns a pair of guide segments (one per gap) so the photographer can see which two
+// gaps just matched, mirroring Figma-style spacing indicators.
+function computeSpacingGuides(
+  dragging: { xPct: number; yPct: number; widthPct: number; heightPct: number },
+  others: AlbumElement[]
+): { guides: { orientation: "horizontal" | "vertical"; x: number; y: number; length: number }[]; snapXPct?: number; snapYPct?: number } {
+  const guides: { orientation: "horizontal" | "vertical"; x: number; y: number; length: number }[] = [];
+  let snapXPct: number | undefined;
+  let snapYPct: number | undefined;
+  const boxes = others.map(elementBox);
+  const dLeft = dragging.xPct;
+  const dRight = dragging.xPct + dragging.widthPct;
+  const dTop = dragging.yPct;
+  const dBottom = dragging.yPct + dragging.heightPct;
+  const dCenterY = dragging.yPct + dragging.heightPct / 2;
+  const dCenterX = dragging.xPct + dragging.widthPct / 2;
+
+  const rowMates = boxes.filter((b) => b.top < dBottom && b.bottom > dTop);
+  const leftN = rowMates.filter((b) => b.right <= dLeft + 0.5).sort((a, b) => b.right - a.right)[0];
+  const rightN = rowMates.filter((b) => b.left >= dRight - 0.5).sort((a, b) => a.left - b.left)[0];
+  if (leftN && rightN) {
+    const gapLeft = dLeft - leftN.right;
+    const gapRight = rightN.left - dRight;
+    if (gapLeft > 0.3 && gapRight > 0.3 && Math.abs(gapLeft - gapRight) < SNAP_THRESHOLD) {
+      const avgGap = (gapLeft + gapRight) / 2;
+      snapXPct = leftN.right + avgGap;
+      guides.push({ orientation: "horizontal", x: leftN.right, y: dCenterY, length: avgGap });
+      guides.push({ orientation: "horizontal", x: snapXPct + dragging.widthPct, y: dCenterY, length: avgGap });
+    }
+  }
+
+  const colMates = boxes.filter((b) => b.left < dRight && b.right > dLeft);
+  const topN = colMates.filter((b) => b.bottom <= dTop + 0.5).sort((a, b) => b.bottom - a.bottom)[0];
+  const bottomN = colMates.filter((b) => b.top >= dBottom - 0.5).sort((a, b) => a.top - b.top)[0];
+  if (topN && bottomN) {
+    const gapTop = dTop - topN.bottom;
+    const gapBottom = bottomN.top - dBottom;
+    if (gapTop > 0.3 && gapBottom > 0.3 && Math.abs(gapTop - gapBottom) < SNAP_THRESHOLD) {
+      const avgGap = (gapTop + gapBottom) / 2;
+      snapYPct = topN.bottom + avgGap;
+      guides.push({ orientation: "vertical", x: dCenterX, y: topN.bottom, length: avgGap });
+      guides.push({ orientation: "vertical", x: dCenterX, y: snapYPct + dragging.heightPct, length: avgGap });
+    }
+  }
+
+  return { guides, snapXPct, snapYPct };
+}
+
 // Lays out a set of photos into rows of UNIFORM height, with each photo's width inside its row
 // proportional to its own aspect ratio — a portrait photo (aspect < 1) ends up narrower than its
 // landscape row-mates (aspect > 1) for the same row height, i.e. a portrait-shaped frame, and vice
@@ -685,7 +756,12 @@ export default function AlbumSpreadCanvasEditor({
   onClose: () => void;
 }) {
   const [elements, setElements] = useState<AlbumElement[]>(() => (mode === "custom" ? seedElementsFromPreset(spread) : spread.elements));
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Multiple photo elements can be selected at once (shift-click or a rubber-band marquee drag)
+  // so circular-menu actions and resize can apply to the whole group; text elements stay
+  // single-select only (a Set of size 1 for those).
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Live rectangle while dragging a selection marquee on empty canvas — null when not marqueeing.
+  const [marqueeBox, setMarqueeBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [frameTargetId, setFrameTargetId] = useState<string | null>(null);
   const [pickingBackground, setPickingBackground] = useState(false);
   const [backgroundPhotoId, setBackgroundPhotoId] = useState(spread.background_photo_id);
@@ -716,6 +792,9 @@ export default function AlbumSpreadCanvasEditor({
   // center and edges/centers of other elements on the same page, matching common design-tool
   // "alignment guide" behavior so the photographer can see when things line up.
   const [guides, setGuides] = useState<{ axis: "v" | "h"; pos: number }[]>([]);
+  // Equal-spacing guides — a distinct indicator (sage, not rose) shown when the dragged element
+  // sits between two same-axis neighbors with a matching gap on both sides.
+  const [spacingGuides, setSpacingGuides] = useState<{ orientation: "horizontal" | "vertical"; x: number; y: number; length: number }[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     id: string;
@@ -723,16 +802,34 @@ export default function AlbumSpreadCanvasEditor({
     resizeHandle?: ResizeHandle;
     startClientX: number;
     startClientY: number;
-    startXPct: number;
-    startYPct: number;
-    startWidthPct: number;
-    startHeightPct: number;
     startFocalX: number;
     startFocalY: number;
     startZoom: number;
+    // Starting box for every element in the active group — every selected element for a group
+    // move (all translate by the same delta), every selected photo for a group resize (the
+    // dragged one resizes via computeResize, the rest scale proportionally around their own
+    // center) — a plain single-element drag is just a group of one.
+    groupStart: Record<string, { xPct: number; yPct: number; widthPct: number; heightPct: number }>;
   } | null>(null);
+  // Rubber-band marquee drag state — `base` is the selection to preserve (shift-drag) or empty
+  // (plain drag), so shrinking the marquee mid-drag correctly drops elements no longer inside it
+  // without ever discarding a selection that existed before the marquee started.
+  const marqueeRef = useRef<{ startXPct: number; startYPct: number; base: Set<string> } | null>(null);
+  // Suppresses the canvas's own deselect-on-click right after a real marquee drag — a click event
+  // still fires on pointerup even after a multi-pixel drag, which would otherwise immediately wipe
+  // out the selection the marquee just made.
+  const justMarqueedRef = useRef(false);
 
-  const selected = elements.find((e) => e.id === selectedId) ?? null;
+  const selectedElements = elements.filter((e) => selectedIds.has(e.id));
+  const selectedPhotos = selectedElements.filter((e): e is AlbumPhotoElement => e.type === "photo");
+  const selectedText = selectedElements.length === 1 && selectedElements[0].type === "text" ? selectedElements[0] : null;
+  // The photo the floating circular menu anchors to and reads toggle-state from — the first
+  // selected element that actually has an image (an empty placeholder frame has nothing to
+  // filter/blur/rotate, so it's skipped even if selected).
+  const anchorPhoto = selectedPhotos.find((p) => p.photoId) ?? null;
+  // Kept for the few call sites that only make sense for a single element (info hint, delete
+  // button, side-panel text controls) — any non-empty selection, not just size 1.
+  const selected = selectedElements.length === 1 ? selectedElements[0] : null;
   const usedPhotoIds = new Set(elements.filter((e): e is AlbumPhotoElement => e.type === "photo" && !!e.photoId).map((e) => e.photoId as string));
   const favoritePhotos = photos.filter((p) => p.is_favorite);
   // Photos already placed on OTHER pages of the album are dropped entirely (not just badged) so a
@@ -762,16 +859,33 @@ export default function AlbumSpreadCanvasEditor({
   // Leaving "position image" mode whenever the selection changes elsewhere keeps its green ring
   // tied to whatever's actually selected, rather than lingering on a no-longer-selected element.
   useEffect(() => {
-    setPanModeId((prev) => (prev && prev !== selectedId ? null : prev));
-  }, [selectedId]);
+    setPanModeId((prev) => (prev && !selectedIds.has(prev) ? null : prev));
+  }, [selectedIds]);
 
   const updateElement = (id: string, patch: Partial<AlbumElement>) => {
     setElements((prev) => prev.map((e) => (e.id === id ? ({ ...e, ...patch } as AlbumElement) : e)));
   };
 
-  const removeElement = (id: string) => {
-    setElements((prev) => prev.filter((e) => e.id !== id));
-    setSelectedId(null);
+  // Applies the same patch to every currently-selected PHOTO element — an empty toggle-value
+  // (bw/sepia/lockAspect) is decided by the caller from the anchor photo's own current state
+  // before calling this, so every selected photo lands on the SAME final value rather than each
+  // toggling independently.
+  const applyToSelectedPhotos = (patch: Partial<AlbumPhotoElement>) => {
+    setElements((prev) => prev.map((e) => (e.type === "photo" && selectedIds.has(e.id) ? { ...e, ...patch } : e)));
+  };
+
+  const removeSelected = () => {
+    setElements((prev) => prev.filter((e) => !selectedIds.has(e.id)));
+    setSelectedIds(new Set());
+  };
+
+  // "+ מסגרת" — inserts one empty, freely movable/resizable frame into the current layout without
+  // touching any existing element, for a photographer who wants to hand-extend a template/auto
+  // layout with one more spot instead of regenerating the whole page.
+  const addFrame = () => {
+    const id = `frame-${Date.now()}`;
+    setElements((prev) => [...prev, { id, type: "photo", photoId: null, xPct: 32, yPct: 32, widthPct: 36, heightPct: 36, focalX: 50, focalY: 50 }]);
+    setSelectedIds(new Set([id]));
   };
 
   const openPickerForNewPhoto = () => {
@@ -803,7 +917,7 @@ export default function AlbumSpreadCanvasEditor({
     } else {
       const id = `el-${Date.now()}`;
       setElements((prev) => [...prev, { id, type: "photo", photoId, xPct: 20, yPct: 20, widthPct: 40, heightPct: 40, focalX: 50, focalY: 50 }]);
-      setSelectedId(id);
+      setSelectedIds(new Set([id]));
     }
     setPhotoPickerOpen(false);
     setFrameTargetId(null);
@@ -836,17 +950,21 @@ export default function AlbumSpreadCanvasEditor({
   // WIDTH fixed and solves for the height that ratio implies in real cm, re-centered on the
   // frame's previous vertical center — deliberately allowed to grow past other elements or the
   // green safe-print margin, since this is a manual per-photo action, not automatic placement.
-  const showTrueSize = async (id: string) => {
-    const el = elements.find((e) => e.id === id);
-    if (!el || el.type !== "photo" || !el.photoId || album.width_cm <= 0 || album.height_cm <= 0) return;
-    const photo = photoById.get(el.photoId);
-    if (!photo) return;
-    const aspect = await loadImageAspect(photo.url);
-    const widthCm = (el.widthPct / 100) * album.width_cm;
-    const heightCm = widthCm / aspect;
-    const newHeightPct = (heightCm / album.height_cm) * 100;
-    const centerY = el.yPct + el.heightPct / 2;
-    updateElement(id, { heightPct: newHeightPct, yPct: centerY - newHeightPct / 2, focalX: 50, focalY: 50 });
+  // Loops every id given so a multi-selection true-sizes each photo against its OWN aspect ratio,
+  // not a single shared one.
+  const showTrueSize = async (ids: string[]) => {
+    for (const id of ids) {
+      const el = elements.find((e) => e.id === id);
+      if (!el || el.type !== "photo" || !el.photoId || album.width_cm <= 0 || album.height_cm <= 0) continue;
+      const photo = photoById.get(el.photoId);
+      if (!photo) continue;
+      const aspect = await loadImageAspect(photo.url);
+      const widthCm = (el.widthPct / 100) * album.width_cm;
+      const heightCm = widthCm / aspect;
+      const newHeightPct = (heightCm / album.height_cm) * 100;
+      const centerY = el.yPct + el.heightPct / 2;
+      updateElement(id, { heightPct: newHeightPct, yPct: centerY - newHeightPct / 2, focalX: 50, focalY: 50 });
+    }
   };
 
   // "החל על כל התמונות בדף" — copies one photo's border/shadow styling onto every other photo
@@ -887,7 +1005,7 @@ export default function AlbumSpreadCanvasEditor({
     setPhotoPickerOpen(false);
     setAddingMultiplePhotos(false);
     setMultiPhotoIds(new Set());
-    setSelectedId(null);
+    setSelectedIds(new Set());
   };
 
   const removeBackground = () => setBackgroundPhotoId(null);
@@ -901,7 +1019,7 @@ export default function AlbumSpreadCanvasEditor({
     ]);
     setTextDraft("");
     setTextDraftOpen(false);
-    setSelectedId(id);
+    setSelectedIds(new Set([id]));
   };
 
   // Replaces the photo layout with the template's empty frames, best-effort auto-filling them in
@@ -930,7 +1048,7 @@ export default function AlbumSpreadCanvasEditor({
     }));
     setElements((prev) => [...newPhotoElements, ...prev.filter((e) => e.type === "text")]);
     setTemplatePickerOpen(false);
-    setSelectedId(null);
+    setSelectedIds(new Set());
   };
 
   const saveCurrentAsTemplate = async () => {
@@ -956,45 +1074,93 @@ export default function AlbumSpreadCanvasEditor({
     setSaveTemplateOpen(false);
   };
 
-  const startDrag = (e: React.PointerEvent, el: AlbumElement, kind: "move" | "resize", resizeHandle?: ResizeHandle) => {
+  // `moveGroupIds`, when given, is the exact set of elements a MOVE drag should translate together
+  // (a multi-selection being dragged as one); omitted for everything else, where the group is
+  // just the one dragged element. A resize's group is always every currently-selected photo (so
+  // grabbing one handle scales the whole selection), computed here rather than passed in since
+  // resize handles don't know about selection state themselves.
+  const startDrag = (e: React.PointerEvent, el: AlbumElement, kind: "move" | "resize", resizeHandle?: ResizeHandle, moveGroupIds?: string[]) => {
     e.stopPropagation();
-    (e.target as Element).setPointerCapture(e.pointerId);
-    setSelectedId(el.id);
+    // Can throw in edge cases (pointer id no longer "active" by the time this runs, some
+    // browsers on fast multi-touch sequences) — losing implicit capture just means a drag that
+    // leaves the frame won't keep tracking, not a broken interaction, so it's not worth aborting
+    // the whole gesture over.
+    try {
+      (e.target as Element).setPointerCapture(e.pointerId);
+    } catch {
+      // ignored — see above
+    }
+    const groupIds =
+      kind === "resize" ? (selectedPhotos.length > 1 && selectedIds.has(el.id) ? selectedPhotos.map((p) => p.id) : [el.id]) : moveGroupIds ?? [el.id];
+    const groupStart: Record<string, { xPct: number; yPct: number; widthPct: number; heightPct: number }> = {};
+    for (const id of groupIds) {
+      const ge = elements.find((x) => x.id === id);
+      if (!ge) continue;
+      groupStart[id] = { xPct: ge.xPct, yPct: ge.yPct, widthPct: ge.widthPct, heightPct: ge.type === "photo" ? ge.heightPct : ge.heightPct ?? 15 };
+    }
     dragRef.current = {
       id: el.id,
       kind,
       resizeHandle,
       startClientX: e.clientX,
       startClientY: e.clientY,
-      startXPct: el.xPct,
-      startYPct: el.yPct,
-      startWidthPct: el.widthPct,
-      startHeightPct: el.type === "photo" ? el.heightPct : (el.heightPct ?? 15),
       startFocalX: el.type === "photo" ? el.focalX : 50,
       startFocalY: el.type === "photo" ? el.focalY : 50,
       startZoom: el.type === "photo" ? (el.zoom ?? 100) : 100,
+      groupStart,
     };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    const drag = dragRef.current;
     const canvas = canvasRef.current;
-    if (!drag || !canvas) return;
+    if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
+
+    if (marqueeRef.current) {
+      const curX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+      const curY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+      const { startXPct, startYPct, base } = marqueeRef.current;
+      const x = Math.min(startXPct, curX);
+      const y = Math.min(startYPct, curY);
+      const w = Math.abs(curX - startXPct);
+      const h = Math.abs(curY - startYPct);
+      setMarqueeBox({ x, y, w, h });
+      const marquee = { left: x, top: y, right: x + w, bottom: y + h };
+      const hitIds = elements.filter((el) => el.type === "photo" && boxesIntersect(elementBox(el), marquee)).map((el) => el.id);
+      setSelectedIds(new Set([...base, ...hitIds]));
+      return;
+    }
+
+    const drag = dragRef.current;
+    if (!drag) return;
     const dxPct = ((e.clientX - drag.startClientX) / rect.width) * 100;
     const dyPct = ((e.clientY - drag.startClientY) / rect.height) * 100;
     const el = elements.find((x) => x.id === drag.id);
+    const primaryStart = drag.groupStart[drag.id];
+    if (!primaryStart) return;
 
     if (drag.kind === "resize") {
       const lockAspect = el?.type === "photo" && !!el.lockAspect;
-      const next = computeResize(
-        drag.resizeHandle ?? "se",
-        { xPct: drag.startXPct, yPct: drag.startYPct, widthPct: drag.startWidthPct, heightPct: drag.startHeightPct },
-        dxPct,
-        dyPct,
-        lockAspect
+      const primaryResult = computeResize(drag.resizeHandle ?? "se", primaryStart, dxPct, dyPct, lockAspect);
+      const scaleW = primaryStart.widthPct > 0 ? primaryResult.widthPct / primaryStart.widthPct : 1;
+      const scaleH = primaryStart.heightPct > 0 ? primaryResult.heightPct / primaryStart.heightPct : 1;
+      setElements((prev) =>
+        prev.map((e2) => {
+          const gs = drag.groupStart[e2.id];
+          if (!gs) return e2;
+          if (e2.id === drag.id) return { ...e2, ...primaryResult };
+          // Every other selected photo scales by the same factor, anchored on its own center —
+          // simpler and less surprising than trying to replicate the primary's exact handle
+          // semantics (top-left-fixed etc) across frames that started at different positions.
+          const newW = Math.max(8, Math.min(100, gs.widthPct * scaleW));
+          const newH = Math.max(6, Math.min(100, gs.heightPct * scaleH));
+          const cx = gs.xPct + gs.widthPct / 2;
+          const cy = gs.yPct + gs.heightPct / 2;
+          const nx = Math.max(0, Math.min(cx - newW / 2, 100 - newW));
+          const ny = Math.max(0, Math.min(cy - newH / 2, 100 - newH));
+          return { ...e2, xPct: nx, yPct: ny, widthPct: newW, heightPct: newH };
+        })
       );
-      updateElement(drag.id, next);
       return;
     }
 
@@ -1011,30 +1177,52 @@ export default function AlbumSpreadCanvasEditor({
       // "Position image" mode — drag pans the focal point inside the fixed frame instead of
       // moving the frame; distance is normalized to the frame's own size so a drag across the
       // whole frame sweeps the full 0-100 focal range.
-      const focalX = Math.max(0, Math.min(100, drag.startFocalX + (dxPct / Math.max(1, drag.startWidthPct)) * 100));
-      const focalY = Math.max(0, Math.min(100, drag.startFocalY + (dyPct / Math.max(1, drag.startHeightPct)) * 100));
+      const focalX = Math.max(0, Math.min(100, drag.startFocalX + (dxPct / Math.max(1, primaryStart.widthPct)) * 100));
+      const focalY = Math.max(0, Math.min(100, drag.startFocalY + (dyPct / Math.max(1, primaryStart.heightPct)) * 100));
       updateElement(drag.id, { focalX, focalY });
       if (guides.length) setGuides([]);
       return;
     }
 
-    const candidateX = Math.max(0, Math.min(95, drag.startXPct + dxPct));
-    const candidateY = Math.max(0, Math.min(95, drag.startYPct + dyPct));
+    const groupIds = Object.keys(drag.groupStart);
+    if (groupIds.length > 1) {
+      // Multiple selected elements move together by the same delta — no alignment/spacing guides
+      // for a group drag, keeping the math (and the visual noise) simple.
+      setElements((prev) =>
+        prev.map((e2) => {
+          const gs = drag.groupStart[e2.id];
+          if (!gs) return e2;
+          const nx = Math.max(0, Math.min(95, gs.xPct + dxPct));
+          const ny = Math.max(0, Math.min(95, gs.yPct + dyPct));
+          return { ...e2, xPct: nx, yPct: ny };
+        })
+      );
+      return;
+    }
+
+    const candidateX = Math.max(0, Math.min(95, primaryStart.xPct + dxPct));
+    const candidateY = Math.max(0, Math.min(95, primaryStart.yPct + dyPct));
     const others = elements.filter((x) => x.id !== drag.id);
-    const { guides: nextGuides, snapXPct, snapYPct } = computeAlignment(
-      { xPct: candidateX, yPct: candidateY, widthPct: drag.startWidthPct, heightPct: drag.startHeightPct },
-      others
-    );
+    const candidateBox = { xPct: candidateX, yPct: candidateY, widthPct: primaryStart.widthPct, heightPct: primaryStart.heightPct };
+    const { guides: nextGuides, snapXPct: aSnapX, snapYPct: aSnapY } = computeAlignment(candidateBox, others);
+    const { guides: nextSpacingGuides, snapXPct: sSnapX, snapYPct: sSnapY } = computeSpacingGuides(candidateBox, others);
     setGuides(nextGuides);
+    setSpacingGuides(nextSpacingGuides);
     updateElement(drag.id, {
-      xPct: snapXPct !== undefined ? snapXPct : candidateX,
-      yPct: snapYPct !== undefined ? snapYPct : candidateY,
+      xPct: aSnapX ?? sSnapX ?? candidateX,
+      yPct: aSnapY ?? sSnapY ?? candidateY,
     });
   };
 
   const endDrag = () => {
     dragRef.current = null;
+    if (marqueeRef.current) {
+      justMarqueedRef.current = !!marqueeBox && (marqueeBox.w > 0.5 || marqueeBox.h > 0.5);
+      marqueeRef.current = null;
+      setMarqueeBox(null);
+    }
     setGuides([]);
+    setSpacingGuides([]);
   };
 
   const photoById = new Map(photos.map((p) => [p.id, p]));
@@ -1064,6 +1252,17 @@ export default function AlbumSpreadCanvasEditor({
         <div className="relative w-full lg:max-w-full">
         <div
           ref={canvasRef}
+          onPointerDown={(e) => {
+            // A press directly on the empty canvas (not bubbled from an element, which all
+            // stopPropagation their own pointerdown) starts a rubber-band marquee — held Shift
+            // adds newly-enclosed photos to whatever's already selected instead of replacing it.
+            if (e.target !== e.currentTarget) return;
+            const rect = canvasRef.current!.getBoundingClientRect();
+            const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+            const yPct = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+            marqueeRef.current = { startXPct: xPct, startYPct: yPct, base: e.shiftKey ? new Set(selectedIds) : new Set() };
+            setMarqueeBox({ x: xPct, y: yPct, w: 0, h: 0 });
+          }}
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}
           onClick={(e) => {
@@ -1071,8 +1270,15 @@ export default function AlbumSpreadCanvasEditor({
             // element bubbles up here too (pointerdown selecting it happens first, but a plain
             // stopPropagation on that pointerdown doesn't stop the separate click event that
             // follows on pointerup), so without this check every selection immediately
-            // undid itself before the resize handle even had a chance to render.
-            if (e.target === e.currentTarget) setSelectedId(null);
+            // undid itself before the resize handle even had a chance to render. A click that
+            // follows a real marquee drag is suppressed once so finishing the marquee doesn't
+            // immediately wipe out the selection it just made.
+            if (e.target !== e.currentTarget) return;
+            if (justMarqueedRef.current) {
+              justMarqueedRef.current = false;
+              return;
+            }
+            setSelectedIds(new Set());
           }}
           className="relative w-full lg:w-[min(100%,105.6vh)] lg:mx-auto aspect-[16/10] rounded-xl overflow-hidden bg-line select-none"
           style={{ containerType: "inline-size" }}
@@ -1106,32 +1312,41 @@ export default function AlbumSpreadCanvasEditor({
           {elements
             .filter((el) => mode === "custom" || el.type === "text")
             .map((el) => {
-              const isSelected = el.id === selectedId;
+              const isSelected = selectedIds.has(el.id);
               if (el.type === "photo") {
                 const photo = el.photoId ? photoById.get(el.photoId) : null;
                 return (
                   <div
                     key={el.id}
                     onPointerDown={(e) => {
-                      if (!photo) {
-                        e.stopPropagation();
-                        return;
-                      }
                       // Alt/Cmd+click centers the PHOTO inside its own fixed frame (resets its
                       // focal point) — it never moves the frame itself across the page.
-                      if (e.altKey || e.metaKey) {
+                      if (photo && (e.altKey || e.metaKey)) {
                         e.stopPropagation();
-                        setSelectedId(el.id);
+                        setSelectedIds(new Set([el.id]));
                         updateElement(el.id, { focalX: 50, focalY: 50 });
                         return;
                       }
-                      startDrag(e, el, "move");
-                    }}
-                    onClick={(e) => {
-                      if (!photo) {
+                      if (e.shiftKey) {
+                        // Shift-click toggles this frame in/out of the selection instead of
+                        // starting a drag — mixing in a text element (which isn't part of this
+                        // multi-select model) just drops it and starts a fresh photo-only set.
                         e.stopPropagation();
-                        openPickerForFrame(el.id);
+                        setSelectedIds((prev) => {
+                          const photoOnly = [...prev].every((id) => elements.find((x) => x.id === id)?.type === "photo");
+                          const next = new Set(photoOnly ? prev : []);
+                          if (next.has(el.id)) next.delete(el.id);
+                          else next.add(el.id);
+                          return next;
+                        });
+                        return;
                       }
+                      // A plain click on a frame already part of a multi-selection keeps the whole
+                      // group selected (so the drag that follows moves all of them); otherwise it
+                      // collapses selection down to just this one, matching every other design tool.
+                      const group = selectedIds.has(el.id) && selectedIds.size > 1 ? Array.from(selectedIds) : [el.id];
+                      setSelectedIds(new Set(group));
+                      startDrag(e, el, "move", undefined, group);
                     }}
                     onDoubleClick={(e) => {
                       // A double-click is a fast shortcut into "position image" mode — the same
@@ -1139,7 +1354,7 @@ export default function AlbumSpreadCanvasEditor({
                       // pans the photo inside its own fixed frame instead of moving the frame.
                       if (!photo) return;
                       e.stopPropagation();
-                      setSelectedId(el.id);
+                      setSelectedIds(new Set([el.id]));
                       setPanModeId(el.id);
                     }}
                     onDragOver={(e) => e.preventDefault()}
@@ -1148,7 +1363,7 @@ export default function AlbumSpreadCanvasEditor({
                       const droppedId = e.dataTransfer.getData("text/plain");
                       if (droppedId) updateElement(el.id, { photoId: droppedId, focalX: 50, focalY: 50 });
                     }}
-                    className={`absolute overflow-hidden ${photo ? (panModeId === el.id ? "cursor-crosshair" : "cursor-move") : "cursor-pointer flex items-center justify-center bg-chip"}`}
+                    className={`absolute overflow-hidden ${photo ? (panModeId === el.id ? "cursor-crosshair" : "cursor-move") : "cursor-move flex items-center justify-center bg-chip"}`}
                     style={{
                       left: `${el.xPct}%`,
                       top: `${el.yPct}%`,
@@ -1189,16 +1404,28 @@ export default function AlbumSpreadCanvasEditor({
                         }}
                       />
                     ) : (
-                      <span className="text-ink-soft text-2xl">+</span>
+                      <span
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openPickerForFrame(el.id);
+                        }}
+                        className="text-ink-soft text-2xl cursor-pointer"
+                      >
+                        +
+                      </span>
                     )}
-                    {isSelected && photo && renderResizeHandles(el, startDrag)}
+                    {isSelected && renderResizeHandles(el, startDrag)}
                   </div>
                 );
               }
               return (
                 <div
                   key={el.id}
-                  onPointerDown={(e) => startDrag(e, el, "move")}
+                  onPointerDown={(e) => {
+                    setSelectedIds(new Set([el.id]));
+                    startDrag(e, el, "move");
+                  }}
                   className="absolute cursor-move px-1 flex items-center overflow-visible"
                   style={{
                     left: `${el.xPct}%`,
@@ -1259,15 +1486,48 @@ export default function AlbumSpreadCanvasEditor({
               }
             />
           ))}
+
+          {/* Equal-spacing guides — a different color (sage) from the rose alignment lines so the
+              two kinds of snap read as distinct: "lined up" vs "evenly spaced". */}
+          {spacingGuides.map((g, i) => (
+            <div
+              key={i}
+              className="absolute pointer-events-none"
+              style={
+                g.orientation === "horizontal"
+                  ? { left: `${g.x}%`, top: `${g.y}%`, width: `${g.length}%`, height: 0, borderTop: "2px dashed var(--color-sage)" }
+                  : { left: `${g.x}%`, top: `${g.y}%`, width: 0, height: `${g.length}%`, borderLeft: "2px dashed var(--color-sage)" }
+              }
+            />
+          ))}
+
+          {/* Rubber-band marquee selection box — live while dragging on empty canvas. */}
+          {marqueeBox && (
+            <div
+              className="absolute pointer-events-none border-2"
+              style={{
+                left: `${marqueeBox.x}%`,
+                top: `${marqueeBox.y}%`,
+                width: `${marqueeBox.w}%`,
+                height: `${marqueeBox.h}%`,
+                borderColor: "var(--color-amber-deep)",
+                background: "rgba(74,95,217,0.08)",
+              }}
+            />
+          )}
         </div>
-        {selected?.type === "photo" && selected.photoId && (
+        {anchorPhoto && (
           <PhotoFloatingMenu
-            el={selected}
-            panning={panModeId === selected.id}
-            onTogglePan={() => setPanModeId((prev) => (prev === selected.id ? null : selected.id))}
-            onUpdate={(patch) => updateElement(selected.id, patch)}
-            onTrueSize={() => showTrueSize(selected.id)}
-            onApplyShadowToAll={() => applyShadowToAllPhotos(selected.id)}
+            el={anchorPhoto}
+            panning={selectedIds.size === 1 && panModeId === anchorPhoto.id}
+            onTogglePan={() => {
+              if (selectedIds.size !== 1) return;
+              setPanModeId((prev) => (prev === anchorPhoto.id ? null : anchorPhoto.id));
+            }}
+            onUpdate={(patch) => applyToSelectedPhotos(patch)}
+            onTrueSize={() => showTrueSize(selectedPhotos.filter((p) => p.photoId).map((p) => p.id))}
+            onApplyShadowToAll={() => applyShadowToAllPhotos(anchorPhoto.id)}
+            onDeleteSelected={removeSelected}
           />
         )}
         </div>
@@ -1278,20 +1538,20 @@ export default function AlbumSpreadCanvasEditor({
             independently-scrolling side column on desktop so a tall control list never forces
             the canvas itself to scroll out of view. */}
         <div className="lg:w-[380px] lg:shrink-0 lg:overflow-y-auto lg:pr-1 lg:min-h-0">
-        {selected && (
+        {selectedElements.length > 0 && (
           <div className="space-y-2 mt-2.5">
-            {selected.type === "text" && (
+            {selectedText && (
               <>
                 <div className="flex flex-wrap gap-1.5">
                   {TEXT_COLOR_PALETTE.map(({ value, label }) => (
                     <button
                       key={value}
-                      onClick={() => updateElement(selected.id, { color: value })}
+                      onClick={() => updateElement(selectedText.id, { color: value })}
                       title={label}
                       className="h-7 w-7 rounded-full"
                       style={{
                         background: value,
-                        boxShadow: selected.color === value ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)",
+                        boxShadow: selectedText.color === value ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)",
                       }}
                     />
                   ))}
@@ -1300,11 +1560,11 @@ export default function AlbumSpreadCanvasEditor({
                   {(["right", "center", "left"] as const).map((a) => (
                     <button
                       key={a}
-                      onClick={() => updateElement(selected.id, { align: a })}
+                      onClick={() => updateElement(selectedText.id, { align: a })}
                       className="flex-1 rounded-full py-1.5 text-[10px] font-semibold"
                       style={{
-                        background: selected.align === a ? "var(--color-amber-deep)" : "var(--color-chip)",
-                        color: selected.align === a ? "#fff" : "var(--color-ink-soft)",
+                        background: selectedText.align === a ? "var(--color-amber-deep)" : "var(--color-chip)",
+                        color: selectedText.align === a ? "#fff" : "var(--color-ink-soft)",
                       }}
                     >
                       {a === "right" ? "ימין" : a === "center" ? "מרכז" : "שמאל"}
@@ -1313,10 +1573,10 @@ export default function AlbumSpreadCanvasEditor({
                 </div>
                 <div className="relative">
                   <select
-                    value={selected.fontFamily ?? "heebo"}
-                    onChange={(e) => updateElement(selected.id, { fontFamily: e.target.value })}
+                    value={selectedText.fontFamily ?? "heebo"}
+                    onChange={(e) => updateElement(selectedText.id, { fontFamily: e.target.value })}
                     className="w-full rounded-lg px-2.5 py-2 text-xs font-semibold bg-white border border-line"
-                    style={{ fontFamily: albumFontFamilyCss(selected.fontFamily) }}
+                    style={{ fontFamily: albumFontFamilyCss(selectedText.fontFamily) }}
                   >
                     <optgroup label="פונטים בעברית">
                       {ALBUM_FONTS.filter((f) => f.category === "hebrew").map((f) => (
@@ -1334,16 +1594,22 @@ export default function AlbumSpreadCanvasEditor({
                     </optgroup>
                   </select>
                 </div>
-                <SliderControl label="גודל טקסט" value={selected.fontSize} min={2} max={250} unit="pt" onChange={(v) => updateElement(selected.id, { fontSize: v })} />
+                <SliderControl label="גודל טקסט" value={selectedText.fontSize} min={2} max={250} unit="pt" onChange={(v) => updateElement(selectedText.id, { fontSize: v })} />
               </>
             )}
-            {selected.type === "photo" && selected.photoId && (
+            {selectedPhotos.length === 1 && anchorPhoto && (
               <p className="text-[11px] text-ink-soft text-center flex items-center justify-center gap-1">
                 <IconInfo size={13} />
                 לחצו על התמונה כדי לפתוח את תפריט העיצוב הצף (שחור-לבן, ספיה, שקיפות, טשטוש, סיבוב, צל וקו מתאר)
               </p>
             )}
-            <button onClick={() => removeElement(selected.id)} className="w-full h-8 rounded-full bg-chip text-rose text-xs font-semibold">
+            {selectedPhotos.length > 1 && (
+              <p className="text-[11px] text-ink-soft text-center flex items-center justify-center gap-1">
+                <IconInfo size={13} />
+                נבחרו {selectedPhotos.length} תמונות — גרירה, שינוי גודל ופעולות מהתפריט הצף יחולו על כולן
+              </p>
+            )}
+            <button onClick={removeSelected} className="w-full h-8 rounded-full bg-chip text-rose text-xs font-semibold">
               מחיקה
             </button>
           </div>
@@ -1375,6 +1641,9 @@ export default function AlbumSpreadCanvasEditor({
             <>
               <button onClick={openPickerForNewPhoto} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
                 + תמונה
+              </button>
+              <button onClick={addFrame} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
+                + מסגרת
               </button>
               <button onClick={() => setTemplatePickerOpen(true)} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink flex items-center justify-center gap-1.5">
                 <IconGrid size={14} />
