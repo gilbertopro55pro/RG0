@@ -288,6 +288,7 @@ export default function GalleryManageView({
   const [saveBookTemplateOpen, setSaveBookTemplateOpen] = useState(false);
   const [bookTemplateNameDraft, setBookTemplateNameDraft] = useState("");
   const [savingBookTemplate, setSavingBookTemplate] = useState(false);
+  const [confirmNewAlbumOpen, setConfirmNewAlbumOpen] = useState(false);
   const [creatingSpread, setCreatingSpread] = useState(false);
   const [draggedSpreadId, setDraggedSpreadId] = useState<string | null>(null);
   const [focalEditTarget, setFocalEditTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
@@ -656,6 +657,20 @@ export default function GalleryManageView({
       setSaveBookTemplateOpen(false);
       setBookTemplateNameDraft("");
     }
+  };
+
+  // Discards the current album (cascades to its spreads and client comments) and drops back to
+  // the wizard's first step so the photographer can build a fresh one — gated behind an explicit
+  // confirmation since it permanently deletes any pages already laid out.
+  const startNewAlbum = async () => {
+    if (!album) return;
+    await supabase.from("gallery_albums").delete().eq("id", album.id);
+    setAlbum(null);
+    setAlbumSpreads([]);
+    setAlbumComments([]);
+    setNewPageStep(null);
+    setAlbumWizardMode("style");
+    setConfirmNewAlbumOpen(false);
   };
 
   // Every photo already placed anywhere in the album (any spread's slot photos, background, or
@@ -2055,6 +2070,32 @@ export default function GalleryManageView({
         </div>
       )}
 
+      {confirmNewAlbumOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center"
+          style={{ background: "rgba(46,49,66,0.45)" }}
+          onClick={() => setConfirmNewAlbumOpen(false)}
+        >
+          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2 font-display">להתחיל אלבום חדש?</h2>
+            <p className="text-sm text-ink-soft mb-5">
+              האלבום הנוכחי ({albumSpreads.length} עמודים) יימחק לצמיתות, כולל כל התמונות שסודרו וההערות של הלקוח/ה. הפעולה לא ניתנת לביטול.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={startNewAlbum} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white">
+                כן, התחל מחדש
+              </button>
+              <button
+                onClick={() => setConfirmNewAlbumOpen(false)}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {shareStatus && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 rounded-full px-4 py-2 text-xs font-semibold bg-ink text-white shadow-sheet">
           {shareStatus}
@@ -2233,9 +2274,19 @@ export default function GalleryManageView({
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold font-display">עיצוב אלבום</h2>
-              <button onClick={() => setAlbumManageOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                {album && (
+                  <button
+                    onClick={() => setConfirmNewAlbumOpen(true)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink"
+                  >
+                    + אלבום חדש
+                  </button>
+                )}
+                <button onClick={() => setAlbumManageOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
+                  ✕
+                </button>
+              </div>
             </div>
 
             {albumLoading ? (

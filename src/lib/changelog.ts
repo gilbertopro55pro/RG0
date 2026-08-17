@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.30.1",
+    date: "2026-08-17",
+    changes: [
+      "כפתור \"+ אלבום חדש\" בעורך עיצוב האלבום (ליד כפתור הסגירה) — פותח מחדש את האשף המלא כדי לבנות אלבום מאפס, עם אישור לפני מחיקת האלבום הקיים",
+    ],
+  },
+  {
     version: "1.30.0",
     date: "2026-08-17",
     changes: [
