@@ -61,6 +61,9 @@ const ALBUM_SIZE_PRESETS: { label: string; width: number; height: number; margin
   { label: "30×30", width: 30, height: 30, margin: 0.6 },
   { label: "30×40", width: 30, height: 40, margin: 0.8 },
   { label: "40×30", width: 40, height: 30, margin: 0.8 },
+  { label: "20×54", width: 20, height: 54, margin: 0.6 },
+  { label: "30×60", width: 30, height: 60, margin: 0.9 },
+  { label: "30×80", width: 30, height: 80, margin: 1 },
 ];
 
 const CELL_SIZE_MIN = 80;
