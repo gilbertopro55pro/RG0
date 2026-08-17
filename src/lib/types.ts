@@ -334,6 +334,7 @@ export type GalleryAlbumRow = {
   cover_photo_id: string | null;
   width_cm: number;
   height_cm: number;
+  safe_margin_cm: number;
   approved_at: string | null;
   created_at: string;
 };

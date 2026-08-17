@@ -50,6 +50,19 @@ type PhotoWithUrl = GalleryPhotoRow & { url: string };
 
 const CLOSE_ANIMATION_MS = 220;
 
+// Common photo-album print sizes, each with a recommended safe-margin starting point — picking
+// one just prefills the width/height/margin fields below, so manual entry (typing different
+// numbers, or overriding a preset's values) always stays available on the exact same fields.
+const ALBUM_SIZE_PRESETS: { label: string; width: number; height: number; margin: number }[] = [
+  { label: "20×20", width: 20, height: 20, margin: 0.4 },
+  { label: "20×30", width: 20, height: 30, margin: 0.5 },
+  { label: "30×20", width: 30, height: 20, margin: 0.5 },
+  { label: "25×25", width: 25, height: 25, margin: 0.5 },
+  { label: "30×30", width: 30, height: 30, margin: 0.6 },
+  { label: "30×40", width: 30, height: 40, margin: 0.8 },
+  { label: "40×30", width: 40, height: 30, margin: 0.8 },
+];
+
 const CELL_SIZE_MIN = 80;
 const CELL_SIZE_MAX = 260;
 const CELL_SIZE_DEFAULT = 126;
@@ -279,7 +292,7 @@ export default function GalleryManageView({
   const [album, setAlbum] = useState<GalleryAlbumRow | null>(null);
   const [albumSpreads, setAlbumSpreads] = useState<GalleryAlbumSpreadRow[]>([]);
   const [albumComments, setAlbumComments] = useState<GalleryAlbumCommentRow[]>([]);
-  const [albumSizeDraft, setAlbumSizeDraft] = useState({ width: 30, height: 20 });
+  const [albumSizeDraft, setAlbumSizeDraft] = useState({ width: 30, height: 20, margin: 0.5 });
   const [newPageStep, setNewPageStep] = useState<"choice" | "count" | null>(null);
   const [newPageTemplateTab, setNewPageTemplateTab] = useState<TemplateTabKey>("2");
   const [customPageCount, setCustomPageCount] = useState(6);
@@ -536,6 +549,7 @@ export default function GalleryManageView({
         photographer_id: gallery.photographer_id,
         width_cm: albumSizeDraft.width,
         height_cm: albumSizeDraft.height,
+        safe_margin_cm: albumSizeDraft.margin,
       })
       .select()
       .single<GalleryAlbumRow>();
@@ -605,6 +619,7 @@ export default function GalleryManageView({
         photographer_id: gallery.photographer_id,
         width_cm: albumSizeDraft.width,
         height_cm: albumSizeDraft.height,
+        safe_margin_cm: albumSizeDraft.margin,
       })
       .select()
       .single<GalleryAlbumRow>();
@@ -631,6 +646,7 @@ export default function GalleryManageView({
         photographer_id: gallery.photographer_id,
         width_cm: albumSizeDraft.width,
         height_cm: albumSizeDraft.height,
+        safe_margin_cm: albumSizeDraft.margin,
       })
       .select()
       .single<GalleryAlbumRow>();
@@ -920,6 +936,14 @@ export default function GalleryManageView({
     setAlbum({ ...album, width_cm: widthCm, height_cm: heightCm });
     setSavingAlbumSize(true);
     await supabase.from("gallery_albums").update({ width_cm: widthCm, height_cm: heightCm }).eq("id", album.id);
+    setSavingAlbumSize(false);
+  };
+
+  const updateAlbumMargin = async (marginCm: number) => {
+    if (!album) return;
+    setAlbum({ ...album, safe_margin_cm: marginCm });
+    setSavingAlbumSize(true);
+    await supabase.from("gallery_albums").update({ safe_margin_cm: marginCm }).eq("id", album.id);
     setSavingAlbumSize(false);
   };
 
@@ -2318,8 +2342,25 @@ export default function GalleryManageView({
                 <p className="text-xs text-ink-soft mb-3.5">
                   קודם כל, מה מידות האלבום להדפסה? המערכת תבנה לכם שבלונה מלאה — כל העמודים עם הקוביות מוכנות — וכל מה שיישאר זה לגרור תמונות פנימה.
                 </p>
+                <p className="text-xs text-ink-soft mb-2">מידות נפוצות — בחירה ממלאת את השדות למטה, ואפשר גם לשנות אותם ידנית</p>
+                <div className="flex flex-wrap gap-1.5 mb-3.5">
+                  {ALBUM_SIZE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      onClick={() => setAlbumSizeDraft({ width: preset.width, height: preset.height, margin: preset.margin })}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
+                      style={{
+                        background:
+                          albumSizeDraft.width === preset.width && albumSizeDraft.height === preset.height ? "var(--color-amber-deep)" : "var(--color-chip)",
+                        color: albumSizeDraft.width === preset.width && albumSizeDraft.height === preset.height ? "#fff" : "var(--color-ink-soft)",
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
                 <p className="text-xs text-ink-soft mb-2">מידות האלבום (ס״מ)</p>
-                <div className="flex items-center gap-2 mb-5">
+                <div className="flex items-center gap-2 mb-2.5">
                   <input
                     type="number"
                     min={1}
@@ -2337,6 +2378,17 @@ export default function GalleryManageView({
                     className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
                   />
                   <span className="text-xs text-ink-soft">גובה</span>
+                </div>
+                <div className="flex items-center gap-2 mb-5">
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={albumSizeDraft.margin}
+                    onChange={(e) => setAlbumSizeDraft((prev) => ({ ...prev, margin: Number(e.target.value) || 0 }))}
+                    className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
+                  />
+                  <span className="text-xs text-ink-soft">מרחק המסגרת הירוקה מהקצה (ס״מ)</span>
                 </div>
 
                 {albumBookTemplates.length > 0 && (
@@ -2510,6 +2562,17 @@ export default function GalleryManageView({
                     />
                     <span className="text-xs text-ink-soft">גובה</span>
                     {savingAlbumSize && <span className="text-[11px] text-ink-soft">שומר...</span>}
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={album.safe_margin_cm}
+                      onChange={(e) => updateAlbumMargin(Number(e.target.value) || 0)}
+                      className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
+                    />
+                    <span className="text-xs text-ink-soft">מרחק המסגרת הירוקה מהקצה (ס״מ)</span>
                   </div>
                 </div>
 
@@ -2932,7 +2995,7 @@ export default function GalleryManageView({
           return (
             <AlbumSpreadCanvasEditor
               spread={spread}
-              album={{ width_cm: album.width_cm, height_cm: album.height_cm }}
+              album={{ width_cm: album.width_cm, height_cm: album.height_cm, safe_margin_cm: album.safe_margin_cm }}
               photos={photos}
               folders={folders}
               photo1={photo1}

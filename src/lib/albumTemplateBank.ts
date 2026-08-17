@@ -54,25 +54,27 @@ function pctRatioFor(printRatio: number): number {
   return printRatio / REFERENCE_ASPECT;
 }
 
-// Splits n photos into rows of 1-4, biased toward smaller rows for variety.
+// Splits n photos into rows, targeting a row count near 0.8*sqrt(n) — the row count that makes
+// layoutRow's "fill the full row width" height come out close to the page's own usable height on
+// average (derived from the average print-ratio frame's width:height once scaled to this page's
+// 16:10 reference). A fixed small per-row cap regardless of n (the previous approach) produced far
+// too many rows for larger counts; each row still filled its own width exactly, but the resulting
+// TOTAL height wildly exceeded the page, forcing generateTemplateFrames' uniform downscale to
+// shrink everything into a narrow, centered vertical strip with dead space on both sides — exactly
+// the "images bunched in the middle" layout this avoids.
 function randomPartition(n: number, rng: () => number): number[] {
-  const parts: number[] = [];
-  let remaining = n;
-  while (remaining > 0) {
-    const maxPart = Math.min(4, remaining);
-    const size = Math.min(1 + Math.floor(rng() * maxPart), remaining);
-    parts.push(size);
-    remaining -= size;
-  }
-  // Avoid a pure single-column layout (every row exactly 1 photo, stacked top to bottom) once
-  // there are enough photos that it reads as one long vertical strip rather than a couple of
-  // deliberate rows. Every row is >=1 by construction, so `parts.length === n` alone already
-  // means every row is exactly 1 (n rows of >=1 summing to n forces each to be 1) — merge the
-  // last two singles into a row of 2 instead of re-rolling.
-  if (n >= 3 && parts.length === n) {
-    parts.pop();
-    parts.pop();
-    parts.push(2);
+  const idealRows = 0.8 * Math.sqrt(n);
+  const rows = Math.max(1, Math.min(n, Math.round(idealRows + (rng() - 0.5))));
+  const base = Math.floor(n / rows);
+  const remainder = n - base * rows;
+  const parts = new Array(rows).fill(base);
+  const order = [...parts.keys()].sort(() => rng() - 0.5);
+  for (let i = 0; i < remainder; i++) parts[order[i]]++;
+  // A little variety beyond the even split: occasionally shift one photo from a larger row to its
+  // neighbor, so not every generated template has perfectly uniform row sizes.
+  if (rows >= 2 && rng() < 0.4) {
+    const from = parts.findIndex((p) => p > 1);
+    if (from !== -1) parts[from]--, parts[(from + 1) % rows]++;
   }
   return parts;
 }

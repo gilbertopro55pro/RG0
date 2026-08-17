@@ -391,8 +391,9 @@ function PhotoFloatingMenu({
 // can ever cross the green line regardless of which album size it's applied to. Manual dragging is
 // deliberately NOT clamped by this — a photographer can always drag a photo past the margin on
 // purpose; only automatic placement is constrained.
-export function marginInsetPctFor(album: { width_cm: number; height_cm: number }): { x: number; y: number } | null {
-  return album.width_cm > 0 && album.height_cm > 0 ? { x: (0.5 / album.width_cm) * 100, y: (0.5 / album.height_cm) * 100 } : null;
+export function marginInsetPctFor(album: { width_cm: number; height_cm: number; safe_margin_cm?: number }): { x: number; y: number } | null {
+  const marginCm = album.safe_margin_cm ?? 0.5;
+  return album.width_cm > 0 && album.height_cm > 0 ? { x: (marginCm / album.width_cm) * 100, y: (marginCm / album.height_cm) * 100 } : null;
 }
 
 export function fitFramesToSafeArea(frames: AlbumFrame[], marginInsetPct: { x: number; y: number } | null): AlbumFrame[] {
@@ -648,6 +649,57 @@ function computeSpacingGuides(
   return { guides, snapXPct, snapYPct };
 }
 
+// Guide lines while RESIZING — checks only the edge(s) actually moving (per the active handle)
+// against every other element's matching edge, the page's own edges, and the page center, so
+// growing/shrinking a frame shows the same kind of "you've reached another photo's border" line
+// that dragging already shows, on both the width and the height axis independently.
+function computeResizeGuides(
+  handle: ResizeHandle,
+  box: { xPct: number; yPct: number; widthPct: number; heightPct: number },
+  others: AlbumElement[]
+): { guides: { axis: "v" | "h"; pos: number }[]; box: { xPct: number; yPct: number; widthPct: number; heightPct: number } } {
+  const guides: { axis: "v" | "h"; pos: number }[] = [];
+  const result = { ...box };
+  const targetsX = [0, 50, 100, ...others.map((o) => elementBox(o).left), ...others.map((o) => elementBox(o).right)];
+  const targetsY = [0, 50, 100, ...others.map((o) => elementBox(o).top), ...others.map((o) => elementBox(o).bottom)];
+
+  if (handle.includes("e")) {
+    const right = box.xPct + box.widthPct;
+    const hit = targetsX.find((t) => Math.abs(right - t) < SNAP_THRESHOLD);
+    if (hit !== undefined) {
+      guides.push({ axis: "v", pos: hit });
+      result.widthPct = Math.max(8, hit - box.xPct);
+    }
+  } else if (handle.includes("w")) {
+    const hit = targetsX.find((t) => Math.abs(box.xPct - t) < SNAP_THRESHOLD);
+    if (hit !== undefined) {
+      guides.push({ axis: "v", pos: hit });
+      const right = box.xPct + box.widthPct;
+      result.xPct = hit;
+      result.widthPct = Math.max(8, right - hit);
+    }
+  }
+
+  if (handle.includes("s")) {
+    const bottom = box.yPct + box.heightPct;
+    const hit = targetsY.find((t) => Math.abs(bottom - t) < SNAP_THRESHOLD);
+    if (hit !== undefined) {
+      guides.push({ axis: "h", pos: hit });
+      result.heightPct = Math.max(6, hit - box.yPct);
+    }
+  } else if (handle.includes("n")) {
+    const hit = targetsY.find((t) => Math.abs(box.yPct - t) < SNAP_THRESHOLD);
+    if (hit !== undefined) {
+      guides.push({ axis: "h", pos: hit });
+      const bottom = box.yPct + box.heightPct;
+      result.yPct = hit;
+      result.heightPct = Math.max(6, bottom - hit);
+    }
+  }
+
+  return { guides, box: result };
+}
+
 // Lays out a set of photos into rows of UNIFORM height, with each photo's width inside its row
 // proportional to its own aspect ratio — a portrait photo (aspect < 1) ends up narrower than its
 // landscape row-mates (aspect > 1) for the same row height, i.e. a portrait-shaped frame, and vice
@@ -737,9 +789,9 @@ export default function AlbumSpreadCanvasEditor({
   onClose,
 }: {
   spread: GalleryAlbumSpreadRow;
-  // Physical print dimensions — used only to size the print-safe margin guide (a 0.5cm inset
-  // proportional to the page, same regardless of which album this is).
-  album: { width_cm: number; height_cm: number };
+  // Physical print dimensions plus the album's own configured safe-margin (cm) — used to size the
+  // print-safe margin guide; safe_margin_cm defaults to 0.5 if omitted.
+  album: { width_cm: number; height_cm: number; safe_margin_cm?: number };
   photos: PhotoWithUrl[];
   // Gallery tabs/folders, used only to group the draggable favorites panel below the save button
   // — an empty/omitted list just renders that panel as one flat, ungrouped area.
@@ -1141,7 +1193,19 @@ export default function AlbumSpreadCanvasEditor({
 
     if (drag.kind === "resize") {
       const lockAspect = el?.type === "photo" && !!el.lockAspect;
-      const primaryResult = computeResize(drag.resizeHandle ?? "se", primaryStart, dxPct, dyPct, lockAspect);
+      const handle = drag.resizeHandle ?? "se";
+      let primaryResult = computeResize(handle, primaryStart, dxPct, dyPct, lockAspect);
+      const isSingleResize = Object.keys(drag.groupStart).length === 1;
+      if (isSingleResize) {
+        // Only a single-frame resize gets edge guides — a group resize already has its own
+        // proportional-scale math below and mixing in per-edge snapping there would fight it.
+        const others = elements.filter((x) => x.id !== drag.id);
+        const { guides: resizeGuides, box: snappedBox } = computeResizeGuides(handle, primaryResult, others);
+        setGuides(resizeGuides);
+        primaryResult = snappedBox;
+      } else {
+        setGuides([]);
+      }
       const scaleW = primaryStart.widthPct > 0 ? primaryResult.widthPct / primaryStart.widthPct : 1;
       const scaleH = primaryStart.heightPct > 0 ? primaryResult.heightPct / primaryStart.heightPct : 1;
       setElements((prev) =>
@@ -1186,14 +1250,26 @@ export default function AlbumSpreadCanvasEditor({
 
     const groupIds = Object.keys(drag.groupStart);
     if (groupIds.length > 1) {
-      // Multiple selected elements move together by the same delta — no alignment/spacing guides
-      // for a group drag, keeping the math (and the visual noise) simple.
+      // Multiple selected elements move together by the same delta. Guides/snapping are computed
+      // from the PRIMARY (dragged) element against everything NOT in the group, exactly like a
+      // single-element move — the resulting correction is then applied to every group member so
+      // the whole selection snaps together instead of just the one frame under the cursor.
+      const groupCandidateX = Math.max(0, Math.min(95, primaryStart.xPct + dxPct));
+      const groupCandidateY = Math.max(0, Math.min(95, primaryStart.yPct + dyPct));
+      const groupOthers = elements.filter((x) => !drag.groupStart[x.id]);
+      const groupCandidateBox = { xPct: groupCandidateX, yPct: groupCandidateY, widthPct: primaryStart.widthPct, heightPct: primaryStart.heightPct };
+      const { guides: gAlignGuides, snapXPct: gaSnapX, snapYPct: gaSnapY } = computeAlignment(groupCandidateBox, groupOthers);
+      const { guides: gSpacingGuides, snapXPct: gsSnapX, snapYPct: gsSnapY } = computeSpacingGuides(groupCandidateBox, groupOthers);
+      setGuides(gAlignGuides);
+      setSpacingGuides(gSpacingGuides);
+      const correctionX = (gaSnapX ?? gsSnapX ?? groupCandidateX) - groupCandidateX;
+      const correctionY = (gaSnapY ?? gsSnapY ?? groupCandidateY) - groupCandidateY;
       setElements((prev) =>
         prev.map((e2) => {
           const gs = drag.groupStart[e2.id];
           if (!gs) return e2;
-          const nx = Math.max(0, Math.min(95, gs.xPct + dxPct));
-          const ny = Math.max(0, Math.min(95, gs.yPct + dyPct));
+          const nx = Math.max(0, Math.min(95, gs.xPct + dxPct + correctionX));
+          const ny = Math.max(0, Math.min(95, gs.yPct + dyPct + correctionY));
           return { ...e2, xPct: nx, yPct: ny };
         })
       );
@@ -1472,6 +1548,12 @@ export default function AlbumSpreadCanvasEditor({
               }}
             />
           )}
+
+          {/* Page-center guide — always visible (not just while dragging), same green as the
+              print-safe margin frame above, so the page's own center is a fixed visual reference
+              alongside it rather than something that only appears mid-drag. */}
+          <div className="absolute pointer-events-none" style={{ left: "50%", top: 0, bottom: 0, width: 0, borderRight: "2px solid #2fae5c", opacity: 0.55 }} />
+          <div className="absolute pointer-events-none" style={{ top: "50%", left: 0, right: 0, height: 0, borderBottom: "2px solid #2fae5c", opacity: 0.55 }} />
 
           {/* Smart alignment guides — page-center and edge/center lines against other elements,
               shown only while actively dragging a frame. */}
