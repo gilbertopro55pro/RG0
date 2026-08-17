@@ -709,37 +709,6 @@ function computeResizeGuides(
   return { guides, box: result };
 }
 
-// Lays out a set of photos into rows of UNIFORM height, with each photo's width inside its row
-// proportional to its own aspect ratio — a portrait photo (aspect < 1) ends up narrower than its
-// landscape row-mates (aspect > 1) for the same row height, i.e. a portrait-shaped frame, and vice
-// versa, without needing true justified-gallery math (which allows variable row heights but can't
-// guarantee the whole set fills an exact 100%x100% page). Returns exactly one frame per input item,
-// in the same order, so the caller can zip photoId back in by index.
-function generateOrientedFrames(items: { id: string; aspect: number }[]): AlbumFrame[] {
-  const n = items.length;
-  if (n === 0) return [];
-  const gap = 2; // pct
-  const rows = Math.max(1, Math.min(n, Math.round(Math.sqrt(n))));
-  const perRow = Math.ceil(n / rows);
-  const rowHeight = (100 - gap * (rows - 1)) / rows;
-  const frames: AlbumFrame[] = [];
-  let idx = 0;
-  for (let r = 0; r < rows; r++) {
-    const rowItems = items.slice(idx, idx + perRow);
-    if (rowItems.length === 0) break;
-    const sumAspect = rowItems.reduce((s, it) => s + it.aspect, 0) || rowItems.length;
-    const rowWidthAvail = 100 - gap * (rowItems.length - 1);
-    let x = 0;
-    for (const it of rowItems) {
-      const w = (it.aspect / sumAspect) * rowWidthAvail;
-      frames.push({ id: `auto-${idx}`, xPct: x, yPct: r * (rowHeight + gap), widthPct: w, heightPct: rowHeight });
-      x += w + gap;
-      idx++;
-    }
-  }
-  return frames;
-}
-
 // Seeds a brand-new "custom" canvas from the spread's existing preset-layout photos (matching the
 // same position math the split/feature/stack renderers use) so switching a page to free-form
 // never silently loses the photos it already had.
@@ -843,6 +812,7 @@ export default function AlbumSpreadCanvasEditor({
   const [textDraft, setTextDraft] = useState("");
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [masksPickerOpen, setMasksPickerOpen] = useState(false);
+  const [masksPickerClosing, setMasksPickerClosing] = useState(false);
   const [templateTab, setTemplateTab] = useState<TemplateTabKey>("2");
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateNameDraft, setTemplateNameDraft] = useState("");
@@ -924,6 +894,30 @@ export default function AlbumSpreadCanvasEditor({
     setPanModeId((prev) => (prev && !selectedIds.has(prev) ? null : prev));
   }, [selectedIds]);
 
+  // Arrow keys nudge every currently-selected element together — a fine 0.5% step, or 3% with
+  // Shift held for bigger moves. Skipped while focus is inside a form field so normal keyboard
+  // navigation there (e.g. arrowing through a <select>) isn't hijacked. xPct/yPct are plain LTR
+  // canvas coordinates regardless of the app's RTL UI (see the AlbumSpreadLayout type comment), so
+  // ArrowLeft/ArrowRight map to decreasing/increasing x exactly like every other drag on this
+  // canvas already does — no RTL flip needed.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+      const active = document.activeElement;
+      if (active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)) return;
+      if (selectedIds.size === 0) return;
+      e.preventDefault();
+      const step = e.shiftKey ? 3 : 0.5;
+      const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+      const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+      setElements((prev) =>
+        prev.map((el) => (selectedIds.has(el.id) ? { ...el, xPct: Math.max(0, Math.min(95, el.xPct + dx)), yPct: Math.max(0, Math.min(95, el.yPct + dy)) } : el))
+      );
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedIds]);
+
   const updateElement = (id: string, patch: Partial<AlbumElement>) => {
     setElements((prev) => prev.map((e) => (e.id === id ? ({ ...e, ...patch } as AlbumElement) : e)));
   };
@@ -948,6 +942,16 @@ export default function AlbumSpreadCanvasEditor({
     const id = `frame-${Date.now()}`;
     setElements((prev) => [...prev, { id, type: "photo", photoId: null, xPct: 32, yPct: 32, widthPct: 36, heightPct: 36, focalX: 50, focalY: 50 }]);
     setSelectedIds(new Set([id]));
+  };
+
+  // Plays the slide-up close animation before actually unmounting the masks panel — mirrors the
+  // CLOSE_ANIMATION_MS pattern used for other animated panels in this app.
+  const closeMasksPicker = () => {
+    setMasksPickerClosing(true);
+    setTimeout(() => {
+      setMasksPickerOpen(false);
+      setMasksPickerClosing(false);
+    }, 200);
   };
 
   const openPickerForNewPhoto = () => {
@@ -1041,6 +1045,12 @@ export default function AlbumSpreadCanvasEditor({
     );
   };
 
+  // Adds each newly-picked photo as its own medium-sized, orientation-aware frame ALONGSIDE
+  // whatever's already on the page — this used to regenerate a fresh full-page layout for just
+  // the new selection, silently wiping every existing photo element in the process. Sizing
+  // mirrors addFrame's own default scale (a photo-shaped frame, not a full-bleed one); multiple
+  // photos added in the same batch cascade diagonally so they land visibly apart instead of
+  // stacked exactly on top of each other.
   const confirmMultiPhotos = async () => {
     const ids = Array.from(multiPhotoIds);
     if (ids.length === 0) return;
@@ -1048,26 +1058,29 @@ export default function AlbumSpreadCanvasEditor({
     const items = await Promise.all(
       ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoById.get(id)?.url ?? "") }))
     );
-    // Rescaled into the album's print-safe area (see fitFramesToSafeArea) so an auto-generated
-    // multi-photo layout can never cross the green margin on its own.
-    const frames = fitFramesToSafeArea(generateOrientedFrames(items), marginInsetPct); // same order/length as `items`
-    const newPhotoElements: AlbumPhotoElement[] = frames.map((f, i) => ({
-      id: f.id,
-      type: "photo",
-      photoId: items[i].id,
-      xPct: f.xPct,
-      yPct: f.yPct,
-      widthPct: f.widthPct,
-      heightPct: f.heightPct,
-      focalX: 50,
-      focalY: 50,
-    }));
-    setElements((prev) => [...newPhotoElements, ...prev.filter((e) => e.type === "text")]);
+    const baseSize = 36;
+    const newPhotoElements: AlbumPhotoElement[] = items.map((item, i) => {
+      const widthPct = item.aspect >= 1 ? baseSize : baseSize * item.aspect;
+      const heightPct = item.aspect >= 1 ? baseSize / item.aspect : baseSize;
+      const cascade = i * 4;
+      return {
+        id: `el-${Date.now()}-${i}`,
+        type: "photo",
+        photoId: item.id,
+        xPct: Math.min(100 - widthPct, 20 + cascade),
+        yPct: Math.min(100 - heightPct, 20 + cascade),
+        widthPct,
+        heightPct,
+        focalX: 50,
+        focalY: 50,
+      };
+    });
+    setElements((prev) => [...prev, ...newPhotoElements]);
     setLoadingMultiLayout(false);
     setPhotoPickerOpen(false);
     setAddingMultiplePhotos(false);
     setMultiPhotoIds(new Set());
-    setSelectedIds(new Set());
+    setSelectedIds(new Set(newPhotoElements.map((e) => e.id)));
   };
 
   const removeBackground = () => setBackgroundPhotoId(null);
@@ -1317,6 +1330,11 @@ export default function AlbumSpreadCanvasEditor({
     <div
       className={`fixed inset-0 z-[80] flex items-center justify-center p-4 ${ALBUM_FONT_CLASS_NAMES}`}
       style={{ background: "rgba(46,49,66,0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+      // Right-click (and the page's own custom menu, if it ever grows one) does nothing here —
+      // there's no editor context menu to show. Shift+right-click specifically forces the
+      // browser/OS's OWN native menu open regardless of this handler — that's a deliberate
+      // browser-level user override with no JS hook to intercept, not something this can block.
+      onContextMenu={(e) => e.preventDefault()}
     >
       {/* Mobile keeps the original compact bottom-sheet-ish modal (single column, whole-panel
           scroll). From the lg: breakpoint up, the panel expands to fill nearly the whole window
@@ -1990,12 +2008,28 @@ export default function AlbumSpreadCanvasEditor({
         </div>
       )}
 
-      {masksPickerOpen && (
-        <div className="fixed inset-0 z-[85] flex items-end lg:items-center justify-center" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setMasksPickerOpen(false)}>
-          <div className="w-full max-w-sm lg:max-w-4xl rounded-t-3xl lg:rounded-3xl p-5 lg:p-6 bg-paper max-h-[75vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      {(masksPickerOpen || masksPickerClosing) && (
+        <>
+          <style>{`
+            @keyframes maskPanelSlideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+            @keyframes maskPanelSlideUp { from { transform: translateY(0); } to { transform: translateY(-100%); } }
+            .mask-panel-opening { animation: maskPanelSlideDown 200ms ease forwards; }
+            .mask-panel-closing { animation: maskPanelSlideUp 200ms ease forwards; }
+          `}</style>
+          {/* A transparent click-catcher, not a darkened backdrop — the panel only slides down
+              over the TOP portion of the screen (see below) and shouldn't hide/dim the rest of
+              the canvas underneath it. */}
+          <div className="fixed inset-0 z-[84]" onClick={closeMasksPicker} />
+          <div className="fixed inset-x-0 top-0 z-[85] flex justify-center px-4 pointer-events-none">
+            <div
+              className={`w-full max-w-sm lg:max-w-4xl rounded-b-3xl p-5 lg:p-6 bg-paper shadow-sheet max-h-[65vh] overflow-y-auto pointer-events-auto ${
+                masksPickerClosing ? "mask-panel-closing" : "mask-panel-opening"
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-bold">מסכות — גררו מסכה אל תמונה בעמוד, או לחצו כשתמונה נבחרת</p>
-              <button onClick={() => setMasksPickerOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+              <button onClick={closeMasksPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
             </div>
@@ -2039,8 +2073,9 @@ export default function AlbumSpreadCanvasEditor({
                 </div>
               ))}
             </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {saveTemplateOpen && (

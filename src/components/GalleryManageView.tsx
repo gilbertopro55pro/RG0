@@ -2122,11 +2122,11 @@ export default function GalleryManageView({
 
       {confirmNewAlbumOpen && (
         <div
-          className="fixed inset-0 z-[70] flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
           onClick={() => setConfirmNewAlbumOpen(false)}
         >
-          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-2 font-display">להתחיל אלבום חדש?</h2>
             <p className="text-sm text-ink-soft mb-5">
               האלבום הנוכחי ({albumSpreads.length} עמודים) יימחק לצמיתות, כולל כל התמונות שסודרו וההערות של הלקוח/ה. הפעולה לא ניתנת לביטול.
@@ -2346,23 +2346,23 @@ export default function GalleryManageView({
                 <p className="text-xs text-ink-soft mb-3.5">
                   קודם כל, מה מידות האלבום להדפסה? המערכת תבנה לכם שבלונה מלאה — כל העמודים עם הקוביות מוכנות — וכל מה שיישאר זה לגרור תמונות פנימה.
                 </p>
-                <p className="text-xs text-ink-soft mb-2">מידות נפוצות — בחירה ממלאת את השדות למטה, ואפשר גם לשנות אותם ידנית</p>
-                <div className="flex flex-wrap gap-1.5 mb-3.5">
+                <p className="text-xs text-ink-soft mb-2">מידה נפוצה — בחירה ממלאת את השדות למטה, ואפשר גם לשנות אותם ידנית</p>
+                <select
+                  value={ALBUM_SIZE_PRESETS.find((p) => p.width === albumSizeDraft.width && p.height === albumSizeDraft.height)?.label ?? ""}
+                  onChange={(e) => {
+                    const preset = ALBUM_SIZE_PRESETS.find((p) => p.label === e.target.value);
+                    if (preset) setAlbumSizeDraft({ width: preset.width, height: preset.height, margin: preset.margin });
+                  }}
+                  style={{ width: "15vw", minWidth: 110 }}
+                  className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white mb-3.5"
+                >
+                  <option value="">בחירה...</option>
                   {ALBUM_SIZE_PRESETS.map((preset) => (
-                    <button
-                      key={preset.label}
-                      onClick={() => setAlbumSizeDraft({ width: preset.width, height: preset.height, margin: preset.margin })}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
-                      style={{
-                        background:
-                          albumSizeDraft.width === preset.width && albumSizeDraft.height === preset.height ? "var(--color-amber-deep)" : "var(--color-chip)",
-                        color: albumSizeDraft.width === preset.width && albumSizeDraft.height === preset.height ? "#fff" : "var(--color-ink-soft)",
-                      }}
-                    >
+                    <option key={preset.label} value={preset.label}>
                       {preset.label}
-                    </button>
+                    </option>
                   ))}
-                </div>
+                </select>
                 <p className="text-xs text-ink-soft mb-2">מידות האלבום (ס״מ)</p>
                 <div className="flex items-center gap-2 mb-2.5">
                   <input
@@ -2422,32 +2422,12 @@ export default function GalleryManageView({
 
                 {albumWizardMode === "style" ? (
                   <>
-                    <div className="flex items-center gap-2 mb-3.5">
-                      <div className="flex-1">
-                        <label className="text-xs block mb-1 text-ink-soft">מספר עמודים רצוי</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={albumPageCountDraft}
-                          onChange={(e) => setAlbumPageCountDraft(Math.max(1, Number(e.target.value) || 1))}
-                          className="w-full rounded-lg border border-line px-2.5 py-2 text-sm text-center"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <label className="text-xs block mb-1 text-ink-soft">כמות תמונות רצויה</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={albumPhotoCountDraft}
-                          onChange={(e) => setAlbumPhotoCountDraft(Math.max(1, Number(e.target.value) || 1))}
-                          className="w-full rounded-lg border border-line px-2.5 py-2 text-sm text-center"
-                        />
-                      </div>
-                    </div>
-                    {/* Style picker (מגזין/קלאסי/מקושקש/אורבני/קו נקי) is temporarily hidden per
-                        photographer request — the generators still work and need more real-world
-                        tuning before they're worth exposing as a choice; albumStyleDraft stays
-                        fixed at its "classic" default so buildStyledAlbum still has a style to use. */}
+                    {/* Page-count / photo-count inputs, and the style picker (מגזין/קלאסי/מקושקש/
+                        אורבני/קו נקי), are temporarily hidden per photographer request — the
+                        wizard now just needs a size to build from. albumPageCountDraft/
+                        albumPhotoCountDraft/albumStyleDraft stay at their existing defaults
+                        (20 pages, 40 photos, "classic") so buildStyledAlbum still has everything
+                        it needs. */}
                     {error && <p className="text-xs text-rose mb-2.5 mt-2">{error}</p>}
                     <button
                       onClick={buildStyledAlbum}
