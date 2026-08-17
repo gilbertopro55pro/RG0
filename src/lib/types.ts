@@ -307,6 +307,17 @@ export type AlbumTemplateRow = {
   created_at: string;
 };
 
+// A whole-book template — one frame layout per page, in order — as opposed to AlbumTemplateRow
+// which is a single page's frames.
+export type AlbumBookTemplateRow = {
+  id: string;
+  photographer_id: string;
+  name: string;
+  style: string;
+  pages: AlbumFrame[][];
+  created_at: string;
+};
+
 export type GalleryAlbumRow = {
   id: string;
   gallery_id: string;

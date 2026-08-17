@@ -6,8 +6,10 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  AlbumBookTemplateRow,
   AlbumElement,
   AlbumFrame,
+  AlbumPhotoElement,
   AlbumTemplateRow,
   GalleryAlbumCommentRow,
   GalleryAlbumRow,
@@ -18,6 +20,7 @@ import type {
 } from "@/lib/types";
 import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
+import { generateStyledAlbum, ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
@@ -276,6 +279,15 @@ export default function GalleryManageView({
   const [albumSizeDraft, setAlbumSizeDraft] = useState({ width: 30, height: 20 });
   const [newPageStep, setNewPageStep] = useState<"choice" | "count" | null>(null);
   const [customPageCount, setCustomPageCount] = useState(6);
+  const [albumBookTemplates, setAlbumBookTemplates] = useState<AlbumBookTemplateRow[]>([]);
+  const [albumWizardMode, setAlbumWizardMode] = useState<"style" | "saved">("style");
+  const [albumPageCountDraft, setAlbumPageCountDraft] = useState(20);
+  const [albumPhotoCountDraft, setAlbumPhotoCountDraft] = useState(40);
+  const [albumStyleDraft, setAlbumStyleDraft] = useState<AlbumStyleId>("classic");
+  const [buildingAlbumBook, setBuildingAlbumBook] = useState(false);
+  const [saveBookTemplateOpen, setSaveBookTemplateOpen] = useState(false);
+  const [bookTemplateNameDraft, setBookTemplateNameDraft] = useState("");
+  const [savingBookTemplate, setSavingBookTemplate] = useState(false);
   const [creatingSpread, setCreatingSpread] = useState(false);
   const [draggedSpreadId, setDraggedSpreadId] = useState<string | null>(null);
   const [focalEditTarget, setFocalEditTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
@@ -483,6 +495,7 @@ export default function GalleryManageView({
   const openAlbumManage = () => {
     setAlbumManageOpen(true);
     setNewPageStep(null);
+    setAlbumWizardMode("style");
     loadAlbum();
     supabase
       .from("album_templates")
@@ -490,6 +503,12 @@ export default function GalleryManageView({
       .order("created_at", { ascending: false })
       .returns<AlbumTemplateRow[]>()
       .then(({ data }) => setAlbumTemplates(data ?? []));
+    supabase
+      .from("album_book_templates")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .returns<AlbumBookTemplateRow[]>()
+      .then(({ data }) => setAlbumBookTemplates(data ?? []));
   };
 
   const saveAlbumTemplate = async (name: string, frames: AlbumFrame[]) => {
@@ -524,6 +543,119 @@ export default function GalleryManageView({
     setAlbumSpreads([]);
     setAlbumComments([]);
     setSavingAlbum(false);
+  };
+
+  // Shared by both wizard modes below: turns a list of per-page frame layouts into real spread
+  // rows in one batch insert (every frame photoId-less — same "empty placeholder" state a single
+  // template application produces), and loads the result straight into state.
+  const insertSpreadsFromFrameLists = async (targetAlbum: GalleryAlbumRow, pagesFrames: AlbumFrame[][]) => {
+    const marginInset = marginInsetPctFor(targetAlbum);
+    // photo_id_1 is a NOT NULL anchor column left over from before custom layouts existed (see
+    // migration 0048's comment) — unused for rendering here since every frame is its own
+    // photoId-less placeholder, but still has to be set to *something*. Cycles through the
+    // gallery's own photos so pages don't all point at the same one.
+    const rows = pagesFrames.map((rawFrames, i) => {
+      const frames = fitFramesToSafeArea(rawFrames, marginInset);
+      const elements: AlbumElement[] = frames.map((f) => ({
+        id: f.id,
+        type: "photo",
+        photoId: null,
+        xPct: f.xPct,
+        yPct: f.yPct,
+        widthPct: f.widthPct,
+        heightPct: f.heightPct,
+        focalX: 50,
+        focalY: 50,
+      }));
+      return {
+        album_id: targetAlbum.id,
+        sort_order: i,
+        layout: "custom" as const,
+        elements,
+        photo_id_1: photos[i % photos.length]?.id,
+      };
+    });
+    const { data, error } = await supabase.from("gallery_album_spreads").insert(rows).select().returns<GalleryAlbumSpreadRow[]>();
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    if (data) setAlbumSpreads(data.sort((a, b) => a.sort_order - b.sort_order));
+  };
+
+  // Wizard step 1, "style" mode: creates the album, then generates and inserts every page at once
+  // via generateStyledAlbum — the photographer's only remaining job is dragging photos into the
+  // already-built boxes.
+  const buildStyledAlbum = async () => {
+    setBuildingAlbumBook(true);
+    setError(null);
+    const { data: newAlbum, error: albumErr } = await supabase
+      .from("gallery_albums")
+      .insert({
+        gallery_id: gallery.id,
+        photographer_id: gallery.photographer_id,
+        width_cm: albumSizeDraft.width,
+        height_cm: albumSizeDraft.height,
+      })
+      .select()
+      .single<GalleryAlbumRow>();
+    if (albumErr || !newAlbum) {
+      setError(albumErr?.message ?? "שגיאה ביצירת האלבום");
+      setBuildingAlbumBook(false);
+      return;
+    }
+    setAlbum(newAlbum);
+    const pagesFrames = generateStyledAlbum(albumPageCountDraft, albumPhotoCountDraft, albumStyleDraft);
+    await insertSpreadsFromFrameLists(newAlbum, pagesFrames);
+    setBuildingAlbumBook(false);
+  };
+
+  // Wizard step 1, "saved template" mode: same album creation, but the page layouts come from a
+  // previously saved whole-book template instead of a fresh style-based generation.
+  const buildAlbumFromBookTemplate = async (template: AlbumBookTemplateRow) => {
+    setBuildingAlbumBook(true);
+    setError(null);
+    const { data: newAlbum, error: albumErr } = await supabase
+      .from("gallery_albums")
+      .insert({
+        gallery_id: gallery.id,
+        photographer_id: gallery.photographer_id,
+        width_cm: albumSizeDraft.width,
+        height_cm: albumSizeDraft.height,
+      })
+      .select()
+      .single<GalleryAlbumRow>();
+    if (albumErr || !newAlbum) {
+      setError(albumErr?.message ?? "שגיאה ביצירת האלבום");
+      setBuildingAlbumBook(false);
+      return;
+    }
+    setAlbum(newAlbum);
+    await insertSpreadsFromFrameLists(newAlbum, template.pages);
+    setBuildingAlbumBook(false);
+  };
+
+  // Saves the album's CURRENT full set of pages (whatever their frame shapes are right now,
+  // regardless of how they got there) as one reusable named whole-book template.
+  const saveAlbumBookTemplate = async (name: string) => {
+    if (!name.trim() || albumSpreads.length === 0) return;
+    setSavingBookTemplate(true);
+    const pages: AlbumFrame[][] = albumSpreads.map((s) =>
+      s.elements
+        .filter((el): el is AlbumPhotoElement => el.type === "photo")
+        .map((el) => ({ id: el.id, xPct: el.xPct, yPct: el.yPct, widthPct: el.widthPct, heightPct: el.heightPct }))
+    );
+    const { data, error } = await supabase
+      .from("album_book_templates")
+      .insert({ photographer_id: gallery.photographer_id, name: name.trim(), style: albumStyleDraft, pages })
+      .select()
+      .single<AlbumBookTemplateRow>();
+    setSavingBookTemplate(false);
+    if (!error && data) {
+      setAlbumBookTemplates((prev) => [data, ...prev]);
+      setSaveBookTemplateOpen(false);
+      setBookTemplateNameDraft("");
+    }
   };
 
   // Every photo already placed anywhere in the album (any spread's slot photos, background, or
@@ -1886,6 +2018,43 @@ export default function GalleryManageView({
         </div>
       )}
 
+      {saveBookTemplateOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center"
+          style={{ background: "rgba(46,49,66,0.45)" }}
+          onClick={() => setSaveBookTemplateOpen(false)}
+        >
+          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2 font-display">שמירת תבנית אלבום</h2>
+            <p className="text-sm text-ink-soft mb-4">
+              מבנה העמודים הנוכחי ({albumSpreads.length} עמודים) יישמר בתור תבנית לשימוש חוזר — בפעם הבאה אפשר יהיה לבנות ממנה אלבום חדש בלחיצה אחת.
+            </p>
+            <input
+              autoFocus
+              value={bookTemplateNameDraft}
+              onChange={(e) => setBookTemplateNameDraft(e.target.value)}
+              placeholder="שם התבנית"
+              className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-4"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => saveAlbumBookTemplate(bookTemplateNameDraft)}
+                disabled={!bookTemplateNameDraft.trim() || savingBookTemplate}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+              >
+                {savingBookTemplate ? "שומר..." : "שמירה"}
+              </button>
+              <button
+                onClick={() => setSaveBookTemplateOpen(false)}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {shareStatus && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 rounded-full px-4 py-2 text-xs font-semibold bg-ink text-white shadow-sheet">
           {shareStatus}
@@ -2074,7 +2243,7 @@ export default function GalleryManageView({
             ) : !album ? (
               <>
                 <p className="text-xs text-ink-soft mb-3.5">
-                  קודם כל, מה מידות האלבום להדפסה? אחר כך אפשר להוסיף עמודים — מתבניות מוכנות או בעיצוב אישי, והלקוח/ה יוכלו לעבור עליהם, להעיר הערות ולאשר את העיצוב הסופי.
+                  קודם כל, מה מידות האלבום להדפסה? המערכת תבנה לכם שבלונה מלאה — כל העמודים עם הקוביות מוכנות — וכל מה שיישאר זה לגרור תמונות פנימה.
                 </p>
                 <p className="text-xs text-ink-soft mb-2">מידות האלבום (ס״מ)</p>
                 <div className="flex items-center gap-2 mb-5">
@@ -2096,14 +2265,105 @@ export default function GalleryManageView({
                   />
                   <span className="text-xs text-ink-soft">גובה</span>
                 </div>
-                {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
-                <button
-                  onClick={createAlbumWithSize}
-                  disabled={savingAlbum}
-                  className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-                >
-                  {savingAlbum ? "יוצר..." : "אישור והמשך"}
-                </button>
+
+                {albumBookTemplates.length > 0 && (
+                  <div className="flex gap-2 mb-4">
+                    <button
+                      onClick={() => setAlbumWizardMode("style")}
+                      className={`flex-1 rounded-lg py-2 text-xs font-semibold ${BTN_PRESS}`}
+                      style={{
+                        background: albumWizardMode === "style" ? "var(--color-amber-deep)" : "var(--color-chip)",
+                        color: albumWizardMode === "style" ? "#fff" : "var(--color-ink-soft)",
+                      }}
+                    >
+                      בנייה אוטומטית לפי סגנון
+                    </button>
+                    <button
+                      onClick={() => setAlbumWizardMode("saved")}
+                      className={`flex-1 rounded-lg py-2 text-xs font-semibold ${BTN_PRESS}`}
+                      style={{
+                        background: albumWizardMode === "saved" ? "var(--color-amber-deep)" : "var(--color-chip)",
+                        color: albumWizardMode === "saved" ? "#fff" : "var(--color-ink-soft)",
+                      }}
+                    >
+                      מתבנית שמורה
+                    </button>
+                  </div>
+                )}
+
+                {albumWizardMode === "style" ? (
+                  <>
+                    <div className="flex items-center gap-2 mb-3.5">
+                      <div className="flex-1">
+                        <label className="text-xs block mb-1 text-ink-soft">מספר עמודים רצוי</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={albumPageCountDraft}
+                          onChange={(e) => setAlbumPageCountDraft(Math.max(1, Number(e.target.value) || 1))}
+                          className="w-full rounded-lg border border-line px-2.5 py-2 text-sm text-center"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-xs block mb-1 text-ink-soft">כמות תמונות רצויה</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={albumPhotoCountDraft}
+                          onChange={(e) => setAlbumPhotoCountDraft(Math.max(1, Number(e.target.value) || 1))}
+                          className="w-full rounded-lg border border-line px-2.5 py-2 text-sm text-center"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-ink-soft mb-2">סגנון</p>
+                    <div className="grid grid-cols-2 gap-2 mb-5">
+                      {ALBUM_STYLE_OPTIONS.map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => setAlbumStyleDraft(s.id)}
+                          className={`rounded-lg p-2.5 text-right ${BTN_PRESS}`}
+                          style={{
+                            background: albumStyleDraft === s.id ? "var(--color-amber-deep)" : "var(--color-chip)",
+                            color: albumStyleDraft === s.id ? "#fff" : "var(--color-ink)",
+                          }}
+                        >
+                          <div className="text-xs font-semibold mb-0.5">{s.label}</div>
+                          <div className="text-[10px] leading-tight" style={{ opacity: 0.85 }}>
+                            {s.description}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
+                    <button
+                      onClick={buildStyledAlbum}
+                      disabled={buildingAlbumBook}
+                      className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                    >
+                      {buildingAlbumBook ? "בונה את האלבום..." : "בניית האלבום"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+                      {albumBookTemplates.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => buildAlbumFromBookTemplate(t)}
+                          disabled={buildingAlbumBook}
+                          className="w-full flex items-center justify-between rounded-lg p-2.5 text-sm bg-chip disabled:opacity-60"
+                        >
+                          <span className="font-semibold">{t.name}</span>
+                          <span className="text-[11px] text-ink-soft">
+                            {t.pages.length} עמודים · {ALBUM_STYLE_OPTIONS.find((s) => s.id === t.style)?.label ?? t.style}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
+                    {buildingAlbumBook && <p className="text-xs text-ink-soft text-center">בונה את האלבום...</p>}
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -2407,6 +2667,14 @@ export default function GalleryManageView({
                   </div>
                 )}
 
+                {newPageStep === null && albumSpreads.length > 0 && (
+                  <button
+                    onClick={() => setSaveBookTemplateOpen(true)}
+                    className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5"
+                  >
+                    💾 שמירת מבנה האלבום כתבנית לשימוש חוזר
+                  </button>
+                )}
                 {newPageStep === null && (
                   <button
                     onClick={() => setNewPageStep("choice")}
