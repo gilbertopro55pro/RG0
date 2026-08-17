@@ -24,7 +24,10 @@ import { generateStyledAlbum, ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/l
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
-import AlbumSpreadCanvasEditor, { BUILT_IN_TEMPLATES, fitFramesToSafeArea, marginInsetPctFor, boxShadowFor, cssFilterFor } from "@/components/AlbumSpreadCanvasEditor";
+import { IconClose as IconAlbumClose, IconPalette, IconTarget, IconRefresh, IconFont, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck } from "@/components/icons/AlbumIcons";
+import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor, boxShadowFor, cssFilterFor } from "@/components/AlbumSpreadCanvasEditor";
+import { TEMPLATE_TABS, TEMPLATE_BANK, type TemplateTabKey } from "@/lib/albumTemplateBank";
+import { isLightTextColor } from "@/lib/textColor";
 import { generateGridFrames } from "@/lib/albumGrid";
 import {
   GALLERY_THEMES,
@@ -278,6 +281,7 @@ export default function GalleryManageView({
   const [albumComments, setAlbumComments] = useState<GalleryAlbumCommentRow[]>([]);
   const [albumSizeDraft, setAlbumSizeDraft] = useState({ width: 30, height: 20 });
   const [newPageStep, setNewPageStep] = useState<"choice" | "count" | null>(null);
+  const [newPageTemplateTab, setNewPageTemplateTab] = useState<TemplateTabKey>("2");
   const [customPageCount, setCustomPageCount] = useState(6);
   const [albumBookTemplates, setAlbumBookTemplates] = useState<AlbumBookTemplateRow[]>([]);
   const [albumWizardMode, setAlbumWizardMode] = useState<"style" | "saved">("style");
@@ -2302,7 +2306,7 @@ export default function GalleryManageView({
                   </button>
                 )}
                 <button onClick={() => setAlbumManageOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
-                  ✕
+                  <IconAlbumClose />
                 </button>
               </div>
             </div>
@@ -2446,7 +2450,12 @@ export default function GalleryManageView({
                 >
                   {album.status === "draft" && "טיוטה — עדיין לא נשלח ללקוח/ה"}
                   {album.status === "sent" && "נשלח ללקוח/ה — ממתין לאישור"}
-                  {album.status === "approved" && "✓ האלבום אושר ע\"י הלקוח/ה"}
+                  {album.status === "approved" && (
+                    <span className="inline-flex items-center gap-1">
+                      <IconAlbumCheck size={12} />
+                      האלבום אושר ע&quot;י הלקוח/ה
+                    </span>
+                  )}
                   {album.status === "changes_requested" && "הלקוח/ה ביקש/ה שינויים — ראו הערות למטה"}
                 </div>
 
@@ -2544,7 +2553,7 @@ export default function GalleryManageView({
                                         width: `${el.widthPct}%`,
                                         height: el.type === "photo" ? `${el.heightPct}%` : undefined,
                                         fontSize: el.type === "text" ? `${el.fontSize}px` : undefined,
-                                        color: el.type === "text" ? (el.color === "white" ? "#fff" : "#000") : undefined,
+                                        color: el.type === "text" ? el.color : undefined,
                                         textAlign: el.type === "text" ? el.align : undefined,
                                         fontWeight: el.type === "text" ? 700 : undefined,
                                         // Mirrors the free-design canvas editor's own photo-frame styling so this
@@ -2575,8 +2584,9 @@ export default function GalleryManageView({
                                     </div>
                                   );
                                 })}
-                                <span className="absolute bottom-1 left-1 rounded-full bg-black/60 text-white text-[10px] px-2 py-0.5">
-                                  🎨 עריכת עיצוב חופשי
+                                <span className="absolute bottom-1 left-1 rounded-full bg-black/60 text-white text-[10px] px-2 py-0.5 flex items-center gap-1">
+                                  <IconPalette size={11} />
+                                  עריכת עיצוב חופשי
                                 </span>
                               </button>
                             ) : (
@@ -2602,17 +2612,17 @@ export default function GalleryManageView({
                                           prev?.spreadId === spread.id && prev.slot === 1 ? null : { spreadId: spread.id, slot: 1 }
                                         )
                                       }
-                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center text-[10px]"
+                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
                                       title="מיקוד"
                                     >
-                                      🎯
+                                      <IconTarget size={11} />
                                     </button>
                                     <button
                                       onClick={() => setReplaceTarget({ spreadId: spread.id, slot: 1 })}
-                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center text-[10px]"
+                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
                                       title="החלפת תמונה"
                                     >
-                                      🔄
+                                      <IconRefresh size={11} />
                                     </button>
                                   </div>
                                   {focalEditTarget?.spreadId === spread.id && focalEditTarget.slot === 1 && (
@@ -2639,17 +2649,17 @@ export default function GalleryManageView({
                                           prev?.spreadId === spread.id && prev.slot === 2 ? null : { spreadId: spread.id, slot: 2 }
                                         )
                                       }
-                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center text-[10px]"
+                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
                                       title="מיקוד"
                                     >
-                                      🎯
+                                      <IconTarget size={11} />
                                     </button>
                                     <button
                                       onClick={() => setReplaceTarget({ spreadId: spread.id, slot: 2 })}
-                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center text-[10px]"
+                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
                                       title="החלפת תמונה"
                                     >
-                                      🔄
+                                      <IconRefresh size={11} />
                                     </button>
                                   </div>
                                   {focalEditTarget?.spreadId === spread.id && focalEditTarget.slot === 2 && (
@@ -2682,9 +2692,9 @@ export default function GalleryManageView({
                               </button>
                               <button
                                 onClick={() => removeSpread(spread.id)}
-                                className="h-6 w-6 rounded-full bg-chip text-rose flex items-center justify-center text-xs"
+                                className="h-6 w-6 rounded-full bg-chip text-rose flex items-center justify-center"
                               >
-                                ✕
+                                <IconAlbumClose size={11} />
                               </button>
                             </div>
                           </div>
@@ -2708,24 +2718,27 @@ export default function GalleryManageView({
                           <div className="flex gap-1 mt-2">
                             <button
                               onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" })}
-                              className="flex-1 rounded-full py-1.5 text-[10px] font-semibold bg-chip text-ink-soft"
+                              className="flex-1 rounded-full py-1.5 text-[10px] font-semibold bg-chip text-ink-soft flex items-center justify-center gap-1"
                             >
-                              🎨 עיצוב חופשי
+                              <IconPalette size={11} />
+                              עיצוב חופשי
                             </button>
                             <button
                               onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "overlay" })}
-                              className="flex-1 rounded-full py-1.5 text-[10px] font-semibold bg-chip text-ink-soft"
+                              className="flex-1 rounded-full py-1.5 text-[10px] font-semibold bg-chip text-ink-soft flex items-center justify-center gap-1"
                               disabled={spread.layout === "custom"}
                               style={{ opacity: spread.layout === "custom" ? 0.4 : 1 }}
                             >
-                              🔤 טקסט
+                              <IconFont size={11} />
+                              טקסט
                             </button>
                           </div>
                           {comments.length > 0 && (
                             <div className="mt-2 space-y-1">
                               {comments.map((c) => (
-                                <p key={c.id} className="text-xs rounded-lg px-2.5 py-1.5 bg-amber-bg text-amber-deep">
-                                  💬 {c.text}
+                                <p key={c.id} className="text-xs rounded-lg px-2.5 py-1.5 bg-amber-bg text-amber-deep flex items-start gap-1.5">
+                                  <IconChat size={12} />
+                                  <span>{c.text}</span>
                                 </p>
                               ))}
                             </div>
@@ -2739,9 +2752,10 @@ export default function GalleryManageView({
                 {newPageStep === null && albumSpreads.length > 0 && (
                   <button
                     onClick={() => setSaveBookTemplateOpen(true)}
-                    className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5"
+                    className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 flex items-center justify-center gap-1.5"
                   >
-                    💾 שמירת מבנה האלבום כתבנית לשימוש חוזר
+                    <IconAlbumSave size={14} />
+                    שמירת מבנה האלבום כתבנית לשימוש חוזר
                   </button>
                 )}
                 {newPageStep === null && (
@@ -2755,8 +2769,23 @@ export default function GalleryManageView({
                 {newPageStep === "choice" && (
                   <div className="mb-4">
                     <p className="text-xs text-ink-soft mb-2.5">איך רוצים לעצב את העמוד החדש?</p>
+                    <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2.5 -mx-1 px-1">
+                      {TEMPLATE_TABS.map((tab) => (
+                        <button
+                          key={tab.key}
+                          onClick={() => setNewPageTemplateTab(tab.key)}
+                          className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap"
+                          style={{
+                            background: newPageTemplateTab === tab.key ? "var(--color-amber-deep)" : "var(--color-chip)",
+                            color: newPageTemplateTab === tab.key ? "#fff" : "var(--color-ink-soft)",
+                          }}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
                     <div className="grid grid-cols-2 gap-2.5 mb-4 max-h-72 overflow-y-auto">
-                      {BUILT_IN_TEMPLATES.map((t) => (
+                      {TEMPLATE_BANK[newPageTemplateTab].map((t) => (
                         <button key={t.name} onClick={() => createSpreadFromTemplate(t.frames)} disabled={creatingSpread} className="rounded-xl border border-line p-2 text-center disabled:opacity-50">
                           <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
                             {t.frames.map((f) => (
@@ -2777,8 +2806,9 @@ export default function GalleryManageView({
                         </button>
                       ))}
                     </div>
-                    <button onClick={() => setNewPageStep("count")} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white mb-2">
-                      🎨 או: עיצוב אישי לפי מספר תמונות
+                    <button onClick={() => setNewPageStep("count")} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white mb-2 flex items-center justify-center gap-1.5">
+                      <IconPalette size={14} />
+                      או: עיצוב אישי לפי מספר תמונות
                     </button>
                     <button onClick={() => setNewPageStep(null)} className="w-full rounded-lg py-2 text-sm font-semibold bg-card border border-line text-ink-soft">
                       ביטול
@@ -2812,8 +2842,9 @@ export default function GalleryManageView({
                 )}
 
                 {albumSpreads.length % 2 !== 0 && (
-                  <p className="text-[11px] text-amber-deep mb-2.5">
-                    ⚠️ מספר אי-זוגי של עמודים ({albumSpreads.length}) — חלק ממעבדות הדפוס דורשות מספר זוגי. מומלץ להוסיף או להסיר עמוד אחד.
+                  <p className="text-[11px] text-amber-deep mb-2.5 flex items-start gap-1.5">
+                    <IconWarning size={13} />
+                    <span>מספר אי-זוגי של עמודים ({albumSpreads.length}) — חלק ממעבדות הדפוס דורשות מספר זוגי. מומלץ להוסיף או להסיר עמוד אחד.</span>
                   </p>
                 )}
 
@@ -2821,23 +2852,23 @@ export default function GalleryManageView({
                 <button
                   onClick={() => openExportRangeModal("pdf")}
                   disabled={exportingAlbumPdf || albumSpreads.length === 0}
-                  className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60"
+                  className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60 flex items-center justify-center gap-1.5"
                 >
-                  {exportingAlbumPdf ? "מייצא..." : "📄 ייצוא PDF להדפסה"}
+                  {exportingAlbumPdf ? "מייצא..." : (<><IconPdf size={14} />ייצוא PDF להדפסה</>)}
                 </button>
                 <button
                   onClick={() => openExportRangeModal("jpg")}
                   disabled={exportingAlbumJpg || albumSpreads.length === 0}
-                  className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60"
+                  className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60 flex items-center justify-center gap-1.5"
                 >
-                  {exportingAlbumJpg ? "מייצא..." : "🖼 ייצוא JPG (כל העמודים)"}
+                  {exportingAlbumJpg ? "מייצא..." : (<><IconImage size={14} />ייצוא JPG (כל העמודים)</>)}
                 </button>
                 <button
                   onClick={() => openExportRangeModal("psd")}
                   disabled={exportingAlbumPsd || albumSpreads.length === 0}
-                  className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60"
+                  className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60 flex items-center justify-center gap-1.5"
                 >
-                  {exportingAlbumPsd ? "מייצא..." : "🎨 ייצוא PSD (פוטושופ)"}
+                  {exportingAlbumPsd ? "מייצא..." : (<><IconPalette size={14} />ייצוא PSD (פוטושופ)</>)}
                 </button>
                 {album.status !== "approved" && (
                   <button
@@ -2864,7 +2895,7 @@ export default function GalleryManageView({
             <div className="flex items-center justify-between mb-3.5">
               <h2 className="text-base font-bold font-display">החלפת תמונה</h2>
               <button onClick={() => setReplaceTarget(null)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
-                ✕
+                <IconAlbumClose />
               </button>
             </div>
             <div className="grid grid-cols-4 gap-2">
@@ -2885,12 +2916,15 @@ export default function GalleryManageView({
           if (!spread || !album) return null;
           const photo1 = photos.find((p) => p.id === spread.photo_id_1);
           const photo2 = spread.photo_id_2 ? photos.find((p) => p.id === spread.photo_id_2) : null;
+          // photo_id_1/photo_id_2 are the real source of truth only for split/feature/stack preset
+          // spreads — a "custom" free-design spread only ever fills them with a NOT-NULL-constraint
+          // placeholder (see insertSpreadsFromFrameLists), so counting those as "used" there would
+          // falsely hide real favorites from every later page's picker.
           const usedElsewhere = new Set(
             albumSpreads
               .filter((s) => s.id !== spread.id)
               .flatMap((s) => [
-                s.photo_id_1,
-                s.photo_id_2,
+                ...(s.layout === "custom" ? [] : [s.photo_id_1, s.photo_id_2]),
                 s.background_photo_id,
                 ...s.elements.filter((el): el is typeof el & { type: "photo"; photoId: string } => el.type === "photo" && !!el.photoId).map((el) => el.photoId),
               ].filter((id): id is string => !!id))

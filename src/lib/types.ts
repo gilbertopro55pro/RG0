@@ -272,6 +272,7 @@ export type AlbumPhotoElement = {
   blur?: number; // 0-100 (an arbitrary intensity scale, not raw px), default 0
   shadow?: number; // 0-100 drop-shadow intensity, default 0
   zoom?: number; // 100-400, extra scale on top of the object-fit:cover baseline, default 100
+  lockAspect?: boolean; // when true, corner-handle resizing preserves the width/height ratio
 };
 
 // Points on the album's fixed 1600pt-wide PDF reference canvas (same canvas the PDF proof export
@@ -290,7 +291,9 @@ export type AlbumTextElement = {
   heightPct?: number; // resize-handle box height; font size is independent (set via fontSize)
   fontSize: AlbumFontSizePt;
   fontFamily?: string; // key into ALBUM_FONTS (src/lib/albumFonts.ts) — default "heebo"
-  color: "white" | "black";
+  // A CSS-valid color — "white"/"black" (legacy literal values) or a "#rrggbb" hex from the
+  // palette picker (see TEXT_COLOR_PALETTE in src/lib/textColor.ts).
+  color: string;
   align: "right" | "center" | "left";
 };
 

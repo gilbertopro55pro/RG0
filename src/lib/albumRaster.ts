@@ -134,7 +134,7 @@ type ResolvedPhoto = {
   shadow?: number;
   zoom?: number;
 };
-type ResolvedText = { kind: "text"; text: string; x: number; y: number; width: number; fontSizePx: number; color: "white" | "black"; align: "right" | "center" | "left"; fontFamily?: string };
+type ResolvedText = { kind: "text"; text: string; x: number; y: number; width: number; fontSizePx: number; color: string; align: "right" | "center" | "left"; fontFamily?: string };
 type Resolved = ResolvedPhoto | ResolvedText;
 
 const GAP_FRAC = 0.005;
@@ -450,7 +450,7 @@ export async function renderAlbumPageJpeg({
           yPx: el.y,
           widthPx: el.width,
           fontSizePx: el.fontSizePx,
-          color: el.color === "white" ? "#ffffff" : "#000000",
+          color: el.color,
           align: el.align,
           pageWidthPx,
           pageHeightPx,

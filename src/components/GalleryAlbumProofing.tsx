@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { ALBUM_BLUR_MAX_PX } from "@/components/AlbumSpreadCanvasEditor";
+import { isLightTextColor } from "@/lib/textColor";
 
 type SpreadPhoto = { id: string; url: string };
 type SpreadLayout = "split" | "feature" | "stack" | "custom";
@@ -37,7 +38,7 @@ export type ClientAlbumElement =
       heightPct?: number;
       fontSize: number;
       fontFamily?: string;
-      color: "white" | "black";
+      color: string;
       align: "right" | "center" | "left";
     };
 
@@ -99,10 +100,10 @@ function TextOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "text" }>
         height: `${el.heightPct ?? 15}%`,
         justifyContent: el.align === "right" ? "flex-end" : el.align === "left" ? "flex-start" : "center",
         textAlign: el.align,
-        color: el.color === "white" ? "#fff" : "#000",
+        color: el.color,
         fontSize: `calc(${el.fontSize} / 1600 * 100cqw)`,
         fontFamily: albumFontFamilyCss(el.fontFamily),
-        textShadow: el.color === "white" ? "0 1px 4px rgba(0,0,0,0.7)" : "0 1px 4px rgba(255,255,255,0.7)",
+        textShadow: isLightTextColor(el.color) ? "0 1px 4px rgba(0,0,0,0.7)" : "0 1px 4px rgba(255,255,255,0.7)",
       }}
     >
       <span>{el.text}</span>

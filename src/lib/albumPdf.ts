@@ -18,6 +18,7 @@ import {
 import fontkit from "@pdf-lib/fontkit";
 import sharp from "sharp";
 import { downloadObjectBuffer } from "@/lib/storage";
+import { textColorRgb01, isLightTextColor } from "@/lib/textColor";
 import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
 import { ALBUM_BLUR_MAX_PX } from "@/lib/albumRaster";
@@ -196,8 +197,8 @@ function drawTextElement(
   const boxWidth = (el.widthPct / 100) * PAGE_WIDTH;
   const size = el.fontSize;
   const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - size;
-  const mainColor = el.color === "white" ? rgb(1, 1, 1) : rgb(0, 0, 0);
-  const shadowColor = el.color === "white" ? rgb(0, 0, 0) : rgb(1, 1, 1);
+  const mainColor = rgb(...textColorRgb01(el.color));
+  const shadowColor = isLightTextColor(el.color) ? rgb(0, 0, 0) : rgb(1, 1, 1);
   for (const [dx, dy, color] of [
     [2, -2, shadowColor],
     [0, 0, mainColor],

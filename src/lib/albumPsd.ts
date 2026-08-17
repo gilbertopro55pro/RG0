@@ -100,7 +100,7 @@ export async function renderAlbumPagePsd({
         yPx: el.y,
         widthPx: el.width,
         fontSizePx: el.fontSizePx,
-        color: el.color === "white" ? "#ffffff" : "#000000",
+        color: el.color,
         align: el.align,
         pageWidthPx,
         pageHeightPx,

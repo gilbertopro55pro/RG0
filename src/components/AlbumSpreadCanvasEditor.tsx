@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { AlbumElement, AlbumFrame, AlbumPhotoElement, AlbumPhotoFilter, AlbumTemplateRow, GalleryAlbumSpreadRow } from "@/lib/types";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
+import { TEXT_COLOR_PALETTE, isLightTextColor } from "@/lib/textColor";
+import { TEMPLATE_TABS, TEMPLATE_BANK, type TemplateTabKey } from "@/lib/albumTemplateBank";
 
 type PhotoWithUrl = { id: string; url: string; is_favorite?: boolean; folder_id?: string | null };
 
@@ -126,6 +128,67 @@ function IconTrueSize() {
     </MenuIconBase>
   );
 }
+function IconAspectLock() {
+  return (
+    <MenuIconBase>
+      <rect x={5.5} y={10.5} width={13} height={9} rx={1.5} />
+      <path d="M8.5 10.5V7.5a3.5 3.5 0 017 0v3" />
+    </MenuIconBase>
+  );
+}
+
+// Matches the app's canonical icon convention (NavIcons.tsx / GalleryStyleIcons.tsx: 24x24
+// viewBox, currentColor stroke, no fill, strokeWidth 1.6) — used for the editor's own chrome
+// buttons (close/save/templates/info/check), as opposed to MenuIconBase above which is scoped to
+// the floating photo-controls menu.
+function UiIconBase({ size = 16, children }: { size?: number; children: React.ReactNode }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      {children}
+    </svg>
+  );
+}
+function IconClose({ size }: { size?: number }) {
+  return (
+    <UiIconBase size={size}>
+      <path d="M5 5l14 14M19 5L5 19" />
+    </UiIconBase>
+  );
+}
+function IconGrid({ size }: { size?: number }) {
+  return (
+    <UiIconBase size={size}>
+      <rect x={3.5} y={3.5} width={7} height={7} rx={1} />
+      <rect x={13.5} y={3.5} width={7} height={7} rx={1} />
+      <rect x={3.5} y={13.5} width={7} height={7} rx={1} />
+      <rect x={13.5} y={13.5} width={7} height={7} rx={1} />
+    </UiIconBase>
+  );
+}
+function IconSave({ size }: { size?: number }) {
+  return (
+    <UiIconBase size={size}>
+      <path d="M5 3.5h11l4.5 4.5V19a1.5 1.5 0 01-1.5 1.5H5A1.5 1.5 0 013.5 19V5A1.5 1.5 0 015 3.5z" />
+      <path d="M7.5 3.5v6h8v-6M7 20.5v-6h10v6" />
+    </UiIconBase>
+  );
+}
+function IconInfo({ size }: { size?: number }) {
+  return (
+    <UiIconBase size={size}>
+      <circle cx={12} cy={12} r={8.5} />
+      <path d="M12 11v5.5" />
+      <circle cx={12} cy={7.8} r={0.9} fill="currentColor" stroke="none" />
+    </UiIconBase>
+  );
+}
+function IconCheck({ size }: { size?: number }) {
+  return (
+    <UiIconBase size={size}>
+      <path d="M4.5 12.5l5 5 10-11" />
+    </UiIconBase>
+  );
+}
 
 function CircleButton({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -235,6 +298,13 @@ function PhotoFloatingMenu({
       <CircleButton label="הצגה בגודל נכון — מתאים את המסגרת ליחס הרוחב/גובה האמיתי של התמונה" onClick={onTrueSize}>
         <IconTrueSize />
       </CircleButton>
+      <CircleButton
+        label="שמירת יחס גובה-רוחב בשינוי גודל מהפינות"
+        active={!!el.lockAspect}
+        onClick={() => onUpdate({ lockAspect: !el.lockAspect })}
+      >
+        <IconAspectLock />
+      </CircleButton>
       <div className="relative">
         <CircleButton label="שקיפות" active={openPanel === "opacity" || (el.opacity ?? 100) < 100} onClick={() => toggle("opacity")}>
           <IconOpacity />
@@ -298,94 +368,6 @@ function PhotoFloatingMenu({
   );
 }
 
-export const BUILT_IN_TEMPLATES: { name: string; frames: AlbumFrame[] }[] = [
-  {
-    name: "שתי תמונות שוות",
-    frames: [
-      { id: "f1", xPct: 0, yPct: 0, widthPct: 49, heightPct: 100 },
-      { id: "f2", xPct: 51, yPct: 0, widthPct: 49, heightPct: 100 },
-    ],
-  },
-  {
-    name: "שלוש בשורה",
-    frames: [
-      { id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 100 },
-      { id: "f2", xPct: 34, yPct: 0, widthPct: 32, heightPct: 100 },
-      { id: "f3", xPct: 68, yPct: 0, widthPct: 32, heightPct: 100 },
-    ],
-  },
-  {
-    name: "רשת 2×2",
-    frames: [
-      { id: "f1", xPct: 0, yPct: 0, widthPct: 49, heightPct: 49 },
-      { id: "f2", xPct: 51, yPct: 0, widthPct: 49, heightPct: 49 },
-      { id: "f3", xPct: 0, yPct: 51, widthPct: 49, heightPct: 49 },
-      { id: "f4", xPct: 51, yPct: 51, widthPct: 49, heightPct: 49 },
-    ],
-  },
-  {
-    name: "גדולה ושתי קטנות",
-    frames: [
-      { id: "f1", xPct: 0, yPct: 0, widthPct: 64, heightPct: 100 },
-      { id: "f2", xPct: 66, yPct: 0, widthPct: 34, heightPct: 49 },
-      { id: "f3", xPct: 66, yPct: 51, widthPct: 34, heightPct: 49 },
-    ],
-  },
-  { name: "תמונה בודדת", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 100, heightPct: 100 }] },
-  // 50 more starters: 10 with 5 photos, 10 with 8, 10 with 10, and 20 free-form creative layouts
-  // with varied photo counts (2–20) — generated programmatically from row/column/feature-grid
-  // recipes so every frame set is gap-consistent and non-overlapping by construction.
-  { name: "5 בשורה עליונה גדולה", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 100, heightPct: 58.8 }, { id: "f2", xPct: 0, yPct: 60.8, widthPct: 23.5, heightPct: 39.2 }, { id: "f3", xPct: 25.5, yPct: 60.8, widthPct: 23.5, heightPct: 39.2 }, { id: "f4", xPct: 51, yPct: 60.8, widthPct: 23.5, heightPct: 39.2 }, { id: "f5", xPct: 76.5, yPct: 60.8, widthPct: 23.5, heightPct: 39.2 }] },
-  { name: "5 בשורה תחתונה גדולה", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 23.5, heightPct: 39.2 }, { id: "f2", xPct: 25.5, yPct: 0, widthPct: 23.5, heightPct: 39.2 }, { id: "f3", xPct: 51, yPct: 0, widthPct: 23.5, heightPct: 39.2 }, { id: "f4", xPct: 76.5, yPct: 0, widthPct: 23.5, heightPct: 39.2 }, { id: "f5", xPct: 0, yPct: 41.2, widthPct: 100, heightPct: 58.8 }] },
-  { name: "5 שתיים ושלוש", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 49, heightPct: 49 }, { id: "f2", xPct: 51, yPct: 0, widthPct: 49, heightPct: 49 }, { id: "f3", xPct: 0, yPct: 51, widthPct: 32, heightPct: 49 }, { id: "f4", xPct: 34, yPct: 51, widthPct: 32, heightPct: 49 }, { id: "f5", xPct: 68, yPct: 51, widthPct: 32, heightPct: 49 }] },
-  { name: "5 שלוש ושתיים", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 49 }, { id: "f2", xPct: 34, yPct: 0, widthPct: 32, heightPct: 49 }, { id: "f3", xPct: 68, yPct: 0, widthPct: 32, heightPct: 49 }, { id: "f4", xPct: 0, yPct: 51, widthPct: 49, heightPct: 49 }, { id: "f5", xPct: 51, yPct: 51, widthPct: 49, heightPct: 49 }] },
-  { name: "5 בולטת וקטנות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 65.33, heightPct: 49 }, { id: "f2", xPct: 67.33, yPct: 0, widthPct: 32.67, heightPct: 49 }, { id: "f3", xPct: 0, yPct: 51, widthPct: 32, heightPct: 49 }, { id: "f4", xPct: 34, yPct: 51, widthPct: 32, heightPct: 49 }, { id: "f5", xPct: 68, yPct: 51, widthPct: 32, heightPct: 49 }] },
-  { name: "5 קטנות ובולטת", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 49 }, { id: "f2", xPct: 34, yPct: 0, widthPct: 32, heightPct: 49 }, { id: "f3", xPct: 68, yPct: 0, widthPct: 32, heightPct: 49 }, { id: "f4", xPct: 0, yPct: 51, widthPct: 65.33, heightPct: 49 }, { id: "f5", xPct: 67.33, yPct: 51, widthPct: 32.67, heightPct: 49 }] },
-  { name: "5 שלוש שורות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 100, heightPct: 32 }, { id: "f2", xPct: 0, yPct: 34, widthPct: 49, heightPct: 32 }, { id: "f3", xPct: 51, yPct: 34, widthPct: 49, heightPct: 32 }, { id: "f4", xPct: 0, yPct: 68, widthPct: 49, heightPct: 32 }, { id: "f5", xPct: 51, yPct: 68, widthPct: 49, heightPct: 32 }] },
-  { name: "5 שלוש שורות הפוך", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 49, heightPct: 32 }, { id: "f2", xPct: 51, yPct: 0, widthPct: 49, heightPct: 32 }, { id: "f3", xPct: 0, yPct: 34, widthPct: 49, heightPct: 32 }, { id: "f4", xPct: 51, yPct: 34, widthPct: 49, heightPct: 32 }, { id: "f5", xPct: 0, yPct: 68, widthPct: 100, heightPct: 32 }] },
-  { name: "5 עמודות משתנות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 49, heightPct: 32 }, { id: "f2", xPct: 0, yPct: 34, widthPct: 49, heightPct: 32 }, { id: "f3", xPct: 0, yPct: 68, widthPct: 49, heightPct: 32 }, { id: "f4", xPct: 51, yPct: 0, widthPct: 49, heightPct: 49 }, { id: "f5", xPct: 51, yPct: 51, widthPct: 49, heightPct: 49 }] },
-  { name: "5 תמונה ראשית וטור", frames: [{ id: "f0", xPct: 45, yPct: 0, widthPct: 55, heightPct: 100 }, { id: "f1", xPct: 0, yPct: 0, widthPct: 43, heightPct: 23.5 }, { id: "f2", xPct: 0, yPct: 25.5, widthPct: 43, heightPct: 23.5 }, { id: "f3", xPct: 0, yPct: 51, widthPct: 43, heightPct: 23.5 }, { id: "f4", xPct: 0, yPct: 76.5, widthPct: 43, heightPct: 23.5 }] },
-  { name: "8 רשת 4×2", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 23.5, heightPct: 49 }, { id: "f2", xPct: 25.5, yPct: 0, widthPct: 23.5, heightPct: 49 }, { id: "f3", xPct: 51, yPct: 0, widthPct: 23.5, heightPct: 49 }, { id: "f4", xPct: 76.5, yPct: 0, widthPct: 23.5, heightPct: 49 }, { id: "f5", xPct: 0, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f6", xPct: 25.5, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f7", xPct: 51, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f8", xPct: 76.5, yPct: 51, widthPct: 23.5, heightPct: 49 }] },
-  { name: "8 רשת 2×4", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 49, heightPct: 23.5 }, { id: "f2", xPct: 0, yPct: 25.5, widthPct: 49, heightPct: 23.5 }, { id: "f3", xPct: 0, yPct: 51, widthPct: 49, heightPct: 23.5 }, { id: "f4", xPct: 0, yPct: 76.5, widthPct: 49, heightPct: 23.5 }, { id: "f5", xPct: 51, yPct: 0, widthPct: 49, heightPct: 23.5 }, { id: "f6", xPct: 51, yPct: 25.5, widthPct: 49, heightPct: 23.5 }, { id: "f7", xPct: 51, yPct: 51, widthPct: 49, heightPct: 23.5 }, { id: "f8", xPct: 51, yPct: 76.5, widthPct: 49, heightPct: 23.5 }] },
-  { name: "8 שלוש שורות 3-3-2", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f2", xPct: 34, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f3", xPct: 68, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f4", xPct: 0, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f5", xPct: 34, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f6", xPct: 68, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f7", xPct: 0, yPct: 68, widthPct: 49, heightPct: 32 }, { id: "f8", xPct: 51, yPct: 68, widthPct: 49, heightPct: 32 }] },
-  { name: "8 שלוש שורות 2-3-3", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 49, heightPct: 32 }, { id: "f2", xPct: 51, yPct: 0, widthPct: 49, heightPct: 32 }, { id: "f3", xPct: 0, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f4", xPct: 34, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f5", xPct: 68, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f6", xPct: 0, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f7", xPct: 34, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f8", xPct: 68, yPct: 68, widthPct: 32, heightPct: 32 }] },
-  { name: "8 שלוש שורות 3-2-3", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f2", xPct: 34, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f3", xPct: 68, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f4", xPct: 0, yPct: 34, widthPct: 49, heightPct: 32 }, { id: "f5", xPct: 51, yPct: 34, widthPct: 49, heightPct: 32 }, { id: "f6", xPct: 0, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f7", xPct: 34, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f8", xPct: 68, yPct: 68, widthPct: 32, heightPct: 32 }] },
-  { name: "8 פס עליון ורשת", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 100, heightPct: 24.77 }, { id: "f2", xPct: 0, yPct: 26.77, widthPct: 23.5, heightPct: 40.26 }, { id: "f3", xPct: 25.5, yPct: 26.77, widthPct: 23.5, heightPct: 40.26 }, { id: "f4", xPct: 51, yPct: 26.77, widthPct: 23.5, heightPct: 40.26 }, { id: "f5", xPct: 76.5, yPct: 26.77, widthPct: 23.5, heightPct: 40.26 }, { id: "f6", xPct: 0, yPct: 69.03, widthPct: 32, heightPct: 30.97 }, { id: "f7", xPct: 34, yPct: 69.03, widthPct: 32, heightPct: 30.97 }, { id: "f8", xPct: 68, yPct: 69.03, widthPct: 32, heightPct: 30.97 }] },
-  { name: "8 רשת ופס תחתון", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 23.5, heightPct: 30.97 }, { id: "f2", xPct: 25.5, yPct: 0, widthPct: 23.5, heightPct: 30.97 }, { id: "f3", xPct: 51, yPct: 0, widthPct: 23.5, heightPct: 30.97 }, { id: "f4", xPct: 76.5, yPct: 0, widthPct: 23.5, heightPct: 30.97 }, { id: "f5", xPct: 0, yPct: 32.97, widthPct: 32, heightPct: 40.26 }, { id: "f6", xPct: 34, yPct: 32.97, widthPct: 32, heightPct: 40.26 }, { id: "f7", xPct: 68, yPct: 32.97, widthPct: 32, heightPct: 40.26 }, { id: "f8", xPct: 0, yPct: 75.23, widthPct: 100, heightPct: 24.77 }] },
-  { name: "8 שורה בולטת ורשת", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 37.6, heightPct: 49 }, { id: "f2", xPct: 39.6, yPct: 0, widthPct: 18.8, heightPct: 49 }, { id: "f3", xPct: 60.4, yPct: 0, widthPct: 18.8, heightPct: 49 }, { id: "f4", xPct: 81.2, yPct: 0, widthPct: 18.8, heightPct: 49 }, { id: "f5", xPct: 0, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f6", xPct: 25.5, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f7", xPct: 51, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f8", xPct: 76.5, yPct: 51, widthPct: 23.5, heightPct: 49 }] },
-  { name: "8 עמודות משתנות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f2", xPct: 0, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f3", xPct: 0, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f4", xPct: 34, yPct: 0, widthPct: 32, heightPct: 49 }, { id: "f5", xPct: 34, yPct: 51, widthPct: 32, heightPct: 49 }, { id: "f6", xPct: 68, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f7", xPct: 68, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f8", xPct: 68, yPct: 68, widthPct: 32, heightPct: 32 }] },
-  { name: "8 תמונה ראשית ורשת", frames: [{ id: "f0", xPct: 0, yPct: 0, widthPct: 42, heightPct: 100 }, { id: "f1", xPct: 44, yPct: 0, widthPct: 17.33, heightPct: 49 }, { id: "f2", xPct: 63.33, yPct: 0, widthPct: 17.33, heightPct: 49 }, { id: "f3", xPct: 82.67, yPct: 0, widthPct: 17.33, heightPct: 49 }, { id: "f4", xPct: 44, yPct: 51, widthPct: 12.5, heightPct: 49 }, { id: "f5", xPct: 58.5, yPct: 51, widthPct: 12.5, heightPct: 49 }, { id: "f6", xPct: 73, yPct: 51, widthPct: 12.5, heightPct: 49 }, { id: "f7", xPct: 87.5, yPct: 51, widthPct: 12.5, heightPct: 49 }] },
-  { name: "10 רשת 5×2", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 18.4, heightPct: 49 }, { id: "f2", xPct: 20.4, yPct: 0, widthPct: 18.4, heightPct: 49 }, { id: "f3", xPct: 40.8, yPct: 0, widthPct: 18.4, heightPct: 49 }, { id: "f4", xPct: 61.2, yPct: 0, widthPct: 18.4, heightPct: 49 }, { id: "f5", xPct: 81.6, yPct: 0, widthPct: 18.4, heightPct: 49 }, { id: "f6", xPct: 0, yPct: 51, widthPct: 18.4, heightPct: 49 }, { id: "f7", xPct: 20.4, yPct: 51, widthPct: 18.4, heightPct: 49 }, { id: "f8", xPct: 40.8, yPct: 51, widthPct: 18.4, heightPct: 49 }, { id: "f9", xPct: 61.2, yPct: 51, widthPct: 18.4, heightPct: 49 }, { id: "f10", xPct: 81.6, yPct: 51, widthPct: 18.4, heightPct: 49 }] },
-  { name: "10 רשת 2×5", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 49, heightPct: 18.4 }, { id: "f2", xPct: 0, yPct: 20.4, widthPct: 49, heightPct: 18.4 }, { id: "f3", xPct: 0, yPct: 40.8, widthPct: 49, heightPct: 18.4 }, { id: "f4", xPct: 0, yPct: 61.2, widthPct: 49, heightPct: 18.4 }, { id: "f5", xPct: 0, yPct: 81.6, widthPct: 49, heightPct: 18.4 }, { id: "f6", xPct: 51, yPct: 0, widthPct: 49, heightPct: 18.4 }, { id: "f7", xPct: 51, yPct: 20.4, widthPct: 49, heightPct: 18.4 }, { id: "f8", xPct: 51, yPct: 40.8, widthPct: 49, heightPct: 18.4 }, { id: "f9", xPct: 51, yPct: 61.2, widthPct: 49, heightPct: 18.4 }, { id: "f10", xPct: 51, yPct: 81.6, widthPct: 49, heightPct: 18.4 }] },
-  { name: "10 שלוש שורות 3-3-4", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f2", xPct: 34, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f3", xPct: 68, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f4", xPct: 0, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f5", xPct: 34, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f6", xPct: 68, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f7", xPct: 0, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f8", xPct: 25.5, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f9", xPct: 51, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f10", xPct: 76.5, yPct: 68, widthPct: 23.5, heightPct: 32 }] },
-  { name: "10 שלוש שורות 4-3-3", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f2", xPct: 25.5, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f3", xPct: 51, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f4", xPct: 76.5, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f5", xPct: 0, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f6", xPct: 34, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f7", xPct: 68, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f8", xPct: 0, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f9", xPct: 34, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f10", xPct: 68, yPct: 68, widthPct: 32, heightPct: 32 }] },
-  { name: "10 שלוש שורות 2-4-4", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 49, heightPct: 32 }, { id: "f2", xPct: 51, yPct: 0, widthPct: 49, heightPct: 32 }, { id: "f3", xPct: 0, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f4", xPct: 25.5, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f5", xPct: 51, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f6", xPct: 76.5, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f7", xPct: 0, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f8", xPct: 25.5, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f9", xPct: 51, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f10", xPct: 76.5, yPct: 68, widthPct: 23.5, heightPct: 32 }] },
-  { name: "10 עמודות משתנות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f2", xPct: 0, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f3", xPct: 0, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f4", xPct: 25.5, yPct: 0, widthPct: 23.5, heightPct: 49 }, { id: "f5", xPct: 25.5, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f6", xPct: 51, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f7", xPct: 51, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f8", xPct: 51, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f9", xPct: 76.5, yPct: 0, widthPct: 23.5, heightPct: 49 }, { id: "f10", xPct: 76.5, yPct: 51, widthPct: 23.5, heightPct: 49 }] },
-  { name: "10 תמונה ראשית ורשת שמאל", frames: [{ id: "f0", xPct: 0, yPct: 0, widthPct: 40, heightPct: 100 }, { id: "f1", xPct: 42, yPct: 0, widthPct: 18, heightPct: 32 }, { id: "f2", xPct: 62, yPct: 0, widthPct: 18, heightPct: 32 }, { id: "f3", xPct: 82, yPct: 0, widthPct: 18, heightPct: 32 }, { id: "f4", xPct: 42, yPct: 34, widthPct: 13, heightPct: 32 }, { id: "f5", xPct: 57, yPct: 34, widthPct: 13, heightPct: 32 }, { id: "f6", xPct: 72, yPct: 34, widthPct: 13, heightPct: 32 }, { id: "f7", xPct: 87, yPct: 34, widthPct: 13, heightPct: 32 }, { id: "f8", xPct: 42, yPct: 68, widthPct: 28, heightPct: 32 }, { id: "f9", xPct: 72, yPct: 68, widthPct: 28, heightPct: 32 }] },
-  { name: "10 תמונה ראשית ורשת ימין", frames: [{ id: "f0", xPct: 60, yPct: 0, widthPct: 40, heightPct: 100 }, { id: "f1", xPct: 0, yPct: 0, widthPct: 18, heightPct: 32 }, { id: "f2", xPct: 20, yPct: 0, widthPct: 18, heightPct: 32 }, { id: "f3", xPct: 40, yPct: 0, widthPct: 18, heightPct: 32 }, { id: "f4", xPct: 0, yPct: 34, widthPct: 13, heightPct: 32 }, { id: "f5", xPct: 15, yPct: 34, widthPct: 13, heightPct: 32 }, { id: "f6", xPct: 30, yPct: 34, widthPct: 13, heightPct: 32 }, { id: "f7", xPct: 45, yPct: 34, widthPct: 13, heightPct: 32 }, { id: "f8", xPct: 0, yPct: 68, widthPct: 28, heightPct: 32 }, { id: "f9", xPct: 30, yPct: 68, widthPct: 28, heightPct: 32 }] },
-  { name: "10 שלוש עמודות 3-4-3", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f2", xPct: 0, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f3", xPct: 0, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f4", xPct: 34, yPct: 0, widthPct: 32, heightPct: 23.5 }, { id: "f5", xPct: 34, yPct: 25.5, widthPct: 32, heightPct: 23.5 }, { id: "f6", xPct: 34, yPct: 51, widthPct: 32, heightPct: 23.5 }, { id: "f7", xPct: 34, yPct: 76.5, widthPct: 32, heightPct: 23.5 }, { id: "f8", xPct: 68, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f9", xPct: 68, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f10", xPct: 68, yPct: 68, widthPct: 32, heightPct: 32 }] },
-  { name: "10 מוזאיקה בולטת", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 48, heightPct: 32 }, { id: "f2", xPct: 50, yPct: 0, widthPct: 24, heightPct: 32 }, { id: "f3", xPct: 76, yPct: 0, widthPct: 24, heightPct: 32 }, { id: "f4", xPct: 0, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f5", xPct: 25.5, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f6", xPct: 51, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f7", xPct: 76.5, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f8", xPct: 0, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f9", xPct: 34, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f10", xPct: 68, yPct: 68, widthPct: 32, heightPct: 32 }] },
-  { name: "שתי תמונות א-סימטריות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 65.33, heightPct: 100 }, { id: "f2", xPct: 67.33, yPct: 0, widthPct: 32.67, heightPct: 100 }] },
-  { name: "גיבור מרכזי", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 24, heightPct: 100 }, { id: "f2", xPct: 26, yPct: 0, widthPct: 48, heightPct: 100 }, { id: "f3", xPct: 76, yPct: 0, widthPct: 24, heightPct: 100 }] },
-  { name: "ענק למעלה ושתיים למטה", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 100, heightPct: 60.31 }, { id: "f2", xPct: 0, yPct: 62.31, widthPct: 49, heightPct: 37.69 }, { id: "f3", xPct: 51, yPct: 62.31, widthPct: 49, heightPct: 37.69 }] },
-  { name: "תמונה ראשית ומסגרות", frames: [{ id: "f0", xPct: 0, yPct: 0, widthPct: 50, heightPct: 100 }, { id: "f1", xPct: 52, yPct: 0, widthPct: 48, heightPct: 49 }, { id: "f2", xPct: 52, yPct: 51, widthPct: 23, heightPct: 49 }, { id: "f3", xPct: 77, yPct: 51, widthPct: 23, heightPct: 49 }] },
-  { name: "שש עמודות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 15, heightPct: 100 }, { id: "f2", xPct: 17, yPct: 0, widthPct: 15, heightPct: 100 }, { id: "f3", xPct: 34, yPct: 0, widthPct: 15, heightPct: 100 }, { id: "f4", xPct: 51, yPct: 0, widthPct: 15, heightPct: 100 }, { id: "f5", xPct: 68, yPct: 0, widthPct: 15, heightPct: 100 }, { id: "f6", xPct: 85, yPct: 0, widthPct: 15, heightPct: 100 }] },
-  { name: "שני גיבורים", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 49, heightPct: 49 }, { id: "f2", xPct: 51, yPct: 0, widthPct: 49, heightPct: 49 }, { id: "f3", xPct: 0, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f4", xPct: 25.5, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f5", xPct: 51, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f6", xPct: 76.5, yPct: 51, widthPct: 23.5, heightPct: 49 }] },
-  { name: "שבע מוזאיקה", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 48, heightPct: 49 }, { id: "f2", xPct: 50, yPct: 0, widthPct: 24, heightPct: 49 }, { id: "f3", xPct: 76, yPct: 0, widthPct: 24, heightPct: 49 }, { id: "f4", xPct: 0, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f5", xPct: 25.5, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f6", xPct: 51, yPct: 51, widthPct: 23.5, heightPct: 49 }, { id: "f7", xPct: 76.5, yPct: 51, widthPct: 23.5, heightPct: 49 }] },
-  { name: "תמונה ראשית ושישה מסביב", frames: [{ id: "f0", xPct: 0, yPct: 0, widthPct: 100, heightPct: 50 }, { id: "f1", xPct: 0, yPct: 52, widthPct: 49, heightPct: 14.67 }, { id: "f2", xPct: 0, yPct: 68.67, widthPct: 49, heightPct: 14.67 }, { id: "f3", xPct: 0, yPct: 85.33, widthPct: 49, heightPct: 14.67 }, { id: "f4", xPct: 51, yPct: 52, widthPct: 49, heightPct: 14.67 }, { id: "f5", xPct: 51, yPct: 68.67, widthPct: 49, heightPct: 14.67 }, { id: "f6", xPct: 51, yPct: 85.33, widthPct: 49, heightPct: 14.67 }] },
-  { name: "שמונה פינות בולטות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 57.6, heightPct: 49 }, { id: "f2", xPct: 59.6, yPct: 0, widthPct: 19.2, heightPct: 49 }, { id: "f3", xPct: 80.8, yPct: 0, widthPct: 19.2, heightPct: 49 }, { id: "f4", xPct: 0, yPct: 51, widthPct: 18.4, heightPct: 49 }, { id: "f5", xPct: 20.4, yPct: 51, widthPct: 18.4, heightPct: 49 }, { id: "f6", xPct: 40.8, yPct: 51, widthPct: 18.4, heightPct: 49 }, { id: "f7", xPct: 61.2, yPct: 51, widthPct: 18.4, heightPct: 49 }, { id: "f8", xPct: 81.6, yPct: 51, widthPct: 18.4, heightPct: 49 }] },
-  { name: "תשע רשת מרובעת", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f2", xPct: 34, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f3", xPct: 68, yPct: 0, widthPct: 32, heightPct: 32 }, { id: "f4", xPct: 0, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f5", xPct: 34, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f6", xPct: 68, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f7", xPct: 0, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f8", xPct: 34, yPct: 68, widthPct: 32, heightPct: 32 }, { id: "f9", xPct: 68, yPct: 68, widthPct: 32, heightPct: 32 }] },
-  { name: "אחת עשרה מוזאיקה עשירה", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 37.6, heightPct: 32 }, { id: "f2", xPct: 39.6, yPct: 0, widthPct: 18.8, heightPct: 32 }, { id: "f3", xPct: 60.4, yPct: 0, widthPct: 18.8, heightPct: 32 }, { id: "f4", xPct: 81.2, yPct: 0, widthPct: 18.8, heightPct: 32 }, { id: "f5", xPct: 0, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f6", xPct: 34, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f7", xPct: 68, yPct: 34, widthPct: 32, heightPct: 32 }, { id: "f8", xPct: 0, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f9", xPct: 25.5, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f10", xPct: 51, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f11", xPct: 76.5, yPct: 68, widthPct: 23.5, heightPct: 32 }] },
-  { name: "שתים עשרה רשת 4×3", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f2", xPct: 25.5, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f3", xPct: 51, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f4", xPct: 76.5, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f5", xPct: 0, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f6", xPct: 25.5, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f7", xPct: 51, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f8", xPct: 76.5, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f9", xPct: 0, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f10", xPct: 25.5, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f11", xPct: 51, yPct: 68, widthPct: 23.5, heightPct: 32 }, { id: "f12", xPct: 76.5, yPct: 68, widthPct: 23.5, heightPct: 32 }] },
-  { name: "שתים עשרה רשת 3×4", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 23.5 }, { id: "f2", xPct: 0, yPct: 25.5, widthPct: 32, heightPct: 23.5 }, { id: "f3", xPct: 0, yPct: 51, widthPct: 32, heightPct: 23.5 }, { id: "f4", xPct: 0, yPct: 76.5, widthPct: 32, heightPct: 23.5 }, { id: "f5", xPct: 34, yPct: 0, widthPct: 32, heightPct: 23.5 }, { id: "f6", xPct: 34, yPct: 25.5, widthPct: 32, heightPct: 23.5 }, { id: "f7", xPct: 34, yPct: 51, widthPct: 32, heightPct: 23.5 }, { id: "f8", xPct: 34, yPct: 76.5, widthPct: 32, heightPct: 23.5 }, { id: "f9", xPct: 68, yPct: 0, widthPct: 32, heightPct: 23.5 }, { id: "f10", xPct: 68, yPct: 25.5, widthPct: 32, heightPct: 23.5 }, { id: "f11", xPct: 68, yPct: 51, widthPct: 32, heightPct: 23.5 }, { id: "f12", xPct: 68, yPct: 76.5, widthPct: 32, heightPct: 23.5 }] },
-  { name: "שלוש עשרה קולאז'", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f2", xPct: 25.5, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f3", xPct: 51, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f4", xPct: 76.5, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f5", xPct: 0, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f6", xPct: 25.5, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f7", xPct: 51, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f8", xPct: 76.5, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f9", xPct: 0, yPct: 68, widthPct: 18.4, heightPct: 32 }, { id: "f10", xPct: 20.4, yPct: 68, widthPct: 18.4, heightPct: 32 }, { id: "f11", xPct: 40.8, yPct: 68, widthPct: 18.4, heightPct: 32 }, { id: "f12", xPct: 61.2, yPct: 68, widthPct: 18.4, heightPct: 32 }, { id: "f13", xPct: 81.6, yPct: 68, widthPct: 18.4, heightPct: 32 }] },
-  { name: "ארבע עשרה תמונות קולאז'", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f2", xPct: 25.5, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f3", xPct: 51, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f4", xPct: 76.5, yPct: 0, widthPct: 23.5, heightPct: 32 }, { id: "f5", xPct: 0, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f6", xPct: 25.5, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f7", xPct: 51, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f8", xPct: 76.5, yPct: 34, widthPct: 23.5, heightPct: 32 }, { id: "f9", xPct: 0, yPct: 68, widthPct: 15, heightPct: 32 }, { id: "f10", xPct: 17, yPct: 68, widthPct: 15, heightPct: 32 }, { id: "f11", xPct: 34, yPct: 68, widthPct: 15, heightPct: 32 }, { id: "f12", xPct: 51, yPct: 68, widthPct: 15, heightPct: 32 }, { id: "f13", xPct: 68, yPct: 68, widthPct: 15, heightPct: 32 }, { id: "f14", xPct: 85, yPct: 68, widthPct: 15, heightPct: 32 }] },
-  { name: "חמש עשרה בשלוש עמודות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 18.4 }, { id: "f2", xPct: 0, yPct: 20.4, widthPct: 32, heightPct: 18.4 }, { id: "f3", xPct: 0, yPct: 40.8, widthPct: 32, heightPct: 18.4 }, { id: "f4", xPct: 0, yPct: 61.2, widthPct: 32, heightPct: 18.4 }, { id: "f5", xPct: 0, yPct: 81.6, widthPct: 32, heightPct: 18.4 }, { id: "f6", xPct: 34, yPct: 0, widthPct: 32, heightPct: 18.4 }, { id: "f7", xPct: 34, yPct: 20.4, widthPct: 32, heightPct: 18.4 }, { id: "f8", xPct: 34, yPct: 40.8, widthPct: 32, heightPct: 18.4 }, { id: "f9", xPct: 34, yPct: 61.2, widthPct: 32, heightPct: 18.4 }, { id: "f10", xPct: 34, yPct: 81.6, widthPct: 32, heightPct: 18.4 }, { id: "f11", xPct: 68, yPct: 0, widthPct: 32, heightPct: 18.4 }, { id: "f12", xPct: 68, yPct: 20.4, widthPct: 32, heightPct: 18.4 }, { id: "f13", xPct: 68, yPct: 40.8, widthPct: 32, heightPct: 18.4 }, { id: "f14", xPct: 68, yPct: 61.2, widthPct: 32, heightPct: 18.4 }, { id: "f15", xPct: 68, yPct: 81.6, widthPct: 32, heightPct: 18.4 }] },
-  { name: "שש עשרה רשת קטנה", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 23.5, heightPct: 23.5 }, { id: "f2", xPct: 25.5, yPct: 0, widthPct: 23.5, heightPct: 23.5 }, { id: "f3", xPct: 51, yPct: 0, widthPct: 23.5, heightPct: 23.5 }, { id: "f4", xPct: 76.5, yPct: 0, widthPct: 23.5, heightPct: 23.5 }, { id: "f5", xPct: 0, yPct: 25.5, widthPct: 23.5, heightPct: 23.5 }, { id: "f6", xPct: 25.5, yPct: 25.5, widthPct: 23.5, heightPct: 23.5 }, { id: "f7", xPct: 51, yPct: 25.5, widthPct: 23.5, heightPct: 23.5 }, { id: "f8", xPct: 76.5, yPct: 25.5, widthPct: 23.5, heightPct: 23.5 }, { id: "f9", xPct: 0, yPct: 51, widthPct: 23.5, heightPct: 23.5 }, { id: "f10", xPct: 25.5, yPct: 51, widthPct: 23.5, heightPct: 23.5 }, { id: "f11", xPct: 51, yPct: 51, widthPct: 23.5, heightPct: 23.5 }, { id: "f12", xPct: 76.5, yPct: 51, widthPct: 23.5, heightPct: 23.5 }, { id: "f13", xPct: 0, yPct: 76.5, widthPct: 23.5, heightPct: 23.5 }, { id: "f14", xPct: 25.5, yPct: 76.5, widthPct: 23.5, heightPct: 23.5 }, { id: "f15", xPct: 51, yPct: 76.5, widthPct: 23.5, heightPct: 23.5 }, { id: "f16", xPct: 76.5, yPct: 76.5, widthPct: 23.5, heightPct: 23.5 }] },
-  { name: "עשרים מוזאיקת ענק", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 18.4, heightPct: 23.5 }, { id: "f2", xPct: 20.4, yPct: 0, widthPct: 18.4, heightPct: 23.5 }, { id: "f3", xPct: 40.8, yPct: 0, widthPct: 18.4, heightPct: 23.5 }, { id: "f4", xPct: 61.2, yPct: 0, widthPct: 18.4, heightPct: 23.5 }, { id: "f5", xPct: 81.6, yPct: 0, widthPct: 18.4, heightPct: 23.5 }, { id: "f6", xPct: 0, yPct: 25.5, widthPct: 18.4, heightPct: 23.5 }, { id: "f7", xPct: 20.4, yPct: 25.5, widthPct: 18.4, heightPct: 23.5 }, { id: "f8", xPct: 40.8, yPct: 25.5, widthPct: 18.4, heightPct: 23.5 }, { id: "f9", xPct: 61.2, yPct: 25.5, widthPct: 18.4, heightPct: 23.5 }, { id: "f10", xPct: 81.6, yPct: 25.5, widthPct: 18.4, heightPct: 23.5 }, { id: "f11", xPct: 0, yPct: 51, widthPct: 18.4, heightPct: 23.5 }, { id: "f12", xPct: 20.4, yPct: 51, widthPct: 18.4, heightPct: 23.5 }, { id: "f13", xPct: 40.8, yPct: 51, widthPct: 18.4, heightPct: 23.5 }, { id: "f14", xPct: 61.2, yPct: 51, widthPct: 18.4, heightPct: 23.5 }, { id: "f15", xPct: 81.6, yPct: 51, widthPct: 18.4, heightPct: 23.5 }, { id: "f16", xPct: 0, yPct: 76.5, widthPct: 18.4, heightPct: 23.5 }, { id: "f17", xPct: 20.4, yPct: 76.5, widthPct: 18.4, heightPct: 23.5 }, { id: "f18", xPct: 40.8, yPct: 76.5, widthPct: 18.4, heightPct: 23.5 }, { id: "f19", xPct: 61.2, yPct: 76.5, widthPct: 18.4, heightPct: 23.5 }, { id: "f20", xPct: 81.6, yPct: 76.5, widthPct: 18.4, heightPct: 23.5 }] },
-  { name: "פס עליון משולש ותחתון כפול", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 32, heightPct: 40.83 }, { id: "f2", xPct: 34, yPct: 0, widthPct: 32, heightPct: 40.83 }, { id: "f3", xPct: 68, yPct: 0, widthPct: 32, heightPct: 40.83 }, { id: "f4", xPct: 0, yPct: 42.83, widthPct: 49, heightPct: 57.17 }, { id: "f5", xPct: 51, yPct: 42.83, widthPct: 49, heightPct: 57.17 }] },
-  { name: "טור זכרונות", frames: [{ id: "f1", xPct: 0, yPct: 0, widthPct: 100, heightPct: 18.4 }, { id: "f2", xPct: 0, yPct: 20.4, widthPct: 100, heightPct: 18.4 }, { id: "f3", xPct: 0, yPct: 40.8, widthPct: 100, heightPct: 18.4 }, { id: "f4", xPct: 0, yPct: 61.2, widthPct: 100, heightPct: 18.4 }, { id: "f5", xPct: 0, yPct: 81.6, widthPct: 100, heightPct: 18.4 }] },
-];
 
 // The print-safe margin is a hard constraint for anything placed AUTOMATICALLY (templates, the
 // multi-photo auto-layout) — every frame designed on a nominal 0-100 full-bleed canvas gets
@@ -428,6 +410,102 @@ export function boxShadowFor(shadowPct: number | undefined): string | undefined 
   const offsetPx = (shadowPct / 100) * 10;
   const alpha = 0.15 + (shadowPct / 100) * 0.45;
   return `${offsetPx}px ${offsetPx}px ${blurPx}px rgba(0,0,0,${alpha})`;
+}
+
+type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+// Resizes a frame from any of its 8 handles, anchored at the OPPOSITE edge/corner (dragging the
+// top-left corner keeps the bottom-right fixed, dragging the right edge keeps the left edge
+// fixed, etc). widthPct/heightPct are both percentages of the same canvas box, so keeping their
+// ratio constant while aspect-locked also keeps the true on-screen aspect ratio constant — no
+// canvas-aspect correction needed since both axes scale by the same "% to px" factor.
+function computeResize(
+  handle: ResizeHandle,
+  start: { xPct: number; yPct: number; widthPct: number; heightPct: number },
+  dxPct: number,
+  dyPct: number,
+  lockAspect: boolean
+): { xPct: number; yPct: number; widthPct: number; heightPct: number } {
+  const MIN_W = 8;
+  const MIN_H = 6;
+  const h: "w" | "e" | "" = handle.includes("w") ? "w" : handle.includes("e") ? "e" : "";
+  const v: "n" | "s" | "" = handle.includes("n") ? "n" : handle.includes("s") ? "s" : "";
+  const isCorner = h !== "" && v !== "";
+
+  let newWidth = start.widthPct;
+  let newHeight = start.heightPct;
+  if (h === "e") newWidth = start.widthPct + dxPct;
+  else if (h === "w") newWidth = start.widthPct - dxPct;
+  if (v === "s") newHeight = start.heightPct + dyPct;
+  else if (v === "n") newHeight = start.heightPct - dyPct;
+
+  if (lockAspect && isCorner && start.widthPct > 0 && start.heightPct > 0) {
+    const ratio = start.widthPct / start.heightPct;
+    const scaleW = Math.abs(newWidth / start.widthPct - 1);
+    const scaleH = Math.abs(newHeight / start.heightPct - 1);
+    if (scaleW >= scaleH) newHeight = newWidth / ratio;
+    else newWidth = newHeight * ratio;
+  }
+
+  newWidth = Math.max(MIN_W, newWidth);
+  newHeight = Math.max(MIN_H, newHeight);
+
+  const newLeft = h === "w" ? start.xPct + start.widthPct - newWidth : start.xPct;
+  const newTop = v === "n" ? start.yPct + start.heightPct - newHeight : start.yPct;
+
+  const clampedLeft = Math.max(0, Math.min(newLeft, 100 - newWidth));
+  const clampedTop = Math.max(0, Math.min(newTop, 100 - newHeight));
+  const clampedWidth = Math.min(newWidth, 100 - clampedLeft);
+  const clampedHeight = Math.min(newHeight, 100 - clampedTop);
+
+  return { xPct: clampedLeft, yPct: clampedTop, widthPct: clampedWidth, heightPct: clampedHeight };
+}
+
+const RESIZE_HANDLE_CURSORS: Record<ResizeHandle, string> = {
+  n: "cursor-ns-resize",
+  s: "cursor-ns-resize",
+  e: "cursor-ew-resize",
+  w: "cursor-ew-resize",
+  ne: "cursor-nesw-resize",
+  sw: "cursor-nesw-resize",
+  nw: "cursor-nwse-resize",
+  se: "cursor-nwse-resize",
+};
+
+// One handle per edge/corner so the whole frame boundary is grabbable, not just one corner —
+// every handle stays fully inside the box (never straddling its edge) since the parent's
+// overflow-hidden (needed to crop the photo) would clip, and make unclickable, anything bleeding
+// past it. Corner handles are small visible squares; edge handles are thin invisible hit-strips
+// along the middle of each side so hovering the frame's border itself shows the resize cursor.
+function renderResizeHandles(el: AlbumElement, startDrag: (e: React.PointerEvent, el: AlbumElement, kind: "move" | "resize", handle?: ResizeHandle) => void) {
+  const corner = (handle: ResizeHandle, style: React.CSSProperties) => (
+    <span
+      key={handle}
+      onPointerDown={(e) => startDrag(e, el, "resize", handle)}
+      className={`absolute h-3 w-3 bg-amber-deep rounded-sm z-10 ${RESIZE_HANDLE_CURSORS[handle]}`}
+      style={style}
+    />
+  );
+  const edge = (handle: ResizeHandle, style: React.CSSProperties) => (
+    <span
+      key={handle}
+      onPointerDown={(e) => startDrag(e, el, "resize", handle)}
+      className={`absolute ${RESIZE_HANDLE_CURSORS[handle]}`}
+      style={style}
+    />
+  );
+  return (
+    <>
+      {corner("nw", { top: 2, left: 2 })}
+      {corner("ne", { top: 2, right: 2 })}
+      {corner("sw", { bottom: 2, left: 2 })}
+      {corner("se", { bottom: 2, right: 2 })}
+      {edge("n", { top: 0, left: "20%", right: "20%", height: 8 })}
+      {edge("s", { bottom: 0, left: "20%", right: "20%", height: 8 })}
+      {edge("w", { left: 0, top: "20%", bottom: "20%", width: 8 })}
+      {edge("e", { right: 0, top: "20%", bottom: "20%", width: 8 })}
+    </>
+  );
 }
 
 const SNAP_THRESHOLD = 1.2; // % of canvas
@@ -627,6 +705,7 @@ export default function AlbumSpreadCanvasEditor({
   const [textDraftOpen, setTextDraftOpen] = useState(false);
   const [textDraft, setTextDraft] = useState("");
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [templateTab, setTemplateTab] = useState<TemplateTabKey>("2");
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateNameDraft, setTemplateNameDraft] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
@@ -641,6 +720,7 @@ export default function AlbumSpreadCanvasEditor({
   const dragRef = useRef<{
     id: string;
     kind: "move" | "resize";
+    resizeHandle?: ResizeHandle;
     startClientX: number;
     startClientY: number;
     startXPct: number;
@@ -655,12 +735,16 @@ export default function AlbumSpreadCanvasEditor({
   const selected = elements.find((e) => e.id === selectedId) ?? null;
   const usedPhotoIds = new Set(elements.filter((e): e is AlbumPhotoElement => e.type === "photo" && !!e.photoId).map((e) => e.photoId as string));
   const favoritePhotos = photos.filter((p) => p.is_favorite);
-  const pickerPhotos = showAllInPicker || favoritePhotos.length === 0 ? photos : favoritePhotos;
-  // Drag-to-frame panel: by default only favorites not yet used on THIS page (so a placed photo
-  // disappears once dragged in, preventing an accidental double-pick) — "הצג הכל" reveals the rest
+  // Photos already placed on OTHER pages of the album are dropped entirely (not just badged) so a
+  // photo used earlier in the book never shows up as an option on a later page — except when
+  // picking a page BACKGROUND, which is a different, non-exclusive kind of "use".
+  const pickerPhotosBase = showAllInPicker || favoritePhotos.length === 0 ? photos : favoritePhotos;
+  const pickerPhotos = pickingBackground ? pickerPhotosBase : pickerPhotosBase.filter((p) => !usedElsewhere?.has(p.id));
+  // Drag-to-frame panel: cross-page duplicates are always excluded; same-page duplicates are
+  // excluded by default (so a placed photo disappears once dragged in) but "הצג הכל" reveals them
   // too, badged ✅, purely for review. Grouped by folder/tab when the gallery actually has any;
   // otherwise every favorite sits in one flat, unlabeled group.
-  const dragPanelPool = favoritePhotos.filter((p) => showAllDragPanel || !usedPhotoIds.has(p.id));
+  const dragPanelPool = favoritePhotos.filter((p) => !usedElsewhere?.has(p.id) && (showAllDragPanel || !usedPhotoIds.has(p.id)));
   const dragPanelGroups: { id: string; name: string | null; items: PhotoWithUrl[] }[] =
     folders && folders.length > 0
       ? [
@@ -872,13 +956,14 @@ export default function AlbumSpreadCanvasEditor({
     setSaveTemplateOpen(false);
   };
 
-  const startDrag = (e: React.PointerEvent, el: AlbumElement, kind: "move" | "resize") => {
+  const startDrag = (e: React.PointerEvent, el: AlbumElement, kind: "move" | "resize", resizeHandle?: ResizeHandle) => {
     e.stopPropagation();
     (e.target as Element).setPointerCapture(e.pointerId);
     setSelectedId(el.id);
     dragRef.current = {
       id: el.id,
       kind,
+      resizeHandle,
       startClientX: e.clientX,
       startClientY: e.clientY,
       startXPct: el.xPct,
@@ -901,12 +986,15 @@ export default function AlbumSpreadCanvasEditor({
     const el = elements.find((x) => x.id === drag.id);
 
     if (drag.kind === "resize") {
-      // Every element type resizes freely in both dimensions from its corner handle now — text
-      // used to be width-only, but a box height it can't control makes vertical centering (and
-      // the "square handle enlarges/shrinks it" request) meaningless.
-      const widthPct = Math.max(8, Math.min(100 - drag.startXPct, drag.startWidthPct + dxPct));
-      const heightPct = Math.max(6, Math.min(100 - drag.startYPct, drag.startHeightPct + dyPct));
-      updateElement(drag.id, { widthPct, heightPct });
+      const lockAspect = el?.type === "photo" && !!el.lockAspect;
+      const next = computeResize(
+        drag.resizeHandle ?? "se",
+        { xPct: drag.startXPct, yPct: drag.startYPct, widthPct: drag.startWidthPct, heightPct: drag.startHeightPct },
+        dxPct,
+        dyPct,
+        lockAspect
+      );
+      updateElement(drag.id, next);
       return;
     }
 
@@ -966,7 +1054,7 @@ export default function AlbumSpreadCanvasEditor({
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold font-display">{mode === "custom" ? "עיצוב חופשי" : "הוספת טקסט לעמוד"}</h2>
           <button onClick={onClose} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
-            ✕
+            <IconClose />
           </button>
         </div>
 
@@ -1060,7 +1148,7 @@ export default function AlbumSpreadCanvasEditor({
                       const droppedId = e.dataTransfer.getData("text/plain");
                       if (droppedId) updateElement(el.id, { photoId: droppedId, focalX: 50, focalY: 50 });
                     }}
-                    className={`absolute overflow-hidden ${photo ? (panModeId === el.id ? "cursor-crosshair" : "cursor-move") : "cursor-pointer flex items-center justify-center bg-white/10"}`}
+                    className={`absolute overflow-hidden ${photo ? (panModeId === el.id ? "cursor-crosshair" : "cursor-move") : "cursor-pointer flex items-center justify-center bg-chip"}`}
                     style={{
                       left: `${el.xPct}%`,
                       top: `${el.yPct}%`,
@@ -1101,17 +1189,9 @@ export default function AlbumSpreadCanvasEditor({
                         }}
                       />
                     ) : (
-                      <span className="text-white text-2xl">+</span>
+                      <span className="text-ink-soft text-2xl">+</span>
                     )}
-                    {isSelected && photo && (
-                      // Kept fully inside the box (no corner-straddling negative offset) —
-                      // the parent needs overflow-hidden to crop the photo, which would clip
-                      // (and make unclickable) any part of the handle bleeding past the edge.
-                      <span
-                        onPointerDown={(e) => startDrag(e, el, "resize")}
-                        className="absolute bottom-0.5 left-0.5 h-4 w-4 bg-amber-deep cursor-nwse-resize rounded-sm"
-                      />
-                    )}
+                    {isSelected && photo && renderResizeHandles(el, startDrag)}
                   </div>
                 );
               }
@@ -1127,14 +1207,14 @@ export default function AlbumSpreadCanvasEditor({
                     height: `${el.heightPct ?? 15}%`,
                     justifyContent: el.align === "right" ? "flex-end" : el.align === "left" ? "flex-start" : "center",
                     textAlign: el.align,
-                    color: el.color === "white" ? "#fff" : "#000",
+                    color: el.color,
                     // fontSize is stored in points on the album's fixed 1600pt PDF reference canvas
                     // (matches PAGE_WIDTH in albumPdf.ts) — cqw here is "% of this canvas's own
                     // rendered width," so the same ratio keeps the same visual size everywhere.
                     fontSize: `calc(${el.fontSize} / 1600 * 100cqw)`,
                     fontFamily: albumFontFamilyCss(el.fontFamily),
                     fontWeight: 700,
-                    textShadow: el.color === "white" ? "0 1px 4px rgba(0,0,0,0.7)" : "0 1px 4px rgba(255,255,255,0.7)",
+                    textShadow: isLightTextColor(el.color) ? "0 1px 4px rgba(0,0,0,0.7)" : "0 1px 4px rgba(255,255,255,0.7)",
                     outline: isSelected ? "2px dashed var(--color-amber-deep)" : "none",
                   }}
                 >
@@ -1202,15 +1282,21 @@ export default function AlbumSpreadCanvasEditor({
           <div className="space-y-2 mt-2.5">
             {selected.type === "text" && (
               <>
-                <div className="flex gap-1.5">
-                  {(["white", "black"] as const).map((c) => (
+                <div className="flex flex-wrap gap-1.5">
+                  {TEXT_COLOR_PALETTE.map(({ value, label }) => (
                     <button
-                      key={c}
-                      onClick={() => updateElement(selected.id, { color: c })}
-                      className="h-7 w-7 rounded-full border border-line"
-                      style={{ background: c === "white" ? "#fff" : "#000" }}
+                      key={value}
+                      onClick={() => updateElement(selected.id, { color: value })}
+                      title={label}
+                      className="h-7 w-7 rounded-full"
+                      style={{
+                        background: value,
+                        boxShadow: selected.color === value ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)",
+                      }}
                     />
                   ))}
+                </div>
+                <div className="flex gap-1.5">
                   {(["right", "center", "left"] as const).map((a) => (
                     <button
                       key={a}
@@ -1252,8 +1338,9 @@ export default function AlbumSpreadCanvasEditor({
               </>
             )}
             {selected.type === "photo" && selected.photoId && (
-              <p className="text-[11px] text-ink-soft text-center">
-                💡 לחצו על התמונה כדי לפתוח את תפריט העיצוב הצף (שחור-לבן, ספיה, שקיפות, טשטוש, סיבוב, צל וקו מתאר)
+              <p className="text-[11px] text-ink-soft text-center flex items-center justify-center gap-1">
+                <IconInfo size={13} />
+                לחצו על התמונה כדי לפתוח את תפריט העיצוב הצף (שחור-לבן, ספיה, שקיפות, טשטוש, סיבוב, צל וקו מתאר)
               </p>
             )}
             <button onClick={() => removeElement(selected.id)} className="w-full h-8 rounded-full bg-chip text-rose text-xs font-semibold">
@@ -1270,7 +1357,7 @@ export default function AlbumSpreadCanvasEditor({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={backgroundPhoto.url} alt="" className="w-full h-full object-cover" style={{ opacity: backgroundOpacity / 100 }} />
                 <button onClick={removeBackground} className="absolute top-1 left-1 h-6 w-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center">
-                  ✕
+                  <IconClose size={13} />
                 </button>
               </div>
               <SliderControl label="שקיפות רקע" value={backgroundOpacity} min={0} max={100} unit="%" onChange={setBackgroundOpacity} />
@@ -1289,8 +1376,9 @@ export default function AlbumSpreadCanvasEditor({
               <button onClick={openPickerForNewPhoto} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
                 + תמונה
               </button>
-              <button onClick={() => setTemplatePickerOpen(true)} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
-                📐 תבניות
+              <button onClick={() => setTemplatePickerOpen(true)} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink flex items-center justify-center gap-1.5">
+                <IconGrid size={14} />
+                תבניות
               </button>
             </>
           )}
@@ -1303,9 +1391,10 @@ export default function AlbumSpreadCanvasEditor({
           <button
             onClick={() => setSaveTemplateOpen(true)}
             disabled={!elements.some((e) => e.type === "photo")}
-            className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mt-2 disabled:opacity-50"
+            className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mt-2 disabled:opacity-50 flex items-center justify-center gap-1.5"
           >
-            💾 שמירת הפריסה כתבנית
+            <IconSave size={14} />
+            שמירת הפריסה כתבנית
           </button>
         )}
 
@@ -1350,11 +1439,11 @@ export default function AlbumSpreadCanvasEditor({
                             <img src={p.url} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" />
                             {alreadyUsed && (
                               <span
-                                className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full flex items-center justify-center text-[8px]"
+                                className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full flex items-center justify-center"
                                 style={{ background: "var(--color-sage)", color: "#fff" }}
                                 title="כבר שובצה בעמוד הזה"
                               >
-                                ✅
+                                <IconCheck size={9} />
                               </span>
                             )}
                           </div>
@@ -1386,7 +1475,7 @@ export default function AlbumSpreadCanvasEditor({
                   </button>
                 )}
                 <button onClick={() => setPhotoPickerOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
-                  ✕
+                  <IconClose />
                 </button>
               </div>
             </div>
@@ -1418,15 +1507,6 @@ export default function AlbumSpreadCanvasEditor({
                           {multiIdx + 1}
                         </span>
                       )}
-                      {usedElsewhere?.has(p.id) && multiIdx === -1 && (
-                        <span
-                          className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
-                          style={{ background: "var(--color-sage)", color: "#fff" }}
-                          title="כבר נבחרה במקום אחר באלבום"
-                        >
-                          ✅
-                        </span>
-                      )}
                     </button>
                   );
                 })}
@@ -1451,7 +1531,7 @@ export default function AlbumSpreadCanvasEditor({
             <div className="flex items-center justify-between mb-2.5">
               <p className="text-sm font-semibold">טקסט חדש (עברית או אנגלית)</p>
               <button onClick={() => setTextDraftOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
-                ✕
+                <IconClose />
               </button>
             </div>
             <input
@@ -1473,11 +1553,26 @@ export default function AlbumSpreadCanvasEditor({
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-bold">תבניות מובנות</p>
               <button onClick={() => setTemplatePickerOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
-                ✕
+                <IconClose />
               </button>
             </div>
+            <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 -mx-1 px-1">
+              {TEMPLATE_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setTemplateTab(tab.key)}
+                  className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap"
+                  style={{
+                    background: templateTab === tab.key ? "var(--color-amber-deep)" : "var(--color-chip)",
+                    color: templateTab === tab.key ? "#fff" : "var(--color-ink-soft)",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
-              {BUILT_IN_TEMPLATES.map((t) => (
+              {TEMPLATE_BANK[templateTab].map((t) => (
                 <button key={t.name} onClick={() => applyTemplate(t.frames)} className="rounded-xl border border-line p-2 text-center">
                   <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
                     {t.frames.map((f) => (
@@ -1515,7 +1610,7 @@ export default function AlbumSpreadCanvasEditor({
             <div className="flex items-center justify-between mb-2.5">
               <p className="text-sm font-semibold">שם התבנית</p>
               <button onClick={() => setSaveTemplateOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
-                ✕
+                <IconClose />
               </button>
             </div>
             <input
