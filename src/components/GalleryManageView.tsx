@@ -567,6 +567,10 @@ export default function GalleryManageView({
         heightPct: f.heightPct,
         focalX: 50,
         focalY: 50,
+        rotation: f.rotation,
+        borderWidth: f.borderWidth,
+        borderColor: f.borderColor,
+        shadow: f.shadow,
       }));
       return {
         album_id: targetAlbum.id,
@@ -644,7 +648,17 @@ export default function GalleryManageView({
     const pages: AlbumFrame[][] = albumSpreads.map((s) =>
       s.elements
         .filter((el): el is AlbumPhotoElement => el.type === "photo")
-        .map((el) => ({ id: el.id, xPct: el.xPct, yPct: el.yPct, widthPct: el.widthPct, heightPct: el.heightPct }))
+        .map((el) => ({
+          id: el.id,
+          xPct: el.xPct,
+          yPct: el.yPct,
+          widthPct: el.widthPct,
+          heightPct: el.heightPct,
+          rotation: el.rotation,
+          borderWidth: el.borderWidth,
+          borderColor: el.borderColor,
+          shadow: el.shadow,
+        }))
     );
     const { data, error } = await supabase
       .from("album_book_templates")
@@ -701,6 +715,10 @@ export default function GalleryManageView({
       heightPct: f.heightPct,
       focalX: 50,
       focalY: 50,
+      rotation: f.rotation,
+      borderWidth: f.borderWidth,
+      borderColor: f.borderColor,
+      shadow: f.shadow,
     }));
     const firstPhotoId = frames.length > 0 ? (photos.find((p) => !albumWideUsedPhotoIds.has(p.id))?.id ?? photos[0]?.id) : null;
     const { data: newSpread } = await supabase

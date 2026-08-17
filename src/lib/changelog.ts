@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.31.0",
+    date: "2026-08-17",
+    changes: [
+      "5 סגנונות באשף בניית האלבום (נוסף \"מקושקש\") — כל סגנון עודכן לפי אלבומי הדפסה אמיתיים: מגזין (תמונה מרכזית מול רשת דחוסה), קלאסי (מסגרת לבנה וצל רך), מקושקש (תמונות מפוזרות ומוטות עם מסגרת פולארויד), אורבני (רשתות נקיות ואחידות), קו נקי (ללא שינוי)",
+    ],
+  },
+  {
     version: "1.30.1",
     date: "2026-08-17",
     changes: [

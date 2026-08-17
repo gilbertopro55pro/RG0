@@ -839,6 +839,10 @@ export default function AlbumSpreadCanvasEditor({
       heightPct: f.heightPct,
       focalX: 50,
       focalY: 50,
+      rotation: f.rotation,
+      borderWidth: f.borderWidth,
+      borderColor: f.borderColor,
+      shadow: f.shadow,
     }));
     setElements((prev) => [...newPhotoElements, ...prev.filter((e) => e.type === "text")]);
     setTemplatePickerOpen(false);
@@ -849,7 +853,17 @@ export default function AlbumSpreadCanvasEditor({
     if (!templateNameDraft.trim()) return;
     const frames: AlbumFrame[] = elements
       .filter((e): e is AlbumPhotoElement => e.type === "photo")
-      .map((e) => ({ id: e.id, xPct: e.xPct, yPct: e.yPct, widthPct: e.widthPct, heightPct: e.heightPct }));
+      .map((e) => ({
+        id: e.id,
+        xPct: e.xPct,
+        yPct: e.yPct,
+        widthPct: e.widthPct,
+        heightPct: e.heightPct,
+        rotation: e.rotation,
+        borderWidth: e.borderWidth,
+        borderColor: e.borderColor,
+        shadow: e.shadow,
+      }));
     if (frames.length === 0) return;
     setSavingTemplate(true);
     await onSaveTemplate(templateNameDraft.trim(), frames);

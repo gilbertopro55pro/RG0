@@ -296,8 +296,12 @@ export type AlbumTextElement = {
 
 export type AlbumElement = AlbumPhotoElement | AlbumTextElement;
 
-// A frame is a photo element's shape only (position/size) — the reusable unit a template stores.
-export type AlbumFrame = Pick<AlbumPhotoElement, "id" | "xPct" | "yPct" | "widthPct" | "heightPct">;
+// A frame is a photo element's shape (position/size) plus a few optional presentation fields
+// (rotation/border/shadow) — the reusable unit a template stores. The presentation fields exist
+// so styles like a "scattered" scrapbook look (tilted, polaroid-bordered frames) survive being
+// saved and re-applied as a template; older templates simply omit them.
+export type AlbumFrame = Pick<AlbumPhotoElement, "id" | "xPct" | "yPct" | "widthPct" | "heightPct"> &
+  Partial<Pick<AlbumPhotoElement, "rotation" | "borderWidth" | "borderColor" | "shadow">>;
 
 export type AlbumTemplateRow = {
   id: string;
