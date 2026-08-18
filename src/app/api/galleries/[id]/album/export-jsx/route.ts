@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import { createClient } from "@/lib/supabase/server";
 import { generateAlbumPageJsx, type AlbumJsxPageElement } from "@/lib/albumJsx";
 import { pxFromCm, DPI } from "@/lib/albumRaster";
+import { downloadObjectBuffer } from "@/lib/storage";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
 
 function sanitizeSegment(name: string): string {
@@ -77,9 +78,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   );
   const { data: photos } = await supabase
     .from("gallery_photos")
-    .select("id, original_filename")
+    .select("id, original_filename, storage_path")
     .in("id", photoIds)
-    .returns<Pick<GalleryPhotoRow, "id" | "original_filename">[]>();
+    .returns<Pick<GalleryPhotoRow, "id" | "original_filename" | "storage_path">[]>();
   const photosById = new Map((photos ?? []).map((p) => [p.id, p]));
 
   const pageWidthPx = pxFromCm(album.width_cm);
@@ -90,6 +91,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   (async () => {
     try {
+      // Bundle the actual photo files into the same zip, in a "photos" folder the script looks for
+      // right next to itself — this is what lets the script run with zero folder pickers and zero
+      // "where is this photo on your computer" guessing. Downloaded once per unique photo (already
+      // deduped via photoIds above) regardless of how many pages in this export use it.
+      for (const photo of photosById.values()) {
+        const buffer = await downloadObjectBuffer("galleries", photo.storage_path);
+        if (buffer) archive.append(buffer, { name: `${rootDir}/photos/${photo.original_filename}` });
+      }
       for (const spread of rangedSpreads) {
         const pageNumber = (hasCover ? 1 : 0) + spreads.indexOf(spread) + 1;
         const elements: AlbumJsxPageElement[] = [];

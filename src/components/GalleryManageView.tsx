@@ -20,11 +20,11 @@ import type {
 } from "@/lib/types";
 import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import { readDataTransferItems, folderNameFromPath } from "@/lib/fileDrop";
-import { generateStyledAlbum, ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
+import { ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
-import { IconClose as IconAlbumClose, IconPalette, IconTarget, IconRefresh, IconFont, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck } from "@/components/icons/AlbumIcons";
+import { IconClose as IconAlbumClose, IconPalette, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck } from "@/components/icons/AlbumIcons";
 import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor, boxShadowFor, cssFilterFor } from "@/components/AlbumSpreadCanvasEditor";
 import { TEMPLATE_TABS, TEMPLATE_BANK, type TemplateTabKey } from "@/lib/albumTemplateBank";
 import { isLightTextColor } from "@/lib/textColor";
@@ -108,28 +108,6 @@ function addMonths(date: Date, months: number): Date {
   const d = new Date(date);
   d.setMonth(d.getMonth() + months);
   return d;
-}
-
-// A 3x3 preset grid for picking a photo's focal point (0/50/100 on each axis) — simpler and more
-// reliable than click-anywhere-on-the-crop math, which would need to account for the crop's own
-// zoom factor to translate a click back into original-image percentages.
-function FocalGrid({ onPick }: { onPick: (x: number, y: number) => void }) {
-  const positions = [0, 50, 100];
-  return (
-    <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 gap-px bg-black/50" onClick={(e) => e.stopPropagation()}>
-      {positions.map((y) =>
-        positions.map((x) => (
-          <button
-            key={`${x}-${y}`}
-            onClick={() => onPick(x, y)}
-            className="flex items-center justify-center bg-transparent hover:bg-white/10"
-          >
-            <span className="h-2 w-2 rounded-full bg-white/80" />
-          </button>
-        ))
-      )}
-    </div>
-  );
 }
 
 type SaveHandle = { createWritable: () => Promise<{ write: (b: Blob) => Promise<void>; close: () => Promise<void> }> };
@@ -304,9 +282,7 @@ export default function GalleryManageView({
   const [customPageCount, setCustomPageCount] = useState(6);
   const [albumBookTemplates, setAlbumBookTemplates] = useState<AlbumBookTemplateRow[]>([]);
   const [albumWizardMode, setAlbumWizardMode] = useState<"style" | "saved">("style");
-  const [albumPageCountDraft, setAlbumPageCountDraft] = useState(20);
-  const [albumPhotoCountDraft, setAlbumPhotoCountDraft] = useState(40);
-  const [albumStyleDraft, setAlbumStyleDraft] = useState<AlbumStyleId>("classic");
+  const [albumStyleDraft] = useState<AlbumStyleId>("classic");
   const [buildingAlbumBook, setBuildingAlbumBook] = useState(false);
   const [saveBookTemplateOpen, setSaveBookTemplateOpen] = useState(false);
   const [bookTemplateNameDraft, setBookTemplateNameDraft] = useState("");
@@ -314,8 +290,6 @@ export default function GalleryManageView({
   const [confirmNewAlbumOpen, setConfirmNewAlbumOpen] = useState(false);
   const [creatingSpread, setCreatingSpread] = useState(false);
   const [draggedSpreadId, setDraggedSpreadId] = useState<string | null>(null);
-  const [focalEditTarget, setFocalEditTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
-  const [replaceTarget, setReplaceTarget] = useState<{ spreadId: string; slot: 1 | 2 } | null>(null);
   const [exportingAlbumPdf, setExportingAlbumPdf] = useState(false);
   const [exportingAlbumJpg, setExportingAlbumJpg] = useState(false);
   const [exportingAlbumPsd, setExportingAlbumPsd] = useState(false);
@@ -613,9 +587,11 @@ export default function GalleryManageView({
     if (data) setAlbumSpreads(data.sort((a, b) => a.sort_order - b.sort_order));
   };
 
-  // Wizard step 1, "style" mode: creates the album, then generates and inserts every page at once
-  // via generateStyledAlbum — the photographer's only remaining job is dragging photos into the
-  // already-built boxes.
+  // Wizard step 1, "style" mode: creates the album with a single blank custom page (instead of a
+  // full pre-templated book) — the photographer picks a ready template or builds the page
+  // themselves from there, then adds more pages one at a time as they go. Drops straight into the
+  // free-design editor for that first page so there's no extra click back through an
+  // otherwise-empty album view.
   const buildStyledAlbum = async () => {
     setBuildingAlbumBook(true);
     setError(null);
@@ -636,8 +612,20 @@ export default function GalleryManageView({
       return;
     }
     setAlbum(newAlbum);
-    const pagesFrames = generateStyledAlbum(albumPageCountDraft, albumPhotoCountDraft, albumStyleDraft);
-    await insertSpreadsFromFrameLists(newAlbum, pagesFrames);
+    const { data: spreadRows, error: spreadErr } = await supabase
+      .from("gallery_album_spreads")
+      .insert({ album_id: newAlbum.id, sort_order: 0, layout: "custom", elements: [], photo_id_1: photos[0]?.id })
+      .select()
+      .returns<GalleryAlbumSpreadRow[]>();
+    if (spreadErr) {
+      setError(spreadErr.message);
+      setBuildingAlbumBook(false);
+      return;
+    }
+    if (spreadRows) {
+      setAlbumSpreads(spreadRows);
+      setCanvasEditorTarget({ spreadId: spreadRows[0].id, mode: "custom" });
+    }
     setBuildingAlbumBook(false);
   };
 
@@ -799,20 +787,6 @@ export default function GalleryManageView({
     setAlbumSpreads((prev) => prev.filter((s) => s.id !== spreadId));
   };
 
-  const moveSpread = async (index: number, direction: -1 | 1) => {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= albumSpreads.length) return;
-    const a = albumSpreads[index];
-    const b = albumSpreads[targetIndex];
-    const next = [...albumSpreads];
-    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
-    setAlbumSpreads(next);
-    await Promise.all([
-      supabase.from("gallery_album_spreads").update({ sort_order: b.sort_order }).eq("id", a.id),
-      supabase.from("gallery_album_spreads").update({ sort_order: a.sort_order }).eq("id", b.id),
-    ]);
-  };
-
   // Drag-and-drop reorder: dropping spread `draggedSpreadId` onto `targetIndex` moves it there and
   // shifts everything between the two positions — simplest correct approach for a short list is to
   // just recompute sort_order for the whole array rather than diffing which pairs actually moved.
@@ -828,22 +802,10 @@ export default function GalleryManageView({
     await Promise.all(next.map((s, i) => supabase.from("gallery_album_spreads").update({ sort_order: i }).eq("id", s.id)));
   };
 
-  const setSpreadLayout = async (spreadId: string, layout: GalleryAlbumSpreadRow["layout"]) => {
-    setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, layout } : s)));
-    await supabase.from("gallery_album_spreads").update({ layout }).eq("id", spreadId);
-  };
-
   const setAlbumCoverPhoto = async (photoId: string) => {
     if (!album) return;
     setAlbum({ ...album, cover_photo_id: photoId });
     await supabase.from("gallery_albums").update({ cover_photo_id: photoId }).eq("id", album.id);
-  };
-
-  const setSpreadFocal = async (spreadId: string, slot: 1 | 2, x: number, y: number) => {
-    const patch = slot === 1 ? { focal_x_1: x, focal_y_1: y } : { focal_x_2: x, focal_y_2: y };
-    setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, ...patch } : s)));
-    await supabase.from("gallery_album_spreads").update(patch).eq("id", spreadId);
-    setFocalEditTarget(null);
   };
 
   // Swaps in a different photo for one slot of an existing spread without disturbing the other
@@ -857,18 +819,6 @@ export default function GalleryManageView({
     setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, ...patch } : s)));
     await supabase.from("gallery_album_spreads").update(patch).eq("id", spreadId);
     setCanvasEditorTarget(null);
-  };
-
-  const replaceSpreadPhoto = async (photoId: string) => {
-    if (!replaceTarget) return;
-    const { spreadId, slot } = replaceTarget;
-    const patch =
-      slot === 1
-        ? { photo_id_1: photoId, focal_x_1: 50, focal_y_1: 50 }
-        : { photo_id_2: photoId, focal_x_2: 50, focal_y_2: 50 };
-    setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, ...patch } : s)));
-    await supabase.from("gallery_album_spreads").update(patch).eq("id", spreadId);
-    setReplaceTarget(null);
   };
 
   const sendAlbumToClient = async () => {
@@ -2050,7 +2000,7 @@ export default function GalleryManageView({
             <p className="text-sm text-ink-soft mb-4">בחר/י מאיזה עמוד עד איזה עמוד לייצא (מתוך {albumTotalPages} עמודים).</p>
             {exportRangeFormat === "jsx" && (
               <p className="text-xs text-amber-deep mb-4">
-                בטא: עמוד השער לא נתמך עדיין (יידלג אם נבחר בטווח). כל עמוד ייוצא כקובץ .jsx נפרד — הרצה שלו ב-Photoshop דורשת שהתמונות המקוריות יהיו בתיקייה על המחשב שלך.
+                בטא: עמוד השער לא נתמך עדיין (יידלג אם נבחר בטווח). הקובץ שיורד הוא תיקייה שלמה — קובץ .jsx לכל עמוד, ותיקיית "photos" עם התמונות עצמן. חלצו (unzip) את כל התיקייה יחד ואל תזיזו את קובץ ה-jsx החוצה ממנה — כדי להריץ, בPhotoshop: File {">"} Scripts {">"} Browse ובחירת הקובץ.
               </p>
             )}
             <div className="flex items-center gap-3 mb-5">
@@ -2354,7 +2304,7 @@ export default function GalleryManageView({
             ) : !album ? (
               <>
                 <p className="text-xs text-ink-soft mb-3.5">
-                  קודם כל, מה מידות האלבום להדפסה? המערכת תבנה לכם שבלונה מלאה — כל העמודים עם הקוביות מוכנות — וכל מה שיישאר זה לגרור תמונות פנימה.
+                  קודם כל, מה מידות האלבום להדפסה? תתחילו מעמוד ריק אחד — ומשם תוכלו לבחור תבנית מוכנה או לעצב בעצמכם, ולהוסיף עוד עמודים בהמשך.
                 </p>
                 <p className="text-xs text-ink-soft mb-2">מידה נפוצה — בחירה ממלאת את השדות למטה, ואפשר גם לשנות אותם ידנית</p>
                 <select
@@ -2432,19 +2382,18 @@ export default function GalleryManageView({
 
                 {albumWizardMode === "style" ? (
                   <>
-                    {/* Page-count / photo-count inputs, and the style picker (מגזין/קלאסי/מקושקש/
-                        אורבני/קו נקי), are temporarily hidden per photographer request — the
-                        wizard now just needs a size to build from. albumPageCountDraft/
-                        albumPhotoCountDraft/albumStyleDraft stay at their existing defaults
-                        (20 pages, 40 photos, "classic") so buildStyledAlbum still has everything
-                        it needs. */}
+                    {/* The style picker (מגזין/קלאסי/מקושקש/אורבני/קו נקי) and the old page-count/
+                        photo-count inputs are gone — the wizard now just needs a size, then creates
+                        a single blank custom page and drops straight into its editor (template bank
+                        or free-form). albumStyleDraft stays fixed at "classic" purely because saved
+                        book templates still need a style value in the DB row. */}
                     {error && <p className="text-xs text-rose mb-2.5 mt-2">{error}</p>}
                     <button
                       onClick={buildStyledAlbum}
                       disabled={buildingAlbumBook}
                       className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                     >
-                      {buildingAlbumBook ? "בונה את האלבום..." : "בניית האלבום"}
+                      {buildingAlbumBook ? "יוצר את האלבום..." : "יצירת האלבום"}
                     </button>
                   </>
                 ) : (
@@ -2559,11 +2508,11 @@ export default function GalleryManageView({
                   <p className="text-sm text-ink-soft text-center py-4 mb-2">אין עדיין עמודים באלבום.</p>
                 )}
                 {albumSpreads.length > 0 && (
-                  <div className="space-y-2 mb-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
                     {albumSpreads.map((spread, i) => {
                       const photo1 = photos.find((p) => p.id === spread.photo_id_1);
                       const photo2 = spread.photo_id_2 ? photos.find((p) => p.id === spread.photo_id_2) : null;
-                      const comments = albumComments.filter((c) => c.spread_id === spread.id);
+                      const commentCount = albumComments.filter((c) => c.spread_id === spread.id).length;
                       return (
                         <div
                           key={spread.id}
@@ -2574,82 +2523,77 @@ export default function GalleryManageView({
                             e.preventDefault();
                             reorderSpreads(i);
                           }}
-                          className="rounded-xl border border-line p-2"
+                          className="relative rounded-xl border border-line overflow-hidden"
                           style={{ opacity: draggedSpreadId === spread.id ? 0.4 : 1 }}
                         >
-                          <div className="flex items-center gap-2">
-                            {spread.layout === "custom" ? (
-                              <button
-                                onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" })}
-                                className="relative flex-1 aspect-[16/10] rounded-lg overflow-hidden bg-line"
-                              >
-                                {spread.elements.map((el) => {
-                                  const photo = el.type === "photo" ? photos.find((p) => p.id === el.photoId) : null;
-                                  return (
-                                    <div
-                                      key={el.id}
-                                      className="absolute overflow-hidden"
-                                      style={{
-                                        left: `${el.xPct}%`,
-                                        top: `${el.yPct}%`,
-                                        width: `${el.widthPct}%`,
-                                        height: el.type === "photo" ? `${el.heightPct}%` : undefined,
-                                        fontSize: el.type === "text" ? `${el.fontSize}px` : undefined,
-                                        color: el.type === "text" ? el.color : undefined,
-                                        textAlign: el.type === "text" ? el.align : undefined,
-                                        fontWeight: el.type === "text" ? 700 : undefined,
-                                        // Mirrors the free-design canvas editor's own photo-frame styling so this
-                                        // quick-glance thumbnail (the only view of the page once you close the
-                                        // editor) actually reflects border/shadow/rotation instead of silently
-                                        // dropping them.
-                                        outline: el.type === "photo" && el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
-                                        outlineOffset: el.type === "photo" && el.borderWidth ? `-${el.borderWidth}px` : undefined,
-                                        boxShadow: el.type === "photo" ? boxShadowFor(el.shadow) : undefined,
-                                        transform: el.type === "photo" && el.rotation ? `rotate(${el.rotation}deg)` : undefined,
-                                      }}
-                                    >
-                                      {el.type === "photo" && photo && (
-                                        /* eslint-disable-next-line @next/next/no-img-element */
-                                        <img
-                                          src={photo.url}
-                                          alt=""
-                                          className="w-full h-full object-cover"
-                                          style={{
-                                            objectPosition: `${el.focalX}% ${el.focalY}%`,
-                                            filter: cssFilterFor(el.filter, el.blur),
-                                            opacity: (el.opacity ?? 100) / 100,
-                                            transform: el.zoom && el.zoom !== 100 ? `scale(${el.zoom / 100})` : undefined,
-                                            ...(el.maskId
-                                              ? {
-                                                  WebkitMaskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
-                                                  maskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
-                                                  WebkitMaskSize: "100% 100%",
-                                                  maskSize: "100% 100%",
-                                                  WebkitMaskRepeat: "no-repeat",
-                                                  maskRepeat: "no-repeat",
-                                                }
-                                              : null),
-                                          }}
-                                        />
-                                      )}
-                                      {el.type === "text" && el.text}
-                                    </div>
-                                  );
-                                })}
-                                <span className="absolute bottom-1 left-1 rounded-full bg-black/60 text-white text-[10px] px-2 py-0.5 flex items-center gap-1">
-                                  <IconPalette size={11} />
-                                  עריכת עיצוב חופשי
-                                </span>
-                              </button>
-                            ) : (
-                              <div
-                                className={`flex flex-1 ${spread.layout === "stack" ? "flex-col" : "flex-row"} gap-1`}
-                              >
+                          {/* Compact thumbnail-only view — the small per-page controls that used to
+                              live here (focal point, photo replace, split/feature/stack layout,
+                              text-overlay mode) are all reachable by just opening the page: clicking
+                              any thumbnail (legacy layouts included, auto-seeded into editable
+                              elements by seedElementsFromPreset) drops straight into the full-screen
+                              free-design editor, which already covers every one of those. */}
+                          {spread.layout === "custom" ? (
+                            <button
+                              onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" })}
+                              className="relative block w-full aspect-square bg-line"
+                            >
+                              {spread.elements.map((el) => {
+                                const photo = el.type === "photo" ? photos.find((p) => p.id === el.photoId) : null;
+                                return (
+                                  <div
+                                    key={el.id}
+                                    className="absolute overflow-hidden"
+                                    style={{
+                                      left: `${el.xPct}%`,
+                                      top: `${el.yPct}%`,
+                                      width: `${el.widthPct}%`,
+                                      height: el.type === "photo" ? `${el.heightPct}%` : undefined,
+                                      fontSize: el.type === "text" ? `${el.fontSize}px` : undefined,
+                                      color: el.type === "text" ? el.color : undefined,
+                                      textAlign: el.type === "text" ? el.align : undefined,
+                                      fontWeight: el.type === "text" ? 700 : undefined,
+                                      outline: el.type === "photo" && el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
+                                      outlineOffset: el.type === "photo" && el.borderWidth ? `-${el.borderWidth}px` : undefined,
+                                      boxShadow: el.type === "photo" ? boxShadowFor(el.shadow) : undefined,
+                                      transform: el.type === "photo" && el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+                                    }}
+                                  >
+                                    {el.type === "photo" && photo && (
+                                      /* eslint-disable-next-line @next/next/no-img-element */
+                                      <img
+                                        src={photo.url}
+                                        alt=""
+                                        className="w-full h-full object-cover"
+                                        style={{
+                                          objectPosition: `${el.focalX}% ${el.focalY}%`,
+                                          filter: cssFilterFor(el.filter, el.blur),
+                                          opacity: (el.opacity ?? 100) / 100,
+                                          transform: el.zoom && el.zoom !== 100 ? `scale(${el.zoom / 100})` : undefined,
+                                          ...(el.maskId
+                                            ? {
+                                                WebkitMaskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
+                                                maskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
+                                                WebkitMaskSize: "100% 100%",
+                                                maskSize: "100% 100%",
+                                                WebkitMaskRepeat: "no-repeat",
+                                                maskRepeat: "no-repeat",
+                                              }
+                                            : null),
+                                        }}
+                                      />
+                                    )}
+                                    {el.type === "text" && el.text}
+                                  </div>
+                                );
+                              })}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" })}
+                              className={`flex w-full aspect-square ${spread.layout === "stack" ? "flex-col" : "flex-row"} gap-px bg-line`}
+                            >
                               {photo1 && (
-                                <div
-                                  className="relative aspect-square rounded-lg overflow-hidden bg-line"
-                                  style={{ flex: photo2 && spread.layout === "feature" ? "1.6" : "1" }}
-                                >
+                                <div className="relative overflow-hidden" style={{ flex: photo2 && spread.layout === "feature" ? "1.6" : "1" }}>
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img
                                     src={photo1.url}
@@ -2657,36 +2601,10 @@ export default function GalleryManageView({
                                     className="w-full h-full object-cover"
                                     style={{ objectPosition: `${spread.focal_x_1}% ${spread.focal_y_1}%` }}
                                   />
-                                  <div className="absolute top-1 left-1 flex gap-1">
-                                    <button
-                                      onClick={() =>
-                                        setFocalEditTarget((prev) =>
-                                          prev?.spreadId === spread.id && prev.slot === 1 ? null : { spreadId: spread.id, slot: 1 }
-                                        )
-                                      }
-                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
-                                      title="מיקוד"
-                                    >
-                                      <IconTarget size={11} />
-                                    </button>
-                                    <button
-                                      onClick={() => setReplaceTarget({ spreadId: spread.id, slot: 1 })}
-                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
-                                      title="החלפת תמונה"
-                                    >
-                                      <IconRefresh size={11} />
-                                    </button>
-                                  </div>
-                                  {focalEditTarget?.spreadId === spread.id && focalEditTarget.slot === 1 && (
-                                    <FocalGrid onPick={(x, y) => setSpreadFocal(spread.id, 1, x, y)} />
-                                  )}
                                 </div>
                               )}
                               {photo2 && (
-                                <div
-                                  className="relative aspect-square rounded-lg overflow-hidden bg-line"
-                                  style={{ flex: spread.layout === "feature" ? "1" : "1" }}
-                                >
+                                <div className="relative overflow-hidden" style={{ flex: "1" }}>
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img
                                     src={photo2.url}
@@ -2694,106 +2612,25 @@ export default function GalleryManageView({
                                     className="w-full h-full object-cover"
                                     style={{ objectPosition: `${spread.focal_x_2}% ${spread.focal_y_2}%` }}
                                   />
-                                  <div className="absolute top-1 left-1 flex gap-1">
-                                    <button
-                                      onClick={() =>
-                                        setFocalEditTarget((prev) =>
-                                          prev?.spreadId === spread.id && prev.slot === 2 ? null : { spreadId: spread.id, slot: 2 }
-                                        )
-                                      }
-                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
-                                      title="מיקוד"
-                                    >
-                                      <IconTarget size={11} />
-                                    </button>
-                                    <button
-                                      onClick={() => setReplaceTarget({ spreadId: spread.id, slot: 2 })}
-                                      className="h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
-                                      title="החלפת תמונה"
-                                    >
-                                      <IconRefresh size={11} />
-                                    </button>
-                                  </div>
-                                  {focalEditTarget?.spreadId === spread.id && focalEditTarget.slot === 2 && (
-                                    <FocalGrid onPick={(x, y) => setSpreadFocal(spread.id, 2, x, y)} />
-                                  )}
                                 </div>
                               )}
-                              </div>
-                            )}
-                            <div className="flex flex-col gap-1 shrink-0">
-                              <span
-                                className="h-6 w-6 hidden sm:flex items-center justify-center text-ink-soft text-xs cursor-grab"
-                                title="גררו לשינוי סדר"
-                              >
-                                ⠿
-                              </span>
-                              <button
-                                onClick={() => moveSpread(i, -1)}
-                                disabled={i === 0}
-                                className="h-6 w-6 rounded-full bg-chip text-ink-soft flex items-center justify-center text-xs disabled:opacity-30"
-                              >
-                                ↑
-                              </button>
-                              <button
-                                onClick={() => moveSpread(i, 1)}
-                                disabled={i === albumSpreads.length - 1}
-                                className="h-6 w-6 rounded-full bg-chip text-ink-soft flex items-center justify-center text-xs disabled:opacity-30"
-                              >
-                                ↓
-                              </button>
-                              <button
-                                onClick={() => removeSpread(spread.id)}
-                                className="h-6 w-6 rounded-full bg-chip text-rose flex items-center justify-center"
-                              >
-                                <IconAlbumClose size={11} />
-                              </button>
-                            </div>
-                          </div>
-                          {photo2 && (
-                            <div className="flex gap-1 mt-2">
-                              {(["split", "feature", "stack"] as const).map((layout) => (
-                                <button
-                                  key={layout}
-                                  onClick={() => setSpreadLayout(spread.id, layout)}
-                                  className="flex-1 rounded-full py-1 text-[10px] font-semibold"
-                                  style={{
-                                    background: spread.layout === layout ? "var(--color-amber-deep)" : "var(--color-chip)",
-                                    color: spread.layout === layout ? "#fff" : "var(--color-ink-soft)",
-                                  }}
-                                >
-                                  {layout === "split" ? "שווה" : layout === "feature" ? "מודגש" : "אנכי"}
-                                </button>
-                              ))}
-                            </div>
+                            </button>
                           )}
-                          <div className="flex gap-1 mt-2">
-                            <button
-                              onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" })}
-                              className="flex-1 rounded-full py-1.5 text-[10px] font-semibold bg-chip text-ink-soft flex items-center justify-center gap-1"
-                            >
-                              <IconPalette size={11} />
-                              עיצוב חופשי
-                            </button>
-                            <button
-                              onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "overlay" })}
-                              className="flex-1 rounded-full py-1.5 text-[10px] font-semibold bg-chip text-ink-soft flex items-center justify-center gap-1"
-                              disabled={spread.layout === "custom"}
-                              style={{ opacity: spread.layout === "custom" ? 0.4 : 1 }}
-                            >
-                              <IconFont size={11} />
-                              טקסט
-                            </button>
-                          </div>
-                          {comments.length > 0 && (
-                            <div className="mt-2 space-y-1">
-                              {comments.map((c) => (
-                                <p key={c.id} className="text-xs rounded-lg px-2.5 py-1.5 bg-amber-bg text-amber-deep flex items-start gap-1.5">
-                                  <IconChat size={12} />
-                                  <span>{c.text}</span>
-                                </p>
-                              ))}
-                            </div>
+                          <span className="absolute top-1 right-1 h-5 min-w-5 px-1 rounded-full bg-black/60 text-white text-[9px] font-semibold flex items-center justify-center pointer-events-none">
+                            {i + 1}
+                          </span>
+                          <button
+                            onClick={() => removeSpread(spread.id)}
+                            className="absolute top-1 left-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center"
+                            title="מחיקת עמוד"
+                          >
+                            <IconAlbumClose size={9} />
+                          </button>
+                          {commentCount > 0 && (
+                            <span className="absolute bottom-1 right-1 h-5 min-w-5 px-1 rounded-full bg-amber-deep text-white text-[9px] font-semibold flex items-center justify-center gap-0.5 pointer-events-none">
+                              <IconChat size={9} />
+                              {commentCount}
+                            </span>
                           )}
                         </div>
                       );
@@ -2940,31 +2777,6 @@ export default function GalleryManageView({
                 )}
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {replaceTarget && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
-          onClick={() => setReplaceTarget(null)}
-        >
-          <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3.5">
-              <h2 className="text-base font-bold font-display">החלפת תמונה</h2>
-              <button onClick={() => setReplaceTarget(null)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
-                <IconAlbumClose />
-              </button>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {photos.map((p) => (
-                <button key={p.id} onClick={() => replaceSpreadPhoto(p.id)} className="aspect-square rounded-lg overflow-hidden" style={{ boxShadow: "0 0 0 1px var(--color-line)" }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt="" className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       )}

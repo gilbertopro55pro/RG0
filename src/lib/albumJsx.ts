@@ -1,8 +1,9 @@
 // Generates a Photoshop ExtendScript (.jsx) file the photographer runs locally — Photoshop then
-// builds the page as a real, editable PSD on their own machine, matching photos to files by their
-// original filename in a folder they pick. Beta: only plain cover-fit photo placement (crop +
-// focal point) is implemented so far. Masks, borders, shadows, rotation, and text elements are not
-// yet translated into script instructions — see resolveAlbumJsxPage's skip-tracking for why.
+// builds the page as a real, editable PSD on their own machine. The zip this ships in also
+// contains the actual photo files (in a "photos" folder next to the script), so the script never
+// has to ask "where are your photos" — it just looks next to itself. Beta: only plain cover-fit
+// photo placement (crop + focal point) is implemented so far. Masks, borders, shadows, rotation,
+// and text elements are not yet translated into script instructions — see the skip-tracking below.
 
 export type AlbumJsxPageElement = {
   photoId: string;
@@ -41,9 +42,12 @@ export function generateAlbumPageJsx(data: AlbumJsxPageData): string {
 // IMPORTANT: don't double-click the file itself — .jsx is also After Effects' script extension, so
 // on most computers double-clicking hands it to whichever of the two the OS considers the default,
 // which is often the wrong one. File > Scripts > Browse always runs it in Photoshop regardless of
-// that file-association setting. You'll be asked to pick two folders: one with the original photo
-// files (photos are matched by their original filename, searched recursively through subfolders
-// too), and one to save the finished PSD into.
+// that file-association setting.
+//
+// No folder pickers, no manual matching: the photos this page needs are already sitting in a
+// "photos" folder right next to this script (unzip the whole downloaded folder and keep it
+// together — don't move this .jsx file away from its "photos" folder). The finished PSD saves into
+// that same folder too.
 //
 // Beta limitations: only photo placement (cover-fit crop centered on the focal point) is built so
 // far. Masks, frames/borders, shadows, rotation, and text elements on this page are not yet
@@ -52,28 +56,6 @@ export function generateAlbumPageJsx(data: AlbumJsxPageData): string {
 app.preferences.rulerUnits = Units.PIXELS;
 
 var PAGE = ${pageJson};
-
-// Searches the chosen folder AND every subfolder underneath it (many photographers keep originals
-// split into per-session subfolders rather than one flat folder) — case-insensitively, since a
-// file's case can drift across an OS move/re-download even though the name is otherwise identical.
-function findSourceFile(folder, filename) {
-  var target = filename.toLowerCase();
-  var entries = folder.getFiles();
-  var subfolders = [];
-  for (var i = 0; i < entries.length; i++) {
-    var entry = entries[i];
-    if (entry instanceof Folder) {
-      subfolders.push(entry);
-    } else if (entry.name.toLowerCase() === target) {
-      return entry;
-    }
-  }
-  for (var j = 0; j < subfolders.length; j++) {
-    var found = findSourceFile(subfolders[j], filename);
-    if (found !== null) return found;
-  }
-  return null;
-}
 
 // Adds a layer mask that reveals only the given rectangle — the classic scripting DOM has no
 // direct "add layer mask from selection" method, so this replays the ActionManager call Photoshop
@@ -137,14 +119,11 @@ function placeCoverFit(doc, file, xPx, yPx, wPx, hPx, focalXPct, focalYPct) {
 }
 
 (function run() {
-  var sourceFolder = Folder.selectDialog("בחרו את התיקייה עם קבצי התמונות המקוריים");
-  if (sourceFolder === null) {
-    alert("בוטל — לא נבחרה תיקיית מקור.");
-    return;
-  }
-  var outputFolder = Folder.selectDialog("לאן לשמור את קובץ ה-PSD?");
-  if (outputFolder === null) {
-    alert("בוטל — לא נבחרה תיקיית שמירה.");
+  var scriptFile = new File($.fileName);
+  var scriptFolder = scriptFile.parent;
+  var photosFolder = new Folder(scriptFolder.fsName + "/photos");
+  if (!photosFolder.exists) {
+    alert("לא נמצאה תיקיית \\"photos\\" ליד קובץ הסקריפט. ודאו שחילצתם (unzip) את כל התיקייה שהורדתם ולא רק את קובץ ה-jsx.");
     return;
   }
 
@@ -169,8 +148,8 @@ function placeCoverFit(doc, file, xPx, yPx, wPx, hPx, focalXPct, focalYPct) {
   var missingFiles = [];
   for (var i = 0; i < PAGE.elements.length; i++) {
     var el = PAGE.elements[i];
-    var file = findSourceFile(sourceFolder, el.filename);
-    if (file === null) {
+    var file = new File(photosFolder.fsName + "/" + el.filename);
+    if (!file.exists) {
       missingFiles.push(el.filename);
       continue;
     }
@@ -183,14 +162,14 @@ function placeCoverFit(doc, file, xPx, yPx, wPx, hPx, focalXPct, focalYPct) {
     placedCount++;
   }
 
-  var saveFile = new File(outputFolder.fsName + "/" + PAGE.pageLabel + ".psd");
+  var saveFile = new File(scriptFolder.fsName + "/" + PAGE.pageLabel + ".psd");
   var psdOpts = new PhotoshopSaveOptions();
   psdOpts.layers = true;
   doc.saveAs(saveFile, psdOpts, true);
 
   var summary = "נשמר: " + saveFile.fsName + "\\n\\nהונחו " + placedCount + " מתוך " + PAGE.elements.length + " תמונות.";
   if (missingFiles.length > 0) {
-    summary += "\\n\\nלא נמצאו בתיקייה (" + missingFiles.length + "): " + missingFiles.join(", ");
+    summary += "\\n\\nלא נמצאו בתיקיית photos (" + missingFiles.length + "): " + missingFiles.join(", ");
   }
   if (PAGE.skippedExtrasCount > 0) {
     summary += "\\n\\n" + PAGE.skippedExtrasCount + " מהתמונות שהונחו כללו מסכה/מסגרת/צל/סיבוב בעורך — עדיין לא נתמך בסקריפט, הונחו בלי האפקט.";
