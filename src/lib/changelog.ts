@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.37.1",
+    date: "2026-08-18",
+    changes: [
+      "תוקן: הורדת קבצי ייצוא אלבום (PDF/JPG/PSD/סקריפט Photoshop) ב-Safari/Firefox במחשב ירדה עכשיו ישירות לתיקיית ההורדות, במקום לפתוח את תפריט השיתוף של המערכת",
+    ],
+  },
+  {
     version: "1.37.0",
     date: "2026-08-17",
     changes: [

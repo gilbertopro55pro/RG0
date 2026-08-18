@@ -161,11 +161,12 @@ async function openSaveHandle(suggestedName: string, mimeType: string): Promise<
   }
 }
 
-// With a desktop handle (already open, see openSaveHandle) just writes to it. Otherwise — mobile,
-// where there's no save-file picker to pre-open — tries the OS share sheet (Web Share API) so the
-// user still gets to choose where the file goes (Save to Files, AirDrop, etc.) instead of it
-// silently landing in Downloads. Falls back to a plain <a download> when the share sheet isn't
-// available, the file type can't be shared, or the user backs out of it.
+// With a desktop handle (already open, see openSaveHandle) just writes to it. Otherwise, on iOS/
+// Android — which have no save-file picker to pre-open — tries the OS share sheet (Web Share API)
+// so the user still gets to choose where the file goes (their share sheet has a real "Save to
+// Files"/"Save to device" target). On desktop Safari/Firefox the share sheet has no such target
+// (just Mail/Messages/AirDrop/Notes/Copy — a dead end for "save this file"), so those skip straight
+// to a plain <a download>, which just lands the file in Downloads like every other desktop browser.
 async function writeToHandleOrDownload(handle: SaveHandle | null, blob: Blob, filename: string, mimeType: string): Promise<void> {
   if (handle) {
     const writable = await handle.createWritable();
@@ -173,8 +174,9 @@ async function writeToHandleOrDownload(handle: SaveHandle | null, blob: Blob, fi
     await writable.close();
     return;
   }
+  const isMobileOs = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void>; canShare?: (data: ShareData) => boolean };
-  if (nav.share) {
+  if (isMobileOs && nav.share) {
     try {
       const file = new File([blob], filename, { type: mimeType });
       if (!nav.canShare || nav.canShare({ files: [file] })) {
