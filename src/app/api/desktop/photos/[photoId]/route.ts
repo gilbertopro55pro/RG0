@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { downloadObjectBuffer } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -28,7 +29,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ phot
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
   }
 
-  const { data: photo } = await supabase
+  // Service-role, not the anon client above — getUser(token) only verifies the JWT, it doesn't
+  // attach it to this client's own PostgREST requests, so a plain anon-key query here would run
+  // as anonymous and get blocked by RLS regardless of the token being valid. The explicit
+  // photographer_id check right below is this route's actual authorization boundary.
+  const serviceRole = createServiceRoleClient();
+  const { data: photo } = await serviceRole
     .from("gallery_photos")
     .select("storage_path, photographer_id")
     .eq("id", photoId)
