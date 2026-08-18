@@ -19,6 +19,11 @@ const PUBLIC_PATHS = [
   "/gallery",
   "/api/gallery",
   "/api/payplus/webhook",
+  // Bearer-token authenticated (not cookie-based) — the separate desktop app has no cookie jar
+  // shared with this site, so it can't pass this proxy's cookie-session check. The route itself
+  // independently validates the bearer token via supabase.auth.getUser(token), same as every other
+  // entry in this list has its own token/session check baked into the route rather than the cookie.
+  "/api/desktop",
 ];
 
 export async function updateSession(request: NextRequest) {
