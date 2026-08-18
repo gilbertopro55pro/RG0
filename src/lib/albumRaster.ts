@@ -7,7 +7,7 @@ import { getAlbumFontFiles } from "@/lib/albumFontFiles";
 import type { AlbumElement, AlbumPhotoFilter, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 import { ALBUM_MASKS } from "@/lib/albumMasks";
 
-const DPI = 300;
+export const DPI = 300;
 
 export function pxFromCm(cm: number): number {
   return Math.max(200, Math.round((cm / 2.54) * DPI));

@@ -8,6 +8,15 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.37.0",
+    date: "2026-08-17",
+    changes: [
+      "חדש (בטא): כפתור \"ייצוא סקריפט ל-Photoshop\" בעורך האלבום — מוריד קובץ .jsx לכל עמוד, ובהרצה שלו ב-Photoshop (File > Scripts > Browse) הוא בונה בעצמו מסמך PSD אמיתי וניתן לעריכה, עם התמונות ממוקמות וחתוכות בדיוק כמו בעורך",
+      "התאמת התמונות נעשית לפי שם הקובץ המקורי שלהן בתיקייה שבוחרים על המחשב — לא נדרשת העלאה מחדש",
+      "שלב ראשון בלבד: מסכות, מסגרות, צללים, סיבוב וטקסט עדיין לא כלולים בסקריפט ויתווספו בהמשך",
+    ],
+  },
+  {
     version: "1.36.0",
     date: "2026-08-17",
     changes: [

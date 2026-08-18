@@ -317,7 +317,8 @@ export default function GalleryManageView({
   const [exportingAlbumPdf, setExportingAlbumPdf] = useState(false);
   const [exportingAlbumJpg, setExportingAlbumJpg] = useState(false);
   const [exportingAlbumPsd, setExportingAlbumPsd] = useState(false);
-  const [exportRangeFormat, setExportRangeFormat] = useState<"pdf" | "jpg" | "psd" | null>(null);
+  const [exportingAlbumJsx, setExportingAlbumJsx] = useState(false);
+  const [exportRangeFormat, setExportRangeFormat] = useState<"pdf" | "jpg" | "psd" | "jsx" | null>(null);
   const [exportRangeFrom, setExportRangeFrom] = useState(1);
   const [exportRangeTo, setExportRangeTo] = useState(1);
   const [savingAlbumSize, setSavingAlbumSize] = useState(false);
@@ -913,12 +914,13 @@ export default function GalleryManageView({
   const exportAlbumPdf = (range: { from: number; to: number }) => downloadFromRoute("export-pdf", "album.pdf", "application/pdf", setExportingAlbumPdf, range);
   const exportAlbumJpg = (range: { from: number; to: number }) => downloadFromRoute("export-jpg", "album-jpg.zip", "application/zip", setExportingAlbumJpg, range);
   const exportAlbumPsd = (range: { from: number; to: number }) => downloadFromRoute("export-psd", "album-psd.zip", "application/zip", setExportingAlbumPsd, range);
+  const exportAlbumJsx = (range: { from: number; to: number }) => downloadFromRoute("export-jsx", "album-jsx.zip", "application/zip", setExportingAlbumJsx, range);
 
   // Total exportable pages, matching how the export routes number them: the cover (if the album
   // has one) counts as page 1, then each spread follows in sort order.
   const albumTotalPages = (album?.cover_photo_id ? 1 : 0) + albumSpreads.length;
 
-  const openExportRangeModal = (format: "pdf" | "jpg" | "psd") => {
+  const openExportRangeModal = (format: "pdf" | "jpg" | "psd" | "jsx") => {
     setExportRangeFormat(format);
     setExportRangeFrom(1);
     setExportRangeTo(albumTotalPages);
@@ -932,7 +934,8 @@ export default function GalleryManageView({
     setExportRangeFormat(null);
     if (exportRangeFormat === "pdf") exportAlbumPdf(range);
     else if (exportRangeFormat === "jpg") exportAlbumJpg(range);
-    else exportAlbumPsd(range);
+    else if (exportRangeFormat === "psd") exportAlbumPsd(range);
+    else exportAlbumJsx(range);
   };
 
   const updateAlbumSize = async (widthCm: number, heightCm: number) => {
@@ -2040,9 +2043,14 @@ export default function GalleryManageView({
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-2 font-display">
-              {exportRangeFormat === "pdf" ? "ייצוא PDF" : exportRangeFormat === "jpg" ? "ייצוא JPG" : "ייצוא PSD"} — טווח עמודים
+              {exportRangeFormat === "pdf" ? "ייצוא PDF" : exportRangeFormat === "jpg" ? "ייצוא JPG" : exportRangeFormat === "psd" ? "ייצוא PSD" : "ייצוא סקריפט ל-Photoshop"} — טווח עמודים
             </h2>
             <p className="text-sm text-ink-soft mb-4">בחר/י מאיזה עמוד עד איזה עמוד לייצא (מתוך {albumTotalPages} עמודים).</p>
+            {exportRangeFormat === "jsx" && (
+              <p className="text-xs text-amber-deep mb-4">
+                בטא: עמוד השער לא נתמך עדיין (יידלג אם נבחר בטווח). כל עמוד ייוצא כקובץ .jsx נפרד — הרצה שלו ב-Photoshop דורשת שהתמונות המקוריות יהיו בתיקייה על המחשב שלך.
+              </p>
+            )}
             <div className="flex items-center gap-3 mb-5">
               <div className="flex-1">
                 <label className="block text-xs font-semibold text-ink-soft mb-1">מעמוד</label>
@@ -2911,6 +2919,13 @@ export default function GalleryManageView({
                   className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60 flex items-center justify-center gap-1.5"
                 >
                   {exportingAlbumPsd ? "מייצא..." : (<><IconPalette size={14} />ייצוא PSD (פוטושופ)</>)}
+                </button>
+                <button
+                  onClick={() => openExportRangeModal("jsx")}
+                  disabled={exportingAlbumJsx || albumSpreads.length === 0}
+                  className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink mb-2.5 disabled:opacity-60 flex items-center justify-center gap-1.5"
+                >
+                  {exportingAlbumJsx ? "מייצא..." : (<><IconPalette size={14} />ייצוא סקריפט ל-Photoshop (בטא)</>)}
                 </button>
                 {album.status !== "approved" && (
                   <button
