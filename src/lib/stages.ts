@@ -131,6 +131,18 @@ export function packageLabel(pkg: PackageType | null, customName?: string | null
   return pkg ? PACKAGE_LABELS[pkg] : (customName ?? "חבילה מותאמת אישית");
 }
 
+// Resolves a lead's stored `package_interest` value into a display label. Unlike events (which use
+// a normalized `package` enum column + a separate `custom_package_id` FK), leads store package
+// selection as a single text column — either a built-in PackageType key, or `custom:<id>` pointing
+// into custom_packages — so this parses that string form directly instead of joining a column.
+export function resolveLeadPackageLabel(value: string | null, customPackages: { id: string; name: string }[]): string | null {
+  if (!value) return null;
+  if (value.startsWith("custom:")) {
+    return customPackages.find((p) => p.id === value.slice(7))?.name ?? null;
+  }
+  return (PACKAGE_LABELS as Record<string, string>)[value] ?? null;
+}
+
 export function currentStageIndex(orderedStages: { done: boolean }[]): number {
   for (let i = 0; i < orderedStages.length; i++) {
     if (!orderedStages[i].done) return i;

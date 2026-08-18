@@ -3,9 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { PACKAGE_LABELS, type PackageType } from "@/lib/stages";
-import type { CustomPackageRow, LeadRow, LeadStatus } from "@/lib/types";
+import { PACKAGE_LABELS, resolveLeadPackageLabel, type PackageType } from "@/lib/stages";
+import type { CustomPackageRow, EventTypeRow, LeadRow, LeadStatus, PackagePriceRow } from "@/lib/types";
 import { useModalEntered } from "@/lib/useModalEntered";
+import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
+
+const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
 
@@ -27,12 +30,21 @@ const STATUS_COLORS: Record<LeadStatus, { bg: string; text: string }> = {
 
 export default function LeadsView({
   initialLeads,
-  customPackages,
+  customPackages: initialCustomPackages,
+  eventTypes: initialEventTypes,
+  prices: initialPrices,
 }: {
   initialLeads: LeadRow[];
   customPackages: CustomPackageRow[];
+  eventTypes: EventTypeRow[];
+  prices: PackagePriceRow[];
 }) {
   const [leads, setLeads] = useState(initialLeads);
+  // Owned here (not inside AddLeadModal) so a package created via "+ חבילה מותאמת אישית חדשה"
+  // shows up immediately in the lead-row label below, without waiting for a page refresh.
+  const [customPackages, setCustomPackages] = useState(initialCustomPackages);
+  const [eventTypes, setEventTypes] = useState(initialEventTypes);
+  const [prices, setPrices] = useState(initialPrices);
   const [showAdd, setShowAdd] = useState(false);
   const [quoteFormLeadId, setQuoteFormLeadId] = useState<string | null>(null);
   const [convertLead, setConvertLead] = useState<LeadRow | null>(null);
@@ -84,7 +96,7 @@ export default function LeadsView({
                 <div className="text-xs text-ink-soft font-data">
                   {lead.phone}
                   {lead.event_date_interest && ` · ${new Date(lead.event_date_interest).toLocaleDateString("he-IL")}`}
-                  {lead.package_interest && ` · ${PACKAGE_LABELS[lead.package_interest]}`}
+                  {resolveLeadPackageLabel(lead.package_interest, customPackages) && ` · ${resolveLeadPackageLabel(lead.package_interest, customPackages)}`}
                 </div>
               </div>
               <select
@@ -161,6 +173,18 @@ export default function LeadsView({
 
       {showAdd && (
         <AddLeadModal
+          customPackages={customPackages}
+          eventTypes={eventTypes}
+          prices={prices}
+          onCustomPackageSaved={(pkg, updatedEventTypes, updatedPrices) => {
+            setCustomPackages((prev) => [...prev, pkg]);
+            setEventTypes(updatedEventTypes);
+            setPrices(updatedPrices);
+          }}
+          onEventTypeDeleted={(eventTypeId) => {
+            setEventTypes((prev) => prev.filter((t) => t.id !== eventTypeId));
+            setPrices((prev) => prev.filter((p) => p.event_type_id !== eventTypeId));
+          }}
           onClose={() => setShowAdd(false)}
           onAdded={(lead) => {
             setLeads((prev) => [lead, ...prev]);
@@ -267,11 +291,30 @@ function QuoteForm({
   );
 }
 
-function AddLeadModal({ onClose, onAdded }: { onClose: () => void; onAdded: (lead: LeadRow) => void }) {
+function AddLeadModal({
+  onClose,
+  onAdded,
+  customPackages,
+  eventTypes,
+  prices,
+  onCustomPackageSaved,
+  onEventTypeDeleted,
+}: {
+  onClose: () => void;
+  onAdded: (lead: LeadRow) => void;
+  customPackages: CustomPackageRow[];
+  eventTypes: EventTypeRow[];
+  prices: PackagePriceRow[];
+  onCustomPackageSaved: (pkg: CustomPackageRow, eventTypes: EventTypeRow[], prices: PackagePriceRow[]) => void;
+  onEventTypeDeleted: (eventTypeId: string) => void;
+}) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [eventDateInterest, setEventDateInterest] = useState("");
-  const [packageInterest, setPackageInterest] = useState<PackageType | "">("");
+  // A built-in PackageType key, `custom:<id>`, or "" for unknown — same convention as NewEventModal's
+  // pkgValue, so a lead's package_interest can pre-fill NewEventModal's dropdown unchanged on convert.
+  const [packageInterest, setPackageInterest] = useState<string>("");
+  const [showCustomPackageBuilder, setShowCustomPackageBuilder] = useState(false);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -333,13 +376,29 @@ function AddLeadModal({ onClose, onAdded }: { onClose: () => void; onAdded: (lea
           </div>
           <div>
             <label className="text-xs block mb-1 text-ink-soft">חבילה מבוקשת</label>
-            <select value={packageInterest} onChange={(e) => setPackageInterest(e.target.value as PackageType)} className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white">
+            <select
+              value={packageInterest}
+              onChange={(e) => {
+                if (e.target.value === CREATE_CUSTOM_PACKAGE_VALUE) {
+                  setShowCustomPackageBuilder(true);
+                  return;
+                }
+                setPackageInterest(e.target.value);
+              }}
+              className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white"
+            >
               <option value="">לא ידוע</option>
               {Object.keys(PACKAGE_LABELS).map((p) => (
                 <option key={p} value={p}>
                   {PACKAGE_LABELS[p as PackageType]}
                 </option>
               ))}
+              {customPackages.map((cp) => (
+                <option key={cp.id} value={`custom:${cp.id}`}>
+                  {cp.name}
+                </option>
+              ))}
+              <option value={CREATE_CUSTOM_PACKAGE_VALUE}>+ חבילה מותאמת אישית חדשה</option>
             </select>
           </div>
           <div>
@@ -352,6 +411,22 @@ function AddLeadModal({ onClose, onAdded }: { onClose: () => void; onAdded: (lea
           </button>
         </div>
       </div>
+
+      {showCustomPackageBuilder && (
+        <CustomPackageBuilder
+          pkg={null}
+          initialStages={[]}
+          eventTypes={eventTypes}
+          prices={prices}
+          onClose={() => setShowCustomPackageBuilder(false)}
+          onSaved={(pkg, _stages, updatedEventTypes, updatedPrices) => {
+            onCustomPackageSaved(pkg, updatedEventTypes, updatedPrices);
+            setPackageInterest(`custom:${pkg.id}`);
+            setShowCustomPackageBuilder(false);
+          }}
+          onEventTypeDeleted={onEventTypeDeleted}
+        />
+      )}
     </div>
   );
 }

@@ -103,7 +103,9 @@ export type LeadRow = {
   phone: string | null;
   email: string | null;
   event_date_interest: string | null;
-  package_interest: PackageType | null;
+  // A built-in PackageType key, or `custom:<custom_packages.id>` for a photographer's own package
+  // (see resolveLeadPackageLabel in @/lib/stages) — plain text column, not a DB enum.
+  package_interest: string | null;
   status: LeadStatus;
   notes: string | null;
   quoted_amount: number | null;

@@ -1,6 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { PACKAGE_LABELS } from "@/lib/stages";
-import type { LeadRow } from "@/lib/types";
+import { resolveLeadPackageLabel } from "@/lib/stages";
+import type { CustomPackageRow, LeadRow } from "@/lib/types";
 
 export default async function QuotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -20,6 +20,13 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     );
   }
 
+  const { data: customPackages } = await supabase
+    .from("custom_packages")
+    .select("*")
+    .eq("photographer_id", lead.photographer_id)
+    .returns<CustomPackageRow[]>();
+  const packageLabel = resolveLeadPackageLabel(lead.package_interest, customPackages ?? []);
+
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <h1 className="text-[22px] font-bold mb-1 font-display">הצעת מחיר לצילום</h1>
@@ -36,10 +43,10 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           </>
         )}
 
-        {lead.package_interest && (
+        {packageLabel && (
           <>
             <div className="text-xs text-ink-soft mb-1">חבילה</div>
-            <div className="text-sm mb-3.5">{PACKAGE_LABELS[lead.package_interest]}</div>
+            <div className="text-sm mb-3.5">{packageLabel}</div>
           </>
         )}
 

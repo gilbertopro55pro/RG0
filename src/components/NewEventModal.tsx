@@ -27,7 +27,9 @@ export default function NewEventModal({
   prices: initialPrices,
 }: {
   onClose: () => void;
-  initial?: { clientName?: string; clientPhone?: string; eventDate?: string; pkg?: PackageType };
+  // pkg accepts a built-in PackageType key or a `custom:<id>` value (e.g. pre-filled from a lead's
+  // package_interest, which uses that same convention — see resolveLeadPackageLabel in @/lib/stages).
+  initial?: { clientName?: string; clientPhone?: string; eventDate?: string; pkg?: string };
   leadId?: string;
   waitlistId?: string;
   customPackages: CustomPackageRow[];
