@@ -8,6 +8,15 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.37.2",
+    date: "2026-08-18",
+    changes: [
+      "תוקן (בטא, סקריפט Photoshop): מידות העמוד שנוצר יכלו לצאת הפוכות (רוחב/גובה מוחלפים) — הסקריפט עכשיו קובע את המידות באופן מפורש וגם בודק ומתקן את עצמו אם המסמך יצא בגודל לא נכון",
+      "תוקן (בטא, סקריפט Photoshop): חיפוש התמונות בתיקייה שנבחרת הוא עכשיו רקורסיבי (כולל תת-תיקיות) ולא רגיש לרישיות, כדי למצוא תמונות גם כשהן מסודרות בתתי-תיקיות",
+      "הובהר (בטא, סקריפט Photoshop): כדי להריץ את הקובץ יש להשתמש ב-File > Scripts > Browse בתוך Photoshop — לחיצה כפולה על הקובץ עלולה לפתוח תוכנה אחרת (כמו After Effects) שגם משתמשת בסיומת .jsx",
+    ],
+  },
+  {
     version: "1.37.1",
     date: "2026-08-18",
     changes: [
