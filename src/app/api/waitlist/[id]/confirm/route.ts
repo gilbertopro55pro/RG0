@@ -1,9 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { EVENT_BOOKING_CONFIRMATION_TEMPLATE, PACKAGE_FLOWS, PACKAGE_LABELS, PORTAL_LINK_TEMPLATE } from "@/lib/stages";
+import { PACKAGE_FLOWS, PACKAGE_LABELS } from "@/lib/stages";
 import { syncEventToGoogleCalendar } from "@/lib/googleCalendarSync";
 import { syncEventToAppleCalendar } from "@/lib/appleCalendarSync";
-import { friendlyWhatsAppError, sendWhatsAppTemplate } from "@/lib/whatsapp";
 import type { WaitlistRow } from "@/lib/types";
 
 // Resolves a double-booked waitlist entry into a real event — the deliberate path for putting a
@@ -78,30 +77,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     { event_id: event.id, text: `האירוע אושר מרשימת ההמתנה — ${resolution.trim()}` },
   ];
 
-  if (entry.client_phone) {
-    try {
-      await sendWhatsAppTemplate(entry.client_phone, EVENT_BOOKING_CONFIRMATION_TEMPLATE, [
-        entry.client_name,
-        formattedDate,
-        "יעודכן",
-        "יעודכן",
-        "0",
-        "0",
-      ]);
-      notifications.push({ event_id: event.id, text: `נשלחה הודעת וואטסאפ (אישור הזמנה) ל-${entry.client_phone}` });
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : "שגיאה לא ידועה";
-      notifications.push({ event_id: event.id, text: friendlyWhatsAppError(raw) });
-    }
-
-    try {
-      const portalLink = `${new URL(request.url).origin}/portal/${event.client_access_token}`;
-      await sendWhatsAppTemplate(entry.client_phone, PORTAL_LINK_TEMPLATE, [entry.client_name, portalLink]);
-      notifications.push({ event_id: event.id, text: `נשלח קישור לפורטל הלקוח בוואטסאפ ל-${entry.client_phone}` });
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : "שגיאה לא ידועה";
-      notifications.push({ event_id: event.id, text: `שליחת קישור הפורטל נכשלה — ${friendlyWhatsAppError(raw)}` });
-    }
+  // The actual WhatsApp send (booking confirmation + portal link) now happens client-side right
+  // after this request resolves, same as the plain new-event flow — see WaitlistView.tsx.
+  if (!entry.client_phone) {
+    notifications.push({ event_id: event.id, text: "לא הוזן טלפון לקוח — לא נשלחה הודעת וואטסאפ" });
   }
 
   try {
@@ -137,5 +116,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   await supabase.from("event_notifications").insert(notifications);
   await supabase.from("waitlist").delete().eq("id", id);
 
-  return NextResponse.json({ id: event.id });
+  return NextResponse.json({ id: event.id, clientAccessToken: event.client_access_token });
 }

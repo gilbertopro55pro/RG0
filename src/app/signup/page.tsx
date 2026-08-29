@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import Spinner from "@/components/Spinner";
 
@@ -13,7 +11,6 @@ const selectArrowStyle = {
 };
 
 export default function SignupPage() {
-  const router = useRouter();
   const [step, setStep] = useState<"plan" | "details">("plan");
   const [plan, setPlan] = useState<SubscriptionPlan>("annual");
   const [name, setName] = useState("");
@@ -24,33 +21,29 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
 
+  // Runs server-side (via the admin API) rather than the client-side supabase.auth.signUp() this
+  // replaced — see src/app/api/auth/signup/route.ts for why: it lets the account start
+  // unconfirmed WITHOUT Supabase sending its own confirmation email (that one depended on
+  // Supabase's mailer, which had real deliverability problems even pointed at our own SMTP), and
+  // it surfaces a real "email already registered" error instead of signUp()'s deliberately vague
+  // response. Confirmation happens by clicking the link in the login-details email instead of a
+  // separate email — one less email that has to arrive for signup to work at all.
   const submit = async () => {
     if (!name || !phone || !email || !password) return;
     setLoading(true);
     setError(null);
-    const supabase = createClient();
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name, phone, plan } },
-    });
-    if (signUpError) {
-      setLoading(false);
-      setError(signUpError.message);
-      return;
-    }
-    fetch("/api/auth/signup-emails", {
+    const res = await fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email }),
-    }).catch(() => {});
-    if (data.session) {
-      router.push("/");
-      router.refresh();
-    } else {
-      setLoading(false);
-      setAwaitingConfirmation(true);
+      body: JSON.stringify({ name, phone, email, password, plan }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setLoading(false);
+    if (!res.ok) {
+      setError(data.error ?? "ההרשמה נכשלה");
+      return;
     }
+    setAwaitingConfirmation(true);
   };
 
   if (awaitingConfirmation) {

@@ -5,8 +5,10 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { openWhatsApp } from "@/lib/waLink";
 import {
   PACKAGE_FLOWS,
+  resolveClientMessageTemplate,
   REVIEW_REQUEST_DELAY_DAYS,
   STAGE_LABELS,
   STAGE_TYPE,
@@ -23,6 +25,7 @@ import type {
   GalleryRow,
   TeamMember,
 } from "@/lib/types";
+import SendUpdateButton from "@/components/SendUpdateButton";
 import ContractSection from "@/components/ContractSection";
 import PortalLinkSection from "@/components/PortalLinkSection";
 import GallerySection from "@/components/GallerySection";
@@ -94,6 +97,8 @@ export default function EventDetailView({
   galleryCoverUrl,
   customStages,
   customPackageName,
+  messageTemplates,
+  whatsappSignature,
 }: {
   event: EventRow;
   initialStages: EventStageRow[];
@@ -108,6 +113,8 @@ export default function EventDetailView({
   galleryCoverUrl: string | null;
   customStages: CustomPackageStageRow[];
   customPackageName: string | null;
+  messageTemplates: Record<string, string>;
+  whatsappSignature: string | null;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -158,6 +165,19 @@ export default function EventDetailView({
         requiresAlbumPdf: key === "album_approval",
       }));
 
+  // Opens the photographer's own WhatsApp with the client's chat pre-filled (see waLink.ts) and
+  // logs that it happened — the same no-Business-API-template approach used for the initial
+  // booking confirmation, now shared by every "stage complete" client update too.
+  const notifyClientByWhatsApp = async (label: string, text: string) => {
+    if (!event.client_phone) return;
+    openWhatsApp(event.client_phone, text);
+    await fetch(`/api/events/${event.id}/notify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label, clientPhone: event.client_phone }),
+    }).catch(() => {});
+  };
+
   const setStageDone = async (key: string, done: boolean, extra?: Record<string, unknown>) => {
     if (pendingKeysRef.current.has(key)) return;
     pendingKeysRef.current.add(key);
@@ -181,6 +201,13 @@ export default function EventDetailView({
             : s
         )
       );
+      if (data.notify) {
+        const label = stageDescriptors.find((d) => d.key === key)?.label ?? "";
+        const text = data.notify.downloadUrl
+          ? `שלום ${event.client_name},\n${data.notify.text} ✓\n${data.notify.downloadUrl}`
+          : `שלום ${event.client_name},\n${data.notify.text} ✓`;
+        await notifyClientByWhatsApp(label, text);
+      }
       await refreshNotifications();
       if (done && key === "final_delivery" && isOwner) setShowReviewPrompt(true);
     } finally {
@@ -216,6 +243,12 @@ export default function EventDetailView({
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירת קובץ העיצוב");
         setAlbumDesignFilename(file.name);
+        if (data.notify) {
+          await notifyClientByWhatsApp(
+            STAGE_LABELS.album_approval,
+            `שלום ${event.client_name},\n${data.notify.text} ✓\n${data.notify.downloadUrl}`
+          );
+        }
         await refreshNotifications();
       } else {
         // Custom-package stage — keeps the original combined upload+complete behavior.
@@ -240,20 +273,40 @@ export default function EventDetailView({
     await refreshNotifications();
   };
 
-  const sendWhatsAppUpdate = async (key: string) => {
+  const sendWhatsAppUpdate = async (key: string, label: string) => {
     const guardKey = `notify:${key}`;
     if (pendingKeysRef.current.has(guardKey)) return;
+    if (!event.client_phone) {
+      setError("לא הוזן טלפון לקוח לאירוע זה");
+      return;
+    }
     pendingKeysRef.current.add(guardKey);
     setPendingStageKeys(new Set(pendingKeysRef.current));
     setError(null);
     try {
-      const res = await fetch(`/api/events/${event.id}/notify`, {
+      const portalUrl = `${window.location.origin}/portal/${event.client_access_token}`;
+      const template = resolveClientMessageTemplate(key, messageTemplates[key]);
+      const hhmm = (t: string | null) => (t ? t.slice(0, 5) : "");
+      const hoursRange = [hhmm(event.event_start_time), hhmm(event.event_end_time)].filter(Boolean).join("–");
+      const currency = (n: number) => `₪${n.toLocaleString("he-IL")}`;
+      let text = template
+        .split("{{שם}}").join(event.client_name)
+        .split("{{שלב}}").join(label)
+        .split("{{תאריך}}").join(new Date(event.event_date).toLocaleDateString("he-IL"))
+        .split("{{מיקום}}").join(event.event_location ?? "")
+        .split("{{חבילה}}").join(packageLabel(event.package, customPackageName))
+        .split("{{שעות}}").join(hoursRange)
+        .split("{{שעת_הגעה}}").join(hhmm(event.arrival_time))
+        .split("{{מקדמה}}").join(payments ? currency(payments.deposit_amount) : "")
+        .split("{{יתרה}}").join(payments ? currency(payments.balance_amount) : "")
+        .split("קישור:").join(`קישור: ${portalUrl}`);
+      if (whatsappSignature?.trim()) text += `\n\n${whatsappSignature.trim()}`;
+      openWhatsApp(event.client_phone, text);
+      await fetch(`/api/events/${event.id}/notify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parseStageKey(key)),
-      });
-      const data = await res.json();
-      if (!res.ok) setError(data.error ?? "שגיאה בשליחת ההודעה");
+        body: JSON.stringify({ label, clientPhone: event.client_phone }),
+      }).catch(() => {});
       await refreshNotifications();
     } finally {
       pendingKeysRef.current.delete(guardKey);
@@ -531,7 +584,8 @@ export default function EventDetailView({
         <PortalLinkSection
           token={event.client_access_token}
           eventId={event.id}
-          hasClientPhone={!!event.client_phone}
+          clientName={event.client_name}
+          clientPhone={event.client_phone}
           onSent={refreshNotifications}
         />
       )}
@@ -625,7 +679,7 @@ function FilmStrip({
   curIdx: number;
   onToggle: (key: string) => void;
   onUndo: (key: string) => void;
-  onSendWhatsApp: (key: string) => void;
+  onSendWhatsApp: (key: string, label: string) => void;
   albumDesignFilename: string | null;
   uploadingAlbumDesign: boolean;
   albumUploadProgress: number | null;
@@ -743,7 +797,7 @@ function FilmStrip({
             {st.done && (
               <div className="flex border-t border-line">
                 <div className="flex-1">
-                  <SendUpdateButton onSend={() => onSendWhatsApp(d.key)} pending={isNotifyPending} />
+                  <SendUpdateButton onSend={() => onSendWhatsApp(d.key, d.label)} pending={isNotifyPending} />
                 </div>
                 {canUndo && (
                   <button
@@ -760,27 +814,6 @@ function FilmStrip({
         );
       })}
     </div>
-  );
-}
-
-function SendUpdateButton({ onSend, pending }: { onSend: () => void; pending: boolean }) {
-  const [sent, setSent] = useState(false);
-  return (
-    <button
-      // `disabled={pending}` is the real guard against a duplicate WhatsApp send from a rapid
-      // double-tap — it's driven by the actual fetch still being in flight, not just a cosmetic
-      // timer. `sent` below is purely the "✓ sent" flash after it resolves.
-      disabled={pending}
-      onClick={() => {
-        onSend();
-        setSent(true);
-        setTimeout(() => setSent(false), 2000);
-      }}
-      className={`whatsapp-update-btn w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2.5 disabled:opacity-60${sent ? " whatsapp-update-btn--sent" : ""}`}
-      style={{ background: sent ? "var(--color-sage)" : "#fff", color: sent ? "#fff" : "var(--color-sage)" }}
-    >
-      {pending ? "שולח..." : sent ? "העדכון נשלח ✓" : "שליחת עדכון ללקוח בוואטסאפ"}
-    </button>
   );
 }
 

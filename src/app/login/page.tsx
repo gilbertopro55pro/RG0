@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -14,6 +14,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Plain URLSearchParams off window.location rather than next/navigation's useSearchParams —
+  // that hook requires wrapping the page in a Suspense boundary to avoid a build error, which
+  // isn't worth the restructuring for a one-off "you just confirmed your email" banner.
+  const [justConfirmed, setJustConfirmed] = useState(false);
+  const [confirmError, setConfirmError] = useState(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setJustConfirmed(params.get("confirmed") === "1");
+    setConfirmError(params.get("confirm_error") === "1");
+  }, []);
 
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
@@ -71,6 +81,14 @@ export default function LoginPage() {
       />
       <div className="w-full max-w-sm rounded-2xl p-5 bg-card border border-line shadow-card">
         <h1 className="text-xl font-bold mb-5 font-display">התחברות</h1>
+        {justConfirmed && (
+          <p className="text-sm text-sage font-medium mb-4 -mt-2">המייל אומת בהצלחה — אפשר להתחבר.</p>
+        )}
+        {confirmError && (
+          <p className="text-sm text-rose font-medium mb-4 -mt-2">
+            קישור האימות לא תקין או פג תוקף. נסו להירשם שוב או פנו לתמיכה.
+          </p>
+        )}
         <div className="space-y-3">
           <div>
             <label className="text-xs block mb-1 text-ink-soft">אימייל</label>

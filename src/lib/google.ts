@@ -43,6 +43,19 @@ export async function exchangeCodeForTokens(code: string): Promise<TokenResponse
   return res.json();
 }
 
+// Thrown specifically for "invalid_grant" — Google's own signal that the refresh token itself is
+// dead (revoked by the user, password changed, or — the common case for an unverified/"Testing"
+// OAuth consent screen — Google auto-expires every refresh token after 7 days regardless of use).
+// No amount of retrying fixes this; the photographer has to go through the consent screen again.
+// Distinguishing it from a transient network/5xx failure lets callers stop silently re-attempting
+// (and re-alerting) on every single save until they actually reconnect.
+export class GoogleAuthRevokedError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "GoogleAuthRevokedError";
+  }
+}
+
 export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
   const res = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",
@@ -54,7 +67,11 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
       grant_type: "refresh_token",
     }),
   });
-  if (!res.ok) throw new Error(`Google token refresh failed: ${await res.text()}`);
+  if (!res.ok) {
+    const detail = await res.text();
+    if (detail.includes("invalid_grant")) throw new GoogleAuthRevokedError(detail);
+    throw new Error(`Google token refresh failed: ${detail}`);
+  }
   return res.json();
 }
 

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
+import { createPayplusCheckoutLink, deletePayplusRecurring, PAYPLUS_BILLING } from "@/lib/payplus";
 import type { Photographer } from "@/lib/types";
 
 const ANNUAL_REMINDER_DAYS_BEFORE = 30;
@@ -36,7 +37,9 @@ export async function GET(request: NextRequest) {
 
   // 2. Renewal reminders — annual gets a month's notice, monthly a week's. Guarded by
   // renewal_reminder_sent_at, which the PayPlus webhook clears on every successful charge so
-  // each new cycle gets its own fresh reminder instead of being silenced forever.
+  // each new cycle gets its own fresh reminder instead of being silenced forever. Excludes
+  // anyone with a pending plan switch — their real next charge (amount, plan, and date) is
+  // whatever step 3 below is about to set up, not the current plan's own renewal.
   const { data: dueForReminder } = await supabase
     .from("photographers")
     .select("*")
@@ -44,19 +47,21 @@ export async function GET(request: NextRequest) {
     .eq("cancel_at_period_end", false)
     .eq("subscription_status", "active")
     .is("renewal_reminder_sent_at", null)
+    .is("pending_plan", null)
     .not("current_period_end", "is", null)
     .gt("current_period_end", now.toISOString())
     .returns<Photographer[]>();
 
   let remindedCount = 0;
   for (const photographer of dueForReminder ?? []) {
-    const reminderDays = photographer.plan === "annual" ? ANNUAL_REMINDER_DAYS_BEFORE : MONTHLY_REMINDER_DAYS_BEFORE;
+    const reminderDays =
+      PAYPLUS_BILLING[photographer.plan].recurringRangeMonths > 1 ? ANNUAL_REMINDER_DAYS_BEFORE : MONTHLY_REMINDER_DAYS_BEFORE;
     const reminderCutoff = new Date(now.getTime() + reminderDays * 24 * 60 * 60 * 1000);
     if (new Date(photographer.current_period_end!) > reminderCutoff) continue;
 
     const renewalDateHe = new Date(photographer.current_period_end!).toLocaleDateString("he-IL");
     const planInfo = SUBSCRIPTION_PLANS[photographer.plan];
-    const amount = photographer.plan === "annual" ? 500 : planInfo.pricePerMonth;
+    const amount = PAYPLUS_BILLING[photographer.plan].amount;
     try {
       await sendEmail({
         to: photographer.email,
@@ -77,5 +82,69 @@ export async function GET(request: NextRequest) {
     remindedCount++;
   }
 
-  return NextResponse.json({ finalized: finalizedCount, reminded: remindedCount });
+  // 3. Plan switches whose scheduled date has arrived (see computePlanSwitchEffectiveDate) — a
+  // switch is never applied in place: PayPlus's own recurring charges are fixed amount/cadence,
+  // so the only way to actually change what gets charged is to cancel the current recurring and
+  // set up a fresh one at the new plan's price. That new recurring needs the person to complete
+  // a checkout page again (no API here to silently rebill a saved card onto a new recurring
+  // agreement) — so this sends them a link instead of charging anything itself. pending_plan is
+  // cleared regardless of whether they ever complete that checkout: subscription_status stays
+  // "active" either way, matching this system's existing (not further-automated) handling of a
+  // lapsed recurring charge in general.
+  const baseUrl = new URL(request.url).origin;
+  const { data: dueSwitches } = await supabase
+    .from("photographers")
+    .select("*")
+    .not("pending_plan", "is", null)
+    .not("pending_plan_effective_at", "is", null)
+    .lte("pending_plan_effective_at", now.toISOString())
+    .eq("subscription_status", "active")
+    .returns<Photographer[]>();
+
+  let switchedCount = 0;
+  for (const photographer of dueSwitches ?? []) {
+    const targetPlan = photographer.pending_plan;
+    if (!targetPlan || !(targetPlan in SUBSCRIPTION_PLANS)) continue;
+    try {
+      if (photographer.payplus_recurring_uid) {
+        await deletePayplusRecurring(photographer.payplus_recurring_uid).catch((e) => {
+          // Proceed regardless — setting up the new recurring below doesn't depend on the old
+          // one actually being gone, and leaving the person stuck with neither is worse.
+          console.error(`Failed to cancel prior recurring for ${photographer.id}:`, e);
+        });
+      }
+
+      const { paymentPageLink } = await createPayplusCheckoutLink({
+        photographerId: photographer.id,
+        plan: targetPlan,
+        customerName: photographer.name,
+        customerEmail: photographer.email,
+        customerPhone: photographer.phone,
+        baseUrl,
+      });
+
+      const targetInfo = SUBSCRIPTION_PLANS[targetPlan];
+      const targetAmount = PAYPLUS_BILLING[targetPlan].amount;
+      const wasOnLongCycle = PAYPLUS_BILLING[photographer.plan].recurringRangeMonths > 1;
+      const reasonText = wasOnLongCycle
+        ? `זהו החיוב עבור החודשים ה-11 וה-12 של תקופת המנוי הקודמת שלך, בעקבות המעבר למסלול ${targetInfo.label} שביקשת — במקום שיהיו חינמיים כמו במסלול הקודם. החל מהמחזור שאחרי כן תחויב/י ₪${targetInfo.pricePerMonth} מדי חודש כמסלול ${targetInfo.label} רגיל.`
+          : `כפי שביקשת, המנוי שלך עובר למסלול ${targetInfo.label} (₪${targetAmount}) החל מהמחזור הבא.`;
+
+      await sendEmail({
+        to: photographer.email,
+        subject: "המעבר למסלול החדש שלך — נדרשת השלמת תשלום",
+        text: `שלום ${photographer.name},\n\n${reasonText}\n\nלהשלמת התשלום: ${paymentPageLink}\n\nתודה!`,
+      });
+
+      await supabase
+        .from("photographers")
+        .update({ pending_plan: null, pending_plan_effective_at: null })
+        .eq("id", photographer.id);
+      switchedCount++;
+    } catch (e) {
+      console.error(`Plan switch failed for ${photographer.id}:`, e);
+    }
+  }
+
+  return NextResponse.json({ finalized: finalizedCount, reminded: remindedCount, switched: switchedCount });
 }

@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
-import { ALBUM_BLUR_MAX_PX } from "@/components/AlbumSpreadCanvasEditor";
+import { ALBUM_BLUR_MAX_PX, computePhotoFraming } from "@/lib/albumRender";
 import { isLightTextColor } from "@/lib/textColor";
 import { maskCssUrl, findMask } from "@/lib/albumMasks";
+import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
+import { hasAdjustments, adjustmentsFilterId, adjustmentsSvgFilter, type PhotoAdjustments } from "@/lib/albumAdjustments";
 
 type SpreadPhoto = { id: string; url: string };
 type SpreadLayout = "split" | "feature" | "stack" | "custom";
@@ -29,6 +31,16 @@ export type ClientAlbumElement =
       shadow?: number;
       zoom?: number;
       maskId?: string;
+      exposure?: number;
+      contrast?: number;
+      highlights?: number;
+      shadows2?: number;
+      whites?: number;
+      blacks?: number;
+      temp?: number;
+      tint?: number;
+      vibrance?: number;
+      saturation2?: number;
     }
   | {
       id: string;
@@ -42,13 +54,52 @@ export type ClientAlbumElement =
       fontFamily?: string;
       color: string;
       align: "right" | "center" | "left";
+    }
+  | {
+      id: string;
+      type: "ornament";
+      ornamentId?: string;
+      // Resolved server-side (signed URL against the "custom-ornaments" bucket) — the public
+      // client view has no auth session to hit the bearer-only /api/desktop/ornaments route with.
+      customUrl?: string;
+      xPct: number;
+      yPct: number;
+      widthPct: number;
+      heightPct: number;
+      color?: string;
+      rotation?: number;
+      opacity?: number;
+      shadow?: number;
+      borderWidth?: number;
+      borderColor?: string;
+    }
+  | {
+      id: string;
+      type: "shape";
+      maskId?: string;
+      xPct: number;
+      yPct: number;
+      widthPct: number;
+      heightPct: number;
+      color: string;
+      rotation?: number;
+      opacity?: number;
+      shadow?: number;
+      borderWidth?: number;
+      borderColor?: string;
+      shapeStyle?: "rect-outline" | "circle-outline" | "line";
     };
 
-export function cssFilterFor(filter: "none" | "bw" | "sepia" | undefined, blurPct?: number): string | undefined {
+export function cssFilterFor(
+  filter: "none" | "bw" | "sepia" | undefined,
+  blurPct?: number,
+  adjust?: { id: string; adj: PhotoAdjustments }
+): string | undefined {
   const parts: string[] = [];
   if (filter === "bw") parts.push("grayscale(1)");
   else if (filter === "sepia") parts.push("sepia(0.85)");
   if (blurPct) parts.push(`blur(${(blurPct / 100) * ALBUM_BLUR_MAX_PX}px)`);
+  if (adjust && hasAdjustments(adjust.adj)) parts.push(`url(#${adjustmentsFilterId(adjust.id, adjust.adj)})`);
   return parts.length ? parts.join(" ") : undefined;
 }
 
@@ -113,6 +164,91 @@ function TextOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "text" }>
   );
 }
 
+function OrnamentOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "ornament" }> }) {
+  const ornament = el.ornamentId ? findOrnament(el.ornamentId) : undefined;
+  const imgSrc = el.customUrl ?? (ornament ? ornamentDataUrl(ornament, el.color ?? "#2e3142") : undefined);
+  const customTint = el.customUrl && el.color ? el.color : undefined;
+  if (!imgSrc) return null;
+  return (
+    <div
+      className="absolute"
+      style={{
+        left: `${el.xPct}%`,
+        top: `${el.yPct}%`,
+        width: `${el.widthPct}%`,
+        height: `${el.heightPct}%`,
+        opacity: (el.opacity ?? 100) / 100,
+        transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+        outline: el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
+        outlineOffset: el.borderWidth ? `-${el.borderWidth}px` : undefined,
+        boxShadow: boxShadowFor(el.shadow),
+      }}
+    >
+      {customTint ? (
+        <div
+          className="w-full h-full"
+          style={{
+            backgroundColor: customTint,
+            WebkitMaskImage: `url(${imgSrc})`,
+            maskImage: `url(${imgSrc})`,
+            WebkitMaskSize: "contain",
+            maskSize: "contain",
+            WebkitMaskRepeat: "no-repeat",
+            maskRepeat: "no-repeat",
+            WebkitMaskPosition: "center",
+            maskPosition: "center",
+          }}
+        />
+      ) : (
+        // eslint-disable-next-line jsx-a11y/alt-text
+        <img src={imgSrc} className="w-full h-full" style={{ objectFit: "contain" }} />
+      )}
+    </div>
+  );
+}
+
+function ShapeOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "shape" }> }) {
+  const mask = el.maskId ? findMask(el.maskId) : undefined;
+  const isOutline = el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline";
+  return (
+    <div
+      className="absolute"
+      style={{
+        left: `${el.xPct}%`,
+        top: `${el.yPct}%`,
+        width: `${el.widthPct}%`,
+        height: `${el.heightPct}%`,
+        opacity: (el.opacity ?? 100) / 100,
+        transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+        borderRadius: el.shapeStyle === "circle-outline" ? "50%" : undefined,
+        border: isOutline ? `${el.borderWidth ?? 5}px solid ${el.borderColor ?? el.color}` : undefined,
+        outline: isOutline ? undefined : el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
+        outlineOffset: !isOutline && el.borderWidth ? `-${el.borderWidth}px` : undefined,
+        boxShadow: boxShadowFor(el.shadow),
+      }}
+    >
+      {!isOutline && (
+        <div
+          className="w-full h-full"
+          style={{
+            backgroundColor: el.color,
+            ...(mask
+              ? {
+                  WebkitMaskImage: maskCssUrl(mask.svg),
+                  maskImage: maskCssUrl(mask.svg),
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  WebkitMaskRepeat: "no-repeat",
+                  maskRepeat: "no-repeat",
+                }
+              : null),
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function GalleryAlbumProofing({
   token,
   status,
@@ -130,6 +266,10 @@ export default function GalleryAlbumProofing({
 }) {
   const hasCover = !!coverUrl;
   const [index, setIndex] = useState(hasCover ? -1 : 0);
+  // Natural aspect ratio per photo (client doesn't get one from the DB), learned from each <img>'s
+  // own onLoad — same pattern/purpose as the builder's own photoAspects cache, kept local since
+  // this view doesn't import the whole builder component.
+  const [photoAspects, setPhotoAspects] = useState<Record<string, number>>({});
   const [commentText, setCommentText] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
   const [spreadComments, setSpreadComments] = useState(spreads.map((s) => s.comments));
@@ -200,6 +340,13 @@ export default function GalleryAlbumProofing({
         ) : spread!.layout === "custom" ? (
           <div className="relative w-full max-w-full aspect-[16/10]" style={{ containerType: "inline-size" }}>
             <BackgroundLayer background={spread!.background} />
+            <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
+              {spread!.elements
+                .filter((el): el is Extract<ClientAlbumElement, { type: "photo" }> => el.type === "photo" && hasAdjustments(el))
+                .map((el) => (
+                  <defs key={el.id} dangerouslySetInnerHTML={{ __html: adjustmentsSvgFilter(el.id, el) }} />
+                ))}
+            </svg>
             {spread!.elements.map((el) =>
               el.type === "photo" ? (
                 <div
@@ -218,29 +365,54 @@ export default function GalleryAlbumProofing({
                     transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
                   }}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={el.url}
-                    alt=""
-                    className="absolute inset-0 w-full h-full object-cover"
-                    style={{
-                      objectPosition: `${el.focalX}% ${el.focalY}%`,
-                      filter: cssFilterFor(el.filter, el.blur),
-                      opacity: (el.opacity ?? 100) / 100,
-                      transform: el.zoom && el.zoom !== 100 ? `scale(${el.zoom / 100})` : undefined,
-                      ...(el.maskId
-                        ? {
-                            WebkitMaskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
-                            maskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
-                            WebkitMaskSize: "100% 100%",
-                            maskSize: "100% 100%",
-                            WebkitMaskRepeat: "no-repeat",
-                            maskRepeat: "no-repeat",
-                          }
-                        : null),
-                    }}
-                  />
+                  {(() => {
+                    // The page container itself is a fixed aspect-[16/10] in this view (it doesn't
+                    // receive the album's real width_cm/height_cm), so the frame's aspect ratio is
+                    // derived from that same fixed page shape for consistency with what's actually
+                    // on screen here — not necessarily the true print aspect ratio.
+                    const frameAspect = (el.widthPct / el.heightPct) * (16 / 10) || 1;
+                    const imgAspect = photoAspects[el.url] ?? frameAspect;
+                    const framing = computePhotoFraming(imgAspect, frameAspect, el.zoom ?? 100, el.focalX, el.focalY);
+                    return (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={el.url}
+                        alt=""
+                        className="absolute pointer-events-none"
+                        onLoad={(e) => {
+                          const w = e.currentTarget.naturalWidth;
+                          const h = e.currentTarget.naturalHeight;
+                          if (!w || !h) return;
+                          setPhotoAspects((prev) => (prev[el.url] ? prev : { ...prev, [el.url]: w / h }));
+                        }}
+                        style={{
+                          width: `${framing.widthPct}%`,
+                          height: `${framing.heightPct}%`,
+                          left: `${framing.leftPct}%`,
+                          top: `${framing.topPct}%`,
+                          maxWidth: "none",
+                          maxHeight: "none",
+                          filter: cssFilterFor(el.filter, el.blur, { id: el.id, adj: el }),
+                          opacity: (el.opacity ?? 100) / 100,
+                          ...(el.maskId
+                            ? {
+                                WebkitMaskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
+                                maskImage: maskCssUrl(findMask(el.maskId)?.svg ?? ""),
+                                WebkitMaskSize: "100% 100%",
+                                maskSize: "100% 100%",
+                                WebkitMaskRepeat: "no-repeat",
+                                maskRepeat: "no-repeat",
+                              }
+                            : null),
+                        }}
+                      />
+                    );
+                  })()}
                 </div>
+              ) : el.type === "ornament" ? (
+                <OrnamentOverlay key={el.id} el={el} />
+              ) : el.type === "shape" ? (
+                <ShapeOverlay key={el.id} el={el} />
               ) : (
                 <TextOverlay key={el.id} el={el} />
               )

@@ -5,6 +5,7 @@ import "./globals.css";
 import PWARegister from "@/components/PWARegister";
 import TopNav from "@/components/TopNav";
 import GlobalButtonEffects from "@/components/GlobalButtonEffects";
+import BodyScrollLock from "@/components/BodyScrollLock";
 import GlobalLoadingBar from "@/components/GlobalLoadingBar";
 import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
@@ -51,7 +52,7 @@ const SPLASH_DEVICES: { cssW: number; cssH: number; dpr: number; file: string }[
 ];
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://photographer-flow.vercel.app"),
+  metadataBase: new URL("https://myframeflow.com"),
   title: "ניהול תהליך צילום אירועים",
   description: "מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה",
   manifest: "/manifest.json",
@@ -98,7 +99,7 @@ export default function RootLayout({
       className={`${heebo.variable} ${rubik.variable} ${ibmPlexMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         {/* Sets data-theme on <html> from localStorage before first paint, so dark-mode users
             never see a flash of the light palette. Must run before the boot-splash removal and
             before hydration — same beforeInteractive pattern as that script below. */}
@@ -115,17 +116,27 @@ export default function RootLayout({
         </Script>
         {/* Pure-CSS boot splash — rendered in the initial server HTML, so it paints instantly
             even before the JS bundle loads/hydrates. This is what covers the black-screen gap
-            on a cold PWA launch on mobile; it self-removes via a CSS animation timer so it never
-            depends on JS finishing to disappear. */}
+            on a cold PWA launch on mobile (the native per-device /splash/*.png startupImage
+            covers the OS's own pre-paint gap on iOS; this in-page splash is what's visible from
+            the moment OUR html starts rendering). It self-removes via a real readiness signal so
+            it never depends on a guessed timeout to disappear.
+
+            Two-stage on purpose: it paints STATIC first (logo only, no motion, no bar) so there's
+            a clean single frame the instant content appears, then ~200ms later gains the
+            `boot-splash-dynamic` class — starting the icon's pulse and revealing the progress
+            bar — rather than everything animating from the very first frame. */}
         <style>{`
           @keyframes bootIconPulse { 0%, 100% { transform: scale(1); opacity: 0.88; } 50% { transform: scale(1.1); opacity: 1; } }
+          @keyframes bootWaveScroll { from { background-position-x: 0; } to { background-position-x: 34px; } }
           #boot-splash {
             position: fixed;
             inset: 0;
             z-index: 9999;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
+            gap: 26px;
             background: #d5c9bb;
             opacity: 1;
             visibility: visible;
@@ -136,31 +147,110 @@ export default function RootLayout({
             visibility: hidden;
           }
           #boot-splash img {
-            width: 76px;
-            height: 76px;
-            border-radius: 20px;
+            width: 114px;
+            height: 114px;
+            border-radius: 26px;
             box-shadow: 0 16px 36px rgba(32, 31, 51, 0.28);
+          }
+          #boot-splash.boot-splash-dynamic img {
             animation: bootIconPulse 1.1s ease-in-out infinite;
           }
+          #boot-progress {
+            width: 168px;
+            height: 12px;
+            border-radius: 999px;
+            background: rgba(46, 49, 66, 0.12);
+            box-shadow: inset 0 1px 3px rgba(32, 31, 51, 0.18);
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(4px);
+            transition: opacity 0.35s ease, transform 0.35s ease;
+          }
+          #boot-splash.boot-splash-dynamic #boot-progress {
+            opacity: 1;
+            transform: translateY(0);
+          }
+          #boot-progress-fill {
+            position: relative;
+            height: 100%;
+            width: 0%;
+            border-radius: inherit;
+            background: linear-gradient(180deg, #4ecb7d, #2fae5c);
+            transition: width 0.3s ease-out;
+            overflow: hidden;
+          }
+          #boot-progress-fill::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -34px;
+            right: -34px;
+            bottom: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='12' viewBox='0 0 34 12'%3E%3Cpath d='M0 6 Q 8.5 0 17 6 T 34 6 V12 H0 Z' fill='rgba(255,255,255,0.35)'/%3E%3C/svg%3E");
+            background-repeat: repeat-x;
+            background-size: 34px 12px;
+            animation: bootWaveScroll 0.9s linear infinite;
+          }
         `}</style>
-        {/* suppressHydrationWarning: the inline script below can add the boot-splash-out class
-            to this node before React hydrates, which would otherwise be flagged as a mismatch
-            even though it's an intentional, expected DOM mutation outside React's tree. */}
+        {/* suppressHydrationWarning: the inline script below mutates this subtree (adding
+            boot-splash-dynamic/boot-splash-out classes, setting the fill's width) before React
+            hydrates, which would otherwise be flagged as a mismatch even though it's an
+            intentional, expected DOM mutation outside React's tree. */}
         <div id="boot-splash" suppressHydrationWarning>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/icons/icon-192.png" alt="" />
+          <div id="boot-progress" suppressHydrationWarning>
+            <div id="boot-progress-fill" suppressHydrationWarning />
+          </div>
         </div>
-        {/* Removing the splash is tied to the page actually being ready (the `load` event —
-            covers slow networks/cold serverless starts, not just a guessed timeout) instead of a
-            fixed CSS animation duration, which could hide the splash before real content painted
-            and reveal a blank gap underneath on a slow load. The setTimeout is only a safety net
-            in case `load` never fires for some reason, so the splash can never get stuck forever. */}
+        {/* Drives the boot splash end-to-end:
+            1. After a short real pause, switches from the static single-frame logo into the
+               dynamic state (pulse animation + progress bar fades in) — see the comment above.
+            2. Tracks REAL loading progress (not a simulated timer): document.readyState
+               transitions plus a poll of the Resource Timing API (finished vs. discovered
+               script/stylesheet requests) drive the bar from ~5% up to ~90%; only the actual
+               `load` event is allowed to push it to 100%.
+            3. Only hides the splash once the bar has visually reached 100% (a brief delay after
+               setting width so the fill's own CSS transition finishes) — never before, and never
+               tied to a fixed duration that could hide it before real content painted. The
+               setTimeout(…, 6000) is only a safety net in case `load` never fires. */}
         <Script id="boot-splash-hide" strategy="beforeInteractive">
           {`
             (function () {
+              var splash = document.getElementById("boot-splash");
+              var fill = document.getElementById("boot-progress-fill");
+              var pct = 0;
+              function setPct(p) {
+                pct = Math.max(pct, Math.min(100, p));
+                if (fill) fill.style.width = pct + "%";
+              }
+              function estimateFromResources() {
+                try {
+                  var res = performance.getEntriesByType("resource");
+                  var total = Math.max(
+                    document.querySelectorAll('script[src], link[rel="stylesheet"]').length,
+                    4
+                  );
+                  var done = 0;
+                  for (var i = 0; i < res.length; i++) {
+                    if (res[i].responseEnd > 0) done++;
+                  }
+                  setPct(15 + Math.min(done / total, 1) * 75);
+                } catch (e) {}
+              }
+              setPct(5);
+              document.addEventListener("readystatechange", function () {
+                if (document.readyState === "interactive") setPct(20);
+                estimateFromResources();
+              });
+              var poll = setInterval(estimateFromResources, 150);
               function hideBootSplash() {
-                var el = document.getElementById("boot-splash");
-                if (el) el.classList.add("boot-splash-out");
+                clearInterval(poll);
+                setPct(100);
+                setTimeout(function () {
+                  if (splash) splash.classList.add("boot-splash-out");
+                  document.body.classList.add("app-content-in");
+                }, 350);
               }
               if (document.readyState === "complete") {
                 hideBootSplash();
@@ -168,12 +258,16 @@ export default function RootLayout({
                 window.addEventListener("load", hideBootSplash);
                 setTimeout(hideBootSplash, 6000);
               }
+              setTimeout(function () {
+                if (splash) splash.classList.add("boot-splash-dynamic");
+              }, 200);
             })();
           `}
         </Script>
 
         <PWARegister />
         <GlobalButtonEffects />
+        <BodyScrollLock />
         <GlobalLoadingBar />
         <TopNav />
         {children}

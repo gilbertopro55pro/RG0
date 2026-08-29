@@ -1,26 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { EVENT_BOOKING_CONFIRMATION_TEMPLATE, PACKAGE_FLOWS, PACKAGE_LABELS, PORTAL_LINK_TEMPLATE, type PackageType } from "@/lib/stages";
-import { syncEventToGoogleCalendar } from "@/lib/googleCalendarSync";
+import { PACKAGE_FLOWS, PACKAGE_LABELS, type PackageType } from "@/lib/stages";
+import { GoogleCalendarDisconnectedError, syncEventToGoogleCalendar } from "@/lib/googleCalendarSync";
 import { syncEventToAppleCalendar } from "@/lib/appleCalendarSync";
-import { friendlyWhatsAppError, sendWhatsAppTemplate } from "@/lib/whatsapp";
 import type { CustomPackageRow, CustomPackageStageRow } from "@/lib/types";
-
-function toMinutes(t: string): number {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
-
-// If either event is missing a time range, fall back to a full-day conflict (the safe default,
-// matching the previous any-event-same-date behavior) — only refine to a real time-range
-// overlap check when both sides have start/end times recorded.
-function eventsConflict(
-  a: { start: string | null; end: string | null },
-  b: { start: string | null; end: string | null }
-): boolean {
-  if (!a.start || !a.end || !b.start || !b.end) return true;
-  return toMinutes(a.start) < toMinutes(b.end) && toMinutes(b.start) < toMinutes(a.end);
-}
+import { eventsConflict } from "@/lib/eventTime";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -140,6 +124,17 @@ export async function POST(request: Request) {
     balance_due_date: eventDate,
   });
 
+  // Auto-provision the gallery the moment the event is booked — same client name and phone,
+  // nothing left for the photographer to retype later in a separate "new gallery" step.
+  await supabase.from("galleries").insert({
+    event_id: event.id,
+    photographer_id: user.id,
+    title: clientName,
+    client_phone: clientPhone || null,
+    expiry_months: 3,
+    allow_downloads: true,
+  });
+
   if (paymentReminderDate) {
     await supabase.from("scheduled_messages").insert({
       event_id: event.id,
@@ -176,42 +171,18 @@ export async function POST(request: Request) {
     `לקוח/ה: ${clientName} · טלפון: ${clientPhone || "לא הוזן"}\n` +
     `שעת צילומי משפחה: ${arrivalTime || "יעודכן"}`;
 
-  const notifications = [{ event_id: event.id, text: "האירוע נסגר במערכת" }];
+  const notifications = [
+    { event_id: event.id, text: "האירוע נסגר במערכת" },
+    { event_id: event.id, text: "גלריה נוצרה אוטומטית עבור האירוע" },
+  ];
 
-  if (clientPhone) {
-    try {
-      await sendWhatsAppTemplate(clientPhone, EVENT_BOOKING_CONFIRMATION_TEMPLATE, [
-        clientName,
-        formattedDate,
-        eventLocation || "יעודכן",
-        arrivalTime || "יעודכן",
-        String(deposit),
-        String(balance),
-      ]);
-      notifications.push({
-        event_id: event.id,
-        text: `נשלחה הודעת וואטסאפ (אישור הזמנה) ל-${clientPhone}`,
-      });
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : "שגיאה לא ידועה";
-      notifications.push({ event_id: event.id, text: friendlyWhatsAppError(raw) });
-    }
-
-    // Sent as its own message (separate template) right after booking confirmation, so the client
-    // gets the portal link automatically without the photographer having to remember to share it —
-    // PortalLinkSection's "שליחת קישור בוואטסאפ" button reuses the same template for a resend.
-    try {
-      const portalLink = `${new URL(request.url).origin}/portal/${event.client_access_token}`;
-      await sendWhatsAppTemplate(clientPhone, PORTAL_LINK_TEMPLATE, [clientName, portalLink]);
-      notifications.push({
-        event_id: event.id,
-        text: `נשלח קישור לפורטל הלקוח בוואטסאפ ל-${clientPhone}`,
-      });
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : "שגיאה לא ידועה";
-      notifications.push({ event_id: event.id, text: `שליחת קישור הפורטל נכשלה — ${friendlyWhatsAppError(raw)}` });
-    }
-  } else {
+  // The actual WhatsApp send (booking confirmation + portal link, combined into one message) now
+  // happens client-side right after this request resolves — a wa.me deep link the photographer
+  // confirms themselves (see NewEventModal.tsx). This sidesteps the Meta Business API's
+  // verification/24h-window requirements entirely; the logging call after it records that it
+  // actually happened. If there's no phone at all, note that here since the client never gets a
+  // chance to.
+  if (!clientPhone) {
     notifications.push({
       event_id: event.id,
       text: "לא הוזן טלפון לקוח — לא נשלחה הודעת וואטסאפ",
@@ -253,11 +224,18 @@ export async function POST(request: Request) {
       });
     }
   } catch (e) {
-    const rawError = e instanceof Error ? e.message : "שגיאה לא ידועה";
-    notifications.push({
-      event_id: event.id,
-      text: `שגיאה בהוספת האירוע ליומן Google: ${rawError}`,
-    });
+    if (e instanceof GoogleCalendarDisconnectedError) {
+      notifications.push({
+        event_id: event.id,
+        text: "החיבור ליומן Google פג תוקף — יש להתחבר מחדש בהגדרות",
+      });
+    } else {
+      const rawError = e instanceof Error ? e.message : "שגיאה לא ידועה";
+      notifications.push({
+        event_id: event.id,
+        text: `שגיאה בהוספת האירוע ליומן Google: ${rawError}`,
+      });
+    }
   }
 
   try {
@@ -279,5 +257,5 @@ export async function POST(request: Request) {
 
   await supabase.from("event_notifications").insert(notifications);
 
-  return NextResponse.json({ id: event.id });
+  return NextResponse.json({ id: event.id, clientAccessToken: event.client_access_token });
 }

@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
+import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { GENERIC_STAGE_UPDATE_TEMPLATE } from "@/lib/stages";
 import { removeObjects } from "@/lib/storage";
 import type { GalleryRow } from "@/lib/types";
 
@@ -56,6 +58,41 @@ export async function GET(request: NextRequest) {
     }
     await supabase.from("galleries").update({ reminder_sent_at: now.toISOString() }).eq("id", gallery.id);
     remindedCount++;
+  }
+
+  // 0b. Same heads-up, over WhatsApp, to whichever galleries have a client_phone set — a fully
+  // independent channel from the email reminder above (own dedupe column, own not-null filter), so
+  // a photographer can fill in either field, both, or neither. Business-initiated messages need an
+  // approved template outside the 24h session window (see sendWhatsAppTemplate's own comment) —
+  // reuses the same generic "stage update" template already used for ad-hoc custom-stage notices
+  // elsewhere in this app (client_name + free-text body), rather than requiring a brand new
+  // Meta-approved template just for this one notice.
+  const { data: toRemindWhatsApp } = await supabase
+    .from("galleries")
+    .select("*, events(client_name)")
+    .eq("published", true)
+    .is("archived_at", null)
+    .is("whatsapp_reminder_sent_at", null)
+    .not("client_phone", "is", null)
+    .not("expires_at", "is", null)
+    .gt("expires_at", now.toISOString())
+    .lte("expires_at", reminderCutoff.toISOString())
+    .returns<(GalleryRow & { events: { client_name: string } | null })[]>();
+
+  let remindedWhatsAppCount = 0;
+  for (const gallery of toRemindWhatsApp ?? []) {
+    const clientLabel = gallery.events?.client_name ?? gallery.title;
+    const expiryDateHe = new Date(gallery.expires_at!).toLocaleDateString("he-IL");
+    try {
+      await sendWhatsAppTemplate(gallery.client_phone!, GENERIC_STAGE_UPDATE_TEMPLATE, [
+        clientLabel,
+        `הגלריה "${gallery.title}" תהיה זמינה לצפייה והורדה עד ${expiryDateHe} ולאחר מכן תוסר — מומלץ להוריד את התמונות שרציתם לפני כן`,
+      ]);
+    } catch (e) {
+      console.error("Gallery expiry reminder WhatsApp message failed:", e);
+    }
+    await supabase.from("galleries").update({ whatsapp_reminder_sent_at: now.toISOString() }).eq("id", gallery.id);
+    remindedWhatsAppCount++;
   }
 
   // 1. Archive galleries whose validity period has ended.
@@ -117,12 +154,13 @@ export async function GET(request: NextRequest) {
   for (const gallery of toDelete ?? []) {
     const { data: photos } = await supabase
       .from("gallery_photos")
-      .select("storage_path")
+      .select("storage_path, preview_storage_path")
       .eq("gallery_id", gallery.id)
-      .returns<{ storage_path: string }[]>();
+      .returns<{ storage_path: string; preview_storage_path: string | null }[]>();
 
     if (photos && photos.length > 0) {
-      await removeObjects("galleries", photos.map((p) => p.storage_path));
+      const paths = photos.flatMap((p) => [p.storage_path, p.preview_storage_path].filter((x): x is string => !!x));
+      await removeObjects("galleries", paths);
     }
 
     if (gallery.event_id) {
@@ -136,5 +174,10 @@ export async function GET(request: NextRequest) {
     deletedCount++;
   }
 
-  return NextResponse.json({ reminded: remindedCount, archived: archivedCount, deleted: deletedCount });
+  return NextResponse.json({
+    reminded: remindedCount,
+    remindedWhatsApp: remindedWhatsAppCount,
+    archived: archivedCount,
+    deleted: deletedCount,
+  });
 }

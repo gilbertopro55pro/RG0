@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { ADMIN_EMAIL } from "@/lib/admin";
 import { timeOfDayGreeting } from "@/lib/greeting";
 import type {
   CustomPackageRow,
@@ -9,16 +11,22 @@ import type {
   EventTypeRow,
   PackagePriceRow,
   Photographer,
+  PriceQuoteRow,
   TeamMember,
 } from "@/lib/types";
 import LogoutButton from "@/components/LogoutButton";
 import NewEventButton from "@/components/DashboardActions";
 import FeedbackButton from "@/components/FeedbackButton";
-import PaymentReminderPrompts, { type PendingPaymentReminder } from "@/components/PaymentReminderPrompts";
+import PendingClientMessagePrompts, {
+  type PendingPaymentReminder,
+  type PendingReviewRequest,
+} from "@/components/PendingClientMessagePrompts";
 import DashboardHero from "@/components/DashboardHero";
 import QuickActionsGrid from "@/components/QuickActionsGrid";
 import EventsListView from "@/components/EventsListView";
 import LandingPage from "@/components/LandingPage";
+import SettingsGearLink from "@/components/SettingsGearLink";
+import UpdateReloadGate from "@/components/UpdateReloadGate";
 
 const HEBREW_MONTHS_SHORT = [
   "ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ",
@@ -54,6 +62,7 @@ export default async function DashboardPage() {
     { data: payments },
     { data: scheduledReminders },
     { data: unreadNotifications },
+    { data: priceQuotes },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase.from("team_members").select("*").eq("id", user!.id).maybeSingle<TeamMember>(),
@@ -69,10 +78,12 @@ export default async function DashboardPage() {
     supabase.from("event_payments").select("*").returns<EventPaymentRow[]>(),
     supabase
       .from("scheduled_messages")
-      .select("id, event_id, events(client_name)")
-      .eq("kind", "payment_reminder")
+      .select("id, event_id, kind, events(client_name)")
+      .in("kind", ["payment_reminder", "review_request"])
       .eq("status", "awaiting_confirmation")
-      .returns<{ id: string; event_id: string; events: { client_name: string } | null }[]>(),
+      .returns<
+        { id: string; event_id: string; kind: "payment_reminder" | "review_request"; events: { client_name: string } | null }[]
+      >(),
     // Powers the progress badge on each event card — only client-initiated steps (contract
     // signed, gallery selection) the photographer hasn't opened the event to see yet.
     supabase
@@ -81,11 +92,26 @@ export default async function DashboardPage() {
       .eq("is_client_action", true)
       .is("read_at", null)
       .returns<{ event_id: string }[]>(),
+    supabase.from("price_quotes").select("*").order("created_at", { ascending: false }).returns<PriceQuoteRow[]>(),
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
   if (photographer && photographer.subscription_status !== "active" && photographer.subscription_status !== "trialing") {
     redirect("/billing");
+  }
+  // First arrival on the dashboard after payment clears — a one-time "connect your calendar /
+  // business ID / logo" screen, never shown again once completed (or dismissed) once.
+  if (photographer && !photographer.onboarding_completed) {
+    redirect("/onboarding");
+  }
+
+  // Visible only to the admin account, on their own dashboard — total signups across every
+  // photographer, bypassing the per-photographer RLS that normally scopes this table to one row.
+  let registeredUsersCount: number | null = null;
+  if (photographer?.email === ADMIN_EMAIL) {
+    const serviceRole = createServiceRoleClient();
+    const { count } = await serviceRole.from("photographers").select("id", { count: "exact", head: true });
+    registeredUsersCount = count ?? 0;
   }
 
   const doneCountByEvent = new Map<string, number>();
@@ -146,15 +172,24 @@ export default async function DashboardPage() {
   // a further round trip keyed by reminder event ids.
   const balanceByEvent = new Map((payments ?? []).map((p) => [p.event_id, p.balance_amount]));
   const pendingReminders: PendingPaymentReminder[] = photographer
-    ? (scheduledReminders ?? []).map((s) => ({
-        id: s.id,
-        clientName: s.events?.client_name ?? "לקוח",
-        balanceAmount: balanceByEvent.get(s.event_id) ?? 0,
-      }))
+    ? (scheduledReminders ?? [])
+        .filter((s) => s.kind === "payment_reminder")
+        .map((s) => ({
+          type: "payment" as const,
+          id: s.id,
+          clientName: s.events?.client_name ?? "לקוח",
+          balanceAmount: balanceByEvent.get(s.event_id) ?? 0,
+        }))
+    : [];
+  const pendingReviewRequests: PendingReviewRequest[] = photographer
+    ? (scheduledReminders ?? [])
+        .filter((s) => s.kind === "review_request")
+        .map((s) => ({ type: "review" as const, id: s.id, clientName: s.events?.client_name ?? "לקוח" }))
     : [];
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
+      <UpdateReloadGate />
       <div className="flex items-center justify-between mb-5">
         <div>
           <div className="text-xs tracking-wide text-ink-soft flex items-center gap-2">
@@ -163,9 +198,12 @@ export default async function DashboardPage() {
             </span>
             <LogoutButton />
           </div>
-          <h1 className="text-[26px] font-extrabold mt-0.5 font-display">
-            {isPhotographer ? "האירועים שלי" : "האירועים שהוקצו לי"}
-          </h1>
+          <div className="flex items-center gap-2 mt-0.5">
+            <h1 className="text-[26px] font-extrabold font-display">
+              {isPhotographer ? "האירועים שלי" : "האירועים שהוקצו לי"}
+            </h1>
+            {isPhotographer && <SettingsGearLink />}
+          </div>
         </div>
         {isPhotographer && (
           <NewEventButton customPackages={customPackages ?? []} eventTypes={eventTypes ?? []} prices={prices ?? []} />
@@ -178,10 +216,19 @@ export default async function DashboardPage() {
           monthTotal={heroData.monthTotal}
           pendingTotal={heroData.pendingTotal}
           trailing={heroData.trailing}
+          registeredUsersCount={registeredUsersCount}
         />
       )}
 
-      {isPhotographer && <QuickActionsGrid />}
+      {isPhotographer && photographer && (
+        <QuickActionsGrid
+          hourlyRate={photographer.hourly_shoot_rate}
+          suppliers={photographer.pricing_suppliers}
+          priceQuotes={priceQuotes ?? []}
+          eventTypes={(eventTypes ?? []).map((t) => ({ id: t.id, name: t.name }))}
+          initialCustomEventTypes={photographer.quote_event_type_suggestions}
+        />
+      )}
 
       <EventsListView
         events={events ?? []}
@@ -191,7 +238,7 @@ export default async function DashboardPage() {
         isPhotographer={isPhotographer}
       />
       <FeedbackButton />
-      <PaymentReminderPrompts reminders={pendingReminders} />
+      <PendingClientMessagePrompts paymentReminders={pendingReminders} reviewRequests={pendingReviewRequests} />
     </div>
   );
 }

@@ -176,6 +176,7 @@ function EventCard({
   return (
     <Link
       href={`/events/${event.id}`}
+      role="button"
       className="block w-full text-right rounded-2xl p-4 mb-3.5 bg-card border border-line shadow-card"
     >
       <div className="flex items-center justify-between mb-2.5">

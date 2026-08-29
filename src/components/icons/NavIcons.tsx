@@ -85,8 +85,22 @@ export function IconAnalytics({ className }: IconProps) {
 export function IconSettings({ className }: IconProps) {
   return (
     <svg {...base} className={className}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.36 5.64l-1.7 1.7M7.34 16.66l-1.7 1.7M18.36 18.36l-1.7-1.7M7.34 7.34l-1.7-1.7" />
+      <circle cx="12" cy="12" r="6.2" />
+      <circle cx="12" cy="12" r="2.1" />
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+        <rect key={deg} x="10.7" y="1.5" width="2.6" height="3" rx="0.7" transform={`rotate(${deg} 12 12)`} />
+      ))}
+    </svg>
+  );
+}
+
+export function IconCalculator({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <rect x="5" y="3.5" width="14" height="17" rx="2.5" />
+      <path d="M8 7h8" />
+      <path d="M8.3 11.2h.01M12 11.2h.01M15.7 11.2h.01M8.3 14.6h.01M12 14.6h.01M8.3 18h.01M12 18h.01" strokeWidth="2.2" />
+      <path d="M15.7 14v4.3M13.7 16.1h4" />
     </svg>
   );
 }
@@ -106,6 +120,18 @@ export function IconContract({ className }: IconProps) {
       <path d="M6.5 3.5h8l3 3v14a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1z" />
       <path d="M14 3.5v3.5h3.5" />
       <path d="M8.5 12.5l2.2 2.2 4.3-4.7" />
+    </svg>
+  );
+}
+
+export function IconTrash({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4.5 7h15" />
+      <path d="M9.5 7V4.8a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7" />
+      <path d="M6.5 7l.9 12.3a2 2 0 0 0 2 1.9h5.2a2 2 0 0 0 2-1.9L17.5 7" />
+      <path d="M10.2 10.5v7" />
+      <path d="M13.8 10.5v7" />
     </svg>
   );
 }

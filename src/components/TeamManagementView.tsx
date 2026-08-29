@@ -3,7 +3,13 @@
 import { useState } from "react";
 import type { TeamMember } from "@/lib/types";
 
-export default function TeamManagementView({ initialTeamMembers }: { initialTeamMembers: TeamMember[] }) {
+export default function TeamManagementView({
+  initialTeamMembers,
+  limit,
+}: {
+  initialTeamMembers: TeamMember[];
+  limit: number;
+}) {
   const [teamMembers, setTeamMembers] = useState(initialTeamMembers);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -75,33 +81,41 @@ export default function TeamManagementView({ initialTeamMembers }: { initialTeam
         </div>
       )}
 
-      <div className="space-y-3">
-        <div>
-          <label className="text-xs block mb-1 text-ink-soft">שם</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-          />
+      {teamMembers.length >= limit ? (
+        <p className="text-xs text-ink-soft">
+          {limit === 1
+            ? "ניתן להוסיף עוזר אחד בלבד לכל חשבון. כדי להוסיף עוזר אחר, יש להסיר קודם את הקיים."
+            : `הגעתם למכסת ${limit} חברי הצוות של מסלול פרו+. כדי להוסיף חבר צוות אחר, יש להסיר קודם אחד מהקיימים.`}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs block mb-1 text-ink-soft">שם</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+            />
+          </div>
+          <div>
+            <label className="text-xs block mb-1 text-ink-soft">אימייל</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+            />
+          </div>
+          {error && <p className="text-xs text-rose">{error}</p>}
+          <button
+            onClick={addTeamMember}
+            disabled={saving}
+            className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+          >
+            {saving ? "מוסיף..." : "הוספת חבר צוות"}
+          </button>
         </div>
-        <div>
-          <label className="text-xs block mb-1 text-ink-soft">אימייל</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-          />
-        </div>
-        {error && <p className="text-xs text-rose">{error}</p>}
-        <button
-          onClick={addTeamMember}
-          disabled={saving}
-          className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-        >
-          {saving ? "מוסיף..." : "הוספת חבר צוות"}
-        </button>
-      </div>
+      )}
     </div>
   );
 }

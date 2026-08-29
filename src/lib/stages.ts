@@ -24,7 +24,7 @@ export const STAGE_LABELS: Record<StageKey, string> = {
   backup: "גיבוי חומר גולמי",
   culling: "מיון תמונות",
   photo_editing: "עריכת תמונות",
-  gallery_upload: "העלאת גלריה ל-wfolio",
+  gallery_upload: "העלאת גלריה",
   client_photo_selection: "בחירת תמונות (לאלבום)",
   client_song_selection: "בחירת שיר לקליפ",
   video_editing: "עריכת וידאו",
@@ -60,26 +60,66 @@ export const STAGE_NOTIFY_CLIENT: Partial<Record<StageKey, string>> = {
   final_delivery: "כל החומרים שלכם מוכנים!",
 };
 
-// Meta-approved WhatsApp template names for each checkpoint that auto-notifies the client.
-// Business-initiated messages must use an approved template outside the 24h session window.
-// album_approval is deliberately absent — it always sends via ALBUM_DESIGN_TEMPLATE (document
-// header) instead, since completing that stage requires the album design PDF to be attached.
-export const STAGE_TEMPLATE_NAME: Partial<Record<StageKey, string>> = {
-  gallery_upload: "gallery_ready_v2",
-  video_approval: "video_ready_v2",
-  final_delivery: "final_delivery_v2",
+// Fallback text for the manual "שליחת עדכון ללקוח" button (EventDetailView's SendUpdateButton)
+// when a stage has neither a saved override nor a topic-specific recommendation below.
+// {{שם}} and {{שלב}} are substituted at send time; every occurrence of the literal word "קישור:"
+// gets the client's portal link appended right after it.
+export const DEFAULT_CLIENT_MESSAGE_TEMPLATE = "שלום {{שם}},\nעדכון לגבי האירוע שלכם: {{שלב}} ✓\nקישור: ";
+
+// The five stages a photographer can actually customize in Settings → הודעות ללקוח/ה — the ones
+// worth a real client-facing message, in flow order. Every other stage's SendUpdateButton still
+// works, it just isn't editable there and falls back to DEFAULT_CLIENT_MESSAGE_TEMPLATE.
+export const CUSTOMIZABLE_MESSAGE_STAGES: StageKey[] = [
+  "event_closing",
+  "shoot_day",
+  "gallery_upload",
+  "client_song_selection",
+  "album_design",
+];
+
+// One recommended, topic-specific starting point per customizable stage — shown pre-filled in
+// Settings and used as the send-time fallback for any stage the photographer hasn't overridden,
+// so even an unsaved default reads like a real message instead of the generic one above.
+export const RECOMMENDED_CLIENT_MESSAGE_TEMPLATES: Partial<Record<StageKey, string>> = {
+  event_closing:
+    "שלום {{שם}},\nהאירוע שלכם רשמית סגור אצלנו ביומן 🎉 נרגשים לצלם אתכם!\nבהמשך נעדכן אתכם כאן בכל שלב חשוב לקראת האירוע.\nקישור: ",
+  shoot_day:
+    "שלום {{שם}},\nהיום היום הגדול! מחכה לצלם אתכם ולתעד את הרגעים הכי משמעותיים שלכם 📸\nנתראה בקרוב!\nקישור: ",
+  gallery_upload:
+    "שלום {{שם}},\nהגלריה מהאירוע שלכם עלתה ומוכנה לצפייה! אפשר להיכנס עכשיו ולבחור את התמונות האהובות עליכם.\nקישור: ",
+  client_song_selection:
+    "שלום {{שם}},\nהגיע הזמן לבחור את השיר שילווה את קליפ הוידאו שלכם 🎵 כנסו ובחרו את השיר שהכי מדבר אליכם.\nקישור: ",
+  album_design:
+    "שלום {{שם}},\nעיצוב האלבום שלכם מוכן לצפייה! נשמח לשמוע מה אתם חושבים ולקבל הערות לפני שממשיכים להדפסה.\nקישור: ",
 };
 
-// Template with a DOCUMENT header component — separate from STAGE_TEMPLATE_NAME because it needs
-// sendWhatsAppDocumentTemplate (header parameter), not the plain body-only sendWhatsAppTemplate.
-export const ALBUM_DESIGN_TEMPLATE = "album_design_ready_v1";
+export function resolveClientMessageTemplate(stageKey: string, savedOverride: string | undefined | null): string {
+  return (
+    savedOverride ??
+    RECOMMENDED_CLIENT_MESSAGE_TEMPLATES[stageKey as StageKey] ??
+    DEFAULT_CLIENT_MESSAGE_TEMPLATE
+  );
+}
+
+// Fields a photographer can insert into a client message template — the dropdown in Settings →
+// הודעות ללקוח/ה offers these labels, and EventDetailView's sendWhatsAppUpdate resolves every
+// token against that specific event's own card (date, location, times, payment amounts) at send
+// time. "קישור: " is the one non-{{}} entry — see DEFAULT_CLIENT_MESSAGE_TEMPLATE's doc comment.
+export const CLIENT_MESSAGE_INSERT_OPTIONS: { label: string; token: string }[] = [
+  { label: "תאריך האירוע", token: "{{תאריך}}" },
+  { label: "מיקום האירוע", token: "{{מיקום}}" },
+  { label: "שם הלקוח", token: "{{שם}}" },
+  { label: "שעות האירוע", token: "{{שעות}}" },
+  { label: "שעת הגעה לצילומי משפחה", token: "{{שעת_הגעה}}" },
+  { label: "חבילה", token: "{{חבילה}}" },
+  { label: "מקדמה", token: "{{מקדמה}}" },
+  { label: "יתרה לתשלום", token: "{{יתרה}}" },
+  { label: "שם השלב", token: "{{שלב}}" },
+  { label: "קישור", token: "קישור: " },
+];
 
 export const GENERIC_STAGE_UPDATE_TEMPLATE = "stage_update_v2";
-export const EVENT_BOOKING_CONFIRMATION_TEMPLATE = "event_booking_confirmation_v2";
-export const PORTAL_LINK_TEMPLATE = "portal_link_ready_v1";
-export const REVIEW_REQUEST_TEMPLATE = "review_request_v1";
 export const REVIEW_REQUEST_DELAY_DAYS = 3;
-export const PAYMENT_REMINDER_TEMPLATE = "payment_reminder_v1";
 
 // Three fixed-body templates, sent days apart to a lead who hasn't replied — only the client's
 // name varies (WhatsApp template review doesn't allow free-form body text per-photographer, the
@@ -150,9 +190,53 @@ export function currentStageIndex(orderedStages: { done: boolean }[]): number {
   return orderedStages.length;
 }
 
+// "tier" separates the two SKUs of each plan family (פרו vs. פרו+) for feature gates
+// (team size, branding) that care about the tier, not the billing cadence — see
+// src/app/api/team-members/route.ts and the branding fields on Photographer. "cycleMonths" is the
+// single source of truth for each plan's billing cadence — src/lib/payplus.ts (PayPlus's own
+// `recurring_range` param) and the mid-cycle plan-switch timing logic both derive from this
+// instead of duplicating it, so client components can reason about cycle length without pulling
+// in payplus.ts (which imports Node's `crypto` and can't be bundled for the browser). "tierName"
+// is the product-facing brand name for the tier (shown standalone, e.g. on the landing page's
+// monthly/annual toggle) — "label" stays the fuller "<tier> — <cycle>" form used where the
+// billing cadence needs to be named alongside the tier (plan-switch buttons, admin dashboard).
+// "regularPricePerMonth" is display-only marketing copy for the landing page's launch-pricing
+// strikethrough (see PricingToggle/PlanComparison) — it is NOT what anyone is actually billed.
+// "pricePerMonth" is the real, currently-active price and stays exactly what PayPlus charges;
+// bumping it later to the regular price is a separate, deliberate future change to this same
+// field, not something regularPricePerMonth does automatically. The annual regular figures follow
+// the same "10 months' worth over 12" shape as the real annualAmount values below (700 = 10×70,
+// 1200 = 10×120), divided by 12 and rounded, same as pricePerMonth already is for the real prices.
 export const SUBSCRIPTION_PLANS = {
-  monthly: { label: "חודשי", pricePerMonth: 50, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined },
-  annual: { label: "שנתי", pricePerMonth: 42, note: "חיוב שנתי של ₪500 · חוסך 2 חודשים", badge: "הכי משתלם" as string | undefined },
+  monthly: { label: "פרו — חודשי", tierName: "פרו", pricePerMonth: 50, regularPricePerMonth: 70, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "standard" as const, cycleMonths: 1, annualAmount: null as number | null },
+  annual: { label: "פרו — שנתי", tierName: "פרו", pricePerMonth: 42, regularPricePerMonth: 58, note: "חיוב שנתי של ₪500 · חוסך 2 חודשים", badge: "הכי משתלם" as string | undefined, tier: "standard" as const, cycleMonths: 12, annualAmount: 500 },
+  studio_pro_monthly: { label: "פרו+ — חודשי", tierName: "פרו+", pricePerMonth: 99, regularPricePerMonth: 120, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "studio_pro" as const, cycleMonths: 1, annualAmount: null as number | null },
+  studio_pro_annual: { label: "פרו+ — שנתי", tierName: "פרו+", pricePerMonth: 83, regularPricePerMonth: 100, note: "חיוב שנתי של ₪990 · חוסך 2 חודשים", badge: "המסלול המלא" as string | undefined, tier: "studio_pro" as const, cycleMonths: 12, annualAmount: 990 },
 } as const;
 
 export type SubscriptionPlan = keyof typeof SUBSCRIPTION_PLANS;
+export type SubscriptionTier = "standard" | "studio_pro";
+
+export const TEAM_MEMBER_LIMIT_BY_TIER: Record<SubscriptionTier, number> = {
+  standard: 1,
+  studio_pro: 3,
+};
+
+// Closed, bounded set of gallery retention windows — the only lever a photographer has, since
+// storage itself is unlimited on every plan (see migration 0084's comment). Days, not months,
+// because "week" and "14 days" aren't whole months. The DB trigger (enforce_gallery_expiry_by_plan
+// in that same migration) is the actual enforcement; this list is what the UI offers, so a
+// mismatch here just means an option that gets silently rejected server-side, not a hole in the
+// cap itself.
+export const GALLERY_EXPIRY_OPTIONS: { value: 7 | 14 | 30 | 90 | 180; label: string }[] = [
+  { value: 7, label: "שבוע" },
+  { value: 14, label: "14 יום" },
+  { value: 30, label: "חודש" },
+  { value: 90, label: "3 חודשים" },
+  { value: 180, label: "6 חודשים" },
+];
+
+export const GALLERY_EXPIRY_OPTIONS_BY_TIER: Record<SubscriptionTier, typeof GALLERY_EXPIRY_OPTIONS> = {
+  standard: GALLERY_EXPIRY_OPTIONS.filter((o) => o.value <= 30),
+  studio_pro: GALLERY_EXPIRY_OPTIONS,
+};

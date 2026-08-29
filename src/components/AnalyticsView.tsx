@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PACKAGE_LABELS } from "@/lib/stages";
 import type { EventPaymentRow } from "@/lib/types";
 import type { AnalyticsEvent } from "@/app/analytics/page";
+import PageGuide from "@/components/PageGuide";
 
 const HEBREW_MONTHS = [
   "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
@@ -225,7 +226,11 @@ export default function AnalyticsView({
       <Link href="/" className="flex items-center gap-1 text-sm mb-5 tracking-wide text-ink-soft">
         ← חזרה לדף הבית
       </Link>
-      <h1 className="text-[26px] font-bold mb-5 font-display">ניתוח עסקי</h1>
+      <h1 className="text-[26px] font-bold mb-1.5 font-display">ניתוח עסקי</h1>
+      <PageGuide
+        pageKey="analytics"
+        blurb="כאן רואים תמונה עסקית מלאה — הכנסות לפי חודש, תשלומים שממתינים, והתפלגות לפי סוגי חבילות."
+      />
 
       <div className="flex flex-wrap gap-2 mb-5">
         <select

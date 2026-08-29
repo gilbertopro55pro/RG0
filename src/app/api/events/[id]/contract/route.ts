@@ -111,6 +111,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     photographerName: photographer.name,
     photographerPhone: photographer.phone,
     signature: photographer.whatsapp_signature,
+    customTerms: photographer.custom_contract_terms,
     clientName: event.client_name,
     clientPhone: event.client_phone,
     eventDate: event.event_date,

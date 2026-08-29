@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { ZipArchive } from "archiver";
 import { Readable } from "node:stream";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { authenticateGalleryRequest } from "@/lib/desktopAuth";
 import { renderAlbumPagePsd } from "@/lib/albumPsd";
 import { pxFromCm } from "@/lib/albumRaster";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
@@ -15,20 +16,16 @@ export const maxDuration = 300;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: galleryId } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
-  }
+  const auth = await authenticateGalleryRequest(request);
+  if ("error" in auth) return auth.error;
+  const supabase = createServiceRoleClient();
 
   const { data: gallery } = await supabase
     .from("galleries")
     .select("*")
     .eq("id", galleryId)
     .maybeSingle<GalleryRow>();
-  if (!gallery) {
+  if (!gallery || gallery.photographer_id !== auth.userId) {
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
 
@@ -81,6 +78,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .returns<Pick<GalleryPhotoRow, "id" | "storage_path">[]>();
   const photosById = new Map((photos ?? []).map((p) => [p.id, p]));
 
+  const customOrnamentIds = Array.from(
+    new Set(
+      rangedSpreads.flatMap((s) =>
+        s.elements.filter((el): el is typeof el & { type: "ornament"; customOrnamentId: string } => el.type === "ornament" && !!el.customOrnamentId).map((el) => el.customOrnamentId)
+      )
+    )
+  );
+  let customOrnamentsById: Map<string, { storage_path: string }> | undefined;
+  if (customOrnamentIds.length > 0) {
+    const { data: customOrnaments } = await supabase
+      .from("custom_ornaments")
+      .select("id, storage_path")
+      .in("id", customOrnamentIds)
+      .returns<{ id: string; storage_path: string }[]>();
+    customOrnamentsById = new Map((customOrnaments ?? []).map((o) => [o.id, { storage_path: o.storage_path }]));
+  }
+
+  // Album-wide size by default; a spread with its own width_cm/height_cm (currently only ever a
+  // custom-sized cover page) overrides it for just that one page.
   const pageWidthPx = pxFromCm(album.width_cm);
   const pageHeightPx = pxFromCm(album.height_cm);
 
@@ -90,12 +106,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   (async () => {
     try {
       if (includeCover) {
-        const psd = await renderAlbumPagePsd({ album, spread: null, isCover: true, pageWidthPx, pageHeightPx, photosById });
+        const psd = await renderAlbumPagePsd({ album, spread: null, isCover: true, pageWidthPx, pageHeightPx, photosById, customOrnamentsById });
         if (psd) archive.append(psd, { name: `${rootDir}/01 - שער.psd` });
       }
       for (const spread of rangedSpreads) {
         const pageNumber = (hasCover ? 1 : 0) + spreads.indexOf(spread) + 1;
-        const psd = await renderAlbumPagePsd({ album, spread, isCover: false, pageWidthPx, pageHeightPx, photosById });
+        const spreadWidthPx = spread.width_cm ? pxFromCm(spread.width_cm) : pageWidthPx;
+        const spreadHeightPx = spread.height_cm ? pxFromCm(spread.height_cm) : pageHeightPx;
+        const psd = await renderAlbumPagePsd({ album, spread, isCover: false, pageWidthPx: spreadWidthPx, pageHeightPx: spreadHeightPx, photosById, customOrnamentsById });
         if (psd) archive.append(psd, { name: `${rootDir}/${String(pageNumber).padStart(2, "0")}.psd` });
       }
     } finally {

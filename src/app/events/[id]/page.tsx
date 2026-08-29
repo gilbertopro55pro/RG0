@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type {
+  ClientMessageTemplateRow,
   CustomPackageStageRow,
   EventContractRow,
   EventNotificationRow,
@@ -21,7 +23,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: event }, { data: stages }, { data: notifications }] = await Promise.all([
+  const [{ data: event }, { data: stages }, { data: notifications }, { data: messageTemplates }] = await Promise.all([
     supabase.from("events").select("*").eq("id", id).single<EventRow>(),
     supabase
       .from("event_stages")
@@ -35,9 +37,23 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
       .eq("event_id", id)
       .order("created_at", { ascending: false })
       .returns<EventNotificationRow[]>(),
+    // RLS scopes this to the photographer's own templates, or (via team_members) the templates of
+    // the photographer a team-member account is assigned to — no explicit filter needed here.
+    supabase.from("client_message_templates").select("*").returns<ClientMessageTemplateRow[]>(),
   ]);
 
   if (!event) notFound();
+
+  // Service-role, not the caller's own client: a team-member viewer can't read the owning
+  // photographer's row under RLS (photographers_select_own), but still needs their signature to
+  // send an on-brand client update. Just the one field, read-only.
+  const serviceRole = createServiceRoleClient();
+  const { data: photographerSignatureRow } = await serviceRole
+    .from("photographers")
+    .select("whatsapp_signature")
+    .eq("id", event.photographer_id)
+    .maybeSingle<{ whatsapp_signature: string | null }>();
+  const whatsappSignature = photographerSignatureRow?.whatsapp_signature ?? null;
 
   // Opening the event is what "reading" the progress badge means — clear any unread client-action
   // notifications now so the dashboard badge reflects that the photographer has seen them.
@@ -112,6 +128,9 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     }
   }
 
+  const messageTemplateMap: Record<string, string> = {};
+  for (const row of messageTemplates ?? []) messageTemplateMap[row.stage_key] = row.body;
+
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <EventDetailView
@@ -128,6 +147,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
         galleryCoverUrl={galleryCoverUrl}
         customStages={customStages}
         customPackageName={customPackageName}
+        messageTemplates={messageTemplateMap}
+        whatsappSignature={whatsappSignature}
       />
     </div>
   );

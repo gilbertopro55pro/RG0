@@ -233,18 +233,20 @@ body {
 /* Global tactile press feedback for every button in the app. Driven by GlobalButtonEffects.tsx
    toggling .js-pressed via real pointer events — not the CSS :active pseudo-class, which iOS
    Safari activates inconsistently for touch input. The spring-back easing (overshoot past 1
-   then settle) is what gives the "press in, pop back" feel. */
+   then settle) is what gives the "press in, pop back" feel. Scale + brightness dip together sell
+   an actual "sinking in" look — scale alone at a small delta reads as barely-there. */
 button:not(:disabled),
 a[role="button"]:not([aria-disabled="true"]) {
-  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), filter 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 button:not(:disabled).js-pressed,
 a[role="button"]:not([aria-disabled="true"]).js-pressed {
   /* !important is deliberate here: some buttons carry their own Tailwind transform utilities
      (e.g. active:scale-95 from the older BTN_PRESS helper) that otherwise win this cascade
      and silently cancel the press animation on exactly the buttons that need it most. */
-  transform: scale(0.94) !important;
-  transition: transform 80ms ease-out !important;
+  transform: scale(0.9) !important;
+  filter: brightness(0.92) !important;
+  transition: transform 70ms ease-out, filter 70ms ease-out !important;
 }
 
 /* Floating hover lift — nav tiles, glass cards and the solid glass buttons all get a gentle

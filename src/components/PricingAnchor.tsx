@@ -45,7 +45,7 @@ export default function PricingAnchor() {
     <section className="max-w-2xl mx-auto px-4 py-10">
       <h2 className="text-2xl font-bold font-display text-center mb-2">כמה זה עולה לנהל בעצמכם?</h2>
       <p className="text-sm text-ink-soft text-center mb-8">
-        בממוצע, ניהול כל היכולות האלה בנפרד — עם כלים שונים — עשוי להיראות ככה:
+        בממוצע, ניהול כל היכולות האלה בנפרד עם כלים שונים עשוי להיראות ככה:
       </p>
 
       <div className="sticky top-4 z-10 mb-6 flex justify-center">

@@ -35,6 +35,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .select("storage_path, original_filename")
     .eq("id", photoId)
     .eq("gallery_id", gallery.id)
+    .neq("culling_status", "rejected")
     .maybeSingle<Pick<GalleryPhotoRow, "storage_path" | "original_filename">>();
 
   if (!photo) {

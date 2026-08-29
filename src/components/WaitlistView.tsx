@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { CustomPackageRow, WaitlistRow } from "@/lib/types";
+import { openWhatsApp } from "@/lib/waLink";
+import PageGuide from "@/components/PageGuide";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
 
@@ -34,7 +36,11 @@ export default function WaitlistView({
       <Link href="/" className="flex items-center gap-1 text-sm mb-5 tracking-wide text-ink-soft">
         ← חזרה לדף הבית
       </Link>
-      <h1 className="text-[26px] font-bold mb-5 font-display">רשימת המתנה</h1>
+      <h1 className="text-[26px] font-bold mb-1.5 font-display">רשימת המתנה</h1>
+      <PageGuide
+        pageKey="waitlist"
+        blurb="כשלקוח מבקש תאריך שכבר תפוס, המערכת מציעה להוסיף אותו לרשימת המתנה. ברגע שהתאריך מתפנה — הופכים אותו לאירוע בלחיצה."
+      />
 
       {entries.length === 0 && (
         <div className="text-center py-16 text-sm text-ink-soft">
@@ -163,6 +169,21 @@ function ConfirmEventDialog({
       setError(data.error ?? "שגיאה באישור האירוע");
       setSaving(false);
       return;
+    }
+    const data: { id: string; clientAccessToken: string } = await res.json();
+    if (entry.client_phone) {
+      const formattedDate = new Date(entry.requested_date).toLocaleDateString("he-IL");
+      const portalLink = `${window.location.origin}/portal/${data.clientAccessToken}`;
+      const message =
+        `שלום ${entry.client_name},\nהאירוע שלכם נסגר במערכת בהצלחה 🎉\n\n` +
+        `תאריך: ${formattedDate}\n\n` +
+        `הפורטל האישי שלכם לצפייה בפרטי האירוע והתשלומים:\n${portalLink}`;
+      openWhatsApp(entry.client_phone, message);
+      fetch(`/api/events/${data.id}/log-notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: `נשלחה הודעת וואטסאפ (אישור הזמנה + קישור פורטל) ל-${entry.client_phone}` }),
+      }).catch(() => {});
     }
     onConfirmed();
   };

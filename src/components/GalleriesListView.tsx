@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import NewGalleryModal from "@/components/NewGalleryModal";
+import PageGuide from "@/components/PageGuide";
+import { readAlbumRotateResume } from "@/lib/albumRotateResume";
 
 export type GalleryListItem = {
   id: string;
@@ -21,10 +24,33 @@ export type GalleryListItem = {
 type SortKey = "event_date" | "name" | "expires";
 
 export default function GalleriesListView({ items }: { items: GalleryListItem[] }) {
+  const router = useRouter();
+  // See src/lib/albumRotateResume.ts — a standalone-iOS-PWA-only workaround for the album tool
+  // mistapping after rotation. This page is just the bounce point of that round trip: land here,
+  // immediately push straight back to the gallery that's waiting to reopen its tool, and never show
+  // the actual galleries grid in between (a real spinner-covered flash of unrelated content would
+  // undercut the "one continuous load" illusion this whole workaround exists to create).
+  const [resuming, setResuming] = useState(() => !!readAlbumRotateResume());
+  useEffect(() => {
+    const intent = readAlbumRotateResume();
+    if (!intent) return;
+    setResuming(true);
+    router.replace(`/galleries/${intent.galleryId}`);
+  }, [router]);
+
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("event_date");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showNewGallery, setShowNewGallery] = useState(false);
+
+  if (resuming) {
+    return (
+      <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-3" style={{ background: "var(--color-paper)" }}>
+        <div className="h-8 w-8 rounded-full border-2 border-line border-t-ink animate-spin" />
+        <p className="text-sm text-ink-soft">טוען את הכלי...</p>
+      </div>
+    );
+  }
 
   const copyLink = async (item: GalleryListItem, e: React.MouseEvent) => {
     e.preventDefault();
@@ -72,6 +98,10 @@ export default function GalleriesListView({ items }: { items: GalleryListItem[] 
           + גלריה חדשה
         </button>
       </div>
+      <PageGuide
+        pageKey="galleries"
+        blurb="כאן מרוכזות כל גלריות התמונות שיצרת ללקוחות. אפשר ליצור גלריה חדשה, להעלות תמונות, ולשלוח ללקוח קישור לצפייה ובחירה."
+      />
 
       <div className="flex gap-2 mb-5">
         <input
@@ -102,6 +132,7 @@ export default function GalleriesListView({ items }: { items: GalleryListItem[] 
           <Link
             key={item.id}
             href={`/galleries/${item.id}`}
+            role="button"
             className="flex items-center gap-3 rounded-2xl p-3 bg-card border border-line shadow-card"
           >
             <div className="relative h-16 w-16 rounded-xl overflow-hidden bg-line shrink-0">

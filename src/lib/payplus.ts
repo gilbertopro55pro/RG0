@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import type { SubscriptionPlan } from "@/lib/stages";
+import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 
 const API_BASE = "https://restapi.payplus.co.il/api/v1.0";
 
@@ -17,12 +17,16 @@ function authHeaders() {
   };
 }
 
-// Charged amount per billing cycle and the recurring cadence for each plan. The annual amount
-// is a flat ₪500 (not pricePerMonth * 12) to match the advertised "חיוב שנתי של ₪500" pricing.
-export const PAYPLUS_BILLING: Record<SubscriptionPlan, { amount: number; recurringRangeMonths: number }> = {
-  monthly: { amount: 50, recurringRangeMonths: 1 },
-  annual: { amount: 500, recurringRangeMonths: 12 },
-};
+// Charged amount per billing cycle and the recurring cadence for each plan, derived from
+// SUBSCRIPTION_PLANS (the single source of truth for cycle length and pricing) rather than
+// duplicating those numbers here. A cycle's flat charge is its annualAmount when the cycle spans
+// more than a month, otherwise the plain monthly price.
+export const PAYPLUS_BILLING: Record<SubscriptionPlan, { amount: number; recurringRangeMonths: number }> = Object.fromEntries(
+  (Object.keys(SUBSCRIPTION_PLANS) as SubscriptionPlan[]).map((key) => {
+    const info = SUBSCRIPTION_PLANS[key];
+    return [key, { amount: info.annualAmount ?? info.pricePerMonth, recurringRangeMonths: info.cycleMonths }];
+  })
+) as Record<SubscriptionPlan, { amount: number; recurringRangeMonths: number }>;
 
 // Generates a hosted PayPlus checkout link for a recurring subscription charge. Requires a
 // Payment Page pre-created in the PayPlus merchant dashboard (PAYPLUS_PAYMENT_PAGE_UID) — the
@@ -82,6 +86,27 @@ export function verifyPayplusWebhookSignature(rawBody: string, hashHeader: strin
   const secretKey = requireEnv("PAYPLUS_SECRET_KEY");
   const expected = crypto.createHmac("sha256", secretKey).update(rawBody).digest("base64");
   return expected === hashHeader;
+}
+
+// A plan switch never takes effect immediately — see migration 0073's comment for why. The
+// target date is always derived from the CURRENT plan's already-paid-through date
+// (current_period_end), never "now": switching off a monthly plan finishes out whatever month is
+// already paid for and the very next scheduled charge becomes the new plan's instead (one day's
+// buffer before that renewal, so our cancellation is guaranteed to land before PayPlus's own
+// scheduled charge fires — otherwise the old monthly recurring could still auto-charge that same
+// day). Switching off an annual plan keeps full access for the first 10 of the already-paid 12
+// months (that's what the annual charge covers), then starts the new plan's billing for months
+// 11 and 12 instead of those being the old annual plan's two free bonus months. Keyed off the
+// CURRENT plan's billing-cycle length (not its literal identity) so this works for any of the
+// four plans, including a cross-tier switch like annual -> studio_pro_monthly.
+export function computePlanSwitchEffectiveDate(currentPlan: SubscriptionPlan, currentPeriodEnd: Date): Date {
+  const result = new Date(currentPeriodEnd);
+  if (PAYPLUS_BILLING[currentPlan].recurringRangeMonths <= 1) {
+    result.setDate(result.getDate() - 1);
+  } else {
+    result.setMonth(result.getMonth() - 2);
+  }
+  return result;
 }
 
 // Cancels a photographer's recurring subscription so no future charges occur.

@@ -1,14 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  ALBUM_DESIGN_TEMPLATE,
-  GENERIC_STAGE_UPDATE_TEMPLATE,
-  STAGE_LABELS,
-  STAGE_NOTIFY_CLIENT,
-  STAGE_TEMPLATE_NAME,
-  type StageKey,
-} from "@/lib/stages";
-import { friendlyWhatsAppError, sendWhatsAppDocumentTemplate, sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { STAGE_LABELS, STAGE_NOTIFY_CLIENT, type StageKey } from "@/lib/stages";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import type { CustomPackageStageRow } from "@/lib/types";
 
@@ -40,13 +32,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "שדות חובה חסרים" }, { status: 400 });
   }
 
-  // Resolve label/notify/template info for either a built-in stage or a custom-package stage —
-  // everything downstream works off these regardless of which kind this is.
+  // Resolve label/notify info for either a built-in stage or a custom-package stage — everything
+  // downstream works off these regardless of which kind this is.
   let label: string;
   let notifyText: string | null;
-  let templateName: string | undefined;
   let requiresAlbumPdf: boolean;
-  let customStage: CustomPackageStageRow | null = null;
 
   if (customStageId) {
     const { data } = await supabase
@@ -55,14 +45,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .eq("id", customStageId)
       .single<CustomPackageStageRow>();
     if (!data) return NextResponse.json({ error: "השלב לא נמצא" }, { status: 404 });
-    customStage = data;
     label = data.name;
     notifyText = data.notify_client ? (data.notify_text ?? data.name) : null;
     requiresAlbumPdf = data.requires_album_pdf;
   } else {
     label = STAGE_LABELS[stageKey!];
     notifyText = STAGE_NOTIFY_CLIENT[stageKey!] ?? null;
-    templateName = STAGE_TEMPLATE_NAME[stageKey!];
     requiresAlbumPdf = stageKey === "album_approval";
   }
 
@@ -115,7 +103,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const isAlbumSend = requiresAlbumPdf && done && !!albumDesignPdfPath;
-  const shouldNotify = done && !!notifyText && (isAlbumSend || !!templateName || !!customStage);
+  // The standard "אישור עיצוב אלבום" checkpoint never notifies from here — its PDF (and the
+  // client notification that goes with it) is always attached earlier via
+  // /api/events/[id]/album-design, before this stage is ever marked done (see the fallback-lookup
+  // comment above). Every other checkpoint — built-in or custom — notifies on completion.
+  const isStandardAlbumApproval = !customStageId && stageKey === "album_approval";
+  const shouldNotify = done && !!notifyText && !isStandardAlbumApproval;
+
+  // The actual WhatsApp send happens client-side (a wa.me deep link the photographer confirms
+  // themselves — see EventDetailView.tsx's setStageDone and src/lib/waLink.ts), the same
+  // no-Business-API-template approach used for the initial booking confirmation. This route's job
+  // is just to say WHAT to send and hand back a download link when the update carries a file —
+  // wa.me can pre-fill text but can't attach a file, so the link goes in the message body instead.
+  let notify: { text: string; downloadUrl: string | null } | null = null;
 
   if (shouldNotify) {
     const { data: event } = await supabase
@@ -125,32 +125,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .single<{ client_name: string; client_phone: string | null }>();
 
     if (event?.client_phone) {
-      try {
-        if (isAlbumSend) {
-          const signedUrl = await getSignedDownloadUrl(
-            "album-designs",
-            albumDesignPdfPath!,
-            3600,
-            albumDesignPdfFilename ?? "album-design.pdf"
-          );
-          if (!signedUrl) throw new Error("יצירת קישור לקובץ נכשלה");
-          await sendWhatsAppDocumentTemplate(
-            event.client_phone,
-            ALBUM_DESIGN_TEMPLATE,
-            signedUrl,
-            albumDesignPdfFilename ?? "album-design.pdf",
-            [event.client_name]
-          );
-        } else if (customStage) {
-          await sendWhatsAppTemplate(event.client_phone, GENERIC_STAGE_UPDATE_TEMPLATE, [event.client_name, label]);
-        } else {
-          await sendWhatsAppTemplate(event.client_phone, templateName!, [event.client_name]);
-        }
-        notifications.push({ event_id: eventId, text: `התראה נשלחה ללקוח בוואטסאפ: "${notifyText}"` });
-      } catch (e) {
-        const raw = e instanceof Error ? e.message : "שגיאה לא ידועה";
-        notifications.push({ event_id: eventId, text: friendlyWhatsAppError(raw) });
+      let downloadUrl: string | null = null;
+      if (isAlbumSend) {
+        downloadUrl = await getSignedDownloadUrl(
+          "album-designs",
+          albumDesignPdfPath!,
+          60 * 60 * 24 * 7,
+          albumDesignPdfFilename ?? "album-design.pdf"
+        );
       }
+      notify = { text: notifyText!, downloadUrl };
     } else {
       notifications.push({ event_id: eventId, text: "לא הוזן טלפון לקוח — לא נשלחה התראה" });
     }
@@ -158,5 +142,5 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   await supabase.from("event_notifications").insert(notifications);
 
-  return NextResponse.json({ stage });
+  return NextResponse.json({ stage, notify });
 }

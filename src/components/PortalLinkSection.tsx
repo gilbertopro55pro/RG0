@@ -1,47 +1,46 @@
 "use client";
 
 import { useState } from "react";
+import { openWhatsApp } from "@/lib/waLink";
 
 export default function PortalLinkSection({
   token,
   eventId,
-  hasClientPhone,
+  clientName,
+  clientPhone,
   onSent,
 }: {
   token: string;
   eventId: string;
-  hasClientPhone: boolean;
+  clientName: string;
+  clientPhone: string | null;
   onSent?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const portalLink = () => `${window.location.origin}/portal/${token}`;
 
   const copyLink = async () => {
-    const link = `${window.location.origin}/portal/${token}`;
-    await navigator.clipboard.writeText(link);
+    await navigator.clipboard.writeText(portalLink());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Opens the photographer's own WhatsApp with the client's chat pre-filled — see waLink.ts for
+  // why this replaced the Meta Business API template send (no approval/verification needed, works
+  // today). The photographer still taps send themselves, so this only logs the activity-log entry
+  // once they've actually done that — /log-sent just records it, it never touches WhatsApp itself.
   const sendLink = async () => {
-    if (sending) return;
+    if (sending || !clientPhone) return;
     setSending(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/events/${eventId}/send-portal-link`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "שגיאה בשליחת הקישור");
-        return;
-      }
-      setSent(true);
-      setTimeout(() => setSent(false), 2000);
-      onSent?.();
-    } finally {
-      setSending(false);
-    }
+    openWhatsApp(clientPhone, `שלום ${clientName},\nהפורטל האישי שלכם מוכן לצפייה בסטטוס האירוע והתשלומים:\n${portalLink()}`);
+    await fetch(`/api/events/${eventId}/send-portal-link`, { method: "POST" }).catch(() => {});
+    setSent(true);
+    setTimeout(() => setSent(false), 2000);
+    onSent?.();
+    setSending(false);
   };
 
   return (
@@ -51,9 +50,8 @@ export default function PortalLinkSection({
       </div>
       <p className="text-xs mb-3 text-ink-soft">
         קישור אישי שהלקוח/ה יכולים לפתוח כדי לראות את סטטוס האירוע והתשלומים, בלי צורך להתחבר.
-        {hasClientPhone && " נשלח אוטומטית בוואטסאפ כשהאירוע נסגר — אפשר גם לשלוח שוב בכל שלב."}
+        {clientPhone && " נשלח אוטומטית בוואטסאפ כשהאירוע נסגר — אפשר גם לשלוח שוב בכל שלב."}
       </p>
-      {error && <p className="text-xs mb-2 text-rose">{error}</p>}
       <div className="flex gap-2">
         <button
           onClick={copyLink}
@@ -61,13 +59,13 @@ export default function PortalLinkSection({
         >
           {copied ? "הקישור הועתק ✓" : "העתקת קישור"}
         </button>
-        {hasClientPhone && (
+        {clientPhone && (
           <button
             onClick={sendLink}
             disabled={sending}
             className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-sage-bg text-sage disabled:opacity-60"
           >
-            {sending ? "שולח..." : sent ? "נשלח ✓" : "שליחה בוואטסאפ"}
+            {sending ? "פותח..." : sent ? "נשלח ✓" : "שליחה בוואטסאפ"}
           </button>
         )}
       </div>

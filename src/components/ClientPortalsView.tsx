@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { packageLabel } from "@/lib/stages";
 import type { EventRow } from "@/lib/types";
+import PageGuide from "@/components/PageGuide";
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
 
@@ -14,9 +15,10 @@ export default function ClientPortalsView({ events }: { events: EventWithCustomP
         ← חזרה לדף הבית
       </Link>
       <h1 className="text-[26px] font-bold mb-1.5 font-display">פורטל לקוח</h1>
-      <p className="text-xs mb-5 text-ink-soft">
-        לכל אירוע יש קישור אישי שהלקוח/ה יכולים לפתוח כדי לראות סטטוס ותשלומים, בלי להתחבר.
-      </p>
+      <PageGuide
+        pageKey="client-portals"
+        blurb="לכל אירוע יש קישור אישי שהלקוח/ה יכולים לפתוח כדי לראות סטטוס ותשלומים, בלי להתחבר."
+      />
 
       {events.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">עדיין אין אירועים</div>}
 

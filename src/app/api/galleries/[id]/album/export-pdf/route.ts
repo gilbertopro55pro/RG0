@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { authenticateGalleryRequest } from "@/lib/desktopAuth";
 import { generateAlbumPdf } from "@/lib/albumPdf";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
 
@@ -7,27 +8,53 @@ function sanitizeSegment(name: string): string {
   return name.replace(/[/\\:*?"<>|]/g, "-").trim() || "אלבום";
 }
 
+// Photographers email this straight to clients, and a lot of inboxes/providers choke on (or flat
+// reject) attachments much past this — 20MB is the practical "will actually arrive" ceiling.
+const TARGET_MAX_BYTES = 20 * 1024 * 1024;
+// Only the embedded photo JPEGs get re-encoded between passes (masked-photo/ornament/shape PNG
+// layers stay lossless throughout) — for a photo-heavy album that's the dominant size driver, and
+// it's the one lever generateAlbumPdf exposes without also shrinking print-page dimensions.
+const QUALITY_STEPS = [90, 75, 60, 45, 30];
+
+// A first pass already renders at the default (highest) quality — this only re-renders at
+// progressively lower JPEG quality if that first PDF actually comes out over the target size, and
+// stops the moment one pass fits. The downloaded original photo bytes are shared across every pass
+// via the same cache (see downloadCache in albumPdf.ts), so a retry only re-pays the CPU cost of
+// re-encoding, not of re-fetching every photo from storage again.
+async function generatePdfUnderSizeLimit(args: Parameters<typeof generateAlbumPdf>[0]): Promise<Uint8Array> {
+  const downloadCache = new Map<string, Buffer | null>();
+  let best: Uint8Array | null = null;
+  for (const jpegQuality of QUALITY_STEPS) {
+    const bytes = await generateAlbumPdf({ ...args, jpegQuality, downloadCache });
+    best = bytes;
+    if (bytes.byteLength <= TARGET_MAX_BYTES) return bytes;
+  }
+  // Every quality step still exceeded the target — a very large/many-page album can genuinely need
+  // more than that regardless of JPEG quality. Ship the smallest (lowest-quality) attempt rather
+  // than failing the export outright.
+  return best!;
+}
+
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// Matches the other export routes (export-jpg/export-psd) — up to 5 size-fitting passes (see
+// generatePdfUnderSizeLimit above) need real headroom beyond the single-pass 120s this used to be.
+export const maxDuration = 300;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: galleryId } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
-  }
+  const auth = await authenticateGalleryRequest(request);
+  if ("error" in auth) return auth.error;
+  const supabase = createServiceRoleClient();
 
-  // RLS (galleries_all_own-style owner policy) already scopes this to the caller's own gallery —
-  // a gallery belonging to someone else simply comes back null, same as "not found".
+  // Service-role bypasses RLS, so the ownership check right here is the actual authorization
+  // boundary (matters for the bearer-token/desktop path — the cookie path's own RLS would have
+  // scoped this too, but a single explicit check covers both auth methods uniformly).
   const { data: gallery } = await supabase
     .from("galleries")
     .select("*")
     .eq("id", galleryId)
     .maybeSingle<GalleryRow>();
-  if (!gallery) {
+  if (!gallery || gallery.photographer_id !== auth.userId) {
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
 
@@ -83,8 +110,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .returns<Pick<GalleryPhotoRow, "id" | "storage_path">[]>();
   const photosById = new Map((photos ?? []).map((p) => [p.id, p]));
 
+  const customOrnamentIds = Array.from(
+    new Set(
+      rangedSpreads.flatMap((s) =>
+        s.elements.filter((el): el is typeof el & { type: "ornament"; customOrnamentId: string } => el.type === "ornament" && !!el.customOrnamentId).map((el) => el.customOrnamentId)
+      )
+    )
+  );
+  let customOrnamentsById: Map<string, { storage_path: string }> | undefined;
+  if (customOrnamentIds.length > 0) {
+    const { data: customOrnaments } = await supabase
+      .from("custom_ornaments")
+      .select("id, storage_path")
+      .in("id", customOrnamentIds)
+      .returns<{ id: string; storage_path: string }[]>();
+    customOrnamentsById = new Map((customOrnaments ?? []).map((o) => [o.id, { storage_path: o.storage_path }]));
+  }
+
   try {
-    const pdfBytes = await generateAlbumPdf({ album: rangedAlbum, spreads: rangedSpreads, photosById });
+    const pdfBytes = await generatePdfUnderSizeLimit({ album: rangedAlbum, spreads: rangedSpreads, photosById, customOrnamentsById });
     const filename = sanitizeSegment(`${album.title} - ${gallery.title}`);
     return new Response(Buffer.from(pdfBytes), {
       headers: {

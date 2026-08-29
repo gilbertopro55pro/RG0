@@ -21,7 +21,9 @@ import { downloadObjectBuffer } from "@/lib/storage";
 import { textColorRgb01, isLightTextColor } from "@/lib/textColor";
 import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
-import { ALBUM_BLUR_MAX_PX, coverCropRaw, applyMaskToRaw } from "@/lib/albumRaster";
+import { ALBUM_BLUR_MAX_PX, coverCropRaw, applyMaskToRaw, ornamentLayerRaw, composeShapeTile } from "@/lib/albumRaster";
+import { findOrnament } from "@/lib/albumOrnaments";
+import { hasAdjustments, applyAdjustmentsToRgba, type PhotoAdjustments } from "@/lib/albumAdjustments";
 import type { AlbumPhotoFilter, AlbumTextElement, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 function hexToRgbTuple(hex: string): [number, number, number] {
@@ -40,7 +42,13 @@ function hexToRgbTuple(hex: string): [number, number, number] {
 // filter applied (the common case) used to mean the PDF alone could show a photo cover-cropped
 // against its wrong (sensor-native) dimensions — visibly different rotation/crop from every other
 // surface, for any photo whose camera wrote an EXIF orientation flag.
-async function applyPhotoFilter(buffer: Buffer, filter: AlbumPhotoFilter | undefined, blurPct?: number): Promise<Buffer> {
+async function applyPhotoFilter(
+  buffer: Buffer,
+  filter: AlbumPhotoFilter | undefined,
+  blurPct?: number,
+  adjustments?: PhotoAdjustments,
+  jpegQuality: number = 90
+): Promise<Buffer> {
   let img = sharp(buffer).rotate(); // .rotate() with no args auto-applies EXIF orientation first
   // Sepia = tinted — sharp's tint() already desaturates internally before recoloring, so this is
   // the standard sepia approximation. Chaining an explicit .grayscale() *before* .tint() looks
@@ -52,7 +60,12 @@ async function applyPhotoFilter(buffer: Buffer, filter: AlbumPhotoFilter | undef
   // pdf-lib has no blur primitive at all, so this is the only place a blurred photo can come from
   // for the PDF export — baked into the pixels before embedding, same as the filter above.
   if (blurPct) img = img.blur(Math.max(0.3, (blurPct / 100) * ALBUM_BLUR_MAX_PX));
-  return img.jpeg({ quality: 90 }).toBuffer();
+  if (adjustments && hasAdjustments(adjustments)) {
+    const { data, info } = await img.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    applyAdjustmentsToRgba(data, adjustments);
+    return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).jpeg({ quality: jpegQuality }).toBuffer();
+  }
+  return img.jpeg({ quality: jpegQuality }).toBuffer();
 }
 
 // One "spread" page in the exported PDF, in points — a landscape rectangle standing in for one
@@ -183,20 +196,26 @@ function drawPhotoShadow(page: PDFPage, rect: { x: number; y: number; width: num
   }
 }
 
-// `el.fontSize` is already points on this exact 1600pt-wide reference canvas (see the
-// AlbumFontSizePt comment in types.ts), so — unlike every other geometry field here — it needs no
-// scaling at all; it *is* the PDFFont size.
+// `el.fontSize` is points on the album's 1600pt-wide REFERENCE canvas (see the AlbumFontSizePt
+// comment in types.ts) — on a normal page (pageWidth === PAGE_WIDTH === 1600) that ratio is
+// exactly 1, so `size` reduces to `el.fontSize` unchanged, same as before this took a pageWidth
+// param. A custom-sized cover page (see pageW/pageH in the caller) needs the same `/1600 * pageW`
+// scaling the canvas editor's own CSS (`calc(fontSize / 1600 * 100cqw)`) and albumRaster.ts's
+// `fontSizePx` already apply, so text reads at a consistent relative size across every export
+// format regardless of that one page's own physical size.
 // Drawn twice — a shadow pass offset by a couple points, then the real text on top — since pdf-lib
 // has no text-shadow primitive and a flat color alone can vanish against a busy photo background.
 function drawTextElement(
   page: PDFPage,
   el: AlbumTextElement,
-  fonts: { hebrewFont: PDFFont; latinFont: PDFFont }
+  fonts: { hebrewFont: PDFFont; latinFont: PDFFont },
+  pageWidth: number = PAGE_WIDTH,
+  pageHeight: number = PAGE_HEIGHT
 ) {
-  const boxX = (el.xPct / 100) * PAGE_WIDTH;
-  const boxWidth = (el.widthPct / 100) * PAGE_WIDTH;
-  const size = el.fontSize;
-  const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - size;
+  const boxX = (el.xPct / 100) * pageWidth;
+  const boxWidth = (el.widthPct / 100) * pageWidth;
+  const size = (el.fontSize / 1600) * pageWidth;
+  const y = pageHeight - (el.yPct / 100) * pageHeight - size;
   const mainColor = rgb(...textColorRgb01(el.color));
   const shadowColor = isLightTextColor(el.color) ? rgb(0, 0, 0) : rgb(1, 1, 1);
   for (const [dx, dy, color] of [
@@ -219,11 +238,29 @@ export async function generateAlbumPdf({
   album,
   spreads,
   photosById,
+  customOrnamentsById,
+  jpegQuality = 90,
+  downloadCache,
 }: {
   album: GalleryAlbumRow;
   spreads: GalleryAlbumSpreadRow[];
   photosById: Map<string, Pick<GalleryPhotoRow, "id" | "storage_path">>;
+  customOrnamentsById?: Map<string, { storage_path: string }>;
+  // Lets a caller trying several JPEG qualities to hit a target file size (see the export-pdf
+  // route) skip re-fetching every original from R2 on each retry — only the re-encode itself
+  // differs between passes, so the network round-trips are the one thing worth sharing across them.
+  jpegQuality?: number;
+  downloadCache?: Map<string, Buffer | null>;
 }): Promise<Uint8Array> {
+  const cache = downloadCache ?? new Map<string, Buffer | null>();
+  const downloadCached = async (bucket: string, path: string): Promise<Buffer | null> => {
+    const key = `${bucket}:${path}`;
+    if (cache.has(key)) return cache.get(key)!;
+    const buffer = await downloadObjectBuffer(bucket, path);
+    cache.set(key, buffer);
+    return buffer;
+  };
+
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
 
@@ -252,17 +289,23 @@ export async function generateAlbumPdf({
   };
 
   const imageCache = new Map<string, PDFImage | null>();
-  const embedByPhotoId = async (photoId: string | null, filter?: AlbumPhotoFilter, blurPct?: number): Promise<PDFImage | null> => {
+  const embedByPhotoId = async (
+    photoId: string | null,
+    filter?: AlbumPhotoFilter,
+    blurPct?: number,
+    adjustments?: PhotoAdjustments
+  ): Promise<PDFImage | null> => {
     if (!photoId) return null;
-    const cacheKey = `${photoId}:${filter ?? "none"}:${blurPct ?? 0}`;
+    const adjKey = adjustments && hasAdjustments(adjustments) ? JSON.stringify(adjustments) : "none";
+    const cacheKey = `${photoId}:${filter ?? "none"}:${blurPct ?? 0}:${adjKey}`;
     if (imageCache.has(cacheKey)) return imageCache.get(cacheKey)!;
     const photo = photosById.get(photoId);
-    let buffer = photo ? await downloadObjectBuffer("galleries", photo.storage_path) : null;
+    let buffer = photo ? await downloadCached("galleries", photo.storage_path) : null;
     // Always runs — even with no filter/blur — since this is also where EXIF orientation gets
     // normalized (see applyPhotoFilter's comment); skipping it silently would un-fix that.
     if (buffer) {
       try {
-        buffer = await applyPhotoFilter(buffer, filter, blurPct);
+        buffer = await applyPhotoFilter(buffer, filter, blurPct, adjustments, jpegQuality);
       } catch {
         // Fall back to the unfiltered (and un-EXIF-corrected) image rather than dropping it entirely.
       }
@@ -290,20 +333,85 @@ export async function generateAlbumPdf({
     focalY: number,
     filter: AlbumPhotoFilter | undefined,
     blurPct: number | undefined,
-    zoom: number | undefined
+    zoom: number | undefined,
+    adjustments: PhotoAdjustments | undefined
   ): Promise<PDFImage | null> => {
     if (!photoId) return null;
     const photo = photosById.get(photoId);
-    const buffer = photo ? await downloadObjectBuffer("galleries", photo.storage_path) : null;
+    const buffer = photo ? await downloadCached("galleries", photo.storage_path) : null;
     if (!buffer) return null;
     const scale = 2;
     const pxW = Math.max(1, Math.round(widthPt * scale));
     const pxH = Math.max(1, Math.round(heightPt * scale));
     try {
-      const cropped = await coverCropRaw(buffer, pxW, pxH, focalX, focalY, filter, true, { blur: blurPct, zoom });
+      const cropped = await coverCropRaw(buffer, pxW, pxH, focalX, focalY, filter, true, { blur: blurPct, zoom, adjustments });
       if (!cropped) return null;
       const masked = await applyMaskToRaw(cropped.data, pxW, pxH, maskId);
       const png = await sharp(masked, { raw: { width: pxW, height: pxH, channels: 4 } }).png().toBuffer();
+      return await embedImageAuto(pdfDoc, png);
+    } catch {
+      return null;
+    }
+  };
+
+  // Ornaments/shapes are rendered UNROTATED at 2x the frame's point size (same supersampling as
+  // embedMaskedPhoto above), then embedded as a plain PNG — rotation is applied at draw time via
+  // pushFrameRotation/popFrameRotation, same page-transform technique as every other rotated
+  // element here, rather than pre-rotating the raster itself.
+  const embedOrnament = async (
+    ornamentId: string | undefined,
+    customOrnamentId: string | undefined,
+    color: string | undefined,
+    widthPt: number,
+    heightPt: number
+  ): Promise<PDFImage | null> => {
+    const scale = 2;
+    const pxW = Math.max(1, Math.round(widthPt * scale));
+    const pxH = Math.max(1, Math.round(heightPt * scale));
+    let source: Buffer | null = null;
+    let tintColor: string | undefined;
+    if (customOrnamentId) {
+      const row = customOrnamentsById?.get(customOrnamentId);
+      source = row ? await downloadCached("custom-ornaments", row.storage_path) : null;
+      tintColor = color;
+    } else if (ornamentId) {
+      const ornament = findOrnament(ornamentId);
+      if (ornament) source = Buffer.from(ornament.svg.replace("<svg ", `<svg style="color:${color ?? "#2e3142"}" `));
+    }
+    if (!source) return null;
+    try {
+      const rendered = await ornamentLayerRaw(source, pxW, pxH, undefined, tintColor);
+      if (!rendered) return null;
+      const png = await sharp(rendered.data, { raw: { width: rendered.width, height: rendered.height, channels: 4 } }).png().toBuffer();
+      return await embedImageAuto(pdfDoc, png);
+    } catch {
+      return null;
+    }
+  };
+
+  const embedShape = async (
+    color: string,
+    maskId: string | undefined,
+    widthPt: number,
+    heightPt: number,
+    shapeStyle?: "rect-outline" | "circle-outline" | "line",
+    borderWidth?: number,
+    borderColor?: string
+  ): Promise<PDFImage | null> => {
+    const scale = 2;
+    const pxW = Math.max(1, Math.round(widthPt * scale));
+    const pxH = Math.max(1, Math.round(heightPt * scale));
+    try {
+      const isOutline = shapeStyle === "rect-outline" || shapeStyle === "circle-outline";
+      const tile = await composeShapeTile(
+        pxW,
+        pxH,
+        color,
+        maskId,
+        undefined,
+        isOutline ? { shapeStyle, borderWidth: borderWidth ? borderWidth * scale : undefined, borderColor } : undefined
+      );
+      const png = await sharp(tile.data, { raw: { width: tile.width, height: tile.height, channels: 4 } }).png().toBuffer();
       return await embedImageAuto(pdfDoc, png);
     } catch {
       return null;
@@ -327,31 +435,91 @@ export async function generateAlbumPdf({
     }
   }
 
+  // Points-per-cm, anchored to the album's own width — lets a spread that carries its own
+  // width_cm/height_cm (currently only ever a custom-sized cover) get a genuinely differently-
+  // proportioned PDF page instead of being forced into the fixed PAGE_WIDTH/PAGE_HEIGHT box every
+  // other page uses. A page WITHOUT an override stays byte-for-byte the same [PAGE_WIDTH,
+  // PAGE_HEIGHT] as before this existed — this scale factor is only ever consulted for the override
+  // case, never applied to change any existing page's size.
+  const ptPerCm = PAGE_WIDTH / album.width_cm;
+
   for (const spread of spreads) {
     if (spread.layout === "custom") {
+      const hasCustomSize = spread.width_cm != null && spread.height_cm != null;
+      const pageW = hasCustomSize ? spread.width_cm! * ptPerCm : PAGE_WIDTH;
+      const pageH = hasCustomSize ? spread.height_cm! * ptPerCm : PAGE_HEIGHT;
       // A free-form page can be text-only (no photo elements at all) — unlike the preset
       // layouts, it always gets a page even if every photo element fails to embed.
-      const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      const page = pdfDoc.addPage([pageW, pageH]);
       if (spread.background_photo_id) {
         const bgImage = await embedByPhotoId(spread.background_photo_id, undefined, spread.background_blur);
-        if (bgImage) drawCoverImage(page, bgImage, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }, 50, 50, { opacity: spread.background_opacity / 100 });
+        if (bgImage) drawCoverImage(page, bgImage, { x: 0, y: 0, width: pageW, height: pageH }, 50, 50, { opacity: spread.background_opacity / 100 });
       }
       for (const el of spread.elements) {
         if (el.type === "text") {
-          drawTextElement(page, el, await getFontsForFamily(el.fontFamily));
+          drawTextElement(page, el, await getFontsForFamily(el.fontFamily), pageW, pageH);
           continue;
         }
-        const width = (el.widthPct / 100) * PAGE_WIDTH;
-        const height = (el.heightPct / 100) * PAGE_HEIGHT;
-        const x = (el.xPct / 100) * PAGE_WIDTH;
-        const y = PAGE_HEIGHT - (el.yPct / 100) * PAGE_HEIGHT - height;
+        if (el.type === "ornament") {
+          const width = (el.widthPct / 100) * pageW;
+          const height = (el.heightPct / 100) * pageH;
+          const x = (el.xPct / 100) * pageW;
+          const y = pageH - (el.yPct / 100) * pageH - height;
+          const image = await embedOrnament(el.ornamentId, el.customOrnamentId, el.color, width, height);
+          if (!image) continue;
+          const rect = { x, y, width, height };
+          pushFrameRotation(page, rect, el.rotation);
+          drawPhotoShadow(page, rect, el.shadow);
+          page.drawImage(image, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
+          if (el.borderWidth) {
+            page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
+          }
+          popFrameRotation(page);
+          continue;
+        }
+        if (el.type === "shape") {
+          const width = (el.widthPct / 100) * pageW;
+          const height = (el.heightPct / 100) * pageH;
+          const x = (el.xPct / 100) * pageW;
+          const y = pageH - (el.yPct / 100) * pageH - height;
+          const isOutlineShape = el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline";
+          const image = await embedShape(el.color, el.maskId, width, height, el.shapeStyle, el.borderWidth, el.borderColor);
+          if (!image) continue;
+          const rect = { x, y, width, height };
+          pushFrameRotation(page, rect, el.rotation);
+          drawPhotoShadow(page, rect, el.shadow);
+          page.drawImage(image, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
+          // The stroke is already baked into the image itself for outline shapes (see embedShape) —
+          // drawing the usual decorative rect border on top would double it, and would be flatly
+          // wrong-shaped for a circle outline.
+          if (el.borderWidth && !isOutlineShape) {
+            page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
+          }
+          popFrameRotation(page);
+          continue;
+        }
+        const width = (el.widthPct / 100) * pageW;
+        const height = (el.heightPct / 100) * pageH;
+        const x = (el.xPct / 100) * pageW;
+        const y = pageH - (el.yPct / 100) * pageH - height;
         const rect = { x, y, width, height };
 
         if (el.maskId) {
           // Pre-cropped and pre-masked to the frame's exact box (see embedMaskedPhoto) — opacity
           // still applies at draw time same as the unmasked path, but no cover-fit clip is needed
           // since the raster already fills the rect exactly.
-          const maskedImage = await embedMaskedPhoto(el.photoId, el.maskId, width, height, el.focalX, el.focalY, el.filter, el.blur, el.zoom);
+          const maskedImage = await embedMaskedPhoto(el.photoId, el.maskId, width, height, el.focalX, el.focalY, el.filter, el.blur, el.zoom, {
+            exposure: el.exposure,
+            contrast: el.contrast,
+            highlights: el.highlights,
+            shadows2: el.shadows2,
+            whites: el.whites,
+            blacks: el.blacks,
+            temp: el.temp,
+            tint: el.tint,
+            vibrance: el.vibrance,
+            saturation2: el.saturation2,
+          });
           if (!maskedImage) continue;
           pushFrameRotation(page, rect, el.rotation);
           drawPhotoShadow(page, rect, el.shadow);
@@ -363,7 +531,18 @@ export async function generateAlbumPdf({
           continue;
         }
 
-        const image = await embedByPhotoId(el.photoId, el.filter, el.blur);
+        const image = await embedByPhotoId(el.photoId, el.filter, el.blur, {
+          exposure: el.exposure,
+          contrast: el.contrast,
+          highlights: el.highlights,
+          shadows2: el.shadows2,
+          whites: el.whites,
+          blacks: el.blacks,
+          temp: el.temp,
+          tint: el.tint,
+          vibrance: el.vibrance,
+          saturation2: el.saturation2,
+        });
         if (!image) continue;
         pushFrameRotation(page, rect, el.rotation);
         drawPhotoShadow(page, rect, el.shadow);

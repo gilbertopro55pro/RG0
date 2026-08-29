@@ -2,9 +2,19 @@
 // section) — matches the app's canonical icon convention set by NavIcons.tsx: 24x24 viewBox,
 // currentColor stroke, no fill, strokeWidth 1.6, round caps/joins.
 
-function IconBase({ size = 14, children }: { size?: number; children: React.ReactNode }) {
+function IconBase({ size = 14, className, children }: { size?: number; className?: string; children: React.ReactNode }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      width={className ? undefined : size}
+      height={className ? undefined : size}
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       {children}
     </svg>
   );
@@ -18,13 +28,26 @@ export function IconClose({ size }: { size?: number }) {
   );
 }
 
-export function IconPalette({ size }: { size?: number }) {
+// Accepts either `size` (this icon's original, fixed-pixel call sites) or `className` (so it can
+// also drop into the landing page's FEATURES grid, which sizes every icon via a `h-full w-full`
+// wrapper instead) — both are optional and mutually exclusive in practice, never combined.
+export function IconPalette({ size, className }: { size?: number; className?: string }) {
   return (
-    <IconBase size={size}>
+    <IconBase size={size} className={className}>
       <path d="M12 3.5A8.5 8.5 0 1012 20.5c1.1 0 1.9-.9 1.9-2 0-.53-.2-1-.55-1.36-.35-.36-.55-.83-.55-1.36 0-1.1.9-2 2-2H16.5A4.5 4.5 0 0021 9c0-3-4-5.5-9-5.5z" />
       <circle cx={7.5} cy={11} r={1} fill="currentColor" stroke="none" />
       <circle cx={9.5} cy={7.2} r={1} fill="currentColor" stroke="none" />
       <circle cx={14.5} cy={7} r={1} fill="currentColor" stroke="none" />
+    </IconBase>
+  );
+}
+
+export function IconRotateDevice({ size }: { size?: number }) {
+  return (
+    <IconBase size={size}>
+      <rect x={7} y={2} width={10} height={16} rx={2} transform="rotate(-20 12 10)" />
+      <path d="M19.5 15a7 7 0 0 1-10.6 5.2" />
+      <path d="M9.5 17.5l-1 3 3-.6" />
     </IconBase>
   );
 }

@@ -1,7 +1,8 @@
 import sharp from "sharp";
 import { writePsdBuffer, type Layer } from "ag-psd";
 import { downloadObjectBuffer } from "@/lib/storage";
-import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng } from "@/lib/albumRaster";
+import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng, ornamentLayerRaw, composeShapeTile } from "@/lib/albumRaster";
+import { findOrnament } from "@/lib/albumOrnaments";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 async function pngToRawRgba(buffer: Buffer): Promise<{ data: Buffer; width: number; height: number }> {
@@ -31,6 +32,7 @@ export async function renderAlbumPagePsd({
   pageWidthPx,
   pageHeightPx,
   photosById,
+  customOrnamentsById,
 }: {
   album: GalleryAlbumRow;
   spread: GalleryAlbumSpreadRow | null;
@@ -38,6 +40,7 @@ export async function renderAlbumPagePsd({
   pageWidthPx: number;
   pageHeightPx: number;
   photosById: Map<string, Pick<GalleryPhotoRow, "id" | "storage_path">>;
+  customOrnamentsById?: Map<string, { storage_path: string }>;
 }): Promise<Buffer | null> {
   const children: Layer[] = [
     {
@@ -110,6 +113,82 @@ export async function renderAlbumPagePsd({
       children.push({ name: "טקסט", top: 0, left: 0, bottom: rgba.height, right: rgba.width, imageData: { data: rgba.data, width: rgba.width, height: rgba.height } });
       continue;
     }
+    if (el.kind === "ornament") {
+      const w = Math.max(1, Math.round(el.width));
+      const h = Math.max(1, Math.round(el.height));
+      let source: Buffer | null = null;
+      let tintColor: string | undefined;
+      if (el.customOrnamentId) {
+        const row = customOrnamentsById?.get(el.customOrnamentId);
+        source = row ? await downloadObjectBuffer("custom-ornaments", row.storage_path) : null;
+        tintColor = el.color;
+      } else if (el.ornamentId) {
+        const ornament = findOrnament(el.ornamentId);
+        if (ornament) source = Buffer.from(ornament.svg.replace("<svg ", `<svg style="color:${el.color ?? "#2e3142"}" `));
+      }
+      if (!source) continue;
+      const rendered = await ornamentLayerRaw(source, w, h, el.rotation, tintColor, { borderWidth: el.borderWidth, borderColor: el.borderColor });
+      if (!rendered) continue;
+      any = true;
+      const centerX = el.x + w / 2;
+      const centerY = el.y + h / 2;
+      const top = Math.round(centerY - rendered.height / 2);
+      const left = Math.round(centerX - rendered.width / 2);
+      const ornamentShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation);
+      if (ornamentShadow) {
+        const shadowRgba = await pngToRawRgba(ornamentShadow.buffer);
+        children.push({
+          name: "צל",
+          top: ornamentShadow.top,
+          left: ornamentShadow.left,
+          bottom: ornamentShadow.top + shadowRgba.height,
+          right: ornamentShadow.left + shadowRgba.width,
+          imageData: { data: shadowRgba.data, width: shadowRgba.width, height: shadowRgba.height },
+        });
+      }
+      children.push({
+        name: "עיטור",
+        top,
+        left,
+        bottom: top + rendered.height,
+        right: left + rendered.width,
+        opacity: (el.opacity ?? 100) / 100,
+        imageData: { data: rendered.data, width: rendered.width, height: rendered.height },
+      });
+      continue;
+    }
+    if (el.kind === "shape") {
+      const w = Math.max(1, Math.round(el.width));
+      const h = Math.max(1, Math.round(el.height));
+      const frameTop = Math.round(el.y);
+      const frameLeft = Math.round(el.x);
+      const tile = await composeShapeTile(w, h, el.color, el.maskId, el.rotation, { borderWidth: el.borderWidth, borderColor: el.borderColor, shapeStyle: el.shapeStyle });
+      any = true;
+      const top = Math.round(frameTop + tile.top);
+      const left = Math.round(frameLeft + tile.left);
+      const shapeShadow = await shadowLayerPng(w, h, el.shadow, frameLeft, frameTop, el.rotation);
+      if (shapeShadow) {
+        const shadowRgba = await pngToRawRgba(shapeShadow.buffer);
+        children.push({
+          name: "צל",
+          top: shapeShadow.top,
+          left: shapeShadow.left,
+          bottom: shapeShadow.top + shadowRgba.height,
+          right: shapeShadow.left + shadowRgba.width,
+          imageData: { data: shadowRgba.data, width: shadowRgba.width, height: shadowRgba.height },
+        });
+      }
+      children.push({
+        name: "צורה",
+        top,
+        left,
+        bottom: top + tile.height,
+        right: left + tile.width,
+        opacity: (el.opacity ?? 100) / 100,
+        imageData: { data: tile.data, width: tile.width, height: tile.height },
+      });
+      continue;
+    }
     if (!el.photoId) continue;
     const photo = photosById.get(el.photoId);
     const buffer = photo ? await downloadObjectBuffer("galleries", photo.storage_path) : null;
@@ -132,6 +211,7 @@ export async function renderAlbumPagePsd({
       borderWidth: el.borderWidth,
       borderColor: el.borderColor,
       maskId: el.maskId,
+      adjustments: el.adjustments,
     });
     if (!tile) continue;
     any = true;

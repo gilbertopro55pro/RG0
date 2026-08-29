@@ -118,16 +118,16 @@ export async function sendWhatsAppTemplate(
   return { messageId: data.messages?.[0]?.id };
 }
 
-// Same as sendWhatsAppTemplate, but for a template whose HEADER component is a document — used
-// to hand the client an actual file (e.g. the album design PDF) alongside the templated text.
-// `documentUrl` must be a URL WhatsApp's servers can fetch at send time (a signed Storage URL is
-// fine — it just needs to still be valid when Meta's servers request it, not indefinitely).
-export async function sendWhatsAppDocumentTemplate(
+// A plain (non-template) document message — needs no Meta-approved template, but is subject to
+// the exact same 24h customer-service-window rule as sendWhatsAppMessage (fails with the same
+// #131047 outside that window). Used wherever the client should receive an actual file (e.g. a
+// price quote PDF) rather than a text message with a link — `documentUrl` must be a URL WhatsApp's
+// servers can fetch at send time.
+export async function sendWhatsAppDocument(
   to: string,
-  templateName: string,
   documentUrl: string,
-  documentFilename: string,
-  parameters: string[]
+  filename: string,
+  caption?: string
 ): Promise<{ messageId: string }> {
   const phoneNumberId = requireEnv("WHATSAPP_PHONE_NUMBER_ID");
   const token = requireEnv("WHATSAPP_ACCESS_TOKEN");
@@ -141,27 +141,15 @@ export async function sendWhatsAppDocumentTemplate(
     body: JSON.stringify({
       messaging_product: "whatsapp",
       to: normalizeIsraeliPhone(to),
-      type: "template",
-      template: {
-        name: templateName,
-        language: { code: "he" },
-        components: [
-          {
-            type: "header",
-            parameters: [{ type: "document", document: { link: documentUrl, filename: documentFilename } }],
-          },
-          {
-            type: "body",
-            parameters: parameters.map((text) => ({ type: "text", text })),
-          },
-        ],
-      },
+      type: "document",
+      document: { link: documentUrl, filename, ...(caption ? { caption } : {}) },
     }),
   });
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data?.error?.message ?? "שליחת הודעת תבנית וואטסאפ (עם קובץ) נכשלה");
+    throw new Error(data?.error?.message ?? "שליחת הקובץ בוואטסאפ נכשלה");
   }
   return { messageId: data.messages?.[0]?.id };
 }
+

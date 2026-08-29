@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { SUBSCRIPTION_PLANS } from "@/lib/stages";
+import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import type { Photographer, SubscriptionStatus } from "@/lib/types";
 
 const STATUS_LABELS: Record<SubscriptionStatus, string> = {
@@ -19,9 +19,7 @@ const STATUS_LABELS: Record<SubscriptionStatus, string> = {
 function computePeriodEnd(photographer: Photographer): Date {
   if (photographer.current_period_end) return new Date(photographer.current_period_end);
   const start = new Date(photographer.created_at);
-  return photographer.plan === "annual"
-    ? new Date(start.getFullYear() + 1, start.getMonth(), start.getDate())
-    : new Date(start.getFullYear(), start.getMonth() + 1, start.getDate());
+  return new Date(start.getFullYear(), start.getMonth() + SUBSCRIPTION_PLANS[photographer.plan].cycleMonths, start.getDate());
 }
 
 export default function BillingSettings({ photographer }: { photographer: Photographer }) {
@@ -36,6 +34,57 @@ export default function BillingSettings({ photographer }: { photographer: Photog
   const isActive = status === "active" || status === "trialing";
   const periodEndHe = computePeriodEnd(photographer).toLocaleDateString("he-IL");
   const autoRenewOn = autoRenew && !cancelAtPeriodEnd;
+
+  const otherPlanKeys = (Object.keys(SUBSCRIPTION_PLANS) as SubscriptionPlan[]).filter((key) => key !== photographer.plan);
+  const [pendingPlan, setPendingPlan] = useState(photographer.pending_plan);
+  const [pendingPlanEffectiveAt, setPendingPlanEffectiveAt] = useState(photographer.pending_plan_effective_at);
+  const [switchTarget, setSwitchTarget] = useState<SubscriptionPlan | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+
+  const isCurrentLongCycle = plan.cycleMonths > 1;
+  const switchExplanation = (targetKey: SubscriptionPlan) => {
+    const target = SUBSCRIPTION_PLANS[targetKey];
+    return isCurrentLongCycle
+      ? `כבר שילמת מראש על מחזור החיוב הנוכחי — הגישה שלך ממשיכה כרגיל בלי שינוי עד עשרה חודשים ממועד החיוב האחרון. רק בשני החודשים האחרונים של אותה תקופה (שבמסלול הנוכחי היו חינמיים) תחויב/י ${target.pricePerMonth}₪ בכל חודש, ומשם ואילך ימשיך חיוב לפי מסלול ${target.label}.`
+      : `המחזור הנוכחי שלך (עד ${periodEndHe}) לא משתנה — רק בחיוב הבא תחויב/י לפי מסלול ${target.label} (${target.note}).`;
+  };
+
+  const requestPlanSwitch = async (targetKey: SubscriptionPlan) => {
+    setSwitching(true);
+    setSwitchError(null);
+    const res = await fetch("/api/payplus/switch-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetPlan: targetKey }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSwitching(false);
+    if (!res.ok) {
+      setSwitchError(data.error ?? "שגיאה בתזמון החלפת המסלול");
+      return;
+    }
+    setPendingPlan(targetKey);
+    setPendingPlanEffectiveAt(data.effectiveAt);
+    setSwitchTarget(null);
+  };
+
+  const cancelPendingSwitch = async () => {
+    setSwitching(true);
+    setSwitchError(null);
+    const res = await fetch("/api/payplus/switch-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cancel: true }),
+    });
+    setSwitching(false);
+    if (!res.ok) {
+      setSwitchError("שגיאה בביטול ההחלפה המתוזמנת");
+      return;
+    }
+    setPendingPlan(null);
+    setPendingPlanEffectiveAt(null);
+  };
 
   // Turning the switch off IS the cancellation — the only way to guarantee no future charge is
   // to actually cancel the PayPlus recurring charge, not just flip a local flag. Turning it back
@@ -98,29 +147,31 @@ export default function BillingSettings({ photographer }: { photographer: Photog
       {isActive && (
         <div className="pt-3 mt-1 border-t border-line">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-ink-soft">חידוש אוטומטי</span>
+            <div>
+              <span className="text-xs font-semibold">ביטול המנוי</span>
+              <p className="text-[11px] text-ink-soft mt-0.5">
+                {autoRenewOn
+                  ? "מכבה את החידוש האוטומטי — הגישה נשארת פעילה עד תום המחזור הנוכחי"
+                  : "החידוש האוטומטי כבר כבוי"}
+              </p>
+            </div>
             <button
-              onClick={() => autoRenewOn && setConfirmingCancel(true)}
+              onClick={() => setConfirmingCancel(true)}
               disabled={!autoRenewOn || canceling}
-              role="switch"
-              aria-checked={autoRenewOn}
-              aria-label="חידוש אוטומטי"
-              className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5 disabled:opacity-70"
-              style={{
-                background: autoRenewOn ? "var(--color-amber-deep)" : "var(--color-line)",
-                justifyContent: autoRenewOn ? "flex-start" : "flex-end",
-              }}
+              className="shrink-0 rounded-lg px-3.5 py-2 text-xs font-semibold text-rose border border-rose disabled:opacity-50 disabled:border-line disabled:text-ink-soft"
             >
-              <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+              ביטול מנוי
             </button>
           </div>
 
           {confirmingCancel && (
             <div className="rounded-xl p-3 mt-3 bg-[#FBEEEC]">
+              <p className="text-xs font-semibold text-rose mb-1.5">לבטל את המנוי?</p>
               <p className="text-xs mb-3 text-rose">
-                לכבות את החידוש האוטומטי? החיוב הבא יבוטל, אך הגישה למערכת תישאר פעילה עד תום מחזור החיוב
-                הנוכחי ({periodEndHe}). האירועים, הגלריות והחוזים שלכם יישמרו במערכת ויחכו לכם — הם לא
-                נמחקים, ואפשר להפעיל את המנוי מחדש בכל עת.
+                החיוב הבא יבוטל, אך הגישה למערכת תישאר פעילה עד תום מחזור החיוב הנוכחי ({periodEndHe}).
+                האירועים, הגלריות והחוזים שלכם יישמרו במערכת ויחכו לכם — הם לא נמחקים, ואפשר להפעיל את
+                המנוי מחדש בכל עת. הפעולה הזו סופית ולא ניתנת לביטול עצמי — לחידוש המנוי תצטרכו לעבור
+                תשלום חדש.
               </p>
               <div className="flex gap-2">
                 <button
@@ -128,16 +179,70 @@ export default function BillingSettings({ photographer }: { photographer: Photog
                   disabled={canceling}
                   className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-rose text-white disabled:opacity-60"
                 >
-                  {canceling ? "מבטל..." : "כן, כבה חידוש אוטומטי"}
+                  {canceling ? "מבטל..." : "כן, לבטל את המנוי"}
                 </button>
                 <button
                   onClick={() => setConfirmingCancel(false)}
                   disabled={canceling}
                   className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft"
                 >
-                  ביטול
+                  לא, השארה פעיל
                 </button>
               </div>
+            </div>
+          )}
+
+          {!cancelAtPeriodEnd && (
+            <div className="pt-3 mt-3 border-t border-line">
+              {pendingPlan ? (
+                <div className="rounded-xl px-3.5 py-2.5 bg-amber-bg">
+                  <p className="text-xs text-amber-deep mb-2">
+                    מתוזמן מעבר למסלול {SUBSCRIPTION_PLANS[pendingPlan].label} ב-
+                    {pendingPlanEffectiveAt ? new Date(pendingPlanEffectiveAt).toLocaleDateString("he-IL") : ""}.
+                  </p>
+                  <button
+                    onClick={cancelPendingSwitch}
+                    disabled={switching}
+                    className="text-xs font-semibold text-rose disabled:opacity-60"
+                  >
+                    {switching ? "מבטל..." : "ביטול ההחלפה המתוזמנת"}
+                  </button>
+                </div>
+              ) : switchTarget ? (
+                <div className="rounded-xl p-3 bg-[#F1EFE9]">
+                  <p className="text-xs mb-3 text-ink-soft">{switchExplanation(switchTarget)}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => requestPlanSwitch(switchTarget)}
+                      disabled={switching}
+                      className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                    >
+                      {switching ? "מתזמן..." : `כן, מעבר למסלול ${SUBSCRIPTION_PLANS[switchTarget].label}`}
+                    </button>
+                    <button
+                      onClick={() => setSwitchTarget(null)}
+                      disabled={switching}
+                      className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft"
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-ink-soft">מעבר למסלול אחר:</p>
+                  {otherPlanKeys.map((key) => (
+                    <button
+                      key={key}
+                      onClick={() => setSwitchTarget(key)}
+                      className="w-full text-center text-xs font-semibold text-ink-soft underline block"
+                    >
+                      {SUBSCRIPTION_PLANS[key].label} (₪{SUBSCRIPTION_PLANS[key].pricePerMonth}/חודש)
+                    </button>
+                  ))}
+                </div>
+              )}
+              {switchError && <p className="text-xs text-rose mt-2">{switchError}</p>}
             </div>
           )}
         </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { BTN_PRESS } from "@/lib/viewTransition";
 
 export default function SettingsTabs({
   tabs,
@@ -12,21 +11,17 @@ export default function SettingsTabs({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-1.5 mb-5">
+      <select
+        value={active}
+        onChange={(e) => setActive(e.target.value)}
+        className="w-full rounded-xl px-3.5 py-3 text-sm font-semibold border border-line bg-white mb-5"
+      >
         {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActive(tab.id)}
-            className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${BTN_PRESS}`}
-            style={{
-              background: active === tab.id ? "var(--color-ink)" : "var(--color-chip)",
-              color: active === tab.id ? "var(--color-paper)" : "var(--color-ink-soft)",
-            }}
-          >
+          <option key={tab.id} value={tab.id}>
             {tab.label}
-          </button>
+          </option>
         ))}
-      </div>
+      </select>
       {/* display:none (not unmount) keeps each tab's own form state intact while switching. */}
       {tabs.map((tab) => (
         <div key={tab.id} style={{ display: active === tab.id ? "block" : "none" }}>

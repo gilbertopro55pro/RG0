@@ -4,12 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { GalleryRow } from "@/lib/types";
-
-const EXPIRY_OPTIONS: { value: 1 | 3 | 6; label: string }[] = [
-  { value: 1, label: "חודש" },
-  { value: 3, label: "3 חודשים" },
-  { value: 6, label: "חצי שנה" },
-];
+import { GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
+import { ADMIN_EMAIL } from "@/lib/admin";
 
 const CLOSE_ANIMATION_MS = 220;
 
@@ -20,7 +16,12 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
   const [title, setTitle] = useState("");
   const [shootDate, setShootDate] = useState("");
   const [clientEmail, setClientEmail] = useState("");
-  const [expiryMonths, setExpiryMonths] = useState<1 | 3 | 6 | null>(3);
+  const [clientPhone, setClientPhone] = useState("");
+  // Options (and the default, its longest one) depend on the photographer's plan — fetched once
+  // on open rather than threaded down as a prop, since this modal is opened from two unrelated
+  // parents (GalleriesListView, GallerySection) that don't otherwise need to know the plan.
+  const [expiryOptions, setExpiryOptions] = useState(GALLERY_EXPIRY_OPTIONS_BY_TIER.standard);
+  const [expiryDays, setExpiryDays] = useState<7 | 14 | 30 | 90 | 180>(30);
   const [allowDownloads, setAllowDownloads] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +33,33 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
   useEffect(() => {
     const raf = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(raf);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const { data: photographer } = await supabase
+        .from("photographers")
+        .select("plan, email")
+        .eq("id", user.id)
+        .single<{ plan: SubscriptionPlan; email: string }>();
+      if (cancelled || !photographer) return;
+      const tier =
+        SUBSCRIPTION_PLANS[photographer.plan].tier === "studio_pro" || photographer.email === ADMIN_EMAIL
+          ? "studio_pro"
+          : "standard";
+      const options = GALLERY_EXPIRY_OPTIONS_BY_TIER[tier];
+      setExpiryOptions(options);
+      setExpiryDays(options[options.length - 1].value);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const closeWithAnimation = (after?: () => void) => {
@@ -66,7 +94,8 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
         title: title.trim(),
         shoot_date: eventId ? null : shootDate || null,
         client_email: clientEmail.trim() || null,
-        expiry_months: expiryMonths,
+        client_phone: clientPhone.trim() || null,
+        expiry_days: expiryDays,
         allow_downloads: allowDownloads,
       })
       .select()
@@ -167,16 +196,15 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
               <div className="flex-1" style={{ minWidth: 150 }}>
                 <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
                 <select
-                  value={expiryMonths ?? "indefinite"}
-                  onChange={(e) => setExpiryMonths(e.target.value === "indefinite" ? null : (Number(e.target.value) as 1 | 3 | 6))}
+                  value={expiryDays}
+                  onChange={(e) => setExpiryDays(Number(e.target.value) as 7 | 14 | 30 | 90 | 180)}
                   className="w-full rounded-lg px-2 py-2 text-sm border border-line bg-white"
                 >
-                  {EXPIRY_OPTIONS.map((opt) => (
+                  {expiryOptions.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
                   ))}
-                  <option value="indefinite">ללא הגבלת זמן</option>
                 </select>
               </div>
             </div>
@@ -189,6 +217,17 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
                 onChange={(e) => setClientEmail(e.target.value)}
                 placeholder="example@gmail.com"
                 className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)</label>
+              <input
+                type="tel"
+                value={clientPhone}
+                onChange={(e) => setClientPhone(e.target.value)}
+                placeholder="050-1234567"
+                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data"
               />
             </div>
           </div>

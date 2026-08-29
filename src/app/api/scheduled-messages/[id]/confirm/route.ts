@@ -1,9 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { PAYMENT_REMINDER_TEMPLATE } from "@/lib/stages";
-import { friendlyWhatsAppError, sendWhatsAppTemplate } from "@/lib/whatsapp";
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
   const {
@@ -41,9 +39,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: event } = await supabase
     .from("events")
-    .select("client_name, client_phone")
+    .select("client_name, client_phone, client_access_token")
     .eq("id", message.event_id)
-    .single<{ client_name: string; client_phone: string | null }>();
+    .single<{ client_name: string; client_phone: string | null; client_access_token: string }>();
   const { data: payment } = await supabase
     .from("event_payments")
     .select("balance_amount")
@@ -55,25 +53,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "לא הוזן טלפון לקוח" }, { status: 400 });
   }
 
-  try {
-    await sendWhatsAppTemplate(event.client_phone, PAYMENT_REMINDER_TEMPLATE, [
-      event.client_name,
-      String(payment?.balance_amount ?? 0),
-    ]);
-    await supabase
-      .from("scheduled_messages")
-      .update({ status: "sent", sent_at: new Date().toISOString() })
-      .eq("id", message.id);
-    await supabase.from("event_notifications").insert({
-      event_id: message.event_id,
-      text: `נשלחה תזכורת תשלום ל-${event.client_phone}`,
-    });
-    return NextResponse.json({ ok: true, sent: true });
-  } catch (e) {
-    await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", message.id);
-    const raw = e instanceof Error ? e.message : "שגיאה לא ידועה";
-    const errorText = friendlyWhatsAppError(raw);
-    await supabase.from("event_notifications").insert({ event_id: message.event_id, text: errorText });
-    return NextResponse.json({ error: errorText }, { status: 500 });
-  }
+  // The actual send now happens client-side (a wa.me deep link the photographer confirms
+  // themselves — see PaymentReminderPrompts.tsx). This just builds the message and marks the
+  // reminder handled; there's no server callback to confirm the tap actually happened, same
+  // as the other interactive wa.me flows.
+  const portalLink = `${new URL(request.url).origin}/portal/${event.client_access_token}`;
+  const message_text =
+    `שלום ${event.client_name},\nתזכורת ידידותית — נשארה יתרה של ₪${payment?.balance_amount ?? 0} לתשלום עבור האירוע שלכם.\n\n` +
+    `לצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n${portalLink}`;
+
+  await supabase
+    .from("scheduled_messages")
+    .update({ status: "sent", sent_at: new Date().toISOString() })
+    .eq("id", message.id);
+  await supabase.from("event_notifications").insert({
+    event_id: message.event_id,
+    text: `נשלחה תזכורת תשלום ל-${event.client_phone}`,
+  });
+
+  return NextResponse.json({ ok: true, sent: true, clientPhone: event.client_phone, message: message_text });
 }

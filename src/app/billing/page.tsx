@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import type { Photographer } from "@/lib/types";
-import BillingCheckoutButton from "@/components/BillingCheckoutButton";
+import BillingPlanSelector from "@/components/BillingPlanSelector";
 import LogoutButton from "@/components/LogoutButton";
 
 export default async function BillingPage({
@@ -27,7 +26,6 @@ export default async function BillingPage({
     redirect("/");
   }
 
-  const plan = SUBSCRIPTION_PLANS[photographer.plan];
   const isPastDue = photographer.subscription_status === "past_due";
   const isCanceled = photographer.subscription_status === "canceled";
 
@@ -50,19 +48,7 @@ export default async function BillingPage({
         {error === "1" && (
           <p className="text-xs text-rose mb-4">התשלום לא הושלם או נכשל — ניתן לנסות שוב.</p>
         )}
-        <div className="rounded-2xl p-4 relative mb-5 bg-white border-[1.5px] border-amber shadow-card">
-          {plan.badge && (
-            <span className="absolute -top-2.5 left-4 text-[10px] px-2 py-0.5 rounded-full tracking-wide bg-amber text-white">
-              {plan.badge}
-            </span>
-          )}
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold font-display">₪{plan.pricePerMonth}</span>
-            <span className="text-xs text-ink-soft">/ לחודש</span>
-          </div>
-          <div className="text-[11px] mt-1 text-ink-soft">{plan.note}</div>
-        </div>
-        <BillingCheckoutButton plan={photographer.plan} />
+        <BillingPlanSelector initialPlan={photographer.plan} />
       </div>
     </div>
   );

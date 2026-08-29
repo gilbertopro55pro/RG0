@@ -6,13 +6,15 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   const savedState = request.cookies.get("google_oauth_state")?.value;
+  const savedRedirectPath = request.cookies.get("google_oauth_redirect")?.value;
 
-  const redirectTo = new URL("/settings", request.url);
+  const redirectTo = new URL(savedRedirectPath?.startsWith("/") ? savedRedirectPath : "/settings", request.url);
 
   if (!code || !state || state !== savedState) {
     redirectTo.searchParams.set("google_error", "1");
     const res = NextResponse.redirect(redirectTo);
     res.cookies.delete("google_oauth_state");
+    res.cookies.delete("google_oauth_redirect");
     return res;
   }
 
@@ -41,5 +43,6 @@ export async function GET(request: NextRequest) {
 
   const res = NextResponse.redirect(redirectTo);
   res.cookies.delete("google_oauth_state");
+  res.cookies.delete("google_oauth_redirect");
   return res;
 }

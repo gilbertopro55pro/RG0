@@ -2,17 +2,28 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ADMIN_EMAIL } from "@/lib/admin";
-import type { CustomPackageRow, CustomPackageStageRow, EventTypeRow, PackagePriceRow, Photographer, TeamMember } from "@/lib/types";
+import { getSignedDownloadUrl } from "@/lib/storage";
+import type { ClientMessageTemplateRow, CustomPackageRow, CustomPackageStageRow, EventTypeRow, PackagePriceRow, Photographer, PriceQuoteRow, PrintHouseEmailRow, TeamMember } from "@/lib/types";
 import ProfileSettingsView from "@/components/ProfileSettingsView";
 import TeamManagementView from "@/components/TeamManagementView";
 import PricingSettings from "@/components/PricingSettings";
+import PriceQuotesSettings from "@/components/PriceQuotesSettings";
+import PricingSuppliersSettings from "@/components/PricingSuppliersSettings";
 import BotSettings from "@/components/BotSettings";
 import BillingSettings from "@/components/BillingSettings";
+import StorageUsageSettings from "@/components/StorageUsageSettings";
+import BrandingSettings from "@/components/BrandingSettings";
 import CustomPackagesSettings from "@/components/CustomPackagesSettings";
+import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
+import ClientMessagesSettings from "@/components/ClientMessagesSettings";
+import TermsOfUseSettings from "@/components/TermsOfUseSettings";
+import ContractTemplateSettings from "@/components/ContractTemplateSettings";
+import PortfolioSettings from "@/components/PortfolioSettings";
 import AppearanceSettings from "@/components/AppearanceSettings";
 import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
 import { CURRENT_VERSION } from "@/lib/changelog";
+import { SUBSCRIPTION_PLANS, TEAM_MEMBER_LIMIT_BY_TIER } from "@/lib/stages";
 
 export default async function SettingsPage({
   searchParams,
@@ -35,6 +46,10 @@ export default async function SettingsPage({
     { data: prices },
     { data: customPackages },
     { data: customStages },
+    { data: printHouseEmails },
+    { data: priceQuotes },
+    { data: messageTemplates },
+    { data: storageBytes },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).single<Photographer>(),
     supabase.from("team_members").select("*").order("created_at", { ascending: true }).returns<TeamMember[]>(),
@@ -42,9 +57,19 @@ export default async function SettingsPage({
     supabase.from("package_prices").select("*").returns<PackagePriceRow[]>(),
     supabase.from("custom_packages").select("*").order("sort_order", { ascending: true }).returns<CustomPackageRow[]>(),
     supabase.from("custom_package_stages").select("*").order("sort_order", { ascending: true }).returns<CustomPackageStageRow[]>(),
+    supabase.from("print_house_emails").select("*").order("created_at", { ascending: true }).returns<PrintHouseEmailRow[]>(),
+    supabase.from("price_quotes").select("*").order("created_at", { ascending: false }).returns<PriceQuoteRow[]>(),
+    supabase.from("client_message_templates").select("*").eq("photographer_id", user!.id).returns<ClientMessageTemplateRow[]>(),
+    // Summed server-side (see migration 0084) so this stays cheap regardless of photo count —
+    // never fetch every gallery_photos row just to add up its file_size_bytes client-side.
+    supabase.rpc("photographer_storage_bytes", { p_photographer_id: user!.id }),
   ]);
 
   if (!photographer) redirect("/");
+
+  const logoUrl = photographer.logo_storage_path
+    ? await getSignedDownloadUrl("logos", photographer.logo_storage_path, 3600)
+    : null;
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
@@ -79,7 +104,25 @@ export default async function SettingsPage({
                     initialPrices={prices ?? []}
                   />
                 </div>
+                <div className="mt-5">
+                  <PricingSuppliersSettings
+                    initialHourlyRate={photographer.hourly_shoot_rate}
+                    initialSuppliers={photographer.pricing_suppliers}
+                  />
+                </div>
               </>
+            ),
+          },
+          {
+            id: "quotes",
+            label: "הצעות מחיר",
+            content: (
+              <PriceQuotesSettings
+                initialQuotes={priceQuotes ?? []}
+                initialLogoPath={photographer.logo_storage_path}
+                initialLogoUrl={logoUrl}
+                initialBusinessId={photographer.business_id}
+              />
             ),
           },
           {
@@ -99,7 +142,19 @@ export default async function SettingsPage({
               <>
                 <BillingSettings photographer={photographer} />
                 <div className="mt-5">
-                  <TeamManagementView initialTeamMembers={teamMembers ?? []} />
+                  <StorageUsageSettings usedBytes={Number(storageBytes ?? 0)} />
+                </div>
+                <div className="mt-5">
+                  <BrandingSettings photographer={photographer} hasLogo={!!photographer.logo_storage_path} />
+                </div>
+                <div className="mt-5">
+                  <TeamManagementView
+                    initialTeamMembers={teamMembers ?? []}
+                    limit={TEAM_MEMBER_LIMIT_BY_TIER[SUBSCRIPTION_PLANS[photographer.plan].tier]}
+                  />
+                </div>
+                <div className="mt-5">
+                  <PrintHouseEmailsSettings initialEmails={printHouseEmails ?? []} />
                 </div>
                 {user?.email === ADMIN_EMAIL && (
                   <div className="mt-5 rounded-2xl p-4 bg-card border border-line shadow-card">
@@ -117,9 +172,29 @@ export default async function SettingsPage({
             ),
           },
           {
+            id: "client_messages",
+            label: "הודעות ללקוח/ה",
+            content: <ClientMessagesSettings initialTemplates={messageTemplates ?? []} />,
+          },
+          {
+            id: "contract_template",
+            label: "תבנית חוזה",
+            content: <ContractTemplateSettings photographer={photographer} />,
+          },
+          {
+            id: "portfolio",
+            label: "פורטפוליו",
+            content: <PortfolioSettings photographer={photographer} />,
+          },
+          {
             id: "updates",
             label: "עדכונים",
             content: <UpdatesSettings />,
+          },
+          {
+            id: "terms",
+            label: "תקנון שימוש",
+            content: <TermsOfUseSettings />,
           },
         ]}
       />

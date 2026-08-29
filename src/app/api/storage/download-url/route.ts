@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSignedDownloadUrl } from "@/lib/storage";
 
-const VALID_BUCKETS = new Set(["galleries", "album-designs"]);
+const VALID_BUCKETS = new Set(["galleries", "album-designs", "logos"]);
 
 // Same ownership model as upload-url: the caller may only request a signed download link for a
 // path under their own user id prefix.

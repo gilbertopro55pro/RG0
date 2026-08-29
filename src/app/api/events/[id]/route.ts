@@ -1,22 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { deleteEventFromGoogleCalendar, syncEventToGoogleCalendar, updateEventInGoogleCalendar } from "@/lib/googleCalendarSync";
+import {
+  deleteEventFromGoogleCalendar,
+  GoogleCalendarDisconnectedError,
+  syncEventToGoogleCalendar,
+  updateEventInGoogleCalendar,
+} from "@/lib/googleCalendarSync";
 import { deleteEventFromAppleCalendar, syncEventToAppleCalendar, updateEventInAppleCalendar } from "@/lib/appleCalendarSync";
 import { packageLabel } from "@/lib/stages";
 import type { EventRow } from "@/lib/types";
-
-function toMinutes(t: string): number {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
-
-function eventsConflict(
-  a: { start: string | null; end: string | null },
-  b: { start: string | null; end: string | null }
-): boolean {
-  if (!a.start || !a.end || !b.start || !b.end) return true;
-  return toMinutes(a.start) < toMinutes(b.end) && toMinutes(b.start) < toMinutes(a.end);
-}
+import { eventsConflict } from "@/lib/eventTime";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
@@ -123,6 +116,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     `שעת צילומי משפחה: ${arrivalTime || "יעודכן"}`;
 
   let googleCalendarError: string | null = null;
+  let googleCalendarDisconnected = false;
   try {
     if (existing.google_calendar_event_id) {
       await updateEventInGoogleCalendar(supabase, user.id, existing.google_calendar_event_id, {
@@ -149,8 +143,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
   } catch (e) {
-    googleCalendarError = e instanceof Error ? e.message : "שגיאה לא ידועה";
-    notifications.push({ event_id: eventId, text: `שגיאה בעדכון האירוע ביומן Google: ${googleCalendarError}` });
+    if (e instanceof GoogleCalendarDisconnectedError) {
+      googleCalendarDisconnected = true;
+      googleCalendarError = "החיבור ליומן Google פג תוקף. יש להתחבר מחדש בהגדרות כדי להמשיך לסנכרן אירועים.";
+      notifications.push({ event_id: eventId, text: "החיבור ליומן Google פג תוקף — יש להתחבר מחדש בהגדרות" });
+    } else {
+      googleCalendarError = e instanceof Error ? e.message : "שגיאה לא ידועה";
+      notifications.push({ event_id: eventId, text: `שגיאה בעדכון האירוע ביומן Google: ${googleCalendarError}` });
+    }
   }
 
   try {
@@ -183,7 +183,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   await supabase.from("event_notifications").insert(notifications);
 
-  return NextResponse.json({ event: updated, googleCalendarError });
+  return NextResponse.json({ event: updated, googleCalendarError, googleCalendarDisconnected });
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -208,13 +208,19 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   let googleCalendarError: string | null = null;
+  let googleCalendarDisconnected = false;
   if (event.google_calendar_event_id) {
     try {
       await deleteEventFromGoogleCalendar(supabase, user.id, event.google_calendar_event_id);
     } catch (e) {
       // Best-effort — don't block deleting the event from our system if Google's side fails,
       // but surface it in the response so the UI can tell the photographer to remove it manually.
-      googleCalendarError = e instanceof Error ? e.message : "שגיאה לא ידועה";
+      if (e instanceof GoogleCalendarDisconnectedError) {
+        googleCalendarDisconnected = true;
+        googleCalendarError = "החיבור ליומן Google פג תוקף. יש להתחבר מחדש בהגדרות.";
+      } else {
+        googleCalendarError = e instanceof Error ? e.message : "שגיאה לא ידועה";
+      }
     }
   }
 
@@ -232,5 +238,5 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, googleCalendarError, appleCalendarError });
+  return NextResponse.json({ ok: true, googleCalendarError, googleCalendarDisconnected, appleCalendarError });
 }

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { LEAD_FOLLOW_UP_TEMPLATES, REVIEW_REQUEST_TEMPLATE } from "@/lib/stages";
+import { LEAD_FOLLOW_UP_TEMPLATES } from "@/lib/stages";
 import { friendlyWhatsAppError, sendWhatsAppTemplate } from "@/lib/whatsapp";
 
 type ScheduledMessage = {
@@ -47,40 +47,17 @@ export async function GET(request: NextRequest) {
       continue;
     }
 
-    // Payment reminders never message the client directly here — the photographer must
-    // confirm the balance is still unpaid first (see api/scheduled-messages/[id]/confirm-*).
-    if (message.kind === "payment_reminder") {
-      await supabase.from("scheduled_messages").update({ status: "awaiting_confirmation" }).eq("id", message.id);
-      await supabase.from("event_notifications").insert({
-        event_id: message.event_id,
-        text: "הגיע מועד תזכורת התשלום — ממתין לאישורך שהיתרה עדיין לא שולמה",
-      });
-      results.push({ id: message.id, status: "awaiting_confirmation" });
-      continue;
-    }
-
-    try {
-      await sendWhatsAppTemplate(event.client_phone, REVIEW_REQUEST_TEMPLATE, [
-        event.client_name,
-        process.env.GOOGLE_REVIEW_LINK || "",
-      ]);
-      await supabase
-        .from("scheduled_messages")
-        .update({ status: "sent", sent_at: new Date().toISOString() })
-        .eq("id", message.id);
-      await supabase.from("event_notifications").insert({
-        event_id: message.event_id,
-        text: `נשלחה תזכורת ביקורת ל-${event.client_phone}`,
-      });
-      results.push({ id: message.id, status: "sent" });
-    } catch (e) {
-      await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", message.id);
-      await supabase.from("event_notifications").insert({
-        event_id: message.event_id,
-        text: friendlyWhatsAppError(e instanceof Error ? e.message : "שגיאה לא ידועה"),
-      });
-      results.push({ id: message.id, status: "failed", reason: e instanceof Error ? e.message : "unknown" });
-    }
+    // Neither payment reminders nor review requests message the client directly from here —
+    // both need a live browser to open the wa.me deep link, so this just flags them pending;
+    // the photographer taps to actually send from the dashboard prompt (see
+    // PaymentReminderPrompts.tsx / ReviewRequestPrompts.tsx and their confirm routes).
+    const pendingText =
+      message.kind === "payment_reminder"
+        ? "הגיע מועד תזכורת התשלום — ממתין לאישורך שהיתרה עדיין לא שולמה"
+        : "הגיע מועד בקשת הביקורת — ממתין לאישורך לשליחה";
+    await supabase.from("scheduled_messages").update({ status: "awaiting_confirmation" }).eq("id", message.id);
+    await supabase.from("event_notifications").insert({ event_id: message.event_id, text: pendingText });
+    results.push({ id: message.id, status: "awaiting_confirmation" });
   }
 
   return NextResponse.json({ processed: results.length, results });

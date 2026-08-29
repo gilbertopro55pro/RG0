@@ -17,8 +17,16 @@ self.addEventListener("activate", (event) => {
 
 // Network-first for page navigations, falling back to a static offline page — this app is
 // data-driven (live event/payment state), so we deliberately don't cache-first anything dynamic.
+//
+// Explicitly excludes API routes and anything but a plain GET: a file-download form POST (e.g.
+// the gallery's "download all" zip) is also a "navigate"-mode request, and re-issuing it here via
+// fetch(event.request) doesn't reliably replay the POST body on every browser (WebKit/mobile
+// Safari in particular) — the request reaches the server with an empty body, which fails
+// validation and returns a tiny JSON error instead of the real file. Leaving these requests
+// alone (no respondWith at all) makes the browser handle them exactly as if there were no service
+// worker, which is what a binary file download needs.
 self.addEventListener("fetch", (event) => {
-  if (event.request.mode === "navigate") {
+  if (event.request.mode === "navigate" && event.request.method === "GET" && !event.request.url.includes("/api/")) {
     event.respondWith(fetch(event.request).catch(() => caches.match("/offline.html")));
   }
 });

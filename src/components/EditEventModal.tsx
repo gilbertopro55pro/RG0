@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { EventRow } from "@/lib/types";
 import { useModalEntered } from "@/lib/useModalEntered";
+import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 
 export default function EditEventModal({
   event,
@@ -59,7 +60,9 @@ export default function EditEventModal({
       setDateConflict(!!data.conflict);
       return;
     }
-    if (data.googleCalendarError) {
+    if (data.googleCalendarDisconnected) {
+      alert("הפרטים נשמרו, אבל החיבור ליומן Google פג תוקף — יש להתחבר מחדש בהגדרות כדי שהאירועים ימשיכו להסתנכרן.");
+    } else if (data.googleCalendarError) {
       alert(`הפרטים נשמרו, אבל לא ניתן היה לעדכן את האירוע ביומן Google (${data.googleCalendarError}).`);
     }
 
@@ -76,7 +79,11 @@ export default function EditEventModal({
       setDeleting(false);
       return;
     }
-    if (data.googleCalendarError) {
+    if (data.googleCalendarDisconnected) {
+      alert(
+        "האירוע נמחק מהמערכת. שימו לב: החיבור ליומן Google פג תוקף, כך שהוא לא הוסר משם — יש להתחבר מחדש בהגדרות ולמחוק אותו ידנית מיומן Google."
+      );
+    } else if (data.googleCalendarError) {
       alert(
         `האירוע נמחק מהמערכת, אבל לא ניתן היה למחוק אותו מיומן Google (${data.googleCalendarError}). יש למחוק אותו ידנית מיומן Google.`
       );
@@ -125,21 +132,38 @@ export default function EditEventModal({
           </div>
           <div>
             <label className="text-xs block mb-1 text-ink-soft">תאריך האירוע</label>
-            <input
-              type="date"
-              value={eventDate}
-              onChange={(e) => setEventDate(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-            />
+            <div className="relative">
+              <input
+                type="date"
+                value={eventDate}
+                onChange={(e) => setEventDate(e.target.value)}
+                dir="ltr"
+                className={`w-full min-w-0 max-w-full block rounded-lg px-3 py-2 text-sm text-center border border-line bg-white ${eventDate ? "text-transparent" : ""}`}
+              />
+              {/* A native date input's inline (unfocused) display always uses the browser/OS
+                  locale format with no override, which was showing YYYY / MM / DD instead of
+                  DD/MM/YYYY — sits on top of the real input (kept fully interactive underneath,
+                  just with its own text made transparent) instead of replacing it, so the native
+                  calendar popup keeps working exactly as before. */}
+              {eventDate && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm" dir="ltr">
+                  {formatDateDMYFromInput(eventDate)}
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex gap-2">
+            {/* Without dir="ltr" a native time input's own inline value renders right-to-left,
+                which reflows it wider than its half of the row and makes it climb onto the
+                neighboring field — not a sizing issue, min-w-0 alone doesn't fix it. */}
             <div className="flex-1 min-w-0">
               <label className="text-xs block mb-1 text-ink-soft">שעת התחלה</label>
               <input
                 type="time"
                 value={eventStartTime}
                 onChange={(e) => setEventStartTime(e.target.value)}
-                className="w-full min-w-0 rounded-lg px-1.5 py-2 text-sm border border-line bg-white"
+                dir="ltr"
+                className="w-full min-w-0 max-w-full block rounded-lg px-1.5 py-2 text-sm text-center border border-line bg-white"
               />
             </div>
             <div className="flex-1 min-w-0">
@@ -148,7 +172,8 @@ export default function EditEventModal({
                 type="time"
                 value={eventEndTime}
                 onChange={(e) => setEventEndTime(e.target.value)}
-                className="w-full min-w-0 rounded-lg px-1.5 py-2 text-sm border border-line bg-white"
+                dir="ltr"
+                className="w-full min-w-0 max-w-full block rounded-lg px-1.5 py-2 text-sm text-center border border-line bg-white"
               />
             </div>
           </div>
@@ -157,7 +182,7 @@ export default function EditEventModal({
             <input
               value={eventLocation}
               onChange={(e) => setEventLocation(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+              className="w-full rounded-lg px-3 py-2 text-sm text-center border border-line bg-white"
             />
           </div>
           <div>
@@ -166,7 +191,8 @@ export default function EditEventModal({
               type="time"
               value={arrivalTime}
               onChange={(e) => setArrivalTime(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+              dir="ltr"
+              className="w-full min-w-0 max-w-full block rounded-lg px-3 py-2 text-sm text-center border border-line bg-white"
             />
           </div>
           <div>

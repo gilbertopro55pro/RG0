@@ -1,0 +1,92 @@
+[
+  {
+    "cssW": 320,
+    "cssH": 568,
+    "dpr": 2,
+    "file": "640x1136.png"
+  },
+  {
+    "cssW": 375,
+    "cssH": 667,
+    "dpr": 2,
+    "file": "750x1334.png"
+  },
+  {
+    "cssW": 414,
+    "cssH": 736,
+    "dpr": 3,
+    "file": "1242x2208.png"
+  },
+  {
+    "cssW": 375,
+    "cssH": 812,
+    "dpr": 3,
+    "file": "1125x2436.png"
+  },
+  {
+    "cssW": 414,
+    "cssH": 896,
+    "dpr": 2,
+    "file": "828x1792.png"
+  },
+  {
+    "cssW": 414,
+    "cssH": 896,
+    "dpr": 3,
+    "file": "1242x2688.png"
+  },
+  {
+    "cssW": 390,
+    "cssH": 844,
+    "dpr": 3,
+    "file": "1170x2532.png"
+  },
+  {
+    "cssW": 428,
+    "cssH": 926,
+    "dpr": 3,
+    "file": "1284x2778.png"
+  },
+  {
+    "cssW": 393,
+    "cssH": 852,
+    "dpr": 3,
+    "file": "1179x2556.png"
+  },
+  {
+    "cssW": 430,
+    "cssH": 932,
+    "dpr": 3,
+    "file": "1290x2796.png"
+  },
+  {
+    "cssW": 768,
+    "cssH": 1024,
+    "dpr": 2,
+    "file": "1536x2048.png"
+  },
+  {
+    "cssW": 810,
+    "cssH": 1080,
+    "dpr": 2,
+    "file": "1620x2160.png"
+  },
+  {
+    "cssW": 834,
+    "cssH": 1112,
+    "dpr": 2,
+    "file": "1668x2224.png"
+  },
+  {
+    "cssW": 834,
+    "cssH": 1194,
+    "dpr": 2,
+    "file": "1668x2388.png"
+  },
+  {
+    "cssW": 1024,
+    "cssH": 1366,
+    "dpr": 2,
+    "file": "2048x2732.png"
+  }
+]

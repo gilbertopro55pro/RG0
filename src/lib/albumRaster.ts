@@ -6,6 +6,8 @@ import { downloadObjectBuffer } from "@/lib/storage";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
 import type { AlbumElement, AlbumPhotoFilter, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 import { ALBUM_MASKS } from "@/lib/albumMasks";
+import { findOrnament } from "@/lib/albumOrnaments";
+import { applyAdjustmentsToRgba, type PhotoAdjustments } from "@/lib/albumAdjustments";
 
 export const DPI = 300;
 
@@ -135,9 +137,40 @@ type ResolvedPhoto = {
   shadow?: number;
   zoom?: number;
   maskId?: string;
+  adjustments?: PhotoAdjustments;
 };
 type ResolvedText = { kind: "text"; text: string; x: number; y: number; width: number; fontSizePx: number; color: string; align: "right" | "center" | "left"; fontFamily?: string };
-type Resolved = ResolvedPhoto | ResolvedText;
+type ResolvedOrnament = {
+  kind: "ornament";
+  ornamentId?: string;
+  customOrnamentId?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color?: string;
+  rotation?: number;
+  opacity?: number;
+  shadow?: number;
+  borderWidth?: number;
+  borderColor?: string;
+};
+type ResolvedShape = {
+  kind: "shape";
+  maskId?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  rotation?: number;
+  opacity?: number;
+  shadow?: number;
+  borderWidth?: number;
+  borderColor?: string;
+  shapeStyle?: "rect-outline" | "circle-outline" | "line";
+};
+type Resolved = ResolvedPhoto | ResolvedText | ResolvedOrnament | ResolvedShape;
 
 const GAP_FRAC = 0.005;
 
@@ -184,8 +217,54 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
         shadow: el.shadow,
         zoom: el.zoom,
         maskId: el.maskId,
+        adjustments: {
+          exposure: el.exposure,
+          contrast: el.contrast,
+          highlights: el.highlights,
+          shadows2: el.shadows2,
+          whites: el.whites,
+          blacks: el.blacks,
+          temp: el.temp,
+          tint: el.tint,
+          vibrance: el.vibrance,
+          saturation2: el.saturation2,
+        },
       }));
-    return [...photos, ...textElements];
+    const ornaments: ResolvedOrnament[] = spread.elements
+      .filter((el): el is Extract<AlbumElement, { type: "ornament" }> => el.type === "ornament")
+      .map((el) => ({
+        kind: "ornament",
+        ornamentId: el.ornamentId,
+        customOrnamentId: el.customOrnamentId,
+        x: (el.xPct / 100) * pageWidthPx,
+        y: (el.yPct / 100) * pageHeightPx,
+        width: (el.widthPct / 100) * pageWidthPx,
+        height: (el.heightPct / 100) * pageHeightPx,
+        color: el.color,
+        rotation: el.rotation,
+        opacity: el.opacity,
+        shadow: el.shadow,
+        borderWidth: el.borderWidth,
+        borderColor: el.borderColor,
+      }));
+    const shapes: ResolvedShape[] = spread.elements
+      .filter((el): el is Extract<AlbumElement, { type: "shape" }> => el.type === "shape")
+      .map((el) => ({
+        kind: "shape",
+        maskId: el.maskId,
+        x: (el.xPct / 100) * pageWidthPx,
+        y: (el.yPct / 100) * pageHeightPx,
+        width: (el.widthPct / 100) * pageWidthPx,
+        height: (el.heightPct / 100) * pageHeightPx,
+        color: el.color,
+        rotation: el.rotation,
+        opacity: el.opacity,
+        shadow: el.shadow,
+        borderWidth: el.borderWidth,
+        borderColor: el.borderColor,
+        shapeStyle: el.shapeStyle,
+      }));
+    return [...photos, ...ornaments, ...shapes, ...textElements];
   }
 
   if (!spread.photo_id_2) {
@@ -229,6 +308,135 @@ async function applyMaskToRaw(data: Buffer, width: number, height: number, maskI
     .toBuffer();
 }
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  const n = parseInt(full, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function solidFillRaw(width: number, height: number, r: number, g: number, b: number): Buffer {
+  const data = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    data[i * 4] = r;
+    data[i * 4 + 1] = g;
+    data[i * 4 + 2] = b;
+    data[i * 4 + 3] = 255;
+  }
+  return data;
+}
+
+// Rasterizes a decorative ornament (a currentColor SVG, or an uploaded raster image) at its target
+// pixel size, rotated as a whole — mirrors the live builder/preview rendering. Procedural ornaments
+// arrive already tinted via the SVG's own `style="color:X"`. An uploaded raster ornament can
+// optionally be tinted here too (tintColor), by replacing its pixels with a solid color masked by
+// its own alpha channel — same technique as the CSS `mask-image`+`background-color` tint used live.
+async function ornamentLayerRaw(
+  source: Buffer,
+  width: number,
+  height: number,
+  rotationDeg?: number,
+  tintColor?: string,
+  extra?: { borderWidth?: number; borderColor?: string }
+): Promise<{ data: Buffer; width: number; height: number } | null> {
+  let src = source;
+  if (tintColor) {
+    const meta = await sharp(source).metadata();
+    const solid = await sharp({
+      create: { width: meta.width ?? width, height: meta.height ?? height, channels: 4, background: { ...hexToRgb(tintColor), alpha: 1 } },
+    })
+      .png()
+      .toBuffer();
+    src = await sharp(solid).composite([{ input: source, blend: "dest-in" }]).png().toBuffer();
+  }
+  let img = sharp(src).resize(width, height, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } });
+  let { data, info } = await img.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let w = info.width;
+  let h = info.height;
+  if (extra?.borderWidth) {
+    // Same rectangular-stroke technique as composePhotoTile's border — traces the ornament's own
+    // bounding box, not its silhouette, matching the live builder/proofing CSS outline (which does
+    // the same, since a per-shape-traced outline isn't something CSS outline can do either).
+    const strokeSvg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect x="${extra.borderWidth / 2}" y="${extra.borderWidth / 2}" width="${w - extra.borderWidth}" height="${h - extra.borderWidth}" fill="none" stroke="${extra.borderColor ?? "#ffffff"}" stroke-width="${extra.borderWidth}"/></svg>`;
+    data = await sharp(data, { raw: { width: w, height: h, channels: 4 } })
+      .composite([{ input: Buffer.from(strokeSvg) }])
+      .ensureAlpha()
+      .raw()
+      .toBuffer();
+  }
+  if (rotationDeg) {
+    const rotated = await sharp(data, { raw: { width: w, height: h, channels: 4 } })
+      .rotate(rotationDeg, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    data = rotated.data;
+    w = rotated.info.width;
+    h = rotated.info.height;
+  }
+  return { data, width: w, height: h };
+}
+
+// A geometric shape is a plain solid-color rectangle, optionally clipped by one of the same
+// ALBUM_MASKS outlines used on photos (applyMaskToRaw above) and rotated as a whole — mirrors the
+// live builder/preview's CSS mask-image + background-color rendering.
+async function composeShapeTile(
+  width: number,
+  height: number,
+  color: string,
+  maskId?: string,
+  rotationDeg?: number,
+  // "line" is intentionally accepted but not treated as isOutline below — it's still a solid fill,
+  // just a thin one; only the two true outline kinds skip the fill entirely.
+  extra?: { borderWidth?: number; borderColor?: string; shapeStyle?: "rect-outline" | "circle-outline" | "line" }
+): Promise<{ data: Buffer; width: number; height: number; left: number; top: number }> {
+  const isOutline = extra?.shapeStyle === "rect-outline" || extra?.shapeStyle === "circle-outline";
+  let data: Buffer;
+  let w = width;
+  let h = height;
+  if (isOutline) {
+    // No fill at all — borderWidth/borderColor double as the stroke's own width/color rather than a
+    // decorative extra border on top of a fill, so this renders straight to a stroked, transparent
+    // canvas instead of going through solidFillRaw + applyMaskToRaw.
+    const strokeWidth = extra?.borderWidth ?? 5;
+    const strokeColor = extra?.borderColor ?? color;
+    const shapeSvg =
+      extra?.shapeStyle === "circle-outline"
+        ? `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${w / 2}" cy="${h / 2}" rx="${Math.max(0, w / 2 - strokeWidth / 2)}" ry="${Math.max(0, h / 2 - strokeWidth / 2)}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}"/></svg>`
+        : `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect x="${strokeWidth / 2}" y="${strokeWidth / 2}" width="${Math.max(0, w - strokeWidth)}" height="${Math.max(0, h - strokeWidth)}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}"/></svg>`;
+    data = await sharp(Buffer.from(shapeSvg)).ensureAlpha().raw().toBuffer();
+  } else {
+    const { r, g, b } = hexToRgb(color);
+    data = solidFillRaw(width, height, r, g, b);
+    if (maskId) {
+      data = await applyMaskToRaw(data, w, h, maskId);
+    }
+    if (extra?.borderWidth) {
+      const strokeSvg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect x="${extra.borderWidth / 2}" y="${extra.borderWidth / 2}" width="${w - extra.borderWidth}" height="${h - extra.borderWidth}" fill="none" stroke="${extra.borderColor ?? "#ffffff"}" stroke-width="${extra.borderWidth}"/></svg>`;
+      data = await sharp(data, { raw: { width: w, height: h, channels: 4 } })
+        .composite([{ input: Buffer.from(strokeSvg) }])
+        .ensureAlpha()
+        .raw()
+        .toBuffer();
+    }
+  }
+  let left = 0;
+  let top = 0;
+  if (rotationDeg) {
+    const rotated = await sharp(data, { raw: { width: w, height: h, channels: 4 } })
+      .rotate(rotationDeg, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    left = -(rotated.info.width - w) / 2;
+    top = -(rotated.info.height - h) / 2;
+    w = rotated.info.width;
+    h = rotated.info.height;
+    data = rotated.data;
+  }
+  return { data, width: w, height: h, left, top };
+}
+
 // Crops+scales a decoded image to exactly fill a target box (CSS object-fit:cover equivalent),
 // aimed at the given focal point, with the photo's filter baked into the pixels. Returns raw RGBA
 // — the caller either composites it straight into a flattened page (JPG) or hands it to ag-psd as
@@ -243,7 +451,7 @@ async function coverCropRaw(
   focalYPct: number,
   filter: AlbumPhotoFilter | undefined,
   bakeInBw: boolean,
-  extra?: { opacity?: number; blur?: number; zoom?: number }
+  extra?: { opacity?: number; blur?: number; zoom?: number; adjustments?: PhotoAdjustments }
 ): Promise<{ data: Buffer; width: number; height: number } | null> {
   try {
     let img = sharp(buffer).rotate();
@@ -251,8 +459,16 @@ async function coverCropRaw(
     if (!meta.width || !meta.height) return null;
     const imgAspect = meta.width / meta.height;
     const boxAspect = targetWidth / targetHeight;
-    const drawW = imgAspect > boxAspect ? Math.round(targetHeight * imgAspect) : targetWidth;
-    const drawH = imgAspect > boxAspect ? targetHeight : Math.round(targetWidth / imgAspect);
+    // Cover-fit size first, THEN apply the extra zoom to that (not to an already-cropped
+    // target-size image) — mirrors computePhotoFraming on the client side. Cropping down to
+    // target size before zooming (the old approach) throws away exactly the pixels a zoom would
+    // need to pan into on whichever axis had zero baseline cover slack, which is why panning used
+    // to only ever work in one direction once zoomed in.
+    const zf = extra?.zoom && extra.zoom !== 100 ? extra.zoom / 100 : 1;
+    const baseW = imgAspect > boxAspect ? Math.round(targetHeight * imgAspect) : targetWidth;
+    const baseH = imgAspect > boxAspect ? targetHeight : Math.round(targetWidth / imgAspect);
+    const drawW = Math.max(targetWidth, Math.round(baseW * zf));
+    const drawH = Math.max(targetHeight, Math.round(baseH * zf));
     img = img.resize(drawW, drawH);
     if (filter === "sepia") img = img.tint({ r: 112, g: 66, b: 20 });
     // Not .grayscale() — that collapses the pipeline to a single channel, and a later
@@ -266,22 +482,7 @@ async function coverCropRaw(
     const top = Math.min(Math.max(0, Math.round((drawH - targetHeight) * (focalYPct / 100))), Math.max(0, drawH - targetHeight));
     let data = await img.extract({ left, top, width: targetWidth, height: targetHeight }).ensureAlpha().raw().toBuffer();
 
-    if (extra?.zoom && extra.zoom !== 100) {
-      // Mirrors the CSS `transform: scale()` on the <img> — zooms in from the CENTER of the
-      // already focal-positioned cover-fit crop (not from the focal point itself), same as the
-      // browser: crop a smaller center window and blow it back up to the full target size.
-      const zf = extra.zoom / 100;
-      const subW = Math.max(1, Math.round(targetWidth / zf));
-      const subH = Math.max(1, Math.round(targetHeight / zf));
-      const subLeft = Math.round((targetWidth - subW) / 2);
-      const subTop = Math.round((targetHeight - subH) / 2);
-      data = await sharp(data, { raw: { width: targetWidth, height: targetHeight, channels: 4 } })
-        .extract({ left: subLeft, top: subTop, width: subW, height: subH })
-        .resize(targetWidth, targetHeight)
-        .ensureAlpha()
-        .raw()
-        .toBuffer();
-    }
+    if (extra?.adjustments) applyAdjustmentsToRgba(data, extra.adjustments);
 
     if (extra?.opacity !== undefined && extra.opacity < 100) {
       // Scale the alpha channel directly — cheaper than another sharp pipeline pass, and
@@ -310,9 +511,9 @@ async function composePhotoTile(
   focalY: number,
   filter: AlbumPhotoFilter | undefined,
   bakeInBw: boolean,
-  extra: { rotation?: number; opacity?: number; blur?: number; zoom?: number; borderWidth?: number; borderColor?: string; maskId?: string }
+  extra: { rotation?: number; opacity?: number; blur?: number; zoom?: number; borderWidth?: number; borderColor?: string; maskId?: string; adjustments?: PhotoAdjustments }
 ): Promise<{ data: Buffer; width: number; height: number; left: number; top: number } | null> {
-  const cropped = await coverCropRaw(buffer, width, height, focalX, focalY, filter, bakeInBw, { opacity: extra.opacity, blur: extra.blur, zoom: extra.zoom });
+  const cropped = await coverCropRaw(buffer, width, height, focalX, focalY, filter, bakeInBw, { opacity: extra.opacity, blur: extra.blur, zoom: extra.zoom, adjustments: extra.adjustments });
   if (!cropped) return null;
   let data = cropped.data;
   let w = width;
@@ -412,6 +613,7 @@ export async function renderAlbumPageJpeg({
   pageWidthPx,
   pageHeightPx,
   photosById,
+  customOrnamentsById,
 }: {
   album: GalleryAlbumRow;
   spread: GalleryAlbumSpreadRow | null;
@@ -419,6 +621,9 @@ export async function renderAlbumPageJpeg({
   pageWidthPx: number;
   pageHeightPx: number;
   photosById: Map<string, Pick<GalleryPhotoRow, "id" | "storage_path">>;
+  // Storage path for each uploaded (custom) ornament referenced on this page — resolved by the
+  // caller (same pattern as photosById) since this module has no DB access of its own, only R2.
+  customOrnamentsById?: Map<string, { storage_path: string }>;
 }): Promise<Buffer | null> {
   const composites: OverlayOptions[] = [];
 
@@ -448,7 +653,7 @@ export async function renderAlbumPageJpeg({
     }
     return sharp({ create: { width: pageWidthPx, height: pageHeightPx, channels: 3, background: "#000000" } })
       .composite(composites)
-      .jpeg({ quality: 92 })
+      .jpeg({ quality: 100 })
       .toBuffer();
   }
 
@@ -485,6 +690,50 @@ export async function renderAlbumPageJpeg({
       }
       continue;
     }
+    if (el.kind === "ornament") {
+      const w = Math.max(1, Math.round(el.width));
+      const h = Math.max(1, Math.round(el.height));
+      let source: Buffer | null = null;
+      let tintColor: string | undefined;
+      if (el.customOrnamentId) {
+        const row = customOrnamentsById?.get(el.customOrnamentId);
+        source = row ? await downloadObjectBuffer("custom-ornaments", row.storage_path) : null;
+        tintColor = el.color;
+      } else if (el.ornamentId) {
+        const ornament = findOrnament(el.ornamentId);
+        if (ornament) source = Buffer.from(ornament.svg.replace("<svg ", `<svg style="color:${el.color ?? "#2e3142"}" `));
+      }
+      if (!source) continue;
+      const rendered = await ornamentLayerRaw(source, w, h, el.rotation, tintColor, { borderWidth: el.borderWidth, borderColor: el.borderColor });
+      if (!rendered) continue;
+      any = true;
+      const centerX = el.x + w / 2;
+      const centerY = el.y + h / 2;
+      const top = Math.round(centerY - rendered.height / 2);
+      const left = Math.round(centerX - rendered.width / 2);
+      if (el.opacity !== undefined && el.opacity < 100) {
+        const factor = Math.max(0, el.opacity) / 100;
+        for (let i = 3; i < rendered.data.length; i += 4) rendered.data[i] = Math.round(rendered.data[i] * factor);
+      }
+      const ornamentShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation);
+      if (ornamentShadow) composites.push({ input: ornamentShadow.buffer, left: ornamentShadow.left, top: ornamentShadow.top });
+      composites.push({ input: rendered.data, raw: { width: rendered.width, height: rendered.height, channels: 4 }, left, top });
+      continue;
+    }
+    if (el.kind === "shape") {
+      const w = Math.max(1, Math.round(el.width));
+      const h = Math.max(1, Math.round(el.height));
+      const tile = await composeShapeTile(w, h, el.color, el.maskId, el.rotation, { borderWidth: el.borderWidth, borderColor: el.borderColor, shapeStyle: el.shapeStyle });
+      any = true;
+      if (el.opacity !== undefined && el.opacity < 100) {
+        const factor = Math.max(0, el.opacity) / 100;
+        for (let i = 3; i < tile.data.length; i += 4) tile.data[i] = Math.round(tile.data[i] * factor);
+      }
+      const shapeShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation);
+      if (shapeShadow) composites.push({ input: shapeShadow.buffer, left: shapeShadow.left, top: shapeShadow.top });
+      composites.push({ input: tile.data, raw: { width: tile.width, height: tile.height, channels: 4 }, left: Math.round(el.x + tile.left), top: Math.round(el.y + tile.top) });
+      continue;
+    }
     if (!el.photoId) continue;
     const photo = photosById.get(el.photoId);
     const buffer = photo ? await downloadObjectBuffer("galleries", photo.storage_path) : null;
@@ -501,6 +750,7 @@ export async function renderAlbumPageJpeg({
       borderWidth: el.borderWidth,
       borderColor: el.borderColor,
       maskId: el.maskId,
+      adjustments: el.adjustments,
     });
     if (!tile) continue;
     any = true;
@@ -512,8 +762,8 @@ export async function renderAlbumPageJpeg({
 
   return sharp({ create: { width: pageWidthPx, height: pageHeightPx, channels: 3, background: "#ffffff" } })
     .composite(composites)
-    .jpeg({ quality: 92 })
+    .jpeg({ quality: 100 })
     .toBuffer();
 }
 
-export { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng, applyMaskToRaw };
+export { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng, applyMaskToRaw, ornamentLayerRaw, composeShapeTile, hexToRgb };

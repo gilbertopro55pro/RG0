@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = [
   "/",
+  "/landing",
   "/login",
   "/signup",
   "/reset-password",
@@ -18,15 +19,35 @@ const PUBLIC_PATHS = [
   "/api/quotes",
   "/gallery",
   "/api/gallery",
+  "/p",
   "/api/payplus/webhook",
   // Bearer-token authenticated (not cookie-based) — the separate desktop app has no cookie jar
   // shared with this site, so it can't pass this proxy's cookie-session check. The route itself
   // independently validates the bearer token via supabase.auth.getUser(token), same as every other
   // entry in this list has its own token/session check baked into the route rather than the cookie.
   "/api/desktop",
+  // Shared-secret authenticated (not a user session at all) — called only by the separate FTP
+  // server (photographer-flow-ftp), which has no Supabase session. See its two routes' own
+  // comments for the actual auth check.
+  "/api/ftp-server",
 ];
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  // "/" is always a public path, so the getClaims() result below never actually changes the
+  // outcome for it — but every hit still paid the full JWT-verification round trip. Anonymous
+  // traffic (ads, SEO, cold visits — the vast majority of "/" hits) carries no Supabase cookie
+  // at all, so it's safe to skip the auth check entirely and rewrite straight to the static
+  // marketing route instead. A logged-in user still reaches the real dynamic "/" dashboard
+  // below, unaffected — this branch only fires when there is no session cookie to check.
+  if (
+    pathname === "/" &&
+    !request.cookies.getAll().some((c) => c.name.startsWith("sb-") && c.name.includes("-auth-token"))
+  ) {
+    return NextResponse.rewrite(new URL("/landing", request.url));
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -63,12 +84,19 @@ export async function updateSession(request: NextRequest) {
 
   // Exact-or-subpath match only — a naive prefix check would let "/gallery" (public) also
   // match "/galleries" (photographer-only, unrelated), silently bypassing auth for it.
-  const pathname = request.nextUrl.pathname;
   const isPublicPath = PUBLIC_PATHS.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
 
-  if (!user && !isPublicPath) {
+  // A request carrying its own bearer token (the desktop app, which has no cookie jar shared
+  // with this site) is a different auth mechanism entirely — the route itself validates the
+  // token and rejects with its own 401 if it's missing/invalid, so gatekeeping it here on the
+  // cookie session would just wrongly redirect a valid bearer-authenticated request to /login.
+  // This is a general bypass (not a per-route PUBLIC_PATHS entry) so any current or future
+  // bearer-token route works without editing this list each time.
+  const hasBearerToken = request.headers.get("authorization")?.startsWith("Bearer ") ?? false;
+
+  if (!user && !isPublicPath && !hasBearerToken) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

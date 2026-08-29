@@ -1,4 +1,4 @@
-import type { PackageType, StageKey } from "@/lib/stages";
+import type { PackageType, StageKey, SubscriptionPlan } from "@/lib/stages";
 
 export type SubscriptionStatus = "incomplete" | "active" | "past_due" | "canceled" | "trialing";
 
@@ -9,7 +9,7 @@ export type Photographer = {
   name: string;
   phone: string;
   email: string;
-  plan: "monthly" | "annual";
+  plan: SubscriptionPlan;
   google_calendar_connected: boolean;
   google_calendar_color_id: string | null;
   apple_calendar_connected: boolean;
@@ -18,6 +18,7 @@ export type Photographer = {
   apple_calendar_url: string | null;
   apple_calendar_display_name: string | null;
   whatsapp_signature: string | null;
+  custom_contract_terms: string | null;
   whatsapp_bot_enabled: boolean;
   payplus_customer_uid: string | null;
   payplus_recurring_uid: string | null;
@@ -32,7 +33,56 @@ export type Photographer = {
   invoice_provider: InvoiceProvider;
   green_invoice_api_id: string | null;
   green_invoice_api_secret: string | null;
+  logo_storage_path: string | null;
+  brand_color: string | null;
+  portfolio_enabled: boolean;
+  portfolio_slug: string | null;
+  portfolio_bio: string | null;
+  business_id: string | null;
+  hourly_shoot_rate: number;
+  pricing_suppliers: PricingSupplier[];
+  quote_event_type_suggestions: string[];
+  onboarding_completed: boolean;
+  welcome_video_seen: boolean;
+  pending_plan: SubscriptionPlan | null;
+  pending_plan_effective_at: string | null;
   created_at: string;
+};
+
+export type PricingSupplier = {
+  id: string;
+  name: string;
+  price: number;
+};
+
+export type PriceQuoteItem = {
+  item: string;
+  details: string;
+  price: number;
+};
+
+export type PriceQuoteRow = {
+  id: string;
+  photographer_id: string;
+  client_name: string;
+  client_phone: string | null;
+  client_email: string | null;
+  items: PriceQuoteItem[];
+  subtotal: number;
+  vat_amount: number;
+  total: number;
+  sent_at: string | null;
+  sent_via: "email" | "whatsapp" | null;
+  quote_name: string | null;
+  event_hours: number | null;
+  hourly_rate_used: number | null;
+  event_type: string | null;
+  event_date: string | null;
+  event_location: string | null;
+  work_start_time: string | null;
+  work_end_time: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type EventRow = {
@@ -77,6 +127,23 @@ export type CustomPackageStageRow = {
   notify_text: string | null;
   requires_album_pdf: boolean;
   created_at: string;
+};
+
+export type PrintHouseEmailRow = {
+  id: string;
+  photographer_id: string;
+  email: string;
+  label: string;
+  is_default: boolean;
+  created_at: string;
+};
+
+export type ClientMessageTemplateRow = {
+  id: string;
+  photographer_id: string;
+  stage_key: string;
+  body: string;
+  updated_at: string;
 };
 
 export type ContractStatus = "draft" | "sent" | "signed";
@@ -190,6 +257,7 @@ export type GalleryRow = {
   published: boolean;
   cover_photo_id: string | null;
   expiry_months: 1 | 3 | 6 | null;
+  expiry_days: 7 | 14 | 30 | 90 | 180 | null;
   published_at: string | null;
   expires_at: string | null;
   archived_at: string | null;
@@ -197,8 +265,10 @@ export type GalleryRow = {
   selection_confirmed_at: string | null;
   shoot_date: string | null;
   client_email: string | null;
+  client_phone: string | null;
   allow_downloads: boolean;
   reminder_sent_at: string | null;
+  whatsapp_reminder_sent_at: string | null;
   theme: string;
   palette: string;
   cover_text_position: string;
@@ -206,6 +276,8 @@ export type GalleryRow = {
   title_font_override: string | null;
   grid_style_override: string | null;
   slideshow_photo_ids: string[];
+  ftp_username: string | null;
+  ftp_password: string | null;
   created_at: string;
 };
 
@@ -214,11 +286,17 @@ export type GalleryPhotoRow = {
   gallery_id: string;
   photographer_id: string;
   storage_path: string;
+  preview_storage_path: string | null;
+  preview_blur_data_url: string | null;
+  preview_aspect_ratio: number | null;
   original_filename: string;
   file_size_bytes: number;
   sort_order: number;
   is_favorite: boolean;
   folder_id: string | null;
+  culling_status: "pending" | "kept" | "rejected";
+  in_portfolio: boolean;
+  portfolio_category: string | null;
   created_at: string;
 };
 
@@ -242,6 +320,26 @@ export type GalleryFolderRow = {
   name: string;
   sort_order: number;
   created_at: string;
+};
+
+export type GalleryZipJobStatus = "pending" | "processing" | "ready" | "failed";
+
+export type GalleryZipJobRow = {
+  id: string;
+  gallery_id: string;
+  batch_id: string;
+  part_index: number;
+  part_count: number;
+  photo_ids: string[];
+  status: GalleryZipJobStatus;
+  storage_path: string | null;
+  error_message: string | null;
+  processed_count: number;
+  total_count: number;
+  quality: "full" | "web";
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
 };
 
 export type AlbumStatus = "draft" | "sent" | "approved" | "changes_requested";
@@ -276,6 +374,20 @@ export type AlbumPhotoElement = {
   zoom?: number; // 100-400, extra scale on top of the object-fit:cover baseline, default 100
   lockAspect?: boolean; // when true, corner-handle resizing preserves the width/height ratio
   maskId?: string; // id into ALBUM_MASKS (src/lib/albumMasks.ts) — an alpha mask applied over the cropped photo
+  // Color/tone adjustments, all -100..100, undefined/0 = no change from the original photo. Kept
+  // orthogonal to `filter` (bw/sepia) and `blur` above — those are one-click presets, these are
+  // fine-grained per-photo grading. See albumAdjustments.ts for the shared math applied identically
+  // in the live builder, the client proofing view, and every export format.
+  exposure?: number;
+  contrast?: number;
+  highlights?: number;
+  shadows2?: number; // suffixed to avoid colliding with the unrelated page-level `shadow` above
+  whites?: number;
+  blacks?: number;
+  temp?: number; // white balance: cool (-) to warm (+)
+  tint?: number; // green (-) to magenta (+)
+  vibrance?: number;
+  saturation2?: number; // suffixed — `filter: "bw"` already means "fully desaturated" and is separate
 };
 
 // Points on the album's fixed 1600pt-wide PDF reference canvas (same canvas the PDF proof export
@@ -300,7 +412,58 @@ export type AlbumTextElement = {
   align: "right" | "center" | "left";
 };
 
-export type AlbumElement = AlbumPhotoElement | AlbumTextElement;
+// A standalone decorative overlay graphic (see src/lib/albumOrnaments.ts) — distinct from a mask
+// (which clips a photo's own pixels): an ornament is its own positioned/resizable element,
+// recolorable via `color`, not tied to any specific photo.
+export type AlbumOrnamentElement = {
+  id: string;
+  type: "ornament";
+  // Exactly one of these is set: `ornamentId` for a built-in procedural ornament (albumOrnaments.ts,
+  // recolorable via `color`), `customOrnamentId` for a photographer-uploaded image (rendered as-is
+  // unless `color` is set too, in which case it's tinted via an alpha-mask over that solid color —
+  // same technique either way, just applied to an uploaded raster instead of a currentColor SVG).
+  ornamentId?: string;
+  customOrnamentId?: string;
+  xPct: number;
+  yPct: number;
+  widthPct: number;
+  heightPct: number;
+  color?: string;
+  rotation?: number;
+  opacity?: number;
+  shadow?: number; // 0-100, same scale/meaning as AlbumPhotoElement.shadow
+  borderWidth?: number; // px, same scale/meaning as AlbumPhotoElement.borderWidth
+  borderColor?: string;
+};
+
+// A freely positioned solid-color geometric shape — a plain rectangle by default, or clipped to
+// any of the same ALBUM_MASKS "shape-*" outlines (circle, star, hexagon, etc.) used to mask
+// photos. `maskId` here isn't limited to "shape-*" — any mask in the bank can be applied, exactly
+// like on a photo.
+export type AlbumShapeElement = {
+  id: string;
+  type: "shape";
+  maskId?: string;
+  xPct: number;
+  yPct: number;
+  widthPct: number;
+  heightPct: number;
+  color: string;
+  rotation?: number;
+  opacity?: number;
+  shadow?: number;
+  borderWidth?: number;
+  borderColor?: string;
+  // undefined = the normal solid-fill (optionally mask-clipped) shape. The two outline kinds have
+  // no fill at all — borderWidth/borderColor double as the stroke's own width/color instead of a
+  // decorative extra border, and maskId is unused (a stroke can't be silhouette-clipped the way a
+  // fill can). "line" is still a plain solid fill (unlike the two outline kinds) — it's just a
+  // thin bar — the tag exists only so the UI can show it a dedicated thickness slider and let it
+  // resize past the page edge like the two true outline kinds.
+  shapeStyle?: "rect-outline" | "circle-outline" | "line";
+};
+
+export type AlbumElement = AlbumPhotoElement | AlbumTextElement | AlbumOrnamentElement | AlbumShapeElement;
 
 // A frame is a photo element's shape (position/size) plus a few optional presentation fields
 // (rotation/border/shadow) — the reusable unit a template stores. The presentation fields exist
@@ -357,6 +520,10 @@ export type GalleryAlbumSpreadRow = {
   background_photo_id: string | null;
   background_blur: number; // 0-100
   background_opacity: number; // 0-100
+  // Per-spread physical-size override, in cm — null means "use the album's own width_cm/
+  // height_cm". Only ever set on a cover page created at a custom size.
+  width_cm: number | null;
+  height_cm: number | null;
   created_at: string;
 };
 

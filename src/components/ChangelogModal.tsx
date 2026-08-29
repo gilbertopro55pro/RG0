@@ -7,10 +7,6 @@ import { CHANGELOG, CURRENT_VERSION } from "@/lib/changelog";
 const SEEN_KEY = "changelog-seen-version";
 const CLOSE_ANIMATION_MS = 220;
 
-// Same hidden-route list as TopNav — no dashboard chrome (and no "what's new" popup) on
-// client-facing token pages or pre-auth screens.
-const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/billing"];
-
 export default function ChangelogModal() {
   const pathname = usePathname();
   const [visible, setVisible] = useState(false);
@@ -31,8 +27,9 @@ export default function ChangelogModal() {
     return () => cancelAnimationFrame(raf);
   }, [visible]);
 
-  const isHidden = pathname === "/" || HIDDEN_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-  if (isHidden || !visible) return null;
+  // Shown only on the settings page itself — not on the dashboard or anywhere else in the app —
+  // per explicit request, even though the badge on the settings nav tile still hints at it globally.
+  if (pathname !== "/settings" || !visible) return null;
 
   const latest = CHANGELOG[0];
 

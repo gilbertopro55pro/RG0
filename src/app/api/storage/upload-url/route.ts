@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSignedUploadUrl } from "@/lib/storage";
 
-const VALID_BUCKETS = new Set(["galleries", "album-designs"]);
+const VALID_BUCKETS = new Set(["galleries", "album-designs", "logos"]);
 
 // R2 credentials are secret and never reach the browser — every client-side upload goes through
 // this route to mint a short-lived presigned PUT URL instead. Authorization matches the folder

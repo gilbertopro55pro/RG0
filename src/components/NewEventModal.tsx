@@ -3,8 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PACKAGE_LABELS, type PackageType } from "@/lib/stages";
+import { openWhatsApp } from "@/lib/waLink";
+import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import type { CustomPackageRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
 import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
+import SendUpdateButton from "@/components/SendUpdateButton";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
@@ -15,7 +18,7 @@ const selectArrowStyle = {
 
 const CLOSE_ANIMATION_MS = 220;
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | "success";
 
 export default function NewEventModal({
   onClose,
@@ -58,6 +61,8 @@ export default function NewEventModal({
   const [error, setError] = useState<string | null>(null);
   const [dateConflict, setDateConflict] = useState(false);
   const [addingToWaitlist, setAddingToWaitlist] = useState(false);
+  const [createdEvent, setCreatedEvent] = useState<{ id: string; clientAccessToken: string } | null>(null);
+  const [sendingUpdate, setSendingUpdate] = useState(false);
 
   const [step, setStep] = useState<Step>(1);
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
@@ -138,8 +143,43 @@ export default function NewEventModal({
       await fetch(`/api/waitlist/${waitlistId}`, { method: "DELETE" });
     }
 
+    setSaving(false);
+    setCreatedEvent({ id: data.id, clientAccessToken: data.clientAccessToken });
+    setDirection("forward");
+    setStep("success");
+  };
+
+  // Opens the photographer's own WhatsApp with the booking confirmation + portal link combined
+  // into one pre-filled message — see src/lib/waLink.ts for why (no Meta Business API call, no
+  // template approval, works today). Bound to the success screen's SendUpdateButton instead of
+  // firing automatically on save, so it's a deliberate tap rather than a side effect the
+  // photographer can't see coming or skip.
+  const sendBookingUpdate = () => {
+    if (!clientPhone || !createdEvent) return;
+    setSendingUpdate(true);
+    const formattedDate = new Date(eventDate).toLocaleDateString("he-IL");
+    const portalLink = `${window.location.origin}/portal/${createdEvent.clientAccessToken}`;
+    const message =
+      `שלום ${clientName},\nהאירוע שלכם נסגר במערכת בהצלחה 🎉\n\n` +
+      `תאריך: ${formattedDate}\n` +
+      `מיקום: ${eventLocation || "יעודכן"}\n` +
+      `שעת הגעה: ${arrivalTime || "יעודכן"}\n` +
+      `מקדמה: ₪${Number(deposit) || 0} · יתרה: ₪${Number(balance) || 0}\n\n` +
+      `הפורטל האישי שלכם לצפייה בפרטי האירוע והתשלומים:\n${portalLink}`;
+    openWhatsApp(clientPhone, message);
+    fetch(`/api/events/${createdEvent.id}/log-notification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: `נשלחה הודעת וואטסאפ (אישור הזמנה + קישור פורטל) ל-${clientPhone}` }),
+    })
+      .catch(() => {})
+      .finally(() => setSendingUpdate(false));
+  };
+
+  const finishAndGoToEvent = () => {
+    if (!createdEvent) return;
     closeWithAnimation(() => {
-      router.push(`/events/${data.id}`);
+      router.push(`/events/${createdEvent.id}`);
       router.refresh();
     });
   };
@@ -168,22 +208,24 @@ export default function NewEventModal({
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xl font-bold font-display">אירוע חדש</h2>
           <button
-            onClick={() => closeWithAnimation()}
+            onClick={() => (step === "success" ? finishAndGoToEvent() : closeWithAnimation())}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
           >
             ✕
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5 mb-5">
-          {[1, 2, 3].map((s) => (
-            <div
-              key={s}
-              className="h-1 flex-1 rounded-full"
-              style={{ background: s <= step ? "var(--color-amber-deep)" : "var(--color-line)" }}
-            />
-          ))}
-        </div>
+        {step !== "success" && (
+          <div className="flex items-center gap-1.5 mb-5">
+            {[1, 2, 3].map((s) => (
+              <div
+                key={s}
+                className="h-1 flex-1 rounded-full"
+                style={{ background: s <= step ? "var(--color-amber-deep)" : "var(--color-line)" }}
+              />
+            ))}
+          </div>
+        )}
 
         <div key={`${step}-${direction}`} className={direction === "forward" ? "new-event-step-forward" : "new-event-step-backward"}>
           {step === 1 && (
@@ -257,34 +299,78 @@ export default function NewEventModal({
               </div>
               <div>
                 <label className="text-xs block mb-1 text-ink-soft">תאריך האירוע</label>
-                <input
-                  type="date"
-                  value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-                />
+                {/* The real <input type="date"> is fully invisible (opacity-0) and just an
+                    interactive hit-target — this box's actual visible border/background/text is
+                    entirely our own CSS on plain <div>s. Measured directly on a real iPhone: the
+                    native control renders itself wider than its own declared 100% width once
+                    dir="ltr" is set inside an RTL page (confirmed reproducible, and NOT something
+                    any available testing engine here — including real WebKit on macOS — actually
+                    reproduces, since iOS's native date/time picker chrome is OS-level UI, not
+                    something WebKit-on-desktop renders the same way). Making the visible chrome a
+                    plain div with overflow-hidden means that overflow gets clipped instead of
+                    pushing the box wider than its siblings, regardless of what the invisible
+                    native control tries to claim internally. */}
+                <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
+                  <div className="pointer-events-none flex items-center justify-center px-3 py-2 text-sm" dir="ltr">
+                    {eventDate ? formatDateDMYFromInput(eventDate) : <span className="text-ink-soft">בחר תאריך</span>}
+                  </div>
+                  <input
+                    type="date"
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
+                    onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+                    dir="ltr"
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  />
+                </div>
               </div>
               <div className="flex gap-2">
                 {/* min-w-0 is the fix — flex items default to min-width:auto, which lets a native
                     time input's intrinsic width push past its half of the row instead of
-                    shrinking, so the two fields overlapped instead of sitting side by side. */}
+                    shrinking, so the two fields overlapped instead of sitting side by side. The
+                    same overlap came back once a time was actually picked, though: without
+                    dir="ltr" the input's OWN inline value rendered right-to-left (the browser
+                    reversing "14:30" and reflowing it wider than its half of the row) — that's
+                    what was actually climbing onto the neighboring field, not a sizing issue. */}
+                {/* Same invisible-native-input-over-plain-div pattern as the date field above:
+                    the visible box is entirely our own div (border/background/centered text),
+                    the real <input> is an opacity-0 hit-target clipped by overflow-hidden — so a
+                    native time control's own intrinsic width (confirmed on a real iPhone to
+                    render wider than its declared width once dir="ltr" applies) can never push
+                    past its half of the row, gap-2 between the two boxes stays a real gap either
+                    way, and flex-1 on both means they always split the same total width as the
+                    date field's own row above. */}
                 <div className="flex-1 min-w-0">
                   <label className="text-xs block mb-1 text-ink-soft">שעת התחלה</label>
-                  <input
-                    type="time"
-                    value={eventStartTime}
-                    onChange={(e) => setEventStartTime(e.target.value)}
-                    className="w-full min-w-0 rounded-lg px-1.5 py-2 text-sm border border-line bg-white"
-                  />
+                  <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
+                    <div className="pointer-events-none flex items-center justify-center px-1.5 py-2 text-sm" dir="ltr">
+                      {eventStartTime || <span className="text-ink-soft">--:--</span>}
+                    </div>
+                    <input
+                      type="time"
+                      value={eventStartTime}
+                      onChange={(e) => setEventStartTime(e.target.value)}
+                      onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+                      dir="ltr"
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    />
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <label className="text-xs block mb-1 text-ink-soft">שעת סיום</label>
-                  <input
-                    type="time"
-                    value={eventEndTime}
-                    onChange={(e) => setEventEndTime(e.target.value)}
-                    className="w-full min-w-0 rounded-lg px-1.5 py-2 text-sm border border-line bg-white"
-                  />
+                  <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
+                    <div className="pointer-events-none flex items-center justify-center px-1.5 py-2 text-sm" dir="ltr">
+                      {eventEndTime || <span className="text-ink-soft">--:--</span>}
+                    </div>
+                    <input
+                      type="time"
+                      value={eventEndTime}
+                      onChange={(e) => setEventEndTime(e.target.value)}
+                      onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+                      dir="ltr"
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    />
+                  </div>
                 </div>
               </div>
               <div>
@@ -292,18 +378,27 @@ export default function NewEventModal({
                 <input
                   value={eventLocation}
                   onChange={(e) => setEventLocation(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                  className="w-full rounded-lg px-3 py-2 text-sm text-center border border-line bg-white"
                   placeholder="לדוגמה: אולמי הגן, ראשון לציון"
                 />
               </div>
               <div>
                 <label className="text-xs block mb-1 text-ink-soft">שעת הגעה לצילומי משפחה</label>
-                <input
-                  type="time"
-                  value={arrivalTime}
-                  onChange={(e) => setArrivalTime(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-                />
+                {/* Same invisible-native-input-over-plain-div pattern as the date and start/end
+                    time fields above. */}
+                <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
+                  <div className="pointer-events-none flex items-center justify-center px-3 py-2 text-sm" dir="ltr">
+                    {arrivalTime || <span className="text-ink-soft">--:--</span>}
+                  </div>
+                  <input
+                    type="time"
+                    value={arrivalTime}
+                    onChange={(e) => setArrivalTime(e.target.value)}
+                    onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+                    dir="ltr"
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  />
+                </div>
               </div>
               <div>
                 <label className="text-xs block mb-1 text-ink-soft">הערות</label>
@@ -406,6 +501,40 @@ export default function NewEventModal({
               </div>
             </div>
           )}
+
+          {step === "success" && (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center text-center gap-2 py-2">
+                <span
+                  className="flex h-12 w-12 items-center justify-center rounded-full text-2xl"
+                  style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}
+                >
+                  ✓
+                </span>
+                <div>
+                  <div className="text-base font-bold font-display">האירוע נשמר בהצלחה</div>
+                  <p className="text-xs text-ink-soft mt-1">האירוע נוסף למערכת וליומן שלך.</p>
+                </div>
+              </div>
+              {clientPhone ? (
+                <>
+                  <p className="text-xs text-ink-soft text-center mb-1">
+                    לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה — פרטי האירוע, המקדמה והיתרה, וקישור
+                    לפורטל האישי שלהם למעקב אחר האירוע והתשלומים. תישאר/י לבדוק ולשלוח בעצמך.
+                  </p>
+                  <SendUpdateButton onSend={sendBookingUpdate} pending={sendingUpdate} label="שליחת עדכון ללקוח בוואטסאפ" />
+                </>
+              ) : (
+                <p className="text-xs text-ink-soft text-center">לא הוזן טלפון לקוח — לא ניתן לשלוח עדכון.</p>
+              )}
+              <button
+                onClick={finishAndGoToEvent}
+                className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
+              >
+                מעבר לעמוד האירוע
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -454,6 +583,7 @@ export default function NewEventModal({
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-bold mb-2 font-display">קיים אירוע נוסף בתאריך זה</h2>
+            {error && <p className="text-sm text-rose mb-2">{error}</p>}
             <p className="text-sm text-ink-soft mb-5">האם להכניס את האירוע לרשימת המתנה?</p>
             <div className="flex gap-2">
               <button

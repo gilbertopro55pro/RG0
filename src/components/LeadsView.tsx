@@ -7,6 +7,7 @@ import { PACKAGE_LABELS, resolveLeadPackageLabel, type PackageType } from "@/lib
 import type { CustomPackageRow, EventTypeRow, LeadRow, LeadStatus, PackagePriceRow } from "@/lib/types";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
+import PageGuide from "@/components/PageGuide";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
@@ -81,9 +82,10 @@ export default function LeadsView({
         </button>
       </div>
       <h1 className="text-[26px] font-bold mb-1.5 font-display">לידים ופניות</h1>
-      <p className="text-xs mb-5 text-ink-soft">
-        כל פנייה חדשה מתחילה כאן כליד. שולחים ללקוח/ה הצעת מחיר, ואחרי שהיא מאושרת אפשר להפוך אותה לאירוע סגור בלחיצה.
-      </p>
+      <PageGuide
+        pageKey="leads"
+        blurb="כל פנייה חדשה מתחילה כאן כליד. שולחים ללקוח/ה הצעת מחיר, ואחרי שהיא מאושרת אפשר להפוך אותה לאירוע סגור בלחיצה."
+      />
 
       {leads.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">אין עדיין לידים — לחצו על + כדי להוסיף</div>}
 

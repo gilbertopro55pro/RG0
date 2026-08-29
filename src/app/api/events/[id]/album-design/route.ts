@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { ALBUM_DESIGN_TEMPLATE } from "@/lib/stages";
-import { friendlyWhatsAppError, sendWhatsAppDocumentTemplate } from "@/lib/whatsapp";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import type { EventRow } from "@/lib/types";
 
@@ -41,34 +39,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: updateError?.message ?? "האירוע לא נמצא" }, { status: 404 });
   }
 
-  const notifications: { event_id: string; text: string }[] = [];
+  // The actual WhatsApp send happens client-side (a wa.me deep link the photographer confirms
+  // themselves — see EventDetailView.tsx's uploadAlbumDesign and src/lib/waLink.ts), same as the
+  // rest of the client-update flow. wa.me can't attach a file, so the signed download link travels
+  // in the message text instead of a document header.
+  let notify: { text: string; downloadUrl: string } | null = null;
 
   if (event.client_phone) {
-    try {
-      const signedUrl = await getSignedDownloadUrl(
-        "album-designs",
-        albumDesignPdfPath,
-        3600,
-        albumDesignPdfFilename ?? "album-design.pdf"
-      );
-      if (!signedUrl) throw new Error("יצירת קישור לקובץ נכשלה");
-      await sendWhatsAppDocumentTemplate(
-        event.client_phone,
-        ALBUM_DESIGN_TEMPLATE,
-        signedUrl,
-        albumDesignPdfFilename ?? "album-design.pdf",
-        [event.client_name]
-      );
-      notifications.push({ event_id: eventId, text: "קובץ עיצוב האלבום הועלה ונשלח ללקוח בוואטסאפ — ממתינים לאישורו" });
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : "שגיאה לא ידועה";
-      notifications.push({ event_id: eventId, text: friendlyWhatsAppError(raw) });
+    const signedUrl = await getSignedDownloadUrl(
+      "album-designs",
+      albumDesignPdfPath,
+      60 * 60 * 24 * 7,
+      albumDesignPdfFilename ?? "album-design.pdf"
+    );
+    if (signedUrl) {
+      notify = { text: "עיצוב האלבום מוכן לאישור", downloadUrl: signedUrl };
+    } else {
+      await supabase
+        .from("event_notifications")
+        .insert({ event_id: eventId, text: "קובץ עיצוב האלבום הועלה, אבל יצירת קישור לשליחה נכשלה" });
     }
   } else {
-    notifications.push({ event_id: eventId, text: "קובץ עיצוב האלבום הועלה — לא הוזן טלפון לקוח, לא נשלחה הודעה" });
+    await supabase
+      .from("event_notifications")
+      .insert({ event_id: eventId, text: "קובץ עיצוב האלבום הועלה — לא הוזן טלפון לקוח, לא נשלחה הודעה" });
   }
 
-  await supabase.from("event_notifications").insert(notifications);
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, notify });
 }
