@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { createEmailConfirmToken } from "@/lib/emailConfirmToken";
 import { sendEmail } from "@/lib/resend";
 import { stripPhoneFormatting } from "@/lib/phone";
+import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,16 @@ export const runtime = "nodejs";
 // (Supabase blurs that case to prevent email-enumeration on a public unauthenticated endpoint —
 // safe to surface plainly here since it's what a normal signup form needs to tell the person).
 export async function POST(request: NextRequest) {
+  // Fully public and unauthenticated by nature (that's the point of a signup form), and the one
+  // custom-built auth endpoint that bypasses Supabase's own signUp() — and with it, Supabase
+  // Auth's own baseline rate limiting — via admin.createUser instead (see this file's own
+  // top comment). Without a check here, this was the one open door for creating accounts (and
+  // burning through Resend's send quota, two emails per call) with no limit at all.
+  const { allowed } = await checkRateLimit(`signup:${clientIpFrom(request)}`, { maxRequests: 5, windowSeconds: 60 * 60 });
+  if (!allowed) {
+    return NextResponse.json({ error: "יותר מדי ניסיונות הרשמה — נסו שוב מאוחר יותר" }, { status: 429 });
+  }
+
   const { name, phone, email, password, plan } = await request.json().catch(() => ({}));
   if (!name || !phone || !email || !password || !plan) {
     return NextResponse.json({ error: "חסרים פרטים" }, { status: 400 });

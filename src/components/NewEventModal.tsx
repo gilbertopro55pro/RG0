@@ -84,7 +84,7 @@ export default function NewEventModal({
   const [error, setError] = useState<string | null>(null);
   const [dateConflict, setDateConflict] = useState(false);
   const [addingToWaitlist, setAddingToWaitlist] = useState(false);
-  const [createdEvent, setCreatedEvent] = useState<{ id: string; clientAccessToken: string; googleCalendarSynced: boolean; isAdmin: boolean } | null>(null);
+  const [createdEvent, setCreatedEvent] = useState<{ id: string; clientAccessToken: string; googleCalendarSynced: boolean } | null>(null);
   const [sendingUpdate, setSendingUpdate] = useState(false);
   // Booking-confirmation message: the photographer's own saved "event_closing" template (Settings
   // → הודעות ללקוח/ה) instead of a hardcoded, non-customizable message. Fetched once on open, same
@@ -92,10 +92,9 @@ export default function NewEventModal({
   const [eventClosingTemplate, setEventClosingTemplate] = useState<string | undefined>(undefined);
   const [whatsappSignature, setWhatsappSignature] = useState<string | null>(null);
 
-  // Admin-only for now (see the standing "עדכון אדמין" staged-rollout process): the new
-  // contract-selection step inserted between "event saved" and the existing success/WhatsApp
-  // screen — see the "contract" Step branch below and sendBookingUpdate's/submit's use of
-  // createdEvent.isAdmin.
+  // Contract-selection step inserted between "event saved" and the existing success/WhatsApp
+  // screen — promoted to every photographer (was admin-only while this flow was being tested,
+  // per the standing "עדכון אדמין" staged-rollout process) — see the "contract" Step branch below.
   const [contractTemplates, setContractTemplates] = useState<ContractTemplateRow[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [contractTermsDraft, setContractTermsDraft] = useState("");
@@ -210,9 +209,9 @@ export default function NewEventModal({
     }
 
     setSaving(false);
-    setCreatedEvent({ id: data.id, clientAccessToken: data.clientAccessToken, googleCalendarSynced: !!data.googleCalendarSynced, isAdmin: !!data.isAdmin });
+    setCreatedEvent({ id: data.id, clientAccessToken: data.clientAccessToken, googleCalendarSynced: !!data.googleCalendarSynced });
     setDirection("forward");
-    setStep(data.isAdmin ? "contract" : "success");
+    setStep("contract");
   };
 
   // Opens the photographer's own WhatsApp with the booking confirmation + portal link combined
@@ -255,9 +254,9 @@ export default function NewEventModal({
       .finally(() => setSendingUpdate(false));
   };
 
-  // Admin-only for now — the new "contract" step's own actions. Picking a saved template fills
-  // the draft textarea with it, still freely editable before creating — the edited text (not a
-  // re-fetch of the original template) is what actually gets used, via customTermsOverride.
+  // The "contract" step's own actions. Picking a saved template fills the draft textarea with
+  // it, still freely editable before creating — the edited text (not a re-fetch of the original
+  // template) is what actually gets used, via customTermsOverride.
   const [savingNewTemplate, setSavingNewTemplate] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState("");
 

@@ -194,11 +194,9 @@ export default async function SettingsPage({
             content: (
               <>
                 <ContractTemplateSettings photographer={photographer} />
-                {user?.email === ADMIN_EMAIL && (
-                  <div className="mt-5">
-                    <ContractTemplateLibrarySettings initialTemplates={contractTemplates ?? []} />
-                  </div>
-                )}
+                <div className="mt-5">
+                  <ContractTemplateLibrarySettings initialTemplates={contractTemplates ?? []} />
+                </div>
               </>
             ),
           },

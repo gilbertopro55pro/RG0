@@ -268,7 +268,6 @@ export async function POST(request: Request) {
     const isCustomPkg = candidate.pkg.startsWith("custom:");
     const result = await createEventWithSideEffects(supabase, {
       photographerId: user.id,
-      isAdmin: true,
       clientName: candidate.summary.trim() || "אירוע מיובא",
       clientPhone: candidate.clientPhone ?? "",
       // The results screen's <select> only ever offers a real PACKAGE_LABELS key or a

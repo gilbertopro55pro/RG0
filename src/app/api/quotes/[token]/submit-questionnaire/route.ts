@@ -67,7 +67,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
     const result = await createEventWithSideEffects(supabase, {
       photographerId: lead.photographer_id,
-      isAdmin: true,
       clientName: body.clientName.trim(),
       clientPhone: (body.clientPhone ?? lead.phone ?? "").trim(),
       pkg,

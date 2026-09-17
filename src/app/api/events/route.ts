@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import { createEventWithSideEffects } from "@/lib/createEvent";
 import type { PackageType } from "@/lib/stages";
 
@@ -46,10 +45,8 @@ export async function POST(request: Request) {
     sourceGoogleCalendarEventId?: string | null;
   } = body;
 
-  const isAdmin = user.email === ADMIN_EMAIL;
   const result = await createEventWithSideEffects(supabase, {
     photographerId: user.id,
-    isAdmin,
     clientName,
     clientPhone,
     pkg,
@@ -76,6 +73,5 @@ export async function POST(request: Request) {
     id: result.event.id,
     clientAccessToken: result.event.client_access_token,
     googleCalendarSynced: result.googleCalendarSynced,
-    isAdmin,
   });
 }

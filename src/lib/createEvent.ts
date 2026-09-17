@@ -7,7 +7,6 @@ import { eventsConflict } from "@/lib/eventTime";
 
 export type CreateEventParams = {
   photographerId: string;
-  isAdmin: boolean;
   clientName: string;
   clientPhone: string;
   pkg: PackageType | null;
@@ -41,7 +40,6 @@ export type CreateEventResult =
 export async function createEventWithSideEffects(supabase: SupabaseClient<any>, params: CreateEventParams): Promise<CreateEventResult> {
   const {
     photographerId,
-    isAdmin,
     clientName,
     clientPhone,
     pkg,
@@ -164,26 +162,27 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
     });
   }
 
-  // Admin-only for now (see the standing "עדכון אדמין" staged-rollout process): event_closing
-  // (always stage index 0) used to be auto-marked done the instant the event row existed — now,
-  // for the admin account, it stays open until the client signs a contract or the photographer
-  // sends the opening WhatsApp message.
+  // event_closing (always stage index 0) used to be auto-marked done the instant the event row
+  // existed — promoted to everyone (was admin-only while the contract flow itself was admin-only,
+  // per the standing "עדכון אדמין" staged-rollout process): it now stays open for every
+  // photographer until the client signs a contract or the photographer sends the opening
+  // WhatsApp message, matching the contract step now being available to all of them too.
   const stageRows = customPackage
     ? customStages.map((cs, i) => ({
         event_id: event.id,
         stage_key: null as string | null,
         custom_stage_id: cs.id as string | null,
         stage_order: i,
-        done: i === 0 && !isAdmin,
-        done_at: i === 0 && !isAdmin ? new Date().toISOString() : null,
+        done: false,
+        done_at: null,
       }))
     : PACKAGE_FLOWS[pkg!].map((stageKey, i) => ({
         event_id: event.id,
         stage_key: stageKey as string | null,
         custom_stage_id: null as string | null,
         stage_order: i,
-        done: i === 0 && !isAdmin,
-        done_at: i === 0 && !isAdmin ? new Date().toISOString() : null,
+        done: false,
+        done_at: null,
       }));
   await supabase.from("event_stages").insert(stageRows);
 

@@ -5,10 +5,10 @@ export const metadata: Metadata = {
 };
 
 // Standard "who is actually behind this service" disclosure page — linked from /privacy,
-// /cookies, /accessibility, /terms and /cancellation-policy. A dedicated public contact email is
-// still outstanding (gilbertopro_admin@gmail.com is a known non-real mailbox — see
-// notificationEmailFor's own comment — never use it here); until one is provided, contact routes
-// through the WhatsApp channel already used throughout the app rather than an email address.
+// /cookies, /accessibility, /terms and /cancellation-policy. The listed contact address is a
+// dedicated public mailbox, deliberately NOT gilbertopro_admin@gmail.com (a known non-real
+// mailbox — see notificationEmailFor's own comment) and not the account owner's own real login
+// email either — this page is public, so it gets its own address rather than exposing either.
 export default function BusinessInfoPage() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-12 text-sm leading-relaxed text-ink">
@@ -33,6 +33,15 @@ export default function BusinessInfoPage() {
         <div>
           <h2 className="font-bold pt-2 mb-1">כתובת</h2>
           <p>האשה העברייה 16, קריית גת</p>
+        </div>
+
+        <div>
+          <h2 className="font-bold pt-2 mb-1">יצירת קשר</h2>
+          <p dir="ltr" className="text-right font-data">
+            <a href="mailto:contact_gilberto@gilberto.com" className="underline">
+              contact_gilberto@gilberto.com
+            </a>
+          </p>
         </div>
 
         <div>

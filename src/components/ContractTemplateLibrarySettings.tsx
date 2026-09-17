@@ -4,8 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ContractTemplateRow } from "@/lib/types";
 
-// Admin-only for now (see isAdmin's doc comment on ContractTemplateSettings' page) — a library of
-// multiple reusable contract templates, alongside the existing single
+// A library of multiple reusable contract templates, alongside the existing single
 // photographers.custom_contract_terms field. That field stays as the fallback used when an event's
 // contract is created without picking a specific template from here (see
 // /api/events/[id]/contract), so nothing about the pre-existing single-template flow changes.
