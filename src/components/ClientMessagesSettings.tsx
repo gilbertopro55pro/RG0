@@ -1,48 +1,98 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   CLIENT_MESSAGE_INSERT_OPTIONS,
+  CLIENT_MESSAGE_EMOJI_OPTIONS as EMOJI_OPTIONS,
   CUSTOMIZABLE_MESSAGE_STAGES,
   RECOMMENDED_CLIENT_MESSAGE_TEMPLATES,
   DEFAULT_CLIENT_MESSAGE_TEMPLATE,
   STAGE_LABELS,
   type StageKey,
 } from "@/lib/stages";
-import type { ClientMessageTemplateRow } from "@/lib/types";
-
-const EMOJI_OPTIONS = [
-  "📸", "🎉", "✅", "💐", "🥂", "📅", "💌", "🙏",
-  "😊", "❤️", "👏", "🎊", "📷", "✨", "💍", "👰",
-  "🤵", "🎈", "🎁", "🌸", "🥳", "💯", "🔔", "📍",
-];
+import type { ClientMessageTemplateRow, CustomPackageStageRow } from "@/lib/types";
 
 function recommendedFor(key: StageKey): string {
   return RECOMMENDED_CLIENT_MESSAGE_TEMPLATES[key] ?? DEFAULT_CLIENT_MESSAGE_TEMPLATE;
 }
 
-export default function ClientMessagesSettings({ initialTemplates }: { initialTemplates: ClientMessageTemplateRow[] }) {
+export default function ClientMessagesSettings({
+  initialTemplates,
+  customStages = [],
+}: {
+  initialTemplates: ClientMessageTemplateRow[];
+  // Custom package stages with their own saved template (written from the package builder's
+  // inline editor) show up here too, alongside the 5 built-in stages — but only once a template
+  // has actually been saved for them (see customEntries below), and only ones still marked
+  // client-facing, matching how the package builder decides whether to show that editor at all.
+  customStages?: CustomPackageStageRow[];
+}) {
   const supabase = createClient();
+  const customEntries = customStages
+    .filter((s) => s.notify_client)
+    .map((s) => ({ key: `custom:${s.id}`, label: s.name }))
+    .filter((entry) => initialTemplates.some((t) => t.stage_key === entry.key));
+  const allKeys: { key: string; label: string; isCustom: boolean }[] = [
+    ...CUSTOMIZABLE_MESSAGE_STAGES.map((key) => ({ key, label: STAGE_LABELS[key], isCustom: false })),
+    ...customEntries.map((e) => ({ ...e, isCustom: true })),
+  ];
   const [bodies, setBodies] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
     for (const key of CUSTOMIZABLE_MESSAGE_STAGES) map[key] = recommendedFor(key);
+    for (const entry of customEntries) map[entry.key] = "";
     for (const row of initialTemplates) {
-      if (CUSTOMIZABLE_MESSAGE_STAGES.includes(row.stage_key as StageKey)) map[row.stage_key] = row.body;
+      if (CUSTOMIZABLE_MESSAGE_STAGES.includes(row.stage_key as StageKey) || customEntries.some((e) => e.key === row.stage_key)) {
+        map[row.stage_key] = row.body;
+      }
     }
     return map;
   });
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [emptyErrorKey, setEmptyErrorKey] = useState<string | null>(null);
   const [aiLoadingKey, setAiLoadingKey] = useState<string | null>(null);
   const [aiErrorKey, setAiErrorKey] = useState<string | null>(null);
   const [emojiOpenKey, setEmojiOpenKey] = useState<string | null>(null);
+  // "איפוס לנוסח המומלץ" only overwrites the DB once the photographer separately clicks "שמירה"
+  // — but that second click looks like a routine save, giving no signal that it's about to
+  // permanently replace a real customization with the generic default. Requiring a second tap on
+  // the reset button itself (armed for a few seconds, matching the pattern the AI-rewrite/insert
+  // buttons already use for lightweight in-place state) makes the destructive intent explicit.
+  const [confirmResetKey, setConfirmResetKey] = useState<string | null>(null);
+  const confirmResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+
+  // A custom stage's template can start existing only *after* this component already mounted —
+  // the package builder saves it via router.refresh() (a Server Component re-render), not a full
+  // page reload, and useState's lazy initializer above only ever runs once on mount. Without this,
+  // a newly-appeared custom entry's card would render with an empty body until the next hard
+  // reload, even though the correct text is already sitting in initialTemplates.
+  useEffect(() => {
+    setBodies((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const entry of customEntries) {
+        if (!(entry.key in next)) {
+          next[entry.key] = initialTemplates.find((t) => t.stage_key === entry.key)?.body ?? "";
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customStages, initialTemplates]);
+
+  useEffect(() => {
+    return () => {
+      if (confirmResetTimeoutRef.current) clearTimeout(confirmResetTimeoutRef.current);
+    };
+  }, []);
 
   // Inserts the token/emoji at the cursor position (or replaces a selection) in that stage's own
   // textarea, so the photographer never has to remember or type the {{...}} syntax by hand.
-  const insertToken = (key: StageKey, token: string) => {
+  const insertToken = (key: string, token: string) => {
     const el = textareaRefs.current[key];
     const current = bodies[key] ?? "";
     if (!el) {
@@ -60,14 +110,14 @@ export default function ClientMessagesSettings({ initialTemplates }: { initialTe
     });
   };
 
-  const askAi = async (key: StageKey) => {
+  const askAi = async (key: string, label: string) => {
     setAiLoadingKey(key);
     setAiErrorKey(null);
     try {
       const res = await fetch("/api/client-message-templates/ai-rewrite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stageLabel: STAGE_LABELS[key], currentText: bodies[key] }),
+        body: JSON.stringify({ stageLabel: label, currentText: bodies[key] }),
       });
       const data = await res.json();
       if (!res.ok || !data.text) throw new Error(data.error ?? "שגיאה");
@@ -79,9 +129,18 @@ export default function ClientMessagesSettings({ initialTemplates }: { initialTe
     }
   };
 
-  const save = async (key: StageKey) => {
-    setSavingKey(key);
+  const save = async (key: string) => {
     setErrorKey(null);
+    setEmptyErrorKey(null);
+    const body = bodies[key].trim();
+    // Never silently substitute the recommended default for an accidentally-emptied field — that
+    // would persist text the photographer never actually wrote, indistinguishable from their own
+    // customization quietly reverting.
+    if (!body) {
+      setEmptyErrorKey(key);
+      return;
+    }
+    setSavingKey(key);
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -90,7 +149,6 @@ export default function ClientMessagesSettings({ initialTemplates }: { initialTe
       setErrorKey(key);
       return;
     }
-    const body = bodies[key].trim() || recommendedFor(key);
     const { error } = await supabase
       .from("client_message_templates")
       .upsert({ photographer_id: user.id, stage_key: key, body, updated_at: new Date().toISOString() }, { onConflict: "photographer_id,stage_key" });
@@ -105,6 +163,15 @@ export default function ClientMessagesSettings({ initialTemplates }: { initialTe
   };
 
   const resetToDefault = (key: StageKey) => {
+    if (confirmResetTimeoutRef.current) clearTimeout(confirmResetTimeoutRef.current);
+    if (confirmResetKey !== key) {
+      // First tap: arm the confirmation instead of resetting immediately, and disarm it again
+      // after a few seconds so a stray later click elsewhere can't land on a still-armed button.
+      setConfirmResetKey(key);
+      confirmResetTimeoutRef.current = setTimeout(() => setConfirmResetKey((cur) => (cur === key ? null : cur)), 3000);
+      return;
+    }
+    setConfirmResetKey(null);
     setBodies((prev) => ({ ...prev, [key]: recommendedFor(key) }));
   };
 
@@ -122,15 +189,19 @@ export default function ClientMessagesSettings({ initialTemplates }: { initialTe
       </p>
 
       <div className="space-y-3">
-        {CUSTOMIZABLE_MESSAGE_STAGES.map((key) => {
-          const isDefault = bodies[key] === recommendedFor(key);
+        {allKeys.map(({ key, label, isCustom }) => {
+          const isDefault = !isCustom && bodies[key] === recommendedFor(key as StageKey);
           return (
             <div key={key} className="rounded-xl p-3 bg-chip relative">
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-sm font-semibold">{STAGE_LABELS[key]}</span>
-                {!isDefault && (
-                  <button onClick={() => resetToDefault(key)} className="text-[11px] text-ink-soft whitespace-nowrap shrink-0">
-                    איפוס לנוסח המומלץ
+                <span className="text-sm font-semibold">{label}</span>
+                {!isCustom && !isDefault && (
+                  <button
+                    onClick={() => resetToDefault(key as StageKey)}
+                    className="text-[11px] whitespace-nowrap shrink-0 font-semibold"
+                    style={{ color: confirmResetKey === key ? "var(--color-rose)" : "var(--color-ink-soft)" }}
+                  >
+                    {confirmResetKey === key ? "לאשר איפוס? (לחיצה נוספת)" : "איפוס לנוסח המומלץ"}
                   </button>
                 )}
               </div>
@@ -139,7 +210,10 @@ export default function ClientMessagesSettings({ initialTemplates }: { initialTe
                   textareaRefs.current[key] = el;
                 }}
                 value={bodies[key]}
-                onChange={(e) => setBodies((prev) => ({ ...prev, [key]: e.target.value }))}
+                onChange={(e) => {
+                  setBodies((prev) => ({ ...prev, [key]: e.target.value }));
+                  setEmptyErrorKey((cur) => (cur === key ? null : cur));
+                }}
                 rows={4}
                 className="w-full rounded-lg px-2.5 py-2 text-sm border border-line bg-white leading-relaxed"
               />
@@ -150,11 +224,7 @@ export default function ClientMessagesSettings({ initialTemplates }: { initialTe
                     const token = e.target.value;
                     if (!token) return;
                     const opt = CLIENT_MESSAGE_INSERT_OPTIONS.find((o) => o.token === token);
-                    // "קישור" is already self-labeled ("קישור: ") — every other tag gets its
-                    // label prefixed so the sent message reads "תאריך האירוע: 25.8.2026" and not
-                    // just the bare value.
-                    const insertText = opt && opt.token !== "קישור: " ? `${opt.label}: ${opt.token}` : token;
-                    insertToken(key, insertText);
+                    if (opt) insertToken(key, opt.insertText);
                   }}
                   className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white border border-line text-ink-soft"
                 >
@@ -176,7 +246,7 @@ export default function ClientMessagesSettings({ initialTemplates }: { initialTe
                 </button>
                 <button
                   type="button"
-                  onClick={() => askAi(key)}
+                  onClick={() => askAi(key, label)}
                   disabled={aiLoadingKey === key}
                   className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-amber-bg text-amber-deep disabled:opacity-60"
                 >
@@ -201,6 +271,7 @@ export default function ClientMessagesSettings({ initialTemplates }: { initialTe
                 </div>
               )}
               {aiErrorKey === key && <p className="text-xs text-rose mt-1.5">שגיאה בפנייה ל-AI, נסו שוב</p>}
+              {emptyErrorKey === key && <p className="text-xs text-rose mt-1.5">ההודעה ריקה — יש להזין טקסט לפני שמירה</p>}
               {errorKey === key && <p className="text-xs text-rose mt-1.5">שגיאה בשמירה, נסו שוב</p>}
               <div className="flex justify-end mt-2">
                 <button

@@ -1,0 +1,37 @@
+# Fly.io background worker — PDF album exports only. See worker/src/index.ts's own top comment for
+# why this exists as a separate long-running process instead of another Vercel route: Vercel's
+# serverless functions have a real, undocumented execution ceiling (~90-100s) that a persistent
+# process here doesn't have at all.
+#
+# Builds from the SAME repo root as the main Next.js app (not a separate package) — the worker
+# imports directly from ../../src/lib/* via relative paths, reusing the exact same rendering code
+# (pdf-lib, sharp, the bidi text layout, the font/mask/ornament handling) that's already proven
+# correct on the web app, instead of re-implementing any of it.
+# @supabase/supabase-js's Realtime client needs Node's native WebSocket support (Node 22+) even
+# though this worker never actually uses realtime subscriptions — createClient() initializes it
+# internally regardless. Confirmed live: node:20-slim threw "Node.js detected but native WebSocket
+# not found" on every single poll tick.
+FROM node:22-slim
+
+WORKDIR /app
+
+# sharp needs its own native (libvips) binary for the container's actual platform — installing
+# INSIDE the container (not copying node_modules from the host) is what makes that resolve
+# correctly regardless of what OS/architecture this image is built on.
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# The worker only needs src/lib/* (the rendering pipeline), src/assets/fonts/* (embedded fonts,
+# read from disk at render time), and worker/* itself — not the rest of the Next.js app (pages,
+# components, public assets), but copying the whole repo is simpler and safer than maintaining a
+# second, hand-picked file list that could silently drift out of sync with what src/lib actually
+# imports.
+COPY . .
+
+# Bakes a fingerprint of the render pipeline's own source files into the image at build time —
+# see scripts/computeRenderHash.js's own top comment. This is what worker/src/index.ts reports as
+# its heartbeat, and what the web app (built with the SAME script as its own "prebuild" step)
+# compares against before starting a new PDF export, to catch this image running stale code.
+RUN node scripts/computeRenderHash.js
+
+CMD ["node", "./node_modules/.bin/tsx", "worker/src/index.ts"]

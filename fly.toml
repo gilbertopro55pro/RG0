@@ -1,0 +1,33 @@
+# Fly.io app for the PDF album-export background worker — see Dockerfile.worker and
+# worker/src/index.ts for why this runs as a persistent process instead of another Vercel route.
+# No [[services]]/http_service section on purpose: this is a pure background worker, never receives
+# inbound traffic, and doesn't need a public IP at all.
+app = "photographer-flow-pdf-worker"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.worker"
+
+# Bumped from 2gb (2026-09-03) — confirmed live via a real album render: 2GB got OOM-killed
+# partway through (the kernel logged ~1.83GB resident before killing it), which just made the
+# machine restart and re-render the SAME job from page 1 every time, invisible as anything but
+# "slow". downloadCache in generateAlbumPdf holds every unique photo's decoded buffer for the WHOLE
+# pass with no eviction — a heavy real album (several 20MB+ originals, pages with a dozen-plus
+# photos each) genuinely needs headroom well past 2GB. 4096 MiB is the actual hard cap for
+# shared-cpu-2x (an 8gb request was rejected outright) — double the failing amount, real margin
+# above the ~1.83GB observed.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory_mb = 4096
+
+# Two machines running (never scaled to zero — each runs its own independent poll loop, see
+# worker/src/index.ts), not one — a single machine processes PDF exports strictly one at a time on
+# purpose (see main()'s own comment in worker/src/index.ts: scale via more machines, not more
+# concurrency inside one, since a heavy render already needs most of one machine's own memory
+# headroom), and a real render can take up to ~15 minutes — bumped from one machine ahead of
+# public launch so a short burst of exports doesn't queue behind a single long-running job. Safe
+# to run more than one now that processAlbumPdfJobOnWorker (albumExportJobs.ts) claims a job with
+# an atomic conditional UPDATE (status="pending" in the WHERE clause) instead of a plain select-
+# then-update, which would have let two machines both grab and render the same job at once.
+[processes]
+  app = "node ./node_modules/.bin/tsx worker/src/index.ts"

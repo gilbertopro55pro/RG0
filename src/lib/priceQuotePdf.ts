@@ -58,8 +58,11 @@ export async function buildPriceQuotePdf(params: {
   // Optional event context (from the calculator's quote-builder flow, or the manual builder's own
   // event fields) — omitted entirely for a quote with none of this filled in.
   eventDetails?: { type?: string; date?: string; location?: string; workHours?: string };
+  // Free-text notes/comments on the quote itself (not any one line item) — printed as its own
+  // wrapped block after the cost summary. Omitted entirely when blank.
+  notes?: string;
 }): Promise<Uint8Array> {
-  const { photographer, logoBuffer, clientName, items, subtotal, vatAmount, total, createdAt, showVat = true, eventDetails } = params;
+  const { photographer, logoBuffer, clientName, items, subtotal, vatAmount, total, createdAt, showVat = true, eventDetails, notes } = params;
 
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
@@ -228,6 +231,22 @@ export async function buildPriceQuotePdf(params: {
     drawAlignedBidiText(page, text, { boxX, boxWidth, y: boxY - 11, size: emphasize ? 12 : 10, align: "right", color: emphasize ? AMBER_DEEP : INK_SOFT, ...font });
     boxY -= emphasize ? 24 : 20;
   });
+
+  if (notes?.trim()) {
+    y = boxY - 20;
+    const noteLines = wrapLines(notes.trim(), bodyBoxWidth, hebrewRegular);
+    const blockHeight = 14 + noteLines.length * 13;
+    if (y - blockHeight < MARGIN) {
+      page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      y = PAGE_HEIGHT - MARGIN;
+    }
+    drawAlignedBidiText(page, "הערות", { boxX: bodyBoxX, boxWidth: bodyBoxWidth, y, size: 10, align: "right", color: INK, ...bold });
+    y -= 16;
+    noteLines.forEach((line) => {
+      drawAlignedBidiText(page, line, { boxX: bodyBoxX, boxWidth: bodyBoxWidth, y, size: 9.5, align: "right", color: INK_SOFT, ...regular });
+      y -= 13;
+    });
+  }
 
   return pdfDoc.save();
 }

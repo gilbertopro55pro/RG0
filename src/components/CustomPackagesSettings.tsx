@@ -1,10 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { CustomPackageRow, CustomPackageStageRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
 import { useModalEntered } from "@/lib/useModalEntered";
+import {
+  CUSTOMIZABLE_MESSAGE_STAGES,
+  STAGE_LABELS,
+  CLIENT_MESSAGE_INSERT_OPTIONS,
+  CLIENT_MESSAGE_EMOJI_OPTIONS,
+  PACKAGE_FLOWS,
+} from "@/lib/stages";
+
+// The stage-name suggestions dropdown offers every stage in the "חבילה מלאה" (full package) flow
+// — not just the 5 CUSTOMIZABLE_MESSAGE_STAGES, which is a narrower list (only the stages with a
+// centrally-editable message template). Keeping these as two separate lists is deliberate: picking
+// a suggestion like "גיבוי חומר גולמי" here should still count as a "custom" stage name for the
+// purposes of isCustomStageName below, since that stage has no central template to fall back on —
+// only unlocking the per-stage message editor for names outside CUSTOMIZABLE_MESSAGE_STAGES is
+// what makes that editor actually useful for a stage like that.
+const ALL_STAGE_NAME_OPTIONS = PACKAGE_FLOWS.full;
+
+// A stage name that matches one of the built-in customizable stages' own label already has its
+// message customized centrally (Settings → הודעות ללקוח/ה, keyed by that stage's real StageKey)
+// — only a genuinely custom-named stage needs its own per-stage template stored here.
+const BUILTIN_STAGE_LABELS = new Set(CUSTOMIZABLE_MESSAGE_STAGES.map((k) => STAGE_LABELS[k]));
+function isCustomStageName(name: string): boolean {
+  return !BUILTIN_STAGE_LABELS.has(name.trim());
+}
 
 type StageDraft = {
   clientId: string;
@@ -50,6 +75,24 @@ export default function CustomPackagesSettings({
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const supabase = createClient();
+
+  // SettingsTabs keeps every tab mounted at once (display:none, never unmounted — see its own
+  // comment) so this component's useState-from-props only ever runs its lazy initializer on the
+  // very first mount. A change made from a DIFFERENT tab that triggers router.refresh() sends
+  // fresh props down here too, but without this, they'd sit unused forever — the photographer
+  // would see stale packages/pricing until a hard reload. Same pattern as ClientMessagesSettings.
+  useEffect(() => setPackages(initialPackages), [initialPackages]);
+  useEffect(() => {
+    setStagesByPackage(() => {
+      const map = new Map<string, CustomPackageStageRow[]>();
+      for (const s of initialStages) {
+        map.set(s.package_id, [...(map.get(s.package_id) ?? []), s]);
+      }
+      return map;
+    });
+  }, [initialStages]);
+  useEffect(() => setEventTypes(initialEventTypes), [initialEventTypes]);
+  useEffect(() => setPrices(initialPrices), [initialPrices]);
 
   const deletePackage = async (id: string) => {
     setDeletingId(id);
@@ -191,6 +234,17 @@ export function CustomPackageBuilder({
 }) {
   const supabase = createClient();
   const entered = useModalEntered();
+  // Rendered via a portal straight to document.body (see the return statement below) instead of
+  // inline where this component sits in the tree — nested many levels deep inside SettingsTabs'
+  // display:none/block-toggled tab container. A fixed-position full-screen modal nested that deep
+  // is exactly the shape of DOM structure known to make position:fixed unreliable on iOS Safari,
+  // especially in this app's standalone (home-screen) mode — reports of the modal opening but
+  // being completely unresponsive with no backdrop blur match that failure mode. Portaling to
+  // document.body sidesteps it categorically. document.body only exists client-side, hence the
+  // mounted gate (this component is only ever rendered in response to a client click anyway, so
+  // it flips true essentially immediately).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [name, setName] = useState(pkg?.name ?? "");
   const [price, setPrice] = useState(pkg?.price?.toString() ?? "");
   const [topics, setTopics] = useState<TopicDraft[]>(() =>
@@ -218,6 +272,125 @@ export function CustomPackageBuilder({
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  // Per-custom-stage client-message template drafts, keyed by the stage's own clientId (which —
+  // see rowFor's id field below — becomes that stage's real
+  // custom_package_stages.id whether it's a brand-new draft or already persisted, so this same
+  // key can be used to read AND write client_message_templates.stage_key = "custom:<clientId>"
+  // both before and after the whole package is actually saved). Rendered inline in the stage row
+  // itself (matching ClientMessagesSettings.tsx's own per-stage card) rather than in a popup, so
+  // it's never reduced to a single-line control.
+  const [stageMessageDrafts, setStageMessageDrafts] = useState<Record<string, string>>({});
+  const [stageMessageSavingId, setStageMessageSavingId] = useState<string | null>(null);
+  const [stageMessageSavedId, setStageMessageSavedId] = useState<string | null>(null);
+  const [stageMessageErrorId, setStageMessageErrorId] = useState<string | null>(null);
+  const [stageMessageEmptyErrorId, setStageMessageEmptyErrorId] = useState<string | null>(null);
+  const [stageMessageAiLoadingId, setStageMessageAiLoadingId] = useState<string | null>(null);
+  const [stageMessageAiErrorId, setStageMessageAiErrorId] = useState<string | null>(null);
+  const [stageMessageEmojiOpenId, setStageMessageEmojiOpenId] = useState<string | null>(null);
+  const stageTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  // Which stage's name-suggestions dropdown is open. A native <datalist> can't be styled (and
+  // renders inconsistently — often not at all — on iOS Safari), so the 5 built-in stage names are
+  // shown in a custom-rendered, scrollable panel instead, while the input itself stays a plain
+  // free-text field.
+  const [stageNameDropdownOpenId, setStageNameDropdownOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialStages.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const keys = initialStages.map((s) => `custom:${s.id}`);
+      const { data } = await supabase
+        .from("client_message_templates")
+        .select("stage_key, body")
+        .eq("photographer_id", user.id)
+        .in("stage_key", keys)
+        .returns<{ stage_key: string; body: string }[]>();
+      if (cancelled || !data) return;
+      setStageMessageDrafts((prev) => {
+        const next = { ...prev };
+        for (const row of data) next[row.stage_key.slice("custom:".length)] = row.body;
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const insertStageToken = (clientId: string, token: string) => {
+    const el = stageTextareaRefs.current[clientId];
+    const current = stageMessageDrafts[clientId] ?? "";
+    if (!el) {
+      setStageMessageDrafts((prev) => ({ ...prev, [clientId]: current + token }));
+      return;
+    }
+    const start = el.selectionStart ?? current.length;
+    const end = el.selectionEnd ?? current.length;
+    const next = current.slice(0, start) + token + current.slice(end);
+    setStageMessageDrafts((prev) => ({ ...prev, [clientId]: next }));
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
+  const askAiForStage = async (clientId: string, stageName: string) => {
+    setStageMessageAiLoadingId(clientId);
+    setStageMessageAiErrorId(null);
+    try {
+      const res = await fetch("/api/client-message-templates/ai-rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stageLabel: stageName, currentText: stageMessageDrafts[clientId] ?? "" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.text) throw new Error(data.error ?? "שגיאה");
+      setStageMessageDrafts((prev) => ({ ...prev, [clientId]: data.text }));
+    } catch {
+      setStageMessageAiErrorId(clientId);
+    } finally {
+      setStageMessageAiLoadingId(null);
+    }
+  };
+
+  const saveStageMessage = async (clientId: string) => {
+    const body = (stageMessageDrafts[clientId] ?? "").trim();
+    setStageMessageErrorId(null);
+    setStageMessageEmptyErrorId(null);
+    if (!body) {
+      setStageMessageEmptyErrorId(clientId);
+      return;
+    }
+    setStageMessageSavingId(clientId);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setStageMessageSavingId(null);
+      setStageMessageErrorId(clientId);
+      return;
+    }
+    const { error } = await supabase
+      .from("client_message_templates")
+      .upsert(
+        { photographer_id: user.id, stage_key: `custom:${clientId}`, body, updated_at: new Date().toISOString() },
+        { onConflict: "photographer_id,stage_key" }
+      );
+    setStageMessageSavingId(null);
+    if (error) {
+      setStageMessageErrorId(clientId);
+      return;
+    }
+    setStageMessageDrafts((prev) => ({ ...prev, [clientId]: body }));
+    setStageMessageSavedId(clientId);
+    setTimeout(() => setStageMessageSavedId((cur) => (cur === clientId ? null : cur)), 2000);
+  };
 
   const updateStage = (clientId: string, patch: Partial<StageDraft>) =>
     setStages((prev) => prev.map((s) => (s.clientId === clientId ? { ...s, ...patch } : s)));
@@ -271,9 +444,13 @@ export function CustomPackageBuilder({
 
   const save = async () => {
     const trimmedName = name.trim();
+    // Stages are optional — a package can be saved with just a name and no process steps at all,
+    // and stages added later by reopening and editing it. See createEvent.ts's own comment on why
+    // creating an EVENT from a stage-less package is still fully supported (an empty event_stages
+    // list, not a blocked state).
     const validStages = stages.filter((s) => s.name.trim());
-    if (!trimmedName || validStages.length === 0) {
-      setError("יש להזין שם לחבילה ולפחות שלב אחד עם שם");
+    if (!trimmedName) {
+      setError("יש להזין שם לחבילה");
       return;
     }
     setSaving(true);
@@ -318,6 +495,10 @@ export function CustomPackageBuilder({
     const removedIds = [...originalIds].filter((id) => !currentIds.has(id));
 
     const rowFor = (s: StageDraft, i: number) => ({
+      // Explicit, not the column's own default — lets a brand-new stage's id be known client-side
+      // before this save even runs (see stageMessageTemplates above), since it's already the same
+      // random uuid used as this draft's React key from the moment "+ שלב" was clicked.
+      id: s.clientId,
       package_id: savedPkg.id,
       photographer_id: user.id,
       name: s.name.trim(),
@@ -417,9 +598,13 @@ export function CustomPackageBuilder({
     onSaved(savedPkg, results.sort((a, b) => a.sort_order - b.sort_order), updatedEventTypes, updatedPrices);
   };
 
-  return (
+  // A centered, ~85vh-tall modal well above the sticky top nav bar's own z-30 (see TopNav.tsx) —
+  // not anchored to the viewport bottom, so its own top edge can never land underneath the nav bar
+  // on a short/mobile viewport.
+  if (!mounted) return null;
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 flex justify-center z-[100] items-center p-4"
       style={{
         background: "rgba(46,49,66,0.45)",
         backdropFilter: entered ? "blur(16px)" : "blur(0px)",
@@ -427,7 +612,10 @@ export function CustomPackageBuilder({
         transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
       }}
     >
-      <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[90vh] overflow-y-auto">
+      <div
+        className="w-full max-w-md rounded-3xl p-5 pb-8 bg-paper shadow-sheet overflow-y-auto"
+        style={{ height: "85vh" }}
+      >
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl font-bold font-display">{pkg ? "עריכת חבילה" : "חבילה מותאמת אישית חדשה"}</h2>
           <button
@@ -505,12 +693,39 @@ export function CustomPackageBuilder({
                       aria-label="בחירת שלב למחיקה"
                     />
                     <span className="text-xs shrink-0 w-5 text-center text-ink-soft font-data">{i + 1}</span>
-                    <input
-                      value={stage.name}
-                      onChange={(e) => updateStage(stage.clientId, { name: e.target.value })}
-                      placeholder="שם השלב"
-                      className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
-                    />
+                    <div className="relative flex-1 min-w-0">
+                      <input
+                        value={stage.name}
+                        onChange={(e) => updateStage(stage.clientId, { name: e.target.value })}
+                        onFocus={() => setStageNameDropdownOpenId(stage.clientId)}
+                        onBlur={() =>
+                          setTimeout(
+                            () => setStageNameDropdownOpenId((cur) => (cur === stage.clientId ? null : cur)),
+                            120
+                          )
+                        }
+                        placeholder="שם השלב"
+                        className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
+                      />
+                      {stageNameDropdownOpenId === stage.clientId && (
+                        <div className="absolute z-20 top-full right-0 left-0 mt-1 rounded-lg border border-line bg-white shadow-sheet max-h-[184px] overflow-y-auto">
+                          {ALL_STAGE_NAME_OPTIONS.map((k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                updateStage(stage.clientId, { name: STAGE_LABELS[k] });
+                                setStageNameDropdownOpenId(null);
+                              }}
+                              className="block w-full text-right px-3 py-2 text-sm hover:bg-chip"
+                            >
+                              {STAGE_LABELS[k]}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <div className="flex flex-col shrink-0">
                       <button
                         onClick={() => moveStage(i, -1)}
@@ -528,19 +743,122 @@ export function CustomPackageBuilder({
                       </button>
                     </div>
                   </div>
-                  <label className="flex items-center gap-2 text-xs cursor-pointer mb-1">
-                    <input
-                      type="checkbox"
-                      checked={stage.notifyClient}
-                      onChange={(e) => updateStage(stage.clientId, { notifyClient: e.target.checked })}
-                    />
-                    שליחת עדכון ללקוח/ה בסיום השלב
-                  </label>
-                  <p className="text-[11px] text-ink-soft mb-1.5">
-                    {stage.notifyClient
-                      ? "✓ מסומן: כשהשלב יסומן כבוצע, תישלח ללקוח/ה אוטומטית הודעת עדכון בוואטסאפ."
-                      : "לא מסומן: זהו שלב פנימי בלבד (כמו עריכה או גיבוי) — לא תישלח שום הודעה ללקוח/ה."}
-                  </p>
+                  <div className="mb-1.5">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-xs font-semibold">
+                          {stage.notifyClient ? "שלב מול הלקוח/ה" : "שלב פנימי"}
+                        </span>
+                        <button
+                          onClick={() => updateStage(stage.clientId, { notifyClient: !stage.notifyClient })}
+                          role="switch"
+                          aria-checked={stage.notifyClient}
+                          className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
+                          style={{
+                            background: stage.notifyClient ? "var(--color-amber-deep)" : "var(--color-line)",
+                            justifyContent: stage.notifyClient ? "flex-start" : "flex-end",
+                          }}
+                        >
+                          <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-ink-soft">
+                        {stage.notifyClient
+                          ? "שלב מול הלקוח/ה: כשמסמנים אותו כבוצע, נשלחת ללקוח/ה אוטומטית הודעת עדכון בוואטסאפ."
+                          : "שלב פנימי: רק אתם רואים ומסמנים אותו (כמו עריכה או גיבוי) — הלקוח/ה לא מקבלים עליו שום הודעה."}
+                      </p>
+                      {stage.notifyClient && isCustomStageName(stage.name) && (
+                        <div className="mt-2 rounded-xl p-3 bg-white border border-line">
+                          <div className="text-xs font-semibold mb-2">תבנית ההודעה שתישלח ללקוח/ה בסיום השלב</div>
+                          <textarea
+                            ref={(el) => {
+                              stageTextareaRefs.current[stage.clientId] = el;
+                            }}
+                            value={stageMessageDrafts[stage.clientId] ?? ""}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setStageMessageDrafts((prev) => ({ ...prev, [stage.clientId]: value }));
+                              setStageMessageEmptyErrorId((cur) => (cur === stage.clientId ? null : cur));
+                            }}
+                            rows={4}
+                            placeholder={`לדוגמה: שלום {{שם}}, השלב "${stage.name || "..."}" הושלם! קישור: `}
+                            className="w-full rounded-lg px-2.5 py-2 text-sm border border-line bg-white leading-relaxed"
+                          />
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                const token = e.target.value;
+                                if (!token) return;
+                                const opt = CLIENT_MESSAGE_INSERT_OPTIONS.find((o) => o.token === token);
+                                if (opt) insertStageToken(stage.clientId, opt.insertText);
+                              }}
+                              className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white border border-line text-ink-soft"
+                            >
+                              <option value="" disabled>
+                                + הוספת פרט
+                              </option>
+                              {CLIENT_MESSAGE_INSERT_OPTIONS.map((opt) => (
+                                <option key={opt.token} value={opt.token}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => setStageMessageEmojiOpenId((cur) => (cur === stage.clientId ? null : stage.clientId))}
+                              className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white border border-line text-ink-soft"
+                            >
+                              😀 אימוג׳י
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => askAiForStage(stage.clientId, stage.name)}
+                              disabled={stageMessageAiLoadingId === stage.clientId}
+                              className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-amber-bg text-amber-deep disabled:opacity-60"
+                            >
+                              {stageMessageAiLoadingId === stage.clientId ? "מנסח..." : "✨ עזרה מ-AI"}
+                            </button>
+                          </div>
+                          {stageMessageEmojiOpenId === stage.clientId && (
+                            <div className="mt-2 rounded-xl p-2.5 bg-chip border border-line grid grid-cols-8 gap-1">
+                              {CLIENT_MESSAGE_EMOJI_OPTIONS.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => {
+                                    insertStageToken(stage.clientId, emoji);
+                                    setStageMessageEmojiOpenId(null);
+                                  }}
+                                  className="text-lg rounded-lg py-1 hover:bg-chip"
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {stageMessageAiErrorId === stage.clientId && (
+                            <p className="text-xs text-rose mt-1.5">שגיאה בפנייה ל-AI, נסו שוב</p>
+                          )}
+                          {stageMessageEmptyErrorId === stage.clientId && (
+                            <p className="text-xs text-rose mt-1.5">ההודעה ריקה — יש להזין טקסט לפני שמירה</p>
+                          )}
+                          {stageMessageErrorId === stage.clientId && <p className="text-xs text-rose mt-1.5">שגיאה בשמירה, נסו שוב</p>}
+                          <div className="flex justify-end mt-2">
+                            <button
+                              onClick={() => saveStageMessage(stage.clientId)}
+                              disabled={stageMessageSavingId === stage.clientId}
+                              className="rounded-lg px-4 py-1.5 text-xs font-semibold bg-ink text-white disabled:opacity-60"
+                            >
+                              {stageMessageSavingId === stage.clientId
+                                ? "שומר..."
+                                : stageMessageSavedId === stage.clientId
+                                  ? "נשמר ✓"
+                                  : "שמירת התבנית"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   {stage.notifyClient && (
                     <input
                       value={stage.notifyText}
@@ -649,6 +967,7 @@ export function CustomPackageBuilder({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -34,8 +34,25 @@ export async function scheduleLeadFollowUps(
   await supabase.from("scheduled_messages").insert(rows);
 }
 
+// Called right after a quote is sent from the leads page (src/app/api/leads/[id]/quote/route.ts)
+// — schedules a single photographer-facing "did you follow up?" nudge 2 days out. Separate from
+// scheduleLeadFollowUps above: this one is anchored on the quote being sent (not lead creation),
+// is a single step (not a 3-step sequence), and notifies the PHOTOGRAPHER rather than the lead.
+export async function scheduleLeadQuoteFollowUp(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  leadId: string
+) {
+  await supabase.from("scheduled_messages").insert({
+    lead_id: leadId,
+    kind: "lead_quote_followup" as const,
+    send_at: addDays(new Date(), 2).toISOString(),
+  });
+}
+
 // Called whenever a lead's status changes away from 'new'/'quoted' (i.e. it converted or died) —
-// cancels any follow-up steps still pending so a won/lost lead never gets a stray nudge.
+// cancels any follow-up steps still pending (both the lead-facing sequence and the
+// photographer-facing quote nudge) so a won/lost lead never gets a stray notification.
 export async function cancelLeadFollowUps(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
@@ -45,6 +62,6 @@ export async function cancelLeadFollowUps(
     .from("scheduled_messages")
     .update({ status: "canceled" })
     .eq("lead_id", leadId)
-    .eq("kind", "lead_follow_up")
+    .in("kind", ["lead_follow_up", "lead_quote_followup"])
     .eq("status", "pending");
 }

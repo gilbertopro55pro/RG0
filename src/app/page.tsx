@@ -12,6 +12,7 @@ import type {
   PackagePriceRow,
   Photographer,
   PriceQuoteRow,
+  PriceQuoteTemplateRow,
   TeamMember,
 } from "@/lib/types";
 import LogoutButton from "@/components/LogoutButton";
@@ -20,6 +21,7 @@ import FeedbackButton from "@/components/FeedbackButton";
 import PendingClientMessagePrompts, {
   type PendingPaymentReminder,
   type PendingReviewRequest,
+  type PendingLeadFollowUp,
 } from "@/components/PendingClientMessagePrompts";
 import DashboardHero from "@/components/DashboardHero";
 import QuickActionsGrid from "@/components/QuickActionsGrid";
@@ -27,6 +29,7 @@ import EventsListView from "@/components/EventsListView";
 import LandingPage from "@/components/LandingPage";
 import SettingsGearLink from "@/components/SettingsGearLink";
 import UpdateReloadGate from "@/components/UpdateReloadGate";
+import AlbumQuickAccessButton from "@/components/AlbumQuickAccessButton";
 
 const HEBREW_MONTHS_SHORT = [
   "ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ",
@@ -63,6 +66,7 @@ export default async function DashboardPage() {
     { data: scheduledReminders },
     { data: unreadNotifications },
     { data: priceQuotes },
+    { data: priceQuoteTemplates },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase.from("team_members").select("*").eq("id", user!.id).maybeSingle<TeamMember>(),
@@ -78,11 +82,18 @@ export default async function DashboardPage() {
     supabase.from("event_payments").select("*").returns<EventPaymentRow[]>(),
     supabase
       .from("scheduled_messages")
-      .select("id, event_id, kind, events(client_name)")
-      .in("kind", ["payment_reminder", "review_request"])
+      .select("id, event_id, lead_id, kind, events(client_name), leads(name, phone, quoted_amount)")
+      .in("kind", ["payment_reminder", "review_request", "lead_quote_followup"])
       .eq("status", "awaiting_confirmation")
       .returns<
-        { id: string; event_id: string; kind: "payment_reminder" | "review_request"; events: { client_name: string } | null }[]
+        {
+          id: string;
+          event_id: string | null;
+          lead_id: string | null;
+          kind: "payment_reminder" | "review_request" | "lead_quote_followup";
+          events: { client_name: string } | null;
+          leads: { name: string; phone: string | null; quoted_amount: number | null } | null;
+        }[]
       >(),
     // Powers the progress badge on each event card — only client-initiated steps (contract
     // signed, gallery selection) the photographer hasn't opened the event to see yet.
@@ -93,6 +104,7 @@ export default async function DashboardPage() {
       .is("read_at", null)
       .returns<{ event_id: string }[]>(),
     supabase.from("price_quotes").select("*").order("created_at", { ascending: false }).returns<PriceQuoteRow[]>(),
+    supabase.from("price_quote_templates").select("*").order("created_at", { ascending: true }).returns<PriceQuoteTemplateRow[]>(),
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
@@ -114,6 +126,33 @@ export default async function DashboardPage() {
     registeredUsersCount = count ?? 0;
   }
 
+  // Feeds the album-design quick-access dropdown below — published and draft galleries alike (an
+  // album can be designed before the client-facing gallery ever goes live), excluding the hidden
+  // portfolio-only gallery and anything archived.
+  let albumQuickGalleries: { id: string; title: string; published: boolean; hasActiveAlbum: boolean }[] = [];
+  if (photographer?.email === ADMIN_EMAIL) {
+    const { data: galleriesForAlbum } = await supabase
+      .from("galleries")
+      .select("id, title, published")
+      .eq("photographer_id", photographer.id)
+      .eq("is_portfolio_only", false)
+      .is("archived_at", null)
+      .order("created_at", { ascending: false })
+      .returns<{ id: string; title: string; published: boolean }[]>();
+    // hasActiveAlbum drives the quick-export shortcut in AlbumQuickAccessButton — a gallery only
+    // gets one of these rows once the photographer has actually started designing its album (see
+    // buildStyledAlbum/buildAlbumFromBookTemplate in GalleryManageView.tsx, both of which insert
+    // this row the moment step 1 of the album wizard completes), so its mere existence is already
+    // exactly "there's something to export," no need to also check it has real spreads/pages.
+    const galleryIds = (galleriesForAlbum ?? []).map((g) => g.id);
+    const { data: albumsForGalleries } =
+      galleryIds.length > 0
+        ? await supabase.from("gallery_albums").select("gallery_id").in("gallery_id", galleryIds).returns<{ gallery_id: string }[]>()
+        : { data: [] as { gallery_id: string }[] };
+    const galleriesWithAlbum = new Set((albumsForGalleries ?? []).map((a) => a.gallery_id));
+    albumQuickGalleries = (galleriesForAlbum ?? []).map((g) => ({ ...g, hasActiveAlbum: galleriesWithAlbum.has(g.id) }));
+  }
+
   const doneCountByEvent = new Map<string, number>();
   const totalCountByEvent = new Map<string, number>();
   events?.forEach((event) => {
@@ -131,40 +170,49 @@ export default async function DashboardPage() {
   const isPhotographer = !!photographer;
   const displayName = photographer?.name ?? teamMember?.name ?? user?.email;
 
-  let heroData: { monthLabel: string; monthTotal: number; pendingTotal: number; trailing: { label: string; amount: number }[] } | null = null;
+  let heroData: { monthLabel: string; monthTotal: number; monthForecast: number } | null = null;
   if (photographer) {
     const revenueByMonth = new Map<string, number>();
-    let pendingTotal = 0;
+    // A partial payment (deposit_paid/balance_paid still false, *_paid_amount set) counts only the
+    // amount actually received as realized revenue for the month it was recorded in — not the full
+    // original amount, which would overstate revenue for anyone paying in installments.
     (payments ?? []).forEach((p) => {
       if (p.deposit_paid_at) {
         const d = new Date(p.deposit_paid_at);
         const key = `${d.getFullYear()}-${d.getMonth()}`;
-        revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + Number(p.deposit_amount));
-      } else {
-        pendingTotal += Number(p.deposit_amount);
+        const received = p.deposit_paid ? Number(p.deposit_amount) : Number(p.deposit_paid_amount ?? 0);
+        revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + received);
       }
       if (p.balance_paid_at) {
         const d = new Date(p.balance_paid_at);
         const key = `${d.getFullYear()}-${d.getMonth()}`;
-        revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + Number(p.balance_amount));
-      } else {
-        pendingTotal += Number(p.balance_amount);
+        const received = p.balance_paid ? Number(p.balance_amount) : Number(p.balance_paid_amount ?? 0);
+        revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + received);
       }
     });
 
     const now = new Date();
-    const trailing: { label: string; amount: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      trailing.push({ label: HEBREW_MONTHS_SHORT[d.getMonth()], amount: revenueByMonth.get(key) ?? 0 });
-    }
     const currentKey = `${now.getFullYear()}-${now.getMonth()}`;
+    const monthTotal = revenueByMonth.get(currentKey) ?? 0;
+
+    // "Forecast for this month" = revenue already received this month, plus whatever's still
+    // unpaid but due (balance_due_date) within this same month — the only due-date field the data
+    // model has (EventPaymentRow has no separate deposit due date; AnalyticsView.tsx's own
+    // upcoming-payments list uses balance_due_date for both legs the same way). An unpaid amount
+    // with no due date at all can't be attributed to any specific month, so it's excluded here.
+    let monthForecastExtra = 0;
+    (payments ?? []).forEach((p) => {
+      if (!p.balance_due_date) return;
+      const due = new Date(p.balance_due_date);
+      if (`${due.getFullYear()}-${due.getMonth()}` !== currentKey) return;
+      if (!p.deposit_paid) monthForecastExtra += Number(p.deposit_amount) - Number(p.deposit_paid_amount ?? 0);
+      if (!p.balance_paid) monthForecastExtra += Number(p.balance_amount) - Number(p.balance_paid_amount ?? 0);
+    });
+
     heroData = {
       monthLabel: HEBREW_MONTHS_SHORT[now.getMonth()],
-      monthTotal: revenueByMonth.get(currentKey) ?? 0,
-      pendingTotal,
-      trailing,
+      monthTotal,
+      monthForecast: monthTotal + monthForecastExtra,
     };
   }
 
@@ -178,13 +226,23 @@ export default async function DashboardPage() {
           type: "payment" as const,
           id: s.id,
           clientName: s.events?.client_name ?? "לקוח",
-          balanceAmount: balanceByEvent.get(s.event_id) ?? 0,
+          balanceAmount: (s.event_id ? balanceByEvent.get(s.event_id) : undefined) ?? 0,
         }))
     : [];
   const pendingReviewRequests: PendingReviewRequest[] = photographer
     ? (scheduledReminders ?? [])
         .filter((s) => s.kind === "review_request")
         .map((s) => ({ type: "review" as const, id: s.id, clientName: s.events?.client_name ?? "לקוח" }))
+    : [];
+  const pendingLeadFollowUps: PendingLeadFollowUp[] = photographer
+    ? (scheduledReminders ?? [])
+        .filter((s) => s.kind === "lead_quote_followup")
+        .map((s) => ({
+          type: "lead_followup" as const,
+          id: s.id,
+          leadName: s.leads?.name ?? "ליד",
+          quotedAmount: s.leads?.quoted_amount ?? 0,
+        }))
     : [];
 
   return (
@@ -214,8 +272,7 @@ export default async function DashboardPage() {
         <DashboardHero
           monthLabel={heroData.monthLabel}
           monthTotal={heroData.monthTotal}
-          pendingTotal={heroData.pendingTotal}
-          trailing={heroData.trailing}
+          monthForecast={heroData.monthForecast}
           registeredUsersCount={registeredUsersCount}
         />
       )}
@@ -225,9 +282,33 @@ export default async function DashboardPage() {
           hourlyRate={photographer.hourly_shoot_rate}
           suppliers={photographer.pricing_suppliers}
           priceQuotes={priceQuotes ?? []}
+          templates={priceQuoteTemplates ?? []}
           eventTypes={(eventTypes ?? []).map((t) => ({ id: t.id, name: t.name }))}
           initialCustomEventTypes={photographer.quote_event_type_suggestions}
+          defaultTaxStatus={photographer.business_tax_status}
         />
+      )}
+
+      {photographer?.email === ADMIN_EMAIL && (
+        // Same total width (row + gap) as DashboardHero's card above — both are unconstrained
+        // block-level children of this same padded container, so a plain flex row with gap-3
+        // naturally lines up without any explicit width math.
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
+          <a
+            href="/magnet-frames"
+            className="flex-1 min-w-0 flex items-center justify-between gap-3 rounded-2xl p-4 bg-card border border-line shadow-card"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg bg-amber-bg">🧲</span>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold truncate">עיצוב מסגרת מגנט</div>
+                <div className="text-xs text-ink-soft truncate">בסיס לבן, טקסט ואלמנטים חופשי</div>
+              </div>
+            </div>
+            <span className="text-ink-soft shrink-0">←</span>
+          </a>
+          <AlbumQuickAccessButton galleries={albumQuickGalleries} />
+        </div>
       )}
 
       <EventsListView
@@ -236,9 +317,14 @@ export default async function DashboardPage() {
         totalCountByEvent={Object.fromEntries(totalCountByEvent)}
         unreadCountByEvent={Object.fromEntries(unreadCountByEvent)}
         isPhotographer={isPhotographer}
+        needsReviewColorId={photographer?.google_calendar_import_color_id}
       />
       <FeedbackButton />
-      <PendingClientMessagePrompts paymentReminders={pendingReminders} reviewRequests={pendingReviewRequests} />
+      <PendingClientMessagePrompts
+        paymentReminders={pendingReminders}
+        reviewRequests={pendingReviewRequests}
+        leadFollowUps={pendingLeadFollowUps}
+      />
     </div>
   );
 }

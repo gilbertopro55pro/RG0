@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { createEmailConfirmToken } from "@/lib/emailConfirmToken";
 import { sendEmail } from "@/lib/resend";
+import { stripPhoneFormatting } from "@/lib/phone";
 
 export const runtime = "nodejs";
 
@@ -18,13 +19,14 @@ export async function POST(request: NextRequest) {
   if (!name || !phone || !email || !password || !plan) {
     return NextResponse.json({ error: "חסרים פרטים" }, { status: 400 });
   }
+  const cleanPhone = stripPhoneFormatting(phone);
 
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase.auth.admin.createUser({
     email,
     password,
     email_confirm: false,
-    user_metadata: { name, phone, plan },
+    user_metadata: { name, phone: cleanPhone, plan },
   });
 
   if (error) {

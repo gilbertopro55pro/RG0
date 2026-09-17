@@ -11,6 +11,17 @@ export async function GET(request: NextRequest) {
   const redirectTo = new URL(savedRedirectPath?.startsWith("/") ? savedRedirectPath : "/settings", request.url);
 
   if (!code || !state || state !== savedState) {
+    // Almost always a cookie/domain mismatch — the state cookie was set on a different host than
+    // the one this callback landed on (e.g. GOOGLE_REDIRECT_URI pointing at a different domain
+    // than the one /api/google/connect was called from), not a real CSRF attempt. Logged so a
+    // recurring mismatch is visible in server logs instead of only ever showing up as a silent
+    // redirect to the user.
+    console.error("Google OAuth callback state mismatch", {
+      hasCode: !!code,
+      hasState: !!state,
+      hasSavedState: !!savedState,
+      host: request.nextUrl.host,
+    });
     redirectTo.searchParams.set("google_error", "1");
     const res = NextResponse.redirect(redirectTo);
     res.cookies.delete("google_oauth_state");
@@ -37,7 +48,8 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     redirectTo.searchParams.set("google_connected", "1");
-  } catch {
+  } catch (e) {
+    console.error("Google OAuth callback failed", e);
     redirectTo.searchParams.set("google_error", "1");
   }
 

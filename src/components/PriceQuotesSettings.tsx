@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { PriceQuoteItem, PriceQuoteRow } from "@/lib/types";
+import type { PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
 import { openWhatsApp } from "@/lib/waLink";
 import { formatDateDMY } from "@/lib/priceQuoteFormat";
 
@@ -30,6 +30,10 @@ function emptyItem(): PriceQuoteItem {
   return { item: "", details: "", price: 0 };
 }
 
+function makeId(): string {
+  return Math.random().toString(36).slice(2);
+}
+
 function computeTotals(items: PriceQuoteItem[]) {
   const subtotal = items.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
   const vatAmount = Math.round(subtotal * VAT_RATE * 100) / 100;
@@ -43,6 +47,53 @@ function currency(n: number): string {
 
 function sortQuotes(quotes: PriceQuoteRow[]): PriceQuoteRow[] {
   return [...quotes].sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+// Oldest-first, unlike the quotes list above — a curated preset list reads better in the order it
+// was built rather than most-recently-touched-first.
+function sortTemplates(templates: PriceQuoteTemplateRow[]): PriceQuoteTemplateRow[] {
+  return [...templates].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+// A template's "פריט" cell is the same supplier picker used for a vendor row in the quote builder
+// (בונה הצעות מחיר) — picking a saved supplier (supplierId matches a real PricingSupplier.id) just
+// fills the price in as a starting value; a free-text row (supplierId === "__custom__") carries its
+// own name. Either way the price itself is a plain editable field on the row, not re-derived from
+// the supplier list — a template can quote a different price than that supplier's current one. See
+// resolveTemplateItems below for where a free-text row that isn't already a saved supplier gets
+// added to the list on save.
+type TemplateItemRow = { id: string; supplierId: string; customName: string; details: string; price: number };
+type TemplateDraft = { name: string; items: TemplateItemRow[] };
+
+function emptyTemplateItem(): TemplateItemRow {
+  return { id: makeId(), supplierId: "", customName: "", details: "", price: 0 };
+}
+
+function emptyTemplateDraft(): TemplateDraft {
+  return { name: "", items: [emptyTemplateItem()] };
+}
+
+function templateDraftFromRow(t: PriceQuoteTemplateRow, supplierList: PricingSupplier[]): TemplateDraft {
+  return {
+    name: t.name,
+    items: t.items.length
+      ? t.items.map((it) => {
+          const matched = supplierList.find((s) => s.name === it.item);
+          return matched
+            ? { id: makeId(), supplierId: matched.id, customName: "", details: it.details, price: it.price }
+            : { id: makeId(), supplierId: "__custom__", customName: it.item, details: it.details, price: it.price };
+        })
+      : [emptyTemplateItem()],
+  };
+}
+
+function resolveTemplateItems(rows: TemplateItemRow[], supplierList: PricingSupplier[]): PriceQuoteItem[] {
+  return rows
+    .map((r) => {
+      const name = r.supplierId === "__custom__" ? r.customName.trim() : supplierList.find((s) => s.id === r.supplierId)?.name ?? "";
+      return name ? { item: name, details: r.details.trim(), price: Number(r.price) || 0 } : null;
+    })
+    .filter((it): it is PriceQuoteItem => it !== null);
 }
 
 type Draft = {
@@ -90,23 +141,43 @@ function workHoursSpan(start: string, end: string): string | undefined {
 
 export default function PriceQuotesSettings({
   initialQuotes,
+  initialTemplates,
+  initialSuppliers,
   initialLogoPath,
   initialLogoUrl,
   initialBusinessId,
 }: {
   initialQuotes: PriceQuoteRow[];
+  initialTemplates: PriceQuoteTemplateRow[];
+  initialSuppliers: PricingSupplier[];
   initialLogoPath: string | null;
   initialLogoUrl: string | null;
   initialBusinessId: string | null;
 }) {
   const supabase = createClient();
   const [quotes, setQuotes] = useState(() => sortQuotes(initialQuotes));
+  const [templates, setTemplates] = useState(() => sortTemplates(initialTemplates));
+  // The same supplier list the quote builder's vendor rows draw from (photographers.pricing_
+  // suppliers) — kept here too so the template item picker can offer it, and so a new free-text
+  // item typed while building a template can be appended straight to it.
+  const [supplierList, setSupplierList] = useState<PricingSupplier[]>(initialSuppliers);
   const [logoPath, setLogoPath] = useState(initialLogoPath);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(initialLogoUrl);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [businessId, setBusinessId] = useState(initialBusinessId ?? "");
   const [savingBusinessId, setSavingBusinessId] = useState(false);
+
+  // SettingsTabs keeps every tab mounted at once (display:none, never unmounted), so this
+  // useState-from-props only ever runs its lazy initializer on the first mount — a change from a
+  // different tab that triggers router.refresh() sends fresh props down here too, but without
+  // this they'd sit unused until a hard reload. Same pattern as ClientMessagesSettings.
+  useEffect(() => setQuotes(sortQuotes(initialQuotes)), [initialQuotes]);
+  useEffect(() => setTemplates(sortTemplates(initialTemplates)), [initialTemplates]);
+  useEffect(() => setSupplierList(initialSuppliers), [initialSuppliers]);
+  useEffect(() => setLogoPath(initialLogoPath), [initialLogoPath]);
+  useEffect(() => setLogoPreviewUrl(initialLogoUrl), [initialLogoUrl]);
+  useEffect(() => setBusinessId(initialBusinessId ?? ""), [initialBusinessId]);
 
   const saveBusinessId = async () => {
     setSavingBusinessId(true);
@@ -131,6 +202,130 @@ export default function PriceQuotesSettings({
 
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [templateFormOpen, setTemplateFormOpen] = useState<"new" | string | null>(null);
+  const [templateDraft, setTemplateDraft] = useState<TemplateDraft>(emptyTemplateDraft);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateFormError, setTemplateFormError] = useState<string | null>(null);
+  const [confirmingDeleteTemplateId, setConfirmingDeleteTemplateId] = useState<string | null>(null);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
+
+  const startNewTemplate = () => {
+    setTemplateFormOpen("new");
+    setTemplateDraft(emptyTemplateDraft());
+    setTemplateFormError(null);
+  };
+
+  const startEditTemplate = (t: PriceQuoteTemplateRow) => {
+    setTemplateFormOpen(t.id);
+    setTemplateDraft(templateDraftFromRow(t, supplierList));
+    setTemplateFormError(null);
+  };
+
+  const cancelTemplateForm = () => {
+    setTemplateFormOpen(null);
+    setTemplateFormError(null);
+  };
+
+  const updateTemplateItem = (index: number, patch: Partial<TemplateItemRow>) => {
+    setTemplateDraft((d) => ({ ...d, items: d.items.map((r, i) => (i === index ? { ...r, ...patch } : r)) }));
+  };
+  const addTemplateItemRow = () => setTemplateDraft((d) => ({ ...d, items: [...d.items, emptyTemplateItem()] }));
+  const removeTemplateItemRow = (index: number) =>
+    setTemplateDraft((d) => ({ ...d, items: d.items.length > 1 ? d.items.filter((_, i) => i !== index) : d.items }));
+  const selectTemplateItemSupplier = (index: number, value: string) => {
+    if (value === "__custom__") {
+      updateTemplateItem(index, { supplierId: value, customName: "" });
+      return;
+    }
+    const matched = supplierList.find((s) => s.id === value);
+    updateTemplateItem(index, { supplierId: value, customName: "", price: matched?.price ?? 0 });
+  };
+
+  const saveTemplate = async () => {
+    setTemplateSaving(true);
+    setTemplateFormError(null);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setTemplateSaving(false);
+      setTemplateFormError("יש להתחבר מחדש");
+      return;
+    }
+    if (!templateDraft.name.trim()) {
+      setTemplateSaving(false);
+      setTemplateFormError("יש לתת שם לתבנית");
+      return;
+    }
+    const items = resolveTemplateItems(templateDraft.items, supplierList);
+    if (items.length === 0) {
+      setTemplateSaving(false);
+      setTemplateFormError("יש להוסיף לפחות פריט אחד");
+      return;
+    }
+
+    // Any free-text row not already a saved supplier joins the list — so it shows up as a real
+    // choice next time, here and in the quote builder's own vendor rows. Deduped case-insensitively
+    // both against the existing list and against other new rows in this same save.
+    const existingNames = new Set(supplierList.map((s) => s.name.trim().toLowerCase()));
+    const newSuppliers: PricingSupplier[] = [];
+    for (const r of templateDraft.items) {
+      const name = r.customName.trim();
+      if (r.supplierId !== "__custom__" || !name) continue;
+      const key = name.toLowerCase();
+      if (existingNames.has(key)) continue;
+      existingNames.add(key);
+      newSuppliers.push({ id: makeId(), name, price: Number(r.price) || 0 });
+    }
+    let nextSupplierList = supplierList;
+    if (newSuppliers.length > 0) {
+      nextSupplierList = [...supplierList, ...newSuppliers];
+      await supabase.from("photographers").update({ pricing_suppliers: nextSupplierList }).eq("id", user.id);
+      setSupplierList(nextSupplierList);
+    }
+
+    const row = { name: templateDraft.name.trim(), items };
+
+    if (templateFormOpen && templateFormOpen !== "new") {
+      const { data, error } = await supabase
+        .from("price_quote_templates")
+        .update(row)
+        .eq("id", templateFormOpen)
+        .select()
+        .single<PriceQuoteTemplateRow>();
+      setTemplateSaving(false);
+      if (error || !data) {
+        setTemplateFormError(error?.message ?? "שגיאה בשמירה");
+        return;
+      }
+      setTemplates((prev) => sortTemplates(prev.map((t) => (t.id === data.id ? data : t))));
+      setTemplateFormOpen(null);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("price_quote_templates")
+      .insert({ photographer_id: user.id, ...row })
+      .select()
+      .single<PriceQuoteTemplateRow>();
+    setTemplateSaving(false);
+    if (error || !data) {
+      setTemplateFormError(error?.message ?? "שגיאה בשמירה");
+      return;
+    }
+    setTemplates((prev) => sortTemplates([...prev, data]));
+    setTemplateFormOpen(null);
+  };
+
+  const removeTemplate = async (id: string) => {
+    setDeletingTemplateId(id);
+    await supabase.from("price_quote_templates").delete().eq("id", id);
+    setTemplates((prev) => prev.filter((t) => t.id !== id));
+    setConfirmingDeleteTemplateId(null);
+    setDeletingTemplateId(null);
+    if (templateFormOpen === id) cancelTemplateForm();
+  };
 
   const startNew = () => {
     setFormOpen("new");
@@ -432,6 +627,158 @@ export default function PriceQuotesSettings({
         </div>
         <p className="text-[11px] text-ink-soft mt-1">יוצג בהצעת המחיר ליד שם העסק.</p>
       </div>
+
+      <div className="mb-4">
+        <div className="text-sm font-semibold tracking-wide mb-1">תבניות הצעות מחיר</div>
+        <p className="text-xs mb-2.5 text-ink-soft">
+          תבנית שמורה של פריטים קבועים (למשל &quot;חבילת חתונה בסיסית&quot;) — תופיע ברשימה נפתחת בבונה הצעות המחיר, ומהווה בסיס להצעה
+          חדשה שאליה אפשר להוסיף שורות ספקים והערות.
+        </p>
+
+        {templates.length > 0 && (
+          <div className="space-y-2 mb-2.5">
+            {templates.map((t) =>
+              confirmingDeleteTemplateId === t.id ? (
+                <div key={t.id} className="rounded-xl p-3 bg-[#FBEEEC]">
+                  <p className="text-xs mb-2.5 text-rose">למחוק את התבנית &quot;{t.name}&quot;?</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => removeTemplate(t.id)}
+                      disabled={deletingTemplateId === t.id}
+                      className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white disabled:opacity-60"
+                    >
+                      {deletingTemplateId === t.id ? "מוחק..." : "כן, מחק"}
+                    </button>
+                    <button
+                      onClick={() => setConfirmingDeleteTemplateId(null)}
+                      disabled={deletingTemplateId === t.id}
+                      className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div key={t.id} className="rounded-xl p-3 bg-chip flex items-start justify-between gap-2">
+                  <button onClick={() => startEditTemplate(t)} className="text-right flex-1 min-w-0">
+                    <div className="text-sm font-semibold truncate">{t.name}</div>
+                    <div className="text-xs text-ink-soft font-data">
+                      {t.items.length} פריטים · {currency(computeTotals(t.items).subtotal)}
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => startEditTemplate(t)} className="text-xs text-ink-soft">
+                      עריכה
+                    </button>
+                    <button onClick={() => setConfirmingDeleteTemplateId(t.id)} className="text-xs text-rose">
+                      מחיקה
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        )}
+
+        {templateFormOpen ? (
+          <div className="rounded-xl p-3 bg-chip space-y-2.5">
+            <input
+              value={templateDraft.name}
+              onChange={(e) => setTemplateDraft((d) => ({ ...d, name: e.target.value }))}
+              placeholder="שם התבנית (לדוגמה: חבילת חתונה בסיסית)"
+              className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
+            />
+
+            <div className="space-y-1.5">
+              {templateDraft.items.map((row, i) => (
+                <div key={row.id} className="rounded-lg border border-line bg-white p-2 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={row.supplierId}
+                      onChange={(e) => selectTemplateItemSupplier(i, e.target.value)}
+                      className="flex-1 min-w-0 text-xs bg-transparent outline-none"
+                    >
+                      <option value="" disabled>
+                        בחירת פריט
+                      </option>
+                      {supplierList.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                      <option value="__custom__">טקסט חופשי...</option>
+                    </select>
+                    {row.supplierId === "__custom__" && (
+                      <input
+                        value={row.customName}
+                        onChange={(e) => updateTemplateItem(i, { customName: e.target.value })}
+                        placeholder="שם הפריט"
+                        className="flex-1 min-w-0 text-xs bg-transparent outline-none"
+                      />
+                    )}
+                    {/* A saved supplier's own current price shown as the label itself once picked
+                        (reference only — "here's what this normally costs") — a generic "מחיר"
+                        label the rest of the time (nothing picked yet, or free text). Either way the
+                        field beside it stays independently editable (see selectTemplateItemSupplier);
+                        this label never locks the template to that supplier's price. */}
+                    <span className="text-[11px] text-ink-soft shrink-0">
+                      {row.supplierId && row.supplierId !== "__custom__"
+                        ? currency(supplierList.find((s) => s.id === row.supplierId)?.price ?? 0)
+                        : "מחיר"}
+                    </span>
+                    <input
+                      value={row.price || ""}
+                      onChange={(e) => updateTemplateItem(i, { price: Number(e.target.value) || 0 })}
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      className="w-16 shrink-0 text-xs font-data bg-transparent outline-none text-left"
+                    />
+                    <button
+                      onClick={() => removeTemplateItemRow(i)}
+                      disabled={templateDraft.items.length <= 1}
+                      className="text-ink-soft text-xs shrink-0 disabled:opacity-30"
+                      aria-label="הסרת פריט"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <input
+                    value={row.details}
+                    onChange={(e) => updateTemplateItem(i, { details: e.target.value })}
+                    placeholder="פרטים (אופציונלי)"
+                    className="w-full text-xs bg-transparent outline-none"
+                  />
+                </div>
+              ))}
+              <button onClick={addTemplateItemRow} className="text-xs text-ink-soft font-semibold">
+                + הוספת פריט
+              </button>
+            </div>
+
+            {templateFormError && <p className="text-xs text-rose">{templateFormError}</p>}
+
+            <div className="flex gap-2">
+              <button
+                onClick={saveTemplate}
+                disabled={templateSaving}
+                className="flex-1 rounded-lg py-2 text-xs font-semibold bg-ink text-white disabled:opacity-60"
+              >
+                {templateSaving ? "שומר..." : "שמירה"}
+              </button>
+              <button onClick={cancelTemplateForm} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft">
+                ביטול
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={startNewTemplate} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
+            + תבנית חדשה
+          </button>
+        )}
+      </div>
+
+      <div className="text-sm font-semibold tracking-wide mb-1">הצעות מחיר שמורות</div>
 
       {quotes.length > 0 && (
         <div className="space-y-2 mb-3">

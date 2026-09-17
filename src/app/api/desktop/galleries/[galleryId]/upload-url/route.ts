@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { authenticateGalleryRequest } from "@/lib/desktopAuth";
 import { getSignedUploadUrl } from "@/lib/storage";
+import { checkStorageQuota } from "@/lib/storageQuota";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ gal
   const { filename, contentType }: { filename?: string; contentType?: string } = await request.json().catch(() => ({}));
   if (!filename) {
     return NextResponse.json({ error: "שם קובץ חסר" }, { status: 400 });
+  }
+
+  const quota = await checkStorageQuota(serviceRole, auth.userId);
+  if (!quota.ok) {
+    return NextResponse.json({ error: quota.error }, { status: 403 });
   }
 
   const path = `${auth.userId}/${galleryId}/${randomUUID()}-${filename}`;

@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
-import type { PriceQuoteItem, PriceQuoteRow, PricingSupplier } from "@/lib/types";
+import type { PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
+import CompactGuideModal from "@/components/CompactGuideModal";
 
 const VAT_RATE = 0.18;
 const HOURS_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1);
@@ -18,7 +19,10 @@ type ContactPickerNavigator = Navigator & {
 };
 
 type Mode = "event" | "standard" | "freelance";
-type Step = "calculator" | "quoteForm" | "preview" | "savePrompt";
+type Step = "calculator" | "quoteForm" | "preview" | "savePrompt" | "leadFollowUp";
+// A row in the per-quote vendor list: either a real saved supplier (supplierId matches
+// PricingSupplier.id) or a free-typed one-off (supplierId === "__custom__", name in customName).
+type QuoteVendorRow = { id: string; supplierId: string; customName: string; price: number };
 
 function makeId(): string {
   return Math.random().toString(36).slice(2);
@@ -26,6 +30,21 @@ function makeId(): string {
 
 function currency(n: number): string {
   return `${Math.round(n).toLocaleString("he-IL")} ₪`;
+}
+
+// The "←" glyph matches the app's own existing back-navigation convention (see the "← חזרה לדף
+// הבית" link on the magnet-frames page) rather than introducing a new one just for this modal.
+function BackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="חזרה"
+      title="חזרה"
+      className="h-7 w-7 rounded-full flex items-center justify-center text-sm font-bold shrink-0 border border-line bg-white text-ink-soft"
+    >
+      ←
+    </button>
+  );
 }
 
 function formatDateDMY(isoDate: string): string {
@@ -52,38 +71,52 @@ export default function EventPricingCalculator({
   hourlyRate,
   suppliers,
   priceQuotes,
+  templates,
   eventTypes,
   initialCustomEventTypes,
+  defaultTaxStatus,
   onClose,
 }: {
   hourlyRate: number;
   suppliers: PricingSupplier[];
   priceQuotes: PriceQuoteRow[];
+  templates: PriceQuoteTemplateRow[];
   eventTypes: { id: string; name: string }[];
   initialCustomEventTypes: string[];
+  defaultTaxStatus: "exempt" | "licensed";
   onClose: () => void;
 }) {
   const supabase = createClient();
 
   const [step, setStep] = useState<Step>("calculator");
   const [mode, setMode] = useState<Mode>("event");
-  const [selectedQuoteId, setSelectedQuoteId] = useState(priceQuotes[0]?.id ?? "");
-  // Manual per-calculation toggle, independent of whatever the photographer's own account is set
-  // to — always starts on "licensed" (the common case) regardless of the account's real status.
-  const [taxStatus, setTaxStatus] = useState<"exempt" | "licensed">("licensed");
+  // Starts unselected — a freshly opened builder must never look like it's already tied to
+  // whatever quote happens to be most recent; loading one is an explicit choice from the dropdown.
+  const [selectedQuoteId, setSelectedQuoteId] = useState("");
+  // Same "starts unselected" reasoning as selectedQuoteId above — picking a template is always an
+  // explicit action, never something a freshly opened builder should look like it already did.
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  // Defaults to the photographer's own business status from Settings (ProfileSettingsView.tsx),
+  // but stays a per-calculation toggle — a photographer occasionally quoting for a different
+  // business arrangement can still switch it for just this one quote without touching Settings.
+  const [taxStatus, setTaxStatus] = useState<"exempt" | "licensed">(defaultTaxStatus);
   const isExempt = taxStatus === "exempt";
   const [hours, setHours] = useState(0);
   const [rate, setRate] = useState(hourlyRate);
 
-  // A local, editable copy of the saved supplier list — persisted back to the photographer's row
-  // only when "סיום ושמירה" is pressed, so the delete/rename/re-price actions below can be batched
-  // instead of firing a write per keystroke.
-  const [supplierList, setSupplierList] = useState<PricingSupplier[]>(suppliers);
-  const [includedIds, setIncludedIds] = useState<Set<string>>(() => new Set(suppliers.map((s) => s.id)));
-  const [extraSuppliers, setExtraSuppliers] = useState<PricingSupplier[]>([]);
+  // The photographer's saved default supplier list — only read from here (to populate the picker
+  // dropdown and to seed a row's starting price the moment a supplier is chosen); renaming or
+  // re-pricing the account-wide defaults themselves happens in Settings (PricingSuppliersSettings),
+  // not in this calculator, so this never needs its own setter.
+  const supplierList: PricingSupplier[] = suppliers;
+  // Starts empty — a new quote must never inherit the vendor list from whatever quote was open
+  // before; the photographer explicitly builds the vendor rows relevant to this one.
+  const [quoteVendorRows, setQuoteVendorRows] = useState<QuoteVendorRow[]>([]);
+  // "עריכת ספקים" here means bulk-managing THIS quote's own vendor rows (multi-select + delete) —
+  // every row is already directly editable (name/price) without entering this mode; it's purely a
+  // faster way to remove several at once. Nothing here touches the account-wide supplier defaults.
   const [managingSuppliers, setManagingSuppliers] = useState(false);
   const [deleteSelectedIds, setDeleteSelectedIds] = useState<Set<string>>(new Set());
-  const [savingSuppliers, setSavingSuppliers] = useState(false);
 
   // The "יצירת הצעת מחיר ללקוח" wizard
   const [quoteClientName, setQuoteClientName] = useState("");
@@ -91,6 +124,7 @@ export default function EventPricingCalculator({
   const [quoteEventType, setQuoteEventType] = useState("");
   const [quoteEventDate, setQuoteEventDate] = useState("");
   const [quoteEventLocation, setQuoteEventLocation] = useState("");
+  const [quoteNotes, setQuoteNotes] = useState("");
   // Only asked for (and only relevant) outside freelance mode — freelance already has its own
   // fixed hours/rate cells on the main screen, set before this wizard ever opens.
   const [quoteStartTime, setQuoteStartTime] = useState("");
@@ -108,50 +142,63 @@ export default function EventPricingCalculator({
   const [savePromptStep, setSavePromptStep] = useState<"ask" | "name">("ask");
   const [saveQuoteName, setSaveQuoteName] = useState("");
   const [savingQuote, setSavingQuote] = useState(false);
+  const [addingLead, setAddingLead] = useState(false);
 
   const selectQuote = (id: string) => {
     setSelectedQuoteId(id);
     const q = priceQuotes.find((pq) => pq.id === id);
-    if (!q) return;
+    if (!q) {
+      setQuoteVendorRows([]);
+      return;
+    }
     if (q.event_hours != null) setHours(Number(q.event_hours));
     if (q.hourly_rate_used != null) setRate(Number(q.hourly_rate_used));
     // Matches the quote's saved item names back against the current supplier list — a supplier
-    // renamed or removed since this quote was built simply won't be checked, which is the safest
-    // fallback (no silently-wrong price).
-    const itemNames = new Set(q.items.map((it) => it.item));
-    setIncludedIds(new Set(supplierList.filter((s) => itemNames.has(s.name)).map((s) => s.id)));
-    setExtraSuppliers([]);
+    // renamed or removed since this quote was built simply becomes a free-text row, which is the
+    // safest fallback (no silently-wrong price tied to the wrong current supplier).
+    const vendorItems = q.items.filter((it) => it.item !== "צילום אירוע");
+    setQuoteVendorRows(
+      vendorItems.map((it) => {
+        const matched = supplierList.find((s) => s.name === it.item);
+        return matched
+          ? { id: makeId(), supplierId: matched.id, customName: "", price: matched.price }
+          : { id: makeId(), supplierId: "__custom__", customName: it.item, price: it.price };
+      })
+    );
   };
 
-  const toggleSupplier = (id: string) => {
-    setIncludedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  // A template (built in Settings) is a curated preset of items, not a past quote tied to hours/
+  // rate — loading one only replaces the vendor rows (same item→row matching as selectQuote above),
+  // leaving hours/rate/tax-status exactly as the photographer already has them set.
+  const selectTemplate = (id: string) => {
+    setSelectedTemplateId(id);
+    const t = templates.find((tpl) => tpl.id === id);
+    if (!t) return;
+    setQuoteVendorRows(
+      t.items
+        .filter((it) => it.item !== "צילום אירוע")
+        .map((it) => {
+          const matched = supplierList.find((s) => s.name === it.item);
+          return matched
+            ? { id: makeId(), supplierId: matched.id, customName: "", price: matched.price }
+            : { id: makeId(), supplierId: "__custom__", customName: it.item, price: it.price };
+        })
+    );
   };
 
-  const addExtraSupplier = () => {
-    const s = { id: makeId(), name: "", price: 0 };
-    setExtraSuppliers((prev) => [...prev, s]);
-    setIncludedIds((prev) => new Set(prev).add(s.id));
-  };
-  const updateExtraSupplier = (id: string, patch: Partial<PricingSupplier>) => {
-    setExtraSuppliers((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  };
-  const removeExtraSupplier = (id: string) => {
-    setExtraSuppliers((prev) => prev.filter((s) => s.id !== id));
-    setIncludedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
+  const addVendorRow = () => setQuoteVendorRows((prev) => [...prev, { id: makeId(), supplierId: "", customName: "", price: 0 }]);
+  const removeVendorRow = (id: string) => setQuoteVendorRows((prev) => prev.filter((r) => r.id !== id));
+  const updateVendorRow = (id: string, patch: Partial<QuoteVendorRow>) =>
+    setQuoteVendorRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const selectVendorSupplier = (rowId: string, value: string) => {
+    if (value === "__custom__") {
+      updateVendorRow(rowId, { supplierId: value, customName: "", price: 0 });
+      return;
+    }
+    const matched = supplierList.find((s) => s.id === value);
+    updateVendorRow(rowId, { supplierId: value, customName: "", price: matched?.price ?? 0 });
   };
 
-  const updateSupplierField = (id: string, patch: Partial<PricingSupplier>) => {
-    setSupplierList((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  };
   const toggleDeleteSelect = (id: string) => {
     setDeleteSelectedIds((prev) => {
       const next = new Set(prev);
@@ -161,27 +208,16 @@ export default function EventPricingCalculator({
     });
   };
   const toggleSelectAllForDelete = () => {
-    setDeleteSelectedIds((prev) => (prev.size === supplierList.length ? new Set() : new Set(supplierList.map((s) => s.id))));
+    setDeleteSelectedIds((prev) => (prev.size === quoteVendorRows.length ? new Set() : new Set(quoteVendorRows.map((r) => r.id))));
   };
-  const deleteSelectedSuppliers = () => {
-    setSupplierList((prev) => prev.filter((s) => !deleteSelectedIds.has(s.id)));
+  const deleteSelectedVendorRows = () => {
+    setQuoteVendorRows((prev) => prev.filter((r) => !deleteSelectedIds.has(r.id)));
     setDeleteSelectedIds(new Set());
   };
-  const finishManagingSuppliers = async () => {
-    setSavingSuppliers(true);
-    const cleaned = supplierList.filter((s) => s.name.trim());
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) await supabase.from("photographers").update({ pricing_suppliers: cleaned }).eq("id", user.id);
-    setSupplierList(cleaned);
-    setIncludedIds((prev) => new Set([...prev].filter((id) => cleaned.some((s) => s.id === id))));
+  const finishManagingSuppliers = () => {
     setDeleteSelectedIds(new Set());
     setManagingSuppliers(false);
-    setSavingSuppliers(false);
   };
-
-  const allSuppliers = useMemo(() => [...supplierList, ...extraSuppliers], [supplierList, extraSuppliers]);
 
   // Standing suggestions: the hardcoded defaults plus whatever event types the photographer has
   // configured pricing for in Settings (event_types) — deduped case-insensitively, defaults first.
@@ -239,25 +275,33 @@ export default function EventPricingCalculator({
     persistCustomEventTypes([]);
   };
 
+  // A row's own price is always the source of truth — seeded from the supplier's saved default the
+  // moment it's picked (selectVendorSupplier), then freely editable per-quote from there, same as a
+  // free-text row. This is what makes overriding a preset supplier's price for just this one quote
+  // possible without touching that supplier's account-wide default.
+  const vendorRowPrice = (row: QuoteVendorRow): number => Number(row.price) || 0;
+
   const { subtotal, vatAmount, total } = useMemo(() => {
     const shootCost = hours * rate;
-    const suppliersCost =
-      mode === "freelance" ? 0 : allSuppliers.filter((s) => includedIds.has(s.id)).reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+    const suppliersCost = mode === "freelance" ? 0 : quoteVendorRows.reduce((sum, r) => sum + vendorRowPrice(r), 0);
     const sub = shootCost + suppliersCost;
     const vat = isExempt ? 0 : Math.round(sub * VAT_RATE * 100) / 100;
     return { subtotal: sub, vatAmount: vat, total: Math.round((sub + vat) * 100) / 100 };
-  }, [hours, rate, mode, allSuppliers, includedIds, isExempt]);
+  }, [hours, rate, mode, quoteVendorRows, supplierList, isExempt, vendorRowPrice]);
 
   const shootDetails = mode === "freelance" ? `${hours} שעות` : `${quoteStartTime}–${quoteEndTime}`;
 
   const quoteItems = useMemo((): PriceQuoteItem[] => {
     const shootItem: PriceQuoteItem = { item: "צילום אירוע", details: shootDetails, price: hours * rate };
     if (mode === "freelance") return [shootItem];
-    const supplierItems = allSuppliers
-      .filter((s) => includedIds.has(s.id))
-      .map((s) => ({ item: s.name, details: "", price: Number(s.price) || 0 }));
+    const supplierItems: PriceQuoteItem[] = quoteVendorRows
+      .map((r) => {
+        const name = r.supplierId === "__custom__" ? r.customName.trim() : supplierList.find((s) => s.id === r.supplierId)?.name ?? "";
+        return name ? { item: name, details: "", price: vendorRowPrice(r) } : null;
+      })
+      .filter((it): it is PriceQuoteItem => it !== null);
     return [shootItem, ...supplierItems];
-  }, [allSuppliers, includedIds, hours, rate, mode, shootDetails]);
+  }, [quoteVendorRows, supplierList, hours, rate, mode, shootDetails, vendorRowPrice]);
 
   const openQuoteForm = () => {
     setQuoteFormError(null);
@@ -336,6 +380,7 @@ export default function EventPricingCalculator({
             location: quoteEventLocation.trim(),
             workHours: mode !== "freelance" && quoteStartTime && quoteEndTime ? `${quoteStartTime}-${quoteEndTime}` : undefined,
           },
+          notes: quoteNotes.trim() || undefined,
         }),
       });
       if (!res.ok) throw new Error("יצירת הקובץ נכשלה");
@@ -404,10 +449,38 @@ export default function EventPricingCalculator({
         event_location: quoteEventLocation.trim() || null,
         work_start_time: mode !== "freelance" && quoteStartTime ? quoteStartTime : null,
         work_end_time: mode !== "freelance" && quoteEndTime ? quoteEndTime : null,
+        notes: quoteNotes.trim() || null,
       });
     }
     setSavingQuote(false);
-    onClose();
+    setStep("leadFollowUp");
+  };
+
+  // Creates a lead from the quote's client details and immediately attaches this quote's amount to
+  // it via the same /api/leads/[id]/quote route the leads page itself uses — that route is what
+  // actually schedules the 2-day follow-up (scheduleLeadQuoteFollowUp), so this reuses the exact
+  // reminder machinery already built for leads instead of inventing a second one just for quotes
+  // sent from this calculator.
+  const addLeadForFollowUp = async () => {
+    setAddingLead(true);
+    try {
+      const leadRes = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: quoteClientName.trim(), phone: quoteClientPhone.trim() || undefined }),
+      });
+      const leadData = await leadRes.json();
+      if (leadRes.ok && leadData.lead?.id) {
+        await fetch(`/api/leads/${leadData.lead.id}/quote`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: total, note: quoteNotes.trim() || undefined }),
+        });
+      }
+    } finally {
+      setAddingLead(false);
+      onClose();
+    }
   };
 
   return (
@@ -417,13 +490,16 @@ export default function EventPricingCalculator({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-3xl p-5 pb-6 bg-paper shadow-sheet"
+        className="w-full max-w-md h-[75vh] overflow-y-auto rounded-3xl p-5 pb-6 bg-paper shadow-sheet"
         onClick={(e) => e.stopPropagation()}
       >
         {step === "calculator" && (
           <>
             <div className="flex items-center justify-between mb-3.5">
-              <span className="text-base font-bold font-display">בונה הצעות מחיר</span>
+              <div className="flex items-center gap-2">
+                <span className="text-base font-bold font-display">בונה הצעות מחיר</span>
+                <CompactGuideModal pageKey="quote-builder" />
+              </div>
               <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
                 ✕
               </button>
@@ -439,7 +515,7 @@ export default function EventPricingCalculator({
                   key={m}
                   onClick={() => setMode(m)}
                   className="flex-1 rounded-full py-1.5 text-xs font-semibold"
-                  style={{ background: mode === m ? "var(--color-ink)" : "#fff", color: mode === m ? "#fff" : "var(--color-ink-soft)", border: mode === m ? "none" : "1px solid var(--color-line)" }}
+                  style={{ background: mode === m ? "var(--color-ink)" : "var(--color-chip)", color: mode === m ? "var(--color-paper)" : "var(--color-ink-soft)", border: mode === m ? "none" : "1px solid var(--color-line)" }}
                 >
                   {label}
                 </button>
@@ -456,6 +532,7 @@ export default function EventPricingCalculator({
                     onChange={(e) => selectQuote(e.target.value)}
                     className="w-full text-xs bg-transparent outline-none"
                   >
+                    <option value="">הצעה חדשה (ללא טעינה מהצעה קודמת)</option>
                     {priceQuotes.map((q) => (
                       <option key={q.id} value={q.id}>
                         {q.quote_name || q.client_name || "הצעה ללא שם"} — {new Date(q.created_at).toLocaleDateString("he-IL")}
@@ -466,18 +543,35 @@ export default function EventPricingCalculator({
               </div>
             )}
 
+            {mode !== "freelance" && templates.length > 0 && (
+              <div className="rounded-lg border border-line bg-white p-2.5 mb-3">
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => selectTemplate(e.target.value)}
+                  className="w-full text-xs bg-transparent outline-none"
+                >
+                  <option value="">טעינה מתבנית (ללא)</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="flex gap-1.5 mb-3.5">
               <button
                 onClick={() => setTaxStatus("exempt")}
                 className="flex-1 rounded-full py-1.5 text-xs font-semibold"
-                style={{ background: isExempt ? "var(--color-ink)" : "#fff", color: isExempt ? "#fff" : "var(--color-ink-soft)", border: isExempt ? "none" : "1px solid var(--color-line)" }}
+                style={{ background: isExempt ? "var(--color-ink)" : "var(--color-chip)", color: isExempt ? "var(--color-paper)" : "var(--color-ink-soft)", border: isExempt ? "none" : "1px solid var(--color-line)" }}
               >
                 עוסק פטור
               </button>
               <button
                 onClick={() => setTaxStatus("licensed")}
                 className="flex-1 rounded-full py-1.5 text-xs font-semibold"
-                style={{ background: !isExempt ? "var(--color-ink)" : "#fff", color: !isExempt ? "#fff" : "var(--color-ink-soft)", border: !isExempt ? "none" : "1px solid var(--color-line)" }}
+                style={{ background: !isExempt ? "var(--color-ink)" : "var(--color-chip)", color: !isExempt ? "var(--color-paper)" : "var(--color-ink-soft)", border: !isExempt ? "none" : "1px solid var(--color-line)" }}
               >
                 עוסק מורשה
               </button>
@@ -529,27 +623,28 @@ export default function EventPricingCalculator({
               <>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-semibold text-ink-soft">ספקים לאירוע זה</span>
-                  <button
-                    onClick={() => (managingSuppliers ? finishManagingSuppliers() : setManagingSuppliers(true))}
-                    disabled={savingSuppliers}
-                    className="text-[11px] font-semibold text-ink-soft disabled:opacity-60"
-                  >
-                    {managingSuppliers ? (savingSuppliers ? "שומר..." : "סיום ושמירה") : "עריכת ספקים"}
-                  </button>
+                  {quoteVendorRows.length > 0 && (
+                    <button
+                      onClick={() => (managingSuppliers ? finishManagingSuppliers() : setManagingSuppliers(true))}
+                      className="text-[11px] font-semibold text-ink-soft"
+                    >
+                      {managingSuppliers ? "סיום" : "עריכת ספקים"}
+                    </button>
+                  )}
                 </div>
 
-                {managingSuppliers && supplierList.length > 0 && (
+                {managingSuppliers && quoteVendorRows.length > 0 && (
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="flex items-center gap-1.5 text-[11px] text-ink-soft">
                       <input
                         type="checkbox"
-                        checked={deleteSelectedIds.size === supplierList.length && supplierList.length > 0}
+                        checked={deleteSelectedIds.size === quoteVendorRows.length && quoteVendorRows.length > 0}
                         onChange={toggleSelectAllForDelete}
                       />
                       בחר הכל
                     </label>
                     <button
-                      onClick={deleteSelectedSuppliers}
+                      onClick={deleteSelectedVendorRows}
                       disabled={deleteSelectedIds.size === 0}
                       className="text-[11px] font-semibold text-rose disabled:opacity-40"
                     >
@@ -559,60 +654,64 @@ export default function EventPricingCalculator({
                 )}
 
                 <div className="space-y-1.5 mb-1.5">
-                  {supplierList.map((s) =>
-                    managingSuppliers ? (
-                      <div key={s.id} className="flex items-center gap-1.5 rounded-lg border border-line bg-white px-2 py-1.5">
-                        <input type="checkbox" checked={deleteSelectedIds.has(s.id)} onChange={() => toggleDeleteSelect(s.id)} className="shrink-0" />
-                        <input
-                          value={s.name}
-                          onChange={(e) => updateSupplierField(s.id, { name: e.target.value })}
-                          placeholder="שם ספק"
+                  {quoteVendorRows.length === 0 ? (
+                    <p className="text-xs text-ink-soft">אין עדיין ספקים בהצעה זו</p>
+                  ) : (
+                    quoteVendorRows.map((row) => (
+                      <div key={row.id} className="flex items-center gap-1.5 rounded-lg border border-line bg-white px-2 py-1.5">
+                        {managingSuppliers && (
+                          <input type="checkbox" checked={deleteSelectedIds.has(row.id)} onChange={() => toggleDeleteSelect(row.id)} className="shrink-0" />
+                        )}
+                        <select
+                          value={row.supplierId}
+                          onChange={(e) => selectVendorSupplier(row.id, e.target.value)}
                           className="flex-1 min-w-0 text-xs bg-transparent outline-none"
-                        />
+                        >
+                          <option value="" disabled>
+                            בחירת ספק
+                          </option>
+                          {supplierList.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                          <option value="__custom__">טקסט חופשי...</option>
+                        </select>
+                        {row.supplierId === "__custom__" && (
+                          <input
+                            value={row.customName}
+                            onChange={(e) => updateVendorRow(row.id, { customName: e.target.value })}
+                            placeholder="שם הספק"
+                            className="flex-1 min-w-0 text-xs bg-transparent outline-none"
+                          />
+                        )}
+                        {/* Editable for every row, preset suppliers included — this is a per-quote price,
+                            seeded from the supplier's saved default on selection but freely overridable
+                            from here without touching that default (see vendorRowPrice above). */}
                         <input
-                          value={s.price || ""}
-                          onChange={(e) => updateSupplierField(s.id, { price: Number(e.target.value) || 0 })}
+                          value={row.price || ""}
+                          onChange={(e) => updateVendorRow(row.id, { price: Number(e.target.value) || 0 })}
                           type="number"
                           min={0}
                           placeholder="0"
-                          className="w-16 text-xs font-data bg-transparent outline-none text-left"
+                          className="w-16 shrink-0 text-xs font-data bg-transparent outline-none text-left"
                         />
+                        {!managingSuppliers && (
+                          <button onClick={() => removeVendorRow(row.id)} className="text-ink-soft text-xs shrink-0" aria-label="הסרת ספק">
+                            ✕
+                          </button>
+                        )}
                       </div>
-                    ) : (
-                      <label key={s.id} className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 cursor-pointer">
-                        <input type="checkbox" checked={includedIds.has(s.id)} onChange={() => toggleSupplier(s.id)} className="shrink-0" />
-                        <span className="flex-1 text-xs truncate">{s.name}</span>
-                        <span className="text-xs font-data font-semibold">{currency(s.price)}</span>
-                      </label>
-                    )
+                    ))
                   )}
-                  {!managingSuppliers &&
-                    extraSuppliers.map((s) => (
-                      <div key={s.id} className="flex items-center gap-1.5 rounded-lg border border-line bg-white px-2 py-1.5">
-                        <input type="checkbox" checked={includedIds.has(s.id)} onChange={() => toggleSupplier(s.id)} className="shrink-0" />
-                        <input
-                          value={s.name}
-                          onChange={(e) => updateExtraSupplier(s.id, { name: e.target.value })}
-                          placeholder="שם ספק"
-                          className="flex-1 min-w-0 text-xs bg-transparent outline-none"
-                        />
-                        <input
-                          value={s.price || ""}
-                          onChange={(e) => updateExtraSupplier(s.id, { price: Number(e.target.value) || 0 })}
-                          type="number"
-                          min={0}
-                          placeholder="0"
-                          className="w-16 text-xs font-data bg-transparent outline-none"
-                        />
-                        <button onClick={() => removeExtraSupplier(s.id)} className="text-ink-soft text-xs" aria-label="הסרה">
-                          ✕
-                        </button>
-                      </div>
-                    ))}
                 </div>
                 {!managingSuppliers && (
-                  <button onClick={addExtraSupplier} className="text-[11px] text-ink-soft font-semibold mb-3.5">
-                    + הוספת ספק מותאם אישית
+                  <button
+                    onClick={addVendorRow}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold mb-3.5 border-2 border-dashed transition hover:opacity-80"
+                    style={{ borderColor: "var(--color-amber-deep)", color: "var(--color-amber-deep)", background: "var(--color-amber-bg)" }}
+                  >
+                    <span className="text-sm leading-none">+</span> הוספת ספק
                   </button>
                 )}
               </>
@@ -652,9 +751,12 @@ export default function EventPricingCalculator({
           <>
             <div className="flex items-center justify-between mb-3.5">
               <span className="text-base font-bold font-display">פרטי הלקוח/ה והאירוע</span>
-              <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <BackButton onClick={() => setStep("calculator")} />
+                <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
+                  ✕
+                </button>
+              </div>
             </div>
             <div className="space-y-2.5">
               <input
@@ -759,7 +861,15 @@ export default function EventPricingCalculator({
                     <input
                       value={quoteEventDate}
                       onChange={(e) => setQuoteEventDate(e.target.value)}
-                      onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+                      onClick={(e) => {
+                        // Wrapped in try/catch — a confirmed WebKit bug (showPicker() doesn't work
+                        // on iOS, webkit.org bug 261703) makes this throw on some iOS Safari
+                        // versions, particularly for type="time". Harmless no-op on affected
+                        // devices; the input's own native default tap-to-open doesn't need this.
+                        try {
+                          (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                        } catch {}
+                      }}
                       type="date"
                       dir="ltr"
                       className={`w-full text-sm font-semibold font-data bg-transparent outline-none cursor-pointer ${quoteEventDate ? "text-transparent" : ""}`}
@@ -794,7 +904,15 @@ export default function EventPricingCalculator({
                     <input
                       value={quoteStartTime}
                       onChange={(e) => setQuoteStartTime(e.target.value)}
-                      onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+                      onClick={(e) => {
+                        // Wrapped in try/catch — a confirmed WebKit bug (showPicker() doesn't work
+                        // on iOS, webkit.org bug 261703) makes this throw on some iOS Safari
+                        // versions, particularly for type="time". Harmless no-op on affected
+                        // devices; the input's own native default tap-to-open doesn't need this.
+                        try {
+                          (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                        } catch {}
+                      }}
                       type="time"
                       dir="ltr"
                       className="w-full text-sm font-semibold font-data bg-transparent outline-none cursor-pointer"
@@ -805,7 +923,15 @@ export default function EventPricingCalculator({
                     <input
                       value={quoteEndTime}
                       onChange={(e) => setQuoteEndTime(e.target.value)}
-                      onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+                      onClick={(e) => {
+                        // Wrapped in try/catch — a confirmed WebKit bug (showPicker() doesn't work
+                        // on iOS, webkit.org bug 261703) makes this throw on some iOS Safari
+                        // versions, particularly for type="time". Harmless no-op on affected
+                        // devices; the input's own native default tap-to-open doesn't need this.
+                        try {
+                          (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                        } catch {}
+                      }}
                       type="time"
                       dir="ltr"
                       className="w-full text-sm font-semibold font-data bg-transparent outline-none cursor-pointer"
@@ -813,6 +939,16 @@ export default function EventPricingCalculator({
                   </div>
                 </div>
               )}
+              <div className="rounded-lg border border-line bg-white p-2.5">
+                <div className="text-[10px] text-ink-soft mb-1">הערות (אופציונלי)</div>
+                <textarea
+                  value={quoteNotes}
+                  onChange={(e) => setQuoteNotes(e.target.value)}
+                  rows={4}
+                  placeholder="הערות חופשיות שיופיעו בהצעת המחיר..."
+                  className="w-full text-sm bg-transparent outline-none resize-none"
+                />
+              </div>
             </div>
             {quoteFormError && <p className="text-xs text-rose mt-2">{quoteFormError}</p>}
             <div className="flex gap-2 mt-4">
@@ -830,9 +966,12 @@ export default function EventPricingCalculator({
           <>
             <div className="flex items-center justify-between mb-3.5">
               <span className="text-base font-bold font-display">תצוגה מקדימה</span>
-              <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <BackButton onClick={() => setStep("quoteForm")} />
+                <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
+                  ✕
+                </button>
+              </div>
             </div>
             <div className="rounded-lg border border-line bg-white p-3 mb-3">
               <div className="text-sm font-semibold mb-2">{quoteClientName}</div>
@@ -924,7 +1063,7 @@ export default function EventPricingCalculator({
                 <button onClick={() => setSavePromptStep("name")} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
                   כן, לשמור
                 </button>
-                <button onClick={onClose} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft">
+                <button onClick={() => setStep("leadFollowUp")} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft">
                   לא
                 </button>
               </div>
@@ -940,12 +1079,29 @@ export default function EventPricingCalculator({
                   <button onClick={confirmSaveQuote} disabled={savingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
                     {savingQuote ? "שומר..." : "שמירה"}
                   </button>
-                  <button onClick={onClose} disabled={savingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
+                  <button onClick={() => setStep("leadFollowUp")} disabled={savingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
                     ביטול
                   </button>
                 </div>
               </>
             )}
+          </>
+        )}
+
+        {step === "leadFollowUp" && (
+          <>
+            <div className="mb-3.5">
+              <span className="text-base font-bold font-display">מעקב אחרי ההצעה 📋</span>
+            </div>
+            <p className="text-sm text-ink-soft mb-3.5">להוסיף את {quoteClientName || "הלקוח/ה"} לרשימת הלידים כדי לקבל תזכורת מעקב אם לא תחזרו אליה תוך יומיים?</p>
+            <div className="flex gap-2">
+              <button onClick={addLeadForFollowUp} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+                {addingLead ? "מוסיף..." : "כן, להוסיף"}
+              </button>
+              <button onClick={onClose} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
+                לא
+              </button>
+            </div>
           </>
         )}
       </div>

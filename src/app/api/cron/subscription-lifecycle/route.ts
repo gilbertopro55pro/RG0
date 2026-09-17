@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import { createPayplusCheckoutLink, deletePayplusRecurring, PAYPLUS_BILLING } from "@/lib/payplus";
+import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { Photographer } from "@/lib/types";
 
 const ANNUAL_REMINDER_DAYS_BEFORE = 30;
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
     const amount = PAYPLUS_BILLING[photographer.plan].amount;
     try {
       await sendEmail({
-        to: photographer.email,
+        to: notificationEmailFor(photographer.email),
         subject: `המנוי שלך יחודש בקרוב — ${renewalDateHe}`,
         text:
           `שלום ${photographer.name},\n\n` +
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
         photographerId: photographer.id,
         plan: targetPlan,
         customerName: photographer.name,
-        customerEmail: photographer.email,
+        customerEmail: notificationEmailFor(photographer.email),
         customerPhone: photographer.phone,
         baseUrl,
       });
@@ -131,7 +132,7 @@ export async function GET(request: NextRequest) {
           : `כפי שביקשת, המנוי שלך עובר למסלול ${targetInfo.label} (₪${targetAmount}) החל מהמחזור הבא.`;
 
       await sendEmail({
-        to: photographer.email,
+        to: notificationEmailFor(photographer.email),
         subject: "המעבר למסלול החדש שלך — נדרשת השלמת תשלום",
         text: `שלום ${photographer.name},\n\n${reasonText}\n\nלהשלמת התשלום: ${paymentPageLink}\n\nתודה!`,
       });

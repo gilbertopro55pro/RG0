@@ -171,7 +171,11 @@ export default function BillingSettings({ photographer }: { photographer: Photog
                 החיוב הבא יבוטל, אך הגישה למערכת תישאר פעילה עד תום מחזור החיוב הנוכחי ({periodEndHe}).
                 האירועים, הגלריות והחוזים שלכם יישמרו במערכת ויחכו לכם — הם לא נמחקים, ואפשר להפעיל את
                 המנוי מחדש בכל עת. הפעולה הזו סופית ולא ניתנת לביטול עצמי — לחידוש המנוי תצטרכו לעבור
-                תשלום חדש.
+                תשלום חדש. פרטים מלאים ב
+                <a href="/cancellation-policy" target="_blank" rel="noreferrer" className="underline">
+                  מדיניות הביטולים
+                </a>
+                .
               </p>
               <div className="flex gap-2">
                 <button

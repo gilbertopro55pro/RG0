@@ -17,3 +17,15 @@ export const GOOGLE_EVENT_COLORS = [
 export function googleColorHex(colorId: string | null): string | null {
   return GOOGLE_EVENT_COLORS.find((c) => c.id === colorId)?.hex ?? null;
 }
+
+// For tinting a surface with a chosen calendar color at a given opacity (e.g. the
+// needs-review event-card highlight) — an rgba() string blends correctly regardless of what's
+// behind it, unlike trying to precompute a flat mixed hex.
+export function googleColorRgba(colorId: string | null, alpha: number): string | null {
+  const hex = googleColorHex(colorId);
+  if (!hex) return null;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}

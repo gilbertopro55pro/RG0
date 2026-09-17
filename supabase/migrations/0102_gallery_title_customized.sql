@@ -1,0 +1,13 @@
+-- Lets a gallery's title track its linked event's client_name live (kept in sync whenever the
+-- event is renamed) UNLESS the photographer explicitly typed a different title in gallery settings
+-- — per explicit request: "the name at the top of the gallery is whatever's set in gallery
+-- settings; if nothing was set there, it should match the event page, and editing it later in
+-- settings only changes the gallery, never the event."
+--
+-- Defaults to true (customized/frozen) so EXISTING galleries are left alone — there's no way to
+-- tell, for a gallery created before this column existed, whether its current title is an
+-- untouched auto-snapshot or something the photographer deliberately typed, and silently starting
+-- to auto-sync an existing gallery's title out from under a photographer who never asked for that
+-- would be a real regression. Only new event-linked galleries created going forward (createEvent.ts)
+-- explicitly opt into false (auto-sync) at creation.
+alter table public.galleries add column if not exists title_customized boolean not null default true;

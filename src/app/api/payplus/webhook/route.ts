@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { verifyPayplusWebhookSignature, PAYPLUS_BILLING } from "@/lib/payplus";
-import { issueReceipt } from "@/lib/finbot";
+import { issueReceipt, documentTypeForTaxStatus } from "@/lib/finbot";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
+import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { Photographer } from "@/lib/types";
 
 type PayplusCallbackBody = {
@@ -11,6 +12,7 @@ type PayplusCallbackBody = {
   more_info?: string; // photographer_id, set at checkout creation
   more_info_1?: string; // plan ("monthly" | "annual"), also set at checkout creation
   customer_uid?: string;
+  amount?: number; // what PayPlus actually charged THIS transaction
   recurring_charge_information?: { recurring_uid?: string };
   // Confirmed against a real callback (payplus_webhook_events, 2026-08-11): more_info,
   // status_code and recurring_charge_information live under "transaction", customer_uid under
@@ -90,17 +92,33 @@ export async function POST(request: NextRequest) {
   // retries on non-2xx, and the charge itself already succeeded regardless of Finbot's outcome.
   if (isSuccess && photographer) {
     const planInfo = SUBSCRIPTION_PLANS[photographer.plan];
-    const amount = PAYPLUS_BILLING[photographer.plan].amount;
+    // The REAL amount PayPlus charged in this specific transaction — not a lookup of the
+    // CURRENT price for photographer.plan. Those quietly diverge the moment prices ever change:
+    // an existing subscriber's recurring charge keeps billing whatever amount was baked in when
+    // they first subscribed (PayPlus owns that, independent of this app), so a plan's current
+    // listed price can be wrong for anyone who signed up before the last price change. Falling
+    // back to the price-table lookup only if PayPlus's callback is ever missing "amount".
+    const amount = Number(extractField(body, "amount")) || PAYPLUS_BILLING[photographer.plan].amount;
     try {
       await issueReceipt({
+        // The platform itself became עוסק מורשה — every subscription document from here on needs
+        // to be a proper חשבונית מס קבלה (with VAT), not the plain VAT-exempt קבלה this defaulted
+        // to before. There's no per-photographer setting for "the platform's own" tax status (that
+        // column is each photographer's own business status, a separate concern from the
+        // platform's) — hardcoded here since it's a one-time business change, not something that
+        // toggles.
+        documentType: documentTypeForTaxStatus("licensed"),
         customerName: photographer.name,
-        customerEmail: photographer.email,
+        customerEmail: notificationEmailFor(photographer.email),
         customerPhone: photographer.phone,
         amount,
         description: `מנוי ${planInfo.label} למערכת גילברטו - ניהול צילום אירועים`,
       });
     } catch (e) {
-      console.error("Finbot receipt issuance failed:", e);
+      // Includes which photographer — the failure otherwise only shows up as Finbot's own generic
+      // email, with nothing in it to identify which subscriber triggered it without cross-
+      // referencing payplus_webhook_events by timestamp.
+      console.error(`Finbot receipt issuance failed for photographer ${photographerId}:`, e);
     }
   }
 

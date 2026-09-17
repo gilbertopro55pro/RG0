@@ -5,8 +5,15 @@ import { SUBSCRIPTION_PLANS, type SubscriptionPlan, type SubscriptionTier } from
 import Spinner from "@/components/Spinner";
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
+  basic: "פרו סטארט",
   standard: "פרו",
   studio_pro: "פרו+",
+};
+const TIER_ORDER: SubscriptionTier[] = ["basic", "standard", "studio_pro"];
+const TIER_NOTE: Partial<Record<SubscriptionTier, string>> = {
+  basic: "100GB אחסון, עד חבר צוות אחד, שמירת גלריה עד 14 יום — מסלול כניסה, אפשר לשדרג בכל עת.",
+  standard: "750GB אחסון, עד 2 חברי צוות, שמירת גלריה עד 90 יום.",
+  studio_pro: "אחסון ללא הגבלה, עד 3 חברי צוות, שמירת גלריה עד שנה, ומיתוג מלא — לוגו וצבע מותג משלכם על כל הגלריות ללקוחות.",
 };
 
 function plansForTier(tier: SubscriptionTier): SubscriptionPlan[] {
@@ -41,7 +48,7 @@ export default function BillingPlanSelector({ initialPlan }: { initialPlan: Subs
   return (
     <div>
       <div className="flex gap-1 mb-3 p-1 rounded-full bg-chip">
-        {(["standard", "studio_pro"] as const).map((t) => (
+        {TIER_ORDER.map((t) => (
           <button
             key={t}
             onClick={() => {
@@ -58,11 +65,7 @@ export default function BillingPlanSelector({ initialPlan }: { initialPlan: Subs
           </button>
         ))}
       </div>
-      {tier === "studio_pro" && (
-        <p className="text-[11px] mb-3 text-ink-soft">
-          עד 3 חברי צוות (במקום 1), ומיתוג מלא — לוגו וצבע מותג משלכם על כל הגלריות ללקוחות.
-        </p>
-      )}
+      {TIER_NOTE[tier] && <p className="text-[11px] mb-3 text-ink-soft">{TIER_NOTE[tier]}</p>}
       <div className="flex gap-2 mb-4">
         {visiblePlans.map((key) => {
           const info = SUBSCRIPTION_PLANS[key];

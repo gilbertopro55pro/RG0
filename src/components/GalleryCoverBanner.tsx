@@ -8,6 +8,8 @@ export default function GalleryCoverBanner({
   textPosition,
   shape,
   titleFontOverride = null,
+  focalX = 50,
+  focalY = 50,
 }: {
   photoUrl: string | null;
   title: string;
@@ -16,6 +18,10 @@ export default function GalleryCoverBanner({
   textPosition: string;
   shape: string;
   titleFontOverride?: string | null;
+  // Percentage (0-100) of the photo to keep centered once cropped to the banner's fixed aspect
+  // ratio — defaults to dead-center, matching every gallery that's never had this set.
+  focalX?: number;
+  focalY?: number;
 }) {
   const theme = resolveGalleryTheme(themeId, { titleFontOverride });
   const overlay = isOverlayPosition(textPosition);
@@ -59,7 +65,7 @@ export default function GalleryCoverBanner({
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={photoUrl} alt="" className="w-full h-full object-cover" />
+        <img src={photoUrl} alt="" className="w-full h-full object-cover" style={{ objectPosition: `${focalX}% ${focalY}%` }} />
         {overlay && (
           <>
             <div

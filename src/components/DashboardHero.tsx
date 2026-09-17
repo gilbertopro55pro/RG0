@@ -1,40 +1,34 @@
 import Link from "next/link";
-import { smoothAreaPath, smoothLinePath, type Point } from "@/lib/smoothPath";
 import { IconTrend } from "@/components/icons/NavIcons";
-
-type TrailingMonth = { label: string; amount: number };
 
 export default function DashboardHero({
   monthLabel,
   monthTotal,
-  pendingTotal,
-  trailing,
+  monthForecast,
   registeredUsersCount,
 }: {
   monthLabel: string;
   monthTotal: number;
-  pendingTotal: number;
-  trailing: TrailingMonth[];
+  // Revenue actually received this month, plus whatever's still unpaid but due within this same
+  // month (see page.tsx's own comment on how this is computed) — always >= monthTotal, so the
+  // progress bar below can only ever fill up as the month goes, never overflow past full. No
+  // separate global "ממתין לתשלום" figure is shown alongside it anymore — a second, differently-
+  // scoped (all-time, not this-month) pending number next to a month-scoped forecast read as two
+  // conflicting totals rather than two distinct metrics.
+  monthForecast: number;
   // Admin-only — see src/lib/admin.ts. null for every other account, so the layout below never
-  // reserves space for it and the chart keeps the full row.
+  // reserves space for it and the forecast bar keeps the full row.
   registeredUsersCount?: number | null;
 }) {
-  const width = 480;
-  const height = 76;
-  const max = Math.max(1, ...trailing.map((m) => m.amount));
-  const points: Point[] = trailing.map((m, i) => ({
-    x: (i / Math.max(1, trailing.length - 1)) * width,
-    y: height - (m.amount / max) * (height - 10) - 5,
-  }));
-  const areaPath = smoothAreaPath(points, height);
-  const linePath = smoothLinePath(points);
+  const forecastRatio = monthForecast > 0 ? Math.min(1, monthTotal / monthForecast) : 1;
+  const stillDue = Math.max(0, monthForecast - monthTotal);
 
   return (
     <div className="rounded-3xl p-3.5 mb-4 bg-card shadow-card">
       <div className="flex items-start justify-between mb-1.5">
         <div>
           <div className="text-[10px] tracking-wide text-ink-soft mb-0.5">הכנסות {monthLabel}</div>
-          <div className="text-[24px] leading-none font-extrabold font-display tracking-tight">
+          <div className="text-[24px] leading-none font-extrabold font-display tracking-tight text-brass">
             ₪{monthTotal.toLocaleString("he-IL")}
           </div>
         </div>
@@ -47,17 +41,20 @@ export default function DashboardHero({
       </div>
 
       <div className="flex items-stretch gap-2">
-        <div className="h-[56px] -mx-1 flex-1 min-w-0">
-          <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="heroAreaFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--color-amber-deep)" stopOpacity="0.32" />
-                <stop offset="100%" stopColor="var(--color-amber-deep)" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <path d={areaPath} fill="url(#heroAreaFill)" />
-            <path d={linePath} fill="none" stroke="var(--color-amber-deep)" strokeWidth="2.5" strokeLinecap="round" />
-          </svg>
+        <div className="flex-1 min-w-0 py-1">
+          <div className="flex items-center justify-between text-[11px] mb-1.5">
+            <span className="text-ink-soft">צפי הכנסות ל־{monthLabel}</span>
+            <span className="font-data font-semibold text-ink">₪{monthForecast.toLocaleString("he-IL")}</span>
+          </div>
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--color-chip)" }}>
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${forecastRatio * 100}%`, background: "var(--color-amber-deep)" }}
+            />
+          </div>
+          {stillDue > 0 && (
+            <div className="text-[10px] mt-1 text-ink-soft">עוד ₪{stillDue.toLocaleString("he-IL")} צפוי החודש</div>
+          )}
         </div>
         {registeredUsersCount != null && (
           <Link
@@ -72,11 +69,6 @@ export default function DashboardHero({
             <span className="text-[9px] leading-tight text-ink-soft px-0.5">משתמשים רשומים</span>
           </Link>
         )}
-      </div>
-
-      <div className="flex items-center justify-between text-xs pt-2 mt-0.5 border-t border-line">
-        <span className="text-ink-soft">ממתין לתשלום</span>
-        <span className="font-data font-semibold">₪{pendingTotal.toLocaleString("he-IL")}</span>
       </div>
     </div>
   );

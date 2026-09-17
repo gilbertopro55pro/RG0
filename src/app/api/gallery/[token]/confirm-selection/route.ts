@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
+import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { EventRow, GalleryRow, Photographer } from "@/lib/types";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
@@ -70,7 +71,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const favoritesLink = `${origin}/galleries/${gallery.id}?favorites=1`;
     try {
       await sendEmail({
-        to: photographer.email,
+        to: notificationEmailFor(photographer.email),
         subject: `${clientLabel} סיימו לבחור תמונות מהגלריה`,
         text:
           `שלום ${photographer.name},\n\n` +

@@ -10,7 +10,7 @@ const HEBREW_RANGE = /[֐-׿]/;
 // "039119243 ח .פ" instead of staying together as "ח.פ:" beside the number.
 const LATIN_STRONG_RANGE = /[A-Za-z0-9]/;
 
-type Run = { text: string; rtl: boolean };
+export type Run = { text: string; rtl: boolean };
 
 function isStrongForDirection(ch: string, rtl: boolean): boolean {
   return rtl ? HEBREW_RANGE.test(ch) : LATIN_STRONG_RANGE.test(ch);
@@ -52,7 +52,7 @@ function splitBoundaryNeutrals(runs: Run[]): Run[] {
 // with digits/Latin. Neutral characters (whitespace, punctuation) attach to whichever run they're
 // adjacent to rather than starting a run of their own, so "שלום 2026" and "ח.פ: 123" don't get
 // split into more fragments than the Hebrew/Latin boundary actually requires.
-function splitRuns(text: string): Run[] {
+export function splitRuns(text: string): Run[] {
   const runs: Run[] = [];
   let current = "";
   let currentRtl: boolean | null = null;
@@ -85,13 +85,25 @@ function hebrewFontCovers(ch: string): boolean {
   return HEBREW_RANGE.test(ch) || HEBREW_FONT_EXTRA_CHARS.has(ch);
 }
 
-// Splits a single rtl-classified run into font-appropriate segments. Each segment's OWN
-// characters stay in natural order (multi-character Hebrew segments still get fontkit's correct
-// same-font shaping), but the SEGMENTS themselves are reversed relative to each other — the same
-// right-to-left ordering rule layoutVisualRuns applies at the top level, just applied one level
-// deeper so a punctuation character that needs latinFont doesn't end up detached from the Hebrew
-// text it's actually attached to (e.g. "ח.פ: " needs to draw, left to right, as
-// [trailing-space-and-colon] [פ] [.] [ח] for "ח.פ: " to read correctly right-to-left).
+// Splits a single rtl-classified run into font-appropriate segments, SEGMENTS reversed relative
+// to each other (same right-to-left ordering rule layoutVisualRuns applies at the top level, just
+// applied one level deeper so a punctuation character that needs latinFont doesn't end up
+// detached from the Hebrew text it's actually attached to — e.g. "ח.פ: " needs to draw, left to
+// right, as [trailing-space-and-colon] [פ] [.] [ח] for "ח.פ: " to read correctly right-to-left).
+// Each segment's own characters stay in logical (natural) order — NOT reversed here. This went
+// back and forth: a manual per-character reversal was added under the belief that neither
+// pdf-lib's drawText nor fontkit's layout() do bidi visual reordering on their own. That belief
+// was wrong, and provably so: page.drawText → PDFFont.encodeText → (for a custom embedded font,
+// which is what this app always uses for Hebrew) CustomFontEmbedder.encodeText, whose source
+// (node_modules/pdf-lib/es/core/embedders/CustomFontEmbedder.js) calls
+// `this.font.layout(text, this.fontFeatures).glyphs` — the exact same fontkit `layout()` call
+// proven (by calling it directly and inspecting each returned glyph's own codePoints) to already
+// reverse Hebrew codepoints into drawable visual order on its own. Reversing the string before
+// that call reverses it twice, cancelling back to natural order — which for RTL text IS the
+// backwards result. (The manual reversal's own comment claimed this was checked against real
+// rendered PDF output; that check was a human eyeballing rendered Hebrew glyphs, a method that
+// proved unreliable elsewhere in this same investigation — the definitive check is the
+// codePoints one above, not reading the render.)
 function segmentsByGlyphCoverage(text: string, hebrewFont: PDFFont, latinFont: PDFFont): { text: string; font: PDFFont }[] {
   const segments: { text: string; font: PDFFont }[] = [];
   let current = "";
@@ -113,10 +125,8 @@ function segmentsByGlyphCoverage(text: string, hebrewFont: PDFFont, latinFont: P
 function layoutVisualRuns(text: string, hebrewFont: PDFFont, latinFont: PDFFont, size: number) {
   // Runs are reordered right-to-left overall (the last logical run — e.g. the end of a Hebrew
   // sentence — is drawn leftmost), but each run's OWN characters stay in logical (unreversed)
-  // order. pdf-lib/fontkit already shapes a same-font Hebrew run correctly on its own — reversing
-  // the characters ourselves (an earlier version of this function did) actively breaks it, since
-  // fontkit then "un-reverses" via its own bidi-aware shaping and the result comes out backwards.
-  // Verified directly against rendered PDF output before landing this fix.
+  // order — pdf-lib's drawText shapes a same-font Hebrew run correctly on its own via fontkit's
+  // internal bidi reordering (see segmentsByGlyphCoverage's own comment for the proof).
   const visualRuns = [...splitRuns(text)]
     .reverse()
     .flatMap((r) => (r.rtl ? segmentsByGlyphCoverage(r.text, hebrewFont, latinFont) : [{ text: r.text, font: latinFont }]));

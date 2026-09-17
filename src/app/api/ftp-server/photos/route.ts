@@ -28,6 +28,16 @@ export async function POST(request: Request) {
   }
 
   const supabase = createServiceRoleClient();
+
+  // The shared secret authenticates the FTP server itself, not this specific request's gallery/
+  // photographer pairing — without this check, a bug or leak on the FTP server's side could
+  // silently cross-link a photo into a gallery it doesn't belong to, since the service-role client
+  // bypasses RLS entirely and nothing else here ties galleryId to photographerId.
+  const { data: gallery } = await supabase.from("galleries").select("id").eq("id", galleryId).eq("photographer_id", photographerId).maybeSingle();
+  if (!gallery) {
+    return NextResponse.json({ error: "gallery not found" }, { status: 404 });
+  }
+
   const { count } = await supabase.from("gallery_photos").select("id", { count: "exact", head: true }).eq("gallery_id", galleryId);
 
   const { data: photo, error } = await supabase

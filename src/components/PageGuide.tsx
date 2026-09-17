@@ -92,7 +92,7 @@ export default function PageGuide({ pageKey, blurb }: { pageKey: PageGuideKey; b
               {guide.sections.map((section, i) => (
                 <div key={i}>
                   <h3 className="text-sm font-bold font-display mb-1.5">{section.heading}</h3>
-                  <p className="text-sm text-ink-soft leading-relaxed mb-2.5">{section.body}</p>
+                  <p className="text-sm text-ink-soft leading-relaxed mb-2.5 whitespace-pre-line">{section.body}</p>
                   {section.image && (
                     <div className="rounded-xl overflow-hidden border border-line">
                       <Image src={section.image} alt={section.heading} width={960} height={540} className="w-full h-auto" />

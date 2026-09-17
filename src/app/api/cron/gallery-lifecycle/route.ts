@@ -3,7 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { GENERIC_STAGE_UPDATE_TEMPLATE } from "@/lib/stages";
-import { removeObjects } from "@/lib/storage";
+import { removeObjects, removePreviewObjects } from "@/lib/storage";
 import type { GalleryRow } from "@/lib/types";
 
 type GalleryWithRelations = GalleryRow & {
@@ -12,7 +12,41 @@ type GalleryWithRelations = GalleryRow & {
 };
 
 const ARCHIVE_TO_DELETE_DAYS = 7;
+const RESTORED_GALLERY_GRACE_DAYS = 3;
 const REMINDER_DAYS_BEFORE_EXPIRY = 7;
+
+// A photo the photographer added to the public portfolio must outlive the client gallery it came
+// from (see the "עדכון ללא" portfolio quick-actions feature) — without this, a gallery reaching
+// its normal expiry/permanent-delete date would cascade-delete every gallery_photos row under it,
+// silently wiping portfolio photos too. Every photographer gets exactly one hidden, standalone,
+// never-published gallery (is_portfolio_only) as a safe home; this re-homes a permanently-deleting
+// gallery's in_portfolio photos into it right before that gallery (and its FK cascade) fires.
+async function getOrCreatePortfolioGalleryId(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  photographerId: string
+): Promise<string> {
+  const { data: existing } = await supabase
+    .from("galleries")
+    .select("id")
+    .eq("photographer_id", photographerId)
+    .eq("is_portfolio_only", true)
+    .maybeSingle<{ id: string }>();
+  if (existing) return existing.id;
+
+  const { data: created } = await supabase
+    .from("galleries")
+    .insert({
+      photographer_id: photographerId,
+      event_id: null,
+      title: "פורטפוליו — תמונות שהועלו ישירות",
+      is_portfolio_only: true,
+      published: false,
+      expiry_days: 7, // never published, never actually expires — just satisfies the plan-expiry check trigger
+    })
+    .select("id")
+    .single<{ id: string }>();
+  return created!.id;
+}
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -107,10 +141,14 @@ export async function GET(request: NextRequest) {
 
   let archivedCount = 0;
   for (const gallery of toArchive ?? []) {
-    const permanentDeleteAt = new Date(now.getTime() + ARCHIVE_TO_DELETE_DAYS * 24 * 60 * 60 * 1000);
+    // A gallery that already used its one-time restore (see migration 0086 and
+    // GalleryManageView's settings modal) gets a short 3-day final window instead of the normal
+    // 7 — it can't be restored again, so there's no reason to hold it as long.
+    const graceDays = gallery.restored_once ? RESTORED_GALLERY_GRACE_DAYS : ARCHIVE_TO_DELETE_DAYS;
+    const permanentDeleteAt = new Date(now.getTime() + graceDays * 24 * 60 * 60 * 1000);
     await supabase
       .from("galleries")
-      .update({ archived_at: now.toISOString(), permanent_delete_at: permanentDeleteAt.toISOString() })
+      .update({ archived_at: now.toISOString(), permanent_delete_at: permanentDeleteAt.toISOString(), archive_reason: "expired" })
       .eq("id", gallery.id);
 
     const deleteDateHe = permanentDeleteAt.toLocaleDateString("he-IL");
@@ -152,6 +190,22 @@ export async function GET(request: NextRequest) {
 
   let deletedCount = 0;
   for (const gallery of toDelete ?? []) {
+    // Rescue portfolio photos first: re-home them into the photographer's hidden portfolio
+    // gallery so the FK cascade below (and the R2 deletion right after) never touches them.
+    const { data: portfolioPhotoIds } = await supabase
+      .from("gallery_photos")
+      .select("id")
+      .eq("gallery_id", gallery.id)
+      .eq("in_portfolio", true)
+      .returns<{ id: string }[]>();
+    if (portfolioPhotoIds && portfolioPhotoIds.length > 0) {
+      const portfolioGalleryId = await getOrCreatePortfolioGalleryId(supabase, gallery.photographer_id);
+      await supabase
+        .from("gallery_photos")
+        .update({ gallery_id: portfolioGalleryId, folder_id: null })
+        .in("id", portfolioPhotoIds.map((p) => p.id));
+    }
+
     const { data: photos } = await supabase
       .from("gallery_photos")
       .select("storage_path, preview_storage_path")
@@ -159,8 +213,17 @@ export async function GET(request: NextRequest) {
       .returns<{ storage_path: string; preview_storage_path: string | null }[]>();
 
     if (photos && photos.length > 0) {
-      const paths = photos.flatMap((p) => [p.storage_path, p.preview_storage_path].filter((x): x is string => !!x));
-      await removeObjects("galleries", paths);
+      // A .webp preview lives in the separate previews bucket (removePreviewObjects) — anything
+      // else is a pre-migration legacy preview still in the main bucket, deleted the normal way
+      // right alongside its storage_path.
+      const paths = photos.flatMap((p) => [
+        p.storage_path,
+        p.preview_storage_path && !p.preview_storage_path.endsWith(".webp") ? p.preview_storage_path : null,
+      ]).filter((x): x is string => !!x);
+      const previewPaths = photos
+        .map((p) => p.preview_storage_path)
+        .filter((x): x is string => !!x && x.endsWith(".webp"));
+      await Promise.all([removeObjects("galleries", paths), removePreviewObjects(previewPaths)]);
     }
 
     if (gallery.event_id) {

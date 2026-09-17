@@ -19,7 +19,7 @@ function formatSize(bytes: number): string {
 // v1 "video delivery", not full adaptive streaming — see migration 0082's comment for why. The
 // finished file is stored as-is in the same R2 bucket as photos and played back with a plain
 // <video> tag; R2's signed GET URLs already support HTTP range requests, so seeking works.
-export default function GalleryVideosSection({ galleryId }: { galleryId: string }) {
+export default function GalleryVideosSection({ galleryId, allowed = true }: { galleryId: string; allowed?: boolean }) {
   const supabase = createClient();
   const [videos, setVideos] = useState<GalleryVideoRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +44,7 @@ export default function GalleryVideosSection({ galleryId }: { galleryId: string 
   }, [galleryId]);
 
   const handleFiles = async (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return;
+    if (!allowed || !fileList || fileList.length === 0) return;
     setError(null);
     const {
       data: { user },
@@ -145,21 +145,31 @@ export default function GalleryVideosSection({ galleryId }: { galleryId: string 
         </div>
       )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="video/mp4,video/quicktime,video/webm"
-        multiple
-        onChange={(e) => handleFiles(e.target.files)}
-        className="hidden"
-        id={`gallery-video-upload-${galleryId}`}
-      />
-      <label
-        htmlFor={`gallery-video-upload-${galleryId}`}
-        className={`w-full flex items-center justify-center rounded-lg py-2.5 text-xs font-semibold bg-white border border-line text-ink-soft cursor-pointer ${BTN_PRESS}`}
-      >
-        {uploading ? `מעלה: ${uploading}...` : "+ העלאת וידאו (MP4, MOV, WebM)"}
-      </label>
+      {allowed ? (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/mp4,video/quicktime,video/webm"
+            multiple
+            onChange={(e) => handleFiles(e.target.files)}
+            className="hidden"
+            id={`gallery-video-upload-${galleryId}`}
+          />
+          <label
+            htmlFor={`gallery-video-upload-${galleryId}`}
+            className={`w-full flex items-center justify-center rounded-lg py-2.5 text-xs font-semibold bg-white border border-line text-ink-soft cursor-pointer ${BTN_PRESS}`}
+          >
+            {uploading ? `מעלה: ${uploading}...` : "+ העלאת וידאו (MP4, MOV, WebM)"}
+          </label>
+        </>
+      ) : (
+        // Not a retroactive lock — any video already on this gallery (uploaded before a downgrade,
+        // or grandfathered) still plays above; this only blocks ADDING new ones on the entry tier.
+        <p className="w-full text-center rounded-lg py-2.5 text-xs font-semibold bg-chip text-ink-soft">
+          וידאו בגלריה זמין ממסלול פרו ומעלה — שדרגו מסלול בהגדרות
+        </p>
+      )}
       {error && <p className="text-xs text-rose mt-2">{error}</p>}
     </div>
   );

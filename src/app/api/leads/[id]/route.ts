@@ -26,7 +26,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.notes !== undefined) update.notes = body.notes;
   if (body.quoted_amount !== undefined) update.quoted_amount = body.quoted_amount;
   if (body.quote_note !== undefined) update.quote_note = body.quote_note;
-  if (body.converted_event_id !== undefined) update.converted_event_id = body.converted_event_id;
+  if (body.converted_event_id !== undefined) {
+    // RLS scopes the lead ROW being updated to this photographer's own, but converted_event_id is
+    // a foreign key that only requires SOME event to exist — with no check here, a caller could
+    // point their own lead at any event UUID, including another photographer's. Confirm the event
+    // actually belongs to this same photographer before allowing the link.
+    const { data: event } = await supabase.from("events").select("id").eq("id", body.converted_event_id).eq("photographer_id", user.id).maybeSingle();
+    if (!event) {
+      return NextResponse.json({ error: "האירוע לא נמצא" }, { status: 400 });
+    }
+    update.converted_event_id = body.converted_event_id;
+  }
 
   const { data: lead, error } = await supabase
     .from("leads")

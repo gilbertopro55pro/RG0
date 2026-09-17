@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TeamMember } from "@/lib/types";
 
 export default function TeamManagementView({
@@ -11,6 +11,12 @@ export default function TeamManagementView({
   limit: number;
 }) {
   const [teamMembers, setTeamMembers] = useState(initialTeamMembers);
+
+  // SettingsTabs keeps every tab mounted at once (display:none, never unmounted), so this
+  // useState-from-props only ever runs its lazy initializer on the first mount — a change from a
+  // different tab that triggers router.refresh() sends fresh props down here too, but without
+  // this they'd sit unused until a hard reload. Same pattern as ClientMessagesSettings.
+  useEffect(() => setTeamMembers(initialTeamMembers), [initialTeamMembers]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);

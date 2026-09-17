@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import type { EventContractRow } from "@/lib/types";
+import { sendEmail } from "@/lib/resend";
+import { ADMIN_EMAIL } from "@/lib/admin";
+import { notificationEmailFor } from "@/lib/notificationEmail";
+import { packageLabel } from "@/lib/stages";
+import type { EventContractRow, EventRow, Photographer } from "@/lib/types";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -55,6 +59,51 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     text: `החוזה נחתם על ידי ${signerName.trim()} ✓`,
     is_client_action: true,
   });
+
+  // Admin-only for now (see the standing "עדכון אדמין" staged-rollout process): event_closing
+  // stays open (not the auto-done-at-creation behavior every other photographer still gets — see
+  // /api/events/route.ts) until either this happens (contract signed) or the photographer sends
+  // the opening WhatsApp message manually (EventDetailView.tsx's event-closing banner). A signed
+  // contract is unambiguous proof the booking is real, so it marks the stage done outright.
+  const { data: event } = await supabase
+    .from("events")
+    .select("*, custom_packages(name)")
+    .eq("id", contract.event_id)
+    .maybeSingle<EventRow & { custom_packages: { name: string } | null }>();
+  if (event) {
+    const { data: photographer } = await supabase
+      .from("photographers")
+      .select("*")
+      .eq("id", event.photographer_id)
+      .maybeSingle<Photographer>();
+    if (photographer?.email === ADMIN_EMAIL) {
+      await supabase
+        .from("event_stages")
+        .update({ done: true, done_at: new Date().toISOString() })
+        .eq("event_id", event.id)
+        .eq("stage_key", "event_closing")
+        .eq("done", false);
+
+      const eventDateStr = new Date(event.event_date).toLocaleDateString("he-IL");
+      const eventUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://myframeflow.com"}/events/${event.id}`;
+      await sendEmail({
+        to: notificationEmailFor(photographer.email),
+        subject: `החוזה עם ${event.client_name} נחתם ✓`,
+        text: `שלום ${photographer.name},
+
+החוזה עבור האירוע של ${event.client_name} נחתם דיגיטלית על ידי ${signerName.trim()}.
+
+פרטי האירוע:
+תאריך: ${eventDateStr}
+מיקום: ${event.event_location || "יעודכן"}
+חבילה: ${packageLabel(event.package, event.custom_packages?.name)}
+טלפון הלקוח/ה: ${event.client_phone || "לא הוזן"}
+
+מעבר לעמוד האירוע לשליחת הודעת פתיחה ללקוח/ה:
+${eventUrl}`,
+      }).catch(() => {});
+    }
+  }
 
   return NextResponse.json({ contract: updated });
 }

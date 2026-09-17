@@ -37,6 +37,11 @@ export default function AnalyticsView({
   const currentYear = initialYear;
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);
+  // "month" scopes the forecast card below to the selected month (default); "year" aggregates the
+  // whole selected year instead — the month dropdown is disabled in year scope since it stops
+  // mattering. Independent of the 12-months trend chart further down, which always shows a
+  // trailing 12-month history regardless of this toggle.
+  const [scope, setScope] = useState<"month" | "year">("month");
   const [shareOpen, setShareOpen] = useState(false);
   const [shareStep, setShareStep] = useState<"options" | "email">("options");
   const [emailValue, setEmailValue] = useState("");
@@ -48,16 +53,21 @@ export default function AnalyticsView({
 
   const revenueByMonth = useMemo(() => {
     const map = new Map<string, number>();
+    // A partial payment (deposit_paid/balance_paid still false, *_paid_amount set) counts only the
+    // amount actually received, not the full declared leg — otherwise revenue would be overstated
+    // for anyone paying in installments before the leg is fully settled.
     for (const p of payments) {
       if (p.deposit_paid_at) {
         const d = new Date(p.deposit_paid_at);
         const key = monthKey(d.getFullYear(), d.getMonth() + 1);
-        map.set(key, (map.get(key) ?? 0) + Number(p.deposit_amount));
+        const received = p.deposit_paid ? Number(p.deposit_amount) : Number(p.deposit_paid_amount ?? 0);
+        map.set(key, (map.get(key) ?? 0) + received);
       }
       if (p.balance_paid_at) {
         const d = new Date(p.balance_paid_at);
         const key = monthKey(d.getFullYear(), d.getMonth() + 1);
-        map.set(key, (map.get(key) ?? 0) + Number(p.balance_amount));
+        const received = p.balance_paid ? Number(p.balance_amount) : Number(p.balance_paid_amount ?? 0);
+        map.set(key, (map.get(key) ?? 0) + received);
       }
     }
     return map;
@@ -84,6 +94,37 @@ export default function AnalyticsView({
   const selectedKey = monthKey(selectedYear, selectedMonth);
   const selectedRevenue = revenueByMonth.get(selectedKey) ?? 0;
 
+  const yearRevenue = useMemo(() => {
+    let total = 0;
+    for (let m = 1; m <= 12; m++) total += revenueByMonth.get(monthKey(selectedYear, m)) ?? 0;
+    return total;
+  }, [revenueByMonth, selectedYear]);
+
+  const periodActualRevenue = scope === "year" ? yearRevenue : selectedRevenue;
+  const periodLabel = scope === "year" ? `${selectedYear}` : `${HEBREW_MONTHS[selectedMonth - 1]} ${selectedYear}`;
+
+  // Forecast = revenue already received in the period, plus whatever's still unpaid but due
+  // (balance_due_date) within that same period — the only due-date field the data model has
+  // (EventPaymentRow has no separate deposit due date, so an unpaid deposit with no due date at
+  // all can't be attributed to any specific month/year and is excluded here; it still shows in the
+  // unscoped "תשלומים צפויים" card below, which is deliberately left as a global, all-time figure).
+  const periodForecastExtra = useMemo(() => {
+    let total = 0;
+    for (const p of payments) {
+      if (!p.balance_due_date) continue;
+      const due = new Date(p.balance_due_date);
+      const dueYear = due.getFullYear();
+      const dueMonth = due.getMonth() + 1;
+      const inPeriod = scope === "year" ? dueYear === selectedYear : monthKey(dueYear, dueMonth) === selectedKey;
+      if (!inPeriod) continue;
+      if (!p.deposit_paid) total += Number(p.deposit_amount) - Number(p.deposit_paid_amount ?? 0);
+      if (!p.balance_paid) total += Number(p.balance_amount) - Number(p.balance_paid_amount ?? 0);
+    }
+    return total;
+  }, [payments, scope, selectedYear, selectedKey]);
+
+  const periodForecast = periodActualRevenue + periodForecastExtra;
+
   const monthTransactions = useMemo(() => {
     const rows: { date: string; clientName: string; label: string; pkg: string; amount: number }[] = [];
     for (const p of payments) {
@@ -91,10 +132,12 @@ export default function AnalyticsView({
       if (!event) continue;
       const pkgLabel = PACKAGE_LABELS[event.package as keyof typeof PACKAGE_LABELS] ?? event.package;
       if (p.deposit_paid_at && monthKey(new Date(p.deposit_paid_at).getFullYear(), new Date(p.deposit_paid_at).getMonth() + 1) === selectedKey) {
-        rows.push({ date: p.deposit_paid_at, clientName: event.client_name, label: "מקדמה", pkg: pkgLabel, amount: Number(p.deposit_amount) });
+        const received = p.deposit_paid ? Number(p.deposit_amount) : Number(p.deposit_paid_amount ?? 0);
+        rows.push({ date: p.deposit_paid_at, clientName: event.client_name, label: p.deposit_paid ? "מקדמה" : "מקדמה (חלקי)", pkg: pkgLabel, amount: received });
       }
       if (p.balance_paid_at && monthKey(new Date(p.balance_paid_at).getFullYear(), new Date(p.balance_paid_at).getMonth() + 1) === selectedKey) {
-        rows.push({ date: p.balance_paid_at, clientName: event.client_name, label: "יתרה", pkg: pkgLabel, amount: Number(p.balance_amount) });
+        const received = p.balance_paid ? Number(p.balance_amount) : Number(p.balance_paid_amount ?? 0);
+        rows.push({ date: p.balance_paid_at, clientName: event.client_name, label: p.balance_paid ? "יתרה" : "יתרה (חלקי)", pkg: pkgLabel, amount: received });
       }
     }
     rows.sort((a, b) => a.date.localeCompare(b.date));
@@ -183,14 +226,22 @@ export default function AnalyticsView({
 
   const upcoming = useMemo(() => {
     const rows: { eventId: string; clientName: string; amount: number; dueDate: string | null; label: string }[] = [];
+    // A partial payment already reduced what's actually still owed — list the remainder, not the
+    // original full leg amount, or this would double-count what was already received.
     for (const p of payments) {
       const event = eventById.get(p.event_id);
       if (!event) continue;
       if (!p.deposit_paid) {
-        rows.push({ eventId: p.event_id, clientName: event.client_name, amount: Number(p.deposit_amount), dueDate: p.balance_due_date, label: "מקדמה" });
+        const remaining = Number(p.deposit_amount) - Number(p.deposit_paid_amount ?? 0);
+        if (remaining > 0) {
+          rows.push({ eventId: p.event_id, clientName: event.client_name, amount: remaining, dueDate: p.balance_due_date, label: p.deposit_paid_amount ? "מקדמה (יתרה לתשלום)" : "מקדמה" });
+        }
       }
       if (!p.balance_paid) {
-        rows.push({ eventId: p.event_id, clientName: event.client_name, amount: Number(p.balance_amount), dueDate: p.balance_due_date, label: "יתרה" });
+        const remaining = Number(p.balance_amount) - Number(p.balance_paid_amount ?? 0);
+        if (remaining > 0) {
+          rows.push({ eventId: p.event_id, clientName: event.client_name, amount: remaining, dueDate: p.balance_due_date, label: p.balance_paid_amount ? "יתרה (יתרה לתשלום)" : "יתרה" });
+        }
       }
     }
     rows.sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"));
@@ -232,11 +283,34 @@ export default function AnalyticsView({
         blurb="כאן רואים תמונה עסקית מלאה — הכנסות לפי חודש, תשלומים שממתינים, והתפלגות לפי סוגי חבילות."
       />
 
-      <div className="flex flex-wrap gap-2 mb-5">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="flex rounded-lg border border-line bg-white p-0.5 shrink-0">
+          <button
+            onClick={() => setScope("month")}
+            className="rounded-md px-3 py-1.5 text-xs sm:text-sm font-semibold"
+            style={{
+              background: scope === "month" ? "var(--color-amber-deep)" : "transparent",
+              color: scope === "month" ? "#fff" : "var(--color-ink-soft)",
+            }}
+          >
+            חודש
+          </button>
+          <button
+            onClick={() => setScope("year")}
+            className="rounded-md px-3 py-1.5 text-xs sm:text-sm font-semibold"
+            style={{
+              background: scope === "year" ? "var(--color-amber-deep)" : "transparent",
+              color: scope === "year" ? "#fff" : "var(--color-ink-soft)",
+            }}
+          >
+            שנה
+          </button>
+        </div>
         <select
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(Number(e.target.value))}
-          className="flex-1 min-w-[90px] rounded-lg px-2.5 py-2 text-xs sm:text-sm border border-line bg-white"
+          disabled={scope === "year"}
+          className="flex-1 min-w-[90px] rounded-lg px-2.5 py-2 text-xs sm:text-sm border border-line bg-white disabled:opacity-40"
         >
           {HEBREW_MONTHS.map((label, i) => (
             <option key={i} value={i + 1}>
@@ -265,6 +339,15 @@ export default function AnalyticsView({
         </button>
       </div>
 
+      <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
+        <div className="text-xs text-ink-soft mb-1">צפי הכנסות — {periodLabel}</div>
+        <div className="text-xl font-bold font-display">{currency(periodForecast)}</div>
+        <div className="text-xs mt-1 text-ink-soft">
+          {currency(periodActualRevenue)} התקבל
+          {periodForecastExtra > 0 && <> · עוד {currency(periodForecastExtra)} צפוי להתקבל</>}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
           <div className="text-xs text-ink-soft mb-1">הכנסה החודש</div>
@@ -277,9 +360,9 @@ export default function AnalyticsView({
           {delta === null && selectedRevenue > 0 && <div className="text-xs mt-1 text-ink-soft">חודש ראשון עם הכנסה</div>}
         </div>
         <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-          <div className="text-xs text-ink-soft mb-1">תשלומים צפויים</div>
+          <div className="text-xs text-ink-soft mb-1">תשלומים צפויים (כולל)</div>
           <div className="text-xl font-bold font-display">{currency(upcomingTotal)}</div>
-          <div className="text-xs mt-1 text-ink-soft">{upcoming.length} תשלומים ממתינים</div>
+          <div className="text-xs mt-1 text-ink-soft">{upcoming.length} תשלומים ממתינים, בכל התאריכים</div>
         </div>
       </div>
 

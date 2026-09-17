@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { readAlbumRotateResume, writeAlbumRotateResume, clearAlbumRotateResume } from "@/lib/albumRotateResume";
+import GlassTabStrip from "@/components/GlassTabStrip";
 import type {
   AlbumBookTemplateRow,
   AlbumElement,
@@ -24,6 +25,7 @@ import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { readDataTransferItems, folderNameFromPath, isHiddenFileName } from "@/lib/fileDrop";
 import { ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
+import { STARTER_BOOK_TEMPLATES, generateStarterBookPages, type StarterTemplateId } from "@/lib/albumStarterTemplates";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery, IconTrash } from "@/components/icons/NavIcons";
@@ -51,8 +53,13 @@ import {
   galleryFont,
 } from "@/lib/galleryTheme";
 import { openWhatsApp } from "@/lib/waLink";
+import { downloadBlob } from "@/lib/downloadBlob";
+import { ProgressModal } from "@/components/ProgressModal";
+import { IndeterminateProgressCard } from "@/components/IndeterminateProgressCard";
+import { pdfBandedPct } from "@/lib/pdfBandedPct";
 import SendUpdateButton from "@/components/SendUpdateButton";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
+import GalleryCoverFocalPointModal from "@/components/GalleryCoverFocalPointModal";
 import GallerySlideshow from "@/components/GallerySlideshow";
 import { TextPositionIcon, ShapeIcon, GridStyleIcon, PlayIcon } from "@/components/GalleryStyleIcons";
 import FaceCircle from "@/components/FaceCircle";
@@ -62,12 +69,27 @@ import PhotoCullingModal from "@/components/PhotoCullingModal";
 import GalleryVideosSection from "@/components/GalleryVideosSection";
 import GalleryFtpSection from "@/components/GalleryFtpSection";
 import { detectFacesInImageUrl, clusterFaces, type FaceBox } from "@/lib/faceRecognition";
-import { GALLERY_EXPIRY_OPTIONS, GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
+import { GALLERY_EXPIRY_OPTIONS, GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, type SubscriptionPlan, type SubscriptionTier } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
+import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
+import { ALLOWED_ACCEPT, isAllowedImageFile, isHeicFile, convertHeicIfNeeded, putFileWithProgress } from "@/lib/imageUpload";
+import {
+  readActiveUploadLock,
+  writeActiveUploadLock,
+  clearActiveUploadLock,
+  requestActiveUploadCancel,
+  type ActiveUploadLock,
+} from "@/lib/activeUploadLock";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
 
 const CLOSE_ANIMATION_MS = 220;
+
+// A gallery this size (thousands of un-virtualized DOM nodes, a single-tab sequential upload
+// session that can run for hours) is already pushing the browser tab's limits — capping it keeps
+// a runaway selection (an entire multi-day event's raw folder, say) from silently degrading into
+// a stalled or crashed upload with no resumable progress.
+const MAX_GALLERY_PHOTOS = 8000;
 
 // Common photo-album print sizes, each with a recommended safe-margin starting point — picking
 // one just prefills the width/height/margin fields below, so manual entry (typing different
@@ -89,170 +111,10 @@ const CELL_SIZE_MIN = 80;
 const CELL_SIZE_MAX = 260;
 const CELL_SIZE_DEFAULT = 126;
 
-const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "bmp", "heic", "heif"];
-// iPhones save photos as HEIC by default — an accept list of only "safe" web formats hides those
-// photos from Safari's picker entirely (Files/Photos on iOS filters by this exact string), which
-// looks like "nothing happens" when uploading from a phone. HEIC/HEIF files are converted to JPEG
-// client-side before upload (see convertHeicIfNeeded) so nothing HEIC ever reaches storage.
-const ALLOWED_EXTENSIONS_SET = new Set(ALLOWED_EXTENSIONS);
-const ALLOWED_ACCEPT = "image/jpeg,image/png,image/gif,image/bmp,image/heic,image/heif";
-
-function isAllowedImageFile(file: File): boolean {
-  // Dot-prefixed names (macOS AppleDouble sidecars like "._IMG_1234.jpg", ".DS_Store") keep the
-  // real file's extension, so the extension check alone lets them through — reject them here too,
-  // as a second guard alongside fileDrop.ts's own filter (this one also covers the plain
-  // <input type="file" webkitdirectory> picker path, which doesn't go through fileDrop.ts).
-  if (file.name.startsWith(".")) return false;
-  const ext = file.name.split(".").pop()?.toLowerCase();
-  return !!ext && ALLOWED_EXTENSIONS_SET.has(ext);
-}
-
-function isHeicFile(file: File): boolean {
-  const ext = file.name.split(".").pop()?.toLowerCase();
-  return ext === "heic" || ext === "heif" || file.type === "image/heic" || file.type === "image/heif";
-}
-
-async function convertHeicIfNeeded(file: File): Promise<File> {
-  if (!isHeicFile(file)) return file;
-  const heic2any = (await import("heic2any")).default;
-  const result = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
-  const blob = Array.isArray(result) ? result[0] : result;
-  const newName = file.name.replace(/\.(heic|heif)$/i, ".jpg");
-  return new File([blob], newName, { type: "image/jpeg" });
-}
-
 function addDays(date: Date, days: number): Date {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
-}
-
-// On iOS/Android tries the OS share sheet (Web Share API) so the user still gets a real "Save to
-// Files"/"Save to device" target — plain <a download> isn't reliable on mobile browsers. Every
-// other browser (every desktop one) just downloads straight to the Downloads folder, no picker,
-// no extra click.
-async function downloadBlob(blob: Blob, filename: string, mimeType: string): Promise<void> {
-  const isMobileOs = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void>; canShare?: (data: ShareData) => boolean };
-  if (isMobileOs && nav.share) {
-    try {
-      const file = new File([blob], filename, { type: mimeType });
-      if (!nav.canShare || nav.canShare({ files: [file] })) {
-        await nav.share({ files: [file] });
-        return;
-      }
-    } catch (err) {
-      // AbortError = user backed out of the share sheet on purpose — respect that, don't fall
-      // back to a surprise auto-download. Any other error (unsupported file type, expired user
-      // activation, etc.) falls through to the plain-download path below.
-      if (err instanceof Error && err.name === "AbortError") return;
-    }
-  }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// Full-screen blocking overlay shown during any single heavy operation (upload / face detection /
-// album export) — deliberately has no dismiss affordance (no backdrop-click-to-close, no X
-// button): it closes itself the moment the underlying operation's own state clears to null, and
-// blocking the rest of the page while it's up is the point (keeps a photographer from kicking off
-// a second heavy operation — upload, detection, export — on top of one already running).
-function ProgressModal({
-  label,
-  pct,
-  onCancel,
-  onBackground,
-}: {
-  label: string;
-  pct: number;
-  onCancel: () => void;
-  // When provided, offers a way out that doesn't abort the operation — it keeps running, and the
-  // caller is expected to surface its own completion (e.g. a toast) once it settles. Only the
-  // send-to-print-house flow uses this; every other caller omits it and keeps the modal's
-  // original always-blocking behavior unchanged.
-  onBackground?: () => void;
-}) {
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
-  const clamped = Math.max(0, Math.min(100, Math.round(pct)));
-  const radius = 42;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - clamped / 100);
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(20,24,20,0.55)" }}>
-        {/* Deliberately a fixed dark navy, not `var(--color-ink)` — that token is a TEXT color that
-            flips to near-white in dark mode (by design, for use as text-on-dark-background), which
-            would turn this white-text-on-dark-card modal illegible the moment the site is in dark
-            mode. This card is always dark regardless of site theme, so it needs a color that's
-            always dark too. */}
-      <div className="relative w-64 rounded-3xl overflow-hidden shadow-sheet" style={{ background: "#201f33" }}>
-        {/* Rises from the bottom like a tank filling with water — a second, independent read of
-            progress alongside the ring, at the scale of the whole window rather than a thin bar. */}
-        <div
-          className="absolute inset-x-0 bottom-0 transition-[height] duration-300 ease-linear"
-          style={{ height: `${clamped}%`, background: "#1f4d36" }}
-        />
-        {!confirmingCancel && (
-          <button
-            onClick={() => setConfirmingCancel(true)}
-            aria-label="ביטול הפעולה"
-            className="absolute top-3 left-3 z-10 h-7 w-7 rounded-full flex items-center justify-center bg-rose text-white"
-          >
-            <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
-        )}
-        {confirmingCancel ? (
-          <div className="relative flex flex-col items-center gap-4 px-6 py-9 text-white text-center">
-            <div className="text-sm font-semibold">לבטל את הפעולה?</div>
-            <div className="text-xs opacity-70">{label} עדיין באמצע — הביטול לא ניתן לשחזור.</div>
-            <div className="flex gap-2 w-full mt-2">
-              <button onClick={() => setConfirmingCancel(false)} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white/10">
-                המשך
-              </button>
-              <button onClick={onCancel} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-rose text-white">
-                ביטול הפעולה
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="relative flex flex-col items-center gap-4 px-6 py-9 text-white text-center">
-            <svg viewBox="0 0 100 100" width={112} height={112} style={{ transform: "rotate(-90deg)" }}>
-              <circle cx={50} cy={50} r={radius} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth={8} />
-              <circle
-                cx={50}
-                cy={50}
-                r={radius}
-                fill="none"
-                stroke="#fff"
-                strokeWidth={8}
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={dashOffset}
-                style={{ transition: "stroke-dashoffset 300ms linear" }}
-              />
-              <text x={50} y={51} textAnchor="middle" dominantBaseline="central" fontSize={22} fontWeight={700} fill="#fff" style={{ transform: "rotate(90deg)", transformOrigin: "50px 50px" }} className="font-data">
-                {clamped}%
-              </text>
-            </svg>
-            <div>
-              <div className="text-sm font-semibold">המערכת מבצעת {label}</div>
-              <div className="text-xs opacity-70 mt-1">החלון ייסגר אוטומטית בסיום הפעולה</div>
-            </div>
-            {onBackground && (
-              <button onClick={onBackground} className="text-xs font-semibold underline underline-offset-2 opacity-80">
-                המשך ברקע
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 export default function GalleryManageView({
@@ -312,6 +174,47 @@ export default function GalleryManageView({
   // show a specific "no network connection" message instead of the generic per-file failure list.
   const offlineAbortedRef = useRef(false);
   const exportAbortControllerRef = useRef<AbortController | null>(null);
+  // The currently in-flight export/print-house job's id, if any — lets the cancel button actually
+  // stop the job SERVER-SIDE (see the DELETE handler on export-jobs/[jobId]/route.ts), not just
+  // abort this tab's own polling loop. Aborting the poll alone used to leave the job running (or,
+  // for the PDF path's page-batched retries, getting endlessly picked back up by the retry-stuck-
+  // jobs cron) with nothing ever telling it the photographer walked away — confirmed live
+  // 2026-09-02 as the reason old, abandoned jobs kept competing for the same gallery's resources
+  // against a real export days later.
+  const currentExportJobIdRef = useRef<string | null>(null);
+  const currentPrintHouseJobIdRef = useRef<string | null>(null);
+  // Rendered as a floating "export ready" toast (see the return statement below) alongside the
+  // normal auto-download every completed export already gets, per explicit request that a finished
+  // export always offers a WhatsApp share option too, not only the file itself.
+  const [completedExportToast, setCompletedExportToast] = useState<{ downloadUrl: string; filename: string; mimeType: string; label: string; allowSaveDialog: boolean } | null>(null);
+  const [downloadingCompletedToast, setDownloadingCompletedToast] = useState(false);
+  // Neither photo uploads nor album exports (JPG/PDF/PSD — removed per explicit request, see
+  // ProgressModal's own onBackground usage below) offer a "המשך ברקע" button any more — both modals
+  // always block until their operation finishes or is cancelled. What either could always do,
+  // button or not, is keep running while the photographer's tab is
+  // hidden (they switched apps, locked the phone, etc.) — this ref tracks whether that happened at
+  // any point during the current batch, and drives BOTH the in-app completion toast below and the
+  // upload-finished email (see the fetch to upload-complete-notify in uploadResolvedFiles) so
+  // either surfaces even though they weren't watching when it actually finished.
+  const wasHiddenDuringUploadRef = useRef(false);
+  const [completedUploadToast, setCompletedUploadToast] = useState<{ succeededCount: number; totalCount: number } | null>(null);
+  // Sole source of truth (not just a pointer to server state — see activeUploadLock.ts) for "is a
+  // photo upload already running, in this tab or another." Set when uploadResolvedFiles finds an
+  // unstale lock for a DIFFERENT gallery already active; cleared once that other upload's lock
+  // disappears or goes stale, letting the blocked photographer retry.
+  const [blockedByOtherUpload, setBlockedByOtherUpload] = useState<ActiveUploadLock | null>(null);
+  // Refreshes the blocked screen's own progress readout live, and clears it the moment the other
+  // upload finishes/goes stale — the photographer never has to manually re-check or reload to
+  // find out they can retry now.
+  useEffect(() => {
+    if (!blockedByOtherUpload) return;
+    const interval = setInterval(() => {
+      const latest = readActiveUploadLock();
+      if (!latest || latest.galleryId !== blockedByOtherUpload.galleryId) setBlockedByOtherUpload(null);
+      else setBlockedByOtherUpload(latest);
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [blockedByOtherUpload]);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -358,11 +261,13 @@ export default function GalleryManageView({
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(searchParams.get("favorites") === "1");
+  const [activeLabelFilter, setActiveLabelFilter] = useState<string | null>(null);
   const [zippingFavorites, setZippingFavorites] = useState(false);
   const [cullingIndex, setCullingIndex] = useState<number | null>(null);
   const [showRejectedOnly, setShowRejectedOnly] = useState(false);
   const [portfolioCategoryPhoto, setPortfolioCategoryPhoto] = useState<PhotoWithUrl | null>(null);
   const [portfolioCategoryInput, setPortfolioCategoryInput] = useState("");
+  const [removeFromPortfolioPhoto, setRemoveFromPortfolioPhoto] = useState<PhotoWithUrl | null>(null);
   const [faceClusters, setFaceClusters] = useState<{ clusterId: string; photoIds: Set<string>; representative: { photoId: string; box: FaceBox } }[]>([]);
   const [faceFilterClusterId, setFaceFilterClusterId] = useState<string | null>(null);
   const [detectingFaces, setDetectingFaces] = useState(false);
@@ -373,9 +278,18 @@ export default function GalleryManageView({
   // for display, but state stays null until the photographer deliberately picks a new value, which
   // is what lets the DB trigger (enforce_gallery_expiry_by_plan) tell "unrelated settings edit on
   // an old gallery" apart from "actually changing the retention window."
-  const [expiryDays, setExpiryDays] = useState<7 | 14 | 30 | 90 | 180 | null>(initialGallery.expiry_days);
-  const isFramePlusTier = SUBSCRIPTION_PLANS[photographerPlan].tier === "studio_pro" || photographerEmail === ADMIN_EMAIL;
-  const galleryExpiryOptions = GALLERY_EXPIRY_OPTIONS_BY_TIER[isFramePlusTier ? "studio_pro" : "standard"];
+  const [expiryDays, setExpiryDays] = useState<7 | 14 | 30 | 90 | 180 | 365 | null>(initialGallery.expiry_days);
+  // Was a binary studio_pro/standard check — silently gave a "basic" tier photographer the
+  // standard tier's (longer) retention options once that tier existed, since it only ever
+  // resolved to one of those two buckets. Looks up the photographer's REAL tier now, admin still
+  // overridden to the most permissive one (same override FTP Live and the expiry trigger use).
+  const effectiveExpiryTier: SubscriptionTier =
+    photographerEmail === ADMIN_EMAIL ? "studio_pro" : SUBSCRIPTION_PLANS[photographerPlan].tier;
+  const galleryExpiryOptions = GALLERY_EXPIRY_OPTIONS_BY_TIER[effectiveExpiryTier];
+  // Shared by video-in-gallery and the album editor — both are entry-tier-excluded features (see
+  // PlanComparison.tsx), neither retroactive: existing video/albums an entry-tier photographer
+  // already has stay intact, this only blocks starting NEW ones.
+  const nonBasicTierAllowed = effectiveExpiryTier !== "basic";
   const [uploading, setUploading] = useState<string | null>(null);
   // 0..100 while a batch upload is running, mirroring how many of the batch's items are done —
   // drives the bottle-green fill effect on the drop-zone so the photographer sees actual progress,
@@ -395,12 +309,21 @@ export default function GalleryManageView({
   const [editClientEmail, setEditClientEmail] = useState(initialGallery.client_email ?? "");
   const [editClientPhone, setEditClientPhone] = useState(initialGallery.client_phone ?? "");
   const [editAllowDownloads, setEditAllowDownloads] = useState(initialGallery.allow_downloads);
+  const [editAllowClientUpload, setEditAllowClientUpload] = useState(initialGallery.allow_client_upload);
   const [savingSettings, setSavingSettings] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [actionSheetPhoto, setActionSheetPhoto] = useState<PhotoWithUrl | null>(null);
   const [deleteConfirmPhoto, setDeleteConfirmPhoto] = useState<PhotoWithUrl | null>(null);
   const [deleteSelectedConfirmOpen, setDeleteSelectedConfirmOpen] = useState(false);
   const [deleteSelectedConfirmClosing, setDeleteSelectedConfirmClosing] = useState(false);
+  // Shared by both confirmDeletePhoto and confirmDeleteSelectedPhotos below — they never run
+  // concurrently (each only fires from its own now-closed confirmation dialog), so one pair of
+  // flags covers both. A failure used to only ever reach the shared `error` state, which renders
+  // in a few unrelated panels far from the delete action (upload panel, album/export modals) — on
+  // a bigger gallery where the delete can genuinely fail, that read as "nothing happens" even
+  // though an error had actually been set.
+  const [deletingPhotos, setDeletingPhotos] = useState(false);
+  const [deletePhotosError, setDeletePhotosError] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareView, setShareView] = useState<"main" | "qr">("main");
@@ -412,6 +335,13 @@ export default function GalleryManageView({
   const [coverTextPosition, setCoverTextPosition] = useState(initialGallery.cover_text_position);
   const [coverShape, setCoverShape] = useState(initialGallery.cover_shape);
   const [coverPhotoId, setCoverPhotoId] = useState(initialGallery.cover_photo_id);
+  const [coverFocalX, setCoverFocalX] = useState(initialGallery.cover_focal_x);
+  const [coverFocalY, setCoverFocalY] = useState(initialGallery.cover_focal_y);
+  // Opens the centering screen the moment a cover photo is picked — from either the settings
+  // modal's thumbnail strip (staged, applied to coverFocalX/Y on save, persisted later by the
+  // settings modal's own Save button) or the lightbox's quick "קביעה כשער" action (persists
+  // cover_photo_id + the focal point together immediately, see setCoverPhoto below).
+  const [coverFocalPointTarget, setCoverFocalPointTarget] = useState<{ photo: PhotoWithUrl; immediate: boolean } | null>(null);
   const [titleFontOverride, setTitleFontOverride] = useState(initialGallery.title_font_override);
   const [gridStyleOverride, setGridStyleOverride] = useState(initialGallery.grid_style_override);
   const [slideshowManageOpen, setSlideshowManageOpen] = useState(false);
@@ -428,7 +358,9 @@ export default function GalleryManageView({
   // history in AlbumSpreadCanvasEditor.tsx's own matching comment, for why the resize itself is
   // done with real vw/vh dimensions rather than `zoom`/`transform: scale()` — both were tried and
   // both left a real standalone-iOS-PWA device mistapping several rows below the visible button.
-  const [albumViewportSize, setAlbumViewportSize] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  const [albumViewportSize, setAlbumViewportSize] = useState(() =>
+    typeof window === "undefined" ? { w: 0, h: 0 } : { w: window.innerWidth, h: window.innerHeight }
+  );
   useEffect(() => {
     const update = () => setAlbumViewportSize({ w: window.innerWidth, h: window.innerHeight });
     window.addEventListener("resize", update);
@@ -493,8 +425,11 @@ export default function GalleryManageView({
   const [albumComments, setAlbumComments] = useState<GalleryAlbumCommentRow[]>([]);
   const [albumSizeDraft, setAlbumSizeDraft] = useState({ width: 30, height: 20, margin: 0.5 });
   const [albumBookTemplates, setAlbumBookTemplates] = useState<AlbumBookTemplateRow[]>([]);
-  const [albumWizardMode, setAlbumWizardMode] = useState<"style" | "saved">("style");
   const [albumStyleDraft] = useState<AlbumStyleId>("classic");
+  const [selectedStarterId, setSelectedStarterId] = useState<StarterTemplateId | null>(null);
+  const [selectedSavedTemplateId, setSelectedSavedTemplateId] = useState<string | null>(null);
+  const [starterPageCount, setStarterPageCount] = useState(10);
+  const [starterPhotoCount, setStarterPhotoCount] = useState(30);
   const [buildingAlbumBook, setBuildingAlbumBook] = useState(false);
   const [saveBookTemplateOpen, setSaveBookTemplateOpen] = useState(false);
   const [bookTemplateNameDraft, setBookTemplateNameDraft] = useState("");
@@ -508,6 +443,11 @@ export default function GalleryManageView({
   const [exportProgressPdf, setExportProgressPdf] = useState<number | null>(null);
   const [exportProgressJpg, setExportProgressJpg] = useState<number | null>(null);
   const [exportProgressPsd, setExportProgressPsd] = useState<number | null>(null);
+  // PDF export is the one format that runs on the separate Fly.io worker (see checkRenderWorkerHealth
+  // in export-pdf/route.ts) — true only while that pre-flight check is being retried, so the
+  // ProgressModal can say "מכינים את השרת" instead of sitting on "ייצוא PDF" with 0% while nothing
+  // outwardly seems to be happening yet.
+  const [preparingPdfServer, setPreparingPdfServer] = useState(false);
   const [exportRangeFormat, setExportRangeFormat] = useState<"pdf" | "jpg" | "psd" | null>(null);
   const [exportRangeFrom, setExportRangeFrom] = useState(1);
   const [exportRangeTo, setExportRangeTo] = useState(1);
@@ -527,6 +467,12 @@ export default function GalleryManageView({
   const printHouseAbortControllerRef = useRef<AbortController | null>(null);
   const [savingAlbumSize, setSavingAlbumSize] = useState(false);
   const [canvasEditorTarget, setCanvasEditorTarget] = useState<{ spreadId: string; mode: "overlay" | "custom" } | null>(null);
+  // The album editor's "עריכת תמונה" panel drag offset — owned HERE (not inside
+  // AlbumSpreadCanvasEditor) specifically so it survives that editor's own full remount on every
+  // page switch (key={spread.id} below) — per explicit request, once the photographer drags that
+  // panel on any page, the same position becomes the default on every other page of the album too,
+  // until dragged again. This component doesn't remount on a page switch, so this value does.
+  const [albumSidePanelOffset, setAlbumSidePanelOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   // Whether the custom-ornament-tabs fetch has ever completed for THIS mounted instance of the
   // page — a plain ref, not state, and deliberately never reset once true. The previous version of
   // this compared canvasEditorTarget by object identity instead, meant to close a one-frame flash
@@ -582,6 +528,15 @@ export default function GalleryManageView({
     openAlbumManage();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
   }, []);
+
+  // Deep-link from the dashboard's album-design quick-access button (AlbumQuickAccessButton) —
+  // ?openAlbum=1 auto-opens the panel the same way the tab button's onClick would.
+  useEffect(() => {
+    if (searchParams.get("openAlbum") !== "1") return;
+    openAlbumManage();
+    router.replace(`/galleries/${gallery.id}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
+  }, []);
   useEffect(() => {
     if (!resumingAfterRotate || albumLoading) return;
     const pending = pendingCanvasResumeRef.current;
@@ -607,6 +562,12 @@ export default function GalleryManageView({
   const [coverCustomMode, setCoverCustomMode] = useState(false);
   const [coverCustomWidth, setCoverCustomWidth] = useState(20);
   const [coverCustomHeight, setCoverCustomHeight] = useState(20);
+  // The canvas itself already renders a true square whenever width_cm equals height_cm (driven by
+  // a real aspect-ratio, not a fixed shape) — the only way to actually get a non-square-looking
+  // "square" cover was manually typing the same number into both fields and hoping they stayed in
+  // sync. This removes that failure mode entirely: while locked, editing either field mirrors the
+  // other, so the two values can never silently drift apart.
+  const [coverSquareLock, setCoverSquareLock] = useState(false);
 
   const toggleSlideshowPhoto = (id: string) => {
     setSlideshowPhotoIds((prev) => {
@@ -650,12 +611,7 @@ export default function GalleryManageView({
     a.remove();
   };
 
-  const downloadSelectedPhotos = () => {
-    const selected = photos.filter((p) => selectedIds.has(p.id));
-    selected.forEach((photo, i) => {
-      setTimeout(() => downloadPhotoNow(photo), i * 150);
-    });
-  };
+  const downloadSelectedPhotos = () => downloadPhotosZip([...selectedIds]);
 
   // Turns flat gallery_photo_faces rows into one summary per cluster: every photo id the cluster
   // appears in (for filtering) plus a single representative face (the largest detected box, since
@@ -785,6 +741,28 @@ export default function GalleryManageView({
   const downloadFavoritesZip = () => downloadPhotosZip(photos.filter((p) => p.is_favorite).map((p) => p.id));
   const downloadSlideshowZip = () => downloadPhotosZip([...slideshowPhotoIds]);
 
+  // Pulls just the two fields a client can change from their own side (favorite + label) without
+  // reloading the whole page — the photographer's own edits already update local state instantly,
+  // but a client's live favorite/label taps only reach this view on the next full load otherwise.
+  const [refreshingFavorites, setRefreshingFavorites] = useState(false);
+  const refreshFavoritesAndLabels = async () => {
+    setRefreshingFavorites(true);
+    const { data } = await supabase
+      .from("gallery_photos")
+      .select("id, is_favorite, custom_label")
+      .eq("gallery_id", gallery.id)
+      .returns<{ id: string; is_favorite: boolean; custom_label: string | null }[]>();
+    setRefreshingFavorites(false);
+    if (!data) return;
+    const freshById = new Map(data.map((d) => [d.id, d]));
+    setPhotos((prev) =>
+      prev.map((p) => {
+        const fresh = freshById.get(p.id);
+        return fresh ? { ...p, is_favorite: fresh.is_favorite, custom_label: fresh.custom_label } : p;
+      })
+    );
+  };
+
   const loadAlbum = async () => {
     setAlbumLoading(true);
     const { data: albumRow } = await supabase
@@ -818,6 +796,16 @@ export default function GalleryManageView({
   };
 
   const openAlbumManage = () => {
+    // Running inside the desktop app's embedded browser view (see photographer-flow-desktop's
+    // BrowserView preload script, which sets this global) — hand off to the native album editor
+    // instead of opening this same web modal, since the whole reason that separate app exists is
+    // real filesystem access (native Save dialogs, actual multi-layer .psd writes) this web modal
+    // can't offer. A normal browser tab never has this global, so this is a no-op there.
+    const bridge = (window as unknown as { desktopShellBridge?: { openNativeAlbumEditor: (galleryId: string) => void } }).desktopShellBridge;
+    if (bridge) {
+      bridge.openNativeAlbumEditor(gallery.id);
+      return;
+    }
     // Guards against the backdrop's own click-to-close firing from the very click that opened
     // this modal — on a gallery with a large `photos` array the first render/commit of the
     // modal's content (which the whole array gets passed into) can be slow enough that the
@@ -825,7 +813,7 @@ export default function GalleryManageView({
     // modal the instant it appears. A short grace window after open is enough to absorb that.
     albumManageOpenedAtRef.current = Date.now();
     setAlbumManageOpen(true);
-    setAlbumWizardMode("style");
+    setSelectedStarterId(null);
     loadAlbum();
     supabase
       .from("album_templates")
@@ -881,33 +869,47 @@ export default function GalleryManageView({
   // template application produces), and loads the result straight into state.
   const insertSpreadsFromFrameLists = async (targetAlbum: GalleryAlbumRow, pagesFrames: AlbumFrame[][]) => {
     const marginInset = marginInsetPctFor(targetAlbum);
-    // photo_id_1 is a NOT NULL anchor column left over from before custom layouts existed (see
-    // migration 0048's comment) — unused for rendering here since every frame is its own
-    // photoId-less placeholder, but still has to be set to *something*. Cycles through the
-    // gallery's own photos so pages don't all point at the same one.
+    // Real photos, not empty placeholders — per explicit request to match how a real "auto-design
+    // whole album" tool works (fills real photos into the whole book in seconds, not just a blank
+    // structure the photographer then has to populate frame by frame). Favorites first, matching
+    // every other picker's own precedent in this tool (dragPanelPool, pickerPhotosBase below),
+    // falling back to every photo when none are marked favorite yet. Consumed sequentially, one
+    // photo per frame across the WHOLE book, never repeating one across two frames — once the pool
+    // runs out, any remaining frames are left as empty placeholders exactly like before, rather
+    // than duplicating a photo or guessing: a gallery with fewer favorites than frames still gets a
+    // real, honest start.
+    const favoritePool = photos.filter((p) => p.is_favorite);
+    const photoPool = favoritePool.length > 0 ? favoritePool : photos;
+    let poolIndex = 0;
     const rows = pagesFrames.map((rawFrames, i) => {
       const frames = fitFramesToSafeArea(rawFrames, marginInset);
-      const elements: AlbumElement[] = frames.map((f) => ({
-        id: f.id,
-        type: "photo",
-        photoId: null,
-        xPct: f.xPct,
-        yPct: f.yPct,
-        widthPct: f.widthPct,
-        heightPct: f.heightPct,
-        focalX: 50,
-        focalY: 50,
-        rotation: f.rotation,
-        borderWidth: f.borderWidth,
-        borderColor: f.borderColor,
-        shadow: f.shadow,
-      }));
+      const elements: AlbumElement[] = frames.map((f) => {
+        const photoId = poolIndex < photoPool.length ? photoPool[poolIndex++].id : null;
+        return {
+          id: f.id,
+          type: "photo",
+          photoId,
+          xPct: f.xPct,
+          yPct: f.yPct,
+          widthPct: f.widthPct,
+          heightPct: f.heightPct,
+          focalX: 50,
+          focalY: 50,
+          rotation: f.rotation,
+          borderWidth: f.borderWidth,
+          borderColor: f.borderColor,
+          shadow: f.shadow,
+        };
+      });
       return {
         album_id: targetAlbum.id,
         sort_order: i,
         layout: "custom" as const,
         elements,
-        photo_id_1: photos[i % photos.length]?.id,
+        // NOT NULL anchor column left over from before custom layouts existed (see migration
+        // 0048's comment) — unused for rendering (every frame now carries its own real photoId, or
+        // null once the pool ran dry), but still has to be set to *something* real when available.
+        photo_id_1: photoPool[0]?.id ?? photos[0]?.id,
       };
     });
     const { data, error } = await supabase.from("gallery_album_spreads").insert(rows).select().returns<GalleryAlbumSpreadRow[]>();
@@ -986,6 +988,33 @@ export default function GalleryManageView({
     setBuildingAlbumBook(false);
   };
 
+  // Wizard step 1, "starter template" mode: same album creation, but the page layouts are
+  // generated on the fly for the requested page/photo counts instead of coming from a fixed saved
+  // list — see src/lib/albumStarterTemplates.ts.
+  const buildAlbumFromStarterTemplate = async (templateId: StarterTemplateId, pageCount: number, photoCount: number) => {
+    setBuildingAlbumBook(true);
+    setError(null);
+    const { data: newAlbum, error: albumErr } = await supabase
+      .from("gallery_albums")
+      .insert({
+        gallery_id: gallery.id,
+        photographer_id: gallery.photographer_id,
+        width_cm: albumSizeDraft.width,
+        height_cm: albumSizeDraft.height,
+        safe_margin_cm: albumSizeDraft.margin,
+      })
+      .select()
+      .single<GalleryAlbumRow>();
+    if (albumErr || !newAlbum) {
+      setError(albumErr?.message ?? "שגיאה ביצירת האלבום");
+      setBuildingAlbumBook(false);
+      return;
+    }
+    setAlbum(newAlbum);
+    await insertSpreadsFromFrameLists(newAlbum, generateStarterBookPages(templateId, pageCount, photoCount));
+    setBuildingAlbumBook(false);
+  };
+
   // Saves the album's CURRENT full set of pages (whatever their frame shapes are right now,
   // regardless of how they got there) as one reusable named whole-book template.
   const saveAlbumBookTemplate = async (name: string) => {
@@ -1028,7 +1057,7 @@ export default function GalleryManageView({
     setAlbum(null);
     setAlbumSpreads([]);
     setAlbumComments([]);
-    setAlbumWizardMode("style");
+    setSelectedStarterId(null);
     setConfirmNewAlbumOpen(false);
   };
 
@@ -1111,10 +1140,15 @@ export default function GalleryManageView({
   // Swaps in a different photo for one slot of an existing spread without disturbing the other
   // slot, the spread's position, layout, or the client's comments (comments are tied to spread_id,
   // not to a specific photo, so a swapped-in photo still shows prior feedback in context).
-  const saveSpreadElements = async (elements: AlbumElement[], background: { photoId: string | null; blur: number; opacity: number }) => {
+  const saveSpreadElements = async (elements: AlbumElement[], background: { photoId: string | null; blur: number; opacity: number; zoom: number }) => {
     if (!canvasEditorTarget) return;
     const { spreadId, mode } = canvasEditorTarget;
-    const backgroundPatch = { background_photo_id: background.photoId, background_blur: background.blur, background_opacity: background.opacity };
+    const backgroundPatch = {
+      background_photo_id: background.photoId,
+      background_blur: background.blur,
+      background_opacity: background.opacity,
+      background_zoom: background.zoom,
+    };
     const patch = mode === "custom" ? { elements, layout: "custom" as const, ...backgroundPatch } : { elements, ...backgroundPatch };
     setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, ...patch } : s)));
     await supabase.from("gallery_album_spreads").update(patch).eq("id", spreadId);
@@ -1193,6 +1227,16 @@ export default function GalleryManageView({
     setCustomOrnaments((prev) => prev.filter((o) => o.id !== ornamentId));
   };
 
+  // Best-effort — fired from the cancel button alongside aborting this tab's own polling, so the
+  // job actually stops running server-side too (see this route's DELETE handler and the export/
+  // print-house functions below for why aborting only the client-side poll wasn't enough).
+  // keepalive lets the request survive even if this component unmounts right after (e.g. the
+  // cancel also navigates away), same as a `sendBeacon` would.
+  const cancelExportJob = (jobId: string) => {
+    fetch(`/api/galleries/${gallery.id}/album/export-jobs/${jobId}`, { method: "DELETE", keepalive: true }).catch(() => {});
+  };
+
+
   const sendAlbumToClient = async () => {
     if (!album) return;
     setSavingAlbum(true);
@@ -1201,48 +1245,129 @@ export default function GalleryManageView({
     setSavingAlbum(false);
   };
 
-  // Shared by all three export formats. The server streams the file (a zip's final size isn't
-  // known ahead of time, so there's no real byte-progress to report) — the 0-100% shown on the
-  // button is a simulated, time-based approach toward ~92% while waiting, then a snap to 100%
-  // once the blob actually finishes downloading, purely to show the photographer something is
-  // happening during what can be a multi-second server-side render.
+  // Shared by all three export formats. Creates a background export job (see albumExportJobs.ts —
+  // same proven pattern as the gallery zip-download system) and polls it for REAL page-by-page
+  // progress instead of a client-side timer with no idea how far the actual server-side render is
+  // — the export routes now return a job id almost instantly, and every page rendered bumps the
+  // job's processed_count, which this reads straight off instead of guessing.
   const downloadFromRoute = async (
     path: string,
     fallbackName: string,
     mimeType: string,
     setBusy: (v: boolean) => void,
     setProgress: (v: number | null) => void,
-    range: { from: number; to: number }
+    body: { from: number; to: number; quality?: "high" | "web" },
+    allowSaveDialog = false,
+    label = "ייצוא הקבצים"
   ) => {
     setBusy(true);
     setProgress(0);
-    const start = Date.now();
-    const progressTimer = setInterval(() => {
-      const elapsed = Date.now() - start;
-      setProgress(Math.min(92, Math.round(92 * (1 - Math.exp(-elapsed / 2500)))));
-    }, 120);
+    const isPdf = path === "export-pdf";
     const controller = new AbortController();
     exportAbortControllerRef.current = controller;
     try {
-      const res = await fetch(`/api/galleries/${gallery.id}/album/${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(range),
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        setError(data?.error ?? "שגיאה בייצוא הקבצים");
+      // PDF's job-create route blocks with a 503 when the Fly worker hasn't caught up to a fresh
+      // deploy yet (checkRenderWorkerHealth) — normally a matter of the worker's own redeploy
+      // still finishing, seconds to at most a couple minutes, not a real failure. Retrying quietly
+      // behind the ProgressModal (already visible from setBusy(true) above) turns that window into
+      // "מכינים את השרת" instead of an abrupt error the moment the photographer clicks export —
+      // per explicit request: the export screen should show right away and only start the real
+      // work once the server's confirmed ready, so it reads as the system working on the request,
+      // not stalling. Only 503 is retried; any other error (missing album, bad request, etc.) is a
+      // real failure and surfaces immediately like before.
+      const WORKER_NOT_READY_DEADLINE_MS = 120_000;
+      const WORKER_NOT_READY_POLL_MS = 4_000;
+      const deadline = Date.now() + WORKER_NOT_READY_DEADLINE_MS;
+      let createRes: Response;
+      let createData: { jobId?: string; error?: string } | null;
+      while (true) {
+        createRes = await fetch(`/api/galleries/${gallery.id}/album/${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        createData = await createRes.json().catch(() => null);
+        if (createRes.ok && createData?.jobId) break;
+        if (isPdf && createRes.status === 503 && Date.now() < deadline) {
+          setPreparingPdfServer(true);
+          // Abort-aware sleep — without this, cancelling mid-wait would sit through up to a full
+          // extra WORKER_NOT_READY_POLL_MS before the next fetch() even had a chance to notice the
+          // signal was aborted, instead of stopping the instant the photographer clicks cancel.
+          await new Promise<void>((resolve) => {
+            const t = setTimeout(resolve, WORKER_NOT_READY_POLL_MS);
+            controller.signal.addEventListener("abort", () => {
+              clearTimeout(t);
+              resolve();
+            });
+          });
+          if (controller.signal.aborted) throw new DOMException("aborted", "AbortError");
+          continue;
+        }
+        setError(createData?.error ?? "שגיאה בייצוא הקבצים");
         return;
       }
-      const disposition = res.headers.get("content-disposition") ?? "";
-      const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-      const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : fallbackName;
-      const blob = await res.blob();
-      clearInterval(progressTimer);
+      setPreparingPdfServer(false);
+      const jobId: string = createData.jobId;
+      currentExportJobIdRef.current = jobId;
+
+      let downloadUrl: string | null = null;
+      let filename = fallbackName;
+      // Polls every 1.2s until the job reaches a final state — album exports render far fewer
+      // pages than a gallery zip has photos, so a snappier interval than the zip system's 3s still
+      // shows smooth, frequent movement without hammering the poll endpoint.
+      while (true) {
+        if (controller.signal.aborted) return;
+        const res = await fetch(`/api/galleries/${gallery.id}/album/export-jobs/${jobId}`, { signal: controller.signal });
+        if (!res.ok) {
+          setError("שגיאה בייצוא הקבצים");
+          return;
+        }
+        const data: {
+          status: string;
+          processedCount: number;
+          totalCount: number;
+          qualityStepIndex: number;
+          errorMessage: string | null;
+          downloadUrl: string | null;
+          filename: string | null;
+        } = await res.json();
+        // Unrounded on purpose — ProgressModal formats this to two decimal places itself, per
+        // explicit request, so the readout climbs smoothly instead of jumping between integers.
+        // PDF specifically goes through pdfBandedPct (see its own comment) so a quality-step retry
+        // never visibly resets the number back to 0% — every other format has no retry concept, so
+        // its raw processedCount/totalCount ratio already climbs from 0% to 100% in one pass.
+        setProgress(
+          isPdf ? pdfBandedPct(data.qualityStepIndex, data.processedCount, data.totalCount) : data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0
+        );
+        if (data.status === "ready") {
+          downloadUrl = data.downloadUrl;
+          if (data.filename) filename = data.filename;
+          break;
+        }
+        if (data.status === "failed") {
+          setError(data.errorMessage ?? "שגיאה בייצוא הקבצים");
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+
+      if (!downloadUrl) {
+        setError("שגיאה בייצוא הקבצים");
+        return;
+      }
       setProgress(100);
-      await downloadBlob(blob, filename, mimeType);
+      // Album exports no longer offer a "המשך ברקע" button (removed per explicit request — see
+      // ProgressModal's own onBackground usage below), so the modal is always still open and
+      // visible by the time a job reaches here; the auto-download always fires.
+      const fileRes = await fetch(downloadUrl, { signal: controller.signal });
+      const blob = await fileRes.blob();
+      await downloadBlob(blob, filename, mimeType, allowSaveDialog);
       await new Promise((resolve) => setTimeout(resolve, 500));
+      // Also shown alongside the auto-download — per explicit request that a completed export
+      // should immediately offer a WhatsApp share option too, not only a download. The toast's own
+      // download button is then redundant with the auto-download but harmless (a re-download).
+      setCompletedExportToast({ downloadUrl, filename, mimeType, label, allowSaveDialog });
     } catch (e) {
       // A user-initiated cancel aborts the same fetch a real network failure would throw from —
       // quietly stop for the former, surface the latter like any other export error.
@@ -1250,25 +1375,37 @@ export default function GalleryManageView({
         setError("שגיאה בייצוא הקבצים");
       }
     } finally {
-      clearInterval(progressTimer);
       setBusy(false);
       setProgress(null);
+      setPreparingPdfServer(false);
       exportAbortControllerRef.current = null;
+      currentExportJobIdRef.current = null;
     }
   };
 
-  const exportAlbumPdf = (range: { from: number; to: number }) =>
-    downloadFromRoute("export-pdf", "album.pdf", "application/pdf", setExportingAlbumPdf, setExportProgressPdf, range);
+  // allowSaveDialog: PDF only, per explicit request — lets the photographer pick exactly where it
+  // lands (e.g. straight into a client's folder) instead of always going to Downloads. JPG/PSD
+  // stay plain auto-downloads.
+  const exportAlbumPdf = (range: { from: number; to: number; quality: "high" | "web" }) =>
+    downloadFromRoute("export-pdf", "album.pdf", "application/pdf", setExportingAlbumPdf, setExportProgressPdf, range, true, "ייצוא PDF");
   const exportAlbumJpg = (range: { from: number; to: number }) =>
-    downloadFromRoute("export-jpg", "album-jpg.zip", "application/zip", setExportingAlbumJpg, setExportProgressJpg, range);
+    downloadFromRoute("export-jpg", "album-jpg.zip", "application/zip", setExportingAlbumJpg, setExportProgressJpg, range, false, "ייצוא JPG");
   const exportAlbumPsd = (range: { from: number; to: number }) =>
-    downloadFromRoute("export-psd", "album-psd.zip", "application/zip", setExportingAlbumPsd, setExportProgressPsd, range);
+    downloadFromRoute("export-psd", "album-psd.zip", "application/zip", setExportingAlbumPsd, setExportProgressPsd, range, false, "ייצוא PSD");
 
   // Total exportable pages, matching how the export routes number them: the cover (if the album
   // has one) counts as page 1, then each spread follows in sort order.
   const albumTotalPages = (album?.cover_photo_id ? 1 : 0) + albumSpreads.length;
 
   const openExportRangeModal = (format: "pdf" | "jpg" | "psd") => {
+    // An export already running used to leave every export button still clickable — nothing
+    // stopped a SECOND export from starting on top of it, which is exactly the resource-contention
+    // bug found live 2026-09-02 (several abandoned exports competing for the same R2/render
+    // resources and visibly slowing each other down). Per explicit request: clicking any export
+    // button while one is already in flight (its progress modal is already up — see activeOp above,
+    // which now has no way to be hidden mid-export) does nothing new — the only way to start a
+    // genuinely new export is to cancel the running one first (the modal's own cancel button).
+    if (exportingAlbumPdf || exportingAlbumJpg || exportingAlbumPsd) return;
     setExportRangeFormat(format);
     setExportRangeFrom(1);
     setExportRangeTo(albumTotalPages);
@@ -1280,7 +1417,13 @@ export default function GalleryManageView({
     const to = Math.min(albumTotalPages, Math.max(exportRangeFrom, exportRangeTo));
     const range = { from, to };
     setExportRangeFormat(null);
-    if (exportRangeFormat === "pdf") exportAlbumPdf(range);
+    // Always "web" now — per explicit request, a PDF export never needs original/print-resolution
+    // images, so the "high"/print-quality choice was removed from the UI below entirely rather
+    // than just defaulted; see TARGET_MAX_BYTES.web in albumExportJobs.ts for the matching bump to
+    // 80MB (was 5MB) that goes with dropping "high" — a generous target now, not the "keep it
+    // mobile-tiny" one "web" originally had, so the export's own first quality-step pass almost
+    // always fits on the first try instead of needing several full re-render retries.
+    if (exportRangeFormat === "pdf") exportAlbumPdf({ ...range, quality: "web" });
     else if (exportRangeFormat === "jpg") exportAlbumJpg(range);
     else exportAlbumPsd(range);
   };
@@ -1309,27 +1452,42 @@ export default function GalleryManageView({
     setSendingToPrintHouse(true);
     setPrintHouseProgressVisible(true);
     setPrintHouseSendProgress(0);
-    const start = Date.now();
-    // Same simulated-progress pattern as the PDF/JPG/PSD exports (no real byte-progress to
-    // report for a server-side zip-then-email round trip).
-    const timer = setInterval(() => {
-      const elapsed = Date.now() - start;
-      setPrintHouseSendProgress(Math.min(92, Math.round(92 * (1 - Math.exp(-elapsed / 2500)))));
-    }, 120);
     const controller = new AbortController();
     printHouseAbortControllerRef.current = controller;
     try {
-      const res = await fetch(`/api/galleries/${gallery.id}/album/send-to-print-house`, {
+      const createRes = await fetch(`/api/galleries/${gallery.id}/album/send-to-print-house`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: target.email, from: 1, to: albumTotalPages }),
         signal: controller.signal,
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        setPrintHouseToast(data?.error ?? "שליחה לבית הדפוס נכשלה");
+      const createData = await createRes.json().catch(() => null);
+      if (!createRes.ok || !createData?.jobId) {
+        setPrintHouseToast(createData?.error ?? "שליחה לבית הדפוס נכשלה");
         return;
       }
+      const jobId: string = createData.jobId;
+      currentPrintHouseJobIdRef.current = jobId;
+
+      // Same real background-job polling as downloadFromRoute above — the only difference is the
+      // deliverable is an email the server sends once ready, not a file the client downloads.
+      while (true) {
+        if (controller.signal.aborted) return;
+        const res = await fetch(`/api/galleries/${gallery.id}/album/export-jobs/${jobId}`, { signal: controller.signal });
+        if (!res.ok) {
+          setPrintHouseToast("שליחה לבית הדפוס נכשלה");
+          return;
+        }
+        const data: { status: string; processedCount: number; totalCount: number; errorMessage: string | null } = await res.json();
+        setPrintHouseSendProgress(data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0);
+        if (data.status === "ready") break;
+        if (data.status === "failed") {
+          setPrintHouseToast(data.errorMessage ?? "שליחה לבית הדפוס נכשלה");
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+
       setPrintHouseSendProgress(100);
       await new Promise((resolve) => setTimeout(resolve, 400));
       setPrintHouseToast(`נשלח בהצלחה ל-${target.label || target.email} ✓`);
@@ -1338,11 +1496,11 @@ export default function GalleryManageView({
         setPrintHouseToast("שליחה לבית הדפוס נכשלה");
       }
     } finally {
-      clearInterval(timer);
       setSendingToPrintHouse(false);
       setPrintHouseProgressVisible(false);
       setPrintHouseSendProgress(null);
       printHouseAbortControllerRef.current = null;
+      currentPrintHouseJobIdRef.current = null;
     }
   };
 
@@ -1438,9 +1596,33 @@ export default function GalleryManageView({
     return folderRow.id;
   };
 
+  // Files upload UPLOAD_CONCURRENCY-at-a-time (a small worker pool below) instead of strictly one
+  // at a time — real speedup for a large batch, since the old sequential version left the
+  // connection idle between files instead of keeping several transfers going at once. Combined
+  // with putFileWithProgress's real byte-level progress (see its own comment in imageUpload.ts),
+  // this is the fix for the confirmed "gets stuck every ~4%" report — that number is exactly
+  // 100/25 for a 25-photo batch, i.e. the old progress bar only ever moved once per WHOLE file.
+  const UPLOAD_CONCURRENCY = 4;
+
   const uploadResolvedFiles = async (items: { file: File; folderId: string | null }[]) => {
     if (items.length === 0) return;
     setError(null);
+    if (photos.length + items.length > MAX_GALLERY_PHOTOS) {
+      setError(
+        photos.length >= MAX_GALLERY_PHOTOS
+          ? `הגלריה כבר מכילה ${photos.length} תמונות — הגעתם למגבלה של ${MAX_GALLERY_PHOTOS} תמונות לגלריה.`
+          : `בגלריה יש כבר ${photos.length} תמונות, ונבחרו עוד ${items.length} — יחד זה חורג מהמגבלה של ${MAX_GALLERY_PHOTOS} תמונות לגלריה. אפשר להעלות עד ${MAX_GALLERY_PHOTOS - photos.length} תמונות נוספות בסבב הזה.`
+      );
+      return;
+    }
+    // Only one photo upload at a time, across every gallery and every tab (see activeUploadLock.ts
+    // for why this has to live in localStorage rather than a server-tracked job) — per explicit
+    // request, starting a second upload elsewhere is blocked until the active one is cancelled.
+    const otherLock = readActiveUploadLock();
+    if (otherLock && otherLock.galleryId !== gallery.id) {
+      setBlockedByOtherUpload(otherLock);
+      return;
+    }
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -1465,34 +1647,73 @@ export default function GalleryManageView({
       cancelRequestedRef.current = true;
     };
     window.addEventListener("offline", handleOffline);
-    try {
-      for (let i = 0; i < items.length; i++) {
+    wasHiddenDuringUploadRef.current = false;
+    const handleVisibilityChange = () => {
+      if (document.hidden) wasHiddenDuringUploadRef.current = true;
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Per-file progress, 0-1, indexed by each file's ORIGINAL position in `items` (not completion
+    // order, which varies under concurrency) — real byte progress while a file is transferring
+    // (via putFileWithProgress), snapped to 1 once that file is fully done (success OR given up).
+    // Summed and divided by items.length for one smooth overall percentage that moves continuously
+    // instead of jumping in coarse per-file steps.
+    const fileProgress = new Array<number>(items.length).fill(0);
+    const reportPct = () => {
+      const sum = fileProgress.reduce((a, b) => a + b, 0);
+      setUploadProgressPct((sum / items.length) * 100);
+    };
+    let nextIndex = 0;
+    let doneCount = 0;
+    // Preserves cancelRequested if it's already true on our own lock — a plain unconditional
+    // write here would otherwise race a cancel just requested from the blocked tab (see
+    // ActiveUploadLock's own comment) and silently erase it before this loop ever sees it.
+    const heartbeatLock = () => {
+      const current = readActiveUploadLock();
+      writeActiveUploadLock({
+        galleryId: gallery.id,
+        galleryTitle: gallery.title,
+        totalCount: items.length,
+        doneCount,
+        lastHeartbeat: Date.now(),
+        cancelRequested: current?.galleryId === gallery.id ? current.cancelRequested : false,
+      });
+    };
+    heartbeatLock();
+
+    const worker = async () => {
+      while (true) {
         if (!navigator.onLine) {
           offlineAbortedRef.current = true;
           cancelRequestedRef.current = true;
         }
-        if (cancelRequestedRef.current) {
-          hadError = true;
-          break;
-        }
+        // Cross-tab cancel: a photographer blocked from starting a second upload elsewhere can
+        // cancel THIS one from there (see the blockedByOtherUpload screen below) — this is what
+        // makes that button actually take effect on the tab really running it.
+        if (readActiveUploadLock()?.cancelRequested) cancelRequestedRef.current = true;
+        if (cancelRequestedRef.current) return;
+        const i = nextIndex;
+        if (i >= items.length) return;
+        nextIndex++;
+
         const { folderId } = items[i];
         let file = items[i].file;
-        // How much of the batch is already behind us, going into item i — 0% for the very first
-        // file, climbing toward (but not reaching) 100% until the last file actually finishes.
-        const pct = Math.round((i / items.length) * 100);
-        setUploadProgressPct(pct);
         try {
           if (isHeicFile(file)) {
-            setUploading(`ממיר ${i + 1} מתוך ${items.length}...`);
+            setUploading(`ממיר תמונות... (${doneCount}/${items.length})`);
             try {
               file = await convertHeicIfNeeded(file);
             } catch {
               failedFiles.push(`${file.name} (המרה נכשלה)`);
               hadError = true;
+              fileProgress[i] = 1;
+              doneCount++;
+              reportPct();
+              heartbeatLock();
               continue;
             }
           }
-          setUploading(`מעלה ${i + 1} מתוך ${items.length}...`);
+          setUploading(`מעלה תמונות... (${doneCount}/${items.length})`);
           const path = `${user.id}/${gallery.id}/${crypto.randomUUID()}-${file.name}`;
 
           // A large batch (hundreds of files) takes long enough that a single transient network
@@ -1520,23 +1741,22 @@ export default function GalleryManageView({
                 lastFailureReason = urlData.error ?? "שגיאה לא ידועה";
                 continue;
               }
-              const putRes = await fetch(urlData.url, {
-                method: "PUT",
-                headers: { "Content-Type": file.type || "application/octet-stream" },
-                body: file,
+              await putFileWithProgress(urlData.url, file, file.type || "application/octet-stream", (fraction) => {
+                fileProgress[i] = fraction;
+                reportPct();
               });
-              if (!putRes.ok) {
-                lastFailureReason = `סטטוס ${putRes.status}`;
-                continue;
-              }
               uploaded = true;
             } catch (e) {
               // A network-level failure (dropped connection, DNS hiccup) throws instead of
-              // resolving to a response — caught here so the retry loop above can try again
-              // instead of the whole file (or the whole batch) silently giving up.
+              // resolving — caught here so the retry loop above can try again instead of the whole
+              // file (or the whole batch) silently giving up.
               lastFailureReason = e instanceof Error ? e.message : "שגיאת רשת";
             }
           }
+          fileProgress[i] = 1;
+          doneCount++;
+          reportPct();
+          heartbeatLock();
           if (!uploaded) {
             // Once offline is confirmed, this file's own failure is just noise on top of the
             // single batch-level message shown below — no need to list it individually too.
@@ -1573,14 +1793,25 @@ export default function GalleryManageView({
           fetch(`/api/galleries/${gallery.id}/photos/${photoRow.id}/preview`, { redirect: "manual" }).catch(() => {});
         } catch (e) {
           // Catch-all for anything outside the retry loop above (e.g. a bug in this code itself) —
-          // without this the whole loop would abort silently and leave "מעלה..." on screen forever
-          // with no indication anything went wrong.
+          // without this the loop would abort silently and leave "מעלה..." on screen forever with
+          // no indication anything went wrong.
           failedFiles.push(`${file.name} (${e instanceof Error ? e.message : "שגיאה לא צפויה"})`);
           hadError = true;
+          fileProgress[i] = 1;
+          doneCount++;
+          reportPct();
+          heartbeatLock();
         }
       }
+    };
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, items.length) }, () => worker()));
+      if (cancelRequestedRef.current) hadError = true;
     } finally {
       window.removeEventListener("offline", handleOffline);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearActiveUploadLock(gallery.id);
       if (offlineAbortedRef.current) {
         setError(
           succeededCount > 0
@@ -1604,6 +1835,21 @@ export default function GalleryManageView({
       } else {
         setUploadProgressPct(100);
         await new Promise((resolve) => setTimeout(resolve, 700));
+        // The photographer's tab was hidden at some point during the batch (switched apps, locked
+        // the phone) — the upload loop doesn't depend on the tab being visible, so it kept going
+        // regardless and is now genuinely done. Surface that both in-app (a floating toast, same
+        // as the export flow's identical pattern) and by email, since they may not even be looking
+        // at this tab right now to see the toast either.
+        if (wasHiddenDuringUploadRef.current) {
+          setCompletedUploadToast({ succeededCount, totalCount: items.length });
+          if (succeededCount > 0) {
+            fetch(`/api/galleries/${gallery.id}/upload-complete-notify`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ succeededCount, totalCount: items.length }),
+            }).catch(() => {});
+          }
+        }
         setUploading(null);
         setUploadProgressPct(null);
         // Only worth prompting a client update for photos landing in a gallery the client can
@@ -1743,20 +1989,51 @@ export default function GalleryManageView({
     if (editingFolderId === folder.id) setEditingFolderId(null);
   };
 
+  // Storage cleanup happens FIRST and is checked before either the DB row or local UI state is
+  // touched — this used to fire-and-forget the storage removal, so a failure (e.g. R2 erroring on
+  // a large batch) left the DB row deleted and the photo gone from the gallery while the actual
+  // file sat orphaned in storage forever. Now a failure leaves everything untouched and visible,
+  // with a clear error, instead of silently pretending the delete succeeded.
+  // A .webp preview lives in the separate previews bucket (see storage.ts's removePreviewObjects)
+  // — anything else is a pre-migration legacy preview still sitting in the main bucket right next
+  // to its storage_path, and must be deleted the same way storage_path is.
+  const isNewPreviewPath = (p: string) => p.endsWith(".webp");
+
   const confirmDeletePhoto = async () => {
     const photo = deleteConfirmPhoto;
     if (!photo) return;
     setDeleteConfirmPhoto(null);
-    setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
-    await fetch("/api/storage/remove", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bucket: "galleries", paths: [photo.storage_path, photo.preview_storage_path].filter((p): p is string => !!p) }),
-    });
-    await supabase.from("gallery_photos").delete().eq("id", photo.id);
-    if (gallery.cover_photo_id === photo.id) {
-      await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
-      setGallery((g) => ({ ...g, cover_photo_id: null }));
+    setDeletePhotosError(null);
+    setDeletingPhotos(true);
+    try {
+      const legacyPreview = photo.preview_storage_path && !isNewPreviewPath(photo.preview_storage_path) ? photo.preview_storage_path : null;
+      const newPreview = photo.preview_storage_path && isNewPreviewPath(photo.preview_storage_path) ? photo.preview_storage_path : null;
+      const removeRes = await fetch("/api/storage/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bucket: "galleries",
+          paths: [photo.storage_path, legacyPreview].filter((p): p is string => !!p),
+          previewPaths: newPreview ? [newPreview] : [],
+        }),
+      });
+      if (!removeRes.ok) {
+        const data = await removeRes.json().catch(() => null);
+        throw new Error(data?.error ?? "שגיאה במחיקת התמונה מהאחסון — נסו שוב");
+      }
+      const { error: dbError } = await supabase.from("gallery_photos").delete().eq("id", photo.id);
+      if (dbError) throw new Error("שגיאה במחיקת התמונה — נסו שוב");
+      setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+      if (gallery.cover_photo_id === photo.id) {
+        await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
+        setGallery((g) => ({ ...g, cover_photo_id: null }));
+      }
+    } catch (e) {
+      // Was previously left to the shared `error` state, which renders nowhere near this action —
+      // a failure here now surfaces immediately, in the same overlay the progress spinner just was.
+      setDeletePhotosError(e instanceof Error ? e.message : "שגיאה במחיקת התמונה — נסו שוב");
+    } finally {
+      setDeletingPhotos(false);
     }
   };
 
@@ -1764,19 +2041,47 @@ export default function GalleryManageView({
     const selected = photos.filter((p) => selectedIds.has(p.id));
     if (selected.length === 0) return;
     setDeleteSelectedConfirmOpen(false);
-    const ids = selected.map((p) => p.id);
-    const paths = selected.flatMap((p) => [p.storage_path, p.preview_storage_path].filter((x): x is string => !!x));
-    setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
-    clearSelection();
-    await fetch("/api/storage/remove", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bucket: "galleries", paths }),
-    });
-    await supabase.from("gallery_photos").delete().in("id", ids);
-    if (gallery.cover_photo_id && ids.includes(gallery.cover_photo_id)) {
-      await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
-      setGallery((g) => ({ ...g, cover_photo_id: null }));
+    setDeletePhotosError(null);
+    setDeletingPhotos(true);
+    try {
+      const ids = selected.map((p) => p.id);
+      const paths = selected.flatMap((p) => [
+        p.storage_path,
+        p.preview_storage_path && !isNewPreviewPath(p.preview_storage_path) ? p.preview_storage_path : null,
+      ]).filter((x): x is string => !!x);
+      const previewPaths = selected
+        .map((p) => p.preview_storage_path)
+        .filter((x): x is string => !!x && isNewPreviewPath(x));
+      const removeRes = await fetch("/api/storage/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bucket: "galleries", paths, previewPaths }),
+      });
+      if (!removeRes.ok) {
+        const data = await removeRes.json().catch(() => null);
+        throw new Error(data?.error ?? "שגיאה במחיקת התמונות מהאחסון — נסו שוב");
+      }
+      // PostgREST encodes an .in() filter straight into the request URL's query string — a few
+      // hundred UUIDs is already tens of KB, and the underlying infrastructure rejects the request
+      // outright (400, before it ever reaches Postgres) well before Supabase's own row-count limits
+      // would matter. Deleting in bounded chunks keeps every request's URL short regardless of how
+      // many photos were selected.
+      const DELETE_ID_BATCH_SIZE = 200;
+      for (let i = 0; i < ids.length; i += DELETE_ID_BATCH_SIZE) {
+        const batch = ids.slice(i, i + DELETE_ID_BATCH_SIZE);
+        const { error: dbError } = await supabase.from("gallery_photos").delete().in("id", batch);
+        if (dbError) throw new Error("שגיאה במחיקת התמונות — נסו שוב");
+      }
+      setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+      clearSelection();
+      if (gallery.cover_photo_id && ids.includes(gallery.cover_photo_id)) {
+        await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
+        setGallery((g) => ({ ...g, cover_photo_id: null }));
+      }
+    } catch (e) {
+      setDeletePhotosError(e instanceof Error ? e.message : "שגיאה במחיקת התמונות — נסו שוב");
+    } finally {
+      setDeletingPhotos(false);
     }
   };
 
@@ -1790,10 +2095,9 @@ export default function GalleryManageView({
     }, CLOSE_ANIMATION_MS);
   };
 
-  const setCoverPhoto = async (photo: PhotoWithUrl) => {
+  const setCoverPhoto = (photo: PhotoWithUrl) => {
     setActionSheetPhoto(null);
-    await supabase.from("galleries").update({ cover_photo_id: photo.id }).eq("id", gallery.id);
-    setGallery((g) => ({ ...g, cover_photo_id: photo.id }));
+    setCoverFocalPointTarget({ photo, immediate: true });
   };
 
   const updatePhotoCullingStatus = (photoId: string, status: GalleryPhotoRow["culling_status"]) => {
@@ -1802,15 +2106,23 @@ export default function GalleryManageView({
 
   const togglePortfolio = async (photo: PhotoWithUrl) => {
     setActionSheetPhoto(null);
-    // Adding a photo asks for a category first (see portfolioCategoryPhoto below) — removing is
-    // instant, no prompt needed either way.
+    // Adding a photo asks for a category first (see portfolioCategoryPhoto below); removing asks
+    // for a plain confirmation (see removeFromPortfolioPhoto) — a photo that's in the public
+    // portfolio should never disappear from it by an accidental tap.
     if (photo.in_portfolio) {
-      setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, in_portfolio: false, portfolio_category: null } : p)));
-      await supabase.from("gallery_photos").update({ in_portfolio: false, portfolio_category: null }).eq("id", photo.id);
+      setRemoveFromPortfolioPhoto(photo);
       return;
     }
     setPortfolioCategoryPhoto(photo);
     setPortfolioCategoryInput(photo.portfolio_category ?? "");
+  };
+
+  const confirmRemoveFromPortfolio = async () => {
+    if (!removeFromPortfolioPhoto) return;
+    const photoId = removeFromPortfolioPhoto.id;
+    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, in_portfolio: false, portfolio_category: null } : p)));
+    setRemoveFromPortfolioPhoto(null);
+    await supabase.from("gallery_photos").update({ in_portfolio: false, portfolio_category: null }).eq("id", photoId);
   };
 
   const savePortfolioCategory = async () => {
@@ -1868,20 +2180,54 @@ export default function GalleryManageView({
     setJustPublished(true);
   };
 
-  const renew = async () => {
+  // A gallery gets exactly one restore out of the "פג תוקף" tab — enforced server-side too (see
+  // migration 0086's gallery_restore_once trigger, not just this button being hidden after use).
+  // Fixed 30-day validity regardless of whatever expiry_days it carried before archiving — this
+  // is a fresh, simple "one month, then it's back to normal rules" grant, not a resumption of
+  // whatever plan-tier duration was previously selected. Also republishes the gallery, matching
+  // the assumption everywhere else in this component that an unarchived gallery with a live
+  // expires_at is a published one.
+  const restoreGalleryNow = async () => {
     setRenewing(true);
     const now = new Date();
-    const expiresAt = expiryDays ? addDays(now, expiryDays) : null;
+    const expiresAt = addDays(now, 30);
     const patch = {
+      published: true,
       published_at: now.toISOString(),
-      expires_at: expiresAt ? expiresAt.toISOString() : null,
+      expires_at: expiresAt.toISOString(),
+      expiry_days: 30 as const,
       archived_at: null,
+      archive_reason: null,
       permanent_delete_at: null,
       reminder_sent_at: null,
+      restored_once: true,
     };
     await supabase.from("galleries").update(patch).eq("id", gallery.id);
     setGallery((g) => ({ ...g, ...patch }));
+    setExpiryDays(30);
     setRenewing(false);
+  };
+
+  // A photographer-initiated delete, distinct from the cron's natural-expiry archiving (see
+  // gallery-lifecycle/route.ts). A gallery that has never used its one-time restore gets 14 days
+  // in archive (more room to reconsider than a gallery that simply timed out); one that has
+  // already been restored once gets the same short 3-day final window the cron gives a
+  // second-time natural expiry — no more restores are coming either way, so there's no reason to
+  // hold it longer. Reuses the exact same archived_at/permanent_delete_at columns and
+  // permanent-deletion cron step, so nothing else needs to change for this to get cleaned up on
+  // schedule.
+  const [deletingGallery, setDeletingGallery] = useState(false);
+  const deleteGalleryNow = async () => {
+    setDeletingGallery(true);
+    const now = new Date();
+    const permanentDeleteAt = addDays(now, gallery.restored_once ? 3 : 14);
+    const patch = {
+      archived_at: now.toISOString(),
+      archive_reason: "manual" as const,
+      permanent_delete_at: permanentDeleteAt.toISOString(),
+    };
+    await supabase.from("galleries").update(patch).eq("id", gallery.id);
+    router.push("/galleries");
   };
 
   const copyLink = async () => {
@@ -2027,16 +2373,29 @@ export default function GalleryManageView({
               : null,
           }
         : {};
+    // An empty title field means "go back to tracking the event's own name" — only meaningful for
+    // an event-linked gallery; a standalone one has no event name to fall back to, so an empty
+    // field there just keeps the generic default, same as before this feature existed. Typing
+    // anything freezes the title as a customization: later renaming the event on its own page will
+    // no longer touch this gallery's title (see EditEventModal.tsx's save handler).
+    const trimmedTitle = editTitle.trim();
+    const titlePatch =
+      trimmedTitle === "" && eventId
+        ? { title: clientName, title_customized: false }
+        : { title: trimmedTitle || "הגלריה שלכם", title_customized: true };
     const patch = {
-      title: editTitle.trim() || "הגלריה שלכם",
+      ...titlePatch,
       shoot_date: eventId ? gallery.shoot_date : editShootDate || null,
       client_email: editClientEmail.trim() || null,
       client_phone: editClientPhone.trim() || null,
       allow_downloads: editAllowDownloads,
+      allow_client_upload: editAllowClientUpload,
       theme,
       cover_text_position: coverTextPosition,
       cover_shape: coverShape,
       cover_photo_id: coverPhotoId,
+      cover_focal_x: coverFocalX,
+      cover_focal_y: coverFocalY,
       title_font_override: titleFontOverride,
       grid_style_override: gridStyleOverride,
       expiry_days: expiryDays,
@@ -2067,9 +2426,15 @@ export default function GalleryManageView({
 
   const isArchived = !!gallery.archived_at;
   const favoriteCount = photos.filter((p) => p.is_favorite).length;
+  // Distinct labels a client has typed onto their favorited photos (via the diamond icon in the
+  // client-facing gallery) — powers the filter chip row shown alongside the מועדפים toggle below.
+  const usedLabels = Array.from(
+    new Set(photos.filter((p) => p.is_favorite && p.custom_label).map((p) => p.custom_label as string))
+  ).sort((a, b) => a.localeCompare(b, "he"));
   const activeFaceCluster = faceFilterClusterId ? faceClusters.find((c) => c.clusterId === faceFilterClusterId) : null;
   const visiblePhotos = photos
     .filter((p) => (showFavoritesOnly ? p.is_favorite : true))
+    .filter((p) => (showFavoritesOnly && activeLabelFilter ? p.custom_label === activeLabelFilter : true))
     .filter((p) => (showRejectedOnly ? p.culling_status === "rejected" : true))
     .filter((p) => (activeFolderId ? p.folder_id === activeFolderId : true))
     .filter((p) => (activeFaceCluster ? activeFaceCluster.photoIds.has(p.id) : true));
@@ -2126,13 +2491,17 @@ export default function GalleryManageView({
   // Drives the single blocking ProgressModal below — only one of these is ever true at a time in
   // practice (the modal itself blocks starting a second heavy operation while one is showing), but
   // this priority order is the tie-break if that ever changes.
+  const exportOpActive = exportingAlbumPdf || exportingAlbumJpg || exportingAlbumPsd;
+  // No visibility gate on uploads or exports here (unlike the print-house flag below) — neither
+  // offers a "background" button any more, so their modal simply stays active for the whole batch.
+  const uploadOpActive = uploading != null;
   const activeOp: { label: string; pct: number } | null =
-    uploading != null
+    uploadOpActive
       ? { label: "העלאת תמונות", pct: uploadProgressPct ?? 0 }
       : detectingFaces
         ? { label: "זיהוי פרצופים", pct: faceProgress && faceProgress.total > 0 ? (faceProgress.done / faceProgress.total) * 100 : 0 }
         : exportingAlbumPdf
-          ? { label: "ייצוא PDF", pct: exportProgressPdf ?? 0 }
+          ? { label: preparingPdfServer ? "מכינים את השרת" : "ייצוא PDF", pct: exportProgressPdf ?? 0 }
           : exportingAlbumJpg
             ? { label: "ייצוא JPG", pct: exportProgressJpg ?? 0 }
             : exportingAlbumPsd
@@ -2167,14 +2536,136 @@ export default function GalleryManageView({
           pct={activeOp.pct}
           onCancel={() => {
             if (printHouseOpActive) {
+              if (currentPrintHouseJobIdRef.current) cancelExportJob(currentPrintHouseJobIdRef.current);
               printHouseAbortControllerRef.current?.abort();
               return;
             }
             cancelRequestedRef.current = true;
+            if (currentExportJobIdRef.current) cancelExportJob(currentExportJobIdRef.current);
             exportAbortControllerRef.current?.abort();
           }}
+          // Per explicit request, album exports (JPG/PDF/PSD) no longer offer "המשך ברקע" — the
+          // progress screen now stays up, genuinely blocking, until the export finishes or is
+          // cancelled, matching ProgressModal's own original stated design (see its top comment) and
+          // making the "one active export at a time" server-side rule (findActiveExportJob in
+          // albumExportJobs.ts) impossible to sidestep by hiding the modal and clicking another
+          // export button. Print-house sending is a distinct action (not "export") and keeps its own
+          // backgrounding unchanged.
           onBackground={printHouseOpActive ? () => setPrintHouseProgressVisible(false) : undefined}
         />
+      )}
+      {blockedByOtherUpload && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(20,24,20,0.55)" }}>
+          <div className="relative w-72 rounded-3xl overflow-hidden shadow-sheet px-6 py-9" style={{ background: "#201f33" }}>
+            <div className="flex flex-col items-center gap-4 text-white text-center">
+              <div className="h-8 w-8 rounded-full border-2 border-white/25 border-t-white animate-spin" />
+              <div>
+                <div className="text-sm font-semibold">כבר יש העלאה פעילה</div>
+                <div className="text-xs opacity-70 mt-1">
+                  מעלה תמונות בגלריה &quot;{blockedByOtherUpload.galleryTitle}&quot; — {blockedByOtherUpload.doneCount} מתוך {blockedByOtherUpload.totalCount}
+                </div>
+                <div className="text-xs opacity-70 mt-1">יש לבטל אותה כדי להתחיל העלאה כאן</div>
+              </div>
+              <div className="flex gap-2 w-full mt-2">
+                <button
+                  onClick={() => setBlockedByOtherUpload(null)}
+                  className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white/10"
+                >
+                  סגירה
+                </button>
+                <button
+                  onClick={() => requestActiveUploadCancel()}
+                  className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-rose text-white"
+                >
+                  ביטול ההעלאה האחרת
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {completedExportToast && (
+        <div className="fixed inset-x-0 top-4 z-[120] flex justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto w-full max-w-md rounded-2xl p-4 bg-ink text-white shadow-sheet">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-full bg-sage/20 flex items-center justify-center shrink-0" style={{ color: "var(--color-sage)" }}>
+                <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold">{completedExportToast.label} הושלם</p>
+                <p className="text-xs opacity-70 truncate">{completedExportToast.filename}</p>
+              </div>
+              <button onClick={() => setCompletedExportToast(null)} aria-label="סגירה" className="shrink-0 text-white/60">
+                <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={async () => {
+                  setDownloadingCompletedToast(true);
+                  try {
+                    const res = await fetch(completedExportToast.downloadUrl);
+                    const blob = await res.blob();
+                    await downloadBlob(blob, completedExportToast.filename, completedExportToast.mimeType, completedExportToast.allowSaveDialog);
+                  } catch {
+                    setError("שגיאה בהורדת הקובץ");
+                  } finally {
+                    setDownloadingCompletedToast(false);
+                  }
+                }}
+                disabled={downloadingCompletedToast}
+                className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold bg-white text-ink disabled:opacity-60"
+              >
+                {downloadingCompletedToast ? "מוריד..." : "הורדה"}
+              </button>
+              {/* Straight to the client's own WhatsApp chat, matching the exact "send update"
+                  pattern already used for gallery-published/photos-uploaded notifications — per
+                  explicit request that a completed export should offer to share it immediately,
+                  not just download it. Omitted entirely (not disabled) when no client phone is on
+                  file, same as those other buttons' own silent-noop guard, since a visibly
+                  disabled-forever button here would just be confusing clutter. */}
+              {gallery.client_phone && (
+                <button
+                  onClick={() => {
+                    openWhatsApp(gallery.client_phone!, `${completedExportToast.label} מוכן להורדה:\n${completedExportToast.downloadUrl}`);
+                    setCompletedExportToast(null);
+                  }}
+                  className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold text-white"
+                  style={{ background: "#25D366" }}
+                >
+                  שיתוף בוואטסאפ
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {completedUploadToast && (
+        <div className="fixed inset-x-0 top-4 z-[120] flex justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto w-full max-w-sm rounded-2xl p-4 bg-ink text-white shadow-sheet flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-sage/20 flex items-center justify-center shrink-0" style={{ color: "var(--color-sage)" }}>
+              <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold">העלאת התמונות הושלמה</p>
+              <p className="text-xs opacity-70">
+                {completedUploadToast.succeededCount} מתוך {completedUploadToast.totalCount} תמונות הועלו בהצלחה
+              </p>
+            </div>
+            <button
+              onClick={() => setCompletedUploadToast(null)}
+              className="shrink-0 rounded-lg px-3.5 py-2 text-xs font-semibold bg-white text-ink"
+            >
+              אישור
+            </button>
+          </div>
+        </div>
       )}
       {showScrollTop && (
         <button
@@ -2187,43 +2678,35 @@ export default function GalleryManageView({
           </svg>
         </button>
       )}
-      <div className="flex items-center justify-between mb-1.5">
+      <div className="flex items-center justify-between mb-2">
         <Link href="/galleries" className="flex items-center gap-1 text-sm tracking-wide text-ink-soft">
           → כל הגלריות
         </Link>
-        <div className="hidden sm:flex items-center gap-2">
-          {!gallery.published && photos.length > 0 && (
-            <button
-              onClick={publish}
-              disabled={publishing}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-ink text-white disabled:opacity-60 ${BTN_PRESS}`}
-            >
-              {publishing ? "מפרסם..." : "פרסום הגלריה ללקוח"}
-            </button>
-          )}
-          {gallery.published && !isArchived && (
-            <button
-              onClick={copyLink}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-ink text-white ${BTN_PRESS}`}
-            >
-              {copied ? "✓ הועתק" : "העתקת קישור"}
-            </button>
-          )}
-          {gallery.published && !isArchived && (
-            <button
-              onClick={openShare}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink ${BTN_PRESS}`}
-            >
-              שיתוף
-            </button>
-          )}
-          <button
-            onClick={() => {
+      </div>
+
+      {/* Share, slideshow, face-detection and preview moved to icon-only buttons on the
+          favorites row below — this strip keeps only the three actions that read better as
+          named text tabs. */}
+      <GlassTabStrip
+        className="mb-4"
+        items={[
+          ...(!gallery.published
+            ? [{ key: "publish", label: publishing ? "מפרסם..." : "פרסום הגלריה ללקוח", active: true, onClick: publish, disabled: publishing }]
+            : []),
+          ...(gallery.published && !isArchived
+            ? [{ key: "copy", label: copied ? "✓ הועתק" : "העתקת קישור", active: copied, onClick: copyLink }]
+            : []),
+          {
+            key: "settings",
+            label: "הגדרות גלריה",
+            active: settingsOpen,
+            onClick: () => {
               setEditTitle(gallery.title);
               setEditShootDate(gallery.shoot_date ?? "");
               setEditClientEmail(gallery.client_email ?? "");
               setEditClientPhone(gallery.client_phone ?? "");
               setEditAllowDownloads(gallery.allow_downloads);
+              setEditAllowClientUpload(gallery.allow_client_upload);
               setTheme(gallery.theme);
               setCoverTextPosition(gallery.cover_text_position);
               setCoverShape(gallery.cover_shape);
@@ -2231,160 +2714,19 @@ export default function GalleryManageView({
               setTitleFontOverride(gallery.title_font_override);
               setGridStyleOverride(gallery.grid_style_override);
               setSettingsOpen(true);
-            }}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-deep text-white ${BTN_PRESS}`}
-          >
-            הגדרות גלריה
-          </button>
-          {photos.length > 0 && (
-            <button
-              onClick={() => {
-                setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
-                setSlideshowManageOpen(true);
-              }}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink ${BTN_PRESS}`}
-            >
-              מצגת תמונות
-            </button>
-          )}
-          {photos.length > 0 && (
-            <button
-              onClick={openAlbumManage}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink ${BTN_PRESS}`}
-            >
-              עיצוב אלבום
-            </button>
-          )}
-          {photos.length > 0 && (
-            // Runs entirely in the browser (see src/lib/faceRecognition.ts) — no photo ever
-            // leaves the photographer's device for this except the already-cached results.
-            <button
-              onClick={runFaceDetection}
-              disabled={detectingFaces}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full bg-white border border-line text-ink disabled:opacity-60 ${BTN_PRESS}`}
-            >
-              {detectingFaces
-                ? "מזהה..."
-                : faceClusters.length > 0
-                  ? "🔄 רענון זיהוי פרצופים"
-                  : "🙂 זיהוי פרצופים"}
-            </button>
-          )}
-          {photos.length > 0 && (
-            <a
-              href={`/gallery/${gallery.access_token}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="תצוגה מקדימה של הגלריה"
-              title={gallery.published ? "תצוגה מקדימה של הגלריה" : "תצוגה מקדימה — כך הגלריה תיראה ללקוח/ה לאחר הפרסום"}
-              className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-amber-deep ${BTN_PRESS}`}
-            >
-              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z" />
-                <circle cx={12} cy={12} r={3} />
-              </svg>
-            </a>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile-only uniform button grid — the sm:flex row above packs buttons of very different
-          text lengths edge to edge with no wrap, which crowds and unevens out on narrow screens.
-          Same actions, same handlers, just laid out as equal-size grid cells with even gaps. */}
-      <div className="grid grid-cols-2 sm:hidden gap-2 mb-3">
-        {!gallery.published && photos.length > 0 && (
-          <button
-            onClick={publish}
-            disabled={publishing}
-            className={`h-11 rounded-xl px-2 text-[11px] font-semibold text-center leading-tight bg-ink text-white disabled:opacity-60 ${BTN_PRESS}`}
-          >
-            {publishing ? "מפרסם..." : "פרסום הגלריה ללקוח"}
-          </button>
-        )}
-        {gallery.published && !isArchived && (
-          <button
-            onClick={copyLink}
-            className={`h-11 rounded-xl px-2 text-[11px] font-semibold text-center leading-tight bg-ink text-white ${BTN_PRESS}`}
-          >
-            {copied ? "✓ הועתק" : "העתקת קישור"}
-          </button>
-        )}
-        {gallery.published && !isArchived && (
-          <button
-            onClick={openShare}
-            className={`h-11 rounded-xl px-2 text-[11px] font-semibold text-center leading-tight bg-white border border-line text-ink ${BTN_PRESS}`}
-          >
-            שיתוף
-          </button>
-        )}
-        <button
-          onClick={() => {
-            setEditTitle(gallery.title);
-            setEditShootDate(gallery.shoot_date ?? "");
-            setEditClientEmail(gallery.client_email ?? "");
-            setEditClientPhone(gallery.client_phone ?? "");
-            setEditAllowDownloads(gallery.allow_downloads);
-            setTheme(gallery.theme);
-            setCoverTextPosition(gallery.cover_text_position);
-            setCoverShape(gallery.cover_shape);
-            setCoverPhotoId(gallery.cover_photo_id);
-            setTitleFontOverride(gallery.title_font_override);
-            setGridStyleOverride(gallery.grid_style_override);
-            setSettingsOpen(true);
-          }}
-          className={`h-11 rounded-xl px-2 text-[11px] font-semibold text-center leading-tight bg-amber-deep text-white ${BTN_PRESS}`}
-        >
-          הגדרות גלריה
-        </button>
-        {photos.length > 0 && (
-          <button
-            onClick={() => {
-              setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
-              setSlideshowManageOpen(true);
-            }}
-            className={`h-11 rounded-xl px-2 text-[11px] font-semibold text-center leading-tight bg-white border border-line text-ink ${BTN_PRESS}`}
-          >
-            מצגת תמונות
-          </button>
-        )}
-        {photos.length > 0 && (
-          <button
-            onClick={openAlbumManage}
-            className={`h-11 rounded-xl px-2 text-[11px] font-semibold text-center leading-tight bg-white border border-line text-ink ${BTN_PRESS}`}
-          >
-            עיצוב אלבום
-          </button>
-        )}
-        {photos.length > 0 && (
-          <button
-            onClick={runFaceDetection}
-            disabled={detectingFaces}
-            className={`h-11 rounded-xl px-2 text-[11px] font-semibold text-center leading-tight bg-white border border-line text-ink disabled:opacity-60 ${BTN_PRESS}`}
-          >
-            {detectingFaces
-              ? "מזהה..."
-              : faceClusters.length > 0
-                ? "🔄 רענון זיהוי פרצופים"
-                : "🙂 זיהוי פרצופים"}
-          </button>
-        )}
-        {photos.length > 0 && (
-          <a
-            href={`/gallery/${gallery.access_token}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={gallery.published ? "תצוגה מקדימה של הגלריה" : "תצוגה מקדימה — כך הגלריה תיראה ללקוח/ה לאחר הפרסום"}
-            className={`h-11 rounded-xl px-2 flex items-center justify-center gap-1 text-[11px] font-semibold text-center leading-tight bg-white border border-line text-amber-deep ${BTN_PRESS}`}
-          >
-            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-              <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z" />
-              <circle cx={12} cy={12} r={3} />
-            </svg>
-            תצוגה מקדימה
-          </a>
-        )}
-      </div>
-      <h1 className="text-[22px] font-bold mb-1 font-display">{clientName || gallery.title}</h1>
+            },
+          },
+          // Admin-only for now, per explicit request — the tool needs to be flawless before it
+          // goes out to the general photographer user base.
+          ...(photos.length > 0 && photographerEmail === ADMIN_EMAIL
+            ? [{ key: "album", label: "עיצוב אלבום", active: albumManageOpen, onClick: openAlbumManage }]
+            : []),
+        ]}
+      />
+      {/* gallery.title is always accurate now — it's either the photographer's own customization,
+          or kept synced to the event's client_name (see saveSettings/EditEventModal.tsx), so
+          there's no need to prioritize clientName over it the way this used to. */}
+      <h1 className="text-[22px] font-bold mb-1 font-display">{gallery.title}</h1>
       {eventDate ? (
         <p className="text-xs mb-1 text-ink-soft">{new Date(eventDate).toLocaleDateString("he-IL")}</p>
       ) : (
@@ -2419,7 +2761,10 @@ export default function GalleryManageView({
         <div className="rounded-xl px-3.5 py-2.5 mb-3.5 text-xs bg-[#FBEEEC] text-rose">
           הגלריה בארכיון ותימחק סופית בתאריך{" "}
           {gallery.permanent_delete_at && new Date(gallery.permanent_delete_at).toLocaleDateString("he-IL")}. הקישור
-          ללקוח אינו פעיל יותר.
+          ללקוח אינו פעיל יותר.{" "}
+          {gallery.restored_once
+            ? "לא ניתן לשחזר אותה יותר."
+            : "אפשר לשחזר אותה מתוך הגדרות הגלריה."}
         </div>
       )}
 
@@ -2451,32 +2796,178 @@ export default function GalleryManageView({
         </div>
       )}
 
-      {favoriteCount > 0 && (
-        <div className="flex items-center gap-2 mb-3">
+      {(favoriteCount > 0 || photos.length > 0) && (
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            {favoriteCount > 0 && (
+              <>
+                <button
+                  onClick={() => {
+                    setShowFavoritesOnly((v) => {
+                      if (v) setActiveLabelFilter(null);
+                      return !v;
+                    });
+                    // Switching the view is exactly the moment a photographer wants to trust
+                    // what they're about to see — refresh in the background instead of making
+                    // them remember to hit the separate manual refresh button first.
+                    refreshFavoritesAndLabels();
+                  }}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
+                  style={{
+                    background: showFavoritesOnly ? "var(--color-amber-deep)" : "var(--color-chip)",
+                    color: showFavoritesOnly ? "#fff" : "var(--color-ink-soft)",
+                  }}
+                >
+                  💜 מועדפים ({favoriteCount})
+                </button>
+                {showFavoritesOnly && (
+                  <button
+                    onClick={downloadFavoritesZip}
+                    disabled={zippingFavorites}
+                    aria-label="הורדת כל התמונות המועדפות"
+                    title="הורדת כל התמונות המועדפות, מאורגנות לפי לשוניות"
+                    className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
+                  >
+                    <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
+                      <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
+                    </svg>
+                  </button>
+                )}
+              </>
+            )}
+            {photos.length > 0 && (
+              <button
+                onClick={refreshFavoritesAndLabels}
+                disabled={refreshingFavorites}
+                aria-label="רענון מועדפים ותגיות"
+                title="רענון מועדפים ותגיות — לראות עדכונים מהלקוח/ה בלי לצאת ולחזור לגלריה"
+                className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
+              >
+                <svg
+                  width={14}
+                  height={14}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={refreshingFavorites ? "animate-spin" : undefined}
+                >
+                  <path d="M20 11A8 8 0 1 0 18.5 15" />
+                  <path d="M20 5v6h-6" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {photos.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              {gallery.published && !isArchived && (
+                <button
+                  onClick={openShare}
+                  aria-label="שיתוף"
+                  title="שיתוף"
+                  className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
+                  style={{
+                    background: shareOpen ? "var(--color-amber-deep)" : "#fff",
+                    borderColor: shareOpen ? "var(--color-amber-deep)" : "var(--color-line)",
+                    // Fixed color, not the theme-flipped token — the unset state's background
+                    // stays literal white in both themes, so the icon must too or it goes near-
+                    // invisible once --color-ink-soft flips light for dark mode.
+                    color: shareOpen ? "#fff" : "#5f5d7c",
+                  }}
+                >
+                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx={18} cy={5} r={3} />
+                    <circle cx={6} cy={12} r={3} />
+                    <circle cx={18} cy={19} r={3} />
+                    <line x1={8.6} y1={13.5} x2={15.4} y2={17.5} />
+                    <line x1={15.4} y1={6.5} x2={8.6} y2={10.5} />
+                  </svg>
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
+                  setSlideshowManageOpen(true);
+                }}
+                aria-label="מצגת תמונות"
+                title="מצגת תמונות"
+                className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
+                style={{
+                  background: slideshowManageOpen ? "var(--color-amber-deep)" : "#fff",
+                  borderColor: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-line)",
+                  color: slideshowManageOpen ? "#fff" : "#5f5d7c",
+                }}
+              >
+                <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <rect x={3} y={3} width={18} height={18} rx={3} />
+                  <path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+              {/* Runs entirely in the browser (see src/lib/faceRecognition.ts) — no photo ever
+                  leaves the photographer's device for this except the already-cached results. */}
+              <button
+                onClick={runFaceDetection}
+                disabled={detectingFaces}
+                aria-label={detectingFaces ? "מזהה פרצופים..." : faceClusters.length > 0 ? "רענון זיהוי פרצופים" : "זיהוי פרצופים"}
+                title={detectingFaces ? "מזהה פרצופים..." : faceClusters.length > 0 ? "רענון זיהוי פרצופים" : "זיהוי פרצופים"}
+                className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border bg-white border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
+              >
+                {detectingFaces ? (
+                  <span className="h-3.5 w-3.5 rounded-full border-2 border-line border-t-ink-soft animate-spin" />
+                ) : (
+                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 8V6a2 2 0 0 1 2-2h2M4 16v2a2 2 0 0 0 2 2h2M20 8V6a2 2 0 0 0-2-2h-2M20 16v2a2 2 0 0 1-2 2h-2" />
+                    <circle cx={12} cy={11} r={2.2} />
+                    <path d="M8.5 16c1-1.3 2.2-1.8 3.5-1.8s2.5.5 3.5 1.8" />
+                  </svg>
+                )}
+              </button>
+              <a
+                href={`/gallery/${gallery.access_token}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="תצוגה מקדימה"
+                title={gallery.published ? "תצוגה מקדימה של הגלריה" : "תצוגה מקדימה — כך הגלריה תיראה ללקוח/ה לאחר הפרסום"}
+                className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft ${BTN_PRESS}`}
+              >
+                <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z" />
+                  <circle cx={12} cy={12} r={3} />
+                </svg>
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showFavoritesOnly && usedLabels.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap mb-3 -mt-1.5">
           <button
-            onClick={() => setShowFavoritesOnly((v) => !v)}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
+            onClick={() => setActiveLabelFilter(null)}
+            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${BTN_PRESS}`}
             style={{
-              background: showFavoritesOnly ? "var(--color-amber-deep)" : "var(--color-chip)",
-              color: showFavoritesOnly ? "#fff" : "var(--color-ink-soft)",
+              background: !activeLabelFilter ? "var(--color-ink)" : "var(--color-chip)",
+              color: !activeLabelFilter ? "var(--color-paper)" : "var(--color-ink-soft)",
             }}
           >
-            💜 מועדפים ({favoriteCount})
+            הכל
           </button>
-          {showFavoritesOnly && (
+          {usedLabels.map((label) => (
             <button
-              onClick={downloadFavoritesZip}
-              disabled={zippingFavorites}
-              aria-label="הורדת כל התמונות המועדפות"
-              title="הורדת כל התמונות המועדפות, מאורגנות לפי לשוניות"
-              className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
+              key={label}
+              onClick={() => setActiveLabelFilter((prev) => (prev === label ? null : label))}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${BTN_PRESS}`}
+              style={{
+                background: activeLabelFilter === label ? "var(--color-ink)" : "var(--color-chip)",
+                color: activeLabelFilter === label ? "var(--color-paper)" : "var(--color-ink-soft)",
+              }}
             >
-              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
-                <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
-              </svg>
+              ◆ {label}
             </button>
-          )}
+          ))}
         </div>
       )}
 
@@ -2636,7 +3127,7 @@ export default function GalleryManageView({
                     onLoad={() => markThumbLoaded(photo.id)}
                     onError={() => markThumbLoaded(photo.id)}
                   />
-                  <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} />
+                  <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} />
                 </button>
               ))}
             </div>
@@ -2673,7 +3164,7 @@ export default function GalleryManageView({
                       }}
                       onError={() => markThumbLoaded(photo.id)}
                     />
-                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} />
+                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} />
                   </button>
                 );
               })}
@@ -2715,7 +3206,7 @@ export default function GalleryManageView({
                         ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : {}),
                       }}
                     />
-                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} offset={framed ? 8 : 4} />
+                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} offset={framed ? 8 : 4} />
                   </button>
                 );
               })}
@@ -2770,7 +3261,7 @@ export default function GalleryManageView({
         פורמטים נתמכים בלבד: JPG, JPEG, PNG, GIF, BMP
       </p>
 
-      <GalleryVideosSection galleryId={gallery.id} />
+      <GalleryVideosSection galleryId={gallery.id} allowed={nonBasicTierAllowed} />
       <GalleryFtpSection
         galleryId={gallery.id}
         allowed={SUBSCRIPTION_PLANS[photographerPlan].tier === "studio_pro" || photographerEmail === ADMIN_EMAIL}
@@ -2796,7 +3287,7 @@ export default function GalleryManageView({
           </div>
         )}
 
-        {!gallery.published && photos.length > 0 && (
+        {!gallery.published && (
           <button
             onClick={publish}
             disabled={publishing}
@@ -2812,16 +3303,6 @@ export default function GalleryManageView({
             className={`w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white ${BTN_PRESS}`}
           >
             {copied ? "✓ הועתק" : "העתקת קישור"}
-          </button>
-        )}
-
-        {isArchived && (
-          <button
-            onClick={renew}
-            disabled={renewing}
-            className={`w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60 ${BTN_PRESS}`}
-          >
-            {renewing ? "מחדש..." : "חידוש תוקף הגלריה"}
           </button>
         )}
 
@@ -2940,7 +3421,7 @@ export default function GalleryManageView({
                 onClick={() => togglePortfolio(actionSheetPhoto)}
                 className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
               >
-                {actionSheetPhoto.in_portfolio ? "★ הסרה מהפורטפוליו הציבורי" : "☆ הוספה לפורטפוליו הציבורי"}
+                {actionSheetPhoto.in_portfolio ? "✨ הסרה מהפורטפוליו הציבורי" : "✨ הוספה לפורטפוליו הציבורי"}
               </button>
               <button
                 onClick={() => {
@@ -3029,6 +3510,32 @@ export default function GalleryManageView({
         </div>
       )}
 
+      {/* Same full-screen indeterminate-spinner visual language as the calendar-scan flow
+          (ProfileSettingsView) — a delete has no real percentage to report either. */}
+      {deletingPhotos && <IndeterminateProgressCard label="מוחק תמונות..." />}
+
+      {/* A delete failure used to only reach the shared `error` state, rendered nowhere near this
+          action — this surfaces it right where the confirm dialog and progress spinner just were,
+          so it's actually impossible to miss instead of reading as "nothing happened". */}
+      {deletePhotosError && (
+        <div
+          className="fixed inset-0 z-[200] flex items-end justify-center"
+          style={{ background: "rgba(46,49,66,0.45)" }}
+          onClick={() => setDeletePhotosError(null)}
+        >
+          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2 font-display text-rose">מחיקת התמונות נכשלה</h2>
+            <p className="text-sm text-ink-soft mb-5">{deletePhotosError}</p>
+            <button
+              onClick={() => setDeletePhotosError(null)}
+              className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
+            >
+              סגירה
+            </button>
+          </div>
+        </div>
+      )}
+
       {exportRangeFormat && (
         <div
           className="fixed inset-0 z-[70] flex items-end justify-center"
@@ -3065,6 +3572,9 @@ export default function GalleryManageView({
                 />
               </div>
             </div>
+            {/* The print/"high"-quality choice was removed entirely (2026-09-02, explicit request)
+                — a PDF export never needs original-resolution images, so there's no longer a
+                choice to make here at all; the page-range picker above is untouched. */}
             {(exportRangeFormat === "jpg" || exportRangeFormat === "psd") && (
               <p className="text-xs text-ink-soft mb-4">קובץ ה-ZIP יירד אוטומטית לתיקיית ההורדות במחשב שלך.</p>
             )}
@@ -3147,7 +3657,7 @@ export default function GalleryManageView({
       )}
 
       {printHouseToast && (
-        <div className="fixed bottom-5 inset-x-4 z-[90] flex justify-center pointer-events-none">
+        <div className="fixed top-4 inset-x-4 z-[120] flex justify-center pointer-events-none">
           <div className="rounded-full px-4 py-2.5 text-sm font-semibold bg-ink text-white shadow-sheet">{printHouseToast}</div>
         </div>
       )}
@@ -3291,6 +3801,39 @@ export default function GalleryManageView({
         </div>
       )}
 
+      {coverFocalPointTarget && (
+        <GalleryCoverFocalPointModal
+          photoUrl={coverFocalPointTarget.photo.url}
+          initialFocalX={coverFocalPointTarget.immediate ? gallery.cover_focal_x : coverFocalX}
+          initialFocalY={coverFocalPointTarget.immediate ? gallery.cover_focal_y : coverFocalY}
+          theme={coverFocalPointTarget.immediate ? gallery.theme : theme}
+          shape={coverFocalPointTarget.immediate ? gallery.cover_shape : coverShape}
+          textPosition={coverFocalPointTarget.immediate ? gallery.cover_text_position : coverTextPosition}
+          titleFontOverride={coverFocalPointTarget.immediate ? gallery.title_font_override : titleFontOverride}
+          title={gallery.title}
+          dateLabel={eventDate ? new Date(eventDate).toLocaleDateString("he-IL") : null}
+          onClose={() => setCoverFocalPointTarget(null)}
+          onSave={async (focalX, focalY) => {
+            if (coverFocalPointTarget.immediate) {
+              // Lightbox quick action — persists cover_photo_id + the focal point together right
+              // now, matching how that action always saved immediately before this screen existed.
+              const patch = { cover_photo_id: coverFocalPointTarget.photo.id, cover_focal_x: focalX, cover_focal_y: focalY };
+              await supabase.from("galleries").update(patch).eq("id", gallery.id);
+              setGallery((g) => ({ ...g, ...patch }));
+              setCoverPhotoId(coverFocalPointTarget.photo.id);
+              setCoverFocalX(focalX);
+              setCoverFocalY(focalY);
+            } else {
+              // Settings-modal picker — stays staged like coverPhotoId already does, actually
+              // persisted only once the settings modal's own Save button is pressed.
+              setCoverFocalX(focalX);
+              setCoverFocalY(focalY);
+            }
+            setCoverFocalPointTarget(null);
+          }}
+        />
+      )}
+
       {settingsOpen && (
         <GallerySettingsModal
           isStandalone={!eventId}
@@ -3304,6 +3847,8 @@ export default function GalleryManageView({
           setClientPhone={setEditClientPhone}
           allowDownloads={editAllowDownloads}
           setAllowDownloads={setEditAllowDownloads}
+          allowClientUpload={editAllowClientUpload}
+          setAllowClientUpload={setEditAllowClientUpload}
           expiryDays={expiryDays}
           setExpiryDays={setExpiryDays}
           expiryOptions={galleryExpiryOptions}
@@ -3315,16 +3860,29 @@ export default function GalleryManageView({
           setCoverShape={setCoverShape}
           coverPhotoId={coverPhotoId}
           setCoverPhotoId={setCoverPhotoId}
+          coverFocalX={coverFocalX}
+          coverFocalY={coverFocalY}
+          onPickCoverPhoto={(photo) => {
+            setCoverPhotoId(photo.id);
+            setCoverFocalPointTarget({ photo, immediate: false });
+          }}
           titleFontOverride={titleFontOverride}
           setTitleFontOverride={setTitleFontOverride}
           gridStyleOverride={gridStyleOverride}
           setGridStyleOverride={setGridStyleOverride}
           photos={photos}
-          previewTitle={clientName || gallery.title}
+          previewTitle={gallery.title}
           previewDateLabel={eventDate ? new Date(eventDate).toLocaleDateString("he-IL") : null}
           saving={savingSettings}
           onSave={saveSettings}
           onClose={() => setSettingsOpen(false)}
+          onDeleteGallery={deleteGalleryNow}
+          deletingGallery={deletingGallery}
+          isArchived={isArchived}
+          restoredOnce={gallery.restored_once}
+          permanentDeleteAt={gallery.permanent_delete_at}
+          onRestoreGallery={restoreGalleryNow}
+          restoringGallery={renewing}
         />
       )}
 
@@ -3420,7 +3978,13 @@ export default function GalleryManageView({
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 overflow-hidden"
           style={{ background: "rgba(46,49,66,0.7)" }}
           onClick={() => {
-            if (Date.now() - albumManageOpenedAtRef.current < 400) return;
+            // Widened from 400ms to 1200ms (2026-09-02) — a real phone is slower than the desktop/
+            // tablet this was originally tuned against, and this whole modal's first render/commit
+            // (see the comment on albumManageOpenedAtRef's own assignment above) can plausibly run
+            // past 400ms there, especially on a gallery with a large photos array. When that
+            // happens the tool visibly "doesn't open" — it opens and is immediately closed by this
+            // same guard misfiring on the tail of the opening tap, not a mounting failure.
+            if (Date.now() - albumManageOpenedAtRef.current < 1200) return;
             setAlbumManageOpen(false);
           }}
         >
@@ -3533,7 +4097,7 @@ export default function GalleryManageView({
                     )}
                     <span className="relative z-10 flex items-center gap-1">
                       <IconPdf size={12} />
-                      {exportingAlbumPdf ? "מייצא..." : "ייצוא PDF להדפסה"}
+                      {exportingAlbumPdf ? "מייצא..." : "ייצוא PDF"}
                     </span>
                   </button>
                 )}
@@ -3613,27 +4177,132 @@ export default function GalleryManageView({
                 <p className="text-sm text-ink-soft">טוען...</p>
               </div>
             ) : !album ? (
+              // Album creation (all three paths below: blank page, starter template, saved
+              // template) is entry-tier-excluded — see PlanComparison.tsx and nonBasicTierAllowed's
+              // own comment. Not retroactive: an album already built before a downgrade keeps
+              // working fine (that's the OTHER branch of this ternary, untouched by this check).
+              !nonBasicTierAllowed ? (
+                <div className="rounded-xl p-5 text-center bg-chip">
+                  <p className="text-sm text-ink-soft leading-relaxed">
+                    עורך האלבומים זמין ממסלול פרו ומעלה — שדרגו מסלול בהגדרות כדי להתחיל לעצב אלבום לגלריה זו.
+                  </p>
+                </div>
+              ) : (
               <>
                 <p className="text-xs text-ink-soft mb-3.5">
                   קודם כל, מה מידות האלבום להדפסה? תתחילו מעמוד ריק אחד — ומשם תוכלו לבחור תבנית מוכנה או לעצב בעצמכם, ולהוסיף עוד עמודים בהמשך.
                 </p>
-                <p className="text-xs text-ink-soft mb-2">מידה נפוצה — בחירה ממלאת את השדות למטה, ואפשר גם לשנות אותם ידנית</p>
-                <select
-                  value={ALBUM_SIZE_PRESETS.find((p) => p.width === albumSizeDraft.width && p.height === albumSizeDraft.height)?.label ?? ""}
-                  onChange={(e) => {
-                    const preset = ALBUM_SIZE_PRESETS.find((p) => p.label === e.target.value);
-                    if (preset) setAlbumSizeDraft({ width: preset.width, height: preset.height, margin: preset.margin });
-                  }}
-                  style={{ width: "15vw", minWidth: 110 }}
-                  className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white mb-3.5"
-                >
-                  <option value="">בחירה...</option>
-                  {ALBUM_SIZE_PRESETS.map((preset) => (
-                    <option key={preset.label} value={preset.label}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-end gap-2 flex-wrap mb-3.5">
+                  <div>
+                    <p className="text-xs text-ink-soft mb-2">מידה נפוצה — בחירה ממלאת את השדות למטה, ואפשר גם לשנות אותם ידנית</p>
+                    <select
+                      value={ALBUM_SIZE_PRESETS.find((p) => p.width === albumSizeDraft.width && p.height === albumSizeDraft.height)?.label ?? ""}
+                      onChange={(e) => {
+                        const preset = ALBUM_SIZE_PRESETS.find((p) => p.label === e.target.value);
+                        if (preset) setAlbumSizeDraft({ width: preset.width, height: preset.height, margin: preset.margin });
+                      }}
+                      style={{ width: "15vw", minWidth: 110 }}
+                      className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
+                    >
+                      <option value="">בחירה...</option>
+                      {ALBUM_SIZE_PRESETS.map((preset) => (
+                        <option key={preset.label} value={preset.label}>
+                          {preset.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-xs text-ink-soft mb-2">תבנית מוכנה (לא חובה — אפשר גם עמוד ריק ולעצב בעצמכם)</p>
+                    <select
+                      value={selectedStarterId ? `starter:${selectedStarterId}` : selectedSavedTemplateId ? `saved:${selectedSavedTemplateId}` : ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v.startsWith("starter:")) {
+                          setSelectedStarterId(v.slice(8) as StarterTemplateId);
+                          setSelectedSavedTemplateId(null);
+                        } else if (v.startsWith("saved:")) {
+                          setSelectedSavedTemplateId(v.slice(6));
+                          setSelectedStarterId(null);
+                        } else {
+                          setSelectedStarterId(null);
+                          setSelectedSavedTemplateId(null);
+                        }
+                      }}
+                      style={{ width: "15vw", minWidth: 150 }}
+                      className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
+                    >
+                      <option value="">בלי תבנית — עמוד ריק</option>
+                      <optgroup label="תבניות מוכנות בסגנון אלבום">
+                        {STARTER_BOOK_TEMPLATES.map((t) => (
+                          <option key={t.id} value={`starter:${t.id}`}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {albumBookTemplates.length > 0 && (
+                        <optgroup label="התבניות השמורות שלי">
+                          {albumBookTemplates.map((t) => (
+                            <option key={t.id} value={`saved:${t.id}`}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </div>
+                </div>
+
+                {selectedStarterId && (
+                  <div className="rounded-lg p-2.5 bg-chip space-y-2.5 mb-3.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input
+                        type="number"
+                        min={1}
+                        value={starterPageCount}
+                        onChange={(e) => setStarterPageCount(Math.max(1, Number(e.target.value) || 1))}
+                        className="w-16 rounded-lg border border-line px-2 py-1.5 text-sm text-center bg-white"
+                      />
+                      <span className="text-xs text-ink-soft">מספר עמודים</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={starterPhotoCount}
+                        onChange={(e) => setStarterPhotoCount(Math.max(1, Number(e.target.value) || 1))}
+                        className="w-16 rounded-lg border border-line px-2 py-1.5 text-sm text-center bg-white"
+                      />
+                      <span className="text-xs text-ink-soft">סה״כ תמונות</span>
+                    </div>
+                    <button
+                      onClick={() => buildAlbumFromStarterTemplate(selectedStarterId, starterPageCount, starterPhotoCount)}
+                      disabled={buildingAlbumBook}
+                      className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                    >
+                      {buildingAlbumBook ? "יוצר את האלבום..." : "יצירת האלבום מהתבנית"}
+                    </button>
+                  </div>
+                )}
+
+                {selectedSavedTemplateId &&
+                  (() => {
+                    const savedTemplate = albumBookTemplates.find((t) => t.id === selectedSavedTemplateId);
+                    if (!savedTemplate) return null;
+                    return (
+                      <div className="rounded-lg p-2.5 bg-chip space-y-2.5 mb-3.5">
+                        <p className="text-xs text-ink-soft">
+                          {savedTemplate.pages.length} עמודים · {ALBUM_STYLE_OPTIONS.find((s) => s.id === savedTemplate.style)?.label ?? savedTemplate.style}
+                        </p>
+                        <button
+                          onClick={() => buildAlbumFromBookTemplate(savedTemplate)}
+                          disabled={buildingAlbumBook}
+                          className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                        >
+                          {buildingAlbumBook ? "יוצר את האלבום..." : "יצירת האלבום מהתבנית"}
+                        </button>
+                      </div>
+                    );
+                  })()}
+
                 <p className="text-xs text-ink-soft mb-2">מידות האלבום (ס״מ)</p>
                 <div className="flex items-center gap-2 mb-2.5">
                   <input
@@ -3666,85 +4335,29 @@ export default function GalleryManageView({
                   <span className="text-xs text-ink-soft">מרחק המסגרת הירוקה מהקצה (ס״מ)</span>
                 </div>
 
-                {albumBookTemplates.length > 0 && (
-                  <div className="flex gap-2 mb-4">
-                    <button
-                      onClick={() => setAlbumWizardMode("style")}
-                      className={`flex-1 rounded-lg py-2 text-xs font-semibold ${BTN_PRESS}`}
-                      style={{
-                        background: albumWizardMode === "style" ? "var(--color-amber-deep)" : "var(--color-chip)",
-                        color: albumWizardMode === "style" ? "#fff" : "var(--color-ink-soft)",
-                      }}
-                    >
-                      בנייה אוטומטית לפי סגנון
-                    </button>
-                    <button
-                      onClick={() => setAlbumWizardMode("saved")}
-                      className={`flex-1 rounded-lg py-2 text-xs font-semibold ${BTN_PRESS}`}
-                      style={{
-                        background: albumWizardMode === "saved" ? "var(--color-amber-deep)" : "var(--color-chip)",
-                        color: albumWizardMode === "saved" ? "#fff" : "var(--color-ink-soft)",
-                      }}
-                    >
-                      מתבנית שמורה
-                    </button>
-                  </div>
-                )}
+                <div className="space-y-4">
+                  {error && <p className="text-xs text-rose">{error}</p>}
+                  {buildingAlbumBook && <p className="text-xs text-ink-soft text-center">בונה את האלבום...</p>}
 
-                {albumWizardMode === "style" ? (
-                  <>
-                    {/* The style picker (מגזין/קלאסי/מקושקש/אורבני/קו נקי) and the old page-count/
-                        photo-count inputs are gone — the wizard now just needs a size, then creates
-                        a single blank custom page and drops straight into its editor (template bank
-                        or free-form). albumStyleDraft stays fixed at "classic" purely because saved
-                        book templates still need a style value in the DB row. */}
-                    {error && <p className="text-xs text-rose mb-2.5 mt-2">{error}</p>}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={buildStyledAlbum}
-                        disabled={buildingAlbumBook}
-                        className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-                      >
-                        {buildingAlbumBook ? "יוצר את האלבום..." : "יצירת האלבום"}
-                      </button>
-                      <button
-                        onClick={() => setAlbumManageOpen(false)}
-                        disabled={buildingAlbumBook}
-                        className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
-                      >
-                        חזרה
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
-                      {albumBookTemplates.map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => buildAlbumFromBookTemplate(t)}
-                          disabled={buildingAlbumBook}
-                          className="w-full flex items-center justify-between rounded-lg p-2.5 text-sm bg-chip disabled:opacity-60"
-                        >
-                          <span className="font-semibold">{t.name}</span>
-                          <span className="text-[11px] text-ink-soft">
-                            {t.pages.length} עמודים · {ALBUM_STYLE_OPTIONS.find((s) => s.id === t.style)?.label ?? t.style}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                    {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
-                    {buildingAlbumBook && <p className="text-xs text-ink-soft text-center">בונה את האלבום...</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={buildStyledAlbum}
+                      disabled={buildingAlbumBook}
+                      className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-60"
+                    >
+                      עיצוב אישי — התחלה מדף ריק
+                    </button>
                     <button
                       onClick={() => setAlbumManageOpen(false)}
                       disabled={buildingAlbumBook}
-                      className="w-full rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60 mt-2"
+                      className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
                     >
                       חזרה
                     </button>
-                  </>
-                )}
+                  </div>
+                </div>
               </>
+              )
             ) : (
               <>
                 {/* Status pill and the print-size cells share one row (middle-to-right in this RTL
@@ -3845,6 +4458,7 @@ export default function GalleryManageView({
                               onClick={() => {
                                 setCoverCustomWidth(album.width_cm);
                                 setCoverCustomHeight(album.height_cm);
+                                setCoverSquareLock(false);
                                 setCoverCustomMode(true);
                               }}
                               className="w-full rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink"
@@ -3859,7 +4473,11 @@ export default function GalleryManageView({
                                 type="number"
                                 min={1}
                                 value={coverCustomWidth}
-                                onChange={(e) => setCoverCustomWidth(Number(e.target.value) || coverCustomWidth)}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value) || coverCustomWidth;
+                                  setCoverCustomWidth(v);
+                                  if (coverSquareLock) setCoverCustomHeight(v);
+                                }}
                                 className="w-16 rounded-lg border border-line px-2 py-1.5 text-xs text-center"
                               />
                               <span className="text-[11px] text-ink-soft">×</span>
@@ -3867,13 +4485,34 @@ export default function GalleryManageView({
                                 type="number"
                                 min={1}
                                 value={coverCustomHeight}
-                                onChange={(e) => setCoverCustomHeight(Number(e.target.value) || coverCustomHeight)}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value) || coverCustomHeight;
+                                  setCoverCustomHeight(v);
+                                  if (coverSquareLock) setCoverCustomWidth(v);
+                                }}
                                 className="w-16 rounded-lg border border-line px-2 py-1.5 text-xs text-center"
                               />
                               <span className="text-[11px] text-ink-soft">ס״מ</span>
                             </div>
+                            <label className="flex items-center gap-1.5 text-[11px] text-ink-soft cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={coverSquareLock}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setCoverSquareLock(checked);
+                                  // Snap to a real square the moment it's turned on, instead of only
+                                  // affecting the NEXT edit — otherwise checking the box with two
+                                  // already-mismatched numbers still typed in looks like it did
+                                  // nothing until you touch a field.
+                                  if (checked) setCoverCustomHeight(coverCustomWidth);
+                                }}
+                                className="h-3.5 w-3.5"
+                              />
+                              ריבוע (רוחב וגובה זהים)
+                            </label>
                             <button
-                              onClick={() => createCoverSpread(coverCustomWidth, coverCustomHeight)}
+                              onClick={() => createCoverSpread(coverCustomWidth, coverSquareLock ? coverCustomWidth : coverCustomHeight)}
                               disabled={creatingSpread}
                               className="w-full rounded-lg py-2 text-xs font-semibold bg-ink text-white disabled:opacity-50"
                             >
@@ -3987,13 +4626,16 @@ export default function GalleryManageView({
           // photo_id_1/photo_id_2 are the real source of truth only for split/feature/stack preset
           // spreads — a "custom" free-design spread only ever fills them with a NOT-NULL-constraint
           // placeholder (see insertSpreadsFromFrameLists), so counting those as "used" there would
-          // falsely hide real favorites from every later page's picker.
+          // falsely hide real favorites from every later page's picker. A page's BACKGROUND photo is
+          // deliberately excluded too, per explicit request — setting a photo as a page's background
+          // is a different, non-exclusive kind of use (the same photo commonly also gets framed
+          // somewhere on the page), so it must never mark that photo "used" and hide it from pickers
+          // elsewhere; only actually placing it into a frame (an `elements` entry) should.
           const usedElsewhere = new Set(
             albumSpreads
               .filter((s) => s.id !== spread.id)
               .flatMap((s) => [
                 ...(s.layout === "custom" ? [] : [s.photo_id_1, s.photo_id_2]),
-                s.background_photo_id,
                 ...s.elements.filter((el): el is typeof el & { type: "photo"; photoId: string } => el.type === "photo" && !!el.photoId).map((el) => el.photoId),
               ].filter((id): id is string => !!id))
           );
@@ -4028,6 +4670,9 @@ export default function GalleryManageView({
               onDeleteCustomOrnament={handleDeleteCustomOrnament}
               spreads={albumSpreads}
               onSwitchSpread={(id) => setCanvasEditorTarget({ spreadId: id, mode: "custom" })}
+              onAddPage={createBlankSpread}
+              sidePanelOffset={albumSidePanelOffset}
+              onSidePanelOffsetChange={setAlbumSidePanelOffset}
             />
           );
         })()}
@@ -4266,6 +4911,32 @@ export default function GalleryManageView({
           </div>
         </div>
       )}
+      {removeFromPortfolioPhoto && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center"
+          style={{ background: "rgba(46,49,66,0.45)" }}
+          onClick={() => setRemoveFromPortfolioPhoto(null)}
+        >
+          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-base font-bold mb-1 font-display">הסרה מהפורטפוליו הציבורי</h2>
+            <p className="text-xs text-ink-soft mb-4">התמונה תוסר מעמוד הפורטפוליו הציבורי. אפשר להוסיף אותה שוב בכל שלב.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={confirmRemoveFromPortfolio}
+                className={`flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white ${BTN_PRESS}`}
+              >
+                כן, הסרה
+              </button>
+              <button
+                onClick={() => setRemoveFromPortfolioPhoto(null)}
+                className={`flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft ${BTN_PRESS}`}
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {cullingIndex !== null && (
         <PhotoCullingModal
           photos={photos}
@@ -4284,21 +4955,56 @@ function MgrPhotoOverlays({
   photo,
   isCover,
   selectedIds,
+  onDownload,
+  onSetCover,
   offset = 4,
 }: {
   photo: PhotoWithUrl;
   isCover: boolean;
   selectedIds: Set<string>;
+  onDownload?: (photo: PhotoWithUrl) => void;
+  onSetCover?: (photo: PhotoWithUrl) => void;
   offset?: number;
 }) {
+  // The parent thumbnail is itself a <button> (opens the lightbox on click), so these can't be
+  // real <button> elements — nested buttons are invalid HTML and browsers silently mangle the
+  // DOM. role="button" spans + stopPropagation get the same click/keyboard behavior without that.
+  const iconBtnClass = "absolute h-6 w-6 rounded-full bg-black/50 text-white flex items-center justify-center text-[11px]";
   return (
     <>
-      {isCover && (
+      {onSetCover && (
         <span
-          className="absolute text-[9px] px-1.5 py-0.5 rounded-full bg-black/60 text-white"
-          style={{ top: offset, right: offset }}
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSetCover(photo);
+          }}
+          className={iconBtnClass}
+          style={{ top: offset, right: offset, background: isCover ? "var(--color-amber-deep)" : "rgba(0,0,0,0.5)" }}
+          aria-label={isCover ? "שער הגלריה הנוכחי" : "קביעה כשער הגלריה"}
+          title={isCover ? "שער הגלריה הנוכחי" : "קביעה כשער הגלריה"}
         >
-          שער
+          ★
+        </span>
+      )}
+      {onDownload && (
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDownload(photo);
+          }}
+          className={iconBtnClass}
+          style={{ top: offset + 30, right: offset }}
+          aria-label="הורדת התמונה"
+          title="הורדת התמונה"
+        >
+          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
+            <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
+          </svg>
         </span>
       )}
       {selectedIds.size > 0 ? (
@@ -4331,12 +5037,20 @@ function MgrPhotoOverlays({
           ✗ נפסל
         </span>
       )}
+      {photo.custom_label && (
+        <span
+          className="absolute text-[9px] px-1.5 py-0.5 rounded-full bg-black/60 text-white max-w-[85%] truncate"
+          style={{ bottom: offset, left: "50%", transform: "translateX(-50%)" }}
+        >
+          ◆ {photo.custom_label}
+        </span>
+      )}
       {photo.in_portfolio && (
         <span
           className="absolute text-[11px] h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
           style={{ bottom: offset, left: offset }}
         >
-          ★
+          ✨
         </span>
       )}
     </>
@@ -4355,6 +5069,8 @@ function GallerySettingsModal({
   setClientPhone,
   allowDownloads,
   setAllowDownloads,
+  allowClientUpload,
+  setAllowClientUpload,
   expiryDays,
   setExpiryDays,
   expiryOptions,
@@ -4366,6 +5082,9 @@ function GallerySettingsModal({
   setCoverShape,
   coverPhotoId,
   setCoverPhotoId,
+  coverFocalX,
+  coverFocalY,
+  onPickCoverPhoto,
   titleFontOverride,
   setTitleFontOverride,
   gridStyleOverride,
@@ -4376,6 +5095,13 @@ function GallerySettingsModal({
   saving,
   onSave,
   onClose,
+  onDeleteGallery,
+  deletingGallery,
+  isArchived,
+  restoredOnce,
+  permanentDeleteAt,
+  onRestoreGallery,
+  restoringGallery,
 }: {
   isStandalone: boolean;
   title: string;
@@ -4388,9 +5114,11 @@ function GallerySettingsModal({
   setClientPhone: (v: string) => void;
   allowDownloads: boolean;
   setAllowDownloads: (v: boolean) => void;
-  expiryDays: 7 | 14 | 30 | 90 | 180 | null;
-  setExpiryDays: (v: 7 | 14 | 30 | 90 | 180) => void;
-  expiryOptions: { value: 7 | 14 | 30 | 90 | 180; label: string }[];
+  allowClientUpload: boolean;
+  setAllowClientUpload: (v: boolean) => void;
+  expiryDays: 7 | 14 | 30 | 90 | 180 | 365 | null;
+  setExpiryDays: (v: 7 | 14 | 30 | 90 | 180 | 365) => void;
+  expiryOptions: { value: 7 | 14 | 30 | 90 | 180 | 365; label: string }[];
   theme: string;
   setTheme: (v: string) => void;
   coverTextPosition: string;
@@ -4399,6 +5127,9 @@ function GallerySettingsModal({
   setCoverShape: (v: string) => void;
   coverPhotoId: string | null;
   setCoverPhotoId: (v: string) => void;
+  coverFocalX: number;
+  coverFocalY: number;
+  onPickCoverPhoto: (photo: PhotoWithUrl) => void;
   titleFontOverride: string | null;
   setTitleFontOverride: (v: string | null) => void;
   gridStyleOverride: string | null;
@@ -4409,9 +5140,21 @@ function GallerySettingsModal({
   saving: boolean;
   onSave: () => void;
   onClose: () => void;
+  onDeleteGallery: () => void;
+  deletingGallery: boolean;
+  isArchived: boolean;
+  restoredOnce: boolean;
+  permanentDeleteAt: string | null;
+  onRestoreGallery: () => void;
+  restoringGallery: boolean;
 }) {
   const [topTab, setTopTab] = useState<"details" | "style">("details");
   const [detailsTab, setDetailsTab] = useState<"details" | "permissions">("details");
+  // Two separate confirmation steps, deliberately — this is more consequential than the plain
+  // single-confirm patterns elsewhere in the app (e.g. cancel-subscription), since it removes a
+  // gallery from client view immediately, even though the underlying data survives 14 more days.
+  const [deleteStep, setDeleteStep] = useState<"idle" | "confirm1" | "confirm2">("idle");
+  const [restoreStep, setRestoreStep] = useState<"idle" | "confirm1" | "confirm2">("idle");
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
 
@@ -4515,28 +5258,52 @@ function GallerySettingsModal({
                     onChange={(e) => setTitle(e.target.value)}
                     className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
                   />
+                  <p className="text-[11px] text-ink-soft mt-1">
+                    השאירו ריק כדי שהשם יעודכן אוטומטית משם הלקוח/ה בעמוד האירוע — הקלדת שם כאן קובעת אותו סופית, גם אם שם האירוע ישתנה בהמשך.
+                  </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  {/* Real px min-width (not min-w-0) — iOS Safari's native date-input control can
-                      render with zero visible width when its flex item is allowed to shrink past
-                      its comfortable size. flex-wrap is the fallback if both truly don't fit. */}
+                <div className="flex gap-2">
+                  {/* min-w-0 (not a real px min-width) keeps each field to exactly its flex-1
+                      share of the row, so the two together always sum to the same width as the
+                      "שם הגלריה" field above. A native date input's own inline value renders
+                      wider than its declared 100% width once dir="ltr" applies inside this RTL
+                      page (confirmed on a real iPhone — see the identical fix in
+                      NewEventModal.tsx/EditEventModal.tsx) — the real <input> here is fully
+                      invisible (opacity-0) and just an interactive hit-target; the visible
+                      border/background/text is a plain div with overflow-hidden, so that
+                      overflow gets clipped instead of pushing this field wider than its sibling. */}
                   {isStandalone && (
-                    <div className="flex-1" style={{ minWidth: 150 }}>
+                    <div className="flex-1 min-w-0">
                       <label className="text-xs block mb-1 text-ink-soft">תאריך הצילום</label>
-                      <input
-                        type="date"
-                        value={shootDate}
-                        onChange={(e) => setShootDate(e.target.value)}
-                        className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-                      />
+                      <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
+                        <div className="pointer-events-none flex items-center justify-center px-3 py-2 text-sm" dir="ltr">
+                          {shootDate ? formatDateDMYFromInput(shootDate) : <span className="text-ink-soft">בחר תאריך</span>}
+                        </div>
+                        <input
+                          type="date"
+                          value={shootDate}
+                          onChange={(e) => setShootDate(e.target.value)}
+                          onClick={(e) => {
+                            // Wrapped in try/catch — a confirmed WebKit bug (showPicker() doesn't
+                            // work on iOS, webkit.org bug 261703) makes this throw on some iOS
+                            // Safari versions. Harmless no-op on affected devices; the input's own
+                            // native default tap-to-open doesn't depend on this call.
+                            try {
+                              (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                            } catch {}
+                          }}
+                          dir="ltr"
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        />
+                      </div>
                     </div>
                   )}
-                  <div className="flex-1" style={{ minWidth: 150 }}>
+                  <div className="flex-1 min-w-0">
                     <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
                     <select
                       value={expiryDays ?? expiryOptions[expiryOptions.length - 1].value}
-                      onChange={(e) => setExpiryDays(Number(e.target.value) as 7 | 14 | 30 | 90 | 180)}
+                      onChange={(e) => setExpiryDays(Number(e.target.value) as 7 | 14 | 30 | 90 | 180 | 365)}
                       className="w-full rounded-lg px-2 py-2 text-sm border border-line bg-white"
                     >
                       {expiryOptions.map((opt) => (
@@ -4595,6 +5362,24 @@ function GallerySettingsModal({
                     <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
                   </button>
                 </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
+                  <div>
+                    <div className="text-sm font-semibold">אפשרות העלאת תמונות ע&quot;י הלקוח/ה</div>
+                    <div className="text-xs text-ink-soft mt-0.5">כשמופעל, הלקוח/ה יוכלו להעלות תמונות משלהם ישירות לגלריה</div>
+                  </div>
+                  <button
+                    onClick={() => setAllowClientUpload(!allowClientUpload)}
+                    role="switch"
+                    aria-checked={allowClientUpload}
+                    className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
+                    style={{
+                      background: allowClientUpload ? "var(--color-amber-deep)" : "var(--color-line)",
+                      justifyContent: allowClientUpload ? "flex-start" : "flex-end",
+                    }}
+                  >
+                    <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+                  </button>
+                </div>
               </div>
             )}
           </>
@@ -4619,6 +5404,8 @@ function GallerySettingsModal({
                 textPosition={coverTextPosition}
                 shape={coverShape}
                 titleFontOverride={titleFontOverride}
+                focalX={coverFocalX}
+                focalY={coverFocalY}
               />
               {photos.length > 0 && (
                 <div className="mt-3">
@@ -4634,7 +5421,7 @@ function GallerySettingsModal({
                   {photos.map((p) => (
                     <button
                       key={p.id}
-                      onClick={() => setCoverPhotoId(p.id)}
+                      onClick={() => onPickCoverPhoto(p)}
                       className="shrink-0 h-14 w-14 rounded-lg overflow-hidden"
                       style={{
                         boxShadow:
@@ -4800,6 +5587,129 @@ function GallerySettingsModal({
         >
           {saving ? "שומר..." : "שמירת שינויים"}
         </button>
+
+        <div className="mt-6 pt-5 border-t border-line">
+          {isArchived ? (
+            restoredOnce ? (
+              <p className="text-xs text-center text-ink-soft">
+                הגלריה כבר נוצלה לשחזור חד-פעמי ולא ניתן לשחזר אותה שוב.
+                {permanentDeleteAt && ` תימחק סופית ב-${new Date(permanentDeleteAt).toLocaleDateString("he-IL")}.`}
+              </p>
+            ) : (
+              <>
+                {restoreStep === "idle" && (
+                  <button
+                    onClick={() => setRestoreStep("confirm1")}
+                    className="w-full rounded-lg py-2.5 text-sm font-semibold text-sage"
+                  >
+                    שחזור גלריה
+                  </button>
+                )}
+                {restoreStep === "confirm1" && (
+                  <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
+                    <p className="text-xs text-ink">לשחזר את הגלריה? היא תחזור להיות פעילה עם תוקף לחודש.</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setRestoreStep("idle")}
+                        className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
+                      >
+                        ביטול
+                      </button>
+                      <button
+                        onClick={() => setRestoreStep("confirm2")}
+                        className="flex-1 rounded-lg py-2 text-xs font-semibold bg-sage text-white"
+                      >
+                        כן, המשך
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {restoreStep === "confirm2" && (
+                  <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
+                    <p className="text-xs font-semibold text-sage">אישור אחרון</p>
+                    <p className="text-xs text-ink">
+                      זהו שחזור חד-פעמי — לא ניתן יהיה לשחזר את הגלריה שוב בעתיד. בפעם הבאה שתפוג או תימחק, היא
+                      תימחק סופית תוך 3 ימים בלבד.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setRestoreStep("idle")}
+                        disabled={restoringGallery}
+                        className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
+                      >
+                        ביטול
+                      </button>
+                      <button
+                        onClick={onRestoreGallery}
+                        disabled={restoringGallery}
+                        className="flex-1 rounded-lg py-2 text-xs font-semibold bg-sage text-white disabled:opacity-60"
+                      >
+                        {restoringGallery ? "משחזר..." : "כן, לשחזר"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )
+          ) : (
+            <>
+              {deleteStep === "idle" && (
+                <button
+                  onClick={() => setDeleteStep("confirm1")}
+                  className="w-full rounded-lg py-2.5 text-sm font-semibold text-rose"
+                >
+                  מחיקת הגלריה
+                </button>
+              )}
+              {deleteStep === "confirm1" && (
+                <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
+                  <p className="text-xs text-ink">
+                    בטוח שברצונך למחוק את הגלריה? הלקוח יאבד גישה לקישור מיד.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDeleteStep("idle")}
+                      className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
+                    >
+                      ביטול
+                    </button>
+                    <button
+                      onClick={() => setDeleteStep("confirm2")}
+                      className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white"
+                    >
+                      כן, המשך
+                    </button>
+                  </div>
+                </div>
+              )}
+              {deleteStep === "confirm2" && (
+                <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
+                  <p className="text-xs font-semibold text-rose">אישור אחרון</p>
+                  <p className="text-xs text-ink">
+                    הגלריה תישמר בארכיון {restoredOnce ? 3 : 14} ימים ואז תימחק סופית לצמיתות, כולל כל התמונות. לא
+                    ניתן לבטל לאחר המחיקה הסופית.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDeleteStep("idle")}
+                      disabled={deletingGallery}
+                      className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
+                    >
+                      ביטול
+                    </button>
+                    <button
+                      onClick={onDeleteGallery}
+                      disabled={deletingGallery}
+                      className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white disabled:opacity-60"
+                    >
+                      {deletingGallery ? "מוחק..." : "כן, למחוק את הגלריה"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

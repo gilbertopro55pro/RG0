@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
   }
 
-  const { clientName, items, subtotal, vatAmount, total, showVat, eventDetails }: {
+  const { clientName, items, subtotal, vatAmount, total, showVat, eventDetails, notes }: {
     clientName: string;
     items: PriceQuoteItem[];
     subtotal: number;
@@ -26,6 +26,7 @@ export async function POST(request: Request) {
     total: number;
     showVat?: boolean;
     eventDetails?: { type?: string; date?: string; location?: string; workHours?: string };
+    notes?: string;
   } = await request.json();
 
   const { data: photographer } = await supabase
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
     createdAt: new Date(),
     showVat,
     eventDetails,
+    notes,
   });
 
   return new NextResponse(new Uint8Array(pdfBytes), {

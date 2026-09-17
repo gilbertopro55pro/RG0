@@ -12,6 +12,7 @@ export type Photographer = {
   plan: SubscriptionPlan;
   google_calendar_connected: boolean;
   google_calendar_color_id: string | null;
+  google_calendar_import_color_id: string | null;
   apple_calendar_connected: boolean;
   apple_calendar_email: string | null;
   apple_calendar_app_password: string | null;
@@ -81,8 +82,17 @@ export type PriceQuoteRow = {
   event_location: string | null;
   work_start_time: string | null;
   work_end_time: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type PriceQuoteTemplateRow = {
+  id: string;
+  photographer_id: string;
+  name: string;
+  items: PriceQuoteItem[];
+  created_at: string;
 };
 
 export type EventRow = {
@@ -105,7 +115,25 @@ export type EventRow = {
   album_design_pdf_filename: string | null;
   resolution_note: string | null;
   notes: string | null;
+  contract_template_id: string | null;
+  contract_skipped: boolean;
+  // Set only by the calendar-scan bulk-import flow (see ProfileSettingsView.tsx) — highlights this
+  // event on the list differently until a saved edit clears it back to false.
+  needs_review: boolean;
+  // True when the photographer explicitly flagged this as covered by a freelance photographer on
+  // their behalf (set via the calendar-scan same-slot-collision checkbox). EventsListView.tsx
+  // treats an event as "freelance" when this is true OR package is one of the freelance_* types.
+  is_freelance: boolean;
   created_at: string;
+};
+
+export type ContractTemplateRow = {
+  id: string;
+  photographer_id: string;
+  name: string;
+  terms: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type CustomPackageRow = {
@@ -146,6 +174,114 @@ export type ClientMessageTemplateRow = {
   updated_at: string;
 };
 
+export type FrameOrientation = "portrait" | "landscape";
+
+// A photographer-placed text element on a magnet frame design — draggable, with independent
+// font/size/color and an optional drop shadow (blur + distance are independently controllable per
+// the "עדכון אדמין" spec, not coupled to one intensity slider like the album editor's photo
+// shadows). xPct/yPct are the element's CENTER as a percentage of its own canvas's width/height.
+export type MagnetFrameTextElement = {
+  id: string;
+  type: "text";
+  text: string;
+  xPct: number;
+  yPct: number;
+  fontKey: string;
+  fontSizePx: number;
+  color: string;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  shadowEnabled: boolean;
+  shadowBlurPx: number;
+  shadowDistancePx: number;
+};
+
+// A dropped decorative element — a built-in ALBUM_ORNAMENTS entry (ornamentId, recolorable via
+// `color`), a built-in MAGNET_FRAME_FLORALS raster illustration (floralId, a shared library asset
+// under public/magnet-elements — composited as-is like customElementAssetId below, since it's a
+// real painted image, not a recolorable procedural SVG), or the photographer's own uploaded image
+// (customElementAssetId, a MagnetFrameCustomElementRow id — same "composited as-is" treatment).
+// Only one of the three is ever set, same "picking one clears the others" rule as the frame-level
+// texture fields. sizePct is a percentage of the canvas's own SHORTER side, so the same element
+// reads at a consistent physical size whether it landed on the landscape or the portrait canvas.
+export type MagnetFrameDecorationElement = {
+  id: string;
+  type: "decoration";
+  ornamentId?: string;
+  floralId?: string;
+  customElementAssetId?: string;
+  xPct: number;
+  yPct: number;
+  sizePct: number;
+  color: string;
+};
+
+export type MagnetFrameElement = MagnetFrameTextElement | MagnetFrameDecorationElement;
+
+// A photographer-uploaded decorative element image — kept across every future design (not scoped
+// to one), same pattern as MagnetFrameCustomTextureRow.
+export type MagnetFrameCustomElementRow = {
+  id: string;
+  photographer_id: string;
+  storage_path: string;
+  original_filename: string;
+  created_at: string;
+};
+
+// The card's own style — shared by both orientations of one design (a style choice, not a
+// per-element placement). borderRatioPct is the white mat's thickness (top/left/right) as a % of
+// the canvas's shorter side; bottomBorderRatioPct is the SAME kind of value but for the bottom
+// edge only, independent of borderRatioPct (a classic "bottom-weighted mat" look) — it starts
+// equal to borderRatioPct so an untouched design shows no visual difference until the photographer
+// actually drags it. cornerRadiusPct rounds only the INNER photo-cutout corners (the outer card
+// edge always stays square) as a % of the cutout's own half-shorter-side, so 100 always means "as
+// round as it can go" regardless of the cutout's actual size.
+// frameColor/frameColorOpacity tint the white mat itself (0 opacity = pure white, exactly today's
+// look; higher opacity mixes in more of frameColor) — applied UNDER any texture, like dyeing the
+// paper before a pattern is printed on it.
+// textureId picks a built-in MAGNET_FRAME_TEXTURES entry; customTextureAssetId (a
+// MagnetFrameCustomTextureRow id) overrides it when set. Only one is ever "active" — selecting one
+// clears the other in the editor — but both fields exist so a save never loses whichever the
+// photographer had chosen.
+export type MagnetFrameSettings = {
+  borderRatioPct: number;
+  bottomBorderRatioPct: number;
+  cornerRadiusPct: number;
+  frameColor: string;
+  frameColorOpacity: number;
+  shadowEnabled: boolean;
+  shadowOpacity: number;
+  shadowBlurPx: number;
+  shadowDistancePx: number;
+  textureId: string | null;
+  textureOpacity: number;
+  customTextureAssetId: string | null;
+};
+
+// One saved design. landscape_elements (20x15cm) is what the photographer edits directly;
+// portrait_elements (15x20cm) is auto-derived at save time — see MagnetFrameEditor.tsx.
+export type MagnetFrameDesignRow = {
+  id: string;
+  photographer_id: string;
+  event_id: string | null;
+  landscape_elements: MagnetFrameElement[];
+  portrait_elements: MagnetFrameElement[];
+  frame_settings: MagnetFrameSettings;
+  created_at: string;
+  updated_at: string;
+};
+
+// A photographer-uploaded texture image, tiled across the mat the same way a built-in
+// MAGNET_FRAME_TEXTURES entry is — see composeMagnetFrameTexture in magnetFrame.ts.
+export type MagnetFrameCustomTextureRow = {
+  id: string;
+  photographer_id: string;
+  storage_path: string;
+  original_filename: string;
+  created_at: string;
+};
+
 export type ContractStatus = "draft" | "sent" | "signed";
 
 export type EventContractRow = {
@@ -179,6 +315,11 @@ export type LeadRow = {
   quote_token: string;
   quote_note: string | null;
   quote_sent_at: string | null;
+  // Set the moment the client taps "אישור ההצעה" on the public /quotes/[token] page — distinct
+  // from converted_event_id (set later, once the follow-up questionnaire actually creates the
+  // event), so the page can tell "not yet approved" / "approved, questionnaire pending" / "done"
+  // apart. Part of the admin-gated quote-approval-to-event flow (see quotes/[token]/page.tsx).
+  quote_approved_at: string | null;
   converted_event_id: string | null;
   event_type_name: string | null;
   created_at: string;
@@ -226,6 +367,15 @@ export type EventPaymentRow = {
   balance_paid_at: string | null;
   deposit_document_url: string | null;
   balance_document_url: string | null;
+  // Set only for a partial payment (deposit_paid/balance_paid stay false) — the remaining balance
+  // is always computed live from deposit_amount/balance_amount rather than stored, so it can never
+  // go stale if the declared amount itself is edited later.
+  deposit_paid_amount: number | null;
+  balance_paid_amount: number | null;
+  // Private, photographer-only free text (never shown on the client portal) — what the remaining
+  // balance on that leg covers.
+  deposit_notes: string | null;
+  balance_notes: string | null;
 };
 
 export type EventStageRow = {
@@ -252,21 +402,33 @@ export type GalleryRow = {
   event_id: string | null;
   photographer_id: string;
   title: string;
+  // false = title tracks the linked event's client_name live (kept in sync whenever the event is
+  // renamed); true = the photographer explicitly typed a title in gallery settings, which then
+  // stays exactly as they set it regardless of later event renames. See migration
+  // 0102_gallery_title_customized.sql and createEvent.ts / GalleryManageView.tsx's saveSettings.
+  title_customized: boolean;
   access_token: string;
   password: string | null;
   published: boolean;
   cover_photo_id: string | null;
+  // Percentage (0-100) of the cover photo to keep centered once it's cropped to the banner's fixed
+  // aspect ratio — see coverAspectRatio in galleryTheme.ts. Defaults to 50/50 (dead-center).
+  cover_focal_x: number;
+  cover_focal_y: number;
   expiry_months: 1 | 3 | 6 | null;
-  expiry_days: 7 | 14 | 30 | 90 | 180 | null;
+  expiry_days: 7 | 14 | 30 | 90 | 180 | 365 | null;
   published_at: string | null;
   expires_at: string | null;
   archived_at: string | null;
+  archive_reason: "expired" | "manual" | null;
   permanent_delete_at: string | null;
+  restored_once: boolean;
   selection_confirmed_at: string | null;
   shoot_date: string | null;
   client_email: string | null;
   client_phone: string | null;
   allow_downloads: boolean;
+  allow_client_upload: boolean;
   reminder_sent_at: string | null;
   whatsapp_reminder_sent_at: string | null;
   theme: string;
@@ -278,6 +440,7 @@ export type GalleryRow = {
   slideshow_photo_ids: string[];
   ftp_username: string | null;
   ftp_password: string | null;
+  is_portfolio_only: boolean;
   created_at: string;
 };
 
@@ -293,6 +456,9 @@ export type GalleryPhotoRow = {
   file_size_bytes: number;
   sort_order: number;
   is_favorite: boolean;
+  // Free-text note the CLIENT attaches via the diamond icon next to the favorite heart (e.g.
+  // "קנבס") — never set by the photographer side. Null means no label.
+  custom_label: string | null;
   folder_id: string | null;
   culling_status: "pending" | "kept" | "rejected";
   in_portfolio: boolean;
@@ -342,6 +508,37 @@ export type GalleryZipJobRow = {
   expires_at: string;
 };
 
+export type AlbumExportFormat = "jpg" | "psd" | "pdf";
+export type AlbumExportJobStatus = "pending" | "processing" | "ready" | "failed" | "cancelled";
+
+export type GalleryAlbumExportJobRow = {
+  id: string;
+  album_id: string;
+  gallery_id: string;
+  photographer_id: string;
+  format: AlbumExportFormat;
+  from_page: number;
+  to_page: number;
+  quality: "high" | "web" | null;
+  status: AlbumExportJobStatus;
+  processed_count: number;
+  total_count: number;
+  storage_path: string | null;
+  error_message: string | null;
+  send_to_email: string | null;
+  // PDF only — which entry of QUALITY_STEPS (albumExportJobs.ts) the NEXT invocation should try.
+  // Lets a size-fitting retry pass run as its own fresh invocation instead of looping inline inside
+  // one, so a timeout mid-loop no longer restarts every quality step from the top.
+  pdf_quality_step_index: number;
+  // PDF only — how many pages of the CURRENT quality-step attempt are already rendered into the
+  // in-progress document (see generateAlbumPdf's resumeFromDoc/pageRange). Lets a pass render in
+  // small page batches, each its own invocation, instead of the whole pass in one call.
+  pdf_page_index: number;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+};
+
 export type AlbumStatus = "draft" | "sent" | "approved" | "changes_requested";
 
 export type AlbumSpreadLayout = "split" | "feature" | "stack" | "custom";
@@ -370,7 +567,12 @@ export type AlbumPhotoElement = {
   rotation?: number; // degrees, -180..180, default 0
   opacity?: number; // 0-100, default 100
   blur?: number; // 0-100 (an arbitrary intensity scale, not raw px), default 0
-  shadow?: number; // 0-100 drop-shadow intensity, default 0
+  shadow?: number; // 0-100 drop-shadow intensity (also its opacity), default 0
+  // Independent overrides for the shadow's offset/softness — undefined means "derive from `shadow`
+  // itself", same coupled behavior as before these existed, so every already-saved album renders
+  // unchanged until a photographer explicitly drags one of these.
+  shadowDistance?: number; // 0-100, default undefined (falls back to `shadow`)
+  shadowBlur?: number; // 0-100, default undefined (falls back to `shadow`)
   zoom?: number; // 100-400, extra scale on top of the object-fit:cover baseline, default 100
   lockAspect?: boolean; // when true, corner-handle resizing preserves the width/height ratio
   maskId?: string; // id into ALBUM_MASKS (src/lib/albumMasks.ts) — an alpha mask applied over the cropped photo
@@ -388,6 +590,15 @@ export type AlbumPhotoElement = {
   tint?: number; // green (-) to magenta (+)
   vibrance?: number;
   saturation2?: number; // suffixed — `filter: "bw"` already means "fully desaturated" and is separate
+  // 0-100 edge-enhancement intensity, default 0/undefined. Kept OUT of the exposure/contrast/etc
+  // group above and out of albumAdjustments.ts's shared math entirely — see albumSharpen.ts's own
+  // top comment for why (a spatial convolution, not a per-pixel curve).
+  sharpness?: number;
+  // When true, blocks both move and resize (see startDrag's own guard in AlbumSpreadCanvasEditor.tsx)
+  // — a photographer's final-position safeguard against nudging something out of place by accident.
+  // Still selectable (so the lock can be toggled back off) and still fully editable in every OTHER
+  // way (color/effects/etc) — only position and size are frozen.
+  locked?: boolean;
 };
 
 // Points on the album's fixed 1600pt-wide PDF reference canvas (same canvas the PDF proof export
@@ -410,6 +621,9 @@ export type AlbumTextElement = {
   // palette picker (see TEXT_COLOR_PALETTE in src/lib/textColor.ts).
   color: string;
   align: "right" | "center" | "left";
+  shadow?: number; // 0-100 drop-shadow intensity, default 0 — same 0-100 scale as AlbumPhotoElement.shadow
+  glow?: number; // 0-100 outer-glow intensity (soft white halo, for light text over busy photos), default 0
+  locked?: boolean; // see AlbumPhotoElement.locked's own comment
 };
 
 // A standalone decorative overlay graphic (see src/lib/albumOrnaments.ts) — distinct from a mask
@@ -434,6 +648,7 @@ export type AlbumOrnamentElement = {
   shadow?: number; // 0-100, same scale/meaning as AlbumPhotoElement.shadow
   borderWidth?: number; // px, same scale/meaning as AlbumPhotoElement.borderWidth
   borderColor?: string;
+  locked?: boolean; // see AlbumPhotoElement.locked's own comment
 };
 
 // A freely positioned solid-color geometric shape — a plain rectangle by default, or clipped to
@@ -461,6 +676,7 @@ export type AlbumShapeElement = {
   // thin bar — the tag exists only so the UI can show it a dedicated thickness slider and let it
   // resize past the page edge like the two true outline kinds.
   shapeStyle?: "rect-outline" | "circle-outline" | "line";
+  locked?: boolean; // see AlbumPhotoElement.locked's own comment
 };
 
 export type AlbumElement = AlbumPhotoElement | AlbumTextElement | AlbumOrnamentElement | AlbumShapeElement;
@@ -520,6 +736,7 @@ export type GalleryAlbumSpreadRow = {
   background_photo_id: string | null;
   background_blur: number; // 0-100
   background_opacity: number; // 0-100
+  background_zoom: number; // 100-400, same convention as AlbumPhotoElement.zoom, default 100
   // Per-spread physical-size override, in cm — null means "use the album's own width_cm/
   // height_cm". Only ever set on a cover page created at a custom size.
   width_cm: number | null;
@@ -533,6 +750,14 @@ export type GalleryAlbumCommentRow = {
   spread_id: string;
   text: string;
   created_at: string;
+};
+
+// Single-row heartbeat the PDF export worker writes on every poll tick — see
+// src/lib/renderWorkerHealth.ts and migration 0103_worker_status.sql.
+export type WorkerStatusRow = {
+  id: 1;
+  code_hash: string;
+  last_heartbeat_at: string;
 };
 
 export type TeamMember = {

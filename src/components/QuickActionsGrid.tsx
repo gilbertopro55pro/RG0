@@ -4,7 +4,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics, IconCalculator } from "@/components/icons/NavIcons";
-import type { PriceQuoteRow, PricingSupplier } from "@/lib/types";
+import type { PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
 
 const EventPricingCalculator = dynamic(() => import("@/components/EventPricingCalculator"), { ssr: false });
 
@@ -24,14 +24,18 @@ export default function QuickActionsGrid({
   hourlyRate,
   suppliers,
   priceQuotes,
+  templates,
   eventTypes,
   initialCustomEventTypes,
+  defaultTaxStatus,
 }: {
   hourlyRate: number;
   suppliers: PricingSupplier[];
   priceQuotes: PriceQuoteRow[];
+  templates: PriceQuoteTemplateRow[];
   eventTypes: { id: string; name: string }[];
   initialCustomEventTypes: string[];
+  defaultTaxStatus: "exempt" | "licensed";
 }) {
   const [calculatorOpen, setCalculatorOpen] = useState(false);
 
@@ -74,8 +78,10 @@ export default function QuickActionsGrid({
           hourlyRate={hourlyRate}
           suppliers={suppliers}
           priceQuotes={priceQuotes}
+          templates={templates}
           eventTypes={eventTypes}
           initialCustomEventTypes={initialCustomEventTypes}
+          defaultTaxStatus={defaultTaxStatus}
           onClose={() => setCalculatorOpen(false)}
         />
       )}

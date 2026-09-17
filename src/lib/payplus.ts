@@ -85,7 +85,12 @@ export function verifyPayplusWebhookSignature(rawBody: string, hashHeader: strin
   if (!hashHeader) return false;
   const secretKey = requireEnv("PAYPLUS_SECRET_KEY");
   const expected = crypto.createHmac("sha256", secretKey).update(rawBody).digest("base64");
-  return expected === hashHeader;
+  // timingSafeEqual over a plain === (see verifyWhatsAppSignature in whatsapp.ts for the same
+  // pattern) — a naive string compare short-circuits on the first mismatched byte, leaking a tiny
+  // but real timing signal an attacker could in principle use to guess the signature byte by byte.
+  const expectedBuf = Buffer.from(expected);
+  const providedBuf = Buffer.from(hashHeader);
+  return expectedBuf.length === providedBuf.length && crypto.timingSafeEqual(expectedBuf, providedBuf);
 }
 
 // A plan switch never takes effect immediately — see migration 0073's comment for why. The

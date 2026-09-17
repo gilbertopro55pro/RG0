@@ -12,9 +12,15 @@
      with margin (5.0-6.0:1) across every blob color, computed directly against the real
      composited backdrop rather than assumed. */
   --color-ink-soft: #5f5d7c;
-  --color-amber: #6c8eff; /* pastel periwinkle-blue — primary accent */
-  --color-amber-deep: #4a5fd9;
-  --color-amber-bg: #edf1ff;
+  /* Low-chroma ultramarine — deepened and desaturated from the original candy-periwinkle so the
+     primary accent reads as considered rather than playful. Every other feature color below is
+     untouched (they drive the nav icon badges — see QuickActionsGrid/TopNav — which stay exactly
+     as they were). */
+  --color-amber: #5b6fd1; /* primary accent */
+  --color-amber-deep: #3e4fb8;
+  --color-amber-bg: #eceffb;
+  /* Money amounts only — never used decoratively. See DashboardHero's revenue figures. */
+  --color-brass: #a6822f;
   --color-sage: #52c98f; /* pastel mint-green — done / success */
   --color-sage-bg: #e9faf1;
   --color-rose: #ff6b6b; /* soft coral-red — danger, less harsh than systemRed */
@@ -29,7 +35,7 @@
   /* Shared "neutral chip" surface reused across many components for unselected pill/tab/row
      backgrounds — kept as its own token (rather than each component hardcoding the hex) so dark
      mode can retint every one of them from this single place. */
-  --color-chip: #f7f6f3;
+  --color-chip: #f5f4fa; /* biased slightly toward violet, matching --color-paper's own tint */
   /* Warm highlight used only for the stage-tracker's "current step" row. */
   --color-chip-tint: #fbf3e4;
   /* TopNav's translucent bar background — separate from --color-card because the nav sits
@@ -52,9 +58,10 @@
   --color-paper: #14121f;
   --color-ink: #edebf7;
   --color-ink-soft: #b4b0d0;
-  --color-amber: #8ca2ff;
-  --color-amber-deep: #6c85f5;
-  --color-amber-bg: rgba(108, 142, 255, 0.16);
+  --color-amber: #8792d6;
+  --color-amber-deep: #6672c4;
+  --color-amber-bg: rgba(99, 110, 199, 0.18);
+  --color-brass: #d4af6a;
   --color-sage: #5fd9a0;
   --color-sage-bg: rgba(95, 217, 160, 0.14);
   --color-rose: #ff8585;
@@ -71,6 +78,52 @@
   --color-input-bg: #211f33;
 }
 
+/* Landing page only — a warmer, quieter, more editorial palette than the rest of the app's
+   pastel-glass identity, inspired by pix-online.com's research (a competitor whose marketing page
+   leans warm/neutral and lets the photography itself carry the color) without copying it 1:1: the
+   indigo accent (--color-amber-deep, --color-amber, --color-rose/--color-sage semantic colors)
+   stays exactly as-is — that's still OUR brand identity — only the neutral paper/ink/card/line
+   tokens shift warmer. Scoped to this one class (applied to LandingPage.tsx's own root div, which
+   also paints an opaque background over the body's own fixed colorful gradient blobs — see body's
+   own comment above — so nothing from the authenticated app's glass aesthetic bleeds through) so
+   the dashboard and every other screen keep their current look untouched. */
+.landing-warm {
+  --color-paper: #f7f2ea;
+  --color-ink: #241d15;
+  --color-ink-soft: #6b5f4f;
+  --color-line: #e6dcc9;
+  --color-card: #ffffff;
+  --color-chip: #f1ebe0;
+}
+:root[data-theme="dark"] .landing-warm {
+  --color-paper: #1c1712;
+  --color-ink: #efe6d8;
+  --color-ink-soft: #b3a48e;
+  --color-line: #3a3025;
+  --color-card: #262019;
+  --color-chip: #2b241c;
+}
+/* No colorful body gradient shows through an opaque --color-card here, so the blur/saturate glass
+   effect would just be wasted GPU work — turned off within this scope only. */
+.landing-warm .bg-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* body's own background-attachment: fixed gradient (see body's comment above) turned out to cause
+   a real, reproducible Chromium scroll-repaint compositing artifact — a stale band of the fixed
+   gradient's colors visibly left behind near the top of the viewport while scrolled, confirmed via
+   getComputedStyle/elementFromPoint at the affected pixel showing the CORRECT warm color underneath
+   the whole time (a paint bug, not a CSS logic bug — isolation: isolate on the landing wrapper did
+   not fix it either, since the fixed background lives on body, an ANCESTOR the wrapper's own new
+   stacking context can't affect). Simplest robust fix: body never establishes the fixed-attachment
+   layer at all on this page, via :has() rather than any JS/route wiring. --color-paper here is
+   deliberately body's own (unwarmed) token, not landing-warm's — irrelevant, since the opaque
+   .landing-warm wrapper (w-full min-h-screen) always fully covers body beneath it. */
+body:has(.landing-warm) {
+  background: var(--color-paper);
+  background-attachment: scroll;
+}
+
 @theme inline {
   --color-paper: var(--color-paper);
   --color-ink: var(--color-ink);
@@ -78,6 +131,7 @@
   --color-amber: var(--color-amber);
   --color-amber-deep: var(--color-amber-deep);
   --color-amber-bg: var(--color-amber-bg);
+  --color-brass: var(--color-brass);
   --color-sage: var(--color-sage);
   --color-sage-bg: var(--color-sage-bg);
   --color-rose: var(--color-rose);
@@ -96,9 +150,11 @@
   --font-data: var(--font-ibm-plex-mono), monospace;
 
   /* Soft, diffused, faintly violet-tinted shadows (not flat gray) — reads as premium glass
-     lifting off the pastel canvas rather than a flat card with a generic drop shadow. */
-  --shadow-card: 0 1px 1px rgba(88, 76, 158, 0.04), 0 10px 28px rgba(88, 76, 158, 0.09);
-  --shadow-sheet: 0 4px 16px rgba(88, 76, 158, 0.10), 0 24px 56px rgba(88, 76, 158, 0.16);
+     lifting off the pastel canvas rather than a flat card with a generic drop shadow. A tight
+     near-shadow plus a wider, deeper far-shadow reads as real material lift, not a flat CSS
+     drop-shadow applied for its own sake. */
+  --shadow-card: 0 1px 2px rgba(66, 58, 130, 0.06), 0 16px 36px rgba(66, 58, 130, 0.13);
+  --shadow-sheet: 0 4px 18px rgba(66, 58, 130, 0.12), 0 28px 64px rgba(66, 58, 130, 0.20);
 }
 
 body {
@@ -143,20 +199,28 @@ body {
 
 /* Frosted-glass treatment layered onto every element using Tailwind's bg-card utility — one
    rule, applies app-wide, since bg-card is already the shared "surface" class for cards, sheets
-   and panels throughout the app. The inset highlight along the top edge is what sells "glass"
-   rather than just "translucent" — a bright bevel catching light, like a real pane. */
+   and panels throughout the app. A true bevel needs light on the top edge AND a whisper of shadow
+   on the bottom edge — a highlight alone reads as a flat line, not a pane with real thickness.
+   Saturate pulled back from 190% to 160% (still vivid, no longer candy) — restraint reads as
+   premium, saturation for its own sake reads as a trend. */
 .bg-card {
-  backdrop-filter: blur(36px) saturate(190%);
-  -webkit-backdrop-filter: blur(36px) saturate(190%);
+  backdrop-filter: blur(32px) saturate(160%);
+  -webkit-backdrop-filter: blur(32px) saturate(160%);
   /* !important: components also apply Tailwind's border/border-line utilities alongside
      bg-card, and per this project's Tailwind v4 cascade-layer setup those can otherwise win
      over this plain (unlayered) rule despite normal source-order expectations. */
-  border: 1px solid rgba(255, 255, 255, 0.6) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(66, 58, 130, 0.07),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 :root[data-theme="dark"] .bg-card {
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 /* The same glass treatment for the app's solid action buttons (dark/blue/red primary buttons) —
@@ -166,16 +230,17 @@ body {
 .bg-ink,
 .bg-amber-deep,
 .bg-rose {
-  backdrop-filter: blur(20px) saturate(170%);
-  -webkit-backdrop-filter: blur(20px) saturate(170%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 8px 20px rgba(88, 76, 158, 0.16);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 8px 20px rgba(66, 58, 130, 0.18);
   transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
 }
 .bg-ink {
   background-color: rgba(32, 31, 51, 0.86) !important;
 }
 .bg-amber-deep {
-  background-color: rgba(74, 95, 217, 0.86) !important;
+  /* rgb(62, 79, 184) = the refined --color-amber-deep (#3e4fb8) */
+  background-color: rgba(62, 79, 184, 0.86) !important;
 }
 .bg-rose {
   background-color: rgba(255, 107, 107, 0.86) !important;
@@ -185,7 +250,8 @@ body {
   background-color: rgba(20, 18, 32, 0.86) !important;
 }
 :root[data-theme="dark"] .bg-amber-deep {
-  background-color: rgba(108, 133, 245, 0.86) !important;
+  /* rgb(102, 114, 196) = the refined dark --color-amber-deep (#6672c4) */
+  background-color: rgba(102, 114, 196, 0.86) !important;
 }
 :root[data-theme="dark"] .bg-rose {
   background-color: rgba(255, 107, 107, 0.78) !important;
@@ -259,13 +325,13 @@ a[role="button"]:not([aria-disabled="true"]).js-pressed {
   .nav-tile:hover {
     transform: translateY(-2px) scale(1.03);
     filter: brightness(1.04);
-    box-shadow: 0 10px 24px rgba(88, 76, 158, 0.14);
+    box-shadow: 0 10px 24px rgba(66, 58, 130, 0.16);
   }
 
   .bg-ink:hover,
   .bg-amber-deep:hover,
   .bg-rose:hover {
     transform: translateY(-1px);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 12px 26px rgba(88, 76, 158, 0.22);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 12px 26px rgba(66, 58, 130, 0.24);
   }
 }

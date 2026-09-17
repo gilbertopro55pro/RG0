@@ -1,129 +1,83 @@
-import { NextResponse } from "next/server";
-import { ZipArchive } from "archiver";
-import { Readable } from "node:stream";
+import { NextResponse, after } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { authenticateGalleryRequest } from "@/lib/desktopAuth";
-import { renderAlbumPageJpeg, pxFromCm } from "@/lib/albumRaster";
-import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
-
-function sanitizeSegment(name: string): string {
-  return name.replace(/[/\\:*?"<>|]/g, "-").trim() || "אלבום";
-}
+import { countExportPages, findActiveExportJob, triggerAlbumExportProcessing } from "@/lib/albumExportJobs";
+import type { GalleryAlbumRow, GalleryRow } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
 
+// Creates a background export job and returns immediately — the actual page-by-page rendering
+// happens in a separate invocation (see albumExportJobs.ts), with real per-page progress the
+// client polls for at export-jobs/[jobId]. Replaces the old synchronous
+// render-everything-then-stream-the-zip approach, which gave the client zero visibility into how
+// far along a slow export actually was.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id: galleryId } = await params;
-  const auth = await authenticateGalleryRequest(request);
-  if ("error" in auth) return auth.error;
-  const supabase = createServiceRoleClient();
+  // See export-pdf/route.ts's own comment on why this whole body is now wrapped — an unhandled
+  // exception here used to crash with a non-JSON response the client couldn't parse, surfacing as
+  // an unhelpful generic error with zero diagnostic info.
+  try {
+    const { id: galleryId } = await params;
+    const auth = await authenticateGalleryRequest(request);
+    if ("error" in auth) return auth.error;
+    const supabase = createServiceRoleClient();
 
-  const { data: gallery } = await supabase
-    .from("galleries")
-    .select("*")
-    .eq("id", galleryId)
-    .maybeSingle<GalleryRow>();
-  if (!gallery || gallery.photographer_id !== auth.userId) {
-    return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
-  }
-
-  const { data: album } = await supabase
-    .from("gallery_albums")
-    .select("*")
-    .eq("gallery_id", galleryId)
-    .maybeSingle<GalleryAlbumRow>();
-  if (!album) {
-    return NextResponse.json({ error: "לא נמצא אלבום לגלריה זו" }, { status: 404 });
-  }
-
-  const { data: spreads } = await supabase
-    .from("gallery_album_spreads")
-    .select("*")
-    .eq("album_id", album.id)
-    .order("sort_order", { ascending: true })
-    .returns<GalleryAlbumSpreadRow[]>();
-  if (!spreads || spreads.length === 0) {
-    return NextResponse.json({ error: "אין עדיין עמודים באלבום" }, { status: 400 });
-  }
-
-  // Page range from the "which pages to export" modal — page 1 is the cover (when present),
-  // then each spread follows in sort order. Falls back to the full album when the caller sends
-  // no body (or an unparseable one).
-  const body: { from?: number; to?: number } = await request.json().catch(() => ({}));
-  const hasCover = !!album.cover_photo_id;
-  const totalPages = (hasCover ? 1 : 0) + spreads.length;
-  const rangeStart = Math.max(1, Math.min(body.from ?? 1, body.to ?? totalPages, totalPages));
-  const rangeEnd = Math.max(rangeStart, Math.min(Math.max(body.from ?? 1, body.to ?? totalPages), totalPages));
-  const includeCover = hasCover && rangeStart <= 1;
-  const rangedSpreads = spreads
-    .map((spread, i) => ({ spread, pageNumber: (hasCover ? 1 : 0) + i + 1 }))
-    .filter(({ pageNumber }) => pageNumber >= rangeStart && pageNumber <= rangeEnd)
-    .map(({ spread }) => spread);
-
-  const photoIds = Array.from(
-    new Set([
-      ...(includeCover && album.cover_photo_id ? [album.cover_photo_id] : []),
-      ...rangedSpreads.flatMap((s) => [s.photo_id_1, s.photo_id_2, s.background_photo_id].filter((id): id is string => !!id)),
-      ...rangedSpreads.flatMap((s) =>
-        s.elements.filter((el): el is typeof el & { type: "photo"; photoId: string } => el.type === "photo" && !!el.photoId).map((el) => el.photoId)
-      ),
-    ])
-  );
-  const { data: photos } = await supabase
-    .from("gallery_photos")
-    .select("id, storage_path")
-    .in("id", photoIds)
-    .returns<Pick<GalleryPhotoRow, "id" | "storage_path">[]>();
-  const photosById = new Map((photos ?? []).map((p) => [p.id, p]));
-
-  const customOrnamentIds = Array.from(
-    new Set(
-      rangedSpreads.flatMap((s) =>
-        s.elements.filter((el): el is typeof el & { type: "ornament"; customOrnamentId: string } => el.type === "ornament" && !!el.customOrnamentId).map((el) => el.customOrnamentId)
-      )
-    )
-  );
-  let customOrnamentsById: Map<string, { storage_path: string }> | undefined;
-  if (customOrnamentIds.length > 0) {
-    const { data: customOrnaments } = await supabase
-      .from("custom_ornaments")
-      .select("id, storage_path")
-      .in("id", customOrnamentIds)
-      .returns<{ id: string; storage_path: string }[]>();
-    customOrnamentsById = new Map((customOrnaments ?? []).map((o) => [o.id, { storage_path: o.storage_path }]));
-  }
-
-  // Album-wide size by default; a spread with its own width_cm/height_cm (currently only ever a
-  // custom-sized cover page) overrides it for just that one page.
-  const pageWidthPx = pxFromCm(album.width_cm);
-  const pageHeightPx = pxFromCm(album.height_cm);
-
-  const rootDir = sanitizeSegment(`${album.title} - ${gallery.title}`);
-  const archive = new ZipArchive({ zlib: { level: 6 } });
-
-  (async () => {
-    try {
-      if (includeCover) {
-        const jpeg = await renderAlbumPageJpeg({ album, spread: null, isCover: true, pageWidthPx, pageHeightPx, photosById, customOrnamentsById });
-        if (jpeg) archive.append(jpeg, { name: `${rootDir}/01 - שער.jpg` });
-      }
-      for (const spread of rangedSpreads) {
-        const pageNumber = (hasCover ? 1 : 0) + spreads.indexOf(spread) + 1;
-        const spreadWidthPx = spread.width_cm ? pxFromCm(spread.width_cm) : pageWidthPx;
-        const spreadHeightPx = spread.height_cm ? pxFromCm(spread.height_cm) : pageHeightPx;
-        const jpeg = await renderAlbumPageJpeg({ album, spread, isCover: false, pageWidthPx: spreadWidthPx, pageHeightPx: spreadHeightPx, photosById, customOrnamentsById });
-        if (jpeg) archive.append(jpeg, { name: `${rootDir}/${String(pageNumber).padStart(2, "0")}.jpg` });
-      }
-    } finally {
-      archive.finalize();
+    const { data: gallery } = await supabase.from("galleries").select("*").eq("id", galleryId).maybeSingle<GalleryRow>();
+    if (!gallery || gallery.photographer_id !== auth.userId) {
+      return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
     }
-  })();
 
-  return new Response(Readable.toWeb(archive) as ReadableStream, {
-    headers: {
-      "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="album-jpg.zip"; filename*=UTF-8''${encodeURIComponent(`${rootDir}.zip`)}`,
-    },
-  });
+    const { data: album } = await supabase.from("gallery_albums").select("*").eq("gallery_id", galleryId).maybeSingle<GalleryAlbumRow>();
+    if (!album) {
+      return NextResponse.json({ error: "לא נמצא אלבום לגלריה זו" }, { status: 404 });
+    }
+
+    // One active export at a time per PHOTOGRAPHER, regardless of which gallery/format/screen
+    // asked — see findActiveExportJob's own comment for why this lives here instead of only as
+    // client state.
+    const active = await findActiveExportJob(supabase, gallery.photographer_id);
+    if (active) return NextResponse.json({ jobId: active.id, alreadyActive: true, format: active.format, galleryId: active.galleryId });
+
+    const body: { from?: number; to?: number } = await request.json().catch(() => ({}));
+    const fromPage = body.from ?? 1;
+    const toPage = body.to ?? fromPage;
+
+    const totalCount = await countExportPages(galleryId, fromPage, toPage);
+    if (totalCount === null) {
+      return NextResponse.json({ error: "אין עדיין עמודים באלבום" }, { status: 400 });
+    }
+
+    const { data: job, error } = await supabase
+      .from("gallery_album_export_jobs")
+      .insert({
+        album_id: album.id,
+        gallery_id: gallery.id,
+        photographer_id: gallery.photographer_id,
+        format: "jpg",
+        from_page: fromPage,
+        to_page: toPage,
+        total_count: totalCount,
+      })
+      .select("id")
+      .single<{ id: string }>();
+    if (error || !job) {
+      // 23505 = unique_violation on gallery_album_export_jobs_one_active_per_photographer (see
+      // that migration's own comment) — two export requests raced the findActiveExportJob check
+      // above and both got past it before either INSERT landed; this is the database catching what
+      // the check itself couldn't. The other request's job won, so re-fetch and return THAT one as
+      // "already active" instead of surfacing a raw insert error for what's actually a normal race.
+      if (error?.code === "23505") {
+        const winner = await findActiveExportJob(supabase, gallery.photographer_id);
+        if (winner) return NextResponse.json({ jobId: winner.id, alreadyActive: true, format: winner.format, galleryId: winner.galleryId });
+      }
+      return NextResponse.json({ error: error?.message ?? "שגיאה ביצירת הייצוא" }, { status: 500 });
+    }
+
+    const origin = new URL(request.url).origin;
+    after(() => triggerAlbumExportProcessing(job.id, origin));
+
+    return NextResponse.json({ jobId: job.id });
+  } catch (e) {
+    console.error("[export-jpg] unhandled error creating export job", e);
+    return NextResponse.json({ error: e instanceof Error ? e.message : "שגיאה לא צפויה ביצירת הייצוא" }, { status: 500 });
+  }
 }

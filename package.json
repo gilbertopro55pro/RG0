@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/computeRenderHash.js",
     "dev": "next dev",
+    "prebuild": "node scripts/computeRenderHash.js",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -36,6 +38,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }

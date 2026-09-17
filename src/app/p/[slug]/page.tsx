@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { getPublicPreviewUrl, getSignedDownloadUrl } from "@/lib/storage";
+import { fetchAllRows } from "@/lib/paginatedFetch";
 import { galleryFont } from "@/lib/galleryTheme";
+import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import type { GalleryPhotoRow, Photographer } from "@/lib/types";
 
 type PortfolioPhoto = Pick<GalleryPhotoRow, "id" | "storage_path" | "preview_storage_path" | "portfolio_category" | "created_at">;
@@ -20,21 +22,32 @@ async function loadPortfolio(slug: string) {
   const supabase = createServiceRoleClient();
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("id, name, phone, portfolio_bio, logo_storage_path, portfolio_enabled")
+    .select("id, name, phone, portfolio_bio, logo_storage_path, portfolio_enabled, plan")
     .eq("portfolio_slug", slug)
-    .maybeSingle<Pick<Photographer, "id" | "name" | "phone" | "portfolio_bio" | "logo_storage_path" | "portfolio_enabled">>();
+    .maybeSingle<Pick<Photographer, "id" | "name" | "phone" | "portfolio_bio" | "logo_storage_path" | "portfolio_enabled" | "plan">>();
 
   if (!photographer || !photographer.portfolio_enabled) return null;
+  // The real gate — PortfolioSettings.tsx disables the toggle client-side for entry-tier accounts,
+  // but that's a UX courtesy, not a security boundary (portfolio_enabled could still be true from
+  // before a downgrade, or from a direct API call). This is the one place every visitor's request
+  // actually passes through, so it's the one place that has to be authoritative.
+  if (SUBSCRIPTION_PLANS[photographer.plan].tier === "basic") return null;
 
-  const { data: photos } = await supabase
-    .from("gallery_photos")
-    .select("id, storage_path, preview_storage_path, portfolio_category, created_at")
-    .eq("photographer_id", photographer.id)
-    .eq("in_portfolio", true)
-    .order("created_at", { ascending: false })
-    .returns<PortfolioPhoto[]>();
+  // Paginated (see fetchAllRows's own comment) — a portfolio is usually curated and small, but an
+  // unbounded select here would still silently truncate for a photographer who marks a very large
+  // number of photos "in portfolio".
+  const photos = await fetchAllRows<PortfolioPhoto>((from, to) =>
+    supabase
+      .from("gallery_photos")
+      .select("id, storage_path, preview_storage_path, portfolio_category, created_at")
+      .eq("photographer_id", photographer.id)
+      .eq("in_portfolio", true)
+      .order("created_at", { ascending: false })
+      .range(from, to)
+      .returns<PortfolioPhoto[]>()
+  );
 
-  return { photographer, photos: photos ?? [] };
+  return { photographer, photos };
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {

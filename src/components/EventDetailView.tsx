@@ -3,12 +3,11 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { openWhatsApp } from "@/lib/waLink";
 import {
   PACKAGE_FLOWS,
-  resolveClientMessageTemplate,
   REVIEW_REQUEST_DELAY_DAYS,
   STAGE_LABELS,
   STAGE_TYPE,
@@ -30,6 +29,7 @@ import ContractSection from "@/components/ContractSection";
 import PortalLinkSection from "@/components/PortalLinkSection";
 import GallerySection from "@/components/GallerySection";
 import { useModalEntered } from "@/lib/useModalEntered";
+import { buildClientMessageText } from "@/lib/clientMessage";
 
 const EditEventModal = dynamic(() => import("@/components/EditEventModal"), { ssr: false });
 
@@ -117,10 +117,41 @@ export default function EventDetailView({
   whatsappSignature: string | null;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+  // Landed here right after reconnecting Google Calendar from the "אירוע חדש" success screen's
+  // "חיבור מחדש ליומן Google" button (see NewEventModal.tsx) — the event was saved without ever
+  // reaching the calendar, so this interstitial offers one explicit tap to try the sync again
+  // now that the connection is fresh, before the photographer moves on to the rest of the event
+  // page. Only shown for this specific arrival — a normal visit to the event page never sets
+  // these params. `google_connected` (set by /api/google/callback) confirms the reconnect itself
+  // actually succeeded, not just that this flow was in progress when the OAuth redirect landed.
+  const [showCalendarRetry, setShowCalendarRetry] = useState(
+    () => searchParams.get("calendarRetry") === "1" && searchParams.get("google_connected") === "1"
+  );
+  const [calendarRetrySaving, setCalendarRetrySaving] = useState(false);
+  const [calendarRetryDone, setCalendarRetryDone] = useState(false);
+  const [calendarRetryError, setCalendarRetryError] = useState<string | null>(null);
   const [stages, setStages] = useState(initialStages);
   const [notifications, setNotifications] = useState(initialNotifications);
   const [payments, setPayments] = useState(initialPayments);
+  // Per-row "click the row to choose full/partial" panel state — kept as two independent pairs
+  // (not a keyed object) to match this component's existing style of one useState per concern.
+  const [depositActionOpen, setDepositActionOpen] = useState(false);
+  const [depositPartialOpen, setDepositPartialOpen] = useState(false);
+  const [depositPartialDraft, setDepositPartialDraft] = useState("");
+  const [balanceActionOpen, setBalanceActionOpen] = useState(false);
+  const [balancePartialOpen, setBalancePartialOpen] = useState(false);
+  const [balancePartialDraft, setBalancePartialDraft] = useState("");
+  const [depositNotesDraft, setDepositNotesDraft] = useState(initialPayments?.deposit_notes ?? "");
+  const [balanceNotesDraft, setBalanceNotesDraft] = useState(initialPayments?.balance_notes ?? "");
+  const [savingNotesField, setSavingNotesField] = useState<"deposit" | "balance" | null>(null);
+  // Shown inline, right next to the partial-amount input — the page-level error banner near the top
+  // is easy to miss here since this panel sits lower on the page, especially on mobile where a
+  // save that silently failed (or a validation guard that silently no-op'd) would otherwise look
+  // exactly like "nothing happened" with no visible feedback at all.
+  const [depositPaymentError, setDepositPaymentError] = useState<string | null>(null);
+  const [balancePaymentError, setBalancePaymentError] = useState<string | null>(null);
   const [assignedIds, setAssignedIds] = useState(new Set(initialAssignedTeamMemberIds));
   const [showNav, setShowNav] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -149,6 +180,82 @@ export default function EventDetailView({
     if (data) setNotifications(data);
   };
 
+  // Re-sends the event's own current details through PATCH /api/events/[id] — a no-op on the
+  // event row itself (nothing actually changed), but that route already contains "create the
+  // calendar event now if it's still missing" / "update it if already linked" logic (the same
+  // path a normal edit uses to recover a sync that failed the first time), so this is a real
+  // retry, not just a status check. Shared by the post-reconnect interstitial below
+  // (retryGoogleCalendarSync) AND the always-visible "סנכרון מחדש ליומן" button in the page header
+  // (manualSyncCalendar) — same recovery path, two different entry points into it.
+  const syncEventCalendarNow = async (): Promise<{ ok: boolean; error?: string }> => {
+    const res = await fetch(`/api/events/${event.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientName: event.client_name,
+        clientPhone: event.client_phone,
+        eventDate: event.event_date,
+        eventStartTime: event.event_start_time,
+        eventEndTime: event.event_end_time,
+        eventLocation: event.event_location,
+        arrivalTime: event.arrival_time,
+        notes: event.notes,
+        allowDoubleBooking: true,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: data.error ?? "שגיאה בשמירת האירוע ביומן" };
+    if (data.googleCalendarDisconnected || data.googleCalendarError) {
+      return { ok: false, error: data.googleCalendarError ?? "החיבור ליומן עדיין לא תקין — נסו להתחבר מחדש שוב" };
+    }
+    await refreshNotifications();
+    return { ok: true };
+  };
+
+  const retryGoogleCalendarSync = async () => {
+    setCalendarRetrySaving(true);
+    setCalendarRetryError(null);
+    try {
+      const result = await syncEventCalendarNow();
+      if (!result.ok) {
+        setCalendarRetryError(result.error ?? "שגיאה בשמירת האירוע ביומן");
+        return;
+      }
+      setCalendarRetryDone(true);
+    } catch {
+      setCalendarRetryError("שגיאה בשמירת האירוע ביומן");
+    } finally {
+      setCalendarRetrySaving(false);
+    }
+  };
+
+  const [calendarSyncing, setCalendarSyncing] = useState(false);
+
+  // The manual "in case something went wrong" retry button in the page header — same recovery
+  // path as the interstitial above, just reachable any time instead of only right after a
+  // reconnect. Errors surface through the same generic `error` banner every other action on this
+  // page already uses; success has no separate toast since the notifications feed refreshed by
+  // syncEventCalendarNow already gets a "האירוע עודכן גם ביומן Google" entry from the PATCH route.
+  const manualSyncCalendar = async () => {
+    setCalendarSyncing(true);
+    setError(null);
+    try {
+      const result = await syncEventCalendarNow();
+      if (!result.ok) setError(result.error ?? "שגיאה בסנכרון היומן");
+    } catch {
+      setError("שגיאה בסנכרון היומן");
+    } finally {
+      setCalendarSyncing(false);
+    }
+  };
+
+  const dismissCalendarRetry = () => {
+    setShowCalendarRetry(false);
+    // Clears calendarRetry/google_connected off the URL so refreshing the page never re-triggers
+    // this interstitial once it's been handled (or explicitly skipped).
+    router.replace(`/events/${event.id}`);
+  };
+
   const curIdx = currentStageIndex(stages);
 
   const stageDescriptors: StageDescriptor[] = event.custom_package_id
@@ -164,6 +271,40 @@ export default function EventDetailView({
         isCheckpoint: STAGE_TYPE[key] === "checkpoint",
         requiresAlbumPdf: key === "album_approval",
       }));
+
+  // Resolves the photographer's own saved template (Settings → הודעות ללקוח/ה) for a stage and
+  // substitutes every token — shared by the manual "שליחת עדכון" button AND (for the admin
+  // account, see setStageDone) the automatic message fired the moment a stage is marked done, via
+  // the same builder src/lib/clientMessage.ts also gives to the new-event booking-confirmation
+  // message. Before this, each of the three built its own divergent text — a photographer's
+  // customized wording only ever reliably reached the manual send.
+  const buildClientUpdateMessage = (key: string, label: string): string => {
+    // The gallery is what the client actually needs at almost every client-facing stage (photo
+    // selection, viewing an uploaded album, etc.) — the portal is really just the fallback hub
+    // page for whenever there's nothing more specific to send yet (no gallery, or one that isn't
+    // published/is archived). Resolved here (not at component-body scope) since `window` doesn't
+    // exist during this "use client" component's initial server-render pass.
+    const galleryLink =
+      initialGallery && initialGallery.published && !initialGallery.archived_at
+        ? `${window.location.origin}/gallery/${initialGallery.access_token}`
+        : null;
+    return buildClientMessageText({
+      stageKey: key,
+      stageLabel: label,
+      savedTemplate: messageTemplates[key],
+      clientName: event.client_name,
+      eventDateIso: event.event_date,
+      eventLocation: event.event_location,
+      packageLabelText: packageLabel(event.package, customPackageName),
+      eventStartTime: event.event_start_time,
+      eventEndTime: event.event_end_time,
+      arrivalTime: event.arrival_time,
+      depositAmount: payments ? payments.deposit_amount : null,
+      balanceAmount: payments ? payments.balance_amount : null,
+      linkUrl: galleryLink ?? `${window.location.origin}/portal/${event.client_access_token}`,
+      whatsappSignature,
+    });
+  };
 
   // Opens the photographer's own WhatsApp with the client's chat pre-filled (see waLink.ts) and
   // logs that it happened — the same no-Business-API-template approach used for the initial
@@ -203,9 +344,10 @@ export default function EventDetailView({
       );
       if (data.notify) {
         const label = stageDescriptors.find((d) => d.key === key)?.label ?? "";
-        const text = data.notify.downloadUrl
-          ? `שלום ${event.client_name},\n${data.notify.text} ✓\n${data.notify.downloadUrl}`
-          : `שלום ${event.client_name},\n${data.notify.text} ✓`;
+        // The photographer's own saved template (Settings → הודעות ללקוח/ה), exactly like the
+        // manual "שליחת עדכון" button sends, instead of the old short hardcoded
+        // STAGE_NOTIFY_CLIENT string.
+        const text = buildClientUpdateMessage(key, label) + (data.notify.downloadUrl ? `\n${data.notify.downloadUrl}` : "");
         await notifyClientByWhatsApp(label, text);
       }
       await refreshNotifications();
@@ -218,6 +360,18 @@ export default function EventDetailView({
 
   const toggleStage = (key: string) => setStageDone(key, true);
   const undoStage = (key: string) => setStageDone(key, false);
+
+  // Admin-only for now (see the standing "עדכון אדמין" staged-rollout process): the counterpart
+  // to /api/events/route.ts and /api/contracts/[token]/sign leaving event_closing open at
+  // creation — this is the OTHER way it can get marked done (the photographer sending the
+  // opening message directly, e.g. after choosing to skip the contract step). Reuses setStageDone
+  // rather than the disabled stage-row checkbox, which still blocks manual toggling of this
+  // specific stage everywhere else.
+  const sendEventClosingUpdate = async () => {
+    const text = buildClientUpdateMessage("event_closing", "סגירת האירוע");
+    await notifyClientByWhatsApp("סגירת האירוע", text);
+    await setStageDone("event_closing", true);
+  };
 
   const uploadAlbumDesign = async (key: string, file: File) => {
     setError(null);
@@ -284,23 +438,7 @@ export default function EventDetailView({
     setPendingStageKeys(new Set(pendingKeysRef.current));
     setError(null);
     try {
-      const portalUrl = `${window.location.origin}/portal/${event.client_access_token}`;
-      const template = resolveClientMessageTemplate(key, messageTemplates[key]);
-      const hhmm = (t: string | null) => (t ? t.slice(0, 5) : "");
-      const hoursRange = [hhmm(event.event_start_time), hhmm(event.event_end_time)].filter(Boolean).join("–");
-      const currency = (n: number) => `₪${n.toLocaleString("he-IL")}`;
-      let text = template
-        .split("{{שם}}").join(event.client_name)
-        .split("{{שלב}}").join(label)
-        .split("{{תאריך}}").join(new Date(event.event_date).toLocaleDateString("he-IL"))
-        .split("{{מיקום}}").join(event.event_location ?? "")
-        .split("{{חבילה}}").join(packageLabel(event.package, customPackageName))
-        .split("{{שעות}}").join(hoursRange)
-        .split("{{שעת_הגעה}}").join(hhmm(event.arrival_time))
-        .split("{{מקדמה}}").join(payments ? currency(payments.deposit_amount) : "")
-        .split("{{יתרה}}").join(payments ? currency(payments.balance_amount) : "")
-        .split("קישור:").join(`קישור: ${portalUrl}`);
-      if (whatsappSignature?.trim()) text += `\n\n${whatsappSignature.trim()}`;
+      const text = buildClientUpdateMessage(key, label);
       openWhatsApp(event.client_phone, text);
       await fetch(`/api/events/${event.id}/notify`, {
         method: "POST",
@@ -314,20 +452,84 @@ export default function EventDetailView({
     }
   };
 
-  const togglePayment = async (field: "deposit_paid" | "balance_paid") => {
+  // Three payment states per leg (deposit/balance), not just the old binary paid/unpaid: unpaid,
+  // fully paid (`{field}_paid`, unchanged meaning — still what the client portal and the analytics
+  // revenue calc read), or partially paid (`{field}_paid_amount` set, `{field}_paid` stays false so
+  // nothing downstream mistakes a partial payment for the full one). The remaining balance is never
+  // stored — always `amount - paid_amount`, computed live wherever it's shown, so it can't go stale
+  // if the declared amount itself is edited later via "עריכת פרטי האירוע".
+  const setPaymentFieldError = (field: "deposit" | "balance", message: string | null) =>
+    (field === "deposit" ? setDepositPaymentError : setBalancePaymentError)(message);
+
+  const applyPaymentPatch = async (field: "deposit" | "balance", patch: Record<string, unknown>) => {
     if (!payments) return;
-    const nextValue = !payments[field];
-    const paidAtField = field === "deposit_paid" ? "deposit_paid_at" : "balance_paid_at";
-    const paidAtValue = nextValue ? new Date().toISOString() : null;
-    const { error: updateError } = await supabase
-      .from("event_payments")
-      .update({ [field]: nextValue, [paidAtField]: paidAtValue })
-      .eq("event_id", event.id);
+    const { error: updateError } = await supabase.from("event_payments").update(patch).eq("event_id", event.id);
+    if (updateError) {
+      // Shown inline right next to the action panel (see depositPaymentError/balancePaymentError
+      // above) — the page-level banner near the top is easy to miss from all the way down here.
+      setPaymentFieldError(field, updateError.message);
+      return;
+    }
+    setPaymentFieldError(field, null);
+    setPayments({ ...payments, ...patch } as typeof payments);
+    if (field === "deposit") {
+      setDepositActionOpen(false);
+      setDepositPartialOpen(false);
+    } else {
+      setBalanceActionOpen(false);
+      setBalancePartialOpen(false);
+    }
+    // Marking full/partial changes this month's realized revenue (the home dashboard's chart sums
+    // deposit/balance amounts by *_paid_at's month) — without this, that page's Server Component
+    // data stays cached until something else happens to invalidate it, so the chart would only
+    // catch up on a hard reload instead of the very next visit. Same pattern as EditEventModal's
+    // onSaved above.
+    router.refresh();
+  };
+
+  const markPaymentFull = (field: "deposit" | "balance") =>
+    applyPaymentPatch(field, {
+      [`${field}_paid`]: true,
+      [`${field}_paid_at`]: new Date().toISOString(),
+      [`${field}_paid_amount`]: null,
+    });
+
+  const markPaymentUnpaid = (field: "deposit" | "balance") =>
+    applyPaymentPatch(field, { [`${field}_paid`]: false, [`${field}_paid_at`]: null, [`${field}_paid_amount`]: null });
+
+  // A partial amount that reaches (or somehow exceeds) the full declared amount is just the full
+  // payment — snapping to markPaymentFull instead avoids a nonsensical negative/zero "balance
+  // remaining" reading.
+  const confirmPartialPayment = (field: "deposit" | "balance", amount: number) => {
+    if (!payments) return;
+    if (!(amount > 0)) {
+      setPaymentFieldError(field, "יש להזין סכום גדול מ-0");
+      return;
+    }
+    const owed = field === "deposit" ? Number(payments.deposit_amount) : Number(payments.balance_amount);
+    if (amount >= owed) return markPaymentFull(field);
+    // *_paid_at doubles as "when was money last received on this leg" (not only "became fully
+    // paid") — the home dashboard's and analytics' revenue-by-month charts bucket by this date, so
+    // a partial payment needs it set too or the amount actually received never shows up as
+    // realized revenue anywhere, only ever as pending.
+    return applyPaymentPatch(field, {
+      [`${field}_paid`]: false,
+      [`${field}_paid_at`]: new Date().toISOString(),
+      [`${field}_paid_amount`]: amount,
+    });
+  };
+
+  const saveNotes = async (field: "deposit" | "balance", text: string) => {
+    if (!payments) return;
+    setSavingNotesField(field);
+    const column = `${field}_notes`;
+    const { error: updateError } = await supabase.from("event_payments").update({ [column]: text || null }).eq("event_id", event.id);
+    setSavingNotesField(null);
     if (updateError) {
       setError(updateError.message);
       return;
     }
-    setPayments({ ...payments, [field]: nextValue, [paidAtField]: paidAtValue });
+    setPayments({ ...payments, [column]: text || null } as typeof payments);
   };
 
   const [issuingDocument, setIssuingDocument] = useState<"deposit" | "balance" | null>(null);
@@ -390,9 +592,19 @@ export default function EventDetailView({
           ← חזרה לאירועים
         </Link>
         {isOwner && (
-          <button onClick={() => setShowEdit(true)} className="text-sm text-amber-deep underline">
-            עריכת פרטי האירוע
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={manualSyncCalendar}
+              disabled={calendarSyncing}
+              title="למקרה שהייתה תקלה בשמירת האירוע ביומן"
+              className="text-sm text-amber-deep underline disabled:opacity-60"
+            >
+              {calendarSyncing ? "מסנכרן..." : "סנכרון מחדש ליומן"}
+            </button>
+            <button onClick={() => setShowEdit(true)} className="text-sm text-amber-deep underline">
+              עריכת פרטי האירוע
+            </button>
+          </div>
         )}
       </div>
       {showEdit && (
@@ -438,6 +650,55 @@ export default function EventDetailView({
           </div>
         </div>
       )}
+      {showCalendarRetry && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+        >
+          <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet">
+            {calendarRetryDone ? (
+              <>
+                <div className="flex flex-col items-center text-center gap-2 py-2 mb-3">
+                  <span
+                    className="flex h-12 w-12 items-center justify-center rounded-full text-2xl"
+                    style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}
+                  >
+                    ✓
+                  </span>
+                  <div className="text-base font-bold font-display">האירוע נשמר ביומן Google בהצלחה</div>
+                </div>
+                <button onClick={dismissCalendarRetry} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
+                  המשך לכרטיס האירוע
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-bold mb-2 font-display">שמירת האירוע ביומן Google</h2>
+                <p className="text-sm text-ink-soft mb-5">
+                  החיבור ליומן חודש בהצלחה. האירוע &quot;{event.client_name}&quot; עדיין לא נשמר ביומן — ללחוץ כדי לשמור אותו עכשיו.
+                </p>
+                {calendarRetryError && <p className="text-xs text-rose mb-3">{calendarRetryError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={retryGoogleCalendarSync}
+                    disabled={calendarRetrySaving}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                  >
+                    {calendarRetrySaving ? "שומר..." : "שמירת האירוע ביומן"}
+                  </button>
+                  <button
+                    onClick={dismissCalendarRetry}
+                    disabled={calendarRetrySaving}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
+                  >
+                    לא עכשיו
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       <h1 className="text-[26px] font-bold mb-1.5 font-display">{event.client_name}</h1>
       <div className="flex items-center gap-3 text-xs mb-4 flex-wrap text-ink-soft">
         <span>{new Date(event.event_date).toLocaleDateString("he-IL")}</span>
@@ -467,6 +728,33 @@ export default function EventDetailView({
 
       {error && <p className="text-xs text-rose mb-3">{error}</p>}
 
+      {/* Admin-only for now (see sendEventClosingUpdate's doc comment): shown whenever
+          event_closing isn't done yet, regardless of contract status — this is the ONLY way to
+          complete that stage (its row in the checklist below is permanently disabled for manual
+          toggling). Used to also require a signed/skipped contract, but contract_skipped can only
+          ever be set from the one-time post-creation interstitial — an event created any other
+          way (calendar import, a converted lead, or just closing that interstitial without
+          clicking "דלג") could leave event_closing stuck forever with no banner and no checkbox
+          to complete it. Dropping that condition means this is always reachable. */}
+      {isOwner && !stages.find((s) => s.stage_key === "event_closing")?.done && (
+          <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
+            <div className="flex items-center gap-2 mb-3.5">
+              <span className="text-sm font-semibold tracking-wide">שליחת הודעת פתיחה ללקוח/ה</span>
+            </div>
+            {event.client_phone ? (
+              <>
+                <p className="text-xs text-ink-soft mb-2.5">
+                  לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה — פרטי האירוע, המקדמה והיתרה, וקישור
+                  לפורטל האישי שלהם למעקב אחר האירוע והתשלומים. תישאר/י לבדוק ולשלוח בעצמך.
+                </p>
+                <SendUpdateButton onSend={sendEventClosingUpdate} pending={pendingStageKeys.has("event_closing")} label="שליחת עדכון ללקוח בוואטסאפ" />
+              </>
+            ) : (
+              <p className="text-xs text-ink-soft">לא הוזן טלפון לקוח — לא ניתן לשלוח עדכון.</p>
+            )}
+          </div>
+        )}
+
       {isOwner && payments && (
         <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
           <div className="flex items-center gap-2 mb-3.5">
@@ -477,69 +765,81 @@ export default function EventDetailView({
               טרם הוגדר מחיר לאירוע — לחצו על &quot;עריכת פרטי האירוע&quot; למעלה כדי להוסיף מקדמה ויתרה.
             </div>
           )}
+          <p className="text-[11px] text-ink-soft mb-2">לחיצה על שורת תשלום מאפשרת לסמן אותה כשולמה במלואה או בחלקה.</p>
           <div className="space-y-2">
-            <div>
-              <button
-                onClick={() => togglePayment("deposit_paid")}
-                className="w-full flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5"
-                style={{ background: payments.deposit_paid ? "var(--color-sage-bg)" : "var(--color-chip)" }}
-              >
-                <span>מקדמה — ₪{payments.deposit_amount}</span>
-                <span style={{ color: payments.deposit_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
-                  {payments.deposit_paid ? "שולם ✓" : "ממתין"}
-                </span>
-              </button>
-              {payments.deposit_paid && (
-                <div className="flex justify-end mt-1">
-                  {payments.deposit_document_url ? (
-                    <a href={payments.deposit_document_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-deep underline">
-                      📄 צפייה במסמך
-                    </a>
-                  ) : (
-                    <button
-                      onClick={() => issueDocument("deposit")}
-                      disabled={issuingDocument === "deposit"}
-                      className="text-xs text-amber-deep underline disabled:opacity-60"
-                    >
-                      {issuingDocument === "deposit" ? "מפיק מסמך..." : "📄 הפקת מסמך"}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-            <div>
-              <button
-                onClick={() => togglePayment("balance_paid")}
-                className="w-full flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5"
-                style={{ background: payments.balance_paid ? "var(--color-sage-bg)" : "var(--color-chip)" }}
-              >
-                <span>יתרה — ₪{payments.balance_amount}</span>
-                <span style={{ color: payments.balance_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
-                  {payments.balance_paid
-                    ? "שולם ✓"
-                    : payments.balance_due_date
-                      ? `עד ${new Date(payments.balance_due_date).toLocaleDateString("he-IL")}`
-                      : "ממתין"}
-                </span>
-              </button>
-              {payments.balance_paid && (
-                <div className="flex justify-end mt-1">
-                  {payments.balance_document_url ? (
-                    <a href={payments.balance_document_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-deep underline">
-                      📄 צפייה במסמך
-                    </a>
-                  ) : (
-                    <button
-                      onClick={() => issueDocument("balance")}
-                      disabled={issuingDocument === "balance"}
-                      className="text-xs text-amber-deep underline disabled:opacity-60"
-                    >
-                      {issuingDocument === "balance" ? "מפיק מסמך..." : "📄 הפקת מסמך"}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+            <PaymentLegRow
+              label="מקדמה"
+              amount={payments.deposit_amount}
+              paid={payments.deposit_paid}
+              paidAmount={payments.deposit_paid_amount}
+              documentUrl={payments.deposit_document_url}
+              actionOpen={depositActionOpen}
+              onToggleAction={() => {
+                setDepositActionOpen((v) => !v);
+                setDepositPaymentError(null);
+              }}
+              partialOpen={depositPartialOpen}
+              partialDraft={depositPartialDraft}
+              partialError={depositPaymentError}
+              onOpenPartial={() => {
+                setDepositPartialDraft(payments.deposit_paid_amount != null ? String(payments.deposit_paid_amount) : "");
+                setDepositPaymentError(null);
+                setDepositPartialOpen(true);
+              }}
+              onCancelPartial={() => {
+                setDepositPartialOpen(false);
+                setDepositPaymentError(null);
+              }}
+              onPartialDraftChange={setDepositPartialDraft}
+              onConfirmPartial={() => confirmPartialPayment("deposit", Number(depositPartialDraft))}
+              onMarkFull={() => markPaymentFull("deposit")}
+              onMarkUnpaid={() => markPaymentUnpaid("deposit")}
+              notesDraft={depositNotesDraft}
+              onNotesDraftChange={setDepositNotesDraft}
+              onNotesBlur={() => {
+                if (depositNotesDraft !== (payments.deposit_notes ?? "")) saveNotes("deposit", depositNotesDraft);
+              }}
+              savingNotes={savingNotesField === "deposit"}
+              onIssueDocument={() => issueDocument("deposit")}
+              issuingDocument={issuingDocument === "deposit"}
+            />
+            <PaymentLegRow
+              label="יתרה"
+              amount={payments.balance_amount}
+              paid={payments.balance_paid}
+              paidAmount={payments.balance_paid_amount}
+              dueDateText={payments.balance_due_date ? `עד ${new Date(payments.balance_due_date).toLocaleDateString("he-IL")}` : null}
+              documentUrl={payments.balance_document_url}
+              actionOpen={balanceActionOpen}
+              onToggleAction={() => {
+                setBalanceActionOpen((v) => !v);
+                setBalancePaymentError(null);
+              }}
+              partialOpen={balancePartialOpen}
+              partialDraft={balancePartialDraft}
+              partialError={balancePaymentError}
+              onOpenPartial={() => {
+                setBalancePartialDraft(payments.balance_paid_amount != null ? String(payments.balance_paid_amount) : "");
+                setBalancePaymentError(null);
+                setBalancePartialOpen(true);
+              }}
+              onCancelPartial={() => {
+                setBalancePartialOpen(false);
+                setBalancePaymentError(null);
+              }}
+              onPartialDraftChange={setBalancePartialDraft}
+              onConfirmPartial={() => confirmPartialPayment("balance", Number(balancePartialDraft))}
+              onMarkFull={() => markPaymentFull("balance")}
+              onMarkUnpaid={() => markPaymentUnpaid("balance")}
+              notesDraft={balanceNotesDraft}
+              onNotesDraftChange={setBalanceNotesDraft}
+              onNotesBlur={() => {
+                if (balanceNotesDraft !== (payments.balance_notes ?? "")) saveNotes("balance", balanceNotesDraft);
+              }}
+              savingNotes={savingNotesField === "balance"}
+              onIssueDocument={() => issueDocument("balance")}
+              issuingDocument={issuingDocument === "balance"}
+            />
           </div>
         </div>
       )}
@@ -648,7 +948,7 @@ export default function EventDetailView({
         </div>
         <div className="space-y-2">
           {notifications.map((n) => (
-            <div key={n.id} className="text-xs rounded-xl px-3.5 py-2.5 bg-chip text-ink-soft">
+            <div key={n.id} className="text-xs rounded-xl px-3.5 py-2.5 bg-chip text-ink-soft break-words">
               {n.text}{" "}
               <span className="font-data">
                 · {new Date(n.created_at).toLocaleString("he-IL", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
@@ -657,6 +957,152 @@ export default function EventDetailView({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// One leg of the payments card (מקדמה or יתרה) — clicking the row opens a small choice between
+// marking it fully or partially paid (see the hint line above the rows in the parent). Kept as its
+// own component since the deposit/balance rows are otherwise identical, just fed different data and
+// handlers already bound to their own field by the parent.
+function PaymentLegRow({
+  label,
+  amount,
+  paid,
+  paidAmount,
+  dueDateText,
+  documentUrl,
+  actionOpen,
+  onToggleAction,
+  partialOpen,
+  partialDraft,
+  partialError,
+  onOpenPartial,
+  onCancelPartial,
+  onPartialDraftChange,
+  onConfirmPartial,
+  onMarkFull,
+  onMarkUnpaid,
+  notesDraft,
+  onNotesDraftChange,
+  onNotesBlur,
+  savingNotes,
+  onIssueDocument,
+  issuingDocument,
+}: {
+  label: string;
+  amount: number;
+  paid: boolean;
+  paidAmount: number | null;
+  dueDateText?: string | null;
+  documentUrl: string | null;
+  actionOpen: boolean;
+  onToggleAction: () => void;
+  partialOpen: boolean;
+  partialDraft: string;
+  partialError: string | null;
+  onOpenPartial: () => void;
+  onCancelPartial: () => void;
+  onPartialDraftChange: (v: string) => void;
+  onConfirmPartial: () => void;
+  onMarkFull: () => void;
+  onMarkUnpaid: () => void;
+  notesDraft: string;
+  onNotesDraftChange: (v: string) => void;
+  onNotesBlur: () => void;
+  savingNotes: boolean;
+  onIssueDocument: () => void;
+  issuingDocument: boolean;
+}) {
+  const isPartial = !paid && paidAmount != null && paidAmount > 0;
+  const remaining = isPartial ? Math.max(0, Number(amount) - Number(paidAmount)) : null;
+  const background = paid ? "var(--color-sage-bg)" : isPartial ? "var(--color-amber-bg)" : "var(--color-chip)";
+  const statusColor = paid ? "var(--color-sage)" : isPartial ? "var(--color-amber-deep)" : "var(--color-ink-soft)";
+  return (
+    <div>
+      <button
+        onClick={onToggleAction}
+        className="w-full flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5"
+        style={{ background }}
+      >
+        <span>
+          {label} — ₪{amount}
+        </span>
+        <span style={{ color: statusColor, fontWeight: 600 }}>
+          {paid ? "שולם ✓" : isPartial ? `שולם חלקית — יתרה ₪${remaining}` : dueDateText ?? "ממתין"}
+        </span>
+      </button>
+
+      {actionOpen && !paid && (
+        <div className="mt-1.5 rounded-xl border border-line bg-white p-2.5">
+          {partialOpen ? (
+            <div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={partialDraft}
+                  onChange={(e) => onPartialDraftChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") onConfirmPartial();
+                  }}
+                  type="number"
+                  min={0}
+                  placeholder="כמה שולם עד כה?"
+                  autoFocus
+                  className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-xs border border-line bg-white font-data"
+                />
+                <button onClick={onConfirmPartial} className="text-xs font-semibold text-amber-deep shrink-0">
+                  אישור
+                </button>
+                <button onClick={onCancelPartial} className="text-xs text-ink-soft shrink-0">
+                  ביטול
+                </button>
+              </div>
+              {partialError && <p className="text-xs text-rose mt-1.5">{partialError}</p>}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={onMarkFull} className="text-xs font-semibold rounded-lg px-2.5 py-1.5" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
+                ✓ תשלום מלא
+              </button>
+              <button onClick={onOpenPartial} className="text-xs font-semibold rounded-lg px-2.5 py-1.5" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
+                תשלום חלקי
+              </button>
+              {isPartial && (
+                <button onClick={onMarkUnpaid} className="text-xs text-ink-soft underline">
+                  איפוס לממתין
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {paid && (
+        <div className="flex items-center justify-between mt-1">
+          <button onClick={onMarkUnpaid} className="text-xs text-ink-soft underline">
+            ביטול סימון כשולם
+          </button>
+          {documentUrl ? (
+            <a href={documentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-deep underline">
+              📄 צפייה במסמך
+            </a>
+          ) : (
+            <button onClick={onIssueDocument} disabled={issuingDocument} className="text-xs text-amber-deep underline disabled:opacity-60">
+              {issuingDocument ? "מפיק מסמך..." : "📄 הפקת מסמך"}
+            </button>
+          )}
+        </div>
+      )}
+
+      <textarea
+        value={notesDraft}
+        onChange={(e) => onNotesDraftChange(e.target.value)}
+        onBlur={onNotesBlur}
+        rows={2}
+        placeholder={`הערות ל${label} (לשימוש עצמי, לא מוצג ללקוח/ה)...`}
+        className="w-full mt-1.5 text-xs rounded-lg px-2.5 py-1.5 border border-line bg-white outline-none resize-none"
+      />
+      {savingNotes && <p className="text-[10px] text-ink-soft mt-0.5">שומר...</p>}
     </div>
   );
 }
@@ -691,7 +1137,11 @@ function FilmStrip({
   return (
     <div className="space-y-1.5">
       {stageDescriptors.map((d, i) => {
-        const st = byKey.get(d.key)!;
+        // A descriptor with no matching row (missing event_stages data — shouldn't happen, but a
+        // hard crash on the whole page is a much worse failure mode than one skipped row) is
+        // simply skipped rather than crashing the entire timeline via a non-null assertion.
+        const st = byKey.get(d.key);
+        if (!st) return null;
         const isCurrent = i === curIdx;
         const requiresAlbumPdf = d.requiresAlbumPdf;
         const isTogglePending = pendingStageKeys.has(d.key);

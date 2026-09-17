@@ -7,6 +7,7 @@ import { isLightTextColor } from "@/lib/textColor";
 import { maskCssUrl, findMask } from "@/lib/albumMasks";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsFilterId, adjustmentsSvgFilter, type PhotoAdjustments } from "@/lib/albumAdjustments";
+import { sharpenFilterId, sharpenSvgFilter } from "@/lib/albumSharpen";
 
 type SpreadPhoto = { id: string; url: string };
 type SpreadLayout = "split" | "feature" | "stack" | "custom";
@@ -29,6 +30,8 @@ export type ClientAlbumElement =
       opacity?: number;
       blur?: number;
       shadow?: number;
+      shadowDistance?: number;
+      shadowBlur?: number;
       zoom?: number;
       maskId?: string;
       exposure?: number;
@@ -41,6 +44,7 @@ export type ClientAlbumElement =
       tint?: number;
       vibrance?: number;
       saturation2?: number;
+      sharpness?: number;
     }
   | {
       id: string;
@@ -93,22 +97,27 @@ export type ClientAlbumElement =
 export function cssFilterFor(
   filter: "none" | "bw" | "sepia" | undefined,
   blurPct?: number,
-  adjust?: { id: string; adj: PhotoAdjustments }
+  adjust?: { id: string; adj: PhotoAdjustments },
+  sharpness?: number
 ): string | undefined {
   const parts: string[] = [];
   if (filter === "bw") parts.push("grayscale(1)");
   else if (filter === "sepia") parts.push("sepia(0.85)");
   if (blurPct) parts.push(`blur(${(blurPct / 100) * ALBUM_BLUR_MAX_PX}px)`);
   if (adjust && hasAdjustments(adjust.adj)) parts.push(`url(#${adjustmentsFilterId(adjust.id, adjust.adj)})`);
+  if (adjust && sharpness) parts.push(`url(#${sharpenFilterId(adjust.id, sharpness)})`);
   return parts.length ? parts.join(" ") : undefined;
 }
 
 // Mirrors AlbumSpreadCanvasEditor's boxShadowFor — box-shadow (unlike a filter on the img) isn't
 // clipped by the frame's own overflow-hidden, so it's the one that can bleed past a cropped photo.
-export function boxShadowFor(shadowPct: number | undefined): string | undefined {
+// Mirrors albumRender.ts's boxShadowFor — distancePct/blurPct independently override the
+// offset/softness that would otherwise be derived from shadowPct alone; undefined (every
+// already-saved album) keeps the old coupled-to-intensity behavior exactly.
+export function boxShadowFor(shadowPct: number | undefined, distancePct?: number, blurPct?: number): string | undefined {
   if (!shadowPct) return undefined;
-  const blurPx = (shadowPct / 100) * 24;
-  const offsetPx = (shadowPct / 100) * 10;
+  const offsetPx = ((distancePct ?? shadowPct) / 100) * 10;
+  const blurPx = ((blurPct ?? shadowPct) / 100) * 24;
   const alpha = 0.15 + (shadowPct / 100) * 0.45;
   return `${offsetPx}px ${offsetPx}px ${blurPx}px rgba(0,0,0,${alpha})`;
 }
@@ -346,6 +355,11 @@ export default function GalleryAlbumProofing({
                 .map((el) => (
                   <defs key={el.id} dangerouslySetInnerHTML={{ __html: adjustmentsSvgFilter(el.id, el) }} />
                 ))}
+              {spread!.elements
+                .filter((el): el is Extract<ClientAlbumElement, { type: "photo" }> => el.type === "photo" && !!el.sharpness)
+                .map((el) => (
+                  <defs key={`sharpen-${el.id}`} dangerouslySetInnerHTML={{ __html: sharpenSvgFilter(el.id, el.sharpness) }} />
+                ))}
             </svg>
             {spread!.elements.map((el) =>
               el.type === "photo" ? (
@@ -357,9 +371,12 @@ export default function GalleryAlbumProofing({
                     top: `${el.yPct}%`,
                     width: `${el.widthPct}%`,
                     height: `${el.heightPct}%`,
-                    outline: el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
-                    outlineOffset: el.borderWidth ? `-${el.borderWidth}px` : undefined,
-                    boxShadow: boxShadowFor(el.shadow),
+                    // Drop shadow only — the border used to be folded into this same box-shadow (an
+                    // inset segment), but a full-bleed photo <img> child paints on top of a parent's
+                    // own box-shadow in normal paint order, so the inset border segment was silently
+                    // invisible behind the photo. Border now lives on a separate, later sibling div
+                    // below, guaranteed to paint above the image — mirrors the builder's own fix.
+                    boxShadow: boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur),
                     // Rotation lives on this box (not the <img>) so the outline/box-shadow rotate
                     // with the clipped photo as one rigid tile — mirrors the builder.
                     transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
@@ -392,7 +409,7 @@ export default function GalleryAlbumProofing({
                           top: `${framing.topPct}%`,
                           maxWidth: "none",
                           maxHeight: "none",
-                          filter: cssFilterFor(el.filter, el.blur, { id: el.id, adj: el }),
+                          filter: cssFilterFor(el.filter, el.blur, { id: el.id, adj: el }, el.sharpness),
                           opacity: (el.opacity ?? 100) / 100,
                           ...(el.maskId
                             ? {
@@ -408,6 +425,12 @@ export default function GalleryAlbumProofing({
                       />
                     );
                   })()}
+                  {!!el.borderWidth && (
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{ boxShadow: `inset 0 0 0 ${el.borderWidth}px ${el.borderColor ?? "#fff"}` }}
+                    />
+                  )}
                 </div>
               ) : el.type === "ornament" ? (
                 <OrnamentOverlay key={el.id} el={el} />

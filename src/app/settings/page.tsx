@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { getSignedDownloadUrl } from "@/lib/storage";
-import type { ClientMessageTemplateRow, CustomPackageRow, CustomPackageStageRow, EventTypeRow, PackagePriceRow, Photographer, PriceQuoteRow, PrintHouseEmailRow, TeamMember } from "@/lib/types";
+import type { ClientMessageTemplateRow, ContractTemplateRow, CustomPackageRow, CustomPackageStageRow, EventTypeRow, PackagePriceRow, Photographer, PriceQuoteRow, PriceQuoteTemplateRow, PrintHouseEmailRow, TeamMember } from "@/lib/types";
 import ProfileSettingsView from "@/components/ProfileSettingsView";
 import TeamManagementView from "@/components/TeamManagementView";
 import PricingSettings from "@/components/PricingSettings";
@@ -18,12 +18,13 @@ import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
 import ClientMessagesSettings from "@/components/ClientMessagesSettings";
 import TermsOfUseSettings from "@/components/TermsOfUseSettings";
 import ContractTemplateSettings from "@/components/ContractTemplateSettings";
+import ContractTemplateLibrarySettings from "@/components/ContractTemplateLibrarySettings";
 import PortfolioSettings from "@/components/PortfolioSettings";
 import AppearanceSettings from "@/components/AppearanceSettings";
 import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
 import { CURRENT_VERSION } from "@/lib/changelog";
-import { SUBSCRIPTION_PLANS, TEAM_MEMBER_LIMIT_BY_TIER } from "@/lib/stages";
+import { SUBSCRIPTION_PLANS, TEAM_MEMBER_LIMIT_BY_TIER, STORAGE_CAP_BYTES_BY_TIER } from "@/lib/stages";
 
 export default async function SettingsPage({
   searchParams,
@@ -48,8 +49,10 @@ export default async function SettingsPage({
     { data: customStages },
     { data: printHouseEmails },
     { data: priceQuotes },
+    { data: priceQuoteTemplates },
     { data: messageTemplates },
     { data: storageBytes },
+    { data: contractTemplates },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).single<Photographer>(),
     supabase.from("team_members").select("*").order("created_at", { ascending: true }).returns<TeamMember[]>(),
@@ -59,10 +62,12 @@ export default async function SettingsPage({
     supabase.from("custom_package_stages").select("*").order("sort_order", { ascending: true }).returns<CustomPackageStageRow[]>(),
     supabase.from("print_house_emails").select("*").order("created_at", { ascending: true }).returns<PrintHouseEmailRow[]>(),
     supabase.from("price_quotes").select("*").order("created_at", { ascending: false }).returns<PriceQuoteRow[]>(),
+    supabase.from("price_quote_templates").select("*").order("created_at", { ascending: true }).returns<PriceQuoteTemplateRow[]>(),
     supabase.from("client_message_templates").select("*").eq("photographer_id", user!.id).returns<ClientMessageTemplateRow[]>(),
     // Summed server-side (see migration 0084) so this stays cheap regardless of photo count —
     // never fetch every gallery_photos row just to add up its file_size_bytes client-side.
     supabase.rpc("photographer_storage_bytes", { p_photographer_id: user!.id }),
+    supabase.from("contract_templates").select("*").eq("photographer_id", user!.id).order("created_at", { ascending: true }).returns<ContractTemplateRow[]>(),
   ]);
 
   if (!photographer) redirect("/");
@@ -92,7 +97,7 @@ export default async function SettingsPage({
           },
           {
             id: "pricing",
-            label: "תמחור",
+            label: "תמחור וחבילות צילום",
             content: (
               <>
                 <PricingSettings initialEventTypes={eventTypes ?? []} initialPrices={prices ?? []} />
@@ -119,6 +124,8 @@ export default async function SettingsPage({
             content: (
               <PriceQuotesSettings
                 initialQuotes={priceQuotes ?? []}
+                initialTemplates={priceQuoteTemplates ?? []}
+                initialSuppliers={photographer.pricing_suppliers}
                 initialLogoPath={photographer.logo_storage_path}
                 initialLogoUrl={logoUrl}
                 initialBusinessId={photographer.business_id}
@@ -142,7 +149,10 @@ export default async function SettingsPage({
               <>
                 <BillingSettings photographer={photographer} />
                 <div className="mt-5">
-                  <StorageUsageSettings usedBytes={Number(storageBytes ?? 0)} />
+                  <StorageUsageSettings
+                    usedBytes={Number(storageBytes ?? 0)}
+                    capBytes={STORAGE_CAP_BYTES_BY_TIER[SUBSCRIPTION_PLANS[photographer.plan].tier]}
+                  />
                 </div>
                 <div className="mt-5">
                   <BrandingSettings photographer={photographer} hasLogo={!!photographer.logo_storage_path} />
@@ -174,12 +184,23 @@ export default async function SettingsPage({
           {
             id: "client_messages",
             label: "הודעות ללקוח/ה",
-            content: <ClientMessagesSettings initialTemplates={messageTemplates ?? []} />,
+            content: (
+              <ClientMessagesSettings initialTemplates={messageTemplates ?? []} customStages={customStages ?? []} />
+            ),
           },
           {
             id: "contract_template",
             label: "תבנית חוזה",
-            content: <ContractTemplateSettings photographer={photographer} />,
+            content: (
+              <>
+                <ContractTemplateSettings photographer={photographer} />
+                {user?.email === ADMIN_EMAIL && (
+                  <div className="mt-5">
+                    <ContractTemplateLibrarySettings initialTemplates={contractTemplates ?? []} />
+                  </div>
+                )}
+              </>
+            ),
           },
           {
             id: "portfolio",

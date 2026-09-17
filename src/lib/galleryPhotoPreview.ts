@@ -14,8 +14,10 @@ const PREVIEW_MAX_DIMENSION = 1200;
 // still a single encode pass, so none of the above risk returns. Safari (desktop and iOS) has
 // supported WebP decoding since 2020, well within this app's realistic browser support range.
 // This only affects the on-screen gallery preview — full-quality downloads/exports always read the
-// untouched original from storage_path, never this file.
-const PREVIEW_QUALITY = 50;
+// untouched original from storage_path, never this file. Raised from 50 to 80 per explicit
+// request — the quality drop was visible in the gallery at 50; 80 is high enough not to be
+// noticeable while still meaningfully smaller than the untouched original.
+const PREVIEW_QUALITY = 80;
 
 // LQIP (low-quality image placeholder): a tiny, heavily-compressed copy small enough to inline as a
 // base64 data URI directly in the page's own HTML/JSON — no network request at all, so it's visible

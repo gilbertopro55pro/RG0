@@ -6,6 +6,7 @@ import { boxShadowFor, cssFilterFor, computePhotoFraming, ALBUM_BLUR_MAX_PX, typ
 import { maskCssUrl, findMask } from "@/lib/albumMasks";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsSvgFilter } from "@/lib/albumAdjustments";
+import { sharpenSvgFilter } from "@/lib/albumSharpen";
 
 // Shared, read-only rendering of one album spread — used both in the album page grid
 // (GalleryManageView.tsx) and in the page-editor's own bottom switcher strip
@@ -83,6 +84,7 @@ export default function AlbumSpreadThumbnail({
               style={{
                 opacity: spread.background_opacity / 100,
                 filter: spread.background_blur ? `blur(${(spread.background_blur / 100) * ALBUM_BLUR_MAX_PX}px)` : undefined,
+                transform: spread.background_zoom && spread.background_zoom !== 100 ? `scale(${spread.background_zoom / 100})` : undefined,
               }}
             />
           ) : null;
@@ -92,6 +94,11 @@ export default function AlbumSpreadThumbnail({
           .filter((el): el is typeof el & { type: "photo" } => el.type === "photo" && hasAdjustments(el))
           .map((el) => (
             <defs key={el.id} dangerouslySetInnerHTML={{ __html: adjustmentsSvgFilter(el.id, el) }} />
+          ))}
+        {spread.elements
+          .filter((el): el is typeof el & { type: "photo" } => el.type === "photo" && !!el.sharpness)
+          .map((el) => (
+            <defs key={`sharpen-${el.id}`} dangerouslySetInnerHTML={{ __html: sharpenSvgFilter(el.id, el.sharpness) }} />
           ))}
       </svg>
       {spread.elements.map((el) => {
@@ -115,14 +122,16 @@ export default function AlbumSpreadThumbnail({
                 el.type === "shape" && (el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline")
                   ? `${el.borderWidth ?? 5}px solid ${el.borderColor ?? el.color}`
                   : undefined,
-              outline:
-                el.type === "shape" && (el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline")
-                  ? undefined
-                  : hasBorderShadow && el.borderWidth
-                  ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}`
-                  : undefined,
-              outlineOffset: hasBorderShadow && el.borderWidth ? `-${el.borderWidth}px` : undefined,
-              boxShadow: hasBorderShadow ? boxShadowFor(el.shadow) : undefined,
+              // Drop shadow only — the border used to be folded into this same box-shadow (as an
+              // inset segment), but a full-bleed photo/ornament <img> child paints on top of a
+              // parent's own box-shadow in normal paint order, so the inset border segment was
+              // silently invisible behind the image. Border now lives on a separate, later sibling
+              // div below (see hasBorderShadow's own render further down), guaranteed to paint above
+              // the image — same fix as AlbumSpreadCanvasEditor.tsx and the desktop app's
+              // SpreadPreview.tsx.
+              boxShadow: hasBorderShadow
+                ? boxShadowFor(el.shadow, el.type === "photo" ? el.shadowDistance : undefined, el.type === "photo" ? el.shadowBlur : undefined)
+                : undefined,
               opacity: el.type === "ornament" || el.type === "shape" ? (el.opacity ?? 100) / 100 : undefined,
               transform: hasBorderShadow && el.rotation ? `rotate(${el.rotation}deg)` : undefined,
             }}
@@ -203,7 +212,7 @@ export default function AlbumSpreadThumbnail({
                       top: `${framing.topPct}%`,
                       maxWidth: "none",
                       maxHeight: "none",
-                      filter: cssFilterFor(el.filter, el.blur, { id: el.id, adj: el }),
+                      filter: cssFilterFor(el.filter, el.blur, { id: el.id, adj: el }, el.sharpness),
                       opacity: (el.opacity ?? 100) / 100,
                       ...(el.maskId
                         ? {
@@ -220,6 +229,14 @@ export default function AlbumSpreadThumbnail({
                 );
               })()}
             {el.type === "text" && el.text}
+            {hasBorderShadow &&
+              !(el.type === "shape" && (el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline")) &&
+              !!el.borderWidth && (
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ boxShadow: `inset 0 0 0 ${el.borderWidth}px ${el.borderColor ?? "#fff"}` }}
+                />
+              )}
           </div>
         );
       })}

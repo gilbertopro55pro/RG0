@@ -1,25 +1,33 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconHome, IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics, IconSettings } from "@/components/icons/NavIcons";
 import { CURRENT_VERSION } from "@/lib/changelog";
+import GlassTabStrip from "@/components/GlassTabStrip";
+import { IconHome, IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics, IconSettings } from "@/components/icons/NavIcons";
 
-// One shared glass-pill treatment for every tile — only the small icon badge carries color, so
-// the row reads as a cohesive, muted set of shortcuts rather than a strip of rainbow buttons.
+// Round gradient badges restored on top of the glass-strip layout (dividers + sliding indicator)
+// — richer, deeper gradients than the original flat-pastel badges so they read as premium rather
+// than playful; the strip's own shadow/divider treatment is what carries the "glass" identity now,
+// so the badges themselves lean toward jewel-toned depth instead of pastel.
 const NAV_ITEMS = [
-  { href: "/", label: "בית", icon: IconHome, badge: "linear-gradient(135deg, #6b6b80, var(--color-ink))" },
-  { href: "/galleries", label: "גלריות", icon: IconGallery, badge: "linear-gradient(135deg, var(--color-sage), var(--color-lime-deep))" },
-  { href: "/client-portals", label: "פורטל לקוח", icon: IconLink, badge: "linear-gradient(135deg, var(--color-coral), var(--color-coral-deep))" },
-  { href: "/leads", label: "לידים ופניות", icon: IconLeads, badge: "linear-gradient(135deg, var(--color-lime), var(--color-lime-deep))" },
-  { href: "/waitlist", label: "רשימת המתנה", icon: IconWaitlist, badge: "linear-gradient(135deg, var(--color-peach), #d98a4a)" },
-  { href: "/analytics", label: "דשבורד", icon: IconAnalytics, badge: "linear-gradient(135deg, #8a90ff, #5e5ce6)" },
-  { href: "/settings", label: "הגדרות", icon: IconSettings, badge: "linear-gradient(135deg, #9a97b8, #6f6c8f)" },
+  { href: "/", label: "בית", icon: IconHome, iconBg: "linear-gradient(150deg, #4b4b5e, #201f33)" },
+  { href: "/galleries", label: "גלריות", icon: IconGallery, iconBg: "linear-gradient(150deg, var(--color-sage), var(--color-lime-deep))" },
+  { href: "/client-portals", label: "פורטל לקוח", icon: IconLink, iconBg: "linear-gradient(150deg, var(--color-coral), var(--color-coral-deep))" },
+  { href: "/leads", label: "לידים ופניות", icon: IconLeads, iconBg: "linear-gradient(150deg, var(--color-lime), var(--color-lime-deep))" },
+  { href: "/waitlist", label: "רשימת המתנה", icon: IconWaitlist, iconBg: "linear-gradient(150deg, var(--color-peach), #c9772f)" },
+  { href: "/analytics", label: "דשבורד", icon: IconAnalytics, iconBg: "linear-gradient(150deg, var(--color-amber), var(--color-amber-deep))" },
+  { href: "/settings", label: "הגדרות", icon: IconSettings, iconBg: "linear-gradient(150deg, #8d89ab, #5c5875)" },
 ] as const;
 
-// Client-facing token pages and pre-auth screens have no dashboard shortcuts to show.
-const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/billing"];
+// Client-facing token pages and pre-auth screens have no dashboard shortcuts to show. "/landing"
+// is here even though no link ever points at it directly — middleware.ts rewrites anonymous hits
+// on "/" to this static route (to skip the auth round trip), which is invisible in the browser's
+// URL bar but not to usePathname(): during SSR (and apparently past hydration too, confirmed live
+// — this isn't just a pre-hydration flash) it reports the REWRITTEN path, "/landing", not the "/"
+// the visitor actually requested. Without this entry the dashboard nav bar rendered on top of the
+// marketing page for every logged-out visitor hitting "/".
+const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/billing", "/landing"];
 
 export default function TopNav() {
   const pathname = usePathname();
@@ -73,42 +81,22 @@ export default function TopNav() {
         borderColor: "var(--color-line)",
       }}
     >
-      {/* 87% on mobile is a deliberate exact width so all 7 icon-only tiles fit with no side
-          scroll — labels only appear from md: up, where there's room for them. */}
-      <nav className="flex items-center justify-between md:justify-center gap-1 md:gap-2 px-1 md:px-3 py-1.5 md:py-2.5 mx-auto w-[87%] md:w-[90%] lg:w-[80%]">
-        {NAV_ITEMS.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="nav-tile relative shrink-0 flex items-center justify-center md:justify-start h-8 w-8 md:h-auto md:w-auto gap-0 md:gap-1.5 rounded-full md:pl-3 md:pr-1.5 md:py-1 text-xs font-semibold whitespace-nowrap"
-              style={{
-                background: active ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)",
-                border: `1px solid ${active ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)"}`,
-                color: "var(--color-ink)",
-                boxShadow: active ? "0 4px 14px rgba(88,76,158,0.14)" : "none",
-              }}
-            >
-              {item.href === "/settings" && settingsBadgeCount > 0 && (
-                <span
-                  className="absolute -top-1 -left-1 min-w-[16px] h-[16px] px-1 rounded-full text-white text-[9px] font-bold flex items-center justify-center leading-none shadow z-10"
-                  style={{ background: "var(--color-rose)" }}
-                >
-                  {settingsBadgeCount > 99 ? "99+" : settingsBadgeCount}
-                </span>
-              )}
-              <span
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
-                style={{ background: item.badge, color: "#ffffff" }}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
-              </span>
-              <span className="hidden md:inline">{item.label}</span>
-            </Link>
-          );
-        })}
+      <nav className="px-3 py-2 mx-auto w-full md:w-[90%] lg:w-[80%]">
+        <GlassTabStrip
+          items={NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return {
+              key: item.href,
+              label: item.label,
+              href: item.href,
+              active: pathname === item.href || pathname.startsWith(`${item.href}/`),
+              badge: item.href === "/settings" ? settingsBadgeCount : undefined,
+              icon: <Icon className="h-3.5 w-3.5" />,
+              iconBg: item.iconBg,
+              hideLabel: true,
+            };
+          })}
+        />
       </nav>
     </div>
   );

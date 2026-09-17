@@ -92,6 +92,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       event_location: eventLocation || null,
       arrival_time: arrivalTime || null,
       notes: notes || null,
+      // Any saved edit — regardless of which fields actually changed — is what "reviewing" a
+      // bulk-imported event means; clears the calendar-scan quick-add highlight for good.
+      needs_review: false,
     })
     .eq("id", eventId)
     .select()
@@ -99,6 +102,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (updateError || !updated) {
     return NextResponse.json({ error: updateError?.message ?? "שגיאה בעדכון האירוע" }, { status: 500 });
+  }
+
+  // Keeps the linked gallery's title following the event's client name — but only while the
+  // photographer has never explicitly retyped it in gallery settings (title_customized), per
+  // explicit request: renaming the event should never touch a gallery title someone deliberately
+  // set on purpose.
+  if (clientName !== existing.client_name) {
+    await supabase
+      .from("galleries")
+      .update({ title: clientName })
+      .eq("event_id", eventId)
+      .eq("title_customized", false);
   }
 
   const notifications = [{ event_id: eventId, text: "פרטי האירוע עודכנו" }];

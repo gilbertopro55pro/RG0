@@ -3,10 +3,23 @@
 import { useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Photographer } from "@/lib/types";
-import { GOOGLE_EVENT_COLORS } from "@/lib/googleColors";
+import { ADMIN_EMAIL } from "@/lib/admin";
+import { GOOGLE_EVENT_COLORS, googleColorHex } from "@/lib/googleColors";
 import { setHapticsEnabled, subscribeHaptics, getHapticsSnapshot, getHapticsServerSnapshot } from "@/lib/haptics";
 import type { AppleCalendarOption } from "@/lib/appleCalendar";
 import AppleCalendarGuideModal from "@/components/AppleCalendarGuideModal";
+import CompactGuideModal from "@/components/CompactGuideModal";
+import { IndeterminateProgressCard } from "@/components/IndeterminateProgressCard";
+import ScanCandidateCard, { type ScanCandidate, type ScanCandidateTextField } from "@/components/ScanCandidateCard";
+import { PACKAGE_LABELS, type PackageType } from "@/lib/stages";
+import { stripPhoneFormatting } from "@/lib/phone";
+
+const SCAN_MONTH_OPTIONS: { months: number; label: string }[] = [
+  { months: 1, label: "חודש" },
+  { months: 3, label: "3 חודשים" },
+  { months: 6, label: "חצי שנה" },
+  { months: 12, label: "שנה" },
+];
 
 export default function ProfileSettingsView({
   photographer,
@@ -27,6 +40,9 @@ export default function ProfileSettingsView({
   const [disconnecting, setDisconnecting] = useState(false);
   const [colorId, setColorId] = useState(photographer.google_calendar_color_id);
   const [savingColor, setSavingColor] = useState<string | null>(null);
+  const [importColorId, setImportColorId] = useState(photographer.google_calendar_import_color_id);
+  const [savingImportColor, setSavingImportColor] = useState<string | null>(null);
+  const isAdmin = photographer.email === ADMIN_EMAIL;
   const [appleConnected, setAppleConnected] = useState(photographer.apple_calendar_connected);
   const [appleDisplayName, setAppleDisplayName] = useState(photographer.apple_calendar_display_name);
   const [appleEmail, setAppleEmail] = useState("");
@@ -60,10 +76,15 @@ export default function ProfileSettingsView({
 
   const saveProfile = async () => {
     setSaving(true);
+    // A phone pasted from Contacts/Messages can carry invisible bidi-formatting marks that later
+    // broke a Finbot API call (see src/lib/phone.ts) — stripped here so a re-save also cleans up
+    // an already-corrupted value, not just new ones.
+    const cleanPhone = stripPhoneFormatting(phone);
     await supabase
       .from("photographers")
-      .update({ name, phone, whatsapp_signature: signature || null })
+      .update({ name, phone: cleanPhone, whatsapp_signature: signature || null })
       .eq("id", photographer.id);
+    setPhone(cleanPhone);
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -191,9 +212,15 @@ export default function ProfileSettingsView({
     setDisconnectingGreenInvoice(false);
   };
 
+  // Always persists, regardless of invoiceProviderConnected — a real, confirmed bug until this
+  // fix: the DB write used to be skipped entirely for anyone with no invoice provider connected
+  // (this button only updated local state in that case), so the toggle visually looked selected
+  // but silently reverted to whatever business_tax_status already was on the very next page load.
+  // That mattered less back when this value only affected which invoice-provider document type
+  // got issued — now it's also EventPricingCalculator's own default tax status, a standalone
+  // business fact that has nothing to do with whether an invoice provider is connected at all.
   const saveTaxStatus = async (status: "exempt" | "licensed") => {
     setTaxStatus(status);
-    if (!invoiceProviderConnected) return;
     setSavingInvoicing(true);
     await supabase.from("photographers").update({ business_tax_status: status }).eq("id", photographer.id);
     setSavingInvoicing(false);
@@ -212,6 +239,131 @@ export default function ProfileSettingsView({
     await supabase.from("photographers").update({ google_calendar_color_id: id }).eq("id", photographer.id);
     setColorId(id);
     setSavingColor(null);
+  };
+
+  const chooseImportColor = async (id: string) => {
+    setSavingImportColor(id);
+    await supabase.from("photographers").update({ google_calendar_import_color_id: id }).eq("id", photographer.id);
+    setImportColorId(id);
+    setSavingImportColor(null);
+  };
+
+  // Admin-only for now — see the "עדכון אדמין" staged-rollout process. Four phases: pick how far
+  // ahead to scan (a small blurred-backdrop window), a full-screen indeterminate spinner while that
+  // one fetch is in flight (same visual language as the upload/export screens — nothing to report a
+  // real percentage for here, it's a single request), select which of the results to add and
+  // confirm, then a second indeterminate spinner while they're created — no per-event review form;
+  // each created event is flagged needs_review so it's easy to find and complete on the events list.
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanStep, setScanStep] = useState<"pickMonths" | "results" | "confirm" | "done">("pickMonths");
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanCandidates, setScanCandidates] = useState<ScanCandidate[] | null>(null);
+  const [selectedCalendarEventIds, setSelectedCalendarEventIds] = useState<Set<string>>(new Set());
+  const [bulkCreating, setBulkCreating] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ created: number; failed: { summary: string; error: string }[] } | null>(null);
+  // For the results screen's package <select> — fetched once per sheet-open rather than kept in
+  // sync live, since these rarely change mid-session and the sheet is short-lived.
+  const [scanCustomPackages, setScanCustomPackages] = useState<{ id: string; name: string }[]>([]);
+
+  const openScan = () => {
+    setScanOpen(true);
+    setScanStep("pickMonths");
+    setScanError(null);
+    setScanCandidates(null);
+    setSelectedCalendarEventIds(new Set());
+    setBulkResult(null);
+    supabase
+      .from("custom_packages")
+      .select("id, name")
+      .order("sort_order", { ascending: true })
+      .then(({ data }) => setScanCustomPackages(data ?? []));
+  };
+
+  const runScan = async (months: number) => {
+    setScanning(true);
+    setScanError(null);
+    try {
+      const res = await fetch(`/api/calendar/scan-import?months=${months}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "הסריקה נכשלה");
+      const candidates: ScanCandidate[] = data.candidates ?? [];
+      setScanCandidates(candidates);
+      setSelectedCalendarEventIds(new Set(candidates.map((c) => c.calendarEventId)));
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : "הסריקה נכשלה");
+    } finally {
+      setScanStep("results");
+      setScanning(false);
+    }
+  };
+
+  const toggleCandidate = (id: string) => {
+    setSelectedCalendarEventIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (!scanCandidates) return;
+    setSelectedCalendarEventIds((prev) =>
+      prev.size === scanCandidates.length ? new Set() : new Set(scanCandidates.map((c) => c.calendarEventId))
+    );
+  };
+
+  // Lets the photographer correct the auto-parsed (often missing/wrong) deposit/balance before
+  // any event is actually created — the values edited here are exactly what gets sent to the
+  // create endpoint in confirmBulkAdd below, no separate "apply edits" step.
+  const updateCandidateAmount = (id: string, field: "deposit" | "balance", raw: string) => {
+    setScanCandidates((prev) =>
+      prev ? prev.map((c) => (c.calendarEventId === id ? { ...c, [field]: raw === "" ? null : Number(raw) } : c)) : prev
+    );
+  };
+
+  // Same idea for the text/time cells (location, start/end time, arrival time) — Google Calendar's
+  // own data is often missing or wrong for these, so they're editable right here before anything
+  // is actually created, and whatever's typed under each cell's own name is exactly what that field
+  // gets sent to the create endpoint (see confirmBulkAdd, which just forwards selectedCandidates
+  // as-is).
+  const updateCandidateField = (id: string, field: ScanCandidateTextField, value: string) => {
+    setScanCandidates((prev) => (prev ? prev.map((c) => (c.calendarEventId === id ? { ...c, [field]: value } : c)) : prev));
+  };
+
+  // Only ever shown/toggleable on a candidate flagged hasScheduleCollision — see the "same date +
+  // time as something else already on the books" check on the API route.
+  const toggleCandidateFreelance = (id: string) => {
+    setScanCandidates((prev) =>
+      prev ? prev.map((c) => (c.calendarEventId === id ? { ...c, isFreelance: !c.isFreelance } : c)) : prev
+    );
+  };
+
+  const scanPackageLabel = (pkg: string) =>
+    pkg.startsWith("custom:")
+      ? (scanCustomPackages.find((cp) => cp.id === pkg.slice(7))?.name ?? "חבילה מותאמת אישית")
+      : PACKAGE_LABELS[pkg as PackageType];
+
+  const selectedCandidates = (scanCandidates ?? []).filter((c) => selectedCalendarEventIds.has(c.calendarEventId));
+
+  const confirmBulkAdd = async () => {
+    setBulkCreating(true);
+    try {
+      const res = await fetch("/api/calendar/scan-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidates: selectedCandidates }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "ההוספה נכשלה");
+      setBulkResult({ created: data.created ?? 0, failed: data.failed ?? [] });
+    } catch (e) {
+      setBulkResult({ created: 0, failed: selectedCandidates.map((c) => ({ summary: c.summary || "אירוע ללא כותרת", error: e instanceof Error ? e.message : "ההוספה נכשלה" })) });
+    } finally {
+      setBulkCreating(false);
+      setScanStep("done");
+    }
   };
 
   return (
@@ -271,7 +423,10 @@ export default function ProfileSettingsView({
       </div>
 
       <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-3.5">יומן Google</div>
+        <div className="flex items-center gap-2 mb-3.5">
+          <span className="text-sm font-semibold tracking-wide">יומן Google</span>
+          {isAdmin && <CompactGuideModal pageKey="calendar-scan" />}
+        </div>
         {connected ? (
           <div className="space-y-3">
             <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
@@ -279,27 +434,66 @@ export default function ProfileSettingsView({
             </div>
 
             <div>
-              <div className="text-xs mb-2 text-ink-soft">
-                {colorId ? "צבע האירועים ביומן" : "באיזה צבע לשמור את האירועים ביומן?"}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {GOOGLE_EVENT_COLORS.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => chooseColor(c.id)}
-                    disabled={savingColor !== null}
-                    title={c.name}
-                    className="h-9 w-9 rounded-full flex items-center justify-center disabled:opacity-60"
-                    style={{
-                      background: c.hex,
-                      boxShadow: colorId === c.id ? "0 0 0 2px #fff, 0 0 0 4px var(--color-ink)" : "none",
-                    }}
-                  >
-                    {colorId === c.id && <span style={{ color: "#1d1d1d" }}>✓</span>}
-                  </button>
-                ))}
+              <label className="text-xs mb-1.5 block text-ink-soft">צבע האירועים ביומן</label>
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-8 w-8 rounded-full shrink-0 border border-line"
+                  style={{ background: colorId ? (googleColorHex(colorId) ?? "transparent") : "transparent" }}
+                />
+                <select
+                  value={colorId ?? ""}
+                  onChange={(e) => chooseColor(e.target.value)}
+                  disabled={savingColor !== null}
+                  className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm border border-line bg-white disabled:opacity-60"
+                >
+                  <option value="" disabled>
+                    בחירת צבע
+                  </option>
+                  {GOOGLE_EVENT_COLORS.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
+
+            {isAdmin && (
+              <div>
+                <label className="text-xs mb-1.5 block text-ink-soft">צבע לזיהוי אירועים לייבוא (סריקת יומן)</label>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-8 w-8 rounded-full shrink-0 border border-line"
+                    style={{ background: importColorId ? (googleColorHex(importColorId) ?? "transparent") : "transparent" }}
+                  />
+                  <select
+                    value={importColorId ?? ""}
+                    onChange={(e) => chooseImportColor(e.target.value)}
+                    disabled={savingImportColor !== null}
+                    className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm border border-line bg-white disabled:opacity-60"
+                  >
+                    <option value="" disabled>
+                      בחירת צבע
+                    </option>
+                    {GOOGLE_EVENT_COLORS.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-[11px] mt-1.5 text-ink-soft">
+                  צבעו כך ביומן אירועי לקוחות חדשים שעדיין לא הוזנו למערכת — סריקת היומן תאתר אותם ותציע לפתוח להם כרטיס אירוע.
+                </p>
+                <button
+                  onClick={openScan}
+                  disabled={!importColorId}
+                  className="w-full mt-2.5 rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-40"
+                >
+                  סריקת יומן לאירועים חדשים
+                </button>
+              </div>
+            )}
 
             <button
               onClick={disconnectGoogle}
@@ -318,6 +512,161 @@ export default function ProfileSettingsView({
           </a>
         )}
       </div>
+
+      {scanOpen && scanning && <IndeterminateProgressCard label="סורק את היומן..." />}
+      {scanOpen && bulkCreating && <IndeterminateProgressCard label="מוסיף אירועים..." />}
+
+      {scanOpen && !scanning && !bulkCreating && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center"
+          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          onClick={() => setScanOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3.5">
+              <h2 className="text-lg font-bold font-display">
+                {scanStep === "pickMonths"
+                  ? "סריקת יומן לאירועים חדשים"
+                  : scanStep === "results"
+                    ? "אירועים חדשים ביומן"
+                    : scanStep === "confirm"
+                      ? "אישור הוספה"
+                      : "הוספת אירועים"}
+              </h2>
+              <button onClick={() => setScanOpen(false)} className="text-ink-soft text-sm" aria-label="סגירה">
+                ✕
+              </button>
+            </div>
+
+            {scanStep === "pickMonths" && (
+              <div className="space-y-2">
+                <p className="text-xs text-ink-soft mb-1">כמה קדימה בזמן לסרוק?</p>
+                {SCAN_MONTH_OPTIONS.map((o) => (
+                  <button
+                    key={o.months}
+                    onClick={() => runScan(o.months)}
+                    className="w-full text-right rounded-xl p-3 bg-chip text-sm font-semibold"
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {scanStep === "results" &&
+              (scanError ? (
+                <p className="text-sm text-rose">{scanError}</p>
+              ) : scanCandidates && scanCandidates.length === 0 ? (
+                <p className="text-sm text-ink-soft">לא נמצאו אירועים חדשים בצבע שהוגדר.</p>
+              ) : (
+                <div>
+                  <label className="flex items-center gap-1.5 text-xs text-ink-soft mb-2.5">
+                    <input
+                      type="checkbox"
+                      checked={!!scanCandidates && selectedCalendarEventIds.size === scanCandidates.length}
+                      onChange={toggleSelectAll}
+                    />
+                    בחירת הכל ({scanCandidates?.length ?? 0})
+                  </label>
+                  <div className="space-y-2 mb-3.5">
+                    {scanCandidates?.map((c) => (
+                      <ScanCandidateCard
+                        key={c.calendarEventId}
+                        candidate={c}
+                        selected={selectedCalendarEventIds.has(c.calendarEventId)}
+                        onToggle={() => toggleCandidate(c.calendarEventId)}
+                        onUpdateField={(field, value) => updateCandidateField(c.calendarEventId, field, value)}
+                        onUpdateAmount={(field, value) => updateCandidateAmount(c.calendarEventId, field, value)}
+                        onToggleFreelance={() => toggleCandidateFreelance(c.calendarEventId)}
+                        customPackages={scanCustomPackages}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setScanStep("confirm")}
+                    disabled={selectedCalendarEventIds.size === 0}
+                    className="w-full rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-40"
+                  >
+                    המשך עם {selectedCalendarEventIds.size} אירועים נבחרים
+                  </button>
+                </div>
+              ))}
+
+            {scanStep === "confirm" && (
+              <div>
+                <p className="text-sm mb-3">
+                  להוסיף {selectedCandidates.length} אירועים לדף האירועים? כל אירוע ייפתח ישירות, בלי שאלות נוספות — אפשר להשלים
+                  ולתקן פרטים בכל אירוע לאחר מכן.
+                </p>
+                <div className="space-y-1.5 mb-3.5 max-h-48 overflow-y-auto">
+                  {selectedCandidates.map((c) => (
+                    <div key={c.calendarEventId} className="text-xs rounded-lg px-2.5 py-1.5 bg-chip">
+                      <span className="font-semibold">{c.summary || "אירוע ללא כותרת"}</span>
+                      <span className="text-ink-soft font-data"> · {new Date(c.eventDate).toLocaleDateString("he-IL")}</span>
+                      <span className="text-ink-soft"> · {scanPackageLabel(c.pkg)}</span>
+                      {c.eventStartTime && (
+                        <span className="text-ink-soft font-data">
+                          {" · "}
+                          {c.eventStartTime}
+                          {c.eventEndTime ? `-${c.eventEndTime}` : ""}
+                        </span>
+                      )}
+                      {c.location && <span className="text-ink-soft"> · {c.location}</span>}
+                      {c.clientPhone && <span className="text-ink-soft font-data"> · {c.clientPhone}</span>}
+                      {(c.deposit || c.balance) && (
+                        <span className="text-ink-soft font-data">
+                          {" · "}
+                          {c.deposit ? `מקדמה ₪${c.deposit}` : ""}
+                          {c.deposit && c.balance ? " / " : ""}
+                          {c.balance ? `יתרה ₪${c.balance}` : ""}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={confirmBulkAdd} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white">
+                    אישור, הוספה
+                  </button>
+                  <button
+                    onClick={() => setScanStep("results")}
+                    className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft"
+                  >
+                    חזרה
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {scanStep === "done" && bulkResult && (
+              <div>
+                {bulkResult.created > 0 && (
+                  <p className="text-sm text-sage font-semibold mb-2">✓ נוספו {bulkResult.created} אירועים לדף האירועים</p>
+                )}
+                {bulkResult.failed.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-sm text-rose font-semibold mb-1.5">{bulkResult.failed.length} אירועים לא נוספו:</p>
+                    <div className="space-y-1">
+                      {bulkResult.failed.map((f, i) => (
+                        <div key={i} className="text-xs rounded-lg px-2.5 py-1.5 bg-chip">
+                          <span className="font-semibold">{f.summary}</span>
+                          <span className="text-ink-soft"> — {f.error}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <button onClick={() => setScanOpen(false)} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
+                  סגירה
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
         <div className="text-sm font-semibold tracking-wide mb-3.5">יומן Apple (iCloud)</div>
@@ -437,7 +786,9 @@ export default function ProfileSettingsView({
         </div>
 
         <div>
-          <p className="text-xs mb-2 text-ink-soft">סטטוס עוסק (קובע אם מונפקת קבלה או חשבונית מס)</p>
+          <p className="text-xs mb-2 text-ink-soft">
+            סטטוס עוסק — קובע אם מונפקת קבלה או חשבונית מס (כשמחוברים לספק חשבוניות), וגם ברירת המחדל בבונה הצעות המחיר
+          </p>
           <div className="flex gap-1.5 mb-3.5">
             <button
               onClick={() => saveTaxStatus("exempt")}

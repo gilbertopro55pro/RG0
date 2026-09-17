@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { EventRow } from "@/lib/types";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
+import NativeDateTimeField from "@/components/NativeDateTimeField";
 
 export default function EditEventModal({
   event,
@@ -132,48 +133,33 @@ export default function EditEventModal({
           </div>
           <div>
             <label className="text-xs block mb-1 text-ink-soft">תאריך האירוע</label>
-            <div className="relative">
-              <input
-                type="date"
-                value={eventDate}
-                onChange={(e) => setEventDate(e.target.value)}
-                dir="ltr"
-                className={`w-full min-w-0 max-w-full block rounded-lg px-3 py-2 text-sm text-center border border-line bg-white ${eventDate ? "text-transparent" : ""}`}
-              />
-              {/* A native date input's inline (unfocused) display always uses the browser/OS
-                  locale format with no override, which was showing YYYY / MM / DD instead of
-                  DD/MM/YYYY — sits on top of the real input (kept fully interactive underneath,
-                  just with its own text made transparent) instead of replacing it, so the native
-                  calendar popup keeps working exactly as before. */}
-              {eventDate && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm" dir="ltr">
-                  {formatDateDMYFromInput(eventDate)}
-                </div>
-              )}
-            </div>
+            <NativeDateTimeField
+              type="date"
+              value={eventDate}
+              onChange={setEventDate}
+              display={eventDate ? formatDateDMYFromInput(eventDate) : <span className="text-ink-soft">בחר תאריך</span>}
+            />
           </div>
           <div className="flex gap-2">
-            {/* Without dir="ltr" a native time input's own inline value renders right-to-left,
-                which reflows it wider than its half of the row and makes it climb onto the
-                neighboring field — not a sizing issue, min-w-0 alone doesn't fix it. */}
+            {/* min-w-0 keeps a flex item from growing past its half of the row. */}
             <div className="flex-1 min-w-0">
               <label className="text-xs block mb-1 text-ink-soft">שעת התחלה</label>
-              <input
+              <NativeDateTimeField
                 type="time"
+                compact
                 value={eventStartTime}
-                onChange={(e) => setEventStartTime(e.target.value)}
-                dir="ltr"
-                className="w-full min-w-0 max-w-full block rounded-lg px-1.5 py-2 text-sm text-center border border-line bg-white"
+                onChange={setEventStartTime}
+                display={eventStartTime || <span className="text-ink-soft">--:--</span>}
               />
             </div>
             <div className="flex-1 min-w-0">
               <label className="text-xs block mb-1 text-ink-soft">שעת סיום</label>
-              <input
+              <NativeDateTimeField
                 type="time"
+                compact
                 value={eventEndTime}
-                onChange={(e) => setEventEndTime(e.target.value)}
-                dir="ltr"
-                className="w-full min-w-0 max-w-full block rounded-lg px-1.5 py-2 text-sm text-center border border-line bg-white"
+                onChange={setEventEndTime}
+                display={eventEndTime || <span className="text-ink-soft">--:--</span>}
               />
             </div>
           </div>
@@ -187,12 +173,11 @@ export default function EditEventModal({
           </div>
           <div>
             <label className="text-xs block mb-1 text-ink-soft">שעת הגעה לצילומי משפחה</label>
-            <input
+            <NativeDateTimeField
               type="time"
               value={arrivalTime}
-              onChange={(e) => setArrivalTime(e.target.value)}
-              dir="ltr"
-              className="w-full min-w-0 max-w-full block rounded-lg px-3 py-2 text-sm text-center border border-line bg-white"
+              onChange={setArrivalTime}
+              display={arrivalTime || <span className="text-ink-soft">--:--</span>}
             />
           </div>
           <div>

@@ -4,6 +4,7 @@ import { downloadObjectBuffer, uploadObject, getSignedDownloadUrl } from "@/lib/
 import { buildPriceQuotePdf } from "@/lib/priceQuotePdf";
 import { formatWorkHours, quoteEventDetails } from "@/lib/priceQuoteFormat";
 import { sendEmail } from "@/lib/resend";
+import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { Photographer, PriceQuoteRow } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -59,6 +60,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     total: quote.total,
     createdAt: new Date(quote.created_at),
     eventDetails,
+    notes: quote.notes ?? undefined,
   });
 
   let whatsapp: { clientPhone: string; message: string } | null = null;
@@ -69,7 +71,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         to: email!.trim(),
         subject: `הצעת מחיר מ${photographer.name}`,
         text: `שלום,\n\nמצורפת הצעת מחיר מ${photographer.name}.\n\nבברכה,\n${photographer.name}`,
-        replyTo: photographer.email,
+        replyTo: notificationEmailFor(photographer.email),
         attachments: [{ filename: "הצעת-מחיר.pdf", content: Buffer.from(pdfBytes).toString("base64") }],
       });
     } catch (err) {

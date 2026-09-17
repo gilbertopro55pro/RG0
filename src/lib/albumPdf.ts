@@ -24,7 +24,21 @@ import { getAlbumFontFiles } from "@/lib/albumFontFiles";
 import { ALBUM_BLUR_MAX_PX, coverCropRaw, applyMaskToRaw, ornamentLayerRaw, composeShapeTile } from "@/lib/albumRaster";
 import { findOrnament } from "@/lib/albumOrnaments";
 import { hasAdjustments, applyAdjustmentsToRgba, type PhotoAdjustments } from "@/lib/albumAdjustments";
+import { sharpSharpenOptions } from "@/lib/albumSharpen";
 import type { AlbumPhotoFilter, AlbumTextElement, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
+
+// Module-scope (not per-export) since the same handful of font files back every album regardless
+// of which request is rendering it — parsed once per server process, same lifetime rationale as
+// albumRaster.ts's own fontkitFontCache.
+const hebrewMetricsCache = new Map<string, { ascentRatio: number; descentRatio: number }>();
+async function hebrewMetricsFor(fontsDir: string, hebrewFile: string): Promise<{ ascentRatio: number; descentRatio: number }> {
+  const cached = hebrewMetricsCache.get(hebrewFile);
+  if (cached) return cached;
+  const raw = fontkit.create(await fs.readFile(path.join(fontsDir, hebrewFile)));
+  const metrics = { ascentRatio: raw.ascent / raw.unitsPerEm, descentRatio: Math.abs(raw.descent) / raw.unitsPerEm };
+  hebrewMetricsCache.set(hebrewFile, metrics);
+  return metrics;
+}
 
 function hexToRgbTuple(hex: string): [number, number, number] {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
@@ -47,9 +61,20 @@ async function applyPhotoFilter(
   filter: AlbumPhotoFilter | undefined,
   blurPct?: number,
   adjustments?: PhotoAdjustments,
-  jpegQuality: number = 90
+  jpegQuality: number = 90,
+  sharpness?: number
 ): Promise<Buffer> {
   let img = sharp(buffer).rotate(); // .rotate() with no args auto-applies EXIF orientation first
+  // Capped BEFORE the rest of the pipeline — the photo is embedded at its FULL pixel dimensions
+  // (pdf-lib's own vector clip does the cover-fit crop at DRAW time, not here — see embedByPhotoId's
+  // comment), and this is a proof/layout export at PAGE_WIDTH×PAGE_HEIGHT points, not a certified
+  // press file. A real camera original can be 20MB+ at 40-60+ megapixels; decoding, filtering, and
+  // re-encoding one at FULL resolution for every photo on a page is real, avoidable cost — found
+  // 2026-09-01 as the likely cause behind one specific page (5 originals in the 6-22MB range)
+  // consistently being the one export batches died on, no matter how the invocation/batching
+  // architecture around it was hardened. 3200px comfortably covers even a full-bleed photo at good
+  // quality for this page size with real margin to spare.
+  img = img.resize(3200, 3200, { fit: "inside", withoutEnlargement: true });
   // Sepia = tinted — sharp's tint() already desaturates internally before recoloring, so this is
   // the standard sepia approximation. Chaining an explicit .grayscale() *before* .tint() looks
   // like the obvious way to write it, but empirically neutralizes the tint entirely (confirmed:
@@ -60,6 +85,8 @@ async function applyPhotoFilter(
   // pdf-lib has no blur primitive at all, so this is the only place a blurred photo can come from
   // for the PDF export — baked into the pixels before embedding, same as the filter above.
   if (blurPct) img = img.blur(Math.max(0.3, (blurPct / 100) * ALBUM_BLUR_MAX_PX));
+  const sharpenOpts = sharpSharpenOptions(sharpness);
+  if (sharpenOpts) img = img.sharpen(sharpenOpts);
   if (adjustments && hasAdjustments(adjustments)) {
     const { data, info } = await img.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     applyAdjustmentsToRgba(data, adjustments);
@@ -177,10 +204,19 @@ function drawCoverImage(
 // one. Offset direction mirrors boxShadowFor's CSS convention (positive = shifts right and down on
 // screen), flipped on the y-axis since PDF space runs bottom-up. Draw this INSIDE the caller's
 // active rotation block (before the clipped image) so it rotates together with the frame too.
-function drawPhotoShadow(page: PDFPage, rect: { x: number; y: number; width: number; height: number }, shadowPct: number | undefined) {
+// distancePct/blurPct independently override the offset/spread that would otherwise be derived
+// from shadowPct alone — undefined (ornaments/shapes, and every already-saved album) keeps the old
+// coupled-to-intensity behavior exactly, matching boxShadowFor's own CSS-side convention.
+function drawPhotoShadow(
+  page: PDFPage,
+  rect: { x: number; y: number; width: number; height: number },
+  shadowPct: number | undefined,
+  distancePct?: number,
+  blurPct?: number
+) {
   if (!shadowPct) return;
-  const offsetPt = (shadowPct / 100) * 10;
-  const maxSpread = (shadowPct / 100) * 24;
+  const offsetPt = ((distancePct ?? shadowPct) / 100) * 10;
+  const maxSpread = ((blurPct ?? shadowPct) / 100) * 24;
   const baseAlpha = 0.15 + (shadowPct / 100) * 0.45;
   const layers = 4;
   for (let i = layers; i >= 1; i--) {
@@ -208,14 +244,24 @@ function drawPhotoShadow(page: PDFPage, rect: { x: number; y: number; width: num
 function drawTextElement(
   page: PDFPage,
   el: AlbumTextElement,
-  fonts: { hebrewFont: PDFFont; latinFont: PDFFont },
+  fonts: { hebrewFont: PDFFont; latinFont: PDFFont; hebrewAscentRatio: number; hebrewDescentRatio: number },
   pageWidth: number = PAGE_WIDTH,
   pageHeight: number = PAGE_HEIGHT
 ) {
   const boxX = (el.xPct / 100) * pageWidth;
   const boxWidth = (el.widthPct / 100) * pageWidth;
   const size = (el.fontSize / 1600) * pageWidth;
-  const y = pageHeight - (el.yPct / 100) * pageHeight - size;
+  // Box top in PDF's bottom-up y space — heightPct falls back to 15 to match both the editor's own
+  // CSS fallback (AlbumSpreadCanvasEditor.tsx) and albumRaster.ts's resolvePageElements, so a
+  // legacy element with no heightPct saved centers identically everywhere.
+  const boxTopY = pageHeight - (el.yPct / 100) * pageHeight;
+  const boxHeight = ((el.heightPct ?? 15) / 100) * pageHeight;
+  const ascent = fonts.hebrewAscentRatio * size;
+  const descent = fonts.hebrewDescentRatio * size;
+  // Center the text's line box within the editor's own box, same "boxTop + H/2 + (ascent-descent)/2
+  // below the top" formula as svgTextLayer in albumRaster.ts uses (see its own comment for the
+  // derivation) — just flipped for PDF's y-up axis, so "below the top" is a SUBTRACTION here.
+  const y = boxTopY - boxHeight / 2 - (ascent - descent) / 2;
   const mainColor = rgb(...textColorRgb01(el.color));
   const shadowColor = isLightTextColor(el.color) ? rgb(0, 0, 0) : rgb(1, 1, 1);
   for (const [dx, dy, color] of [
@@ -229,7 +275,8 @@ function drawTextElement(
       size,
       align: el.align,
       color,
-      ...fonts,
+      hebrewFont: fonts.hebrewFont,
+      latinFont: fonts.latinFont,
     });
   }
 }
@@ -241,6 +288,9 @@ export async function generateAlbumPdf({
   customOrnamentsById,
   jpegQuality = 90,
   downloadCache,
+  onPageRendered,
+  resumeFromDoc,
+  pageRange,
 }: {
   album: GalleryAlbumRow;
   spreads: GalleryAlbumSpreadRow[];
@@ -251,6 +301,24 @@ export async function generateAlbumPdf({
   // differs between passes, so the network round-trips are the one thing worth sharing across them.
   jpegQuality?: number;
   downloadCache?: Map<string, Buffer | null>;
+  // Fired once per spread as it starts rendering — the only real progress signal the PDF export
+  // job (see albumExportJobs.ts) has, since generateAlbumPdf otherwise runs as one opaque await.
+  onPageRendered?: () => void;
+  // Continues an already-partially-built PDF (bytes from a PREVIOUS call's own return value)
+  // instead of starting a fresh document — see albumExportJobs.ts's own comment on why this exists:
+  // a whole album's worth of pages in one call could silently die mid-render on whatever the
+  // platform's real (undocumented, shorter-than-configured) execution ceiling turns out to be, with
+  // no error and no way to resume. Splitting into small page batches, each its own invocation,
+  // needs the in-progress PDFDocument to survive the trip between invocations — pdf-lib objects
+  // aren't serializable themselves, but `.save()`'d bytes are, and `PDFDocument.load()` picks the
+  // SAME document back up (fonts, cached embeds are NOT preserved and get re-embedded per batch —
+  // an accepted small extra cost against actually finishing reliably).
+  resumeFromDoc?: Uint8Array;
+  // Only spreads[pageRange.start, pageRange.end) get rendered in THIS call — everything before
+  // start is assumed to already be in resumeFromDoc, and everything at/after end is left for a
+  // later call. Omit (or {start:0, end:spreads.length}) to render every page in one call, same as
+  // before this param existed.
+  pageRange?: { start: number; end: number };
 }): Promise<Uint8Array> {
   const cache = downloadCache ?? new Map<string, Buffer | null>();
   const downloadCached = async (bucket: string, path: string): Promise<Buffer | null> => {
@@ -261,28 +329,40 @@ export async function generateAlbumPdf({
     return buffer;
   };
 
-  const pdfDoc = await PDFDocument.create();
+  const pdfDoc = resumeFromDoc ? await PDFDocument.load(resumeFromDoc) : await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
 
   const fontsDir = path.join(process.cwd(), "src/assets/fonts");
-  const [hebrewFont, latinFont] = await Promise.all([
+  const [hebrewFont, latinFont, hebrewMetrics] = await Promise.all([
     pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, "Heebo-Hebrew-Bold.ttf"))),
     pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, "Heebo-Latin-Bold.ttf"))),
+    hebrewMetricsFor(fontsDir, "Heebo-Hebrew-Bold.ttf"),
   ]);
-  const defaultFonts = { hebrewFont, latinFont };
+  const defaultFonts = { hebrewFont, latinFont, hebrewAscentRatio: hebrewMetrics.ascentRatio, hebrewDescentRatio: hebrewMetrics.descentRatio };
 
   // Fonts are embedded lazily, one pair per distinct selection actually used in this album — a
   // full 20-family embed on every export would bloat every single PDF regardless of use.
-  const fontPairCache = new Map<string, { hebrewFont: PDFFont; latinFont: PDFFont }>();
-  const getFontsForFamily = async (fontFamily: string | undefined): Promise<{ hebrewFont: PDFFont; latinFont: PDFFont }> => {
+  type FontPair = { hebrewFont: PDFFont; latinFont: PDFFont; hebrewAscentRatio: number; hebrewDescentRatio: number };
+  const fontPairCache = new Map<string, FontPair>();
+  const getFontsForFamily = async (fontFamily: string | undefined): Promise<FontPair> => {
     const key = fontFamily ?? "heebo";
     if (key === "heebo") return defaultFonts;
     const cached = fontPairCache.get(key);
     if (cached) return cached;
     const { hebrewFile, latinFile } = getAlbumFontFiles(key);
-    const pair = {
-      hebrewFont: hebrewFile === "Heebo-Hebrew-Bold.ttf" ? hebrewFont : await pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, hebrewFile))),
-      latinFont: latinFile === "Heebo-Latin-Bold.ttf" ? latinFont : await pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, latinFile))),
+    const isDefaultHebrewFile = hebrewFile === "Heebo-Hebrew-Bold.ttf";
+    const [pairFonts, metrics] = await Promise.all([
+      Promise.all([
+        isDefaultHebrewFile ? hebrewFont : pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, hebrewFile))),
+        latinFile === "Heebo-Latin-Bold.ttf" ? latinFont : pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, latinFile))),
+      ]),
+      isDefaultHebrewFile ? Promise.resolve(hebrewMetrics) : hebrewMetricsFor(fontsDir, hebrewFile),
+    ]);
+    const pair: FontPair = {
+      hebrewFont: pairFonts[0],
+      latinFont: pairFonts[1],
+      hebrewAscentRatio: metrics.ascentRatio,
+      hebrewDescentRatio: metrics.descentRatio,
     };
     fontPairCache.set(key, pair);
     return pair;
@@ -293,11 +373,12 @@ export async function generateAlbumPdf({
     photoId: string | null,
     filter?: AlbumPhotoFilter,
     blurPct?: number,
-    adjustments?: PhotoAdjustments
+    adjustments?: PhotoAdjustments,
+    sharpness?: number
   ): Promise<PDFImage | null> => {
     if (!photoId) return null;
     const adjKey = adjustments && hasAdjustments(adjustments) ? JSON.stringify(adjustments) : "none";
-    const cacheKey = `${photoId}:${filter ?? "none"}:${blurPct ?? 0}:${adjKey}`;
+    const cacheKey = `${photoId}:${filter ?? "none"}:${blurPct ?? 0}:${adjKey}:${sharpness ?? 0}`;
     if (imageCache.has(cacheKey)) return imageCache.get(cacheKey)!;
     const photo = photosById.get(photoId);
     let buffer = photo ? await downloadCached("galleries", photo.storage_path) : null;
@@ -305,7 +386,7 @@ export async function generateAlbumPdf({
     // normalized (see applyPhotoFilter's comment); skipping it silently would un-fix that.
     if (buffer) {
       try {
-        buffer = await applyPhotoFilter(buffer, filter, blurPct, adjustments, jpegQuality);
+        buffer = await applyPhotoFilter(buffer, filter, blurPct, adjustments, jpegQuality, sharpness);
       } catch {
         // Fall back to the unfiltered (and un-EXIF-corrected) image rather than dropping it entirely.
       }
@@ -334,7 +415,8 @@ export async function generateAlbumPdf({
     filter: AlbumPhotoFilter | undefined,
     blurPct: number | undefined,
     zoom: number | undefined,
-    adjustments: PhotoAdjustments | undefined
+    adjustments: PhotoAdjustments | undefined,
+    sharpness: number | undefined
   ): Promise<PDFImage | null> => {
     if (!photoId) return null;
     const photo = photosById.get(photoId);
@@ -344,7 +426,7 @@ export async function generateAlbumPdf({
     const pxW = Math.max(1, Math.round(widthPt * scale));
     const pxH = Math.max(1, Math.round(heightPt * scale));
     try {
-      const cropped = await coverCropRaw(buffer, pxW, pxH, focalX, focalY, filter, true, { blur: blurPct, zoom, adjustments });
+      const cropped = await coverCropRaw(buffer, pxW, pxH, focalX, focalY, filter, true, { blur: blurPct, zoom, adjustments, sharpness });
       if (!cropped) return null;
       const masked = await applyMaskToRaw(cropped.data, pxW, pxH, maskId);
       const png = await sharp(masked, { raw: { width: pxW, height: pxH, channels: 4 } }).png().toBuffer();
@@ -419,6 +501,7 @@ export async function generateAlbumPdf({
   };
 
   if (album.cover_photo_id) {
+    onPageRendered?.();
     const coverImage = await embedByPhotoId(album.cover_photo_id);
     if (coverImage) {
       const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
@@ -443,7 +526,10 @@ export async function generateAlbumPdf({
   // case, never applied to change any existing page's size.
   const ptPerCm = PAGE_WIDTH / album.width_cm;
 
-  for (const spread of spreads) {
+  const batchStart = pageRange?.start ?? 0;
+  const batchEnd = pageRange?.end ?? spreads.length;
+  for (const spread of spreads.slice(batchStart, batchEnd)) {
+    onPageRendered?.();
     if (spread.layout === "custom") {
       const hasCustomSize = spread.width_cm != null && spread.height_cm != null;
       const pageW = hasCustomSize ? spread.width_cm! * ptPerCm : PAGE_WIDTH;
@@ -453,7 +539,7 @@ export async function generateAlbumPdf({
       const page = pdfDoc.addPage([pageW, pageH]);
       if (spread.background_photo_id) {
         const bgImage = await embedByPhotoId(spread.background_photo_id, undefined, spread.background_blur);
-        if (bgImage) drawCoverImage(page, bgImage, { x: 0, y: 0, width: pageW, height: pageH }, 50, 50, { opacity: spread.background_opacity / 100 });
+        if (bgImage) drawCoverImage(page, bgImage, { x: 0, y: 0, width: pageW, height: pageH }, 50, 50, { opacity: spread.background_opacity / 100, zoom: spread.background_zoom });
       }
       for (const el of spread.elements) {
         if (el.type === "text") {
@@ -508,7 +594,46 @@ export async function generateAlbumPdf({
           // Pre-cropped and pre-masked to the frame's exact box (see embedMaskedPhoto) — opacity
           // still applies at draw time same as the unmasked path, but no cover-fit clip is needed
           // since the raster already fills the rect exactly.
-          const maskedImage = await embedMaskedPhoto(el.photoId, el.maskId, width, height, el.focalX, el.focalY, el.filter, el.blur, el.zoom, {
+          const maskedImage = await embedMaskedPhoto(
+            el.photoId,
+            el.maskId,
+            width,
+            height,
+            el.focalX,
+            el.focalY,
+            el.filter,
+            el.blur,
+            el.zoom,
+            {
+              exposure: el.exposure,
+              contrast: el.contrast,
+              highlights: el.highlights,
+              shadows2: el.shadows2,
+              whites: el.whites,
+              blacks: el.blacks,
+              temp: el.temp,
+              tint: el.tint,
+              vibrance: el.vibrance,
+              saturation2: el.saturation2,
+            },
+            el.sharpness
+          );
+          if (!maskedImage) continue;
+          pushFrameRotation(page, rect, el.rotation);
+          drawPhotoShadow(page, rect, el.shadow, el.shadowDistance, el.shadowBlur);
+          page.drawImage(maskedImage, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
+          if (el.borderWidth) {
+            page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
+          }
+          popFrameRotation(page);
+          continue;
+        }
+
+        const image = await embedByPhotoId(
+          el.photoId,
+          el.filter,
+          el.blur,
+          {
             exposure: el.exposure,
             contrast: el.contrast,
             highlights: el.highlights,
@@ -519,33 +644,12 @@ export async function generateAlbumPdf({
             tint: el.tint,
             vibrance: el.vibrance,
             saturation2: el.saturation2,
-          });
-          if (!maskedImage) continue;
-          pushFrameRotation(page, rect, el.rotation);
-          drawPhotoShadow(page, rect, el.shadow);
-          page.drawImage(maskedImage, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
-          if (el.borderWidth) {
-            page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
-          }
-          popFrameRotation(page);
-          continue;
-        }
-
-        const image = await embedByPhotoId(el.photoId, el.filter, el.blur, {
-          exposure: el.exposure,
-          contrast: el.contrast,
-          highlights: el.highlights,
-          shadows2: el.shadows2,
-          whites: el.whites,
-          blacks: el.blacks,
-          temp: el.temp,
-          tint: el.tint,
-          vibrance: el.vibrance,
-          saturation2: el.saturation2,
-        });
+          },
+          el.sharpness
+        );
         if (!image) continue;
         pushFrameRotation(page, rect, el.rotation);
-        drawPhotoShadow(page, rect, el.shadow);
+        drawPhotoShadow(page, rect, el.shadow, el.shadowDistance, el.shadowBlur);
         drawCoverImage(page, image, rect, el.focalX, el.focalY, { opacity: el.opacity !== undefined ? el.opacity / 100 : undefined, zoom: el.zoom });
         if (el.borderWidth) {
           page.drawRectangle({
@@ -570,7 +674,7 @@ export async function generateAlbumPdf({
 
     if (spread.background_photo_id) {
       const bgImage = await embedByPhotoId(spread.background_photo_id, undefined, spread.background_blur);
-      if (bgImage) drawCoverImage(page, bgImage, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }, 50, 50, { opacity: spread.background_opacity / 100 });
+      if (bgImage) drawCoverImage(page, bgImage, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }, 50, 50, { opacity: spread.background_opacity / 100, zoom: spread.background_zoom });
     }
 
     if (!image2) {

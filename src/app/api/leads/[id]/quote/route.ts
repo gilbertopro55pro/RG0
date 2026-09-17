@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { scheduleLeadQuoteFollowUp } from "@/lib/leadFollowUp";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: leadId } = await params;
@@ -31,6 +32,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (error || !lead) {
     return NextResponse.json({ error: error?.message ?? "שגיאה ביצירת הצעת המחיר" }, { status: 500 });
   }
+
+  await scheduleLeadQuoteFollowUp(supabase, leadId);
 
   return NextResponse.json({ lead });
 }

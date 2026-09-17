@@ -4,11 +4,27 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { packageLabel } from "@/lib/stages";
 import type { EventRow } from "@/lib/types";
+import { googleColorRgba } from "@/lib/googleColors";
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
 type StatusFilter = "upcoming" | "completed" | "all" | "duplicates";
 type SortOrder = "asc" | "desc" | "month";
 const PAGE_SIZE = 10;
+
+// A genuine orange — not this app's "amber" token, which despite the name is actually a
+// blue-purple brand color (#5b6fd1), not orange at all. Kept as a plain constant here rather than
+// a new globals.css token since it's only used in this one file, for one purpose: telling a
+// freelance-covered event's card apart from a regular one at a glance. Separate from
+// needs_review's own tint, which is whichever of Google's 11 calendar colors the photographer
+// picked — the two are visually distinct on purpose since they mean different things.
+const FREELANCE_RGB = "255, 149, 0";
+const FREELANCE_CARD_TINT = `rgba(${FREELANCE_RGB}, 0.22)`;
+const FREELANCE_BADGE_TINT = `rgba(${FREELANCE_RGB}, 0.5)`;
+const FREELANCE_SWATCH = `rgba(${FREELANCE_RGB}, 0.9)`;
+
+function isFreelanceEvent(event: Pick<EventRow, "is_freelance" | "package">): boolean {
+  return event.is_freelance || (event.package?.startsWith("freelance_") ?? false);
+}
 
 function currentMonthValue() {
   const now = new Date();
@@ -21,12 +37,17 @@ export default function EventsListView({
   totalCountByEvent,
   unreadCountByEvent,
   isPhotographer,
+  needsReviewColorId,
 }: {
   events: EventWithCustomPackage[];
   doneCountByEvent: Record<string, number>;
   totalCountByEvent: Record<string, number>;
   unreadCountByEvent: Record<string, number>;
   isPhotographer: boolean;
+  // The photographer's own "צבע לזיהוי אירועים לייבוא" pick (Settings → יומן Google) — reused here
+  // so a calendar-scan-imported event highlights in the SAME color the photographer already
+  // associates with that flow, instead of a fixed color unrelated to their own choice.
+  needsReviewColorId?: string | null;
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("upcoming");
@@ -48,7 +69,8 @@ export default function EventsListView({
         const matchesPhone = (event.client_phone ?? "").includes(q);
         if (!matchesName && !matchesPhone) return false;
       }
-      if (statusFilter === "duplicates" && !event.resolution_note) return false;
+      // The filter's own label is "כפילויות / פרילנס" — matches either, not just resolution_note.
+      if (statusFilter === "duplicates" && !event.resolution_note && !isFreelanceEvent(event)) return false;
       if (statusFilter !== "duplicates" && statusFilter !== "all") {
         const done = isEventDone(event);
         if (statusFilter === "upcoming" && done) return false;
@@ -125,6 +147,38 @@ export default function EventsListView({
         </div>
       )}
 
+      {/* Only appears once either color actually shows up somewhere in the list — no point
+          explaining a color scheme to a photographer whose events are all perfectly ordinary. */}
+      {(events.some((e) => e.needs_review) || events.some(isFreelanceEvent)) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3.5 text-[11px] text-ink-soft">
+          {events.some((e) => e.needs_review) && (
+            <span className="flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 rounded-full shrink-0"
+                style={{ background: googleColorRgba(needsReviewColorId ?? null, 0.9) ?? "var(--color-amber-deep)" }}
+              />
+              יובא מהיומן — יש להשלים פרטים
+            </span>
+          )}
+          {events.some(isFreelanceEvent) && (
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: FREELANCE_SWATCH }} />
+              אירוע פרילנס
+            </span>
+          )}
+          {events.some((e) => !e.needs_review && !isFreelanceEvent(e)) && (
+            <span className="flex items-center gap-1.5">
+              {/* The plain card background (--color-card) is a near-transparent glass tint, too
+                  faint to read as its own dot without a border — the actual cards get that same
+                  legibility from sitting on the page's own gradient plus a border, which a floating
+                  swatch doesn't have for free. */}
+              <span className="h-2.5 w-2.5 rounded-full shrink-0 border border-line" style={{ background: "var(--color-card)" }} />
+              אירוע רגיל — נשמר ידנית
+            </span>
+          )}
+        </div>
+      )}
+
       {visible.length > 0 ? (
         <>
           {visible.map((event) => (
@@ -134,6 +188,7 @@ export default function EventsListView({
               doneCount={doneCountByEvent[event.id] ?? 0}
               totalCount={totalCountByEvent[event.id] ?? 1}
               unreadCount={unreadCountByEvent[event.id] ?? 0}
+              needsReviewColorId={needsReviewColorId}
             />
           ))}
           {hasMore && (
@@ -163,21 +218,36 @@ function EventCard({
   doneCount,
   totalCount,
   unreadCount,
+  needsReviewColorId,
 }: {
   event: EventWithCustomPackage;
   doneCount: number;
   totalCount: number;
   unreadCount: number;
+  needsReviewColorId?: string | null;
 }) {
   const total = totalCount;
   const pct = Math.round((doneCount / total) * 100);
   const done = doneCount >= total;
+  const isFreelance = isFreelanceEvent(event);
+  // Falls back to the app's default amber tint when the photographer hasn't picked an import
+  // color yet (e.g. before ever opening the calendar-scan settings).
+  const cardTint = googleColorRgba(needsReviewColorId ?? null, 0.3) ?? "var(--color-amber-bg)";
+  const badgeTint = googleColorRgba(needsReviewColorId ?? null, 0.55) ?? "var(--color-amber-bg)";
+  // needs_review wins the card background when both apply — it's the more urgent, temporary
+  // "you need to act on this" state, versus is-freelance which is a persistent property that'll
+  // still be true (and still badged) once the review is done and this tint stops competing for it.
+  const cardBackground = event.needs_review ? cardTint : isFreelance ? FREELANCE_CARD_TINT : undefined;
 
   return (
     <Link
       href={`/events/${event.id}`}
       role="button"
-      className="block w-full text-right rounded-2xl p-4 mb-3.5 bg-card border border-line shadow-card"
+      className="relative block w-full overflow-hidden text-right rounded-2xl p-4 mb-3.5 bg-card border border-line shadow-card"
+      // .bg-card's own background comes from a plain (non-!important) Tailwind utility, so unlike
+      // its border (which IS !important — see the border-fight history elsewhere in this app) an
+      // inline style background here reliably wins and tints the whole card, not just an accent.
+      style={cardBackground ? { background: cardBackground } : undefined}
     >
       <div className="flex items-center justify-between mb-2.5">
         <span className="relative inline-block">
@@ -198,6 +268,25 @@ function EventCard({
       <div className="flex items-center gap-1.5 mb-3.5 text-xs text-ink-soft">
         {new Date(event.event_date).toLocaleDateString("he-IL")}
       </div>
+      {event.needs_review && (
+        <div
+          className="text-[10.5px] px-2.5 py-1 rounded-full tracking-wide font-medium mb-2.5 inline-block"
+          // Dark ink text regardless of which of Google's 11 colors was picked — some (banana,
+          // graphite) are too light for white/amber-deep text, so a color-specific text tone isn't
+          // safe to compute; dark ink reads fine against every one of them at this tint strength.
+          style={{ background: badgeTint, color: "var(--color-ink)" }}
+        >
+          יובא מהיומן — יש להשלים פרטים
+        </div>
+      )}
+      {isFreelance && (
+        <div
+          className="text-[10.5px] px-2.5 py-1 rounded-full tracking-wide font-medium mb-2.5 inline-block"
+          style={{ background: FREELANCE_BADGE_TINT, color: "var(--color-ink)" }}
+        >
+          אירוע פרילנס
+        </div>
+      )}
       {event.resolution_note && (
         <div
           className="text-[10.5px] px-2.5 py-1 rounded-full tracking-wide font-medium mb-2.5 inline-block"

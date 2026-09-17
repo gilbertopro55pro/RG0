@@ -12,7 +12,7 @@ export type Guide = {
   sections: GuideSection[];
 };
 
-export type PageGuideKey = "galleries" | "client-portals" | "leads" | "waitlist" | "analytics";
+export type PageGuideKey = "galleries" | "client-portals" | "leads" | "waitlist" | "analytics" | "quote-builder" | "calendar-scan";
 
 export const GUIDE_LANG_LABELS: Record<GuideLang, string> = {
   he: "עברית",
@@ -29,7 +29,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
       sections: [
         {
           heading: "יצירת גלריה",
-          body: "אפשר ליצור גלריה עצמאית מכאן, או ישירות מתוך כרטיס אירוע קיים. בזמן היצירה בוחרים כמה זמן הגלריה תישאר פתוחה (חודש, 3 חודשים, או ללא הגבלת זמן) וכן אם מותר ללקוח להוריד את התמונות.",
+          body: "אפשר ליצור גלריה עצמאית מכאן, או ישירות מתוך כרטיס אירוע קיים. בזמן היצירה בוחרים משך שמירה קבוע מתוך רשימה (שבוע, 14 יום או חודש במסלול פרו; עד חצי שנה במסלול פרו+) וכן אם מותר ללקוח להוריד את התמונות.",
           image: "/guides/galleries-1.png",
         },
         {
@@ -61,7 +61,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
       sections: [
         {
           heading: "Creating a gallery",
-          body: "Create a standalone gallery here, or straight from an existing event card. When creating it, choose how long it stays open (one month, three months, or unlimited) and whether the client is allowed to download the photos.",
+          body: "Create a standalone gallery here, or straight from an existing event card. When creating it, choose a fixed retention period from a list (a week, 14 days, or a month on the Pro plan; up to six months on Pro+) and whether the client is allowed to download the photos.",
           image: "/guides/galleries-1.png",
         },
         {
@@ -93,7 +93,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
       sections: [
         {
           heading: "Создание галереи",
-          body: "Создайте отдельную галерею здесь или прямо из карточки существующего мероприятия. При создании выберите, как долго галерея будет открыта (месяц, 3 месяца или без ограничения), и разрешено ли клиенту скачивать фотографии.",
+          body: "Создайте отдельную галерею здесь или прямо из карточки существующего мероприятия. При создании выберите фиксированный срок хранения из списка (неделя, 14 дней или месяц на тарифе Про; до полугода на Про+), и разрешено ли клиенту скачивать фотографии.",
           image: "/guides/galleries-1.png",
         },
         {
@@ -463,6 +463,172 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         {
           heading: "Отправка отчёта по email",
           body: "Отправьте итоги месяца прямо на email — бухгалтеру, партнёру по бизнесу или на любой удобный адрес.",
+        },
+      ],
+    },
+  },
+  "quote-builder": {
+    he: {
+      title: "מדריך: בונה הצעות מחיר",
+      intro:
+        "הכלי הזה בונה הצעת מחיר מלאה ללקוח תוך דקה — כולל חישוב מע\"מ, ספקים, והפקת קובץ PDF מוכן לשליחה. אפשר לבנות הצעה מאפס, או להתחיל מהצעה קודמת ומתבנית שמורה.",
+      sections: [
+        {
+          heading: "שלבים להכנת הצעת מחיר",
+          body: "1. בחרו למעלה את סוג ההצעה — אירוע, סטנדרטי או פרילנס.\n2. הזינו שעות צילום ותעריף לשעה, או טענו הצעה קודמת או תבנית שמורה.\n3. הוסיפו ספקים רלוונטיים באמצעות הכפתור הבולט \"+ הוספת ספק\", ואם צריך שנו את המחיר של כל ספק ישירות בשורה.\n4. בדקו את הסכום הכולל בתחתית המסך (כולל מע\"מ אם רלוונטי).\n5. לחצו \"יצירת הצעת מחיר ללקוח\" ומלאו את פרטי הלקוח/ה והאירוע.\n6. עברו על התצוגה המקדימה ולחצו \"שליחה ללקוח/ה\" כדי לשתף את קובץ ה-PDF.\n7. אחרי השליחה אפשר לשמור את ההצעה לרשימה, ולהוסיף את הלקוח/ה לרשימת הלידים כדי לקבל תזכורת מעקב אם לא תחזרו אליה תוך יומיים.",
+        },
+        {
+          heading: "בחירת סוג ההצעה",
+          body: "שלושה מצבים למעלה: \"אירוע\" מחשב לפי שעות צילום ומחיר לשעה ומאפשר להוסיף ספקים; \"סטנדרטי\" דומה אבל בלי טעינה מהצעות קודמות; \"פרילנס\" הוא תעריף שעתי פשוט בלי ספקים, למקרה שמצלמים עבור צלם/ית אחר/ת.",
+        },
+        {
+          heading: "טעינה מהצעה קודמת או מתבנית",
+          body: "במצב \"אירוע\" אפשר לטעון הצעת מחיר ששלחתם בעבר, ולערוך אותה במקום להתחיל מחדש. תבניות (שנבנות בהגדרות ← הצעות מחיר) הן ערכות פריטים קבועות — למשל \"חבילת חתונה בסיסית\" — שמהוות בסיס להצעה חדשה.",
+        },
+        {
+          heading: "עוסק פטור / עוסק מורשה",
+          body: "קובע אם מע\"מ מתווסף למחיר הסופי. הבחירה כאן היא לחישוב הנוכחי בלבד ולא משנה את סטטוס העסק שלכם במערכת.",
+        },
+        {
+          heading: "ספקים לאירוע זה",
+          body: "כל שורת ספק היא רשימה נפתחת מתוך הספקים השמורים בהגדרות (תמחור וחבילות), או טקסט חופשי למחיר חד-פעמי — אפשר לשנות את המחיר בכל שורה ישירות, גם עבור ספק מהרשימה הקבועה, בלי להשפיע על המחיר השמור שלו בהגדרות. \"עריכת ספקים\" (מופיע רק אחרי שנוספו ספקים להצעה זו) פותח מחיקה מרובה מהירה מתוך רשימת הספקים של ההצעה הנוכחית בלבד.",
+        },
+        {
+          heading: "יצירת הצעת מחיר ללקוח",
+          body: "פותח טופס קצר לפרטי הלקוח/ה והאירוע (כולל שדה הערות חופשי), ואז מציג תצוגה מקדימה של קובץ ה-PDF לפני השליחה — אפשר לשתף אותו ישירות מהמכשיר, לשמור אותו לרשימת ההצעות השמורות, ולהוסיף את הלקוח/ה לרשימת הלידים לקבלת תזכורת מעקב.",
+        },
+      ],
+    },
+    en: {
+      title: "Guide: Quote Builder",
+      intro:
+        "This tool builds a complete client price quote in under a minute — VAT calculation, vendor costs, and a ready-to-send PDF. Start from scratch, or from a previous quote or a saved template.",
+      sections: [
+        {
+          heading: "Steps to prepare a price quote",
+          body: "1. Choose the quote type at the top — Event, Standard, or Freelance.\n2. Enter shoot hours and hourly rate, or load a previous quote or a saved template.\n3. Add relevant vendors with the prominent \"+ Add vendor\" button — edit each vendor's price directly in its row if needed.\n4. Check the total at the bottom of the screen (including VAT if relevant).\n5. Tap \"Create a quote for a client\" and fill in the client's and event's details.\n6. Review the PDF preview and tap \"Send to client\" to share the file.\n7. After sending, you can save the quote to your list, and add the client to your leads list to get a follow-up reminder if you haven't gotten back to them within two days.",
+        },
+        {
+          heading: "Choosing the quote type",
+          body: "Three modes at the top: \"Event\" calculates from shoot hours and hourly rate and lets you add vendors; \"Standard\" is similar but without loading previous quotes; \"Freelance\" is a simple hourly rate with no vendors, for shooting on behalf of another photographer.",
+        },
+        {
+          heading: "Loading a previous quote or a template",
+          body: "In \"Event\" mode you can load a quote you sent before and edit it instead of starting over. Templates (built in Settings → Price Quotes) are fixed item sets — e.g. \"Basic wedding package\" — that serve as the starting point for a new quote.",
+        },
+        {
+          heading: "VAT-exempt / VAT-registered",
+          body: "Decides whether VAT is added to the final price. This choice only applies to the current calculation and doesn't change your account's actual business status.",
+        },
+        {
+          heading: "Vendors for this event",
+          body: "Each vendor row is a dropdown of the suppliers saved in Settings (Pricing & Packages), or free text for a one-off price — you can edit the price directly in any row, even for a supplier from the saved list, without affecting that supplier's saved default price. \"Edit vendors\" (appears only once vendors have been added to this quote) opens quick multi-select deletion from this quote's own vendor list.",
+        },
+        {
+          heading: "Creating a quote for a client",
+          body: "Opens a short form for the client's and event's details (including a free-text notes field), then shows a PDF preview before sending — share it straight from the device, save it to the list of saved quotes, and add the client to your leads list for a follow-up reminder.",
+        },
+      ],
+    },
+    ru: {
+      title: "Руководство: Конструктор ценовых предложений",
+      intro:
+        "Этот инструмент создаёт полное ценовое предложение для клиента менее чем за минуту — расчёт НДС, стоимость поставщиков и готовый PDF-файл для отправки. Можно начать с нуля, из предыдущего предложения или из сохранённого шаблона.",
+      sections: [
+        {
+          heading: "Шаги для подготовки ценового предложения",
+          body: "1. Выберите тип предложения сверху — Мероприятие, Стандарт или Фриланс.\n2. Введите часы съёмки и почасовую ставку, либо загрузите предыдущее предложение или сохранённый шаблон.\n3. Добавьте нужных поставщиков с помощью заметной кнопки «+ Добавить поставщика» — при необходимости измените цену каждого поставщика прямо в строке.\n4. Проверьте итоговую сумму внизу экрана (включая НДС, если применимо).\n5. Нажмите «Создать предложение для клиента» и заполните данные клиента и мероприятия.\n6. Просмотрите предпросмотр PDF и нажмите «Отправить клиенту», чтобы поделиться файлом.\n7. После отправки можно сохранить предложение в список и добавить клиента в список лидов, чтобы получить напоминание о необходимости связаться с ним, если вы не сделаете этого в течение двух дней.",
+        },
+        {
+          heading: "Выбор типа предложения",
+          body: "Три режима сверху: «Мероприятие» рассчитывает по часам съёмки и почасовой ставке и позволяет добавлять поставщиков; «Стандарт» похож, но без загрузки предыдущих предложений; «Фриланс» — простая почасовая ставка без поставщиков, для съёмки от имени другого фотографа.",
+        },
+        {
+          heading: "Загрузка предыдущего предложения или шаблона",
+          body: "В режиме «Мероприятие» можно загрузить ранее отправленное предложение и отредактировать его вместо того, чтобы начинать заново. Шаблоны (создаются в Настройки → Ценовые предложения) — это фиксированные наборы позиций, например «Базовый свадебный пакет», которые служат основой для нового предложения.",
+        },
+        {
+          heading: "Освобождён от НДС / плательщик НДС",
+          body: "Определяет, добавляется ли НДС к итоговой цене. Этот выбор действует только для текущего расчёта и не меняет фактический статус вашего бизнеса в системе.",
+        },
+        {
+          heading: "Поставщики для этого мероприятия",
+          body: "Каждая строка поставщика — это выпадающий список поставщиков, сохранённых в Настройках (Цены и пакеты), либо свободный текст для разовой цены — цену можно изменить прямо в строке, даже для поставщика из сохранённого списка, не затрагивая его сохранённую цену по умолчанию. «Редактировать поставщиков» (появляется только после добавления поставщиков к этому предложению) открывает быстрое множественное удаление из списка поставщиков именно этого предложения.",
+        },
+        {
+          heading: "Создание предложения для клиента",
+          body: "Открывает короткую форму с данными клиента и мероприятия (включая поле для свободных заметок), затем показывает предпросмотр PDF перед отправкой — можно поделиться им прямо с устройства, сохранить в список сохранённых предложений и добавить клиента в список лидов для напоминания о последующем контакте.",
+        },
+      ],
+    },
+  },
+  "calendar-scan": {
+    he: {
+      title: "מדריך: סריקת יומן לאירועים חדשים",
+      intro:
+        "התכונה הזו מוצאת אירועי לקוחות שכבר נמצאים ביומן Google שלכם אך עדיין אין להם כרטיס במערכת, ופותחת לכל אחד מהם טופס \"אירוע חדש\" ממולא מראש — כדי לחסוך את ההקלדה החוזרת.",
+      sections: [
+        {
+          heading: "שני צבעים, שני תפקידים",
+          body: "\"צבע האירועים ביומן\" הוא הצבע שבו המערכת עצמה מסמנת אירועים שהיא יצרה. \"צבע לזיהוי אירועים לייבוא\" הוא הצבע שבו אתם מסמנים ביד ביומן Google אירוע לקוח חדש שעדיין לא נכנס למערכת — אפשר לבחור באותו הצבע לשניהם, המערכת מזהה אירוע שכבר יובא לפי הקישור שלו לכרטיס אירוע, לא רק לפי הצבע.",
+        },
+        {
+          heading: "איך מסמנים אירוע לסריקה",
+          body: "ביומן Google עצמו (לא במערכת), בעת יצירת אירוע חדש או עריכת קיים, בוחרים את צבע האירוע ומשנים אותו לצבע שבחרתם כאן להגדרות. אפשר גם לכתוב בתיאור האירוע \"מקדמה: [סכום]\" ו/או \"יתרה: [סכום]\" — הסריקה תנסה לזהות את זה אוטומטית.",
+        },
+        {
+          heading: "הפעלת הסריקה",
+          body: "לוחצים על כפתור הסריקה, בוחרים כמה קדימה בזמן לסרוק (חודש / 3 חודשים / חצי שנה / שנה), והמערכת מציגה רשימה של כל האירועים בצבע שנבחר שעדיין אין להם כרטיס.",
+        },
+        {
+          heading: "השלמת הפרטים",
+          body: "לחיצה על אירוע ברשימה פותחת טופס \"אירוע חדש\" עם שם, תאריך, שעות, מיקום והערות ממולאים מראש (וגם מקדמה/יתרה אם זוהו בתיאור) — כל שדה ניתן לעריכה או השלמה לפני השמירה. אחרי השמירה, האירוע המקורי ביומן מתעדכן ומקבל את צבע המערכת הרגיל, כך שהוא לא יופיע שוב בסריקה הבאה.",
+        },
+      ],
+    },
+    en: {
+      title: "Guide: Calendar Scan for New Events",
+      intro:
+        "This feature finds client events that already exist in your Google Calendar but have no event card in the system yet, and opens a prefilled \"new event\" form for each one — saving you re-typing everything.",
+      sections: [
+        {
+          heading: "Two colors, two roles",
+          body: "\"Calendar event color\" is the color the system itself uses for events it created. \"Import-detection color\" is the one you manually assign in Google Calendar to a new client booking not yet in the system — you can set both to the same color; the system tells an already-imported event apart by its link to a real event card, not just by color.",
+        },
+        {
+          heading: "Marking an event for the scan",
+          body: "In Google Calendar itself (not the app), when creating or editing an event, set its color to the one you chose here in Settings. You can also write \"מקדמה: [amount]\" and/or \"יתרה: [amount]\" in the description — the scan will try to detect these automatically.",
+        },
+        {
+          heading: "Running a scan",
+          body: "Click the scan button, choose how far ahead to look (1 month / 3 months / 6 months / a year), and the system shows every event in the chosen color that has no card yet.",
+        },
+        {
+          heading: "Finishing the details",
+          body: "Clicking an event in the list opens a \"new event\" form with name, date, times, location and notes prefilled (plus deposit/balance if detected in the description) — every field stays editable before saving. Once saved, the original calendar event is updated and recolored to the regular system color, so it won't show up again in the next scan.",
+        },
+      ],
+    },
+    ru: {
+      title: "Руководство: сканирование календаря на новые события",
+      intro:
+        "Эта функция находит события клиентов, которые уже есть в вашем Google Календаре, но ещё не имеют карточки в системе, и открывает для каждого из них предзаполненную форму «новое событие» — экономя повторный ввод данных.",
+      sections: [
+        {
+          heading: "Два цвета, две роли",
+          body: "«Цвет событий в календаре» — это цвет, которым сама система помечает созданные ею события. «Цвет для распознавания импорта» — цвет, которым вы сами вручную помечаете в Google Календаре новое бронирование клиента, ещё не внесённое в систему. Можно назначить оба одним и тем же цветом — система отличает уже импортированное событие по его связи с карточкой события, а не только по цвету.",
+        },
+        {
+          heading: "Как пометить событие для сканирования",
+          body: "В самом Google Календаре (не в приложении), при создании или редактировании события, установите его цвет на тот, что вы выбрали здесь, в настройках. Также можно написать в описании события «מקדמה: [сумма]» и/или «יתרה: [сумма]» — сканирование попытается распознать их автоматически.",
+        },
+        {
+          heading: "Запуск сканирования",
+          body: "Нажмите кнопку сканирования, выберите, на сколько вперёд смотреть (1 месяц / 3 месяца / полгода / год), и система покажет все события выбранного цвета, у которых ещё нет карточки.",
+        },
+        {
+          heading: "Завершение данных",
+          body: "Нажатие на событие в списке открывает форму «новое событие» с предзаполненными именем, датой, временем, местом и заметками (а также задатком/остатком, если они распознаны в описании) — каждое поле можно отредактировать перед сохранением. После сохранения исходное событие в календаре обновляется и перекрашивается в обычный цвет системы, поэтому оно не появится снова при следующем сканировании.",
         },
       ],
     },

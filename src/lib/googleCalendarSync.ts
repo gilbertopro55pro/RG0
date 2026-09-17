@@ -113,11 +113,22 @@ export async function updateEventInGoogleCalendar(
     date,
     startTime,
     endTime,
-  }: { summary: string; description: string; date: string; startTime?: string | null; endTime?: string | null }
+    recolorToSynced,
+  }: {
+    summary: string;
+    description: string;
+    date: string;
+    startTime?: string | null;
+    endTime?: string | null;
+    // Set when linking a raw calendar event found by the import scan to a real app event — stamps
+    // it with the photographer's normal app-synced color so it stops showing up as an unimported
+    // candidate in future scans and reads like any other app-created event from then on.
+    recolorToSynced?: boolean;
+  }
 ): Promise<{ id: string; htmlLink: string } | null> {
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("google_calendar_connected, google_access_token, google_refresh_token, google_token_expiry")
+    .select("google_calendar_connected, google_access_token, google_refresh_token, google_token_expiry, google_calendar_color_id")
     .eq("id", photographerId)
     .single<PhotographerTokens>();
 
@@ -126,7 +137,14 @@ export async function updateEventInGoogleCalendar(
   }
 
   const accessToken = await getValidAccessToken(supabase, photographerId, photographer);
-  return updateCalendarEvent(accessToken, googleCalendarEventId, { summary, description, date, startTime, endTime });
+  return updateCalendarEvent(accessToken, googleCalendarEventId, {
+    summary,
+    description,
+    date,
+    startTime,
+    endTime,
+    colorId: recolorToSynced ? photographer.google_calendar_color_id : undefined,
+  });
 }
 
 export async function listSyncedCalendarEvents(

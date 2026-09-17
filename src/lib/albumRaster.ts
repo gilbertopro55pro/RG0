@@ -2,12 +2,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import sharp, { type OverlayOptions } from "sharp";
 import fontkit from "@pdf-lib/fontkit";
+import { splitRuns } from "@/lib/pdfText";
 import { downloadObjectBuffer } from "@/lib/storage";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
 import type { AlbumElement, AlbumPhotoFilter, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 import { ALBUM_MASKS } from "@/lib/albumMasks";
 import { findOrnament } from "@/lib/albumOrnaments";
 import { applyAdjustmentsToRgba, type PhotoAdjustments } from "@/lib/albumAdjustments";
+import { sharpSharpenOptions } from "@/lib/albumSharpen";
 
 export const DPI = 300;
 
@@ -38,40 +40,74 @@ async function loadFontkitFont(file: string): Promise<ReturnType<typeof fontkit.
   return font;
 }
 
+// A Hebrew-category TTF here (Frank Ruhl Libre, Suez One, etc.) is a Hebrew-block-only subset —
+// asking it to lay out a character like "&" or "·" returns an empty/notdef glyph (a visible tofu
+// box), even though that character is correctly classified into the surrounding Hebrew run for
+// bidi purposes. Space is the one non-Hebrew-block character every one of these subsets does
+// cover, so it's treated as glyph-safe rather than routed to the Latin font.
 const HEBREW_RANGE = /[֐-׿]/;
-type BidiRun = { text: string; rtl: boolean };
-
-// Same lightweight run-splitter as src/lib/pdfText.ts (kept as a separate copy since this module
-// lays glyphs out on an SVG canvas rather than a PDF page, but the bidi logic itself is identical).
-function splitBidiRuns(text: string): BidiRun[] {
-  const runs: BidiRun[] = [];
+function hebrewGlyphSafe(ch: string): boolean {
+  return HEBREW_RANGE.test(ch) || ch === " ";
+}
+function splitByFontCoverage<T>(text: string, hebrewFont: T, latinFont: T): { text: string; font: T }[] {
+  const segments: { text: string; font: T }[] = [];
   let current = "";
-  let currentRtl: boolean | null = null;
+  let currentFont: T | null = null;
   for (const ch of text) {
-    const isRtl: boolean = ch === " " ? (currentRtl ?? HEBREW_RANGE.test(text)) : HEBREW_RANGE.test(ch);
-    if (currentRtl === null) currentRtl = isRtl;
-    if (isRtl !== currentRtl) {
-      runs.push({ text: current, rtl: currentRtl });
+    const font = hebrewGlyphSafe(ch) ? hebrewFont : latinFont;
+    if (currentFont === null) currentFont = font;
+    if (font !== currentFont) {
+      segments.push({ text: current, font: currentFont });
       current = "";
-      currentRtl = isRtl;
+      currentFont = font;
     }
     current += ch;
   }
-  if (current) runs.push({ text: current, rtl: currentRtl ?? true });
-  return runs;
+  if (current && currentFont !== null) segments.push({ text: current, font: currentFont });
+  return segments;
 }
 
 // Lays out mixed Hebrew/Latin text as glyph-outline SVG paths, in true RTL-paragraph visual order
-// (runs right-to-left overall, Hebrew runs' characters reversed since Hebrew doesn't contextually
-// shape, Latin/digit runs kept natural) — returns the paths already positioned along a single
-// baseline at x=0, plus the total ink width so the caller can align/center the whole block.
-async function layoutTextAsSvgPaths(text: string, fontFamily: string | undefined, fontSizePx: number): Promise<{ pathsSvg: string; width: number }> {
+// (runs right-to-left overall, Latin/digit runs kept in natural/logical order) — returns the paths
+// already positioned along a single baseline at x=0, plus the total ink width so the caller can
+// align/center the whole block.
+// Uses pdfText.ts's splitRuns (boundary-neutral-aware — see its comments) rather than a cruder
+// per-character splitter: an earlier version of this function treated every non-Hebrew,
+// non-space character (an ampersand, a middle dot, a period) as an immediate direction-forcing
+// boundary, which fractured something like "רותם & דניאל · 12.6.2026" into four separately
+// re-ordered fragments instead of one coherent Hebrew run — confirmed empirically by rendering it
+// and finding the two names visually swapped/glued to the wrong neighbor.
+//
+// Hebrew-font segments are handed to fontkit in NATURAL/LOGICAL character order, NOT
+// pre-reversed. This went back and forth twice before landing here for good, so the reasoning is
+// worth spelling out precisely: fontkit's own `font.layout()` DOES perform its own visual
+// (glyph-drawing-order) reordering of Hebrew codepoints — proven directly, not assumed, by calling
+// `hebrewFont.layout("אבגדה")` and inspecting each returned glyph's own `codePoints`: glyph[0] was
+// U+1492 (ה, the LAST input character) and glyph[4] was U+1488 (א, the FIRST) — i.e. fontkit had
+// already reversed them into drawable left-to-right order on its own. A version of this code that
+// manually reversed the string FIRST and then handed that to fontkit was therefore reversing it
+// TWICE — once by hand, once by fontkit internally — which cancels out back to natural order and
+// is exactly what rendered as backwards text (confirmed 2026-09-16 by rendering a real album
+// spread's real text both ways and comparing). PSD reuses this exact function (svgTextLayer is
+// shared via albumPsd.ts's own import); pdf-lib's own drawText (used by PDF export, pdfText.ts)
+// does NOT do this — see splitRuns' sibling there for why that path still reverses by hand.
+async function layoutTextAsSvgPaths(
+  text: string,
+  fontFamily: string | undefined,
+  fontSizePx: number
+): Promise<{ pathsSvg: string; width: number; ascentPx: number; descentPx: number }> {
   const { hebrewFile, latinFile } = getAlbumFontFiles(fontFamily);
   const [hebrewFont, latinFont] = await Promise.all([loadFontkitFont(hebrewFile), loadFontkitFont(latinFile)]);
 
-  const visualRuns = splitBidiRuns(text)
+  // splitRuns classifies neutrals (&, ·, ., digits' surrounding punctuation) INTO the Hebrew run
+  // for bidi-ordering purposes, which is correct for *position* but not for *glyph lookup* — a
+  // second pass (splitByFontCoverage) routes any character the Hebrew font doesn't actually cover
+  // to the Latin font instead. Segments are reversed relative to each other (same rule as the
+  // top-level runs); each segment's own characters stay in logical order — fontkit reverses a
+  // Hebrew segment's glyphs itself (see this function's own top comment).
+  const visualRuns = splitRuns(text)
     .reverse()
-    .map((r) => ({ text: r.rtl ? [...r.text].reverse().join("") : r.text, font: r.rtl ? hebrewFont : latinFont }));
+    .flatMap((r) => (r.rtl ? splitByFontCoverage(r.text, hebrewFont, latinFont).reverse() : [{ text: r.text, font: latinFont }]));
 
   let cursorX = 0;
   const parts: string[] = [];
@@ -93,7 +129,12 @@ async function layoutTextAsSvgPaths(text: string, fontFamily: string | undefined
       cursorX += pos.xAdvance * scale;
     }
   }
-  return { pathsSvg: parts.join(""), width: cursorX };
+  // hebrewFont's own metrics stand in for "this line's" ascent/descent regardless of which font
+  // actually drew each run — a caption mixes Hebrew and Latin/digit runs on one shared baseline,
+  // and the two font files in a pair (see getAlbumFontFiles) are close enough in vertical metrics
+  // that per-run figures would only add noise, not accuracy, to the vertical-centering math below.
+  const metricsScale = fontSizePx / hebrewFont.unitsPerEm;
+  return { pathsSvg: parts.join(""), width: cursorX, ascentPx: hebrewFont.ascent * metricsScale, descentPx: Math.abs(hebrewFont.descent) * metricsScale };
 }
 
 async function svgTextLayer(
@@ -102,19 +143,45 @@ async function svgTextLayer(
     xPx: number;
     yPx: number;
     widthPx: number;
+    // Box height in px — when given, the text is vertically CENTERED in [yPx, yPx+heightPx],
+    // matching the editor's own box (AlbumSpreadCanvasEditor.tsx's text element is a flex
+    // container with align-items:center over that exact box). Omitted by the one caller that
+    // isn't an editor-placed element at all (the cover title band), which keeps its old
+    // top-anchored placement unchanged.
+    heightPx?: number;
     fontSizePx: number;
     color: string;
     align: "right" | "center" | "left";
     pageWidthPx: number;
     pageHeightPx: number;
     fontFamily?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
   }
 ): Promise<Buffer> {
-  const { pathsSvg, width } = await layoutTextAsSvgPaths(text, opts.fontFamily, opts.fontSizePx);
+  const { pathsSvg, width, ascentPx, descentPx } = await layoutTextAsSvgPaths(text, opts.fontFamily, opts.fontSizePx);
   const startX = opts.align === "right" ? opts.xPx + opts.widthPx - width : opts.align === "left" ? opts.xPx : opts.xPx + (opts.widthPx - width) / 2;
-  const baselineY = opts.yPx + opts.fontSizePx;
+  // Centered within the box when heightPx is known (see the opts.heightPx comment above) — a
+  // one-line box's vertical center sits at boxTop + boxHeight/2, and the baseline sits
+  // (ascent-descent)/2 below that (the classic "center the line box" formula for the same reason
+  // a browser centers a single line of text inside a flex item with align-items:center). Falls
+  // back to the old top-anchored baseline (one fontSize below the box top) when no box height was
+  // given at all.
+  const baselineY = opts.heightPx !== undefined ? opts.yPx + opts.heightPx / 2 + (ascentPx - descentPx) / 2 : opts.yPx + opts.fontSizePx;
+  // Faux-bold: stroke each glyph with its own fill color to thicken it uniformly — the fontkit
+  // outline pipeline works from a single loaded weight per font file, not a real bold face, so
+  // there's no bold glyph outline to switch to. Faux-italic: a uniform skew on the whole glyph
+  // group, pivoting around the same baseline-start point the group is already translated to, same
+  // reasoning (no italic face loaded to switch to).
+  const strokeAttr = opts.bold ? ` stroke="${opts.color}" stroke-width="${(opts.fontSizePx * 0.035).toFixed(2)}" paint-order="stroke fill"` : "";
+  const transform = `translate(${startX},${baselineY})${opts.italic ? " skewX(-12)" : ""}`;
+  const underlineRect = opts.underline
+    ? `<rect x="${startX}" y="${baselineY + opts.fontSizePx * 0.08}" width="${width}" height="${Math.max(1, opts.fontSizePx * 0.055)}" fill="${opts.color}" />`
+    : "";
   const svg = `<svg width="${opts.pageWidthPx}" height="${opts.pageHeightPx}" xmlns="http://www.w3.org/2000/svg">
-<g fill="${opts.color}" transform="translate(${startX},${baselineY})">${pathsSvg}</g>
+<g fill="${opts.color}"${strokeAttr} transform="${transform}">${pathsSvg}</g>
+${underlineRect}
 </svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
@@ -135,11 +202,14 @@ type ResolvedPhoto = {
   opacity?: number;
   blur?: number;
   shadow?: number;
+  shadowDistance?: number;
+  shadowBlur?: number;
   zoom?: number;
   maskId?: string;
   adjustments?: PhotoAdjustments;
+  sharpness?: number;
 };
-type ResolvedText = { kind: "text"; text: string; x: number; y: number; width: number; fontSizePx: number; color: string; align: "right" | "center" | "left"; fontFamily?: string };
+type ResolvedText = { kind: "text"; text: string; x: number; y: number; width: number; height: number; fontSizePx: number; color: string; align: "right" | "center" | "left"; fontFamily?: string };
 type ResolvedOrnament = {
   kind: "ornament";
   ornamentId?: string;
@@ -188,6 +258,10 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
       x: (el.xPct / 100) * pageWidthPx,
       y: (el.yPct / 100) * pageHeightPx,
       width: (el.widthPct / 100) * pageWidthPx,
+      // heightPct is optional on older/template-derived elements — the editor's own box CSS
+      // (AlbumSpreadCanvasEditor.tsx) falls back to 15 in that exact case, so this must match it
+      // or the box this centers text within would silently disagree with what the editor shows.
+      height: ((el.heightPct ?? 15) / 100) * pageHeightPx,
       // el.fontSize is points on the album's fixed 1600pt PDF reference canvas (see the
       // AlbumFontSizePt comment in types.ts) — the same ratio scales it to this page's own width.
       fontSizePx: (el.fontSize / 1600) * pageWidthPx,
@@ -197,74 +271,96 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
     }));
 
   if (spread.layout === "custom") {
-    const photos: ResolvedPhoto[] = spread.elements
-      .filter((el): el is Extract<AlbumElement, { type: "photo" }> => el.type === "photo")
-      .map((el) => ({
-        kind: "photo",
-        photoId: el.photoId,
+    // Mapped in place, in spread.elements' OWN order — not grouped by type and concatenated
+    // (photos-then-ornaments-then-shapes-then-text), which used to silently ignore whatever
+    // front/back order the photographer actually set: a shape placed behind a photo in the editor
+    // would always render on TOP of every photo in the exported JPG/PSD regardless, since "shapes"
+    // was always the later bucket. Composite order below is push order = paint order (later paints
+    // over earlier), matching the live canvas and the PDF export, which already got this right.
+    return spread.elements.map((el): Resolved => {
+      if (el.type === "photo") {
+        return {
+          kind: "photo",
+          photoId: el.photoId,
+          x: (el.xPct / 100) * pageWidthPx,
+          y: (el.yPct / 100) * pageHeightPx,
+          width: (el.widthPct / 100) * pageWidthPx,
+          height: (el.heightPct / 100) * pageHeightPx,
+          focalX: el.focalX,
+          focalY: el.focalY,
+          filter: el.filter,
+          borderWidth: el.borderWidth,
+          borderColor: el.borderColor,
+          rotation: el.rotation,
+          opacity: el.opacity,
+          blur: el.blur,
+          shadow: el.shadow,
+          shadowDistance: el.shadowDistance,
+          shadowBlur: el.shadowBlur,
+          zoom: el.zoom,
+          maskId: el.maskId,
+          adjustments: {
+            exposure: el.exposure,
+            contrast: el.contrast,
+            highlights: el.highlights,
+            shadows2: el.shadows2,
+            whites: el.whites,
+            blacks: el.blacks,
+            temp: el.temp,
+            tint: el.tint,
+            vibrance: el.vibrance,
+            saturation2: el.saturation2,
+          },
+          sharpness: el.sharpness,
+        };
+      }
+      if (el.type === "ornament") {
+        return {
+          kind: "ornament",
+          ornamentId: el.ornamentId,
+          customOrnamentId: el.customOrnamentId,
+          x: (el.xPct / 100) * pageWidthPx,
+          y: (el.yPct / 100) * pageHeightPx,
+          width: (el.widthPct / 100) * pageWidthPx,
+          height: (el.heightPct / 100) * pageHeightPx,
+          color: el.color,
+          rotation: el.rotation,
+          opacity: el.opacity,
+          shadow: el.shadow,
+          borderWidth: el.borderWidth,
+          borderColor: el.borderColor,
+        };
+      }
+      if (el.type === "shape") {
+        return {
+          kind: "shape",
+          maskId: el.maskId,
+          x: (el.xPct / 100) * pageWidthPx,
+          y: (el.yPct / 100) * pageHeightPx,
+          width: (el.widthPct / 100) * pageWidthPx,
+          height: (el.heightPct / 100) * pageHeightPx,
+          color: el.color,
+          rotation: el.rotation,
+          opacity: el.opacity,
+          shadow: el.shadow,
+          borderWidth: el.borderWidth,
+          borderColor: el.borderColor,
+          shapeStyle: el.shapeStyle,
+        };
+      }
+      return {
+        kind: "text",
+        text: el.text,
         x: (el.xPct / 100) * pageWidthPx,
         y: (el.yPct / 100) * pageHeightPx,
         width: (el.widthPct / 100) * pageWidthPx,
-        height: (el.heightPct / 100) * pageHeightPx,
-        focalX: el.focalX,
-        focalY: el.focalY,
-        filter: el.filter,
-        borderWidth: el.borderWidth,
-        borderColor: el.borderColor,
-        rotation: el.rotation,
-        opacity: el.opacity,
-        blur: el.blur,
-        shadow: el.shadow,
-        zoom: el.zoom,
-        maskId: el.maskId,
-        adjustments: {
-          exposure: el.exposure,
-          contrast: el.contrast,
-          highlights: el.highlights,
-          shadows2: el.shadows2,
-          whites: el.whites,
-          blacks: el.blacks,
-          temp: el.temp,
-          tint: el.tint,
-          vibrance: el.vibrance,
-          saturation2: el.saturation2,
-        },
-      }));
-    const ornaments: ResolvedOrnament[] = spread.elements
-      .filter((el): el is Extract<AlbumElement, { type: "ornament" }> => el.type === "ornament")
-      .map((el) => ({
-        kind: "ornament",
-        ornamentId: el.ornamentId,
-        customOrnamentId: el.customOrnamentId,
-        x: (el.xPct / 100) * pageWidthPx,
-        y: (el.yPct / 100) * pageHeightPx,
-        width: (el.widthPct / 100) * pageWidthPx,
-        height: (el.heightPct / 100) * pageHeightPx,
+        height: ((el.heightPct ?? 15) / 100) * pageHeightPx,
+        fontSizePx: (el.fontSize / 1600) * pageWidthPx,
         color: el.color,
-        rotation: el.rotation,
-        opacity: el.opacity,
-        shadow: el.shadow,
-        borderWidth: el.borderWidth,
-        borderColor: el.borderColor,
-      }));
-    const shapes: ResolvedShape[] = spread.elements
-      .filter((el): el is Extract<AlbumElement, { type: "shape" }> => el.type === "shape")
-      .map((el) => ({
-        kind: "shape",
-        maskId: el.maskId,
-        x: (el.xPct / 100) * pageWidthPx,
-        y: (el.yPct / 100) * pageHeightPx,
-        width: (el.widthPct / 100) * pageWidthPx,
-        height: (el.heightPct / 100) * pageHeightPx,
-        color: el.color,
-        rotation: el.rotation,
-        opacity: el.opacity,
-        shadow: el.shadow,
-        borderWidth: el.borderWidth,
-        borderColor: el.borderColor,
-        shapeStyle: el.shapeStyle,
-      }));
-    return [...photos, ...ornaments, ...shapes, ...textElements];
+        align: el.align,
+        fontFamily: el.fontFamily,
+      };
+    });
   }
 
   if (!spread.photo_id_2) {
@@ -451,7 +547,7 @@ async function coverCropRaw(
   focalYPct: number,
   filter: AlbumPhotoFilter | undefined,
   bakeInBw: boolean,
-  extra?: { opacity?: number; blur?: number; zoom?: number; adjustments?: PhotoAdjustments }
+  extra?: { opacity?: number; blur?: number; zoom?: number; adjustments?: PhotoAdjustments; sharpness?: number }
 ): Promise<{ data: Buffer; width: number; height: number } | null> {
   try {
     let img = sharp(buffer).rotate();
@@ -478,6 +574,8 @@ async function coverCropRaw(
     // Desaturating via modulate keeps the pipeline at 3 (then 4 with alpha) channels throughout.
     else if (filter === "bw" && bakeInBw) img = img.modulate({ saturation: 0 });
     if (extra?.blur) img = img.blur(Math.max(0.3, (extra.blur / 100) * ALBUM_BLUR_MAX_PX));
+    const sharpenOpts = sharpSharpenOptions(extra?.sharpness);
+    if (sharpenOpts) img = img.sharpen(sharpenOpts);
     const left = Math.min(Math.max(0, Math.round((drawW - targetWidth) * (focalXPct / 100))), Math.max(0, drawW - targetWidth));
     const top = Math.min(Math.max(0, Math.round((drawH - targetHeight) * (focalYPct / 100))), Math.max(0, drawH - targetHeight));
     let data = await img.extract({ left, top, width: targetWidth, height: targetHeight }).ensureAlpha().raw().toBuffer();
@@ -492,7 +590,8 @@ async function coverCropRaw(
     }
 
     return { data, width: targetWidth, height: targetHeight };
-  } catch {
+  } catch (e) {
+    console.error("coverCropRaw failed", e);
     return null;
   }
 }
@@ -511,9 +610,25 @@ async function composePhotoTile(
   focalY: number,
   filter: AlbumPhotoFilter | undefined,
   bakeInBw: boolean,
-  extra: { rotation?: number; opacity?: number; blur?: number; zoom?: number; borderWidth?: number; borderColor?: string; maskId?: string; adjustments?: PhotoAdjustments }
+  extra: {
+    rotation?: number;
+    opacity?: number;
+    blur?: number;
+    zoom?: number;
+    borderWidth?: number;
+    borderColor?: string;
+    maskId?: string;
+    adjustments?: PhotoAdjustments;
+    sharpness?: number;
+  }
 ): Promise<{ data: Buffer; width: number; height: number; left: number; top: number } | null> {
-  const cropped = await coverCropRaw(buffer, width, height, focalX, focalY, filter, bakeInBw, { opacity: extra.opacity, blur: extra.blur, zoom: extra.zoom, adjustments: extra.adjustments });
+  const cropped = await coverCropRaw(buffer, width, height, focalX, focalY, filter, bakeInBw, {
+    opacity: extra.opacity,
+    blur: extra.blur,
+    zoom: extra.zoom,
+    adjustments: extra.adjustments,
+    sharpness: extra.sharpness,
+  });
   if (!cropped) return null;
   let data = cropped.data;
   let w = width;
@@ -555,21 +670,39 @@ async function composePhotoTile(
 // on every side so the Gaussian blur has room to fall off without being clipped at its own edges.
 // If rotationDeg is set, the shadow rect is spun the same amount (matching composePhotoTile) so it
 // stays a rigid shadow of the tilted tile rather than a shadow of the frame's original axis-aligned
-// bounds; sharp's composite() rejects negative left/top, so a frame near the page edge gets its
-// shadow pre-cropped to the visible portion. frameX/frameY are the frame's own unrotated page-pixel
-// top-left — placement is computed from the frame's CENTER so it lines up with composePhotoTile's
-// (also center-based) rotated placement.
+// bounds; sharp's composite() rejects an overlay whose OWN pixel dimensions exceed the base
+// image's, in every direction, regardless of left/top position — not just negative left/top, so a
+// frame near ANY page edge (not just the top-left) gets its shadow pre-cropped to the visible
+// portion. frameX/frameY are the frame's own unrotated page-pixel top-left — placement is computed
+// from the frame's CENTER so it lines up with composePhotoTile's (also center-based) rotated
+// placement. pageWidth/pageHeight (the full page canvas this shadow will be composited onto) are
+// what the right/bottom crop below is measured against — THE BUG THIS FIXES: only the left/top
+// side was ever cropped before, so any element whose frame already spans most of the page's own
+// width or height (a full-bleed background shape, a near-full-width decorative rectangle) got a
+// shadow canvas padded wider/taller than the page itself once blur bleed was added, and sharp's
+// composite() threw ("Image to composite must have same dimensions or smaller") for the WHOLE
+// page — which, once processAlbumExportJob's own retry-then-fail logic stopped silently swallowing
+// per-page failures, surfaced as the whole export failing on that one page every time, no matter
+// how many retries. Confirmed live: a page with a shadowed shape at widthPct 100 failed this way on
+// every attempt.
+// distancePct/blurPct independently override the offset/blur that would otherwise be derived from
+// shadowPct alone — undefined (ornaments/shapes, and every already-saved album) keeps the old
+// coupled-to-intensity behavior exactly, matching boxShadowFor's own CSS-side convention.
 async function shadowLayerPng(
   width: number,
   height: number,
   shadowPct: number | undefined,
   frameX: number,
   frameY: number,
-  rotationDeg?: number
+  rotationDeg?: number,
+  distancePct?: number,
+  blurPct?: number,
+  pageWidth?: number,
+  pageHeight?: number
 ): Promise<{ buffer: Buffer; left: number; top: number } | null> {
   if (!shadowPct) return null;
-  const blurPx = Math.max(1, (shadowPct / 100) * 24);
-  const offsetPx = Math.round((shadowPct / 100) * 10);
+  const blurPx = Math.max(1, ((blurPct ?? shadowPct) / 100) * 24);
+  const offsetPx = Math.round(((distancePct ?? shadowPct) / 100) * 10);
   const alpha = 0.15 + (shadowPct / 100) * 0.45;
   const pad = Math.ceil(blurPx * 3);
   let canvasW = width + pad * 2;
@@ -593,15 +726,79 @@ async function shadowLayerPng(
   let top = Math.round(centerY + offsetPx - canvasH / 2);
   const cropLeft = Math.max(0, -left);
   const cropTop = Math.max(0, -top);
-  if (cropLeft || cropTop) {
-    const cropW = canvasW - cropLeft;
-    const cropH = canvasH - cropTop;
+  const cropRight = pageWidth != null ? Math.max(0, left + canvasW - pageWidth) : 0;
+  const cropBottom = pageHeight != null ? Math.max(0, top + canvasH - pageHeight) : 0;
+  if (cropLeft || cropTop || cropRight || cropBottom) {
+    const cropW = canvasW - cropLeft - cropRight;
+    const cropH = canvasH - cropTop - cropBottom;
     if (cropW <= 0 || cropH <= 0) return null;
     buffer = await sharp(buffer).extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH }).png().toBuffer();
     left = Math.max(0, left);
     top = Math.max(0, top);
   }
   return { buffer, left, top };
+}
+
+// Last-resort safety net, applied to the WHOLE composites array right before it's handed to
+// sharp's own .composite() — per explicit request: nothing should ever be able to crash a page's
+// render by extending past its canvas, regardless of WHICH specific calculation produced the
+// overflow. shadowLayerPng's own left/top/right/bottom clamp (see its comment) already fixes the
+// one concrete cause found so far (a shadow padded past the page edge), but sharp's composite()
+// rejects ANY overlay whose own pixel dimensions exceed the base image's — a mask, an ornament, a
+// rotated tile's expanded canvas, a border stroke, or anything not yet discovered could in
+// principle trigger the exact same "Image to composite must have same dimensions or smaller"
+// crash from a different calculation. This clamps every overlay to the page's own bounds — fully
+// off-canvas entries are dropped (never visible anyway), partially-overflowing ones are cropped to
+// the visible portion — so a single miscalculated element can never take the whole page down with
+// it again.
+async function clampCompositesToCanvas(composites: OverlayOptions[], canvasWidth: number, canvasHeight: number): Promise<OverlayOptions[]> {
+  const clamped: OverlayOptions[] = [];
+  for (const entry of composites) {
+    const left = entry.left ?? 0;
+    const top = entry.top ?? 0;
+    let width: number;
+    let height: number;
+    if (entry.raw) {
+      width = entry.raw.width;
+      height = entry.raw.height;
+    } else if (Buffer.isBuffer(entry.input)) {
+      const meta = await sharp(entry.input).metadata();
+      width = meta.width ?? 0;
+      height = meta.height ?? 0;
+    } else {
+      // Not a buffer we can introspect cheaply (e.g. a file path/other input kind) — none of this
+      // file's own call sites ever push one of these, but skip clamping rather than guess wrong.
+      clamped.push(entry);
+      continue;
+    }
+    if (width <= 0 || height <= 0) continue;
+    // Fully off-canvas — never visible, drop it rather than risk passing something odd to sharp.
+    if (left >= canvasWidth || top >= canvasHeight || left + width <= 0 || top + height <= 0) continue;
+    const cropLeft = Math.max(0, -left);
+    const cropTop = Math.max(0, -top);
+    const cropRight = Math.max(0, left + width - canvasWidth);
+    const cropBottom = Math.max(0, top + height - canvasHeight);
+    if (!cropLeft && !cropTop && !cropRight && !cropBottom) {
+      clamped.push(entry);
+      continue;
+    }
+    const newWidth = width - cropLeft - cropRight;
+    const newHeight = height - cropTop - cropBottom;
+    if (newWidth <= 0 || newHeight <= 0) continue;
+    if (entry.raw) {
+      const croppedBuf = await sharp(entry.input as Buffer, { raw: { width, height, channels: entry.raw.channels } })
+        .extract({ left: cropLeft, top: cropTop, width: newWidth, height: newHeight })
+        .raw()
+        .toBuffer();
+      clamped.push({ ...entry, input: croppedBuf, raw: { ...entry.raw, width: newWidth, height: newHeight }, left: Math.max(0, left), top: Math.max(0, top) });
+    } else {
+      const croppedBuf = await sharp(entry.input as Buffer)
+        .extract({ left: cropLeft, top: cropTop, width: newWidth, height: newHeight })
+        .toBuffer();
+      clamped.push({ ...entry, input: croppedBuf, left: Math.max(0, left), top: Math.max(0, top) });
+    }
+  }
+  return clamped;
 }
 
 export type PageInput = { spread: GalleryAlbumSpreadRow | null; isCover?: boolean };
@@ -652,7 +849,7 @@ export async function renderAlbumPageJpeg({
       // A broken title render shouldn't sink the whole cover photo.
     }
     return sharp({ create: { width: pageWidthPx, height: pageHeightPx, channels: 3, background: "#000000" } })
-      .composite(composites)
+      .composite(await clampCompositesToCanvas(composites, pageWidthPx, pageHeightPx))
       .jpeg({ quality: 100 })
       .toBuffer();
   }
@@ -663,7 +860,7 @@ export async function renderAlbumPageJpeg({
     const bgPhoto = photosById.get(spread.background_photo_id);
     const bgBuffer = bgPhoto ? await downloadObjectBuffer("galleries", bgPhoto.storage_path) : null;
     const bgCropped = bgBuffer
-      ? await coverCropRaw(bgBuffer, pageWidthPx, pageHeightPx, 50, 50, undefined, false, { blur: spread.background_blur, opacity: spread.background_opacity })
+      ? await coverCropRaw(bgBuffer, pageWidthPx, pageHeightPx, 50, 50, undefined, false, { blur: spread.background_blur, opacity: spread.background_opacity, zoom: spread.background_zoom })
       : null;
     if (bgCropped) composites.push({ input: bgCropped.data, raw: { width: bgCropped.width, height: bgCropped.height, channels: 4 }, left: 0, top: 0 });
   }
@@ -677,6 +874,7 @@ export async function renderAlbumPageJpeg({
           xPx: el.x,
           yPx: el.y,
           widthPx: el.width,
+          heightPx: el.height,
           fontSizePx: el.fontSizePx,
           color: el.color,
           align: el.align,
@@ -715,7 +913,7 @@ export async function renderAlbumPageJpeg({
         const factor = Math.max(0, el.opacity) / 100;
         for (let i = 3; i < rendered.data.length; i += 4) rendered.data[i] = Math.round(rendered.data[i] * factor);
       }
-      const ornamentShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation);
+      const ornamentShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation, undefined, undefined, pageWidthPx, pageHeightPx);
       if (ornamentShadow) composites.push({ input: ornamentShadow.buffer, left: ornamentShadow.left, top: ornamentShadow.top });
       composites.push({ input: rendered.data, raw: { width: rendered.width, height: rendered.height, channels: 4 }, left, top });
       continue;
@@ -729,7 +927,7 @@ export async function renderAlbumPageJpeg({
         const factor = Math.max(0, el.opacity) / 100;
         for (let i = 3; i < tile.data.length; i += 4) tile.data[i] = Math.round(tile.data[i] * factor);
       }
-      const shapeShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation);
+      const shapeShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation, undefined, undefined, pageWidthPx, pageHeightPx);
       if (shapeShadow) composites.push({ input: shapeShadow.buffer, left: shapeShadow.left, top: shapeShadow.top });
       composites.push({ input: tile.data, raw: { width: tile.width, height: tile.height, channels: 4 }, left: Math.round(el.x + tile.left), top: Math.round(el.y + tile.top) });
       continue;
@@ -751,17 +949,18 @@ export async function renderAlbumPageJpeg({
       borderColor: el.borderColor,
       maskId: el.maskId,
       adjustments: el.adjustments,
+      sharpness: el.sharpness,
     });
     if (!tile) continue;
     any = true;
-    const shadow = await shadowLayerPng(width, height, el.shadow, frameX, frameY, el.rotation);
+    const shadow = await shadowLayerPng(width, height, el.shadow, frameX, frameY, el.rotation, el.shadowDistance, el.shadowBlur, pageWidthPx, pageHeightPx);
     if (shadow) composites.push({ input: shadow.buffer, left: shadow.left, top: shadow.top });
     composites.push({ input: tile.data, raw: { width: tile.width, height: tile.height, channels: 4 }, left: Math.round(frameX + tile.left), top: Math.round(frameY + tile.top) });
   }
   if (!any && !elements.some((e) => e.kind === "text") && !spread.background_photo_id) return null;
 
   return sharp({ create: { width: pageWidthPx, height: pageHeightPx, channels: 3, background: "#ffffff" } })
-    .composite(composites)
+    .composite(await clampCompositesToCanvas(composites, pageWidthPx, pageHeightPx))
     .jpeg({ quality: 100 })
     .toBuffer();
 }

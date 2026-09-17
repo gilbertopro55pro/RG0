@@ -1,6 +1,8 @@
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { resolveLeadPackageLabel } from "@/lib/stages";
-import type { CustomPackageRow, LeadRow } from "@/lib/types";
+import { ADMIN_EMAIL } from "@/lib/admin";
+import type { CustomPackageRow, EventRow, LeadRow } from "@/lib/types";
+import QuoteApprovalFlow from "@/components/QuoteApprovalFlow";
 
 export default async function QuotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -8,9 +10,9 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("*, photographers(name, phone, whatsapp_signature)")
+    .select("*, photographers(name, phone, email, whatsapp_signature)")
     .eq("quote_token", token)
-    .maybeSingle<LeadRow & { photographers: { name: string; phone: string; whatsapp_signature: string | null } }>();
+    .maybeSingle<LeadRow & { photographers: { name: string; phone: string; email: string; whatsapp_signature: string | null } }>();
 
   if (!lead || !lead.quoted_amount) {
     return (
@@ -25,7 +27,41 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     .select("*")
     .eq("photographer_id", lead.photographer_id)
     .returns<CustomPackageRow[]>();
-  const packageLabel = resolveLeadPackageLabel(lead.package_interest, customPackages ?? []);
+  const packageLabelText = resolveLeadPackageLabel(lead.package_interest, customPackages ?? []);
+
+  // Admin-only for now (see the standing "עדכון אדמין" staged-rollout process): every other
+  // photographer's clients keep seeing the original read-only quote page below, unchanged.
+  const isAdminLead = lead.photographers.email === ADMIN_EMAIL;
+
+  let convertedClientAccessToken: string | null = null;
+  if (isAdminLead && lead.converted_event_id) {
+    const { data: convertedEvent } = await supabase
+      .from("events")
+      .select("client_access_token")
+      .eq("id", lead.converted_event_id)
+      .maybeSingle<Pick<EventRow, "client_access_token">>();
+    convertedClientAccessToken = convertedEvent?.client_access_token ?? null;
+  }
+
+  if (isAdminLead) {
+    return (
+      <QuoteApprovalFlow
+        token={token}
+        clientName={lead.name}
+        clientPhone={lead.phone}
+        eventDateInterest={lead.event_date_interest}
+        photographerName={lead.photographers.name}
+        photographerPhone={lead.photographers.phone}
+        whatsappSignature={lead.photographers.whatsapp_signature}
+        quotedAmount={lead.quoted_amount}
+        quoteNote={lead.quote_note}
+        packageLabelText={packageLabelText}
+        initialApprovedAt={lead.quote_approved_at}
+        initialConvertedEventId={lead.converted_event_id}
+        initialClientAccessToken={convertedClientAccessToken}
+      />
+    );
+  }
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
@@ -43,10 +79,10 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           </>
         )}
 
-        {packageLabel && (
+        {packageLabelText && (
           <>
             <div className="text-xs text-ink-soft mb-1">חבילה</div>
-            <div className="text-sm mb-3.5">{packageLabel}</div>
+            <div className="text-sm mb-3.5">{packageLabelText}</div>
           </>
         )}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { GalleryRow } from "@/lib/types";
@@ -21,8 +22,9 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
   // on open rather than threaded down as a prop, since this modal is opened from two unrelated
   // parents (GalleriesListView, GallerySection) that don't otherwise need to know the plan.
   const [expiryOptions, setExpiryOptions] = useState(GALLERY_EXPIRY_OPTIONS_BY_TIER.standard);
-  const [expiryDays, setExpiryDays] = useState<7 | 14 | 30 | 90 | 180>(30);
+  const [expiryDays, setExpiryDays] = useState<7 | 14 | 30 | 90 | 180 | 365>(30);
   const [allowDownloads, setAllowDownloads] = useState(true);
+  const [allowClientUpload, setAllowClientUpload] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entered, setEntered] = useState(false);
@@ -34,6 +36,20 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
     const raf = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // Rendered via a portal straight to document.body (see the return statement below) instead of
+  // inline where this component sits in the tree — nested inside the event page's own GallerySection
+  // card. A fixed-position full-screen modal nested that deep is exactly the shape of DOM structure
+  // known to make position:fixed unreliable on iOS Safari, especially in this app's standalone
+  // (home-screen) mode — see the identical fix (and its own fuller comment) in
+  // CustomPackagesSettings.tsx. Confirmed live via a screenshot: the modal opened but was
+  // vertically mispositioned and dimmed only part of the screen, with the event page's contract
+  // section visibly bleeding through underneath it. Portaling to document.body sidesteps it
+  // categorically. document.body only exists client-side, hence the mounted gate (this component is
+  // only ever rendered in response to a client click anyway, so it flips true essentially
+  // immediately).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +113,7 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
         client_phone: clientPhone.trim() || null,
         expiry_days: expiryDays,
         allow_downloads: allowDownloads,
+        allow_client_upload: allowClientUpload,
       })
       .select()
       .single<GalleryRow>();
@@ -108,9 +125,10 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
     closeWithAnimation(() => router.push(`/galleries/${created.id}`));
   };
 
-  return (
+  if (!mounted) return null;
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       style={{
         background: "rgba(46,49,66,0.45)",
         backdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
@@ -178,12 +196,18 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
               />
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {/* Real px min-width (not min-w-0) — iOS Safari's native date-input control can
-                  render with zero visible width when its flex item is allowed to shrink past
-                  its comfortable size. flex-wrap is the fallback if both truly don't fit. */}
+            {/* grid-cols-2 (not flex + flex-1) is load-bearing: Tailwind's grid-cols-N utility
+                sets each track to minmax(0, 1fr), which caps a column's width at its fair share
+                of the row NO MATTER how wide its content wants to render — unlike flex-1, where a
+                native date input's own intrinsic/preferred width (confirmed to sometimes exceed
+                a plain px min-width hack, particularly on iOS Safari) can still push a flex item
+                wider than intended and overlap its neighbor. Two columns of equal width, with a
+                real gap between them, together always span exactly the row's full width — the
+                same width as the שם הגלריה field above — since that's what a 2-up grid guarantees
+                structurally, not just in the common case. */}
+            <div className={`grid gap-2 ${eventId ? "grid-cols-1" : "grid-cols-2"}`}>
               {!eventId && (
-                <div className="flex-1" style={{ minWidth: 150 }}>
+                <div>
                   <label className="text-xs block mb-1 text-ink-soft">תאריך הצילום</label>
                   <input
                     type="date"
@@ -193,11 +217,11 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
                   />
                 </div>
               )}
-              <div className="flex-1" style={{ minWidth: 150 }}>
+              <div>
                 <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
                 <select
                   value={expiryDays}
-                  onChange={(e) => setExpiryDays(Number(e.target.value) as 7 | 14 | 30 | 90 | 180)}
+                  onChange={(e) => setExpiryDays(Number(e.target.value) as 7 | 14 | 30 | 90 | 180 | 365)}
                   className="w-full rounded-lg px-2 py-2 text-sm border border-line bg-white"
                 >
                   {expiryOptions.map((opt) => (
@@ -251,6 +275,24 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
                 <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
               </button>
             </div>
+            <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
+              <div>
+                <div className="text-sm font-semibold">אפשרות העלאת תמונות ע&quot;י הלקוח/ה</div>
+                <div className="text-xs text-ink-soft mt-0.5">כשמופעל, הלקוח/ה יוכלו להעלות תמונות משלהם ישירות לגלריה</div>
+              </div>
+              <button
+                onClick={() => setAllowClientUpload(!allowClientUpload)}
+                role="switch"
+                aria-checked={allowClientUpload}
+                className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
+                style={{
+                  background: allowClientUpload ? "var(--color-amber-deep)" : "var(--color-line)",
+                  justifyContent: allowClientUpload ? "flex-start" : "flex-end",
+                }}
+              >
+                <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -264,6 +306,7 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
           {creating ? "יוצר..." : "יצירת גלריה"}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

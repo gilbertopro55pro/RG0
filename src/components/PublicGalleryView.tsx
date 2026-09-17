@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import Image from "next/image";
 import type { GalleryFolderRow, GalleryPhotoRow } from "@/lib/types";
 import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
@@ -10,8 +10,14 @@ import { IconGallery } from "@/components/icons/NavIcons";
 import { resolveGalleryTheme } from "@/lib/galleryTheme";
 import GallerySlideshow from "@/components/GallerySlideshow";
 import GalleryAlbumProofing, { type ClientAlbumElement } from "@/components/GalleryAlbumProofing";
+import { ALLOWED_ACCEPT, isAllowedImageFile, convertHeicIfNeeded } from "@/lib/imageUpload";
+import { readDataTransferItems, folderNameFromPath, isHiddenFileName } from "@/lib/fileDrop";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
+
+// Same ring geometry as GalleryManageView.tsx's ProgressModal (radius 42 on a 100×100 viewBox).
+const UPLOAD_RING_RADIUS = 42;
+const UPLOAD_RING_CIRCUMFERENCE = 2 * Math.PI * UPLOAD_RING_RADIUS;
 
 type ZipJobPart = {
   partIndex: number;
@@ -51,6 +57,7 @@ export default function PublicGalleryView({
   initialFolders,
   initiallyConfirmed,
   allowDownloads,
+  allowClientUpload = false,
   themeId = "classic",
   titleFontOverride = null,
   gridStyleOverride = null,
@@ -64,6 +71,7 @@ export default function PublicGalleryView({
   initialFolders: GalleryFolderRow[];
   initiallyConfirmed: boolean;
   allowDownloads: boolean;
+  allowClientUpload?: boolean;
   // Set when this link was shared with a quality cap (?quality=web) — locks the download and
   // re-share quality choices to "web" instead of offering the full-resolution originals.
   restrictedQuality?: "web" | null;
@@ -88,6 +96,146 @@ export default function PublicGalleryView({
 }) {
   const theme = resolveGalleryTheme(themeId, { titleFontOverride, gridStyleOverride });
   const [photos, setPhotos] = useState(initialPhotos);
+  const [folders, setFolders] = useState(initialFolders);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [uploadTotal, setUploadTotal] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  // Byte-level, not just a per-file counter — a PUT of one large photo can take several seconds
+  // on a slow mobile connection, and "מעלה... (1/1)" sitting frozen for that whole stretch reads
+  // as stuck. uploadTotalBytes/uploadDoneBytes/uploadCurrentBytes together drive a smooth 0–100%
+  // reading across the whole batch (see uploadPct below).
+  const [uploadTotalBytes, setUploadTotalBytes] = useState(0);
+  const [uploadDoneBytes, setUploadDoneBytes] = useState(0);
+  const [uploadCurrentBytes, setUploadCurrentBytes] = useState(0);
+  const uploadPct = uploadTotalBytes > 0 ? Math.min(100, ((uploadDoneBytes + uploadCurrentBytes) / uploadTotalBytes) * 100) : 0;
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const uploadDirInputRef = useRef<HTMLInputElement>(null);
+
+  // fetch() has no upload-progress event at all — only XHR exposes upload.onprogress — so the PUT
+  // to the signed R2 URL goes through XHR here instead of fetch, unlike everywhere else in this
+  // file that talks to our own API routes.
+  const putFileWithProgress = (url: string, file: File, onProgress: (loadedBytes: number) => void): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error("שגיאה בהעלאה"));
+      };
+      xhr.onerror = () => reject(new Error("שגיאה בהעלאה"));
+      xhr.send(file);
+    });
+  };
+
+  // Client-facing counterpart to GalleryManageView.tsx's ensureFolderId — same get-or-create
+  // pattern, just via the token-scoped route since there's no photographer session here.
+  const ensureFolderId = async (folderName: string, cache: Map<string, string>): Promise<string | null> => {
+    const existing = cache.get(folderName);
+    if (existing) return existing;
+    const res = await fetch(`/api/gallery/${token}/ensure-folder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folderName }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.folder) return null;
+    cache.set(folderName, data.folder.id);
+    setFolders((prev) => (prev.some((f) => f.id === data.folder.id) ? prev : [...prev, data.folder]));
+    return data.folder.id;
+  };
+
+  // Mirrors the photographer's own upload flow (GalleryManageView.tsx) one-for-one — same
+  // signed-URL-then-PUT-then-record pattern, just against the token-scoped routes instead of the
+  // photographer-authenticated ones, since this runs from an anonymous client session.
+  const uploadResolvedItems = async (items: { file: File; folderId: string | null }[]) => {
+    if (items.length === 0) return;
+    setUploadError(null);
+    setUploadTotal(items.length);
+    setUploadingCount(0);
+    // Measured against the ORIGINAL file sizes, not the post-HEIC-conversion ones — the total is
+    // fixed once at the start of the batch, so switching basis mid-flight (a HEIC file becomes a
+    // differently-sized JPEG) would make the running total drift and the percentage jump oddly.
+    setUploadTotalBytes(items.reduce((sum, it) => sum + it.file.size, 0));
+    setUploadDoneBytes(0);
+    setUploadCurrentBytes(0);
+    for (const { file: rawFile, folderId } of items) {
+      try {
+        const file = await convertHeicIfNeeded(rawFile);
+        const urlRes = await fetch(`/api/gallery/${token}/upload-url`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: file.name, contentType: file.type, fileSize: file.size }),
+        });
+        const urlData = await urlRes.json();
+        if (!urlRes.ok || !urlData.url) throw new Error(urlData.error ?? "שגיאה בהעלאה");
+
+        await putFileWithProgress(urlData.url, file, (loaded) => setUploadCurrentBytes(loaded));
+
+        const completeRes = await fetch(`/api/gallery/${token}/upload-complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: urlData.path, originalFilename: file.name, fileSizeBytes: file.size, folderId }),
+        });
+        const completeData = await completeRes.json();
+        if (!completeRes.ok || !completeData.photo) throw new Error(completeData.error ?? "שגיאה בהעלאה");
+
+        setPhotos((prev) => [...prev, { ...completeData.photo, url: URL.createObjectURL(file) }]);
+      } catch (e) {
+        setUploadError(e instanceof Error ? e.message : "שגיאה בהעלאה");
+      } finally {
+        setUploadDoneBytes((d) => d + rawFile.size);
+        setUploadCurrentBytes(0);
+        setUploadingCount((c) => c + 1);
+      }
+    }
+    setUploadTotal(0);
+    setUploadingCount(0);
+    setUploadTotalBytes(0);
+    setUploadDoneBytes(0);
+  };
+
+  const handleUploadFiles = (fileList: FileList | null) => {
+    if (!fileList) return;
+    const items = Array.from(fileList)
+      .filter((f) => !isHiddenFileName(f.name) && isAllowedImageFile(f))
+      .map((file) => ({ file, folderId: activeFolderId }));
+    uploadResolvedItems(items);
+  };
+
+  const handleUploadDirectory = async (fileList: FileList | null) => {
+    if (!fileList) return;
+    const cache = new Map(folders.map((f) => [f.name, f.id]));
+    const items: { file: File; folderId: string | null }[] = [];
+    for (const file of Array.from(fileList)) {
+      if (isHiddenFileName(file.name) || !isAllowedImageFile(file)) continue;
+      const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || "";
+      const folderName = relPath ? folderNameFromPath(relPath) : null;
+      const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
+      items.push({ file, folderId });
+    }
+    await uploadResolvedItems(items);
+  };
+
+  const handleUploadDrop = async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const dropped = await readDataTransferItems(e.dataTransfer.items);
+    if (dropped.length === 0) return;
+    const allowed = dropped.filter((d) => isAllowedImageFile(d.file));
+    const cache = new Map(folders.map((f) => [f.name, f.id]));
+    const items: { file: File; folderId: string | null }[] = [];
+    for (const { file, relativePath } of allowed) {
+      const folderName = folderNameFromPath(relativePath);
+      const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
+      items.push({ file, folderId });
+    }
+    await uploadResolvedItems(items);
+  };
   const [slideshowOpen, setSlideshowOpen] = useState(false);
   const [albumOpen, setAlbumOpen] = useState(false);
   const [aspectRatios, setAspectRatios] = useState<Record<string, number>>({});
@@ -246,6 +394,31 @@ export default function PublicGalleryView({
     const next = !photo.is_favorite;
     setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, is_favorite: next } : p)));
   };
+
+  // The diamond-icon label editor — unlike favorites (batched, saved on an explicit action), a
+  // label save happens immediately when the client confirms it in the modal, since there's no
+  // natural "unsaved until you leave" moment for a single free-text field the way there is for the
+  // whole favorites set.
+  const [labelEditPhoto, setLabelEditPhoto] = useState<PhotoWithUrl | null>(null);
+  const [savingLabel, setSavingLabel] = useState(false);
+  const saveLabel = async (photo: PhotoWithUrl, label: string) => {
+    setSavingLabel(true);
+    const trimmed = label.trim() || null;
+    await fetch(`/api/gallery/${token}/photo-label`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoId: photo.id, label: trimmed }),
+    });
+    setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, custom_label: trimmed } : p)));
+    setSavingLabel(false);
+    setLabelEditPhoto(null);
+  };
+  // Every distinct label currently in use, for the favorites-panel filter chips below — sorted so
+  // the chip order doesn't jump around as photos get relabeled. Independent of favorite status: a
+  // client can attach a diamond-icon label ("קנבס" etc.) to a photo without also favoriting it, and
+  // that label still needs its own tab — it isn't only a sub-filter of the favorites set.
+  const usedLabels = Array.from(new Set(photos.filter((p) => p.custom_label).map((p) => p.custom_label as string))).sort();
+  const [activeLabelFilter, setActiveLabelFilter] = useState<string | null>(null);
 
   // "נקה הכל" — unfavorites every currently-favorited photo in one action, same local-state-only
   // pattern as toggleFavorite (no per-photo request; synced on the next explicit save).
@@ -461,6 +634,24 @@ export default function PublicGalleryView({
     setSaving(false);
   };
 
+  // Auto-save, on top of (not instead of) the explicit "עדכון הבחירה" button below — per explicit
+  // request, to close the real risk of a client tapping through their favorites and then just
+  // closing the tab without ever pressing that button, silently losing every selection. Debounced
+  // (not one write per tap) so a client rapidly tapping through a dozen photos still only fires one
+  // request shortly after they pause, not a dozen — the O(1)-vs-O(taps) trade-off from
+  // toggleFavorite's own comment above still holds, this only shortens how long "unsaved" can last
+  // from "however long the client takes to notice/click save" to about a second of inactivity.
+  // Runs from the very first tap, before the client's initial "סיימת לבחור" confirmation too — data
+  // loss doesn't care whether they've confirmed yet.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const timer = setTimeout(() => {
+      saveFavorites();
+    }, 1000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFavoriteIds.size, [...currentFavoriteIds].sort().join(",")]);
+
   const confirmSelection = async () => {
     setSubmitting(true);
     await saveFavorites();
@@ -483,8 +674,8 @@ export default function PublicGalleryView({
   // checkboxes only narrow the link when not everything is checked — checking every box is the
   // same as sharing the whole gallery, so it collapses back to the plain base URL.
   const hasUnfoldered = photos.some((p) => !p.folder_id);
-  const allShareFolderKeys = [...initialFolders.map((f) => f.id), ...(hasUnfoldered ? [NO_FOLDER_KEY] : [])];
-  const showFolderPicker = galleryShareScope?.kind === "gallery" && initialFolders.length > 0;
+  const allShareFolderKeys = [...folders.map((f) => f.id), ...(hasUnfoldered ? [NO_FOLDER_KEY] : [])];
+  const showFolderPicker = galleryShareScope?.kind === "gallery" && folders.length > 0;
   const shareDisabled = showFolderPicker && shareSelectedFolders.size === 0;
 
   const galleryShareUrl = () => {
@@ -590,6 +781,10 @@ export default function PublicGalleryView({
   };
 
   const favorites = photos.filter((p) => p.is_favorite);
+  // The favorites panel's own grid: with no label filter it's just the favorites picks (as
+  // before); filtering by a diamond-icon label switches to every photo carrying that label,
+  // favorited or not — a label is its own tag, not just a sub-filter of the favorites set.
+  const panelPhotos = activeLabelFilter ? photos.filter((p) => p.custom_label === activeLabelFilter) : favorites;
   const visiblePhotos = activeFolderId ? photos.filter((p) => p.folder_id === activeFolderId) : photos;
   const photoById = new Map(photos.map((p) => [p.id, p]));
 
@@ -652,7 +847,7 @@ export default function PublicGalleryView({
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           aria-label="חזרה לראש העמוד"
-          className={`fixed left-5 z-40 h-11 w-11 rounded-full flex items-center justify-center shadow-sheet ${BTN_PRESS} ${favoriteCount > 0 || selectionMode ? "bottom-28" : "bottom-5"}`}
+          className={`fixed left-5 z-40 h-11 w-11 rounded-full flex items-center justify-center shadow-sheet ${BTN_PRESS} ${favoriteCount > 0 || selectionMode || usedLabels.length > 0 ? "bottom-28" : "bottom-5"}`}
           style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)" }}
         >
           <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -662,7 +857,7 @@ export default function PublicGalleryView({
       )}
       <button
         onClick={openGalleryShare}
-        className={`fixed right-5 md:translate-x-[5cm] z-40 h-11 px-4 rounded-full flex items-center gap-1.5 shadow-sheet text-sm font-semibold ${BTN_PRESS} ${favoriteCount > 0 || selectionMode ? "bottom-28" : "bottom-5"}`}
+        className={`fixed right-5 md:translate-x-[5cm] z-40 h-11 px-4 rounded-full flex items-center gap-1.5 shadow-sheet text-sm font-semibold ${BTN_PRESS} ${favoriteCount > 0 || selectionMode || usedLabels.length > 0 ? "bottom-28" : "bottom-5"}`}
         style={{ background: "var(--gt-surface)", border: "1px solid var(--gt-border)", color: "var(--gt-ink)" }}
       >
         <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -696,7 +891,7 @@ export default function PublicGalleryView({
         </div>
       )}
 
-      {initialFolders.length > 0 && (
+      {folders.length > 0 && (
         <div className="flex items-center gap-1.5 mb-4 overflow-x-auto">
           <button
             onClick={() => setActiveFolderId(null)}
@@ -708,7 +903,7 @@ export default function PublicGalleryView({
           >
             הכל
           </button>
-          {initialFolders.map((folder) => (
+          {folders.map((folder) => (
             <button
               key={folder.id}
               onClick={() => setActiveFolderId(folder.id)}
@@ -724,8 +919,132 @@ export default function PublicGalleryView({
         </div>
       )}
 
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept={ALLOWED_ACCEPT}
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          handleUploadFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={uploadDirInputRef}
+        type="file"
+        accept={ALLOWED_ACCEPT}
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          handleUploadDirectory(e.target.files);
+          e.target.value = "";
+        }}
+        {...({ webkitdirectory: "true", directory: "true" } as unknown as Record<string, string>)}
+      />
+      {allowClientUpload && (
+        <div className="mb-4">
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleUploadDrop}
+            style={{
+              minHeight: "15cm",
+              borderRadius: "var(--gt-radius)",
+              borderColor: isDragging ? "var(--gt-accent)" : "var(--gt-border)",
+              background: isDragging ? "var(--gt-surface-soft)" : "var(--gt-surface)",
+            }}
+            className={`flex border-2 border-dashed transition-colors ${uploadTotal > 0 ? "pointer-events-none opacity-60" : ""}`}
+          >
+            <button
+              onClick={() => uploadInputRef.current?.click()}
+              disabled={uploadTotal > 0}
+              className="w-full flex items-center justify-center px-6 text-base font-semibold text-center"
+              style={{ color: "var(--gt-ink)" }}
+            >
+              {uploadTotal > 0
+                ? `מעלה... (${uploadingCount}/${uploadTotal})`
+                : isDragging
+                  ? "שחררו כאן להעלאה"
+                  : "📤 העלאת תמונות — או גררו לכאן תמונות ותיקיות"}
+            </button>
+          </div>
+          <button
+            onClick={() => uploadDirInputRef.current?.click()}
+            disabled={uploadTotal > 0}
+            className={`w-full flex items-center justify-center py-2 mt-1.5 text-xs font-semibold border disabled:opacity-60 ${BTN_PRESS}`}
+            style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)", borderRadius: "var(--gt-radius)" }}
+          >
+            העלאת תיקייה שלמה מהמחשב
+          </button>
+          {uploadError && (
+            <p className="text-xs text-center mt-2" style={{ color: "var(--gt-ink-soft)" }}>
+              {uploadError}
+            </p>
+          )}
+        </div>
+      )}
+      {uploadTotal > 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: "rgba(20,24,20,0.55)" }}>
+          <div
+            className="w-64 rounded-3xl overflow-hidden shadow-sheet flex flex-col items-center gap-3 px-6 py-9 text-center"
+            style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
+          >
+            <div className="relative" style={{ width: 112, height: 112 }}>
+              {/* Soft ambient glow behind the ring — purely decorative (aria-hidden), same green as
+                  the ring's own stroke so it reads as a halo rather than a mismatched second color.
+                  Static, not animated — the ring's own progress motion is already the thing to
+                  watch; a second, independently-pulsing element made the screen feel busier. */}
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 rounded-full"
+                style={{ background: "radial-gradient(circle, rgba(34,197,94,0.55), rgba(34,197,94,0) 70%)", filter: "blur(16px)" }}
+              />
+              <svg viewBox="0 0 100 100" width={112} height={112} style={{ position: "relative", transform: "rotate(-90deg)" }}>
+                <circle cx={50} cy={50} r={UPLOAD_RING_RADIUS} fill="none" stroke="rgba(34,197,94,0.2)" strokeWidth={8} />
+                <circle
+                  cx={50}
+                  cy={50}
+                  r={UPLOAD_RING_RADIUS}
+                  fill="none"
+                  stroke="#22c55e"
+                  strokeWidth={8}
+                  strokeLinecap="round"
+                  strokeDasharray={UPLOAD_RING_CIRCUMFERENCE}
+                  strokeDashoffset={UPLOAD_RING_CIRCUMFERENCE * (1 - uploadPct / 100)}
+                  style={{ transition: "stroke-dashoffset 150ms linear" }}
+                />
+                <text
+                  x={50}
+                  y={51}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={18}
+                  fontWeight={700}
+                  fill="#22c55e"
+                  style={{ transform: "rotate(90deg)", transformOrigin: "50px 50px" }}
+                  className="font-data"
+                >
+                  {uploadPct.toFixed(2)}%
+                </text>
+              </svg>
+            </div>
+            <div>
+              <div className="text-sm font-semibold">מעלה תמונות ({uploadingCount}/{uploadTotal})</div>
+              <div className="text-xs mt-1" style={{ color: "var(--gt-ink-soft)" }}>
+                החלון ייסגר אוטומטית בסיום ההעלאה
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {visiblePhotos.length === 0 ? (
-        <p className="text-sm text-center py-16" style={{ color: "var(--gt-ink-soft)" }}>אין עדיין תמונות בגלריה.</p>
+        <p className="text-sm text-center py-16" style={{ color: "var(--gt-ink-soft)" }}>
+          {allowClientUpload ? "אין עדיין תמונות בגלריה — אפשר להעלות תמונות משלכם למעלה." : "אין עדיין תמונות בגלריה."}
+        </p>
       ) : (
         <>
           <div className="flex items-center gap-2 mb-3">
@@ -836,7 +1155,7 @@ export default function PublicGalleryView({
                         <div className="absolute inset-0" style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent" }} />
                       )}
                     </button>
-                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} />
+                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={downloadPhoto} />
                   </div>
                 );
               })}
@@ -890,7 +1209,7 @@ export default function PublicGalleryView({
                         <div className="absolute inset-0" style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent" }} />
                       )}
                     </button>
-                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} />
+                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={downloadPhoto} />
                   </div>
                 );
               })}
@@ -943,7 +1262,7 @@ export default function PublicGalleryView({
                         <div className="absolute inset-0" style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent", borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined }} />
                       )}
                     </button>
-                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} inset={framed ? 8 : 0} />
+                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={downloadPhoto} inset={framed ? 8 : 0} />
                   </div>
                 );
               })}
@@ -959,7 +1278,7 @@ export default function PublicGalleryView({
           is active, tapping a photo favorites it directly, so this always shows one unified
           favorites count instead of a separate "selected" count. Sized up with bigger text on
           both mobile and desktop so it can't be missed. */}
-      {(favoriteCount > 0 || selectionMode) && (
+      {(favoriteCount > 0 || selectionMode || usedLabels.length > 0) && (
         <div
           className="fixed bottom-3 right-3 left-3 md:right-auto md:left-1/2 md:-translate-x-1/2 z-40 flex flex-col gap-2 rounded-2xl px-4 py-3 md:py-3.5 md:min-w-[240px] shadow-sheet border"
           style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)" }}
@@ -1075,24 +1394,64 @@ export default function PublicGalleryView({
                 )}
               </div>
             )}
-            {favorites.length === 0 ? (
-              <p className="text-sm text-center py-8" style={{ color: "var(--gt-ink-soft)" }}>עדיין לא נבחרו תמונות.</p>
+            {usedLabels.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                <button
+                  onClick={() => setActiveLabelFilter(null)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${BTN_PRESS}`}
+                  style={
+                    activeLabelFilter === null
+                      ? { background: "var(--gt-accent)", color: "var(--gt-accent-ink)" }
+                      : { background: "var(--gt-surface-soft)", color: "var(--gt-ink-soft)" }
+                  }
+                >
+                  הכל
+                </button>
+                {usedLabels.map((label) => (
+                  <button
+                    key={label}
+                    onClick={() => setActiveLabelFilter(label)}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${BTN_PRESS}`}
+                    style={
+                      activeLabelFilter === label
+                        ? { background: "var(--gt-accent)", color: "var(--gt-accent-ink)" }
+                        : { background: "var(--gt-surface-soft)", color: "var(--gt-ink-soft)" }
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {panelPhotos.length === 0 ? (
+              <p className="text-sm text-center py-8" style={{ color: "var(--gt-ink-soft)" }}>
+                {activeLabelFilter ? "אין תמונות עם התווית הזו." : "עדיין לא נבחרו תמונות."}
+              </p>
             ) : (
               <div className="grid grid-cols-3 gap-1.5 mb-4">
-                {favorites.map((photo) => (
+                {panelPhotos.map((photo) => (
                   <div key={photo.id} className="relative aspect-square overflow-hidden" style={{ background: "var(--gt-surface-soft)", borderRadius: "var(--gt-radius)" }}>
                     <Image src={photo.url} alt={photo.original_filename} fill sizes="33vw" className="object-cover" />
-                    {/* Tapping a photo here removes it from favorites directly — before this,
-                        the only way to unfavorite was going back to the main grid and finding
-                        the same photo's heart button there again. */}
+                    {/* A label-filtered view can include photos that aren't favorited yet — the
+                        heart here reflects and toggles THIS photo's actual favorite state, not
+                        just "remove", so tapping it on a labeled-but-unfavorited photo favorites
+                        it instead of silently doing the opposite of what the filled-heart icon
+                        implied. */}
                     <button
                       onClick={() => toggleFavorite(photo)}
-                      aria-label="הסרה מהמועדפים"
-                      title="הסרה מהמועדפים"
+                      aria-label={photo.is_favorite ? "הסרה מהמועדפים" : "הוספה למועדפים"}
+                      title={photo.is_favorite ? "הסרה מהמועדפים" : "הוספה למועדפים"}
                       className={`absolute top-1.5 right-1.5 h-7 w-7 rounded-full flex items-center justify-center bg-black/30 backdrop-blur-md ${BTN_PRESS}`}
                     >
-                      <HeartIcon filled size={14} />
+                      <HeartIcon filled={photo.is_favorite} size={14} />
                     </button>
+                    {photo.custom_label && (
+                      <span
+                        className="absolute bottom-1.5 right-1.5 left-1.5 truncate rounded-full px-2 py-0.5 text-[10px] font-semibold text-center bg-black/40 text-white backdrop-blur-md"
+                      >
+                        {photo.custom_label}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1134,6 +1493,18 @@ export default function PublicGalleryView({
             ) : null}
           </div>
         </div>
+      )}
+
+      {/* Diamond-icon label editor — free text the client attaches to one photo (e.g. "קנבס")
+          to tell the photographer what they want done with it; also becomes a filter chip in the
+          favorites panel above. */}
+      {labelEditPhoto && (
+        <LabelEditModal
+          photo={labelEditPhoto}
+          saving={savingLabel}
+          onSave={(label) => saveLabel(labelEditPhoto, label)}
+          onClose={() => setLabelEditPhoto(null)}
+        />
       )}
 
       {/* Confirm dialog */}
@@ -1298,7 +1669,7 @@ export default function PublicGalleryView({
                   <div className="mb-5">
                     <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>אילו לשוניות לשתף?</p>
                     <div className="space-y-1.5">
-                      {initialFolders.map((folder) => (
+                      {folders.map((folder) => (
                         <label
                           key={folder.id}
                           className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
@@ -1406,11 +1777,11 @@ export default function PublicGalleryView({
           >
             <h2 className="text-lg font-bold mb-4 font-display">הורדת תמונות</h2>
 
-            {initialFolders.length > 0 && (
+            {folders.length > 0 && (
               <div className="mb-5">
                 <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>אילו לשוניות להוריד?</p>
                 <div className="space-y-1.5">
-                  {initialFolders.map((folder) => (
+                  {folders.map((folder) => (
                     <label
                       key={folder.id}
                       className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
@@ -1658,9 +2029,9 @@ function ShareIcon({ size = 22 }: { size?: number }) {
   );
 }
 
-function DownloadIcon({ size = 22 }: { size?: number }) {
+function DownloadIcon({ size = 22, stroke = "var(--gt-ink)" }: { size?: number; stroke?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--gt-ink)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
       <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
     </svg>
@@ -1672,15 +2043,22 @@ function PhotoTileOverlays({
   selectionMode,
   isSelected,
   toggleFavorite,
+  onOpenLabel,
+  onDownload,
   inset = 0,
 }: {
   photo: PhotoWithUrl;
   selectionMode: boolean;
   isSelected: boolean;
   toggleFavorite: (photo: PhotoWithUrl) => void;
+  onOpenLabel?: (photo: PhotoWithUrl) => void;
+  onDownload?: (photo: PhotoWithUrl) => void;
   inset?: number;
 }) {
   const offset = 6 + inset;
+  // The diamond (label) button sits at the very bottom-right corner; the download button stacks
+  // directly above it in the same corner column, one button-height + gap further up.
+  const downloadOffset = offset + 34;
   return (
     <>
       {selectionMode && (
@@ -1706,6 +2084,36 @@ function PhotoTileOverlays({
       >
         <HeartIcon filled={photo.is_favorite} />
       </button>
+      {onDownload && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDownload(photo);
+          }}
+          className={`absolute h-8 w-8 rounded-full flex items-center justify-center backdrop-blur-md bg-white/20 ${BTN_PRESS}`}
+          style={{ bottom: downloadOffset, right: offset }}
+          aria-label="הורדת התמונה"
+          title="הורדת התמונה"
+        >
+          <DownloadIcon size={18} stroke="#fff" />
+        </button>
+      )}
+      {onOpenLabel && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenLabel(photo);
+          }}
+          className={`absolute h-8 w-8 rounded-full flex items-center justify-center backdrop-blur-md ${
+            photo.custom_label ? "bg-black/30" : "bg-white/20"
+          } ${BTN_PRESS}`}
+          style={{ bottom: offset, right: offset }}
+          aria-label={photo.custom_label ? `תגית: ${photo.custom_label}` : "הוספת תגית לתמונה"}
+          title={photo.custom_label ?? undefined}
+        >
+          <DiamondIcon filled={!!photo.custom_label} />
+        </button>
+      )}
     </>
   );
 }
@@ -1725,6 +2133,74 @@ function HeartIcon({ filled, size = 20 }: { filled: boolean; size?: number }) {
         d="M12 20.5s-7.5-4.6-10-9.2C0.4 8.1 1.7 4.5 5 3.4c2.1-0.7 4.3 0.1 5.6 1.9l1.4 1.9 1.4-1.9c1.3-1.8 3.5-2.6 5.6-1.9 3.3 1.1 4.6 4.7 3 7.9-2.5 4.6-10 9.2-10 9.2z"
         fill={filled ? "var(--color-coral)" : "none"}
         stroke="var(--color-coral)"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LabelEditModal({
+  photo,
+  saving,
+  onSave,
+  onClose,
+}: {
+  photo: PhotoWithUrl;
+  saving: boolean;
+  onSave: (label: string) => void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(photo.custom_label ?? "");
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.5)" }} onClick={onClose}>
+      <div
+        className="w-full max-w-xs rounded-2xl p-5 shadow-sheet"
+        style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-sm font-bold mb-1">תגית לתמונה</h2>
+        <p className="text-xs mb-3" style={{ color: "var(--gt-ink-soft)" }}>
+          למשל: קנבס, בלוק זכוכית — כדי לספר לצלם/ת מה תרצו לעשות עם התמונה הזו.
+        </p>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          autoFocus
+          placeholder="קנבס"
+          className="w-full rounded-lg border px-3 py-2.5 text-sm mb-4"
+          style={{ borderColor: "var(--gt-border)", background: "var(--gt-surface)", color: "var(--gt-ink)" }}
+        />
+        <div className="flex gap-2">
+          <button
+            onClick={() => onSave(value)}
+            disabled={saving}
+            className="flex-1 rounded-lg py-2.5 text-sm font-semibold disabled:opacity-60"
+            style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)" }}
+          >
+            {saving ? "שומר..." : "שמירה"}
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg py-2.5 text-sm font-semibold border"
+            style={{ borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)" }}
+          >
+            ביטול
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiamondIcon({ filled, size = 18 }: { filled: boolean; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 2.5 21 9.5 12 21.5 3 9.5 12 2.5Z"
+        fill={filled ? "var(--color-amber-deep)" : "none"}
+        stroke="var(--color-amber-deep)"
         strokeWidth="1.6"
         strokeLinejoin="round"
       />

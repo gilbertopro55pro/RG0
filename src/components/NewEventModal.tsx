@@ -2,14 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PACKAGE_LABELS, type PackageType } from "@/lib/stages";
+import { PACKAGE_LABELS, FREELANCE_VIDEO_EDIT_VARIANTS, packageLabel, type PackageType } from "@/lib/stages";
 import { openWhatsApp } from "@/lib/waLink";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
-import type { CustomPackageRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
+import { buildClientMessageText } from "@/lib/clientMessage";
+import type { ContractTemplateRow, CustomPackageRow, EventContractRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
 import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
 import SendUpdateButton from "@/components/SendUpdateButton";
+import NativeDateTimeField from "@/components/NativeDateTimeField";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
+// The 4 video-editing sub-choices collapse to this one representative value in the top-level
+// package <select> — see the "מה כולל העריכה" nested dropdown below it.
+const VIDEO_EDIT_GROUP_VALUE: PackageType = "freelance_video_film";
+const isVideoEditVariant = (v: string) => FREELANCE_VIDEO_EDIT_VARIANTS.some((o) => o.value === v);
 
 const selectArrowStyle = {
   background:
@@ -18,7 +25,7 @@ const selectArrowStyle = {
 
 const CLOSE_ANIMATION_MS = 220;
 
-type Step = 1 | 2 | 3 | "success";
+type Step = 1 | 2 | 3 | "contract" | "success";
 
 export default function NewEventModal({
   onClose,
@@ -32,7 +39,22 @@ export default function NewEventModal({
   onClose: () => void;
   // pkg accepts a built-in PackageType key or a `custom:<id>` value (e.g. pre-filled from a lead's
   // package_interest, which uses that same convention — see resolveLeadPackageLabel in @/lib/stages).
-  initial?: { clientName?: string; clientPhone?: string; eventDate?: string; pkg?: string };
+  initial?: {
+    clientName?: string;
+    clientPhone?: string;
+    eventDate?: string;
+    pkg?: string;
+    eventStartTime?: string;
+    eventEndTime?: string;
+    eventLocation?: string;
+    notes?: string;
+    deposit?: number;
+    balance?: number;
+    // Set only by the calendar-import scan (admin-only for now) — see createEvent.ts's own doc
+    // comment for why this makes event creation UPDATE that calendar event in place instead of
+    // creating a new, duplicate one.
+    sourceGoogleCalendarEventId?: string;
+  };
   leadId?: string;
   waitlistId?: string;
   customPackages: CustomPackageRow[];
@@ -40,6 +62,7 @@ export default function NewEventModal({
   prices?: PackagePriceRow[];
 }) {
   const router = useRouter();
+  const supabase = createClient();
   const [clientName, setClientName] = useState(initial?.clientName ?? "");
   const [clientPhone, setClientPhone] = useState(initial?.clientPhone ?? "");
   const [pkgValue, setPkgValue] = useState<string>(initial?.pkg ?? "full");
@@ -48,21 +71,40 @@ export default function NewEventModal({
   const [prices, setPrices] = useState(initialPrices ?? []);
   const [showCustomPackageBuilder, setShowCustomPackageBuilder] = useState(false);
   const [eventDate, setEventDate] = useState(initial?.eventDate ?? "");
-  const [eventStartTime, setEventStartTime] = useState("");
-  const [eventEndTime, setEventEndTime] = useState("");
-  const [eventLocation, setEventLocation] = useState("");
+  const [eventStartTime, setEventStartTime] = useState(initial?.eventStartTime ?? "");
+  const [eventEndTime, setEventEndTime] = useState(initial?.eventEndTime ?? "");
+  const [eventLocation, setEventLocation] = useState(initial?.eventLocation ?? "");
   const [arrivalTime, setArrivalTime] = useState("");
-  const [notes, setNotes] = useState("");
-  const [deposit, setDeposit] = useState("");
-  const [balance, setBalance] = useState("");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [deposit, setDeposit] = useState(initial?.deposit ? String(initial.deposit) : "");
+  const [balance, setBalance] = useState(initial?.balance ? String(initial.balance) : "");
   const [wantsPaymentReminder, setWantsPaymentReminder] = useState(false);
   const [paymentReminderDate, setPaymentReminderDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateConflict, setDateConflict] = useState(false);
   const [addingToWaitlist, setAddingToWaitlist] = useState(false);
-  const [createdEvent, setCreatedEvent] = useState<{ id: string; clientAccessToken: string } | null>(null);
+  const [createdEvent, setCreatedEvent] = useState<{ id: string; clientAccessToken: string; googleCalendarSynced: boolean; isAdmin: boolean } | null>(null);
   const [sendingUpdate, setSendingUpdate] = useState(false);
+  // Booking-confirmation message: the photographer's own saved "event_closing" template (Settings
+  // → הודעות ללקוח/ה) instead of a hardcoded, non-customizable message. Fetched once on open, same
+  // as the rest of this modal's one-shot data loads.
+  const [eventClosingTemplate, setEventClosingTemplate] = useState<string | undefined>(undefined);
+  const [whatsappSignature, setWhatsappSignature] = useState<string | null>(null);
+
+  // Admin-only for now (see the standing "עדכון אדמין" staged-rollout process): the new
+  // contract-selection step inserted between "event saved" and the existing success/WhatsApp
+  // screen — see the "contract" Step branch below and sendBookingUpdate's/submit's use of
+  // createdEvent.isAdmin.
+  const [contractTemplates, setContractTemplates] = useState<ContractTemplateRow[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [contractTermsDraft, setContractTermsDraft] = useState("");
+  const [contract, setContract] = useState<EventContractRow | null>(null);
+  const [creatingContract, setCreatingContract] = useState(false);
+  const [contractError, setContractError] = useState<string | null>(null);
+  const [copiedContractLink, setCopiedContractLink] = useState(false);
+  const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [skippingContract, setSkippingContract] = useState(false);
 
   const [step, setStep] = useState<Step>(1);
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
@@ -75,6 +117,29 @@ export default function NewEventModal({
   useEffect(() => {
     const raf = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(raf);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const [{ data: photographer }, { data: templateRow }, { data: templates }] = await Promise.all([
+        supabase.from("photographers").select("whatsapp_signature").eq("id", user.id).maybeSingle<{ whatsapp_signature: string | null }>(),
+        supabase.from("client_message_templates").select("body").eq("photographer_id", user.id).eq("stage_key", "event_closing").maybeSingle<{ body: string }>(),
+        supabase.from("contract_templates").select("*").eq("photographer_id", user.id).order("created_at", { ascending: true }).returns<ContractTemplateRow[]>(),
+      ]);
+      if (cancelled) return;
+      setWhatsappSignature(photographer?.whatsapp_signature ?? null);
+      setEventClosingTemplate(templateRow?.body);
+      setContractTemplates(templates ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isCustomPkg = pkgValue.startsWith("custom:");
@@ -121,6 +186,7 @@ export default function NewEventModal({
         deposit: Number(deposit) || 0,
         balance: Number(balance) || 0,
         paymentReminderDate: wantsPaymentReminder ? paymentReminderDate : null,
+        sourceGoogleCalendarEventId: initial?.sourceGoogleCalendarEventId ?? null,
       }),
     });
     const data = await res.json();
@@ -144,9 +210,9 @@ export default function NewEventModal({
     }
 
     setSaving(false);
-    setCreatedEvent({ id: data.id, clientAccessToken: data.clientAccessToken });
+    setCreatedEvent({ id: data.id, clientAccessToken: data.clientAccessToken, googleCalendarSynced: !!data.googleCalendarSynced, isAdmin: !!data.isAdmin });
     setDirection("forward");
-    setStep("success");
+    setStep(data.isAdmin ? "contract" : "success");
   };
 
   // Opens the photographer's own WhatsApp with the booking confirmation + portal link combined
@@ -154,18 +220,31 @@ export default function NewEventModal({
   // template approval, works today). Bound to the success screen's SendUpdateButton instead of
   // firing automatically on save, so it's a deliberate tap rather than a side effect the
   // photographer can't see coming or skip.
+  //
+  // Uses the same buildClientMessageText shared builder as EventDetailView.tsx, resolving the
+  // photographer's own saved "event_closing" template instead of a hardcoded message.
   const sendBookingUpdate = () => {
     if (!clientPhone || !createdEvent) return;
     setSendingUpdate(true);
-    const formattedDate = new Date(eventDate).toLocaleDateString("he-IL");
     const portalLink = `${window.location.origin}/portal/${createdEvent.clientAccessToken}`;
-    const message =
-      `שלום ${clientName},\nהאירוע שלכם נסגר במערכת בהצלחה 🎉\n\n` +
-      `תאריך: ${formattedDate}\n` +
-      `מיקום: ${eventLocation || "יעודכן"}\n` +
-      `שעת הגעה: ${arrivalTime || "יעודכן"}\n` +
-      `מקדמה: ₪${Number(deposit) || 0} · יתרה: ₪${Number(balance) || 0}\n\n` +
-      `הפורטל האישי שלכם לצפייה בפרטי האירוע והתשלומים:\n${portalLink}`;
+    const message = buildClientMessageText({
+      stageKey: "event_closing",
+      stageLabel: "סגירת האירוע",
+      savedTemplate: eventClosingTemplate,
+      clientName,
+      eventDateIso: eventDate,
+      eventLocation: eventLocation || null,
+      packageLabelText: isCustomPkg
+        ? (customPackages.find((p) => p.id === pkgValue.slice(7))?.name ?? "חבילה מותאמת אישית")
+        : packageLabel(pkgValue as PackageType, null),
+      eventStartTime: eventStartTime || null,
+      eventEndTime: eventEndTime || null,
+      arrivalTime: arrivalTime || null,
+      depositAmount: Number(deposit) || 0,
+      balanceAmount: Number(balance) || 0,
+      linkUrl: portalLink,
+      whatsappSignature,
+    });
     openWhatsApp(clientPhone, message);
     fetch(`/api/events/${createdEvent.id}/log-notification`, {
       method: "POST",
@@ -174,6 +253,76 @@ export default function NewEventModal({
     })
       .catch(() => {})
       .finally(() => setSendingUpdate(false));
+  };
+
+  // Admin-only for now — the new "contract" step's own actions. Picking a saved template fills
+  // the draft textarea with it, still freely editable before creating — the edited text (not a
+  // re-fetch of the original template) is what actually gets used, via customTermsOverride.
+  const [savingNewTemplate, setSavingNewTemplate] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+
+  const onTemplateSelect = (id: string) => {
+    setSelectedTemplateId(id);
+    const t = contractTemplates.find((ct) => ct.id === id);
+    setContractTermsDraft(t?.terms ?? "");
+  };
+
+  const saveAsNewTemplate = async () => {
+    if (!newTemplateName.trim() || !contractTermsDraft.trim()) return;
+    setSavingNewTemplate(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setSavingNewTemplate(false);
+      return;
+    }
+    const { data } = await supabase
+      .from("contract_templates")
+      .insert({ photographer_id: user.id, name: newTemplateName.trim(), terms: contractTermsDraft.trim() })
+      .select()
+      .single<ContractTemplateRow>();
+    setSavingNewTemplate(false);
+    if (data) {
+      setContractTemplates((prev) => [...prev, data]);
+      setSelectedTemplateId(data.id);
+      setNewTemplateName("");
+    }
+  };
+
+  const createContractForEvent = async () => {
+    if (!createdEvent) return;
+    setCreatingContract(true);
+    setContractError(null);
+    const res = await fetch(`/api/events/${createdEvent.id}/contract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ templateId: selectedTemplateId || undefined, customTermsOverride: contractTermsDraft || undefined }),
+    });
+    const data = await res.json();
+    setCreatingContract(false);
+    if (!res.ok) {
+      setContractError(data.error ?? "שגיאה ביצירת החוזה");
+      return;
+    }
+    setContract(data.contract);
+  };
+
+  const copyContractLink = async () => {
+    if (!contract) return;
+    await navigator.clipboard.writeText(`${window.location.origin}/contracts/${contract.sign_token}`);
+    setCopiedContractLink(true);
+    setTimeout(() => setCopiedContractLink(false), 2000);
+  };
+
+  const skipContract = async () => {
+    if (!createdEvent) return;
+    setSkippingContract(true);
+    await fetch(`/api/events/${createdEvent.id}/skip-contract`, { method: "POST" }).catch(() => {});
+    setSkippingContract(false);
+    setSkipConfirmOpen(false);
+    setDirection("forward");
+    setStep("success");
   };
 
   const finishAndGoToEvent = () => {
@@ -208,14 +357,14 @@ export default function NewEventModal({
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xl font-bold font-display">אירוע חדש</h2>
           <button
-            onClick={() => (step === "success" ? finishAndGoToEvent() : closeWithAnimation())}
+            onClick={() => (step === "success" || step === "contract" ? finishAndGoToEvent() : closeWithAnimation())}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
           >
             ✕
           </button>
         </div>
 
-        {step !== "success" && (
+        {step !== "success" && step !== "contract" && (
           <div className="flex items-center gap-1.5 mb-5">
             {[1, 2, 3].map((s) => (
               <div
@@ -256,10 +405,16 @@ export default function NewEventModal({
               <div>
                 <label className="text-xs block mb-1 text-ink-soft">חבילה</label>
                 <select
-                  value={pkgValue}
+                  value={isVideoEditVariant(pkgValue) ? VIDEO_EDIT_GROUP_VALUE : pkgValue}
                   onChange={(e) => {
                     if (e.target.value === CREATE_CUSTOM_PACKAGE_VALUE) {
                       setShowCustomPackageBuilder(true);
+                      return;
+                    }
+                    if (e.target.value === VIDEO_EDIT_GROUP_VALUE) {
+                      // Re-entering the group keeps whatever sub-choice was already picked
+                      // instead of silently resetting it back to the plain "סרט" default.
+                      setPkgValue((prev) => (isVideoEditVariant(prev) ? prev : VIDEO_EDIT_GROUP_VALUE));
                       return;
                     }
                     setPkgValue(e.target.value);
@@ -267,11 +422,13 @@ export default function NewEventModal({
                   className="w-full rounded-lg px-3 py-2.5 text-sm appearance-none font-medium text-ink"
                   style={selectArrowStyle}
                 >
-                  {Object.keys(PACKAGE_LABELS).map((p) => (
-                    <option key={p} value={p}>
-                      {PACKAGE_LABELS[p as PackageType]}
-                    </option>
-                  ))}
+                  {Object.keys(PACKAGE_LABELS)
+                    .filter((p) => !isVideoEditVariant(p) || p === VIDEO_EDIT_GROUP_VALUE)
+                    .map((p) => (
+                      <option key={p} value={p}>
+                        {p === VIDEO_EDIT_GROUP_VALUE ? "פרילנס וידאו כולל עריכה" : PACKAGE_LABELS[p as PackageType]}
+                      </option>
+                    ))}
                   {customPackages.map((cp) => (
                     <option key={cp.id} value={`custom:${cp.id}`}>
                       {cp.name}
@@ -280,6 +437,24 @@ export default function NewEventModal({
                   <option value={CREATE_CUSTOM_PACKAGE_VALUE}>+ חבילה מותאמת אישית חדשה</option>
                 </select>
               </div>
+
+              {isVideoEditVariant(pkgValue) && (
+                <div>
+                  <label className="text-xs block mb-1 text-ink-soft">מה כולל העריכה</label>
+                  <select
+                    value={pkgValue}
+                    onChange={(e) => setPkgValue(e.target.value)}
+                    className="w-full rounded-lg px-3 py-2.5 text-sm appearance-none font-medium text-ink"
+                    style={selectArrowStyle}
+                  >
+                    {FREELANCE_VIDEO_EDIT_VARIANTS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <button
                 onClick={goNext}
@@ -299,78 +474,36 @@ export default function NewEventModal({
               </div>
               <div>
                 <label className="text-xs block mb-1 text-ink-soft">תאריך האירוע</label>
-                {/* The real <input type="date"> is fully invisible (opacity-0) and just an
-                    interactive hit-target — this box's actual visible border/background/text is
-                    entirely our own CSS on plain <div>s. Measured directly on a real iPhone: the
-                    native control renders itself wider than its own declared 100% width once
-                    dir="ltr" is set inside an RTL page (confirmed reproducible, and NOT something
-                    any available testing engine here — including real WebKit on macOS — actually
-                    reproduces, since iOS's native date/time picker chrome is OS-level UI, not
-                    something WebKit-on-desktop renders the same way). Making the visible chrome a
-                    plain div with overflow-hidden means that overflow gets clipped instead of
-                    pushing the box wider than its siblings, regardless of what the invisible
-                    native control tries to claim internally. */}
-                <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
-                  <div className="pointer-events-none flex items-center justify-center px-3 py-2 text-sm" dir="ltr">
-                    {eventDate ? formatDateDMYFromInput(eventDate) : <span className="text-ink-soft">בחר תאריך</span>}
-                  </div>
-                  <input
-                    type="date"
-                    value={eventDate}
-                    onChange={(e) => setEventDate(e.target.value)}
-                    onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
-                    dir="ltr"
-                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  />
-                </div>
+                <NativeDateTimeField
+                  type="date"
+                  value={eventDate}
+                  onChange={setEventDate}
+                  display={eventDate ? formatDateDMYFromInput(eventDate) : <span className="text-ink-soft">בחר תאריך</span>}
+                />
               </div>
               <div className="flex gap-2">
                 {/* min-w-0 is the fix — flex items default to min-width:auto, which lets a native
                     time input's intrinsic width push past its half of the row instead of
-                    shrinking, so the two fields overlapped instead of sitting side by side. The
-                    same overlap came back once a time was actually picked, though: without
-                    dir="ltr" the input's OWN inline value rendered right-to-left (the browser
-                    reversing "14:30" and reflowing it wider than its half of the row) — that's
-                    what was actually climbing onto the neighboring field, not a sizing issue. */}
-                {/* Same invisible-native-input-over-plain-div pattern as the date field above:
-                    the visible box is entirely our own div (border/background/centered text),
-                    the real <input> is an opacity-0 hit-target clipped by overflow-hidden — so a
-                    native time control's own intrinsic width (confirmed on a real iPhone to
-                    render wider than its declared width once dir="ltr" applies) can never push
-                    past its half of the row, gap-2 between the two boxes stays a real gap either
-                    way, and flex-1 on both means they always split the same total width as the
-                    date field's own row above. */}
+                    shrinking, so the two fields overlapped instead of sitting side by side. */}
                 <div className="flex-1 min-w-0">
                   <label className="text-xs block mb-1 text-ink-soft">שעת התחלה</label>
-                  <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
-                    <div className="pointer-events-none flex items-center justify-center px-1.5 py-2 text-sm" dir="ltr">
-                      {eventStartTime || <span className="text-ink-soft">--:--</span>}
-                    </div>
-                    <input
-                      type="time"
-                      value={eventStartTime}
-                      onChange={(e) => setEventStartTime(e.target.value)}
-                      onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
-                      dir="ltr"
-                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                    />
-                  </div>
+                  <NativeDateTimeField
+                    type="time"
+                    compact
+                    value={eventStartTime}
+                    onChange={setEventStartTime}
+                    display={eventStartTime || <span className="text-ink-soft">--:--</span>}
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
                   <label className="text-xs block mb-1 text-ink-soft">שעת סיום</label>
-                  <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
-                    <div className="pointer-events-none flex items-center justify-center px-1.5 py-2 text-sm" dir="ltr">
-                      {eventEndTime || <span className="text-ink-soft">--:--</span>}
-                    </div>
-                    <input
-                      type="time"
-                      value={eventEndTime}
-                      onChange={(e) => setEventEndTime(e.target.value)}
-                      onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
-                      dir="ltr"
-                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                    />
-                  </div>
+                  <NativeDateTimeField
+                    type="time"
+                    compact
+                    value={eventEndTime}
+                    onChange={setEventEndTime}
+                    display={eventEndTime || <span className="text-ink-soft">--:--</span>}
+                  />
                 </div>
               </div>
               <div>
@@ -384,21 +517,12 @@ export default function NewEventModal({
               </div>
               <div>
                 <label className="text-xs block mb-1 text-ink-soft">שעת הגעה לצילומי משפחה</label>
-                {/* Same invisible-native-input-over-plain-div pattern as the date and start/end
-                    time fields above. */}
-                <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
-                  <div className="pointer-events-none flex items-center justify-center px-3 py-2 text-sm" dir="ltr">
-                    {arrivalTime || <span className="text-ink-soft">--:--</span>}
-                  </div>
-                  <input
-                    type="time"
-                    value={arrivalTime}
-                    onChange={(e) => setArrivalTime(e.target.value)}
-                    onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
-                    dir="ltr"
-                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  />
-                </div>
+                <NativeDateTimeField
+                  type="time"
+                  value={arrivalTime}
+                  onChange={setArrivalTime}
+                  display={arrivalTime || <span className="text-ink-soft">--:--</span>}
+                />
               </div>
               <div>
                 <label className="text-xs block mb-1 text-ink-soft">הערות</label>
@@ -502,6 +626,136 @@ export default function NewEventModal({
             </div>
           )}
 
+          {step === "contract" && (
+            <div className="space-y-3.5">
+              <div className="flex flex-col items-center text-center gap-2 py-2">
+                <span
+                  className="flex h-12 w-12 items-center justify-center rounded-full text-2xl"
+                  style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}
+                >
+                  ✓
+                </span>
+                <div>
+                  <div className="text-base font-bold font-display">האירוע נשמר בהצלחה</div>
+                  <p className="text-xs text-ink-soft mt-1">רוצים לשלוח ללקוח/ה חוזה לחתימה דיגיטלית לפני הודעת הפתיחה?</p>
+                </div>
+              </div>
+
+              {!contract ? (
+                <>
+                  <div>
+                    <label className="text-xs block mb-1 text-ink-soft">תבנית חוזה</label>
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => onTemplateSelect(e.target.value)}
+                      className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                    >
+                      <option value="">ברירת המחדל שלי</option>
+                      {contractTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1 text-ink-soft">תנאים כלליים (אפשר לערוך רק עבור החוזה הזה)</label>
+                    <textarea
+                      value={contractTermsDraft}
+                      onChange={(e) => setContractTermsDraft(e.target.value)}
+                      rows={6}
+                      placeholder="השאירו ריק כדי להשתמש בברירת המחדל שלכם"
+                      className="w-full rounded-lg px-2.5 py-2 text-sm border border-line bg-white leading-relaxed"
+                    />
+                  </div>
+                  {contractTermsDraft.trim() && (
+                    <div className="flex gap-2">
+                      <input
+                        value={newTemplateName}
+                        onChange={(e) => setNewTemplateName(e.target.value)}
+                        placeholder="שם לשמירה כתבנית חדשה"
+                        className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-xs border border-line bg-white"
+                      />
+                      <button
+                        onClick={saveAsNewTemplate}
+                        disabled={savingNewTemplate || !newTemplateName.trim()}
+                        className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold bg-white border border-line text-ink disabled:opacity-50"
+                      >
+                        {savingNewTemplate ? "שומר..." : "שמירה כתבנית חדשה"}
+                      </button>
+                    </div>
+                  )}
+                  {contractError && <p className="text-xs text-rose">{contractError}</p>}
+                  <button
+                    onClick={createContractForEvent}
+                    disabled={creatingContract}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                  >
+                    {creatingContract ? "יוצר..." : "יצירת חוזה לחתימה"}
+                  </button>
+                  <button
+                    onClick={() => setSkipConfirmOpen(true)}
+                    className="w-full text-xs text-ink-soft underline"
+                  >
+                    דילוג — לא לעבוד עם חוזה באירוע הזה
+                  </button>
+                </>
+              ) : (
+                <div className="space-y-2.5">
+                  <div className="rounded-xl px-3.5 py-2.5 text-sm bg-chip-tint text-amber-deep font-medium text-center">
+                    החוזה נוצר — ממתין לשליחה וחתימת הלקוח/ה
+                  </div>
+                  <button
+                    onClick={copyContractLink}
+                    className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
+                  >
+                    {copiedContractLink ? "הקישור הועתק ✓" : "העתקת קישור לחתימה"}
+                  </button>
+                  <p className="text-xs text-ink-soft text-center">
+                    שלחו את הקישור ללקוח/ה (בוואטסאפ למשל). כשיחתמו, תקבלו מייל ותוכלו לשלוח את הודעת הפתיחה מעמוד האירוע.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setDirection("forward");
+                      setStep("success");
+                    }}
+                    className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
+                  >
+                    המשך
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {skipConfirmOpen && (
+            <div
+              className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+              style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+              onClick={() => setSkipConfirmOpen(false)}
+            >
+              <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+                <h2 className="text-lg font-bold mb-2 font-display">לדלג על שלב החוזה?</h2>
+                <p className="text-sm text-ink-soft mb-5">האירוע ימשיך בלי חוזה — אפשר תמיד ליצור אחד מאוחר יותר מעמוד האירוע.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={skipContract}
+                    disabled={skippingContract}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                  >
+                    {skippingContract ? "מדלג..." : "כן, דילוג"}
+                  </button>
+                  <button
+                    onClick={() => setSkipConfirmOpen(false)}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+                  >
+                    ביטול
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {step === "success" && (
             <div className="space-y-4">
               <div className="flex flex-col items-center text-center gap-2 py-2">
@@ -513,9 +767,24 @@ export default function NewEventModal({
                 </span>
                 <div>
                   <div className="text-base font-bold font-display">האירוע נשמר בהצלחה</div>
-                  <p className="text-xs text-ink-soft mt-1">האירוע נוסף למערכת וליומן שלך.</p>
+                  <p className="text-xs text-ink-soft mt-1">
+                    {createdEvent?.googleCalendarSynced ? "האירוע נוסף למערכת וליומן שלך." : "האירוע נוסף למערכת."}
+                  </p>
                 </div>
               </div>
+              {createdEvent && !createdEvent.googleCalendarSynced && (
+                <div className="rounded-xl p-3 space-y-2" style={{ background: "var(--color-amber-bg)" }}>
+                  <p className="text-xs text-amber-deep">
+                    האירוע לא נוסף ליומן Google — החיבור פג תוקף. יש להתחבר מחדש כדי להוסיף אותו.
+                  </p>
+                  <a
+                    href={`/api/google/connect?redirect=${encodeURIComponent(`/events/${createdEvent.id}?calendarRetry=1`)}`}
+                    className="block w-full text-center rounded-lg py-2.5 text-xs font-semibold bg-amber-deep text-white"
+                  >
+                    חיבור מחדש ליומן Google
+                  </a>
+                </div>
+              )}
               {clientPhone ? (
                 <>
                   <p className="text-xs text-ink-soft text-center mb-1">

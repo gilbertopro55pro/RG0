@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 
 // Real, generic categories of tools a photographer would otherwise need to run a business —
 // not named competitor products, and not a fabricated "former price" of this product (that would
@@ -15,8 +16,6 @@ const STACK_ITEMS = [
   { label: "ניהול לידים והצעות מחיר", price: 39 },
   { label: "סנכרון יומן ותיאומים", price: 29 },
 ];
-
-const REAL_MONTHLY_PRICE = 50;
 
 export default function PricingAnchor() {
   const [revealedCount, setRevealedCount] = useState(0);
@@ -83,8 +82,10 @@ export default function PricingAnchor() {
         style={{ opacity: allRevealed ? 1 : 0.3 }}
       >
         <div className="text-xs opacity-80 mb-1">עם גילברטו, כל זה במקום אחד:</div>
-        <div className="text-4xl font-extrabold font-display">
-          ₪{REAL_MONTHLY_PRICE}
+        <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-1.5 bg-white/20">מחיר השקה</span>
+        <div className="flex items-baseline justify-center gap-2">
+          <span className="text-4xl font-extrabold font-display">₪{SUBSCRIPTION_PLANS.monthly.pricePerMonth}</span>
+          <span className="text-lg opacity-70 line-through">₪{SUBSCRIPTION_PLANS.monthly.regularPricePerMonth}</span>
           <span className="text-base font-normal opacity-80">/חודש</span>
         </div>
       </div>

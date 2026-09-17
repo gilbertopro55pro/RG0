@@ -98,9 +98,40 @@ function buildEventTiming({ date, startTime, endTime }: CalendarEventTiming) {
     return { start: { date }, end: { date: endDate.toISOString().slice(0, 10) } };
   }
   const start = { dateTime: `${date}T${withSeconds(startTime)}`, timeZone: CALENDAR_TIME_ZONE };
-  const end = endTime
-    ? { dateTime: `${date}T${withSeconds(endTime)}`, timeZone: CALENDAR_TIME_ZONE }
-    : { dateTime: `${date}T${withSeconds(startTime)}`, timeZone: CALENDAR_TIME_ZONE };
+  // Both cases below produce a dateTime that Google would otherwise reject as "The specified time
+  // range is empty" (reported against its own internal timeMax parameter even though this request
+  // never sends one — Calendar reuses that error shape for any degenerate/backwards start→end
+  // range, not just an explicit list/freebusy query):
+  //
+  // 1. Missing endTime — used to fall back to the SAME dateTime as start (a zero-duration event).
+  //    A known start with no stated end is a completely normal case (the photographer often just
+  //    doesn't know the exact end time yet), so this defaults to a 1-hour placeholder duration.
+  //
+  // 2. endTime given but earlier in the day than startTime — e.g. a wedding running 17:00→00:00.
+  //    "00:00" here means midnight at the END of the event (crossing into the next calendar date),
+  //    but building it against the SAME `date` as start produced midnight at the very START of
+  //    that date instead — before the event even begins. Found live 2026-09-03 as a SEPARATE bug
+  //    from the missing-endTime one above (same symptom, different cause): a real event
+  //    (17:00–00:00) kept failing to save even after the missing-endTime fix shipped, because this
+  //    one has a real, non-missing endTime that's just genuinely earlier-in-day than start.
+  //
+  // Both are handled the same way: compute the end against a real Date object seeded from start,
+  // and if the resulting time-of-day would be <= start's, roll the date forward one day — this is
+  // what correctly turns "00:00 same day" into "00:00 the NEXT day" (and also correctly rolls a
+  // near-midnight start's +1h placeholder, e.g. 23:30 → 00:30 the next day, not the same one).
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const formatDateTime = (d: Date) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const startDate = new Date(`${date}T${withSeconds(startTime)}`);
+  let endDate: Date;
+  if (endTime) {
+    endDate = new Date(`${date}T${withSeconds(endTime)}`);
+    if (endDate.getTime() <= startDate.getTime()) endDate.setDate(endDate.getDate() + 1);
+  } else {
+    endDate = new Date(startDate.getTime());
+    endDate.setHours(endDate.getHours() + 1);
+  }
+  const end = { dateTime: formatDateTime(endDate), timeZone: CALENDAR_TIME_ZONE };
   return { start, end };
 }
 
@@ -145,7 +176,19 @@ export async function updateCalendarEvent(
     date,
     startTime,
     endTime,
-  }: { summary: string; description: string; date: string; startTime?: string | null; endTime?: string | null }
+    colorId,
+  }: {
+    summary: string;
+    description: string;
+    date: string;
+    startTime?: string | null;
+    endTime?: string | null;
+    // Only sent when explicitly provided — a plain edit-and-save of an already-app-synced event
+    // has no reason to touch color, but the calendar-import flow uses this to recolor a raw
+    // calendar event (previously in the photographer's own "needs importing" color) to the
+    // regular app-synced color once it's linked to a real event in the system.
+    colorId?: string | null;
+  }
 ): Promise<{ id: string; htmlLink: string }> {
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
     method: "PATCH",
@@ -154,6 +197,7 @@ export async function updateCalendarEvent(
       summary,
       description,
       ...buildEventTiming({ date, startTime, endTime }),
+      ...(colorId ? { colorId } : {}),
     }),
   });
   if (!res.ok) throw new Error(`Google Calendar event update failed: ${await res.text()}`);
@@ -164,6 +208,7 @@ export type GoogleCalendarEvent = {
   id: string;
   summary: string;
   description?: string;
+  location?: string;
   htmlLink: string;
   start: { date?: string; dateTime?: string };
   end: { date?: string; dateTime?: string };

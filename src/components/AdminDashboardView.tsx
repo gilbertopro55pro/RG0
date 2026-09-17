@@ -31,6 +31,7 @@ export default function AdminDashboardView({ photographers }: { photographers: A
   const total = photographers.length;
   const monthly = photographers.filter((p) => p.plan === "monthly").length;
   const annual = photographers.filter((p) => p.plan === "annual").length;
+  const basic = photographers.filter((p) => SUBSCRIPTION_PLANS[p.plan].tier === "basic").length;
   const studioPro = photographers.filter((p) => SUBSCRIPTION_PLANS[p.plan].tier === "studio_pro").length;
   const activeCount = photographers.filter(
     (p) => p.subscription_status === "active" || p.subscription_status === "trialing"
@@ -51,6 +52,7 @@ export default function AdminDashboardView({ photographers }: { photographers: A
         <StatTile label="מנויים פעילים" value={activeCount} />
         <StatTile label="מסלול חודשי" value={monthly} />
         <StatTile label="מסלול שנתי" value={annual} />
+        <StatTile label="פרו סטארט" value={basic} />
         <StatTile label="פרו+" value={studioPro} />
       </div>
 

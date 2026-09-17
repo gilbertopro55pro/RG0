@@ -1,0 +1,26 @@
+{
+  "hash": "71762cf6d7e36f38eae391bebdb209e6947c0214f8cad634c4f59829af1759e0",
+  "computedAt": "2026-09-17T13:23:48.397Z",
+  "files": [
+    "package-lock.json",
+    "package.json",
+    "src/lib/albumAdjustments.ts",
+    "src/lib/albumExportJobs.ts",
+    "src/lib/albumFontFiles.ts",
+    "src/lib/albumMasks.ts",
+    "src/lib/albumOrnaments.ts",
+    "src/lib/albumPdf.ts",
+    "src/lib/albumPsd.ts",
+    "src/lib/albumRaster.ts",
+    "src/lib/albumSharpen.ts",
+    "src/lib/notificationEmail.ts",
+    "src/lib/pdfText.ts",
+    "src/lib/resend.ts",
+    "src/lib/stages.ts",
+    "src/lib/storage.ts",
+    "src/lib/supabase/serviceRole.ts",
+    "src/lib/textColor.ts",
+    "src/lib/types.ts",
+    "worker/src/index.ts"
+  ]
+}

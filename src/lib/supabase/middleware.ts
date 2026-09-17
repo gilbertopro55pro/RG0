@@ -7,6 +7,14 @@ const PUBLIC_PATHS = [
   "/login",
   "/signup",
   "/reset-password",
+  // Must stay reachable with no session — Google's OAuth verification review and any visiting
+  // browser both hit this with no cookie jar at all. Same for its sibling legal/disclosure pages.
+  "/privacy",
+  "/cookies",
+  "/accessibility",
+  "/business-info",
+  "/terms",
+  "/cancellation-policy",
   "/auth",
   "/api/auth",
   "/api/whatsapp/webhook",

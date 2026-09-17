@@ -28,7 +28,12 @@ const AFTER = [
 
 export default function LandingPage() {
   return (
-    <div className="w-full">
+    // landing-warm: a warmer, more editorial palette than the rest of the app — see its own
+    // comment in globals.css for why (inspired by competitor research, keeps our own indigo
+    // accent). min-h-screen + an explicit background paints over the body's own fixed colorful
+    // gradient blobs — body itself also drops that fixed gradient while this page shows (see the
+    // body:has(.landing-warm) rule in globals.css) so nothing from it can show through at all.
+    <div className="w-full min-h-screen landing-warm" style={{ background: "var(--color-paper)" }}>
       <header className="max-w-5xl mx-auto px-4 pt-6 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Image src="/icons/icon-192.png" alt="גילברטו" width={36} height={36} className="rounded-xl shadow-card" />
@@ -50,13 +55,15 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="max-w-3xl mx-auto px-4 pt-16 pb-12 text-center">
         <h1 className="text-4xl sm:text-5xl font-extrabold font-display leading-[1.15] tracking-tight mb-5 text-balance">
-          העסק שלכם מנוהל ב-15 אפליקציות שונות?
+          פחות ניהול, יותר צילום
           <br />
-          הגיע הזמן לקחת את העסק שלכם קדימה, והכל במקום אחד
+          כל העסק שלכם, במקום אחד
         </h1>
         <p className="text-base sm:text-lg text-ink-soft leading-relaxed mb-8 max-w-xl mx-auto">
-          כל האירועים, הגלריות, החוזים, התשלומים והלידים שלכם במקום אחד, שרץ ברקע בשבילכם, כדי
-          שהשעות שהולכות היום על ניהול יחזרו להיות שעות צילום
+          המערכת מתאימה את עצמה אליכם, לא להפך — לא צריך ללמוד מערכת חדשה ולא לשנות את שיטת העבודה
+          שלכם, ממשיכים לעבוד בדיוק כמו היום, רק ברמה מקצועית ומסודרת יותר. כל האירועים, הגלריות,
+          החוזים, התשלומים והלידים שלכם במקום אחד, שרץ ברקע בשבילכם, כדי שהשעות שהולכות היום על ניהול
+          יחזרו להיות שעות צילום
         </p>
         <div className="flex items-center justify-center gap-3 flex-wrap mb-5">
           <Link href="/signup" className="rounded-xl px-6 py-3.5 text-sm font-semibold bg-amber-deep text-white">
@@ -150,9 +157,35 @@ export default function LandingPage() {
         <p className="text-[11px] text-ink-soft">
           © {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט, צילום אירועים
         </p>
-        <Link href="/login" className="text-[11px] text-ink-soft underline mt-1 inline-block">
-          כניסה למשתמשים קיימים
-        </Link>
+        <div className="flex items-center justify-center gap-3 flex-wrap mt-2">
+          <Link href="/login" className="text-[11px] text-ink-soft underline">
+            כניסה למשתמשים קיימים
+          </Link>
+          <span className="text-[11px] text-line">·</span>
+          <Link href="/terms" className="text-[11px] text-ink-soft underline">
+            תקנון שימוש
+          </Link>
+          <span className="text-[11px] text-line">·</span>
+          <Link href="/privacy" className="text-[11px] text-ink-soft underline">
+            מדיניות פרטיות
+          </Link>
+          <span className="text-[11px] text-line">·</span>
+          <Link href="/cookies" className="text-[11px] text-ink-soft underline">
+            מדיניות עוגיות
+          </Link>
+          <span className="text-[11px] text-line">·</span>
+          <Link href="/cancellation-policy" className="text-[11px] text-ink-soft underline">
+            מדיניות ביטולים
+          </Link>
+          <span className="text-[11px] text-line">·</span>
+          <Link href="/accessibility" className="text-[11px] text-ink-soft underline">
+            הצהרת נגישות
+          </Link>
+          <span className="text-[11px] text-line">·</span>
+          <Link href="/business-info" className="text-[11px] text-ink-soft underline">
+            פרטי העסק
+          </Link>
+        </div>
       </footer>
     </div>
   );

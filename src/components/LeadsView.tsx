@@ -34,11 +34,13 @@ export default function LeadsView({
   customPackages: initialCustomPackages,
   eventTypes: initialEventTypes,
   prices: initialPrices,
+  isAdmin,
 }: {
   initialLeads: LeadRow[];
   customPackages: CustomPackageRow[];
   eventTypes: EventTypeRow[];
   prices: PackagePriceRow[];
+  isAdmin: boolean;
 }) {
   const [leads, setLeads] = useState(initialLeads);
   // Owned here (not inside AddLeadModal) so a package created via "+ חבילה מותאמת אישית חדשה"
@@ -120,6 +122,25 @@ export default function LeadsView({
             {lead.quoted_amount && (
               <div className="text-xs mb-2.5 text-ink-soft">
                 הצעת מחיר: <span className="font-data">₪{lead.quoted_amount}</span>
+              </div>
+            )}
+
+            {/* Admin-only for now (see the standing "עדכון אדמין" staged-rollout process) — the
+                client-side approve+questionnaire flow on /quotes/[token] only actually works for
+                this account, so showing its pipeline state to any other photographer would just
+                be confusing (their clients still see the old call-us-to-confirm page). */}
+            {isAdmin && lead.quoted_amount && !lead.converted_event_id && (
+              <div
+                className="text-xs mb-2.5 rounded-lg px-2.5 py-1.5 inline-block"
+                style={
+                  lead.quote_approved_at
+                    ? { background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }
+                    : { background: "#F1EFE9", color: "var(--color-ink-soft)" }
+                }
+              >
+                {lead.quote_approved_at
+                  ? "ההצעה אושרה ע\"י הלקוח/ה — ממתין למילוי שאלון פרטי האירוע"
+                  : "ממתין לאישור ההצעה ע\"י הלקוח/ה"}
               </div>
             )}
 

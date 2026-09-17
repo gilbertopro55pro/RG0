@@ -1,9 +1,23 @@
 import sharp from "sharp";
 import { writePsdBuffer, type Layer } from "ag-psd";
 import { downloadObjectBuffer } from "@/lib/storage";
-import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng, ornamentLayerRaw, composeShapeTile } from "@/lib/albumRaster";
+import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng, ornamentLayerRaw, composeShapeTile, DPI } from "@/lib/albumRaster";
 import { findOrnament } from "@/lib/albumOrnaments";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
+
+// pageWidthPx/pageHeightPx (pxFromCm in albumRaster.ts) are already computed AT this same DPI —
+// this only stamps that number as the file's own metadata, since ag-psd doesn't infer it from
+// pixel count on its own. Without it, Photoshop assumed the usual 72 PPI default and reported the
+// page's print size as roughly 4x its real physical dimensions, even though the pixel data itself
+// was always genuinely print-resolution.
+const PSD_RESOLUTION_INFO = {
+  horizontalResolution: DPI,
+  horizontalResolutionUnit: "PPI" as const,
+  widthUnit: "Inches" as const,
+  verticalResolution: DPI,
+  verticalResolutionUnit: "PPI" as const,
+  heightUnit: "Inches" as const,
+};
 
 async function pngToRawRgba(buffer: Buffer): Promise<{ data: Buffer; width: number; height: number }> {
   const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -72,7 +86,7 @@ export async function renderAlbumPagePsd({
     });
     const titleRgba = await pngToRawRgba(titlePng);
     children.push({ name: "כותרת", top: 0, left: 0, bottom: titleRgba.height, right: titleRgba.width, imageData: { data: titleRgba.data, width: titleRgba.width, height: titleRgba.height } });
-    return writePsdBuffer({ width: pageWidthPx, height: pageHeightPx, children });
+    return writePsdBuffer({ width: pageWidthPx, height: pageHeightPx, children, imageResources: { resolutionInfo: PSD_RESOLUTION_INFO } });
   }
 
   if (!spread) return null;
@@ -80,7 +94,7 @@ export async function renderAlbumPagePsd({
   if (spread.background_photo_id) {
     const bgPhoto = photosById.get(spread.background_photo_id);
     const bgBuffer = bgPhoto ? await downloadObjectBuffer("galleries", bgPhoto.storage_path) : null;
-    const bgCropped = bgBuffer ? await coverCropRaw(bgBuffer, pageWidthPx, pageHeightPx, 50, 50, undefined, false, { blur: spread.background_blur }) : null;
+    const bgCropped = bgBuffer ? await coverCropRaw(bgBuffer, pageWidthPx, pageHeightPx, 50, 50, undefined, false, { blur: spread.background_blur, zoom: spread.background_zoom }) : null;
     if (bgCropped) {
       children.push({
         name: "רקע עמוד",
@@ -102,6 +116,7 @@ export async function renderAlbumPagePsd({
         xPx: el.x,
         yPx: el.y,
         widthPx: el.width,
+        heightPx: el.height,
         fontSizePx: el.fontSizePx,
         color: el.color,
         align: el.align,
@@ -134,7 +149,7 @@ export async function renderAlbumPagePsd({
       const centerY = el.y + h / 2;
       const top = Math.round(centerY - rendered.height / 2);
       const left = Math.round(centerX - rendered.width / 2);
-      const ornamentShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation);
+      const ornamentShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation, undefined, undefined, pageWidthPx, pageHeightPx);
       if (ornamentShadow) {
         const shadowRgba = await pngToRawRgba(ornamentShadow.buffer);
         children.push({
@@ -166,7 +181,7 @@ export async function renderAlbumPagePsd({
       any = true;
       const top = Math.round(frameTop + tile.top);
       const left = Math.round(frameLeft + tile.left);
-      const shapeShadow = await shadowLayerPng(w, h, el.shadow, frameLeft, frameTop, el.rotation);
+      const shapeShadow = await shadowLayerPng(w, h, el.shadow, frameLeft, frameTop, el.rotation, undefined, undefined, pageWidthPx, pageHeightPx);
       if (shapeShadow) {
         const shadowRgba = await pngToRawRgba(shapeShadow.buffer);
         children.push({
@@ -212,10 +227,11 @@ export async function renderAlbumPagePsd({
       borderColor: el.borderColor,
       maskId: el.maskId,
       adjustments: el.adjustments,
+      sharpness: el.sharpness,
     });
     if (!tile) continue;
     any = true;
-    const shadow = await shadowLayerPng(width, height, el.shadow, frameLeft, frameTop, el.rotation);
+    const shadow = await shadowLayerPng(width, height, el.shadow, frameLeft, frameTop, el.rotation, undefined, undefined, pageWidthPx, pageHeightPx);
     if (shadow) {
       const shadowRgba = await pngToRawRgba(shadow.buffer);
       children.push({
@@ -244,5 +260,5 @@ export async function renderAlbumPagePsd({
   }
   if (!any && !elements.some((e) => e.kind === "text") && !spread.background_photo_id) return null;
 
-  return writePsdBuffer({ width: pageWidthPx, height: pageHeightPx, children });
+  return writePsdBuffer({ width: pageWidthPx, height: pageHeightPx, children, imageResources: { resolutionInfo: PSD_RESOLUTION_INFO } });
 }

@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "src/app/api/internal/album-export-jobs/process/route.ts": {
+      "memory": 3009
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/send-scheduled-messages",
@@ -14,7 +19,7 @@
     },
     {
       "path": "/api/cron/retry-stuck-zip-jobs",
-      "schedule": "*/15 * * * *"
+      "schedule": "* * * * *"
     }
   ]
 }

@@ -11,8 +11,10 @@ import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 export default function PricingToggle() {
   const [cycle, setCycle] = useState<"monthly" | "annual">("annual");
 
+  const basicKey: SubscriptionPlan = cycle === "annual" ? "basic_annual" : "basic_monthly";
   const flowKey: SubscriptionPlan = cycle === "annual" ? "annual" : "monthly";
   const frameKey: SubscriptionPlan = cycle === "annual" ? "studio_pro_annual" : "studio_pro_monthly";
+  const basic = SUBSCRIPTION_PLANS[basicKey];
   const flow = SUBSCRIPTION_PLANS[flowKey];
   const frame = SUBSCRIPTION_PLANS[frameKey];
 
@@ -52,7 +54,23 @@ export default function PricingToggle() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+        <div className="rounded-2xl p-7 bg-card border border-line shadow-card">
+          <div className="text-sm font-semibold text-ink-soft mb-2 font-display">{basic.tierName}</div>
+          <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-2 bg-amber-bg text-amber-deep">
+            מסלול כניסה
+          </span>
+          <div className="flex items-baseline gap-2 mb-2">
+            <span className="text-3xl font-bold font-display">₪{basic.pricePerMonth}</span>
+            <span className="text-base text-ink-soft line-through">₪{basic.regularPricePerMonth}</span>
+            <span className="text-xs text-ink-soft">/ לחודש</span>
+          </div>
+          <p className="text-xs text-ink-soft mb-2">{basic.note}</p>
+          <p className="text-xs text-ink-soft mb-6">100GB אחסון, שמירת גלריה עד 14 יום</p>
+          <Link href="/signup" className="block w-full text-center rounded-xl py-3 text-sm font-semibold bg-card border border-line shadow-card">
+            בחירת {basic.tierName}
+          </Link>
+        </div>
         <div className="rounded-2xl p-7 bg-card border border-line shadow-card">
           <div className="text-sm font-semibold text-ink-soft mb-2 font-display">{flow.tierName}</div>
           <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-2 bg-amber-bg text-amber-deep">
@@ -63,7 +81,8 @@ export default function PricingToggle() {
             <span className="text-base text-ink-soft line-through">₪{flow.regularPricePerMonth}</span>
             <span className="text-xs text-ink-soft">/ לחודש</span>
           </div>
-          <p className="text-xs text-ink-soft mb-6">{flow.note}</p>
+          <p className="text-xs text-ink-soft mb-2">{flow.note}</p>
+          <p className="text-xs text-ink-soft mb-6">750GB אחסון, עד 2 חברי צוות, שמירת גלריה עד 90 יום</p>
           <Link href="/signup" className="block w-full text-center rounded-xl py-3 text-sm font-semibold bg-card border border-line shadow-card">
             בחירת {flow.tierName}
           </Link>
@@ -84,7 +103,7 @@ export default function PricingToggle() {
             <span className="text-xs text-ink-soft">/ לחודש</span>
           </div>
           <p className="text-xs text-ink-soft mb-2">{frame.note}</p>
-          <p className="text-xs text-ink-soft mb-6">עד 3 חברי צוות, ומיתוג מלא — לוגו וצבע מותג על כל הגלריות</p>
+          <p className="text-xs text-ink-soft mb-6">אחסון ללא הגבלה, עד 3 חברי צוות, שמירת גלריה עד שנה, ומיתוג מלא — לוגו וצבע מותג על כל הגלריות</p>
           <Link href="/signup" className="block w-full text-center rounded-xl py-3 text-sm font-semibold bg-amber-deep text-white">
             בחירת {frame.tierName}
           </Link>

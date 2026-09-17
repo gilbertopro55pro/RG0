@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { PrintHouseEmailRow } from "@/lib/types";
 
@@ -41,6 +41,12 @@ export default function PrintHouseEmailsSettings({
   const [error, setError] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // SettingsTabs keeps every tab mounted at once (display:none, never unmounted), so this
+  // useState-from-props only ever runs its lazy initializer on the first mount — a change from a
+  // different tab that triggers router.refresh() sends fresh props down here too, but without
+  // this they'd sit unused until a hard reload. Same pattern as ClientMessagesSettings.
+  useEffect(() => setEmails(sortEmails(initialEmails)), [initialEmails]);
 
   const applyChange = (next: PrintHouseEmailRow[]) => {
     const sorted = sortEmails(next);

@@ -1,0 +1,15 @@
+# Fly.io PDF worker build context (Dockerfile.worker) — this is what made the FIRST deploy attempt
+# look "stuck": with no .dockerignore, the whole repo (2.1GB — .next/ build output, node_modules,
+# .git history, .claude session data) got uploaded to Fly's remote builder on every single deploy.
+# The worker only ever needs package.json/package-lock.json (npm ci reinstalls fresh inside the
+# container, so the host's own node_modules is never used) and the actual source it imports from.
+.next/
+node_modules/
+.git/
+.claude/
+public/
+photographer-flow-desktop/
+worktrees/
+*.log
+.env*.local
+.vercel/

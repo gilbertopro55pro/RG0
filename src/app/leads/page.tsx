@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { ADMIN_EMAIL } from "@/lib/admin";
 import type { CustomPackageRow, EventTypeRow, LeadRow, PackagePriceRow, Photographer } from "@/lib/types";
 import LeadsView from "@/components/LeadsView";
 
@@ -20,7 +21,13 @@ export default async function LeadsPage() {
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <LeadsView initialLeads={leads ?? []} customPackages={customPackages ?? []} eventTypes={eventTypes ?? []} prices={prices ?? []} />
+      <LeadsView
+        initialLeads={leads ?? []}
+        customPackages={customPackages ?? []}
+        eventTypes={eventTypes ?? []}
+        prices={prices ?? []}
+        isAdmin={photographer.email === ADMIN_EMAIL}
+      />
     </div>
   );
 }

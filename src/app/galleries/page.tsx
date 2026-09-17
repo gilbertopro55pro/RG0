@@ -16,6 +16,7 @@ export default async function GalleriesPage() {
     supabase
       .from("galleries")
       .select("*, events(client_name, event_date), gallery_photos!gallery_photos_gallery_id_fkey(id, gallery_id, storage_path, sort_order)")
+      .eq("is_portfolio_only", false)
       .order("created_at", { ascending: false })
       .returns<
         (GalleryRow & {
@@ -49,15 +50,19 @@ export default async function GalleriesPage() {
         published: gallery.published,
         archived: !!gallery.archived_at,
         expiresAt: gallery.expires_at,
+        permanentDeleteAt: gallery.permanent_delete_at,
+        archiveReason: gallery.archive_reason,
         coverUrl,
         accessToken: gallery.access_token,
+        expiryDays: gallery.expiry_days,
+        restoredOnce: gallery.restored_once,
       };
     })
   );
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <GalleriesListView items={items} />
+      <GalleriesListView items={items} photographerName={photographer.name} photographerEmail={photographer.email} />
     </div>
   );
 }

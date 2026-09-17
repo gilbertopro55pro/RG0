@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createPayplusCheckoutLink } from "@/lib/payplus";
+import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { Photographer } from "@/lib/types";
 import type { SubscriptionPlan } from "@/lib/stages";
 
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
       photographerId: photographer.id,
       plan: targetPlan,
       customerName: photographer.name,
-      customerEmail: photographer.email,
+      customerEmail: notificationEmailFor(photographer.email),
       customerPhone: photographer.phone,
       baseUrl,
     });

@@ -72,6 +72,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
+  // Selecting a saved template (Settings → תבנית חוזה → ספריית תבניות) overrides the
+  // photographer's single custom_contract_terms fallback for this specific event's contract —
+  // see ContractTemplateLibrarySettings.tsx. customTermsOverride takes priority over templateId
+  // when both are present — the new-event flow's contract step lets a photographer edit a
+  // template's text inline before creating without that edit needing to be saved back to the
+  // library first (only "שמירה כתבנית חדשה" there does that, separately).
+  const { templateId, customTermsOverride }: { templateId?: string; customTermsOverride?: string } = await request
+    .json()
+    .catch(() => ({}));
   const supabase = await createClient();
   const {
     data: { user },
@@ -81,7 +90,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   // RLS scopes all three selects below to the owning photographer.
-  const [{ data: event }, { data: payments }, { data: photographer }] = await Promise.all([
+  const [{ data: event }, { data: payments }, { data: photographer }, { data: template }] = await Promise.all([
     supabase
       .from("events")
       .select("*, custom_packages(name)")
@@ -89,6 +98,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .single<EventRow & { custom_packages: { name: string } | null }>(),
     supabase.from("event_payments").select("*").eq("event_id", eventId).maybeSingle<EventPaymentRow>(),
     supabase.from("photographers").select("*").eq("id", user.id).single<Photographer>(),
+    templateId
+      ? supabase.from("contract_templates").select("terms").eq("id", templateId).maybeSingle<{ terms: string }>()
+      : Promise.resolve({ data: null }),
   ]);
 
   if (!event || !photographer) {
@@ -107,11 +119,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "החוזה כבר נחתם, לא ניתן ליצור חוזה חדש" }, { status: 400 });
   }
 
+  if (templateId) {
+    await supabase.from("events").update({ contract_template_id: templateId }).eq("id", eventId);
+  }
+
   const contractText = generateContractText({
     photographerName: photographer.name,
     photographerPhone: photographer.phone,
     signature: photographer.whatsapp_signature,
-    customTerms: photographer.custom_contract_terms,
+    customTerms: customTermsOverride?.trim() || template?.terms || photographer.custom_contract_terms,
     clientName: event.client_name,
     clientPhone: event.client_phone,
     eventDate: event.event_date,

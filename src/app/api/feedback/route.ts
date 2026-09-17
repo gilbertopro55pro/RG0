@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
+import { notificationEmailFor } from "@/lib/notificationEmail";
 
 const FEEDBACK_RECIPIENT = process.env.FEEDBACK_RECIPIENT_EMAIL || "contact_us@gilbertopro.com";
 
@@ -24,7 +25,8 @@ export async function POST(request: Request) {
   ]);
 
   const senderName = photographer?.name ?? teamMember?.name ?? "משתמש לא מזוהה";
-  const senderEmail = photographer?.email ?? teamMember?.email ?? user.email ?? "לא ידוע";
+  const rawSenderEmail = photographer?.email ?? teamMember?.email ?? user.email ?? "לא ידוע";
+  const senderEmail = notificationEmailFor(rawSenderEmail);
 
   try {
     await sendEmail({

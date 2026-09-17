@@ -15,6 +15,7 @@ import type { ClientAlbumElement } from "@/components/GalleryAlbumProofing";
 import PublicGalleryView from "@/components/PublicGalleryView";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import { getSignedDownloadUrl, getSignedDownloadUrls, getPublicPreviewUrl } from "@/lib/storage";
+import { fetchAllRows } from "@/lib/paginatedFetch";
 import { galleryThemeById, galleryThemeVars, galleryFont } from "@/lib/galleryTheme";
 import type { GalleryStyleOverrides } from "@/lib/galleryTheme";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
@@ -119,16 +120,16 @@ export default async function PublicGalleryPage({
     );
   }
 
-  const [{ data: event }, { data: photosRaw }, { data: foldersRaw }, { data: brandingPhotographer }, { data: videosRaw }] = await Promise.all([
+  const [{ data: event }, photosRaw, { data: foldersRaw }, { data: brandingPhotographer }, { data: videosRaw }] = await Promise.all([
     gallery.event_id
       ? supabase.from("events").select("client_name, event_date").eq("id", gallery.event_id).maybeSingle<Pick<EventRow, "client_name" | "event_date">>()
       : Promise.resolve({ data: null }),
-    supabase
-      .from("gallery_photos")
-      .select("*")
-      .eq("gallery_id", gallery.id)
-      .order("sort_order", { ascending: true })
-      .returns<GalleryPhotoRow[]>(),
+    // Paginated (see fetchAllRows's own comment) — a single unbounded select here would silently
+    // truncate any gallery with more photos than the project's PostgREST row cap, dropping whatever
+    // was uploaded last (highest sort_order) since this is ordered ascending.
+    fetchAllRows<GalleryPhotoRow>((from, to) =>
+      supabase.from("gallery_photos").select("*").eq("gallery_id", gallery.id).order("sort_order", { ascending: true }).range(from, to).returns<GalleryPhotoRow[]>()
+    ),
     supabase
       .from("gallery_folders")
       .select("*")
@@ -374,6 +375,8 @@ export default async function PublicGalleryPage({
         textPosition={gallery.cover_text_position}
         shape={gallery.cover_shape}
         titleFontOverride={gallery.title_font_override}
+        focalX={gallery.cover_focal_x}
+        focalY={gallery.cover_focal_y}
       />
 
       {videosWithUrls.length > 0 && (
@@ -391,6 +394,7 @@ export default async function PublicGalleryPage({
         initialFolders={folders ?? []}
         initiallyConfirmed={!!gallery.selection_confirmed_at}
         allowDownloads={gallery.allow_downloads}
+        allowClientUpload={gallery.allow_client_upload}
         themeId={gallery.theme}
         titleFontOverride={gallery.title_font_override}
         gridStyleOverride={gallery.grid_style_override}

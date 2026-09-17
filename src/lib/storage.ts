@@ -13,6 +13,17 @@ function requireEnv(name: string): string {
   return value;
 }
 
+// No timeout is configured by default on the AWS SDK v3 Node HTTP handler — a request whose
+// connection genuinely stalls (a rare but real R2-side or network blip) hangs the `await` forever
+// instead of throwing, which is invisible to any try/catch and un-loggable by definition (nothing
+// ever happens for it to log). Found 2026-09-01 chasing album PDF exports that silently froze
+// mid-render with no error, no crash, and no further progress ever again — a hung
+// downloadObjectBuffer call inside the page-render loop is exactly what that looks like from the
+// outside. These timeouts turn a silent infinite hang into a real, catchable error within seconds,
+// so a stalled export actually fails (and gets picked up by the retry-stuck-jobs cron) instead of
+// sitting frozen "processing" forever.
+const R2_REQUEST_HANDLER = { connectionTimeout: 5000, requestTimeout: 30000 };
+
 let cachedClient: S3Client | null = null;
 function client(): S3Client {
   if (!cachedClient) {
@@ -23,6 +34,7 @@ function client(): S3Client {
         accessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
         secretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
       },
+      requestHandler: R2_REQUEST_HANDLER,
     });
   }
   return cachedClient;
@@ -45,6 +57,7 @@ function previewsClient(): S3Client {
         accessKeyId: requireEnv("R2_PREVIEWS_ACCESS_KEY_ID"),
         secretAccessKey: requireEnv("R2_PREVIEWS_SECRET_ACCESS_KEY"),
       },
+      requestHandler: R2_REQUEST_HANDLER,
     });
   }
   return cachedPreviewsClient;
@@ -124,13 +137,33 @@ export async function getSignedDownloadUrls(
 
 export async function downloadObjectBuffer(bucket: string, path: string): Promise<Buffer | null> {
   try {
-    const res = await client().send(
-      new GetObjectCommand({ Bucket: requireEnv("R2_BUCKET_NAME"), Key: keyFor(bucket, path) })
-    );
-    if (!res.Body) return null;
-    const bytes = await res.Body.transformToByteArray();
-    return Buffer.from(bytes);
-  } catch {
+    // A manual timeout wrapped around the WHOLE call, not just relying on R2_REQUEST_HANDLER above
+    // — that one only bounds the connection + initial-response phase; a response that starts fine
+    // but whose BODY stream then stalls partway through (still a real, if rarer, network failure
+    // mode) can hang inside transformToByteArray() independently of that. Found 2026-09-01 chasing
+    // album PDF exports that froze silently mid-render on a heavy multi-photo page with zero error,
+    // zero crash, and zero further progress ever again — consistent with exactly this kind of stall,
+    // which the request-level timeout alone didn't fully cover.
+    const bytes = await Promise.race([
+      (async () => {
+        const res = await client().send(
+          new GetObjectCommand({ Bucket: requireEnv("R2_BUCKET_NAME"), Key: keyFor(bucket, path) })
+        );
+        if (!res.Body) return null;
+        return res.Body.transformToByteArray();
+      })(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`downloadObjectBuffer timed out after 40s for ${bucket}/${path}`)), 40000)
+      ),
+    ]);
+    return bytes ? Buffer.from(bytes) : null;
+  } catch (e) {
+    // Every caller (album PDF/JPG/PSD export) treats a null return as "this element just has no
+    // photo" and silently skips it — which used to mean a real fetch failure (wrong path, R2
+    // outage, permissions, or now a timeout) looked identical to "nothing to render" with zero trace
+    // anywhere. This at least surfaces it in the server logs without changing the null-means-skip
+    // contract callers already rely on.
+    console.error(`downloadObjectBuffer failed for ${bucket}/${path}`, e);
     return null;
   }
 }
@@ -167,14 +200,47 @@ export async function uploadObjectStream(
   await upload.done();
 }
 
+// S3/R2's DeleteObjectsCommand caps out at 1000 keys per request — a gallery bulk-delete easily
+// exceeds that (each photo contributes up to 2 keys, storage_path + preview_storage_path), so a
+// single unchunked call would throw and silently leave every object in that batch un-deleted.
+const DELETE_OBJECTS_BATCH_SIZE = 1000;
+
 export async function removeObjects(bucket: string, paths: string[]): Promise<void> {
   if (paths.length === 0) return;
-  await client().send(
-    new DeleteObjectsCommand({
-      Bucket: requireEnv("R2_BUCKET_NAME"),
-      Delete: { Objects: paths.map((path) => ({ Key: keyFor(bucket, path) })) },
-    })
-  );
+  for (let i = 0; i < paths.length; i += DELETE_OBJECTS_BATCH_SIZE) {
+    const batch = paths.slice(i, i + DELETE_OBJECTS_BATCH_SIZE);
+    const result = await client().send(
+      new DeleteObjectsCommand({
+        Bucket: requireEnv("R2_BUCKET_NAME"),
+        Delete: { Objects: batch.map((path) => ({ Key: keyFor(bucket, path) })) },
+      })
+    );
+    if (result.Errors && result.Errors.length > 0) {
+      throw new Error(`מחיקת ${result.Errors.length} קבצים מהאחסון נכשלה: ${result.Errors.map((e) => e.Key).join(", ")}`);
+    }
+  }
+}
+
+// Previews live in the separate public previews bucket (see previewsClient() above) under their
+// own credentials — never the same bucket/client as removeObjects, and never wrapped in keyFor()
+// since uploadPublicPreview() writes them with the bare "previews/<galleryId>/<photoId>.webp" key,
+// no bucket-name prefix. Deleting a gallery photo used to lump its preview path into the same
+// removeObjects("galleries", ...) call, which silently did nothing (the key never existed in that
+// bucket) — this is the real deletion path for it.
+export async function removePreviewObjects(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  for (let i = 0; i < paths.length; i += DELETE_OBJECTS_BATCH_SIZE) {
+    const batch = paths.slice(i, i + DELETE_OBJECTS_BATCH_SIZE);
+    const result = await previewsClient().send(
+      new DeleteObjectsCommand({
+        Bucket: requireEnv("R2_PREVIEWS_BUCKET_NAME"),
+        Delete: { Objects: batch.map((path) => ({ Key: path })) },
+      })
+    );
+    if (result.Errors && result.Errors.length > 0) {
+      throw new Error(`מחיקת ${result.Errors.length} תצוגות מקדימות נכשלה: ${result.Errors.map((e) => e.Key).join(", ")}`);
+    }
+  }
 }
 
 // Lets the browser upload directly to R2 (progress-trackable via XHR) without the file ever

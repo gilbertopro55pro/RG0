@@ -15,6 +15,7 @@ export async function GET(request: Request) {
     .from("galleries")
     .select("id, title, shoot_date, created_at")
     .eq("photographer_id", auth.userId)
+    .eq("is_portfolio_only", false)
     .is("archived_at", null)
     .order("created_at", { ascending: false })
     .returns<{ id: string; title: string; shoot_date: string | null; created_at: string }[]>();

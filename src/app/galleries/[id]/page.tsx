@@ -3,24 +3,32 @@ import { createClient } from "@/lib/supabase/server";
 import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow, Photographer } from "@/lib/types";
 import GalleryManageView from "@/components/GalleryManageView";
 import { getSignedDownloadUrls, getPublicPreviewUrl } from "@/lib/storage";
+import { fetchAllRows } from "@/lib/paginatedFetch";
 
 export default async function GalleryManagePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
 
-  // Event, photos and folders all embedded on the single galleries query (one round trip) instead
-  // of fetching the gallery first and then a further parallel batch keyed off its id/event_id.
-  const { data: gallery } = await supabase
-    .from("galleries")
-    .select("*, events(client_name, event_date), gallery_photos!gallery_photos_gallery_id_fkey(*), gallery_folders(*)")
-    .eq("id", id)
-    .maybeSingle<
-      GalleryRow & {
-        events: Pick<EventRow, "client_name" | "event_date"> | null;
-        gallery_photos: GalleryPhotoRow[];
-        gallery_folders: GalleryFolderRow[];
-      }
-    >();
+  // gallery_photos is fetched as its own paginated query (see fetchAllRows's own comment) rather
+  // than embedded on this select — an embedded relation is still subject to the same row cap as a
+  // top-level query, and PostgREST has no `.range()` equivalent for an embedded resource via this
+  // client, so a gallery with more photos than the cap would silently lose its own management view.
+  // Events/folders stay embedded — neither ever approaches that row count.
+  const [{ data: gallery }, photosRaw] = await Promise.all([
+    supabase
+      .from("galleries")
+      .select("*, events(client_name, event_date), gallery_folders(*)")
+      .eq("id", id)
+      .maybeSingle<
+        GalleryRow & {
+          events: Pick<EventRow, "client_name" | "event_date"> | null;
+          gallery_folders: GalleryFolderRow[];
+        }
+      >(),
+    fetchAllRows<GalleryPhotoRow>((from, to) =>
+      supabase.from("gallery_photos").select("*").eq("gallery_id", id).range(from, to).returns<GalleryPhotoRow[]>()
+    ),
+  ]);
   if (!gallery) notFound();
 
   // Powers the WhatsApp share message wording (see buildShareMessage in GalleryManageView) — one
@@ -33,7 +41,7 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
     .maybeSingle<Pick<Photographer, "name" | "email" | "plan">>();
 
   const event = gallery.events;
-  const photos = [...gallery.gallery_photos].sort((a, b) => a.sort_order - b.sort_order);
+  const photos = [...photosRaw].sort((a, b) => a.sort_order - b.sort_order);
   const folders = [...gallery.gallery_folders].sort((a, b) => a.sort_order - b.sort_order);
 
   // One batched request for every signed URL instead of N individual round-trips — this was the

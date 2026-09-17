@@ -11,9 +11,9 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
 
   const { data: event } = await supabase
     .from("events")
-    .select("*, photographers(name, phone)")
+    .select("*, photographers(name, phone, email)")
     .eq("client_access_token", token)
-    .maybeSingle<EventRow & { photographers: { name: string; phone: string } | null }>();
+    .maybeSingle<EventRow & { photographers: { name: string; phone: string; email: string } | null }>();
 
   if (!event) {
     return (
@@ -100,7 +100,9 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
         />
       </div>
 
-      {payments && (
+      {/* Freelance bookings are a single flat rate for raw work, not the deposit/balance split
+          real events have — showing this section there would just be confusing/irrelevant. */}
+      {payments && !event.package?.startsWith("freelance_") && (
         <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
           <div className="text-sm font-semibold tracking-wide mb-3.5">תשלומים</div>
           <div className="space-y-2">
