@@ -168,30 +168,33 @@ function drawCoverImage(
   const { x, y, width: w, height: h } = rect;
   const imgAspect = image.width / image.height;
   const boxAspect = w / h;
-  let drawW: number;
-  let drawH: number;
-  if (imgAspect > boxAspect) {
-    drawH = h;
-    drawW = h * imgAspect;
+  let baseW: number;
+  let baseH: number;
+  if (imgAspect >= boxAspect) {
+    baseH = h;
+    baseW = h * imgAspect;
   } else {
-    drawW = w;
-    drawH = w / imgAspect;
+    baseW = w;
+    baseH = w / imgAspect;
   }
+  // Cover-fit size first, THEN apply zoom to THAT — mirrors computePhotoFraming (the canvas
+  // editor's own source of truth) and coverCropRaw (the JPG export's own, which already does this
+  // correctly). The previous version positioned the image at the plain cover-fit size first and
+  // only THEN scaled the whole already-positioned box around the FRAME'S CENTER — a fundamentally
+  // different operation from "zoom around the focal point," and one that visibly drifts away from
+  // whichever edge the photographer pinned (e.g. a photo focused near the top, at any real zoom,
+  // crept downward and lost its top edge — confirmed by comparing this same page's PDF output
+  // against its own, correctly-cropped JPG export). zoomPct > 100 (not !== 100) matches
+  // computePhotoFraming's own guard — zoom is only ever meant to grow past cover-fit, never shrink
+  // below it.
+  const zf = opts?.zoom && opts.zoom > 100 ? opts.zoom / 100 : 1;
+  const drawW = baseW * zf;
+  const drawH = baseH * zf;
   const fx = focalXPct / 100;
   const fy = focalYPct / 100;
-  let dx = x - (drawW - w) * fx;
+  const dx = x - (drawW - w) * fx;
   // PDF's y-axis runs bottom-up, while focalY follows the CSS convention (0 = top) — flip it.
-  let dy = y - (drawH - h) * (1 - fy);
-
-  if (opts?.zoom && opts.zoom !== 100) {
-    const zf = opts.zoom / 100;
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    dx = cx - (cx - dx) * zf;
-    dy = cy - (cy - dy) * zf;
-    drawW *= zf;
-    drawH *= zf;
-  }
+  const dy = y - (drawH - h) * (1 - fy);
 
   page.pushOperators(pushGraphicsState(), moveTo(x, y), lineTo(x + w, y), lineTo(x + w, y + h), lineTo(x, y + h), closePath(), clip(), endPath());
   page.drawImage(image, { x: dx, y: dy, width: drawW, height: drawH, opacity: opts?.opacity });
@@ -291,6 +294,7 @@ export async function generateAlbumPdf({
   onPageRendered,
   resumeFromDoc,
   pageRange,
+  refetchSpread,
 }: {
   album: GalleryAlbumRow;
   spreads: GalleryAlbumSpreadRow[];
@@ -319,6 +323,12 @@ export async function generateAlbumPdf({
   // later call. Omit (or {start:0, end:spreads.length}) to render every page in one call, same as
   // before this param existed.
   pageRange?: { start: number; end: number };
+  // Called immediately before each spread actually renders, to pick up any edit made after `spreads`
+  // was fetched — a real render can run for many minutes (see albumExportJobs.ts's own comment on
+  // this), long enough for the photographer to keep editing pages this same call hasn't reached yet.
+  // Falls back to the spread already in `spreads` if omitted, or if the callback returns null (the
+  // page was deleted mid-export — rendering its last-known content is a reasonable fallback).
+  refetchSpread?: (id: string) => Promise<GalleryAlbumSpreadRow | null>;
 }): Promise<Uint8Array> {
   const cache = downloadCache ?? new Map<string, Buffer | null>();
   const downloadCached = async (bucket: string, path: string): Promise<Buffer | null> => {
@@ -528,8 +538,9 @@ export async function generateAlbumPdf({
 
   const batchStart = pageRange?.start ?? 0;
   const batchEnd = pageRange?.end ?? spreads.length;
-  for (const spread of spreads.slice(batchStart, batchEnd)) {
+  for (const staleSpread of spreads.slice(batchStart, batchEnd)) {
     onPageRendered?.();
+    const spread = (await refetchSpread?.(staleSpread.id)) ?? staleSpread;
     if (spread.layout === "custom") {
       const hasCustomSize = spread.width_cm != null && spread.height_cm != null;
       const pageW = hasCustomSize ? spread.width_cm! * ptPerCm : PAGE_WIDTH;

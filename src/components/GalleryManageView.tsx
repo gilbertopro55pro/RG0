@@ -795,7 +795,7 @@ export default function GalleryManageView({
     setAlbumLoading(false);
   };
 
-  const openAlbumManage = () => {
+  const openAlbumManage = async () => {
     // Running inside the desktop app's embedded browser view (see photographer-flow-desktop's
     // BrowserView preload script, which sets this global) — hand off to the native album editor
     // instead of opening this same web modal, since the whole reason that separate app exists is
@@ -803,8 +803,16 @@ export default function GalleryManageView({
     // can't offer. A normal browser tab never has this global, so this is a no-op there.
     const bridge = (window as unknown as { desktopShellBridge?: { openNativeAlbumEditor: (galleryId: string) => void } }).desktopShellBridge;
     if (bridge) {
-      bridge.openNativeAlbumEditor(gallery.id);
-      return;
+      // The native editor has nothing to show for a gallery that has no album yet (creating one —
+      // size presets, blank/template wizard — has no filesystem dependency, so it stays
+      // website-only rather than being duplicated there). Check first and only bridge once one
+      // actually exists; otherwise fall through to this same web modal's own creation wizard below,
+      // same as a normal browser tab would.
+      const { data: existing } = await supabase.from("gallery_albums").select("id").eq("gallery_id", gallery.id).maybeSingle<{ id: string }>();
+      if (existing) {
+        bridge.openNativeAlbumEditor(gallery.id);
+        return;
+      }
     }
     // Guards against the backdrop's own click-to-close firing from the very click that opened
     // this modal — on a gallery with a large `photos` array the first render/commit of the

@@ -150,6 +150,46 @@ export async function resolveExportInputs(
   return { gallery, album, rangedSpreads, includeCover, photosById, customOrnamentsById, rootDir };
 }
 
+// resolveExportInputs' own spreads/photos read happens ONCE, right when a job starts — fine for a
+// quick render, but a real PDF pass has been measured taking up to 902s (see worker/src/index.ts),
+// and PDF quality steps chain up to several such passes in one job. Any edit the photographer (or
+// the separate desktop app, writing to the same rows) makes anywhere from a few seconds after that
+// single read to the very end of the job was silently invisible to the export — the renderer kept
+// using the one in-memory copy for the whole job regardless of how long it took. This re-reads ONE
+// spread fresh, immediately before it's actually rendered, and — since an edit can also swap in a
+// photo/custom ornament the original resolveExportInputs call never fetched — fills in any newly-
+// referenced photo/ornament the caller's photosById/customOrnamentsById maps don't have yet
+// (mutated in place; both maps are shared by reference with every render call in the same job, so
+// this makes the new id embeddable for every subsequent page too, not just this one). Returns null
+// (caller falls back to the last-known row) only if the page itself was deleted mid-export.
+export async function refreshSpreadAndPhotos(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  spreadId: string,
+  photosById: Map<string, Pick<GalleryPhotoRow, "id" | "storage_path">>,
+  customOrnamentsById: Map<string, { storage_path: string }>
+): Promise<GalleryAlbumSpreadRow | null> {
+  const { data: spread } = await supabase.from("gallery_album_spreads").select("*").eq("id", spreadId).maybeSingle<GalleryAlbumSpreadRow>();
+  if (!spread) return null;
+
+  const photoIds = [spread.photo_id_1, spread.photo_id_2, spread.background_photo_id, ...spread.elements.map((el) => (el.type === "photo" ? el.photoId : null))].filter(
+    (id): id is string => !!id && !photosById.has(id)
+  );
+  if (photoIds.length > 0) {
+    const { data: photos } = await supabase.from("gallery_photos").select("id, storage_path").in("id", photoIds).returns<Pick<GalleryPhotoRow, "id" | "storage_path">[]>();
+    for (const p of photos ?? []) photosById.set(p.id, p);
+  }
+
+  const ornamentIds = spread.elements
+    .map((el) => (el.type === "ornament" ? el.customOrnamentId : null))
+    .filter((id): id is string => !!id && !customOrnamentsById.has(id));
+  if (ornamentIds.length > 0) {
+    const { data: ornaments } = await supabase.from("custom_ornaments").select("id, storage_path").in("id", ornamentIds).returns<{ id: string; storage_path: string }[]>();
+    for (const o of ornaments ?? []) customOrnamentsById.set(o.id, { storage_path: o.storage_path });
+  }
+
+  return spread;
+}
+
 // How many pages a range spans — used both to size the job's total_count when it's created (before
 // any rendering starts) and, for PDF, as the per-pass page count (a size-fitting retry pass reports
 // progress against the same total again, restarting rather than climbing past 100%, since it
@@ -238,7 +278,11 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
   try {
     const resolved = await resolveExportInputs(supabase, job.gallery_id, job.from_page, job.to_page);
     if (!resolved) throw new Error("האלבום לא נמצא");
-    const { album, rangedSpreads, includeCover, photosById, customOrnamentsById, rootDir } = resolved;
+    const { album, rangedSpreads, includeCover, photosById, rootDir } = resolved;
+    // Always a real Map (not undefined) from here on — refreshSpreadAndPhotos mutates it in place
+    // whenever a freshly-edited page turns out to reference a custom ornament this job didn't know
+    // about yet, which needs somewhere to land even if the album had none at job-start.
+    const customOrnamentsById = resolved.customOrnamentsById ?? new Map<string, { storage_path: string }>();
 
     const pageWidthPx = pxFromCm(album.width_cm);
     const pageHeightPx = pxFromCm(album.height_cm);
@@ -290,7 +334,7 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
           processed++;
           await persistProgress();
         }
-        for (const spread of rangedSpreads) {
+        for (const staleSpread of rangedSpreads) {
           // Checked fresh from the DB every page — a cancel (see the export-jobs/[jobId]/route.ts
           // DELETE handler) needs to actually stop the render, not just the client's own polling
           // loop, which is all it used to do. archive.abort() lets uploadPromise below settle
@@ -300,7 +344,11 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
             archive.abort();
             return;
           }
-          const pageNumber = (includeCover ? 1 : 0) + rangedSpreads.indexOf(spread) + 1;
+          // Re-read right before rendering, not the copy resolveExportInputs fetched when the job
+          // started — see refreshSpreadAndPhotos' own comment for why that copy can be stale by the
+          // time a later page in a long export actually renders.
+          const spread = (await refreshSpreadAndPhotos(supabase, staleSpread.id, photosById, customOrnamentsById)) ?? staleSpread;
+          const pageNumber = (includeCover ? 1 : 0) + rangedSpreads.indexOf(staleSpread) + 1;
           const spreadWidthPx = spread.width_cm ? pxFromCm(spread.width_cm) : pageWidthPx;
           const spreadHeightPx = spread.height_cm ? pxFromCm(spread.height_cm) : pageHeightPx;
           const buf = await renderWithRetry(
@@ -378,6 +426,7 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
           downloadCache: new Map<string, Buffer | null>(),
           resumeFromDoc,
           pageRange: { start: pageStart, end: pageEnd },
+          refetchSpread: (id) => refreshSpreadAndPhotos(supabase, id, photosById, customOrnamentsById),
           onPageRendered: () => {
             processed++;
             persistProgress().catch(() => {});
@@ -487,7 +536,9 @@ export async function processAlbumPdfJobOnWorker(jobId: string): Promise<void> {
   try {
     const resolved = await resolveExportInputs(supabase, job.gallery_id, job.from_page, job.to_page);
     if (!resolved) throw new Error("האלבום לא נמצא");
-    const { album, rangedSpreads, includeCover, photosById, customOrnamentsById } = resolved;
+    const { album, rangedSpreads, includeCover, photosById } = resolved;
+    // Always a real Map (not undefined) — see the identical comment in processAlbumExportJob above.
+    const customOrnamentsById = resolved.customOrnamentsById ?? new Map<string, { storage_path: string }>();
 
     const pageWidthPx = pxFromCm(album.width_cm);
     const pageHeightPx = pxFromCm(album.height_cm);
@@ -514,6 +565,7 @@ export async function processAlbumPdfJobOnWorker(jobId: string): Promise<void> {
         customOrnamentsById,
         jpegQuality,
         downloadCache: new Map<string, Buffer | null>(),
+        refetchSpread: (id) => refreshSpreadAndPhotos(supabase, id, photosById, customOrnamentsById),
         onPageRendered: () => {
           processed++;
           // Throttled to at most once/second — this fires once per PAGE, and with no per-invocation
