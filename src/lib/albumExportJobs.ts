@@ -162,7 +162,7 @@ export async function resolveExportInputs(
 // (mutated in place; both maps are shared by reference with every render call in the same job, so
 // this makes the new id embeddable for every subsequent page too, not just this one). Returns null
 // (caller falls back to the last-known row) only if the page itself was deleted mid-export.
-async function refreshSpreadAndPhotos(
+export async function refreshSpreadAndPhotos(
   supabase: ReturnType<typeof createServiceRoleClient>,
   spreadId: string,
   photosById: Map<string, Pick<GalleryPhotoRow, "id" | "storage_path">>,

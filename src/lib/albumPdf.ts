@@ -168,30 +168,33 @@ function drawCoverImage(
   const { x, y, width: w, height: h } = rect;
   const imgAspect = image.width / image.height;
   const boxAspect = w / h;
-  let drawW: number;
-  let drawH: number;
-  if (imgAspect > boxAspect) {
-    drawH = h;
-    drawW = h * imgAspect;
+  let baseW: number;
+  let baseH: number;
+  if (imgAspect >= boxAspect) {
+    baseH = h;
+    baseW = h * imgAspect;
   } else {
-    drawW = w;
-    drawH = w / imgAspect;
+    baseW = w;
+    baseH = w / imgAspect;
   }
+  // Cover-fit size first, THEN apply zoom to THAT — mirrors computePhotoFraming (the canvas
+  // editor's own source of truth) and coverCropRaw (the JPG export's own, which already does this
+  // correctly). The previous version positioned the image at the plain cover-fit size first and
+  // only THEN scaled the whole already-positioned box around the FRAME'S CENTER — a fundamentally
+  // different operation from "zoom around the focal point," and one that visibly drifts away from
+  // whichever edge the photographer pinned (e.g. a photo focused near the top, at any real zoom,
+  // crept downward and lost its top edge — confirmed by comparing this same page's PDF output
+  // against its own, correctly-cropped JPG export). zoomPct > 100 (not !== 100) matches
+  // computePhotoFraming's own guard — zoom is only ever meant to grow past cover-fit, never shrink
+  // below it.
+  const zf = opts?.zoom && opts.zoom > 100 ? opts.zoom / 100 : 1;
+  const drawW = baseW * zf;
+  const drawH = baseH * zf;
   const fx = focalXPct / 100;
   const fy = focalYPct / 100;
-  let dx = x - (drawW - w) * fx;
+  const dx = x - (drawW - w) * fx;
   // PDF's y-axis runs bottom-up, while focalY follows the CSS convention (0 = top) — flip it.
-  let dy = y - (drawH - h) * (1 - fy);
-
-  if (opts?.zoom && opts.zoom !== 100) {
-    const zf = opts.zoom / 100;
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    dx = cx - (cx - dx) * zf;
-    dy = cy - (cy - dy) * zf;
-    drawW *= zf;
-    drawH *= zf;
-  }
+  const dy = y - (drawH - h) * (1 - fy);
 
   page.pushOperators(pushGraphicsState(), moveTo(x, y), lineTo(x + w, y), lineTo(x + w, y + h), lineTo(x, y + h), closePath(), clip(), endPath());
   page.drawImage(image, { x: dx, y: dy, width: drawW, height: drawH, opacity: opts?.opacity });
