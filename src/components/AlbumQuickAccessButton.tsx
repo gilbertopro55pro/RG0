@@ -131,6 +131,20 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
 
   const quickExport = async (format: ExportFormat) => {
     if (!selectedId || currentJob) return;
+    // Running inside the desktop app's embedded browser view (see photographer-flow-desktop's
+    // BrowserView preload script, which sets this global) — hand off to the native editor's own
+    // export instead of this web job queue. Desktop already has a fast local export engine with
+    // real per-page progress (no server round-trip, no polling); routing a "quick export" click
+    // through Vercel's job queue just because it happened to originate inside this embedded view
+    // defeats the point of it being quick, and its generic percent-only progress UI (this
+    // component has no per-page data to show) reads as stuck compared to the native one's.
+    const bridge = (window as unknown as { desktopShellBridge?: { openNativeAlbumEditor: (galleryId: string, quickExportFormat?: ExportFormat) => void } })
+      .desktopShellBridge;
+    if (bridge) {
+      bridge.openNativeAlbumEditor(selectedId, format);
+      setOpen(false);
+      return;
+    }
     setExportError(null);
     cancelledRef.current = false;
     setProgressPct(0);
