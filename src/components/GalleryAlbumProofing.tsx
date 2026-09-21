@@ -32,6 +32,7 @@ export type ClientAlbumElement =
       shadow?: number;
       shadowDistance?: number;
       shadowBlur?: number;
+      shadowAngle?: number;
       zoom?: number;
       maskId?: string;
       exposure?: number;
@@ -74,6 +75,7 @@ export type ClientAlbumElement =
       rotation?: number;
       opacity?: number;
       shadow?: number;
+      shadowAngle?: number;
       borderWidth?: number;
       borderColor?: string;
     }
@@ -89,6 +91,7 @@ export type ClientAlbumElement =
       rotation?: number;
       opacity?: number;
       shadow?: number;
+      shadowAngle?: number;
       borderWidth?: number;
       borderColor?: string;
       shapeStyle?: "rect-outline" | "circle-outline" | "line";
@@ -114,12 +117,16 @@ export function cssFilterFor(
 // Mirrors albumRender.ts's boxShadowFor — distancePct/blurPct independently override the
 // offset/softness that would otherwise be derived from shadowPct alone; undefined (every
 // already-saved album) keeps the old coupled-to-intensity behavior exactly.
-export function boxShadowFor(shadowPct: number | undefined, distancePct?: number, blurPct?: number): string | undefined {
+export function boxShadowFor(shadowPct: number | undefined, distancePct?: number, blurPct?: number, angleDeg?: number): string | undefined {
   if (!shadowPct) return undefined;
   const offsetPx = ((distancePct ?? shadowPct) / 100) * 10;
   const blurPx = ((blurPct ?? shadowPct) / 100) * 24;
   const alpha = 0.15 + (shadowPct / 100) * 0.45;
-  return `${offsetPx}px ${offsetPx}px ${blurPx}px rgba(0,0,0,${alpha})`;
+  const magnitude = offsetPx * Math.SQRT2;
+  const angleRad = ((angleDeg ?? 45) * Math.PI) / 180;
+  const offsetX = (magnitude * Math.cos(angleRad)).toFixed(2);
+  const offsetY = (magnitude * Math.sin(angleRad)).toFixed(2);
+  return `${offsetX}px ${offsetY}px ${blurPx}px rgba(0,0,0,${alpha})`;
 }
 
 type SpreadBackground = { url: string; blur: number; opacity: number } | null;
@@ -190,7 +197,7 @@ function OrnamentOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "orna
         transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
         outline: el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
         outlineOffset: el.borderWidth ? `-${el.borderWidth}px` : undefined,
-        boxShadow: boxShadowFor(el.shadow),
+        boxShadow: boxShadowFor(el.shadow, undefined, undefined, el.shadowAngle),
       }}
     >
       {customTint ? (
@@ -233,7 +240,7 @@ function ShapeOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "shape" 
         border: isOutline ? `${el.borderWidth ?? 5}px solid ${el.borderColor ?? el.color}` : undefined,
         outline: isOutline ? undefined : el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
         outlineOffset: !isOutline && el.borderWidth ? `-${el.borderWidth}px` : undefined,
-        boxShadow: boxShadowFor(el.shadow),
+        boxShadow: boxShadowFor(el.shadow, undefined, undefined, el.shadowAngle),
       }}
     >
       {!isOutline && (
@@ -376,7 +383,7 @@ export default function GalleryAlbumProofing({
                     // own box-shadow in normal paint order, so the inset border segment was silently
                     // invisible behind the photo. Border now lives on a separate, later sibling div
                     // below, guaranteed to paint above the image — mirrors the builder's own fix.
-                    boxShadow: boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur),
+                    boxShadow: boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle),
                     // Rotation lives on this box (not the <img>) so the outline/box-shadow rotate
                     // with the clipped photo as one rigid tile — mirrors the builder.
                     transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
