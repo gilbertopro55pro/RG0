@@ -291,6 +291,7 @@ export async function generateAlbumPdf({
   onPageRendered,
   resumeFromDoc,
   pageRange,
+  refetchSpread,
 }: {
   album: GalleryAlbumRow;
   spreads: GalleryAlbumSpreadRow[];
@@ -319,6 +320,12 @@ export async function generateAlbumPdf({
   // later call. Omit (or {start:0, end:spreads.length}) to render every page in one call, same as
   // before this param existed.
   pageRange?: { start: number; end: number };
+  // Called immediately before each spread actually renders, to pick up any edit made after `spreads`
+  // was fetched — a real render can run for many minutes (see albumExportJobs.ts's own comment on
+  // this), long enough for the photographer to keep editing pages this same call hasn't reached yet.
+  // Falls back to the spread already in `spreads` if omitted, or if the callback returns null (the
+  // page was deleted mid-export — rendering its last-known content is a reasonable fallback).
+  refetchSpread?: (id: string) => Promise<GalleryAlbumSpreadRow | null>;
 }): Promise<Uint8Array> {
   const cache = downloadCache ?? new Map<string, Buffer | null>();
   const downloadCached = async (bucket: string, path: string): Promise<Buffer | null> => {
@@ -528,8 +535,9 @@ export async function generateAlbumPdf({
 
   const batchStart = pageRange?.start ?? 0;
   const batchEnd = pageRange?.end ?? spreads.length;
-  for (const spread of spreads.slice(batchStart, batchEnd)) {
+  for (const staleSpread of spreads.slice(batchStart, batchEnd)) {
     onPageRendered?.();
+    const spread = (await refetchSpread?.(staleSpread.id)) ?? staleSpread;
     if (spread.layout === "custom") {
       const hasCustomSize = spread.width_cm != null && spread.height_cm != null;
       const pageW = hasCustomSize ? spread.width_cm! * ptPerCm : PAGE_WIDTH;
