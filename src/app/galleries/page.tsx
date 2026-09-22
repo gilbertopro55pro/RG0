@@ -17,6 +17,7 @@ export default async function GalleriesPage() {
       .from("galleries")
       .select("*, events(client_name, event_date), gallery_photos!gallery_photos_gallery_id_fkey(id, gallery_id, storage_path, sort_order)")
       .eq("is_portfolio_only", false)
+      .eq("activated", true)
       .order("created_at", { ascending: false })
       .returns<
         (GalleryRow & {

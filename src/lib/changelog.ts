@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.47",
+    date: "2026-09-22",
+    changes: [
+      "אירועים: יצירת אירוע (בטופס, בשאלון ללקוח/ה, ובייבוא מיומן Google) כבר לא יוצרת אוטומטית גלריית תמונות לאירוע — גלריה נוצרת רק כשלוחצים במפורש על \"יצירה/קישור גלריה\" בכרטיס האירוע, כדי שגלריות טיוטה לא יופיעו יותר בעמוד הגלריות בלי שביקשתם אותן",
+    ],
+  },
+  {
     version: "2.11.46",
     date: "2026-09-17",
     changes: [

@@ -15,10 +15,15 @@ type GalleryOption = Pick<GalleryRow, "id" | "title" | "created_at">;
 // so the picker only ever offers galleries that aren't already linked to something else.
 export default function LinkExistingGalleryModal({
   eventId,
+  existingGalleryId,
   onClose,
   onLinked,
 }: {
   eventId: string;
+  // A gallery already linked to this event but not yet activated (a leftover ghost row — see
+  // migration 0120_gallery_activated.sql). Since event_id is unique, linking a different gallery
+  // to this same event needs this one unlinked first, or the update below hits that constraint.
+  existingGalleryId?: string;
   onClose: () => void;
   onLinked: (gallery: GalleryRow) => void;
 }) {
@@ -75,6 +80,14 @@ export default function LinkExistingGalleryModal({
     if (!selected) return;
     setLinking(true);
     setError(null);
+    if (existingGalleryId) {
+      const { error: unlinkError } = await supabase.from("galleries").update({ event_id: null }).eq("id", existingGalleryId);
+      if (unlinkError) {
+        setLinking(false);
+        setError(unlinkError.message);
+        return;
+      }
+    }
     const { data: updated, error: updateError } = await supabase
       .from("galleries")
       .update({ event_id: eventId })

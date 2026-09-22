@@ -10,14 +10,39 @@ import { ADMIN_EMAIL } from "@/lib/admin";
 
 const CLOSE_ANIMATION_MS = 220;
 
-export default function NewGalleryModal({ onClose, eventId }: { onClose: () => void; eventId?: string }) {
+export default function NewGalleryModal({
+  onClose,
+  eventId,
+  eventClientName,
+  eventClientPhone,
+  eventDate,
+  // Set when this event already has a gallery row linked but not yet activated (a leftover from
+  // the old auto-create-on-every-event path, kept around instead of deleted — see migration
+  // 0120_gallery_activated.sql). Filling out this form then UPDATEs that same row instead of
+  // INSERTing a second one, which `galleries.event_id`'s unique constraint would reject outright.
+  existingGalleryId,
+  onCreated,
+}: {
+  onClose: () => void;
+  eventId?: string;
+  eventClientName?: string;
+  eventClientPhone?: string;
+  eventDate?: string;
+  existingGalleryId?: string;
+  onCreated?: (gallery: GalleryRow) => void;
+}) {
   const router = useRouter();
   const supabase = createClient();
+  const [step, setStep] = useState<"form" | "success">("form");
+  const [createdGalleryId, setCreatedGalleryId] = useState<string | null>(null);
   const [tab, setTab] = useState<"details" | "permissions">("details");
-  const [title, setTitle] = useState("");
+  // Pre-filled from the event card's own data (sometimes the gallery name needs to differ from the
+  // client/event name, hence still freely editable) — nothing left for the photographer to retype
+  // here that the event already knows.
+  const [title, setTitle] = useState(eventClientName ?? "");
   const [shootDate, setShootDate] = useState("");
   const [clientEmail, setClientEmail] = useState("");
-  const [clientPhone, setClientPhone] = useState("");
+  const [clientPhone, setClientPhone] = useState(eventClientPhone ?? "");
   // Options (and the default, its longest one) depend on the photographer's plan — fetched once
   // on open rather than threaded down as a prop, since this modal is opened from two unrelated
   // parents (GalleriesListView, GallerySection) that don't otherwise need to know the plan.
@@ -102,27 +127,32 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
       setCreating(false);
       return;
     }
-    const { data: created, error: insertError } = await supabase
-      .from("galleries")
-      .insert({
-        event_id: eventId ?? null,
-        photographer_id: user.id,
-        title: title.trim(),
-        shoot_date: eventId ? null : shootDate || null,
-        client_email: clientEmail.trim() || null,
-        client_phone: clientPhone.trim() || null,
-        expiry_days: expiryDays,
-        allow_downloads: allowDownloads,
-        allow_client_upload: allowClientUpload,
-      })
-      .select()
-      .single<GalleryRow>();
+    const fields = {
+      title: title.trim(),
+      title_customized: true,
+      shoot_date: eventId ? eventDate ?? null : shootDate || null,
+      client_email: clientEmail.trim() || null,
+      client_phone: clientPhone.trim() || null,
+      expiry_days: expiryDays,
+      allow_downloads: allowDownloads,
+      allow_client_upload: allowClientUpload,
+      activated: true,
+    };
+    const { data: created, error: saveError } = existingGalleryId
+      ? await supabase.from("galleries").update(fields).eq("id", existingGalleryId).select().single<GalleryRow>()
+      : await supabase
+          .from("galleries")
+          .insert({ ...fields, event_id: eventId ?? null, photographer_id: user.id })
+          .select()
+          .single<GalleryRow>();
     setCreating(false);
-    if (insertError || !created) {
-      setError(insertError?.message ?? "שגיאה ביצירת הגלריה");
+    if (saveError || !created) {
+      setError(saveError?.message ?? "שגיאה ביצירת הגלריה");
       return;
     }
-    closeWithAnimation(() => router.push(`/galleries/${created.id}`));
+    setCreatedGalleryId(created.id);
+    setStep("success");
+    onCreated?.(created);
   };
 
   if (!mounted) return null;
@@ -146,7 +176,9 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold font-display">גלריה חדשה</h2>
+          <h2 className="text-lg font-bold font-display">
+            {step === "success" ? "הגלריה נוצרה" : eventId ? "פתיחת גלריה לאירוע" : "גלריה חדשה"}
+          </h2>
           <button
             onClick={() => closeWithAnimation()}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
@@ -155,156 +187,180 @@ export default function NewGalleryModal({ onClose, eventId }: { onClose: () => v
           </button>
         </div>
 
-        {!eventId && (
-          <p className="text-xs mb-4 text-ink-soft">
-            יוצרים גלריה עצמאית שלא משויכת לאירוע קיים במערכת — שימושי לצילומים שלא נסגרו כאירוע (למשל צילומי מוצר או פרויקט אישי).
-          </p>
-        )}
-
-        <div className="flex gap-1.5 mb-4">
-          <button
-            onClick={() => setTab("details")}
-            className="flex-1 rounded-full py-2 text-xs font-semibold"
-            style={{
-              background: tab === "details" ? "var(--color-ink)" : "var(--color-chip)",
-              color: tab === "details" ? "var(--color-paper)" : "var(--color-ink-soft)",
-            }}
-          >
-            פרטים
-          </button>
-          <button
-            onClick={() => setTab("permissions")}
-            className="flex-1 rounded-full py-2 text-xs font-semibold"
-            style={{
-              background: tab === "permissions" ? "var(--color-ink)" : "var(--color-chip)",
-              color: tab === "permissions" ? "var(--color-paper)" : "var(--color-ink-soft)",
-            }}
-          >
-            הרשאות ושמירה
-          </button>
-        </div>
-
-        {tab === "details" ? (
-          <div className="space-y-3.5">
-            <div>
-              <label className="text-xs block mb-1 text-ink-soft">שם הגלריה</label>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="לדוגמה: משפחת כהן — צילומי משפחה"
-                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-              />
-            </div>
-
-            {/* grid-cols-2 (not flex + flex-1) is load-bearing: Tailwind's grid-cols-N utility
-                sets each track to minmax(0, 1fr), which caps a column's width at its fair share
-                of the row NO MATTER how wide its content wants to render — unlike flex-1, where a
-                native date input's own intrinsic/preferred width (confirmed to sometimes exceed
-                a plain px min-width hack, particularly on iOS Safari) can still push a flex item
-                wider than intended and overlap its neighbor. Two columns of equal width, with a
-                real gap between them, together always span exactly the row's full width — the
-                same width as the שם הגלריה field above — since that's what a 2-up grid guarantees
-                structurally, not just in the common case. */}
-            <div className={`grid gap-2 ${eventId ? "grid-cols-1" : "grid-cols-2"}`}>
-              {!eventId && (
-                <div>
-                  <label className="text-xs block mb-1 text-ink-soft">תאריך הצילום</label>
-                  <input
-                    type="date"
-                    value={shootDate}
-                    onChange={(e) => setShootDate(e.target.value)}
-                    className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-                  />
-                </div>
-              )}
-              <div>
-                <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
-                <select
-                  value={expiryDays}
-                  onChange={(e) => setExpiryDays(Number(e.target.value) as 7 | 14 | 30 | 90 | 180 | 365)}
-                  className="w-full rounded-lg px-2 py-2 text-sm border border-line bg-white"
-                >
-                  {expiryOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת)</label>
-              <input
-                type="email"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-                placeholder="example@gmail.com"
-                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)</label>
-              <input
-                type="tel"
-                value={clientPhone}
-                onChange={(e) => setClientPhone(e.target.value)}
-                placeholder="050-1234567"
-                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data"
-              />
+        {step === "success" && createdGalleryId ? (
+          <div className="space-y-4">
+            <p className="text-sm text-ink-soft">
+              {eventId ? "הגלריה נוצרה בהצלחה וקושרה לאירוע." : "הגלריה נוצרה בהצלחה."}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => closeWithAnimation(() => router.push(`/galleries/${createdGalleryId}`))}
+                className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
+              >
+                מעבר לגלריה
+              </button>
+              <button
+                onClick={() => closeWithAnimation(() => router.refresh())}
+                className="w-full rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink"
+              >
+                המשך ללא מעבר לגלריה
+              </button>
             </div>
           </div>
         ) : (
-          <div className="space-y-3.5">
-            <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
-              <div>
-                <div className="text-sm font-semibold">אפשרות הורדת קבצים מקוריים</div>
-                <div className="text-xs text-ink-soft mt-0.5">כשמכובה, הלקוח/ה יוכלו רק לצפות בתמונות, לא להוריד</div>
-              </div>
+          <>
+            {!eventId && (
+              <p className="text-xs mb-4 text-ink-soft">
+                יוצרים גלריה עצמאית שלא משויכת לאירוע קיים במערכת — שימושי לצילומים שלא נסגרו כאירוע (למשל צילומי מוצר או פרויקט אישי).
+              </p>
+            )}
+
+            <div className="flex gap-1.5 mb-4">
               <button
-                onClick={() => setAllowDownloads(!allowDownloads)}
-                role="switch"
-                aria-checked={allowDownloads}
-                className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
+                onClick={() => setTab("details")}
+                className="flex-1 rounded-full py-2 text-xs font-semibold"
                 style={{
-                  background: allowDownloads ? "var(--color-amber-deep)" : "var(--color-line)",
-                  justifyContent: allowDownloads ? "flex-start" : "flex-end",
+                  background: tab === "details" ? "var(--color-ink)" : "var(--color-chip)",
+                  color: tab === "details" ? "var(--color-paper)" : "var(--color-ink-soft)",
                 }}
               >
-                <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+                פרטים
               </button>
-            </div>
-            <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
-              <div>
-                <div className="text-sm font-semibold">אפשרות העלאת תמונות ע&quot;י הלקוח/ה</div>
-                <div className="text-xs text-ink-soft mt-0.5">כשמופעל, הלקוח/ה יוכלו להעלות תמונות משלהם ישירות לגלריה</div>
-              </div>
               <button
-                onClick={() => setAllowClientUpload(!allowClientUpload)}
-                role="switch"
-                aria-checked={allowClientUpload}
-                className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
+                onClick={() => setTab("permissions")}
+                className="flex-1 rounded-full py-2 text-xs font-semibold"
                 style={{
-                  background: allowClientUpload ? "var(--color-amber-deep)" : "var(--color-line)",
-                  justifyContent: allowClientUpload ? "flex-start" : "flex-end",
+                  background: tab === "permissions" ? "var(--color-ink)" : "var(--color-chip)",
+                  color: tab === "permissions" ? "var(--color-paper)" : "var(--color-ink-soft)",
                 }}
               >
-                <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+                הרשאות ושמירה
               </button>
             </div>
-          </div>
+
+            {tab === "details" ? (
+              <div className="space-y-3.5">
+                <div>
+                  <label className="text-xs block mb-1 text-ink-soft">שם הגלריה</label>
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="לדוגמה: משפחת כהן — צילומי משפחה"
+                    className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                  />
+                </div>
+
+                {/* grid-cols-2 (not flex + flex-1) is load-bearing: Tailwind's grid-cols-N utility
+                    sets each track to minmax(0, 1fr), which caps a column's width at its fair share
+                    of the row NO MATTER how wide its content wants to render — unlike flex-1, where a
+                    native date input's own intrinsic/preferred width (confirmed to sometimes exceed
+                    a plain px min-width hack, particularly on iOS Safari) can still push a flex item
+                    wider than intended and overlap its neighbor. Two columns of equal width, with a
+                    real gap between them, together always span exactly the row's full width — the
+                    same width as the שם הגלריה field above — since that's what a 2-up grid guarantees
+                    structurally, not just in the common case. */}
+                <div className={`grid gap-2 ${eventId ? "grid-cols-1" : "grid-cols-2"}`}>
+                  {!eventId && (
+                    <div>
+                      <label className="text-xs block mb-1 text-ink-soft">תאריך הצילום</label>
+                      <input
+                        type="date"
+                        value={shootDate}
+                        onChange={(e) => setShootDate(e.target.value)}
+                        className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
+                    <select
+                      value={expiryDays}
+                      onChange={(e) => setExpiryDays(Number(e.target.value) as 7 | 14 | 30 | 90 | 180 | 365)}
+                      className="w-full rounded-lg px-2 py-2 text-sm border border-line bg-white"
+                    >
+                      {expiryOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת)</label>
+                  <input
+                    type="email"
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                    placeholder="example@gmail.com"
+                    className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)</label>
+                  <input
+                    type="tel"
+                    value={clientPhone}
+                    onChange={(e) => setClientPhone(e.target.value)}
+                    placeholder="050-1234567"
+                    className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
+                  <div>
+                    <div className="text-sm font-semibold">אפשרות הורדת קבצים מקוריים</div>
+                    <div className="text-xs text-ink-soft mt-0.5">כשמכובה, הלקוח/ה יוכלו רק לצפות בתמונות, לא להוריד</div>
+                  </div>
+                  <button
+                    onClick={() => setAllowDownloads(!allowDownloads)}
+                    role="switch"
+                    aria-checked={allowDownloads}
+                    className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
+                    style={{
+                      background: allowDownloads ? "var(--color-amber-deep)" : "var(--color-line)",
+                      justifyContent: allowDownloads ? "flex-start" : "flex-end",
+                    }}
+                  >
+                    <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
+                  <div>
+                    <div className="text-sm font-semibold">אפשרות העלאת תמונות ע&quot;י הלקוח/ה</div>
+                    <div className="text-xs text-ink-soft mt-0.5">כשמופעל, הלקוח/ה יוכלו להעלות תמונות משלהם ישירות לגלריה</div>
+                  </div>
+                  <button
+                    onClick={() => setAllowClientUpload(!allowClientUpload)}
+                    role="switch"
+                    aria-checked={allowClientUpload}
+                    className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
+                    style={{
+                      background: allowClientUpload ? "var(--color-amber-deep)" : "var(--color-line)",
+                      justifyContent: allowClientUpload ? "flex-start" : "flex-end",
+                    }}
+                  >
+                    <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {error && <p className="text-xs text-rose mt-3">{error}</p>}
+
+            <button
+              onClick={create}
+              disabled={creating}
+              className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60 mt-5"
+            >
+              {creating ? "יוצר..." : "יצירת גלריה"}
+            </button>
+          </>
         )}
-
-        {error && <p className="text-xs text-rose mt-3">{error}</p>}
-
-        <button
-          onClick={create}
-          disabled={creating}
-          className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60 mt-5"
-        >
-          {creating ? "יוצר..." : "יצירת גלריה"}
-        </button>
       </div>
     </div>,
     document.body

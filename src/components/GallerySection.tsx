@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -15,26 +14,29 @@ export default function GallerySection({
   initialGallery,
   photoCount,
   coverUrl,
+  clientName,
+  clientPhone,
+  eventDate,
 }: {
   eventId: string;
   initialGallery: GalleryRow | null;
   photoCount: number;
   coverUrl: string | null;
+  clientName: string;
+  clientPhone: string;
+  eventDate: string;
 }) {
   const router = useRouter();
   const supabase = createClient();
   const [gallery, setGallery] = useState(initialGallery);
-  // "choice" is the small "גלריה חדשה / קישור לגלריה קיימת" picker; "new"/"link" are the two
-  // actual modals it leads to.
-  const [picker, setPicker] = useState<"choice" | "new" | "link" | null>(null);
+  const [picker, setPicker] = useState<"new" | "link" | null>(null);
+  // A gallery already linked but not yet set up by the photographer (activated: false — see
+  // migration 0120_gallery_activated.sql) is treated the same as no gallery at all for display
+  // purposes: the event card still offers "פתיחת גלריה לאירוע", which then UPDATEs this same row
+  // (via existingGalleryId below) instead of creating a second, orphaned one.
+  const isActivated = !!gallery?.activated;
   const [unlinkStep, setUnlinkStep] = useState<"idle" | "confirm1" | "confirm2">("idle");
   const [unlinking, setUnlinking] = useState(false);
-  // Portaled straight to document.body below — same fix as NewGalleryModal.tsx's own comment: this
-  // component sits nested inside the event page's card layout, and a fixed-position full-screen
-  // overlay nested that deep is exactly the DOM shape known to make position:fixed unreliable on
-  // iOS Safari standalone mode. document.body only exists client-side, hence the mounted gate.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
 
   const isArchived = !!gallery?.archived_at;
 
@@ -54,10 +56,10 @@ export default function GallerySection({
     <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
       <div className="flex items-center justify-between mb-3.5">
         <span className="text-sm font-semibold tracking-wide">גלריית תמונות</span>
-        {gallery && <span className="text-xs text-ink-soft font-data">{photoCount} תמונות</span>}
+        {isActivated && <span className="text-xs text-ink-soft font-data">{photoCount} תמונות</span>}
       </div>
 
-      {gallery ? (
+      {isActivated && gallery ? (
         <>
           <Link href={`/galleries/${gallery.id}`} className="flex items-center gap-3">
             <div className="relative h-14 w-14 rounded-xl overflow-hidden bg-line shrink-0">
@@ -101,7 +103,7 @@ export default function GallerySection({
           {unlinkStep === "confirm2" && (
             <div className="rounded-xl p-3.5 space-y-2.5 mt-3" style={{ background: "var(--color-chip)" }}>
               <p className="text-xs font-semibold text-rose">אישור אחרון</p>
-              <p className="text-xs text-ink">כרטיס האירוע יחזור להציג &quot;יצירה/קישור גלריה&quot;. אפשר לקשר את הגלריה בחזרה בכל שלב.</p>
+              <p className="text-xs text-ink">כרטיס האירוע יחזור להציג &quot;פתיחת גלריה לאירוע&quot;. אפשר לקשר את הגלריה בחזרה בכל שלב.</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setUnlinkStep("idle")}
@@ -122,51 +124,34 @@ export default function GallerySection({
           )}
         </>
       ) : (
-        <button
-          onClick={() => setPicker("choice")}
-          className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
-        >
-          יצירה/קישור גלריה
-        </button>
+        <>
+          <button
+            onClick={() => setPicker("new")}
+            className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white"
+          >
+            פתיחת גלריה לאירוע
+          </button>
+          <button onClick={() => setPicker("link")} className="w-full text-xs text-ink-soft underline mt-2.5">
+            קישור לגלריה קיימת
+          </button>
+        </>
       )}
 
-      {picker === "choice" &&
-        mounted &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[100] flex items-end justify-center"
-            style={{
-              background: "rgba(46,49,66,0.45)",
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-            }}
-            onClick={() => setPicker(null)}
-          >
-            <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-lg font-bold mb-4 font-display">גלריה לאירוע</h2>
-              <div className="space-y-2">
-                <button
-                  onClick={() => setPicker("new")}
-                  className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
-                >
-                  גלריה חדשה
-                </button>
-                <button
-                  onClick={() => setPicker("link")}
-                  className="w-full rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink"
-                >
-                  קישור לגלריה קיימת
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
-
-      {picker === "new" && <NewGalleryModal eventId={eventId} onClose={() => setPicker(null)} />}
+      {picker === "new" && (
+        <NewGalleryModal
+          eventId={eventId}
+          eventClientName={clientName}
+          eventClientPhone={clientPhone}
+          eventDate={eventDate}
+          existingGalleryId={gallery && !isActivated ? gallery.id : undefined}
+          onClose={() => setPicker(null)}
+          onCreated={(created) => setGallery(created)}
+        />
+      )}
       {picker === "link" && (
         <LinkExistingGalleryModal
           eventId={eventId}
+          existingGalleryId={gallery && !isActivated ? gallery.id : undefined}
           onClose={() => setPicker(null)}
           onLinked={(linked) => {
             setGallery(linked);
