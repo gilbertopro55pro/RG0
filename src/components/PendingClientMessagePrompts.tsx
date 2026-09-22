@@ -73,7 +73,7 @@ export default function PendingClientMessagePrompts({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{
         background: "rgba(46,49,66,0.45)",
         backdropFilter: entered ? "blur(16px)" : "blur(0px)",
@@ -81,7 +81,7 @@ export default function PendingClientMessagePrompts({
         transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
       }}
     >
-      <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet">
+      <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet">
         {current.type === "payment" ? (
           <>
             <h2 className="text-lg font-bold mb-2 font-display">תזכורת תשלום 💰</h2>

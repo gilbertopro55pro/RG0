@@ -2,20 +2,37 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { authenticateGalleryRequest } from "@/lib/desktopAuth";
 import { getOrCreatePreviewUrl } from "@/lib/galleryPhotoPreview";
-import type { GalleryPhotoRow } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-// The desktop app's own self-heal call (see photoApi.ts's backfillMissingPreviews) — this route
-// used to not exist at all, so every call 404'd silently and photos uploaded through the desktop
-// app (or the FTP watcher) were left with preview_storage_path: null forever, shown as a broken-
-// image glyph everywhere previewUrlFor() is used. The web app's own upload flow avoids this by
-// firing an eager warm-up request right after each upload (GalleryManageView.tsx); the desktop app
-// has no cookie session to make that same call with, so it instead calls this bearer-authenticated
-// route once per gallery load, which is a no-op once every photo in the gallery already has one.
-// One batch per call (not the whole gallery) to stay well under a serverless function's own time
-// limit on a large backlog — the caller re-invokes this on every load until `remaining` hits 0.
+// Self-healing backfill for photos the desktop app can never correctly show a preview for, for
+// TWO separate reasons:
+//
+// 1. preview_storage_path IS NULL — the desktop app's own upload route (and the FTP-server one)
+//    used to insert the gallery_photos row and trigger nothing else, relying entirely on some
+//    VIEWING route to lazily generate the preview — but the desktop app never calls a /preview
+//    route itself (it reads preview_storage_path straight from Supabase), so a gallery uploaded
+//    only through desktop/FTP and never opened in a browser stayed broken forever. Both upload
+//    routes now trigger generation themselves going forward (see their own comments), but existing
+//    rows from before that fix still need this.
+//
+// 2. preview_storage_path is set but NOT a .webp file — a real, separate bug: legacy previews
+//    (generated before the public-CDN/.webp system existed) are .jpg files living in the OLD
+//    PRIVATE bucket, which need a signed, expiring URL to read (see getOrCreatePreviewUrl's own
+//    branch for this). The desktop app's previewUrlFor(), though, always builds a bare PUBLIC CDN
+//    URL from whatever path is stored — for a legacy .jpg path that URL 404s, showing a real
+//    broken-image glyph (not a blank box) since the desktop app has no code path that could ever
+//    call the private, signed-URL branch. Passing `preview_storage_path: null` here (even though
+//    the real row has one) forces getOrCreatePreviewUrl to treat it as missing and regenerate a
+//    fresh .webp in the public bucket instead of returning the old private path back unchanged.
+//
+// Called by the desktop app itself, fire-and-forget, whenever it notices a gallery it just loaded
+// has a photo it can't build a working preview URL for — so the fix applies automatically the next
+// time this exact gallery is opened, no manual/admin action needed. Capped per call so one gallery
+// with a large backlog can't run into a serverless timeout; the desktop app can just call it again
+// if `remaining > 0`.
 const BATCH_SIZE = 15;
+const NEEDS_BACKFILL_FILTER = "preview_storage_path.is.null,preview_storage_path.not.like.%.webp";
 
 export async function POST(request: Request, { params }: { params: Promise<{ galleryId: string }> }) {
   const { galleryId } = await params;
@@ -32,24 +49,33 @@ export async function POST(request: Request, { params }: { params: Promise<{ gal
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
 
-  const { data: photos } = await serviceRole
+  const { data: rows } = await serviceRole
     .from("gallery_photos")
     .select("id, gallery_id, storage_path, preview_storage_path")
     .eq("gallery_id", galleryId)
-    .is("preview_storage_path", null)
-    .order("sort_order", { ascending: true })
+    .or(NEEDS_BACKFILL_FILTER)
     .limit(BATCH_SIZE)
-    .returns<Pick<GalleryPhotoRow, "id" | "gallery_id" | "storage_path" | "preview_storage_path">[]>();
+    .returns<{ id: string; gallery_id: string; storage_path: string; preview_storage_path: string | null }[]>();
 
-  if (photos && photos.length > 0) {
-    await Promise.all(photos.map((photo) => getOrCreatePreviewUrl(serviceRole, photo).catch(() => null)));
+  const photos = rows ?? [];
+  let fixed = 0;
+  for (const photo of photos) {
+    try {
+      // Force regeneration for a legacy (non-.webp) path — see this route's own comment above for
+      // why the OLD path can never be reused as-is.
+      const needsRegenerate = !!photo.preview_storage_path && !photo.preview_storage_path.endsWith(".webp");
+      const url = await getOrCreatePreviewUrl(serviceRole, needsRegenerate ? { ...photo, preview_storage_path: null } : photo);
+      if (url) fixed++;
+    } catch (e) {
+      console.error("[backfill-previews] failed", photo.id, e);
+    }
   }
 
-  const { count } = await serviceRole
+  const { count: remaining } = await serviceRole
     .from("gallery_photos")
     .select("id", { count: "exact", head: true })
     .eq("gallery_id", galleryId)
-    .is("preview_storage_path", null);
+    .or(NEEDS_BACKFILL_FILTER);
 
-  return NextResponse.json({ remaining: count ?? 0 });
+  return NextResponse.json({ attempted: photos.length, fixed, remaining: remaining ?? 0 });
 }

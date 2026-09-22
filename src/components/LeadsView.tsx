@@ -223,6 +223,7 @@ export default function LeadsView({
           customPackages={customPackages}
           initial={{
             clientName: convertLead.name,
+            eventType: convertLead.event_type_name ?? undefined,
             clientPhone: convertLead.phone ?? undefined,
             eventDate: convertLead.event_date_interest ?? undefined,
             pkg: convertLead.package_interest ?? undefined,

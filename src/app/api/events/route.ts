@@ -15,6 +15,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const {
     clientName,
+    eventType,
     clientPhone,
     pkg,
     customPackageId,
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
     sourceGoogleCalendarEventId,
   }: {
     clientName: string;
+    eventType?: string | null;
     clientPhone: string;
     pkg: PackageType | null;
     customPackageId: string | null;
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
   const result = await createEventWithSideEffects(supabase, {
     photographerId: user.id,
     clientName,
+    eventType,
     clientPhone,
     pkg,
     customPackageId,

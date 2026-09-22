@@ -2,9 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import CloseEventConfirmModal from "@/components/CloseEventConfirmModal";
 import { packageLabel } from "@/lib/stages";
 import type { EventRow } from "@/lib/types";
 import { googleColorRgba } from "@/lib/googleColors";
+import { eventDisplayName } from "@/lib/eventDisplayName";
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
 type StatusFilter = "upcoming" | "completed" | "all" | "duplicates";
@@ -55,17 +58,16 @@ export default function EventsListView({
   const [selectedMonth, setSelectedMonth] = useState(currentMonthValue());
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const isEventDone = (event: EventWithCustomPackage) => {
-    const total = totalCountByEvent[event.id] ?? 1;
-    const done = doneCountByEvent[event.id] ?? 0;
-    return done >= total;
-  };
+  // "Done" is an explicit act now — the photographer's "סגירת אירוע" + confirmation (closed_at) —
+  // NOT "every stage is checked", so finishing the last stage no longer moves an event out of the
+  // active list by itself.
+  const isEventDone = (event: EventWithCustomPackage) => !!event.closed_at;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const result = events.filter((event) => {
       if (q) {
-        const matchesName = event.client_name.toLowerCase().includes(q);
+        const matchesName = eventDisplayName(event).toLowerCase().includes(q);
         const matchesPhone = (event.client_phone ?? "").includes(q);
         if (!matchesName && !matchesPhone) return false;
       }
@@ -189,6 +191,7 @@ export default function EventsListView({
               totalCount={totalCountByEvent[event.id] ?? 1}
               unreadCount={unreadCountByEvent[event.id] ?? 0}
               needsReviewColorId={needsReviewColorId}
+              canClose={isPhotographer}
             />
           ))}
           {hasMore && (
@@ -219,16 +222,21 @@ function EventCard({
   totalCount,
   unreadCount,
   needsReviewColorId,
+  canClose,
 }: {
   event: EventWithCustomPackage;
   doneCount: number;
   totalCount: number;
   unreadCount: number;
   needsReviewColorId?: string | null;
+  // Photographer only — assistants never get a close button.
+  canClose: boolean;
 }) {
+  const router = useRouter();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const total = totalCount;
   const pct = Math.round((doneCount / total) * 100);
-  const done = doneCount >= total;
+  const done = !!event.closed_at;
   const isFreelance = isFreelanceEvent(event);
   // Falls back to the app's default amber tint when the photographer hasn't picked an import
   // color yet (e.g. before ever opening the calendar-scan settings).
@@ -240,6 +248,7 @@ function EventCard({
   const cardBackground = event.needs_review ? cardTint : isFreelance ? FREELANCE_CARD_TINT : undefined;
 
   return (
+    <>
     <Link
       href={`/events/${event.id}`}
       role="button"
@@ -251,7 +260,7 @@ function EventCard({
     >
       <div className="flex items-center justify-between mb-2.5">
         <span className="relative inline-block">
-          <span className="font-semibold text-base font-display">{event.client_name}</span>
+          <span className="font-semibold text-base font-display">{eventDisplayName(event)}</span>
           {unreadCount > 0 && (
             <span
               className="absolute -top-2 -left-3 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-bold flex items-center justify-center leading-none shadow"
@@ -298,12 +307,36 @@ function EventCard({
       <div className="h-[5px] rounded-full mb-2.5 bg-line">
         <div
           className="h-[5px] rounded-full"
-          style={{ width: `${pct}%`, background: done ? "var(--color-sage)" : "var(--color-amber)" }}
+          style={{ width: `${done ? 100 : pct}%`, background: done ? "var(--color-sage)" : "var(--color-amber)" }}
         />
       </div>
       <div className="text-xs" style={{ color: done ? "var(--color-sage)" : "var(--color-amber-deep)", fontWeight: 600 }}>
-        {done ? "✓ נמסר ללקוח" : `${doneCount}/${total} שלבים הושלמו`}
+        {done ? "✓ האירוע נסגר" : `${doneCount}/${total} שלבים הושלמו`}
       </div>
+      {canClose && !done && (
+        // Lives inside the card's <Link>, so the click must not also navigate to the event page.
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setConfirmOpen(true);
+          }}
+          className="mt-3 text-xs font-semibold rounded-full px-3.5 py-1.5 bg-white border border-line text-ink"
+        >
+          סגירת אירוע
+        </button>
+      )}
     </Link>
+    {confirmOpen && (
+      <CloseEventConfirmModal
+        eventId={event.id}
+        onClosed={() => {
+          setConfirmOpen(false);
+          router.refresh();
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
+    )}
+    </>
   );
 }

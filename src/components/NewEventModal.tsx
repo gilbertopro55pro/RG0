@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PACKAGE_LABELS, FREELANCE_VIDEO_EDIT_VARIANTS, packageLabel, type PackageType } from "@/lib/stages";
 import { openWhatsApp } from "@/lib/waLink";
@@ -11,6 +11,8 @@ import type { ContractTemplateRow, CustomPackageRow, EventContractRow, EventType
 import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
 import SendUpdateButton from "@/components/SendUpdateButton";
 import NativeDateTimeField from "@/components/NativeDateTimeField";
+import EventTypeField from "@/components/EventTypeField";
+import CompactGuideModal from "@/components/CompactGuideModal";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 // The 4 video-editing sub-choices collapse to this one representative value in the top-level
@@ -24,6 +26,14 @@ const selectArrowStyle = {
 };
 
 const CLOSE_ANIMATION_MS = 220;
+
+// The auto-provisioned default package offered first in the package dropdown — a normal custom
+// package (editable/deletable in Settings) with exactly these two stages. See seedDefaultPackage.
+const DEFAULT_PACKAGE_NAME = "ברירת מחדל";
+const DEFAULT_PACKAGE_STAGES = [
+  { name: "יום הצילום", notify_client: false, notify_text: null as string | null },
+  { name: "מסירה סופית", notify_client: false, notify_text: null as string | null },
+];
 
 type Step = 1 | 2 | 3 | "contract" | "success";
 
@@ -41,6 +51,7 @@ export default function NewEventModal({
   // package_interest, which uses that same convention — see resolveLeadPackageLabel in @/lib/stages).
   initial?: {
     clientName?: string;
+    eventType?: string;
     clientPhone?: string;
     eventDate?: string;
     pkg?: string;
@@ -64,9 +75,17 @@ export default function NewEventModal({
   const router = useRouter();
   const supabase = createClient();
   const [clientName, setClientName] = useState(initial?.clientName ?? "");
+  const [eventType, setEventType] = useState(initial?.eventType ?? "");
   const [clientPhone, setClientPhone] = useState(initial?.clientPhone ?? "");
-  const [pkgValue, setPkgValue] = useState<string>(initial?.pkg ?? "full");
   const [customPackages, setCustomPackages] = useState(initialCustomPackages);
+  const [pkgValue, setPkgValue] = useState<string>(() => {
+    if (initial?.pkg) return initial.pkg;
+    const existingDefault = initialCustomPackages.find((cp) => cp.name === DEFAULT_PACKAGE_NAME);
+    return existingDefault ? `custom:${existingDefault.id}` : "full";
+  });
+  // Set the moment the photographer touches the package dropdown themselves — the async default-
+  // package provisioning below must never overwrite a choice they already made.
+  const pkgTouchedRef = useRef(false);
   const [eventTypes, setEventTypes] = useState(initialEventTypes ?? []);
   const [prices, setPrices] = useState(initialPrices ?? []);
   const [showCustomPackageBuilder, setShowCustomPackageBuilder] = useState(false);
@@ -141,6 +160,53 @@ export default function NewEventModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // First-ever open for this photographer: creates the "ברירת מחדל" package (two stages) and, if
+  // nothing was picked yet, selects it. The claim is an atomic conditional update on
+  // photographers.default_package_seeded, so two open tabs can't both create it, and a
+  // photographer who later deletes the package isn't given a fresh one.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (initialCustomPackages.some((cp) => cp.name === DEFAULT_PACKAGE_NAME)) return;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const { data: claimed } = await supabase
+        .from("photographers")
+        .update({ default_package_seeded: true })
+        .eq("id", user.id)
+        .eq("default_package_seeded", false)
+        .select("id")
+        .returns<{ id: string }[]>();
+      if (!claimed || claimed.length === 0) return;
+      const { data: pkg } = await supabase
+        .from("custom_packages")
+        .insert({ photographer_id: user.id, name: DEFAULT_PACKAGE_NAME, price: null })
+        .select()
+        .single<CustomPackageRow>();
+      if (!pkg) return;
+      await supabase.from("custom_package_stages").insert(
+        DEFAULT_PACKAGE_STAGES.map((st, i) => ({
+          package_id: pkg.id,
+          photographer_id: user.id,
+          name: st.name,
+          sort_order: i,
+          notify_client: st.notify_client,
+          notify_text: st.notify_text,
+          requires_album_pdf: false,
+        }))
+      );
+      if (cancelled) return;
+      setCustomPackages((prev) => [...prev, pkg]);
+      if (!initial?.pkg) setPkgValue((prev) => (pkgTouchedRef.current ? prev : `custom:${pkg.id}`));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const isCustomPkg = pkgValue.startsWith("custom:");
 
   // Delays the real onClose (or a follow-up action like navigating to the new event) until the
@@ -173,6 +239,7 @@ export default function NewEventModal({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         clientName,
+        eventType: eventType.trim() || null,
         clientPhone,
         pkg: isCustomPkg ? null : pkgValue,
         customPackageId: isCustomPkg ? pkgValue.slice(7) : null,
@@ -354,7 +421,10 @@ export default function NewEventModal({
         className={`w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto ${closing ? "new-event-closing" : ""}`}
       >
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xl font-bold font-display">אירוע חדש</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold font-display">אירוע חדש</h2>
+            <CompactGuideModal pageKey="new-event" />
+          </div>
           <button
             onClick={() => (step === "success" || step === "contract" ? finishAndGoToEvent() : closeWithAnimation())}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
@@ -382,6 +452,7 @@ export default function NewEventModal({
                 <div className="text-xs font-semibold tracking-wide text-ink-soft">פרטי הלקוח/ה</div>
                 <p className="text-xs text-ink-soft mt-0.5">מי הלקוח/ה ואיך ליצור איתם קשר בהמשך התהליך</p>
               </div>
+              <EventTypeField value={eventType} onChange={setEventType} />
               <div>
                 <label className="text-xs block mb-1 text-ink-soft">שם הלקוח</label>
                 <input
@@ -401,11 +472,13 @@ export default function NewEventModal({
                   placeholder="050-1234567"
                 />
               </div>
-              <div>
-                <label className="text-xs block mb-1 text-ink-soft">חבילה</label>
+              <div className="rounded-xl p-3 bg-white border-2" style={{ borderColor: "var(--color-amber-deep)" }}>
+                <label className="text-sm font-bold block text-ink">חבילה</label>
+                <p className="text-[11px] text-ink-soft mt-0.5 mb-2">החבילה קובעת אילו שלבי עבודה יופיעו באירוע — כדאי לבחור אותה בכוונה</p>
                 <select
                   value={isVideoEditVariant(pkgValue) ? VIDEO_EDIT_GROUP_VALUE : pkgValue}
                   onChange={(e) => {
+                    pkgTouchedRef.current = true;
                     if (e.target.value === CREATE_CUSTOM_PACKAGE_VALUE) {
                       setShowCustomPackageBuilder(true);
                       return;
@@ -421,6 +494,13 @@ export default function NewEventModal({
                   className="w-full rounded-lg px-3 py-2.5 text-sm appearance-none font-medium text-ink"
                   style={selectArrowStyle}
                 >
+                  {customPackages
+                    .filter((cp) => cp.name === DEFAULT_PACKAGE_NAME)
+                    .map((cp) => (
+                      <option key={cp.id} value={`custom:${cp.id}`}>
+                        {cp.name}
+                      </option>
+                    ))}
                   {Object.keys(PACKAGE_LABELS)
                     .filter((p) => !isVideoEditVariant(p) || p === VIDEO_EDIT_GROUP_VALUE)
                     .map((p) => (
@@ -428,11 +508,13 @@ export default function NewEventModal({
                         {p === VIDEO_EDIT_GROUP_VALUE ? "פרילנס וידאו כולל עריכה" : PACKAGE_LABELS[p as PackageType]}
                       </option>
                     ))}
-                  {customPackages.map((cp) => (
-                    <option key={cp.id} value={`custom:${cp.id}`}>
-                      {cp.name}
-                    </option>
-                  ))}
+                  {customPackages
+                    .filter((cp) => cp.name !== DEFAULT_PACKAGE_NAME)
+                    .map((cp) => (
+                      <option key={cp.id} value={`custom:${cp.id}`}>
+                        {cp.name}
+                      </option>
+                    ))}
                   <option value={CREATE_CUSTOM_PACKAGE_VALUE}>+ חבילה מותאמת אישית חדשה</option>
                 </select>
               </div>

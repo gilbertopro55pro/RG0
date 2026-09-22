@@ -8,7 +8,7 @@ const ROWS: { label: string; basic: string | boolean; flow: string | boolean; fr
   { label: "תזכורות תשלום אוטומטיות בוואטסאפ", basic: true, flow: true, frame: true },
   { label: "סנכרון יומן (Google / Apple)", basic: true, flow: true, frame: true },
   { label: "עורך אלבומים מובנה", basic: false, flow: true, frame: true },
-  { label: "וידאו בגלריה", basic: false, flow: true, frame: true },
+  { label: "וידאו בגלריה — גודל קובץ מקסימלי", basic: false, flow: "300MB", frame: "500MB" },
   { label: "פורטפוליו ציבורי", basic: false, flow: true, frame: true },
   { label: "נפח אחסון", basic: "100GB", flow: "750GB", frame: "ללא הגבלה" },
   { label: "שמירת גלריה", basic: "עד 14 יום", flow: "עד 90 יום", frame: "עד שנה" },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -30,6 +30,9 @@ import PortalLinkSection from "@/components/PortalLinkSection";
 import GallerySection from "@/components/GallerySection";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { buildClientMessageText } from "@/lib/clientMessage";
+import { eventDisplayName } from "@/lib/eventDisplayName";
+import CompactGuideModal from "@/components/CompactGuideModal";
+import CloseEventConfirmModal from "@/components/CloseEventConfirmModal";
 
 const EditEventModal = dynamic(() => import("@/components/EditEventModal"), { ssr: false });
 
@@ -133,6 +136,19 @@ export default function EventDetailView({
   const [calendarRetryDone, setCalendarRetryDone] = useState(false);
   const [calendarRetryError, setCalendarRetryError] = useState<string | null>(null);
   const [stages, setStages] = useState(initialStages);
+  // The server re-derives the stage list on router.refresh() (a package change swaps stages in and
+  // out) — useState(initialStages) alone would keep showing the old flow until a hard reload.
+  useEffect(() => {
+    setStages(initialStages);
+  }, [initialStages]);
+  // Closing is an explicit act (button + confirmation), never a side effect of finishing the last
+  // stage. Kept in local state so the UI flips instantly, re-synced when the server prop changes.
+  const [closedAt, setClosedAt] = useState<string | null>(event.closed_at);
+  useEffect(() => {
+    setClosedAt(event.closed_at);
+  }, [event.closed_at]);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [closingEvent, setClosingEvent] = useState(false);
   const [notifications, setNotifications] = useState(initialNotifications);
   const [payments, setPayments] = useState(initialPayments);
   // Per-row "click the row to choose full/partial" panel state — kept as two independent pairs
@@ -355,6 +371,28 @@ export default function EventDetailView({
     } finally {
       pendingKeysRef.current.delete(key);
       setPendingStageKeys(new Set(pendingKeysRef.current));
+    }
+  };
+
+  const restoreEvent = async () => {
+    setClosingEvent(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${event.id}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ closed: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "שגיאה בשחזור האירוע");
+        return;
+      }
+      setClosedAt(data.closedAt);
+      await refreshNotifications();
+      router.refresh();
+    } finally {
+      setClosingEvent(false);
     }
   };
 
@@ -699,12 +737,42 @@ export default function EventDetailView({
           </div>
         </div>
       )}
-      <h1 className="text-[26px] font-bold mb-1.5 font-display">{event.client_name}</h1>
-      <div className="flex items-center gap-3 text-xs mb-4 flex-wrap text-ink-soft">
+      <div className="flex items-start gap-2 mb-1.5">
+        <h1 className="text-[26px] font-bold font-display">{eventDisplayName(event)}</h1>
+        <div className="mt-2.5">
+          <CompactGuideModal pageKey="event-card" />
+        </div>
+      </div>
+      <div className="flex items-center gap-3 text-xs mb-2.5 flex-wrap text-ink-soft">
         <span>{new Date(event.event_date).toLocaleDateString("he-IL")}</span>
         <span>{packageLabel(event.package, customPackageName)}</span>
         {event.client_phone && <span className="font-data">📱 {event.client_phone}</span>}
       </div>
+      {isOwner && (
+        <div className="mb-4">
+          {closedAt ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
+                ✓ האירוע סגור
+              </span>
+              <button
+                onClick={() => restoreEvent()}
+                disabled={closingEvent}
+                className="text-xs font-semibold rounded-full px-3 py-1 bg-white border border-line text-ink disabled:opacity-60"
+              >
+                {closingEvent ? "משחזר..." : "שחזור אירוע"}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setCloseConfirmOpen(true)}
+              className="text-xs font-semibold rounded-full px-3.5 py-1.5 bg-white border border-line text-ink"
+            >
+              סגירת אירוע
+            </button>
+          )}
+        </div>
+      )}
 
       {(event.event_location || event.arrival_time) && (
         <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs flex flex-wrap gap-x-4 gap-y-1.5 bg-[#F1EFE9] text-ink-soft">
@@ -945,6 +1013,28 @@ export default function EventDetailView({
         pendingStageKeys={pendingStageKeys}
       />
 
+      {isOwner && (
+        <div className="mt-7 mb-1">
+          {closedAt ? (
+            <button
+              onClick={() => restoreEvent()}
+              disabled={closingEvent}
+              className="w-full rounded-xl py-3 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-60"
+            >
+              {closingEvent ? "משחזר..." : "שחזור אירוע"}
+            </button>
+          ) : (
+            <button onClick={() => setCloseConfirmOpen(true)} className="w-full rounded-xl py-3 text-sm font-semibold bg-ink text-white">
+              סגירת אירוע
+            </button>
+          )}
+          <p className="text-[11px] text-ink-soft text-center mt-1.5">
+            {closedAt ? "האירוע סגור — שחזור יחזיר אותו לרשימת האירועים הפעילים." : "סימון כל השלבים לא סוגר את האירוע — רק לחיצה כאן ואישור."}
+          </p>
+        </div>
+      )}
+
+
       <div className="mt-7">
         <div className="flex items-center gap-2 mb-3.5">
           <span className="text-sm font-semibold tracking-wide">יומן התראות</span>
@@ -960,6 +1050,18 @@ export default function EventDetailView({
           ))}
         </div>
       </div>
+      {closeConfirmOpen && (
+        <CloseEventConfirmModal
+          eventId={event.id}
+          onClosed={async (closedAtValue) => {
+            setClosedAt(closedAtValue);
+            setCloseConfirmOpen(false);
+            await refreshNotifications();
+            router.refresh();
+          }}
+          onCancel={() => setCloseConfirmOpen(false)}
+        />
+      )}
     </div>
   );
 }

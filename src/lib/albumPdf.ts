@@ -340,11 +340,35 @@ export async function generateAlbumPdf({
   refetchSpread?: (id: string) => Promise<GalleryAlbumSpreadRow | null>;
 }): Promise<Uint8Array> {
   const cache = downloadCache ?? new Map<string, Buffer | null>();
+  // Bounded, least-recently-used cache instead of holding every original for the whole pass — a
+  // real 19-page album (several 20MB+ originals per page) grew this to the machine's full 4GB and
+  // got the Fly worker OOM-killed at page 17 (confirmed live 2026-09-20 via `fly logs`: "Out of
+  // memory: Killed process ... anon-rss:3836224kB"), which left the job orphaned as "processing"
+  // forever. A photo is normally used on one page only, so evicting the oldest costs almost nothing;
+  // the rare re-used one (a background repeated across pages) is simply downloaded again.
+  const CACHE_MAX_BYTES = 200 * 1024 * 1024;
+  const cacheBytes = () => {
+    let total = 0;
+    for (const v of cache.values()) total += v?.byteLength ?? 0;
+    return total;
+  };
   const downloadCached = async (bucket: string, path: string): Promise<Buffer | null> => {
     const key = `${bucket}:${path}`;
-    if (cache.has(key)) return cache.get(key)!;
+    if (cache.has(key)) {
+      const hit = cache.get(key)!;
+      cache.delete(key);
+      cache.set(key, hit);
+      return hit;
+    }
     const buffer = await downloadObjectBuffer(bucket, path);
     cache.set(key, buffer);
+    // Map iteration order is insertion order, so the first key is the least recently used — always
+    // keep the entry just added, even if it alone exceeds the cap.
+    while (cache.size > 1 && cacheBytes() > CACHE_MAX_BYTES) {
+      const oldest = cache.keys().next().value;
+      if (oldest === undefined || oldest === key) break;
+      cache.delete(oldest);
+    }
     return buffer;
   };
 

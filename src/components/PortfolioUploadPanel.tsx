@@ -127,7 +127,9 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
           }
           succeeded++;
           setDoneCount(succeeded);
-          fetch(`/api/galleries/${galleryId}/photos/${photoRow.id}/preview`, { redirect: "manual" }).catch(() => {});
+          fetch(`/api/galleries/${galleryId}/photos/${photoRow.id}/preview`, { redirect: "manual" }).catch((e) =>
+            console.error("preview warm-up failed", photoRow.id, e)
+          );
         } catch (e) {
           failedFiles.push(`${file.name} (${e instanceof Error ? e.message : "שגיאה לא צפויה"})`);
         }

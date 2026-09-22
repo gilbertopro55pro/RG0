@@ -20,6 +20,9 @@ function sanitizeSegment(name: string): string {
 // work, just never with enough ids at once to hit it). Chunking keeps each request safely small
 // regardless of how many ids are selected.
 const PHOTO_ID_CHUNK_SIZE = 150;
+// Largest selection this inline route will serve — see the guard below.
+const MAX_INLINE_PHOTOS = 60;
+const MAX_INLINE_BYTES = 600 * 1024 * 1024;
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -91,13 +94,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       chunk(photoIds, PHOTO_ID_CHUNK_SIZE).map((ids) => {
         let q = supabase
           .from("gallery_photos")
-          .select("storage_path, original_filename, folder_id")
+          .select("storage_path, original_filename, folder_id, file_size_bytes")
           .eq("gallery_id", gallery.id)
           .in("id", ids);
         // A rejected photo's id is never offered by the client-facing gallery UI, but nothing
         // stops a direct request for one by id — only the owner can pull rejected photos.
         if (!isOwner) q = q.neq("culling_status", "rejected");
-        return q.returns<Pick<GalleryPhotoRow, "storage_path" | "original_filename" | "folder_id">[]>();
+        return q.returns<Pick<GalleryPhotoRow, "storage_path" | "original_filename" | "folder_id" | "file_size_bytes">[]>();
       })
     ),
     supabase
@@ -112,6 +115,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "התמונות לא נמצאו" }, { status: 404 });
   }
 
+  // This route streams the whole archive inside ONE request, which only holds up for a modest
+  // selection: confirmed live (2026-09-20) that 150 favorites (~1.7GB) made the function die a few
+  // seconds in, after ~1.8MB — an HTTP 200 with a truncated, unopenable ZIP (macOS "Error 94 - Bad
+  // message"). Every current caller sends anything big to the background zip-job system instead
+  // (/zip-jobs); this guard is the safety net for a stale page/old app version, so an oversized
+  // request fails with a clear message instead of silently producing a corrupt file.
+  const totalBytes = photos.reduce((sum, p) => sum + (p.file_size_bytes ?? 0), 0);
+  if (photos.length > MAX_INLINE_PHOTOS || totalBytes > MAX_INLINE_BYTES) {
+    return NextResponse.json(
+      { error: "הבחירה גדולה מדי להורדה ישירה — יש לרענן את הדף ולנסות שוב (ההורדה תתבצע ברקע)" },
+      { status: 413 }
+    );
+  }
+
   const folderNameById = new Map((folders ?? []).map((f) => [f.id, f.name]));
   const distinctFolderIds = new Set(photos.map((p) => p.folder_id ?? null));
   // Only nest into per-tab subfolders when the selection actually spans more than one tab —
@@ -122,7 +139,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const dateLabel = new Date().toLocaleDateString("he-IL");
   const rootDir = sanitizeSegment(`${gallery.title} - ${dateLabel}`);
 
-  const archive = new ZipArchive({ zlib: { level: 6 } });
+  // store: JPEGs are already compressed, so deflate only burns CPU and lets the append queue (and its
+  // buffers) pile up in memory — the same fix the background zip jobs already use.
+  const archive = new ZipArchive({ store: true });
 
   const usedNamesByDir = new Map<string, Set<string>>();
   const uniqueName = (dir: string, name: string) => {
@@ -160,7 +179,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         archive.append(buffer, { name: `${dir}/${uniqueName(dir, photo.original_filename)}` });
       }
     };
-    await Promise.all(Array.from({ length: Math.min(8, photos.length) }, pump));
+    await Promise.all(Array.from({ length: Math.min(3, photos.length) }, pump));
     archive.finalize();
   })();
 

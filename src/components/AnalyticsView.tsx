@@ -6,6 +6,7 @@ import { PACKAGE_LABELS } from "@/lib/stages";
 import type { EventPaymentRow } from "@/lib/types";
 import type { AnalyticsEvent } from "@/app/analytics/page";
 import PageGuide from "@/components/PageGuide";
+import { closingRecognitions } from "@/lib/closeEvent";
 
 const HEBREW_MONTHS = [
   "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
@@ -51,8 +52,15 @@ export default function AnalyticsView({
 
   const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
 
+  // Balance left unpaid at an event's closing, recognized as revenue in the month chosen/derived at
+  // closing (see closeEvent.ts). Being recognized, that same balance is removed from the "still due"
+  // forecast and the upcoming-payments list below so it is never counted twice.
+  const recognitions = useMemo(() => closingRecognitions(events, payments), [events, payments]);
+  const recognizedEventIds = useMemo(() => new Set(recognitions.map((r) => r.eventId)), [recognitions]);
+
   const revenueByMonth = useMemo(() => {
     const map = new Map<string, number>();
+    for (const r of recognitions) map.set(r.month, (map.get(r.month) ?? 0) + r.amount);
     // A partial payment (deposit_paid/balance_paid still false, *_paid_amount set) counts only the
     // amount actually received, not the full declared leg — otherwise revenue would be overstated
     // for anyone paying in installments before the leg is fully settled.
@@ -71,7 +79,7 @@ export default function AnalyticsView({
       }
     }
     return map;
-  }, [payments]);
+  }, [payments, recognitions]);
 
   const trailing12 = useMemo(() => {
     const months: { year: number; month: number; key: string; label: string }[] = [];
@@ -118,10 +126,10 @@ export default function AnalyticsView({
       const inPeriod = scope === "year" ? dueYear === selectedYear : monthKey(dueYear, dueMonth) === selectedKey;
       if (!inPeriod) continue;
       if (!p.deposit_paid) total += Number(p.deposit_amount) - Number(p.deposit_paid_amount ?? 0);
-      if (!p.balance_paid) total += Number(p.balance_amount) - Number(p.balance_paid_amount ?? 0);
+      if (!p.balance_paid && !recognizedEventIds.has(p.event_id)) total += Number(p.balance_amount) - Number(p.balance_paid_amount ?? 0);
     }
     return total;
-  }, [payments, scope, selectedYear, selectedKey]);
+  }, [payments, scope, selectedYear, selectedKey, recognizedEventIds]);
 
   const periodForecast = periodActualRevenue + periodForecastExtra;
 
@@ -140,9 +148,16 @@ export default function AnalyticsView({
         rows.push({ date: p.balance_paid_at, clientName: event.client_name, label: p.balance_paid ? "יתרה" : "יתרה (חלקי)", pkg: pkgLabel, amount: received });
       }
     }
+    for (const r of recognitions) {
+      if (r.month !== selectedKey) continue;
+      const event = eventById.get(r.eventId);
+      if (!event?.closed_at) continue;
+      const pkgLabel = PACKAGE_LABELS[event.package as keyof typeof PACKAGE_LABELS] ?? event.package;
+      rows.push({ date: event.closed_at, clientName: event.client_name, label: "יתרה (נוספה בסגירת אירוע)", pkg: pkgLabel, amount: r.amount });
+    }
     rows.sort((a, b) => a.date.localeCompare(b.date));
     return rows;
-  }, [payments, eventById, selectedKey]);
+  }, [payments, eventById, selectedKey, recognitions]);
 
   const monthLabel = `${HEBREW_MONTHS[selectedMonth - 1]} ${selectedYear}`;
 
@@ -237,7 +252,7 @@ export default function AnalyticsView({
           rows.push({ eventId: p.event_id, clientName: event.client_name, amount: remaining, dueDate: p.balance_due_date, label: p.deposit_paid_amount ? "מקדמה (יתרה לתשלום)" : "מקדמה" });
         }
       }
-      if (!p.balance_paid) {
+      if (!p.balance_paid && !recognizedEventIds.has(p.event_id)) {
         const remaining = Number(p.balance_amount) - Number(p.balance_paid_amount ?? 0);
         if (remaining > 0) {
           rows.push({ eventId: p.event_id, clientName: event.client_name, amount: remaining, dueDate: p.balance_due_date, label: p.balance_paid_amount ? "יתרה (יתרה לתשלום)" : "יתרה" });
@@ -246,7 +261,7 @@ export default function AnalyticsView({
     }
     rows.sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"));
     return rows;
-  }, [payments, eventById]);
+  }, [payments, eventById, recognizedEventIds]);
 
   const upcomingTotal = upcoming.reduce((sum, r) => sum + r.amount, 0);
 
