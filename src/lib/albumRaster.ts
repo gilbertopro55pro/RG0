@@ -204,6 +204,7 @@ type ResolvedPhoto = {
   shadow?: number;
   shadowDistance?: number;
   shadowBlur?: number;
+  shadowAngle?: number;
   zoom?: number;
   maskId?: string;
   adjustments?: PhotoAdjustments;
@@ -222,6 +223,7 @@ type ResolvedOrnament = {
   rotation?: number;
   opacity?: number;
   shadow?: number;
+  shadowAngle?: number;
   borderWidth?: number;
   borderColor?: string;
 };
@@ -236,6 +238,7 @@ type ResolvedShape = {
   rotation?: number;
   opacity?: number;
   shadow?: number;
+  shadowAngle?: number;
   borderWidth?: number;
   borderColor?: string;
   shapeStyle?: "rect-outline" | "circle-outline" | "line";
@@ -297,6 +300,7 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
           shadow: el.shadow,
           shadowDistance: el.shadowDistance,
           shadowBlur: el.shadowBlur,
+          shadowAngle: el.shadowAngle,
           zoom: el.zoom,
           maskId: el.maskId,
           adjustments: {
@@ -327,6 +331,7 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
           rotation: el.rotation,
           opacity: el.opacity,
           shadow: el.shadow,
+          shadowAngle: el.shadowAngle,
           borderWidth: el.borderWidth,
           borderColor: el.borderColor,
         };
@@ -343,6 +348,7 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
           rotation: el.rotation,
           opacity: el.opacity,
           shadow: el.shadow,
+          shadowAngle: el.shadowAngle,
           borderWidth: el.borderWidth,
           borderColor: el.borderColor,
           shapeStyle: el.shapeStyle,
@@ -688,6 +694,10 @@ async function composePhotoTile(
 // distancePct/blurPct independently override the offset/blur that would otherwise be derived from
 // shadowPct alone — undefined (ornaments/shapes, and every already-saved album) keeps the old
 // coupled-to-intensity behavior exactly, matching boxShadowFor's own CSS-side convention.
+// angleDeg: same screen convention as boxShadowFor (0=right, 90=down, 180=left, 270=up, clockwise)
+// — undefined defaults to 45 (down-right), this function's own fixed direction before the param
+// existed, so an already-rendered album's shadow stays pixel-identical unless a photographer
+// explicitly set an angle.
 async function shadowLayerPng(
   width: number,
   height: number,
@@ -697,12 +707,17 @@ async function shadowLayerPng(
   rotationDeg?: number,
   distancePct?: number,
   blurPct?: number,
+  angleDeg?: number,
   pageWidth?: number,
   pageHeight?: number
 ): Promise<{ buffer: Buffer; left: number; top: number } | null> {
   if (!shadowPct) return null;
   const blurPx = Math.max(1, ((blurPct ?? shadowPct) / 100) * 24);
-  const offsetPx = Math.round(((distancePct ?? shadowPct) / 100) * 10);
+  const offsetPx = ((distancePct ?? shadowPct) / 100) * 10;
+  const magnitude = offsetPx * Math.SQRT2;
+  const angleRad = ((angleDeg ?? 45) * Math.PI) / 180;
+  const offsetX = magnitude * Math.cos(angleRad);
+  const offsetY = magnitude * Math.sin(angleRad);
   const alpha = 0.15 + (shadowPct / 100) * 0.45;
   const pad = Math.ceil(blurPx * 3);
   let canvasW = width + pad * 2;
@@ -722,8 +737,8 @@ async function shadowLayerPng(
 
   const centerX = frameX + width / 2;
   const centerY = frameY + height / 2;
-  let left = Math.round(centerX + offsetPx - canvasW / 2);
-  let top = Math.round(centerY + offsetPx - canvasH / 2);
+  let left = Math.round(centerX + offsetX - canvasW / 2);
+  let top = Math.round(centerY + offsetY - canvasH / 2);
   const cropLeft = Math.max(0, -left);
   const cropTop = Math.max(0, -top);
   const cropRight = pageWidth != null ? Math.max(0, left + canvasW - pageWidth) : 0;
@@ -913,7 +928,7 @@ export async function renderAlbumPageJpeg({
         const factor = Math.max(0, el.opacity) / 100;
         for (let i = 3; i < rendered.data.length; i += 4) rendered.data[i] = Math.round(rendered.data[i] * factor);
       }
-      const ornamentShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation, undefined, undefined, pageWidthPx, pageHeightPx);
+      const ornamentShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation, undefined, undefined, el.shadowAngle, pageWidthPx, pageHeightPx);
       if (ornamentShadow) composites.push({ input: ornamentShadow.buffer, left: ornamentShadow.left, top: ornamentShadow.top });
       composites.push({ input: rendered.data, raw: { width: rendered.width, height: rendered.height, channels: 4 }, left, top });
       continue;
@@ -927,7 +942,7 @@ export async function renderAlbumPageJpeg({
         const factor = Math.max(0, el.opacity) / 100;
         for (let i = 3; i < tile.data.length; i += 4) tile.data[i] = Math.round(tile.data[i] * factor);
       }
-      const shapeShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation, undefined, undefined, pageWidthPx, pageHeightPx);
+      const shapeShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation, undefined, undefined, el.shadowAngle, pageWidthPx, pageHeightPx);
       if (shapeShadow) composites.push({ input: shapeShadow.buffer, left: shapeShadow.left, top: shapeShadow.top });
       composites.push({ input: tile.data, raw: { width: tile.width, height: tile.height, channels: 4 }, left: Math.round(el.x + tile.left), top: Math.round(el.y + tile.top) });
       continue;
@@ -953,7 +968,7 @@ export async function renderAlbumPageJpeg({
     });
     if (!tile) continue;
     any = true;
-    const shadow = await shadowLayerPng(width, height, el.shadow, frameX, frameY, el.rotation, el.shadowDistance, el.shadowBlur, pageWidthPx, pageHeightPx);
+    const shadow = await shadowLayerPng(width, height, el.shadow, frameX, frameY, el.rotation, el.shadowDistance, el.shadowBlur, el.shadowAngle, pageWidthPx, pageHeightPx);
     if (shadow) composites.push({ input: shadow.buffer, left: shadow.left, top: shadow.top });
     composites.push({ input: tile.data, raw: { width: tile.width, height: tile.height, channels: 4 }, left: Math.round(frameX + tile.left), top: Math.round(frameY + tile.top) });
   }

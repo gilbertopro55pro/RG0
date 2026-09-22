@@ -1,7 +1,8 @@
 import sharp from "sharp";
-import { writePsdBuffer, type Layer } from "ag-psd";
+import { writePsdBuffer, type Layer, type LayerEffectsInfo } from "ag-psd";
+import { infoHandlers } from "ag-psd/dist/additionalInfo.js";
 import { downloadObjectBuffer } from "@/lib/storage";
-import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng, ornamentLayerRaw, composeShapeTile, DPI } from "@/lib/albumRaster";
+import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, ornamentLayerRaw, composeShapeTile, DPI } from "@/lib/albumRaster";
 import { findOrnament } from "@/lib/albumOrnaments";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
@@ -24,14 +25,102 @@ async function pngToRawRgba(buffer: Buffer): Promise<{ data: Buffer; width: numb
   return { data, width: info.width, height: info.height };
 }
 
-// Both border and shadow are baked into raster layers here, NOT live Photoshop Layer Style
-// effects (`effects.stroke`/`effects.dropShadow`) — that was tried across several rounds
-// (correct field shapes verified against a real Photoshop-authored fixture, correct 0-1 opacity
-// scale, clean round-trips through ag-psd's own reader) and real Photoshop still reported
-// "problems reading layers" and rendered some pages as blank/black. Without access to real
-// Photoshop to iterate against, that gap can't be closed reliably from outside — this reverts
-// fully to the plain-raster-layers approach that was verified working (real photographer testing,
-// no errors) before that attempt.
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  const n = parseInt(full, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+// ag-psd writes TWO separate binary blocks for a layer's effects whenever any are present: the
+// legacy Photoshop-5-era `lrFX` block (a fixed binary layout that CANNOT represent Stroke at all,
+// and omits contour/noise/choke/antialiased) and the modern descriptor-based `lfx2` block (which
+// has everything). It writes both, redundantly, for the same layer. Real Photoshop reported
+// "problems reading layers" on files built this way across three earlier attempts at live layer
+// effects here — the earlier fixes (correct 0-1 opacity scale, field shapes verified against a
+// real Photoshop-authored fixture) only ever verified round-tripping through ag-psd's OWN reader,
+// which happily parses back what its own writer produced either way, so none of that caught the
+// real problem. Removing the legacy `lrFX` handler so only the complete `lfx2` block gets written
+// was verified against real Photoshop 2026: opens clean with no warning, Drop Shadow and Stroke
+// both live/editable in the Layer Style dialog exactly as if applied by hand.
+const lrFXHandlerIndex = infoHandlers.findIndex((h) => h.key === "lrFX");
+if (lrFXHandlerIndex !== -1) infoHandlers.splice(lrFXHandlerIndex, 1);
+
+// Real, live Photoshop Layer Style effects — shared by photos, ornaments, and (non-outline) shapes
+// — editable in Photoshop's own Layer Style dialog exactly as if applied by hand. Distance/angle
+// approximate the app's fixed down-right CSS shadow as Photoshop's polar distance+angle form; the
+// blur/opacity numbers mirror boxShadowFor()/the old shadowLayerPng() so it looks the same as the
+// live editor and JPG export. `position: "inside"` for the stroke matches the app's own convention
+// everywhere else (CSS inset box-shadow live, and the SVG-rect-inset-by-half-width technique baked
+// into JPG/PDF export) — the border paints inward from the layer's own edge, never outside it.
+// Every field below (noise, antialiased, contour, layerConceals, choke, showInDialog) is included
+// because real Photoshop-authored files always write the full descriptor; ag-psd's types mark most
+// of them optional, but omitting them was never actually verified against real Photoshop before
+// the first attempt at this (photos only) — see that commit for the investigation.
+// angleDeg is in this app's own screen convention (0=right, 90=down, 180=left, 270=up, clockwise —
+// see boxShadowFor in albumRender.ts). Photoshop's own dropShadow.angle is a DIFFERENT convention:
+// it's the LIGHT source direction (standard math angle, counterclockwise from east, Y-up), and the
+// shadow falls opposite the light — confirmed against Adobe's own docs: angle=90 means light from
+// straight above, shadow straight down. Converting our screen-space shadow-direction angle to
+// Photoshop's light-direction angle needs both a handedness flip (CW vs CCW) and a 180° flip
+// (shadow direction vs light direction), which combine to a single: psAngle = 180 - angleDeg. The
+// default (45, down-right) converts to 135 — exactly this function's old hardcoded value, a good
+// sanity check that the conversion is right.
+// Photoshop's own per-effect Angle field only accepts/displays -180..180 (its own dial UI can't
+// represent, say, 340) — confirmed by real-Photoshop testing: a value written outside that range
+// (270, 340, anything >180) silently displayed as a stuck 180 in the Layer Style dialog, even
+// though the file's own `lagl` bytes were independently verified correct on the exact same file
+// via raw byte parsing. Values already inside -180..180 (e.g. 170, 80, 135) displayed correctly.
+// So the raw 0..360 result must be re-wrapped into -180..180 before writing.
+function psAngleFromScreenAngle(angleDeg: number): number {
+  const normalized = ((180 - angleDeg) % 360 + 360) % 360;
+  return normalized > 180 ? normalized - 360 : normalized;
+}
+
+function buildLayerEffects(shadowPct: number | undefined, borderWidth: number | undefined, borderColor: string | undefined, angleDeg: number | undefined): LayerEffectsInfo | undefined {
+  const effects: LayerEffectsInfo = {};
+  const linearContour = { name: "Linear", curve: [{ x: 0, y: 0 }, { x: 255, y: 255 }] };
+  if (shadowPct) {
+    const blurPx = Math.max(1, (shadowPct / 100) * 24);
+    const offsetPx = (shadowPct / 100) * 10;
+    const opacity = 0.15 + (shadowPct / 100) * 0.45;
+    effects.dropShadow = [
+      {
+        enabled: true,
+        present: true,
+        showInDialog: true,
+        useGlobalLight: false,
+        angle: psAngleFromScreenAngle(angleDeg ?? 45),
+        distance: { units: "Pixels", value: Math.round(offsetPx * Math.SQRT2) },
+        choke: { units: "Pixels", value: 0 },
+        size: { units: "Pixels", value: Math.round(blurPx) },
+        color: { r: 0, g: 0, b: 0 },
+        opacity,
+        blendMode: "multiply",
+        antialiased: false,
+        layerConceals: true,
+        contour: linearContour,
+      },
+    ];
+  }
+  if (borderWidth) {
+    effects.stroke = [
+      {
+        enabled: true,
+        present: true,
+        showInDialog: true,
+        position: "inside",
+        fillType: "color",
+        color: hexToRgb(borderColor ?? "#ffffff"),
+        opacity: 1,
+        blendMode: "normal",
+        size: { units: "Pixels", value: borderWidth },
+        overprint: false,
+      },
+    ];
+  }
+  return Object.keys(effects).length > 0 ? effects : undefined;
+}
 
 // Builds a real, layered .psd — each photo is its own positioned raster layer, and a black & white
 // filter becomes an actual clipped Photoshop "Black & White" adjustment layer (not baked into
@@ -142,25 +231,18 @@ export async function renderAlbumPagePsd({
         if (ornament) source = Buffer.from(ornament.svg.replace("<svg ", `<svg style="color:${el.color ?? "#2e3142"}" `));
       }
       if (!source) continue;
-      const rendered = await ornamentLayerRaw(source, w, h, el.rotation, tintColor, { borderWidth: el.borderWidth, borderColor: el.borderColor });
+      // Border used to be baked as a rectangular trace around the ornament's bounding box (see
+      // ornamentLayerRaw's own comment — it never followed the ornament's real silhouette even
+      // baked). A live Stroke effect follows the actual alpha shape instead, so a non-rectangular
+      // ornament (most of them) gets a correctly-shaped outline now instead of a bounding rectangle.
+      const rendered = await ornamentLayerRaw(source, w, h, el.rotation, tintColor);
       if (!rendered) continue;
       any = true;
       const centerX = el.x + w / 2;
       const centerY = el.y + h / 2;
       const top = Math.round(centerY - rendered.height / 2);
       const left = Math.round(centerX - rendered.width / 2);
-      const ornamentShadow = await shadowLayerPng(w, h, el.shadow, Math.round(el.x), Math.round(el.y), el.rotation, undefined, undefined, pageWidthPx, pageHeightPx);
-      if (ornamentShadow) {
-        const shadowRgba = await pngToRawRgba(ornamentShadow.buffer);
-        children.push({
-          name: "צל",
-          top: ornamentShadow.top,
-          left: ornamentShadow.left,
-          bottom: ornamentShadow.top + shadowRgba.height,
-          right: ornamentShadow.left + shadowRgba.width,
-          imageData: { data: shadowRgba.data, width: shadowRgba.width, height: shadowRgba.height },
-        });
-      }
+      const effects = buildLayerEffects(el.shadow, el.borderWidth, el.borderColor, el.shadowAngle);
       children.push({
         name: "עיטור",
         top,
@@ -169,6 +251,7 @@ export async function renderAlbumPagePsd({
         right: left + rendered.width,
         opacity: (el.opacity ?? 100) / 100,
         imageData: { data: rendered.data, width: rendered.width, height: rendered.height },
+        ...(effects ? { effects } : {}),
       });
       continue;
     }
@@ -177,22 +260,22 @@ export async function renderAlbumPagePsd({
       const h = Math.max(1, Math.round(el.height));
       const frameTop = Math.round(el.y);
       const frameLeft = Math.round(el.x);
-      const tile = await composeShapeTile(w, h, el.color, el.maskId, el.rotation, { borderWidth: el.borderWidth, borderColor: el.borderColor, shapeStyle: el.shapeStyle });
+      // rect-outline/circle-outline shapes have no fill of their own — borderWidth/borderColor
+      // ARE the shape's own stroke (see composeShapeTile's own comment), not a decorative extra
+      // to peel off into a live effect, so those stay exactly as baked. Every other shape (filled,
+      // optionally mask-shaped) gets a live Stroke effect instead, same as photos/ornaments — for a
+      // mask-shaped fill (a heart, say) that also means a correctly heart-shaped outline instead of
+      // the old baked rectangle-then-cropped-by-mask border.
+      const isOutlineShape = el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline";
+      const tile = await composeShapeTile(w, h, el.color, el.maskId, el.rotation, {
+        borderWidth: isOutlineShape ? el.borderWidth : undefined,
+        borderColor: isOutlineShape ? el.borderColor : undefined,
+        shapeStyle: el.shapeStyle,
+      });
       any = true;
       const top = Math.round(frameTop + tile.top);
       const left = Math.round(frameLeft + tile.left);
-      const shapeShadow = await shadowLayerPng(w, h, el.shadow, frameLeft, frameTop, el.rotation, undefined, undefined, pageWidthPx, pageHeightPx);
-      if (shapeShadow) {
-        const shadowRgba = await pngToRawRgba(shapeShadow.buffer);
-        children.push({
-          name: "צל",
-          top: shapeShadow.top,
-          left: shapeShadow.left,
-          bottom: shapeShadow.top + shadowRgba.height,
-          right: shapeShadow.left + shadowRgba.width,
-          imageData: { data: shadowRgba.data, width: shadowRgba.width, height: shadowRgba.height },
-        });
-      }
+      const effects = buildLayerEffects(el.shadow, isOutlineShape ? undefined : el.borderWidth, el.borderColor, el.shadowAngle);
       children.push({
         name: "צורה",
         top,
@@ -201,6 +284,7 @@ export async function renderAlbumPagePsd({
         right: left + tile.width,
         opacity: (el.opacity ?? 100) / 100,
         imageData: { data: tile.data, width: tile.width, height: tile.height },
+        ...(effects ? { effects } : {}),
       });
       continue;
     }
@@ -213,38 +297,25 @@ export async function renderAlbumPagePsd({
     const frameTop = Math.round(el.y);
     const frameLeft = Math.round(el.x);
 
-    // Border is baked into the photo's own pixels (bundled into the same rotated tile as the
-    // photo when rotated, so it spins together as one rigid unit — see composePhotoTile).
-    // Opacity stays a live PSD layer property. Blur has no from-scratch-authorable Smart Filter
-    // equivalent, so it's baked into the pixels too. Shadow is a separate baked raster layer,
-    // composited just underneath — see the module comment above for why none of these are live
-    // Layer Style effects.
+    // Border and shadow are real, live Photoshop Layer Style effects on this layer (see
+    // buildLayerEffects above) — editable in Photoshop's own dialog, not baked into pixels.
+    // Both effects key off the layer's actual alpha silhouette, not its rectangular bounds, so a
+    // rotated or mask-shaped photo still gets a correctly-shaped stroke/shadow with no special
+    // handling needed here. Opacity stays a live PSD layer property. Blur has no
+    // from-scratch-authorable Smart Filter equivalent, so it's still baked into the pixels.
     const tile = await composePhotoTile(buffer, width, height, el.focalX, el.focalY, el.filter === "sepia" ? "sepia" : undefined, false, {
       rotation: el.rotation,
       blur: el.blur,
       zoom: el.zoom,
-      borderWidth: el.borderWidth,
-      borderColor: el.borderColor,
       maskId: el.maskId,
       adjustments: el.adjustments,
       sharpness: el.sharpness,
     });
     if (!tile) continue;
     any = true;
-    const shadow = await shadowLayerPng(width, height, el.shadow, frameLeft, frameTop, el.rotation, undefined, undefined, pageWidthPx, pageHeightPx);
-    if (shadow) {
-      const shadowRgba = await pngToRawRgba(shadow.buffer);
-      children.push({
-        name: "צל",
-        top: shadow.top,
-        left: shadow.left,
-        bottom: shadow.top + shadowRgba.height,
-        right: shadow.left + shadowRgba.width,
-        imageData: { data: shadowRgba.data, width: shadowRgba.width, height: shadowRgba.height },
-      });
-    }
     const top = Math.round(frameTop + tile.top);
     const left = Math.round(frameLeft + tile.left);
+    const effects = buildLayerEffects(el.shadow, el.borderWidth, el.borderColor, el.shadowAngle);
     children.push({
       name: "תמונה",
       top,
@@ -253,6 +324,7 @@ export async function renderAlbumPagePsd({
       right: left + tile.width,
       opacity: (el.opacity ?? 100) / 100,
       imageData: { data: tile.data, width: tile.width, height: tile.height },
+      ...(effects ? { effects } : {}),
     });
     if (el.filter === "bw") {
       children.push({ name: "שחור-לבן", clipping: true, adjustment: { type: "black & white" } });

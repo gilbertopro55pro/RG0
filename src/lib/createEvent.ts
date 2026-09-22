@@ -132,31 +132,11 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
     balance_due_date: eventDate,
   });
 
-  // Auto-provision the gallery the moment the event is booked — same client name and phone,
-  // nothing left for the photographer to retype later in a separate "new gallery" step.
-  // expiry_days (not the old expiry_months, which a later migration's plan-gated check trigger
-  // never accepts as a substitute — see enforce_gallery_expiry_by_plan) is the field that trigger
-  // actually validates; omitting it made this insert fail silently on every single event created
-  // since that migration shipped. 30 matches NewGalleryModal.tsx's own default and is valid on
-  // every plan tier.
-  const { error: galleryError } = await supabase.from("galleries").insert({
-    event_id: event.id,
-    photographer_id: photographerId,
-    title: clientName,
-    // Not customized yet — the gallery's title stays synced to this event's client_name (see
-    // EditEventModal.tsx's save handler) until the photographer explicitly retypes it in gallery
-    // settings, at which point it's frozen and future event renames stop touching it.
-    title_customized: false,
-    client_phone: clientPhone || null,
-    expiry_days: 30,
-    allow_downloads: true,
-  });
-  if (galleryError) {
-    await supabase.from("event_notifications").insert({
-      event_id: event.id,
-      text: `יצירת הגלריה האוטומטית נכשלה (${galleryError.message}) — אפשר ליצור גלריה ידנית לאירוע דרך עמוד הגלריות.`,
-    });
-  }
+  // A gallery is no longer auto-provisioned here — it used to be created the moment ANY event was
+  // booked (new-event form, the public questionnaire, calendar import), which meant it showed up
+  // as an unwanted draft on the galleries page even when the photographer never asked for one.
+  // Gallery creation is now exclusively the explicit "יצירה/קישור גלריה" button on the event card
+  // (GallerySection.tsx → NewGalleryModal.tsx/LinkExistingGalleryModal.tsx).
 
   if (paymentReminderDate) {
     await supabase.from("scheduled_messages").insert({
@@ -201,9 +181,6 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
     (notes?.trim() ? `\nהערות: ${notes.trim()}` : "");
 
   const notifications = [{ event_id: event.id, text: "האירוע נסגר במערכת" }];
-  if (!galleryError) {
-    notifications.push({ event_id: event.id, text: "גלריה נוצרה אוטומטית עבור האירוע" });
-  }
 
   if (!clientPhone) {
     notifications.push({ event_id: event.id, text: "לא הוזן טלפון לקוח — לא נשלחה הודעת וואטסאפ" });

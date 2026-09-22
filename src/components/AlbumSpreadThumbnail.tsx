@@ -130,7 +130,12 @@ export default function AlbumSpreadThumbnail({
               // the image — same fix as AlbumSpreadCanvasEditor.tsx and the desktop app's
               // SpreadPreview.tsx.
               boxShadow: hasBorderShadow
-                ? boxShadowFor(el.shadow, el.type === "photo" ? el.shadowDistance : undefined, el.type === "photo" ? el.shadowBlur : undefined)
+                ? boxShadowFor(
+                    el.shadow,
+                    el.type === "photo" ? el.shadowDistance : undefined,
+                    el.type === "photo" ? el.shadowBlur : undefined,
+                    el.shadowAngle
+                  )
                 : undefined,
               opacity: el.type === "ornament" || el.type === "shape" ? (el.opacity ?? 100) / 100 : undefined,
               transform: hasBorderShadow && el.rotation ? `rotate(${el.rotation}deg)` : undefined,

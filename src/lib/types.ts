@@ -449,6 +449,11 @@ export type GalleryRow = {
   ftp_username: string | null;
   ftp_password: string | null;
   is_portfolio_only: boolean;
+  // false = not yet set up by the photographer (a leftover from the now-removed auto-create-on-
+  // every-event path) — stays linked to its event but hidden from the photographer's own galleries
+  // list until they explicitly set it up via the event card's gallery flow. See migration
+  // 0120_gallery_activated.sql.
+  activated: boolean;
   created_at: string;
 };
 
@@ -581,6 +586,12 @@ export type AlbumPhotoElement = {
   // unchanged until a photographer explicitly drags one of these.
   shadowDistance?: number; // 0-100, default undefined (falls back to `shadow`)
   shadowBlur?: number; // 0-100, default undefined (falls back to `shadow`)
+  // Direction the shadow is cast in, degrees 0-360: 0=right, 90=down, 180=left, 270=up (clockwise,
+  // screen space). undefined defaults to 45 (down-right) EVERYWHERE this is read — the fixed
+  // direction every shadow used before this field existed — so an already-designed album's shadow
+  // never visually shifts just because this shipped; only an explicit drag of the angle slider
+  // writes a real value.
+  shadowAngle?: number;
   zoom?: number; // 100-400, extra scale on top of the object-fit:cover baseline, default 100
   lockAspect?: boolean; // when true, corner-handle resizing preserves the width/height ratio
   maskId?: string; // id into ALBUM_MASKS (src/lib/albumMasks.ts) — an alpha mask applied over the cropped photo
@@ -654,6 +665,7 @@ export type AlbumOrnamentElement = {
   rotation?: number;
   opacity?: number;
   shadow?: number; // 0-100, same scale/meaning as AlbumPhotoElement.shadow
+  shadowAngle?: number; // degrees 0-360, same convention/default as AlbumPhotoElement.shadowAngle
   borderWidth?: number; // px, same scale/meaning as AlbumPhotoElement.borderWidth
   borderColor?: string;
   locked?: boolean; // see AlbumPhotoElement.locked's own comment
@@ -675,6 +687,7 @@ export type AlbumShapeElement = {
   rotation?: number;
   opacity?: number;
   shadow?: number;
+  shadowAngle?: number; // degrees 0-360, same convention/default as AlbumPhotoElement.shadowAngle
   borderWidth?: number;
   borderColor?: string;
   // undefined = the normal solid-fill (optionally mask-clipped) shape. The two outline kinds have
@@ -694,7 +707,7 @@ export type AlbumElement = AlbumPhotoElement | AlbumTextElement | AlbumOrnamentE
 // so styles like a "scattered" scrapbook look (tilted, polaroid-bordered frames) survive being
 // saved and re-applied as a template; older templates simply omit them.
 export type AlbumFrame = Pick<AlbumPhotoElement, "id" | "xPct" | "yPct" | "widthPct" | "heightPct"> &
-  Partial<Pick<AlbumPhotoElement, "rotation" | "borderWidth" | "borderColor" | "shadow">>;
+  Partial<Pick<AlbumPhotoElement, "rotation" | "borderWidth" | "borderColor" | "shadow" | "shadowAngle">>;
 
 export type AlbumTemplateRow = {
   id: string;

@@ -168,30 +168,33 @@ function drawCoverImage(
   const { x, y, width: w, height: h } = rect;
   const imgAspect = image.width / image.height;
   const boxAspect = w / h;
-  let drawW: number;
-  let drawH: number;
-  if (imgAspect > boxAspect) {
-    drawH = h;
-    drawW = h * imgAspect;
+  let baseW: number;
+  let baseH: number;
+  if (imgAspect >= boxAspect) {
+    baseH = h;
+    baseW = h * imgAspect;
   } else {
-    drawW = w;
-    drawH = w / imgAspect;
+    baseW = w;
+    baseH = w / imgAspect;
   }
+  // Cover-fit size first, THEN apply zoom to THAT — mirrors computePhotoFraming (the canvas
+  // editor's own source of truth) and coverCropRaw (the JPG export's own, which already does this
+  // correctly). The previous version positioned the image at the plain cover-fit size first and
+  // only THEN scaled the whole already-positioned box around the FRAME'S CENTER — a fundamentally
+  // different operation from "zoom around the focal point," and one that visibly drifts away from
+  // whichever edge the photographer pinned (e.g. a photo focused near the top, at any real zoom,
+  // crept downward and lost its top edge — confirmed by comparing this same page's PDF output
+  // against its own, correctly-cropped JPG export). zoomPct > 100 (not !== 100) matches
+  // computePhotoFraming's own guard — zoom is only ever meant to grow past cover-fit, never shrink
+  // below it.
+  const zf = opts?.zoom && opts.zoom > 100 ? opts.zoom / 100 : 1;
+  const drawW = baseW * zf;
+  const drawH = baseH * zf;
   const fx = focalXPct / 100;
   const fy = focalYPct / 100;
-  let dx = x - (drawW - w) * fx;
+  const dx = x - (drawW - w) * fx;
   // PDF's y-axis runs bottom-up, while focalY follows the CSS convention (0 = top) — flip it.
-  let dy = y - (drawH - h) * (1 - fy);
-
-  if (opts?.zoom && opts.zoom !== 100) {
-    const zf = opts.zoom / 100;
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    dx = cx - (cx - dx) * zf;
-    dy = cy - (cy - dy) * zf;
-    drawW *= zf;
-    drawH *= zf;
-  }
+  const dy = y - (drawH - h) * (1 - fy);
 
   page.pushOperators(pushGraphicsState(), moveTo(x, y), lineTo(x + w, y), lineTo(x + w, y + h), lineTo(x, y + h), closePath(), clip(), endPath());
   page.drawImage(image, { x: dx, y: dy, width: drawW, height: drawH, opacity: opts?.opacity });
@@ -207,23 +210,32 @@ function drawCoverImage(
 // distancePct/blurPct independently override the offset/spread that would otherwise be derived
 // from shadowPct alone — undefined (ornaments/shapes, and every already-saved album) keeps the old
 // coupled-to-intensity behavior exactly, matching boxShadowFor's own CSS-side convention.
+// angleDeg: same screen convention as boxShadowFor (0=right, 90=down, 180=left, 270=up, clockwise)
+// — undefined defaults to 45 (down-right), this function's own fixed direction before the param
+// existed. X uses the same sign as boxShadowFor directly; Y is negated (PDF's y-axis runs bottom-up
+// while boxShadowFor's screen convention is top-down), same flip the old fixed offsetPt always had.
 function drawPhotoShadow(
   page: PDFPage,
   rect: { x: number; y: number; width: number; height: number },
   shadowPct: number | undefined,
   distancePct?: number,
-  blurPct?: number
+  blurPct?: number,
+  angleDeg?: number
 ) {
   if (!shadowPct) return;
   const offsetPt = ((distancePct ?? shadowPct) / 100) * 10;
   const maxSpread = ((blurPct ?? shadowPct) / 100) * 24;
   const baseAlpha = 0.15 + (shadowPct / 100) * 0.45;
+  const magnitude = offsetPt * Math.SQRT2;
+  const angleRad = ((angleDeg ?? 45) * Math.PI) / 180;
+  const offsetX = magnitude * Math.cos(angleRad);
+  const offsetY = magnitude * Math.sin(angleRad);
   const layers = 4;
   for (let i = layers; i >= 1; i--) {
     const spread = (maxSpread * i) / layers;
     page.drawRectangle({
-      x: rect.x - spread + offsetPt,
-      y: rect.y - spread - offsetPt,
+      x: rect.x - spread + offsetX,
+      y: rect.y - spread - offsetY,
       width: rect.width + spread * 2,
       height: rect.height + spread * 2,
       color: rgb(0, 0, 0),
@@ -291,6 +303,7 @@ export async function generateAlbumPdf({
   onPageRendered,
   resumeFromDoc,
   pageRange,
+  refetchSpread,
 }: {
   album: GalleryAlbumRow;
   spreads: GalleryAlbumSpreadRow[];
@@ -319,6 +332,12 @@ export async function generateAlbumPdf({
   // later call. Omit (or {start:0, end:spreads.length}) to render every page in one call, same as
   // before this param existed.
   pageRange?: { start: number; end: number };
+  // Called immediately before each spread actually renders, to pick up any edit made after `spreads`
+  // was fetched — a real render can run for many minutes (see albumExportJobs.ts's own comment on
+  // this), long enough for the photographer to keep editing pages this same call hasn't reached yet.
+  // Falls back to the spread already in `spreads` if omitted, or if the callback returns null (the
+  // page was deleted mid-export — rendering its last-known content is a reasonable fallback).
+  refetchSpread?: (id: string) => Promise<GalleryAlbumSpreadRow | null>;
 }): Promise<Uint8Array> {
   const cache = downloadCache ?? new Map<string, Buffer | null>();
   // Bounded, least-recently-used cache instead of holding every original for the whole pass — a
@@ -552,8 +571,9 @@ export async function generateAlbumPdf({
 
   const batchStart = pageRange?.start ?? 0;
   const batchEnd = pageRange?.end ?? spreads.length;
-  for (const spread of spreads.slice(batchStart, batchEnd)) {
+  for (const staleSpread of spreads.slice(batchStart, batchEnd)) {
     onPageRendered?.();
+    const spread = (await refetchSpread?.(staleSpread.id)) ?? staleSpread;
     if (spread.layout === "custom") {
       const hasCustomSize = spread.width_cm != null && spread.height_cm != null;
       const pageW = hasCustomSize ? spread.width_cm! * ptPerCm : PAGE_WIDTH;
@@ -579,7 +599,7 @@ export async function generateAlbumPdf({
           if (!image) continue;
           const rect = { x, y, width, height };
           pushFrameRotation(page, rect, el.rotation);
-          drawPhotoShadow(page, rect, el.shadow);
+          drawPhotoShadow(page, rect, el.shadow, undefined, undefined, el.shadowAngle);
           page.drawImage(image, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
           if (el.borderWidth) {
             page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
@@ -597,7 +617,7 @@ export async function generateAlbumPdf({
           if (!image) continue;
           const rect = { x, y, width, height };
           pushFrameRotation(page, rect, el.rotation);
-          drawPhotoShadow(page, rect, el.shadow);
+          drawPhotoShadow(page, rect, el.shadow, undefined, undefined, el.shadowAngle);
           page.drawImage(image, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
           // The stroke is already baked into the image itself for outline shapes (see embedShape) —
           // drawing the usual decorative rect border on top would double it, and would be flatly
@@ -644,7 +664,7 @@ export async function generateAlbumPdf({
           );
           if (!maskedImage) continue;
           pushFrameRotation(page, rect, el.rotation);
-          drawPhotoShadow(page, rect, el.shadow, el.shadowDistance, el.shadowBlur);
+          drawPhotoShadow(page, rect, el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle);
           page.drawImage(maskedImage, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
           if (el.borderWidth) {
             page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
@@ -673,7 +693,7 @@ export async function generateAlbumPdf({
         );
         if (!image) continue;
         pushFrameRotation(page, rect, el.rotation);
-        drawPhotoShadow(page, rect, el.shadow, el.shadowDistance, el.shadowBlur);
+        drawPhotoShadow(page, rect, el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle);
         drawCoverImage(page, image, rect, el.focalX, el.focalY, { opacity: el.opacity !== undefined ? el.opacity / 100 : undefined, zoom: el.zoom });
         if (el.borderWidth) {
           page.drawRectangle({
