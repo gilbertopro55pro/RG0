@@ -293,6 +293,10 @@ export default async function PublicGalleryPage({
                 color: el.color,
                 rotation: el.rotation,
                 opacity: el.opacity,
+                shadow: el.shadow,
+                shadowAngle: el.shadowAngle,
+                borderWidth: el.borderWidth,
+                borderColor: el.borderColor,
               };
             }
             // An empty frame (no photo assigned yet) never reaches the client — it's a

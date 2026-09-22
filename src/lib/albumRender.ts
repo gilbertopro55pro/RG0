@@ -70,12 +70,22 @@ export function cssFilterFor(
 // from shadowPct alone — undefined (the default, and every already-saved album) keeps the old
 // coupled-to-intensity behavior exactly. shadowPct always still drives the shadow's alpha (and
 // whether it renders at all).
-export function boxShadowFor(shadowPct: number | undefined, distancePct?: number, blurPct?: number): string | undefined {
+//
+// angleDeg: direction the shadow is cast, 0-360, screen convention (0=right, 90=down, 180=left,
+// 270=up, clockwise). undefined defaults to 45 (down-right) — every shadow's fixed direction
+// before this param existed, back when X and Y offset were both just `offsetPx` (a vector of
+// magnitude offsetPx*sqrt(2) pointing down-right, not offsetPx itself) — so an already-designed
+// album's shadow renders pixel-identical until a photographer explicitly drags the angle slider.
+export function boxShadowFor(shadowPct: number | undefined, distancePct?: number, blurPct?: number, angleDeg?: number): string | undefined {
   if (!shadowPct) return undefined;
   const offsetPx = ((distancePct ?? shadowPct) / 100) * 10;
   const blurPx = ((blurPct ?? shadowPct) / 100) * 24;
   const alpha = 0.15 + (shadowPct / 100) * 0.45;
-  return `${offsetPx}px ${offsetPx}px ${blurPx}px rgba(0,0,0,${alpha})`;
+  const magnitude = offsetPx * Math.SQRT2;
+  const angleRad = ((angleDeg ?? 45) * Math.PI) / 180;
+  const offsetX = (magnitude * Math.cos(angleRad)).toFixed(2);
+  const offsetY = (magnitude * Math.sin(angleRad)).toFixed(2);
+  return `${offsetX}px ${offsetY}px ${blurPx}px rgba(0,0,0,${alpha})`;
 }
 
 // text-shadow (unlike box-shadow) accepts multiple comma-separated shadows on one property, so a
