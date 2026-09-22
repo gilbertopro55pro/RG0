@@ -68,7 +68,9 @@ export const STAGE_NOTIFY_CLIENT: Partial<Record<StageKey, string>> = {
   gallery_upload: "הגלריה מוכנה — אפשר לבחור תמונות",
   video_approval: "הוידאו מוכן לצפייה ואישור",
   album_approval: "עיצוב האלבום מוכן לאישור",
-  final_delivery: "כל החומרים שלכם מוכנים!",
+  // final_delivery deliberately has NO entry: marking "מסירה סופית" done only marks it done — it no
+  // longer jumps straight into a WhatsApp message. The photographer sends the update themselves with
+  // the normal per-stage "שליחת עדכון" button that appears on every done stage.
 };
 
 // Fallback text for the manual "שליחת עדכון ללקוח" button (EventDetailView's SendUpdateButton)
@@ -284,6 +286,15 @@ export const STORAGE_CAP_BYTES_BY_TIER: Record<SubscriptionTier, number | null> 
   basic: 100 * 1024 * 1024 * 1024,
   standard: 750 * 1024 * 1024 * 1024,
   studio_pro: null,
+};
+
+// Gallery video uploads: not available on the entry tier (null), 300MB per file on פרו, 500MB on
+// פרו+. Mirrored in the DB by enforce_gallery_video_by_plan (migration 0122) — that trigger is the
+// real enforcement; this is what the UI checks/shows before a byte is uploaded.
+export const VIDEO_MAX_BYTES_BY_TIER: Record<SubscriptionTier, number | null> = {
+  basic: null,
+  standard: 300 * 1024 * 1024,
+  studio_pro: 500 * 1024 * 1024,
 };
 
 // Closed, bounded set of gallery retention windows — the main lever a capped tier has over its own

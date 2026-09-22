@@ -1,13 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { getOrCreatePreviewUrl } from "@/lib/galleryPhotoPreview";
 
 export const runtime = "nodejs";
 
 // Called by the FTP server after it has already streamed a file's bytes straight to R2 itself
 // (it holds its own scoped R2 credentials — see photographer-flow-ftp's README) — this route only
 // registers the resulting gallery_photos row, mirroring /api/desktop/galleries/[id]/photos'
-// registration step. See authenticate/route.ts's comment for why a shared secret, not a user
-// session, gates this.
+// registration step (including its own preview-generation trigger — see that route's own comment
+// for why relying on the lazy /preview fallback alone left photos uploaded through paths like this
+// one permanently preview-less). See authenticate/route.ts's comment for why a shared secret, not
+// a user session, gates this.
 export async function POST(request: Request) {
   const secret = request.headers.get("x-ftp-server-secret");
   if (!secret || secret !== process.env.FTP_SERVER_SECRET) {
@@ -56,5 +59,14 @@ export async function POST(request: Request) {
   if (error || !photo) {
     return NextResponse.json({ error: error?.message ?? "insert failed" }, { status: 500 });
   }
+
+  after(async () => {
+    try {
+      await getOrCreatePreviewUrl(supabase, { id: photo.id, gallery_id: galleryId, storage_path: path, preview_storage_path: null });
+    } catch (e) {
+      console.error("[ftp-server-photos] preview generation failed", photo.id, e);
+    }
+  });
+
   return NextResponse.json({ id: photo.id });
 }

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { ADMIN_EMAIL } from "@/lib/admin";
+import { closingRecognitions, monthKeyIsrael } from "@/lib/closeEvent";
 import { timeOfDayGreeting } from "@/lib/greeting";
 import type {
   CustomPackageRow,
@@ -193,7 +194,13 @@ export default async function DashboardPage() {
 
     const now = new Date();
     const currentKey = `${now.getFullYear()}-${now.getMonth()}`;
-    const monthTotal = revenueByMonth.get(currentKey) ?? 0;
+    // Balance left unpaid at an event's closing counts as revenue in the month chosen/derived at
+    // closing (see closeEvent.ts) — and, being recognized, is no longer part of the "still due"
+    // forecast extra below, so it can't be counted twice.
+    const recognitions = closingRecognitions(events ?? [], payments ?? []);
+    const recognizedEventIds = new Set(recognitions.map((r) => r.eventId));
+    const recognizedThisMonth = recognitions.filter((r) => r.month === monthKeyIsrael(now)).reduce((sum, r) => sum + r.amount, 0);
+    const monthTotal = (revenueByMonth.get(currentKey) ?? 0) + recognizedThisMonth;
 
     // "Forecast for this month" = revenue already received this month, plus whatever's still
     // unpaid but due (balance_due_date) within this same month — the only due-date field the data
@@ -206,7 +213,7 @@ export default async function DashboardPage() {
       const due = new Date(p.balance_due_date);
       if (`${due.getFullYear()}-${due.getMonth()}` !== currentKey) return;
       if (!p.deposit_paid) monthForecastExtra += Number(p.deposit_amount) - Number(p.deposit_paid_amount ?? 0);
-      if (!p.balance_paid) monthForecastExtra += Number(p.balance_amount) - Number(p.balance_paid_amount ?? 0);
+      if (!p.balance_paid && !recognizedEventIds.has(p.event_id)) monthForecastExtra += Number(p.balance_amount) - Number(p.balance_paid_amount ?? 0);
     });
 
     heroData = {

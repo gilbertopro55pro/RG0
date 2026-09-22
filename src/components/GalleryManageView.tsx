@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -69,7 +69,7 @@ import PhotoCullingModal from "@/components/PhotoCullingModal";
 import GalleryVideosSection from "@/components/GalleryVideosSection";
 import GalleryFtpSection from "@/components/GalleryFtpSection";
 import { detectFacesInImageUrl, clusterFaces, type FaceBox } from "@/lib/faceRecognition";
-import { GALLERY_EXPIRY_OPTIONS, GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, type SubscriptionPlan, type SubscriptionTier } from "@/lib/stages";
+import { GALLERY_EXPIRY_OPTIONS, GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, VIDEO_MAX_BYTES_BY_TIER, type SubscriptionPlan, type SubscriptionTier } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import { ALLOWED_ACCEPT, isAllowedImageFile, isHeicFile, convertHeicIfNeeded, putFileWithProgress } from "@/lib/imageUpload";
@@ -82,6 +82,29 @@ import {
 } from "@/lib/activeUploadLock";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
+
+type ZipJobPart = {
+  partIndex: number;
+  partCount: number;
+  status: "pending" | "processing" | "ready" | "failed";
+  errorMessage: string | null;
+  downloadUrl: string | null;
+  processedCount: number;
+  totalCount: number;
+};
+type ZipBatchState = { batchId: string; parts: ZipJobPart[] };
+const ZIP_NO_FOLDER_KEY = "none";
+
+// Attached to the document before click — a detached anchor's click() is a silent no-op on some
+// engines (WebKit especially), which reads as "nothing happens, no save dialog".
+function triggerZipAnchorDownload(url: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 
 const CLOSE_ANIMATION_MS = 220;
 
@@ -263,6 +286,17 @@ export default function GalleryManageView({
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(searchParams.get("favorites") === "1");
   const [activeLabelFilter, setActiveLabelFilter] = useState<string | null>(null);
   const [zippingFavorites, setZippingFavorites] = useState(false);
+  // Photographer-side ZIP downloads (favorites / slideshow / selected) go through the same background
+  // zip-job system as the client gallery — options screen first (which tabs, which quality), then a
+  // progress panel while the parts build and download on their own. The old inline route streamed the
+  // whole archive in one request and got cut off mid-stream on big selections, leaving a truncated,
+  // unopenable ZIP (macOS: "Error 94 - Bad message").
+  const [downloadOptions, setDownloadOptions] = useState<{ photoIds: string[] } | null>(null);
+  const [downloadSelectedFolders, setDownloadSelectedFolders] = useState<Set<string>>(new Set());
+  const [downloadQuality, setDownloadQuality] = useState<"full" | "web">("full");
+  const [zipBatch, setZipBatch] = useState<ZipBatchState | null>(null);
+  const [zipPanelOpen, setZipPanelOpen] = useState(false);
+  const downloadedZipPartsRef = useRef<Set<number>>(new Set());
   const [cullingIndex, setCullingIndex] = useState<number | null>(null);
   const [showRejectedOnly, setShowRejectedOnly] = useState(false);
   const [portfolioCategoryPhoto, setPortfolioCategoryPhoto] = useState<PhotoWithUrl | null>(null);
@@ -709,34 +743,84 @@ export default function GalleryManageView({
     }
   };
 
-  // One zip, organized into a subfolder per tab — same shared endpoint the client-facing gallery
-  // uses, except the photographer's own session bypasses the published/allow-downloads gates
-  // (those control what the client can do, not what the photographer can do with their own data).
-  //
-  // Submitted as a real form POST instead of fetch()+blob() so the browser streams the response
-  // straight to disk instead of buffering the whole zip in JS memory first — a large gallery's
-  // full-res zip can run into the gigabytes, which silently hangs forever on mobile Safari's
-  // ~1-1.5GB per-tab memory ceiling (the same bug that was hitting the client-facing gallery).
-  // There's no response body to read back on failure this way, so this only does the cheap
-  // pre-flight check and otherwise trusts the same download-zip route the client-facing gallery
-  // already relies on.
+  // Opens the options screen (which tabs to include, which quality) for a set of photos — or, if a
+  // batch is already building, just reopens its progress panel instead of starting a second job.
+  // The zip itself keeps one subfolder per tab, same as the client gallery's download.
   const downloadPhotosZip = (photoIds: string[]) => {
     if (photoIds.length === 0 || zippingFavorites) return;
-    setZippingFavorites(true);
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = `/api/gallery/${gallery.access_token}/download-zip`;
-    form.style.display = "none";
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = "photoIds";
-    input.value = JSON.stringify(photoIds);
-    form.appendChild(input);
-    document.body.appendChild(form);
-    form.submit();
-    form.remove();
-    setTimeout(() => setZippingFavorites(false), 2000);
+    if (zipBatch && !zipBatch.parts.every((p) => p.status === "ready" || p.status === "failed")) {
+      setZipPanelOpen(true);
+      return;
+    }
+    const chosen = new Set(photoIds);
+    const keys = new Set<string>();
+    for (const p of photos) if (chosen.has(p.id)) keys.add(p.folder_id ?? ZIP_NO_FOLDER_KEY);
+    setDownloadSelectedFolders(keys);
+    setDownloadOptions({ photoIds });
   };
+
+  const toggleDownloadFolder = (key: string) =>
+    setDownloadSelectedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const startZipJob = async (photoIds: string[], quality: "full" | "web") => {
+    if (photoIds.length === 0 || zippingFavorites) return;
+    setZippingFavorites(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/gallery/${gallery.access_token}/zip-jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoIds, quality }),
+      });
+      const data: { batchId?: string; partCount?: number; error?: string } = await res.json().catch(() => ({}));
+      if (!res.ok || !data.batchId || !data.partCount) {
+        setError(data.error ?? "שגיאה בהכנת ההורדה");
+        return;
+      }
+      downloadedZipPartsRef.current = new Set();
+      setZipBatch({
+        batchId: data.batchId,
+        parts: Array.from({ length: data.partCount }, (_, i) => ({
+          partIndex: i,
+          partCount: data.partCount!,
+          status: "pending" as const,
+          errorMessage: null,
+          downloadUrl: null,
+          processedCount: 0,
+          totalCount: 0,
+        })),
+      });
+      setZipPanelOpen(true);
+    } finally {
+      setZippingFavorites(false);
+    }
+  };
+
+  // Polls while any part is still building; each part that becomes ready downloads itself once (a
+  // plain link click, spaced out because browsers drop back-to-back downloads that carry no fresh
+  // user gesture). Closing the panel only hides it — the job and this polling keep running.
+  useEffect(() => {
+    if (!zipBatch) return;
+    if (!zipBatch.parts.some((p) => p.status === "pending" || p.status === "processing")) return;
+    const timer = setTimeout(async () => {
+      const res = await fetch(`/api/gallery/${gallery.access_token}/zip-jobs/${zipBatch.batchId}`);
+      if (!res.ok) return;
+      const data: { parts: ZipJobPart[] } = await res.json();
+      setZipBatch((prev) => (prev ? { ...prev, parts: data.parts } : prev));
+      const ready = data.parts.filter((part) => part.status === "ready" && part.downloadUrl && !downloadedZipPartsRef.current.has(part.partIndex));
+      ready.forEach((part, i) => {
+        downloadedZipPartsRef.current.add(part.partIndex);
+        setTimeout(() => triggerZipAnchorDownload(part.downloadUrl!), i * 700);
+      });
+    }, 3000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zipBatch]);
 
   const downloadFavoritesZip = () => downloadPhotosZip(photos.filter((p) => p.is_favorite).map((p) => p.id));
   const downloadSlideshowZip = () => downloadPhotosZip([...slideshowPhotoIds]);
@@ -1790,7 +1874,9 @@ export default function GalleryManageView({
           // opens one to check it, the preview is already sitting in storage. `redirect: "manual"`
           // stops the browser from following (and wastefully downloading) the redirect target; the
           // route's own work (resize/compress/persist) already happened server-side by then.
-          fetch(`/api/galleries/${gallery.id}/photos/${photoRow.id}/preview`, { redirect: "manual" }).catch(() => {});
+          fetch(`/api/galleries/${gallery.id}/photos/${photoRow.id}/preview`, { redirect: "manual" }).catch((e) =>
+            console.error("preview warm-up failed", photoRow.id, e)
+          );
         } catch (e) {
           // Catch-all for anything outside the retry loop above (e.g. a bug in this code itself) —
           // without this the loop would abort silently and leave "מעלה..." on screen forever with
@@ -1903,23 +1989,65 @@ export default function GalleryManageView({
     if (directoryInputRef.current) directoryInputRef.current.value = "";
   };
 
-  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const dropped = await readDataTransferItems(e.dataTransfer.items);
+  const handleDroppedItems = async (items: DataTransferItemList) => {
+    const dropped = await readDataTransferItems(items);
     if (dropped.length === 0) return;
     const allowed = dropped.filter((d) => isAllowedImageFile(d.file));
     const rejected = dropped.filter((d) => !isAllowedImageFile(d.file)).map((d) => d.file);
     const cache = new Map(folders.map((f) => [f.name, f.id]));
-    const items: { file: File; folderId: string | null }[] = [];
+    const resolved: { file: File; folderId: string | null }[] = [];
     for (const { file, relativePath } of allowed) {
       const folderName = folderNameFromPath(relativePath);
       const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
-      items.push({ file, folderId });
+      resolved.push({ file, folderId });
     }
-    await uploadResolvedFiles(items);
+    await uploadResolvedFiles(resolved);
     reportRejectedFormats(rejected);
   };
+
+  // The whole page is the drop target (not just the zone) — a photographer scrolled deep into a long
+  // gallery can drop straight onto whatever is under the cursor. Only real file drags count
+  // (dataTransfer.types includes "Files"), so the album/photo reordering drags that share these
+  // events are left alone. The enter/leave counter is the standard fix for dragleave firing every
+  // time the cursor crosses a child element boundary, which would otherwise flicker the overlay.
+  // Kept in a ref so the listeners (registered once) always call the latest handler.
+  const handleDroppedItemsRef = useRef(handleDroppedItems);
+  handleDroppedItemsRef.current = handleDroppedItems;
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: globalThis.DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files");
+    const onEnter = (e: globalThis.DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth++;
+      setIsDragging(true);
+    };
+    const onOver = (e: globalThis.DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+    };
+    const onLeave = (e: globalThis.DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setIsDragging(false);
+    };
+    const onDropWindow = (e: globalThis.DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setIsDragging(false);
+      if (e.dataTransfer) void handleDroppedItemsRef.current(e.dataTransfer.items);
+    };
+    window.addEventListener("dragenter", onEnter);
+    window.addEventListener("dragover", onOver);
+    window.addEventListener("dragleave", onLeave);
+    window.addEventListener("drop", onDropWindow);
+    return () => {
+      window.removeEventListener("dragenter", onEnter);
+      window.removeEventListener("dragover", onOver);
+      window.removeEventListener("dragleave", onLeave);
+      window.removeEventListener("drop", onDropWindow);
+    };
+  }, []);
 
   const createFolder = async () => {
     const name = newFolderName.trim();
@@ -2971,6 +3099,78 @@ export default function GalleryManageView({
         </div>
       )}
 
+      {/* Upload zone — sits ABOVE the photos so adding more never means scrolling to the bottom of a
+          long gallery. Empty gallery: the big dashed target. Once at least one photo exists it goes
+          transparent (just a quiet row of links), because the real drop target is now the whole page —
+          see the window-level drag listeners near handleDrop, which show the full-screen overlay below
+          while files are dragged anywhere over the page. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ALLOWED_ACCEPT}
+        multiple
+        onChange={(e) => handleFiles(e.target.files)}
+        className="hidden"
+        id={`gallery-upload-${gallery.id}`}
+      />
+      <input
+        ref={directoryInputRef}
+        type="file"
+        accept={ALLOWED_ACCEPT}
+        multiple
+        onChange={(e) => handleDirectoryFiles(e.target.files)}
+        className="hidden"
+        id={`gallery-upload-dir-${gallery.id}`}
+        {...({ webkitdirectory: "true", directory: "true" } as unknown as Record<string, string>)}
+      />
+      {photos.length === 0 ? (
+        <>
+          <div
+            style={{ minHeight: "15cm" }}
+            className={`flex rounded-lg border-2 border-dashed transition-colors mb-2 ${isDragging ? "border-amber-deep bg-amber-bg" : "border-line"}`}
+          >
+            <label
+              htmlFor={`gallery-upload-${gallery.id}`}
+              className={`w-full flex items-center justify-center px-6 text-base font-semibold cursor-pointer text-ink text-center ${BTN_PRESS}`}
+            >
+              {uploading ?? (isDragging ? "שחררו כאן להעלאה" : "העלאת תמונות — או גררו לכאן תמונות ותיקיות")}
+            </label>
+          </div>
+          <label
+            htmlFor={`gallery-upload-dir-${gallery.id}`}
+            className={`w-full flex items-center justify-center rounded-lg py-2 mb-1.5 text-xs font-semibold bg-white border border-line text-ink-soft cursor-pointer ${BTN_PRESS}`}
+          >
+            העלאת תיקייה שלמה מהמחשב
+          </label>
+          <p className="text-[11px] text-ink-soft mb-4 text-center">פורמטים נתמכים בלבד: JPG, JPEG, PNG, GIF, BMP</p>
+        </>
+      ) : (
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mb-3 text-[11px] text-ink-soft text-center">
+          <label htmlFor={`gallery-upload-${gallery.id}`} className="cursor-pointer font-semibold text-ink underline underline-offset-2">
+            {uploading ?? "העלאת תמונות"}
+          </label>
+          {!uploading && (
+            <>
+              <span>· אפשר גם לגרור תמונות ותיקיות לכל מקום בעמוד</span>
+              <label htmlFor={`gallery-upload-dir-${gallery.id}`} className="cursor-pointer font-semibold underline underline-offset-2">
+                העלאת תיקייה שלמה
+              </label>
+              <span>· JPG, JPEG, PNG, GIF, BMP</span>
+            </>
+          )}
+        </div>
+      )}
+      {isDragging && (
+        <div
+          className="fixed inset-0 z-[90] pointer-events-none flex items-center justify-center p-4"
+          style={{ background: "rgba(201,119,46,0.14)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)" }}
+        >
+          <div className="w-full h-full rounded-3xl border-4 border-dashed flex items-center justify-center text-xl font-bold text-amber-deep" style={{ borderColor: "var(--color-amber-deep)" }}>
+            שחררו כאן להעלאה לגלריה
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1.5 mb-3">
         <div className="flex items-center gap-1.5 overflow-x-auto sm:flex-1 sm:min-w-0">
           <button
@@ -3215,53 +3415,8 @@ export default function GalleryManageView({
         </div>
       )}
 
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
-        style={{ minHeight: "15cm" }}
-        className={`flex rounded-lg border-2 border-dashed transition-colors ${isDragging ? "border-amber-deep bg-amber-bg" : "border-line"}`}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={ALLOWED_ACCEPT}
-          multiple
-          onChange={(e) => handleFiles(e.target.files)}
-          className="hidden"
-          id={`gallery-upload-${gallery.id}`}
-        />
-        <label
-          htmlFor={`gallery-upload-${gallery.id}`}
-          className={`w-full flex items-center justify-center px-6 text-base font-semibold cursor-pointer text-ink text-center ${BTN_PRESS}`}
-        >
-          {uploading ?? (isDragging ? "שחררו כאן להעלאה" : "העלאת תמונות — או גררו לכאן תמונות ותיקיות")}
-        </label>
-      </div>
-      <input
-        ref={directoryInputRef}
-        type="file"
-        accept={ALLOWED_ACCEPT}
-        multiple
-        onChange={(e) => handleDirectoryFiles(e.target.files)}
-        className="hidden"
-        id={`gallery-upload-dir-${gallery.id}`}
-        {...({ webkitdirectory: "true", directory: "true" } as unknown as Record<string, string>)}
-      />
-      <label
-        htmlFor={`gallery-upload-dir-${gallery.id}`}
-        className={`w-full flex items-center justify-center rounded-lg py-2 mt-1.5 text-xs font-semibold bg-white border border-line text-ink-soft cursor-pointer ${BTN_PRESS}`}
-      >
-        העלאת תיקייה שלמה מהמחשב
-      </label>
-      <p className="text-[11px] text-ink-soft mt-1.5 text-center">
-        פורמטים נתמכים בלבד: JPG, JPEG, PNG, GIF, BMP
-      </p>
 
-      <GalleryVideosSection galleryId={gallery.id} allowed={nonBasicTierAllowed} />
+      <GalleryVideosSection galleryId={gallery.id} allowed={nonBasicTierAllowed} maxBytes={VIDEO_MAX_BYTES_BY_TIER[effectiveExpiryTier] ?? 0} />
       <GalleryFtpSection
         galleryId={gallery.id}
         allowed={SUBSCRIPTION_PLANS[photographerPlan].tier === "studio_pro" || photographerEmail === ADMIN_EMAIL}
@@ -3512,6 +3667,140 @@ export default function GalleryManageView({
 
       {/* Same full-screen indeterminate-spinner visual language as the calendar-scan flow
           (ProfileSettingsView) — a delete has no real percentage to report either. */}
+      {/* ZIP download options — which tabs to include and in what quality, shown before the background
+          zip job starts (same choices the client gallery offers for "download all"). */}
+      {downloadOptions &&
+        (() => {
+          const chosenIds = new Set(downloadOptions.photoIds);
+          const pending = photos.filter((p) => chosenIds.has(p.id));
+          const countByKey = new Map<string, number>();
+          for (const p of pending) countByKey.set(p.folder_id ?? ZIP_NO_FOLDER_KEY, (countByKey.get(p.folder_id ?? ZIP_NO_FOLDER_KEY) ?? 0) + 1);
+          const tabRows = [
+            ...folders.filter((f) => countByKey.has(f.id)).map((f) => ({ key: f.id, name: f.name, count: countByKey.get(f.id) ?? 0 })),
+            ...(countByKey.has(ZIP_NO_FOLDER_KEY) ? [{ key: ZIP_NO_FOLDER_KEY, name: "כללי (ללא לשונית)", count: countByKey.get(ZIP_NO_FOLDER_KEY) ?? 0 }] : []),
+          ];
+          const selectedPhotoIds = pending.filter((p) => downloadSelectedFolders.has(p.folder_id ?? ZIP_NO_FOLDER_KEY)).map((p) => p.id);
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.45)" }} onClick={() => setDownloadOptions(null)}>
+              <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <h2 className="text-lg font-bold mb-1 font-display">הורדת תמונות</h2>
+                <p className="text-xs text-ink-soft mb-4">{pending.length} תמונות נבחרו להורדה</p>
+
+                {folders.length > 0 && tabRows.length > 0 && (
+                  <div className="mb-5">
+                    <p className="text-xs text-ink-soft mb-2.5">אילו לשוניות להוריד?</p>
+                    <div className="space-y-1.5">
+                      {tabRows.map((row) => (
+                        <label key={row.key} className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-line bg-white text-sm">
+                          <input type="checkbox" checked={downloadSelectedFolders.has(row.key)} onChange={() => toggleDownloadFolder(row.key)} />
+                          <span className="flex-1">{row.name}</span>
+                          <span className="text-xs text-ink-soft font-data">{row.count}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-ink-soft mb-2.5">באיזו איכות להוריד?</p>
+                <div className="space-y-1.5 mb-5">
+                  <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-line bg-white text-sm">
+                    <input type="radio" name="manage-download-quality" checked={downloadQuality === "full"} onChange={() => setDownloadQuality("full")} />
+                    איכות מלאה — הקבצים המקוריים
+                  </label>
+                  <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-line bg-white text-sm">
+                    <input type="radio" name="manage-download-quality" checked={downloadQuality === "web"} onChange={() => setDownloadQuality("web")} />
+                    איכות מותאמת לרשת — קובץ קטן יותר (עד כ-3MB לתמונה)
+                  </label>
+                </div>
+
+                {selectedPhotoIds.length === 0 && <p className="text-xs mb-3 font-semibold text-rose">יש לבחור לפחות לשונית אחת</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setDownloadOptions(null);
+                      startZipJob(selectedPhotoIds, downloadQuality);
+                    }}
+                    disabled={selectedPhotoIds.length === 0}
+                    className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-40"
+                  >
+                    הורדת {selectedPhotoIds.length} תמונות
+                  </button>
+                  <button onClick={() => setDownloadOptions(null)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
+                    ביטול
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+      {/* ZIP build progress — every part downloads on its own the moment it's ready. Closing this only
+          hides it; the job (and the auto-download polling) keeps running in the background. */}
+      {zipBatch && zipPanelOpen &&
+        (() => {
+          const zipDone = zipBatch.parts.every((p) => p.status === "ready" || p.status === "failed");
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.45)" }}>
+              <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet">
+                {zipDone ? (
+                  <>
+                    <h2 className="text-lg font-bold mb-2 font-display">{zipBatch.parts.every((p) => p.status === "failed") ? "ההורדה נכשלה" : "ההורדה הושלמה 🎉"}</h2>
+                    <p className="text-sm text-ink-soft mb-4">
+                      {zipBatch.parts.every((p) => p.status === "failed")
+                        ? "לא הצלחנו להכין את הקובץ — אפשר לנסות שוב."
+                        : zipBatch.parts.length > 1
+                          ? `כל ${zipBatch.parts.length} הקבצים ירדו למחשב שלך.`
+                          : "הקובץ ירד למחשב שלך."}
+                    </p>
+                    {zipBatch.parts.some((p) => p.status === "failed") && !zipBatch.parts.every((p) => p.status === "failed") && (
+                      <p className="text-xs text-rose mb-4">חלק מהתמונות לא נכללו בהורדה בגלל שגיאה — אפשר לנסות שוב.</p>
+                    )}
+                    {zipBatch.parts.filter((p) => p.status === "ready" && p.downloadUrl).map((part) => (
+                      <a key={part.partIndex} href={part.downloadUrl!} className="block text-sm font-semibold text-amber-deep underline mb-2">
+                        {zipBatch.parts.length > 1 ? `הורדת חלק ${part.partIndex + 1} שוב` : "הורדת הקובץ שוב"}
+                      </a>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setZipPanelOpen(false);
+                        setZipBatch(null);
+                      }}
+                      className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white mt-2"
+                    >
+                      סגירה
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-lg font-bold mb-2 font-display">מכינים את ההורדה</h2>
+                    <p className="text-sm text-ink-soft mb-4">
+                      {zipBatch.parts.length > 1 ? `ההורדה מחולקת ל-${zipBatch.parts.length} קבצי ZIP — כל חלק יורד אוטומטית ברגע שהוא מוכן.` : "קובץ ה-ZIP יורד אוטומטית ברגע שהוא מוכן."}
+                    </p>
+                    <div className="space-y-2 mb-4">
+                      {zipBatch.parts.map((part) => (
+                        <div key={part.partIndex} className="flex items-center justify-between text-sm rounded-lg px-3 py-2.5 border border-line bg-white">
+                          <span>{zipBatch.parts.length > 1 ? `חלק ${part.partIndex + 1} מתוך ${part.partCount}` : "הקובץ"}</span>
+                          {part.status === "ready" ? (
+                            <span className="text-sage font-semibold">מוכן ✓</span>
+                          ) : part.status === "failed" ? (
+                            <span className="text-rose">נכשל</span>
+                          ) : (
+                            <span className="text-ink-soft font-data">{part.totalCount > 0 ? `${Math.round((part.processedCount / part.totalCount) * 100)}%` : "מכינים..."}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-ink-soft mb-3">אפשר לסגור את החלון — ההכנה וההורדה ימשיכו ברקע.</p>
+                    <button onClick={() => setZipPanelOpen(false)} className="w-full rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
+                      סגירה
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
       {deletingPhotos && <IndeterminateProgressCard label="מוחק תמונות..." />}
 
       {/* A delete failure used to only reach the shared `error` state, rendered nowhere near this

@@ -7,8 +7,10 @@ import {
   updateEventInGoogleCalendar,
 } from "@/lib/googleCalendarSync";
 import { deleteEventFromAppleCalendar, syncEventToAppleCalendar, updateEventInAppleCalendar } from "@/lib/appleCalendarSync";
-import { packageLabel } from "@/lib/stages";
-import type { EventRow } from "@/lib/types";
+import { PACKAGE_FLOWS, packageLabel, type PackageType } from "@/lib/stages";
+import { reconcileEventStages } from "@/lib/reconcileEventStages";
+import { calendarEventTitle } from "@/lib/eventDisplayName";
+import type { CustomPackageRow, CustomPackageStageRow, EventRow } from "@/lib/types";
 import { eventsConflict } from "@/lib/eventTime";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -24,6 +26,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const body = await request.json();
   const {
     clientName,
+    eventType,
     clientPhone,
     eventDate,
     eventStartTime,
@@ -31,9 +34,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     eventLocation,
     arrivalTime,
     notes,
+    pkg,
+    customPackageId,
     allowDoubleBooking,
   }: {
     clientName: string;
+    eventType?: string | null;
     clientPhone: string;
     eventDate: string;
     eventStartTime: string | null;
@@ -41,6 +47,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     eventLocation: string;
     arrivalTime: string;
     notes: string;
+    // Both undefined = the caller didn't send package info (older client) — leave it alone.
+    pkg?: PackageType | null;
+    customPackageId?: string | null;
     allowDoubleBooking?: boolean;
   } = body;
 
@@ -81,10 +90,37 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     );
   }
 
+  // Package change after the event already exists: the events row flips its package (xor
+  // package/custom_package_id — both set in ONE update), and event_stages is reconciled to the new
+  // package's flow below. Validated up front so a bad/foreign package id fails before anything is
+  // written.
+  const newPkg: PackageType | null = pkg !== undefined || customPackageId !== undefined ? (customPackageId ? null : (pkg ?? null)) : existing.package;
+  const newCustomId: string | null = pkg !== undefined || customPackageId !== undefined ? (customPackageId ?? null) : existing.custom_package_id;
+  const packageChanged = newPkg !== existing.package || newCustomId !== existing.custom_package_id;
+  let newCustomPackage: CustomPackageRow | null = null;
+  let newCustomStages: CustomPackageStageRow[] = [];
+  if (packageChanged) {
+    if ((newPkg && newCustomId) || (!newPkg && !newCustomId) || (newPkg && !PACKAGE_FLOWS[newPkg])) {
+      return NextResponse.json({ error: "חבילה לא תקינה" }, { status: 400 });
+    }
+    if (newCustomId) {
+      const [{ data: cp }, { data: cs }] = await Promise.all([
+        supabase.from("custom_packages").select("*").eq("id", newCustomId).maybeSingle<CustomPackageRow>(),
+        supabase.from("custom_package_stages").select("*").eq("package_id", newCustomId).order("sort_order", { ascending: true }).returns<CustomPackageStageRow[]>(),
+      ]);
+      if (!cp || !cs) return NextResponse.json({ error: "החבילה המותאמת אישית לא נמצאה" }, { status: 400 });
+      newCustomPackage = cp;
+      newCustomStages = cs;
+    }
+  }
+
   const { data: updated, error: updateError } = await supabase
     .from("events")
     .update({
       client_name: clientName,
+      ...(packageChanged ? { package: newPkg, custom_package_id: newCustomId } : {}),
+      // undefined = the caller didn't send it (older client), so leave the stored value alone.
+      ...(eventType !== undefined ? { event_type: eventType?.trim() || null } : {}),
       client_phone: clientPhone || null,
       event_date: eventDate,
       event_start_time: eventStartTime || null,
@@ -104,6 +140,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: updateError?.message ?? "שגיאה בעדכון האירוע" }, { status: 500 });
   }
 
+  const notifications = [{ event_id: eventId, text: "פרטי האירוע עודכנו" }];
+
+  const oldPackageLabel = packageLabel(existing.package, existing.custom_packages?.name);
+  const currentCustomName = packageChanged ? (newCustomPackage?.name ?? null) : (existing.custom_packages?.name ?? null);
+  const label = packageLabel(updated.package, currentCustomName);
+
+  if (packageChanged) {
+    try {
+      const summaryText = await reconcileEventStages(supabase, eventId, newPkg, newCustomStages);
+      notifications.push({ event_id: eventId, text: `חבילת האירוע שונתה מ"${oldPackageLabel}" ל"${label}" — ${summaryText}` });
+    } catch (e) {
+      // Put the package back so the event never ends up on one package with another's stages.
+      await supabase.from("events").update({ package: existing.package, custom_package_id: existing.custom_package_id }).eq("id", eventId);
+      return NextResponse.json({ error: `שינוי החבילה נכשל: ${e instanceof Error ? e.message : "שגיאה לא ידועה"}` }, { status: 500 });
+    }
+  }
+
   // Keeps the linked gallery's title following the event's client name — but only while the
   // photographer has never explicitly retyped it in gallery settings (title_customized), per
   // explicit request: renaming the event should never touch a gallery title someone deliberately
@@ -116,19 +169,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .eq("title_customized", false);
   }
 
-  const notifications = [{ event_id: eventId, text: "פרטי האירוע עודכנו" }];
-
   const formattedDate = new Date(eventDate).toLocaleDateString("he-IL");
   const timeRangeText = eventStartTime
     ? ` · ${eventStartTime.slice(0, 5)}${eventEndTime ? `-${eventEndTime.slice(0, 5)}` : ""}`
     : "";
-  const label = packageLabel(updated.package, existing.custom_packages?.name);
-  const summary = `${label} · ${clientName}`;
+  const summary = calendarEventTitle({ client_name: clientName, event_type: updated.event_type, event_location: eventLocation });
   const description =
     `${label} · ${clientName}\n` +
     `תאריך: ${formattedDate}${timeRangeText}\n` +
     `לקוח/ה: ${clientName} · טלפון: ${clientPhone || "לא הוזן"}\n` +
-    `שעת צילומי משפחה: ${arrivalTime || "יעודכן"}`;
+    `שעת צילומי משפחה: ${arrivalTime || "יעודכן"}` +
+    (notes?.trim() ? `\nהערות: ${notes.trim()}` : "");
 
   let googleCalendarError: string | null = null;
   let googleCalendarDisconnected = false;

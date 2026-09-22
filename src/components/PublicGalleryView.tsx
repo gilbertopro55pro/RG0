@@ -36,6 +36,9 @@ const CELL_SIZE_DEFAULT = 160;
 const LONG_PRESS_MS = 480;
 const DOUBLE_TAP_MS = 280;
 const NO_FOLDER_KEY = "none";
+// Selections up to this many photos still use the instant download-zip route; anything larger is
+// built by the background zip-job system (see downloadZip below).
+const INLINE_ZIP_MAX_PHOTOS = 12;
 
 // Some engines (WebKit especially) don't reliably fire an <a>'s default navigation from .click()
 // unless the element is actually attached to the document — a detached anchor's click() can be a
@@ -519,6 +522,13 @@ export default function PublicGalleryView({
           // succession — spacing them out is what makes each one actually land.
           await new Promise((resolve) => setTimeout(resolve, 600));
         }
+        return;
+      }
+      // A big selection can't be streamed back inside one request (the server drops the connection
+      // partway and the person is left with a truncated, unopenable ZIP) — those go through the
+      // background zip-job system instead, at the quality this link allows.
+      if (photoIds.length > INLINE_ZIP_MAX_PHOTOS) {
+        await startZipJob(photoIds, restrictedQuality ?? "full");
         return;
       }
       const form = document.createElement("form");

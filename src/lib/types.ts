@@ -99,6 +99,9 @@ export type EventRow = {
   id: string;
   photographer_id: string;
   client_name: string;
+  // Free-text occasion (e.g. "עלייה לתורה") — display-only prefix on the event card via
+  // eventDisplayName(); client_name itself stays the plain client name for messages/contracts.
+  event_type: string | null;
   client_phone: string | null;
   client_email: string | null;
   package: PackageType | null;
@@ -124,6 +127,11 @@ export type EventRow = {
   // their behalf (set via the calendar-scan same-slot-collision checkbox). EventsListView.tsx
   // treats an event as "freelance" when this is true OR package is one of the freelance_* types.
   is_freelance: boolean;
+  // Set only by an explicit "סגירת אירוע" + confirmation (cleared by "שחזור אירוע") — marking every
+  // stage done does NOT close an event. Drives the events list's "הושלמו" filter.
+  closed_at: string | null;
+  // "YYYY-MM" the unpaid balance was recognized in at closing (see closeEvent.ts) — null if nothing was.
+  closed_balance_month: string | null;
   created_at: string;
 };
 

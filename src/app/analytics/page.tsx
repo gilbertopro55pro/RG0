@@ -9,6 +9,8 @@ export type AnalyticsEvent = {
   event_date: string;
   package: PackageType;
   client_name: string;
+  closed_at: string | null;
+  closed_balance_month: string | null;
 };
 
 export default async function AnalyticsPage() {
@@ -19,7 +21,7 @@ export default async function AnalyticsPage() {
 
   const [{ data: photographer }, { data: events }, { data: payments }] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
-    supabase.from("events").select("id, event_date, package, client_name").returns<AnalyticsEvent[]>(),
+    supabase.from("events").select("id, event_date, package, client_name, closed_at, closed_balance_month").returns<AnalyticsEvent[]>(),
     supabase.from("event_payments").select("*").returns<EventPaymentRow[]>(),
   ]);
   if (!photographer) redirect("/");

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { leadQuoteFollowUpMessage } from "@/lib/leadFollowUp";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -35,9 +36,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("name, phone, quoted_amount")
+    .select("name, phone")
     .eq("id", message.lead_id)
-    .single<{ name: string; phone: string | null; quoted_amount: number | null }>();
+    .single<{ name: string; phone: string | null }>();
 
   if (!lead?.phone) {
     await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", message.id);
@@ -47,8 +48,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Same pattern as payment/review reminders: the actual send happens client-side via a wa.me
   // deep link the photographer taps themselves (see PendingClientMessagePrompts.tsx) — no server
   // callback confirms the tap actually happened, just that the prompt was resolved.
-  const message_text =
-    `שלום ${lead.name},\nרצינו לבדוק מה שלומכם ולהמשיך מהמקום שעצרנו — שלחנו הצעת מחיר של ₪${lead.quoted_amount ?? 0} ונשמח לשמוע אם יש שאלות או שתרצו לתאם.`;
+  const { data: photographer } = await supabase
+    .from("photographers")
+    .select("whatsapp_signature")
+    .eq("id", user.id)
+    .maybeSingle<{ whatsapp_signature: string | null }>();
+  const message_text = leadQuoteFollowUpMessage(lead.name, photographer?.whatsapp_signature);
 
   await supabase
     .from("scheduled_messages")

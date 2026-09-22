@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import EventTypeField from "@/components/EventTypeField";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { EventRow } from "@/lib/types";
+import type { CustomPackageRow, EventRow } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
+import { PACKAGE_LABELS, type PackageType } from "@/lib/stages";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import NativeDateTimeField from "@/components/NativeDateTimeField";
@@ -18,6 +21,11 @@ export default function EditEventModal({
 }) {
   const router = useRouter();
   const [clientName, setClientName] = useState(event.client_name);
+  const [eventType, setEventType] = useState(event.event_type ?? "");
+  // Same value convention as NewEventModal: a built-in PackageType key, or `custom:<id>`.
+  const initialPkgValue = event.package ?? `custom:${event.custom_package_id}`;
+  const [pkgValue, setPkgValue] = useState<string>(initialPkgValue);
+  const [customPackages, setCustomPackages] = useState<Pick<CustomPackageRow, "id" | "name">[]>([]);
   const [clientPhone, setClientPhone] = useState(event.client_phone ?? "");
   const [eventDate, setEventDate] = useState(event.event_date);
   const [eventStartTime, setEventStartTime] = useState(event.event_start_time ?? "");
@@ -32,6 +40,34 @@ export default function EditEventModal({
   const [deleting, setDeleting] = useState(false);
   const entered = useModalEntered();
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await createClient()
+        .from("custom_packages")
+        .select("id, name")
+        .order("sort_order", { ascending: true })
+        .returns<Pick<CustomPackageRow, "id" | "name">[]>();
+      if (!cancelled) setCustomPackages(data ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Every package the account can pick, the event's CURRENT one first (per explicit request — it
+  // should read as "what this event has now"), then the rest: built-ins, then the photographer's
+  // own custom packages. If the current package is a custom one that was since deleted, the list
+  // simply has no matching entry and the select falls back to showing the first option.
+  const packageOptions = useMemo(() => {
+    const all = [
+      ...(Object.keys(PACKAGE_LABELS) as PackageType[]).map((k) => ({ value: k as string, label: PACKAGE_LABELS[k] })),
+      ...customPackages.map((cp) => ({ value: `custom:${cp.id}`, label: cp.name })),
+    ];
+    return [...all.filter((o) => o.value === initialPkgValue), ...all.filter((o) => o.value !== initialPkgValue)];
+  }, [customPackages, initialPkgValue]);
+  const packageChanged = pkgValue !== initialPkgValue;
+
   const submit = async (allowDoubleBooking = false) => {
     if (!clientName || !eventDate) return;
     setSaving(true);
@@ -43,6 +79,9 @@ export default function EditEventModal({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         clientName,
+        eventType,
+        pkg: pkgValue.startsWith("custom:") ? null : pkgValue,
+        customPackageId: pkgValue.startsWith("custom:") ? pkgValue.slice(7) : null,
         clientPhone,
         eventDate,
         eventStartTime: eventStartTime || null,
@@ -114,6 +153,26 @@ export default function EditEventModal({
           </button>
         </div>
         <div className="space-y-3">
+          <EventTypeField value={eventType} onChange={setEventType} />
+          <div>
+            <label className="text-xs block mb-1 text-ink-soft">חבילה</label>
+            <select
+              value={pkgValue}
+              onChange={(e) => setPkgValue(e.target.value)}
+              className="w-full rounded-lg px-3 py-2.5 text-sm font-medium text-ink border border-line bg-white"
+            >
+              {packageOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.value === initialPkgValue ? `${o.label} (החבילה הנוכחית)` : o.label}
+                </option>
+              ))}
+            </select>
+            {packageChanged && (
+              <p className="text-[11px] text-amber-deep mt-1.5 leading-relaxed">
+                שינוי החבילה יעדכן את שלבי העבודה באירוע, בפורטל הלקוח וביומן: שלבים של החבילה החדשה יתווספו, ושלבים שאינם שייכים לה יוסרו (גם אם כבר סומנו כהושלמו).
+              </p>
+            )}
+          </div>
           <div>
             <label className="text-xs block mb-1 text-ink-soft">שם הלקוח</label>
             <input

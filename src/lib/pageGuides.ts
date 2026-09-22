@@ -12,7 +12,7 @@ export type Guide = {
   sections: GuideSection[];
 };
 
-export type PageGuideKey = "galleries" | "client-portals" | "leads" | "waitlist" | "analytics" | "quote-builder" | "calendar-scan";
+export type PageGuideKey = "galleries" | "client-portals" | "leads" | "waitlist" | "analytics" | "quote-builder" | "calendar-scan" | "new-event" | "event-card";
 
 export const GUIDE_LANG_LABELS: Record<GuideLang, string> = {
   he: "עברית",
@@ -629,6 +629,244 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         {
           heading: "Завершение данных",
           body: "Нажатие на событие в списке открывает форму «новое событие» с предзаполненными именем, датой, временем, местом и заметками (а также задатком/остатком, если они распознаны в описании) — каждое поле можно отредактировать перед сохранением. После сохранения исходное событие в календаре обновляется и перекрашивается в обычный цвет системы, поэтому оно не появится снова при следующем сканировании.",
+        },
+      ],
+    },
+  },
+  "new-event": {
+    he: {
+      title: "מדריך: אירוע חדש",
+      intro:
+        "הטופס הזה פותח אירוע חדש במערכת בשלושה שלבים קצרים: פרטי הלקוח/ה והחבילה, מתי ואיפה, ותשלום. בסיום האירוע נשמר, נוסף ליומן Google שלכם (אם חיברתם אותו), ואפשר לשלוח ללקוח/ה חוזה לחתימה והודעת פתיחה בוואטסאפ.",
+      sections: [
+        {
+          heading: "שלבים לפתיחת אירוע",
+          body: "1. שלב ראשון — בחרו סוג אירוע, הזינו שם לקוח/ה וטלפון, ובחרו חבילה.\n2. שלב שני — בחרו תאריך (חובה), שעות, מיקום, שעת הגעה לצילומי משפחה והערות.\n3. שלב שלישי — הזינו מקדמה ויתרה, ואם רוצים סמנו תזכורת תשלום אוטומטית.\n4. לחצו \"שמירת האירוע\" ואשרו.\n5. בחרו אם לשלוח חוזה לחתימה (או דלגו).\n6. בסוף לחצו על שליחת עדכון בוואטסאפ ללקוח/ה, או עברו ישר לעמוד האירוע.",
+        },
+        {
+          heading: "סוג האירוע",
+          body: "רשימה נפתחת: חתונה, חינה, בת מצווה, בר מצווה, עלייה לתורה, הכנסת ספר תורה, ברית, בריתה ומגנטים. לא מצאתם? בחרו \"אחר — הקלדה חופשית\" והקלידו את הסוג בעצמכם — אחרי שמירת האירוע הסוג יישמר ברשימה ויופיע גם באירועים הבאים. האירוע יוצג בכרטיס כ\"סוג האירוע - שם הלקוח/ה\", למשל: עלייה לתורה - יוני כהן. השדה אינו חובה.",
+        },
+        {
+          heading: "שם ופרטי קשר",
+          body: "שם הלקוח/ה הוא שדה חובה כדי להמשיך. הטלפון משמש לתזכורות ולשליחת הודעות בוואטסאפ — בלעדיו אי אפשר לשלוח ללקוח/ה עדכון מהמערכת.",
+        },
+        {
+          heading: "בחירת חבילה",
+          body: "החבילה (המסומנת במסגרת בולטת) קובעת אילו שלבי עבודה יופיעו באירוע ובאיזה סדר. ברירת המחדל היא חבילה בשם \"ברירת מחדל\" עם שני שלבים בלבד: יום הצילום ומסירה סופית. אפשר לבחור חבילה מלאה מהרשימה, או ליצור חבילה מותאמת אישית משלכם עם \"+ חבילה מותאמת אישית חדשה\". את חבילת ברירת המחדל אפשר לערוך בהגדרות.",
+        },
+        {
+          heading: "מתי ואיפה",
+          body: "התאריך והשעות משמשים גם לסנכרון עם יומן Google ולזיהוי כפילויות. אם כבר קיים אירוע חופף באותו תאריך ובאותן שעות, המערכת תציע להכניס את האירוע החדש לרשימת המתנה במקום לשמור אותו.",
+        },
+        {
+          heading: "תשלום ותזכורת",
+          body: "מקדמה ויתרה בשקלים. סימון \"תזכורת תשלום אוטומטית ליתרה\" קובע תאריך שבו המערכת תשאל אתכם אם היתרה שולמה — ורק אם לא, תשלח ללקוח/ה תזכורת. כברירת מחדל התאריך הוא יום אחרי האירוע.",
+        },
+        {
+          heading: "חוזה והודעת פתיחה",
+          body: "אחרי השמירה אפשר לבחור תבנית חוזה, לערוך את התנאים רק עבור האירוע הזה, וליצור קישור לחתימה דיגיטלית שאותו שולחים ללקוח/ה. אפשר גם לדלג ולפתוח חוזה מאוחר יותר מעמוד האירוע. בשלב האחרון הכפתור פותח את הוואטסאפ שלכם עם הודעה מוכנה — פרטי האירוע, המקדמה והיתרה וקישור לפורטל האישי של הלקוח/ה. אתם בודקים ושולחים בעצמכם.",
+        },
+      ],
+    },
+    en: {
+      title: "Guide: New event",
+      intro:
+        "This form creates a new event in three short steps: client and package, when and where, and payment. When you finish, the event is saved, added to your Google Calendar (if connected), and you can send the client a contract to sign and an opening WhatsApp message.",
+      sections: [
+        {
+          heading: "Steps to create an event",
+          body: "1. Step one — choose an event type, enter the client's name and phone, and pick a package.\n2. Step two — pick a date (required), times, location, family-photos arrival time and notes.\n3. Step three — enter the deposit and balance, and optionally turn on an automatic payment reminder.\n4. Tap \"Save event\" and confirm.\n5. Choose whether to send a contract for signature (or skip it).\n6. Finally, send the client a WhatsApp update, or go straight to the event page.",
+        },
+        {
+          heading: "Event type",
+          body: "A dropdown: wedding, henna, bat mitzvah, bar mitzvah, aliyah to the Torah, Torah scroll dedication, brit milah, brit bat, and magnets. Not in the list? Choose \"Other — free text\" and type the type yourself — once the event is saved, it is kept in the list and appears for your next events too. The event is shown on its card as \"event type - client name\", for example: Aliyah to the Torah - Yoni Cohen. This field is optional.",
+        },
+        {
+          heading: "Name and contact details",
+          body: "The client's name is required to continue. The phone number is used for reminders and WhatsApp messages — without it the system can't send the client an update.",
+        },
+        {
+          heading: "Choosing a package",
+          body: "The package (in the highlighted frame) decides which work stages the event has, and in what order. The default is a package called \"ברירת מחדל\" (Default) with just two stages: the shoot day and final delivery. You can pick a full package from the list, or build your own with \"+ New custom package\". You can edit the default package in Settings.",
+        },
+        {
+          heading: "When and where",
+          body: "The date and times are also used for Google Calendar sync and for detecting overlaps. If another event already overlaps on the same date and hours, the system offers to put the new event on the waitlist instead of saving it.",
+        },
+        {
+          heading: "Payment and reminder",
+          body: "Deposit and balance in shekels. Turning on \"automatic payment reminder for the balance\" sets a date on which the system asks you whether the balance was paid — and only if not, sends the client a reminder. By default the date is the day after the event.",
+        },
+        {
+          heading: "Contract and opening message",
+          body: "After saving you can pick a contract template, edit the terms for this event only, and create a digital signing link to send to the client. You can also skip it and create a contract later from the event page. In the last step, the button opens your WhatsApp with a ready message — the event details, deposit and balance, and a link to the client's personal portal. You review and send it yourself.",
+        },
+      ],
+    },
+    ru: {
+      title: "Руководство: Новое событие",
+      intro:
+        "Эта форма создаёт новое событие в три коротких шага: клиент и пакет, когда и где, и оплата. В конце событие сохраняется, добавляется в ваш Google Календарь (если он подключён), а клиенту можно отправить договор на подпись и первое сообщение в WhatsApp.",
+      sections: [
+        {
+          heading: "Шаги создания события",
+          body: "1. Шаг первый — выберите тип события, введите имя и телефон клиента и выберите пакет.\n2. Шаг второй — выберите дату (обязательно), время, место, время прибытия на семейные фото и заметки.\n3. Шаг третий — введите задаток и остаток, при желании включите автоматическое напоминание об оплате.\n4. Нажмите «Сохранить событие» и подтвердите.\n5. Выберите, отправлять ли договор на подпись (или пропустите).\n6. В конце отправьте клиенту сообщение в WhatsApp или сразу перейдите на страницу события.",
+        },
+        {
+          heading: "Тип события",
+          body: "Выпадающий список: свадьба, хна, бат-мицва, бар-мицва, подъём к Торе, внесение свитка Торы, брит-мила, брит-бат и магниты. Нет нужного? Выберите «Другое — свободный ввод» и введите тип сами — после сохранения события он останется в списке и появится в следующих событиях. На карточке событие отображается как «тип события - имя клиента», например: Подъём к Торе - Йони Коэн. Поле необязательное.",
+        },
+        {
+          heading: "Имя и контакты",
+          body: "Имя клиента обязательно, чтобы продолжить. Телефон используется для напоминаний и сообщений в WhatsApp — без него система не сможет отправить клиенту обновление.",
+        },
+        {
+          heading: "Выбор пакета",
+          body: "Пакет (в выделенной рамке) определяет, какие этапы работы будут в событии и в каком порядке. По умолчанию выбран пакет «ברירת מחדל» («По умолчанию») всего с двумя этапами: день съёмки и финальная передача. Можно выбрать полный пакет из списка или создать свой через «+ Новый персональный пакет». Пакет по умолчанию можно изменить в настройках.",
+        },
+        {
+          heading: "Когда и где",
+          body: "Дата и время также используются для синхронизации с Google Календарём и для поиска пересечений. Если в те же дату и часы уже есть событие, система предложит добавить новое событие в список ожидания вместо сохранения.",
+        },
+        {
+          heading: "Оплата и напоминание",
+          body: "Задаток и остаток в шекелях. Включение «автоматического напоминания об остатке» задаёт дату, когда система спросит вас, оплачен ли остаток, — и только если нет, отправит клиенту напоминание. По умолчанию дата — на следующий день после события.",
+        },
+        {
+          heading: "Договор и первое сообщение",
+          body: "После сохранения можно выбрать шаблон договора, изменить условия только для этого события и создать ссылку для цифровой подписи, которую вы отправляете клиенту. Можно пропустить и создать договор позже на странице события. На последнем шаге кнопка открывает ваш WhatsApp с готовым сообщением — детали события, задаток и остаток и ссылка на личный портал клиента. Проверяете и отправляете вы сами.",
+        },
+      ],
+    },
+  },
+  "event-card": {
+    he: {
+      title: "מדריך: כרטיס אירוע",
+      intro:
+        "כרטיס האירוע הוא מרכז השליטה של אירוע אחד: הפרטים שלו, התשלומים, החוזה, הגלריה, הפורטל של הלקוח/ה ומסלול העבודה שלב אחרי שלב. כל הפעולות בכרטיס הן בלחיצה אחת — אין צורך בלחיצה כפולה.",
+      sections: [
+        {
+          heading: "שלבים לעבודה עם כרטיס אירוע",
+          body: "1. בדקו למעלה את פרטי האירוע (תאריך, חבילה, טלפון, מיקום והערות), ואם צריך לחצו על \"עריכת פרטי האירוע\".\n2. שלחו ללקוח/ה את הודעת הפתיחה (אם עדיין לא נשלחה), ובחרו אם ליצור חוזה לחתימה.\n3. סמנו תשלומים בכרטיס \"תשלומים\" כשהם מתקבלים.\n4. עברו על \"מסלול התהליך\" שלב אחרי שלב וסמנו כל שלב כשהוא הושלם.\n5. אחרי כל שלב שסומן אפשר לשלוח ללקוח/ה עדכון בוואטסאפ בלחיצה על \"שליחת עדכון\".\n6. כשהכול הסתיים לחצו על \"סגירת אירוע\" ואשרו — כך האירוע עובר לרשימת ״הושלמו״.",
+        },
+        {
+          heading: "החלק העליון — פרטי האירוע",
+          body: "מציג את שם האירוע (סוג האירוע - שם הלקוח/ה), התאריך, שם החבילה ומספר הטלפון. מתחת מופיעים מיקום האירוע, שעת ההגעה לצילומי משפחה וההערות. לחיצה על המיקום פותחת בחירה בין Waze ל-Google Maps. \"עריכת פרטי האירוע\" מאפשרת לשנות כל פרט, כולל החבילה — שינוי חבילה מעדכן את השלבים, את הפורטל של הלקוח/ה ואת האירוע ביומן. \"סנכרון מחדש ליומן\" שומר את האירוע ביומן אם הסנכרון הראשון נכשל.",
+        },
+        {
+          heading: "סגירת אירוע ושחזור אירוע",
+          body: "הכפתור \"סגירת אירוע\" מופיע מתחת לשם החבילה וגם בתחתית הכרטיס. לחיצה עליו פותחת חלון אישור באמצע המסך שמסביר מה יקרה — גם אם עדיין יש שלבים פתוחים, האירוע ייסגר והם יישארו פתוחים כפי שהם. סימון כל השלבים לבדו לא סוגר את האירוע: רק הכפתור והאישור שלכם. אירוע סגור מסומן ב\"✓ האירוע סגור\" ועובר לרשימת ״הושלמו״. כדי להחזיר אותו, היכנסו לכרטיס האירוע ולחצו על \"שחזור אירוע\".",
+        },
+        {
+          heading: "הודעת פתיחה ללקוח/ה",
+          body: "כל עוד ההודעה לא נשלחה מופיע כרטיס \"שליחת הודעת פתיחה ללקוח/ה\". לחיצה על הכפתור פותחת את הוואטסאפ שלכם עם הודעה מוכנה — פרטי האירוע, המקדמה והיתרה וקישור לפורטל האישי. אתם בודקים ושולחים בעצמכם.",
+        },
+        {
+          heading: "תשלומים",
+          body: "לחיצה אחת על שורת \"מקדמה\" או \"יתרה\" פותחת בחירה: שולם במלואו, שולם חלקית (מזינים כמה שולם) או לא שולם. אפשר להוסיף הערה לכל תשלום — היא נשמרת כשעוברים לשדה אחר. הפורטל של הלקוח/ה מציג את מצב התשלומים בהתאם.",
+        },
+        {
+          heading: "פורטל ללקוח, גלריה וחוזה",
+          body: "פורטל ללקוח: קישור אישי שבו הלקוח/ה רואים את סטטוס האירוע והתשלומים בלי להתחבר — אפשר להעתיק אותו או לשלוח בוואטסאפ.\nגלריית תמונות: יצירה או קישור של גלריה לאירוע, וכניסה לניהול הגלריה בלחיצה עליה.\nחוזה הזמנה: יצירת חוזה לחתימה דיגיטלית, תצוגה מקדימה, עריכה והעתקת קישור לחתימה. אחרי שהלקוח/ה חתמו מופיע \"נחתם ✓\" עם שם החותם/ת.",
+        },
+        {
+          heading: "צוות משוייך לאירוע",
+          body: "מופיע רק אם הוספתם חברי צוות. לחיצה אחת על שם משייכת אותו לאירוע (\"משוייך ✓\"), ולחיצה נוספת מסירה את השיוך. חבר צוות רואה רק אירועים ששויכו אליו.",
+        },
+        {
+          heading: "מסלול התהליך — איך מסמנים שלבים",
+          body: "כל שורה היא שלב. לחיצה אחת על השורה מסמנת אותו כבוצע (✓) — לא צריך לחיצה כפולה. אפשר לסמן שלבים בכל סדר; השלב המסומן \"לסמן בוצע\" הוא רק הצעה לשלב הבא. \"מול הלקוח\" הוא שלב שהלקוח/ה רואים בפורטל, \"שלב פנימי\" הוא רק שלכם.\nאחרי שסימנתם שלב מופיעים שני כפתורים: \"שליחת עדכון\" — פותח וואטסאפ עם הודעה מוכנה ללקוח/ה, ו\"↺ ביטול סימון\" — מחזיר את השלב למצב פתוח.\nשלב \"מסירה סופית\" רק מסומן כבוצע ואינו פותח הודעה — כדי לשלוח ללקוח/ה לחצו על \"שליחת עדכון\" כמו בכל שלב אחר. אחרי סימונו תופיע גם שאלה אם לתזמן בקשת ביקורת.\nבשלב \"אישור עיצוב אלבום\" מעלים קודם קובץ PDF, והלקוח/ה מאשרים דרך הפורטל.",
+        },
+        {
+          heading: "יומן התראות",
+          body: "בתחתית הכרטיס מופיע יומן של כל מה שקרה באירוע: שלבים שסומנו, הודעות שנשלחו, שינויי פרטים, סגירה ושחזור, וסנכרון היומן. לקריאה בלבד.",
+        },
+      ],
+    },
+    en: {
+      title: "Guide: Event card",
+      intro:
+        "The event card is the control center for one event: its details, payments, contract, gallery, the client's portal, and the work process stage by stage. Every action on the card is a single click — no double-click is needed anywhere.",
+      sections: [
+        {
+          heading: "Steps for working with an event card",
+          body: "1. Check the event details at the top (date, package, phone, location and notes), and tap \"עריכת פרטי האירוע\" (Edit event details) if something needs changing.\n2. Send the client the opening message (if not sent yet), and choose whether to create a contract to sign.\n3. Mark payments in the \"Payments\" card as they come in.\n4. Go through the \"Process\" stages one by one and mark each when it's done.\n5. After marking a stage you can send the client a WhatsApp update with \"Send update\".\n6. When everything is finished, tap \"Close event\" and confirm — the event then moves to the completed list.",
+        },
+        {
+          heading: "The top part — event details",
+          body: "Shows the event name (event type - client name), the date, the package name and the phone number. Below are the event location, the family-photos arrival time and the notes. Tapping the location offers Waze or Google Maps. \"Edit event details\" lets you change anything, including the package — changing the package updates the stages, the client's portal and the calendar event. \"Re-sync to calendar\" saves the event to your calendar if the first sync failed.",
+        },
+        {
+          heading: "Close event and restore event",
+          body: "The \"Close event\" button sits under the package name and again at the bottom of the card. Tapping it opens a confirmation window in the middle of the screen explaining what will happen — even if some stages are still open, the event will be closed and they stay open as they are. Marking every stage does not close the event by itself: only the button and your confirmation do. A closed event shows \"✓ Event closed\" and moves to the completed list. To bring it back, open the event card and tap \"Restore event\".",
+        },
+        {
+          heading: "Opening message to the client",
+          body: "Until it is sent, a \"Send opening message to the client\" card is shown. Tapping the button opens your WhatsApp with a ready message — the event details, deposit and balance, and a link to the client's personal portal. You review and send it yourself.",
+        },
+        {
+          heading: "Payments",
+          body: "One tap on the \"Deposit\" or \"Balance\" row opens a choice: paid in full, partly paid (enter the amount paid), or unpaid. You can add a note to each payment — it saves when you move to another field. The client's portal shows the payment status accordingly.",
+        },
+        {
+          heading: "Client portal, gallery and contract",
+          body: "Client portal: a personal link where the client sees the event status and payments without logging in — copy it or send it via WhatsApp.\nPhoto gallery: create or link a gallery to the event, and tap it to manage the gallery.\nBooking contract: create a contract for digital signing, preview it, edit it and copy the signing link. Once the client has signed, \"Signed ✓\" appears with the signer's name.",
+        },
+        {
+          heading: "Team assigned to the event",
+          body: "Only appears if you have added team members. One tap on a name assigns them to the event (\"Assigned ✓\"), another tap removes the assignment. A team member only sees events assigned to them.",
+        },
+        {
+          heading: "The process — how to mark stages",
+          body: "Each row is a stage. One tap on the row marks it done (✓) — no double-click needed. You can mark stages in any order; the stage tagged \"Mark done\" is only a suggestion for what's next. \"Client-facing\" stages are visible to the client in the portal; \"Internal stage\" is only for you.\nAfter marking a stage, two buttons appear: \"Send update\" — opens WhatsApp with a ready message to the client, and \"↺ Undo\" — returns the stage to open.\nThe \"Final delivery\" stage only gets marked done and does not open a message — to message the client tap \"Send update\" like on any other stage. After marking it you'll also be asked whether to schedule a review request.\nFor the \"Album design approval\" stage you upload a PDF first, and the client approves through the portal.",
+        },
+        {
+          heading: "Notification log",
+          body: "At the bottom of the card is a log of everything that happened on the event: stages marked, messages sent, detail changes, closing and restoring, and calendar sync. Read-only.",
+        },
+      ],
+    },
+    ru: {
+      title: "Руководство: Карточка события",
+      intro:
+        "Карточка события — центр управления одним событием: его данные, платежи, договор, галерея, портал клиента и рабочий процесс по этапам. Все действия в карточке выполняются одним нажатием — двойной клик нигде не нужен.",
+      sections: [
+        {
+          heading: "Шаги работы с карточкой события",
+          body: "1. Проверьте данные события вверху (дата, пакет, телефон, место и заметки) и при необходимости нажмите «עריכת פרטי האירוע» (Редактировать данные события).\n2. Отправьте клиенту первое сообщение (если ещё не отправлено) и решите, создавать ли договор на подпись.\n3. Отмечайте платежи в карточке «Платежи» по мере поступления.\n4. Проходите этапы в разделе «Процесс» по порядку и отмечайте каждый по завершении.\n5. После отметки этапа можно отправить клиенту сообщение в WhatsApp кнопкой «Отправить обновление».\n6. Когда всё закончено, нажмите «Закрыть событие» и подтвердите — событие перейдёт в список завершённых.",
+        },
+        {
+          heading: "Верхняя часть — данные события",
+          body: "Показывает название события (тип события - имя клиента), дату, название пакета и номер телефона. Ниже — место события, время прибытия на семейные фото и заметки. Нажатие на место предлагает Waze или Google Maps. «Редактировать данные события» позволяет изменить всё, включая пакет — смена пакета обновляет этапы, портал клиента и событие в календаре. «Повторная синхронизация с календарём» сохраняет событие в календаре, если первая синхронизация не удалась.",
+        },
+        {
+          heading: "Закрыть событие и восстановить событие",
+          body: "Кнопка «Закрыть событие» находится под названием пакета и ещё раз внизу карточки. Нажатие открывает окно подтверждения в центре экрана с объяснением, что произойдёт — даже если ещё есть незавершённые этапы, событие будет закрыто, а они останутся открытыми как есть. Отметка всех этапов сама по себе событие не закрывает: только кнопка и ваше подтверждение. Закрытое событие помечено «✓ Событие закрыто» и переходит в список завершённых. Чтобы вернуть его, откройте карточку события и нажмите «Восстановить событие».",
+        },
+        {
+          heading: "Первое сообщение клиенту",
+          body: "Пока сообщение не отправлено, показывается карточка «Отправить первое сообщение клиенту». Нажатие кнопки открывает ваш WhatsApp с готовым сообщением — данные события, задаток и остаток и ссылка на личный портал клиента. Вы проверяете и отправляете его сами.",
+        },
+        {
+          heading: "Платежи",
+          body: "Одно нажатие на строку «Задаток» или «Остаток» открывает выбор: оплачено полностью, оплачено частично (вводите сумму) или не оплачено. К каждому платежу можно добавить заметку — она сохраняется при переходе в другое поле. Портал клиента показывает статус платежей соответственно.",
+        },
+        {
+          heading: "Портал клиента, галерея и договор",
+          body: "Портал клиента: личная ссылка, по которой клиент видит статус события и платежи без входа в систему — её можно скопировать или отправить в WhatsApp.\nГалерея фотографий: создайте или привяжите галерею к событию, нажмите на неё для управления.\nДоговор: создание договора для цифровой подписи, предпросмотр, редактирование и копирование ссылки на подпись. После подписи клиента появляется «Подписан ✓» с именем подписавшего.",
+        },
+        {
+          heading: "Команда, назначенная на событие",
+          body: "Появляется только если вы добавили сотрудников. Одно нажатие на имя назначает его на событие («Назначен ✓»), повторное нажатие снимает назначение. Сотрудник видит только назначенные ему события.",
+        },
+        {
+          heading: "Процесс — как отмечать этапы",
+          body: "Каждая строка — этап. Одно нажатие на строку отмечает его выполненным (✓) — двойной клик не нужен. Этапы можно отмечать в любом порядке; метка «Отметить выполненным» — лишь подсказка, что делать дальше. «С клиентом» — этап, который клиент видит в портале, «Внутренний этап» — только для вас.\nПосле отметки этапа появляются две кнопки: «Отправить обновление» — открывает WhatsApp с готовым сообщением клиенту, и «↺ Отменить отметку» — возвращает этап в открытое состояние.\nЭтап «Финальная передача» только отмечается выполненным и не открывает сообщение — чтобы написать клиенту, нажмите «Отправить обновление», как на любом другом этапе. После отметки также появится вопрос, назначить ли запрос отзыва.\nДля этапа «Утверждение дизайна альбома» сначала загружается PDF, а клиент утверждает его через портал.",
+        },
+        {
+          heading: "Журнал уведомлений",
+          body: "Внизу карточки — журнал всего, что происходило по событию: отмеченные этапы, отправленные сообщения, изменения данных, закрытие и восстановление, синхронизация с календарём. Только для чтения.",
         },
       ],
     },

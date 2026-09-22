@@ -4,10 +4,12 @@ import { GoogleCalendarDisconnectedError, syncEventToGoogleCalendar, updateEvent
 import { syncEventToAppleCalendar } from "@/lib/appleCalendarSync";
 import type { CustomPackageRow, CustomPackageStageRow, EventRow } from "@/lib/types";
 import { eventsConflict } from "@/lib/eventTime";
+import { calendarEventTitle } from "@/lib/eventDisplayName";
 
 export type CreateEventParams = {
   photographerId: string;
   clientName: string;
+  eventType?: string | null;
   clientPhone: string;
   pkg: PackageType | null;
   customPackageId: string | null;
@@ -41,6 +43,7 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
   const {
     photographerId,
     clientName,
+    eventType,
     clientPhone,
     pkg,
     customPackageId,
@@ -104,6 +107,7 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
     .insert({
       photographer_id: photographerId,
       client_name: clientName,
+      event_type: eventType?.trim() || null,
       client_phone: clientPhone || null,
       package: customPackage ? null : pkg,
       custom_package_id: customPackage?.id ?? null,
@@ -193,7 +197,8 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
     `תאריך: ${formattedDate}${timeRangeText}\n` +
     `מקדמה: ₪${deposit} · יתרה לתשלום: ₪${balance}\n` +
     `לקוח/ה: ${clientName} · טלפון: ${clientPhone || "לא הוזן"}\n` +
-    `שעת צילומי משפחה: ${arrivalTime || "יעודכן"}`;
+    `שעת צילומי משפחה: ${arrivalTime || "יעודכן"}` +
+    (notes?.trim() ? `\nהערות: ${notes.trim()}` : "");
 
   const notifications = [{ event_id: event.id, text: "האירוע נסגר במערכת" }];
   if (!galleryError) {
@@ -208,7 +213,7 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
   try {
     const calendarEvent = sourceGoogleCalendarEventId
       ? await updateEventInGoogleCalendar(supabase, photographerId, sourceGoogleCalendarEventId, {
-          summary: `${packageLabelText} · ${clientName}`,
+          summary: calendarEventTitle({ client_name: clientName, event_type: eventType, event_location: eventLocation }),
           description: calendarDescription,
           date: eventDate,
           startTime: eventStartTime,
@@ -216,7 +221,7 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
           recolorToSynced: true,
         })
       : await syncEventToGoogleCalendar(supabase, photographerId, {
-          summary: `${packageLabelText} · ${clientName}`,
+          summary: calendarEventTitle({ client_name: clientName, event_type: eventType, event_location: eventLocation }),
           description: calendarDescription,
           date: eventDate,
           startTime: eventStartTime,
@@ -255,7 +260,7 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
 
   try {
     const appleUid = await syncEventToAppleCalendar(supabase, photographerId, event.id, {
-      summary: `${packageLabelText} · ${clientName}`,
+      summary: calendarEventTitle({ client_name: clientName, event_type: eventType, event_location: eventLocation }),
       description: calendarDescription,
       date: eventDate,
       startTime: eventStartTime,
