@@ -441,6 +441,11 @@ export type GalleryRow = {
   ftp_username: string | null;
   ftp_password: string | null;
   is_portfolio_only: boolean;
+  // false = not yet set up by the photographer (a leftover from the now-removed auto-create-on-
+  // every-event path) — stays linked to its event but hidden from the photographer's own galleries
+  // list until they explicitly set it up via the event card's gallery flow. See migration
+  // 0120_gallery_activated.sql.
+  activated: boolean;
   created_at: string;
 };
 

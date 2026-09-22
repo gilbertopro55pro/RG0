@@ -896,6 +896,9 @@ export default function EventDetailView({
           initialGallery={initialGallery}
           photoCount={galleryPhotoCount}
           coverUrl={galleryCoverUrl}
+          clientName={event.client_name}
+          clientPhone={event.client_phone ?? ""}
+          eventDate={event.event_date}
         />
       )}
 
