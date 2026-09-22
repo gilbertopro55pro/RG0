@@ -66,8 +66,15 @@ if (lrFXHandlerIndex !== -1) infoHandlers.splice(lrFXHandlerIndex, 1);
 // (shadow direction vs light direction), which combine to a single: psAngle = 180 - angleDeg. The
 // default (45, down-right) converts to 135 — exactly this function's old hardcoded value, a good
 // sanity check that the conversion is right.
+// Photoshop's own per-effect Angle field only accepts/displays -180..180 (its own dial UI can't
+// represent, say, 340) — confirmed by real-Photoshop testing: a value written outside that range
+// (270, 340, anything >180) silently displayed as a stuck 180 in the Layer Style dialog, even
+// though the file's own `lagl` bytes were independently verified correct on the exact same file
+// via raw byte parsing. Values already inside -180..180 (e.g. 170, 80, 135) displayed correctly.
+// So the raw 0..360 result must be re-wrapped into -180..180 before writing.
 function psAngleFromScreenAngle(angleDeg: number): number {
-  return ((180 - angleDeg) % 360 + 360) % 360;
+  const normalized = ((180 - angleDeg) % 360 + 360) % 360;
+  return normalized > 180 ? normalized - 360 : normalized;
 }
 
 function buildLayerEffects(shadowPct: number | undefined, borderWidth: number | undefined, borderColor: string | undefined, angleDeg: number | undefined): LayerEffectsInfo | undefined {
