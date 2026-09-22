@@ -143,6 +143,11 @@ export default function EventPricingCalculator({
   const [saveQuoteName, setSaveQuoteName] = useState("");
   const [savingQuote, setSavingQuote] = useState(false);
   const [addingLead, setAddingLead] = useState(false);
+  // "עיגול מחיר" — lets the photographer round the VAT-included total to a clean number by nudging
+  // one supplier's price up or down, instead of the total landing on an odd number like 5,213 ₪.
+  const [roundingOpen, setRoundingOpen] = useState(false);
+  const [roundingTarget, setRoundingTarget] = useState("");
+  const [roundingError, setRoundingError] = useState<string | null>(null);
 
   const selectQuote = (id: string) => {
     setSelectedQuoteId(id);
@@ -290,6 +295,48 @@ export default function EventPricingCalculator({
   }, [hours, rate, mode, quoteVendorRows, supplierList, isExempt, vendorRowPrice]);
 
   const shootDetails = mode === "freelance" ? `${hours} שעות` : `${quoteStartTime}–${quoteEndTime}`;
+
+  // Only offered when there's an actual supplier the adjustment can be absorbed into — a row under
+  // 200 ₪ risks going negative or swinging by a large fraction of its own price for what should be
+  // a small cosmetic tweak to the total.
+  const canRoundPrice = mode !== "freelance" && quoteVendorRows.some((r) => vendorRowPrice(r) > 200);
+
+  const openRounding = () => {
+    setRoundingTarget(String(Math.round(total / 10) * 10));
+    setRoundingError(null);
+    setRoundingOpen(true);
+  };
+  const cancelRounding = () => {
+    setRoundingOpen(false);
+    setRoundingError(null);
+  };
+  // Solves for the one supplier price that makes the VAT-included total land exactly on the
+  // photographer's requested round number: total = (everythingElse + newPrice) * 1.18, so
+  // newPrice = desiredTotal/1.18 - everythingElse. Picks the highest-priced eligible row so the
+  // absorbed adjustment is the smallest relative change and least likely to go negative.
+  const applyPriceRounding = () => {
+    const desiredTotal = Number(roundingTarget);
+    if (!roundingTarget.trim() || !Number.isFinite(desiredTotal) || desiredTotal <= 0) {
+      setRoundingError("יש להזין מחיר תקין");
+      return;
+    }
+    const eligibleRows = quoteVendorRows.filter((r) => vendorRowPrice(r) > 200);
+    if (eligibleRows.length === 0) {
+      setRoundingError("אין ספק עם מחיר מעל 200 ₪ להתאמה");
+      return;
+    }
+    const target = eligibleRows.reduce((max, r) => (vendorRowPrice(r) > vendorRowPrice(max) ? r : max));
+    const everythingElse =
+      hours * rate + quoteVendorRows.filter((r) => r.id !== target.id).reduce((sum, r) => sum + vendorRowPrice(r), 0);
+    const newPrice = Math.round((desiredTotal / (1 + VAT_RATE) - everythingElse) * 100) / 100;
+    if (newPrice < 0) {
+      setRoundingError("המחיר המבוקש נמוך מדי להתאמה");
+      return;
+    }
+    updateVendorRow(target.id, { price: newPrice });
+    setRoundingOpen(false);
+    setRoundingError(null);
+  };
 
   const quoteItems = useMemo((): PriceQuoteItem[] => {
     const shootItem: PriceQuoteItem = { item: "צילום אירוע", details: shootDetails, price: hours * rate };
@@ -694,7 +741,7 @@ export default function EventPricingCalculator({
                           type="number"
                           min={0}
                           placeholder="0"
-                          className="w-16 shrink-0 text-xs font-data bg-transparent outline-none text-left"
+                          className="w-20 shrink-0 text-xs font-data bg-transparent outline-none text-left"
                         />
                         {!managingSuppliers && (
                           <button onClick={() => removeVendorRow(row.id)} className="text-ink-soft text-xs shrink-0" aria-label="הסרת ספק">
@@ -737,6 +784,32 @@ export default function EventPricingCalculator({
                     <span>סה&quot;כ כולל מע&quot;מ</span>
                     <span className="font-data text-amber-deep">{currency(total)}</span>
                   </div>
+                  {canRoundPrice && !roundingOpen && (
+                    <button onClick={openRounding} className="w-full text-[11px] font-semibold text-ink-soft pt-1 text-center">
+                      עיגול מחיר
+                    </button>
+                  )}
+                  {canRoundPrice && roundingOpen && (
+                    <div className="pt-1.5 space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          value={roundingTarget}
+                          onChange={(e) => setRoundingTarget(e.target.value)}
+                          type="number"
+                          min={0}
+                          placeholder="מחיר עגול רצוי"
+                          className="flex-1 min-w-0 rounded-lg px-2 py-1 text-xs border border-line bg-white font-data"
+                        />
+                        <button onClick={applyPriceRounding} className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold bg-ink text-white">
+                          עדכון
+                        </button>
+                        <button onClick={cancelRounding} className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold border border-line text-ink-soft">
+                          ביטול
+                        </button>
+                      </div>
+                      {roundingError && <p className="text-[11px] text-rose">{roundingError}</p>}
+                    </div>
+                  )}
                 </>
               )}
             </div>

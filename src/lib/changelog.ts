@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.52",
+    date: "2026-09-22",
+    changes: [
+      "בונה הצעות מחיר (עוסק מורשה בלבד): נוסף \"עיגול מחיר\" ליד הסכום הכולל מע\"מ — מזינים את המחיר העגול הרצוי, והמערכת מתאימה אוטומטית את אחד הספקים (שמחירו מעל 200 ₪) כך שהסכום הסופי כולל המע\"מ יהיה בדיוק המחיר שביקשתם",
+    ],
+  },
+  {
     version: "2.11.51",
     date: "2026-09-22",
     changes: [
