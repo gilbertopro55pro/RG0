@@ -1959,7 +1959,7 @@ export default function PublicGalleryView({
       {/* Lightbox */}
       {lightboxIndex !== null && visiblePhotos[lightboxIndex] && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+          className="gf-no-enter fixed inset-0 z-50 flex items-center justify-center bg-black/90"
           onClick={() => {
             if (lightboxSwiped.current) {
               lightboxSwiped.current = false;

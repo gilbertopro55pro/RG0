@@ -293,18 +293,31 @@ body {
    own press feedback never overshoots. Kept as one shared rule rather than tuned per-button so the
    whole app's press feel changes together; a specific "fun" moment (e.g. a success confirmation)
    should reach for its own dedicated bounce animation instead of fighting this default. */
+/* Design stage 3 (2026-09-23): the press is now a gentle 3.5% give instead of a 10% squash —
+   at 0.9 large buttons visibly lurched; 0.965 reads as a physical press without drawing the eye.
+   Release uses the app's one motion curve (fast start, no overshoot) over 220ms. */
 button:not(:disabled),
-a[role="button"]:not([aria-disabled="true"]) {
-  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), filter 180ms cubic-bezier(0.16, 1, 0.3, 1);
+a[role="button"]:not([aria-disabled="true"]),
+a.nav-tile {
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), filter 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 button:not(:disabled).js-pressed,
-a[role="button"]:not([aria-disabled="true"]).js-pressed {
+a[role="button"]:not([aria-disabled="true"]).js-pressed,
+a.nav-tile.js-pressed {
   /* !important is deliberate here: some buttons carry their own Tailwind transform utilities
      (e.g. active:scale-95 from the older BTN_PRESS helper) that otherwise win this cascade
      and silently cancel the press animation on exactly the buttons that need it most. */
-  transform: scale(0.9) !important;
-  filter: brightness(0.92) !important;
-  transition: transform 70ms ease-out, filter 70ms ease-out !important;
+  transform: scale(0.965) !important;
+  filter: brightness(0.97) !important;
+  transition: transform 90ms ease-out, filter 90ms ease-out, background-color 90ms ease-out !important;
+}
+/* Full-width rows (the event list) don't shrink — a whole row scaling reads as the page jumping.
+   They take a brief brass wash instead. */
+[data-press="tint"].js-pressed {
+  transform: none !important;
+  filter: none !important;
+  background-color: var(--color-amber-bg) !important;
 }
 
 /* Floating hover lift — nav tiles, glass cards and the solid glass buttons all get a gentle
@@ -315,9 +328,8 @@ a[role="button"]:not([aria-disabled="true"]).js-pressed {
     transition: transform 150ms ease, filter 150ms ease, box-shadow 150ms ease;
   }
   .nav-tile:hover {
-    transform: translateY(-2px) scale(1.03);
-    filter: brightness(1.04);
-    box-shadow: 0 10px 24px rgba(var(--shadow-tint), 0.12);
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 0 var(--glass-hi), 0 8px 22px rgba(var(--shadow-tint), 0.09);
   }
 
   .bg-ink:hover,
@@ -325,5 +337,60 @@ a[role="button"]:not([aria-disabled="true"]).js-pressed {
   .bg-rose:hover {
     transform: translateY(-1px);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 10px 24px rgba(var(--shadow-tint), 0.18);
+  }
+}
+
+/* ---- Motion (design stage 3) ----------------------------------------------------------------
+   One curve everywhere: cubic-bezier(0.16, 1, 0.3, 1) — quick start, long soft landing, no
+   overshoot. Entry animations use fill-mode "backwards" (never "both"): the from-state applies
+   before start, and once finished the element returns to its own styles, so a component's own
+   transform utilities are never frozen by a leftover final keyframe. */
+
+/* Pop-ups: every overlay in the app is a "fixed inset-0 flex" wrapper — bottom sheets align
+   items-end, dialogs items-center. The backdrop fades, the panel rises into place. Photo
+   lightboxes opt out with .gf-no-enter — they already morph the photo via view transitions. Components
+   that set their own inline animation (e.g. the zoom-out on close) keep it — inline wins. */
+.fixed.inset-0.flex.items-end:not(.gf-no-enter),
+.fixed.inset-0.flex.items-center:not(.gf-no-enter) {
+  animation: gf-fade-in 200ms ease-out backwards;
+}
+.fixed.inset-0.flex.items-end:not(.gf-no-enter) > * {
+  animation: gf-sheet-up 440ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.fixed.inset-0.flex.items-center:not(.gf-no-enter) > * {
+  animation: gf-dialog-in 320ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+@keyframes gf-fade-in {
+  from { opacity: 0; }
+}
+@keyframes gf-sheet-up {
+  from { transform: translateY(40px); opacity: 0; }
+}
+@keyframes gf-dialog-in {
+  from { transform: translateY(10px) scale(0.97); opacity: 0; }
+}
+
+/* Progress bars that should fill in on load (the home revenue bar). Grows from the start edge —
+   the right, in this RTL app. */
+.gf-grow {
+  transform-origin: right center;
+  animation: gf-grow 1100ms cubic-bezier(0.16, 1, 0.3, 1) 150ms backwards;
+}
+@keyframes gf-grow {
+  from { transform: scaleX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fixed.inset-0.flex.items-end,
+  .fixed.inset-0.flex.items-center,
+  .fixed.inset-0.flex.items-end > *,
+  .fixed.inset-0.flex.items-center > *,
+  .gf-grow {
+    animation: none !important;
+  }
+  button:not(:disabled).js-pressed,
+  a[role="button"]:not([aria-disabled="true"]).js-pressed,
+  a.nav-tile.js-pressed {
+    transform: none !important;
   }
 }
