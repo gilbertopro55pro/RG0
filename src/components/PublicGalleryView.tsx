@@ -276,6 +276,7 @@ export default function PublicGalleryView({
   const [transitionPhotoId, setTransitionPhotoId] = useState<string | null>(null);
   const [favoritesPanelOpen, setFavoritesPanelOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(initiallyConfirmed);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -666,8 +667,13 @@ export default function PublicGalleryView({
   const confirmSelection = async () => {
     setSubmitting(true);
     await saveFavorites();
-    await fetch(`/api/gallery/${token}/confirm-selection`, { method: "POST" });
+    const res = await fetch(`/api/gallery/${token}/confirm-selection`, { method: "POST" }).catch(() => null);
     setSubmitting(false);
+    if (!res?.ok) {
+      const data = await res?.json().catch(() => null);
+      setConfirmError(data?.error ?? "שליחת הבחירה נכשלה — נסו שוב");
+      return;
+    }
     setConfirmOpen(false);
     setSubmitted(true);
     setFavoritesPanelOpen(false);
@@ -1328,7 +1334,10 @@ export default function PublicGalleryView({
 
           {!selectionMode && !submitted && (
             <button
-              onClick={() => setConfirmOpen(true)}
+              onClick={() => {
+                setConfirmError(null);
+                setConfirmOpen(true);
+              }}
               className={`w-full py-2.5 text-sm md:text-base font-semibold ${BTN_PRESS}`}
               style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
             >
@@ -1486,7 +1495,10 @@ export default function PublicGalleryView({
             )}
             {!submitted ? (
               <button
-                onClick={() => setConfirmOpen(true)}
+                onClick={() => {
+                setConfirmError(null);
+                setConfirmOpen(true);
+              }}
                 className={`w-full py-3 text-sm font-semibold ${BTN_PRESS}`}
                 style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
               >
@@ -1532,12 +1544,15 @@ export default function PublicGalleryView({
           >
             <h2 className="text-lg font-bold mb-2 font-display">לאשר את הבחירה?</h2>
             <p className="text-sm mb-5" style={{ color: "var(--gt-ink-soft)" }}>
-              נבחרו {favoriteCount} תמונות. הבחירה תישלח לצלם/ת — ותמיד אפשר לחזור ולעדכן אותה אחר כך.
+              {favoriteCount === 0
+                ? "עדיין לא סומנו תמונות. סמנו לפחות תמונה אחת כדי לשלוח את הבחירה לצלם/ת."
+                : `נבחרו ${favoriteCount} תמונות. הבחירה תישלח לצלם/ת — ותמיד אפשר לחזור ולעדכן אותה אחר כך.`}
             </p>
+            {confirmError && <p className="text-sm mb-3 text-rose">{confirmError}</p>}
             <div className="flex gap-2">
               <button
                 onClick={confirmSelection}
-                disabled={submitting}
+                disabled={submitting || favoriteCount === 0}
                 className={`flex-1 py-3 text-sm font-semibold disabled:opacity-60 ${BTN_PRESS}`}
                 style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
               >

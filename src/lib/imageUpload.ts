@@ -4,6 +4,11 @@
 // the photographer uploads themselves.
 
 export const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "bmp", "heic", "heif"];
+
+// Cap for uploads from a client via the public gallery link (upload-url / upload-complete). The
+// photographer's own authenticated upload has no cap; this route is open to anyone with the link.
+export const MAX_CLIENT_UPLOAD_BYTES = 30 * 1024 * 1024;
+
 // iPhones save photos as HEIC by default — an accept list of only "safe" web formats hides those
 // photos from Safari's picker entirely (Files/Photos on iOS filters by this exact string), which
 // looks like "nothing happens" when uploading from a phone. HEIC/HEIF files are converted to JPEG

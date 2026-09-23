@@ -2,6 +2,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -211,6 +212,19 @@ export async function uploadObjectStream(
   await upload.done();
 }
 
+// Real stored size of an object, or null if it doesn't exist — lets a route that only receives a
+// path back from an untrusted browser (client uploads) check what actually landed in the bucket
+// instead of trusting the size the browser claims.
+export async function getObjectSize(bucket: string, path: string): Promise<number | null> {
+  try {
+    const res = await client().send(new HeadObjectCommand({ Bucket: requireEnv("R2_BUCKET_NAME"), Key: keyFor(bucket, path) }));
+    return res.ContentLength ?? 0;
+  } catch (e) {
+    if ((e as { name?: string; $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return null;
+    throw e;
+  }
+}
+
 // S3/R2's DeleteObjectsCommand caps out at 1000 keys per request — a gallery bulk-delete easily
 // exceeds that (each photo contributes up to 2 keys, storage_path + preview_storage_path), so a
 // single unchunked call would throw and silently leave every object in that batch un-deleted.
@@ -250,6 +264,32 @@ export async function removePreviewObjects(paths: string[]): Promise<void> {
     );
     if (result.Errors && result.Errors.length > 0) {
       throw new Error(`מחיקת ${result.Errors.length} תצוגות מקדימות נכשלה: ${result.Errors.map((e) => e.Key).join(", ")}`);
+    }
+  }
+  await purgeCdnUrls(paths.map(getPublicPreviewUrl));
+}
+
+// Previews are served with `immutable, max-age=1y` (see uploadPublicPreview), so Cloudflare's edge
+// keeps serving a deleted preview from cache long after the object itself is gone from R2 —
+// confirmed 2026-09-23: a deleted photo's preview URL still returned 200 (cf-cache-status: HIT)
+// while the bucket itself returned 404. Purging by URL closes that. Best-effort and opt-in: a
+// no-op until CLOUDFLARE_ZONE_ID + CLOUDFLARE_API_TOKEN (a token with only Zone → Cache Purge) are
+// set, and a failed purge is logged, never thrown — the delete itself already succeeded.
+const CDN_PURGE_BATCH_SIZE = 30;
+async function purgeCdnUrls(urls: string[]): Promise<void> {
+  const zoneId = process.env.CLOUDFLARE_ZONE_ID;
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  if (!zoneId || !token || urls.length === 0) return;
+  for (let i = 0; i < urls.length; i += CDN_PURGE_BATCH_SIZE) {
+    try {
+      const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ files: urls.slice(i, i + CDN_PURGE_BATCH_SIZE) }),
+      });
+      if (!res.ok) console.error("CDN purge failed:", res.status, (await res.text()).slice(0, 300));
+    } catch (e) {
+      console.error("CDN purge failed:", e);
     }
   }
 }

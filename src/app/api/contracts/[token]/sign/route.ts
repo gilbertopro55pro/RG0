@@ -101,7 +101,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
 מעבר לעמוד האירוע לשליחת הודעת פתיחה ללקוח/ה:
 ${eventUrl}`,
-      }).catch(() => {});
+      }).catch((e) => console.error("Contract-signed email failed:", e));
     }
   }
 

@@ -30,6 +30,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     .eq("gallery_id", gallery.id)
     .eq("is_favorite", true);
 
+  // Confirming an empty selection used to go through and email the photographer "0 photos
+  // selected" — never a real selection, so refuse it (the client dialog blocks it too).
+  if (!count) {
+    return NextResponse.json({ error: "יש לסמן לפחות תמונה אחת לפני שליחת הבחירה" }, { status: 400 });
+  }
+
   const now = new Date().toISOString();
   await supabase.from("galleries").update({ selection_confirmed_at: now }).eq("id", gallery.id);
 
