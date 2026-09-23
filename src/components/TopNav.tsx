@@ -27,7 +27,9 @@ const NAV_ITEMS = [
 // — this isn't just a pre-hydration flash) it reports the REWRITTEN path, "/landing", not the "/"
 // the visitor actually requested. Without this entry the dashboard nav bar rendered on top of the
 // marketing page for every logged-out visitor hitting "/".
-const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/billing", "/landing"];
+// "/p" (the public portfolio, /p/[slug]) added 2026-09-23 — it had been showing the photographer's
+// own dashboard nav to every potential client who opened a shared portfolio link.
+const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/billing", "/landing", "/p"];
 
 export default function TopNav() {
   const pathname = usePathname();

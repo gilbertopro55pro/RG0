@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { getPublicPreviewUrl, getSignedDownloadUrl } from "@/lib/storage";
 import { fetchAllRows } from "@/lib/paginatedFetch";
@@ -80,6 +81,16 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 const NO_CATEGORY_TAB = "__none__";
 const HERO_PHOTO_CAP = 15; // up to 5 slides of 3 — plenty of variety without an unbounded sample
 
+// Fisher-Yates over a copy, then take the first n — a fresh random pick on every request.
+function randomSample<T>(items: T[], n: number): T[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, n);
+}
+
 export default async function PortfolioPage({
   params,
   searchParams,
@@ -127,7 +138,7 @@ export default async function PortfolioPage({
   }
   // A random sample, not just the first N — otherwise the hero would always open on the same
   // handful of photos on every visit instead of feeling like a living showcase.
-  const heroCandidates = [...scopedPhotos].sort(() => Math.random() - 0.5).slice(0, HERO_PHOTO_CAP);
+  const heroCandidates = randomSample(scopedPhotos, HERO_PHOTO_CAP);
 
   // Sign only the photos actually needed — the active tab's grid, one per category tile, and the
   // hero sample — instead of every scoped photo unconditionally. A photographer with many tabs
@@ -209,15 +220,15 @@ export default async function PortfolioPage({
       {categories.length > 0 && (
         <div className="px-6 py-12" style={{ background: INK_RAISED }}>
           <p className="text-center text-xs font-semibold tracking-widest mb-6" style={{ color: TEXT_SOFT }}>
-            סוגי אירועים
+            נושאים
           </p>
           <div className="flex flex-wrap justify-center gap-5 max-w-4xl mx-auto">
             <a
               href={tabsParam ? `/p/${slug}?tabs=${tabsParam}` : `/p/${slug}`}
-              className="flex flex-col items-center gap-2 w-20"
+              className="flex flex-col items-center gap-2 w-24"
             >
               <span
-                className="h-20 w-20 rounded-lg flex items-center justify-center text-[11px] font-semibold"
+                className="h-24 w-24 rounded-lg flex items-center justify-center text-[11px] font-semibold"
                 style={{
                   background: !activeCategory ? BRASS : "#232326",
                   color: !activeCategory ? "#1a1408" : TEXT_SOFT,
@@ -231,9 +242,9 @@ export default async function PortfolioPage({
               </span>
             </a>
             {categories.map((c) => (
-              <a key={c} href={`/p/${slug}?category=${encodeURIComponent(c)}${tabsSuffix}`} className="flex flex-col items-center gap-2 w-20">
+              <a key={c} href={`/p/${slug}?category=${encodeURIComponent(c)}${tabsSuffix}`} className="flex flex-col items-center gap-2 w-24">
                 <span
-                  className="h-20 w-20 rounded-lg overflow-hidden bg-black/40"
+                  className="h-24 w-24 rounded-lg overflow-hidden bg-black/40"
                   style={{ boxShadow: activeCategory === c ? `0 0 0 2px ${BRASS}` : undefined }}
                 >
                   {categoryThumb.has(c) && (
@@ -241,7 +252,7 @@ export default async function PortfolioPage({
                     <img src={categoryThumb.get(c)} alt="" className="h-full w-full object-cover" />
                   )}
                 </span>
-                <span className="text-[11px] truncate max-w-full" style={{ color: activeCategory === c ? "#f2f2ee" : TEXT_SOFT }}>
+                <span className="text-[11px] leading-snug text-center line-clamp-2 max-w-full" style={{ color: activeCategory === c ? "#f2f2ee" : TEXT_SOFT }}>
                   {c}
                 </span>
               </a>
@@ -267,9 +278,9 @@ export default async function PortfolioPage({
 
       <p className="text-center text-[11px] py-8" style={{ background: INK, color: TEXT_SOFT }}>
         תיק עבודות שנבנה עם{" "}
-        <a href="/" className="underline">
+        <Link href="/" className="underline">
           גילברטו
-        </a>
+        </Link>
       </p>
     </div>
   );
