@@ -44,10 +44,16 @@
 - **ביקורת (הכל על production, כחשבון הבדיקה) — עבר**: העלאה בגלריה (3 קבצים עד 11MB), הורדה בודדת (בייטים זהים), ZIP, קישור שיתוף, העלאה לפורטפוליו, מחיקה (שורה + אובייקט R2 נמחקו), העלאת לקוח (allow_client_upload הודלק והוחזר ל-false), preview עצל, בוחר כוכבים + רצועה בעמוד הציבורי, 4 ה-crons בלי backlog, webhooks של PayPlus מגיעים.
 - **מיילים שנשלחו לבדיקה** (לאשר בתיבה של המשתמש): סיום העלאה (x2), סיום בחירת תמונות (x2), הצעת מחיר + PDF ל-+qaclient, הרשמה (2 מיילים) ל-+qasignup. תזכורת מעקב הצעת מחיר (ליד `dc25a1bd-…`) הוקדמה ל-due — תצא ב-cron של 09:00 UTC.
 - **ממצאים פתוחים**:
-  - `PAYPLUS_TERMINAL_UID` חסר ב-Vercel Production — ביטול מנוי (`deletePayplusRecurring`) עלול להיכשל ולהמשיך לחייב. המשתמש צריך להוסיף, ואז redeploy.
+  - ~~`PAYPLUS_TERMINAL_UID` חסר ב-Vercel~~ — **תוקן 2026-09-23**: הערך נלקח מ-`terminal_uid` שבכל ה-payloads של `payplus_webhook_events` (ערך יחיד בכל 10 האירועים), נוסף דרך Vercel API כ-sensitive/production, ונפרס. בלעדיו: ביטול נכשל, ובהחלפת מסלול (cron) ה-recurring הישן לא נמחק ונוצר חדש = חיוב כפול.
   - מייל "החוזה נחתם" נשלח **רק לאדמין** (rollout אדמין) — צלמים רגילים מקבלים רק התראה באפליקציה. ה-catch שלו בולע שגיאות (`.catch(() => {})`).
   - preview שנמחק נשאר זמין ב-edge cache של Cloudflare (immutable, שנה) ב-URL לא-ניחוש — פרטיות נמוכה; תיקון דורש purge API של Cloudflare.
   - `upload-complete` (לקוח) לא מוודא שהאובייקט קיים/ייחודי, ומגבלת 30MB נאכפת רק לפי גודל שהלקוח מצהיר.
   - confirm-selection מאפשר אישור עם 0 תמונות (שולח מייל "נבחרו 0").
   - runtime-logs API של Vercel לא נגיש מהסביבה (timeout) — אין אימות צד-שרת למיילים שבולעים שגיאות.
 - **נתוני בדיקה לניקוי בהמשך**: QA_TEST_1/2, QA_CLIENT_1 בגלריית הבדיקה, 2 תמונות פורטפוליו (QA חינה), ליד + הצעת מחיר QA, חוזה חתום באירוע הבדיקה, וחשבון +qasignup (`4cc5f3b8-…`, לא מאומת).
+
+## 2026-09-23 (המשך 3) — מסך "יש עדכון" גם בעדכון שקוף
+
+- `UpdateReloadGate` השווה את `CURRENT_VERSION` ל-localStorage — לא עבד בעדכון שקוף (אין bump), ורץ רק אחרי שהקוד החדש כבר נטען. עכשיו: `NEXT_PUBLIC_BUILD_ID` (next.config, מ-`VERCEL_DEPLOYMENT_ID`) מול `/api/version` (ציבורי, no-store) — בטעינה, בחזרה לטאב ובכל 5 דק׳. מוצג בכל עמודי הצלם (לא בעמודי לקוח), עם "עוד 10 דקות". הוזז ל-`layout.tsx`. נבדק בדפדפן.
+- PR #22 (אותו יום): אימות אמיתי של העלאות לקוח ב-upload-complete (HEAD ל-R2, גודל אמיתי, נתיב לא כפול), חסימת אישור בחירה עם 0 תמונות, purge ל-Cloudflare במחיקת preview (ממתין ל-`CLOUDFLARE_ZONE_ID`/`CLOUDFLARE_API_TOKEN` ב-Vercel).
+- `deploy.sh`: לא להעביר את `FLY_API_TOKEN` דרך פונקציית הניקוי (היא מוחקת את הרווח שב-"FlyV1 ..." → 401). לבדוק worker עם `bash scripts/flyWorkerIsCurrent.sh` עם ה-env הגולמי, ואז `SKIP_WORKER_CHECK=1`.
