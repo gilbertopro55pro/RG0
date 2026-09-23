@@ -285,6 +285,7 @@ function EventCard({
     <Link
       href={`/events/${event.id}`}
       role="button"
+      data-press="tint"
       className={`flex items-center gap-3 px-3.5 py-3.5 text-start ${first ? "" : "border-t border-line"}`}
       style={rowBackground ? { background: rowBackground } : undefined}
     >

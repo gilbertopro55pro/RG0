@@ -44,7 +44,7 @@ export default function DashboardHero({
       </div>
 
       <div className="h-1.5 rounded-full overflow-hidden mt-3.5 mb-2" style={{ background: "var(--color-chip)" }}>
-        <div className="h-full rounded-full" style={{ width: `${forecastRatio * 100}%`, background: "var(--color-brass)" }} />
+        <div className="gf-grow h-full rounded-full" style={{ width: `${forecastRatio * 100}%`, background: "var(--color-brass)" }} />
       </div>
       <div className="flex items-center justify-between text-xs text-ink-soft">
         <span>

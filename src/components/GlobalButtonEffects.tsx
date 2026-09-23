@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { triggerHaptic } from "@/lib/haptics";
 
 const PRESSED_CLASS = "js-pressed";
-const BUTTON_SELECTOR = "button, a[role='button'], [role='button']";
+const BUTTON_SELECTOR = "button, a[role='button'], [role='button'], a.nav-tile";
 
 // Mounted once at the root layout. Two jobs:
 //

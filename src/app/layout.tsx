@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import PWARegister from "@/components/PWARegister";
 import UpdateReloadGate from "@/components/UpdateReloadGate";
+import PageTransition from "@/components/PageTransition";
 import TopNav from "@/components/TopNav";
 import GlobalButtonEffects from "@/components/GlobalButtonEffects";
 import BodyScrollLock from "@/components/BodyScrollLock";
@@ -265,7 +266,7 @@ export default function RootLayout({
         <BodyScrollLock />
         <GlobalLoadingBar />
         <TopNav />
-        {children}
+        <PageTransition>{children}</PageTransition>
         <InstallPrompt />
         <ChangelogModal />
       </body>
