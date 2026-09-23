@@ -31,7 +31,6 @@ import PortalLinkSection from "@/components/PortalLinkSection";
 import GallerySection from "@/components/GallerySection";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { buildClientMessageText } from "@/lib/clientMessage";
-import { eventDisplayName } from "@/lib/eventDisplayName";
 import CompactGuideModal from "@/components/CompactGuideModal";
 import CloseEventConfirmModal from "@/components/CloseEventConfirmModal";
 
@@ -46,6 +45,119 @@ type StageDescriptor = {
   isCheckpoint: boolean;
   requiresAlbumPdf: boolean;
 };
+
+const ROUND_BTN = "h-11 w-11 rounded-full flex items-center justify-center border border-line text-ink";
+const ROUND_BTN_STYLE = { background: "var(--color-input-bg)" };
+
+const WEEKDAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+
+function InfoIcon({ d }: { d: string }) {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="var(--color-brass)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+
+// "חמישי, 15.10.2026"
+function hebrewDateLine(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return `${weekday}, ${d}.${m}.${y}`;
+}
+
+// Only for upcoming dates — a past event's date speaks for itself.
+function daysUntilLabel(iso: string): string | null {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  const days = Math.round((Date.parse(iso) - Date.parse(today)) / 86_400_000);
+  if (days < 0) return null;
+  if (days === 0) return "היום";
+  if (days === 1) return "מחר";
+  return `בעוד ${days} ימים`;
+}
+
+// The event page's leading element (design stage 5): where the event stands in its process,
+// with the one action that moves it forward. The full stage list stays further down (#stages).
+function ProcessHero({
+  descriptors,
+  stages,
+  curIdx,
+  albumDesignFilename,
+  pending,
+  onDone,
+}: {
+  descriptors: StageDescriptor[];
+  stages: EventStageRow[];
+  curIdx: number;
+  albumDesignFilename: string | null;
+  pending: Set<string>;
+  onDone: (key: string) => void;
+}) {
+  const total = descriptors.length;
+  const allDone = curIdx >= total;
+  const current = allDone ? null : descriptors[curIdx];
+  const next = descriptors[curIdx + 1] ?? null;
+  const doneByKey = new Map(stages.map((st) => [st.stage_key ?? `custom:${st.custom_stage_id}`, st.done]));
+  // Same rules as the row toggle in FilmStrip: event_closing completes only via the opening
+  // message, and an album-approval stage needs its PDF first.
+  const canMark =
+    !!current &&
+    current.key !== "event_closing" &&
+    !(current.requiresAlbumPdf && !(current.key === "album_approval" && albumDesignFilename)) &&
+    !pending.has(current.key);
+
+  return (
+    <section aria-label="מצב האירוע" className="surface-hero p-[18px] mb-5">
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <span className="text-[21px] font-extrabold leading-tight">{allDone ? "כל השלבים הושלמו" : current!.label}</span>
+        {!allDone && (
+          <span className="text-[13px] text-ink-soft font-data shrink-0">
+            שלב {curIdx + 1} מתוך {total}
+          </span>
+        )}
+      </div>
+      <div className="grid gap-[3px] mb-3" style={{ gridTemplateColumns: `repeat(${total}, minmax(0, 1fr))` }} aria-hidden="true">
+        {descriptors.map((d, i) => {
+          const done = doneByKey.get(d.key);
+          const isCur = i === curIdx;
+          return (
+            <span
+              key={d.key}
+              className="h-1.5 rounded-full"
+              style={{
+                background: done ? "var(--color-brass)" : isCur ? "transparent" : "var(--color-chip)",
+                boxShadow: isCur && !done ? "inset 0 0 0 1.5px var(--color-brass)" : "none",
+              }}
+            />
+          );
+        })}
+      </div>
+      <p className="text-[13px] text-ink-soft mb-3.5">
+        {allDone
+          ? "אפשר לסגור את האירוע בתחתית העמוד."
+          : current!.key === "event_closing"
+            ? "השלב הזה מסתיים כששולחים ללקוח את הודעת הפתיחה."
+            : next
+              ? `הבא אחריו: ${next.label}`
+              : "זה השלב האחרון."}
+      </p>
+      <div className="flex gap-2">
+        {canMark && (
+          <button onClick={() => onDone(current!.key)} className="flex-1 h-11 rounded-xl text-sm font-bold bg-ink text-white">
+            סימון כבוצע
+          </button>
+        )}
+        <a
+          href="#stages"
+          className={`${canMark ? "" : "flex-1 "}h-11 px-4 rounded-xl border border-line text-sm font-semibold flex items-center justify-center`}
+          style={{ background: "var(--color-input-bg)" }}
+        >
+          כל השלבים
+        </a>
+      </div>
+    </section>
+  );
+}
 
 function parseStageKey(key: string): { stageKey: string | null; customStageId: string | null } {
   return key.startsWith("custom:")
@@ -172,6 +284,7 @@ export default function EventDetailView({
   const [assignedIds, setAssignedIds] = useState(new Set(initialAssignedTeamMemberIds));
   const [showNav, setShowNav] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [showReviewPrompt, setShowReviewPrompt] = useState(false);
   const reviewPromptEntered = useModalEntered();
   const [error, setError] = useState<string | null>(null);
@@ -626,23 +739,62 @@ export default function EventDetailView({
 
   return (
     <div className="pb-8">
+      {/* Design stage 5: a round back button and one "more" menu instead of three underlined
+          text links across the top. */}
       <div className="flex items-center justify-between mb-5">
-        <Link href="/" className="flex items-center gap-1 text-sm text-ink-soft">
-          → חזרה לאירועים
+        <Link href="/" aria-label="חזרה לאירועים" className={ROUND_BTN} style={ROUND_BTN_STYLE}>
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
         </Link>
         {isOwner && (
-          <div className="flex items-center gap-3">
+          <div className="relative">
             <button
-              onClick={manualSyncCalendar}
-              disabled={calendarSyncing}
-              title="למקרה שהייתה תקלה בשמירת האירוע ביומן"
-              className="text-sm text-amber-deep underline disabled:opacity-60"
+              onClick={() => setMoreOpen((v) => !v)}
+              aria-label="עוד פעולות"
+              aria-expanded={moreOpen}
+              className={ROUND_BTN}
+              style={ROUND_BTN_STYLE}
             >
-              {calendarSyncing ? "מסנכרן..." : "סנכרון מחדש ליומן"}
+              {calendarSyncing ? (
+                <span className="text-[11px] font-semibold">...</span>
+              ) : (
+                <svg width={20} height={20} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <circle cx="5" cy="12" r="1.6" />
+                  <circle cx="12" cy="12" r="1.6" />
+                  <circle cx="19" cy="12" r="1.6" />
+                </svg>
+              )}
             </button>
-            <button onClick={() => setShowEdit(true)} className="text-sm text-amber-deep underline">
-              עריכת פרטי האירוע
-            </button>
+            {moreOpen && (
+              <>
+                <div className="fixed inset-0 z-40 gf-no-enter" onClick={() => setMoreOpen(false)} />
+                <div className="absolute end-0 top-12 z-50 w-56 rounded-2xl bg-paper shadow-sheet border border-line overflow-hidden text-sm">
+                  <button
+                    onClick={() => {
+                      setMoreOpen(false);
+                      setShowEdit(true);
+                    }}
+                    data-press="tint"
+                    className="w-full text-start px-4 py-3"
+                  >
+                    עריכת פרטי האירוע
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMoreOpen(false);
+                      manualSyncCalendar();
+                    }}
+                    disabled={calendarSyncing}
+                    data-press="tint"
+                    className="w-full text-start px-4 py-3 border-t border-line disabled:opacity-60"
+                  >
+                    סנכרון מחדש ליומן
+                    <span className="block text-xs text-ink-soft">אם האירוע לא נשמר ביומן</span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -738,60 +890,85 @@ export default function EventDetailView({
           </div>
         </div>
       )}
-      <div className="flex items-start gap-2 mb-1.5">
-        <h1 className="text-[26px] font-bold font-display">{eventDisplayName(event)}</h1>
-        <div className="mt-2.5">
+      <div className="flex items-start gap-2 mb-0.5">
+        <h1 className="text-[28px] leading-tight font-extrabold font-display">{event.client_name}</h1>
+        <div className="mt-2">
           <CompactGuideModal pageKey="event-card" />
         </div>
       </div>
-      <div className="flex items-center gap-3 text-xs mb-2.5 flex-wrap text-ink-soft">
-        <span>{new Date(event.event_date).toLocaleDateString("he-IL")}</span>
-        <span>{packageLabel(event.package, customPackageName)}</span>
-        {event.client_phone && <span className="font-data">📱 {event.client_phone}</span>}
+      <div className="text-[15px] text-ink-soft mb-4">
+        {[event.event_type?.trim(), packageLabel(event.package, customPackageName)].filter(Boolean).join(", ")}
       </div>
-      {isOwner && (
-        <div className="mb-4">
-          {closedAt ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
-                ✓ האירוע סגור
-              </span>
-              <button
-                onClick={() => restoreEvent()}
-                disabled={closingEvent}
-                className="text-xs font-semibold rounded-full px-3 py-1 bg-white border border-line text-ink disabled:opacity-60"
-              >
-                {closingEvent ? "משחזר..." : "שחזור אירוע"}
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setCloseConfirmOpen(true)}
-              className="text-xs font-semibold rounded-full px-3.5 py-1.5 bg-white border border-line text-ink"
-            >
-              סגירת אירוע
-            </button>
-          )}
+      {closedAt && isOwner && (
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
+            האירוע סגור
+          </span>
+          <button
+            onClick={() => restoreEvent()}
+            disabled={closingEvent}
+            className="text-xs font-semibold rounded-full px-3 py-1 border border-line text-ink disabled:opacity-60"
+            style={{ background: "var(--color-input-bg)" }}
+          >
+            {closingEvent ? "משחזר..." : "שחזור אירוע"}
+          </button>
         </div>
       )}
 
-      {(event.event_location || event.arrival_time) && (
-        <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs flex flex-wrap gap-x-4 gap-y-1.5 bg-chip text-ink-soft">
-          {event.event_location && (
-            <button onClick={() => setShowNav(true)} className="underline decoration-dotted text-amber-deep">
-              {event.event_location}
-            </button>
+      {/* Event facts as icon lines (no "·" chain, no emoji): date, place (opens navigation), arrival
+          time, phone (tap to call). */}
+      <div className="flex flex-col gap-2.5 mb-5 text-[15px]">
+        <div className="flex items-center gap-2.5">
+          <InfoIcon d="M3.5 7.5a2.5 2.5 0 0 1 2.5-2.5h12a2.5 2.5 0 0 1 2.5 2.5v10.5a2.5 2.5 0 0 1-2.5 2.5H6a2.5 2.5 0 0 1-2.5-2.5zM3.5 10h17M8 3v4M16 3v4" />
+          <span className="font-data">{hebrewDateLine(event.event_date)}</span>
+          {daysUntilLabel(event.event_date) && (
+            <span className="text-[13px] font-bold" style={{ color: "var(--color-amber-deep)" }}>
+              {daysUntilLabel(event.event_date)}
+            </span>
           )}
-          {event.arrival_time && <span>הגעה לצילומי משפחה: {event.arrival_time.slice(0, 5)}</span>}
         </div>
+        {event.event_location && (
+          <button onClick={() => setShowNav(true)} className="flex items-center gap-2.5 text-start">
+            <InfoIcon d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11zM12 12.3a2.3 2.3 0 1 0 0-4.6 2.3 2.3 0 0 0 0 4.6z" />
+            <span className="border-b border-line">{event.event_location}</span>
+          </button>
+        )}
+        {event.arrival_time && (
+          <div className="flex items-center gap-2.5">
+            <InfoIcon d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2" />
+            <span>
+              הגעה לצילומי משפחה: <span className="font-data">{event.arrival_time.slice(0, 5)}</span>
+            </span>
+          </div>
+        )}
+        {event.client_phone && (
+          <a href={`tel:${event.client_phone}`} className="flex items-center gap-2.5">
+            <InfoIcon d="M5 4h3.5l1.5 4-2 1.5a11 11 0 0 0 5.5 5.5l1.5-2 4 1.5V18a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2z" />
+            <span className="font-data" dir="ltr">
+              {event.client_phone}
+            </span>
+          </a>
+        )}
+      </div>
+
+      {stageDescriptors.length > 0 && (
+        <ProcessHero
+          descriptors={stageDescriptors}
+          stages={stages}
+          curIdx={curIdx}
+          albumDesignFilename={albumDesignFilename}
+          pending={pendingStageKeys}
+          onDone={toggleStage}
+        />
       )}
+
       {showNav && event.event_location && (
         <NavAppSheet location={event.event_location} onClose={() => setShowNav(false)} />
       )}
 
       {event.notes && (
         <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-chip text-ink-soft whitespace-pre-wrap">
-          📝 {event.notes}
+          {event.notes}
         </div>
       )}
 
@@ -826,16 +1003,15 @@ export default function EventDetailView({
 
       {isOwner && payments && (
         <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-          <div className="flex items-center gap-2 mb-3.5">
+          <div className="flex items-center gap-2 mb-3">
             <span className="text-sm font-semibold">תשלומים</span>
           </div>
           {payments.deposit_amount === 0 && payments.balance_amount === 0 && (
             <div className="rounded-xl px-3.5 py-2.5 mb-2 text-xs bg-amber-bg text-amber-deep">
-              טרם הוגדר מחיר לאירוע. לחצו על &quot;עריכת פרטי האירוע&quot; למעלה כדי להוסיף מקדמה ויתרה.
+              טרם הוגדר מחיר לאירוע. בתפריט העוד (שלוש הנקודות למעלה) בוחרים &quot;עריכת פרטי האירוע&quot; ומוסיפים מקדמה ויתרה.
             </div>
           )}
-          <p className="text-[11px] text-ink-soft mb-2">לחיצה על שורת תשלום מאפשרת לסמן אותה כשולמה במלואה או בחלקה.</p>
-          <div className="space-y-2">
+          <div className="-mx-4 -mb-4 border-t border-line divide-y divide-[var(--color-line)]">
             <PaymentLegRow
               label="מקדמה"
               amount={payments.deposit_amount}
@@ -999,7 +1175,7 @@ export default function EventDetailView({
         </div>
       )}
 
-      <div className="mb-2.5 text-sm font-semibold">מסלול התהליך</div>
+      <div id="stages" className="mb-2.5 text-sm font-semibold scroll-mt-4">מסלול התהליך</div>
       <FilmStrip
         stageDescriptors={stageDescriptors}
         stages={stages}
@@ -1042,10 +1218,10 @@ export default function EventDetailView({
         </div>
         <div className="space-y-2">
           {notifications.map((n) => (
-            <div key={n.id} className="text-xs rounded-xl px-3.5 py-2.5 bg-chip text-ink-soft break-words">
-              {n.text}{" "}
-              <span className="font-data">
-                · {new Date(n.created_at).toLocaleString("he-IL", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
+            <div key={n.id} className="text-xs rounded-xl px-3.5 py-2.5 bg-chip text-ink-soft break-words flex items-start justify-between gap-3">
+              <span>{n.text}</span>
+              <span className="font-data shrink-0">
+                {new Date(n.created_at).toLocaleString("he-IL", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
               </span>
             </div>
           ))}
@@ -1122,25 +1298,33 @@ function PaymentLegRow({
 }) {
   const isPartial = !paid && paidAmount != null && paidAmount > 0;
   const remaining = isPartial ? Math.max(0, Number(amount) - Number(paidAmount)) : null;
-  const background = paid ? "var(--color-sage-bg)" : isPartial ? "var(--color-amber-bg)" : "var(--color-chip)";
-  const statusColor = paid ? "var(--color-sage)" : isPartial ? "var(--color-amber-deep)" : "var(--color-ink-soft)";
+  // Notes stay collapsed behind a link until there's something in them (design stage 5: no empty
+  // textarea under every payment).
+  const [notesOpen, setNotesOpen] = useState(!!notesDraft);
+  const ils = (n: number) => `₪${Number(n).toLocaleString("he-IL")}`;
   return (
-    <div>
-      <button
-        onClick={onToggleAction}
-        className="w-full flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5"
-        style={{ background }}
-      >
-        <span>
-          {label}: ₪{amount}
+    <div className="px-4 py-3">
+      <button onClick={onToggleAction} className="w-full flex items-center gap-2.5 text-start">
+        <span className="flex-1 min-w-0">
+          <span className="block text-[15px] font-bold">{label}</span>
+          <span className="block text-xs text-ink-soft font-data">
+            {paid ? "התקבל" : isPartial ? `שולם חלקית, נשאר ${ils(remaining ?? 0)}` : dueDateText ?? "ממתין לתשלום"}
+          </span>
         </span>
-        <span style={{ color: statusColor, fontWeight: 600 }}>
-          {paid ? "שולם ✓" : isPartial ? `שולם חלקית: יתרה ₪${remaining}` : dueDateText ?? "ממתין"}
-        </span>
+        <span className="text-base font-extrabold font-data">{ils(amount)}</span>
+        {paid ? (
+          <span className="text-xs font-bold rounded-full px-2.5 py-1" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
+            שולם
+          </span>
+        ) : (
+          <span className="text-xs font-bold rounded-lg px-2.5 py-1.5 border border-line" style={{ background: "var(--color-input-bg)" }}>
+            סימון תשלום
+          </span>
+        )}
       </button>
 
       {actionOpen && !paid && (
-        <div className="mt-1.5 rounded-xl border border-line bg-white p-2.5">
+        <div className="mt-2 rounded-xl border border-line p-2.5" style={{ background: "var(--color-input-bg)" }}>
           {partialOpen ? (
             <div>
               <div className="flex items-center gap-2">
@@ -1168,7 +1352,7 @@ function PaymentLegRow({
           ) : (
             <div className="flex items-center gap-2 flex-wrap">
               <button onClick={onMarkFull} className="text-xs font-semibold rounded-lg px-2.5 py-1.5" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
-                ✓ תשלום מלא
+                תשלום מלא
               </button>
               <button onClick={onOpenPartial} className="text-xs font-semibold rounded-lg px-2.5 py-1.5" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
                 תשלום חלקי
@@ -1183,32 +1367,43 @@ function PaymentLegRow({
         </div>
       )}
 
-      {paid && (
-        <div className="flex items-center justify-between mt-1">
-          <button onClick={onMarkUnpaid} className="text-xs text-ink-soft underline">
-            ביטול סימון כשולם
-          </button>
-          {documentUrl ? (
-            <a href={documentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-deep underline">
+      <div className="flex items-center gap-4 mt-1.5 text-xs">
+        {paid &&
+          (documentUrl ? (
+            <a href={documentUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-deep">
               צפייה במסמך
             </a>
           ) : (
-            <button onClick={onIssueDocument} disabled={issuingDocument} className="text-xs text-amber-deep underline disabled:opacity-60">
+            <button onClick={onIssueDocument} disabled={issuingDocument} className="font-semibold text-amber-deep disabled:opacity-60">
               {issuingDocument ? "מפיק מסמך..." : "הפקת מסמך"}
             </button>
-          )}
-        </div>
-      )}
+          ))}
+        {!notesOpen && (
+          <button onClick={() => setNotesOpen(true)} className="font-semibold text-amber-deep">
+            + הערה
+          </button>
+        )}
+        {paid && (
+          <button onClick={onMarkUnpaid} className="text-ink-soft ms-auto">
+            ביטול סימון
+          </button>
+        )}
+      </div>
 
-      <textarea
-        value={notesDraft}
-        onChange={(e) => onNotesDraftChange(e.target.value)}
-        onBlur={onNotesBlur}
-        rows={2}
-        placeholder={`הערות ל${label} (לשימוש עצמי, לא מוצג ללקוח/ה)...`}
-        className="w-full mt-1.5 text-xs rounded-lg px-2.5 py-1.5 border border-line bg-white outline-none resize-none"
-      />
-      {savingNotes && <p className="text-[10px] text-ink-soft mt-0.5">שומר...</p>}
+      {notesOpen && (
+        <>
+          <textarea
+            value={notesDraft}
+            onChange={(e) => onNotesDraftChange(e.target.value)}
+            onBlur={onNotesBlur}
+            rows={2}
+            autoFocus={!notesDraft}
+            placeholder={`הערה ל${label} (רק לך, הלקוח לא רואה)`}
+            className="w-full mt-2 text-xs rounded-lg px-2.5 py-1.5 border border-line bg-white outline-none resize-none"
+          />
+          {savingNotes && <p className="text-[10px] text-ink-soft mt-0.5">שומר...</p>}
+        </>
+      )}
     </div>
   );
 }
@@ -1293,8 +1488,8 @@ function FilmStrip({
                 <span className="block text-sm font-medium truncate">{d.label}</span>
                 <span className="block text-[11px] text-ink-soft font-data">
                   {d.isCheckpoint ? "מול הלקוח" : "שלב פנימי"}
-                  {st.done_at ? ` · ${new Date(st.done_at).toLocaleDateString("he-IL")}` : ""}
-                  {requiresAlbumPdf && st.done && albumDesignFilename ? ` · ${albumDesignFilename}` : ""}
+                  {st.done_at ? `, ${new Date(st.done_at).toLocaleDateString("he-IL")}` : ""}
+                  {requiresAlbumPdf && st.done && albumDesignFilename ? `, ${albumDesignFilename}` : ""}
                 </span>
               </span>
               {isCurrent && !st.done && !requiresAlbumPdf && (
