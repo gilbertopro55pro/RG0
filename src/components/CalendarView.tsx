@@ -33,7 +33,7 @@ export default function CalendarView({
 
   return (
     <div>
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 tracking-wide text-ink-soft">
+      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
         ← חזרה לדף הבית
       </Link>
       <div className="flex items-center justify-between mb-5">
@@ -82,7 +82,7 @@ export default function CalendarView({
         <div className="space-y-4">
           {Array.from(groupByDate(events).entries()).map(([dateKey, dayEvents]) => (
             <div key={dateKey}>
-              <div className="text-xs font-semibold text-ink-soft mb-2 tracking-wide">
+              <div className="text-xs font-semibold text-ink-soft mb-2">
                 {new Date(dateKey).toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" })}
               </div>
               <div className="space-y-2">

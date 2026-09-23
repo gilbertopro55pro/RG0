@@ -96,7 +96,7 @@ export default function OnboardingView({
         )}
 
         <div className="rounded-2xl p-4 mb-4 bg-white border border-line">
-          <div className="text-sm font-semibold tracking-wide mb-3">יומן Google</div>
+          <div className="text-sm font-semibold mb-3">יומן Google</div>
           {connected ? (
             <div className="space-y-3">
               <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">היומן מחובר ✓</div>
@@ -134,7 +134,7 @@ export default function OnboardingView({
         </div>
 
         <div className="rounded-2xl p-4 mb-4 bg-white border border-line">
-          <div className="text-sm font-semibold tracking-wide mb-3">מספר ח.פ / עוסק</div>
+          <div className="text-sm font-semibold mb-3">מספר ח.פ / עוסק</div>
           <div className="flex gap-2">
             <input
               value={businessId}
@@ -155,7 +155,7 @@ export default function OnboardingView({
         </div>
 
         <div className="rounded-2xl p-4 mb-5 bg-white border border-line">
-          <div className="text-sm font-semibold tracking-wide mb-3">לוגו העסק</div>
+          <div className="text-sm font-semibold mb-3">לוגו העסק</div>
           <div className="flex items-center gap-3">
             <div className="w-14 h-14 rounded-lg bg-chip border border-line shrink-0 flex items-center justify-center overflow-hidden">
               {logoPreviewUrl || logoPath ? (

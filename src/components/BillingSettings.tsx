@@ -111,7 +111,7 @@ export default function BillingSettings({ photographer }: { photographer: Photog
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="flex items-center gap-2 mb-3.5">
-        <span className="text-sm font-semibold tracking-wide">מנוי</span>
+        <span className="text-sm font-semibold">מנוי</span>
       </div>
       <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 mb-2" style={{ background: "var(--color-chip)" }}>
         <span>

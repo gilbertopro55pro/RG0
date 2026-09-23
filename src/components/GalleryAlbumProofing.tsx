@@ -332,7 +332,7 @@ export default function GalleryAlbumProofing({
         <button onClick={onClose} aria-label="סגירה" className="h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg">
           <IconClose className="h-5 w-5" />
         </button>
-        <span dir="ltr" className="text-xs font-semibold text-white/70 font-data tracking-wide">
+        <span dir="ltr" className="text-xs font-semibold text-white/70 font-data">
           {onCover ? "שער" : `${index + 1} / ${spreads.length}`}
         </span>
       </div>

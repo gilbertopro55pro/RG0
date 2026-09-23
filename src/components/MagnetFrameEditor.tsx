@@ -426,7 +426,7 @@ export default function MagnetFrameEditor() {
   return (
     <div className={`rounded-2xl p-4 bg-card border border-line shadow-card space-y-4 ${ALBUM_FONT_CLASS_NAMES}`}>
       <div>
-        <div className="text-sm font-semibold tracking-wide mb-1">עיצוב מסגרת מגנט</div>
+        <div className="text-sm font-semibold mb-1">עיצוב מסגרת מגנט</div>
         <p className="text-xs leading-relaxed text-ink-soft">
           בסיס לבן פשוט במידה 20×15 ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך (15×20) עם אותו הטקסט והאלמנטים.
         </p>

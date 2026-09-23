@@ -17,7 +17,7 @@ export default function StorageUsageSettings({ usedBytes, capBytes }: { usedByte
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="flex items-center gap-2 mb-3.5">
-        <span className="text-sm font-semibold tracking-wide">אחסון</span>
+        <span className="text-sm font-semibold">אחסון</span>
       </div>
       <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5" style={{ background: "var(--color-chip)" }}>
         <span>נפח תמונות וסרטונים בשימוש כרגע</span>

@@ -55,7 +55,7 @@ export default function GallerySection({
   return (
     <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
       <div className="flex items-center justify-between mb-3.5">
-        <span className="text-sm font-semibold tracking-wide">גלריית תמונות</span>
+        <span className="text-sm font-semibold">גלריית תמונות</span>
         {isActivated && <span className="text-xs text-ink-soft font-data">{photoCount} תמונות</span>}
       </div>
 

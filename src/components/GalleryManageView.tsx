@@ -2692,7 +2692,7 @@ export default function GalleryManageView({
       )}
       {blockedByOtherUpload && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(20,24,20,0.55)" }}>
-          <div className="relative w-72 rounded-3xl overflow-hidden shadow-sheet px-6 py-9" style={{ background: "#201f33" }}>
+          <div className="relative w-72 rounded-3xl overflow-hidden shadow-sheet px-6 py-9" style={{ background: "#1c1b19" }}>
             <div className="flex flex-col items-center gap-4 text-white text-center">
               <div className="h-8 w-8 rounded-full border-2 border-white/25 border-t-white animate-spin" />
               <div>
@@ -2815,7 +2815,7 @@ export default function GalleryManageView({
         </button>
       )}
       <div className="flex items-center justify-between mb-2">
-        <Link href="/galleries" className="flex items-center gap-1 text-sm tracking-wide text-ink-soft">
+        <Link href="/galleries" className="flex items-center gap-1 text-sm text-ink-soft">
           → כל הגלריות
         </Link>
       </div>
@@ -3011,7 +3011,7 @@ export default function GalleryManageView({
                     // Fixed color, not the theme-flipped token — the unset state's background
                     // stays literal white in both themes, so the icon must too or it goes near-
                     // invisible once --color-ink-soft flips light for dark mode.
-                    color: shareOpen ? "#fff" : "#5f5d7c",
+                    color: shareOpen ? "#fff" : "var(--color-ink-soft)",
                   }}
                 >
                   <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -3034,7 +3034,7 @@ export default function GalleryManageView({
                 style={{
                   background: slideshowManageOpen ? "var(--color-amber-deep)" : "#fff",
                   borderColor: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-line)",
-                  color: slideshowManageOpen ? "#fff" : "#5f5d7c",
+                  color: slideshowManageOpen ? "#fff" : "var(--color-ink-soft)",
                 }}
               >
                 <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">

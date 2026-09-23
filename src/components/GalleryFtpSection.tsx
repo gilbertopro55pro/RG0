@@ -52,7 +52,7 @@ export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: s
   if (!allowed) {
     return (
       <div className="mt-5 rounded-2xl p-4 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-1">FTP Live: העלאה חיה מהמצלמה</div>
+        <div className="text-sm font-semibold mb-1">FTP Live: העלאה חיה מהמצלמה</div>
         <p className="text-xs text-ink-soft">
           חיברו את המצלמה ישירות לגלריה בזמן האירוע, זמין במסלול פרו+.
         </p>
@@ -67,7 +67,7 @@ export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: s
 
   return (
     <div className="mt-5 rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-1">FTP Live: העלאה חיה מהמצלמה</div>
+      <div className="text-sm font-semibold mb-1">FTP Live: העלאה חיה מהמצלמה</div>
       <p className="text-xs mb-3.5 text-ink-soft">
         חיברו את המצלמה (או תוכנת שידור) עם הפרטים האלה, וכל תמונה שתצולם תופיע בגלריה הזו תוך שניות. בלי לגעת
         במחשב באמצע האירוע.
@@ -134,7 +134,7 @@ function FtpField({
     <div className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 bg-chip">
       <div className="min-w-0">
         <div className="text-[10px] text-ink-soft">{label}</div>
-        <div className="text-sm font-data truncate" dir={dir}>
+        <div className="text-sm font-mono truncate" dir={dir}>
           {value}
         </div>
       </div>

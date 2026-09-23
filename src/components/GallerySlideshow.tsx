@@ -158,7 +158,7 @@ export default function GallerySlideshow({
         </>
       )}
 
-      <span dir="ltr" className="absolute bottom-5 left-1/2 -translate-x-1/2 text-xs font-semibold text-white/70 font-data tracking-wide">
+      <span dir="ltr" className="absolute bottom-5 left-1/2 -translate-x-1/2 text-xs font-semibold text-white/70 font-data">
         {index + 1} / {photos.length}
       </span>
     </div>

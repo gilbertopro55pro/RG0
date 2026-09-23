@@ -52,7 +52,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
 export default function TermsOfUseSettings() {
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-1">תקנון שימוש</div>
+      <div className="text-sm font-semibold mb-1">תקנון שימוש</div>
       <p className="text-xs text-ink-soft mb-4">עודכן לאחרונה: אוגוסט 2026</p>
       <div className="space-y-4">
         {SECTIONS.map((section) => (

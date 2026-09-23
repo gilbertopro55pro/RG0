@@ -57,7 +57,7 @@ export default function AdminDashboardView({ photographers }: { photographers: A
       </div>
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-3">סטטוס מנויים</div>
+        <div className="text-sm font-semibold mb-3">סטטוס מנויים</div>
         <div className="flex flex-wrap gap-2">
           {Object.entries(statusCounts).map(([status, count]) => (
             <span
@@ -72,7 +72,7 @@ export default function AdminDashboardView({ photographers }: { photographers: A
       </div>
 
       <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-3">כל הצלמים ({total})</div>
+        <div className="text-sm font-semibold mb-3">כל הצלמים ({total})</div>
 
         {photographers.length === 0 && <p className="py-8 text-center text-sm text-ink-soft">אין עדיין צלמים רשומים.</p>}
 

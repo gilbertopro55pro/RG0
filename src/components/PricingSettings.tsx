@@ -34,7 +34,7 @@ export default function PricingSettings({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-1">מחירון לפי סוג אירוע</div>
+      <div className="text-sm font-semibold mb-1">מחירון לפי סוג אירוע</div>
       <p className="text-xs mb-3.5 text-ink-soft">
         המחירים משמשים ליצירת הצעות מחיר אוטומטיות (כולל בוט ה-AI בוואטסאפ). השאירו שדה ריק כדי לסמן
         שהחבילה לא מוצעת לסוג האירוע הזה, הבוט יציע חלופה או יפנה ליצירת קשר ישיר איתכם.

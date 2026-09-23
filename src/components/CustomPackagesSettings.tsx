@@ -129,7 +129,7 @@ export default function CustomPackagesSettings({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-1">חבילות מותאמות אישית</div>
+      <div className="text-sm font-semibold mb-1">חבילות מותאמות אישית</div>
       <p className="text-xs mb-3.5 text-ink-soft">
         הגדירו חבילת אירוע משלכם, שם, עלות, ורשימת שלבי תהליך משלכם (במקום 5 החבילות הקבועות של
         המערכת). כל שלב שתסמנו ל&quot;שליחת הודעה ללקוח&quot; ישלח עדכון אוטומטי בוואטסאפ בסיום השלב.

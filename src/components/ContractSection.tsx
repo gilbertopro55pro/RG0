@@ -71,7 +71,7 @@ export default function ContractSection({
   return (
     <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
       <div className="flex items-center gap-2 mb-3.5">
-        <span className="text-sm font-semibold tracking-wide">חוזה הזמנה</span>
+        <span className="text-sm font-semibold">חוזה הזמנה</span>
       </div>
 
       {!contract && (

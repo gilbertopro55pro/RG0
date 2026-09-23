@@ -61,7 +61,7 @@ export default function TeamManagementView({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-3.5">צוות (עורכים/עוזרים)</div>
+      <div className="text-sm font-semibold mb-3.5">צוות (עורכים/עוזרים)</div>
 
       {teamMembers.length > 0 && (
         <div className="space-y-2 mb-4">
@@ -83,7 +83,7 @@ export default function TeamManagementView({
         <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-sage-bg text-sage space-y-1">
           <div>חבר הצוות נוצר. שתפו אליו את פרטי ההתחברות (מוצג פעם אחת בלבד):</div>
           <div className="font-data">אימייל: {createdCredentials.email}</div>
-          <div className="font-data">סיסמה: {createdCredentials.password}</div>
+          <div className="font-mono">סיסמה: {createdCredentials.password}</div>
         </div>
       )}
 

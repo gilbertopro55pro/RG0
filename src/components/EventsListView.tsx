@@ -95,8 +95,8 @@ export default function EventsListView({
   return (
     <div>
       <div className="flex items-center justify-between mb-3.5">
-        <span className="text-sm font-semibold tracking-wide">אירועים</span>
-        <span className="text-xs tracking-wide text-ink-soft font-data">{filtered.length} מתוך {events.length}</span>
+        <span className="text-sm font-semibold">אירועים</span>
+        <span className="text-xs text-ink-soft font-data">{filtered.length} מתוך {events.length}</span>
       </div>
 
       {events.length > 0 && (
@@ -270,7 +270,7 @@ function EventCard({
             </span>
           )}
         </span>
-        <span className="text-[10.5px] px-2.5 py-1 rounded-full tracking-wide bg-amber-bg text-amber-deep font-data">
+        <span className="text-[10.5px] px-2.5 py-1 rounded-full bg-amber-bg text-amber-deep font-data">
           {packageLabel(event.package, event.custom_packages?.name)}
         </span>
       </div>
@@ -279,7 +279,7 @@ function EventCard({
       </div>
       {event.needs_review && (
         <div
-          className="text-[10.5px] px-2.5 py-1 rounded-full tracking-wide font-medium mb-2.5 inline-block"
+          className="text-[10.5px] px-2.5 py-1 rounded-full font-medium mb-2.5 inline-block"
           // Dark ink text regardless of which of Google's 11 colors was picked — some (banana,
           // graphite) are too light for white/amber-deep text, so a color-specific text tone isn't
           // safe to compute; dark ink reads fine against every one of them at this tint strength.
@@ -290,7 +290,7 @@ function EventCard({
       )}
       {isFreelance && (
         <div
-          className="text-[10.5px] px-2.5 py-1 rounded-full tracking-wide font-medium mb-2.5 inline-block"
+          className="text-[10.5px] px-2.5 py-1 rounded-full font-medium mb-2.5 inline-block"
           style={{ background: FREELANCE_BADGE_TINT, color: "var(--color-ink)" }}
         >
           אירוע פרילנס
@@ -298,7 +298,7 @@ function EventCard({
       )}
       {event.resolution_note && (
         <div
-          className="text-[10.5px] px-2.5 py-1 rounded-full tracking-wide font-medium mb-2.5 inline-block"
+          className="text-[10.5px] px-2.5 py-1 rounded-full font-medium mb-2.5 inline-block"
           style={{ background: "var(--color-chip-tint)", color: "var(--color-coral-deep)" }}
         >
           כפילות: {event.resolution_note}

@@ -140,7 +140,7 @@ export default function GalleriesListView({
 
   return (
     <div className="pb-8">
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 tracking-wide text-ink-soft">
+      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
         ← חזרה לדף הבית
       </Link>
       <div className="flex items-center justify-between mb-5">

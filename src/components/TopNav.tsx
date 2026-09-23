@@ -11,7 +11,7 @@ import { IconHome, IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics
 // than playful; the strip's own shadow/divider treatment is what carries the "glass" identity now,
 // so the badges themselves lean toward jewel-toned depth instead of pastel.
 const NAV_ITEMS = [
-  { href: "/", label: "בית", icon: IconHome, iconBg: "linear-gradient(150deg, #4b4b5e, #201f33)" },
+  { href: "/", label: "בית", icon: IconHome, iconBg: "linear-gradient(150deg, #4a4741, #1c1b19)" },
   { href: "/galleries", label: "גלריות", icon: IconGallery, iconBg: "linear-gradient(150deg, var(--color-sage), var(--color-lime-deep))" },
   { href: "/client-portals", label: "פורטל לקוח", icon: IconLink, iconBg: "linear-gradient(150deg, var(--color-coral), var(--color-coral-deep))" },
   { href: "/leads", label: "לידים ופניות", icon: IconLeads, iconBg: "linear-gradient(150deg, var(--color-lime), var(--color-lime-deep))" },

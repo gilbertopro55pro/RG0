@@ -627,7 +627,7 @@ export default function EventDetailView({
   return (
     <div className="pb-8">
       <div className="flex items-center justify-between mb-5">
-        <Link href="/" className="flex items-center gap-1 text-sm tracking-wide text-ink-soft">
+        <Link href="/" className="flex items-center gap-1 text-sm text-ink-soft">
           ← חזרה לאירועים
         </Link>
         {isOwner && (
@@ -808,7 +808,7 @@ export default function EventDetailView({
       {isOwner && !stages.find((s) => s.stage_key === "event_closing")?.done && (
           <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
             <div className="flex items-center gap-2 mb-3.5">
-              <span className="text-sm font-semibold tracking-wide">שליחת הודעת פתיחה ללקוח/ה</span>
+              <span className="text-sm font-semibold">שליחת הודעת פתיחה ללקוח/ה</span>
             </div>
             {event.client_phone ? (
               <>
@@ -827,7 +827,7 @@ export default function EventDetailView({
       {isOwner && payments && (
         <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
           <div className="flex items-center gap-2 mb-3.5">
-            <span className="text-sm font-semibold tracking-wide">תשלומים</span>
+            <span className="text-sm font-semibold">תשלומים</span>
           </div>
           {payments.deposit_amount === 0 && payments.balance_amount === 0 && (
             <div className="rounded-xl px-3.5 py-2.5 mb-2 text-xs bg-amber-bg text-amber-deep">
@@ -976,7 +976,7 @@ export default function EventDetailView({
       {isOwner && teamMembers.length > 0 && (
         <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
           <div className="flex items-center gap-2 mb-3.5">
-            <span className="text-sm font-semibold tracking-wide">צוות משוייך לאירוע</span>
+            <span className="text-sm font-semibold">צוות משוייך לאירוע</span>
           </div>
           <div className="space-y-2">
             {teamMembers.map((m) => {
@@ -999,7 +999,7 @@ export default function EventDetailView({
         </div>
       )}
 
-      <div className="mb-2.5 text-sm font-semibold tracking-wide">מסלול התהליך</div>
+      <div className="mb-2.5 text-sm font-semibold">מסלול התהליך</div>
       <FilmStrip
         stageDescriptors={stageDescriptors}
         stages={stages}
@@ -1038,7 +1038,7 @@ export default function EventDetailView({
 
       <div className="mt-7">
         <div className="flex items-center gap-2 mb-3.5">
-          <span className="text-sm font-semibold tracking-wide">יומן התראות</span>
+          <span className="text-sm font-semibold">יומן התראות</span>
         </div>
         <div className="space-y-2">
           {notifications.map((n) => (
@@ -1291,14 +1291,14 @@ function FilmStrip({
               </span>
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-medium truncate">{d.label}</span>
-                <span className="block text-[11px] tracking-wide text-ink-soft font-data">
+                <span className="block text-[11px] text-ink-soft font-data">
                   {d.isCheckpoint ? "מול הלקוח" : "שלב פנימי"}
                   {st.done_at ? ` · ${new Date(st.done_at).toLocaleDateString("he-IL")}` : ""}
                   {requiresAlbumPdf && st.done && albumDesignFilename ? ` · ${albumDesignFilename}` : ""}
                 </span>
               </span>
               {isCurrent && !st.done && !requiresAlbumPdf && (
-                <span className="text-[10px] px-2.5 py-1 rounded-full shrink-0 tracking-wide bg-amber text-white">
+                <span className="text-[10px] px-2.5 py-1 rounded-full shrink-0 bg-amber text-white">
                   לסמן בוצע
                 </span>
               )}

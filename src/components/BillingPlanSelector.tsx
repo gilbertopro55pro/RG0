@@ -77,7 +77,7 @@ export default function BillingPlanSelector({ initialPlan }: { initialPlan: Subs
               style={{ border: plan === key ? "1.5px solid var(--color-amber)" : "1px solid var(--color-line)" }}
             >
               {info.badge && (
-                <span className="absolute -top-2.5 right-3 text-[10px] px-2 py-0.5 rounded-full tracking-wide bg-amber text-white">
+                <span className="absolute -top-2.5 right-3 text-[10px] px-2 py-0.5 rounded-full bg-amber text-white">
                   {info.badge}
                 </span>
               )}

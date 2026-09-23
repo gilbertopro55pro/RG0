@@ -208,7 +208,7 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
 
   return (
     <div className="mt-3.5 pt-3.5 border-t border-line">
-      <p className="text-sm font-semibold tracking-wide mb-1">העלאת תמונות ישירות לפורטפוליו</p>
+      <p className="text-sm font-semibold mb-1">העלאת תמונות ישירות לפורטפוליו</p>
       <p className="text-xs text-ink-soft mb-3">אפשר להעלות תמונות ישר לתיק העבודות, בלי לעבור דרך גלריה של לקוח/ה.</p>
 
       <label className="text-xs block mb-1 text-ink-soft">לשונית (נושא) להעלאה</label>

@@ -2,7 +2,7 @@ export default function BotSettings() {
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-sm font-semibold tracking-wide">בוט AI לפניות חדשות בוואטסאפ</span>
+        <span className="text-sm font-semibold">בוט AI לפניות חדשות בוואטסאפ</span>
         <span
           className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
           style={{ background: "var(--color-chip)", color: "var(--color-ink-soft)" }}

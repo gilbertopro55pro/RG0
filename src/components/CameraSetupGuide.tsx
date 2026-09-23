@@ -64,7 +64,7 @@ export default function CameraSetupGuide({
                     <div className="text-sm">
                       <div>{filled.title}</div>
                       {filled.detail && (
-                        <div className="text-xs font-data mt-0.5 text-amber-deep" dir="ltr">
+                        <div className="text-xs font-mono mt-0.5 text-amber-deep" dir="ltr">
                           {filled.detail}
                         </div>
                       )}

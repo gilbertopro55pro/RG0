@@ -334,7 +334,7 @@ function CircleButton({
         // Fixed dark icon color, not the theme-flipped --color-ink token — this button's own
         // background stays white in both themes, so the icon must too or it goes near-invisible
         // (light-on-white) once --color-ink flips light for dark mode's page text.
-        color: danger ? "var(--color-rose)" : active ? "#fff" : "#201f33",
+        color: danger ? "var(--color-rose)" : active ? "#fff" : "#1c1b19",
         boxShadow: danger
           ? "0 2px 6px rgba(46,49,66,0.22), 0 0 0 1.5px var(--color-rose)"
           : "0 2px 6px rgba(46,49,66,0.22), 0 0 0 1px var(--color-line)",
@@ -1191,7 +1191,7 @@ function TextFloatingMenu({
 // matching how every serious photo editor groups these same controls, not a functional divider.
 function AdjustSectionLabel({ children, compact = false }: { children: React.ReactNode; compact?: boolean }) {
   return (
-    <p className={`font-bold text-ink-soft uppercase tracking-wide first:pt-0 ${compact ? "text-[7px] pt-0.5" : "text-[10px] pt-1"}`}>
+    <p className={`font-bold text-ink-soft uppercase first:pt-0 ${compact ? "text-[7px] pt-0.5" : "text-[10px] pt-1"}`}>
       {children}
     </p>
   );
@@ -4743,7 +4743,7 @@ export default function AlbumSpreadCanvasEditor({
               className="absolute bottom-2 left-2 z-10 h-8 w-8 rounded-full flex items-center justify-center shadow"
               style={{
                 background: backgroundPanelOpen ? "var(--color-amber-deep)" : "#fff",
-                color: backgroundPanelOpen ? "#fff" : "#201f33",
+                color: backgroundPanelOpen ? "#fff" : "#1c1b19",
                 boxShadow: "0 2px 6px rgba(46,49,66,0.22), 0 0 0 1px var(--color-line)",
               }}
             >
@@ -5296,7 +5296,7 @@ export default function AlbumSpreadCanvasEditor({
                   // background stays literal white in both themes (an inline style, so the global
                   // dark-mode .bg-white class override doesn't reach it), so the label must stay
                   // dark too or it goes white-on-white once --color-ink flips light for dark mode.
-                  color: backgroundPhoto ? "#fff" : "#201f33",
+                  color: backgroundPhoto ? "#fff" : "#1c1b19",
                   borderColor: "var(--color-line)",
                 }}
               >

@@ -78,7 +78,7 @@ export default async function SettingsPage({
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 tracking-wide text-ink-soft">
+      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
         ← חזרה לדף הבית
       </Link>
       <h1 className="text-[22px] font-bold mb-5 font-display">הגדרות</h1>
@@ -168,7 +168,7 @@ export default async function SettingsPage({
                 </div>
                 {user?.email === ADMIN_EMAIL && (
                   <div className="mt-5 rounded-2xl p-4 bg-card border border-line shadow-card">
-                    <div className="text-sm font-semibold tracking-wide mb-1">ניהול מערכת</div>
+                    <div className="text-sm font-semibold mb-1">ניהול מערכת</div>
                     <p className="text-xs text-ink-soft mb-3">מוצג רק לחשבון המנהל.</p>
                     <Link
                       href="/admin"

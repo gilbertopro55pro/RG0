@@ -563,7 +563,7 @@ export default function PriceQuotesSettings({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-1">הצעות מחיר</div>
+      <div className="text-sm font-semibold mb-1">הצעות מחיר</div>
       <p className="text-xs mb-3.5 text-ink-soft">
         בניית הצעת מחיר עצמאית ללקוח כלשהו, נשמרת ברשימה, ואפשר לשלוח אותה במייל או בוואטסאפ כקובץ PDF עם לוגו העסק.
       </p>
@@ -630,7 +630,7 @@ export default function PriceQuotesSettings({
       </div>
 
       <div className="mb-4">
-        <div className="text-sm font-semibold tracking-wide mb-1">תבניות הצעות מחיר</div>
+        <div className="text-sm font-semibold mb-1">תבניות הצעות מחיר</div>
         <p className="text-xs mb-2.5 text-ink-soft">
           תבנית שמורה של פריטים קבועים (למשל &quot;חבילת חתונה בסיסית&quot;), תופיע ברשימה נפתחת בבונה הצעות המחיר, ומהווה בסיס להצעה
           חדשה שאליה אפשר להוסיף שורות ספקים והערות.
@@ -779,7 +779,7 @@ export default function PriceQuotesSettings({
         )}
       </div>
 
-      <div className="text-sm font-semibold tracking-wide mb-1">הצעות מחיר שמורות</div>
+      <div className="text-sm font-semibold mb-1">הצעות מחיר שמורות</div>
 
       {quotes.length > 0 && (
         <div className="space-y-2 mb-3">

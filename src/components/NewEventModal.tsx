@@ -450,7 +450,7 @@ export default function NewEventModal({
           {step === 1 && (
             <div className="space-y-3">
               <div>
-                <div className="text-xs font-semibold tracking-wide text-ink-soft">פרטי הלקוח/ה</div>
+                <div className="text-xs font-semibold text-ink-soft">פרטי הלקוח/ה</div>
                 <p className="text-xs text-ink-soft mt-0.5">מי הלקוח/ה ואיך ליצור איתם קשר בהמשך התהליך</p>
               </div>
               <EventTypeField value={eventType} onChange={setEventType} />
@@ -551,7 +551,7 @@ export default function NewEventModal({
           {step === 2 && (
             <div className="space-y-3">
               <div>
-                <div className="text-xs font-semibold tracking-wide text-ink-soft">מתי ואיפה</div>
+                <div className="text-xs font-semibold text-ink-soft">מתי ואיפה</div>
                 <p className="text-xs text-ink-soft mt-0.5">תאריך, שעות ומיקום, ישמשו גם לסנכרון עם יומן Google ולאיתור כפילויות</p>
               </div>
               <div>
@@ -638,7 +638,7 @@ export default function NewEventModal({
           {step === 3 && (
             <div className="space-y-3">
               <div>
-                <div className="text-xs font-semibold tracking-wide text-ink-soft">תשלום</div>
+                <div className="text-xs font-semibold text-ink-soft">תשלום</div>
                 <p className="text-xs text-ink-soft mt-0.5">סכומי המקדמה והיתרה, ואפשרות לתזכורת תשלום אוטומטית ללקוח</p>
               </div>
               <div className="flex gap-2">

@@ -79,7 +79,7 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
 
   return (
     <div className="mt-3.5 pt-3.5 border-t border-line">
-      <p className="text-sm font-semibold tracking-wide mb-1">ניהול הפורטפוליו</p>
+      <p className="text-sm font-semibold mb-1">ניהול הפורטפוליו</p>
       <p className="text-xs text-ink-soft mb-3">התמונות נשארות בפורטפוליו הציבורי עד שתחליטו להסיר אותן.</p>
       {error && <p className="text-xs text-rose mb-2">{error}</p>}
       <div className="space-y-1.5">

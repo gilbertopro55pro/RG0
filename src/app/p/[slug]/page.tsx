@@ -156,7 +156,7 @@ export default async function PortfolioPage({
           app's admin UI instead of a showcase). */}
       {categories.length > 0 && (
         <div className="px-6 py-12" style={{ background: INK_RAISED }}>
-          <p className="text-center text-xs font-semibold tracking-widest mb-6" style={{ color: TEXT_SOFT }}>
+          <p className="text-center text-xs font-semibold mb-6" style={{ color: TEXT_SOFT }}>
             נושאים
           </p>
           <div className="flex flex-wrap justify-center gap-5 max-w-4xl mx-auto">
