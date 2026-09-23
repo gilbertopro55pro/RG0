@@ -70,7 +70,7 @@ export default function PortalStageActions({
               <span
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px]"
                 style={{
-                  background: done ? "var(--color-sage)" : "#fff",
+                  background: done ? "var(--color-sage)" : "var(--color-input-bg)",
                   border: `1px solid ${done ? "var(--color-sage)" : "var(--color-line)"}`,
                   color: done ? "#fff" : "var(--color-ink-soft)",
                 }}

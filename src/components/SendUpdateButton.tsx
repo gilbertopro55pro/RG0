@@ -27,7 +27,7 @@ export default function SendUpdateButton({
         setTimeout(() => setSent(false), 2000);
       }}
       className={`whatsapp-update-btn w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2.5 disabled:opacity-60${sent ? " whatsapp-update-btn--sent" : ""}`}
-      style={{ background: sent ? "var(--color-sage)" : "#fff", color: sent ? "#fff" : "var(--color-sage)" }}
+      style={{ background: sent ? "var(--color-sage)" : "var(--color-input-bg)", color: sent ? "#fff" : "var(--color-sage)" }}
     >
       {pending ? "שולח..." : sent ? "העדכון נשלח ✓" : label}
     </button>

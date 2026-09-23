@@ -45,7 +45,7 @@ export default function PricingToggle() {
               className="text-[9px] px-1.5 py-0.5 rounded-full"
               style={{
                 background: cycle === "annual" ? "rgba(255,255,255,0.25)" : "var(--color-amber-bg)",
-                color: cycle === "annual" ? "#fff" : "var(--color-amber-deep)",
+                color: cycle === "annual" ? "var(--color-on-accent)" : "var(--color-amber-deep)",
               }}
             >
               חוסכים

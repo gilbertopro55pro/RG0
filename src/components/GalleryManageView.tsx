@@ -2951,7 +2951,7 @@ export default function GalleryManageView({
                   className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
                   style={{
                     background: showFavoritesOnly ? "var(--color-amber-deep)" : "var(--color-chip)",
-                    color: showFavoritesOnly ? "#fff" : "var(--color-ink-soft)",
+                    color: showFavoritesOnly ? "var(--color-on-accent)" : "var(--color-ink-soft)",
                   }}
                 >
                   מועדפים ({favoriteCount})
@@ -3006,12 +3006,12 @@ export default function GalleryManageView({
                   title="שיתוף"
                   className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
                   style={{
-                    background: shareOpen ? "var(--color-amber-deep)" : "#fff",
+                    background: shareOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
                     borderColor: shareOpen ? "var(--color-amber-deep)" : "var(--color-line)",
                     // Fixed color, not the theme-flipped token — the unset state's background
                     // stays literal white in both themes, so the icon must too or it goes near-
                     // invisible once --color-ink-soft flips light for dark mode.
-                    color: shareOpen ? "#fff" : "var(--color-ink-soft)",
+                    color: shareOpen ? "var(--color-on-accent)" : "var(--color-ink-soft)",
                   }}
                 >
                   <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -3032,9 +3032,9 @@ export default function GalleryManageView({
                 title="מצגת תמונות"
                 className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
                 style={{
-                  background: slideshowManageOpen ? "var(--color-amber-deep)" : "#fff",
+                  background: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
                   borderColor: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-line)",
-                  color: slideshowManageOpen ? "#fff" : "var(--color-ink-soft)",
+                  color: slideshowManageOpen ? "var(--color-on-accent)" : "var(--color-ink-soft)",
                 }}
               >
                 <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -4230,7 +4230,7 @@ export default function GalleryManageView({
                     {active && (
                       <span
                         className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
-                        style={{ background: "var(--color-amber-deep)", color: "#fff" }}
+                        style={{ background: "var(--color-amber-deep)", color: "var(--color-on-accent)" }}
                       >
                         ✓
                       </span>
@@ -5811,7 +5811,7 @@ function GallerySettingsModal({
                       {active && (
                         <span
                           className="absolute -top-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
-                          style={{ background: "var(--color-amber-deep)", color: "#fff" }}
+                          style={{ background: "var(--color-amber-deep)", color: "var(--color-on-accent)" }}
                         >
                           ✓
                         </span>

@@ -126,7 +126,7 @@ export default function CloseEventConfirmModal({
                   className="w-full flex items-center justify-between rounded-xl px-3.5 py-3 text-sm text-right border-2"
                   style={{
                     borderColor: choice === value ? "var(--color-amber-deep)" : "var(--color-line)",
-                    background: choice === value ? "var(--color-amber-bg)" : "#fff",
+                    background: choice === value ? "var(--color-amber-bg)" : "var(--color-input-bg)",
                   }}
                 >
                   <span className="font-semibold">{label}</span>

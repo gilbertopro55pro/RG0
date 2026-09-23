@@ -34,6 +34,8 @@
   --color-chip-tint: #f3ecdd;
   --color-nav-bg: rgba(242, 239, 233, 0.66);
   --color-input-bg: #ffffff;
+  /* Text/icons sitting ON the accent (amber-deep) fill — white on dark brass, dark on light brass. */
+  --color-on-accent: #ffffff;
   /* Ambient light behind the glass — the only "color" in the background. */
   --glow-warm: rgba(196, 156, 84, 0.22);
   --glow-cool: rgba(112, 132, 156, 0.18);
@@ -68,6 +70,7 @@
   --color-chip-tint: rgba(210, 173, 104, 0.12);
   --color-nav-bg: rgba(14, 13, 12, 0.62);
   --color-input-bg: #1a1917;
+  --color-on-accent: #17140f;
   --glow-warm: rgba(208, 170, 99, 0.13);
   --glow-cool: rgba(88, 108, 138, 0.13);
   --glass-edge: rgba(255, 255, 255, 0.08);
