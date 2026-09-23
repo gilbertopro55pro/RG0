@@ -29,7 +29,6 @@ import QuickActionsGrid from "@/components/QuickActionsGrid";
 import EventsListView from "@/components/EventsListView";
 import LandingPage from "@/components/LandingPage";
 import SettingsGearLink from "@/components/SettingsGearLink";
-import UpdateReloadGate from "@/components/UpdateReloadGate";
 import AlbumQuickAccessButton from "@/components/AlbumQuickAccessButton";
 
 const HEBREW_MONTHS_SHORT = [
@@ -254,7 +253,6 @@ export default async function DashboardPage() {
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <UpdateReloadGate />
       <div className="flex items-center justify-between mb-5">
         <div>
           <div className="text-xs tracking-wide text-ink-soft flex items-center gap-2">

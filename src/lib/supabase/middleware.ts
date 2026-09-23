@@ -17,6 +17,7 @@ const PUBLIC_PATHS = [
   "/cancellation-policy",
   "/auth",
   "/api/auth",
+  "/api/version",
   "/api/whatsapp/webhook",
   "/api/cron",
   "/contracts",
