@@ -34,8 +34,8 @@ function currency(n: number): string {
   return `${Math.round(n).toLocaleString("he-IL")} ₪`;
 }
 
-// The "←" glyph matches the app's own existing back-navigation convention (see the "← חזרה לדף
-// הבית" link on the magnet-frames page) rather than introducing a new one just for this modal.
+// Back points right: in an RTL interface "back" is toward the start of the line, the same
+// direction as every "→ חזרה" link in the app.
 function BackButton({ onClick }: { onClick: () => void }) {
   return (
     <button

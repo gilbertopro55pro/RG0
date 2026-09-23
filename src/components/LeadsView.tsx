@@ -75,7 +75,7 @@ export default function LeadsView({
     <div className="pb-8">
       <div className="flex items-center justify-between mb-1.5">
         <Link href="/" className="flex items-center gap-1 text-sm text-ink-soft">
-          ← חזרה לדף הבית
+          → חזרה לדף הבית
         </Link>
         <button
           onClick={() => setShowAdd(true)}

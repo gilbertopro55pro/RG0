@@ -79,7 +79,7 @@ export default async function SettingsPage({
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
-        ← חזרה לדף הבית
+        → חזרה לדף הבית
       </Link>
       <h1 className="text-[22px] font-bold mb-5 font-display">הגדרות</h1>
       <SettingsTabs

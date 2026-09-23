@@ -290,7 +290,7 @@ export default function AnalyticsView({
   return (
     <div className="pb-8">
       <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
-        ← חזרה לדף הבית
+        → חזרה לדף הבית
       </Link>
       <h1 className="text-[26px] font-bold mb-1.5 font-display">ניתוח עסקי</h1>
       <PageGuide
