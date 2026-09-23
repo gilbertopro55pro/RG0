@@ -1,9 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ALLOWED_ACCEPT, isAllowedImageFile, isHeicFile, convertHeicIfNeeded } from "@/lib/imageUpload";
+import { ALLOWED_ACCEPT, isAllowedImageFile, isHeicFile, convertHeicIfNeeded, putFileWithProgress } from "@/lib/imageUpload";
 import type { GalleryPhotoRow } from "@/lib/types";
+
+// Sentinel for the dropdown's last option — picking it reveals a free-text input instead of
+// picking one of the existing tabs. Never sent to the DB (see handleFiles' `trimmedCategory`).
+const CUSTOM_CATEGORY = "__custom__";
 
 // Lets a photographer add photos straight to the public portfolio, tagged to a chosen category
 // ("tab"), without going through a client gallery at all. Photos still need a `gallery_id` (see
@@ -13,28 +17,40 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // "" means no tab (shows under "כללי"); CUSTOM_CATEGORY means the free-text input below is the
+  // real source of truth instead — see trimmedCategory in handleFiles.
   const [category, setCategory] = useState("");
+  const [customCategory, setCustomCategory] = useState("");
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
-  const [loadedOptions, setLoadedOptions] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progressText, setProgressText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [doneCount, setDoneCount] = useState(0);
 
-  const loadCategoryOptions = async () => {
-    if (loadedOptions) return;
-    setLoadedOptions(true);
-    const { data } = await supabase.from("gallery_photos").select("portfolio_category").eq("photographer_id", photographerId).not("portfolio_category", "is", null);
-    setCategoryOptions(Array.from(new Set((data ?? []).map((r) => r.portfolio_category as string).filter(Boolean))));
-  };
+  // Loaded up front (not on-focus) — a <select> needs its options ready the moment it opens,
+  // unlike the old text input + datalist combo this replaced.
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("gallery_photos").select("portfolio_category").eq("photographer_id", photographerId).not("portfolio_category", "is", null);
+      setCategoryOptions(Array.from(new Set((data ?? []).map((r) => r.portfolio_category as string).filter(Boolean))).sort((a, b) => a.localeCompare(b, "he")));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    })();
+  }, [photographerId]);
 
   const getOrCreatePortfolioGallery = async (): Promise<string | null> => {
-    const { data: existing } = await supabase
+    const { data: existing, error: lookupError } = await supabase
       .from("galleries")
       .select("id")
       .eq("photographer_id", photographerId)
       .eq("is_portfolio_only", true)
       .maybeSingle<{ id: string }>();
+    // A real error here (not just "no row yet", which maybeSingle reports as no error at all)
+    // used to be silently swallowed — falling through to try creating a gallery even though we
+    // genuinely don't know if one already exists. Bail out instead so the real reason surfaces.
+    if (lookupError) {
+      setError(`שגיאה בבדיקת מאגר הפורטפוליו: ${lookupError.message}`);
+      return null;
+    }
     if (existing) return existing.id;
 
     const { data: created, error: createError } = await supabase
@@ -75,7 +91,7 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
       const galleryId = await getOrCreatePortfolioGallery();
       if (!galleryId) return;
 
-      const trimmedCategory = category.trim() || null;
+      const trimmedCategory = (category === CUSTOM_CATEGORY ? customCategory : category).trim() || null;
       const failedFiles: string[] = [];
       let succeeded = 0;
 
@@ -86,25 +102,41 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
           if (isHeicFile(file)) {
             try {
               file = await convertHeicIfNeeded(file);
-            } catch {
-              failedFiles.push(`${file.name} (המרה נכשלה)`);
+            } catch (e) {
+              failedFiles.push(`${file.name} (המרה נכשלה${e instanceof Error ? `: ${e.message}` : ""})`);
               continue;
             }
           }
           const path = `${photographerId}/${galleryId}/${crypto.randomUUID()}-${file.name}`;
-          const urlRes = await fetch("/api/storage/upload-url", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ bucket: "galleries", path, contentType: file.type || "application/octet-stream" }),
-          });
-          const urlData = await urlRes.json();
-          if (!urlRes.ok || !urlData.url) {
-            failedFiles.push(`${file.name} (${urlData.error ?? "שגיאה"})`);
-            continue;
+          const contentType = file.type || "application/octet-stream";
+
+          // A transient network blip mid-batch used to fail that one file outright with no
+          // retry (unlike the regular gallery uploader, GalleryManageView.tsx, which already
+          // retries 3x) — same fix here: one bad moment on a real connection shouldn't force a
+          // manual re-upload of just that photo.
+          let uploaded = false;
+          let lastFailureReason = "שגיאה לא ידועה";
+          for (let attempt = 0; attempt < 3 && !uploaded; attempt++) {
+            if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+            try {
+              const urlRes = await fetch("/api/storage/upload-url", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ bucket: "galleries", path, contentType }),
+              });
+              const urlData = await urlRes.json();
+              if (!urlRes.ok || !urlData.url) {
+                lastFailureReason = urlData.error ?? "שגיאה";
+                continue;
+              }
+              await putFileWithProgress(urlData.url, file, contentType, () => {});
+              uploaded = true;
+            } catch (e) {
+              lastFailureReason = e instanceof Error ? e.message : "שגיאת רשת";
+            }
           }
-          const putRes = await fetch(urlData.url, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
-          if (!putRes.ok) {
-            failedFiles.push(`${file.name} (סטטוס ${putRes.status})`);
+          if (!uploaded) {
+            failedFiles.push(`${file.name} (${lastFailureReason})`);
             continue;
           }
           const { data: photoRow, error: insertError } = await supabase
@@ -154,20 +186,30 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
       <p className="text-xs text-ink-soft mb-3">אפשר להעלות תמונות ישר לתיק העבודות, בלי לעבור דרך גלריה של לקוח/ה.</p>
 
       <label className="text-xs block mb-1 text-ink-soft">לשונית (נושא) להעלאה</label>
-      <input
+      <select
         value={category}
         onChange={(e) => setCategory(e.target.value)}
-        onFocus={loadCategoryOptions}
-        list="portfolio-upload-category-suggestions"
-        placeholder="לדוגמה: חתונות"
         disabled={uploading}
-        className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-3"
-      />
-      <datalist id="portfolio-upload-category-suggestions">
+        className={`w-full rounded-lg px-3 py-2 text-sm border border-line bg-white ${category === CUSTOM_CATEGORY ? "mb-2" : "mb-3"}`}
+      >
+        <option value="">כללי (ללא נושא)</option>
         {categoryOptions.map((c) => (
-          <option key={c} value={c} />
+          <option key={c} value={c}>
+            {c}
+          </option>
         ))}
-      </datalist>
+        <option value={CUSTOM_CATEGORY}>+ לשונית חדשה...</option>
+      </select>
+      {category === CUSTOM_CATEGORY && (
+        <input
+          value={customCategory}
+          onChange={(e) => setCustomCategory(e.target.value)}
+          placeholder="שם הלשונית החדשה, לדוגמה: חתונות"
+          disabled={uploading}
+          autoFocus
+          className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-3"
+        />
+      )}
 
       {error && <p className="text-xs text-rose mb-2 whitespace-pre-line">{error}</p>}
       {progressText && <p className="text-xs text-ink-soft mb-2">{progressText}</p>}

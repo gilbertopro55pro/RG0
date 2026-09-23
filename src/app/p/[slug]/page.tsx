@@ -62,15 +62,25 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
+// Sentinel for "uncategorized" inside the `tabs` param — mirrors PortfolioManagePanel's own
+// UNCATEGORIZED constant, kept separate since that one's a client component.
+const NO_CATEGORY_TAB = "__none__";
+
 export default async function PortfolioPage({
   params,
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ category?: string }>;
+  // `tabs` is a curated-share restriction set by PortfolioSettings.tsx's share sheet: a
+  // comma-separated, percent-encoded list of the categories (plus NO_CATEGORY_TAB for
+  // uncategorized) that ONE particular shared link is allowed to show. Absent entirely (the
+  // default "העתקת קישור" link, and every link before this feature existed) means "show
+  // everything" — unrestricted. A category name containing a literal comma won't round-trip
+  // through this correctly; accepted as a rare-enough edge case not worth double-encoding for.
+  searchParams: Promise<{ category?: string; tabs?: string }>;
 }) {
   const { slug } = await params;
-  const { category: activeCategory } = await searchParams;
+  const { category: activeCategory, tabs: tabsParam } = await searchParams;
   const data = await loadPortfolio(slug);
 
   if (!data) {
@@ -82,8 +92,18 @@ export default async function PortfolioPage({
   }
 
   const { photographer, photos: allPhotos } = data;
-  const categories = Array.from(new Set(allPhotos.map((p) => p.portfolio_category).filter((c): c is string => !!c)));
-  const photos = activeCategory ? allPhotos.filter((p) => p.portfolio_category === activeCategory) : allPhotos;
+
+  const allowedTabs = tabsParam ? new Set(tabsParam.split(",").map((t) => decodeURIComponent(t))) : null;
+  const scopedPhotos = allowedTabs
+    ? allPhotos.filter((p) => allowedTabs.has(p.portfolio_category ?? NO_CATEGORY_TAB))
+    : allPhotos;
+
+  // Tab links need to carry the same restriction forward, or clicking between tabs on a curated
+  // link would silently widen back out to the whole portfolio.
+  const tabsSuffix = tabsParam ? `&tabs=${tabsParam}` : "";
+
+  const categories = Array.from(new Set(scopedPhotos.map((p) => p.portfolio_category).filter((c): c is string => !!c)));
+  const photos = activeCategory ? scopedPhotos.filter((p) => p.portfolio_category === activeCategory) : scopedPhotos;
 
   const photosWithUrls = await Promise.all(
     photos.map(async (p) => ({
@@ -113,9 +133,6 @@ export default async function PortfolioPage({
         <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: "var(--font-gallery-serif)" }}>
           {photographer.name}
         </h1>
-        {photographer.portfolio_bio && (
-          <p className="text-sm text-ink-soft max-w-md mx-auto leading-relaxed">{photographer.portfolio_bio}</p>
-        )}
         {contactHref && (
           <a
             href={contactHref}
@@ -128,10 +145,19 @@ export default async function PortfolioPage({
         )}
       </header>
 
+      {/* The photographer's own "get to know me" area — populated from portfolio_bio (see the
+          "טקסט פתיחה" field in PortfolioSettings.tsx). Its own card rather than a plain line under
+          the header, so it reads as a deliberate introduction rather than a caption. */}
+      {photographer.portfolio_bio && (
+        <div className="max-w-lg mx-auto mb-10 rounded-2xl p-5 bg-card border border-line text-center">
+          <p className="text-sm text-ink-soft leading-relaxed whitespace-pre-line">{photographer.portfolio_bio}</p>
+        </div>
+      )}
+
       {categories.length > 0 && (
         <div className="flex flex-wrap justify-center gap-2 mb-8">
           <a
-            href={`/p/${slug}`}
+            href={tabsParam ? `/p/${slug}?tabs=${tabsParam}` : `/p/${slug}`}
             className="rounded-full px-4 py-1.5 text-xs font-semibold"
             style={{
               background: !activeCategory ? "var(--color-amber-deep)" : "var(--color-chip)",
@@ -143,7 +169,7 @@ export default async function PortfolioPage({
           {categories.map((c) => (
             <a
               key={c}
-              href={`/p/${slug}?category=${encodeURIComponent(c)}`}
+              href={`/p/${slug}?category=${encodeURIComponent(c)}${tabsSuffix}`}
               className="rounded-full px-4 py-1.5 text-xs font-semibold"
               style={{
                 background: activeCategory === c ? "var(--color-amber-deep)" : "var(--color-chip)",
