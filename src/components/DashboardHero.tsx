@@ -24,36 +24,33 @@ export default function DashboardHero({
   const forecastRatio = monthForecast > 0 ? Math.min(1, monthTotal / monthForecast) : 0;
   const stillDue = Math.max(0, monthForecast - monthTotal);
 
+  // Design stage 5: no longer the screen's lead (the next event is) — a single flat line under
+  // it. The "big number + small label + bar" card was the generic dashboard treatment.
   return (
-    <div className="rounded-2xl p-4 mb-6 bg-card">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[13px] text-ink-soft">הכנסות {monthLabel}</div>
-          <div className="text-[30px] leading-tight font-bold font-data">₪{monthTotal.toLocaleString("he-IL")}</div>
+    <div className="mb-5 px-1">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm text-ink-soft">הכנסות ב{monthLabel}</span>
+        <div className="flex items-baseline gap-3">
+          {registeredUsersCount != null && (
+            <Link href="/admin" className="text-xs text-ink-soft underline underline-offset-2" title="מעבר ללוח הבקרה">
+              <span className="font-data">{registeredUsersCount.toLocaleString("he-IL")}</span> משתמשים
+            </Link>
+          )}
+          <span className="text-lg font-extrabold font-data">₪{monthTotal.toLocaleString("he-IL")}</span>
         </div>
-        {registeredUsersCount != null && (
-          <Link
-            href="/admin"
-            className="shrink-0 rounded-xl px-3 py-2 text-center bg-chip"
-            title="סה״כ צלמים רשומים, מעבר ללוח הבקרה"
-          >
-            <span className="block text-base leading-none font-bold font-data">{registeredUsersCount.toLocaleString("he-IL")}</span>
-            <span className="block text-[10px] leading-tight text-ink-soft mt-1">משתמשים רשומים</span>
-          </Link>
-        )}
       </div>
-
-      <div className="h-1.5 rounded-full overflow-hidden mt-3.5 mb-2" style={{ background: "var(--color-chip)" }}>
+      <div className="h-1 rounded-full overflow-hidden mt-2 mb-1.5" style={{ background: "var(--color-chip)" }}>
         <div className="gf-grow h-full rounded-full" style={{ width: `${forecastRatio * 100}%`, background: "var(--color-brass)" }} />
       </div>
-      <div className="flex items-center justify-between text-xs text-ink-soft">
-        <span>
-          צפי לחודש: <span className="font-data font-semibold text-ink">₪{monthForecast.toLocaleString("he-IL")}</span>
-        </span>
+      <div className="text-xs text-ink-soft">
         {stillDue > 0 ? (
-          <span className="font-data">עוד ₪{stillDue.toLocaleString("he-IL")} צפוי</span>
+          <>
+            עוד <span className="font-data">₪{stillDue.toLocaleString("he-IL")}</span> צפויים החודש
+          </>
+        ) : monthForecast > 0 ? (
+          "כל הצפי לחודש התקבל"
         ) : (
-          monthForecast > 0 && <span className="font-data">{Math.round(forecastRatio * 100)}%</span>
+          "אין עדיין תשלומים צפויים החודש"
         )}
       </div>
     </div>

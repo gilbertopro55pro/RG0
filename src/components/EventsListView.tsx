@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CloseEventConfirmModal from "@/components/CloseEventConfirmModal";
-import { packageLabel } from "@/lib/stages";
 import type { EventRow } from "@/lib/types";
 import { googleColorRgba } from "@/lib/googleColors";
 import { eventDisplayName } from "@/lib/eventDisplayName";
@@ -43,8 +42,7 @@ function currentMonthValue() {
 
 export default function EventsListView({
   events,
-  doneCountByEvent,
-  totalCountByEvent,
+  nextStageByEvent,
   unreadCountByEvent,
   isPhotographer,
   needsReviewColorId,
@@ -52,8 +50,8 @@ export default function EventsListView({
 }: {
   attentionByEvent?: Record<string, EventAttention>;
   events: EventWithCustomPackage[];
-  doneCountByEvent: Record<string, number>;
-  totalCountByEvent: Record<string, number>;
+  // Name of the first stage not done yet; null when every stage is done (ready to close).
+  nextStageByEvent: Record<string, string | null>;
   unreadCountByEvent: Record<string, number>;
   isPhotographer: boolean;
   // The photographer's own "צבע לזיהוי אירועים לייבוא" pick (Settings → יומן Google) — reused here
@@ -95,8 +93,7 @@ export default function EventsListView({
       return a.event_date.localeCompare(b.event_date);
     });
     return result;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, query, statusFilter, sortOrder, selectedMonth, doneCountByEvent, totalCountByEvent]);
+  }, [events, query, statusFilter, sortOrder, selectedMonth]);
 
   const visible = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visible.length;
@@ -214,8 +211,7 @@ export default function EventsListView({
               attention={attentionByEvent[event.id]}
               key={event.id}
               event={event}
-              doneCount={doneCountByEvent[event.id] ?? 0}
-              totalCount={totalCountByEvent[event.id] ?? 1}
+              nextStage={nextStageByEvent[event.id] ?? null}
               unreadCount={unreadCountByEvent[event.id] ?? 0}
               needsReviewColorId={needsReviewColorId}
               canClose={isPhotographer}
@@ -246,8 +242,7 @@ export default function EventsListView({
 
 function EventCard({
   event,
-  doneCount,
-  totalCount,
+  nextStage,
   unreadCount,
   needsReviewColorId,
   canClose,
@@ -255,8 +250,7 @@ function EventCard({
   first,
 }: {
   event: EventWithCustomPackage;
-  doneCount: number;
-  totalCount: number;
+  nextStage: string | null;
   unreadCount: number;
   needsReviewColorId?: string | null;
   // Photographer only — assistants never get a close button.
@@ -266,8 +260,6 @@ function EventCard({
 }) {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const total = Math.max(1, totalCount);
-  const pct = Math.round((doneCount / total) * 100);
   const done = !!event.closed_at;
   const isFreelance = isFreelanceEvent(event);
   // Falls back to the accent tint when the photographer hasn't picked an import color yet.
@@ -277,7 +269,9 @@ function EventCard({
   const rowBackground = event.needs_review ? rowTint : isFreelance ? `rgba(${FREELANCE_RGB}, 0.1)` : undefined;
   const [y, m, d] = event.event_date.split("-").map(Number);
   const showYear = y !== new Date().getFullYear();
-  const meta = [event.event_location, packageLabel(event.package, event.custom_packages?.name)].filter(Boolean).join(" · ");
+  // Design stage 5: client name leads; type and place follow in plain words (no " · " chain, and
+  // the package lives on the event page, not in the list).
+  const meta = [event.event_type?.trim(), event.event_location?.trim()].filter(Boolean).join(", ");
   const tag = "inline-block text-[11.5px] font-medium px-2 py-0.5 rounded-md";
 
   return (
@@ -300,7 +294,7 @@ function EventCard({
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-[15px] font-semibold truncate">{eventDisplayName(event)}</span>
+          <span className="text-[15px] font-bold truncate">{event.client_name}</span>
           {unreadCount > 0 && (
             <span
               className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-bold flex items-center justify-center leading-none font-data"
@@ -348,34 +342,30 @@ function EventCard({
         )}
       </div>
 
-      <div className="shrink-0 flex flex-col items-end gap-1.5">
+      <div className="shrink-0 self-start mt-0.5 flex flex-col items-end gap-1.5 max-w-[104px]">
         {done ? (
           <span className="text-xs font-semibold" style={{ color: "var(--color-sage)" }}>
             נסגר
           </span>
-        ) : (
-          <>
-            <span className="text-xs text-ink-soft font-data" title={`${doneCount} מתוך ${total} שלבים הושלמו`}>
-              {doneCount}/{total}
-            </span>
-            <span className="block w-14 h-1 rounded-full overflow-hidden" style={{ background: "var(--color-chip)" }}>
-              <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: "var(--color-ink)" }} />
-            </span>
-          </>
-        )}
-        {canClose && !done && (
-          // Lives inside the row's <Link>, so the click must not also navigate to the event page.
+        ) : nextStage ? (
+          <span className="text-xs text-ink-soft text-end leading-snug" title="השלב הבא">
+            {nextStage}
+          </span>
+        ) : canClose ? (
+          // Every stage is done: closing is the next step. Lives inside the row's <Link>, so the
+          // click must not also navigate to the event page.
           <button
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setConfirmOpen(true);
             }}
-            className="text-[11px] font-medium text-ink-soft underline underline-offset-2 mt-0.5"
+            className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-bg"
+            style={{ color: "var(--color-amber-deep)" }}
           >
-            סגירה
+            לסגירה
           </button>
-        )}
+        ) : null}
       </div>
     </Link>
     {confirmOpen && (

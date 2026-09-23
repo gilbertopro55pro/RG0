@@ -20,7 +20,10 @@ const ACTIONS = [
   { href: "/analytics", label: "דשבורד", icon: IconAnalytics },
 ] as const;
 
-const TILE = "nav-tile rounded-2xl px-3 pt-3.5 pb-3 flex flex-col items-start gap-2.5 text-start bg-card";
+// Design stage 5: one grouped block split by hairlines (the container's line color shows through
+// the 1px gaps), not six separate floating cards.
+const TILE = "px-3.5 py-3.5 flex flex-col items-start gap-2 text-start";
+const TILE_STYLE = { background: "var(--color-cell)" };
 
 export default function QuickActionsGrid({
   hourlyRate,
@@ -43,22 +46,29 @@ export default function QuickActionsGrid({
 
   return (
     <>
-      <h2 className="text-[17px] font-bold mb-2.5 px-0.5">כלים</h2>
-      <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 mb-6">
-        <button onClick={() => setCalculatorOpen(true)} className={TILE}>
-          <IconCalculator className="h-5 w-5 text-ink" />
+      <nav
+        aria-label="כלים"
+        className="grid grid-cols-3 lg:grid-cols-6 gap-px mb-6 rounded-2xl overflow-hidden border border-line"
+        style={{ background: "var(--color-line)" }}
+      >
+        <button onClick={() => setCalculatorOpen(true)} data-press="tint" className={TILE} style={TILE_STYLE}>
+          <span style={{ color: "var(--color-brass)" }}>
+            <IconCalculator className="h-5 w-5" />
+          </span>
           <span className="text-[13px] font-medium leading-tight">הצעות מחיר</span>
         </button>
         {ACTIONS.map((item) => {
           const Icon = item.icon;
           return (
-            <Link key={item.href} href={item.href} className={TILE}>
-              <Icon className="h-5 w-5 text-ink" />
+            <Link key={item.href} href={item.href} data-press="tint" className={TILE} style={TILE_STYLE}>
+              <span style={{ color: "var(--color-brass)" }}>
+                <Icon className="h-5 w-5" />
+              </span>
               <span className="text-[13px] font-medium leading-tight">{item.label}</span>
             </Link>
           );
         })}
-      </div>
+      </nav>
       {calculatorOpen && (
         <EventPricingCalculator
           hourlyRate={hourlyRate}

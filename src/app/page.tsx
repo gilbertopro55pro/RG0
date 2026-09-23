@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { closingRecognitions, monthKeyIsrael } from "@/lib/closeEvent";
 import { timeOfDayGreeting } from "@/lib/greeting";
+import { STAGE_LABELS } from "@/lib/stages";
 import type {
   CustomPackageRow,
   EventPaymentRow,
@@ -25,6 +26,7 @@ import PendingClientMessagePrompts, {
   type PendingLeadFollowUp,
 } from "@/components/PendingClientMessagePrompts";
 import DashboardHero from "@/components/DashboardHero";
+import NextEventHero, { type NextEventHeroData } from "@/components/NextEventHero";
 import QuickActionsGrid from "@/components/QuickActionsGrid";
 import EventsListView, { type EventAttention } from "@/components/EventsListView";
 import LandingPage from "@/components/LandingPage";
@@ -68,15 +70,16 @@ export default async function DashboardPage() {
     { data: priceQuotes },
     { data: priceQuoteTemplates },
     { data: contracts },
+    { data: customStageNames },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase.from("team_members").select("*").eq("id", user!.id).maybeSingle<TeamMember>(),
     // RLS scopes this to the photographer's own events, or a team member's assigned events
     supabase
       .from("events")
-      .select("*, custom_packages(name), event_stages(event_id, done)")
+      .select("*, custom_packages(name), event_stages(event_id, done, stage_key, custom_stage_id, stage_order)")
       .order("event_date", { ascending: true })
-      .returns<(EventWithCustomPackage & { event_stages: Pick<EventStageRow, "event_id" | "done">[] })[]>(),
+      .returns<(EventWithCustomPackage & { event_stages: Pick<EventStageRow, "event_id" | "done" | "stage_key" | "custom_stage_id" | "stage_order">[] })[]>(),
     supabase.from("custom_packages").select("*").order("sort_order", { ascending: true }).returns<CustomPackageRow[]>(),
     supabase.from("event_types").select("*").order("sort_order", { ascending: true }).returns<EventTypeRow[]>(),
     supabase.from("package_prices").select("*").returns<PackagePriceRow[]>(),
@@ -112,6 +115,9 @@ export default async function DashboardPage() {
       .select("event_id, status, created_at")
       .order("created_at", { ascending: false })
       .returns<{ event_id: string; status: "draft" | "sent" | "signed"; created_at: string }[]>(),
+    // Names for custom-package stages, so the event list and the next-event hero can say which
+    // stage comes next instead of a bare "3/14".
+    supabase.from("custom_package_stages").select("id, name").returns<{ id: string; name: string }[]>(),
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
@@ -160,13 +166,17 @@ export default async function DashboardPage() {
     albumQuickGalleries = (galleriesForAlbum ?? []).map((g) => ({ ...g, hasActiveAlbum: galleriesWithAlbum.has(g.id) }));
   }
 
-  const doneCountByEvent = new Map<string, number>();
-  const totalCountByEvent = new Map<string, number>();
+  // The first stage (by order) not done yet, per event. null = every stage is done, i.e. the event
+  // is ready to be closed.
+  const customStageName = new Map((customStageNames ?? []).map((s) => [s.id, s.name]));
+  const nextStageByEvent: Record<string, string | null> = {};
   events?.forEach((event) => {
-    event.event_stages.forEach((s) => {
-      totalCountByEvent.set(event.id, (totalCountByEvent.get(event.id) ?? 0) + 1);
-      if (s.done) doneCountByEvent.set(event.id, (doneCountByEvent.get(event.id) ?? 0) + 1);
-    });
+    const next = [...event.event_stages].sort((a, b) => a.stage_order - b.stage_order).find((s) => !s.done);
+    nextStageByEvent[event.id] = next
+      ? next.stage_key
+        ? STAGE_LABELS[next.stage_key]
+        : (customStageName.get(next.custom_stage_id ?? "") ?? null)
+      : null;
   });
 
   const unreadCountByEvent = new Map<string, number>();
@@ -205,6 +215,32 @@ export default async function DashboardPage() {
       if (latestContractStatus.get(event.id) === "sent") attention.contractPending = true;
       if (attention.openBalance || attention.depositDue || attention.contractPending) attentionByEvent[event.id] = attention;
     });
+  }
+
+  // The next shoot — the first open event from today on. Leads the home screen: when, where, how
+  // much is still to collect and what the next step is.
+  let nextEvent: NextEventHeroData | null = null;
+  if (photographer) {
+    const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+    const upcoming = (events ?? []).find((e) => !e.closed_at && e.event_date >= todayIso);
+    if (upcoming) {
+      const p = (payments ?? []).find((x) => x.event_id === upcoming.id);
+      const due = p
+        ? (p.deposit_paid ? 0 : Number(p.deposit_amount) - Number(p.deposit_paid_amount ?? 0)) +
+          (p.balance_paid ? 0 : Number(p.balance_amount) - Number(p.balance_paid_amount ?? 0))
+        : 0;
+      const daysUntil = Math.round((Date.parse(upcoming.event_date) - Date.parse(todayIso)) / 86_400_000);
+      nextEvent = {
+        id: upcoming.id,
+        clientName: upcoming.client_name,
+        eventType: upcoming.event_type,
+        location: upcoming.event_location,
+        eventDate: upcoming.event_date,
+        daysUntil,
+        amountDue: Math.max(0, due),
+        nextStage: nextStageByEvent[upcoming.id] ?? null,
+      };
+    }
   }
 
   let heroData: { monthLabel: string; monthTotal: number; monthForecast: number } | null = null;
@@ -314,6 +350,8 @@ export default async function DashboardPage() {
         <NewEventButton customPackages={customPackages ?? []} eventTypes={eventTypes ?? []} prices={prices ?? []} />
       )}
 
+      {isPhotographer && nextEvent && <NextEventHero event={nextEvent} />}
+
       {isPhotographer && heroData && (
         <DashboardHero
           monthLabel={heroData.monthLabel}
@@ -359,8 +397,7 @@ export default async function DashboardPage() {
 
       <EventsListView
         events={events ?? []}
-        doneCountByEvent={Object.fromEntries(doneCountByEvent)}
-        totalCountByEvent={Object.fromEntries(totalCountByEvent)}
+        nextStageByEvent={nextStageByEvent}
         unreadCountByEvent={Object.fromEntries(unreadCountByEvent)}
         isPhotographer={isPhotographer}
         needsReviewColorId={photographer?.google_calendar_import_color_id}
