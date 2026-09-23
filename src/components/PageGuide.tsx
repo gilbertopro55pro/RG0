@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { PAGE_GUIDES, GUIDE_LANG_LABELS, type GuideLang, type PageGuideKey } from "@/lib/pageGuides";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 // Sits right under a page's <h1>: a short two-line Hebrew explanation of what the screen is for,
 // ending in a link that opens the full multi-language guide (video + written sections, with real
@@ -58,7 +59,7 @@ export default function PageGuide({ pageKey, blurb }: { pageKey: PageGuideKey; b
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0"
                 aria-label={lang === "he" ? "סגירה" : lang === "ru" ? "Закрыть" : "Close"}
               >
-                ✕
+                <IconClose className="h-4 w-4" />
               </button>
             </div>
 

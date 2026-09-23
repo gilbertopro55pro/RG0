@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import Spinner from "@/components/Spinner";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -172,7 +173,7 @@ export default function LoginPage() {
                 onClick={() => setShowForgotPassword(false)}
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
               >
-                ✕
+                <IconClose className="h-4 w-4" />
               </button>
             </div>
 

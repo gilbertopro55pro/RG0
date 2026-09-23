@@ -7,6 +7,7 @@ import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery } from "@/components/icons/NavIcons";
+import { IconClose } from "@/components/icons/AlbumIcons";
 import { resolveGalleryTheme } from "@/lib/galleryTheme";
 import GallerySlideshow from "@/components/GallerySlideshow";
 import GalleryAlbumProofing, { type ClientAlbumElement } from "@/components/GalleryAlbumProofing";
@@ -887,7 +888,7 @@ export default function PublicGalleryView({
             ❤️ לחיצה לתמונה בגודל מלא · לחיצה ארוכה לבחירה מרובה · לחיצה כפולה לשיתוף/הורדה (של כל התמונות המסומנות, אם יש כמה)
           </span>
           <button onClick={dismissHint} className="shrink-0 font-bold leading-none" aria-label="סגירה">
-            ✕
+            <IconClose className="h-3 w-3" />
           </button>
         </div>
       )}
@@ -1379,7 +1380,7 @@ export default function PublicGalleryView({
                 className={`h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
                 style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
               >
-                ✕
+                <IconClose className="h-4 w-4" />
               </button>
             </div>
             {(favorites.length > 0 || favoriteCount < photos.length) && (
@@ -1617,7 +1618,7 @@ export default function PublicGalleryView({
                 className={`h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
                 style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
               >
-                ✕
+                <IconClose className="h-4 w-4" />
               </button>
             </div>
             <div className={`grid gap-3 ${allowDownloads ? "grid-cols-2" : "grid-cols-1"}`}>
@@ -1961,7 +1962,7 @@ export default function PublicGalleryView({
             }}
             className={`absolute top-4 left-4 h-9 w-9 rounded-full bg-white/10 text-white flex items-center justify-center ${BTN_PRESS}`}
           >
-            ✕
+            <IconClose className="h-4 w-4" />
           </button>
           {allowDownloads && (
             <button

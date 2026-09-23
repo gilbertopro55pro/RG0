@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import { coverAspectRatio } from "@/lib/galleryTheme";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 // Opens right when a photographer picks/changes the gallery's cover photo — lets them recenter
 // which part of the photo stays visible once it's cropped to the cover banner's fixed aspect ratio
@@ -56,7 +57,7 @@ export default function GalleryCoverFocalPointModal({
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-sm font-bold">מרכוז תמונת השער</h2>
           <button onClick={onClose} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
-            ✕
+            <IconClose className="h-4 w-4" />
           </button>
         </div>
         <p className="text-xs text-ink-soft mb-3">לחצו או גררו על התמונה כדי לבחור מה יישאר במרכז כשהיא תיחתך למסגרת השער.</p>

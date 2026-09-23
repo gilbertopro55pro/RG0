@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PACKAGE_LABELS, type PackageType } from "@/lib/stages";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
+import { IconClose } from "@/components/icons/AlbumIcons";
 import NativeDateTimeField from "@/components/NativeDateTimeField";
 
 export default function EditEventModal({
@@ -149,7 +150,7 @@ export default function EditEventModal({
             onClick={onClose}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
           >
-            ✕
+            <IconClose className="h-4 w-4" />
           </button>
         </div>
         <div className="space-y-3">

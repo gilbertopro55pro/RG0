@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useModalEntered } from "@/lib/useModalEntered";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 export default function FeedbackButton() {
   const [open, setOpen] = useState(false);
@@ -67,7 +68,7 @@ export default function FeedbackButton() {
                 onClick={close}
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
               >
-                ✕
+                <IconClose className="h-4 w-4" />
               </button>
             </div>
 

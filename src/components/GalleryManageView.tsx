@@ -3500,7 +3500,7 @@ export default function GalleryManageView({
             }}
             className={`absolute top-4 left-4 h-9 w-9 rounded-full bg-white/10 text-white flex items-center justify-center ${BTN_PRESS}`}
           >
-            ✕
+            <IconAlbumClose className="h-4 w-4" />
           </button>
           <button
             onClick={(e) => {
@@ -3903,7 +3903,7 @@ export default function GalleryManageView({
                 onClick={() => setPrintHouseModalOpen(false)}
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
               >
-                ✕
+                <IconAlbumClose className="h-4 w-4" />
               </button>
             </div>
             <p className="text-sm text-ink-soft mb-4">
@@ -4093,7 +4093,7 @@ export default function GalleryManageView({
             title="ביטול בחירה"
             className={`shrink-0 h-6 w-6 rounded-full bg-white/15 flex items-center justify-center text-xs ${BTN_PRESS}`}
           >
-            ✕
+            <IconAlbumClose className="h-3 w-3" />
           </button>
         </div>
       )}
@@ -5492,7 +5492,7 @@ function GallerySettingsModal({
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold font-display">הגדרות גלריה</h2>
           <button onClick={closeWithAnimation} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
-            ✕
+            <IconAlbumClose className="h-4 w-4" />
           </button>
         </div>
 

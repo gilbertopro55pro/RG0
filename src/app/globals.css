@@ -202,10 +202,14 @@ body {
    and panels throughout the app. A true bevel needs light on the top edge AND a whisper of shadow
    on the bottom edge — a highlight alone reads as a flat line, not a pane with real thickness.
    Saturate pulled back from 190% to 160% (still vivid, no longer candy) — restraint reads as
-   premium, saturation for its own sake reads as a trend. */
+   premium, saturation for its own sake reads as a trend. Blur pulled back again from 32px to 20px
+   2026-09-23 (see brand critique, same date) — most bg-card surfaces are dense with text/UI, and
+   heavy blur there reads as illegible/"trendy 2023" rather than premium; 20px already matches what
+   the solid action buttons below use and still gives a real frosted feel without smearing content
+   directly behind a panel. */
 .bg-card {
-  backdrop-filter: blur(32px) saturate(160%);
-  -webkit-backdrop-filter: blur(32px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
   /* !important: components also apply Tailwind's border/border-line utilities alongside
      bg-card, and per this project's Tailwind v4 cascade-layer setup those can otherwise win
      over this plain (unlayered) rule despite normal source-order expectations. */
@@ -298,12 +302,18 @@ body {
 
 /* Global tactile press feedback for every button in the app. Driven by GlobalButtonEffects.tsx
    toggling .js-pressed via real pointer events — not the CSS :active pseudo-class, which iOS
-   Safari activates inconsistently for touch input. The spring-back easing (overshoot past 1
-   then settle) is what gives the "press in, pop back" feel. Scale + brightness dip together sell
-   an actual "sinking in" look — scale alone at a small delta reads as barely-there. */
+   Safari activates inconsistently for touch input. Scale + brightness dip together sell an actual
+   "sinking in" look — scale alone at a small delta reads as barely-there.
+   Easing changed 2026-09-23 from a spring-back overshoot (cubic-bezier(0.34, 1.56, 0.64, 1) —
+   settles PAST 1 before bouncing back) to this "expo out" curve (fast start, no overshoot at all).
+   The overshoot read as playful/consumer-app (Duolingo-adjacent) rather than the restrained,
+   premium feel this product is going for (see brand critique, 2026-09-23) — Linear/Stripe/Apple's
+   own press feedback never overshoots. Kept as one shared rule rather than tuned per-button so the
+   whole app's press feel changes together; a specific "fun" moment (e.g. a success confirmation)
+   should reach for its own dedicated bounce animation instead of fighting this default. */
 button:not(:disabled),
 a[role="button"]:not([aria-disabled="true"]) {
-  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), filter 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), filter 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 button:not(:disabled).js-pressed,
 a[role="button"]:not([aria-disabled="true"]).js-pressed {

@@ -8,6 +8,7 @@ import { maskCssUrl, findMask } from "@/lib/albumMasks";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsFilterId, adjustmentsSvgFilter, type PhotoAdjustments } from "@/lib/albumAdjustments";
 import { sharpenFilterId, sharpenSvgFilter } from "@/lib/albumSharpen";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 type SpreadPhoto = { id: string; url: string };
 type SpreadLayout = "split" | "feature" | "stack" | "custom";
@@ -329,7 +330,7 @@ export default function GalleryAlbumProofing({
     <div className={`fixed inset-0 z-[80] bg-black flex flex-col select-none ${ALBUM_FONT_CLASS_NAMES}`}>
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
         <button onClick={onClose} aria-label="סגירה" className="h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg">
-          ✕
+          <IconClose className="h-5 w-5" />
         </button>
         <span dir="ltr" className="text-xs font-semibold text-white/70 font-data tracking-wide">
           {onCover ? "שער" : `${index + 1} / ${spreads.length}`}

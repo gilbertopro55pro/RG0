@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { CustomPackageRow, CustomPackageStageRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
 import { useModalEntered } from "@/lib/useModalEntered";
+import { IconClose } from "@/components/icons/AlbumIcons";
 import {
   CUSTOMIZABLE_MESSAGE_STAGES,
   STAGE_LABELS,
@@ -622,7 +623,7 @@ export function CustomPackageBuilder({
             onClick={onClose}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
           >
-            ✕
+            <IconClose className="h-4 w-4" />
           </button>
         </div>
 

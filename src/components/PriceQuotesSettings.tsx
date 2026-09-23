@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
 import { openWhatsApp } from "@/lib/waLink";
 import { formatDateDMY } from "@/lib/priceQuoteFormat";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 const VAT_RATE = 0.18;
 
@@ -740,7 +741,7 @@ export default function PriceQuotesSettings({
                       className="text-ink-soft text-xs shrink-0 disabled:opacity-30"
                       aria-label="הסרת פריט"
                     >
-                      ✕
+                      <IconClose className="h-3 w-3" />
                     </button>
                   </div>
                   <input
@@ -956,7 +957,7 @@ export default function PriceQuotesSettings({
                   className="text-ink-soft text-sm disabled:opacity-30"
                   aria-label="הסרת פריט"
                 >
-                  ✕
+                  <IconClose className="h-3.5 w-3.5" />
                 </button>
               </div>
             ))}

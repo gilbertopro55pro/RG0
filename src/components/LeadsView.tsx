@@ -8,6 +8,7 @@ import type { CustomPackageRow, EventTypeRow, LeadRow, LeadStatus, PackagePriceR
 import { useModalEntered } from "@/lib/useModalEntered";
 import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
 import PageGuide from "@/components/PageGuide";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
@@ -382,7 +383,7 @@ function AddLeadModal({
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl font-bold font-display">ליד חדש</h2>
           <button onClick={onClose} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
-            ✕
+            <IconClose className="h-4 w-4" />
           </button>
         </div>
         <div className="space-y-3">

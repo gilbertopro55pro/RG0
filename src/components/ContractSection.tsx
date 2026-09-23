@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { EventContractRow } from "@/lib/types";
 import { useModalEntered } from "@/lib/useModalEntered";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 export default function ContractSection({
   eventId,
@@ -156,7 +157,7 @@ export default function ContractSection({
                 onClick={() => setShowPreview(false)}
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
               >
-                ✕
+                <IconClose className="h-4 w-4" />
               </button>
             </div>
             <div className="text-sm whitespace-pre-wrap leading-relaxed rounded-xl p-3.5 bg-chip">
@@ -182,7 +183,7 @@ export default function ContractSection({
                 onClick={() => setShowEdit(false)}
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
               >
-                ✕
+                <IconClose className="h-4 w-4" />
               </button>
             </div>
             <p className="text-xs text-ink-soft mb-2.5">שינויים כאן נשמרים ישירות על החוזה, ולא נוצרים מחדש מהפרטים של האירוע.</p>

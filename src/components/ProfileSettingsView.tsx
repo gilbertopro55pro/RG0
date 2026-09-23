@@ -8,6 +8,7 @@ import { GOOGLE_EVENT_COLORS, googleColorHex } from "@/lib/googleColors";
 import { setHapticsEnabled, subscribeHaptics, getHapticsSnapshot, getHapticsServerSnapshot } from "@/lib/haptics";
 import type { AppleCalendarOption } from "@/lib/appleCalendar";
 import AppleCalendarGuideModal from "@/components/AppleCalendarGuideModal";
+import { IconClose } from "@/components/icons/AlbumIcons";
 import CompactGuideModal from "@/components/CompactGuideModal";
 import { IndeterminateProgressCard } from "@/components/IndeterminateProgressCard";
 import ScanCandidateCard, { type ScanCandidate, type ScanCandidateTextField } from "@/components/ScanCandidateCard";
@@ -537,7 +538,7 @@ export default function ProfileSettingsView({
                       : "הוספת אירועים"}
               </h2>
               <button onClick={() => setScanOpen(false)} className="text-ink-soft text-sm" aria-label="סגירה">
-                ✕
+                <IconClose className="h-3.5 w-3.5" />
               </button>
             </div>
 

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { GalleryRow } from "@/lib/types";
 import { GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 const CLOSE_ANIMATION_MS = 220;
 
@@ -183,7 +184,7 @@ export default function NewGalleryModal({
             onClick={() => closeWithAnimation()}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
           >
-            ✕
+            <IconClose className="h-4 w-4" />
           </button>
         </div>
 

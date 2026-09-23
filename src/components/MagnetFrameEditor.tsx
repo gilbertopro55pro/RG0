@@ -7,6 +7,7 @@ import { MAGNET_FRAME_TEXTURES, findMagnetFrameTexture, textureDataUrl } from "@
 import { MAGNET_FRAME_FLORALS, findMagnetFrameFloral } from "@/lib/magnetFrameFlorals";
 import { MAGNET_FRAME_DIMENSIONS, DEFAULT_MAGNET_FRAME_SETTINGS, getMatInsetPct, getCutoutRadiusPx } from "@/lib/magnetFrameShared";
 import type { MagnetFrameElement, MagnetFrameDesignRow, MagnetFrameSettings, MagnetFrameCustomTextureRow, MagnetFrameCustomElementRow } from "@/lib/types";
+import { IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight } from "@/components/icons/NavIcons";
 
 const COLOR_SWATCHES = [
   { label: "שחור", value: "#111111" },
@@ -105,25 +106,28 @@ function FreeColorPicker({ value, onChange }: { value: string; onChange: (hex: s
 }
 
 // A precise no-drag alternative for nudging the selected element — placed beside its delete button.
-// Forced `dir="ltr"` on the row keeps the arrow glyphs themselves pointing at their real canvas
-// direction: the app shell is RTL (see layout.tsx), and "←"/"→" are in Unicode's bidi-mirrored set,
-// so left unset they'd get visually flipped by the browser inside an RTL container — exactly
-// backwards from what pressing them actually does to the element's position.
+// Forced `dir="ltr"` on the row keeps these buttons in a fixed left-to-right order (up, down,
+// left, right) regardless of page direction — the app shell is RTL (see layout.tsx), and RTL
+// mirrors a plain flex row's child order too. The icons themselves are plain SVG geometry now
+// (previously raw "←"/"→" characters, which — unlike an SVG path — sit in Unicode's bidi-mirrored
+// set and would get visually flipped by the browser inside an RTL container, exactly backwards
+// from what pressing them actually does to the element's position), so they always point at their
+// real canvas direction without needing any mirroring behavior to reason about.
 function NudgeButtons({ onNudge }: { onNudge: (dx: -1 | 0 | 1, dy: -1 | 0 | 1) => void }) {
-  const btn = "h-7 w-7 rounded-full border border-line bg-card text-ink-soft flex items-center justify-center text-xs leading-none hover:bg-chip active:scale-95 transition";
+  const btn = "h-7 w-7 rounded-full border border-line bg-card text-ink-soft flex items-center justify-center hover:bg-chip active:scale-95 transition";
   return (
     <div className="flex items-center gap-1.5" dir="ltr">
       <button type="button" onClick={() => onNudge(0, -1)} className={btn} title="הזזה למעלה">
-        ↑
+        <IconArrowUp className="h-3.5 w-3.5" />
       </button>
       <button type="button" onClick={() => onNudge(0, 1)} className={btn} title="הזזה למטה">
-        ↓
+        <IconArrowDown className="h-3.5 w-3.5" />
       </button>
       <button type="button" onClick={() => onNudge(-1, 0)} className={btn} title="הזזה שמאלה">
-        ←
+        <IconArrowLeft className="h-3.5 w-3.5" />
       </button>
       <button type="button" onClick={() => onNudge(1, 0)} className={btn} title="הזזה ימינה">
-        →
+        <IconArrowRight className="h-3.5 w-3.5" />
       </button>
     </div>
   );
