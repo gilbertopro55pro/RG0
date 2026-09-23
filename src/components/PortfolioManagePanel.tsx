@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/paginatedFetch";
 
 const UNCATEGORIZED = "__uncategorized__";
 
@@ -24,13 +25,21 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const { data, error: fetchError } = await supabase
-        .from("gallery_photos")
-        .select("portfolio_category")
-        .eq("photographer_id", photographerId)
-        .eq("in_portfolio", true);
+      // Paginated — a single select is capped at the project's max-rows setting (1,000), which
+      // silently undercounted every tab for a portfolio past that size (see paginatedFetch.ts).
+      let fetchError: { message: string } | null = null;
+      const data = await fetchAllRows<{ portfolio_category: string | null }>(async (from, to) => {
+        const res = await supabase
+          .from("gallery_photos")
+          .select("portfolio_category")
+          .eq("photographer_id", photographerId)
+          .eq("in_portfolio", true)
+          .range(from, to);
+        if (res.error) fetchError = res.error;
+        return res;
+      });
       if (fetchError) {
-        setError(fetchError.message);
+        setError((fetchError as { message: string }).message);
         setLoading(false);
         return;
       }

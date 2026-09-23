@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PortfolioUploadPanel from "@/components/PortfolioUploadPanel";
 import PortfolioManagePanel from "@/components/PortfolioManagePanel";
+import PortfolioFeaturedPicker from "@/components/PortfolioFeaturedPicker";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import type { Photographer } from "@/lib/types";
 
@@ -228,6 +229,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
             className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-3 resize-none"
           />
           <PortfolioUploadPanel photographerId={photographer.id} />
+          <PortfolioFeaturedPicker photographerId={photographer.id} />
           <PortfolioManagePanel photographerId={photographer.id} />
         </>
       )}
