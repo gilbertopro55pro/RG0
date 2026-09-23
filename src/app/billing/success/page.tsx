@@ -47,7 +47,7 @@ export default function BillingSuccessPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-2xl p-6 text-center bg-card border border-line shadow-card">
-        <h1 className="text-xl font-bold mb-2 font-display">התשלום התקבל 🎉</h1>
+        <h1 className="text-xl font-bold mb-2 font-display">התשלום התקבל</h1>
         {timedOut ? (
           <>
             <p className="text-sm text-ink-soft mb-5">

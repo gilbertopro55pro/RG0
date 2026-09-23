@@ -475,7 +475,7 @@ export default function NewEventModal({
               </div>
               <div className="rounded-xl p-3 bg-white border-2" style={{ borderColor: "var(--color-amber-deep)" }}>
                 <label className="text-sm font-bold block text-ink">חבילה</label>
-                <p className="text-[11px] text-ink-soft mt-0.5 mb-2">החבילה קובעת אילו שלבי עבודה יופיעו באירוע — כדאי לבחור אותה בכוונה</p>
+                <p className="text-[11px] text-ink-soft mt-0.5 mb-2">החבילה קובעת אילו שלבי עבודה יופיעו באירוע. כדאי לבחור אותה בכוונה</p>
                 <select
                   value={isVideoEditVariant(pkgValue) ? VIDEO_EDIT_GROUP_VALUE : pkgValue}
                   onChange={(e) => {
@@ -552,7 +552,7 @@ export default function NewEventModal({
             <div className="space-y-3">
               <div>
                 <div className="text-xs font-semibold tracking-wide text-ink-soft">מתי ואיפה</div>
-                <p className="text-xs text-ink-soft mt-0.5">תאריך, שעות ומיקום — ישמשו גם לסנכרון עם יומן Google ולאיתור כפילויות</p>
+                <p className="text-xs text-ink-soft mt-0.5">תאריך, שעות ומיקום, ישמשו גם לסנכרון עם יומן Google ולאיתור כפילויות</p>
               </div>
               <div>
                 <label className="text-xs block mb-1 text-ink-soft">תאריך האירוע</label>
@@ -779,13 +779,13 @@ export default function NewEventModal({
                     onClick={() => setSkipConfirmOpen(true)}
                     className="w-full text-xs text-ink-soft underline"
                   >
-                    דילוג — לא לעבוד עם חוזה באירוע הזה
+                    דילוג. לא לעבוד עם חוזה באירוע הזה
                   </button>
                 </>
               ) : (
                 <div className="space-y-2.5">
                   <div className="rounded-xl px-3.5 py-2.5 text-sm bg-chip-tint text-amber-deep font-medium text-center">
-                    החוזה נוצר — ממתין לשליחה וחתימת הלקוח/ה
+                    החוזה נוצר: ממתין לשליחה וחתימת הלקוח/ה
                   </div>
                   <button
                     onClick={copyContractLink}
@@ -818,7 +818,7 @@ export default function NewEventModal({
             >
               <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
                 <h2 className="text-lg font-bold mb-2 font-display">לדלג על שלב החוזה?</h2>
-                <p className="text-sm text-ink-soft mb-5">האירוע ימשיך בלי חוזה — אפשר תמיד ליצור אחד מאוחר יותר מעמוד האירוע.</p>
+                <p className="text-sm text-ink-soft mb-5">האירוע ימשיך בלי חוזה. אפשר תמיד ליצור אחד מאוחר יותר מעמוד האירוע.</p>
                 <div className="flex gap-2">
                   <button
                     onClick={skipContract}
@@ -857,7 +857,7 @@ export default function NewEventModal({
               {createdEvent && !createdEvent.googleCalendarSynced && (
                 <div className="rounded-xl p-3 space-y-2" style={{ background: "var(--color-amber-bg)" }}>
                   <p className="text-xs text-amber-deep">
-                    האירוע לא נוסף ליומן Google — החיבור פג תוקף. יש להתחבר מחדש כדי להוסיף אותו.
+                    האירוע לא נוסף ליומן Google, החיבור פג תוקף. יש להתחבר מחדש כדי להוסיף אותו.
                   </p>
                   <a
                     href={`/api/google/connect?redirect=${encodeURIComponent(`/events/${createdEvent.id}?calendarRetry=1`)}`}
@@ -870,13 +870,13 @@ export default function NewEventModal({
               {clientPhone ? (
                 <>
                   <p className="text-xs text-ink-soft text-center mb-1">
-                    לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה — פרטי האירוע, המקדמה והיתרה, וקישור
+                    לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה, פרטי האירוע, המקדמה והיתרה, וקישור
                     לפורטל האישי שלהם למעקב אחר האירוע והתשלומים. תישאר/י לבדוק ולשלוח בעצמך.
                   </p>
                   <SendUpdateButton onSend={sendBookingUpdate} pending={sendingUpdate} label="שליחת עדכון ללקוח בוואטסאפ" />
                 </>
               ) : (
-                <p className="text-xs text-ink-soft text-center">לא הוזן טלפון לקוח — לא ניתן לשלוח עדכון.</p>
+                <p className="text-xs text-ink-soft text-center">לא הוזן טלפון לקוח. לא ניתן לשלוח עדכון.</p>
               )}
               <button
                 onClick={finishAndGoToEvent}

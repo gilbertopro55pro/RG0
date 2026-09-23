@@ -124,7 +124,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const totalBytes = photos.reduce((sum, p) => sum + (p.file_size_bytes ?? 0), 0);
   if (photos.length > MAX_INLINE_PHOTOS || totalBytes > MAX_INLINE_BYTES) {
     return NextResponse.json(
-      { error: "הבחירה גדולה מדי להורדה ישירה — יש לרענן את הדף ולנסות שוב (ההורדה תתבצע ברקע)" },
+      { error: "הבחירה גדולה מדי להורדה ישירה. יש לרענן את הדף ולנסות שוב (ההורדה תתבצע ברקע)" },
       { status: 413 }
     );
   }

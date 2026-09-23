@@ -68,7 +68,7 @@ export default function ContractSignForm({ contract: initialContract }: { contra
       {contract.status === "signed" ? (
         <div className="rounded-xl px-3.5 py-4 text-sm bg-sage-bg text-sage text-center space-y-3">
           <div>
-            החוזה נחתם ✓ על ידי {contract.signer_name} בתאריך{" "}
+            החוזה נחתם על ידי {contract.signer_name} בתאריך{" "}
             {contract.signed_at && new Date(contract.signed_at).toLocaleDateString("he-IL")}
           </div>
           {contract.signature_data_url && (

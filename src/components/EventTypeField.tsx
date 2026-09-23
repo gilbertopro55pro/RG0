@@ -75,7 +75,7 @@ export default function EventTypeField({ value, onChange }: { value: string; onC
             {t}
           </option>
         ))}
-        <option value={CUSTOM_VALUE}>+ אחר — הקלדה חופשית</option>
+        <option value={CUSTOM_VALUE}>+ אחר: הקלדה חופשית</option>
       </select>
       {custom && (
         <div className="mt-2">

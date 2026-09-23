@@ -74,7 +74,7 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
       .insert({
         photographer_id: photographerId,
         event_id: null,
-        title: "פורטפוליו — תמונות שהועלו ישירות",
+        title: "פורטפוליו | תמונות שהועלו ישירות",
         is_portfolio_only: true,
         published: false,
         // Never actually used (this gallery is never published, so nothing here ever expires) —
@@ -192,7 +192,7 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
       }
 
       if (cancelled) {
-        setError(`ההעלאה בוטלה — ${succeeded} מתוך ${files.length} תמונות הועלו לפני הביטול`);
+        setError(`ההעלאה בוטלה: ${succeeded} מתוך ${files.length} תמונות הועלו לפני הביטול`);
       } else if (failedFiles.length > 0) {
         setError(`${failedFiles.length} קבצים לא הועלו: ${failedFiles.slice(0, 6).join(", ")}${failedFiles.length > 6 ? " ועוד..." : ""}`);
       }
@@ -240,7 +240,7 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
       {uploading && <ProgressModal label="העלאת תמונות" pct={uploadPct} onCancel={() => (cancelRequestedRef.current = true)} />}
       {error && <p className="text-xs text-rose mb-2 whitespace-pre-line">{error}</p>}
       {progressText && <p className="text-xs text-ink-soft mb-2">{progressText}</p>}
-      {!uploading && doneCount > 0 && <p className="text-xs text-sage mb-2">{doneCount} תמונות נוספו לפורטפוליו ✓</p>}
+      {!uploading && doneCount > 0 && <p className="text-xs text-sage mb-2">{doneCount} תמונות נוספו לפורטפוליו</p>}
 
       <input ref={fileInputRef} type="file" accept={ALLOWED_ACCEPT} multiple hidden onChange={(e) => handleFiles(e.target.files)} />
       <button

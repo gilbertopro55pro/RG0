@@ -65,13 +65,13 @@ export default function TimeSavingsCalculator() {
 
         <div className="rounded-2xl p-5 text-center bg-amber-deep text-white">
           <div className="text-xs opacity-85 mb-1">
-            בלי מערכת: כ-{hoursWithout} שעות ניהול בחודש. עם גילברטו, אתם חוסכים בערך —
+            בלי מערכת: כ-{hoursWithout} שעות ניהול בחודש. עם גילברטו, אתם חוסכים בערך
           </div>
           <div className="text-4xl font-extrabold font-display">{hoursSaved} שעות</div>
           <div className="text-sm opacity-90 mt-1">שהיו שוות כ-₪{moneySaved.toLocaleString("he-IL")} בחודש</div>
         </div>
         <p className="text-[11px] text-ink-soft text-center leading-relaxed">
-          מבוסס על הזמן הממוצע שצלמים מדווחים שהם משקיעים בהצעות מחיר, תיאום בוואטסאפ, חוזים, שיתוף גלריות ותזכורות תשלום — לעומת אותם שלבים כשהמערכת עושה את רוב העבודה בשבילכם.
+          מבוסס על הזמן הממוצע שצלמים מדווחים שהם משקיעים בהצעות מחיר, תיאום בוואטסאפ, חוזים, שיתוף גלריות ותזכורות תשלום, לעומת אותם שלבים כשהמערכת עושה את רוב העבודה בשבילכם.
         </p>
       </div>
     </section>

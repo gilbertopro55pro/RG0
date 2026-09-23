@@ -11,9 +11,9 @@ const TIER_LABEL: Record<SubscriptionTier, string> = {
 };
 const TIER_ORDER: SubscriptionTier[] = ["basic", "standard", "studio_pro"];
 const TIER_NOTE: Partial<Record<SubscriptionTier, string>> = {
-  basic: "100GB אחסון, עד חבר צוות אחד, שמירת גלריה עד 14 יום — מסלול כניסה, אפשר לשדרג בכל עת.",
+  basic: "100GB אחסון, עד חבר צוות אחד, שמירת גלריה עד 14 יום, מסלול כניסה, אפשר לשדרג בכל עת.",
   standard: "750GB אחסון, עד 2 חברי צוות, שמירת גלריה עד 90 יום.",
-  studio_pro: "אחסון ללא הגבלה, עד 3 חברי צוות, שמירת גלריה עד שנה, ומיתוג מלא — לוגו וצבע מותג משלכם על כל הגלריות ללקוחות.",
+  studio_pro: "אחסון ללא הגבלה, עד 3 חברי צוות, שמירת גלריה עד שנה, ומיתוג מלא: לוגו וצבע מותג משלכם על כל הגלריות ללקוחות.",
 };
 
 function plansForTier(tier: SubscriptionTier): SubscriptionPlan[] {

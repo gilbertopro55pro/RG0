@@ -17,7 +17,7 @@ export default class ErrorBoundary extends Component<{ children: ReactNode; labe
       return (
         <div className="p-6 text-center">
           <p className="text-sm font-semibold text-rose mb-2">
-            {this.props.label ?? "אירעה שגיאה"} — משהו השתבש בטעינה
+            {this.props.label ?? "אירעה שגיאה"}, משהו השתבש בטעינה
           </p>
           <p className="text-xs text-ink-soft font-data break-all">{this.state.error.message}</p>
           <button

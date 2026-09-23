@@ -94,13 +94,13 @@ export default function ContractSection({
               onClick={() => setShowPreview(true)}
               className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
             >
-              👁 תצוגה מקדימה
+              תצוגה מקדימה
             </button>
             <button
               onClick={openEdit}
               className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
             >
-              ✎ עריכה
+              עריכה
             </button>
           </div>
           <button
@@ -118,7 +118,7 @@ export default function ContractSection({
       {contract && contract.status === "signed" && (
         <div className="space-y-2.5">
           <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
-            נחתם ✓ על ידי {contract.signer_name}
+            נחתם על ידי {contract.signer_name}
             {contract.signed_at && ` · ${new Date(contract.signed_at).toLocaleDateString("he-IL")}`}
           </div>
           {contract.signature_data_url && (
@@ -129,7 +129,7 @@ export default function ContractSection({
             onClick={() => setShowPreview(true)}
             className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
           >
-            👁 תצוגה מקדימה
+            תצוגה מקדימה
           </button>
         </div>
       )}
@@ -152,7 +152,7 @@ export default function ContractSection({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold font-display">תצוגה מקדימה — חוזה הזמנה</h2>
+              <h2 className="text-lg font-bold font-display">תצוגה מקדימה: חוזה הזמנה</h2>
               <button
                 onClick={() => setShowPreview(false)}
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"

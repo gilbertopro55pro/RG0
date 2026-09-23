@@ -107,13 +107,13 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           <div className="text-sm font-semibold tracking-wide mb-3.5">תשלומים</div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 bg-chip">
-              <span>מקדמה — ₪{payments.deposit_amount}</span>
+              <span>מקדמה: ₪{payments.deposit_amount}</span>
               <span style={{ color: payments.deposit_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
                 {payments.deposit_paid ? "שולם ✓" : "ממתין"}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 bg-chip">
-              <span>יתרה — ₪{payments.balance_amount}</span>
+              <span>יתרה: ₪{payments.balance_amount}</span>
               <span style={{ color: payments.balance_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
                 {payments.balance_paid
                   ? "שולם ✓"
@@ -133,7 +133,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 rounded-2xl p-3.5 mt-5 text-sm font-semibold bg-sage-bg text-sage"
         >
-          💬 יש שאלה? שליחת הודעה ל{event.photographers.name} בוואטסאפ
+          יש שאלה? שליחת הודעה ל{event.photographers.name} בוואטסאפ
         </a>
       )}
     </div>

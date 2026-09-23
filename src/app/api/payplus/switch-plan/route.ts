@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       const usedGb = Math.round(Number(usedBytes ?? 0) / (1024 * 1024 * 1024));
       const capGb = Math.round(targetCap / (1024 * 1024 * 1024));
       return NextResponse.json(
-        { error: `נפח האחסון הנוכחי שלכם (${usedGb}GB) חורג מהמכסה של מסלול ${SUBSCRIPTION_PLANS[targetPlan].label} (${capGb}GB) — יש לפנות מקום לפני המעבר` },
+        { error: `נפח האחסון הנוכחי שלכם (${usedGb}GB) חורג מהמכסה של מסלול ${SUBSCRIPTION_PLANS[targetPlan].label} (${capGb}GB). יש לפנות מקום לפני המעבר` },
         { status: 400 }
       );
     }

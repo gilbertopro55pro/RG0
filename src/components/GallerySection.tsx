@@ -72,7 +72,7 @@ export default function GallerySection({
                 ) : gallery.published ? (
                   <span className="text-sage">פורסמה ✓</span>
                 ) : (
-                  <span className="text-ink-soft">טיוטה — עדיין לא פורסמה</span>
+                  <span className="text-ink-soft">טיוטה. עדיין לא פורסמה</span>
                 )}
               </div>
               <div className="text-xs text-amber-deep underline mt-0.5">ניהול גלריה ←</div>

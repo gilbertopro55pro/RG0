@@ -58,14 +58,14 @@ export const metadata: Metadata = {
   description: "מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה",
   manifest: "/manifest.json",
   openGraph: {
-    title: "גילברטו — ניהול תהליך צילום אירועים",
+    title: "גילברטו | ניהול תהליך צילום אירועים",
     description: "מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה",
     siteName: "גילברטו",
     images: [{ url: "/icons/icon-512.png", width: 512, height: 512 }],
   },
   twitter: {
     card: "summary",
-    title: "גילברטו — ניהול תהליך צילום אירועים",
+    title: "גילברטו | ניהול תהליך צילום אירועים",
     description: "מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה",
     images: ["/icons/icon-512.png"],
   },

@@ -131,7 +131,7 @@ export default function CustomPackagesSettings({
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="text-sm font-semibold tracking-wide mb-1">חבילות מותאמות אישית</div>
       <p className="text-xs mb-3.5 text-ink-soft">
-        הגדירו חבילת אירוע משלכם — שם, עלות, ורשימת שלבי תהליך משלכם (במקום 5 החבילות הקבועות של
+        הגדירו חבילת אירוע משלכם, שם, עלות, ורשימת שלבי תהליך משלכם (במקום 5 החבילות הקבועות של
         המערכת). כל שלב שתסמנו ל&quot;שליחת הודעה ללקוח&quot; ישלח עדכון אוטומטי בוואטסאפ בסיום השלב.
       </p>
 
@@ -765,7 +765,7 @@ export function CustomPackageBuilder({
                       <p className="text-[11px] text-ink-soft">
                         {stage.notifyClient
                           ? "שלב מול הלקוח/ה: כשמסמנים אותו כבוצע, נשלחת ללקוח/ה אוטומטית הודעת עדכון בוואטסאפ."
-                          : "שלב פנימי: רק אתם רואים ומסמנים אותו (כמו עריכה או גיבוי) — הלקוח/ה לא מקבלים עליו שום הודעה."}
+                          : "שלב פנימי: רק אתם רואים ומסמנים אותו (כמו עריכה או גיבוי). הלקוח/ה לא מקבלים עליו שום הודעה."}
                       </p>
                       {stage.notifyClient && isCustomStageName(stage.name) && (
                         <div className="mt-2 rounded-xl p-3 bg-white border border-line">
@@ -817,7 +817,7 @@ export function CustomPackageBuilder({
                               disabled={stageMessageAiLoadingId === stage.clientId}
                               className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-amber-bg text-amber-deep disabled:opacity-60"
                             >
-                              {stageMessageAiLoadingId === stage.clientId ? "מנסח..." : "✨ עזרה מ-AI"}
+                              {stageMessageAiLoadingId === stage.clientId ? "מנסח..." : "עזרה בניסוח"}
                             </button>
                           </div>
                           {stageMessageEmojiOpenId === stage.clientId && (
@@ -841,7 +841,7 @@ export function CustomPackageBuilder({
                             <p className="text-xs text-rose mt-1.5">שגיאה בפנייה ל-AI, נסו שוב</p>
                           )}
                           {stageMessageEmptyErrorId === stage.clientId && (
-                            <p className="text-xs text-rose mt-1.5">ההודעה ריקה — יש להזין טקסט לפני שמירה</p>
+                            <p className="text-xs text-rose mt-1.5">ההודעה ריקה. יש להזין טקסט לפני שמירה</p>
                           )}
                           {stageMessageErrorId === stage.clientId && <p className="text-xs text-rose mt-1.5">שגיאה בשמירה, נסו שוב</p>}
                           <div className="flex justify-end mt-2">
@@ -879,7 +879,7 @@ export function CustomPackageBuilder({
                 </div>
               ))}
               {stages.length === 0 && (
-                <div className="text-center py-6 text-xs text-ink-soft">אין שלבים — הוסיפו שלב ראשון</div>
+                <div className="text-center py-6 text-xs text-ink-soft">אין שלבים. הוסיפו שלב ראשון</div>
               )}
             </div>
             <button

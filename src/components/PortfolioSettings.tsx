@@ -99,7 +99,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
     const effectiveEnabled = enabled && portfolioAllowed;
     const cleanSlug = slugify(slug);
     if (effectiveEnabled && !SLUG_PATTERN.test(cleanSlug)) {
-      setError("כתובת לא תקינה — רק אותיות אנגלית קטנות, מספרים ומקפים, לפחות 2 תווים");
+      setError("כתובת לא תקינה. רק אותיות אנגלית קטנות, מספרים ומקפים, לפחות 2 תווים");
       return;
     }
     setSaving(true);
@@ -113,7 +113,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
       .eq("id", photographer.id);
     setSaving(false);
     if (updateError) {
-      setError(updateError.code === "23505" ? "הכתובת הזו כבר תפוסה — נסו כתובת אחרת" : "שגיאה בשמירה");
+      setError(updateError.code === "23505" ? "הכתובת הזו כבר תפוסה. נסו כתובת אחרת" : "שגיאה בשמירה");
       return;
     }
     setSlug(cleanSlug);
@@ -193,11 +193,11 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
       </div>
       {!portfolioAllowed ? (
         <p className="text-xs mb-3.5 text-ink-soft">
-          זמין ממסלול פרו ומעלה — שדרגו מסלול בהגדרות כדי לפתוח עמוד תיק עבודות ציבורי.
+          זמין ממסלול פרו ומעלה, שדרגו מסלול בהגדרות כדי לפתוח עמוד תיק עבודות ציבורי.
         </p>
       ) : (
         <p className="text-xs mb-3.5 text-ink-soft">
-          עמוד ציבורי עם תמונות שתבחרו מהגלריות שלכם — אפשר לשתף כתיק עבודות ללקוחות פוטנציאליים. סימון תמונה
+          עמוד ציבורי עם תמונות שתבחרו מהגלריות שלכם. אפשר לשתף כתיק עבודות ללקוחות פוטנציאליים. סימון תמונה
           &quot;לתיק עבודות&quot; נעשה מתוך ניהול הגלריה עצמה, בתפריט הפעולות של כל תמונה.
         </p>
       )}
@@ -218,7 +218,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
 
           <label className="text-xs block mb-1 text-ink-soft">טקסט פתיחה (אופציונלי)</label>
           <p className="text-[11px] text-ink-soft mb-1.5 leading-relaxed">
-            זה המקום להציג את עצמך ללקוחות — כמה מילים עליך, על הסטודיו והסגנון שלך. הטקסט יופיע באיזור ההיכרות בראש
+            זה המקום להציג את עצמך ללקוחות: כמה מילים עליך, על הסטודיו והסגנון שלך. הטקסט יופיע באיזור ההיכרות בראש
             עמוד הפורטפוליו הציבורי.
           </p>
           <textarea
@@ -278,7 +278,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
                 {availableTabs.length > 1 && (
                   <>
                     <p className="text-xs text-ink-soft mb-2.5">
-                      אפשר לבחור אילו לשוניות יוצגו בקישור הזה — רק מה שמסומן יופיע אצל מי שיקבל אותו.
+                      אפשר לבחור אילו לשוניות יוצגו בקישור הזה. רק מה שמסומן יופיע אצל מי שיקבל אותו.
                     </p>
                     <div className="flex flex-wrap gap-1.5 mb-4">
                       {availableTabs.map((t) => {

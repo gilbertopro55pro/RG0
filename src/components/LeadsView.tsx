@@ -90,7 +90,7 @@ export default function LeadsView({
         blurb="כל פנייה חדשה מתחילה כאן כליד. שולחים ללקוח/ה הצעת מחיר, ואחרי שהיא מאושרת אפשר להפוך אותה לאירוע סגור בלחיצה."
       />
 
-      {leads.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">אין עדיין לידים — לחצו על + כדי להוסיף</div>}
+      {leads.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">אין עדיין לידים. לחצו על + כדי להוסיף</div>}
 
       <div className="space-y-3">
         {leads.map((lead) => (
@@ -140,7 +140,7 @@ export default function LeadsView({
                 }
               >
                 {lead.quote_approved_at
-                  ? "ההצעה אושרה ע\"י הלקוח/ה — ממתין למילוי שאלון פרטי האירוע"
+                  ? "ההצעה אושרה ע\"י הלקוח/ה: ממתין למילוי שאלון פרטי האירוע"
                   : "ממתין לאישור ההצעה ע\"י הלקוח/ה"}
               </div>
             )}

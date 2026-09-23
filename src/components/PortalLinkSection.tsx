@@ -50,7 +50,7 @@ export default function PortalLinkSection({
       </div>
       <p className="text-xs mb-3 text-ink-soft">
         קישור אישי שהלקוח/ה יכולים לפתוח כדי לראות את סטטוס האירוע והתשלומים, בלי צורך להתחבר.
-        {clientPhone && " נשלח אוטומטית בוואטסאפ כשהאירוע נסגר — אפשר גם לשלוח שוב בכל שלב."}
+        {clientPhone && " נשלח אוטומטית בוואטסאפ כשהאירוע נסגר. אפשר גם לשלוח שוב בכל שלב."}
       </p>
       <div className="flex gap-2">
         <button

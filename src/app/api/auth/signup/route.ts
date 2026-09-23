@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   // burning through Resend's send quota, two emails per call) with no limit at all.
   const { allowed } = await checkRateLimit(`signup:${clientIpFrom(request)}`, { maxRequests: 5, windowSeconds: 60 * 60 });
   if (!allowed) {
-    return NextResponse.json({ error: "יותר מדי ניסיונות הרשמה — נסו שוב מאוחר יותר" }, { status: 429 });
+    return NextResponse.json({ error: "יותר מדי ניסיונות הרשמה. נסו שוב מאוחר יותר" }, { status: 429 });
   }
 
   const { name, phone, email, password, plan } = await request.json().catch(() => ({}));
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
-    const message = error.code === "email_exists" ? "כתובת המייל הזו כבר רשומה במערכת — נסו להתחבר." : error.message;
+    const message = error.code === "email_exists" ? "כתובת המייל הזו כבר רשומה במערכת. נסו להתחבר." : error.message;
     return NextResponse.json({ error: message }, { status: error.status ?? 400 });
   }
 
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       text:
         `שלום ${name},\n\n` +
         `תודה שנרשמת למערכת גילברטו לניהול צילום אירועים! ניהול אירועים, גלריות ללקוחות, חוזים דיגיטליים ` +
-        `ועדכונים אוטומטיים — הכל במקום אחד.\n\n` +
+        `ועדכונים אוטומטיים. הכל במקום אחד.\n\n` +
         `בהצלחה,\nצוות גילברטו`,
     });
   } catch (e) {
@@ -73,15 +73,15 @@ export async function POST(request: NextRequest) {
         `שם משתמש (אימייל): ${email}\n` +
         `סיסמה: הסיסמה שבחרת בעת ההרשמה\n\n` +
         `כניסה למערכת: ${confirmUrl}\n\n` +
-        `הקישור הזה גם מאשר את כתובת המייל שלך — לחיצה עליו תפנה אתכם ישר להתחברות.\n\n` +
-        `מסיבות אבטחה איננו שולחים סיסמאות בטקסט גלוי במייל — אם שכחת אותה אפשר לאפס אותה דרך ` +
+        `הקישור הזה גם מאשר את כתובת המייל שלך. לחיצה עליו תפנה אתכם ישר להתחברות.\n\n` +
+        `מסיבות אבטחה איננו שולחים סיסמאות בטקסט גלוי במייל. אם שכחת אותה אפשר לאפס אותה דרך ` +
         `"שכחתי סיסמה" במסך ההתחברות.`,
     });
   } catch (e) {
     console.error("Login-details email failed:", e);
     // Only this one carries the confirmation link — if it genuinely couldn't be sent, say so
     // instead of leaving the person stuck on "check your email" for a mail that never arrived.
-    return NextResponse.json({ error: "החשבון נוצר אך שליחת מייל האימות נכשלה — נסו שוב או צרו קשר" }, { status: 502 });
+    return NextResponse.json({ error: "החשבון נוצר אך שליחת מייל האימות נכשלה. נסו שוב או צרו קשר" }, { status: 502 });
   }
 
   return NextResponse.json({ ok: true });

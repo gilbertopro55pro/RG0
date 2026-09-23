@@ -159,7 +159,7 @@ export default function EventsListView({
                 className="h-2.5 w-2.5 rounded-full shrink-0"
                 style={{ background: googleColorRgba(needsReviewColorId ?? null, 0.9) ?? "var(--color-amber-deep)" }}
               />
-              יובא מהיומן — יש להשלים פרטים
+              יובא מהיומן. יש להשלים פרטים
             </span>
           )}
           {events.some(isFreelanceEvent) && (
@@ -175,7 +175,7 @@ export default function EventsListView({
                   legibility from sitting on the page's own gradient plus a border, which a floating
                   swatch doesn't have for free. */}
               <span className="h-2.5 w-2.5 rounded-full shrink-0 border border-line" style={{ background: "var(--color-card)" }} />
-              אירוע רגיל — נשמר ידנית
+              אירוע רגיל: נשמר ידנית
             </span>
           )}
         </div>
@@ -207,7 +207,7 @@ export default function EventsListView({
         <div className="text-center py-16 text-sm text-ink-soft">
           {events.length === 0
             ? isPhotographer
-              ? "עדיין אין אירועים — לחצו על + כדי לסגור אירוע ראשון"
+              ? "עדיין אין אירועים. לחצו על + כדי לסגור אירוע ראשון"
               : "עדיין לא הוקצו לך אירועים"
             : "לא נמצאו אירועים תואמים"}
         </div>
@@ -285,7 +285,7 @@ function EventCard({
           // safe to compute; dark ink reads fine against every one of them at this tint strength.
           style={{ background: badgeTint, color: "var(--color-ink)" }}
         >
-          יובא מהיומן — יש להשלים פרטים
+          יובא מהיומן. יש להשלים פרטים
         </div>
       )}
       {isFreelance && (
@@ -301,7 +301,7 @@ function EventCard({
           className="text-[10.5px] px-2.5 py-1 rounded-full tracking-wide font-medium mb-2.5 inline-block"
           style={{ background: "var(--color-chip-tint)", color: "var(--color-coral-deep)" }}
         >
-          כפילות — {event.resolution_note}
+          כפילות: {event.resolution_note}
         </div>
       )}
       <div className="h-[5px] rounded-full mb-2.5 bg-line">

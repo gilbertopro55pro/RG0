@@ -39,7 +39,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const data = await loadPortfolio(slug);
   if (!data) return {};
-  const title = `${data.photographer.name} — תיק עבודות`;
+  const title = `${data.photographer.name} | תיק עבודות`;
   return {
     title,
     description: data.photographer.portfolio_bio || "תיק עבודות צילום",

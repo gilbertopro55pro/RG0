@@ -188,7 +188,7 @@ export default function AnalyticsView({
 
   const shareViaWhatsapp = () => {
     const total = monthTransactions.reduce((sum, r) => sum + r.amount, 0);
-    const text = `נתוני הכנסות — ${monthLabel}\n${monthTransactions.length} תשלומים · סה"כ ${currency(total)}\n\nנשלח ממערכת גילברטו`;
+    const text = `נתוני הכנסות: ${monthLabel}\n${monthTransactions.length} תשלומים · סה"כ ${currency(total)}\n\nנשלח ממערכת גילברטו`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
     setShareOpen(false);
   };
@@ -198,7 +198,7 @@ export default function AnalyticsView({
     const file = new File([csv], filename, { type: "text/csv" });
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: `הכנסות — ${monthLabel}` });
+        await navigator.share({ files: [file], title: `הכנסות | ${monthLabel}` });
       } catch {
         // user canceled the native share sheet — nothing to do
       }
@@ -295,7 +295,7 @@ export default function AnalyticsView({
       <h1 className="text-[26px] font-bold mb-1.5 font-display">ניתוח עסקי</h1>
       <PageGuide
         pageKey="analytics"
-        blurb="כאן רואים תמונה עסקית מלאה — הכנסות לפי חודש, תשלומים שממתינים, והתפלגות לפי סוגי חבילות."
+        blurb="כאן רואים תמונה עסקית מלאה, הכנסות לפי חודש, תשלומים שממתינים, והתפלגות לפי סוגי חבילות."
       />
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -355,7 +355,7 @@ export default function AnalyticsView({
       </div>
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-xs text-ink-soft mb-1">צפי הכנסות — {periodLabel}</div>
+        <div className="text-xs text-ink-soft mb-1">צפי הכנסות: {periodLabel}</div>
         <div className="text-xl font-bold font-display">{currency(periodForecast)}</div>
         <div className="text-xs mt-1 text-ink-soft">
           {currency(periodActualRevenue)} התקבל
@@ -382,10 +382,10 @@ export default function AnalyticsView({
       </div>
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-3.5">הכנסות — 12 חודשים אחרונים</div>
+        <div className="text-sm font-semibold tracking-wide mb-3.5">הכנסות: 12 חודשים אחרונים</div>
         {!hasAnyRevenue && (
           <p className="text-xs text-ink-soft mb-3">
-            עוד אין תשלומים מסומנים כ&quot;שולם&quot; — הגרף יתמלא ברגע שתסמנו תשלום ראשון באירוע.
+            עוד אין תשלומים מסומנים כ&quot;שולם&quot;, הגרף יתמלא ברגע שתסמנו תשלום ראשון באירוע.
           </p>
         )}
         <svg viewBox={`0 0 ${chartWidth} ${chartHeight + 24}`} width="100%" height={chartHeight + 24}>
@@ -486,7 +486,7 @@ export default function AnalyticsView({
             {shareStep === "options" && (
               <>
                 <h2 className="text-lg font-bold font-display mb-1">שליחת נתוני {monthLabel}</h2>
-                <p className="text-xs text-ink-soft mb-4">{monthTransactions.length} תשלומים — איך לשלוח?</p>
+                <p className="text-xs text-ink-soft mb-4">{monthTransactions.length} תשלומים, איך לשלוח?</p>
                 <div className="space-y-2.5">
                   <button
                     onClick={() => setShareStep("email")}
@@ -547,7 +547,7 @@ export default function AnalyticsView({
             {shareStep === "email" && emailSent && (
               <>
                 <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium mb-4">
-                  הנתונים נשלחו ל-{emailValue.trim()} ✓
+                  הנתונים נשלחו ל-{emailValue.trim()}
                 </div>
                 <button onClick={closeShare} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
                   סגירה

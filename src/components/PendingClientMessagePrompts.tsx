@@ -84,7 +84,7 @@ export default function PendingClientMessagePrompts({
       <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet">
         {current.type === "payment" ? (
           <>
-            <h2 className="text-lg font-bold mb-2 font-display">תזכורת תשלום 💰</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">תזכורת תשלום</h2>
             <p className="text-sm text-ink-soft mb-5">
               היתרה של <span className="font-semibold text-ink">{current.clientName}</span> (₪
               {current.balanceAmount}) שולמה?
@@ -108,7 +108,7 @@ export default function PendingClientMessagePrompts({
           </>
         ) : current.type === "review" ? (
           <>
-            <h2 className="text-lg font-bold mb-2 font-display">בקשת ביקורת ⭐</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">בקשת ביקורת</h2>
             <p className="text-sm text-ink-soft mb-5">
               לשלוח ל<span className="font-semibold text-ink">{current.clientName}</span> בקשה להשאיר ביקורת?
             </p>
@@ -131,10 +131,10 @@ export default function PendingClientMessagePrompts({
           </>
         ) : (
           <>
-            <h2 className="text-lg font-bold mb-2 font-display">מעקב אחרי הצעת מחיר 📋</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">מעקב אחרי הצעת מחיר</h2>
             <p className="text-sm text-ink-soft mb-5">
               עברו יומיים מאז ששלחת ל<span className="font-semibold text-ink">{current.leadName}</span> הצעת מחיר של ₪
-              {current.quotedAmount} — לשלוח תזכורת מעקב בוואטסאפ?
+              {current.quotedAmount}. לשלוח תזכורת מעקב בוואטסאפ?
             </p>
             <div className="flex gap-2">
               <button

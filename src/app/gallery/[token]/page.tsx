@@ -362,7 +362,7 @@ export default async function PublicGalleryPage({
     >
       {isOwnerPreview && (
         <div className="sticky top-0 z-50 -mx-4 mb-3 px-4 py-2 text-center text-xs font-semibold text-white" style={{ background: "var(--color-amber-deep)" }}>
-          תצוגה מקדימה — כך הלקוח/ה יראו את הגלריה לאחר הפרסום. הגלריה עצמה עדיין לא פורסמה.
+          תצוגה מקדימה. כך הלקוח/ה יראו את הגלריה לאחר הפרסום. הגלריה עצמה עדיין לא פורסמה.
         </div>
       )}
       {brandLogoUrl && (

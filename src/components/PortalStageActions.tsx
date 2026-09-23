@@ -12,7 +12,7 @@ type ClientStage = {
 
 const EXPLANATIONS: Partial<Record<StageKey, string>> = {
   client_photo_selection: "היכנסו לגלריה שלכם, סמנו לב ❤️ על כל תמונה שתרצו לכלול, ולחצו על \"סיום בחירה\" בתחתית העמוד. השלב יסומן כבוצע אוטומטית ברגע שתאשרו.",
-  client_song_selection: "שלחו לנו בוואטסאפ את שם השיר או קישור אליו — זה השיר שילווה את הקליפ שלכם. אחרי ששלחתם, לחצו כאן כדי לסמן שסיימתם.",
+  client_song_selection: "שלחו לנו בוואטסאפ את שם השיר או קישור אליו. זה השיר שילווה את הקליפ שלכם. אחרי ששלחתם, לחצו כאן כדי לסמן שסיימתם.",
   video_approval: "צפו בסרטון שנשלח אליכם. אם הכול נראה מעולה, לחצו לאישור ונמשיך משם לשלב הבא.",
   album_approval: "צפו בעיצוב האלבום ווודאו שהכול נראה בדיוק כמו שרציתם. אם הכול מאושר, לחצו לאישור העיצוב.",
 };
@@ -93,7 +93,7 @@ export default function PortalStageActions({
                       מעבר לגלריה ובחירת תמונות
                     </a>
                   ) : (
-                    <p className="text-xs text-ink-soft">הגלריה עדיין בהכנה — נשלח לכם הודעה כשהיא תהיה מוכנה 🙂</p>
+                    <p className="text-xs text-ink-soft">הגלריה עדיין בהכנה. נשלח לכם הודעה כשהיא תהיה מוכנה</p>
                   )
                 )}
 
@@ -104,7 +104,7 @@ export default function PortalStageActions({
                     rel="noopener noreferrer"
                     className="block w-fit rounded-lg px-3.5 py-2 text-xs font-semibold bg-sage-bg text-sage"
                   >
-                    💬 שליחת שם השיר בוואטסאפ
+                    שליחת שם השיר בוואטסאפ
                   </a>
                 )}
 
@@ -115,13 +115,13 @@ export default function PortalStageActions({
                     rel="noopener noreferrer"
                     className="block w-fit rounded-lg px-3.5 py-2 text-xs font-semibold bg-sage-bg text-sage"
                   >
-                    📄 צפייה בעיצוב האלבום
+                    צפייה בעיצוב האלבום
                   </a>
                 )}
 
                 {key === "album_approval" && !albumDesignUrl && (
                   <p className="text-xs text-ink-soft">
-                    עדיין לא הועלה כאן קובץ עיצוב — אם קיבלתם אותו בדרך אחרת (וואטסאפ, מייל וכו') אפשר לאשר גם ככה.
+                    עדיין לא הועלה כאן קובץ עיצוב. אם קיבלתם אותו בדרך אחרת (וואטסאפ, מייל וכו') אפשר לאשר גם ככה.
                   </p>
                 )}
 

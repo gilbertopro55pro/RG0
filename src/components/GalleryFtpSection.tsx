@@ -52,9 +52,9 @@ export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: s
   if (!allowed) {
     return (
       <div className="mt-5 rounded-2xl p-4 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-1">FTP Live — העלאה חיה מהמצלמה</div>
+        <div className="text-sm font-semibold tracking-wide mb-1">FTP Live: העלאה חיה מהמצלמה</div>
         <p className="text-xs text-ink-soft">
-          חיברו את המצלמה ישירות לגלריה בזמן האירוע — זמין במסלול פרו+.
+          חיברו את המצלמה ישירות לגלריה בזמן האירוע, זמין במסלול פרו+.
         </p>
         <a href="/settings?tab=account" className="inline-block mt-3 text-xs font-semibold text-amber-deep underline">
           שדרוג לפרו+ ←
@@ -67,9 +67,9 @@ export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: s
 
   return (
     <div className="mt-5 rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-1">FTP Live — העלאה חיה מהמצלמה</div>
+      <div className="text-sm font-semibold tracking-wide mb-1">FTP Live: העלאה חיה מהמצלמה</div>
       <p className="text-xs mb-3.5 text-ink-soft">
-        חיברו את המצלמה (או תוכנת שידור) עם הפרטים האלה, וכל תמונה שתצולם תופיע בגלריה הזו תוך שניות — בלי לגעת
+        חיברו את המצלמה (או תוכנת שידור) עם הפרטים האלה, וכל תמונה שתצולם תופיע בגלריה הזו תוך שניות. בלי לגעת
         במחשב באמצע האירוע.
       </p>
 
@@ -99,7 +99,7 @@ export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: s
           />
           <div className="flex items-center justify-between mt-1">
             <button onClick={() => setGuideOpen(true)} className={`text-xs font-semibold text-ink-soft underline ${BTN_PRESS}`}>
-              📷 מדריך חיבור לפי דגם המצלמה
+              מדריך חיבור לפי דגם המצלמה
             </button>
             <button onClick={generate} disabled={generating} className="text-xs font-semibold text-rose disabled:opacity-60">
               {generating ? "יוצר..." : "יצירת פרטים חדשים"}

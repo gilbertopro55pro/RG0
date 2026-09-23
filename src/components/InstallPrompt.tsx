@@ -64,7 +64,7 @@ export default function InstallPrompt() {
           <p className="text-xs text-ink-soft mb-2.5 leading-relaxed">
             {isIOS
               ? 'לחצו על כפתור השיתוף ⬆️ בסרגל הכלים למטה, ואז "הוספה למסך הבית".'
-              : "גישה מהירה מהמסך הראשי, בלי לפתוח דפדפן — בדיוק כמו אפליקציה רגילה."}
+              : "גישה מהירה מהמסך הראשי, בלי לפתוח דפדפן, בדיוק כמו אפליקציה רגילה."}
           </p>
           <div className="flex items-center gap-3">
             {installEvent && (

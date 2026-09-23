@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     try {
       await sendEmail({
         to: notificationEmailFor(photographer.email),
-        subject: `המנוי שלך יחודש בקרוב — ${renewalDateHe}`,
+        subject: `המנוי שלך יחודש בקרוב | ${renewalDateHe}`,
         text:
           `שלום ${photographer.name},\n\n` +
           `המנוי ${planInfo.label} שלך במערכת גילברטו יחודש אוטומטית בתאריך ${renewalDateHe} בסך ₪${amount}.\n` +
@@ -128,12 +128,12 @@ export async function GET(request: NextRequest) {
       const targetAmount = PAYPLUS_BILLING[targetPlan].amount;
       const wasOnLongCycle = PAYPLUS_BILLING[photographer.plan].recurringRangeMonths > 1;
       const reasonText = wasOnLongCycle
-        ? `זהו החיוב עבור החודשים ה-11 וה-12 של תקופת המנוי הקודמת שלך, בעקבות המעבר למסלול ${targetInfo.label} שביקשת — במקום שיהיו חינמיים כמו במסלול הקודם. החל מהמחזור שאחרי כן תחויב/י ₪${targetInfo.pricePerMonth} מדי חודש כמסלול ${targetInfo.label} רגיל.`
+        ? `זהו החיוב עבור החודשים ה-11 וה-12 של תקופת המנוי הקודמת שלך, בעקבות המעבר למסלול ${targetInfo.label} שביקשת, במקום שיהיו חינמיים כמו במסלול הקודם. החל מהמחזור שאחרי כן תחויב/י ₪${targetInfo.pricePerMonth} מדי חודש כמסלול ${targetInfo.label} רגיל.`
           : `כפי שביקשת, המנוי שלך עובר למסלול ${targetInfo.label} (₪${targetAmount}) החל מהמחזור הבא.`;
 
       await sendEmail({
         to: notificationEmailFor(photographer.email),
-        subject: "המעבר למסלול החדש שלך — נדרשת השלמת תשלום",
+        subject: "המעבר למסלול החדש שלך | נדרשת השלמת תשלום",
         text: `שלום ${photographer.name},\n\n${reasonText}\n\nלהשלמת התשלום: ${paymentPageLink}\n\nתודה!`,
       });
 

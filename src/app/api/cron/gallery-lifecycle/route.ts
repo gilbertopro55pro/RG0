@@ -39,7 +39,7 @@ async function getOrCreatePortfolioGalleryId(
     .insert({
       photographer_id: photographerId,
       event_id: null,
-      title: "פורטפוליו — תמונות שהועלו ישירות",
+      title: "פורטפוליו | תמונות שהועלו ישירות",
       is_portfolio_only: true,
       published: false,
       expiry_days: 7, // never published, never actually expires — just satisfies the plan-expiry check trigger
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
         text:
           `שלום,\n\n` +
           `הגלריה "${gallery.title}"${clientLabel !== gallery.title ? ` (${clientLabel})` : ""} תהיה זמינה לצפייה והורדה עד ${expiryDateHe}.\n` +
-          `לאחר מכן היא תוסר ולא תהיה נגישה יותר — מומלץ להוריד את התמונות שרציתם לפני כן.`,
+          `לאחר מכן היא תוסר ולא תהיה נגישה יותר. מומלץ להוריד את התמונות שרציתם לפני כן.`,
       });
     } catch (e) {
       console.error("Gallery expiry reminder email failed:", e);
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
     try {
       await sendWhatsAppTemplate(gallery.client_phone!, GENERIC_STAGE_UPDATE_TEMPLATE, [
         clientLabel,
-        `הגלריה "${gallery.title}" תהיה זמינה לצפייה והורדה עד ${expiryDateHe} ולאחר מכן תוסר — מומלץ להוריד את התמונות שרציתם לפני כן`,
+        `הגלריה "${gallery.title}" תהיה זמינה לצפייה והורדה עד ${expiryDateHe} ולאחר מכן תוסר. מומלץ להוריד את התמונות שרציתם לפני כן`,
       ]);
     } catch (e) {
       console.error("Gallery expiry reminder WhatsApp message failed:", e);

@@ -584,7 +584,7 @@ export default function EventPricingCalculator({
                     <option value="">הצעה חדשה (ללא טעינה מהצעה קודמת)</option>
                     {priceQuotes.map((q) => (
                       <option key={q.id} value={q.id}>
-                        {q.quote_name || q.client_name || "הצעה ללא שם"} — {new Date(q.created_at).toLocaleDateString("he-IL")}
+                        {q.quote_name || q.client_name || "הצעה ללא שם"}: {new Date(q.created_at).toLocaleDateString("he-IL")}
                       </option>
                     ))}
                   </select>
@@ -1130,7 +1130,7 @@ export default function EventPricingCalculator({
         {step === "savePrompt" && (
           <>
             <div className="mb-3.5">
-              <span className="text-base font-bold font-display">נשלח בהצלחה ✓</span>
+              <span className="text-base font-bold font-display">נשלח בהצלחה</span>
             </div>
             <p className="text-sm text-ink-soft mb-3.5">לשמור את ההצעה גם ברשימת הצעות המחיר?</p>
             {savePromptStep === "ask" ? (
@@ -1166,7 +1166,7 @@ export default function EventPricingCalculator({
         {step === "leadFollowUp" && (
           <>
             <div className="mb-3.5">
-              <span className="text-base font-bold font-display">מעקב אחרי ההצעה 📋</span>
+              <span className="text-base font-bold font-display">מעקב אחרי ההצעה</span>
             </div>
             <p className="text-sm text-ink-soft mb-3.5">להוסיף את {quoteClientName || "הלקוח/ה"} לרשימת הלידים כדי לקבל תזכורת מעקב אם לא תחזרו אליה תוך יומיים?</p>
             <div className="flex gap-2">

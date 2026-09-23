@@ -29,7 +29,7 @@ export default function BrandingSettings({ photographer, hasLogo }: { photograph
       <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
         <div className="text-sm font-semibold tracking-wide mb-1">מיתוג מלא</div>
         <p className="text-xs text-ink-soft">
-          צבע מותג אישי והלוגו שלכם על כל הגלריות ללקוחות — זמין במסלול פרו+.
+          צבע מותג אישי והלוגו שלכם על כל הגלריות ללקוחות, זמין במסלול פרו+.
         </p>
       </div>
     );
@@ -41,7 +41,7 @@ export default function BrandingSettings({ photographer, hasLogo }: { photograph
       <p className="text-xs mb-3.5 text-ink-soft">
         צבע המותג שלכם יחליף את צבע ההדגשה בכל הגלריות ללקוחות (כפתורים, הדגשות). הלוגו שהעליתם בלשונית
         &quot;הצעות מחיר&quot; יופיע גם הוא בראש כל גלריה.
-        {!hasLogo && " עדיין לא הועלה לוגו — אפשר להעלות בלשונית הצעות מחיר."}
+        {!hasLogo && " עדיין לא הועלה לוגו. אפשר להעלות בלשונית הצעות מחיר."}
       </p>
 
       <div className="flex items-center justify-between mb-3">

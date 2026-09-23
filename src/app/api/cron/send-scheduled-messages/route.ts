@@ -59,8 +59,8 @@ export async function GET(request: NextRequest) {
     // PaymentReminderPrompts.tsx / ReviewRequestPrompts.tsx and their confirm routes).
     const pendingText =
       message.kind === "payment_reminder"
-        ? "הגיע מועד תזכורת התשלום — ממתין לאישורך שהיתרה עדיין לא שולמה"
-        : "הגיע מועד בקשת הביקורת — ממתין לאישורך לשליחה";
+        ? "הגיע מועד תזכורת התשלום, ממתין לאישורך שהיתרה עדיין לא שולמה"
+        : "הגיע מועד בקשת הביקורת, ממתין לאישורך לשליחה";
     await supabase.from("scheduled_messages").update({ status: "awaiting_confirmation" }).eq("id", message.id);
     await supabase.from("event_notifications").insert({ event_id: message.event_id, text: pendingText });
     results.push({ id: message.id, status: "awaiting_confirmation" });
@@ -151,8 +151,8 @@ async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: 
     try {
       await sendEmail({
         to: notificationEmailFor(photographer.email),
-        subject: `תזכורת מעקב אחרי הצעת מחיר — ${lead.name}`,
-        text: `שלום,\n\nעברו יומיים מאז שנשלחה הצעת מחיר ל${lead.name} ועדיין לא התקבלה תשובה — כדאי לבצע פולואפ:\n\n${detailsBlock}\n\nאפשר לבצע את הפולואפ ישירות מהאפליקציה, בעמוד הלידים.`,
+        subject: `תזכורת מעקב אחרי הצעת מחיר | ${lead.name}`,
+        text: `שלום,\n\nעברו יומיים מאז שנשלחה הצעת מחיר ל${lead.name} ועדיין לא התקבלה תשובה. כדאי לבצע פולואפ:\n\n${detailsBlock}\n\nאפשר לבצע את הפולואפ ישירות מהאפליקציה, בעמוד הלידים.`,
       });
     } catch (e) {
       console.error("Lead quote follow-up email to photographer failed:", e);
@@ -178,7 +178,7 @@ async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: 
   await supabase.from("scheduled_messages").update({ status: "awaiting_confirmation" }).eq("id", message.id);
   await supabase.from("event_notifications").insert({
     lead_id: lead.id,
-    text: "הגיע מועד המעקב אחרי הצעת המחיר שנשלחה — ממתין לאישורך לשליחה בוואטסאפ",
+    text: "הגיע מועד המעקב אחרי הצעת המחיר שנשלחה, ממתין לאישורך לשליחה בוואטסאפ",
   });
 
   return { id: message.id, status: "awaiting_confirmation" };

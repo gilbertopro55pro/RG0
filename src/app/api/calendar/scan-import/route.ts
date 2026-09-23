@@ -92,7 +92,7 @@ export async function GET(request: Request) {
     .single<{ google_calendar_connected: boolean; google_calendar_import_color_id: string | null }>();
 
   if (!photographer?.google_calendar_connected) {
-    return NextResponse.json({ error: "יומן Google לא מחובר — יש לחבר אותו בהגדרות" }, { status: 400 });
+    return NextResponse.json({ error: "יומן Google לא מחובר. יש לחבר אותו בהגדרות" }, { status: 400 });
   }
   if (!photographer.google_calendar_import_color_id) {
     return NextResponse.json({ error: "יש לבחור בהגדרות באיזה צבע ביומן מסומנים אירועים לייבוא" }, { status: 400 });
@@ -112,7 +112,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "שגיאה בטעינת היומן" }, { status: 500 });
   }
   if (!calendarEvents) {
-    return NextResponse.json({ error: "יומן Google לא מחובר — יש לחבר אותו בהגדרות" }, { status: 400 });
+    return NextResponse.json({ error: "יומן Google לא מחובר. יש לחבר אותו בהגדרות" }, { status: 400 });
   }
 
   const candidates = calendarEvents.filter((e) => e.colorId === photographer.google_calendar_import_color_id);

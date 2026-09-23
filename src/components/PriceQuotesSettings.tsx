@@ -565,7 +565,7 @@ export default function PriceQuotesSettings({
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="text-sm font-semibold tracking-wide mb-1">הצעות מחיר</div>
       <p className="text-xs mb-3.5 text-ink-soft">
-        בניית הצעת מחיר עצמאית ללקוח כלשהו — נשמרת ברשימה, ואפשר לשלוח אותה במייל או בוואטסאפ כקובץ PDF עם לוגו העסק.
+        בניית הצעת מחיר עצמאית ללקוח כלשהו, נשמרת ברשימה, ואפשר לשלוח אותה במייל או בוואטסאפ כקובץ PDF עם לוגו העסק.
       </p>
 
       <div className="rounded-xl p-3 bg-chip flex items-center gap-3 mb-4">
@@ -632,7 +632,7 @@ export default function PriceQuotesSettings({
       <div className="mb-4">
         <div className="text-sm font-semibold tracking-wide mb-1">תבניות הצעות מחיר</div>
         <p className="text-xs mb-2.5 text-ink-soft">
-          תבנית שמורה של פריטים קבועים (למשל &quot;חבילת חתונה בסיסית&quot;) — תופיע ברשימה נפתחת בבונה הצעות המחיר, ומהווה בסיס להצעה
+          תבנית שמורה של פריטים קבועים (למשל &quot;חבילת חתונה בסיסית&quot;), תופיע ברשימה נפתחת בבונה הצעות המחיר, ומהווה בסיס להצעה
           חדשה שאליה אפשר להוסיף שורות ספקים והערות.
         </p>
 
@@ -718,7 +718,7 @@ export default function PriceQuotesSettings({
                       />
                     )}
                     {/* A saved supplier's own current price shown as the label itself once picked
-                        (reference only — "here's what this normally costs") — a generic "מחיר"
+                        (reference only "here's what this normally costs"): a generic "מחיר"
                         label the rest of the time (nothing picked yet, or free text). Either way the
                         field beside it stays independently editable (see selectTemplateItemSupplier);
                         this label never locks the template to that supplier's price. */}

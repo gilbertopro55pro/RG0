@@ -22,13 +22,13 @@ async function getToken(apiId: string, apiSecret: string): Promise<string> {
   if (!res.ok) {
     throw new Error(
       res.status === 401 || res.status === 403
-        ? "פרטי ההתחברות ל-חשבונית ירוקה לא תקינים — בדקו את ה-ID והסוד בהגדרות"
+        ? "פרטי ההתחברות ל-חשבונית ירוקה לא תקינים, בדקו את ה-ID והסוד בהגדרות"
         : `ההתחברות לחשבונית ירוקה נכשלה (קוד ${res.status})`
     );
   }
   const data: { token?: string } = await res.json();
   if (!data.token) {
-    throw new Error("ההתחברות לחשבונית ירוקה נכשלה — לא התקבל טוקן");
+    throw new Error("ההתחברות לחשבונית ירוקה נכשלה. לא התקבל טוקן");
   }
   return data.token;
 }
@@ -103,7 +103,7 @@ export async function issueDocument({
   }
   const link = data.url?.origin ?? data.url?.he;
   if (!link) {
-    throw new Error("הפקת המסמך בחשבונית ירוקה נכשלה — לא התקבל קישור למסמך");
+    throw new Error("הפקת המסמך בחשבונית ירוקה נכשלה. לא התקבל קישור למסמך");
   }
   return { documentLink: link };
 }

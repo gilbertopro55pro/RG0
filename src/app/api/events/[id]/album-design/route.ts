@@ -62,7 +62,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } else {
     await supabase
       .from("event_notifications")
-      .insert({ event_id: eventId, text: "קובץ עיצוב האלבום הועלה — לא הוזן טלפון לקוח, לא נשלחה הודעה" });
+      .insert({ event_id: eventId, text: "קובץ עיצוב האלבום הועלה. לא הוזן טלפון לקוח, לא נשלחה הודעה" });
   }
 
   return NextResponse.json({ ok: true, notify });

@@ -136,7 +136,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
       notify = { text: notifyText!, downloadUrl };
     } else {
-      notifications.push({ event_id: eventId, text: "לא הוזן טלפון לקוח — לא נשלחה התראה" });
+      notifications.push({ event_id: eventId, text: "לא הוזן טלפון לקוח. לא נשלחה התראה" });
     }
   }
 

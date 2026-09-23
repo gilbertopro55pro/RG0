@@ -152,7 +152,7 @@ export default function ScanCandidateCard({
             style={{ background: "var(--color-chip-tint)", color: "var(--color-coral-deep)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-1">⚠️ יש כבר אירוע אחר באותו תאריך ואותן שעות — לא בהכרח כפילות, יכול להיות שנשלח צלם אחר.</div>
+            <div className="mb-1">יש כבר אירוע אחר באותו תאריך ואותן שעות. לא בהכרח כפילות, יכול להיות שנשלח צלם אחר.</div>
             <label className="flex items-center gap-1.5 cursor-pointer font-medium">
               <input type="checkbox" checked={candidate.isFreelance} onChange={onToggleFreelance} />
               פרילנס-נשלח צלם/צוות

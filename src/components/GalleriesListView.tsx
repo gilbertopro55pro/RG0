@@ -202,7 +202,7 @@ export default function GalleriesListView({
 
           {filtered.length === 0 && (
             <div className="text-center py-16 text-sm text-ink-soft">
-              {activeItems.length === 0 ? "עדיין אין גלריות — אפשר ליצור גלריה חדשה כאן, או מתוך כרטיס האירוע" : "לא נמצאו תוצאות"}
+              {activeItems.length === 0 ? "עדיין אין גלריות. אפשר ליצור גלריה חדשה כאן, או מתוך כרטיס האירוע" : "לא נמצאו תוצאות"}
             </div>
           )}
 
@@ -255,7 +255,7 @@ export default function GalleriesListView({
         <>
           {expiredItems.length === 0 ? (
             <div className="text-center py-16 text-sm text-ink-soft">
-              אין כרגע גלריות שפג תוקפן או שנמחקו — כשגלריה פוקעת או נמחקת היא מופיעה כאן עד למחיקה הסופית
+              אין כרגע גלריות שפג תוקפן או שנמחקו, כשגלריה פוקעת או נמחקת היא מופיעה כאן עד למחיקה הסופית
             </div>
           ) : (
             <div className="space-y-3">

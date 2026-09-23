@@ -46,8 +46,8 @@ export default function BillingSettings({ photographer }: { photographer: Photog
   const switchExplanation = (targetKey: SubscriptionPlan) => {
     const target = SUBSCRIPTION_PLANS[targetKey];
     return isCurrentLongCycle
-      ? `כבר שילמת מראש על מחזור החיוב הנוכחי — הגישה שלך ממשיכה כרגיל בלי שינוי עד עשרה חודשים ממועד החיוב האחרון. רק בשני החודשים האחרונים של אותה תקופה (שבמסלול הנוכחי היו חינמיים) תחויב/י ${target.pricePerMonth}₪ בכל חודש, ומשם ואילך ימשיך חיוב לפי מסלול ${target.label}.`
-      : `המחזור הנוכחי שלך (עד ${periodEndHe}) לא משתנה — רק בחיוב הבא תחויב/י לפי מסלול ${target.label} (${target.note}).`;
+      ? `כבר שילמת מראש על מחזור החיוב הנוכחי, הגישה שלך ממשיכה כרגיל בלי שינוי עד עשרה חודשים ממועד החיוב האחרון. רק בשני החודשים האחרונים של אותה תקופה (שבמסלול הנוכחי היו חינמיים) תחויב/י ${target.pricePerMonth}₪ בכל חודש, ומשם ואילך ימשיך חיוב לפי מסלול ${target.label}.`
+      : `המחזור הנוכחי שלך (עד ${periodEndHe}) לא משתנה. רק בחיוב הבא תחויב/י לפי מסלול ${target.label} (${target.note}).`;
   };
 
   const requestPlanSwitch = async (targetKey: SubscriptionPlan) => {
@@ -125,7 +125,7 @@ export default function BillingSettings({ photographer }: { photographer: Photog
       {isActive && (
         <p className="text-xs mb-3 text-ink-soft">
           {cancelAtPeriodEnd
-            ? `החידוש האוטומטי כבוי — הגישה למערכת פעילה עד ${periodEndHe}.`
+            ? `החידוש האוטומטי כבוי, הגישה למערכת פעילה עד ${periodEndHe}.`
             : `מחזור החיוב הנוכחי (${plan.label}) מסתיים ומתחדש אוטומטית ב-${periodEndHe}.`}
         </p>
       )}
@@ -151,7 +151,7 @@ export default function BillingSettings({ photographer }: { photographer: Photog
               <span className="text-xs font-semibold">ביטול המנוי</span>
               <p className="text-[11px] text-ink-soft mt-0.5">
                 {autoRenewOn
-                  ? "מכבה את החידוש האוטומטי — הגישה נשארת פעילה עד תום המחזור הנוכחי"
+                  ? "מכבה את החידוש האוטומטי, הגישה נשארת פעילה עד תום המחזור הנוכחי"
                   : "החידוש האוטומטי כבר כבוי"}
               </p>
             </div>
@@ -169,8 +169,8 @@ export default function BillingSettings({ photographer }: { photographer: Photog
               <p className="text-xs font-semibold text-rose mb-1.5">לבטל את המנוי?</p>
               <p className="text-xs mb-3 text-rose">
                 החיוב הבא יבוטל, אך הגישה למערכת תישאר פעילה עד תום מחזור החיוב הנוכחי ({periodEndHe}).
-                האירועים, הגלריות והחוזים שלכם יישמרו במערכת ויחכו לכם — הם לא נמחקים, ואפשר להפעיל את
-                המנוי מחדש בכל עת. הפעולה הזו סופית ולא ניתנת לביטול עצמי — לחידוש המנוי תצטרכו לעבור
+                האירועים, הגלריות והחוזים שלכם יישמרו במערכת ויחכו לכם, הם לא נמחקים, ואפשר להפעיל את
+                המנוי מחדש בכל עת. הפעולה הזו סופית ולא ניתנת לביטול עצמי, לחידוש המנוי תצטרכו לעבור
                 תשלום חדש. פרטים מלאים ב
                 <a href="/cancellation-policy" target="_blank" rel="noreferrer" className="underline">
                   מדיניות הביטולים

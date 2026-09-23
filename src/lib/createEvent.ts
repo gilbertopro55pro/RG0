@@ -183,7 +183,7 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
   const notifications = [{ event_id: event.id, text: "האירוע נסגר במערכת" }];
 
   if (!clientPhone) {
-    notifications.push({ event_id: event.id, text: "לא הוזן טלפון לקוח — לא נשלחה הודעת וואטסאפ" });
+    notifications.push({ event_id: event.id, text: "לא הוזן טלפון לקוח. לא נשלחה הודעת וואטסאפ" });
   }
 
   let googleCalendarSynced = false;
@@ -214,7 +214,7 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
       if (linkError || !linked) {
         notifications.push({
           event_id: event.id,
-          text: `האירוע נוסף ליומן Google, אבל שמירת הקישור במערכת נכשלה (${linkError?.message ?? "שגיאה לא ידועה"}) — עריכת האירוע לא תעדכן את היומן.`,
+          text: `האירוע נוסף ליומן Google, אבל שמירת הקישור במערכת נכשלה (${linkError?.message ?? "שגיאה לא ידועה"}), עריכת האירוע לא תעדכן את היומן.`,
         });
       } else {
         googleCalendarSynced = true;
@@ -223,12 +223,12 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
     } else {
       notifications.push({
         event_id: event.id,
-        text: "היומן שלך לא מחובר ל-Google — אפשר לחבר אותו בהגדרות כדי לסנכרן אירועים אוטומטית",
+        text: "היומן שלך לא מחובר ל-Google. אפשר לחבר אותו בהגדרות כדי לסנכרן אירועים אוטומטית",
       });
     }
   } catch (e) {
     if (e instanceof GoogleCalendarDisconnectedError) {
-      notifications.push({ event_id: event.id, text: "החיבור ליומן Google פג תוקף — יש להתחבר מחדש בהגדרות" });
+      notifications.push({ event_id: event.id, text: "החיבור ליומן Google פג תוקף. יש להתחבר מחדש בהגדרות" });
     } else {
       const rawError = e instanceof Error ? e.message : "שגיאה לא ידועה";
       notifications.push({ event_id: event.id, text: `שגיאה בהוספת האירוע ליומן Google: ${rawError}` });

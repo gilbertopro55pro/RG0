@@ -52,7 +52,7 @@ export async function discoverAppleCalendars(email: string, appPassword: string)
     "0"
   );
   const principalHref = extractTag(principalXml, "href");
-  if (!principalHref) throw new Error("לא הצלחנו לאתר את חשבון ה-iCloud — יש לוודא שהמייל וה-App-Specific Password נכונים");
+  if (!principalHref) throw new Error("לא הצלחנו לאתר את חשבון ה-iCloud. יש לוודא שהמייל וה-App-Specific Password נכונים");
 
   const homeSetXml = await propfind(
     `${CALDAV_BASE}${principalHref}`,

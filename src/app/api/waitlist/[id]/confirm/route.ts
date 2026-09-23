@@ -74,19 +74,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const formattedDate = new Date(entry.requested_date).toLocaleDateString("he-IL");
   const notifications = [
-    { event_id: event.id, text: `האירוע אושר מרשימת ההמתנה — ${resolution.trim()}` },
+    { event_id: event.id, text: `האירוע אושר מרשימת ההמתנה, ${resolution.trim()}` },
   ];
 
   // The actual WhatsApp send (booking confirmation + portal link) now happens client-side right
   // after this request resolves, same as the plain new-event flow — see WaitlistView.tsx.
   if (!entry.client_phone) {
-    notifications.push({ event_id: event.id, text: "לא הוזן טלפון לקוח — לא נשלחה הודעת וואטסאפ" });
+    notifications.push({ event_id: event.id, text: "לא הוזן טלפון לקוח. לא נשלחה הודעת וואטסאפ" });
   }
 
   try {
     const calendarEvent = await syncEventToGoogleCalendar(supabase, user.id, {
       summary: `${packageLabelText} · ${entry.client_name}`,
-      description: `${packageLabelText} · ${entry.client_name}\nתאריך: ${formattedDate}\nהערה: אושר מרשימת המתנה — ${resolution.trim()}`,
+      description: `${packageLabelText} · ${entry.client_name}\nתאריך: ${formattedDate}\nהערה: אושר מרשימת המתנה, ${resolution.trim()}`,
       date: entry.requested_date,
     });
     if (calendarEvent) {
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const appleUid = await syncEventToAppleCalendar(supabase, user.id, event.id, {
       summary: `${packageLabelText} · ${entry.client_name}`,
-      description: `${packageLabelText} · ${entry.client_name}\nתאריך: ${formattedDate}\nהערה: אושר מרשימת המתנה — ${resolution.trim()}`,
+      description: `${packageLabelText} · ${entry.client_name}\nתאריך: ${formattedDate}\nהערה: אושר מרשימת המתנה, ${resolution.trim()}`,
       date: entry.requested_date,
     });
     if (appleUid) {

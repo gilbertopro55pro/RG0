@@ -44,7 +44,7 @@ export default function AdminDashboardView({ photographers }: { photographers: A
 
   return (
     <>
-      <h1 className="text-[22px] font-bold mb-1 font-display">לוח בקרה — מנהל</h1>
+      <h1 className="text-[22px] font-bold mb-1 font-display">לוח בקרה למנהל</h1>
       <p className="text-xs mb-5 text-ink-soft">נתוני משתמשים בכל המערכת. מוצג רק לחשבון המנהל.</p>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">

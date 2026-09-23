@@ -68,7 +68,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       } catch {
         consecutiveFailures++;
         if (consecutiveFailures >= 5) {
-          setExportError("שגיאה בבדיקת התקדמות הייצוא — נסו לרענן את העמוד");
+          setExportError("שגיאה בבדיקת התקדמות הייצוא. נסו לרענן את העמוד");
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -77,7 +77,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       if (!res.ok) {
         consecutiveFailures++;
         if (consecutiveFailures >= 5) {
-          setExportError("שגיאה בבדיקת התקדמות הייצוא — נסו לרענן את העמוד");
+          setExportError("שגיאה בבדיקת התקדמות הייצוא. נסו לרענן את העמוד");
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -125,7 +125,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       const blob = await fileRes.blob();
       await downloadBlob(blob, filename, FORMAT_MIME[format]);
     } catch {
-      setExportError("הייצוא הושלם בהצלחה אבל ההורדה נכשלה — קישור להורדה נשלח גם למייל שלך.");
+      setExportError("הייצוא הושלם בהצלחה אבל ההורדה נכשלה, קישור להורדה נשלח גם למייל שלך.");
     }
   };
 
@@ -242,7 +242,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
 
             {galleries.find((g) => g.id === selectedId)?.hasActiveAlbum && (
               <div className="mb-4">
-                <p className="text-xs font-semibold text-ink-soft mb-2">יש עיצוב אלבום פעיל בגלריה זו — אפשר לייצא ישירות:</p>
+                <p className="text-xs font-semibold text-ink-soft mb-2">יש עיצוב אלבום פעיל בגלריה זו. אפשר לייצא ישירות:</p>
                 <div className="flex items-center gap-2">
                   {(["pdf", "jpg", "psd"] as const).map((format) => (
                     <button

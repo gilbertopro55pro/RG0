@@ -56,7 +56,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   await supabase.from("event_notifications").insert({
     event_id: contract.event_id,
-    text: `החוזה נחתם על ידי ${signerName.trim()} ✓`,
+    text: `החוזה נחתם על ידי ${signerName.trim()}`,
     is_client_action: true,
   });
 
@@ -88,7 +88,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       const eventUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://myframeflow.com"}/events/${event.id}`;
       await sendEmail({
         to: notificationEmailFor(photographer.email),
-        subject: `החוזה עם ${event.client_name} נחתם ✓`,
+        subject: `החוזה עם ${event.client_name} נחתם`,
         text: `שלום ${photographer.name},
 
 החוזה עבור האירוע של ${event.client_name} נחתם דיגיטלית על ידי ${signerName.trim()}.

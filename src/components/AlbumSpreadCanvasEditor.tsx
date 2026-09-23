@@ -689,7 +689,7 @@ function PhotoFloatingMenu({
       onPointerDown={(e) => e.stopPropagation()}
     >
       <PanelDragGrip handlers={dragGripHandlers} />
-      <CircleButton scale={buttonScale} label="עריכת תמונה — חשיפה, ניגודיות, איזון לבן ועוד" active={photoAdjustPanelOpen} onClick={onTogglePhotoAdjustPanel}>
+      <CircleButton scale={buttonScale} label="עריכת תמונה: חשיפה, ניגודיות, איזון לבן ועוד" active={photoAdjustPanelOpen} onClick={onTogglePhotoAdjustPanel}>
         <IconAdjust />
       </CircleButton>
       <CircleButton scale={buttonScale} label="שחור-לבן" active={el.filter === "bw"} onClick={() => onUpdate({ filter: el.filter === "bw" ? "none" : "bw" })}>
@@ -702,10 +702,10 @@ function PhotoFloatingMenu({
           request: a double-click on the photo now centers it directly (see the canvas's own
           onDoubleClick), so this button was pure redundancy. The circle's own active state (below)
           is enough of a marker that pan mode is on — no extra label/panel needed. */}
-      <CircleButton scale={buttonScale} label="מיקום התמונה במסגרת — גררו את התמונה כדי למקם אותה, או לחצו פעמיים על התמונה כדי למרכז" active={panning} onClick={onTogglePan}>
+      <CircleButton scale={buttonScale} label="מיקום התמונה במסגרת, גררו את התמונה כדי למקם אותה, או לחצו פעמיים על התמונה כדי למרכז" active={panning} onClick={onTogglePan}>
         <IconFocal />
       </CircleButton>
-      <CircleButton scale={buttonScale} label="הצגה בגודל נכון — מתאים את המסגרת ליחס הרוחב/גובה האמיתי של התמונה" onClick={onTrueSize}>
+      <CircleButton scale={buttonScale} label="הצגה בגודל נכון, מתאים את המסגרת ליחס הרוחב/גובה האמיתי של התמונה" onClick={onTrueSize}>
         <IconTrueSize />
       </CircleButton>
       <CircleButton scale={buttonScale}
@@ -717,7 +717,7 @@ function PhotoFloatingMenu({
       </CircleButton>
       <CircleButton
         scale={buttonScale}
-        label={el.locked ? "נעולה — לחצו לשחרור המיקום והגודל" : "נעילת מיקום וגודל"}
+        label={el.locked ? "נעולה. לחצו לשחרור המיקום והגודל" : "נעילת מיקום וגודל"}
         active={!!el.locked}
         onClick={() => onUpdate({ locked: !el.locked })}
       >
@@ -756,10 +756,10 @@ function PhotoFloatingMenu({
       <CircleButton scale={buttonScale} label="צל וקו מתאר" active={shadowPanelOpen || !!el.shadow || !!el.borderWidth} onClick={onToggleShadowPanel}>
         <IconShadow />
       </CircleButton>
-      <CircleButton scale={buttonScale} label="קדימה — לשכבה העליונה" onClick={onBringToFront}>
+      <CircleButton scale={buttonScale} label="העברה לשכבה העליונה" onClick={onBringToFront}>
         <IconToFront />
       </CircleButton>
-      <CircleButton scale={buttonScale} label="אחורה — לשכבה התחתונה" onClick={onSendToBack}>
+      <CircleButton scale={buttonScale} label="העברה לשכבה התחתונה" onClick={onSendToBack}>
         <IconToBack />
       </CircleButton>
       <CircleButton scale={buttonScale} label="מחיקת התמונה/ות שנבחרו" danger onClick={onDeleteSelected}>
@@ -936,15 +936,15 @@ function OrnamentFloatingMenu({
         </div>
       )}
       <div className="flex items-center gap-1">
-        <button onClick={onBringToFront} title="קדימה — לשכבה העליונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onBringToFront} title="העברה לשכבה העליונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToFront />
         </button>
-        <button onClick={onSendToBack} title="אחורה — לשכבה התחתונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onSendToBack} title="העברה לשכבה התחתונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToBack />
         </button>
         <button
           onClick={() => onUpdate({ locked: !el.locked })}
-          title={el.locked ? "נעול — לחצו לשחרור" : "נעילת מיקום וגודל"}
+          title={el.locked ? "נעול. לחצו לשחרור" : "נעילת מיקום וגודל"}
           className="flex-1 h-7 rounded-lg flex items-center justify-center"
           style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "#fff" : "var(--color-ink-soft)" }}
         >
@@ -1045,15 +1045,15 @@ function ShapeFloatingMenu({
         </div>
       )}
       <div className="flex items-center gap-1">
-        <button onClick={onBringToFront} title="קדימה — לשכבה העליונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onBringToFront} title="העברה לשכבה העליונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToFront />
         </button>
-        <button onClick={onSendToBack} title="אחורה — לשכבה התחתונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onSendToBack} title="העברה לשכבה התחתונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToBack />
         </button>
         <button
           onClick={() => onUpdate({ locked: !el.locked })}
-          title={el.locked ? "נעול — לחצו לשחרור" : "נעילת מיקום וגודל"}
+          title={el.locked ? "נעול. לחצו לשחרור" : "נעילת מיקום וגודל"}
           className="flex-1 h-7 rounded-lg flex items-center justify-center"
           style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "#fff" : "var(--color-ink-soft)" }}
         >
@@ -3553,7 +3553,7 @@ export default function AlbumSpreadCanvasEditor({
         </div>
         <div className="text-white">
           <p className="text-lg font-bold font-display mb-1">סובבו את המכשיר למצב אופקי</p>
-          <p className="text-sm opacity-80">כלי עיצוב האלבום פועל רק במצב אופקי — סובבו את הטלפון כדי להמשיך</p>
+          <p className="text-sm opacity-80">כלי עיצוב האלבום פועל רק במצב אופקי, סובבו את הטלפון כדי להמשיך</p>
         </div>
         <button onClick={handleCloseAttempt} className="mt-1 h-9 px-4 rounded-full bg-white text-ink text-sm font-semibold">
           סגירה
@@ -3979,7 +3979,7 @@ export default function AlbumSpreadCanvasEditor({
 
               <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip mb-4">
                 <span className="text-xs text-ink-soft leading-relaxed flex-1">
-                  אל תציג לי את החלון הזה שוב — תמיד שמור אוטומטית ביציאה
+                  אל תציג לי את החלון הזה שוב. תמיד שמור אוטומטית ביציאה
                 </span>
                 <button
                   onClick={() => {
@@ -4794,7 +4794,7 @@ export default function AlbumSpreadCanvasEditor({
             circle buttons. */}
         {selectedText && canvasRestRect && (
           <div className="fixed z-20" style={{ top: canvasRestRect.top + 8, right: "8px" }}>
-            <CircleButton label="עריכת טקסט — גופן, צבע, יישור ועוד" active={textPanelOpen} onClick={() => setTextPanelOpen((v) => !v)}>
+            <CircleButton label="עריכת טקסט: גופן, צבע, יישור ועוד" active={textPanelOpen} onClick={() => setTextPanelOpen((v) => !v)}>
               <span className="font-display font-bold" style={{ fontSize: 15 }}>T</span>
             </CircleButton>
           </div>
@@ -5038,7 +5038,7 @@ export default function AlbumSpreadCanvasEditor({
                     className={`font-semibold shrink-0 ${isPhone ? "text-[9px]" : "text-[11px]"}`}
                     style={{ color: "var(--color-amber-deep)" }}
                   >
-                    {dragPanelSelectedIds.size} נבחרו — ניקוי
+                    {dragPanelSelectedIds.size} נבחרו · ניקוי
                   </button>
                 )}
                 {favoritePhotos.length > 0 && (
@@ -5065,7 +5065,7 @@ export default function AlbumSpreadCanvasEditor({
             </div>
             {dragPanelGroups.length > 0 && !isPhone && (
               <p className="text-[10px] text-ink-soft mb-1.5">
-                לחיצה בוחרת כמה תמונות יחד — גוררים כל אחת מהן כדי לשבץ את כולן בעמוד, לפי הכיוון של כל תמונה
+                לחיצה בוחרת כמה תמונות יחד, גוררים כל אחת מהן כדי לשבץ את כולן בעמוד, לפי הכיוון של כל תמונה
               </p>
             )}
             {/* Folder tabs — same pattern as ORNAMENT_TABS/TEMPLATE_TABS above. "הכל" (the default)
@@ -5250,7 +5250,7 @@ export default function AlbumSpreadCanvasEditor({
             {selectedPhotos.length > 1 && (
               <p className="text-[11px] text-ink-soft text-center flex items-center justify-center gap-1">
                 <IconInfo size={13} />
-                נבחרו {selectedPhotos.length} תמונות — גרירה, שינוי גודל ופעולות מהתפריט הצף יחולו על כולן
+                נבחרו {selectedPhotos.length} תמונות, גרירה, שינוי גודל ופעולות מהתפריט הצף יחולו על כולן
               </p>
             )}
           </div>
@@ -5419,7 +5419,7 @@ export default function AlbumSpreadCanvasEditor({
         )}
 
         {/* Phone only: the same actions, but as two dense rows with no icons and shorter
-            labels — "ייכנס בדיוק גם אם צריך להקטין" per the explicit request. + מסגרת is dropped
+            labels "ייכנס בדיוק גם אם צריך להקטין" per the explicit request. + מסגרת is dropped
             here specifically (not on tablet/desktop) — nine buttons already need every bit of
             width these two rows have; a photographer who needs an empty frame on phone can still
             get one from a template. The background button has no room for the opacity/blur
@@ -5595,8 +5595,8 @@ export default function AlbumSpreadCanvasEditor({
           <div className="w-full max-w-sm lg:max-w-2xl rounded-3xl p-4 lg:p-6 bg-paper max-h-[70vh] overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3 gap-2">
               <h3 className="text-sm font-bold">
-                {pickingBackground ? "בחירת תמונת רקע — " : ""}
-                {addingMultiplePhotos ? "בחירת תמונות להוספה — " : ""}
+                {pickingBackground ? "בחירת תמונת רקע " : ""}
+                {addingMultiplePhotos ? "בחירת תמונות להוספה " : ""}
                 {showAllInPicker || favoritePhotos.length === 0 ? "כל התמונות" : "תמונות מועדפות"}
               </h3>
               <div className="flex items-center gap-2 shrink-0">
@@ -5612,7 +5612,7 @@ export default function AlbumSpreadCanvasEditor({
             </div>
             {addingMultiplePhotos && (
               <p className="text-[11px] text-ink-soft mb-2.5">
-                אפשר לבחור כמה תמונות שרוצים — המערכת תסדר אותן בעמוד בפריסה אוטומטית, כשתמונות לאורך מקבלות מסגרת לאורך ותמונות לרוחב מקבלות מסגרת לרוחב.
+                אפשר לבחור כמה תמונות שרוצים. המערכת תסדר אותן בעמוד בפריסה אוטומטית, כשתמונות לאורך מקבלות מסגרת לאורך ותמונות לרוחב מקבלות מסגרת לרוחב.
               </p>
             )}
             {pickerPhotos.length === 0 ? (
@@ -5751,7 +5751,7 @@ export default function AlbumSpreadCanvasEditor({
                   to happen here too, making this look like a plain close button while secretly
                   deleting the whole background photo). Removing the background entirely already has
                   its own dedicated controls: the main "תמונת רקע" toolbar button once one is set,
-                  and "הסרה" in the photo right-click menu — this X should only dismiss the panel and
+                  and "הסרה" in the photo right-click menu, this X should only dismiss the panel and
                   keep whatever opacity/blur was already set, same as clicking the backdrop does. */}
               <button
                 onClick={() => setBackgroundPanelOpen(false)}
@@ -5895,7 +5895,7 @@ export default function AlbumSpreadCanvasEditor({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className={`font-bold ${isPhone ? "text-[10px]" : "text-sm"}`}>מסכות — גררו מסכה אל תמונה/צורה, או לחצו כשתמונה/צורה נבחרת</p>
+              <p className={`font-bold ${isPhone ? "text-[10px]" : "text-sm"}`}>מסכות: גררו מסכה אל תמונה/צורה, או לחצו כשתמונה/צורה נבחרת</p>
               <button onClick={closeMasksPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
@@ -5962,7 +5962,7 @@ export default function AlbumSpreadCanvasEditor({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>עיטורים — לחצו כדי להוסיף לעמוד</p>
+              <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>עיטורים. לחצו כדי להוסיף לעמוד</p>
               <button onClick={closeOrnamentsPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
@@ -6134,7 +6134,7 @@ export default function AlbumSpreadCanvasEditor({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>צורות — לחצו כדי להוסיף לעמוד</p>
+              <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>צורות. לחצו כדי להוסיף לעמוד</p>
               <button onClick={closeShapesPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
@@ -6218,7 +6218,7 @@ export default function AlbumSpreadCanvasEditor({
           >
             {(
               [
-                { size: "auto", label: "אוטומטי — לפי צורת התמונה" },
+                { size: "auto", label: "אוטומטי: לפי צורת התמונה" },
                 { size: "rect", label: "מלבן 10x7.5 ס״מ" },
                 { size: "circle", label: "עיגול Ø5 ס״מ" },
                 { size: "square", label: "ריבוע 5x5 ס״מ" },

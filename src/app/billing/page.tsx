@@ -40,13 +40,13 @@ export default async function BillingPage({
         </div>
         <p className="text-sm mb-4 text-ink-soft">
           {isPastDue
-            ? "החיוב האחרון נכשל — יש לעדכן אמצעי תשלום כדי להמשיך להשתמש במערכת."
+            ? "החיוב האחרון נכשל. יש לעדכן אמצעי תשלום כדי להמשיך להשתמש במערכת."
             : isCanceled
               ? "המנוי שלך בוטל. ניתן להפעיל אותו מחדש בכל עת."
               : "כדי להתחיל להשתמש במערכת יש להשלים את התשלום עבור המנוי שנבחר."}
         </p>
         {error === "1" && (
-          <p className="text-xs text-rose mb-4">התשלום לא הושלם או נכשל — ניתן לנסות שוב.</p>
+          <p className="text-xs text-rose mb-4">התשלום לא הושלם או נכשל. ניתן לנסות שוב.</p>
         )}
         <BillingPlanSelector initialPlan={photographer.plan} />
       </div>

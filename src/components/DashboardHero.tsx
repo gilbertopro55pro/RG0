@@ -61,7 +61,7 @@ export default function DashboardHero({
             href="/admin"
             className="shrink-0 h-[56px] w-[64px] rounded-xl flex flex-col items-center justify-center gap-0.5 text-center"
             style={{ background: "var(--color-chip)" }}
-            title="סה״כ צלמים רשומים — מעבר ללוח הבקרה"
+            title="סה״כ צלמים רשומים, מעבר ללוח הבקרה"
           >
             <span className="text-base leading-none font-extrabold font-display">
               {registeredUsersCount.toLocaleString("he-IL")}

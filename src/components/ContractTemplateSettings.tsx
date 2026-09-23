@@ -57,7 +57,7 @@ export default function ContractTemplateSettings({ photographer }: { photographe
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="text-sm font-semibold tracking-wide mb-1">תבנית חוזה</div>
       <p className="text-xs text-ink-soft leading-relaxed mb-3.5">
-        זהו הסעיף &quot;תנאים כלליים&quot; בחוזה שנוצר לכל אירוע — פרטי האירוע, התשלומים והחתימה נוצרים תמיד אוטומטית מתוך כרטיס
+        זהו הסעיף &quot;תנאים כלליים&quot; בחוזה שנוצר לכל אירוע, פרטי האירוע, התשלומים והחתימה נוצרים תמיד אוטומטית מתוך כרטיס
         האירוע ונשארים אותו דבר לכל הצלמים; רק הסעיף הזה הוא התנאים העסקיים שלכם, ואתם יכולים לכתוב אותו מחדש כרצונכם.
       </p>
 

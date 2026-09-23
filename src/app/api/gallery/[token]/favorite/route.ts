@@ -48,7 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (gallery.selection_confirmed_at && gallery.event_id) {
     await supabase.from("event_notifications").insert({
       event_id: gallery.event_id,
-      text: `הלקוח/ה עדכנו את בחירת התמונות מהגלריה — נבחרו כעת ${favoritePhotoIds.length} תמונות`,
+      text: `הלקוח/ה עדכנו את בחירת התמונות מהגלריה, נבחרו כעת ${favoritePhotoIds.length} תמונות`,
       is_client_action: true,
     });
   }
