@@ -14,14 +14,21 @@ type StatusFilter = "upcoming" | "completed" | "all" | "duplicates";
 type SortOrder = "asc" | "desc" | "month";
 const PAGE_SIZE = 10;
 
-// A genuine orange — not this app's "amber" token, which despite the name is actually a
-// blue-purple brand color (#5b6fd1), not orange at all. Kept as a plain constant here rather than
+// What needs the photographer's attention on an event — computed server-side in page.tsx.
+export type EventAttention = {
+  openBalance?: number; // event date passed, money still unpaid
+  depositDue?: number; // upcoming event, deposit not (fully) paid yet
+  contractPending?: boolean; // contract sent, not signed yet
+};
+
+const HE_MONTHS_SHORT = ["ינו׳", "פבר׳", "מרץ", "אפר׳", "מאי", "יוני", "יולי", "אוג׳", "ספט׳", "אוק׳", "נוב׳", "דצמ׳"];
+
+// A genuine orange — distinct from the brass accent. Kept as a plain constant here rather than
 // a new globals.css token since it's only used in this one file, for one purpose: telling a
 // freelance-covered event's card apart from a regular one at a glance. Separate from
 // needs_review's own tint, which is whichever of Google's 11 calendar colors the photographer
 // picked — the two are visually distinct on purpose since they mean different things.
 const FREELANCE_RGB = "255, 149, 0";
-const FREELANCE_CARD_TINT = `rgba(${FREELANCE_RGB}, 0.22)`;
 const FREELANCE_BADGE_TINT = `rgba(${FREELANCE_RGB}, 0.5)`;
 const FREELANCE_SWATCH = `rgba(${FREELANCE_RGB}, 0.9)`;
 
@@ -41,7 +48,9 @@ export default function EventsListView({
   unreadCountByEvent,
   isPhotographer,
   needsReviewColorId,
+  attentionByEvent = {},
 }: {
+  attentionByEvent?: Record<string, EventAttention>;
   events: EventWithCustomPackage[];
   doneCountByEvent: Record<string, number>;
   totalCountByEvent: Record<string, number>;
@@ -94,45 +103,60 @@ export default function EventsListView({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3.5">
-        <span className="text-sm font-semibold">אירועים</span>
-        <span className="text-xs text-ink-soft font-data">{filtered.length} מתוך {events.length}</span>
+      <div className="flex items-baseline justify-between mb-2.5 px-0.5">
+        <h2 className="text-[17px] font-bold">אירועים</h2>
+        <span className="text-[13px] text-ink-soft font-data">
+          {filtered.length !== events.length
+            ? `${filtered.length} מתוך ${events.length}`
+            : events.length === 1
+              ? "אירוע אחד"
+              : `${events.length} אירועים`}
+        </span>
       </div>
 
       {events.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-3.5">
+        <div className="grid grid-cols-2 gap-2 mb-3">
           <select
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value as StatusFilter);
               setVisibleCount(PAGE_SIZE);
             }}
-            className="shrink-0 w-[74px] sm:w-auto rounded-lg px-1.5 py-2 text-xs sm:text-sm border border-line bg-white"
+            aria-label="סינון לפי סטטוס"
+            className="order-2 min-w-0 h-10 rounded-xl px-2.5 text-sm bg-card"
           >
             <option value="upcoming">פעילים</option>
             <option value="completed">הושלמו</option>
             <option value="all">הכל</option>
             <option value="duplicates">כפילויות / פרילנס</option>
           </select>
-          <input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setVisibleCount(PAGE_SIZE);
-            }}
-            placeholder="חיפוש..."
-            className="flex-1 min-w-[64px] rounded-lg px-2.5 py-2 text-xs sm:text-sm border border-line bg-white"
-          />
+          <label className="order-1 col-span-2 h-10 rounded-xl px-3 flex items-center gap-2 bg-card">
+            <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-ink-soft" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="m20 20-4-4" />
+            </svg>
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setVisibleCount(PAGE_SIZE);
+              }}
+              placeholder="חיפוש לקוח או טלפון"
+              aria-label="חיפוש אירוע"
+              className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-ink-soft"
+            />
+          </label>
           <select
             value={sortOrder}
             onChange={(e) => {
               setSortOrder(e.target.value as SortOrder);
               setVisibleCount(PAGE_SIZE);
             }}
-            className="shrink-0 w-[92px] sm:w-auto rounded-lg px-1.5 py-2 text-xs sm:text-sm border border-line bg-white"
+            aria-label="מיון"
+            className="order-3 min-w-0 h-10 rounded-xl px-2.5 text-sm bg-card"
           >
-            <option value="asc">מהקרוב לרחוק</option>
-            <option value="desc">מהרחוק לקרוב</option>
+            <option value="asc">הקרוב ביותר</option>
+            <option value="desc">הרחוק ביותר</option>
             <option value="month">חודש מסוים</option>
           </select>
           {sortOrder === "month" && (
@@ -143,7 +167,7 @@ export default function EventsListView({
                 setSelectedMonth(e.target.value);
                 setVisibleCount(PAGE_SIZE);
               }}
-              className="shrink-0 w-full sm:w-auto rounded-lg px-2 py-2 text-xs sm:text-sm border border-line bg-white font-data"
+              className="order-4 col-span-2 h-10 rounded-xl px-3 text-sm bg-card font-data"
             />
           )}
         </div>
@@ -183,8 +207,11 @@ export default function EventsListView({
 
       {visible.length > 0 ? (
         <>
-          {visible.map((event) => (
+          <div className="rounded-2xl overflow-hidden bg-card mb-3.5">
+          {visible.map((event, i) => (
             <EventCard
+              first={i === 0}
+              attention={attentionByEvent[event.id]}
               key={event.id}
               event={event}
               doneCount={doneCountByEvent[event.id] ?? 0}
@@ -194,6 +221,7 @@ export default function EventsListView({
               canClose={isPhotographer}
             />
           ))}
+          </div>
           {hasMore && (
             <button
               onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
@@ -223,6 +251,8 @@ function EventCard({
   unreadCount,
   needsReviewColorId,
   canClose,
+  attention,
+  first,
 }: {
   event: EventWithCustomPackage;
   doneCount: number;
@@ -231,101 +261,121 @@ function EventCard({
   needsReviewColorId?: string | null;
   // Photographer only — assistants never get a close button.
   canClose: boolean;
+  attention?: EventAttention;
+  first: boolean;
 }) {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const total = totalCount;
+  const total = Math.max(1, totalCount);
   const pct = Math.round((doneCount / total) * 100);
   const done = !!event.closed_at;
   const isFreelance = isFreelanceEvent(event);
-  // Falls back to the app's default amber tint when the photographer hasn't picked an import
-  // color yet (e.g. before ever opening the calendar-scan settings).
-  const cardTint = googleColorRgba(needsReviewColorId ?? null, 0.3) ?? "var(--color-amber-bg)";
-  const badgeTint = googleColorRgba(needsReviewColorId ?? null, 0.55) ?? "var(--color-amber-bg)";
-  // needs_review wins the card background when both apply — it's the more urgent, temporary
-  // "you need to act on this" state, versus is-freelance which is a persistent property that'll
-  // still be true (and still badged) once the review is done and this tint stops competing for it.
-  const cardBackground = event.needs_review ? cardTint : isFreelance ? FREELANCE_CARD_TINT : undefined;
+  // Falls back to the accent tint when the photographer hasn't picked an import color yet.
+  const rowTint = googleColorRgba(needsReviewColorId ?? null, 0.16) ?? "var(--color-amber-bg)";
+  const badgeTint = googleColorRgba(needsReviewColorId ?? null, 0.4) ?? "var(--color-amber-bg)";
+  // needs_review wins the row tint when both apply — it's the temporary "act on this" state.
+  const rowBackground = event.needs_review ? rowTint : isFreelance ? `rgba(${FREELANCE_RGB}, 0.1)` : undefined;
+  const [y, m, d] = event.event_date.split("-").map(Number);
+  const showYear = y !== new Date().getFullYear();
+  const meta = [event.event_location, packageLabel(event.package, event.custom_packages?.name)].filter(Boolean).join(" · ");
+  const tag = "inline-block text-[11.5px] font-medium px-2 py-0.5 rounded-md";
 
   return (
     <>
     <Link
       href={`/events/${event.id}`}
       role="button"
-      className="relative block w-full overflow-hidden text-right rounded-2xl p-4 mb-3.5 bg-card border border-line shadow-card"
-      // .bg-card's own background comes from a plain (non-!important) Tailwind utility, so unlike
-      // its border (which IS !important — see the border-fight history elsewhere in this app) an
-      // inline style background here reliably wins and tints the whole card, not just an accent.
-      style={cardBackground ? { background: cardBackground } : undefined}
+      className={`flex items-center gap-3 px-3.5 py-3.5 text-start ${first ? "" : "border-t border-line"}`}
+      style={rowBackground ? { background: rowBackground } : undefined}
     >
-      <div className="flex items-center justify-between mb-2.5">
-        <span className="relative inline-block">
-          <span className="font-semibold text-base font-display">{eventDisplayName(event)}</span>
+      {/* Date column — sits at the start edge (right, in RTL) with a divider on its end side. */}
+      <div className="w-11 shrink-0 text-center border-e border-line pe-3 box-content">
+        <div className="text-xl leading-none font-bold font-data">{d}</div>
+        <div className="text-[11px] text-ink-soft mt-1">
+          {HE_MONTHS_SHORT[m - 1]}
+          {showYear && <span className="font-data"> {String(y).slice(2)}</span>}
+        </div>
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[15px] font-semibold truncate">{eventDisplayName(event)}</span>
           {unreadCount > 0 && (
             <span
-              className="absolute -top-2 -left-3 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-bold flex items-center justify-center leading-none shadow"
+              className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-bold flex items-center justify-center leading-none font-data"
               style={{ background: "var(--color-rose)" }}
+              title="עדכונים חדשים מהלקוח"
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
-        </span>
-        <span className="text-[10.5px] px-2.5 py-1 rounded-full bg-amber-bg text-amber-deep font-data">
-          {packageLabel(event.package, event.custom_packages?.name)}
-        </span>
-      </div>
-      <div className="flex items-center gap-1.5 mb-3.5 text-xs text-ink-soft">
-        {new Date(event.event_date).toLocaleDateString("he-IL")}
-      </div>
-      {event.needs_review && (
-        <div
-          className="text-[10.5px] px-2.5 py-1 rounded-full font-medium mb-2.5 inline-block"
-          // Dark ink text regardless of which of Google's 11 colors was picked — some (banana,
-          // graphite) are too light for white/amber-deep text, so a color-specific text tone isn't
-          // safe to compute; dark ink reads fine against every one of them at this tint strength.
-          style={{ background: badgeTint, color: "var(--color-ink)" }}
-        >
-          יובא מהיומן. יש להשלים פרטים
         </div>
-      )}
-      {isFreelance && (
-        <div
-          className="text-[10.5px] px-2.5 py-1 rounded-full font-medium mb-2.5 inline-block"
-          style={{ background: FREELANCE_BADGE_TINT, color: "var(--color-ink)" }}
-        >
-          אירוע פרילנס
-        </div>
-      )}
-      {event.resolution_note && (
-        <div
-          className="text-[10.5px] px-2.5 py-1 rounded-full font-medium mb-2.5 inline-block"
-          style={{ background: "var(--color-chip-tint)", color: "var(--color-coral-deep)" }}
-        >
-          כפילות: {event.resolution_note}
-        </div>
-      )}
-      <div className="h-[5px] rounded-full mb-2.5 bg-line">
-        <div
-          className="h-[5px] rounded-full"
-          style={{ width: `${done ? 100 : pct}%`, background: done ? "var(--color-sage)" : "var(--color-amber)" }}
-        />
+        {meta && <div className="text-[12.5px] text-ink-soft truncate mt-0.5">{meta}</div>}
+        {(attention || event.needs_review || isFreelance || event.resolution_note) && (
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {attention?.openBalance ? (
+              <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-peach)" }}>
+                יתרה פתוחה <span className="font-data">₪{attention.openBalance.toLocaleString("he-IL")}</span>
+              </span>
+            ) : null}
+            {attention?.depositDue ? (
+              <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-peach)" }}>
+                מקדמה טרם שולמה
+              </span>
+            ) : null}
+            {attention?.contractPending && (
+              <span className={`${tag} bg-amber-bg`} style={{ color: "var(--color-amber-deep)" }}>
+                חוזה ממתין לחתימה
+              </span>
+            )}
+            {event.needs_review && (
+              <span className={tag} style={{ background: badgeTint, color: "var(--color-ink)" }}>
+                יובא מהיומן. יש להשלים פרטים
+              </span>
+            )}
+            {isFreelance && (
+              <span className={tag} style={{ background: FREELANCE_BADGE_TINT, color: "var(--color-ink)" }}>
+                אירוע פרילנס
+              </span>
+            )}
+            {event.resolution_note && (
+              <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-coral-deep)" }}>
+                כפילות: {event.resolution_note}
+              </span>
+            )}
+          </div>
+        )}
       </div>
-      <div className="text-xs" style={{ color: done ? "var(--color-sage)" : "var(--color-amber-deep)", fontWeight: 600 }}>
-        {done ? "✓ האירוע נסגר" : `${doneCount}/${total} שלבים הושלמו`}
+
+      <div className="shrink-0 flex flex-col items-end gap-1.5">
+        {done ? (
+          <span className="text-xs font-semibold" style={{ color: "var(--color-sage)" }}>
+            נסגר
+          </span>
+        ) : (
+          <>
+            <span className="text-xs text-ink-soft font-data" title={`${doneCount} מתוך ${total} שלבים הושלמו`}>
+              {doneCount}/{total}
+            </span>
+            <span className="block w-14 h-1 rounded-full overflow-hidden" style={{ background: "var(--color-chip)" }}>
+              <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: "var(--color-ink)" }} />
+            </span>
+          </>
+        )}
+        {canClose && !done && (
+          // Lives inside the row's <Link>, so the click must not also navigate to the event page.
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setConfirmOpen(true);
+            }}
+            className="text-[11px] font-medium text-ink-soft underline underline-offset-2 mt-0.5"
+          >
+            סגירה
+          </button>
+        )}
       </div>
-      {canClose && !done && (
-        // Lives inside the card's <Link>, so the click must not also navigate to the event page.
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setConfirmOpen(true);
-          }}
-          className="mt-3 text-xs font-semibold rounded-full px-3.5 py-1.5 bg-white border border-line text-ink"
-        >
-          סגירת אירוע
-        </button>
-      )}
     </Link>
     {confirmOpen && (
       <CloseEventConfirmModal

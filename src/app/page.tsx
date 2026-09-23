@@ -17,7 +17,7 @@ import type {
   TeamMember,
 } from "@/lib/types";
 import LogoutButton from "@/components/LogoutButton";
-import NewEventButton from "@/components/DashboardActions";
+import NewEventButton, { CalendarLink } from "@/components/DashboardActions";
 import FeedbackButton from "@/components/FeedbackButton";
 import PendingClientMessagePrompts, {
   type PendingPaymentReminder,
@@ -26,13 +26,13 @@ import PendingClientMessagePrompts, {
 } from "@/components/PendingClientMessagePrompts";
 import DashboardHero from "@/components/DashboardHero";
 import QuickActionsGrid from "@/components/QuickActionsGrid";
-import EventsListView from "@/components/EventsListView";
+import EventsListView, { type EventAttention } from "@/components/EventsListView";
 import LandingPage from "@/components/LandingPage";
 import SettingsGearLink from "@/components/SettingsGearLink";
 import AlbumQuickAccessButton from "@/components/AlbumQuickAccessButton";
 
-const HEBREW_MONTHS_SHORT = [
-  "ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ",
+const HEBREW_MONTHS = [
+  "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
 ];
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
@@ -67,6 +67,7 @@ export default async function DashboardPage() {
     { data: unreadNotifications },
     { data: priceQuotes },
     { data: priceQuoteTemplates },
+    { data: contracts },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase.from("team_members").select("*").eq("id", user!.id).maybeSingle<TeamMember>(),
@@ -105,6 +106,12 @@ export default async function DashboardPage() {
       .returns<{ event_id: string }[]>(),
     supabase.from("price_quotes").select("*").order("created_at", { ascending: false }).returns<PriceQuoteRow[]>(),
     supabase.from("price_quote_templates").select("*").order("created_at", { ascending: true }).returns<PriceQuoteTemplateRow[]>(),
+    // Only for the "חוזה ממתין לחתימה" tag on the event list — status per event, newest first.
+    supabase
+      .from("event_contracts")
+      .select("event_id, status, created_at")
+      .order("created_at", { ascending: false })
+      .returns<{ event_id: string; status: "draft" | "sent" | "signed"; created_at: string }[]>(),
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
@@ -170,6 +177,36 @@ export default async function DashboardPage() {
   const isPhotographer = !!photographer;
   const displayName = photographer?.name ?? teamMember?.name ?? user?.email;
 
+  // What on each event needs the photographer's attention, surfaced as tags on the event list so
+  // it's visible without opening every event. Photographer-only (assistants don't handle money).
+  const attentionByEvent: Record<string, EventAttention> = {};
+  if (photographer) {
+    const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+    const paymentByEvent = new Map((payments ?? []).map((p) => [p.event_id, p]));
+    const latestContractStatus = new Map<string, string>();
+    (contracts ?? []).forEach((c) => {
+      if (!latestContractStatus.has(c.event_id)) latestContractStatus.set(c.event_id, c.status);
+    });
+    (events ?? []).forEach((event) => {
+      if (event.closed_at) return;
+      const attention: EventAttention = {};
+      const p = paymentByEvent.get(event.id);
+      if (p) {
+        const depositLeft = p.deposit_paid ? 0 : Number(p.deposit_amount) - Number(p.deposit_paid_amount ?? 0);
+        const balanceLeft = p.balance_paid ? 0 : Number(p.balance_amount) - Number(p.balance_paid_amount ?? 0);
+        // Before the event only a missing deposit is actionable (the balance is normally paid on the
+        // day); once the date has passed, anything still unpaid is.
+        if (event.event_date < todayIso) {
+          if (depositLeft + balanceLeft > 0) attention.openBalance = depositLeft + balanceLeft;
+        } else if (depositLeft > 0) {
+          attention.depositDue = depositLeft;
+        }
+      }
+      if (latestContractStatus.get(event.id) === "sent") attention.contractPending = true;
+      if (attention.openBalance || attention.depositDue || attention.contractPending) attentionByEvent[event.id] = attention;
+    });
+  }
+
   let heroData: { monthLabel: string; monthTotal: number; monthForecast: number } | null = null;
   if (photographer) {
     const revenueByMonth = new Map<string, number>();
@@ -216,7 +253,7 @@ export default async function DashboardPage() {
     });
 
     heroData = {
-      monthLabel: HEBREW_MONTHS_SHORT[now.getMonth()],
+      monthLabel: HEBREW_MONTHS[now.getMonth()],
       monthTotal,
       monthForecast: monthTotal + monthForecastExtra,
     };
@@ -252,26 +289,30 @@ export default async function DashboardPage() {
     : [];
 
   return (
-    <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <div className="text-xs text-ink-soft flex items-center gap-2">
-            <span>
+    <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-24 w-full">
+      <div className="flex items-start justify-between gap-3 mb-5">
+        <div className="min-w-0">
+          <div className="text-[13px] text-ink-soft flex items-center gap-2">
+            <span className="truncate">
               {timeOfDayGreeting()}, {displayName}
             </span>
             <LogoutButton />
           </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <h1 className="text-[26px] font-extrabold font-display">
-              {isPhotographer ? "האירועים שלי" : "האירועים שהוקצו לי"}
-            </h1>
-            {isPhotographer && <SettingsGearLink />}
-          </div>
+          <h1 className="text-[28px] leading-tight font-bold font-display mt-0.5">
+            {isPhotographer ? "האירועים שלי" : "האירועים שהוקצו לי"}
+          </h1>
         </div>
         {isPhotographer && (
-          <NewEventButton customPackages={customPackages ?? []} eventTypes={eventTypes ?? []} prices={prices ?? []} />
+          <div className="flex items-center gap-2 shrink-0 mt-1">
+            <CalendarLink />
+            <SettingsGearLink />
+          </div>
         )}
       </div>
+
+      {isPhotographer && (
+        <NewEventButton customPackages={customPackages ?? []} eventTypes={eventTypes ?? []} prices={prices ?? []} />
+      )}
 
       {isPhotographer && heroData && (
         <DashboardHero
@@ -323,6 +364,7 @@ export default async function DashboardPage() {
         unreadCountByEvent={Object.fromEntries(unreadCountByEvent)}
         isPhotographer={isPhotographer}
         needsReviewColorId={photographer?.google_calendar_import_color_id}
+        attentionByEvent={attentionByEvent}
       />
       <FeedbackButton />
       <PendingClientMessagePrompts

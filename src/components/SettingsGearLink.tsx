@@ -22,11 +22,11 @@ export default function SettingsGearLink() {
   }, []);
 
   return (
-    <Link href="/settings" className="relative shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-card shadow-card text-ink-soft" aria-label="הגדרות">
+    <Link href="/settings" className="relative shrink-0 h-10 w-10 rounded-xl flex items-center justify-center bg-card text-ink" aria-label="הגדרות">
       {hasUnseenUpdate && (
-        <span className="absolute top-0.5 left-0.5 h-2.5 w-2.5 rounded-full shadow" style={{ background: "var(--color-rose)" }} />
+        <span className="absolute top-2 left-2 h-2 w-2 rounded-full" style={{ background: "var(--color-brass)" }} />
       )}
-      <IconSettings className="h-4 w-4" />
+      <IconSettings className="h-[19px] w-[19px]" />
     </Link>
   );
 }
