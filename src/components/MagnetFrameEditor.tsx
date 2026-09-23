@@ -1052,7 +1052,7 @@ export default function MagnetFrameEditor() {
         </div>
       )}
 
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-rose">{error}</p>}
 
       <div className="flex items-center gap-2.5 flex-wrap">
         <button onClick={save} disabled={saving} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">

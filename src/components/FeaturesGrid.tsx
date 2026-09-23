@@ -166,7 +166,7 @@ export default function FeaturesGrid() {
       {active && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
           onClick={() => setOpenIndex(null)}
         >
           <div className="w-full max-w-md rounded-3xl p-6 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -194,7 +194,7 @@ export default function FeaturesGrid() {
       {galleryOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
           onClick={() => setGalleryOpen(false)}
         >
           <div className="w-full max-w-md rounded-3xl p-6 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>

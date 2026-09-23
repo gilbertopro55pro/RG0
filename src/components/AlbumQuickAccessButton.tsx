@@ -213,7 +213,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       {open && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.7)" }}
+          style={{ background: "rgba(28, 27, 25, 0.7)" }}
           onClick={() => !navigating && setOpen(false)}
         >
           <div className="w-full max-w-sm rounded-3xl bg-paper shadow-sheet p-5" onClick={(e) => e.stopPropagation()}>

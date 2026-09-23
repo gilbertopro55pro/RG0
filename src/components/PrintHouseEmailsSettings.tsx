@@ -165,7 +165,7 @@ export default function PrintHouseEmailsSettings({
         <div className="space-y-2 mb-3">
           {emails.map((row) =>
             confirmingDeleteId === row.id ? (
-              <div key={row.id} className="rounded-xl p-3 bg-[#FBEEEC]">
+              <div key={row.id} className="rounded-xl p-3 bg-chip">
                 <p className="text-xs mb-2.5 text-rose">
                   למחוק את הכתובת &quot;{row.label || row.email}&quot;?
                 </p>

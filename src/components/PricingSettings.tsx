@@ -49,7 +49,7 @@ export default function PricingSettings({
       <div className="space-y-3">
         {eventTypes.map((type) =>
           confirmingDeleteId === type.id ? (
-            <div key={type.id} className="rounded-xl p-3 bg-[#FBEEEC]">
+            <div key={type.id} className="rounded-xl p-3 bg-chip">
               <p className="text-xs mb-2.5 text-rose">
                 למחוק את סוג האירוע &quot;{type.name}&quot;? כל המחירים ששמורים תחתיו (בכל החבילות) יימחקו.
               </p>

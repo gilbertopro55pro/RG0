@@ -145,7 +145,7 @@ export default function RootLayout({
             width: 114px;
             height: 114px;
             border-radius: 26px;
-            box-shadow: 0 16px 36px rgba(32, 31, 51, 0.28);
+            box-shadow: 0 16px 36px rgba(28, 27, 25, 0.28);
           }
           #boot-splash.boot-splash-dynamic img {
             animation: bootIconPulse 1.1s ease-in-out infinite;
@@ -154,8 +154,8 @@ export default function RootLayout({
             width: 168px;
             height: 12px;
             border-radius: 999px;
-            background: rgba(46, 49, 66, 0.12);
-            box-shadow: inset 0 1px 3px rgba(32, 31, 51, 0.18);
+            background: rgba(28, 27, 25, 0.12);
+            box-shadow: inset 0 1px 3px rgba(28, 27, 25, 0.18);
             overflow: hidden;
             opacity: 0;
             transform: translateY(4px);

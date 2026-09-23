@@ -336,8 +336,8 @@ function CircleButton({
         // (light-on-white) once --color-ink flips light for dark mode's page text.
         color: danger ? "var(--color-rose)" : active ? "#fff" : "#1c1b19",
         boxShadow: danger
-          ? "0 2px 6px rgba(46,49,66,0.22), 0 0 0 1.5px var(--color-rose)"
-          : "0 2px 6px rgba(46,49,66,0.22), 0 0 0 1px var(--color-line)",
+          ? "0 2px 6px rgba(28, 27, 25, 0.22), 0 0 0 1.5px var(--color-rose)"
+          : "0 2px 6px rgba(28, 27, 25, 0.22), 0 0 0 1px var(--color-line)",
       }}
     >
       {children}
@@ -349,7 +349,7 @@ function FlyoutPanel({ side, width = 130, children }: { side: "left" | "right"; 
   return (
     <div
       className="absolute top-1/2 -translate-y-1/2 rounded-xl border border-line bg-white p-2.5 space-y-2"
-      style={{ [side]: "calc(100% + 8px)", width, boxShadow: "0 4px 16px rgba(46,49,66,0.3)" } as React.CSSProperties}
+      style={{ [side]: "calc(100% + 8px)", width, boxShadow: "0 4px 16px rgba(28, 27, 25, 0.3)" } as React.CSSProperties}
       onClick={(e) => e.stopPropagation()}
     >
       {children}
@@ -810,7 +810,7 @@ function PhotoShadowOverlayPanel({
   return (
     <div
       className="rounded-xl border border-line bg-white shadow-sheet p-3 space-y-2.5"
-      style={{ width: widthPx, boxShadow: "0 4px 16px rgba(46,49,66,0.3)" }}
+      style={{ width: widthPx, boxShadow: "0 4px 16px rgba(28, 27, 25, 0.3)" }}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
@@ -3546,7 +3546,7 @@ export default function AlbumSpreadCanvasEditor({
     return (
       <div
         className={`fixed inset-0 z-[80] flex flex-col items-center justify-center gap-4 p-6 text-center ${ALBUM_FONT_CLASS_NAMES}`}
-        style={{ background: "rgba(46,49,66,0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+        style={{ background: "rgba(28, 27, 25, 0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
       >
         <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-sheet" style={{ color: "var(--color-amber-deep)" }}>
           <IconRotateDevice size={28} />
@@ -3569,7 +3569,7 @@ export default function AlbumSpreadCanvasEditor({
     return (
       <div
         className={`fixed inset-0 z-[80] flex flex-col items-center justify-center gap-3 ${ALBUM_FONT_CLASS_NAMES}`}
-        style={{ background: "rgba(46,49,66,0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+        style={{ background: "rgba(28, 27, 25, 0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
       >
         <div className="h-8 w-8 rounded-full border-2 border-white/30 border-t-white animate-spin" />
         <p className="text-sm text-white opacity-80">טוען את הכלי...</p>
@@ -3580,7 +3580,7 @@ export default function AlbumSpreadCanvasEditor({
   return (
     <div
       className={`fixed inset-0 z-[80] flex items-center justify-center p-4 overflow-hidden ${ALBUM_FONT_CLASS_NAMES}`}
-      style={{ background: "rgba(46,49,66,0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+      style={{ background: "rgba(28, 27, 25, 0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
       // Right-click (and the page's own custom menu, if it ever grows one) does nothing here —
       // there's no editor context menu to show. Shift+right-click specifically forces the
       // browser/OS's OWN native menu open regardless of this handler — that's a deliberate
@@ -3647,7 +3647,7 @@ export default function AlbumSpreadCanvasEditor({
           height: 16px;
           border-radius: 50%;
           background: var(--color-amber-deep);
-          box-shadow: 0 1px 3px rgba(30, 27, 46, 0.35);
+          box-shadow: 0 1px 3px rgba(28, 27, 25, 0.35);
           cursor: pointer;
           margin-top: -6px;
         }
@@ -3657,7 +3657,7 @@ export default function AlbumSpreadCanvasEditor({
           border: none;
           border-radius: 50%;
           background: var(--color-amber-deep);
-          box-shadow: 0 1px 3px rgba(30, 27, 46, 0.35);
+          box-shadow: 0 1px 3px rgba(28, 27, 25, 0.35);
           cursor: pointer;
         }
         .gf-slider-thumb::-moz-range-track {
@@ -3859,7 +3859,7 @@ export default function AlbumSpreadCanvasEditor({
             z-index: 30;
             background: var(--color-paper);
             border-radius: 16px;
-            box-shadow: 0 10px 28px rgba(30, 27, 46, 0.2);
+            box-shadow: 0 10px 28px rgba(28, 27, 25, 0.2);
             padding: 10px 14px;
             max-height: 100%;
             overflow-y: auto;
@@ -3967,7 +3967,7 @@ export default function AlbumSpreadCanvasEditor({
         {exitConfirmOpen && (
           <div
             className="fixed inset-0 z-[96] flex items-center justify-center p-4"
-            style={{ background: "rgba(46,49,66,0.55)" }}
+            style={{ background: "rgba(28, 27, 25, 0.55)" }}
             onClick={() => {
               setExitConfirmOpen(false);
               setPendingLeaveAction(null);
@@ -4720,7 +4720,7 @@ export default function AlbumSpreadCanvasEditor({
                 width: `${marqueeBox.w}%`,
                 height: `${marqueeBox.h}%`,
                 borderColor: "var(--color-amber-deep)",
-                background: "rgba(74,95,217,0.08)",
+                background: "rgba(156, 122, 60, 0.08)",
               }}
             />
           )}
@@ -4744,7 +4744,7 @@ export default function AlbumSpreadCanvasEditor({
               style={{
                 background: backgroundPanelOpen ? "var(--color-amber-deep)" : "#fff",
                 color: backgroundPanelOpen ? "#fff" : "#1c1b19",
-                boxShadow: "0 2px 6px rgba(46,49,66,0.22), 0 0 0 1px var(--color-line)",
+                boxShadow: "0 2px 6px rgba(28, 27, 25, 0.22), 0 0 0 1px var(--color-line)",
               }}
             >
               <IconOpacity />
@@ -4972,7 +4972,7 @@ export default function AlbumSpreadCanvasEditor({
                     />
                     <span
                       className="absolute top-1 right-1 h-4 min-w-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-                      style={{ background: isCurrent ? "var(--color-amber-deep)" : "rgba(46,49,66,0.65)" }}
+                      style={{ background: isCurrent ? "var(--color-amber-deep)" : "rgba(28, 27, 25, 0.65)" }}
                     >
                       {i + 1}
                     </span>
@@ -5582,7 +5582,7 @@ export default function AlbumSpreadCanvasEditor({
             left: dragPanelHoverPreview.left,
             width: dragPanelHoverPreview.width,
             height: dragPanelHoverPreview.height,
-            boxShadow: "0 12px 32px rgba(32,31,51,0.35), 0 0 0 3px var(--color-paper)",
+            boxShadow: "0 12px 32px rgba(28, 27, 25, 0.35), 0 0 0 3px var(--color-paper)",
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -5591,7 +5591,7 @@ export default function AlbumSpreadCanvasEditor({
       )}
 
       {photoPickerOpen && (
-        <div className="fixed inset-0 z-[85] flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setPhotoPickerOpen(false)}>
+        <div className="fixed inset-0 z-[85] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.6)" }} onClick={() => setPhotoPickerOpen(false)}>
           <div className="w-full max-w-sm lg:max-w-2xl rounded-3xl p-4 lg:p-6 bg-paper max-h-[70vh] overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3 gap-2">
               <h3 className="text-sm font-bold">
@@ -6241,7 +6241,7 @@ export default function AlbumSpreadCanvasEditor({
       )}
 
       {customTabModalOpen && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.55)" }} onClick={() => setCustomTabModalOpen(false)}>
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }} onClick={() => setCustomTabModalOpen(false)}>
           <div className="w-full max-w-xs rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-bold">לשונית עיטורים חדשה</p>
@@ -6278,7 +6278,7 @@ export default function AlbumSpreadCanvasEditor({
       )}
 
       {saveTemplateOpen && (
-        <div className="fixed inset-0 z-[85] flex items-end justify-center" style={{ background: "rgba(46,49,66,0.6)" }} onClick={() => setSaveTemplateOpen(false)}>
+        <div className="fixed inset-0 z-[85] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.6)" }} onClick={() => setSaveTemplateOpen(false)}>
           <div className="w-full max-w-sm rounded-t-3xl p-5 bg-paper" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2.5">
               <p className="text-sm font-semibold">שם התבנית</p>

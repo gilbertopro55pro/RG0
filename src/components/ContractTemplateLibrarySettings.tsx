@@ -100,7 +100,7 @@ export default function ContractTemplateLibrarySettings({
         <div className="space-y-2 mb-3.5">
           {templates.map((t) =>
             confirmingDeleteId === t.id ? (
-              <div key={t.id} className="rounded-xl p-3 bg-[#FBEEEC]">
+              <div key={t.id} className="rounded-xl p-3 bg-chip">
                 <p className="text-xs mb-2.5 text-rose">למחוק את התבנית &quot;{t.name}&quot;?</p>
                 <div className="flex gap-2">
                   <button

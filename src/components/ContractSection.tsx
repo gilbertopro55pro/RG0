@@ -140,7 +140,7 @@ export default function ContractSection({
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
           style={{
-            background: "rgba(46,49,66,0.45)",
+            background: "rgba(28, 27, 25, 0.45)",
             backdropFilter: previewEntered ? "blur(16px)" : "blur(0px)",
             WebkitBackdropFilter: previewEntered ? "blur(16px)" : "blur(0px)",
             transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
@@ -170,7 +170,7 @@ export default function ContractSection({
       {showEdit && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setShowEdit(false)}
         >
           <div

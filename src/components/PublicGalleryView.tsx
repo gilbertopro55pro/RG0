@@ -1005,7 +1005,7 @@ export default function PublicGalleryView({
         </div>
       )}
       {uploadTotal > 0 && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: "rgba(20,24,20,0.55)" }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }}>
           <div
             className="w-64 rounded-3xl overflow-hidden shadow-sheet flex flex-col items-center gap-3 px-6 py-9 text-center"
             style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
@@ -1169,7 +1169,7 @@ export default function PublicGalleryView({
                         onError={() => markThumbLoaded(photo.id)}
                       />
                       {selectionMode && (
-                        <div className="absolute inset-0" style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent" }} />
+                        <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent" }} />
                       )}
                     </button>
                     <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={downloadPhoto} />
@@ -1223,7 +1223,7 @@ export default function PublicGalleryView({
                         onError={() => markThumbLoaded(photo.id)}
                       />
                       {selectionMode && (
-                        <div className="absolute inset-0" style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent" }} />
+                        <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent" }} />
                       )}
                     </button>
                     <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={downloadPhoto} />
@@ -1276,7 +1276,7 @@ export default function PublicGalleryView({
                         onError={() => markThumbLoaded(photo.id)}
                       />
                       {selectionMode && (
-                        <div className="absolute inset-0" style={{ background: isSelected ? "rgba(74,95,217,0.3)" : "transparent", borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined }} />
+                        <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent", borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined }} />
                       )}
                     </button>
                     <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={downloadPhoto} inset={framed ? 8 : 0} />
@@ -1374,7 +1374,7 @@ export default function PublicGalleryView({
       {favoritesPanelOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setFavoritesPanelOpen(false)}
         >
           <div
@@ -1534,7 +1534,7 @@ export default function PublicGalleryView({
       {confirmOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setConfirmOpen(false)}
         >
           <div
@@ -1574,7 +1574,7 @@ export default function PublicGalleryView({
       {downloadSelectedConfirmOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setDownloadSelectedConfirmOpen(false)}
         >
           <div
@@ -1616,7 +1616,7 @@ export default function PublicGalleryView({
       {shareMenuPhotos && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setShareMenuPhotos(null)}
         >
           <div
@@ -1673,7 +1673,7 @@ export default function PublicGalleryView({
       {galleryShareOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setGalleryShareOpen(false)}
         >
           <div
@@ -1793,7 +1793,7 @@ export default function PublicGalleryView({
       {downloadOptionsOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setDownloadOptionsOpen(false)}
         >
           <div
@@ -1882,7 +1882,7 @@ export default function PublicGalleryView({
       {zipBatch && zipPanelOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
         >
           <div
             className="w-full max-w-md rounded-t-3xl p-5 pb-8 shadow-sheet"
@@ -2179,7 +2179,7 @@ function LabelEditModal({
 }) {
   const [value, setValue] = useState(photo.custom_label ?? "");
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.5)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.5)" }} onClick={onClose}>
       <div
         className="w-full max-w-xs rounded-2xl p-5 shadow-sheet"
         style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}

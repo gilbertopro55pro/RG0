@@ -74,7 +74,7 @@ export function ProgressModal({
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - clamped / 100);
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(20,24,20,0.55)" }}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }}>
         {/* Deliberately a fixed dark navy, not `var(--color-ink)` — that token is a TEXT color that
             flips to near-white in dark mode (by design, for use as text-on-dark-background), which
             would turn this white-text-on-dark-card modal illegible the moment the site is in dark

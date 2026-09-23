@@ -2691,7 +2691,7 @@ export default function GalleryManageView({
         />
       )}
       {blockedByOtherUpload && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(20,24,20,0.55)" }}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }}>
           <div className="relative w-72 rounded-3xl overflow-hidden shadow-sheet px-6 py-9" style={{ background: "#1c1b19" }}>
             <div className="flex flex-col items-center gap-4 text-white text-center">
               <div className="h-8 w-8 rounded-full border-2 border-white/25 border-t-white animate-spin" />
@@ -2894,7 +2894,7 @@ export default function GalleryManageView({
       {faceClusters.length === 0 && <div className="mb-4" />}
 
       {isArchived && (
-        <div className="rounded-xl px-3.5 py-2.5 mb-3.5 text-xs bg-[#FBEEEC] text-rose">
+        <div className="rounded-xl px-3.5 py-2.5 mb-3.5 text-xs bg-rose-bg text-rose">
           הגלריה בארכיון ותימחק סופית בתאריך{" "}
           {gallery.permanent_delete_at && new Date(gallery.permanent_delete_at).toLocaleDateString("he-IL")}. הקישור
           ללקוח אינו פעיל יותר.{" "}
@@ -3554,7 +3554,7 @@ export default function GalleryManageView({
       {actionSheetPhoto && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setActionSheetPhoto(null)}
         >
           <div
@@ -3610,7 +3610,7 @@ export default function GalleryManageView({
       {deleteConfirmPhoto && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setDeleteConfirmPhoto(null)}
         >
           <div
@@ -3642,7 +3642,7 @@ export default function GalleryManageView({
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
           style={{
-            background: "rgba(46,49,66,0.45)",
+            background: "rgba(28, 27, 25, 0.45)",
             opacity: deleteSelectedConfirmClosing ? 0 : 1,
             transition: `opacity ${CLOSE_ANIMATION_MS}ms ease`,
           }}
@@ -3689,7 +3689,7 @@ export default function GalleryManageView({
           ];
           const selectedPhotoIds = pending.filter((p) => downloadSelectedFolders.has(p.folder_id ?? ZIP_NO_FOLDER_KEY)).map((p) => p.id);
           return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.45)" }} onClick={() => setDownloadOptions(null)}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setDownloadOptions(null)}>
               <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                 <h2 className="text-lg font-bold mb-1 font-display">הורדת תמונות</h2>
                 <p className="text-xs text-ink-soft mb-4">{pending.length} תמונות נבחרו להורדה</p>
@@ -3748,7 +3748,7 @@ export default function GalleryManageView({
         (() => {
           const zipDone = zipBatch.parts.every((p) => p.status === "ready" || p.status === "failed");
           return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.45)" }}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.45)" }}>
               <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet">
                 {zipDone ? (
                   <>
@@ -3817,7 +3817,7 @@ export default function GalleryManageView({
       {deletePhotosError && (
         <div
           className="fixed inset-0 z-[200] flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setDeletePhotosError(null)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -3836,7 +3836,7 @@ export default function GalleryManageView({
       {exportRangeFormat && (
         <div
           className="fixed inset-0 z-[70] flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setExportRangeFormat(null)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -3893,7 +3893,7 @@ export default function GalleryManageView({
       {printHouseModalOpen && (
         <div
           className="fixed inset-0 z-[70] flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setPrintHouseModalOpen(false)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -3929,7 +3929,7 @@ export default function GalleryManageView({
       )}
 
       {printHouseConfirmOpen && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.55)" }}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }}>
           <div className="w-full max-w-xs rounded-2xl p-5 bg-paper shadow-sheet text-center">
             <p className="text-sm font-semibold mb-1">לשלוח את קובצי ה-JPG לבית הדפוס?</p>
             <p className="text-xs text-ink-soft mb-4" dir="ltr">
@@ -3962,7 +3962,7 @@ export default function GalleryManageView({
       {saveBookTemplateOpen && (
         <div
           className="fixed inset-0 z-[70] flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setSaveBookTemplateOpen(false)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -3999,7 +3999,7 @@ export default function GalleryManageView({
       {confirmNewAlbumOpen && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.7)" }}
+          style={{ background: "rgba(28, 27, 25, 0.7)" }}
           onClick={() => setConfirmNewAlbumOpen(false)}
         >
           <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -4025,7 +4025,7 @@ export default function GalleryManageView({
       {deleteFolderConfirm && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.7)" }}
+          style={{ background: "rgba(28, 27, 25, 0.7)" }}
           onClick={() => !deletingFolder && setDeleteFolderConfirm(null)}
         >
           <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -4186,7 +4186,7 @@ export default function GalleryManageView({
       {slideshowManageOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.7)" }}
+          style={{ background: "rgba(28, 27, 25, 0.7)" }}
           onClick={() => setSlideshowManageOpen(false)}
         >
           <div
@@ -4273,7 +4273,7 @@ export default function GalleryManageView({
       {albumManageOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 overflow-hidden"
-          style={{ background: "rgba(46,49,66,0.7)" }}
+          style={{ background: "rgba(28, 27, 25, 0.7)" }}
           onClick={() => {
             // Widened from 400ms to 1200ms (2026-09-02) — a real phone is slower than the desktop/
             // tablet this was originally tuned against, and this whole modal's first render/commit
@@ -4977,7 +4977,7 @@ export default function GalleryManageView({
       {shareOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.7)" }}
+          style={{ background: "rgba(28, 27, 25, 0.7)" }}
           onClick={() => setShareOpen(false)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -5088,7 +5088,7 @@ export default function GalleryManageView({
       {justPublished && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setJustPublished(false)}
         >
           <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -5127,7 +5127,7 @@ export default function GalleryManageView({
       {uploadJustFinished !== null && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setUploadJustFinished(null)}
         >
           <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -5169,7 +5169,7 @@ export default function GalleryManageView({
       {portfolioCategoryPhoto && (
         <div
           className="fixed inset-0 z-[70] flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setPortfolioCategoryPhoto(null)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -5211,7 +5211,7 @@ export default function GalleryManageView({
       {removeFromPortfolioPhoto && (
         <div
           className="fixed inset-0 z-[70] flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setRemoveFromPortfolioPhoto(null)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -5476,7 +5476,7 @@ function GallerySettingsModal({
         // seconds (or longer) to paint the very first frame, which read as "the modal doesn't
         // open" on photo-heavy galleries. A plain, more opaque tint gives the same visual
         // separation for a fraction of the GPU cost.
-        background: entered && !closing ? "rgba(46,49,66,0.7)" : "rgba(46,49,66,0)",
+        background: entered && !closing ? "rgba(28, 27, 25, 0.7)" : "rgba(28, 27, 25, 0)",
         transition: `background ${CLOSE_ANIMATION_MS + 60}ms ease`,
       }}
       onClick={closeWithAnimation}
