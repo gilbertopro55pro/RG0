@@ -9,6 +9,7 @@ import { useModalEntered } from "@/lib/useModalEntered";
 import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
 import PageGuide from "@/components/PageGuide";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import BackLink from "@/components/BackLink";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
@@ -76,9 +77,7 @@ export default function LeadsView({
   return (
     <div className="pb-8">
       <div className="flex items-center justify-between mb-1.5">
-        <Link href="/" className="flex items-center gap-1 text-sm text-ink-soft">
-          → חזרה לדף הבית
-        </Link>
+        <BackLink href="/" label="חזרה לדף הבית" />
         <button
           onClick={() => setShowAdd(true)}
           className="h-9 w-9 rounded-full flex items-center justify-center bg-ink shadow-card text-white text-lg leading-none"
@@ -102,8 +101,8 @@ export default function LeadsView({
                 <div className="font-semibold text-sm">{lead.name}</div>
                 <div className="text-xs text-ink-soft font-data">
                   {lead.phone}
-                  {lead.event_date_interest && ` · ${new Date(lead.event_date_interest).toLocaleDateString("he-IL")}`}
-                  {resolveLeadPackageLabel(lead.package_interest, customPackages) && ` · ${resolveLeadPackageLabel(lead.package_interest, customPackages)}`}
+                  {lead.event_date_interest && `, ${new Date(lead.event_date_interest).toLocaleDateString("he-IL")}`}
+                  {resolveLeadPackageLabel(lead.package_interest, customPackages) && `, ${resolveLeadPackageLabel(lead.package_interest, customPackages)}`}
                 </div>
               </div>
               <select
@@ -124,7 +123,7 @@ export default function LeadsView({
 
             {lead.quoted_amount && (
               <div className="text-xs mb-2.5 text-ink-soft">
-                הצעת מחיר: <span className="font-data">₪{lead.quoted_amount}</span>
+                הצעת מחיר: <span className="font-data">₪{Number(lead.quoted_amount).toLocaleString("he-IL")}</span>
               </div>
             )}
 

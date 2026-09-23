@@ -8,6 +8,7 @@ import NewGalleryModal from "@/components/NewGalleryModal";
 import PageGuide from "@/components/PageGuide";
 import GalleryQuickActionsMenu from "@/components/GalleryQuickActionsMenu";
 import { readAlbumRotateResume } from "@/lib/albumRotateResume";
+import BackLink from "@/components/BackLink";
 
 export type GalleryListItem = {
   id: string;
@@ -140,9 +141,7 @@ export default function GalleriesListView({
 
   return (
     <div className="pb-8">
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
-        → חזרה לדף הבית
-      </Link>
+      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-[26px] font-bold font-display">גלריות</h1>
         <button
@@ -225,7 +224,7 @@ export default function GalleriesListView({
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{item.title}</div>
                   <div className="text-xs text-ink-soft font-data">
-                    {item.eventDate && new Date(item.eventDate).toLocaleDateString("he-IL")} · {item.photoCount} תמונות
+                    {item.eventDate && new Date(item.eventDate).toLocaleDateString("he-IL")}, {item.photoCount} תמונות
                   </div>
                   <div className="text-[11px] mt-1">
                     {item.published ? (
@@ -274,12 +273,12 @@ export default function GalleriesListView({
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-sm truncate">{item.title}</div>
                     <div className="text-xs text-ink-soft font-data">
-                      {item.eventDate && new Date(item.eventDate).toLocaleDateString("he-IL")} · {item.photoCount} תמונות
+                      {item.eventDate && new Date(item.eventDate).toLocaleDateString("he-IL")}, {item.photoCount} תמונות
                     </div>
                     <div className="text-[11px] mt-1 text-rose">
                       {item.archiveReason === "manual" ? "נמחקה ידנית" : "פג תוקף"}
                       {item.permanentDeleteAt &&
-                        ` · מחיקה סופית ב-${new Date(item.permanentDeleteAt).toLocaleDateString("he-IL")}`}
+                        `, מחיקה סופית ב-${new Date(item.permanentDeleteAt).toLocaleDateString("he-IL")}`}
                     </div>
                   </div>
                 </Link>

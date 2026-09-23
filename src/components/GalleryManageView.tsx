@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { readAlbumRotateResume, writeAlbumRotateResume, clearAlbumRotateResume } from "@/lib/albumRotateResume";
@@ -80,6 +80,7 @@ import {
   requestActiveUploadCancel,
   type ActiveUploadLock,
 } from "@/lib/activeUploadLock";
+import BackLink from "@/components/BackLink";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
 
@@ -1327,7 +1328,6 @@ export default function GalleryManageView({
   const cancelExportJob = (jobId: string) => {
     fetch(`/api/galleries/${gallery.id}/album/export-jobs/${jobId}`, { method: "DELETE", keepalive: true }).catch(() => {});
   };
-
 
   const sendAlbumToClient = async () => {
     if (!album) return;
@@ -2815,9 +2815,7 @@ export default function GalleryManageView({
         </button>
       )}
       <div className="flex items-center justify-between mb-2">
-        <Link href="/galleries" className="flex items-center gap-1 text-sm text-ink-soft">
-          → כל הגלריות
-        </Link>
+        <BackLink href="/galleries" label="כל הגלריות" />
       </div>
 
       {/* Share, slideshow, face-detection and preview moved to icon-only buttons on the
@@ -3422,7 +3420,6 @@ export default function GalleryManageView({
           )}
         </div>
       )}
-
 
       <GalleryVideosSection galleryId={gallery.id} allowed={nonBasicTierAllowed} maxBytes={VIDEO_MAX_BYTES_BY_TIER[effectiveExpiryTier] ?? 0} />
       <GalleryFtpSection
@@ -4581,7 +4578,7 @@ export default function GalleryManageView({
                     return (
                       <div className="rounded-lg p-2.5 bg-chip space-y-2.5 mb-3.5">
                         <p className="text-xs text-ink-soft">
-                          {savedTemplate.pages.length} עמודים · {ALBUM_STYLE_OPTIONS.find((s) => s.id === savedTemplate.style)?.label ?? savedTemplate.style}
+                          {savedTemplate.pages.length} עמודים, {ALBUM_STYLE_OPTIONS.find((s) => s.id === savedTemplate.style)?.label ?? savedTemplate.style}
                         </p>
                         <button
                           onClick={() => buildAlbumFromBookTemplate(savedTemplate)}

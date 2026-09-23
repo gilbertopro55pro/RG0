@@ -664,7 +664,7 @@ export default function PriceQuotesSettings({
                   <button onClick={() => startEditTemplate(t)} className="text-right flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate">{t.name}</div>
                     <div className="text-xs text-ink-soft font-data">
-                      {t.items.length} פריטים · {currency(computeTotals(t.items).subtotal)}
+                      {t.items.length} פריטים, {currency(computeTotals(t.items).subtotal)}
                     </div>
                   </button>
                   <div className="flex items-center gap-2 shrink-0">
@@ -810,8 +810,8 @@ export default function PriceQuotesSettings({
                   <button onClick={() => startEdit(q)} className="text-right flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate">{q.quote_name || q.client_name || "לקוח/ה ללא שם"}</div>
                     <div className="text-xs text-ink-soft font-data">
-                      {currency(q.total)} · {new Date(q.created_at).toLocaleDateString("he-IL")}
-                      {q.sent_at && <span> · נשלח ב{q.sent_via === "whatsapp" ? "וואטסאפ" : "מייל"}</span>}
+                      {currency(q.total)}, {new Date(q.created_at).toLocaleDateString("he-IL")}
+                      {q.sent_at && <span>, נשלח ב{q.sent_via === "whatsapp" ? "וואטסאפ" : "מייל"}</span>}
                     </div>
                   </button>
                   <div className="flex items-center gap-2 shrink-0">

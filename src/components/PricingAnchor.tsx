@@ -51,7 +51,7 @@ export default function PricingAnchor() {
         <div className="rounded-2xl px-6 py-3 bg-card border border-line shadow-sheet text-center">
           <div className="text-[11px] text-ink-soft mb-0.5">סה&quot;כ עד כה</div>
           <div className="text-2xl font-bold font-display">
-            ₪{total}
+            ₪{total.toLocaleString("he-IL")}
             <span className="text-xs text-ink-soft font-normal">/חודש</span>
           </div>
         </div>
@@ -72,7 +72,7 @@ export default function PricingAnchor() {
             }}
           >
             <span className="text-sm">{item.label}</span>
-            <span className="text-sm font-bold shrink-0 mr-3">₪{item.price}</span>
+            <span className="text-sm font-bold shrink-0 mr-3">₪{item.price.toLocaleString("he-IL")}</span>
           </div>
         ))}
       </div>

@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+
 import dynamic from "next/dynamic";
 import type { CustomPackageRow, WaitlistRow } from "@/lib/types";
 import { openWhatsApp } from "@/lib/waLink";
 import PageGuide from "@/components/PageGuide";
+import BackLink from "@/components/BackLink";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
 
@@ -33,9 +34,7 @@ export default function WaitlistView({
 
   return (
     <div className="pb-8">
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
-        → חזרה לדף הבית
-      </Link>
+      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
       <h1 className="text-[26px] font-bold mb-1.5 font-display">רשימת המתנה</h1>
       <PageGuide
         pageKey="waitlist"
@@ -56,7 +55,7 @@ export default function WaitlistView({
                 <div className="font-semibold text-sm">{entry.client_name}</div>
                 <div className="text-xs text-ink-soft font-data">
                   {new Date(entry.requested_date).toLocaleDateString("he-IL")}
-                  {entry.client_phone && ` · ${entry.client_phone}`}
+                  {entry.client_phone && `, ${entry.client_phone}`}
                 </div>
               </div>
             </div>

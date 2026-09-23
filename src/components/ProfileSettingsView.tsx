@@ -606,23 +606,23 @@ export default function ProfileSettingsView({
                   {selectedCandidates.map((c) => (
                     <div key={c.calendarEventId} className="text-xs rounded-lg px-2.5 py-1.5 bg-chip">
                       <span className="font-semibold">{c.summary || "אירוע ללא כותרת"}</span>
-                      <span className="text-ink-soft font-data"> · {new Date(c.eventDate).toLocaleDateString("he-IL")}</span>
-                      <span className="text-ink-soft"> · {scanPackageLabel(c.pkg)}</span>
+                      <span className="text-ink-soft font-data">, {new Date(c.eventDate).toLocaleDateString("he-IL")}</span>
+                      <span className="text-ink-soft">, {scanPackageLabel(c.pkg)}</span>
                       {c.eventStartTime && (
                         <span className="text-ink-soft font-data">
-                          {" · "}
+                          {", "}
                           {c.eventStartTime}
                           {c.eventEndTime ? `-${c.eventEndTime}` : ""}
                         </span>
                       )}
-                      {c.location && <span className="text-ink-soft"> · {c.location}</span>}
-                      {c.clientPhone && <span className="text-ink-soft font-data"> · {c.clientPhone}</span>}
+                      {c.location && <span className="text-ink-soft">, {c.location}</span>}
+                      {c.clientPhone && <span className="text-ink-soft font-data">, {c.clientPhone}</span>}
                       {(c.deposit || c.balance) && (
                         <span className="text-ink-soft font-data">
-                          {" · "}
-                          {c.deposit ? `מקדמה ₪${c.deposit}` : ""}
+                          {", "}
+                          {c.deposit ? `מקדמה ₪${Number(c.deposit).toLocaleString("he-IL")}` : ""}
                           {c.deposit && c.balance ? " / " : ""}
-                          {c.balance ? `יתרה ₪${c.balance}` : ""}
+                          {c.balance ? `יתרה ₪${Number(c.balance).toLocaleString("he-IL")}` : ""}
                         </span>
                       )}
                     </div>

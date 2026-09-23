@@ -891,7 +891,7 @@ export default function PublicGalleryView({
           style={{ background: "var(--gt-surface-soft)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
         >
           <span className="flex-1">
-            לחיצה לתמונה בגודל מלא · לחיצה ארוכה לבחירה מרובה · לחיצה כפולה לשיתוף/הורדה (של כל התמונות המסומנות, אם יש כמה)
+            לחיצה לתמונה בגודל מלא. לחיצה ארוכה לבחירה מרובה. לחיצה כפולה לשיתוף/הורדה (של כל התמונות המסומנות, אם יש כמה)
           </span>
           <button onClick={dismissHint} className="shrink-0 font-bold leading-none" aria-label="סגירה">
             <IconClose className="h-3 w-3" />

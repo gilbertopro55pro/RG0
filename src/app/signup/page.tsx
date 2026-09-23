@@ -117,7 +117,7 @@ export default function SignupPage() {
           <>
             <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs flex items-center justify-between bg-chip text-ink-soft">
               <span>
-                נבחר: מנוי {SUBSCRIPTION_PLANS[plan].label} · ₪{SUBSCRIPTION_PLANS[plan].pricePerMonth}/חודש
+                נבחר: מנוי {SUBSCRIPTION_PLANS[plan].label}, ₪{SUBSCRIPTION_PLANS[plan].pricePerMonth}/חודש
               </span>
               <button onClick={() => setStep("plan")} className="underline text-amber-deep">
                 שינוי

@@ -169,7 +169,7 @@ export default function CustomPackagesSettings({
                 <button onClick={() => setEditing(pkg)} className="text-right flex-1 min-w-0">
                   <div className="text-sm font-semibold truncate">{pkg.name}</div>
                   <div className="text-xs text-ink-soft font-data">
-                    {pkg.price != null ? `₪${pkg.price} · ` : ""}
+                    {pkg.price != null ? `₪${Number(pkg.price).toLocaleString("he-IL")}, ` : ""}
                     {(stagesByPackage.get(pkg.id) ?? []).length} שלבים
                   </div>
                 </button>
