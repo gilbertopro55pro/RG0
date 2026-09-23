@@ -1,5 +1,7 @@
 "use client";
 
+import { IconClose } from "@/components/icons/AlbumIcons";
+
 const STEPS = [
   {
     title: "נכנסים לאתר החשבון של Apple",
@@ -52,7 +54,7 @@ export default function AppleCalendarGuideModal({ onClose }: { onClose: () => vo
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-bold font-display">חיבור יומן Apple (iCloud)</h2>
           <button onClick={onClose} className="text-ink-soft text-xl leading-none px-1">
-            ✕
+            <IconClose className="h-5 w-5" />
           </button>
         </div>
         <p className="text-xs text-ink-soft mb-4">

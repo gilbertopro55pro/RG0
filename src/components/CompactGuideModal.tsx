@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PAGE_GUIDES, GUIDE_LANG_LABELS, type GuideLang, type PageGuideKey } from "@/lib/pageGuides";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 // A small "?" trigger next to a modal/dialog's own title, opening the same written multi-language
 // guide content as PageGuide.tsx — but without its video (no recording exists for a modal tool like
@@ -42,7 +43,7 @@ export default function CompactGuideModal({ pageKey }: { pageKey: PageGuideKey }
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0"
                 aria-label={lang === "he" ? "סגירה" : lang === "ru" ? "Закрыть" : "Close"}
               >
-                ✕
+                <IconClose className="h-4 w-4" />
               </button>
             </div>
 

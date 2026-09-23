@@ -20,9 +20,13 @@ function IconBase({ size = 14, className, children }: { size?: number; className
   );
 }
 
-export function IconClose({ size }: { size?: number }) {
+// Also the app's one shared close ("X") icon outside the album editor — every button that used to
+// render a raw "✕" text glyph now renders this instead. That glyph rendered inconsistently across
+// browsers/OSes and didn't inherit stroke weight like the rest of the icon set, so those buttons
+// were the one place the app still looked unfinished next to everywhere else's real SVG icons.
+export function IconClose({ size, className }: { size?: number; className?: string }) {
   return (
-    <IconBase size={size}>
+    <IconBase size={size} className={className}>
       <path d="M5 5l14 14M19 5L5 19" />
     </IconBase>
   );

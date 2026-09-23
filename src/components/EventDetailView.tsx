@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { openWhatsApp } from "@/lib/waLink";
+import { IconClose } from "@/components/icons/AlbumIcons";
 import {
   PACKAGE_FLOWS,
   REVIEW_REQUEST_DELAY_DAYS,
@@ -1400,7 +1401,7 @@ function NavAppSheet({ location, onClose }: { location: string; onClose: () => v
             onClick={onClose}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
           >
-            ✕
+            <IconClose className="h-4 w-4" />
           </button>
         </div>
         <p className="text-xs mb-4 text-ink-soft">{location}</p>

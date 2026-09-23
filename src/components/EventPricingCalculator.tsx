@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import type { PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
 import CompactGuideModal from "@/components/CompactGuideModal";
+import { IconClose } from "@/components/icons/AlbumIcons";
+import { IconArrowRight } from "@/components/icons/NavIcons";
 
 const VAT_RATE = 0.18;
 const HOURS_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1);
@@ -40,9 +42,9 @@ function BackButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       aria-label="חזרה"
       title="חזרה"
-      className="h-7 w-7 rounded-full flex items-center justify-center text-sm font-bold shrink-0 border border-line bg-white text-ink-soft"
+      className="h-7 w-7 rounded-full flex items-center justify-center shrink-0 border border-line bg-white text-ink-soft"
     >
-      ←
+      <IconArrowRight className="h-3.5 w-3.5" />
     </button>
   );
 }
@@ -548,7 +550,7 @@ export default function EventPricingCalculator({
                 <CompactGuideModal pageKey="quote-builder" />
               </div>
               <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
-                ✕
+                <IconClose className="h-3.5 w-3.5" />
               </button>
             </div>
 
@@ -745,7 +747,7 @@ export default function EventPricingCalculator({
                         />
                         {!managingSuppliers && (
                           <button onClick={() => removeVendorRow(row.id)} className="text-ink-soft text-xs shrink-0" aria-label="הסרת ספק">
-                            ✕
+                            <IconClose className="h-3 w-3" />
                           </button>
                         )}
                       </div>
@@ -827,7 +829,7 @@ export default function EventPricingCalculator({
               <div className="flex items-center gap-2">
                 <BackButton onClick={() => setStep("calculator")} />
                 <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
-                  ✕
+                  <IconClose className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
@@ -904,7 +906,7 @@ export default function EventPricingCalculator({
                               aria-label={`הסרת ${name} מהרשימה`}
                               className="shrink-0 px-2 text-ink-soft text-xs"
                             >
-                              ✕
+                              <IconClose className="h-3 w-3" />
                             </button>
                           )}
                         </div>
@@ -1042,7 +1044,7 @@ export default function EventPricingCalculator({
               <div className="flex items-center gap-2">
                 <BackButton onClick={() => setStep("quoteForm")} />
                 <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
-                  ✕
+                  <IconClose className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>

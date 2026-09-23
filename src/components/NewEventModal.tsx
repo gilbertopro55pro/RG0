@@ -7,6 +7,7 @@ import { openWhatsApp } from "@/lib/waLink";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import { createClient } from "@/lib/supabase/client";
 import { buildClientMessageText } from "@/lib/clientMessage";
+import { IconClose } from "@/components/icons/AlbumIcons";
 import type { ContractTemplateRow, CustomPackageRow, EventContractRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
 import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
 import SendUpdateButton from "@/components/SendUpdateButton";
@@ -429,7 +430,7 @@ export default function NewEventModal({
             onClick={() => (step === "success" || step === "contract" ? finishAndGoToEvent() : closeWithAnimation())}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
           >
-            ✕
+            <IconClose className="h-4 w-4" />
           </button>
         </div>
 

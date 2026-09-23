@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BTN_PRESS } from "@/lib/viewTransition";
 import type { GalleryPhotoRow } from "@/lib/types";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
 type CullingStatus = GalleryPhotoRow["culling_status"];
@@ -59,7 +60,7 @@ export default function PhotoCullingModal({
     <div className="fixed inset-0 z-[70] bg-black flex flex-col" role="dialog" aria-modal="true">
       <div className="flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-3 text-white">
         <button onClick={onClose} className={`h-9 w-9 rounded-full bg-white/10 flex items-center justify-center ${BTN_PRESS}`} aria-label="סגירה">
-          ✕
+          <IconClose className="h-4 w-4" />
         </button>
         <div className="text-center">
           <div className="text-sm font-semibold font-data">

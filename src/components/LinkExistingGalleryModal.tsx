@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import type { GalleryRow } from "@/lib/types";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 const CLOSE_ANIMATION_MS = 220;
 
@@ -128,7 +129,7 @@ export default function LinkExistingGalleryModal({
             onClick={() => closeWithAnimation()}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
           >
-            ✕
+            <IconClose className="h-4 w-4" />
           </button>
         </div>
 

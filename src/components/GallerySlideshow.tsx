@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 type SlidePhoto = { id: string; url: string };
 
@@ -112,7 +113,7 @@ export default function GallerySlideshow({
           aria-label="סגירת מצגת"
           className="h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg"
         >
-          ✕
+          <IconClose className="h-5 w-5" />
         </button>
         {onDownload && (
           <button

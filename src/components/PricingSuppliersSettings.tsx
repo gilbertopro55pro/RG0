@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { PricingSupplier } from "@/lib/types";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 const DEFAULT_SUPPLIERS: Omit<PricingSupplier, "id">[] = [
   { name: "אלבום מעוצב", price: 0 },
@@ -100,7 +101,7 @@ export default function PricingSuppliersSettings({
               className="w-20 rounded-lg px-2.5 py-1.5 text-xs border border-line bg-white font-data"
             />
             <button onClick={() => removeSupplier(s.id)} className="text-ink-soft text-sm px-1" aria-label="הסרת ספק">
-              ✕
+              <IconClose className="h-3.5 w-3.5" />
             </button>
           </div>
         ))}

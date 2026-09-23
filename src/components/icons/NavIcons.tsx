@@ -145,3 +145,44 @@ export function IconChat({ className }: IconProps) {
     </svg>
   );
 }
+
+// Plain directional arrows — geometry only, no text-glyph bidi-mirroring to reason about (unlike
+// the "←"/"→" characters these replace, which flip depending on the surrounding dir="rtl"/"ltr"
+// context and whether the browser treats them as one of Unicode's mirrored characters). A caller
+// that needs a specific screen-relative direction picks the matching icon outright instead of
+// relying on that mirroring behavior.
+export function IconArrowLeft({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M19 12H5" />
+      <path d="M11 6l-6 6 6 6" />
+    </svg>
+  );
+}
+
+export function IconArrowRight({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M5 12h14" />
+      <path d="M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+export function IconArrowUp({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M12 19V5" />
+      <path d="M6 11l6-6 6 6" />
+    </svg>
+  );
+}
+
+export function IconArrowDown({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M12 5v14" />
+      <path d="M6 13l6 6 6-6" />
+    </svg>
+  );
+}

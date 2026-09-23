@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { IconClose } from "@/components/icons/AlbumIcons";
 
 // Client-facing token pages never need "install the app" nudges — only the photographer's own
 // working screens do.
@@ -77,7 +78,7 @@ export default function InstallPrompt() {
           </div>
         </div>
         <button onClick={dismiss} className="shrink-0 text-ink-soft leading-none" aria-label="סגירה">
-          ✕
+          <IconClose className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
