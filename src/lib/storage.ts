@@ -24,6 +24,15 @@ function requireEnv(name: string): string {
 // sitting frozen "processing" forever.
 const R2_REQUEST_HANDLER = { connectionTimeout: 5000, requestTimeout: 30000 };
 
+// AWS SDK v3 (since ~3.729) adds a default CRC32 checksum to requests — and to PRESIGNED PutObject
+// URLs it bakes in `x-amz-checksum-crc32=AAAAAA==`, the checksum of an EMPTY body, since the real
+// file isn't known at signing time. R2 now validates that against the bytes the browser actually
+// uploads, so every browser upload via getSignedUploadUrl was rejected, and the rejection lacks
+// CORS headers, so it surfaced client-side only as a bare "שגיאת רשת" (confirmed 2026-09-23 — broke
+// gallery, portfolio and client uploads at once, with no code change on our side). Only compute a
+// checksum where an operation genuinely requires one.
+const R2_CHECKSUM_CONFIG = { requestChecksumCalculation: "WHEN_REQUIRED", responseChecksumValidation: "WHEN_REQUIRED" } as const;
+
 let cachedClient: S3Client | null = null;
 function client(): S3Client {
   if (!cachedClient) {
@@ -35,6 +44,7 @@ function client(): S3Client {
         secretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
       },
       requestHandler: R2_REQUEST_HANDLER,
+      ...R2_CHECKSUM_CONFIG,
     });
   }
   return cachedClient;
@@ -58,6 +68,7 @@ function previewsClient(): S3Client {
         secretAccessKey: requireEnv("R2_PREVIEWS_SECRET_ACCESS_KEY"),
       },
       requestHandler: R2_REQUEST_HANDLER,
+      ...R2_CHECKSUM_CONFIG,
     });
   }
   return cachedPreviewsClient;
