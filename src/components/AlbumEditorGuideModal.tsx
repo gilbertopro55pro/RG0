@@ -95,7 +95,7 @@ export default function AlbumEditorGuideModal({ onClose }: { onClose: () => void
   return (
     <div
       className="fixed inset-0 z-[95] flex items-center justify-center p-4"
-      style={{ background: "rgba(46,49,66,0.55)" }}
+      style={{ background: "rgba(28, 27, 25, 0.55)" }}
       onClick={onClose}
     >
       <div

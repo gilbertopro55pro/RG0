@@ -373,7 +373,7 @@ function AddLeadModal({
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
       style={{
-        background: "rgba(46,49,66,0.45)",
+        background: "rgba(28, 27, 25, 0.45)",
         backdropFilter: entered ? "blur(16px)" : "blur(0px)",
         WebkitBackdropFilter: entered ? "blur(16px)" : "blur(0px)",
         transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",

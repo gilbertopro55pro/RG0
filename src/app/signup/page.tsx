@@ -7,7 +7,7 @@ import Spinner from "@/components/Spinner";
 
 const selectArrowStyle = {
   background:
-    "var(--color-amber-bg) url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236169C4' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E\") left 0.9rem center/10px 6px no-repeat",
+    "var(--color-amber-bg) url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239C7A3C' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E\") left 0.9rem center/10px 6px no-repeat",
 };
 
 export default function SignupPage() {
@@ -115,7 +115,7 @@ export default function SignupPage() {
 
         {step === "details" && (
           <>
-            <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs flex items-center justify-between bg-[#F1EFE9] text-ink-soft">
+            <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs flex items-center justify-between bg-chip text-ink-soft">
               <span>
                 נבחר: מנוי {SUBSCRIPTION_PLANS[plan].label} · ₪{SUBSCRIPTION_PLANS[plan].pricePerMonth}/חודש
               </span>

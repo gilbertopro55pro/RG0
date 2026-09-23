@@ -161,7 +161,7 @@ export default function NewGalleryModal({
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       style={{
-        background: "rgba(46,49,66,0.45)",
+        background: "rgba(28, 27, 25, 0.45)",
         backdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
         WebkitBackdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
         transition: `backdrop-filter ${CLOSE_ANIMATION_MS + 60}ms ease, -webkit-backdrop-filter ${CLOSE_ANIMATION_MS + 60}ms ease`,

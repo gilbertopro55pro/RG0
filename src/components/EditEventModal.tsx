@@ -137,7 +137,7 @@ export default function EditEventModal({
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
       style={{
-        background: "rgba(46,49,66,0.45)",
+        background: "rgba(28, 27, 25, 0.45)",
         backdropFilter: entered ? "blur(16px)" : "blur(0px)",
         WebkitBackdropFilter: entered ? "blur(16px)" : "blur(0px)",
         transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
@@ -279,7 +279,7 @@ export default function EditEventModal({
 
           <div className="pt-3 mt-2 border-t border-line">
             {confirmingDelete ? (
-              <div className="rounded-xl p-3 bg-[#FBEEEC]">
+              <div className="rounded-xl p-3 bg-chip">
                 <p className="text-xs mb-3 text-rose">
                   למחוק את האירוע לצמיתות? כל התשלומים, השלבים וההתראות שלו יימחקו ולא ניתן יהיה לשחזר.
                 </p>

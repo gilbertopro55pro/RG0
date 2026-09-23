@@ -28,7 +28,7 @@ export default function CompactGuideModal({ pageKey }: { pageKey: PageGuideKey }
       {open && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          style={{ background: "rgba(28, 27, 25, 0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
           onClick={() => setOpen(false)}
         >
           <div

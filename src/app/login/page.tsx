@@ -160,7 +160,7 @@ export default function LoginPage() {
       {showForgotPassword && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setShowForgotPassword(false)}
         >
           <div

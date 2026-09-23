@@ -139,7 +139,7 @@ export default function CustomPackagesSettings({
         <div className="space-y-2 mb-3.5">
           {packages.map((pkg) =>
             confirmingDeleteId === pkg.id ? (
-              <div key={pkg.id} className="rounded-xl p-3 bg-[#FBEEEC]">
+              <div key={pkg.id} className="rounded-xl p-3 bg-chip">
                 <p className="text-xs mb-2.5 text-rose">
                   למחוק את החבילה &quot;{pkg.name}&quot;? אירועים קיימים שמשתמשים בה ימשיכו להציג את השלבים
                   שלהם, אבל לא יהיה ניתן ליצור איתה אירועים חדשים.
@@ -607,7 +607,7 @@ export function CustomPackageBuilder({
     <div
       className="fixed inset-0 flex justify-center z-[100] items-center p-4"
       style={{
-        background: "rgba(46,49,66,0.45)",
+        background: "rgba(28, 27, 25, 0.45)",
         backdropFilter: entered ? "blur(16px)" : "blur(0px)",
         WebkitBackdropFilter: entered ? "blur(16px)" : "blur(0px)",
         transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
@@ -900,7 +900,7 @@ export function CustomPackageBuilder({
             <div className="space-y-2">
               {topics.map((topic) =>
                 confirmingRemoveTopicId === topic.clientId ? (
-                  <div key={topic.clientId} className="rounded-xl p-2.5 bg-[#FBEEEC]">
+                  <div key={topic.clientId} className="rounded-xl p-2.5 bg-chip">
                     <p className="text-[11px] mb-2 text-rose">
                       למחוק את הנושא &quot;{topic.name}&quot;? המחיר שלו יימחק מכל החבילות, כולל המחירון הרגיל.
                     </p>
@@ -927,7 +927,7 @@ export function CustomPackageBuilder({
                       onChange={(e) => updateTopic(topic.clientId, { name: e.target.value })}
                       placeholder="שם הנושא"
                       disabled={topic.isPersisted}
-                      className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white disabled:bg-[#F1EFE9]"
+                      className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white disabled:bg-chip"
                     />
                     <input
                       type="number"

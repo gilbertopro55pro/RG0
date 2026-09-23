@@ -96,7 +96,7 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
       </div>
 
       {confirmKey && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(46,49,66,0.45)" }} onClick={() => setConfirmKey(null)}>
+        <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmKey(null)}>
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-base font-bold mb-1 font-display">הסרה מהפורטפוליו</h2>
             <p className="text-xs text-ink-soft mb-4">

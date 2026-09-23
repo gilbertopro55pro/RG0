@@ -49,7 +49,7 @@ export default function GalleryCoverFocalPointModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(46,49,66,0.6)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.6)" }} onClick={onClose}>
       <div
         className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl bg-paper shadow-sheet p-5"
         onClick={(e) => e.stopPropagation()}

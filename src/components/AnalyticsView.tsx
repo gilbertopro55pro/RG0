@@ -403,7 +403,7 @@ export default function AnalyticsView({
                   width={barWidth}
                   height={barHeight}
                   rx={4}
-                  fill={isSelected ? "var(--color-amber-deep)" : "rgba(123,127,148,0.25)"}
+                  fill={isSelected ? "var(--color-amber-deep)" : "var(--color-line)"}
                 />
                 {isSelected && (
                   <text
@@ -479,7 +479,7 @@ export default function AnalyticsView({
       {shareOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
           onClick={closeShare}
         >
           <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>

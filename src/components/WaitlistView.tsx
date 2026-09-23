@@ -112,7 +112,7 @@ export default function WaitlistView({
       {deleteEntry && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
           onClick={() => setDeleteEntry(null)}
         >
           <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -191,7 +191,7 @@ function ConfirmEventDialog({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+      style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
       onClick={onClose}
     >
       <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>

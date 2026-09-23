@@ -27,8 +27,8 @@ export default function LiquidProgressBar({
           height: 100%;
           border-radius: 999px;
           overflow: hidden;
-          background: rgba(46, 49, 66, 0.12);
-          box-shadow: inset 0 1px 3px rgba(32, 31, 51, 0.18);
+          background: rgba(28, 27, 25, 0.12);
+          box-shadow: inset 0 1px 3px rgba(28, 27, 25, 0.18);
         }
         .liquid-progress-fill {
           position: relative;

@@ -21,6 +21,7 @@
   --color-sage: #3c7353; /* done / success */
   --color-sage-bg: #e3eee6;
   --color-rose: #c2413a; /* danger — white text on it: 5.0:1 */
+  --color-rose-bg: #f6e4e1; /* soft background behind rose (warning/error) text */
   --color-peach: #c98a4b;
   --color-line: #e2ddd3;
   --color-card: rgba(255, 255, 255, 0.58);
@@ -55,6 +56,7 @@
   --color-sage: #7cc29a;
   --color-sage-bg: rgba(124, 194, 154, 0.14);
   --color-rose: #e5695c;
+  --color-rose-bg: rgba(229, 105, 92, 0.14);
   --color-peach: #e0a36a;
   --color-line: rgba(255, 255, 255, 0.09);
   --color-card: rgba(255, 255, 255, 0.045);
@@ -130,6 +132,7 @@ body:has(.landing-warm) {
   --color-sage: var(--color-sage);
   --color-sage-bg: var(--color-sage-bg);
   --color-rose: var(--color-rose);
+  --color-rose-bg: var(--color-rose-bg);
   --color-peach: var(--color-peach);
   --color-line: var(--color-line);
   --color-card: var(--color-card);

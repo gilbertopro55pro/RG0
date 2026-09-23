@@ -20,7 +20,7 @@ export default function CameraSetupGuide({
   const guide = brand ? CAMERA_GUIDES[brand] : null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(46,49,66,0.45)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={onClose}>
       <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {!brand ? (
           <>

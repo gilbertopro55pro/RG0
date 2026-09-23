@@ -272,7 +272,7 @@ export default function GalleryQuickActionsMenu({
 
 function QuickActionsShell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center" style={{ background: "rgba(46,49,66,0.7)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.7)" }} onClick={onClose}>
       <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>

@@ -550,7 +550,7 @@ export default function GalleryAlbumProofing({
       {confirmApproveOpen && (
         <div
           className="fixed inset-0 z-[90] flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setConfirmApproveOpen(false)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-white" onClick={(e) => e.stopPropagation()}>

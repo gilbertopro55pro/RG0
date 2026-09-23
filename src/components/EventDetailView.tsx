@@ -661,7 +661,7 @@ export default function EventDetailView({
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
           style={{
-            background: "rgba(46,49,66,0.45)",
+            background: "rgba(28, 27, 25, 0.45)",
             backdropFilter: reviewPromptEntered ? "blur(16px)" : "blur(0px)",
             WebkitBackdropFilter: reviewPromptEntered ? "blur(16px)" : "blur(0px)",
             transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
@@ -692,7 +692,7 @@ export default function EventDetailView({
       {showCalendarRetry && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
         >
           <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet">
             {calendarRetryDone ? (
@@ -776,7 +776,7 @@ export default function EventDetailView({
       )}
 
       {(event.event_location || event.arrival_time) && (
-        <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs flex flex-wrap gap-x-4 gap-y-1.5 bg-[#F1EFE9] text-ink-soft">
+        <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs flex flex-wrap gap-x-4 gap-y-1.5 bg-chip text-ink-soft">
           {event.event_location && (
             <button onClick={() => setShowNav(true)} className="underline decoration-dotted text-amber-deep">
               📍 {event.event_location}
@@ -790,7 +790,7 @@ export default function EventDetailView({
       )}
 
       {event.notes && (
-        <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-[#F1EFE9] text-ink-soft whitespace-pre-wrap">
+        <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-chip text-ink-soft whitespace-pre-wrap">
           📝 {event.notes}
         </div>
       )}
@@ -916,7 +916,7 @@ export default function EventDetailView({
       {documentEmailPrompt && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(46,49,66,0.45)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)" }}
           onClick={() => setDocumentEmailPrompt(null)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -1268,7 +1268,7 @@ function FilmStrip({
             className="rounded-xl overflow-hidden"
             style={{
               border: `1px solid ${st.done ? "#CFE0D1" : isCurrent ? "#E9D8AF" : "var(--color-line)"}`,
-              boxShadow: isCurrent ? "var(--shadow-card, 0 1px 2px rgba(46,49,66,0.04))" : "none",
+              boxShadow: isCurrent ? "var(--shadow-card, 0 1px 2px rgba(28, 27, 25, 0.04))" : "none",
             }}
           >
             <button
@@ -1384,7 +1384,7 @@ function NavAppSheet({ location, onClose }: { location: string; onClose: () => v
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
       style={{
-        background: "rgba(46,49,66,0.45)",
+        background: "rgba(28, 27, 25, 0.45)",
         backdropFilter: entered ? "blur(16px)" : "blur(0px)",
         WebkitBackdropFilter: entered ? "blur(16px)" : "blur(0px)",
         transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",

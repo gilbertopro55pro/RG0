@@ -131,7 +131,7 @@ export default function BillingSettings({ photographer }: { photographer: Photog
       )}
 
       {canceledAccessUntil && (
-        <div className="rounded-xl px-3.5 py-2.5 mb-3 text-xs bg-[#FBEEEC] text-rose font-medium">
+        <div className="rounded-xl px-3.5 py-2.5 mb-3 text-xs bg-rose-bg text-rose font-medium">
           החידוש האוטומטי כובה. הגישה למערכת תישאר פעילה עד {canceledAccessUntil}.
         </div>
       )}
@@ -165,7 +165,7 @@ export default function BillingSettings({ photographer }: { photographer: Photog
           </div>
 
           {confirmingCancel && (
-            <div className="rounded-xl p-3 mt-3 bg-[#FBEEEC]">
+            <div className="rounded-xl p-3 mt-3 bg-chip">
               <p className="text-xs font-semibold text-rose mb-1.5">לבטל את המנוי?</p>
               <p className="text-xs mb-3 text-rose">
                 החיוב הבא יבוטל, אך הגישה למערכת תישאר פעילה עד תום מחזור החיוב הנוכחי ({periodEndHe}).
@@ -213,7 +213,7 @@ export default function BillingSettings({ photographer }: { photographer: Photog
                   </button>
                 </div>
               ) : switchTarget ? (
-                <div className="rounded-xl p-3 bg-[#F1EFE9]">
+                <div className="rounded-xl p-3 bg-chip">
                   <p className="text-xs mb-3 text-ink-soft">{switchExplanation(switchTarget)}</p>
                   <div className="flex gap-2">
                     <button

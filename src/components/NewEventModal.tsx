@@ -23,7 +23,7 @@ const isVideoEditVariant = (v: string) => FREELANCE_VIDEO_EDIT_VARIANTS.some((o)
 
 const selectArrowStyle = {
   background:
-    "var(--color-amber-bg) url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236169C4' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E\") left 0.9rem center/10px 6px no-repeat",
+    "var(--color-amber-bg) url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239C7A3C' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E\") left 0.9rem center/10px 6px no-repeat",
 };
 
 const CLOSE_ANIMATION_MS = 220;
@@ -404,7 +404,7 @@ export default function NewEventModal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{
-        background: "rgba(46,49,66,0.45)",
+        background: "rgba(28, 27, 25, 0.45)",
         backdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
         WebkitBackdropFilter: entered && !closing ? "blur(16px)" : "blur(0px)",
         transition: `backdrop-filter ${CLOSE_ANIMATION_MS + 60}ms ease, -webkit-backdrop-filter ${CLOSE_ANIMATION_MS + 60}ms ease`,
@@ -813,7 +813,7 @@ export default function NewEventModal({
           {skipConfirmOpen && (
             <div
               className="fixed inset-0 z-[70] flex items-center justify-center p-4"
-              style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+              style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
               onClick={() => setSkipConfirmOpen(false)}
             >
               <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
@@ -892,7 +892,7 @@ export default function NewEventModal({
       {confirmSaveOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
           onClick={() => setConfirmSaveOpen(false)}
         >
           <div
@@ -926,7 +926,7 @@ export default function NewEventModal({
       {dateConflict && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-          style={{ background: "rgba(46,49,66,0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
           onClick={() => setDateConflict(false)}
         >
           <div
