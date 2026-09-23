@@ -3,6 +3,7 @@ import { Heebo, Rubik, IBM_Plex_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import PWARegister from "@/components/PWARegister";
+import UpdateReloadGate from "@/components/UpdateReloadGate";
 import TopNav from "@/components/TopNav";
 import GlobalButtonEffects from "@/components/GlobalButtonEffects";
 import BodyScrollLock from "@/components/BodyScrollLock";
@@ -266,6 +267,7 @@ export default function RootLayout({
         </Script>
 
         <PWARegister />
+        <UpdateReloadGate />
         <GlobalButtonEffects />
         <BodyScrollLock />
         <GlobalLoadingBar />

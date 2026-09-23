@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Unique per build, baked into both the client bundle and the server — UpdateReloadGate compares
+  // the one its (possibly hours-old) tab was built with against /api/version, which always answers
+  // from whatever deployment is live now. Keyed on the deployment, not CHANGELOG's version, so a
+  // silent update (no version bump) still prompts open tabs to reload onto the new code.
+  env: {
+    NEXT_PUBLIC_BUILD_ID: process.env.VERCEL_DEPLOYMENT_ID || `build-${Date.now()}`,
+  },
   images: {
     remotePatterns: [
       {
