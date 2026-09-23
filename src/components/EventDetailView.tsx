@@ -628,7 +628,7 @@ export default function EventDetailView({
     <div className="pb-8">
       <div className="flex items-center justify-between mb-5">
         <Link href="/" className="flex items-center gap-1 text-sm text-ink-soft">
-          ← חזרה לאירועים
+          → חזרה לאירועים
         </Link>
         {isOwner && (
           <div className="flex items-center gap-3">

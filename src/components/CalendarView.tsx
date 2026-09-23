@@ -34,7 +34,7 @@ export default function CalendarView({
   return (
     <div>
       <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
-        ← חזרה לדף הבית
+        → חזרה לדף הבית
       </Link>
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-[22px] font-bold font-display">יומן Google</h1>
