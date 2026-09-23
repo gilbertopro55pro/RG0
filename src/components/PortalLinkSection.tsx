@@ -46,7 +46,7 @@ export default function PortalLinkSection({
   return (
     <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
       <div className="flex items-center gap-2 mb-3.5">
-        <span className="text-sm font-semibold tracking-wide">פורטל ללקוח</span>
+        <span className="text-sm font-semibold">פורטל ללקוח</span>
       </div>
       <p className="text-xs mb-3 text-ink-soft">
         קישור אישי שהלקוח/ה יכולים לפתוח כדי לראות את סטטוס האירוע והתשלומים, בלי צורך להתחבר.

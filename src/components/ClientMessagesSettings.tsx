@@ -177,7 +177,7 @@ export default function ClientMessagesSettings({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-1">הודעות ללקוח/ה</div>
+      <div className="text-sm font-semibold mb-1">הודעות ללקוח/ה</div>
       <div className="text-xs text-ink-soft leading-relaxed mb-3.5 space-y-1">
         <p>כאן אפשר לערוך את נוסח ההודעה שנשלחת ללקוח/ה דרך כפתור &quot;שליחת עדכון ללקוח בוואטסאפ&quot; בכל שלב, הנוסח שנשמר הוא בדיוק מה שיישלח בפועל.</p>
         <p><span className="font-data">{"{{שם}}"}</span>, מוסיף את שם הלקוח מתוך כרטיס האירוע.</p>

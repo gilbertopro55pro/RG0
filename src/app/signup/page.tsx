@@ -92,7 +92,7 @@ export default function SignupPage() {
             </div>
             <div className="rounded-2xl p-4 relative mb-5 bg-white border-[1.5px] border-amber shadow-card">
               {SUBSCRIPTION_PLANS[plan].badge && (
-                <span className="absolute -top-2.5 left-4 text-[10px] px-2 py-0.5 rounded-full tracking-wide bg-amber text-white">
+                <span className="absolute -top-2.5 left-4 text-[10px] px-2 py-0.5 rounded-full bg-amber text-white">
                   {SUBSCRIPTION_PLANS[plan].badge}
                 </span>
               )}

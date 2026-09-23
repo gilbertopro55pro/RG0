@@ -85,7 +85,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
       </p>
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-3.5">סטטוס האירוע</div>
+        <div className="text-sm font-semibold mb-3.5">סטטוס האירוע</div>
         <PortalStageActions
           eventToken={token}
           stages={clientStages.map(({ key, label, stage, index }) => ({
@@ -104,7 +104,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           real events have — showing this section there would just be confusing/irrelevant. */}
       {payments && !event.package?.startsWith("freelance_") && (
         <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-          <div className="text-sm font-semibold tracking-wide mb-3.5">תשלומים</div>
+          <div className="text-sm font-semibold mb-3.5">תשלומים</div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 bg-chip">
               <span>מקדמה: ₪{payments.deposit_amount}</span>

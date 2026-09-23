@@ -27,7 +27,7 @@ export default function BrandingSettings({ photographer, hasLogo }: { photograph
   if (!isPro) {
     return (
       <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-1">מיתוג מלא</div>
+        <div className="text-sm font-semibold mb-1">מיתוג מלא</div>
         <p className="text-xs text-ink-soft">
           צבע מותג אישי והלוגו שלכם על כל הגלריות ללקוחות, זמין במסלול פרו+.
         </p>
@@ -37,7 +37,7 @@ export default function BrandingSettings({ photographer, hasLogo }: { photograph
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-1">מיתוג מלא</div>
+      <div className="text-sm font-semibold mb-1">מיתוג מלא</div>
       <p className="text-xs mb-3.5 text-ink-soft">
         צבע המותג שלכם יחליף את צבע ההדגשה בכל הגלריות ללקוחות (כפתורים, הדגשות). הלוגו שהעליתם בלשונית
         &quot;הצעות מחיר&quot; יופיע גם הוא בראש כל גלריה.

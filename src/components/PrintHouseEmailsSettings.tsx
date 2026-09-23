@@ -153,7 +153,7 @@ export default function PrintHouseEmailsSettings({
     <div className={compact ? "" : "rounded-2xl p-4 bg-card border border-line shadow-card"}>
       {!compact && (
         <>
-          <div className="text-sm font-semibold tracking-wide mb-1">מיילים לבית דפוס</div>
+          <div className="text-sm font-semibold mb-1">מיילים לבית דפוס</div>
           <p className="text-xs mb-3.5 text-ink-soft">
             כתובות שאליהן אפשר לשלוח את קובצי ה-JPG של האלבום ישירות לבית הדפוס, ישר מתוך העורך.
             הכתובת המסומנת כברירת מחדל מופיעה ראשונה ונבחרת אוטומטית בזמן שליחה.
@@ -239,7 +239,7 @@ export default function PrintHouseEmailsSettings({
                     )}
                   </div>
                   {row.label && (
-                    <div className="text-xs text-ink-soft font-data truncate" dir="ltr">
+                    <div className="text-xs text-ink-soft font-mono truncate" dir="ltr">
                       {row.email}
                     </div>
                   )}

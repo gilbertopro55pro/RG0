@@ -84,7 +84,7 @@ export default function LandingPage() {
           <div className="rounded-2xl p-7 bg-card border border-line shadow-card">
             <div className="flex items-center gap-2 mb-4">
               <span className="h-2 w-2 rounded-full" style={{ background: "var(--color-rose)" }} />
-              <span className="text-xs font-bold tracking-wide text-ink-soft">בלי גילברטו</span>
+              <span className="text-xs font-bold text-ink-soft">בלי גילברטו</span>
             </div>
             <ul className="space-y-3">
               {BEFORE.map((line) => (
@@ -98,7 +98,7 @@ export default function LandingPage() {
           <div className="rounded-2xl p-7 bg-card border border-line shadow-card">
             <div className="flex items-center gap-2 mb-4">
               <span className="h-2 w-2 rounded-full" style={{ background: "var(--color-sage)" }} />
-              <span className="text-xs font-bold tracking-wide" style={{ color: "var(--color-sage)" }}>
+              <span className="text-xs font-bold" style={{ color: "var(--color-sage)" }}>
                 עם גילברטו
               </span>
             </div>

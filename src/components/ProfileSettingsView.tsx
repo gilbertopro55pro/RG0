@@ -381,7 +381,7 @@ export default function ProfileSettingsView({
       )}
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-3.5">פרופיל הצלם</div>
+        <div className="text-sm font-semibold mb-3.5">פרופיל הצלם</div>
         <div className="space-y-3">
           <div>
             <label className="text-xs block mb-1 text-ink-soft">שם הצלם</label>
@@ -425,7 +425,7 @@ export default function ProfileSettingsView({
 
       <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
         <div className="flex items-center gap-2 mb-3.5">
-          <span className="text-sm font-semibold tracking-wide">יומן Google</span>
+          <span className="text-sm font-semibold">יומן Google</span>
           {isAdmin && <CompactGuideModal pageKey="calendar-scan" />}
         </div>
         {connected ? (
@@ -670,7 +670,7 @@ export default function ProfileSettingsView({
       )}
 
       <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-3.5">יומן Apple (iCloud)</div>
+        <div className="text-sm font-semibold mb-3.5">יומן Apple (iCloud)</div>
         {appleConnected ? (
           <div className="space-y-3">
             <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
@@ -748,7 +748,7 @@ export default function ProfileSettingsView({
       <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold tracking-wide">רטט במגע (בטלפון בלבד)</div>
+            <div className="text-sm font-semibold">רטט במגע (בטלפון בלבד)</div>
             <div className="text-xs text-ink-soft mt-0.5">רטט קצר בכל לחיצה על כפתור</div>
           </div>
           <button
@@ -768,7 +768,7 @@ export default function ProfileSettingsView({
       </div>
 
       <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-1">חשבוניות ללקוחות</div>
+        <div className="text-sm font-semibold mb-1">חשבוניות ללקוחות</div>
         <p className="text-xs text-ink-soft mb-3.5">
           כדי להפיק ללקוחות שלך קבלות/חשבוניות אמיתיות (לא של המערכת אלא של העסק שלך), יש לבחור
           ספק ולחבר את החשבון שלך אצלו. המסמך יוצא תחת הפרטים העסקיים שרשומים באותו חשבון.
@@ -902,7 +902,7 @@ export default function ProfileSettingsView({
       <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold tracking-wide">מעקב אוטומטי אחר לידים</div>
+            <div className="text-sm font-semibold">מעקב אוטומטי אחר לידים</div>
             <div className="text-xs text-ink-soft mt-0.5">
               כשליד לא הופך ללקוח/מתעניין שאבד, נשלחות אוטומטית עד 3 הודעות מעקב בוואטסאפ (אחרי יומיים, 5 ימים ו-10 ימים)
             </div>

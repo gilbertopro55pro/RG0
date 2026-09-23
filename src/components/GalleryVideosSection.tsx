@@ -138,7 +138,7 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
 
   return (
     <div className="mt-5">
-      <div className="text-sm font-semibold tracking-wide mb-2">וידאו</div>
+      <div className="text-sm font-semibold mb-2">וידאו</div>
 
       {videos.length > 0 && (
         <div className="space-y-2 mb-3">

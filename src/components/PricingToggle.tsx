@@ -89,7 +89,7 @@ export default function PricingToggle() {
         </div>
         <div className="rounded-2xl p-7 relative bg-white border-[1.5px] border-amber shadow-card">
           {frame.badge && (
-            <span className="absolute -top-2.5 right-6 text-[10px] px-2.5 py-0.5 rounded-full tracking-wide bg-amber text-white">
+            <span className="absolute -top-2.5 right-6 text-[10px] px-2.5 py-0.5 rounded-full bg-amber text-white">
               {frame.badge}
             </span>
           )}

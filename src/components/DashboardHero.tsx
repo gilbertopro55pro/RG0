@@ -27,7 +27,7 @@ export default function DashboardHero({
     <div className="rounded-3xl p-3.5 mb-4 bg-card shadow-card">
       <div className="flex items-start justify-between mb-1.5">
         <div>
-          <div className="text-[10px] tracking-wide text-ink-soft mb-0.5">הכנסות {monthLabel}</div>
+          <div className="text-[10px] text-ink-soft mb-0.5">הכנסות {monthLabel}</div>
           <div className="text-[24px] leading-none font-extrabold font-display tracking-tight text-brass">
             ₪{monthTotal.toLocaleString("he-IL")}
           </div>

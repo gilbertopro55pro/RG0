@@ -255,7 +255,7 @@ export default async function DashboardPage() {
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <div className="text-xs tracking-wide text-ink-soft flex items-center gap-2">
+          <div className="text-xs text-ink-soft flex items-center gap-2">
             <span>
               {timeOfDayGreeting()}, {displayName}
             </span>

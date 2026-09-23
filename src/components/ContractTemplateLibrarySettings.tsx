@@ -90,7 +90,7 @@ export default function ContractTemplateLibrarySettings({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-1">ספריית תבניות חוזה</div>
+      <div className="text-sm font-semibold mb-1">ספריית תבניות חוזה</div>
       <p className="text-xs mb-3.5 text-ink-soft">
         שמרו כמה תבניות תנאים כלליים (למשל: חתונה, פרילנס, יום צילום בודד), בשמירת אירוע חדש תוכלו לבחור
         מתוכן ישירות, במקום להשתמש תמיד באותם תנאים.

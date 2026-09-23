@@ -289,7 +289,7 @@ export default function AnalyticsView({
 
   return (
     <div className="pb-8">
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 tracking-wide text-ink-soft">
+      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
         ← חזרה לדף הבית
       </Link>
       <h1 className="text-[26px] font-bold mb-1.5 font-display">ניתוח עסקי</h1>
@@ -382,7 +382,7 @@ export default function AnalyticsView({
       </div>
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold tracking-wide mb-3.5">הכנסות: 12 חודשים אחרונים</div>
+        <div className="text-sm font-semibold mb-3.5">הכנסות: 12 חודשים אחרונים</div>
         {!hasAnyRevenue && (
           <p className="text-xs text-ink-soft mb-3">
             עוד אין תשלומים מסומנים כ&quot;שולם&quot;, הגרף יתמלא ברגע שתסמנו תשלום ראשון באירוע.
@@ -434,7 +434,7 @@ export default function AnalyticsView({
 
       {packageCounts.length > 0 && (
         <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-          <div className="text-sm font-semibold tracking-wide mb-3.5">חבילות פופולריות</div>
+          <div className="text-sm font-semibold mb-3.5">חבילות פופולריות</div>
           <div className="space-y-2.5">
             {packageCounts.map(({ pkg, count }) => (
               <div key={pkg}>
@@ -456,7 +456,7 @@ export default function AnalyticsView({
 
       {upcoming.length > 0 && (
         <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-          <div className="text-sm font-semibold tracking-wide mb-3.5">תשלומים צפויים</div>
+          <div className="text-sm font-semibold mb-3.5">תשלומים צפויים</div>
           <div className="space-y-2">
             {upcoming.slice(0, 8).map((r, i) => (
               <div key={i} className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 bg-chip">

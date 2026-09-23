@@ -6,7 +6,7 @@ export default function UpdatesSettings() {
       {CHANGELOG.map((entry) => (
         <div key={entry.version} className="rounded-2xl p-4 bg-card border border-line shadow-card">
           <div className="flex items-center justify-between mb-2.5">
-            <span className="text-sm font-semibold tracking-wide">גרסה {entry.version}</span>
+            <span className="text-sm font-semibold">גרסה {entry.version}</span>
             <span className="text-xs font-data text-ink-soft">{entry.date}</span>
           </div>
           <ul className="space-y-2">

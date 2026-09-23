@@ -1191,7 +1191,7 @@ function TextFloatingMenu({
 // matching how every serious photo editor groups these same controls, not a functional divider.
 function AdjustSectionLabel({ children, compact = false }: { children: React.ReactNode; compact?: boolean }) {
   return (
-    <p className={`font-bold text-ink-soft uppercase tracking-wide first:pt-0 ${compact ? "text-[7px] pt-0.5" : "text-[10px] pt-1"}`}>
+    <p className={`font-bold text-ink-soft uppercase first:pt-0 ${compact ? "text-[7px] pt-0.5" : "text-[10px] pt-1"}`}>
       {children}
     </p>
   );

@@ -20,7 +20,7 @@ export default async function MagnetFramesPage() {
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 tracking-wide text-ink-soft">
+      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
         ← חזרה לדף הבית
       </Link>
       <h1 className="text-[26px] font-bold font-display mb-5">עיצוב מסגרת מגנט</h1>

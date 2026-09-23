@@ -74,7 +74,7 @@ export default function LeadsView({
   return (
     <div className="pb-8">
       <div className="flex items-center justify-between mb-1.5">
-        <Link href="/" className="flex items-center gap-1 text-sm tracking-wide text-ink-soft">
+        <Link href="/" className="flex items-center gap-1 text-sm text-ink-soft">
           ← חזרה לדף הבית
         </Link>
         <button
@@ -107,7 +107,7 @@ export default function LeadsView({
               <select
                 value={lead.status}
                 onChange={(e) => setStatus(lead.id, e.target.value as LeadStatus)}
-                className="text-[11px] px-2 py-1 rounded-full tracking-wide font-medium border-none"
+                className="text-[11px] px-2 py-1 rounded-full font-medium border-none"
                 style={{ background: STATUS_COLORS[lead.status].bg, color: STATUS_COLORS[lead.status].text }}
               >
                 {Object.entries(STATUS_LABELS).map(([value, label]) => (

@@ -175,7 +175,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-sm font-semibold tracking-wide">פורטפוליו ציבורי</span>
+        <span className="text-sm font-semibold">פורטפוליו ציבורי</span>
         <button
           onClick={() => portfolioAllowed && setEnabled((v) => !v)}
           role="switch"
@@ -206,13 +206,13 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
         <>
           <label className="text-xs block mb-1 text-ink-soft">כתובת הפורטפוליו</label>
           <div className="flex items-center gap-1 mb-3">
-            <span className="text-xs text-ink-soft font-data shrink-0">myframeflow.com/p/</span>
+            <span className="text-xs text-ink-soft font-mono shrink-0">myframeflow.com/p/</span>
             <input
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               placeholder="roi-gilberto"
               dir="ltr"
-              className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm border border-line bg-white font-data"
+              className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm border border-line bg-white font-mono"
             />
           </div>
 

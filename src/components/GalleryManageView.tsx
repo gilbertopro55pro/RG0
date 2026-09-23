@@ -2815,7 +2815,7 @@ export default function GalleryManageView({
         </button>
       )}
       <div className="flex items-center justify-between mb-2">
-        <Link href="/galleries" className="flex items-center gap-1 text-sm tracking-wide text-ink-soft">
+        <Link href="/galleries" className="flex items-center gap-1 text-sm text-ink-soft">
           → כל הגלריות
         </Link>
       </div>

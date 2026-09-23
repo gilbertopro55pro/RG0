@@ -62,7 +62,7 @@ export default function PricingSuppliersSettings({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold tracking-wide mb-1">מחשבון אירועים: ספקים ותמחור</div>
+      <div className="text-sm font-semibold mb-1">מחשבון אירועים: ספקים ותמחור</div>
       <p className="text-xs mb-3.5 text-ink-soft">
         עלות הספקים ומחיר שעת הצילום שלך משמשים את מחשבון האירועים בדף הבית לחישוב מהיר של המחיר לדרוש מלקוח.
       </p>

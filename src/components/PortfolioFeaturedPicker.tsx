@@ -110,7 +110,7 @@ export default function PortfolioFeaturedPicker({ photographerId }: { photograph
   return (
     <div className="mt-3.5 pt-3.5 border-t border-line">
       <div className="flex items-center justify-between gap-2 mb-1">
-        <p className="text-sm font-semibold tracking-wide">תמונות לרצועה הראשית</p>
+        <p className="text-sm font-semibold">תמונות לרצועה הראשית</p>
         <span className="text-xs font-data text-ink-soft">
           {featuredCount}/{MAX_FEATURED}
         </span>

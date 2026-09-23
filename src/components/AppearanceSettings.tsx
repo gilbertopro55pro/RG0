@@ -22,7 +22,7 @@ export default function AppearanceSettings() {
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold tracking-wide">מראה כהה</div>
+          <div className="text-sm font-semibold">מראה כהה</div>
           <div className="text-xs text-ink-soft mt-0.5">
             {darkOn ? "מצב כהה פעיל" : "מצב בהיר פעיל"}
           </div>
