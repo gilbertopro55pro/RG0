@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.54",
+    date: "2026-09-23",
+    changes: [
+      "מדריכים בווידאו: בהגדרות, ברשימה הנפתחת, נוסף \"מדריכים\" — כל סרטוני ההדרכה במקום אחד, כולל שלושה סרטונים חדשים: סיור בכל המערכת, עבודה עם הפורטפוליו, והסבר על ההגדרות",
+      "כל סרטוני ההדרכה צולמו מחדש בעיצוב החדש, עם כתוביות גדולות וברורות יותר",
+    ],
+  },
+  {
     version: "2.11.53",
     date: "2026-09-23",
     changes: [
