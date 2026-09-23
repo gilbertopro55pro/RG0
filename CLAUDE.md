@@ -13,15 +13,15 @@
 
 ## פריסה ל-production — מיזוג ל-main לא אומר שזה חי!
 
-**נגלה ב-2026-09-22, קריטי**: מיזוג PR ל-`main` ב-GitHub **לא** אוטומטית מפרסם ל-myframeflow.com. הכלל הקבוע בפרויקט הוא `scripts/deploy.sh`, שרץ **מקומית ממחשב המשתמש** (לא ממני, אין לי גישה להריץ אותו):
-1. מחשב hash על כל גרף ה-imports האמיתי של צינור הרינדור (`worker/src/index.ts` וכל מה שהוא תלוי בו, רקורסיבית) — לא רשימה ידנית — ומשווה מול `.fly-worker-deployed-hash` המקומי (לא ב-git).
-2. אם השתנה — `fly deploy` לשרת ה-PDF (Fly.io) קודם.
-3. `vercel --prod --yes` — פורס את **הקבצים המקומיים בפועל** על המחשב, לא דרך git בכלל.
-4. מוודא ש-myframeflow.com מצביע לפריסה החדשה.
+מיזוג PR ל-`main` **לא** מפרסם אוטומטית את האתר ל-myframeflow.com. הפריסה מתחלקת לשניים (עודכן 2026-09-23):
 
-המשמעות: מה שבאמת חי הוא מה שהיה בתיקייה המקומית (`~/Desktop/photographer-flow`) **ברגע שהורצה הפקודה**, לא בהכרח מה שממוזג ב-`main`. אם התיקייה המקומית לא מעודכנת (למשל יושבת על ענף/קומיט ישן), הרצת `deploy.sh` ממנה עלולה בפועל **לרדרס** עבודה שכבר מוזגה ל-`main`. **לפני שמבקשים מהמשתמש להריץ `deploy.sh`, לוודא שהתיקייה המקומית שלו עשתה `git checkout main && git pull` קודם**, ולתת לו את זה כשלב מפורש, לא להניח שזה כבר קרה.
+1. **שרת ה-PDF (Fly.io)** — נפרס **אוטומטית** ע"י GitHub Actions (`.github/workflows/deploy-pdf-worker.yml`) בכל מיזוג ל-`main`, ורק אם קוד צינור הרינדור השתנה. ההשוואה: תגית ה-image החי (`render-<hash>`) מול hash של כל גרף ה-imports של `worker/src/index.ts` (`scripts/computeRenderHash.js`). הבדיקה עצמה: `scripts/flyWorkerIsCurrent.sh`. הטוקן שמור כ-GitHub secret בשם `FLY_API_TOKEN`.
+   - **אי אפשר לפרוס ל-Fly מסביבת הענן של Claude Code** (נבדק 2026-09-23): ה-proxy של הסביבה מיירט TLS ושובר גם את depot וגם את ה-builder של Fly. לא לנסות שוב — רק דרך ה-workflow. `fly status` ו-Machines API (קריאה) כן עובדים.
+2. **האתר (Vercel)** — `scripts/deploy.sh`, **שאני מריץ בעצמי מסביבת הענן** (יש `VERCEL_TOKEN`/`VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` בסביבה, ו-api.vercel.com פתוח). הסקריפט קודם בודק שהשרת ב-Fly כבר על קוד הרינדור הנוכחי, ונכשל אם לא — אז מחכים שריצת ה-workflow על `main` תסתיים ומריצים שוב.
 
-בהתאם: "השלמת משימה עד הסוף" (הסעיף הבא) לגבי RG0 אומר מיזוג ל-`main` בפועל — לבקש מהמשתמש להריץ `deploy.sh` (אחרי `git pull` בתיקייה המקומית) הוא חלק מגמר המשימה, לא שלב אופציונלי. אם לא ברור אם זה כבר קרה — לשאול, לא להניח.
+סדר גמר משימה ב-RG0: מיזוג ל-`main` → (אם נגעו בקוד רינדור: לחכות ל-workflow "Deploy PDF worker") → `git checkout main && git pull` בסביבה → `bash scripts/deploy.sh` → לוודא ב-API של Vercel ש-myframeflow.com מצביע לפריסה החדשה. זה חלק מגמר המשימה, לא שלב אופציונלי.
+
+`vercel --prod` מעלה את **הקבצים המקומיים** של מי שמריץ, לא את `main`. לכן להריץ `deploy.sh` רק מ-checkout נקי של `main` העדכני — הרצה מתיקייה ישנה (למשל `~/Desktop/photographer-flow` אצל המשתמש בלי `git pull`) **תחזיר את האתר אחורה**. עדיף שהפריסה תרוץ רק מסביבת הענן.
 
 ## דסקטופ (photographer-flow-desktop)
 
