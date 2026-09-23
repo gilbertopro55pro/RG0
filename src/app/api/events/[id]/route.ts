@@ -149,7 +149,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (packageChanged) {
     try {
       const summaryText = await reconcileEventStages(supabase, eventId, newPkg, newCustomStages);
-      notifications.push({ event_id: eventId, text: `חבילת האירוע שונתה מ"${oldPackageLabel}" ל"${label}" — ${summaryText}` });
+      notifications.push({ event_id: eventId, text: `חבילת האירוע שונתה מ"${oldPackageLabel}" ל"${label}", ${summaryText}` });
     } catch (e) {
       // Put the package back so the event never ends up on one package with another's stages.
       await supabase.from("events").update({ package: existing.package, custom_package_id: existing.custom_package_id }).eq("id", eventId);
@@ -212,7 +212,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (e instanceof GoogleCalendarDisconnectedError) {
       googleCalendarDisconnected = true;
       googleCalendarError = "החיבור ליומן Google פג תוקף. יש להתחבר מחדש בהגדרות כדי להמשיך לסנכרן אירועים.";
-      notifications.push({ event_id: eventId, text: "החיבור ליומן Google פג תוקף — יש להתחבר מחדש בהגדרות" });
+      notifications.push({ event_id: eventId, text: "החיבור ליומן Google פג תוקף. יש להתחבר מחדש בהגדרות" });
     } else {
       googleCalendarError = e instanceof Error ? e.message : "שגיאה לא ידועה";
       notifications.push({ event_id: eventId, text: `שגיאה בעדכון האירוע ביומן Google: ${googleCalendarError}` });

@@ -154,7 +154,7 @@ export default function QuoteApprovalFlow({
       {step === "questionnaire" && (
         <>
           <p className="text-sm mb-5 text-ink-soft">
-            ההצעה אושרה 🎉 עוד רגע אחד — כמה פרטים על האירוע כדי שנפתח אותו במערכת.
+            ההצעה אושרה. עוד רגע אחד, כמה פרטים על האירוע כדי שנפתח אותו במערכת.
           </p>
           <div className="rounded-2xl p-4 bg-card border border-line shadow-card space-y-2.5">
             <div>
@@ -212,7 +212,7 @@ export default function QuoteApprovalFlow({
 
       {step === "done" && (
         <div className="rounded-2xl p-4 bg-card border border-line shadow-card text-center">
-          <div className="text-lg font-bold font-display mb-2">תודה, האירוע נקבע! ✓</div>
+          <div className="text-lg font-bold font-display mb-2">תודה, האירוע נקבע!</div>
           <p className="text-sm text-ink-soft mb-4">{photographerName} קיבל/ה את הפרטים והאירוע נכנס ליומן.</p>
           {clientAccessToken && (
             <a href={`/portal/${clientAccessToken}`} className="inline-block rounded-xl px-5 py-2.5 text-sm font-semibold bg-ink text-white">

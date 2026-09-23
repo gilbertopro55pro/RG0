@@ -76,13 +76,13 @@ export default function CloseEventConfirmModal({
             {preview && preview.openStagesCount > 0 && (
               <div className="rounded-xl px-3.5 py-2.5 mb-3 text-xs leading-relaxed bg-amber-bg text-amber-deep">
                 שימו לב: יש עדיין {preview.openStagesCount === 1 ? "שלב אחד פתוח" : `${preview.openStagesCount} שלבים פתוחים`} שלא סומנו כבוצעו. סגירת האירוע לא
-                תסמן אותם — הם יישארו פתוחים כפי שהם.
+                תסמן אותם. הם יישארו פתוחים כפי שהם.
               </div>
             )}
             {preview && preview.remaining > 0 && (
               <div className="rounded-xl px-3.5 py-2.5 mb-3 text-xs leading-relaxed bg-chip text-ink">
                 {preview.hasPartialPayment
-                  ? `סומן תשלום חלקי על היתרה. החלק שנותר לתשלום (${money(preview.remaining)}) יתווסף לגרף ההכנסות של חודש סגירת האירוע — ${monthLabel(preview.closingMonth)}. התשלום החלקי נשאר בחודש שבו נרשם.`
+                  ? `סומן תשלום חלקי על היתרה. החלק שנותר לתשלום (${money(preview.remaining)}) יתווסף לגרף ההכנסות של חודש סגירת האירוע, ${monthLabel(preview.closingMonth)}. התשלום החלקי נשאר בחודש שבו נרשם.`
                   : preview.needsMonthChoice
                     ? `היתרה (${money(preview.remaining)}) לא סומנה כשולמה. בשלב הבא תבחרו באיזה חודש להוסיף אותה לגרף ההכנסות.`
                     : `היתרה שלא סומנה כשולמה (${money(preview.remaining)}) תתווסף לגרף ההכנסות של ${monthLabel(preview.closingMonth)}.`}

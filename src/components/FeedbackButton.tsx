@@ -74,12 +74,12 @@ export default function FeedbackButton() {
 
             {sent ? (
               <div className="rounded-xl px-3.5 py-4 text-sm bg-sage-bg text-sage text-center">
-                תודה! ההודעה נשלחה אלינו ✓
+                תודה! ההודעה נשלחה אלינו
               </div>
             ) : (
               <>
                 <p className="text-xs mb-4 text-ink-soft">
-                  יש לך רעיון לפיצ&apos;ר חדש, בקשה לשיפור, או משהו שלא עבד כמו שציפית? נשמח לשמוע —
+                  יש לך רעיון לפיצ&apos;ר חדש, בקשה לשיפור, או משהו שלא עבד כמו שציפית? נשמח לשמוע
                   ההודעה תישלח ישירות לצוות הפיתוח.
                 </p>
                 <textarea

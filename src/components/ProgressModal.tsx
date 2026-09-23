@@ -98,7 +98,7 @@ export function ProgressModal({
         {confirmingCancel ? (
           <div className="relative flex flex-col items-center gap-4 px-6 py-9 text-white text-center">
             <div className="text-sm font-semibold">לבטל את הפעולה?</div>
-            <div className="text-xs opacity-70">{label} עדיין באמצע — הביטול לא ניתן לשחזור.</div>
+            <div className="text-xs opacity-70">{label} עדיין באמצע, הביטול לא ניתן לשחזור.</div>
             <div className="flex gap-2 w-full mt-2">
               <button onClick={() => setConfirmingCancel(false)} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white/10">
                 המשך

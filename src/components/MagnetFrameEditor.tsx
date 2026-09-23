@@ -426,9 +426,9 @@ export default function MagnetFrameEditor() {
   return (
     <div className={`rounded-2xl p-4 bg-card border border-line shadow-card space-y-4 ${ALBUM_FONT_CLASS_NAMES}`}>
       <div>
-        <div className="text-sm font-semibold tracking-wide mb-1">עיצוב מסגרת מגנט 🧲</div>
+        <div className="text-sm font-semibold tracking-wide mb-1">עיצוב מסגרת מגנט</div>
         <p className="text-xs leading-relaxed text-ink-soft">
-          בסיס לבן פשוט במידה 20×15 ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת — בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך (15×20) עם אותו הטקסט והאלמנטים.
+          בסיס לבן פשוט במידה 20×15 ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך (15×20) עם אותו הטקסט והאלמנטים.
         </p>
       </div>
 
@@ -673,7 +673,7 @@ export default function MagnetFrameEditor() {
           )}
           <div className="flex items-center justify-between gap-2">
             <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
-              🗑 מחיקת הטקסט
+              מחיקת הטקסט
             </button>
             <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
           </div>
@@ -708,7 +708,7 @@ export default function MagnetFrameEditor() {
           )}
           <div className="flex items-center justify-between gap-2">
             <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
-              🗑 מחיקת האלמנט
+              מחיקת האלמנט
             </button>
             <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
           </div>
@@ -724,21 +724,21 @@ export default function MagnetFrameEditor() {
           className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
           style={{ background: activeTab === "elements" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "elements" ? "#fff" : "var(--color-ink)" }}
         >
-          🎀 אלמנטים
+          אלמנטים
         </button>
         <button
           onClick={() => toggleTab("texture")}
           className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
           style={{ background: activeTab === "texture" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "texture" ? "#fff" : "var(--color-ink)" }}
         >
-          🖼️ טקסטורה
+          טקסטורה
         </button>
         <button
           onClick={() => toggleTab("settings")}
           className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
           style={{ background: activeTab === "settings" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "settings" ? "#fff" : "var(--color-ink)" }}
         >
-          ⚙️ הגדרות מסגרת
+          הגדרות מסגרת
         </button>
       </div>
 
@@ -1056,20 +1056,20 @@ export default function MagnetFrameEditor() {
 
       <div className="flex items-center gap-2.5 flex-wrap">
         <button onClick={save} disabled={saving} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-          {saving ? "שומר..." : "💾 שמירה"}
+          {saving ? "שומר..." : "שמירה"}
         </button>
         {designId && (
           <>
             <button onClick={() => download("landscape")} disabled={!!exportBusy} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink disabled:opacity-60">
-              {exportBusy === "landscape" ? "מוריד..." : "⬇ מסגרת לרוחב (20×15)"}
+              {exportBusy === "landscape" ? "מוריד..." : "מסגרת לרוחב (20×15)"}
             </button>
             <button onClick={() => download("portrait")} disabled={!!exportBusy} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink disabled:opacity-60">
-              {exportBusy === "portrait" ? "מוריד..." : "⬇ מסגרת לאורך (15×20)"}
+              {exportBusy === "portrait" ? "מוריד..." : "מסגרת לאורך (15×20)"}
             </button>
           </>
         )}
       </div>
-      {savedOnce && !designId && <p className="text-[11px] text-ink-soft">השמירה נכשלה — נסו שוב.</p>}
+      {savedOnce && !designId && <p className="text-[11px] text-ink-soft">השמירה נכשלה. נסו שוב.</p>}
     </div>
   );
 }

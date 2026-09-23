@@ -103,7 +103,7 @@ export default function PricingToggle() {
             <span className="text-xs text-ink-soft">/ לחודש</span>
           </div>
           <p className="text-xs text-ink-soft mb-2">{frame.note}</p>
-          <p className="text-xs text-ink-soft mb-6">אחסון ללא הגבלה, עד 3 חברי צוות, שמירת גלריה עד שנה, ומיתוג מלא — לוגו וצבע מותג על כל הגלריות</p>
+          <p className="text-xs text-ink-soft mb-6">אחסון ללא הגבלה, עד 3 חברי צוות, שמירת גלריה עד שנה, ומיתוג מלא: לוגו וצבע מותג על כל הגלריות</p>
           <Link href="/signup" className="block w-full text-center rounded-xl py-3 text-sm font-semibold bg-amber-deep text-white">
             בחירת {frame.tierName}
           </Link>

@@ -34,7 +34,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const origin = new URL(request.url).origin;
     const galleryUrl = `${origin}/galleries/${gallery.id}`;
-    const countNote = succeededCount != null && totalCount != null ? ` — ${succeededCount} מתוך ${totalCount} תמונות הועלו בהצלחה` : "";
+    const countNote = succeededCount != null && totalCount != null ? `, ${succeededCount} מתוך ${totalCount} תמונות הועלו בהצלחה` : "";
     await sendEmail({
       to: notificationEmailFor(photographer.email),
       subject: `העלאת התמונות ל"${gallery.title}" הסתיימה`,

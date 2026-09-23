@@ -37,10 +37,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (gallery.event_id) {
     await supabase.from("event_notifications").insert({
       event_id: gallery.event_id,
-      text: "הלקוח/ה אישרו את עיצוב האלבום ✓",
+      text: "הלקוח/ה אישרו את עיצוב האלבום",
       is_client_action: true,
     });
-    await notifyPhotographerOfAlbumActivity(supabase, gallery.event_id, "אישרו את עיצוב האלבום הסופי ✓");
+    await notifyPhotographerOfAlbumActivity(supabase, gallery.event_id, "אישרו את עיצוב האלבום הסופי");
   }
 
   return NextResponse.json({ ok: true });

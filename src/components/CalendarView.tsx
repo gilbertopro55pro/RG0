@@ -62,7 +62,7 @@ export default function CalendarView({
 
       {connected && loadError && (
         <div className="rounded-2xl p-5 bg-card border border-line shadow-card text-center">
-          <p className="text-sm text-rose mb-4">לא הצלחנו לטעון את היומן כרגע — ייתכן שההרשאה פגה.</p>
+          <p className="text-sm text-rose mb-4">לא הצלחנו לטעון את היומן כרגע, ייתכן שההרשאה פגה.</p>
           <Link
             href="/settings"
             className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white"

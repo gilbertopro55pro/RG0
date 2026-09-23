@@ -58,7 +58,7 @@ export async function issueReceipt({
   amount,
   description,
   date = new Date(),
-  emailSubject = "קבלה על תשלום — מערכת גילברטו",
+  emailSubject = "קבלה על תשלום | מערכת גילברטו",
   emailBody = "שלום, מצורפת קבלה על התשלום שהתקבל עבור המנוי במערכת גילברטו - ניהול צילום אירועים. תודה!",
 }: {
   apiKey?: string;
@@ -135,7 +135,7 @@ export async function issueReceipt({
   } catch {
     throw new Error(
       res.status === 401 || /unauthorized/i.test(rawBody)
-        ? "מפתח ה-API של Finbot לא תקין — בדקו את המפתח בהגדרות"
+        ? "מפתח ה-API של Finbot לא תקין, בדקו את המפתח בהגדרות"
         : `הפקת המסמך ב-Finbot נכשלה (קוד ${res.status})`
     );
   }

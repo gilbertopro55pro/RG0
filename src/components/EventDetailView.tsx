@@ -223,7 +223,7 @@ export default function EventDetailView({
     const data = await res.json();
     if (!res.ok) return { ok: false, error: data.error ?? "שגיאה בשמירת האירוע ביומן" };
     if (data.googleCalendarDisconnected || data.googleCalendarError) {
-      return { ok: false, error: data.googleCalendarError ?? "החיבור ליומן עדיין לא תקין — נסו להתחבר מחדש שוב" };
+      return { ok: false, error: data.googleCalendarError ?? "החיבור ליומן עדיין לא תקין. נסו להתחבר מחדש שוב" };
     }
     await refreshNotifications();
     return { ok: true };
@@ -668,7 +668,7 @@ export default function EventDetailView({
           }}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet">
-            <h2 className="text-lg font-bold mb-2 font-display">האירוע נמסר! 🎉</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">האירוע נמסר</h2>
             <p className="text-sm text-ink-soft mb-5">
               לשלוח ללקוח תזכורת לכתוב לנו ביקורת, בעוד {REVIEW_REQUEST_DELAY_DAYS} ימים מהיום?
             </p>
@@ -714,7 +714,7 @@ export default function EventDetailView({
               <>
                 <h2 className="text-lg font-bold mb-2 font-display">שמירת האירוע ביומן Google</h2>
                 <p className="text-sm text-ink-soft mb-5">
-                  החיבור ליומן חודש בהצלחה. האירוע &quot;{event.client_name}&quot; עדיין לא נשמר ביומן — ללחוץ כדי לשמור אותו עכשיו.
+                  החיבור ליומן חודש בהצלחה. האירוע &quot;{event.client_name}&quot; עדיין לא נשמר ביומן, ללחוץ כדי לשמור אותו עכשיו.
                 </p>
                 {calendarRetryError && <p className="text-xs text-rose mb-3">{calendarRetryError}</p>}
                 <div className="flex gap-2">
@@ -782,7 +782,7 @@ export default function EventDetailView({
               📍 {event.event_location}
             </button>
           )}
-          {event.arrival_time && <span>🕐 הגעה לצילומי משפחה: {event.arrival_time.slice(0, 5)}</span>}
+          {event.arrival_time && <span>הגעה לצילומי משפחה: {event.arrival_time.slice(0, 5)}</span>}
         </div>
       )}
       {showNav && event.event_location && (
@@ -813,13 +813,13 @@ export default function EventDetailView({
             {event.client_phone ? (
               <>
                 <p className="text-xs text-ink-soft mb-2.5">
-                  לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה — פרטי האירוע, המקדמה והיתרה, וקישור
+                  לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה, פרטי האירוע, המקדמה והיתרה, וקישור
                   לפורטל האישי שלהם למעקב אחר האירוע והתשלומים. תישאר/י לבדוק ולשלוח בעצמך.
                 </p>
                 <SendUpdateButton onSend={sendEventClosingUpdate} pending={pendingStageKeys.has("event_closing")} label="שליחת עדכון ללקוח בוואטסאפ" />
               </>
             ) : (
-              <p className="text-xs text-ink-soft">לא הוזן טלפון לקוח — לא ניתן לשלוח עדכון.</p>
+              <p className="text-xs text-ink-soft">לא הוזן טלפון לקוח. לא ניתן לשלוח עדכון.</p>
             )}
           </div>
         )}
@@ -831,7 +831,7 @@ export default function EventDetailView({
           </div>
           {payments.deposit_amount === 0 && payments.balance_amount === 0 && (
             <div className="rounded-xl px-3.5 py-2.5 mb-2 text-xs bg-amber-bg text-amber-deep">
-              טרם הוגדר מחיר לאירוע — לחצו על &quot;עריכת פרטי האירוע&quot; למעלה כדי להוסיף מקדמה ויתרה.
+              טרם הוגדר מחיר לאירוע. לחצו על &quot;עריכת פרטי האירוע&quot; למעלה כדי להוסיף מקדמה ויתרה.
             </div>
           )}
           <p className="text-[11px] text-ink-soft mb-2">לחיצה על שורת תשלום מאפשרת לסמן אותה כשולמה במלואה או בחלקה.</p>
@@ -1030,7 +1030,7 @@ export default function EventDetailView({
             </button>
           )}
           <p className="text-[11px] text-ink-soft text-center mt-1.5">
-            {closedAt ? "האירוע סגור — שחזור יחזיר אותו לרשימת האירועים הפעילים." : "סימון כל השלבים לא סוגר את האירוע — רק לחיצה כאן ואישור."}
+            {closedAt ? "האירוע סגור: שחזור יחזיר אותו לרשימת האירועים הפעילים." : "סימון כל השלבים לא סוגר את האירוע. רק לחיצה כאן ואישור."}
           </p>
         </div>
       )}
@@ -1135,7 +1135,7 @@ function PaymentLegRow({
           {label} — ₪{amount}
         </span>
         <span style={{ color: statusColor, fontWeight: 600 }}>
-          {paid ? "שולם ✓" : isPartial ? `שולם חלקית — יתרה ₪${remaining}` : dueDateText ?? "ממתין"}
+          {paid ? "שולם ✓" : isPartial ? `שולם חלקית: יתרה ₪${remaining}` : dueDateText ?? "ממתין"}
         </span>
       </button>
 
@@ -1190,11 +1190,11 @@ function PaymentLegRow({
           </button>
           {documentUrl ? (
             <a href={documentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-deep underline">
-              📄 צפייה במסמך
+              צפייה במסמך
             </a>
           ) : (
             <button onClick={onIssueDocument} disabled={issuingDocument} className="text-xs text-amber-deep underline disabled:opacity-60">
-              {issuingDocument ? "מפיק מסמך..." : "📄 הפקת מסמך"}
+              {issuingDocument ? "מפיק מסמך..." : "הפקת מסמך"}
             </button>
           )}
         </div>
@@ -1307,7 +1307,7 @@ function FilmStrip({
               <div className="border-t border-line px-3.5 py-3 bg-white album-upload-panel">
                 {albumPdfAttached && !uploadingAlbumDesign && (
                   <p className="text-[11px] mb-1.5 text-center" style={{ color: "var(--color-sage)" }}>
-                    📄 {albumDesignFilename} — נשלח, ממתין לאישור הלקוח
+                    {albumDesignFilename}, נשלח, ממתין לאישור הלקוח
                   </p>
                 )}
                 <label

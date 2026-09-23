@@ -65,7 +65,7 @@ export const STAGE_TYPE: Record<StageKey, "internal" | "checkpoint"> = {
 };
 
 export const STAGE_NOTIFY_CLIENT: Partial<Record<StageKey, string>> = {
-  gallery_upload: "הגלריה מוכנה — אפשר לבחור תמונות",
+  gallery_upload: "הגלריה מוכנה. אפשר לבחור תמונות",
   video_approval: "הוידאו מוכן לצפייה ואישור",
   album_approval: "עיצוב האלבום מוכן לאישור",
   // final_delivery deliberately has NO entry: marking "מסירה סופית" done only marks it done — it no
@@ -203,10 +203,10 @@ export const PACKAGE_LABELS: Record<PackageType, string> = {
   full_second: "חבילה מלאה + צלם שני",
   freelance_stills: "פרילנס סטילס",
   freelance_video_raw: "פרילנס וידאו גלם",
-  freelance_video_film: "פרילנס וידאו כולל עריכה — סרט",
-  freelance_video_film_clip: "פרילנס וידאו כולל עריכה — סרט וקליפ",
-  freelance_video_film_clip_teaser: "פרילנס וידאו כולל עריכה — סרט, קליפ וטיזר",
-  freelance_video_film_clip_reels: "פרילנס וידאו כולל עריכה — סרט, קליפ ורילס",
+  freelance_video_film: "פרילנס וידאו כולל עריכה, סרט",
+  freelance_video_film_clip: "פרילנס וידאו כולל עריכה, סרט וקליפ",
+  freelance_video_film_clip_teaser: "פרילנס וידאו כולל עריכה, סרט, קליפ וטיזר",
+  freelance_video_film_clip_reels: "פרילנס וידאו כולל עריכה, סרט, קליפ ורילס",
 };
 
 // The 4 "פרילנס וידאו כולל עריכה" sub-choices share one row in the new-event package <select>
@@ -260,12 +260,12 @@ export function currentStageIndex(orderedStages: { done: boolean }[]): number {
 // the same "10 months' worth over 12" shape as the real annualAmount values below (700 = 10×70,
 // 1200 = 10×120), divided by 12 and rounded, same as pricePerMonth already is for the real prices.
 export const SUBSCRIPTION_PLANS = {
-  basic_monthly: { label: "פרו סטארט — חודשי", tierName: "פרו סטארט", pricePerMonth: 25, regularPricePerMonth: 32, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "basic" as const, cycleMonths: 1, annualAmount: null as number | null },
-  basic_annual: { label: "פרו סטארט — שנתי", tierName: "פרו סטארט", pricePerMonth: 19, regularPricePerMonth: 25, note: "חיוב שנתי של ₪228 · חוסך 3 חודשים", badge: "הכי זול" as string | undefined, tier: "basic" as const, cycleMonths: 12, annualAmount: 228 },
-  monthly: { label: "פרו — חודשי", tierName: "פרו", pricePerMonth: 59, regularPricePerMonth: 70, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "standard" as const, cycleMonths: 1, annualAmount: null as number | null },
-  annual: { label: "פרו — שנתי", tierName: "פרו", pricePerMonth: 42, regularPricePerMonth: 58, note: "חיוב שנתי של ₪500 · חוסך 2 חודשים", badge: "הכי משתלם" as string | undefined, tier: "standard" as const, cycleMonths: 12, annualAmount: 500 },
-  studio_pro_monthly: { label: "פרו+ — חודשי", tierName: "פרו+", pricePerMonth: 119, regularPricePerMonth: 145, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "studio_pro" as const, cycleMonths: 1, annualAmount: null as number | null },
-  studio_pro_annual: { label: "פרו+ — שנתי", tierName: "פרו+", pricePerMonth: 83, regularPricePerMonth: 100, note: "חיוב שנתי של ₪990 · חוסך 2 חודשים", badge: "המסלול המלא" as string | undefined, tier: "studio_pro" as const, cycleMonths: 12, annualAmount: 990 },
+  basic_monthly: { label: "פרו סטארט · חודשי", tierName: "פרו סטארט", pricePerMonth: 25, regularPricePerMonth: 32, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "basic" as const, cycleMonths: 1, annualAmount: null as number | null },
+  basic_annual: { label: "פרו סטארט · שנתי", tierName: "פרו סטארט", pricePerMonth: 19, regularPricePerMonth: 25, note: "חיוב שנתי של ₪228 · חוסך 3 חודשים", badge: "הכי זול" as string | undefined, tier: "basic" as const, cycleMonths: 12, annualAmount: 228 },
+  monthly: { label: "פרו · חודשי", tierName: "פרו", pricePerMonth: 59, regularPricePerMonth: 70, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "standard" as const, cycleMonths: 1, annualAmount: null as number | null },
+  annual: { label: "פרו · שנתי", tierName: "פרו", pricePerMonth: 42, regularPricePerMonth: 58, note: "חיוב שנתי של ₪500 · חוסך 2 חודשים", badge: "הכי משתלם" as string | undefined, tier: "standard" as const, cycleMonths: 12, annualAmount: 500 },
+  studio_pro_monthly: { label: "פרו+ · חודשי", tierName: "פרו+", pricePerMonth: 119, regularPricePerMonth: 145, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "studio_pro" as const, cycleMonths: 1, annualAmount: null as number | null },
+  studio_pro_annual: { label: "פרו+ · שנתי", tierName: "פרו+", pricePerMonth: 83, regularPricePerMonth: 100, note: "חיוב שנתי של ₪990 · חוסך 2 חודשים", badge: "המסלול המלא" as string | undefined, tier: "studio_pro" as const, cycleMonths: 12, annualAmount: 990 },
 } as const;
 
 export type SubscriptionPlan = keyof typeof SUBSCRIPTION_PLANS;

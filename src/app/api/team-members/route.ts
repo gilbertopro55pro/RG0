@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       error:
         limit === 1
-          ? "ניתן להוסיף עוזר אחד בלבד לכל חשבון — מסלול פרו+ מאפשר עד 3"
+          ? "ניתן להוסיף עוזר אחד בלבד לכל חשבון, מסלול פרו+ מאפשר עד 3"
           : `ניתן להוסיף עד ${limit} חברי צוות במסלול פרו+`,
     }, { status: 403 });
   }

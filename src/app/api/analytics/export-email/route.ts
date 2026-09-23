@@ -21,8 +21,8 @@ export async function POST(request: Request) {
   try {
     await sendEmail({
       to: email.trim(),
-      subject: `נתוני הכנסות — ${monthLabel} — גילברטו`,
-      text: `מצורף קובץ הנתונים עבור ${monthLabel}.\n\nנשלח ממערכת גילברטו — ניהול אירועים לצלמים.`,
+      subject: `נתוני הכנסות | ${monthLabel} | גילברטו`,
+      text: `מצורף קובץ הנתונים עבור ${monthLabel}.\n\nנשלח ממערכת גילברטו, ניהול אירועים לצלמים.`,
       attachments: [{ filename, content: Buffer.from(csv, "utf-8").toString("base64") }],
     });
     return NextResponse.json({ ok: true });

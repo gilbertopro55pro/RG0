@@ -179,13 +179,13 @@ export default function ClientMessagesSettings({
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="text-sm font-semibold tracking-wide mb-1">הודעות ללקוח/ה</div>
       <div className="text-xs text-ink-soft leading-relaxed mb-3.5 space-y-1">
-        <p>כאן אפשר לערוך את נוסח ההודעה שנשלחת ללקוח/ה דרך כפתור &quot;שליחת עדכון ללקוח בוואטסאפ&quot; בכל שלב — הנוסח שנשמר הוא בדיוק מה שיישלח בפועל.</p>
-        <p><span className="font-data">{"{{שם}}"}</span> — מוסיף את שם הלקוח מתוך כרטיס האירוע.</p>
-        <p><span className="font-data">{"{{שלב}}"}</span> — מוסיף את שם השלב מתוך החבילה.</p>
-        <p><span className="font-data">קישור:</span> — יוסיף מיד אחריו את הקישור הרלוונטי.</p>
+        <p>כאן אפשר לערוך את נוסח ההודעה שנשלחת ללקוח/ה דרך כפתור &quot;שליחת עדכון ללקוח בוואטסאפ&quot; בכל שלב, הנוסח שנשמר הוא בדיוק מה שיישלח בפועל.</p>
+        <p><span className="font-data">{"{{שם}}"}</span>, מוסיף את שם הלקוח מתוך כרטיס האירוע.</p>
+        <p><span className="font-data">{"{{שלב}}"}</span>, מוסיף את שם השלב מתוך החבילה.</p>
+        <p><span className="font-data">קישור:</span>, יוסיף מיד אחריו את הקישור הרלוונטי.</p>
       </div>
       <p className="text-xs text-ink-soft leading-relaxed mb-3.5">
-        אם שמרתם חתימה אישית בלשונית &quot;פרופיל&quot;, היא תתווסף אוטומטית בשורה האחרונה של כל הודעה, עם שורה ריקה מפרידה — אין צורך לכתוב אותה כאן בעצמכם.
+        אם שמרתם חתימה אישית בלשונית &quot;פרופיל&quot;, היא תתווסף אוטומטית בשורה האחרונה של כל הודעה, עם שורה ריקה מפרידה. אין צורך לכתוב אותה כאן בעצמכם.
       </p>
 
       <div className="space-y-3">
@@ -250,7 +250,7 @@ export default function ClientMessagesSettings({
                   disabled={aiLoadingKey === key}
                   className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-amber-bg text-amber-deep disabled:opacity-60"
                 >
-                  {aiLoadingKey === key ? "מנסח..." : "✨ עזרה מ-AI"}
+                  {aiLoadingKey === key ? "מנסח..." : "עזרה בניסוח"}
                 </button>
               </div>
               {emojiOpenKey === key && (
@@ -271,7 +271,7 @@ export default function ClientMessagesSettings({
                 </div>
               )}
               {aiErrorKey === key && <p className="text-xs text-rose mt-1.5">שגיאה בפנייה ל-AI, נסו שוב</p>}
-              {emptyErrorKey === key && <p className="text-xs text-rose mt-1.5">ההודעה ריקה — יש להזין טקסט לפני שמירה</p>}
+              {emptyErrorKey === key && <p className="text-xs text-rose mt-1.5">ההודעה ריקה. יש להזין טקסט לפני שמירה</p>}
               {errorKey === key && <p className="text-xs text-rose mt-1.5">שגיאה בשמירה, נסו שוב</p>}
               <div className="flex justify-end mt-2">
                 <button

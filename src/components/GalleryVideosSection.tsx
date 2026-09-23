@@ -59,7 +59,7 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
     const all = Array.from(fileList);
     const tooBig = all.filter((f) => f.size > maxBytes);
     if (tooBig.length > 0) {
-      setError(`גודל וידאו מקסימלי במסלול שלך הוא ${maxMb}MB לקובץ${upgradeHint} — הקבצים הבאים לא הועלו: ${tooBig.map((f) => `${f.name} (${formatSize(f.size)})`).join(", ")}`);
+      setError(`גודל וידאו מקסימלי במסלול שלך הוא ${maxMb}MB לקובץ${upgradeHint}. הקבצים הבאים לא הועלו: ${tooBig.map((f) => `${f.name} (${formatSize(f.size)})`).join(", ")}`);
     }
     for (const file of all.filter((f) => f.size <= maxBytes)) {
       setUploading(file.name);
@@ -189,7 +189,7 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
         // Not a retroactive lock — any video already on this gallery (uploaded before a downgrade,
         // or grandfathered) still plays above; this only blocks ADDING new ones on the entry tier.
         <p className="w-full text-center rounded-lg py-2.5 text-xs font-semibold bg-chip text-ink-soft">
-          וידאו בגלריה זמין במסלולי פרו (עד 300MB לקובץ) ופרו+ (עד 500MB לקובץ) — שדרגו מסלול בהגדרות
+          וידאו בגלריה זמין במסלולי פרו (עד 300MB לקובץ) ופרו+ (עד 500MB לקובץ), שדרגו מסלול בהגדרות
         </p>
       )}
       {error && <p className="text-xs text-rose mt-2">{error}</p>}

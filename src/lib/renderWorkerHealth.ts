@@ -29,18 +29,18 @@ export async function checkRenderWorkerHealth(supabase: SupabaseClient<any>): Pr
     .maybeSingle<WorkerStatusRow>();
 
   if (!status) {
-    return { ok: false, reason: "שרת הרינדור עדיין לא דיווח על עצמו — ייתכן שהוא עדיין עולה, נסו שוב בעוד רגע." };
+    return { ok: false, reason: "שרת הרינדור עדיין לא דיווח על עצמו, ייתכן שהוא עדיין עולה, נסו שוב בעוד רגע." };
   }
 
   const heartbeatAgeMs = Date.now() - new Date(status.last_heartbeat_at).getTime();
   if (heartbeatAgeMs > MAX_HEARTBEAT_AGE_MS) {
-    return { ok: false, reason: "שרת הרינדור לא זמין כרגע (לא הגיב יותר מדי זמן) — נסו שוב בעוד כמה דקות." };
+    return { ok: false, reason: "שרת הרינדור לא זמין כרגע (לא הגיב יותר מדי זמן). נסו שוב בעוד כמה דקות." };
   }
 
   if (status.code_hash !== EXPECTED_WORKER_CODE_HASH) {
     return {
       ok: false,
-      reason: "שרת הרינדור עדיין לא עודכן לגרסה האחרונה של המערכת — נסו שוב בעוד כמה דקות, ואם זה נמשך יש לפרוס אותו מחדש (fly deploy).",
+      reason: "שרת הרינדור עדיין לא עודכן לגרסה האחרונה של המערכת. נסו שוב בעוד כמה דקות, ואם זה נמשך יש לפרוס אותו מחדש (fly deploy).",
     };
   }
 

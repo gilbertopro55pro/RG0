@@ -371,7 +371,7 @@ export default function ProfileSettingsView({
     <div>
       {googleConnectedNotice && (
         <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-sage-bg text-sage">
-          יומן Google חובר בהצלחה ✓
+          יומן Google חובר בהצלחה
         </div>
       )}
       {googleErrorNotice && (
@@ -409,7 +409,7 @@ export default function ProfileSettingsView({
             <input
               value={signature}
               onChange={(e) => setSignature(e.target.value)}
-              placeholder="לדוגמה: בברכה, רועי גלברט — סטודיו רועי גלברט"
+              placeholder="לדוגמה: בברכה, רועי גלברט, סטודיו רועי גלברט"
               className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
             />
           </div>
@@ -484,7 +484,7 @@ export default function ProfileSettingsView({
                   </select>
                 </div>
                 <p className="text-[11px] mt-1.5 text-ink-soft">
-                  צבעו כך ביומן אירועי לקוחות חדשים שעדיין לא הוזנו למערכת — סריקת היומן תאתר אותם ותציע לפתוח להם כרטיס אירוע.
+                  צבעו כך ביומן אירועי לקוחות חדשים שעדיין לא הוזנו למערכת, סריקת היומן תאתר אותם ותציע לפתוח להם כרטיס אירוע.
                 </p>
                 <button
                   onClick={openScan}
@@ -599,7 +599,7 @@ export default function ProfileSettingsView({
             {scanStep === "confirm" && (
               <div>
                 <p className="text-sm mb-3">
-                  להוסיף {selectedCandidates.length} אירועים לדף האירועים? כל אירוע ייפתח ישירות, בלי שאלות נוספות — אפשר להשלים
+                  להוסיף {selectedCandidates.length} אירועים לדף האירועים? כל אירוע ייפתח ישירות, בלי שאלות נוספות. אפשר להשלים
                   ולתקן פרטים בכל אירוע לאחר מכן.
                 </p>
                 <div className="space-y-1.5 mb-3.5 max-h-48 overflow-y-auto">
@@ -645,7 +645,7 @@ export default function ProfileSettingsView({
             {scanStep === "done" && bulkResult && (
               <div>
                 {bulkResult.created > 0 && (
-                  <p className="text-sm text-sage font-semibold mb-2">✓ נוספו {bulkResult.created} אירועים לדף האירועים</p>
+                  <p className="text-sm text-sage font-semibold mb-2">נוספו {bulkResult.created} אירועים לדף האירועים</p>
                 )}
                 {bulkResult.failed.length > 0 && (
                   <div className="mb-3">
@@ -703,7 +703,7 @@ export default function ProfileSettingsView({
           <div className="space-y-3">
             <div className="rounded-lg px-3 py-2.5 bg-white border border-line">
               <p className="text-xs text-ink-soft mb-2">
-                נדרשת סיסמה ייעודית לאפליקציה (App-Specific Password) מ-Apple — לא הסיסמה הרגילה של Apple ID.
+                נדרשת סיסמה ייעודית לאפליקציה (App-Specific Password) מ-Apple. לא הסיסמה הרגילה של Apple ID.
                 לוקח כדקה ליצור, ויש מדריך מלא עם כל שלב בנפרד.
               </p>
               <button
@@ -788,7 +788,7 @@ export default function ProfileSettingsView({
 
         <div>
           <p className="text-xs mb-2 text-ink-soft">
-            סטטוס עוסק — קובע אם מונפקת קבלה או חשבונית מס (כשמחוברים לספק חשבוניות), וגם ברירת המחדל בבונה הצעות המחיר
+            סטטוס עוסק: קובע אם מונפקת קבלה או חשבונית מס (כשמחוברים לספק חשבוניות), וגם ברירת המחדל בבונה הצעות המחיר
           </p>
           <div className="flex gap-1.5 mb-3.5">
             <button

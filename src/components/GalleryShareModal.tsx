@@ -140,11 +140,11 @@ export default function GalleryShareModal({
                 <div className="space-y-1.5">
                   <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
                     <input type="radio" name="share-quality" checked={shareQuality === "full"} onChange={() => setShareQuality("full")} />
-                    איכות מלאה — הקבצים המקוריים
+                    איכות מלאה (הקבצים המקוריים)
                   </label>
                   <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
                     <input type="radio" name="share-quality" checked={shareQuality === "web"} onChange={() => setShareQuality("web")} />
-                    איכות מותאמת לרשת — קובץ קטן יותר (עד כ-3MB לתמונה)
+                    איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)
                   </label>
                 </div>
               </div>

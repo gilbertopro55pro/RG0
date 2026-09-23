@@ -83,7 +83,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm rounded-2xl p-5 bg-card border border-line shadow-card">
         <h1 className="text-xl font-bold mb-5 font-display">התחברות</h1>
         {justConfirmed && (
-          <p className="text-sm text-sage font-medium mb-4 -mt-2">המייל אומת בהצלחה — אפשר להתחבר.</p>
+          <p className="text-sm text-sage font-medium mb-4 -mt-2">המייל אומת בהצלחה. אפשר להתחבר.</p>
         )}
         {confirmError && (
           <p className="text-sm text-rose font-medium mb-4 -mt-2">
@@ -154,7 +154,7 @@ export default function LoginPage() {
         </p>
       </div>
       <p className="text-center text-[11px] text-ink-soft mt-5">
-        © {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט — צילום אירועים
+        © {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט, צילום אירועים
       </p>
 
       {showForgotPassword && (

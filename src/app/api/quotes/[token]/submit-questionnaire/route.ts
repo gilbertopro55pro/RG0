@@ -97,10 +97,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       try {
         await sendEmail({
           to: notificationEmailFor(lead.photographers.email),
-          subject: `אירוע חדש נוצר אוטומטית — ${result.event.client_name}`,
+          subject: `אירוע חדש נוצר אוטומטית | ${result.event.client_name}`,
           text: `שלום ${lead.photographers.name},
 
-הלקוח/ה ${result.event.client_name} אישר/ה את הצעת המחיר ומילא/ה שאלון פרטים — האירוע נוסף אוטומטית ליומן שלך.
+הלקוח/ה ${result.event.client_name} אישר/ה את הצעת המחיר ומילא/ה שאלון פרטים. האירוע נוסף אוטומטית ליומן שלך.
 
 פרטי האירוע:
 שם הלקוח/ה: ${result.event.client_name}

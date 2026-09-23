@@ -83,11 +83,11 @@ export default function OnboardingView({
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm rounded-2xl p-5 bg-card border border-line shadow-card">
-        <h1 className="text-xl font-bold mb-1 font-display">ברוך הבא! 🎉</h1>
-        <p className="text-sm text-ink-soft mb-5">כמה דברים קצרים שכדאי להגדיר עכשיו — אפשר גם לדלג ולהגדיר מאוחר יותר בהגדרות.</p>
+        <h1 className="text-xl font-bold mb-1 font-display">ברוך הבא</h1>
+        <p className="text-sm text-ink-soft mb-5">כמה דברים קצרים שכדאי להגדיר עכשיו. אפשר גם לדלג ולהגדיר מאוחר יותר בהגדרות.</p>
 
         {googleConnectedNotice && (
-          <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-sage-bg text-sage">יומן Google חובר בהצלחה ✓</div>
+          <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-sage-bg text-sage">יומן Google חובר בהצלחה</div>
         )}
         {googleErrorNotice && (
           <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-white border border-rose text-rose">

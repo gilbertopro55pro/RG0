@@ -28,7 +28,7 @@ export const ALBUM_STYLE_OPTIONS: { id: AlbumStyleId; label: string; description
   { id: "classic", label: "קלאסי", description: "מסגרת לבנה וצל רך לכל תמונה, קומפוזיציה מאוזנת ורגועה" },
   { id: "scribbled", label: "מקושקש", description: "תמונות מפוזרות בזוויות שונות, כמו אלבום גזירים" },
   { id: "urban", label: "אורבני", description: "רשתות אחידות ונקיות עם המון רווח לבן בין התמונות" },
-  { id: "clean", label: "קו נקי", description: "מינימליסטי — תמונה אחת בעמוד, המון רווח לבן" },
+  { id: "clean", label: "קו נקי", description: "מינימליסטי: תמונה אחת בעמוד, המון רווח לבן" },
 ];
 
 type StyleParams = {

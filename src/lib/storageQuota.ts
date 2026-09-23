@@ -31,7 +31,7 @@ export async function checkStorageQuota(
   if (Number(usedBytes ?? 0) >= cap) {
     return {
       ok: false,
-      error: `הגעתם למכסת האחסון של המסלול (${formatGb(cap)}GB) — כדי להמשיך להעלות קבצים, יש לפנות מקום או לשדרג מסלול בהגדרות`,
+      error: `הגעתם למכסת האחסון של המסלול (${formatGb(cap)}GB). כדי להמשיך להעלות קבצים יש לפנות מקום או לשדרג מסלול בהגדרות`,
     };
   }
   return { ok: true };

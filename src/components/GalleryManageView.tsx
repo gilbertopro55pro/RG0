@@ -1582,7 +1582,7 @@ export default function GalleryManageView({
 
       setPrintHouseSendProgress(100);
       await new Promise((resolve) => setTimeout(resolve, 400));
-      setPrintHouseToast(`נשלח בהצלחה ל-${target.label || target.email} ✓`);
+      setPrintHouseToast(`נשלח בהצלחה ל-${target.label || target.email}`);
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
         setPrintHouseToast("שליחה לבית הדפוס נכשלה");
@@ -1702,8 +1702,8 @@ export default function GalleryManageView({
     if (photos.length + items.length > MAX_GALLERY_PHOTOS) {
       setError(
         photos.length >= MAX_GALLERY_PHOTOS
-          ? `הגלריה כבר מכילה ${photos.length} תמונות — הגעתם למגבלה של ${MAX_GALLERY_PHOTOS} תמונות לגלריה.`
-          : `בגלריה יש כבר ${photos.length} תמונות, ונבחרו עוד ${items.length} — יחד זה חורג מהמגבלה של ${MAX_GALLERY_PHOTOS} תמונות לגלריה. אפשר להעלות עד ${MAX_GALLERY_PHOTOS - photos.length} תמונות נוספות בסבב הזה.`
+          ? `הגלריה כבר מכילה ${photos.length} תמונות, הגעתם למגבלה של ${MAX_GALLERY_PHOTOS} תמונות לגלריה.`
+          : `בגלריה יש כבר ${photos.length} תמונות, ונבחרו עוד ${items.length}, יחד זה חורג מהמגבלה של ${MAX_GALLERY_PHOTOS} תמונות לגלריה. אפשר להעלות עד ${MAX_GALLERY_PHOTOS - photos.length} תמונות נוספות בסבב הזה.`
       );
       return;
     }
@@ -1909,14 +1909,14 @@ export default function GalleryManageView({
       if (offlineAbortedRef.current) {
         setError(
           succeededCount > 0
-            ? `אין חיבור לאינטרנט — ההעלאה הופסקה. ${succeededCount} מתוך ${items.length} תמונות הספיקו לעלות לפני שהחיבור ירד. יש לבדוק את החיבור לרשת ולהעלות את השאר שוב.`
-            : "אין חיבור לאינטרנט — ההעלאה לא התחילה. יש לבדוק את החיבור לרשת ולנסות שוב."
+            ? `אין חיבור לאינטרנט, ההעלאה הופסקה. ${succeededCount} מתוך ${items.length} תמונות הספיקו לעלות לפני שהחיבור ירד. יש לבדוק את החיבור לרשת ולהעלות את השאר שוב.`
+            : "אין חיבור לאינטרנט, ההעלאה לא התחילה. יש לבדוק את החיבור לרשת ולנסות שוב."
         );
       } else if (failedFiles.length > 0) {
         const shown = failedFiles.slice(0, 8);
         const more = failedFiles.length - shown.length;
         setError(
-          `${failedFiles.length} קבצים לא הועלו: ${shown.join(", ")}${more > 0 ? ` ועוד ${more} נוספים` : ""}. שאר התמונות הועלו בהצלחה — אפשר להעלות את אלה שנכשלו שוב בנפרד.`
+          `${failedFiles.length} קבצים לא הועלו: ${shown.join(", ")}${more > 0 ? ` ועוד ${more} נוספים` : ""}. שאר התמונות הועלו בהצלחה. אפשר להעלות את אלה שנכשלו שוב בנפרד.`
         );
       }
       // Snap to 100% and hold there briefly instead of jumping straight back to the idle state —
@@ -1959,7 +1959,7 @@ export default function GalleryManageView({
 
   const reportRejectedFormats = (rejected: File[]) => {
     if (rejected.length === 0) return;
-    const note = `הגלריה תומכת רק בקבצי JPG, JPEG, PNG, GIF ו-BMP — הקבצים הבאים לא הועלו: ${rejected
+    const note = `הגלריה תומכת רק בקבצי JPG, JPEG, PNG, GIF ו-BMP. הקבצים הבאים לא הועלו: ${rejected
       .map((f) => f.name)
       .join(", ")}`;
     setError((prev) => (prev ? `${prev}\n${note}` : note));
@@ -2155,10 +2155,10 @@ export default function GalleryManageView({
       });
       if (!removeRes.ok) {
         const data = await removeRes.json().catch(() => null);
-        throw new Error(data?.error ?? "שגיאה במחיקת התמונה מהאחסון — נסו שוב");
+        throw new Error(data?.error ?? "שגיאה במחיקת התמונה מהאחסון. נסו שוב");
       }
       const { error: dbError } = await supabase.from("gallery_photos").delete().eq("id", photo.id);
-      if (dbError) throw new Error("שגיאה במחיקת התמונה — נסו שוב");
+      if (dbError) throw new Error("שגיאה במחיקת התמונה. נסו שוב");
       setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
       if (gallery.cover_photo_id === photo.id) {
         await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
@@ -2167,7 +2167,7 @@ export default function GalleryManageView({
     } catch (e) {
       // Was previously left to the shared `error` state, which renders nowhere near this action —
       // a failure here now surfaces immediately, in the same overlay the progress spinner just was.
-      setDeletePhotosError(e instanceof Error ? e.message : "שגיאה במחיקת התמונה — נסו שוב");
+      setDeletePhotosError(e instanceof Error ? e.message : "שגיאה במחיקת התמונה. נסו שוב");
     } finally {
       setDeletingPhotos(false);
     }
@@ -2195,7 +2195,7 @@ export default function GalleryManageView({
       });
       if (!removeRes.ok) {
         const data = await removeRes.json().catch(() => null);
-        throw new Error(data?.error ?? "שגיאה במחיקת התמונות מהאחסון — נסו שוב");
+        throw new Error(data?.error ?? "שגיאה במחיקת התמונות מהאחסון. נסו שוב");
       }
       // PostgREST encodes an .in() filter straight into the request URL's query string — a few
       // hundred UUIDs is already tens of KB, and the underlying infrastructure rejects the request
@@ -2206,7 +2206,7 @@ export default function GalleryManageView({
       for (let i = 0; i < ids.length; i += DELETE_ID_BATCH_SIZE) {
         const batch = ids.slice(i, i + DELETE_ID_BATCH_SIZE);
         const { error: dbError } = await supabase.from("gallery_photos").delete().in("id", batch);
-        if (dbError) throw new Error("שגיאה במחיקת התמונות — נסו שוב");
+        if (dbError) throw new Error("שגיאה במחיקת התמונות. נסו שוב");
       }
       setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
       clearSelection();
@@ -2215,7 +2215,7 @@ export default function GalleryManageView({
         setGallery((g) => ({ ...g, cover_photo_id: null }));
       }
     } catch (e) {
-      setDeletePhotosError(e instanceof Error ? e.message : "שגיאה במחיקת התמונות — נסו שוב");
+      setDeletePhotosError(e instanceof Error ? e.message : "שגיאה במחיקת התמונות. נסו שוב");
     } finally {
       setDeletingPhotos(false);
     }
@@ -2698,7 +2698,7 @@ export default function GalleryManageView({
               <div>
                 <div className="text-sm font-semibold">כבר יש העלאה פעילה</div>
                 <div className="text-xs opacity-70 mt-1">
-                  מעלה תמונות בגלריה &quot;{blockedByOtherUpload.galleryTitle}&quot; — {blockedByOtherUpload.doneCount} מתוך {blockedByOtherUpload.totalCount}
+                  מעלה תמונות בגלריה &quot;{blockedByOtherUpload.galleryTitle}&quot;, {blockedByOtherUpload.doneCount} מתוך {blockedByOtherUpload.totalCount}
                 </div>
                 <div className="text-xs opacity-70 mt-1">יש לבטל אותה כדי להתחיל העלאה כאן</div>
               </div>
@@ -2913,7 +2913,7 @@ export default function GalleryManageView({
             }}
             className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold bg-ink text-white ${BTN_PRESS}`}
           >
-            🗂️ מיון תמונות
+            מיון תמונות
             {photos.some((p) => p.culling_status === "pending") &&
               ` (${photos.filter((p) => p.culling_status === "pending").length} ממתינות)`}
           </button>
@@ -2954,7 +2954,7 @@ export default function GalleryManageView({
                     color: showFavoritesOnly ? "#fff" : "var(--color-ink-soft)",
                   }}
                 >
-                  💜 מועדפים ({favoriteCount})
+                  מועדפים ({favoriteCount})
                 </button>
                 {showFavoritesOnly && (
                   <button
@@ -2977,7 +2977,7 @@ export default function GalleryManageView({
                 onClick={refreshFavoritesAndLabels}
                 disabled={refreshingFavorites}
                 aria-label="רענון מועדפים ותגיות"
-                title="רענון מועדפים ותגיות — לראות עדכונים מהלקוח/ה בלי לצאת ולחזור לגלריה"
+                title="רענון מועדפים ותגיות, לראות עדכונים מהלקוח/ה בלי לצאת ולחזור לגלריה"
                 className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
               >
                 <svg
@@ -3066,7 +3066,7 @@ export default function GalleryManageView({
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="תצוגה מקדימה"
-                title={gallery.published ? "תצוגה מקדימה של הגלריה" : "תצוגה מקדימה — כך הגלריה תיראה ללקוח/ה לאחר הפרסום"}
+                title={gallery.published ? "תצוגה מקדימה של הגלריה" : "תצוגה מקדימה. כך הגלריה תיראה ללקוח/ה לאחר הפרסום"}
                 className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft ${BTN_PRESS}`}
               >
                 <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -3141,7 +3141,7 @@ export default function GalleryManageView({
               htmlFor={`gallery-upload-${gallery.id}`}
               className={`w-full flex items-center justify-center px-6 text-base font-semibold cursor-pointer text-ink text-center ${BTN_PRESS}`}
             >
-              {uploading ?? (isDragging ? "שחררו כאן להעלאה" : "העלאת תמונות — או גררו לכאן תמונות ותיקיות")}
+              {uploading ?? (isDragging ? "שחררו כאן להעלאה" : "העלאת תמונות, או גררו לכאן תמונות ותיקיות")}
             </label>
           </div>
           <label
@@ -3281,7 +3281,7 @@ export default function GalleryManageView({
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs text-ink-soft font-data">{visiblePhotos.length} תמונות</span>
         <span className="text-[11px] text-ink-soft">
-          פריסה: {GRID_STYLE_OPTIONS.find((g) => g.id === resolvedGridStyle)?.label} — משתנה ב״הגדרות גלריה״
+          פריסה: {GRID_STYLE_OPTIONS.find((g) => g.id === resolvedGridStyle)?.label}, משתנה ב״הגדרות גלריה״
         </span>
       </div>
 
@@ -3435,13 +3435,13 @@ export default function GalleryManageView({
       <div className="mt-3 space-y-2">
         {!gallery.published && (
           <p className="text-[11px] text-ink-soft text-center">
-            משך שמירת הגלריה: {expiryDays ? GALLERY_EXPIRY_OPTIONS.find((o) => o.value === expiryDays)?.label : "ללא הגבלת זמן (מדיניות ישנה)"} — ניתן לשנות בהגדרות הגלריה
+            משך שמירת הגלריה: {expiryDays ? GALLERY_EXPIRY_OPTIONS.find((o) => o.value === expiryDays)?.label : "ללא הגבלת זמן (מדיניות ישנה)"}. ניתן לשנות בהגדרות הגלריה
           </p>
         )}
 
         {gallery.published && !isArchived && (
           <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium text-center">
-            הגלריה פורסמה ✓
+            הגלריה פורסמה
             {gallery.expires_at && (
               <span className="block text-[11px] mt-0.5 font-normal">
                 בתוקף עד {new Date(gallery.expires_at).toLocaleDateString("he-IL")}
@@ -3515,7 +3515,7 @@ export default function GalleryManageView({
               color: "#fff",
             }}
           >
-            🖼 {gallery.cover_photo_id === visiblePhotos[lightboxIndex].id ? "שער הגלריה" : "קביעה כשער"}
+            {gallery.cover_photo_id === visiblePhotos[lightboxIndex].id ? "שער הגלריה" : "קביעה כשער"}
           </button>
           {lightboxIndex > 0 && (
             <button
@@ -3566,25 +3566,25 @@ export default function GalleryManageView({
                 onClick={() => downloadPhoto(actionSheetPhoto)}
                 className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
               >
-                ⬇ הורדה
+                הורדה
               </button>
               <button
                 onClick={() => sharePhoto(actionSheetPhoto)}
                 className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
               >
-                ↗ שיתוף
+                שיתוף
               </button>
               <button
                 onClick={() => setCoverPhoto(actionSheetPhoto)}
                 className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
               >
-                🖼 קביעה כשער לגלריה
+                קביעה כשער לגלריה
               </button>
               <button
                 onClick={() => togglePortfolio(actionSheetPhoto)}
                 className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
               >
-                {actionSheetPhoto.in_portfolio ? "✨ הסרה מהפורטפוליו הציבורי" : "✨ הוספה לפורטפוליו הציבורי"}
+                {actionSheetPhoto.in_portfolio ? "הסרה מהפורטפוליו הציבורי" : "הוספה לפורטפוליו הציבורי"}
               </button>
               <button
                 onClick={() => {
@@ -3593,7 +3593,7 @@ export default function GalleryManageView({
                 }}
                 className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line text-rose"
               >
-                🗑 מחיקה
+                מחיקה
               </button>
               <button
                 onClick={() => setActionSheetPhoto(null)}
@@ -3713,11 +3713,11 @@ export default function GalleryManageView({
                 <div className="space-y-1.5 mb-5">
                   <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-line bg-white text-sm">
                     <input type="radio" name="manage-download-quality" checked={downloadQuality === "full"} onChange={() => setDownloadQuality("full")} />
-                    איכות מלאה — הקבצים המקוריים
+                    איכות מלאה (הקבצים המקוריים)
                   </label>
                   <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-line bg-white text-sm">
                     <input type="radio" name="manage-download-quality" checked={downloadQuality === "web"} onChange={() => setDownloadQuality("web")} />
-                    איכות מותאמת לרשת — קובץ קטן יותר (עד כ-3MB לתמונה)
+                    איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)
                   </label>
                 </div>
 
@@ -3752,16 +3752,16 @@ export default function GalleryManageView({
               <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet">
                 {zipDone ? (
                   <>
-                    <h2 className="text-lg font-bold mb-2 font-display">{zipBatch.parts.every((p) => p.status === "failed") ? "ההורדה נכשלה" : "ההורדה הושלמה 🎉"}</h2>
+                    <h2 className="text-lg font-bold mb-2 font-display">{zipBatch.parts.every((p) => p.status === "failed") ? "ההורדה נכשלה" : "ההורדה הושלמה"}</h2>
                     <p className="text-sm text-ink-soft mb-4">
                       {zipBatch.parts.every((p) => p.status === "failed")
-                        ? "לא הצלחנו להכין את הקובץ — אפשר לנסות שוב."
+                        ? "לא הצלחנו להכין את הקובץ. אפשר לנסות שוב."
                         : zipBatch.parts.length > 1
                           ? `כל ${zipBatch.parts.length} הקבצים ירדו למחשב שלך.`
                           : "הקובץ ירד למחשב שלך."}
                     </p>
                     {zipBatch.parts.some((p) => p.status === "failed") && !zipBatch.parts.every((p) => p.status === "failed") && (
-                      <p className="text-xs text-rose mb-4">חלק מהתמונות לא נכללו בהורדה בגלל שגיאה — אפשר לנסות שוב.</p>
+                      <p className="text-xs text-rose mb-4">חלק מהתמונות לא נכללו בהורדה בגלל שגיאה. אפשר לנסות שוב.</p>
                     )}
                     {zipBatch.parts.filter((p) => p.status === "ready" && p.downloadUrl).map((part) => (
                       <a key={part.partIndex} href={part.downloadUrl!} className="block text-sm font-semibold text-amber-deep underline mb-2">
@@ -3782,7 +3782,7 @@ export default function GalleryManageView({
                   <>
                     <h2 className="text-lg font-bold mb-2 font-display">מכינים את ההורדה</h2>
                     <p className="text-sm text-ink-soft mb-4">
-                      {zipBatch.parts.length > 1 ? `ההורדה מחולקת ל-${zipBatch.parts.length} קבצי ZIP — כל חלק יורד אוטומטית ברגע שהוא מוכן.` : "קובץ ה-ZIP יורד אוטומטית ברגע שהוא מוכן."}
+                      {zipBatch.parts.length > 1 ? `ההורדה מחולקת ל-${zipBatch.parts.length} קבצי ZIP. כל חלק יורד אוטומטית ברגע שהוא מוכן.` : "קובץ ה-ZIP יורד אוטומטית ברגע שהוא מוכן."}
                     </p>
                     <div className="space-y-2 mb-4">
                       {zipBatch.parts.map((part) => (
@@ -3798,7 +3798,7 @@ export default function GalleryManageView({
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-ink-soft mb-3">אפשר לסגור את החלון — ההכנה וההורדה ימשיכו ברקע.</p>
+                    <p className="text-xs text-ink-soft mb-3">אפשר לסגור את החלון, ההכנה וההורדה ימשיכו ברקע.</p>
                     <button onClick={() => setZipPanelOpen(false)} className="w-full rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
                       סגירה
                     </button>
@@ -3841,7 +3841,7 @@ export default function GalleryManageView({
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-2 font-display">
-              {exportRangeFormat === "pdf" ? "ייצוא PDF" : exportRangeFormat === "jpg" ? "ייצוא JPG" : "ייצוא PSD"} — טווח עמודים
+              {exportRangeFormat === "pdf" ? "ייצוא PDF" : exportRangeFormat === "jpg" ? "ייצוא JPG" : "ייצוא PSD"}, טווח עמודים
             </h2>
             <p className="text-sm text-ink-soft mb-4">בחר/י מאיזה עמוד עד איזה עמוד לייצא (מתוך {albumTotalPages} עמודים).</p>
             <div className="flex items-center gap-3 mb-5">
@@ -3968,7 +3968,7 @@ export default function GalleryManageView({
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-2 font-display">שמירת תבנית אלבום</h2>
             <p className="text-sm text-ink-soft mb-4">
-              מבנה העמודים הנוכחי ({albumSpreads.length} עמודים) יישמר בתור תבנית לשימוש חוזר — בפעם הבאה אפשר יהיה לבנות ממנה אלבום חדש בלחיצה אחת.
+              מבנה העמודים הנוכחי ({albumSpreads.length} עמודים) יישמר בתור תבנית לשימוש חוזר, בפעם הבאה אפשר יהיה לבנות ממנה אלבום חדש בלחיצה אחת.
             </p>
             <input
               autoFocus
@@ -4031,7 +4031,7 @@ export default function GalleryManageView({
           <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-2 font-display">למחוק את הלשונית &quot;{deleteFolderConfirm.name}&quot;?</h2>
             <p className="text-sm text-ink-soft mb-5">
-              התמונות שבתוכה לא יימחקו — הן פשוט יעברו ל&quot;הכל&quot;. הלשונית עצמה תימחק לצמיתות ולא ניתן לשחזר אותה.
+              התמונות שבתוכה לא יימחקו, הן פשוט יעברו ל&quot;הכל&quot;. הלשונית עצמה תימחק לצמיתות ולא ניתן לשחזר אותה.
             </p>
             <div className="flex gap-2">
               <button
@@ -4075,13 +4075,13 @@ export default function GalleryManageView({
             onClick={downloadSelectedPhotos}
             className={`flex items-center gap-1 text-sm font-semibold whitespace-nowrap ${BTN_PRESS}`}
           >
-            ⬇ הורדה
+            הורדה
           </button>
           <button
             onClick={() => setDeleteSelectedConfirmOpen(true)}
             className={`flex items-center gap-1 text-sm font-semibold whitespace-nowrap text-rose ${BTN_PRESS}`}
           >
-            🗑 מחיקה
+            מחיקה
           </button>
           <button onClick={selectAllVisible} className={`text-sm font-semibold whitespace-nowrap ${BTN_PRESS}`}>
             בחירת הכל
@@ -4195,7 +4195,7 @@ export default function GalleryManageView({
           >
             <h2 className="text-lg font-bold font-display mb-4">מצגת תמונות</h2>
             <p className="text-xs text-ink-soft mb-3.5">
-              בוחרים אילו תמונות ייכנסו למצגת ללקוח — היא תוצג במסך מלא עם אפקטים רנדומליים.
+              בוחרים אילו תמונות ייכנסו למצגת ללקוח, היא תוצג במסך מלא עם אפקטים רנדומליים.
             </p>
 
             <div className="flex items-center justify-between mb-2.5">
@@ -4296,7 +4296,7 @@ export default function GalleryManageView({
               </div>
               <div className="text-white">
                 <p className="text-lg font-bold font-display mb-1">סובבו את המכשיר למצב אופקי</p>
-                <p className="text-sm opacity-80">כלי עיצוב האלבום פועל רק במצב אופקי — סובבו את הטלפון כדי להמשיך</p>
+                <p className="text-sm opacity-80">כלי עיצוב האלבום פועל רק במצב אופקי, סובבו את הטלפון כדי להמשיך</p>
               </div>
               <button onClick={() => setAlbumManageOpen(false)} className="mt-1 h-9 px-4 rounded-full bg-white text-ink text-sm font-semibold">
                 סגירה
@@ -4481,17 +4481,17 @@ export default function GalleryManageView({
               !nonBasicTierAllowed ? (
                 <div className="rounded-xl p-5 text-center bg-chip">
                   <p className="text-sm text-ink-soft leading-relaxed">
-                    עורך האלבומים זמין ממסלול פרו ומעלה — שדרגו מסלול בהגדרות כדי להתחיל לעצב אלבום לגלריה זו.
+                    עורך האלבומים זמין ממסלול פרו ומעלה, שדרגו מסלול בהגדרות כדי להתחיל לעצב אלבום לגלריה זו.
                   </p>
                 </div>
               ) : (
               <>
                 <p className="text-xs text-ink-soft mb-3.5">
-                  קודם כל, מה מידות האלבום להדפסה? תתחילו מעמוד ריק אחד — ומשם תוכלו לבחור תבנית מוכנה או לעצב בעצמכם, ולהוסיף עוד עמודים בהמשך.
+                  קודם כל, מה מידות האלבום להדפסה? תתחילו מעמוד ריק אחד, ומשם תוכלו לבחור תבנית מוכנה או לעצב בעצמכם, ולהוסיף עוד עמודים בהמשך.
                 </p>
                 <div className="flex items-end gap-2 flex-wrap mb-3.5">
                   <div>
-                    <p className="text-xs text-ink-soft mb-2">מידה נפוצה — בחירה ממלאת את השדות למטה, ואפשר גם לשנות אותם ידנית</p>
+                    <p className="text-xs text-ink-soft mb-2">מידה נפוצה: בחירה ממלאת את השדות למטה, ואפשר גם לשנות אותם ידנית</p>
                     <select
                       value={ALBUM_SIZE_PRESETS.find((p) => p.width === albumSizeDraft.width && p.height === albumSizeDraft.height)?.label ?? ""}
                       onChange={(e) => {
@@ -4510,7 +4510,7 @@ export default function GalleryManageView({
                     </select>
                   </div>
                   <div>
-                    <p className="text-xs text-ink-soft mb-2">תבנית מוכנה (לא חובה — אפשר גם עמוד ריק ולעצב בעצמכם)</p>
+                    <p className="text-xs text-ink-soft mb-2">תבנית מוכנה (לא חובה, אפשר גם עמוד ריק ולעצב בעצמכם)</p>
                     <select
                       value={selectedStarterId ? `starter:${selectedStarterId}` : selectedSavedTemplateId ? `saved:${selectedSavedTemplateId}` : ""}
                       onChange={(e) => {
@@ -4529,7 +4529,7 @@ export default function GalleryManageView({
                       style={{ width: "15vw", minWidth: 150 }}
                       className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
                     >
-                      <option value="">בלי תבנית — עמוד ריק</option>
+                      <option value="">בלי תבנית: עמוד ריק</option>
                       <optgroup label="תבניות מוכנות בסגנון אלבום">
                         {STARTER_BOOK_TEMPLATES.map((t) => (
                           <option key={t.id} value={`starter:${t.id}`}>
@@ -4642,7 +4642,7 @@ export default function GalleryManageView({
                       disabled={buildingAlbumBook}
                       className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-60"
                     >
-                      עיצוב אישי — התחלה מדף ריק
+                      עיצוב אישי: התחלה מדף ריק
                     </button>
                     <button
                       onClick={() => setAlbumManageOpen(false)}
@@ -4670,17 +4670,17 @@ export default function GalleryManageView({
                       color: album.status === "approved" ? "var(--color-sage)" : album.status === "changes_requested" ? "var(--color-rose)" : "var(--color-ink-soft)",
                     }}
                   >
-                    {album.status === "draft" && "טיוטה — עדיין לא נשלח ללקוח/ה"}
-                    {album.status === "sent" && "נשלח ללקוח/ה — ממתין לאישור"}
+                    {album.status === "draft" && "טיוטה. עדיין לא נשלח ללקוח/ה"}
+                    {album.status === "sent" && "נשלח ללקוח/ה: ממתין לאישור"}
                     {album.status === "approved" && (
                       <span className="inline-flex items-center gap-1">
                         <IconAlbumCheck size={12} />
                         האלבום אושר ע&quot;י הלקוח/ה
                       </span>
                     )}
-                    {album.status === "changes_requested" && "הלקוח/ה ביקש/ה שינויים — ראו הערות למטה"}
+                    {album.status === "changes_requested" && "הלקוח/ה ביקש/ה שינויים, ראו הערות למטה"}
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap" title="גודל האלבום להדפסה (ס״מ) — לצורך ייצוא JPG / PSD">
+                  <div className="flex items-center gap-2 flex-wrap" title="גודל האלבום להדפסה (ס״מ), לצורך ייצוא JPG / PSD">
                     <input
                       type="number"
                       min={1}
@@ -4883,7 +4883,7 @@ export default function GalleryManageView({
                 {albumSpreads.length % 2 !== 0 && (
                   <p className="text-[11px] text-amber-deep mb-2.5 flex items-start gap-1.5">
                     <IconWarning size={13} />
-                    <span>מספר אי-זוגי של עמודים ({albumSpreads.length}) — חלק ממעבדות הדפוס דורשות מספר זוגי. מומלץ להוסיף או להסיר עמוד אחד.</span>
+                    <span>מספר אי-זוגי של עמודים ({albumSpreads.length}), חלק ממעבדות הדפוס דורשות מספר זוגי. מומלץ להוסיף או להסיר עמוד אחד.</span>
                   </p>
                 )}
 
@@ -5022,11 +5022,11 @@ export default function GalleryManageView({
                   <div className="space-y-1.5">
                     <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
                       <input type="radio" name="manage-share-quality" checked={shareQuality === "full"} onChange={() => setShareQuality("full")} />
-                      איכות מלאה — הקבצים המקוריים
+                      איכות מלאה (הקבצים המקוריים)
                     </label>
                     <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
                       <input type="radio" name="manage-share-quality" checked={shareQuality === "web"} onChange={() => setShareQuality("web")} />
-                      איכות מותאמת לרשת — קובץ קטן יותר (עד כ-3MB לתמונה)
+                      איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)
                     </label>
                   </div>
                 </div>
@@ -5107,12 +5107,12 @@ export default function GalleryManageView({
             {gallery.client_phone ? (
               <>
                 <p className="text-xs text-ink-soft text-center mb-2">
-                  לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה וקישור לגלריה — תישאר/י לבדוק ולשלוח בעצמך.
+                  לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה וקישור לגלריה, תישאר/י לבדוק ולשלוח בעצמך.
                 </p>
                 <SendUpdateButton onSend={sendGalleryPublishedUpdate} pending={sendingGalleryUpdate} />
               </>
             ) : (
-              <p className="text-xs text-ink-soft text-center mb-2">לא הוזן טלפון לקוח לגלריה — לא ניתן לשלוח עדכון.</p>
+              <p className="text-xs text-ink-soft text-center mb-2">לא הוזן טלפון לקוח לגלריה. לא ניתן לשלוח עדכון.</p>
             )}
             <button
               onClick={() => setJustPublished(false)}
@@ -5146,7 +5146,7 @@ export default function GalleryManageView({
             {gallery.client_phone ? (
               <>
                 <p className="text-xs text-ink-soft text-center mb-2">
-                  לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה שיש תמונות חדשות בגלריה — תישאר/י לבדוק
+                  לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה שיש תמונות חדשות בגלריה, תישאר/י לבדוק
                   ולשלוח בעצמך.
                 </p>
                 <SendUpdateButton
@@ -5155,7 +5155,7 @@ export default function GalleryManageView({
                 />
               </>
             ) : (
-              <p className="text-xs text-ink-soft text-center mb-2">לא הוזן טלפון לקוח לגלריה — לא ניתן לשלוח עדכון.</p>
+              <p className="text-xs text-ink-soft text-center mb-2">לא הוזן טלפון לקוח לגלריה. לא ניתן לשלוח עדכון.</p>
             )}
             <button
               onClick={() => setUploadJustFinished(null)}
@@ -5176,7 +5176,7 @@ export default function GalleryManageView({
             <h2 className="text-base font-bold mb-1 font-display">הוספה לפורטפוליו הציבורי</h2>
             <p className="text-xs text-ink-soft mb-3">
               אפשר לתייג את התמונה בנושא (למשל &quot;חתונות&quot;, &quot;בר/בת מצווה&quot;) כדי לאפשר סינון לפי נושא בעמוד
-              הפורטפוליו — אופציונלי.
+              הפורטפוליו. זה אופציונלי.
             </p>
             <input
               value={portfolioCategoryInput}
@@ -5556,7 +5556,7 @@ function GallerySettingsModal({
                     className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
                   />
                   <p className="text-[11px] text-ink-soft mt-1">
-                    השאירו ריק כדי שהשם יעודכן אוטומטית משם הלקוח/ה בעמוד האירוע — הקלדת שם כאן קובעת אותו סופית, גם אם שם האירוע ישתנה בהמשך.
+                    השאירו ריק כדי שהשם יעודכן אוטומטית משם הלקוח/ה בעמוד האירוע, הקלדת שם כאן קובעת אותו סופית, גם אם שם האירוע ישתנה בהמשך.
                   </p>
                 </div>
 
@@ -5611,14 +5611,14 @@ function GallerySettingsModal({
                     </select>
                     {expiryDays === null && (
                       <p className="text-[11px] mt-1 text-ink-soft">
-                        כרגע ללא הגבלת זמן (מדיניות ישנה) — בחירת טווח כאן תחיל עליה את המדיניות החדשה
+                        כרגע ללא הגבלת זמן (מדיניות ישנה), בחירת טווח כאן תחיל עליה את המדיניות החדשה
                       </p>
                     )}
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת)</label>
                   <input
                     type="email"
                     value={clientEmail}
@@ -5629,7 +5629,7 @@ function GallerySettingsModal({
                 </div>
 
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)</label>
                   <input
                     type="tel"
                     value={clientPhone}
@@ -5925,7 +5925,7 @@ function GallerySettingsModal({
                   <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
                     <p className="text-xs font-semibold text-sage">אישור אחרון</p>
                     <p className="text-xs text-ink">
-                      זהו שחזור חד-פעמי — לא ניתן יהיה לשחזר את הגלריה שוב בעתיד. בפעם הבאה שתפוג או תימחק, היא
+                      זהו שחזור חד-פעמי. לא ניתן יהיה לשחזר את הגלריה שוב בעתיד. בפעם הבאה שתפוג או תימחק, היא
                       תימחק סופית תוך 3 ימים בלבד.
                     </p>
                     <div className="flex gap-2">

@@ -61,7 +61,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
     await supabase.from("event_notifications").insert({
       event_id: gallery.event_id,
-      text: `${clientLabel} סיימו לבחור תמונות מהגלריה — נבחרו ${count ?? 0} תמונות`,
+      text: `${clientLabel} סיימו לבחור תמונות מהגלריה, נבחרו ${count ?? 0} תמונות`,
       is_client_action: true,
     });
   }

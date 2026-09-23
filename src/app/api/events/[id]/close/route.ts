@@ -39,7 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!resolved.ok) return NextResponse.json({ error: resolved.error, needsMonthChoice: true }, { status: 400 });
     closedBalanceMonth = resolved.month;
     notificationText = closedBalanceMonth
-      ? `האירוע סומן כסגור (הושלם) — יתרה של ₪${preview.remaining.toLocaleString("he-IL")} נוספה להכנסות של ${monthLabel(closedBalanceMonth)}`
+      ? `האירוע סומן כסגור (הושלם), יתרה של ₪${preview.remaining.toLocaleString("he-IL")} נוספה להכנסות של ${monthLabel(closedBalanceMonth)}`
       : "האירוע סומן כסגור (הושלם)";
   }
 

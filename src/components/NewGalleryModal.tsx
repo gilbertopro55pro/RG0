@@ -212,7 +212,7 @@ export default function NewGalleryModal({
           <>
             {!eventId && (
               <p className="text-xs mb-4 text-ink-soft">
-                יוצרים גלריה עצמאית שלא משויכת לאירוע קיים במערכת — שימושי לצילומים שלא נסגרו כאירוע (למשל צילומי מוצר או פרויקט אישי).
+                יוצרים גלריה עצמאית שלא משויכת לאירוע קיים במערכת, שימושי לצילומים שלא נסגרו כאירוע (למשל צילומי מוצר או פרויקט אישי).
               </p>
             )}
 
@@ -246,7 +246,7 @@ export default function NewGalleryModal({
                   <input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="לדוגמה: משפחת כהן — צילומי משפחה"
+                    placeholder="לדוגמה: משפחת כהן, צילומי משפחה"
                     className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
                   />
                 </div>
@@ -258,7 +258,7 @@ export default function NewGalleryModal({
                     a plain px min-width hack, particularly on iOS Safari) can still push a flex item
                     wider than intended and overlap its neighbor. Two columns of equal width, with a
                     real gap between them, together always span exactly the row's full width — the
-                    same width as the שם הגלריה field above — since that's what a 2-up grid guarantees
+                    same width as the שם הגלריה field above, since that's what a 2-up grid guarantees
                     structurally, not just in the common case. */}
                 <div className={`grid gap-2 ${eventId ? "grid-cols-1" : "grid-cols-2"}`}>
                   {!eventId && (
@@ -289,7 +289,7 @@ export default function NewGalleryModal({
                 </div>
 
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת)</label>
                   <input
                     type="email"
                     value={clientEmail}
@@ -300,7 +300,7 @@ export default function NewGalleryModal({
                 </div>
 
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח/ה (לא חובה — לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)</label>
                   <input
                     type="tel"
                     value={clientPhone}

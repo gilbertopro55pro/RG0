@@ -92,7 +92,7 @@ export default function PortfolioFeaturedPicker({ photographerId }: { photograph
   const toggle = async (photo: PickerPhoto) => {
     const next = !photo.portfolio_featured;
     if (next && featuredCount >= MAX_FEATURED) {
-      setMessage(`אפשר לסמן עד ${MAX_FEATURED} תמונות — הסירו כוכב מתמונה אחרת קודם`);
+      setMessage(`אפשר לסמן עד ${MAX_FEATURED} תמונות, הסירו כוכב מתמונה אחרת קודם`);
       return;
     }
     setMessage(null);
@@ -103,7 +103,7 @@ export default function PortfolioFeaturedPicker({ photographerId }: { photograph
     if (error) {
       setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, portfolio_featured: !next } : p)));
       await refreshCount();
-      setMessage(error.message.includes("portfolio_featured_limit") ? `אפשר לסמן עד ${MAX_FEATURED} תמונות` : "שגיאה בשמירה — נסו שוב");
+      setMessage(error.message.includes("portfolio_featured_limit") ? `אפשר לסמן עד ${MAX_FEATURED} תמונות` : "שגיאה בשמירה. נסו שוב");
     }
   };
 
@@ -116,7 +116,7 @@ export default function PortfolioFeaturedPicker({ photographerId }: { photograph
         </span>
       </div>
       <p className="text-xs text-ink-soft mb-3">
-        סמנו בכוכב עד {MAX_FEATURED} תמונות מהפורטפוליו — רק הן יופיעו ברצועת התמונות הגדולות שמתחלפת בראש העמוד. בלי תמונות
+        סמנו בכוכב עד {MAX_FEATURED} תמונות מהפורטפוליו. רק הן יופיעו ברצועת התמונות הגדולות שמתחלפת בראש העמוד. בלי תמונות
         מסומנות, הרצועה לא תוצג.
       </p>
 
@@ -145,7 +145,7 @@ export default function PortfolioFeaturedPicker({ photographerId }: { photograph
 
           {photos.length === 0 && !loading ? (
             <p className="text-xs text-ink-soft py-4 text-center">
-              {filter === FILTER_FEATURED ? "עדיין לא סומנו תמונות — בחרו \"כל התמונות\" כדי להתחיל." : "אין תמונות כאן."}
+              {filter === FILTER_FEATURED ? "עדיין לא סומנו תמונות. בחרו \"כל התמונות\" כדי להתחיל." : "אין תמונות כאן."}
             </p>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">

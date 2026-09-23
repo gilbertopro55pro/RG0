@@ -74,8 +74,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       customerName: event.client_name,
       customerEmail: email,
       amount,
-      description: `תשלום ${FIELD_LABEL[field]} — ${event.client_name}`,
-      emailSubject: `קבלה על תשלום — ${photographer.name}`,
+      description: `תשלום ${FIELD_LABEL[field]}, ${event.client_name}`,
+      emailSubject: `קבלה על תשלום | ${photographer.name}`,
       emailBody: `שלום, מצורפת קבלה על התשלום שהתקבל. תודה,\n${photographer.name}`,
     });
 

@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   try {
     await sendEmail({
       to: FEEDBACK_RECIPIENT,
-      subject: `הצעה/בקשה חדשה ממערכת ניהול צילום אירועים — ${senderName}`,
+      subject: `הצעה/בקשה חדשה ממערכת ניהול צילום אירועים | ${senderName}`,
       text: `שולח/ת: ${senderName} (${senderEmail})\n\n${message}`,
       replyTo: senderEmail,
     });

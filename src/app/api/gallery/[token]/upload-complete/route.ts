@@ -56,7 +56,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   }
   const storedBytes = await getObjectSize("galleries", path);
   if (storedBytes === null) {
-    return NextResponse.json({ error: "הקובץ לא הגיע לאחסון — נסו להעלות שוב" }, { status: 400 });
+    return NextResponse.json({ error: "הקובץ לא הגיע לאחסון. נסו להעלות שוב" }, { status: 400 });
   }
   if (storedBytes > MAX_CLIENT_UPLOAD_BYTES) {
     await removeObjects("galleries", [path]).catch((e) => console.error("[upload-complete] failed to remove oversized upload", e));

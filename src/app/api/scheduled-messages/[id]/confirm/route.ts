@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await supabase.from("scheduled_messages").update({ status: "canceled" }).eq("id", message.id);
     await supabase.from("event_notifications").insert({
       event_id: message.event_id,
-      text: "אושר שהיתרה שולמה — לא נשלחה תזכורת ללקוח",
+      text: "אושר שהיתרה שולמה. לא נשלחה תזכורת ללקוח",
     });
     return NextResponse.json({ ok: true, sent: false });
   }
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // as the other interactive wa.me flows.
   const portalLink = `${new URL(request.url).origin}/portal/${event.client_access_token}`;
   const message_text =
-    `שלום ${event.client_name},\nתזכורת ידידותית — נשארה יתרה של ₪${payment?.balance_amount ?? 0} לתשלום עבור האירוע שלכם.\n\n` +
+    `שלום ${event.client_name},\nתזכורת ידידותית, נשארה יתרה של ₪${payment?.balance_amount ?? 0} לתשלום עבור האירוע שלכם.\n\n` +
     `לצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n${portalLink}`;
 
   await supabase

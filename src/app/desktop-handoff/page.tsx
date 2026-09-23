@@ -39,7 +39,7 @@ export default function DesktopHandoffPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <p className="text-sm text-ink-soft">{status === "error" ? "שגיאה בהתחברות — נסו שוב" : "מתחבר..."}</p>
+      <p className="text-sm text-ink-soft">{status === "error" ? "שגיאה בהתחברות. נסו שוב" : "מתחבר..."}</p>
     </div>
   );
 }

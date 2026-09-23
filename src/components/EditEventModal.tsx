@@ -102,7 +102,7 @@ export default function EditEventModal({
       return;
     }
     if (data.googleCalendarDisconnected) {
-      alert("הפרטים נשמרו, אבל החיבור ליומן Google פג תוקף — יש להתחבר מחדש בהגדרות כדי שהאירועים ימשיכו להסתנכרן.");
+      alert("הפרטים נשמרו, אבל החיבור ליומן Google פג תוקף. יש להתחבר מחדש בהגדרות כדי שהאירועים ימשיכו להסתנכרן.");
     } else if (data.googleCalendarError) {
       alert(`הפרטים נשמרו, אבל לא ניתן היה לעדכן את האירוע ביומן Google (${data.googleCalendarError}).`);
     }
@@ -122,7 +122,7 @@ export default function EditEventModal({
     }
     if (data.googleCalendarDisconnected) {
       alert(
-        "האירוע נמחק מהמערכת. שימו לב: החיבור ליומן Google פג תוקף, כך שהוא לא הוסר משם — יש להתחבר מחדש בהגדרות ולמחוק אותו ידנית מיומן Google."
+        "האירוע נמחק מהמערכת. שימו לב: החיבור ליומן Google פג תוקף, כך שהוא לא הוסר משם. יש להתחבר מחדש בהגדרות ולמחוק אותו ידנית מיומן Google."
       );
     } else if (data.googleCalendarError) {
       alert(

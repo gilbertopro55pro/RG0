@@ -50,10 +50,10 @@ export default function SignupPage() {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="w-full max-w-sm rounded-2xl p-6 text-center bg-card border border-line shadow-card">
-          <h1 className="text-xl font-bold mb-2 font-display">כמעט סיימנו — נדרש אימות מייל</h1>
+          <h1 className="text-xl font-bold mb-2 font-display">כמעט סיימנו: נדרש אימות מייל</h1>
           <p className="text-sm text-ink-soft mb-3">
             שלחנו מייל אימות לכתובת <span className="font-medium text-ink">{email}</span>. יש ללחוץ על
-            הקישור שבתוך המייל כדי לאמת את הכתובת — רק לאחר האימות ניתן יהיה להתחבר למערכת.
+            הקישור שבתוך המייל כדי לאמת את הכתובת. רק לאחר האימות ניתן יהיה להתחבר למערכת.
           </p>
           <p className="text-xs text-ink-soft">
             לא רואים את המייל תוך דקה-שתיים? בדקו גם בתיקיית הספאם / קידומי מכירות.
@@ -73,7 +73,7 @@ export default function SignupPage() {
         {step === "plan" && (
           <>
             <p className="text-sm mb-4 text-ink-soft">
-              מנוי אחד לכל היכולות של המערכת — ניהול אירועים, מעקב שלבים ועדכוני לקוחות אוטומטיים.
+              מנוי אחד לכל היכולות של המערכת, ניהול אירועים, מעקב שלבים ועדכוני לקוחות אוטומטיים.
             </p>
             <div className="mb-4">
               <label className="text-xs block mb-1.5 text-ink-soft">בחר/י מסלול תשלום</label>
@@ -85,7 +85,7 @@ export default function SignupPage() {
               >
                 {Object.entries(SUBSCRIPTION_PLANS).map(([key, p]) => (
                   <option key={key} value={key}>
-                    מנוי {p.label} — ₪{p.pricePerMonth}/חודש
+                    מנוי {p.label}: ₪{p.pricePerMonth}/חודש
                   </option>
                 ))}
               </select>

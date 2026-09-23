@@ -244,7 +244,7 @@ async function notifyPhotographerExportReady(
     const downloadUrl = await getSignedDownloadUrl("galleries", storagePath, 60 * 60 * 24 * 7, filename);
     await sendEmail({
       to: notificationEmailFor(photographer.email),
-      subject: `ייצוא ${formatLabel} מוכן להורדה — ${albumTitle}`,
+      subject: `ייצוא ${formatLabel} מוכן להורדה | ${albumTitle}`,
       text: `שלום,\n\nייצוא ה-${formatLabel} של האלבום "${albumTitle}" הסתיים ומוכן להורדה:\n${downloadUrl}\n\nהקישור בתוקף לשבוע ימים.`,
     });
   } catch (e) {
@@ -499,7 +499,7 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
         to: job.send_to_email,
         fromName: sender?.name ?? undefined,
         replyTo: sender?.email ? notificationEmailFor(sender.email) : undefined,
-        subject: `קבצי הדפסה — ${album.title}`,
+        subject: `קבצי הדפסה | ${album.title}`,
         text: `שלום,\n\nמצורף קישור להורדת קובצי ה-JPG להדפסה עבור האלבום "${album.title}" (${resolved.gallery.title}):\n${downloadUrl}\n\nהקישור בתוקף לשבוע ימים.`,
       });
     }

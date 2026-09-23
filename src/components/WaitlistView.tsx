@@ -39,12 +39,12 @@ export default function WaitlistView({
       <h1 className="text-[26px] font-bold mb-1.5 font-display">רשימת המתנה</h1>
       <PageGuide
         pageKey="waitlist"
-        blurb="כשלקוח מבקש תאריך שכבר תפוס, המערכת מציעה להוסיף אותו לרשימת המתנה. ברגע שהתאריך מתפנה — הופכים אותו לאירוע בלחיצה."
+        blurb="כשלקוח מבקש תאריך שכבר תפוס, המערכת מציעה להוסיף אותו לרשימת המתנה. ברגע שהתאריך מתפנה, הופכים אותו לאירוע בלחיצה."
       />
 
       {entries.length === 0 && (
         <div className="text-center py-16 text-sm text-ink-soft">
-          אין ממתינים כרגע — כשלקוח מבקש תאריך שכבר תפוס תופיע כאן אפשרות להוסיף אותו לרשימה
+          אין ממתינים כרגע, כשלקוח מבקש תאריך שכבר תפוס תופיע כאן אפשרות להוסיף אותו לרשימה
         </div>
       )}
 
@@ -66,7 +66,7 @@ export default function WaitlistView({
                 onClick={() => setConvertEntry(entry)}
                 className="text-xs font-medium px-3 py-1.5 rounded-lg bg-ink text-white"
               >
-                התאריך התפנה — יצירת אירוע
+                התאריך התפנה, יצירת אירוע
               </button>
               <button
                 onClick={() => setConfirmEntry(entry)}
@@ -195,9 +195,9 @@ function ConfirmEventDialog({
       onClick={onClose}
     >
       <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-2 font-display">אישור האירוע — {entry.client_name}</h2>
+        <h2 className="text-lg font-bold mb-2 font-display">אישור האירוע: {entry.client_name}</h2>
         <p className="text-xs text-ink-soft mb-4">
-          התאריך ({new Date(entry.requested_date).toLocaleDateString("he-IL")}) כבר תפוס — איך האירוע כוסה?
+          התאריך ({new Date(entry.requested_date).toLocaleDateString("he-IL")}) כבר תפוס, איך האירוע כוסה?
         </p>
         <div className="space-y-2 mb-3">
           {RESOLUTION_OPTIONS.map((option) => (

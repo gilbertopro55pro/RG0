@@ -512,7 +512,7 @@ export default function PublicGalleryView({
     try {
       if (isMobileDevice) {
         if (photoIds.length > MOBILE_SEQUENTIAL_DOWNLOAD_LIMIT) {
-          alert(`יש יותר מדי תמונות להורדה מהטלפון (${photoIds.length}) — יש להוריד ממחשב`);
+          alert(`יש יותר מדי תמונות להורדה מהטלפון (${photoIds.length}). יש להוריד ממחשב`);
           return;
         }
         const byId = new Map(photos.map((p) => [p.id, p]));
@@ -671,7 +671,7 @@ export default function PublicGalleryView({
     setSubmitting(false);
     if (!res?.ok) {
       const data = await res?.json().catch(() => null);
-      setConfirmError(data?.error ?? "שליחת הבחירה נכשלה — נסו שוב");
+      setConfirmError(data?.error ?? "שליחת הבחירה נכשלה. נסו שוב");
       return;
     }
     setConfirmOpen(false);
@@ -763,14 +763,14 @@ export default function PublicGalleryView({
   // than gambling on a deep link that dead-ends if the app isn't installed or on desktop.
   const shareGalleryViaInstagram = async () => {
     await navigator.clipboard.writeText(galleryShareUrl());
-    setShareFeedback("הקישור הועתק — פתחו את אינסטגרם והדביקו אותו בסטורי או בהודעה");
+    setShareFeedback("הקישור הועתק: פתחו את אינסטגרם והדביקו אותו בסטורי או בהודעה");
     setTimeout(() => setShareFeedback(null), 3000);
     setGalleryShareOpen(false);
   };
 
   const shareGalleryViaTiktok = async () => {
     await navigator.clipboard.writeText(galleryShareUrl());
-    setShareFeedback("הקישור הועתק — פתחו את טיקטוק והדביקו אותו");
+    setShareFeedback("הקישור הועתק: פתחו את טיקטוק והדביקו אותו");
     setTimeout(() => setShareFeedback(null), 3000);
     setGalleryShareOpen(false);
   };
@@ -891,7 +891,7 @@ export default function PublicGalleryView({
           style={{ background: "var(--gt-surface-soft)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
         >
           <span className="flex-1">
-            ❤️ לחיצה לתמונה בגודל מלא · לחיצה ארוכה לבחירה מרובה · לחיצה כפולה לשיתוף/הורדה (של כל התמונות המסומנות, אם יש כמה)
+            לחיצה לתמונה בגודל מלא · לחיצה ארוכה לבחירה מרובה · לחיצה כפולה לשיתוף/הורדה (של כל התמונות המסומנות, אם יש כמה)
           </span>
           <button onClick={dismissHint} className="shrink-0 font-bold leading-none" aria-label="סגירה">
             <IconClose className="h-3 w-3" />
@@ -904,7 +904,7 @@ export default function PublicGalleryView({
           className="px-3.5 py-2.5 mb-4 text-sm font-medium text-center"
           style={{ background: "var(--gt-surface-soft)", color: "var(--gt-accent)", borderRadius: "var(--gt-radius)" }}
         >
-          תודה! הבחירה שלכם ({favoriteCount} תמונות) נשלחה לצלם/ת ✓ אפשר עדיין לשנות ולעדכן בכל שלב.
+          תודה! הבחירה שלכם ({favoriteCount} תמונות) נשלחה לצלם/ת. אפשר עדיין לשנות ולעדכן בכל שלב.
         </div>
       )}
 
@@ -986,7 +986,7 @@ export default function PublicGalleryView({
                 ? `מעלה... (${uploadingCount}/${uploadTotal})`
                 : isDragging
                   ? "שחררו כאן להעלאה"
-                  : "📤 העלאת תמונות — או גררו לכאן תמונות ותיקיות"}
+                  : "העלאת תמונות, או גררו לכאן תמונות ותיקיות"}
             </button>
           </div>
           <button
@@ -1060,7 +1060,7 @@ export default function PublicGalleryView({
       )}
       {visiblePhotos.length === 0 ? (
         <p className="text-sm text-center py-16" style={{ color: "var(--gt-ink-soft)" }}>
-          {allowClientUpload ? "אין עדיין תמונות בגלריה — אפשר להעלות תמונות משלכם למעלה." : "אין עדיין תמונות בגלריה."}
+          {allowClientUpload ? "אין עדיין תמונות בגלריה. אפשר להעלות תמונות משלכם למעלה." : "אין עדיין תמונות בגלריה."}
         </p>
       ) : (
         <>
@@ -1546,7 +1546,7 @@ export default function PublicGalleryView({
             <p className="text-sm mb-5" style={{ color: "var(--gt-ink-soft)" }}>
               {favoriteCount === 0
                 ? "עדיין לא סומנו תמונות. סמנו לפחות תמונה אחת כדי לשלוח את הבחירה לצלם/ת."
-                : `נבחרו ${favoriteCount} תמונות. הבחירה תישלח לצלם/ת — ותמיד אפשר לחזור ולעדכן אותה אחר כך.`}
+                : `נבחרו ${favoriteCount} תמונות. הבחירה תישלח לצלם/ת, ותמיד אפשר לחזור ולעדכן אותה אחר כך.`}
             </p>
             {confirmError && <p className="text-sm mb-3 text-rose">{confirmError}</p>}
             <div className="flex gap-2">
@@ -1730,14 +1730,14 @@ export default function PublicGalleryView({
                         style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
                       >
                         <input type="radio" name="share-quality" checked={shareQuality === "full"} onChange={() => setShareQuality("full")} />
-                        איכות מלאה — הקבצים המקוריים
+                        איכות מלאה (הקבצים המקוריים)
                       </label>
                       <label
                         className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
                         style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
                       >
                         <input type="radio" name="share-quality" checked={shareQuality === "web"} onChange={() => setShareQuality("web")} />
-                        איכות מותאמת לרשת — קובץ קטן יותר (עד כ-3MB לתמונה)
+                        איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)
                       </label>
                     </div>
                   )}
@@ -1846,14 +1846,14 @@ export default function PublicGalleryView({
                   style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
                 >
                   <input type="radio" name="download-quality" checked={downloadQuality === "full"} onChange={() => setDownloadQuality("full")} />
-                  איכות מלאה — הקבצים המקוריים
+                  איכות מלאה (הקבצים המקוריים)
                 </label>
                 <label
                   className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
                   style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
                 >
                   <input type="radio" name="download-quality" checked={downloadQuality === "web"} onChange={() => setDownloadQuality("web")} />
-                  איכות מותאמת לרשת — קובץ קטן יותר (עד כ-3MB לתמונה)
+                  איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)
                 </label>
               </div>
             )}
@@ -1890,7 +1890,7 @@ export default function PublicGalleryView({
           >
             {zipDone ? (
               <>
-                <h2 className="text-lg font-bold mb-2 font-display">ההורדה הושלמה 🎉</h2>
+                <h2 className="text-lg font-bold mb-2 font-display">ההורדה הושלמה</h2>
                 <p className="text-sm mb-5" style={{ color: "var(--gt-ink-soft)" }}>
                   {zipBatch.parts.length > 1
                     ? `כל ${zipBatch.parts.length} הקבצים ירדו למכשיר שלך.`
@@ -1898,7 +1898,7 @@ export default function PublicGalleryView({
                 </p>
                 {zipBatch.parts.some((p) => p.status === "failed") && (
                   <p className="text-xs mb-4" style={{ color: "var(--gt-rose, #c0392b)" }}>
-                    חלק מהתמונות לא נכללו בהורדה בגלל שגיאה — אפשר לנסות שוב.
+                    חלק מהתמונות לא נכללו בהורדה בגלל שגיאה. אפשר לנסות שוב.
                   </p>
                 )}
                 <button
@@ -1917,7 +1917,7 @@ export default function PublicGalleryView({
                 <h2 className="text-lg font-bold mb-2 font-display">מכינים את ההורדה</h2>
                 <p className="text-sm mb-4" style={{ color: "var(--gt-ink-soft)" }}>
                   {zipBatch.parts.length > 1
-                    ? `הגלריה מחולקת ל-${zipBatch.parts.length} קבצי ZIP — כל חלק יורד אוטומטית ברגע שהוא מוכן.`
+                    ? `הגלריה מחולקת ל-${zipBatch.parts.length} קבצי ZIP. כל חלק יורד אוטומטית ברגע שהוא מוכן.`
                     : "קובץ ה-ZIP יורד אוטומטית ברגע שהוא מוכן."}
                 </p>
                 <div className="space-y-2 mb-4">
@@ -1942,7 +1942,7 @@ export default function PublicGalleryView({
                     </div>
                   ))}
                 </div>
-                <p className="text-xs mb-3" style={{ color: "var(--gt-ink-soft)" }}>אפשר לסגור את החלון — ההכנה וההורדה ימשיכו ברקע.</p>
+                <p className="text-xs mb-3" style={{ color: "var(--gt-ink-soft)" }}>אפשר לסגור את החלון, ההכנה וההורדה ימשיכו ברקע.</p>
                 <button
                   onClick={() => setZipPanelOpen(false)}
                   className={`w-full py-3 text-sm font-semibold border ${BTN_PRESS}`}
@@ -1987,7 +1987,7 @@ export default function PublicGalleryView({
               }}
               className={`absolute top-4 right-4 h-9 px-3 rounded-full bg-white/10 text-white flex items-center justify-center text-xs font-semibold ${BTN_PRESS}`}
             >
-              ⬇ הורדה
+              הורדה
             </button>
           )}
           {lightboxIndex > 0 && (
@@ -2187,7 +2187,7 @@ function LabelEditModal({
       >
         <h2 className="text-sm font-bold mb-1">תגית לתמונה</h2>
         <p className="text-xs mb-3" style={{ color: "var(--gt-ink-soft)" }}>
-          למשל: קנבס, בלוק זכוכית — כדי לספר לצלם/ת מה תרצו לעשות עם התמונה הזו.
+          למשל: קנבס, בלוק זכוכית, כדי לספר לצלם/ת מה תרצו לעשות עם התמונה הזו.
         </p>
         <input
           type="text"

@@ -167,13 +167,13 @@ export default function GalleryQuickActionsMenu({
           <p className="text-xs text-ink-soft mb-4">בחרו פעולה</p>
           <div className="space-y-2.5">
             <button onClick={openPortfolio} className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink text-right px-4">
-              ✨ הוספה לפורטפוליו
+              הוספה לפורטפוליו
             </button>
             <button onClick={openShare} className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink text-right px-4">
-              📤 שיתוף הגלריה
+              שיתוף הגלריה
             </button>
             <button onClick={() => setStep("delete")} className="w-full rounded-lg py-3 text-sm font-semibold bg-rose-bg text-rose text-right px-4">
-              🗑️ מחיקה
+              מחיקה
             </button>
           </div>
           <button onClick={onClose} className="w-full text-center mt-4 text-xs text-ink-soft">
@@ -189,7 +189,7 @@ export default function GalleryQuickActionsMenu({
             <LoadingRow />
           ) : portfolioDone ? (
             <>
-              <p className="text-sm text-sage mb-5">הגלריה נוספה לפורטפוליו הציבורי ✓</p>
+              <p className="text-sm text-sage mb-5">הגלריה נוספה לפורטפוליו הציבורי</p>
               <button onClick={onClose} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
                 סגירה
               </button>
