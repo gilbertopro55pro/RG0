@@ -1,0 +1,52 @@
+# Deploys the Fly.io PDF worker whenever main's render-pipeline code differs from what's live.
+# Runs on GitHub's runners because Fly's remote builders can't be reached from the Claude Code
+# cloud environment (its TLS-intercepting proxy breaks both the depot and the native builder).
+# "Changed" is decided by scripts/flyWorkerIsCurrent.sh: the live image tag must equal
+# render-<hash of the worker's full import graph>, so non-render merges are a cheap no-op.
+name: Deploy PDF worker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pdf-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check whether the live worker is current
+        id: check
+        run: |
+          set +e
+          TAG=$(bash scripts/flyWorkerIsCurrent.sh)
+          CODE=$?
+          set -e
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" = 2 ]; then exit 1; fi
+          echo "stale=$([ "$CODE" = 1 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+        if: steps.check.outputs.stale == 'true'
+
+      - name: Deploy worker
+        if: steps.check.outputs.stale == 'true'
+        run: >
+          flyctl deploy -a photographer-flow-pdf-worker -c fly.toml
+          --dockerfile Dockerfile.worker --remote-only
+          --image-label "${{ steps.check.outputs.tag }}"
+
+      - name: Verify the worker is current
+        run: bash scripts/flyWorkerIsCurrent.sh
