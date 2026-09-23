@@ -1,19 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+
 import { packageLabel } from "@/lib/stages";
 import type { EventRow } from "@/lib/types";
 import PageGuide from "@/components/PageGuide";
+import BackLink from "@/components/BackLink";
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
 
 export default function ClientPortalsView({ events }: { events: EventWithCustomPackage[] }) {
   return (
     <div className="pb-8">
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
-        → חזרה לדף הבית
-      </Link>
+      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
       <h1 className="text-[26px] font-bold mb-1.5 font-display">פורטל לקוח</h1>
       <PageGuide
         pageKey="client-portals"
@@ -46,7 +45,7 @@ function PortalRow({ event }: { event: EventWithCustomPackage }) {
       <div>
         <div className="font-semibold text-sm">{event.client_name}</div>
         <div className="text-xs text-ink-soft font-data">
-          {new Date(event.event_date).toLocaleDateString("he-IL")} · {packageLabel(event.package, event.custom_packages?.name)}
+          {new Date(event.event_date).toLocaleDateString("he-IL")}, {packageLabel(event.package, event.custom_packages?.name)}
         </div>
       </div>
       <button

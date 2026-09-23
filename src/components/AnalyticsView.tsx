@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+
 import { PACKAGE_LABELS } from "@/lib/stages";
 import type { EventPaymentRow } from "@/lib/types";
 import type { AnalyticsEvent } from "@/app/analytics/page";
 import PageGuide from "@/components/PageGuide";
 import { closingRecognitions } from "@/lib/closeEvent";
+import BackLink from "@/components/BackLink";
 
 const HEBREW_MONTHS = [
   "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
@@ -188,7 +189,7 @@ export default function AnalyticsView({
 
   const shareViaWhatsapp = () => {
     const total = monthTransactions.reduce((sum, r) => sum + r.amount, 0);
-    const text = `נתוני הכנסות: ${monthLabel}\n${monthTransactions.length} תשלומים · סה"כ ${currency(total)}\n\nנשלח ממערכת גילברטו`;
+    const text = `נתוני הכנסות: ${monthLabel}\n${monthTransactions.length} תשלומים, סה"כ ${currency(total)}\n\nנשלח ממערכת גילברטו`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
     setShareOpen(false);
   };
@@ -289,9 +290,7 @@ export default function AnalyticsView({
 
   return (
     <div className="pb-8">
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
-        → חזרה לדף הבית
-      </Link>
+      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
       <h1 className="text-[26px] font-bold mb-1.5 font-display">ניתוח עסקי</h1>
       <PageGuide
         pageKey="analytics"
@@ -359,7 +358,7 @@ export default function AnalyticsView({
         <div className="text-xl font-bold font-display">{currency(periodForecast)}</div>
         <div className="text-xs mt-1 text-ink-soft">
           {currency(periodActualRevenue)} התקבל
-          {periodForecastExtra > 0 && <> · עוד {currency(periodForecastExtra)} צפוי להתקבל</>}
+          {periodForecastExtra > 0 && <>, עוד {currency(periodForecastExtra)} צפוי להתקבל</>}
         </div>
       </div>
 
@@ -462,7 +461,7 @@ export default function AnalyticsView({
               <div key={i} className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 bg-chip">
                 <div>
                   <span className="text-ink">{r.clientName}</span>
-                  <span className="text-ink-soft"> · {r.label}</span>
+                  <span className="text-ink-soft">, {r.label}</span>
                 </div>
                 <div className="text-left">
                   <div className="font-data text-ink">{currency(r.amount)}</div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { GoogleCalendarEvent } from "@/lib/google";
+import BackLink from "@/components/BackLink";
 
 function formatEventTime(event: GoogleCalendarEvent): string {
   if (event.start.dateTime) {
@@ -33,9 +34,7 @@ export default function CalendarView({
 
   return (
     <div>
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
-        → חזרה לדף הבית
-      </Link>
+      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-[22px] font-bold font-display">יומן Google</h1>
         {connected && (

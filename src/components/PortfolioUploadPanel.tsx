@@ -197,7 +197,7 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
         setError(`${failedFiles.length} קבצים לא הועלו: ${failedFiles.slice(0, 6).join(", ")}${failedFiles.length > 6 ? " ועוד..." : ""}`);
       }
       if (rejected > 0) {
-        setError((prev) => (prev ? `${prev} · ${rejected} קבצים לא בפורמט נתמך` : `${rejected} קבצים לא בפורמט נתמך`));
+        setError((prev) => (prev ? `${prev}, ${rejected} קבצים לא בפורמט נתמך` : `${rejected} קבצים לא בפורמט נתמך`));
       }
     } finally {
       setUploading(false);

@@ -119,7 +119,7 @@ export default function ContractSection({
         <div className="space-y-2.5">
           <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
             נחתם על ידי {contract.signer_name}
-            {contract.signed_at && ` · ${new Date(contract.signed_at).toLocaleDateString("he-IL")}`}
+            {contract.signed_at && `, ${new Date(contract.signed_at).toLocaleDateString("he-IL")}`}
           </div>
           {contract.signature_data_url && (
             // eslint-disable-next-line @next/next/no-img-element -- a stored data URL, no benefit from next/image's remote optimization

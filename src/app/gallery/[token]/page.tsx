@@ -350,7 +350,7 @@ export default async function PublicGalleryPage({
   // banner-less gallery reads as broken, and most galleries only ever need one obvious hero shot.
   const coverPhoto = (gallery.cover_photo_id ? photosWithUrls.find((p) => p.id === gallery.cover_photo_id) : null) ?? photosWithUrls[0];
   const dateLabel = event
-    ? `${event.client_name} · ${new Date(event.event_date).toLocaleDateString("he-IL")}`
+    ? `${event.client_name}, ${new Date(event.event_date).toLocaleDateString("he-IL")}`
     : gallery.shoot_date
       ? new Date(gallery.shoot_date).toLocaleDateString("he-IL")
       : null;

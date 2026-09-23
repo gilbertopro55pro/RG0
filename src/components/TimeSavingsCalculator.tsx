@@ -50,7 +50,7 @@ export default function TimeSavingsCalculator() {
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-sm font-semibold">כמה שווה לכם שעת עבודה?</label>
-            <span className="text-sm font-bold font-data">₪{hourlyValue}</span>
+            <span className="text-sm font-bold font-data">₪{Number(hourlyValue).toLocaleString("he-IL")}</span>
           </div>
           <input
             type="range"

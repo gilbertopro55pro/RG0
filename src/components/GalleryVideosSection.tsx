@@ -182,7 +182,7 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
             htmlFor={`gallery-video-upload-${galleryId}`}
             className={`w-full flex items-center justify-center rounded-lg py-2.5 text-xs font-semibold bg-white border border-line text-ink-soft cursor-pointer ${BTN_PRESS}`}
           >
-            {uploading ? `מעלה: ${uploading}...` : `+ העלאת וידאו (MP4, MOV, WebM · עד ${maxMb}MB לקובץ)`}
+            {uploading ? `מעלה: ${uploading}...` : `+ העלאת וידאו (MP4, MOV, WebM, עד ${maxMb}MB לקובץ)`}
           </label>
         </>
       ) : (

@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
+
 import { createClient } from "@/lib/supabase/server";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import type { Photographer } from "@/lib/types";
 import MagnetFrameEditor from "@/components/MagnetFrameEditor";
+import BackLink from "@/components/BackLink";
 
 // Admin-only for now (see the standing "עדכון אדמין" staged-rollout process) — replaces the old
 // AI-generated /frame-designer tool (removed): this one is a plain white mat the photographer
@@ -20,9 +21,7 @@ export default async function MagnetFramesPage() {
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
-        → חזרה לדף הבית
-      </Link>
+      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
       <h1 className="text-[26px] font-bold font-display mb-5">עיצוב מסגרת מגנט</h1>
       <MagnetFrameEditor />
     </div>

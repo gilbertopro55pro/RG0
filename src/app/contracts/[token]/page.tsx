@@ -31,7 +31,7 @@ export default async function ContractSignPage({ params }: { params: Promise<{ t
       <h1 className="text-[22px] font-bold mb-1 font-display">חוזה הזמנת צילום</h1>
       {event && (
         <p className="text-xs mb-5 text-ink-soft">
-          {event.client_name} · {new Date(event.event_date).toLocaleDateString("he-IL")}
+          {event.client_name}, {new Date(event.event_date).toLocaleDateString("he-IL")}
         </p>
       )}
       <ContractSignForm contract={contract} />

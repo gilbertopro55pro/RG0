@@ -86,7 +86,7 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
         {groups.map((g) => (
           <div key={g.key} className="flex items-center justify-between rounded-lg px-3 py-2 bg-chip text-sm">
             <span>
-              {g.label} <span className="text-ink-soft font-data">· {g.count}</span>
+              {g.label} <span className="text-ink-soft font-data">({g.count})</span>
             </span>
             <button onClick={() => setConfirmKey(g.key)} className="text-xs font-semibold text-rose">
               הסרה

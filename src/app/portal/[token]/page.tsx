@@ -81,7 +81,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <h1 className="text-[22px] font-bold mb-1 font-display">{event.client_name}</h1>
       <p className="text-xs mb-5 text-ink-soft">
-        {new Date(event.event_date).toLocaleDateString("he-IL")} · {packageLabel(event.package, customPackageData?.name)}
+        {new Date(event.event_date).toLocaleDateString("he-IL")}, {packageLabel(event.package, customPackageData?.name)}
       </p>
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
@@ -107,13 +107,13 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           <div className="text-sm font-semibold mb-3.5">תשלומים</div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 bg-chip">
-              <span>מקדמה: ₪{payments.deposit_amount}</span>
+              <span>מקדמה: ₪{Number(payments.deposit_amount).toLocaleString("he-IL")}</span>
               <span style={{ color: payments.deposit_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
                 {payments.deposit_paid ? "שולם ✓" : "ממתין"}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 bg-chip">
-              <span>יתרה: ₪{payments.balance_amount}</span>
+              <span>יתרה: ₪{Number(payments.balance_amount).toLocaleString("he-IL")}</span>
               <span style={{ color: payments.balance_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
                 {payments.balance_paid
                   ? "שולם ✓"

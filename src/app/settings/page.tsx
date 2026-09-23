@@ -26,6 +26,7 @@ import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
 import { CURRENT_VERSION } from "@/lib/changelog";
 import { SUBSCRIPTION_PLANS, TEAM_MEMBER_LIMIT_BY_TIER, STORAGE_CAP_BYTES_BY_TIER } from "@/lib/stages";
+import BackLink from "@/components/BackLink";
 
 export default async function SettingsPage({
   searchParams,
@@ -79,9 +80,7 @@ export default async function SettingsPage({
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <Link href="/" className="flex items-center gap-1 text-sm mb-5 text-ink-soft">
-        → חזרה לדף הבית
-      </Link>
+      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
       <h1 className="text-[22px] font-bold mb-5 font-display">הגדרות</h1>
       <SettingsTabs
         tabs={[

@@ -115,7 +115,7 @@ export default function BillingSettings({ photographer }: { photographer: Photog
       </div>
       <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 mb-2" style={{ background: "var(--color-chip)" }}>
         <span>
-          מסלול {plan.label} · ₪{plan.pricePerMonth}/חודש
+          מסלול {plan.label}, ₪{plan.pricePerMonth}/חודש
         </span>
         <span style={{ color: isActive ? "var(--color-sage)" : "var(--color-rose)", fontWeight: 600 }}>
           {STATUS_LABELS[status]}
