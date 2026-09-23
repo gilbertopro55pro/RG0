@@ -28,3 +28,10 @@
 - תנועה: easing הלחיצה הגלובלי (globals.css) הוחלף מ-bounce ל-expo-out; blur של `.bg-card` 32px→20px. אייקונים: כל 36 ה-"✕" הגולמיים → `IconClose`; חיצים גולמיים → `IconArrow*` ב-NavIcons.tsx.
 - **בדיקה חזותית**: preview deployments של Vercel מחזירים 500 — משתני Supabase/R2 מוגדרים רק ל-Production. הדרך שעובדת: `vercel deploy --prod --skip-domain` (משתני production בלי לגעת ב-myframeflow.com) + Playwright עם `x-vercel-protection-bypass` (מ-`protectionBypass` בפרויקט, לא להדפיס). `cdn.myframeflow.com`/R2 חסומים ברשת הסביבה — להחליף תמונות ב-stub בדפדפן הבדיקה; לנתב בקשות vercel.app דרך `route.fetch` עם retries (Chromium מקבל ERR_TOO_MANY_RETRIES דרך ה-proxy).
 - פתוח (לא בוצע בכוונה): איחוד סקאלת radius בכל האפליקציה, החלפת צבע ה-CTA הראשי ל-brass בכל האפליקציה, skeleton/count-up. בנוסף: עמוד פורטפוליו עם אלפי תמונות ("הכל" של gilberto = 2,471) חותם URL לכולן בכל ביקור ומרנדר עמוד ענק — כדאי pagination/טעינה הדרגתית.
+
+## 2026-09-23 (המשך) — רצועה ראשית לפי כוכבים + טעינה הדרגתית בפורטפוליו
+
+- Migration 0125 (רץ על ה-DB החי): `gallery_photos.portfolio_featured` + trigger `enforce_portfolio_featured` — מקסימום 25 לצלם (עם advisory lock נגד לחיצות מקבילות), ומנקה את הכוכב כשתמונה יוצאת מהפורטפוליו. נבדק בפועל ב-DO block שעושה rollback (25 עברו, ה-26 נחסמה, ניקוי בהסרה עבד).
+- `/p/[slug]`: הרצועה מציגה רק תמונות עם כוכב (בתוך ה-`tabs` של הקישור); אין כוכבים → אין רצועה. ה-grid נטען 48 בכל פעם (`PortfolioGrid.tsx`, עמודות מפורשות כדי שתמונות לא יקפצו) דרך API ציבורי `/api/portfolio/[slug]/photos` — נוסף ל-PUBLIC_PATHS ב-`src/lib/supabase/middleware.ts` (בלי זה מבקרים לא מחוברים מופנים ל-login). הלוגיקה המשותפת עמוד/API ב-`src/lib/portfolio.ts` — כדי שה-API לא יעקוף את הגבלת `tabs` (נבדק: tabs=A+category=B מחזיר 0).
+- הגדרות: `PortfolioFeaturedPicker.tsx` — כוכב על כל תמונה, סינון לפי לשונית, מונה X/25. לא נבדק בדפדפן (דורש התחברות לחשבון המשתמש).
+- תוקן: `PortfolioManagePanel` ספר תמונות עם select אחד (תקרת 1,000 שורות) — ספירות שגויות לפורטפוליו גדול; עכשיו fetchAllRows.

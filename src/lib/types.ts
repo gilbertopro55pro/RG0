@@ -476,6 +476,9 @@ export type GalleryPhotoRow = {
   culling_status: "pending" | "kept" | "rejected";
   in_portfolio: boolean;
   portfolio_category: string | null;
+  // Starred for the public portfolio's hero strip — max 25 per photographer, enforced by the
+  // enforce_portfolio_featured trigger (migration 0125), which also clears it on leaving the portfolio.
+  portfolio_featured: boolean;
   created_at: string;
 };
 

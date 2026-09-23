@@ -28,6 +28,8 @@ const PUBLIC_PATHS = [
   "/gallery",
   "/api/gallery",
   "/p",
+  // The public portfolio's "load more" (PortfolioGrid.tsx) — same public audience as "/p" itself.
+  "/api/portfolio",
   "/api/payplus/webhook",
   // Bearer-token authenticated (not cookie-based) — the separate desktop app has no cookie jar
   // shared with this site, so it can't pass this proxy's cookie-session check. The route itself

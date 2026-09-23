@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 type HeroPhoto = { id: string; url: string };
 
-const SLIDE_COUNT = 5; // how many random triplets to cycle through before reshuffling
 const SLIDE_MS = 5000; // how long each triplet stays on screen
 const TRANSITION_MS = 900; // must match the CSS transition-duration below
 
@@ -17,20 +16,26 @@ function shuffled<T>(arr: T[]): T[] {
   return copy;
 }
 
-function chunk<T>(arr: T[], size: number): T[][] {
+// Groups into triplets; a short final group borrows from the start of the (already shuffled)
+// list so every slide is a full row of 3 — never a slide with empty gaps.
+function triplets<T>(arr: T[]): T[][] {
   const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  for (let i = 0; i < arr.length; i += 3) {
+    const group = arr.slice(i, i + 3);
+    if (group.length < 3 && arr.length >= 3) group.push(...arr.slice(0, 3 - group.length));
+    out.push(group);
+  }
   return out;
 }
 
-// The portfolio's "hero": a strip of 3 large photos that auto-advances to a new, randomly-picked
-// triplet every few seconds — a moving showcase rather than one static banner. Built as an
-// "infinite" carousel (a cloned first slide appended after the real ones) so advancing past the
+// The portfolio's "hero": a strip of 3 large photos that auto-advances every few seconds through
+// the photographer's starred photos (up to 25 — see PortfolioFeaturedPicker.tsx), in a random
+// order — a moving showcase rather than one static banner. Built as an "infinite" carousel (a cloned first slide appended after the real ones) so advancing past the
 // last slide never has to jump backwards through the whole deck: it slides forward into the
 // clone, then — once that transition finishes — snaps instantly (transition disabled for one
 // frame) back to a freshly-reshuffled slide 0, so the reshuffle is invisible to the viewer.
 export default function PortfolioHeroCarousel({ photos }: { photos: HeroPhoto[] }) {
-  const [slides, setSlides] = useState<HeroPhoto[][]>(() => chunk(shuffled(photos), 3).slice(0, SLIDE_COUNT));
+  const [slides, setSlides] = useState<HeroPhoto[][]>(() => triplets(shuffled(photos)));
   const [index, setIndex] = useState(0);
   const [instant, setInstant] = useState(false);
   const resetTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -47,7 +52,7 @@ export default function PortfolioHeroCarousel({ photos }: { photos: HeroPhoto[] 
     if (index !== slides.length) return;
     resetTimeout.current = setTimeout(() => {
       setInstant(true);
-      setSlides(chunk(shuffled(photos), 3).slice(0, SLIDE_COUNT));
+      setSlides(triplets(shuffled(photos)));
       setIndex(0);
       requestAnimationFrame(() => requestAnimationFrame(() => setInstant(false)));
     }, TRANSITION_MS);

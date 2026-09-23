@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { getPublicPreviewUrl, getSignedDownloadUrl } from "@/lib/storage";
-import { fetchAllRows } from "@/lib/paginatedFetch";
 import { galleryFont } from "@/lib/galleryTheme";
-import { SUBSCRIPTION_PLANS } from "@/lib/stages";
+import { getSignedDownloadUrl } from "@/lib/storage";
 import PortfolioHeroCarousel from "@/components/PortfolioHeroCarousel";
-import type { GalleryPhotoRow, Photographer } from "@/lib/types";
-
-type PortfolioPhoto = Pick<GalleryPhotoRow, "id" | "storage_path" | "preview_storage_path" | "portfolio_category" | "created_at">;
+import PortfolioGrid from "@/components/PortfolioGrid";
+import {
+  loadPortfolio,
+  scopePortfolioPhotos,
+  signPortfolioPhotos,
+  PORTFOLIO_PAGE_SIZE,
+  PORTFOLIO_FEATURED_MAX,
+  type PortfolioPhoto,
+} from "@/lib/portfolio";
 
 // A dark, editorial shell distinct from the rest of the app's own (light, admin-panel) design
 // system — this is a public showcase page a photographer hands to potential clients, not a
@@ -32,38 +35,6 @@ function buildWaMeLink(phone: string, text: string): string {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(text)}`;
 }
 
-async function loadPortfolio(slug: string) {
-  const supabase = createServiceRoleClient();
-  const { data: photographer } = await supabase
-    .from("photographers")
-    .select("id, name, phone, portfolio_bio, logo_storage_path, portfolio_enabled, plan")
-    .eq("portfolio_slug", slug)
-    .maybeSingle<Pick<Photographer, "id" | "name" | "phone" | "portfolio_bio" | "logo_storage_path" | "portfolio_enabled" | "plan">>();
-
-  if (!photographer || !photographer.portfolio_enabled) return null;
-  // The real gate — PortfolioSettings.tsx disables the toggle client-side for entry-tier accounts,
-  // but that's a UX courtesy, not a security boundary (portfolio_enabled could still be true from
-  // before a downgrade, or from a direct API call). This is the one place every visitor's request
-  // actually passes through, so it's the one place that has to be authoritative.
-  if (SUBSCRIPTION_PLANS[photographer.plan].tier === "basic") return null;
-
-  // Paginated (see fetchAllRows's own comment) — a portfolio is usually curated and small, but an
-  // unbounded select here would still silently truncate for a photographer who marks a very large
-  // number of photos "in portfolio".
-  const photos = await fetchAllRows<PortfolioPhoto>((from, to) =>
-    supabase
-      .from("gallery_photos")
-      .select("id, storage_path, preview_storage_path, portfolio_category, created_at")
-      .eq("photographer_id", photographer.id)
-      .eq("in_portfolio", true)
-      .order("created_at", { ascending: false })
-      .range(from, to)
-      .returns<PortfolioPhoto[]>()
-  );
-
-  return { photographer, photos };
-}
-
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const data = await loadPortfolio(slug);
@@ -76,32 +47,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
-// Sentinel for "uncategorized" inside the `tabs` param — mirrors PortfolioManagePanel's own
-// UNCATEGORIZED constant, kept separate since that one's a client component.
-const NO_CATEGORY_TAB = "__none__";
-const HERO_PHOTO_CAP = 15; // up to 5 slides of 3 — plenty of variety without an unbounded sample
-
-// Fisher-Yates over a copy, then take the first n — a fresh random pick on every request.
-function randomSample<T>(items: T[], n: number): T[] {
-  const copy = [...items];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy.slice(0, n);
-}
-
 export default async function PortfolioPage({
   params,
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  // `tabs` is a curated-share restriction set by PortfolioSettings.tsx's share sheet: a
-  // comma-separated, percent-encoded list of the categories (plus NO_CATEGORY_TAB for
-  // uncategorized) that ONE particular shared link is allowed to show. Absent entirely (the
-  // default "העתקת קישור" link, and every link before this feature existed) means "show
-  // everything" — unrestricted. A category name containing a literal comma won't round-trip
-  // through this correctly; accepted as a rare-enough edge case not worth double-encoding for.
+  // `tabs`: curated-share restriction — see scopePortfolioPhotos in src/lib/portfolio.ts.
   searchParams: Promise<{ category?: string; tabs?: string }>;
 }) {
   const { slug } = await params;
@@ -118,17 +69,13 @@ export default async function PortfolioPage({
 
   const { photographer, photos: allPhotos } = data;
 
-  const allowedTabs = tabsParam ? new Set(tabsParam.split(",").map((t) => decodeURIComponent(t))) : null;
-  const scopedPhotos = allowedTabs
-    ? allPhotos.filter((p) => allowedTabs.has(p.portfolio_category ?? NO_CATEGORY_TAB))
-    : allPhotos;
+  const { scopedPhotos, gridPhotos } = scopePortfolioPhotos(allPhotos, tabsParam, activeCategory);
 
   // Tab links need to carry the same restriction forward, or clicking between tabs on a curated
   // link would silently widen back out to the whole portfolio.
   const tabsSuffix = tabsParam ? `&tabs=${tabsParam}` : "";
 
   const categories = Array.from(new Set(scopedPhotos.map((p) => p.portfolio_category).filter((c): c is string => !!c)));
-  const photos = activeCategory ? scopedPhotos.filter((p) => p.portfolio_category === activeCategory) : scopedPhotos;
 
   // One representative photo per category tile — the most recent tagged with it, since
   // scopedPhotos is already ordered newest-first.
@@ -136,30 +83,20 @@ export default async function PortfolioPage({
   for (const p of scopedPhotos) {
     if (p.portfolio_category && !categoryRepresentative.has(p.portfolio_category)) categoryRepresentative.set(p.portfolio_category, p);
   }
-  // A random sample, not just the first N — otherwise the hero would always open on the same
-  // handful of photos on every visit instead of feeling like a living showcase.
-  const heroCandidates = randomSample(scopedPhotos, HERO_PHOTO_CAP);
+  // Hero strip = only the photos the photographer starred (PortfolioFeaturedPicker.tsx), still
+  // within this link's `tabs` scope. None starred → no strip at all, rather than a random pick.
+  const heroSource = scopedPhotos.filter((p) => p.portfolio_featured).slice(0, PORTFOLIO_FEATURED_MAX);
+  // Only the first grid page is rendered (and signed) here — PortfolioGrid.tsx loads the rest
+  // from /api/portfolio/[slug]/photos as the visitor scrolls.
+  const firstPage = gridPhotos.slice(0, PORTFOLIO_PAGE_SIZE);
 
-  // Sign only the photos actually needed — the active tab's grid, one per category tile, and the
-  // hero sample — instead of every scoped photo unconditionally. A photographer with many tabs
-  // shouldn't pay to sign every OTHER tab's photos just because one tab was opened.
   const needed = new Map<string, PortfolioPhoto>();
-  for (const p of [...photos, ...categoryRepresentative.values(), ...heroCandidates]) needed.set(p.id, p);
-  const urlById = new Map<string, string>();
-  await Promise.all(
-    Array.from(needed.values()).map(async (p) => {
-      urlById.set(
-        p.id,
-        p.preview_storage_path?.endsWith(".webp")
-          ? getPublicPreviewUrl(p.preview_storage_path)
-          : await getSignedDownloadUrl("galleries", p.storage_path, 60 * 60 * 24)
-      );
-    })
-  );
+  for (const p of [...firstPage, ...categoryRepresentative.values(), ...heroSource]) needed.set(p.id, p);
+  const urlById = await signPortfolioPhotos(Array.from(needed.values()));
 
-  const photosWithUrls = photos.map((p) => ({ id: p.id, url: urlById.get(p.id)! }));
+  const gridInitial = firstPage.map((p) => ({ id: p.id, url: urlById.get(p.id)! }));
   const categoryThumb = new Map(Array.from(categoryRepresentative.entries()).map(([cat, p]) => [cat, urlById.get(p.id)!]));
-  const heroPhotos = heroCandidates.map((p) => ({ id: p.id, url: urlById.get(p.id)! }));
+  const heroPhotos = heroSource.map((p) => ({ id: p.id, url: urlById.get(p.id)! }));
 
   const logoUrl = photographer.logo_storage_path
     ? await getSignedDownloadUrl("logos", photographer.logo_storage_path, 60 * 60 * 24)
@@ -262,17 +199,19 @@ export default async function PortfolioPage({
       )}
 
       <div className="px-3 sm:px-6 py-10" style={{ background: INK }}>
-        {photos.length === 0 ? (
+        {gridPhotos.length === 0 ? (
           <p className="text-center text-sm py-16" style={{ color: TEXT_SOFT }}>
             {activeCategory ? "אין עדיין תמונות בנושא הזה." : "תיק העבודות עדיין ריק."}
           </p>
         ) : (
-          <div className="columns-2 md:columns-3 gap-1 [column-fill:_balance] max-w-5xl mx-auto">
-            {photosWithUrls.map((p) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={p.id} src={p.url} alt="" className="w-full h-auto mb-1 break-inside-avoid" loading="lazy" />
-            ))}
-          </div>
+          <PortfolioGrid
+            key={`${activeCategory ?? ""}|${tabsParam ?? ""}`}
+            slug={slug}
+            initialPhotos={gridInitial}
+            initialHasMore={gridPhotos.length > firstPage.length}
+            category={activeCategory}
+            tabs={tabsParam}
+          />
         )}
       </div>
 
