@@ -41,6 +41,10 @@
   --glow-cool: rgba(112, 132, 156, 0.18);
   --glass-edge: rgba(28, 27, 25, 0.08);
   --glass-hi: rgba(255, 255, 255, 0.85);
+  --color-hero-glass: rgba(255, 255, 255, 0.66);
+  --color-cell: rgba(250, 248, 244, 0.9);
+  --hero-edge: rgba(255, 255, 255, 0.9);
+  --hero-shadow-a: 0.1;
   --shadow-tint: 28, 27, 25;
 }
 
@@ -75,6 +79,10 @@
   --glow-cool: rgba(88, 108, 138, 0.13);
   --glass-edge: rgba(255, 255, 255, 0.08);
   --glass-hi: rgba(255, 255, 255, 0.07);
+  --color-hero-glass: rgba(34, 31, 27, 0.72);
+  --color-cell: #161512;
+  --hero-edge: rgba(255, 255, 255, 0.12);
+  --hero-shadow-a: 0.45;
   --shadow-tint: 0, 0, 0;
 }
 
@@ -206,9 +214,23 @@ body {
      A faint dark hairline defines the edge on the light ground (a white border vanishes against
      warm paper); the inset top highlight is the "light catching the glass" line. */
   border: 1px solid var(--glass-edge) !important;
-  box-shadow:
-    inset 0 1px 0 var(--glass-hi),
-    0 1px 2px rgba(var(--shadow-tint), 0.04);
+  /* Design stage 5 (frontend-design review): in-page groups are flat — hairline only, no bevel,
+     no drop shadow — so the page isn't a stack of identical floating cards. Lift and the glass
+     bevel are reserved for the one element per screen that should lead (.surface-hero below),
+     plus sheets, modals and the nav. */
+  box-shadow: none !important;
+}
+
+/* The single leading element of a screen (home: the next event; event page: the process track).
+   Stronger glass, a real bevel and a soft far shadow, and a larger radius than the groups around
+   it, so hierarchy reads from the material itself rather than from a label. */
+.surface-hero {
+  background: var(--color-hero-glass);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid var(--hero-edge);
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 18px 40px rgba(var(--shadow-tint), var(--hero-shadow-a));
 }
 
 
