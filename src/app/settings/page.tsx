@@ -21,6 +21,7 @@ import ContractTemplateSettings from "@/components/ContractTemplateSettings";
 import ContractTemplateLibrarySettings from "@/components/ContractTemplateLibrarySettings";
 import PortfolioSettings from "@/components/PortfolioSettings";
 import AppearanceSettings from "@/components/AppearanceSettings";
+import GuidesSettings from "@/components/GuidesSettings";
 import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
 import { CURRENT_VERSION } from "@/lib/changelog";
@@ -204,6 +205,11 @@ export default async function SettingsPage({
             id: "portfolio",
             label: "פורטפוליו",
             content: <PortfolioSettings photographer={photographer} />,
+          },
+          {
+            id: "guides",
+            label: "מדריכים",
+            content: <GuidesSettings />,
           },
           {
             id: "updates",
