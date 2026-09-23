@@ -489,8 +489,16 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
     // the file is actually ready rather than the old route's synchronous zip-then-email round trip.
     if (job.send_to_email) {
       const downloadUrl = await getSignedDownloadUrl("galleries", storagePath, 60 * 60 * 24 * 7, `${rootDir}.zip`);
+      // Goes to the photographer's print house, so it's sent in the photographer's name.
+      const { data: sender } = await supabase
+        .from("photographers")
+        .select("name, email")
+        .eq("id", job.photographer_id)
+        .maybeSingle<{ name: string | null; email: string | null }>();
       await sendEmail({
         to: job.send_to_email,
+        fromName: sender?.name ?? undefined,
+        replyTo: sender?.email ? notificationEmailFor(sender.email) : undefined,
         subject: `קבצי הדפסה — ${album.title}`,
         text: `שלום,\n\nמצורף קישור להורדת קובצי ה-JPG להדפסה עבור האלבום "${album.title}" (${resolved.gallery.title}):\n${downloadUrl}\n\nהקישור בתוקף לשבוע ימים.`,
       });

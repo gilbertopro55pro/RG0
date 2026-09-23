@@ -69,6 +69,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     try {
       await sendEmail({
         to: email!.trim(),
+        fromName: photographer.name,
         subject: `הצעת מחיר מ${photographer.name}`,
         text: `שלום,\n\nמצורפת הצעת מחיר מ${photographer.name}.\n\nבברכה,\n${photographer.name}`,
         replyTo: notificationEmailFor(photographer.email),
