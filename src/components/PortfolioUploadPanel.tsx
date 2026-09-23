@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ALLOWED_ACCEPT, isAllowedImageFile, isHeicFile, convertHeicIfNeeded, putFileWithProgress } from "@/lib/imageUpload";
 import type { GalleryPhotoRow } from "@/lib/types";
+import { ProgressModal } from "@/components/ProgressModal";
 
 // Sentinel for the dropdown's last option — picking it reveals a free-text input instead of
 // picking one of the existing tabs. Never sent to the DB (see handleFiles' `trimmedCategory`).
@@ -26,6 +27,21 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
   const [progressText, setProgressText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [doneCount, setDoneCount] = useState(0);
+  // Same full-screen blocking ProgressModal the gallery uploader uses (GalleryManageView.tsx) — a
+  // photographer shouldn't be able to wander off mid-upload and leave half a batch behind.
+  const [uploadPct, setUploadPct] = useState(0);
+  const cancelRequestedRef = useRef(false);
+
+  // Closing/reloading the tab mid-upload silently drops the rest of the batch — ask first.
+  useEffect(() => {
+    if (!uploading) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [uploading]);
 
   // Loaded up front (not on-focus) — a <select> needs its options ready the moment it opens,
   // unlike the old text input + datalist combo this replaced.
@@ -87,6 +103,8 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
     setUploading(true);
     setError(null);
     setDoneCount(0);
+    setUploadPct(0);
+    cancelRequestedRef.current = false;
     try {
       const galleryId = await getOrCreatePortfolioGallery();
       if (!galleryId) return;
@@ -95,9 +113,15 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
       const failedFiles: string[] = [];
       let succeeded = 0;
 
+      let cancelled = false;
       for (let i = 0; i < files.length; i++) {
+        if (cancelRequestedRef.current) {
+          cancelled = true;
+          break;
+        }
         let file = files[i];
         setProgressText(`מעלה ${i + 1} מתוך ${files.length}...`);
+        setUploadPct((i / files.length) * 100);
         try {
           if (isHeicFile(file)) {
             try {
@@ -129,7 +153,7 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
                 lastFailureReason = urlData.error ?? "שגיאה";
                 continue;
               }
-              await putFileWithProgress(urlData.url, file, contentType, () => {});
+              await putFileWithProgress(urlData.url, file, contentType, (fraction) => setUploadPct(((i + fraction) / files.length) * 100));
               uploaded = true;
             } catch (e) {
               lastFailureReason = e instanceof Error ? e.message : "שגיאת רשת";
@@ -167,7 +191,9 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
         }
       }
 
-      if (failedFiles.length > 0) {
+      if (cancelled) {
+        setError(`ההעלאה בוטלה — ${succeeded} מתוך ${files.length} תמונות הועלו לפני הביטול`);
+      } else if (failedFiles.length > 0) {
         setError(`${failedFiles.length} קבצים לא הועלו: ${failedFiles.slice(0, 6).join(", ")}${failedFiles.length > 6 ? " ועוד..." : ""}`);
       }
       if (rejected > 0) {
@@ -211,6 +237,7 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
         />
       )}
 
+      {uploading && <ProgressModal label="העלאת תמונות" pct={uploadPct} onCancel={() => (cancelRequestedRef.current = true)} />}
       {error && <p className="text-xs text-rose mb-2 whitespace-pre-line">{error}</p>}
       {progressText && <p className="text-xs text-ink-soft mb-2">{progressText}</p>}
       {!uploading && doneCount > 0 && <p className="text-xs text-sage mb-2">{doneCount} תמונות נוספו לפורטפוליו ✓</p>}
