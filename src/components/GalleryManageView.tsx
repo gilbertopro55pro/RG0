@@ -3469,21 +3469,15 @@ export default function GalleryManageView({
           </button>
         )}
 
+        {/* One copy-link button only (the primary one above) — this row used to repeat it as a
+            small secondary button right next to "שיתוף". */}
         {gallery.published && (
-          <div className="flex gap-2">
-            <button
-              onClick={openShare}
-              className={`flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink ${BTN_PRESS}`}
-            >
-              שיתוף
-            </button>
-            <button
-              onClick={copyLink}
-              className={`shrink-0 rounded-lg px-3.5 py-2.5 text-xs font-semibold bg-white border border-line text-ink-soft ${BTN_PRESS}`}
-            >
-              {copied ? "✓ הועתק" : "העתקת קישור"}
-            </button>
-          </div>
+          <button
+            onClick={openShare}
+            className={`w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink ${BTN_PRESS}`}
+          >
+            שיתוף
+          </button>
         )}
       </div>
 

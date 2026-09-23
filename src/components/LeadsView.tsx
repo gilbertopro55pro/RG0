@@ -23,11 +23,13 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 };
 
 const STATUS_COLORS: Record<LeadStatus, { bg: string; text: string }> = {
-  new: { bg: "#F1EFE9", text: "var(--color-ink-soft)" },
+  new: { bg: "var(--color-chip)", text: "var(--color-ink-soft)" },
   contacted: { bg: "var(--color-amber-bg)", text: "var(--color-amber-deep)" },
-  quoted: { bg: "#EEEDFC", text: "#5E5CE6" },
+  // Muted slate-teal from the palette (was an off-palette indigo) — still distinct from the
+  // brass "contacted" and the green "won" next to it.
+  quoted: { bg: "color-mix(in srgb, var(--color-lime) 18%, transparent)", text: "var(--color-lime-deep)" },
   won: { bg: "var(--color-sage-bg)", text: "var(--color-sage)" },
-  lost: { bg: "#FBEEEC", text: "var(--color-rose)" },
+  lost: { bg: "var(--color-rose-bg)", text: "var(--color-rose)" },
 };
 
 export default function LeadsView({
