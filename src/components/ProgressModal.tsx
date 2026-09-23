@@ -80,10 +80,10 @@ export function ProgressModal({
             would turn this white-text-on-dark-card modal illegible the moment the site is in dark
             mode. This card is always dark regardless of site theme, so it needs a color that's
             always dark too. */}
-      <div className="relative w-64 rounded-3xl overflow-hidden shadow-sheet" style={{ background: "#201f33" }}>
+      <div className="relative w-64 rounded-3xl overflow-hidden shadow-sheet" style={{ background: "#1c1b19" }}>
         {/* Rises from the bottom like a tank filling with water — a second, independent read of
             progress alongside the ring, at the scale of the whole window rather than a thin bar. */}
-        <div className="absolute inset-x-0 bottom-0" style={{ height: `${clamped}%`, background: "#1f4d36" }} />
+        <div className="absolute inset-x-0 bottom-0" style={{ height: `${clamped}%`, background: "#4a3b1f" }} />
         {!confirmingCancel && (
           <button
             onClick={() => setConfirmingCancel(true)}

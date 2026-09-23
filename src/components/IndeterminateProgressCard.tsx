@@ -9,7 +9,7 @@ export function IndeterminateProgressCard({ label }: { label: string }) {
   const circumference = 2 * Math.PI * radius;
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(20,24,20,0.55)" }}>
-      <div className="relative w-64 rounded-3xl overflow-hidden shadow-sheet" style={{ background: "#201f33" }}>
+      <div className="relative w-64 rounded-3xl overflow-hidden shadow-sheet" style={{ background: "#1c1b19" }}>
         <div className="relative flex flex-col items-center gap-4 px-6 py-9 text-white text-center">
           <div className="relative" style={{ width: 112, height: 112 }}>
             <div

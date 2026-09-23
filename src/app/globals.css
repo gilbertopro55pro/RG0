@@ -1,81 +1,76 @@
 @import "tailwindcss";
 
+/* "Warm glass" palette (design stage 1, 2026-09-23) — replaces the pastel lavender/candy
+   identity, which read as an AI template. Warm paper ground, near-black warm ink, ONE accent
+   (brass, the same family the public portfolio uses), and glass surfaces lifted over two very
+   soft ambient glows (see body below) instead of saturated pastel blobs. Variable names are kept
+   exactly as before so every component re-themes from here without being touched — including
+   the historical --color-amber* names, which now carry the brass accent. */
 :root {
-  /* Pastel-glass palette — soft, desaturated Apple-adjacent hues instead of flat system colors,
-     paired with translucent glass surfaces (see .bg-card below). Same variable names throughout
-     the app, so this one block re-themes every screen without touching individual components. */
-  --color-paper: #f6f4fb; /* soft lavender-white canvas the glass blobs sit on */
-  --color-ink: #201f33; /* deep indigo-black — stays high-contrast, just warmer than pure black */
-  /* muted indigo-gray for secondary text — darkened from the original #757396, which measured
-     3.7-4.3:1 contrast (WCAG AA needs 4.5:1 for this size text) against the actual glass-card
-     backgrounds behind the pastel gradient blobs. This value keeps the same hue but clears 4.5:1
-     with margin (5.0-6.0:1) across every blob color, computed directly against the real
-     composited backdrop rather than assumed. */
-  --color-ink-soft: #5f5d7c;
-  /* Low-chroma ultramarine — deepened and desaturated from the original candy-periwinkle so the
-     primary accent reads as considered rather than playful. Every other feature color below is
-     untouched (they drive the nav icon badges — see QuickActionsGrid/TopNav — which stay exactly
-     as they were). */
-  --color-amber: #5b6fd1; /* primary accent */
-  --color-amber-deep: #3e4fb8;
-  --color-amber-bg: #eceffb;
-  /* Money amounts only — never used decoratively. See DashboardHero's revenue figures. */
-  --color-brass: #a6822f;
-  --color-sage: #52c98f; /* pastel mint-green — done / success */
-  --color-sage-bg: #e9faf1;
-  --color-rose: #ff6b6b; /* soft coral-red — danger, less harsh than systemRed */
-  --color-peach: #ffb37a; /* pastel apricot */
-  --color-line: #e7e3f3; /* soft lavender-gray hairline */
-  --color-card: rgba(255, 255, 255, 0.45); /* translucent glass base — deliberately see-through */
-  --color-lime: #52d6c8; /* pastel teal accent */
-  --color-lime-deep: #2fa89b;
-  --color-coral: #ff7fb0; /* pastel pink accent */
-  --color-coral-deep: #e0568f;
-
-  /* Shared "neutral chip" surface reused across many components for unselected pill/tab/row
-     backgrounds — kept as its own token (rather than each component hardcoding the hex) so dark
-     mode can retint every one of them from this single place. */
-  --color-chip: #f5f4fa; /* biased slightly toward violet, matching --color-paper's own tint */
-  /* Warm highlight used only for the stage-tracker's "current step" row. */
-  --color-chip-tint: #fbf3e4;
-  /* TopNav's translucent bar background — separate from --color-card because the nav sits
-     directly on the page background (no blur-heavy stacking context concerns) and used a
-     slightly different tint even in light mode. */
-  --color-nav-bg: rgba(246, 244, 251, 0.45);
-  /* Surface for plain form inputs (all the bg-white text fields) — a literal Tailwind white in
-     light mode, so this token only actually does anything once the dark override below exists. */
+  --color-paper: #f2efe9;
+  --color-ink: #1c1b19;
+  /* 6.2:1 on paper, 5.6:1 on the glass cards over the glow — clears WCAG AA for small text. */
+  --color-ink-soft: #625e56;
+  /* Primary accent (links, selected states, buttons). amber-deep is also a button fill with
+     white text on it — 5.9:1. */
+  --color-amber: #9c7a3c;
+  --color-amber-deep: #7c5f27;
+  --color-amber-bg: #efe7d6;
+  /* Money amounts. Same family as the accent on purpose. */
+  --color-brass: #8f6f2f;
+  --color-sage: #3c7353; /* done / success */
+  --color-sage-bg: #e3eee6;
+  --color-rose: #c2413a; /* danger — white text on it: 5.0:1 */
+  --color-peach: #c98a4b;
+  --color-line: #e2ddd3;
+  --color-card: rgba(255, 255, 255, 0.58);
+  /* Former pastel teal/pink feature colors (nav icon backgrounds) — muted into the palette. */
+  --color-lime: #6f8c86;
+  --color-lime-deep: #4f6c66;
+  --color-coral: #ae7a67;
+  --color-coral-deep: #8d5c4a;
+  --color-chip: #ebe7df;
+  --color-chip-tint: #f3ecdd;
+  --color-nav-bg: rgba(242, 239, 233, 0.66);
   --color-input-bg: #ffffff;
+  /* Ambient light behind the glass — the only "color" in the background. */
+  --glow-warm: rgba(196, 156, 84, 0.22);
+  --glow-cool: rgba(112, 132, 156, 0.18);
+  --glass-edge: rgba(28, 27, 25, 0.08);
+  --glass-hi: rgba(255, 255, 255, 0.85);
+  --shadow-tint: 28, 27, 25;
 }
 
-/* Dark theme — same glass-and-pastel identity, just built on a deep indigo canvas instead of the
-   lavender-white one: light frosted-glass cards over deep jewel-toned blobs instead of pastel
-   ones, so it reads as "the same app at night," not a different app with inverted colors. Every
-   value below was checked against the actual composited card backgrounds (frost over blob over
-   canvas), not guessed — ink-soft clears 4.5:1 with margin (5.2-7.4:1) the same way the light
-   value does. */
+/* Dark: the same warm glass at night — near-black warm ground, brass accent lightened for
+   contrast, glows turned down. Not an inversion of the light palette. */
 :root[data-theme="dark"] {
   color-scheme: dark; /* also fixes native date/time/checkbox pickers to render dark */
-  --color-paper: #14121f;
-  --color-ink: #edebf7;
-  --color-ink-soft: #b4b0d0;
-  --color-amber: #8792d6;
-  --color-amber-deep: #6672c4;
-  --color-amber-bg: rgba(99, 110, 199, 0.18);
-  --color-brass: #d4af6a;
-  --color-sage: #5fd9a0;
-  --color-sage-bg: rgba(95, 217, 160, 0.14);
-  --color-rose: #ff8585;
-  --color-peach: #ffc594;
-  --color-line: rgba(255, 255, 255, 0.1);
-  --color-card: rgba(255, 255, 255, 0.07);
-  --color-lime: #6be0d2;
-  --color-lime-deep: #45c4b5;
-  --color-coral: #ff97c2;
-  --color-coral-deep: #f072a8;
-  --color-chip: rgba(255, 255, 255, 0.07);
-  --color-chip-tint: rgba(255, 197, 148, 0.14);
-  --color-nav-bg: rgba(20, 18, 32, 0.55);
-  --color-input-bg: #211f33;
+  --color-paper: #0e0d0c;
+  --color-ink: #efebe3;
+  --color-ink-soft: #a8a297; /* 7.9:1 on the ground */
+  --color-amber: #d2ad68;
+  --color-amber-deep: #c9a15a;
+  --color-amber-bg: rgba(210, 173, 104, 0.14);
+  --color-brass: #d2ad68;
+  --color-sage: #7cc29a;
+  --color-sage-bg: rgba(124, 194, 154, 0.14);
+  --color-rose: #e5695c;
+  --color-peach: #e0a36a;
+  --color-line: rgba(255, 255, 255, 0.09);
+  --color-card: rgba(255, 255, 255, 0.045);
+  --color-lime: #86a39d;
+  --color-lime-deep: #6a8781;
+  --color-coral: #c28f7c;
+  --color-coral-deep: #a67361;
+  --color-chip: rgba(255, 255, 255, 0.06);
+  --color-chip-tint: rgba(210, 173, 104, 0.12);
+  --color-nav-bg: rgba(14, 13, 12, 0.62);
+  --color-input-bg: #1a1917;
+  --glow-warm: rgba(208, 170, 99, 0.13);
+  --glow-cool: rgba(88, 108, 138, 0.13);
+  --glass-edge: rgba(255, 255, 255, 0.08);
+  --glass-hi: rgba(255, 255, 255, 0.07);
+  --shadow-tint: 0, 0, 0;
 }
 
 /* Landing page only — a warmer, quieter, more editorial palette than the rest of the app's
@@ -153,8 +148,8 @@ body:has(.landing-warm) {
      lifting off the pastel canvas rather than a flat card with a generic drop shadow. A tight
      near-shadow plus a wider, deeper far-shadow reads as real material lift, not a flat CSS
      drop-shadow applied for its own sake. */
-  --shadow-card: 0 1px 2px rgba(66, 58, 130, 0.06), 0 16px 36px rgba(66, 58, 130, 0.13);
-  --shadow-sheet: 0 4px 18px rgba(66, 58, 130, 0.12), 0 28px 64px rgba(66, 58, 130, 0.20);
+  --shadow-card: 0 1px 2px rgba(28, 27, 25, 0.05), 0 12px 32px rgba(28, 27, 25, 0.08);
+  --shadow-sheet: 0 4px 18px rgba(28, 27, 25, 0.10), 0 28px 64px rgba(28, 27, 25, 0.18);
 }
 
 /* Prices, dates and counters: same face as the text, but with fixed-width digits so columns of
@@ -166,31 +161,14 @@ body:has(.landing-warm) {
 body {
   color: var(--color-ink);
   font-family: var(--font-sans);
-  /* Fixed pastel blobs covering the *whole* viewport (not just the corners) — this is what the
-     glass cards' blur actually reveals, and a card sitting in the middle of the screen needs
-     real color behind it too, not just a wash near the edges. background-attachment: fixed
-     keeps this anchored to the viewport (not the page), so it stays visible behind cards no
-     matter how far the page is scrolled — deliberately not animated: a moving fixed background
-     behind many blurred glass panels is a known mobile scroll-jank risk, not worth it here. */
+  /* Two soft pools of light the glass cards blur — warm brass up top, cool slate below. Kept at
+     low alpha on purpose: the glass reads as a material over light, not as tinted candy. Fixed
+     to the viewport so cards anywhere on a long page have light behind them; not animated (a
+     moving fixed background behind many blurred panels is a mobile scroll-jank risk). */
   background:
-    radial-gradient(circle at 15% 15%, rgba(108, 142, 255, 0.30), transparent 55%),
-    radial-gradient(circle at 85% 10%, rgba(255, 127, 176, 0.26), transparent 52%),
-    radial-gradient(circle at 10% 85%, rgba(82, 214, 200, 0.26), transparent 55%),
-    radial-gradient(circle at 90% 90%, rgba(255, 179, 122, 0.24), transparent 52%),
-    radial-gradient(circle at 50% 50%, rgba(180, 160, 255, 0.16), transparent 60%),
-    var(--color-paper);
-  background-attachment: fixed;
-}
-
-/* Dark mode gets its own blob composition — deeper, more saturated jewel tones at lower alpha, so
-   the canvas still reads as "colorful glass" rather than just fading to flat gray. */
-:root[data-theme="dark"] body {
-  background:
-    radial-gradient(circle at 15% 15%, rgba(90, 110, 255, 0.22), transparent 55%),
-    radial-gradient(circle at 85% 10%, rgba(255, 110, 170, 0.18), transparent 52%),
-    radial-gradient(circle at 10% 85%, rgba(70, 210, 195, 0.16), transparent 55%),
-    radial-gradient(circle at 90% 90%, rgba(255, 170, 110, 0.16), transparent 52%),
-    radial-gradient(circle at 50% 50%, rgba(160, 140, 255, 0.14), transparent 60%),
+    radial-gradient(60% 45% at 85% 5%, var(--glow-warm), transparent 70%),
+    radial-gradient(65% 50% at 5% 80%, var(--glow-cool), transparent 70%),
+    radial-gradient(45% 35% at 75% 95%, var(--glow-warm), transparent 70%),
     var(--color-paper);
   background-attachment: fixed;
 }
@@ -214,24 +192,19 @@ body {
    the solid action buttons below use and still gives a real frosted feel without smearing content
    directly behind a panel. */
 .bg-card {
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   /* !important: components also apply Tailwind's border/border-line utilities alongside
      bg-card, and per this project's Tailwind v4 cascade-layer setup those can otherwise win
-     over this plain (unlayered) rule despite normal source-order expectations. */
-  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+     over this plain (unlayered) rule despite normal source-order expectations.
+     A faint dark hairline defines the edge on the light ground (a white border vanishes against
+     warm paper); the inset top highlight is the "light catching the glass" line. */
+  border: 1px solid var(--glass-edge) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    inset 0 -1px 0 rgba(66, 58, 130, 0.07),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    inset 0 1px 0 var(--glass-hi),
+    0 1px 2px rgba(var(--shadow-tint), 0.04);
 }
-:root[data-theme="dark"] .bg-card {
-  border: 1px solid rgba(255, 255, 255, 0.10) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.10),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-}
+
 
 /* The same glass treatment for the app's solid action buttons (dark/blue/red primary buttons) —
    a translucent tint of their own color instead of a flat fill, plus a glossy top bevel and a
@@ -242,29 +215,32 @@ body {
 .bg-rose {
   backdrop-filter: blur(20px) saturate(150%);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 8px 20px rgba(66, 58, 130, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 6px 18px rgba(var(--shadow-tint), 0.14);
   transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
 }
 .bg-ink {
-  background-color: rgba(32, 31, 51, 0.86) !important;
+  background-color: rgba(28, 27, 25, 0.92) !important;
 }
 .bg-amber-deep {
-  /* rgb(62, 79, 184) = the refined --color-amber-deep (#3e4fb8) */
-  background-color: rgba(62, 79, 184, 0.86) !important;
+  background-color: rgba(124, 95, 39, 0.94) !important; /* --color-amber-deep */
 }
 .bg-rose {
-  background-color: rgba(255, 107, 107, 0.86) !important;
+  background-color: rgba(194, 65, 58, 0.94) !important; /* --color-rose */
 }
 
-:root[data-theme="dark"] .bg-ink {
-  background-color: rgba(20, 18, 32, 0.86) !important;
-}
+/* In the dark theme the primary button turns brass with dark text — a near-black button would
+   disappear into the ground. Components hardcode text-white on these, hence the color override. */
+:root[data-theme="dark"] .bg-ink,
 :root[data-theme="dark"] .bg-amber-deep {
-  /* rgb(102, 114, 196) = the refined dark --color-amber-deep (#6672c4) */
-  background-color: rgba(102, 114, 196, 0.86) !important;
+  background-color: rgba(210, 173, 104, 0.94) !important;
+  color: #17140f !important;
+}
+:root[data-theme="dark"] .bg-ink .text-white,
+:root[data-theme="dark"] .bg-amber-deep .text-white {
+  color: inherit !important;
 }
 :root[data-theme="dark"] .bg-rose {
-  background-color: rgba(255, 107, 107, 0.78) !important;
+  background-color: rgba(229, 105, 92, 0.9) !important;
 }
 
 /* iOS Safari auto-zooms the whole page in when a focused input's computed font-size is under
@@ -341,13 +317,13 @@ a[role="button"]:not([aria-disabled="true"]).js-pressed {
   .nav-tile:hover {
     transform: translateY(-2px) scale(1.03);
     filter: brightness(1.04);
-    box-shadow: 0 10px 24px rgba(66, 58, 130, 0.16);
+    box-shadow: 0 10px 24px rgba(var(--shadow-tint), 0.12);
   }
 
   .bg-ink:hover,
   .bg-amber-deep:hover,
   .bg-rose:hover {
     transform: translateY(-1px);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 12px 26px rgba(66, 58, 130, 0.24);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 10px 24px rgba(var(--shadow-tint), 0.18);
   }
 }
