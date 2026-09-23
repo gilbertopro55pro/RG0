@@ -136,9 +136,9 @@ async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: 
 
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("email")
+    .select("email, name")
     .eq("id", lead.photographer_id)
-    .maybeSingle<{ email: string }>();
+    .maybeSingle<{ email: string; name: string | null }>();
 
   const detailsBlock =
     `שם מלא: ${lead.name}\n` +
@@ -165,6 +165,8 @@ async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: 
     try {
       await sendEmail({
         to: lead.email,
+        fromName: photographer?.name ?? undefined,
+        replyTo: photographer?.email ? notificationEmailFor(photographer.email) : undefined,
         subject: "רק מזכירים את ההצעה שלנו",
         text: `שלום ${lead.name},\n\nרצינו להזכיר שההצעת מחיר ששלחנו לכם עדיין פתוחה, ונשמח לעמוד לרשותכם לכל שאלה או לתיאום.`,
       });

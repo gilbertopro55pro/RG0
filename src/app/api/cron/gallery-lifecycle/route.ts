@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
+import { notificationEmailFor } from "@/lib/notificationEmail";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { GENERIC_STAGE_UPDATE_TEMPLATE } from "@/lib/stages";
 import { removeObjects, removePreviewObjects } from "@/lib/storage";
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
   const reminderCutoff = new Date(now.getTime() + REMINDER_DAYS_BEFORE_EXPIRY * 24 * 60 * 60 * 1000);
   const { data: toRemind } = await supabase
     .from("galleries")
-    .select("*, events(client_name)")
+    .select("*, events(client_name), photographers(name, email)")
     .eq("published", true)
     .is("archived_at", null)
     .is("reminder_sent_at", null)
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
     .not("expires_at", "is", null)
     .gt("expires_at", now.toISOString())
     .lte("expires_at", reminderCutoff.toISOString())
-    .returns<(GalleryRow & { events: { client_name: string } | null })[]>();
+    .returns<(GalleryRow & { events: { client_name: string } | null; photographers: { name: string | null; email: string | null } | null })[]>();
 
   let remindedCount = 0;
   for (const gallery of toRemind ?? []) {
@@ -81,6 +82,8 @@ export async function GET(request: NextRequest) {
     try {
       await sendEmail({
         to: gallery.client_email!,
+        fromName: gallery.photographers?.name ?? undefined,
+        replyTo: gallery.photographers?.email ? notificationEmailFor(gallery.photographers.email) : undefined,
         subject: `תזכורת: הגלריה "${gallery.title}" תפוג בקרוב`,
         text:
           `שלום,\n\n` +
