@@ -779,7 +779,7 @@ export default function EventDetailView({
         <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs flex flex-wrap gap-x-4 gap-y-1.5 bg-chip text-ink-soft">
           {event.event_location && (
             <button onClick={() => setShowNav(true)} className="underline decoration-dotted text-amber-deep">
-              📍 {event.event_location}
+              {event.event_location}
             </button>
           )}
           {event.arrival_time && <span>הגעה לצילומי משפחה: {event.arrival_time.slice(0, 5)}</span>}
@@ -1132,7 +1132,7 @@ function PaymentLegRow({
         style={{ background }}
       >
         <span>
-          {label} — ₪{amount}
+          {label}: ₪{amount}
         </span>
         <span style={{ color: statusColor, fontWeight: 600 }}>
           {paid ? "שולם ✓" : isPartial ? `שולם חלקית: יתרה ₪${remaining}` : dueDateText ?? "ממתין"}
@@ -1282,9 +1282,9 @@ function FilmStrip({
               <span
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs"
                 style={{
-                  background: st.done ? "var(--color-sage)" : isCurrent ? "var(--color-amber)" : "#fff",
+                  background: st.done ? "var(--color-sage)" : isCurrent ? "var(--color-amber)" : "var(--color-input-bg)",
                   border: `1px solid ${st.done ? "var(--color-sage)" : isCurrent ? "var(--color-amber)" : "var(--color-line)"}`,
-                  color: st.done || isCurrent ? "#fff" : "var(--color-ink-soft)",
+                  color: st.done ? "#fff" : isCurrent ? "var(--color-on-accent)" : "var(--color-ink-soft)",
                 }}
               >
                 {st.done ? "✓" : i + 1}

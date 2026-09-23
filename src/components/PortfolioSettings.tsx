@@ -292,7 +292,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
                             className="rounded-full px-3 py-1.5 text-xs font-semibold border"
                             style={{
                               background: active ? "var(--color-amber-deep)" : "var(--color-chip)",
-                              color: active ? "#fff" : "var(--color-ink-soft)",
+                              color: active ? "var(--color-on-accent)" : "var(--color-ink-soft)",
                               borderColor: active ? "var(--color-amber-deep)" : "var(--color-line)",
                             }}
                           >

@@ -330,11 +330,11 @@ function CircleButton({
       style={{
         width: size,
         height: size,
-        background: active ? "var(--color-amber-deep)" : "#fff",
+        background: active ? "var(--color-amber-deep)" : "var(--color-input-bg)",
         // Fixed dark icon color, not the theme-flipped --color-ink token — this button's own
         // background stays white in both themes, so the icon must too or it goes near-invisible
         // (light-on-white) once --color-ink flips light for dark mode's page text.
-        color: danger ? "var(--color-rose)" : active ? "#fff" : "#1c1b19",
+        color: danger ? "var(--color-rose)" : active ? "var(--color-on-accent)" : "var(--color-ink)",
         boxShadow: danger
           ? "0 2px 6px rgba(28, 27, 25, 0.22), 0 0 0 1.5px var(--color-rose)"
           : "0 2px 6px rgba(28, 27, 25, 0.22), 0 0 0 1px var(--color-line)",
@@ -946,7 +946,7 @@ function OrnamentFloatingMenu({
           onClick={() => onUpdate({ locked: !el.locked })}
           title={el.locked ? "נעול. לחצו לשחרור" : "נעילת מיקום וגודל"}
           className="flex-1 h-7 rounded-lg flex items-center justify-center"
-          style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "#fff" : "var(--color-ink-soft)" }}
+          style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
         >
           <IconLock />
         </button>
@@ -1055,7 +1055,7 @@ function ShapeFloatingMenu({
           onClick={() => onUpdate({ locked: !el.locked })}
           title={el.locked ? "נעול. לחצו לשחרור" : "נעילת מיקום וגודל"}
           className="flex-1 h-7 rounded-lg flex items-center justify-center"
-          style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "#fff" : "var(--color-ink-soft)" }}
+          style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
         >
           <IconLock />
         </button>
@@ -1175,7 +1175,7 @@ function TextFloatingMenu({
         <button
           onClick={() => onUpdate({ locked: !el.locked })}
           className="flex-1 h-7 rounded-lg text-[10px] font-semibold"
-          style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "#fff" : "var(--color-ink-soft)" }}
+          style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
         >
           {el.locked ? "נעול" : "נעילה"}
         </button>
@@ -4742,8 +4742,8 @@ export default function AlbumSpreadCanvasEditor({
               aria-label="שקיפות וטשטוש רקע"
               className="absolute bottom-2 left-2 z-10 h-8 w-8 rounded-full flex items-center justify-center shadow"
               style={{
-                background: backgroundPanelOpen ? "var(--color-amber-deep)" : "#fff",
-                color: backgroundPanelOpen ? "#fff" : "#1c1b19",
+                background: backgroundPanelOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
+                color: backgroundPanelOpen ? "var(--color-on-accent)" : "var(--color-ink)",
                 boxShadow: "0 2px 6px rgba(28, 27, 25, 0.22), 0 0 0 1px var(--color-line)",
               }}
             >
@@ -5181,7 +5181,7 @@ export default function AlbumSpreadCanvasEditor({
                             {dragPanelSelectedIds.has(p.id) && (
                               <span
                                 className="absolute top-0.5 left-0.5 h-3.5 w-3.5 rounded-full flex items-center justify-center"
-                                style={{ background: "var(--color-amber-deep)", color: "#fff" }}
+                                style={{ background: "var(--color-amber-deep)", color: "var(--color-on-accent)" }}
                               >
                                 <IconCheck size={9} />
                               </span>
@@ -5291,12 +5291,12 @@ export default function AlbumSpreadCanvasEditor({
                 onClick={backgroundPhoto ? removeBackground : openPickerForBackground}
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold border"
                 style={{
-                  background: backgroundPhoto ? "var(--color-amber-deep)" : "#fff",
+                  background: backgroundPhoto ? "var(--color-amber-deep)" : "var(--color-input-bg)",
                   // Fixed dark text, not the theme-flipped --color-ink token — the unset state's
                   // background stays literal white in both themes (an inline style, so the global
                   // dark-mode .bg-white class override doesn't reach it), so the label must stay
                   // dark too or it goes white-on-white once --color-ink flips light for dark mode.
-                  color: backgroundPhoto ? "#fff" : "#1c1b19",
+                  color: backgroundPhoto ? "var(--color-on-accent)" : "var(--color-ink)",
                   borderColor: "var(--color-line)",
                 }}
               >
@@ -5446,8 +5446,8 @@ export default function AlbumSpreadCanvasEditor({
                   onClick={backgroundPhoto ? removeBackground : openPickerForBackground}
                   className="flex-1 min-w-0 rounded-lg py-1 text-[9px] font-semibold border truncate"
                   style={{
-                    background: backgroundPhoto ? "var(--color-amber-deep)" : "#fff",
-                    color: backgroundPhoto ? "#fff" : "var(--color-ink)",
+                    background: backgroundPhoto ? "var(--color-amber-deep)" : "var(--color-input-bg)",
+                    color: backgroundPhoto ? "var(--color-on-accent)" : "var(--color-ink)",
                     borderColor: "var(--color-line)",
                   }}
                 >
@@ -5633,7 +5633,7 @@ export default function AlbumSpreadCanvasEditor({
                       {multiIdx !== -1 && (
                         <span
                           className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-data"
-                          style={{ background: "var(--color-amber-deep)", color: "#fff" }}
+                          style={{ background: "var(--color-amber-deep)", color: "var(--color-on-accent)" }}
                         >
                           {multiIdx + 1}
                         </span>

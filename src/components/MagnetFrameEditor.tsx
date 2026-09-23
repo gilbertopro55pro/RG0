@@ -722,21 +722,21 @@ export default function MagnetFrameEditor() {
         <button
           onClick={() => toggleTab("elements")}
           className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
-          style={{ background: activeTab === "elements" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "elements" ? "#fff" : "var(--color-ink)" }}
+          style={{ background: activeTab === "elements" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "elements" ? "var(--color-on-accent)" : "var(--color-ink)" }}
         >
           אלמנטים
         </button>
         <button
           onClick={() => toggleTab("texture")}
           className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
-          style={{ background: activeTab === "texture" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "texture" ? "#fff" : "var(--color-ink)" }}
+          style={{ background: activeTab === "texture" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "texture" ? "var(--color-on-accent)" : "var(--color-ink)" }}
         >
           טקסטורה
         </button>
         <button
           onClick={() => toggleTab("settings")}
           className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
-          style={{ background: activeTab === "settings" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "settings" ? "#fff" : "var(--color-ink)" }}
+          style={{ background: activeTab === "settings" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "settings" ? "var(--color-on-accent)" : "var(--color-ink)" }}
         >
           הגדרות מסגרת
         </button>
@@ -862,7 +862,7 @@ export default function MagnetFrameEditor() {
                   <button
                     onClick={() => setTextureTab("builtin")}
                     className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                    style={{ background: textureTab === "builtin" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "builtin" ? "#fff" : "var(--color-ink-soft)" }}
+                    style={{ background: textureTab === "builtin" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "builtin" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
                   >
                     40 טקסטורות
                   </button>
@@ -872,7 +872,7 @@ export default function MagnetFrameEditor() {
                       loadCustomTextures();
                     }}
                     className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                    style={{ background: textureTab === "custom" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "custom" ? "#fff" : "var(--color-ink-soft)" }}
+                    style={{ background: textureTab === "custom" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "custom" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
                   >
                     הטקסטורות שלי
                   </button>
