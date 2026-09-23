@@ -85,11 +85,10 @@ export function IconAnalytics({ className }: IconProps) {
 export function IconSettings({ className }: IconProps) {
   return (
     <svg {...base} className={className}>
-      <circle cx="12" cy="12" r="6.2" />
-      <circle cx="12" cy="12" r="2.1" />
-      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
-        <rect key={deg} x="10.7" y="1.5" width="2.6" height="3" rx="0.7" transform={`rotate(${deg} 12 12)`} />
-      ))}
+      {/* Sliders rather than a cog: the cog's many teeth read as a sun at 16-19px. */}
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="10" cy="17" r="2" />
     </svg>
   );
 }

@@ -6,18 +6,16 @@ import { CURRENT_VERSION } from "@/lib/changelog";
 import GlassTabStrip from "@/components/GlassTabStrip";
 import { IconHome, IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics, IconSettings } from "@/components/icons/NavIcons";
 
-// Round gradient badges restored on top of the glass-strip layout (dividers + sliding indicator)
-// — richer, deeper gradients than the original flat-pastel badges so they read as premium rather
-// than playful; the strip's own shadow/divider treatment is what carries the "glass" identity now,
-// so the badges themselves lean toward jewel-toned depth instead of pastel.
+// Single-color line icons (the gradient badges were retired with the pastel palette, 2026-09-23);
+// the active page is marked by GlassTabStrip's brass tint and indicator.
 const NAV_ITEMS = [
-  { href: "/", label: "בית", icon: IconHome, iconBg: "linear-gradient(150deg, #4a4741, #1c1b19)" },
-  { href: "/galleries", label: "גלריות", icon: IconGallery, iconBg: "linear-gradient(150deg, var(--color-sage), var(--color-lime-deep))" },
-  { href: "/client-portals", label: "פורטל לקוח", icon: IconLink, iconBg: "linear-gradient(150deg, var(--color-coral), var(--color-coral-deep))" },
-  { href: "/leads", label: "לידים ופניות", icon: IconLeads, iconBg: "linear-gradient(150deg, var(--color-lime), var(--color-lime-deep))" },
-  { href: "/waitlist", label: "רשימת המתנה", icon: IconWaitlist, iconBg: "linear-gradient(150deg, var(--color-peach), #c9772f)" },
-  { href: "/analytics", label: "דשבורד", icon: IconAnalytics, iconBg: "linear-gradient(150deg, var(--color-amber), var(--color-amber-deep))" },
-  { href: "/settings", label: "הגדרות", icon: IconSettings, iconBg: "linear-gradient(150deg, #8d89ab, #5c5875)" },
+  { href: "/", label: "בית", icon: IconHome },
+  { href: "/galleries", label: "גלריות", icon: IconGallery },
+  { href: "/client-portals", label: "פורטל לקוח", icon: IconLink },
+  { href: "/leads", label: "לידים ופניות", icon: IconLeads },
+  { href: "/waitlist", label: "רשימת המתנה", icon: IconWaitlist },
+  { href: "/analytics", label: "דשבורד", icon: IconAnalytics },
+  { href: "/settings", label: "הגדרות", icon: IconSettings },
 ] as const;
 
 // Client-facing token pages and pre-auth screens have no dashboard shortcuts to show. "/landing"
@@ -93,8 +91,7 @@ export default function TopNav() {
               href: item.href,
               active: pathname === item.href || pathname.startsWith(`${item.href}/`),
               badge: item.href === "/settings" ? settingsBadgeCount : undefined,
-              icon: <Icon className="h-3.5 w-3.5" />,
-              iconBg: item.iconBg,
+              icon: <Icon className="h-[19px] w-[19px]" />,
               hideLabel: true,
             };
           })}

@@ -85,16 +85,26 @@ export default function GlassTabStrip({ items, className }: { items: GlassTabStr
             ref={(el: HTMLSpanElement | null) => {
               iconRefs.current[i] = el;
             }}
-            className={`flex shrink-0 items-center justify-center rounded-full transition-transform ${item.hideLabel ? "h-7 w-7" : "h-8 w-8"}`}
-            style={{
-              background: item.iconBg,
-              color: "#ffffff",
-              boxShadow: item.active
-                ? "inset 0 1px 0 rgba(255,255,255,0.4), 0 3px 8px rgba(0,0,0,0.22)"
-                : "inset 0 1px 0 rgba(255,255,255,0.25), 0 2px 5px rgba(0,0,0,0.14)",
-              opacity: item.active ? 1 : 0.82,
-              transform: item.active ? "scale(1.06)" : "scale(1)",
-            }}
+            className={`flex shrink-0 items-center justify-center rounded-full transition-transform ${item.hideLabel ? (item.iconBg ? "h-7 w-7" : "h-9 w-9") : "h-8 w-8"}`}
+            style={
+              item.iconBg
+                ? {
+                    background: item.iconBg,
+                    color: "#ffffff",
+                    boxShadow: item.active
+                      ? "inset 0 1px 0 rgba(255,255,255,0.4), 0 3px 8px rgba(0,0,0,0.22)"
+                      : "inset 0 1px 0 rgba(255,255,255,0.25), 0 2px 5px rgba(0,0,0,0.14)",
+                    opacity: item.active ? 1 : 0.82,
+                    transform: item.active ? "scale(1.06)" : "scale(1)",
+                  }
+                : {
+                    // Monochrome: the icon takes the cell's own color (brass when active), with a
+                    // soft brass wash behind the active one instead of a colored badge.
+                    background: item.active ? "var(--color-amber-bg)" : "transparent",
+                    color: item.active ? "var(--color-amber-deep)" : "var(--color-ink)",
+                    transition: "background 200ms cubic-bezier(0.16, 1, 0.3, 1)",
+                  }
+            }
           >
             {item.icon}
           </span>

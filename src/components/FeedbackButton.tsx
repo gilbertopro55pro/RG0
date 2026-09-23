@@ -43,8 +43,12 @@ export default function FeedbackButton() {
         onClick={() => setOpen(true)}
         className="fixed bottom-5 left-5 z-40 h-11 w-11 rounded-full flex items-center justify-center bg-ink text-white shadow-sheet"
         aria-label="הצעות ורעיונות לשיפור"
+        title="הצעות ורעיונות לשיפור"
       >
-        💡
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M20 14.5a2 2 0 0 1-2 2H9l-4 3.5V6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2z" />
+          <path d="M9 9.5h7M9 12.5h4" />
+        </svg>
       </button>
 
       {open && (

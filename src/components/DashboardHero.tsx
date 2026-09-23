@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { IconTrend } from "@/components/icons/NavIcons";
 
 export default function DashboardHero({
   monthLabel,
@@ -20,54 +19,41 @@ export default function DashboardHero({
   // reserves space for it and the forecast bar keeps the full row.
   registeredUsersCount?: number | null;
 }) {
-  const forecastRatio = monthForecast > 0 ? Math.min(1, monthTotal / monthForecast) : 1;
+  // No forecast at all (nothing received, nothing due) used to draw a FULL bar next to ₪0 —
+  // an empty month now reads as an empty bar.
+  const forecastRatio = monthForecast > 0 ? Math.min(1, monthTotal / monthForecast) : 0;
   const stillDue = Math.max(0, monthForecast - monthTotal);
 
   return (
-    <div className="rounded-3xl p-3.5 mb-4 bg-card shadow-card">
-      <div className="flex items-start justify-between mb-1.5">
-        <div>
-          <div className="text-[10px] text-ink-soft mb-0.5">הכנסות {monthLabel}</div>
-          <div className="text-[24px] leading-none font-extrabold font-display tracking-tight text-brass">
-            ₪{monthTotal.toLocaleString("he-IL")}
-          </div>
-        </div>
-        <span
-          className="h-7 w-7 rounded-full flex items-center justify-center shrink-0"
-          style={{ background: "linear-gradient(135deg, var(--color-coral), var(--color-coral-deep))", color: "#ffffff" }}
-        >
-          <IconTrend className="h-3.5 w-3.5" />
-        </span>
-      </div>
-
-      <div className="flex items-stretch gap-2">
-        <div className="flex-1 min-w-0 py-1">
-          <div className="flex items-center justify-between text-[11px] mb-1.5">
-            <span className="text-ink-soft">צפי הכנסות ל־{monthLabel}</span>
-            <span className="font-data font-semibold text-ink">₪{monthForecast.toLocaleString("he-IL")}</span>
-          </div>
-          <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--color-chip)" }}>
-            <div
-              className="h-full rounded-full"
-              style={{ width: `${forecastRatio * 100}%`, background: "var(--color-amber-deep)" }}
-            />
-          </div>
-          {stillDue > 0 && (
-            <div className="text-[10px] mt-1 text-ink-soft">עוד ₪{stillDue.toLocaleString("he-IL")} צפוי החודש</div>
-          )}
+    <div className="rounded-2xl p-4 mb-6 bg-card">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[13px] text-ink-soft">הכנסות {monthLabel}</div>
+          <div className="text-[30px] leading-tight font-bold font-data">₪{monthTotal.toLocaleString("he-IL")}</div>
         </div>
         {registeredUsersCount != null && (
           <Link
             href="/admin"
-            className="shrink-0 h-[56px] w-[64px] rounded-xl flex flex-col items-center justify-center gap-0.5 text-center"
-            style={{ background: "var(--color-chip)" }}
+            className="shrink-0 rounded-xl px-3 py-2 text-center bg-chip"
             title="סה״כ צלמים רשומים, מעבר ללוח הבקרה"
           >
-            <span className="text-base leading-none font-extrabold font-display">
-              {registeredUsersCount.toLocaleString("he-IL")}
-            </span>
-            <span className="text-[9px] leading-tight text-ink-soft px-0.5">משתמשים רשומים</span>
+            <span className="block text-base leading-none font-bold font-data">{registeredUsersCount.toLocaleString("he-IL")}</span>
+            <span className="block text-[10px] leading-tight text-ink-soft mt-1">משתמשים רשומים</span>
           </Link>
+        )}
+      </div>
+
+      <div className="h-1.5 rounded-full overflow-hidden mt-3.5 mb-2" style={{ background: "var(--color-chip)" }}>
+        <div className="h-full rounded-full" style={{ width: `${forecastRatio * 100}%`, background: "var(--color-brass)" }} />
+      </div>
+      <div className="flex items-center justify-between text-xs text-ink-soft">
+        <span>
+          צפי לחודש: <span className="font-data font-semibold text-ink">₪{monthForecast.toLocaleString("he-IL")}</span>
+        </span>
+        {stillDue > 0 ? (
+          <span className="font-data">עוד ₪{stillDue.toLocaleString("he-IL")} צפוי</span>
+        ) : (
+          monthForecast > 0 && <span className="font-data">{Math.round(forecastRatio * 100)}%</span>
         )}
       </div>
     </div>
