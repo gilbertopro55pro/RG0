@@ -11,12 +11,12 @@ module.exports = async ({ page, go, say, point, tap, scroll, sleep, navTap, capT
   await scroll(-4000); await navTap(V('a[href="/galleries"]'), page.locator(`a[href*="${GID}"]`));
   await say("אפשר להוסיף לפורטפוליו גלריה שלמה: לחיצה כפולה על הגלריה."); await point(page.locator(`a[href*="${GID}"]`)); await sleep(1200);
   await capTop(1); await page.evaluate(() => window.__gf.tap()); await page.locator(`a[href*="${GID}"]`).first().dblclick().catch(() => {}); await sleep(2200);
-  await point(page.locator("button", { hasText: "הוספה לפורטפוליו" })); await say("ואז 'הוספה לפורטפוליו', ובוחרים באיזה נושא היא תופיע."); await sleep(4800);
+  await point(page.locator("button", { hasText: "הוספה לפורטפוליו" })); await say("ואז בוחרים הוספה לפורטפוליו, ואת הנושא שבו היא תופיע."); await sleep(4800);
   await go(`/galleries/${GID}`); await off(); await page.locator('img[alt="IMG_4108.JPG"]').first().waitFor({ timeout: 60000 }).catch(() => {}); await sleep(1500); await on();
   const ph = page.locator('img[alt="IMG_4108.JPG"]').first();
   await point(ph); await say("או תמונה בודדת: לחיצה כפולה על התמונה בגלריה,"); await sleep(1800);
   await capTop(1); await page.evaluate(() => window.__gf.tap()); await ph.dblclick().catch(() => {}); await sleep(1500);
-  await point(page.locator("button", { hasText: "הוספה לפורטפוליו הציבורי" })); await say("ואז 'הוספה לפורטפוליו הציבורי'."); await sleep(3000);
+  await point(page.locator("button", { hasText: "הוספה לפורטפוליו הציבורי" })); await say("ובוחרים הוספה לפורטפוליו הציבורי."); await sleep(3000);
   await tap(page.locator("button", { hasText: "הוספה לפורטפוליו הציבורי" })); await sleep(900);
   const inp = page.locator('input[list="portfolio-category-suggestions"]'); await point(inp); await inp.fill("חתונות").catch(() => {}); await say("בוחרים נושא, והתמונה עולה לפורטפוליו מייד."); await sleep(3800);
   await tap(page.getByRole("button", { name: "הוספה לפורטפוליו", exact: true }).last()); await sleep(1500); await capTop(0);
