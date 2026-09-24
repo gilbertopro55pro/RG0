@@ -1218,8 +1218,10 @@ export default function EventDetailView({
         </div>
         <div className="space-y-2">
           {notifications.map((n) => (
-            <div key={n.id} className="text-xs rounded-xl px-3.5 py-2.5 bg-chip text-ink-soft break-words flex items-start justify-between gap-3">
-              <span>{n.text}</span>
+            <div key={n.id} className="text-xs rounded-xl px-3.5 py-2.5 bg-chip text-ink-soft flex items-start justify-between gap-3 overflow-hidden">
+              {/* min-w-0 + overflow-wrap:anywhere — a long unbroken string (the Google Calendar link)
+                  wraps onto more lines instead of pushing the row wider than the screen. */}
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{n.text}</span>
               <span className="font-data shrink-0">
                 {new Date(n.created_at).toLocaleString("he-IL", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
               </span>
