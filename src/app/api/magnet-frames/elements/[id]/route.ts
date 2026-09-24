@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { ADMIN_EMAIL } from "@/lib/admin";
+import { requireDesignToolsUser } from "@/lib/designTools";
 import { removeObjects } from "@/lib/storage";
 import type { MagnetFrameCustomElementRow } from "@/lib/types";
 
@@ -8,17 +7,15 @@ const BUCKET = "magnet-frame-elements";
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || user.email !== ADMIN_EMAIL) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
+  const auth = await requireDesignToolsUser();
+  if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
+  const { supabase, userId } = auth;
 
   const { data: element } = await supabase
     .from("magnet_frame_custom_elements")
     .select("*")
     .eq("id", id)
-    .eq("photographer_id", user.id)
+    .eq("photographer_id", userId)
     .maybeSingle<MagnetFrameCustomElementRow>();
   if (!element) return NextResponse.json({ error: "האלמנט לא נמצא" }, { status: 404 });
 
