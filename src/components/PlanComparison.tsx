@@ -5,7 +5,7 @@ const ROWS: { label: string; basic: string | boolean; flow: string | boolean; fr
   { label: "ניהול אירועים, לידים והצעות מחיר", basic: true, flow: true, frame: true },
   { label: "גלריות מאובטחות ללקוחות, 5 ערכות עיצוב", basic: true, flow: true, frame: true },
   { label: "חוזים דיגיטליים לחתימה מרחוק", basic: true, flow: true, frame: true },
-  { label: "תזכורות תשלום אוטומטיות בוואטסאפ", basic: true, flow: true, frame: true },
+  { label: "תזכורות תשלום בזמן, מוכנות לשליחה בוואטסאפ", basic: true, flow: true, frame: true },
   { label: "סנכרון יומן (Google / Apple)", basic: true, flow: true, frame: true },
   { label: "עורך אלבומים מובנה", basic: false, flow: true, frame: true },
   { label: "וידאו בגלריה: גודל קובץ מקסימלי", basic: false, flow: "300MB", frame: "500MB" },
