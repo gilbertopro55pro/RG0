@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { verifyPayplusWebhookSignature, PAYPLUS_BILLING } from "@/lib/payplus";
+import { verifyPayplusWebhookSignature, deletePayplusRecurring, PAYPLUS_BILLING } from "@/lib/payplus";
 import { issueReceipt, documentTypeForTaxStatus } from "@/lib/finbot";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import { notificationEmailFor } from "@/lib/notificationEmail";
+import { sendEmail } from "@/lib/resend";
+import { ADMIN_EMAIL } from "@/lib/admin";
 import type { Photographer } from "@/lib/types";
 
 type PayplusCallbackBody = {
@@ -12,6 +14,8 @@ type PayplusCallbackBody = {
   more_info?: string; // photographer_id, set at checkout creation
   more_info_1?: string; // plan ("monthly" | "annual"), also set at checkout creation
   customer_uid?: string;
+  uid?: string; // the transaction's own id (under "transaction") — dedupe key
+  type?: string; // "payment_page" (a checkout) | "recurring" (a scheduled renewal)
   amount?: number; // what PayPlus actually charged THIS transaction
   recurring_charge_information?: { recurring_uid?: string };
   // Confirmed against a real callback (payplus_webhook_events, 2026-08-11): more_info,
@@ -36,10 +40,26 @@ export async function POST(request: NextRequest) {
 
   const body: PayplusCallbackBody = JSON.parse(rawBody);
   const supabase = createServiceRoleClient();
-  await supabase.from("payplus_webhook_events").insert({ payload: body });
-
   const photographerId = extractField(body, "more_info");
+  const transactionUid = body.transaction?.uid ?? body.uid ?? null;
+
+  // One row per PayPlus transaction (unique index, migration 0127). A retry of a callback we
+  // already handled hits the index and stops here — before any status change or receipt.
+  const { data: eventRow, error: eventError } = await supabase
+    .from("payplus_webhook_events")
+    .insert({ payload: body, transaction_uid: transactionUid, photographer_id: photographerId ?? null })
+    .select("id")
+    .single<{ id: string }>();
+  if (eventError?.code === "23505") {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+  const eventId = eventRow?.id ?? null;
+  const markEvent = async (fields: Record<string, string | null>) => {
+    if (eventId) await supabase.from("payplus_webhook_events").update(fields).eq("id", eventId);
+  };
+
   if (!photographerId) {
+    await markEvent({ outcome: "no_photographer_id" });
     return NextResponse.json({ error: "לא זוהה מזהה צלם" }, { status: 400 });
   }
 
@@ -47,13 +67,33 @@ export async function POST(request: NextRequest) {
   const customerUid = extractField(body, "customer_uid");
   const recurringUid = extractField(body, "recurring_charge_information")?.recurring_uid;
   const planFromCheckout = extractField(body, "more_info_1");
-  const isSuccess = statusCode === "000";
+  const isSuccess = isSuccessCode(statusCode);
+
+  const transactionType = extractField(body, "type");
+  const chargedAmount = Number(extractField(body, "amount")) || null;
 
   const { data: photographerRow } = await supabase
     .from("photographers")
-    .select("name, email, phone, plan")
+    .select("name, email, phone, plan, payplus_recurring_uid")
     .eq("id", photographerId)
-    .maybeSingle<Pick<Photographer, "name" | "email" | "phone" | "plan">>();
+    .maybeSingle<Pick<Photographer, "name" | "email" | "phone" | "plan" | "payplus_recurring_uid">>();
+
+  // A charge for an account that doesn't exist (deleted, or a leftover test recurring) — nothing to
+  // update and nobody to send a receipt to, but a real card WAS charged. Found 2026-09-24: a deleted
+  // account's recurring kept charging ₪50/month silently. Alert the admin to cancel and refund.
+  if (!photographerRow) {
+    await markEvent({ outcome: "unknown_photographer" });
+    if (isSuccessCode(extractField(body, "status_code"))) {
+      await alertAdmin(
+        "חיוב PayPlus לחשבון שלא קיים במערכת",
+        `PayPlus חייב כרטיס עבור חשבון שלא קיים במערכת (נמחק, או מנוי בדיקה שנשאר פעיל).\n\n` +
+          `מזהה חשבון: ${photographerId}\nסכום: ₪${chargedAmount ?? "?"}\nמזהה עסקה: ${transactionUid ?? "?"}\n` +
+          `מזהה הוראת קבע: ${extractField(body, "recurring_charge_information")?.recurring_uid ?? "?"}\n\n` +
+          `מה לעשות: לבטל את הוראת הקבע בממשק PayPlus ולשקול זיכוי ללקוח.`
+      );
+    }
+    return NextResponse.json({ received: true });
+  }
 
   // A checkout link always carries the plan it was generated for (see more_info_1 in
   // createPayplusCheckoutLink) — a plan switch's new checkout can name a DIFFERENT plan than
@@ -87,6 +127,41 @@ export async function POST(request: NextRequest) {
     })
     .eq("id", photographerId);
 
+  if (isSuccess) {
+    // Two successful charges for one account inside a single billing cycle is never expected (found
+    // 2026-09-24: a checkout and a recurring charge 3 hours apart on the same account). The charge
+    // already happened and still gets its receipt — this makes sure a person looks at it and refunds.
+    const windowDays = SUBSCRIPTION_PLANS[effectivePlan].cycleMonths > 1 ? 300 : 20;
+    const { data: recentCharges } = await supabase
+      .from("payplus_webhook_events")
+      .select("id, created_at, transaction_uid")
+      .eq("photographer_id", photographerId)
+      .eq("outcome", "charged")
+      .gte("created_at", new Date(Date.now() - windowDays * 86_400_000).toISOString())
+      .neq("id", eventId ?? "")
+      .returns<{ id: string; created_at: string; transaction_uid: string | null }[]>();
+    if (recentCharges && recentCharges.length > 0) {
+      await alertAdmin(
+        "חשד לחיוב כפול במנוי",
+        `החשבון ${photographerRow.name} (${photographerId}) חויב שוב בתוך אותו מחזור חיוב.\n\n` +
+          `החיוב החדש: ₪${chargedAmount ?? "?"}, עסקה ${transactionUid ?? "?"} (${transactionType ?? "?"})\n` +
+          recentCharges.map((c) => `חיוב קודם: ${c.created_at}, עסקה ${c.transaction_uid ?? "?"}`).join("\n") +
+          `\n\nמה לעשות: לבדוק בממשק PayPlus ולזכות את החיוב המיותר.`
+      );
+    }
+
+    // A NEW checkout (payment_page) creates a new recurring in PayPlus. If the account already had a
+    // different one (a past_due account paying again, or a second checkout), the old one would keep
+    // charging in parallel — cancel it. Plan switches already cancel theirs in the lifecycle cron,
+    // so a failure here for an already-cancelled recurring is expected and only logged.
+    const previousRecurringUid = photographerRow.payplus_recurring_uid;
+    if (transactionType === "payment_page" && recurringUid && previousRecurringUid && previousRecurringUid !== recurringUid) {
+      await deletePayplusRecurring(previousRecurringUid).catch((e) => {
+        console.error(`Could not cancel superseded recurring ${previousRecurringUid} for ${photographerId}:`, e);
+      });
+    }
+  }
+
   // A receipt only makes sense for a real successful charge — never issue one for a declined/
   // failed callback. Failure here is logged but never fails the webhook response: PayPlus
   // retries on non-2xx, and the charge itself already succeeded regardless of Finbot's outcome.
@@ -100,7 +175,7 @@ export async function POST(request: NextRequest) {
     // back to the price-table lookup only if PayPlus's callback is ever missing "amount".
     const amount = Number(extractField(body, "amount")) || PAYPLUS_BILLING[photographer.plan].amount;
     try {
-      await issueReceipt({
+      const { documentLink } = await issueReceipt({
         // The platform itself became עוסק מורשה — every subscription document from here on needs
         // to be a proper חשבונית מס קבלה (with VAT), not the plain VAT-exempt קבלה this defaulted
         // to before. There's no per-photographer setting for "the platform's own" tax status (that
@@ -114,7 +189,15 @@ export async function POST(request: NextRequest) {
         amount,
         description: `מנוי ${planInfo.label} למערכת גילברטו - ניהול צילום אירועים`,
       });
+      await markEvent({ receipt_status: "issued", receipt_link: documentLink });
     } catch (e) {
+      await markEvent({ receipt_status: "failed", receipt_error: e instanceof Error ? e.message.slice(0, 500) : "unknown" });
+      await alertAdmin(
+        "הפקת קבלה על מנוי נכשלה",
+        `החשבון ${photographer.name} (${photographerId}) שילם ₪${amount}, אבל הפקת הקבלה ב-Finbot נכשלה.\n\n` +
+          `שגיאה: ${e instanceof Error ? e.message : "לא ידועה"}\nמזהה עסקה: ${transactionUid ?? "?"}\n\n` +
+          `מה לעשות: להפיק קבלה ידנית ב-Finbot ולשלוח ללקוח.`
+      );
       // Includes which photographer — the failure otherwise only shows up as Finbot's own generic
       // email, with nothing in it to identify which subscriber triggered it without cross-
       // referencing payplus_webhook_events by timestamp.
@@ -122,5 +205,18 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  await markEvent({ outcome: isSuccess ? "charged" : "failed" });
   return NextResponse.json({ received: true });
+}
+
+function isSuccessCode(code: string | undefined) {
+  return code === "000";
+}
+
+async function alertAdmin(subject: string, text: string) {
+  try {
+    await sendEmail({ to: ADMIN_EMAIL, subject: `[חיובים] ${subject}`, text });
+  } catch (e) {
+    console.error("PayPlus admin alert failed:", subject, e);
+  }
 }
