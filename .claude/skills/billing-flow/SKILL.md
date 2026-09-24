@@ -83,8 +83,8 @@ data needs a short confirmation from the user first (CLAUDE.md).
    where email = 'gilbertopro55+qa-signup-<stamp>@gmail.com' and email_confirmed_at is null;
    ```
    then `touch <workDir>/confirmed.flag`.
-3. Pass = every row of the table above. Leftover QA accounts are named "QA הרשמה <stamp>". Delete
-   them only after the user confirms.
+3. Pass = every row of the table above. Leftover QA accounts are named "QA הרשמה <stamp>". The user
+   keeps them (2026-09-24), so don't delete.
 
 ## Known history (money that already went wrong)
 
