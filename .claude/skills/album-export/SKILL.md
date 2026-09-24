@@ -13,7 +13,8 @@ that actually passed. When something here stops being true, fix it and update th
 
 פרו and פרו+ (tier `standard` / `studio_pro`), plus the admin. Entry tier (`basic`, "פרו סטארט")
 doesn't. The rule is `nonBasicTierAllowed` in `GalleryManageView.tsx` (album tab) and
-`albumToolAllowed` in `src/app/page.tsx` (home quick-access card, `AlbumQuickAccessButton`).
+`designToolsAllowed` (`src/lib/designTools.ts`, shared with the magnet tool) in `src/app/page.tsx`
+(home quick-access card, `AlbumQuickAccessButton`).
 Trial accounts run on `studio_pro_monthly`, so they have it. The tool refuses portrait screens.
 
 ## How each export works
