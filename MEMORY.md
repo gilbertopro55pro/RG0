@@ -105,3 +105,7 @@
 - בהגדרות → פרופיל, המתג הוחלף בתג "בקרוב" + הסבר (ממתין לאישור מטא לתבניות). הערך `photographers.lead_follow_up_enabled` לא נמחק.
 - **ממצא**: `scheduleLeadFollowUps` (src/lib/leadFollowUp.ts) לא נקראת משום מקום — גם אחרי אישור מטא, רצף המעקב לא יתוזמן. כשמטא יאשרו: לקרוא לה ביצירת ליד (api/leads), להחזיר את המתג, ולבדוק שליחה אמיתית.
 - מה שכן עובד היום: `lead_quote_followup` — יומיים אחרי שליחת הצעת מחיר, תזכורת עם הודעה מוכנה במסך הבית.
+
+## 2026-09-24 — מייל האדמין
+- `sendEmail` מחיל עכשיו את `EMAIL_OVERRIDES` (notificationEmail.ts) על כל שליחה (`to` + `replyTo`); גם ה-PDF של הצעת המחיר מציג את הכתובת הפעילה. נוסף סעיף קבוע ב-CLAUDE.md.
+- תוכנית כתובת עסקית `handle@gilbertopro.com` עם העברה למייל האמיתי: gilbertopro.com ב-Hostinger (DNS + מייל). ממתין: העברת DNS ל-Cloudflare + מפתח `CLOUDFLARE_EMAIL_TOKEN` (הוראות נשלחו), ותשובה אם יש תיבות Hostinger פעילות.

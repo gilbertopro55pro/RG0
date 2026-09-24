@@ -4,6 +4,7 @@ import { PDFDocument, PDFImage, rgb, type RGB } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
 import type { Photographer, PriceQuoteItem } from "@/lib/types";
+import { notificationEmailFor } from "@/lib/notificationEmail";
 
 // A4 portrait, in points (72pt/inch) — a business document, unlike the album export's fixed
 // landscape spread size, so this gets its own page-size constant rather than reusing albumPdf's.
@@ -118,7 +119,8 @@ export async function buildPriceQuotePdf(params: {
 
   drawLine(photographer.name, 12, bold, INK);
   if (photographer.business_id?.trim()) drawLine(`ח.פ: ${photographer.business_id.trim()}`, 10, regular, INK_SOFT);
-  drawLine(photographer.email, 10, regular, INK_SOFT);
+  // The address a client sees on the quote must be one that actually receives mail.
+  drawLine(notificationEmailFor(photographer.email), 10, regular, INK_SOFT);
   drawLine(photographer.phone, 10, regular, INK_SOFT);
   y -= 8;
 

@@ -1,3 +1,5 @@
+import { notificationEmailFor } from "@/lib/notificationEmail";
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required env var: ${name}`);
@@ -38,6 +40,10 @@ export async function sendEmail({
 }): Promise<void> {
   const apiKey = requireEnv("RESEND_API_KEY");
   const from = fromHeader(fromName);
+  // Last line of defense: every send goes through here, so the known-dead address overrides
+  // (notificationEmail.ts) apply even where a caller forgot to call notificationEmailFor itself.
+  to = notificationEmailFor(to);
+  if (replyTo) replyTo = notificationEmailFor(replyTo);
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
