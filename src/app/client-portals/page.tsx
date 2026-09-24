@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { EventRow, Photographer } from "@/lib/types";
 import ClientPortalsView from "@/components/ClientPortalsView";
+import { hasAppAccess } from "@/lib/subscription";
 
 export default async function ClientPortalsPage() {
   const supabase = await createClient();
@@ -18,6 +19,7 @@ export default async function ClientPortalsPage() {
       .returns<(EventRow & { custom_packages: { name: string } | null })[]>(),
   ]);
   if (!photographer) redirect("/");
+  if (!hasAppAccess(photographer)) redirect("/billing");
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">

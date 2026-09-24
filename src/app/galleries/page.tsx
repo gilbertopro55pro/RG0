@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { EventRow, GalleryPhotoRow, GalleryRow, Photographer } from "@/lib/types";
 import GalleriesListView, { type GalleryListItem } from "@/components/GalleriesListView";
 import { getSignedDownloadUrl } from "@/lib/storage";
+import { hasAppAccess } from "@/lib/subscription";
 
 export default async function GalleriesPage() {
   const supabase = await createClient();
@@ -27,6 +28,7 @@ export default async function GalleriesPage() {
       >(),
   ]);
   if (!photographer) redirect("/");
+  if (!hasAppAccess(photographer)) redirect("/billing");
 
   const photos = (galleries ?? []).flatMap((g) => g.gallery_photos);
 

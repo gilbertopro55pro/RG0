@@ -5,6 +5,8 @@ import { ADMIN_EMAIL } from "@/lib/admin";
 import { closingRecognitions, monthKeyIsrael } from "@/lib/closeEvent";
 import { timeOfDayGreeting } from "@/lib/greeting";
 import { STAGE_LABELS } from "@/lib/stages";
+import { hasAppAccess, isInTrial, trialDaysLeft, TRIAL_BANNER_DAYS_LEFT } from "@/lib/subscription";
+import TrialBanner from "@/components/TrialBanner";
 import type {
   CustomPackageRow,
   EventPaymentRow,
@@ -121,7 +123,7 @@ export default async function DashboardPage() {
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
-  if (photographer && photographer.subscription_status !== "active" && photographer.subscription_status !== "trialing") {
+  if (photographer && !hasAppAccess(photographer)) {
     redirect("/billing");
   }
   // First arrival on the dashboard after payment clears — a one-time "connect your calendar /
@@ -345,6 +347,10 @@ export default async function DashboardPage() {
           </div>
         )}
       </div>
+
+      {photographer && isInTrial(photographer) && trialDaysLeft(photographer) <= TRIAL_BANNER_DAYS_LEFT && (
+        <TrialBanner daysLeft={trialDaysLeft(photographer)} />
+      )}
 
       {isPhotographer && (
         <NewEventButton customPackages={customPackages ?? []} eventTypes={eventTypes ?? []} prices={prices ?? []} />

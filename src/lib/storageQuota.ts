@@ -1,3 +1,5 @@
+import { TRIAL_STORAGE_CAP_BYTES } from "@/lib/subscription";
+import type { SubscriptionStatus } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SUBSCRIPTION_PLANS, STORAGE_CAP_BYTES_BY_TIER, type SubscriptionPlan } from "@/lib/stages";
 
@@ -17,14 +19,17 @@ export async function checkStorageQuota(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("plan")
+    .select("plan, subscription_status, trial_ends_at")
     .eq("id", photographerId)
-    .maybeSingle<{ plan: SubscriptionPlan }>();
+    .maybeSingle<{ plan: SubscriptionPlan; subscription_status: SubscriptionStatus; trial_ends_at: string | null }>();
   // Missing photographer row isn't this function's problem to report — the caller's own
   // not-found/ownership check already covers it either before or right after this runs.
   if (!photographer) return { ok: true };
 
-  const cap = STORAGE_CAP_BYTES_BY_TIER[SUBSCRIPTION_PLANS[photographer.plan].tier];
+  // A free trial runs on Pro+ features but with its own small cap (TRIAL_STORAGE_CAP_BYTES).
+  const cap = photographer.subscription_status === "trialing" && photographer.trial_ends_at
+    ? TRIAL_STORAGE_CAP_BYTES
+    : STORAGE_CAP_BYTES_BY_TIER[SUBSCRIPTION_PLANS[photographer.plan].tier];
   if (cap === null) return { ok: true };
 
   const { data: usedBytes } = await supabase.rpc("photographer_storage_bytes", { p_photographer_id: photographerId });

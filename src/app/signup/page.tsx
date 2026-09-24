@@ -72,11 +72,16 @@ export default function SignupPage() {
 
         {step === "plan" && (
           <>
-            <p className="text-sm mb-4 text-ink-soft">
-              מנוי אחד לכל היכולות של המערכת, ניהול אירועים, מעקב שלבים ועדכוני לקוחות אוטומטיים.
-            </p>
+            <div className="rounded-xl px-3.5 py-3 mb-4 bg-amber-bg">
+              <div className="text-sm font-bold" style={{ color: "var(--color-amber-deep)" }}>
+                14 הימים הראשונים בחינם, בלי כרטיס אשראי
+              </div>
+              <div className="text-xs mt-0.5 text-ink-soft">
+                בזמן הניסיון כל האפשרויות של מסלול פרו+ פתוחות. לפני הסוף נזכיר לכם לבחור מסלול.
+              </div>
+            </div>
             <div className="mb-4">
-              <label className="text-xs block mb-1.5 text-ink-soft">בחר/י מסלול תשלום</label>
+              <label className="text-xs block mb-1.5 text-ink-soft">המסלול שתרצו אחרי הניסיון (אפשר לשנות בהמשך)</label>
               <select
                 value={plan}
                 onChange={(e) => setPlan(e.target.value as SubscriptionPlan)}
@@ -108,7 +113,7 @@ export default function SignupPage() {
               onClick={() => setStep("details")}
               className="w-full rounded-xl py-3 text-sm font-semibold bg-amber-deep text-white"
             >
-              המשך להרשמה
+              התחלת תקופת הניסיון
             </button>
           </>
         )}
@@ -117,7 +122,7 @@ export default function SignupPage() {
           <>
             <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs flex items-center justify-between bg-chip text-ink-soft">
               <span>
-                נבחר: מנוי {SUBSCRIPTION_PLANS[plan].label}, ₪{SUBSCRIPTION_PLANS[plan].pricePerMonth}/חודש
+                אחרי הניסיון: {SUBSCRIPTION_PLANS[plan].label}, ₪{SUBSCRIPTION_PLANS[plan].pricePerMonth}/חודש
               </span>
               <button onClick={() => setStep("plan")} className="underline text-amber-deep">
                 שינוי

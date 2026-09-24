@@ -1,5 +1,7 @@
 "use client";
 
+import { isInTrial, trialDaysLeft } from "@/lib/subscription";
+
 import { useState } from "react";
 import Link from "next/link";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
@@ -107,6 +109,24 @@ export default function BillingSettings({ photographer }: { photographer: Photog
     const accessUntil = data.current_period_end ? new Date(data.current_period_end) : computePeriodEnd(photographer);
     setCanceledAccessUntil(accessUntil.toLocaleDateString("he-IL"));
   };
+
+  // Free trial: nothing to switch or cancel yet (no payment details on file) — just when it ends
+  // and the way to choose a plan.
+  if (isInTrial(photographer)) {
+    return (
+      <div className="rounded-2xl p-4 bg-card">
+        <div className="text-sm font-semibold mb-1">תקופת ניסיון</div>
+        <p className="text-xs text-ink-soft mb-3">
+          כל האפשרויות של מסלול פרו+ פתוחות לכם עד{" "}
+          <span className="font-data">{new Date(photographer.trial_ends_at!).toLocaleDateString("he-IL")}</span> (עוד{" "}
+          {trialDaysLeft(photographer)} ימים), עם מכסת אחסון של 5GB. בסוף הניסיון בוחרים מסלול, וכל מה שהכנסתם נשמר.
+        </p>
+        <Link href="/billing" className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white">
+          בחירת מסלול
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">

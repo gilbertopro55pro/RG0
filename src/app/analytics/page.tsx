@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { EventPaymentRow, Photographer } from "@/lib/types";
 import type { PackageType } from "@/lib/stages";
 import AnalyticsView from "@/components/AnalyticsView";
+import { hasAppAccess } from "@/lib/subscription";
 
 export type AnalyticsEvent = {
   id: string;
@@ -25,6 +26,7 @@ export default async function AnalyticsPage() {
     supabase.from("event_payments").select("*").returns<EventPaymentRow[]>(),
   ]);
   if (!photographer) redirect("/");
+  if (!hasAppAccess(photographer)) redirect("/billing");
 
   // Computed once, server-side, and passed down rather than each side calling `new Date()`
   // independently — otherwise a server/client timezone difference causes a hydration mismatch.

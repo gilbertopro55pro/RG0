@@ -1,3 +1,4 @@
+import { hasAppAccess } from "@/lib/subscription";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { Photographer } from "@/lib/types";
@@ -21,7 +22,7 @@ export default async function OnboardingPage({
     .eq("id", user.id)
     .maybeSingle<Photographer>();
   if (!photographer) redirect("/");
-  if (photographer.subscription_status !== "active" && photographer.subscription_status !== "trialing") {
+  if (!hasAppAccess(photographer)) {
     redirect("/billing");
   }
   // Already completed (or dismissed) once before — this screen only fires the first time.

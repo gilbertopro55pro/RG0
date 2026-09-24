@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import type { CustomPackageRow, EventTypeRow, LeadRow, PackagePriceRow, Photographer } from "@/lib/types";
 import LeadsView from "@/components/LeadsView";
+import { hasAppAccess } from "@/lib/subscription";
 
 export default async function LeadsPage() {
   const supabase = await createClient();
@@ -18,6 +19,7 @@ export default async function LeadsPage() {
     supabase.from("package_prices").select("*").returns<PackagePriceRow[]>(),
   ]);
   if (!photographer) redirect("/");
+  if (!hasAppAccess(photographer)) redirect("/billing");
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">

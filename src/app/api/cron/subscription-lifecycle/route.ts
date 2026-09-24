@@ -147,5 +147,40 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ finalized: finalizedCount, reminded: remindedCount, switched: switchedCount });
+  // 4. Free trial ending tomorrow: one reminder email (runs daily at 07:00 UTC, so "ends within
+  // the next 36 hours" catches it exactly once, the day before). Access itself needs no cron:
+  // hasAppAccess() compares trial_ends_at to now on every page load.
+  const trialCutoff = new Date(now.getTime() + 36 * 60 * 60 * 1000);
+  const { data: trialsEnding } = await supabase
+    .from("photographers")
+    .select("id, name, email, trial_ends_at")
+    .eq("subscription_status", "trialing")
+    .is("trial_reminder_sent_at", null)
+    .not("trial_ends_at", "is", null)
+    .gt("trial_ends_at", now.toISOString())
+    .lte("trial_ends_at", trialCutoff.toISOString())
+    .returns<Pick<Photographer, "id" | "name" | "email" | "trial_ends_at">[]>();
+
+  let trialRemindedCount = 0;
+  const siteUrl = new URL(request.url).origin;
+  for (const photographer of trialsEnding ?? []) {
+    try {
+      await sendEmail({
+        to: notificationEmailFor(photographer.email),
+        subject: "תקופת הניסיון בגילברטו מסתיימת מחר",
+        text:
+          `שלום ${photographer.name},\n\n` +
+          `תקופת הניסיון שלך במערכת גילברטו מסתיימת מחר. כדי להמשיך לעבוד בלי הפסקה, בוחרים מסלול כאן:\n` +
+          `${siteUrl}/billing\n\n` +
+          `כל האירועים, הגלריות והלקוחות שהכנסת נשמרים, ואחרי התשלום ממשיכים בדיוק מאיפה שעצרת.\n\n` +
+          `צוות גילברטו`,
+      });
+      await supabase.from("photographers").update({ trial_reminder_sent_at: now.toISOString() }).eq("id", photographer.id);
+      trialRemindedCount++;
+    } catch (e) {
+      console.error("Trial reminder failed:", photographer.id, e);
+    }
+  }
+
+  return NextResponse.json({ finalized: finalizedCount, reminded: remindedCount, switched: switchedCount, trialReminded: trialRemindedCount });
 }

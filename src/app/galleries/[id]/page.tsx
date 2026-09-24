@@ -1,9 +1,11 @@
+import { redirect } from "next/navigation";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow, Photographer } from "@/lib/types";
 import GalleryManageView from "@/components/GalleryManageView";
 import { getSignedDownloadUrls, getPublicPreviewUrl } from "@/lib/storage";
 import { fetchAllRows } from "@/lib/paginatedFetch";
+import { hasAppAccess } from "@/lib/subscription";
 
 export default async function GalleryManagePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -36,9 +38,10 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
   // with their own name.
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("name, email, plan")
+    .select("name, email, plan, subscription_status, trial_ends_at")
     .eq("id", gallery.photographer_id)
-    .maybeSingle<Pick<Photographer, "name" | "email" | "plan">>();
+    .maybeSingle<Pick<Photographer, "name" | "email" | "plan" | "subscription_status" | "trial_ends_at">>();
+  if (photographer && !hasAppAccess(photographer)) redirect("/billing");
 
   const event = gallery.events;
   const photos = [...photosRaw].sort((a, b) => a.sort_order - b.sort_order);
