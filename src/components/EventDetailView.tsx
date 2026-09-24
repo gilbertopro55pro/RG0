@@ -801,8 +801,16 @@ export default function EventDetailView({
       {showEdit && (
         <EditEventModal
           event={event}
+          payments={
+            payments
+              ? { depositAmount: Number(payments.deposit_amount), balanceAmount: Number(payments.balance_amount), depositPaid: payments.deposit_paid }
+              : null
+          }
           onClose={() => setShowEdit(false)}
-          onSaved={async () => {
+          onSaved={async (newPayments) => {
+            if (newPayments && payments) {
+              setPayments({ ...payments, deposit_amount: newPayments.depositAmount, balance_amount: newPayments.balanceAmount });
+            }
             setShowEdit(false);
             await refreshNotifications();
             router.refresh();
@@ -1008,7 +1016,7 @@ export default function EventDetailView({
           </div>
           {payments.deposit_amount === 0 && payments.balance_amount === 0 && (
             <div className="rounded-xl px-3.5 py-2.5 mb-2 text-xs bg-amber-bg text-amber-deep">
-              טרם הוגדר מחיר לאירוע. בתפריט העוד (שלוש הנקודות למעלה) בוחרים &quot;עריכת פרטי האירוע&quot; ומוסיפים מקדמה ויתרה.
+              טרם הוגדר מחיר לאירוע. בתפריט העוד (שלוש הנקודות למעלה) בוחרים &quot;עריכת פרטי האירוע&quot; ומזינים את סכום האירוע והיתרה.
             </div>
           )}
           <div className="-mx-4 -mb-4 border-t border-line divide-y divide-[var(--color-line)]">

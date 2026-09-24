@@ -11,14 +11,19 @@ import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import NativeDateTimeField from "@/components/NativeDateTimeField";
 
+export type EditablePayments = { depositAmount: number; balanceAmount: number; depositPaid: boolean };
+
 export default function EditEventModal({
   event,
+  payments,
   onClose,
   onSaved,
 }: {
   event: EventRow;
+  // Owner only (event_payments is owner-only by RLS) — null hides the price fields.
+  payments?: EditablePayments | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (newPayments?: { depositAmount: number; balanceAmount: number }) => void;
 }) {
   const router = useRouter();
   const [clientName, setClientName] = useState(event.client_name);
@@ -34,6 +39,16 @@ export default function EditEventModal({
   const [eventLocation, setEventLocation] = useState(event.event_location ?? "");
   const [arrivalTime, setArrivalTime] = useState(event.arrival_time ?? "");
   const [notes, setNotes] = useState(event.notes ?? "");
+  // The price is edited as "סכום האירוע" + "יתרה"; the deposit is whatever's left (total − balance),
+  // since that's how event_payments stores it (deposit_amount + balance_amount).
+  const initialTotal = payments ? payments.depositAmount + payments.balanceAmount : 0;
+  const [totalAmount, setTotalAmount] = useState(payments ? String(initialTotal) : "");
+  const [balanceAmount, setBalanceAmount] = useState(payments ? String(payments.balanceAmount) : "");
+  const parsedTotal = Number(totalAmount || 0);
+  const parsedBalance = Number(balanceAmount || 0);
+  const derivedDeposit = parsedTotal - parsedBalance;
+  const amountsValid = Number.isFinite(parsedTotal) && Number.isFinite(parsedBalance) && parsedTotal >= 0 && parsedBalance >= 0 && derivedDeposit >= 0;
+  const amountsChanged = !!payments && (parsedTotal !== initialTotal || parsedBalance !== payments.balanceAmount);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateConflict, setDateConflict] = useState(false);
@@ -71,6 +86,10 @@ export default function EditEventModal({
 
   const submit = async (allowDoubleBooking = false) => {
     if (!clientName || !eventDate) return;
+    if (payments && !amountsValid) {
+      setError("היתרה לא יכולה להיות גדולה מסכום האירוע, והסכומים לא יכולים להיות שליליים");
+      return;
+    }
     setSaving(true);
     setError(null);
     setDateConflict(false);
@@ -91,6 +110,7 @@ export default function EditEventModal({
         arrivalTime,
         notes,
         allowDoubleBooking,
+        ...(amountsChanged ? { payments: { depositAmount: derivedDeposit, balanceAmount: parsedBalance } } : {}),
       }),
     });
     const data = await res.json();
@@ -107,7 +127,7 @@ export default function EditEventModal({
       alert(`הפרטים נשמרו, אבל לא ניתן היה לעדכן את האירוע ביומן Google (${data.googleCalendarError}).`);
     }
 
-    onSaved();
+    onSaved(amountsChanged ? { depositAmount: derivedDeposit, balanceAmount: parsedBalance } : undefined);
   };
 
   const deleteEvent = async () => {
@@ -240,6 +260,46 @@ export default function EditEventModal({
               display={arrivalTime || <span className="text-ink-soft">--:--</span>}
             />
           </div>
+          {payments && (
+            <div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs block mb-1 text-ink-soft">סכום האירוע (₪)</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={totalAmount}
+                    onChange={(e) => setTotalAmount(e.target.value)}
+                    className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs block mb-1 text-ink-soft">יתרה (₪)</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={balanceAmount}
+                    onChange={(e) => setBalanceAmount(e.target.value)}
+                    className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data"
+                  />
+                </div>
+              </div>
+              {amountsValid ? (
+                <p className="text-xs text-ink-soft mt-1.5">
+                  מקדמה: <span className="font-data">₪{derivedDeposit.toLocaleString("he-IL")}</span> (סכום האירוע פחות היתרה)
+                </p>
+              ) : (
+                <p className="text-xs text-rose mt-1.5">היתרה לא יכולה להיות גדולה מסכום האירוע</p>
+              )}
+              {payments.depositPaid && amountsValid && derivedDeposit !== payments.depositAmount && (
+                <p className="text-xs mt-1" style={{ color: "var(--color-amber-deep)" }}>
+                  שימו לב: המקדמה כבר סומנה כשולמה (₪{payments.depositAmount.toLocaleString("he-IL")}), והסכום החדש שונה ממנה.
+                </p>
+              )}
+            </div>
+          )}
           <div>
             <label className="text-xs block mb-1 text-ink-soft">הערות</label>
             <textarea
