@@ -8,6 +8,7 @@ import type { CustomPackageRow, WaitlistRow } from "@/lib/types";
 import { openWhatsApp } from "@/lib/waLink";
 import PageGuide from "@/components/PageGuide";
 import BackLink from "@/components/BackLink";
+import RowMenu from "@/components/RowMenu";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
 
@@ -47,42 +48,39 @@ export default function WaitlistView({
         </div>
       )}
 
-      <div className="space-y-3">
-        {entries.map((entry) => (
-          <div key={entry.id} className="rounded-2xl p-4 bg-card border border-line shadow-card">
-            <div className="flex items-start justify-between gap-2 mb-2.5">
-              <div>
-                <div className="font-semibold text-sm">{entry.client_name}</div>
-                <div className="text-xs text-ink-soft font-data">
-                  {new Date(entry.requested_date).toLocaleDateString("he-IL")}
-                  {entry.client_phone && `, ${entry.client_phone}`}
+      {/* Design stage 5: one list split by hairlines; delete lives in the row menu. */}
+      {entries.length > 0 && (
+        <div className="rounded-2xl bg-card overflow-hidden divide-y divide-[var(--color-line)] mb-4">
+          {entries.map((entry) => (
+            <div key={entry.id} className="p-4">
+              <div className="font-bold text-[15px]">{entry.client_name}</div>
+              <div className="text-[13px] text-ink-soft">
+                מבקשים את <span className="font-data">{new Date(entry.requested_date).toLocaleDateString("he-IL")}</span>
+              </div>
+              {entry.client_phone && (
+                <div className="text-[13px] text-ink-soft font-data" dir="ltr" style={{ textAlign: "right" }}>
+                  {entry.client_phone}
                 </div>
+              )}
+              {entry.notes && <p className="text-[13px] leading-relaxed rounded-lg px-2.5 py-2 mt-2 bg-chip">{entry.notes}</p>}
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <button onClick={() => setConvertEntry(entry)} className="text-[13px] font-bold h-9 px-3 rounded-lg bg-ink text-white">
+                  התפנה, יצירת אירוע
+                </button>
+                <button
+                  onClick={() => setConfirmEntry(entry)}
+                  className="text-[13px] font-bold h-9 px-3 rounded-lg bg-amber-bg"
+                  style={{ color: "var(--color-amber-deep)" }}
+                >
+                  אישור האירוע
+                </button>
+                <span className="flex-1" />
+                <RowMenu items={[{ label: "מחיקה מהרשימה", onClick: () => setDeleteEntry(entry) }]} />
               </div>
             </div>
-            {entry.notes && <p className="text-xs text-ink-soft mb-2.5">{entry.notes}</p>}
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setConvertEntry(entry)}
-                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-ink text-white"
-              >
-                התאריך התפנה, יצירת אירוע
-              </button>
-              <button
-                onClick={() => setConfirmEntry(entry)}
-                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-deep text-white"
-              >
-                אישור האירוע
-              </button>
-              <button
-                onClick={() => setDeleteEntry(entry)}
-                className="text-xs font-medium px-3 py-1.5 rounded-lg text-rose"
-              >
-                מחיקת האירוע
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {convertEntry && (
         <NewEventModal

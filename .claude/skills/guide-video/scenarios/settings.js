@@ -12,5 +12,6 @@ module.exports = async ({ page, go, say, point, tap, scroll, sleep, navTap, capT
   await pickTab("client_messages", "הודעות ללקוח: הנוסח של כל הודעה שהמערכת שולחת, במילים שלכם.", 5200);
   await pickTab("contract_template", "תבנית חוזה: החוזה שנשלח ללקוחות לחתימה דיגיטלית.", 5000);
   await pickTab("portfolio", "פורטפוליו: תיק העבודות הציבורי שלכם.", 4200);
+    await pickTab("guides", "מדריכים: כל סרטוני ההדרכה, במקום אחד.", 4200);
   await pickTab("updates", "ועדכונים: כל מה שחדש במערכת.", 4200);
 };

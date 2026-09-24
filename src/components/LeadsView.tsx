@@ -10,6 +10,7 @@ import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
 import PageGuide from "@/components/PageGuide";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import BackLink from "@/components/BackLink";
+import RowMenu from "@/components/RowMenu";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
@@ -78,11 +79,8 @@ export default function LeadsView({
     <div className="pb-8">
       <div className="flex items-center justify-between mb-1.5">
         <BackLink href="/" label="חזרה לדף הבית" />
-        <button
-          onClick={() => setShowAdd(true)}
-          className="h-9 w-9 rounded-full flex items-center justify-center bg-ink shadow-card text-white text-lg leading-none"
-        >
-          +
+        <button onClick={() => setShowAdd(true)} className="h-11 px-4 rounded-full bg-ink text-white text-sm font-bold">
+          + ליד חדש
         </button>
       </div>
       <h1 className="text-[26px] font-bold mb-1.5 font-display">לידים ופניות</h1>
@@ -91,19 +89,30 @@ export default function LeadsView({
         blurb="כל פנייה חדשה מתחילה כאן כליד. שולחים ללקוח/ה הצעת מחיר, ואחרי שהיא מאושרת אפשר להפוך אותה לאירוע סגור בלחיצה."
       />
 
-      {leads.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">אין עדיין לידים. לחצו על + כדי להוסיף</div>}
+      {leads.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">אין עדיין לידים. לחצו על &quot;ליד חדש&quot; כדי להוסיף</div>}
 
-      <div className="space-y-3">
+      {/* Design stage 5: one list split by hairlines, not a card per lead. */}
+      <div className={leads.length > 0 ? "rounded-2xl bg-card overflow-hidden divide-y divide-[var(--color-line)]" : ""}>
         {leads.map((lead) => (
-          <div key={lead.id} className="rounded-2xl p-4 bg-card border border-line shadow-card">
+          <div key={lead.id} className="p-4">
             <div className="flex items-start justify-between gap-2 mb-2">
-              <div>
-                <div className="font-semibold text-sm">{lead.name}</div>
-                <div className="text-xs text-ink-soft font-data">
-                  {lead.phone}
-                  {lead.event_date_interest && `, ${new Date(lead.event_date_interest).toLocaleDateString("he-IL")}`}
-                  {resolveLeadPackageLabel(lead.package_interest, customPackages) && `, ${resolveLeadPackageLabel(lead.package_interest, customPackages)}`}
-                </div>
+              <div className="min-w-0">
+                <div className="font-bold text-[15px]">{lead.name}</div>
+                {(lead.event_date_interest || resolveLeadPackageLabel(lead.package_interest, customPackages)) && (
+                  <div className="text-[13px] text-ink-soft">
+                    {[
+                      lead.event_date_interest ? new Date(lead.event_date_interest).toLocaleDateString("he-IL") : null,
+                      resolveLeadPackageLabel(lead.package_interest, customPackages),
+                    ]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </div>
+                )}
+                {lead.phone && (
+                  <div className="text-[13px] text-ink-soft font-data" dir="ltr" style={{ textAlign: "right" }}>
+                    {lead.phone}
+                  </div>
+                )}
               </div>
               <select
                 value={lead.status}
@@ -122,7 +131,7 @@ export default function LeadsView({
             {lead.notes && <p className="text-xs text-ink-soft mb-2.5">{lead.notes}</p>}
 
             {lead.quoted_amount && (
-              <div className="text-xs mb-2.5 text-ink-soft">
+              <div className="text-[13px] font-bold mb-2.5">
                 הצעת מחיר: <span className="font-data">₪{Number(lead.quoted_amount).toLocaleString("he-IL")}</span>
               </div>
             )}
@@ -146,22 +155,11 @@ export default function LeadsView({
               </div>
             )}
 
-            <div className="flex flex-wrap gap-2 mt-2.5">
-              {quoteFormLeadId !== lead.id && !lead.converted_event_id && (
-                <button
-                  onClick={() => setQuoteFormLeadId(lead.id)}
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg bg-white border border-line text-ink"
-                >
-                  {lead.quoted_amount ? "עדכון הצעת מחיר" : "יצירת הצעת מחיר"}
-                </button>
-              )}
-              {lead.quoted_amount && (
-                <CopyQuoteLinkButton token={lead.quote_token} />
-              )}
+            <div className="flex flex-wrap items-center gap-2 mt-2.5">
               {!lead.converted_event_id && (
                 <button
                   onClick={() => setConvertLead(lead)}
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg bg-ink text-white"
+                  className="text-[13px] font-bold h-9 px-3 rounded-lg bg-ink text-white"
                 >
                   המרה לאירוע
                 </button>
@@ -169,17 +167,22 @@ export default function LeadsView({
               {lead.converted_event_id && (
                 <Link
                   href={`/events/${lead.converted_event_id}`}
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg bg-sage-bg text-sage"
+                  className="text-[13px] font-bold h-9 px-3 rounded-lg bg-sage-bg text-sage flex items-center"
                 >
-                  הפך לאירוע ✓
+                  הפך לאירוע, לפתיחה
                 </Link>
               )}
-              <button
-                onClick={() => deleteLead(lead.id)}
-                className="text-xs font-medium px-3 py-1.5 rounded-lg text-rose"
-              >
-                מחיקה
-              </button>
+              {quoteFormLeadId !== lead.id && !lead.converted_event_id && (
+                <button
+                  onClick={() => setQuoteFormLeadId(lead.id)}
+                  className="text-[13px] font-bold h-9 px-3 rounded-lg bg-white border border-line text-ink"
+                >
+                  {lead.quoted_amount ? "עדכון הצעה" : "הצעת מחיר"}
+                </button>
+              )}
+              {lead.quoted_amount && <CopyQuoteLinkButton token={lead.quote_token} />}
+              <span className="flex-1" />
+              <RowMenu items={[{ label: "מחיקת הליד", onClick: () => deleteLead(lead.id), danger: true }]} />
             </div>
 
             {quoteFormLeadId === lead.id && (
@@ -245,7 +248,7 @@ function CopyQuoteLinkButton({ token }: { token: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="text-xs font-medium px-3 py-1.5 rounded-lg bg-white border border-line text-ink"
+      className="text-[13px] font-bold h-9 px-3 rounded-lg bg-white border border-line text-ink"
     >
       {copied ? "הועתק ✓" : "העתקת קישור הצעה"}
     </button>
