@@ -11,20 +11,39 @@ import PlanComparison from "@/components/PlanComparison";
 // sequence, and a photographer's own voice replaces the generic "without / with" and the
 // unsourced "what it would cost with separate tools" stack.
 
-// The road every event takes. Every line is something the product actually does today.
+// A typical road an event takes. Every line is something the product actually does today, worded
+// as what it does: reminders are prepared and the photographer sends them, nothing goes out on its own.
 const JOURNEY = [
-  { title: "פנייה", text: "ליד נכנס, שולחים הצעת מחיר ישר מהטלפון, והמערכת דואגת להודעות המעקב." },
-  { title: "סגירה", text: "חוזה לחתימה דיגיטלית, מקדמה, והאירוע נכנס ליומן Google או Apple ברגע שנוצר." },
-  { title: "לפני האירוע", text: "הלקוח מקבל פורטל אישי עם השלבים והתשלומים, ותזכורת היתרה מגיעה בזמן." },
-  { title: "יום הצילום", text: "צלם שני משויך לאירוע, ובמסלול פרו+ התמונות עולות לגלריה ישר מהמצלמה." },
-  { title: "גלריה ואלבום", text: "גלריה פרטית ללקוח, בחירת תמונות לאלבום, ועיצוב האלבום מתוך הגלריה עם אישור בפורטל." },
-  { title: "מסירה", text: "מסירה סופית, סגירת האירוע, ובקשת ביקורת מהלקוח כמה ימים אחרי." },
+  {
+    title: "פנייה",
+    text: "כל ליד נכנס למקום אחד, ובונים לו הצעת מחיר מעוצבת ישר מהטלפון. לליד שלא חזר אליכם, המערכת מכינה הודעת מעקב ומזכירה לכם לשלוח.",
+  },
+  {
+    title: "סגירה",
+    text: "הלקוח חותם על החוזה דיגיטלית, מהטלפון. המקדמה נרשמת, והאירוע נכנס ליומן Google או Apple שחיברתם.",
+  },
+  {
+    title: "לפני האירוע",
+    text: "הלקוח מקבל קישור לפורטל אישי: שלבי האירוע, מה מחכה לו ומצב התשלומים. כשמגיע מועד היתרה, תזכורת מוכנה מחכה לכם לשליחה בוואטסאפ.",
+  },
+  {
+    title: "יום הצילום",
+    text: "כל פרטי היום במקום אחד: מקום עם ניווט בלחיצה, שעות, טלפון הלקוח והחבילה שנסגרה. במסלול פרו+ אפשר להעלות תמונות לגלריה ישירות מהמצלמה, עוד במהלך האירוע.",
+  },
+  {
+    title: "גלריה ואלבום",
+    text: "גלריה פרטית ללקוח, שבה הוא בוחר את התמונות לאלבום. במסלולי פרו ופרו+ מעצבים את האלבום מתוך הגלריה, והלקוח מאשר את העיצוב בפורטל.",
+  },
+  {
+    title: "מסירה",
+    text: "מסירה סופית וסגירת האירוע, עם תמונה ברורה של מה שולם. כמה ימים אחרי, המערכת מזכירה לכם לבקש מהלקוח ביקורת.",
+  },
 ];
 
 const MORE = [
   { title: "לידים והצעות מחיר", text: "כל פנייה במקום אחד, הצעת מחיר מעוצבת בלחיצה." },
-  { title: "חבילות משלכם", text: "המחירים, השלבים וההודעות, בדיוק כמו שאתם עובדים." },
-  { title: "פורטפוליו ציבורי", text: "תיק עבודות לשיתוף, מתעדכן מתוך הגלריות." },
+  { title: "חבילות ושלבים משלכם", text: "מחירים, שלבי עבודה ונוסח ההודעות ללקוח, מותאמים לשיטת העבודה שלכם." },
+  { title: "פורטפוליו ציבורי", text: "תיק עבודות לשיתוף, שמוסיפים אליו תמונות וגלריות בלחיצה (פרו ופרו+)." },
   { title: "דשבורד עסקי", text: "הכנסות לפי חודש, מגמה, ותשלומים פתוחים." },
   { title: "צוות", text: "עוזרים וצלמים נוספים, כל אחד רואה את האירועים שלו." },
   { title: "עברית מלאה", text: "נבנה בעברית, לצלמים בישראל." },
@@ -83,16 +102,15 @@ export default function LandingPage() {
             יותר צילום.
           </h1>
           <p className="text-[17px] sm:text-xl leading-relaxed text-ink-soft max-w-lg">
-            גילברטו מרכזת לצלמי אירועים את הלידים, החוזים, התשלומים, הגלריות והאלבומים, ושולחת ללקוחות את מה
-            שצריך בוואטסאפ, בזמן.
+            גילברטו מרכזת לצלמי אירועים את הלידים, החוזים, התשלומים, הגלריות והאלבומים במקום אחד, ומזכירה לכם
+            מה הצעד הבא בכל אירוע. הכל לפי שיטת העבודה שלכם.
           </p>
           <div className="flex items-center gap-3 flex-wrap">
             <PrimaryCta />
             <a href="#pricing" className="rounded-2xl px-6 py-3.5 text-base font-bold border border-line" style={{ background: "var(--color-card)" }}>
-              מה זה עולה
+              כמה זה עולה
             </a>
           </div>
-          <p className="text-sm text-ink-soft">בסרטון: סיור של דקה וחצי במערכת, כמו שהיא נראית באמת.</p>
         </div>
         <div className="self-center shrink-0 w-[260px] sm:w-[300px] lg:w-[330px] rounded-[44px] p-3 bg-[#1b1712] border border-line shadow-[0_40px_80px_rgba(36,29,21,0.22),0_8px_20px_rgba(36,29,21,0.12)]">
           <video
@@ -115,7 +133,8 @@ export default function LandingPage() {
           <div className="flex flex-col gap-3 max-w-2xl">
             <h2 className="text-3xl sm:text-4xl font-black font-display tracking-tight text-balance">מהפנייה הראשונה ועד המסירה</h2>
             <p className="text-base sm:text-lg text-ink-soft">
-              כל אירוע עובר את אותה דרך. גילברטו מלווה כל שלב, ועושה לבד את מה שחוזר על עצמו.
+              כל צלם עובד אחרת. אתם מגדירים את החבילות, השלבים וההודעות ללקוח, וגילברטו מסדרת את העבודה סביבם: מה
+              הבא בתור, מה הלקוח צריך לעשות ומה עוד לא שולם. ככה נראית דרך טיפוסית של אירוע:
             </p>
           </div>
           <ol className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-10">
@@ -129,6 +148,10 @@ export default function LandingPage() {
               </li>
             ))}
           </ol>
+          <p className="text-[15px] text-ink-soft max-w-2xl">
+            השלבים כאן הם דוגמה. בכל חבילה בונים מסלול משלכם, עם השלבים שלכם ובסדר שלכם, ואפשר לסמן שלב כבוצע
+            בכל סדר, כי לא כל לקוח מתקדם באותו קצב.
+          </p>
         </div>
       </section>
 
