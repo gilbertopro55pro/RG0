@@ -40,7 +40,7 @@ export default function LoginPage() {
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     if (signInError) {
       setLoading(false);
-      setError(signInError.message);
+      setError(loginErrorMessage(signInError.message));
       return;
     }
     router.push("/");
@@ -209,4 +209,14 @@ export default function LoginPage() {
       )}
     </div>
   );
+}
+
+// Supabase Auth answers in English; the photographer sees Hebrew.
+function loginErrorMessage(message: string): string {
+  if (/email not confirmed/i.test(message)) {
+    return "כתובת המייל עדיין לא אומתה. לחצו על הקישור במייל ששלחנו בהרשמה (כדאי לבדוק גם בספאם), ואז התחברו.";
+  }
+  if (/invalid login credentials/i.test(message)) return "המייל או הסיסמה לא נכונים.";
+  if (/rate limit|too many/i.test(message)) return "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.";
+  return "ההתחברות נכשלה. נסו שוב.";
 }

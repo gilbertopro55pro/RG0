@@ -54,7 +54,14 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
-    const message = error.code === "email_exists" ? "כתובת המייל הזו כבר רשומה במערכת. נסו להתחבר." : error.message;
+    const message =
+      error.code === "email_exists"
+        ? "כתובת המייל הזו כבר רשומה במערכת. נסו להתחבר."
+        : error.code === "weak_password" || /password/i.test(error.message)
+          ? "הסיסמה חלשה מדי. בחרו סיסמה של 6 תווים לפחות."
+          : error.code === "email_address_invalid" || /email/i.test(error.message)
+            ? "כתובת המייל לא תקינה."
+            : "ההרשמה נכשלה. נסו שוב.";
     return NextResponse.json({ error: message }, { status: error.status ?? 400 });
   }
 
