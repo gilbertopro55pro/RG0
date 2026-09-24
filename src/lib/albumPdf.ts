@@ -95,10 +95,11 @@ async function applyPhotoFilter(
   return img.jpeg({ quality: jpegQuality }).toBuffer();
 }
 
-// One "spread" page in the exported PDF, in points — a landscape rectangle standing in for one
-// printed album opening. Not tied to any specific print lab's trim/bleed spec (this app has no
-// print vendor integration); it's a proof/layout export, not a certified press-ready file.
+// Drawing width of every page, in "design points" — the page height follows the album's own
+// proportions and the finished page is scaled to its physical cm size (see generateAlbumPdf).
+// Still a proof export, not a lab-certified press file (no bleed/trim marks).
 const PAGE_WIDTH = 1600;
+// Only the default of drawTextElement's pageHeight parameter; every caller passes the real one.
 const PAGE_HEIGHT = 1000;
 const GAP = 8;
 
@@ -374,6 +375,9 @@ export async function generateAlbumPdf({
 
   const pdfDoc = resumeFromDoc ? await PDFDocument.load(resumeFromDoc) : await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
+  // Pages already in a resumed doc were scaled to physical size by the batch that drew them — only
+  // this call's own pages get scaled below.
+  const firstNewPageIndex = pdfDoc.getPageCount();
 
   const fontsDir = path.join(process.cwd(), "src/assets/fonts");
   const [hebrewFont, latinFont, hebrewMetrics] = await Promise.all([
@@ -543,16 +547,24 @@ export async function generateAlbumPdf({
     }
   };
 
+  // Pages are drawn in "design points": always PAGE_WIDTH wide (every size-in-points constant —
+  // text scaling, borders, shadows — assumes that), with the height following the album's REAL
+  // proportions (a 30×20 album is 1600×1067, not the old fixed 1600×1000 that squeezed every
+  // non-1.6 album). Each finished page is then scaled to its true physical size (see the end of
+  // this function), so a 30×20 album prints/opens as exactly 30×20cm.
+  const ptPerCm = PAGE_WIDTH / album.width_cm;
+  const pageHeightPt = album.height_cm * ptPerCm;
+
   if (album.cover_photo_id) {
     onPageRendered?.();
     const coverImage = await embedByPhotoId(album.cover_photo_id);
     if (coverImage) {
-      const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-      drawCoverImage(page, coverImage, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }, 50, 50);
-      page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: 190, color: rgb(0, 0, 0), opacity: 0.45 });
+      const page = pdfDoc.addPage([PAGE_WIDTH, pageHeightPt]);
+      drawCoverImage(page, coverImage, { x: 0, y: 0, width: PAGE_WIDTH, height: pageHeightPt }, 50, 50);
+      page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: pageHeightPt * 0.19, color: rgb(0, 0, 0), opacity: 0.45 });
       drawCenteredBidiText(page, album.title, {
         centerX: PAGE_WIDTH / 2,
-        y: 75,
+        y: pageHeightPt * 0.075,
         size: 52,
         hebrewFont,
         latinFont,
@@ -561,13 +573,6 @@ export async function generateAlbumPdf({
     }
   }
 
-  // Points-per-cm, anchored to the album's own width — lets a spread that carries its own
-  // width_cm/height_cm (currently only ever a custom-sized cover) get a genuinely differently-
-  // proportioned PDF page instead of being forced into the fixed PAGE_WIDTH/PAGE_HEIGHT box every
-  // other page uses. A page WITHOUT an override stays byte-for-byte the same [PAGE_WIDTH,
-  // PAGE_HEIGHT] as before this existed — this scale factor is only ever consulted for the override
-  // case, never applied to change any existing page's size.
-  const ptPerCm = PAGE_WIDTH / album.width_cm;
 
   const batchStart = pageRange?.start ?? 0;
   const batchEnd = pageRange?.end ?? spreads.length;
@@ -577,7 +582,7 @@ export async function generateAlbumPdf({
     if (spread.layout === "custom") {
       const hasCustomSize = spread.width_cm != null && spread.height_cm != null;
       const pageW = hasCustomSize ? spread.width_cm! * ptPerCm : PAGE_WIDTH;
-      const pageH = hasCustomSize ? spread.height_cm! * ptPerCm : PAGE_HEIGHT;
+      const pageH = hasCustomSize ? spread.height_cm! * ptPerCm : pageHeightPt;
       // A free-form page can be text-only (no photo elements at all) — unlike the preset
       // layouts, it always gets a page even if every photo element fails to embed.
       const page = pdfDoc.addPage([pageW, pageH]);
@@ -714,17 +719,17 @@ export async function generateAlbumPdf({
     if (!image1) continue;
     const image2 = await embedByPhotoId(spread.photo_id_2);
 
-    const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    const page = pdfDoc.addPage([PAGE_WIDTH, pageHeightPt]);
 
     if (spread.background_photo_id) {
       const bgImage = await embedByPhotoId(spread.background_photo_id, undefined, spread.background_blur);
-      if (bgImage) drawCoverImage(page, bgImage, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }, 50, 50, { opacity: spread.background_opacity / 100, zoom: spread.background_zoom });
+      if (bgImage) drawCoverImage(page, bgImage, { x: 0, y: 0, width: PAGE_WIDTH, height: pageHeightPt }, 50, 50, { opacity: spread.background_opacity / 100, zoom: spread.background_zoom });
     }
 
     if (!image2) {
-      drawCoverImage(page, image1, { x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }, spread.focal_x_1, spread.focal_y_1);
+      drawCoverImage(page, image1, { x: 0, y: 0, width: PAGE_WIDTH, height: pageHeightPt }, spread.focal_x_1, spread.focal_y_1);
     } else if (spread.layout === "stack") {
-      const halfH = (PAGE_HEIGHT - GAP) / 2;
+      const halfH = (pageHeightPt - GAP) / 2;
       // Vertical stacking order is unaffected by RTL (dir only reorders the inline/horizontal
       // axis) — photo1 on top, photo2 below, same as the app's flex-col rendering.
       drawCoverImage(page, image1, { x: 0, y: halfH + GAP, width: PAGE_WIDTH, height: halfH }, spread.focal_x_1, spread.focal_y_1);
@@ -735,14 +740,18 @@ export async function generateAlbumPdf({
       const width2 = PAGE_WIDTH - GAP - width1;
       // The app's UI is RTL (photo1 is the first flex child, so it renders on the *right*) —
       // mirrored here so the exported PDF matches what was actually reviewed and approved.
-      drawCoverImage(page, image2, { x: 0, y: 0, width: width2, height: PAGE_HEIGHT }, spread.focal_x_2, spread.focal_y_2);
-      drawCoverImage(page, image1, { x: width2 + GAP, y: 0, width: width1, height: PAGE_HEIGHT }, spread.focal_x_1, spread.focal_y_1);
+      drawCoverImage(page, image2, { x: 0, y: 0, width: width2, height: pageHeightPt }, spread.focal_x_2, spread.focal_y_2);
+      drawCoverImage(page, image1, { x: width2 + GAP, y: 0, width: width1, height: pageHeightPt }, spread.focal_x_1, spread.focal_y_1);
     }
 
     for (const el of spread.elements) {
-      if (el.type === "text") drawTextElement(page, el, await getFontsForFamily(el.fontFamily));
+      if (el.type === "text") drawTextElement(page, el, await getFontsForFamily(el.fontFamily), PAGE_WIDTH, pageHeightPt);
     }
   }
+
+  // Design points → real points (72/inch), so the PDF page is the album's physical size.
+  const toPhysical = 72 / 2.54 / ptPerCm;
+  pdfDoc.getPages().slice(firstNewPageIndex).forEach((p) => p.scale(toPhysical, toPhysical));
 
   return pdfDoc.save();
 }

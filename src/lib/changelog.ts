@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.61",
+    date: "2026-09-24",
+    changes: [
+      "ייצוא PDF של אלבום: כל עמוד יוצא עכשיו במידות האמיתיות של האלבום (למשל 30×20 ס״מ), בלי למתוח או לדחוס את העיצוב",
+    ],
+  },
+  {
     version: "2.11.60",
     date: "2026-09-24",
     changes: [

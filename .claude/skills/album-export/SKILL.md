@@ -28,7 +28,7 @@ through `notificationEmailFor`).
 
 | Format | Route | Renders on | Output | Verified result |
 |---|---|---|---|---|
-| PDF | `export-pdf` | **Fly worker** (`worker/src/index.ts` polls pending pdf jobs) | one PDF, a page per spread | 10 pages, about 180KB, 5s |
+| PDF | `export-pdf` | **Fly worker** (`worker/src/index.ts` polls pending pdf jobs) | one PDF, a page per spread | 10 pages at 30.0×20.0 cm, about 180KB, 5s |
 | JPG | `export-jpg` | Vercel (`after()` → `/api/internal/album-export-jobs/process`) | zip: `<album> - <gallery>/NN.jpg` | 3543×2362 px = 30×20 cm at 300 DPI, 13s |
 | PSD | `export-psd` | Vercel, same path as JPG | zip of layered PSDs, 300 DPI in resolution info | valid `8BPS` v1, 3543×2362, 11s |
 | בית דפוס | `send-to-print-house` | Vercel, same JPG job + `send_to_email` | email to the print house with a 7-day link; reply-to is the photographer | toast "נשלח בהצלחה ל-…", job `ready`; JPGs at 300 DPI |
@@ -37,9 +37,12 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
 
 ### Known behavior (not bugs, but know them before you answer a user)
 
-- **PDF is a proof, not a print file.** Every page is a fixed 1600×1000 pt (56.4×35.3 cm, ratio
-  1.6) no matter the album size (`PAGE_WIDTH/PAGE_HEIGHT` in `albumPdf.ts`). For print, send
-  JPG/PSD, which use the album's real cm size at 300 DPI.
+- **PDF page = the album's real size** (since 2026-09-24). Pages are drawn 1600 "design points"
+  wide with the height following the album's proportions, then each new page is scaled with
+  `page.scale` to its physical cm size (a 30×20 album gives 30.0×20.0 cm pages). Before that,
+  every page was a fixed 1600×1000 pt (56.4×35.3 cm, ratio 1.6), which squeezed any album that
+  isn't 1.6. The batched (Vercel resume) path only scales the pages the current call added
+  (`firstNewPageIndex`), so a page is never scaled twice. It's still a proof: no bleed or trim marks.
 - **JPG/PSD skip empty pages.** A page with no photo, text or background returns `null` and
   isn't in the zip, so a 10-page album with 3 filled pages gives 3 files. The PDF keeps all pages.
 - **PDF export blocks while the Fly worker is stale.** `checkRenderWorkerHealth` returns 503
