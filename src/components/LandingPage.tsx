@@ -62,7 +62,7 @@ const FOOTER_LINKS = [
 function PrimaryCta({ className = "" }: { className?: string }) {
   return (
     <Link href="/signup" className={`rounded-2xl px-6 py-3.5 text-base font-extrabold bg-ink text-white ${className}`}>
-      מתחילים עכשיו
+      14 יום חינם
     </Link>
   );
 }
@@ -111,6 +111,7 @@ export default function LandingPage() {
               כמה זה עולה
             </a>
           </div>
+          <p className="text-sm text-ink-soft">בלי כרטיס אשראי. בזמן הניסיון כל האפשרויות של מסלול פרו+ פתוחות.</p>
         </div>
         <div className="self-center shrink-0 w-[260px] sm:w-[300px] lg:w-[330px] rounded-[44px] p-3 bg-[#1b1712] border border-line shadow-[0_40px_80px_rgba(36,29,21,0.22),0_8px_20px_rgba(36,29,21,0.12)]">
           <video
@@ -172,7 +173,7 @@ export default function LandingPage() {
 
       <section id="pricing" className="max-w-3xl mx-auto px-4 py-14 scroll-mt-6">
         <h2 className="text-3xl font-black font-display text-center mb-2">מחיר קבוע, בלי הפתעות</h2>
-        <p className="text-sm text-ink-soft text-center mb-9">שלושה מסלולים, בלי עמלות נסתרות, וביטול בכל עת</p>
+        <p className="text-sm text-ink-soft text-center mb-9">14 יום ניסיון חינם, בלי כרטיס אשראי. אחר כך שלושה מסלולים, בלי עמלות נסתרות, וביטול בכל עת</p>
         <PricingToggle />
         <PlanComparison />
       </section>
@@ -194,7 +195,7 @@ export default function LandingPage() {
             className="self-start lg:self-center rounded-2xl px-7 py-4 text-base font-extrabold whitespace-nowrap"
             style={{ background: "#d2ad68", color: "#1b1712" }}
           >
-            מתחילים עכשיו
+            14 יום חינם
           </Link>
         </div>
       </section>

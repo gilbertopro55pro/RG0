@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { listSyncedCalendarEvents } from "@/lib/googleCalendarSync";
 import type { Photographer } from "@/lib/types";
 import CalendarView from "@/components/CalendarView";
+import { hasAppAccess } from "@/lib/subscription";
 
 export default async function CalendarPage() {
   const supabase = await createClient();
@@ -16,6 +17,7 @@ export default async function CalendarPage() {
     .eq("id", user!.id)
     .maybeSingle<Photographer>();
   if (!photographer) redirect("/");
+  if (!hasAppAccess(photographer)) redirect("/billing");
 
   const now = new Date();
   const timeMin = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();

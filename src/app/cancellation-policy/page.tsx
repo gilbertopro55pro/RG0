@@ -16,6 +16,12 @@ export default function CancellationPolicyPage() {
       <p className="text-ink-soft mb-6">עודכן לאחרונה: {new Date().toLocaleDateString("he-IL")}</p>
 
       <section className="space-y-4">
+        <h2 className="font-bold pt-2">תקופת ניסיון</h2>
+        <p>
+          תקופת הניסיון (14 יום) אינה כרוכה בפרטי אמצעי תשלום ולכן אין צורך לבטל אותה: אם לא נבחר מסלול עד סופה, פשוט לא
+          מתבצע חיוב, והגישה למערכת נעצרת עד לבחירת מסלול. הנתונים שהוזנו בזמן הניסיון נשמרים.
+        </p>
+
         <h2 className="font-bold pt-2">ביטול מנוי</h2>
         <ul className="list-disc pr-5 space-y-1">
           <li>ניתן לכבות את החידוש האוטומטי בכל עת, ללא צורך בהסבר, דרך הגדרות המערכת (מנוי → ביטול מנוי).</li>

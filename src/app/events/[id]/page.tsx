@@ -1,3 +1,5 @@
+import type { Photographer } from "@/lib/types";
+import { redirect } from "next/navigation";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
@@ -15,6 +17,7 @@ import type {
 } from "@/lib/types";
 import EventDetailView from "@/components/EventDetailView";
 import { getSignedDownloadUrl } from "@/lib/storage";
+import { hasAppAccess } from "@/lib/subscription";
 
 export default async function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -50,10 +53,12 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   const serviceRole = createServiceRoleClient();
   const { data: photographerSignatureRow } = await serviceRole
     .from("photographers")
-    .select("whatsapp_signature")
+    .select("whatsapp_signature, subscription_status, trial_ends_at")
     .eq("id", event.photographer_id)
-    .maybeSingle<{ whatsapp_signature: string | null }>();
+    .maybeSingle<{ whatsapp_signature: string | null } & Pick<Photographer, "subscription_status" | "trial_ends_at">>();
   const whatsappSignature = photographerSignatureRow?.whatsapp_signature ?? null;
+  // Owner or team member alike: no access once the owning account's subscription/trial lapsed.
+  if (photographerSignatureRow && !hasAppAccess(photographerSignatureRow)) redirect("/billing");
 
   // Opening the event is what "reading" the progress badge means — clear any unread client-action
   // notifications now so the dashboard badge reflects that the photographer has seen them.

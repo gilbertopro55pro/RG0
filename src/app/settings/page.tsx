@@ -27,6 +27,7 @@ import SettingsTabs from "@/components/SettingsTabs";
 import { CURRENT_VERSION } from "@/lib/changelog";
 import { SUBSCRIPTION_PLANS, TEAM_MEMBER_LIMIT_BY_TIER, STORAGE_CAP_BYTES_BY_TIER } from "@/lib/stages";
 import BackLink from "@/components/BackLink";
+import { hasAppAccess, isInTrial, TRIAL_STORAGE_CAP_BYTES } from "@/lib/subscription";
 
 export default async function SettingsPage({
   searchParams,
@@ -73,6 +74,7 @@ export default async function SettingsPage({
   ]);
 
   if (!photographer) redirect("/");
+  if (!hasAppAccess(photographer)) redirect("/billing");
 
   const logoUrl = photographer.logo_storage_path
     ? await getSignedDownloadUrl("logos", photographer.logo_storage_path, 3600)
@@ -151,7 +153,7 @@ export default async function SettingsPage({
                 <div className="mt-5">
                   <StorageUsageSettings
                     usedBytes={Number(storageBytes ?? 0)}
-                    capBytes={STORAGE_CAP_BYTES_BY_TIER[SUBSCRIPTION_PLANS[photographer.plan].tier]}
+                    capBytes={isInTrial(photographer) ? TRIAL_STORAGE_CAP_BYTES : STORAGE_CAP_BYTES_BY_TIER[SUBSCRIPTION_PLANS[photographer.plan].tier]}
                   />
                 </div>
                 <div className="mt-5">

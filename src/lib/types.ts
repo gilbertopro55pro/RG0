@@ -28,6 +28,9 @@ export type Photographer = {
   auto_renew: boolean;
   cancel_at_period_end: boolean;
   renewal_reminder_sent_at: string | null;
+  trial_ends_at: string | null;
+  signup_plan: string | null;
+  trial_reminder_sent_at: string | null;
   lead_follow_up_enabled: boolean;
   finbot_api_key: string | null;
   business_tax_status: "exempt" | "licensed";
