@@ -4,7 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { closingRecognitions, monthKeyIsrael } from "@/lib/closeEvent";
 import { timeOfDayGreeting } from "@/lib/greeting";
-import { STAGE_LABELS } from "@/lib/stages";
+import { STAGE_LABELS, SUBSCRIPTION_PLANS } from "@/lib/stages";
 import { hasAppAccess, isInTrial, trialDaysLeft, TRIAL_BANNER_DAYS_LEFT } from "@/lib/subscription";
 import TrialBanner from "@/components/TrialBanner";
 import type {
@@ -144,8 +144,12 @@ export default async function DashboardPage() {
   // Feeds the album-design quick-access dropdown below — published and draft galleries alike (an
   // album can be designed before the client-facing gallery ever goes live), excluding the hidden
   // portfolio-only gallery and anything archived.
+  // Album design is a פרו / פרו+ feature (entry tier excluded, same rule as nonBasicTierAllowed in
+  // GalleryManageView.tsx); the admin always gets it.
+  const albumToolAllowed =
+    !!photographer && (photographer.email === ADMIN_EMAIL || SUBSCRIPTION_PLANS[photographer.plan].tier !== "basic");
   let albumQuickGalleries: { id: string; title: string; published: boolean; hasActiveAlbum: boolean }[] = [];
-  if (photographer?.email === ADMIN_EMAIL) {
+  if (photographer && albumToolAllowed) {
     const { data: galleriesForAlbum } = await supabase
       .from("galleries")
       .select("id, title, published")
@@ -379,24 +383,27 @@ export default async function DashboardPage() {
         />
       )}
 
-      {photographer?.email === ADMIN_EMAIL && (
+      {albumToolAllowed && (
         // Same total width (row + gap) as DashboardHero's card above — both are unconstrained
         // block-level children of this same padded container, so a plain flex row with gap-3
         // naturally lines up without any explicit width math.
         <div className="flex items-center gap-3 mb-5 flex-wrap">
-          <a
-            href="/magnet-frames"
-            className="flex-1 min-w-0 flex items-center justify-between gap-3 rounded-2xl p-4 bg-card border border-line shadow-card"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg bg-amber-bg">🧲</span>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold truncate">עיצוב מסגרת מגנט</div>
-                <div className="text-xs text-ink-soft truncate">בסיס לבן, טקסט ואלמנטים חופשי</div>
+          {/* Magnet frames stay admin-only. */}
+          {photographer?.email === ADMIN_EMAIL && (
+            <a
+              href="/magnet-frames"
+              className="flex-1 min-w-0 flex items-center justify-between gap-3 rounded-2xl p-4 bg-card border border-line shadow-card"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg bg-amber-bg">🧲</span>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold truncate">עיצוב מסגרת מגנט</div>
+                  <div className="text-xs text-ink-soft truncate">בסיס לבן, טקסט ואלמנטים חופשי</div>
+                </div>
               </div>
-            </div>
-            <span className="text-ink-soft shrink-0">←</span>
-          </a>
+              <span className="text-ink-soft shrink-0">←</span>
+            </a>
+          )}
           <AlbumQuickAccessButton galleries={albumQuickGalleries} />
         </div>
       )}

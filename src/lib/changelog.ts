@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.59",
+    date: "2026-09-24",
+    changes: [
+      "עיצוב אלבומים פתוח עכשיו לכל המנויים במסלולי פרו ופרו+: לשונית \"עיצוב אלבום\" בניהול הגלריה, וגישה מהירה ממסך הבית",
+    ],
+  },
+  {
     version: "2.11.58",
     date: "2026-09-24",
     changes: [
