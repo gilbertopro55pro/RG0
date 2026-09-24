@@ -2827,9 +2827,7 @@ export default function GalleryManageView({
           ...(!gallery.published
             ? [{ key: "publish", label: publishing ? "מפרסם..." : "פרסום הגלריה ללקוח", active: true, onClick: publish, disabled: publishing }]
             : []),
-          ...(gallery.published && !isArchived
-            ? [{ key: "copy", label: copied ? "✓ הועתק" : "העתקת קישור", active: copied, onClick: copyLink }]
-            : []),
+          // Copy-link lives once, at the bottom with "שיתוף" (design stage 5: no duplicate up here).
           {
             key: "settings",
             label: "הגדרות גלריה",
@@ -5335,10 +5333,15 @@ function MgrPhotoOverlays({
       )}
       {photo.in_portfolio && (
         <span
-          className="absolute text-[11px] h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
+          className="absolute h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
           style={{ bottom: offset, left: offset }}
+          title="בפורטפוליו"
+          aria-label="בפורטפוליו"
         >
-          ✨
+          <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+          </svg>
         </span>
       )}
     </>

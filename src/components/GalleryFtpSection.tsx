@@ -57,7 +57,7 @@ export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: s
           חיברו את המצלמה ישירות לגלריה בזמן האירוע, זמין במסלול פרו+.
         </p>
         <a href="/settings?tab=account" className="inline-block mt-3 text-xs font-semibold text-amber-deep underline">
-          שדרוג לפרו+ ←
+          שדרוג לפרו+
         </a>
       </div>
     );

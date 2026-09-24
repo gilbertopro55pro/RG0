@@ -353,31 +353,47 @@ export default function AnalyticsView({
         </button>
       </div>
 
-      <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-xs text-ink-soft mb-1">צפי הכנסות: {periodLabel}</div>
-        <div className="text-xl font-bold font-display">{currency(periodForecast)}</div>
-        <div className="text-xs mt-1 text-ink-soft">
-          {currency(periodActualRevenue)} התקבל
-          {periodForecastExtra > 0 && <>, עוד {currency(periodForecastExtra)} צפוי להתקבל</>}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-          <div className="text-xs text-ink-soft mb-1">הכנסה החודש</div>
-          <div className="text-xl font-bold font-display">{currency(selectedRevenue)}</div>
-          {delta !== null && (
-            <div className="text-xs mt-1" style={{ color: delta >= 0 ? "var(--color-sage)" : "var(--color-rose)" }}>
+      {/* Design stage 5: one leading figure (what came in, against what was expected) instead of
+          three equal tiles that repeated the same number; what's still owed follows as a flat row. */}
+      <section aria-label="הכנסות" className="surface-hero p-[18px] mb-4">
+        <div className="flex items-baseline justify-between gap-3 mb-1.5">
+          <span className="text-sm text-ink-soft">התקבל: {periodLabel}</span>
+          {scope !== "year" && delta !== null && (
+            <span className="text-[13px] font-bold" style={{ color: delta >= 0 ? "var(--color-sage)" : "var(--color-rose)" }}>
               {delta >= 0 ? "↑" : "↓"} {Math.abs(Math.round(delta))}% מהחודש הקודם
-            </div>
+            </span>
           )}
-          {delta === null && selectedRevenue > 0 && <div className="text-xs mt-1 text-ink-soft">חודש ראשון עם הכנסה</div>}
+          {scope !== "year" && delta === null && selectedRevenue > 0 && <span className="text-[13px] text-ink-soft">חודש ראשון עם הכנסה</span>}
         </div>
-        <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-          <div className="text-xs text-ink-soft mb-1">תשלומים צפויים (כולל)</div>
-          <div className="text-xl font-bold font-display">{currency(upcomingTotal)}</div>
-          <div className="text-xs mt-1 text-ink-soft">{upcoming.length} תשלומים ממתינים, בכל התאריכים</div>
+        <div className="text-[40px] leading-none font-extrabold font-data">{currency(periodActualRevenue)}</div>
+        <div className="h-1 rounded-full overflow-hidden mt-3.5 mb-2" style={{ background: "var(--color-chip)" }}>
+          <div
+            className="gf-grow h-full rounded-full"
+            style={{
+              width: `${periodForecast > 0 ? Math.min(100, (periodActualRevenue / periodForecast) * 100) : 0}%`,
+              background: "var(--color-brass)",
+            }}
+          />
         </div>
+        <div className="text-[13px] text-ink-soft">
+          {periodForecastExtra > 0 ? (
+            <>
+              מתוך צפי של {currency(periodForecast)}, עוד {currency(periodForecastExtra)} צפוי להתקבל
+            </>
+          ) : periodForecast > 0 ? (
+            "כל הצפי לתקופה התקבל"
+          ) : (
+            "אין תשלומים צפויים לתקופה"
+          )}
+        </div>
+      </section>
+
+      <div className="rounded-2xl p-4 mb-5 bg-card flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[13px] text-ink-soft">ממתין לתשלום, בכל התאריכים</div>
+          <div className="text-xs text-ink-soft">{upcoming.length} תשלומים פתוחים</div>
+        </div>
+        <div className="text-[22px] font-extrabold font-data">{currency(upcomingTotal)}</div>
       </div>
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
