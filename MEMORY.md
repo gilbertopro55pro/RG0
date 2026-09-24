@@ -109,3 +109,9 @@
 ## 2026-09-24 — מייל האדמין
 - `sendEmail` מחיל עכשיו את `EMAIL_OVERRIDES` (notificationEmail.ts) על כל שליחה (`to` + `replyTo`); גם ה-PDF של הצעת המחיר מציג את הכתובת הפעילה. נוסף סעיף קבוע ב-CLAUDE.md.
 - תוכנית כתובת עסקית `handle@gilbertopro.com` עם העברה למייל האמיתי: gilbertopro.com ב-Hostinger (DNS + מייל). ממתין: העברת DNS ל-Cloudflare + מפתח `CLOUDFLARE_EMAIL_TOKEN` (הוראות נשלחו), ותשובה אם יש תיבות Hostinger פעילות.
+
+## 2026-09-24 — תקופת ניסיון 14 יום (PR #50, גרסה 2.11.58, migration 0126)
+- רישום → `trialing`, `trial_ends_at`=+14 יום, `plan`=studio_pro_monthly (פרו+), `signup_plan`=מה שנבחר. אחסון 5GB בזמן ניסיון. טלפון אחד = ניסיון אחד (`phone_already_registered`, רק service role).
+- `hasAppAccess()` (src/lib/subscription.ts) בכל עמודי הצלם; ניסיון שנגמר → /billing ("תקופת הניסיון הסתיימה"), תשלום דרך ה-checkout הקיים של PayPlus (ה-webhook קובע plan+active). באנר בבית מ-4 ימים לפני הסוף; מייל יום לפני (cron subscription-lifecycle).
+- נבדק חי על חשבון הבדיקה (באנר, /billing בזמן ניסיון, הפניה אחרי סוף) והוחזר ל-active/monthly.
+- **לא בוצע**: מחיקה אוטומטית 30 יום אחרי סוף ניסיון — ממתין להחלטת המשתמש.
