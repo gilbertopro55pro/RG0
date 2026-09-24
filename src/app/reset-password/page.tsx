@@ -42,7 +42,13 @@ export default function ResetPasswordPage() {
     const { error: updateError } = await supabase.auth.updateUser({ password });
     setSaving(false);
     if (updateError) {
-      setError(updateError.message);
+      setError(
+        /password/i.test(updateError.message) && /different|same/i.test(updateError.message)
+          ? "הסיסמה החדשה חייבת להיות שונה מהקודמת."
+          : /password/i.test(updateError.message)
+            ? "הסיסמה חלשה מדי. בחרו סיסמה של 6 תווים לפחות."
+            : "עדכון הסיסמה נכשל. נסו שוב, או בקשו קישור חדש."
+      );
       return;
     }
     setDone(true);
