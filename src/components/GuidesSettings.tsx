@@ -7,12 +7,12 @@ import { IconClose } from "@/components/icons/AlbumIcons";
 // files PageGuide.tsx opens on each screen (/guides/<key>.mp4); overview/portfolio/settings exist
 // only here, since they don't belong to a single page.
 const GUIDES: { key: string; title: string; description: string; duration: string }[] = [
-  { key: "overview", title: "סיור במערכת", description: "מסך הבית, כרטיס אירוע, והמעבר בין כל המסכים", duration: "1:29" },
-  { key: "portfolio", title: "פורטפוליו", description: "העלאת תמונות, הוספת גלריות ותמונות, ושיתוף ללקוחות", duration: "1:25" },
-  { key: "settings", title: "הגדרות", description: "מה יש בכל אחד מנושאי ההגדרות", duration: "1:22" },
-  { key: "galleries", title: "גלריות", description: "יצירת גלריה, העלאת תמונות ושליחה ללקוח", duration: "0:40" },
+  { key: "overview", title: "סיור במערכת", description: "מסך הבית, כרטיס אירוע, והמעבר בין כל המסכים", duration: "1:34" },
+  { key: "portfolio", title: "פורטפוליו", description: "העלאת תמונות, הוספת גלריות ותמונות, ושיתוף ללקוחות", duration: "1:26" },
+  { key: "settings", title: "הגדרות", description: "מה יש בכל אחד מנושאי ההגדרות", duration: "1:25" },
+  { key: "galleries", title: "גלריות", description: "יצירת גלריה, העלאת תמונות ושליחה ללקוח", duration: "0:39" },
   { key: "client-portals", title: "פורטל לקוח", description: "הקישור האישי ומה הלקוח רואה בו", duration: "0:30" },
-  { key: "leads", title: "לידים ופניות", description: "מעקב פניות, הצעות מחיר והמרה לאירוע", duration: "0:37" },
+  { key: "leads", title: "לידים ופניות", description: "מעקב פניות, הצעות מחיר והמרה לאירוע", duration: "0:40" },
   { key: "waitlist", title: "רשימת המתנה", description: "לקוחות לתאריכים תפוסים, והמרה לאירוע", duration: "0:32" },
   { key: "analytics", title: "דשבורד עסקי", description: "הכנסות, מגמות, ותשלומים פתוחים", duration: "0:37" },
 ];
