@@ -2848,9 +2848,8 @@ export default function GalleryManageView({
               setSettingsOpen(true);
             },
           },
-          // Admin-only for now, per explicit request — the tool needs to be flawless before it
-          // goes out to the general photographer user base.
-          ...(photos.length > 0 && photographerEmail === ADMIN_EMAIL
+          // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
+          ...(photos.length > 0 && nonBasicTierAllowed
             ? [{ key: "album", label: "עיצוב אלבום", active: albumManageOpen, onClick: openAlbumManage }]
             : []),
         ]}
