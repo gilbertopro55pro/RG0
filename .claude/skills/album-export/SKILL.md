@@ -31,7 +31,7 @@ through `notificationEmailFor`).
 | PDF | `export-pdf` | **Fly worker** (`worker/src/index.ts` polls pending pdf jobs) | one PDF, a page per spread | 10 pages at 30.0×20.0 cm, about 180KB, 5s |
 | JPG | `export-jpg` | Vercel (`after()` → `/api/internal/album-export-jobs/process`) | zip: `<album> - <gallery>/NN.jpg` | 3543×2362 px = 30×20 cm at 300 DPI, 13s |
 | PSD | `export-psd` | Vercel, same path as JPG | zip of layered PSDs, 300 DPI in resolution info | valid `8BPS` v1, 3543×2362, 11s |
-| בית דפוס | `send-to-print-house` | Vercel, same JPG job + `send_to_email` | email to the print house with a 7-day link; reply-to is the photographer | toast "נשלח בהצלחה ל-…", job `ready`; JPGs at 300 DPI |
+| בית דפוס | `send-to-print-house` | Vercel, same JPG job + `send_to_email` | email to the print house with a 7-day link; reply-to is the photographer | toast "נשלח בהצלחה ל-…", job `ready`; JPGs at 300 DPI; email confirmed delivered to the inbox (not spam) |
 
 Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs left `pending`.
 
