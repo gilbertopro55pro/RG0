@@ -37,6 +37,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     pkg,
     customPackageId,
     allowDoubleBooking,
+    payments,
   }: {
     clientName: string;
     eventType?: string | null;
@@ -51,7 +52,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     pkg?: PackageType | null;
     customPackageId?: string | null;
     allowDoubleBooking?: boolean;
+    // Sent only when the photographer changed the price (סכום האירוע / יתרה) in the edit form.
+    payments?: { depositAmount: number; balanceAmount: number };
   } = body;
+
+  if (payments) {
+    const { depositAmount, balanceAmount } = payments;
+    if (![depositAmount, balanceAmount].every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) {
+      return NextResponse.json({ error: "סכום לא תקין" }, { status: 400 });
+    }
+  }
 
   if (!clientName || !eventDate) {
     return NextResponse.json({ error: "שדות חובה חסרים" }, { status: 400 });
@@ -141,6 +151,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const notifications = [{ event_id: eventId, text: "פרטי האירוע עודכנו" }];
+
+  if (payments) {
+    // event_payments is owner-only by RLS — a team member's edit would silently update nothing, so
+    // check the row actually changed instead of assuming it did.
+    const { data: paymentRow, error: paymentError } = await supabase
+      .from("event_payments")
+      .update({ deposit_amount: payments.depositAmount, balance_amount: payments.balanceAmount })
+      .eq("event_id", eventId)
+      .select("event_id")
+      .maybeSingle<{ event_id: string }>();
+    if (paymentError || !paymentRow) {
+      return NextResponse.json({ error: paymentError?.message ?? "אין הרשאה לעדכן את סכומי האירוע" }, { status: 403 });
+    }
+    const total = payments.depositAmount + payments.balanceAmount;
+    notifications.push({
+      event_id: eventId,
+      text: `סכום האירוע עודכן: ₪${total.toLocaleString("he-IL")} (מקדמה ₪${payments.depositAmount.toLocaleString("he-IL")}, יתרה ₪${payments.balanceAmount.toLocaleString("he-IL")})`,
+    });
+  }
 
   const oldPackageLabel = packageLabel(existing.package, existing.custom_packages?.name);
   const currentCustomName = packageChanged ? (newCustomPackage?.name ?? null) : (existing.custom_packages?.name ?? null);
