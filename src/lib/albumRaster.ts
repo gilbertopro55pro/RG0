@@ -865,6 +865,7 @@ export async function renderAlbumPageJpeg({
     }
     return sharp({ create: { width: pageWidthPx, height: pageHeightPx, channels: 3, background: "#000000" } })
       .composite(await clampCompositesToCanvas(composites, pageWidthPx, pageHeightPx))
+      .withMetadata({ density: DPI })
       .jpeg({ quality: 100 })
       .toBuffer();
   }
@@ -976,6 +977,9 @@ export async function renderAlbumPageJpeg({
 
   return sharp({ create: { width: pageWidthPx, height: pageHeightPx, channels: 3, background: "#ffffff" } })
     .composite(await clampCompositesToCanvas(composites, pageWidthPx, pageHeightPx))
+    // Stamp the real print density — without it, labs and Photoshop read these as 72 DPI (a 30cm
+    // page would open as ~125cm). The PSD export already carries the same DPI in its resolution info.
+    .withMetadata({ density: DPI })
     .jpeg({ quality: 100 })
     .toBuffer();
 }
