@@ -185,7 +185,7 @@ export default function LandingPage() {
           <figure className="flex flex-col gap-4 max-w-2xl m-0">
             <blockquote className="m-0 text-[22px] sm:text-2xl leading-relaxed font-semibold">
               &quot;בניתי את גילברטו כי אחרי כל צילום אירוע חיכו לי עוד שעות של וואטסאפים, קבצים ותזכורות. היום כל זה
-              קורה לבד, ואני חוזר לצלם.&quot;
+              מסודר ומוכן מראש, ואני חוזר לצלם.&quot;
             </blockquote>
             <figcaption className="text-[15px] opacity-75">רועי גלברט, צלם אירועים ומייסד גילברטו</figcaption>
           </figure>
