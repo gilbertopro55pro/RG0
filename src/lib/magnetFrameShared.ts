@@ -10,6 +10,10 @@ export const MAGNET_FRAME_DIMENSIONS: Record<FrameOrientation, { widthPx: number
   portrait: { widthPx: 1200, heightPx: 1600 },
 };
 
+// 80px/cm expressed as DPI (80 × 2.54). Stamped on the exported PNG so print shops and Photoshop
+// open it at its real 20×15cm instead of reading it as 72 DPI (~56cm wide).
+export const MAGNET_FRAME_DPI = 80 * 2.54;
+
 export const DEFAULT_MAGNET_FRAME_SETTINGS: MagnetFrameSettings = {
   borderRatioPct: 12,
   bottomBorderRatioPct: 12,

@@ -1,26 +1,16 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { createClient } from "@/lib/supabase/server";
-import { ADMIN_EMAIL } from "@/lib/admin";
+import { requireDesignToolsUser } from "@/lib/designTools";
 import { uploadObject, getSignedDownloadUrls } from "@/lib/storage";
 import type { MagnetFrameCustomElementRow } from "@/lib/types";
 
 const SIGNED_URL_TTL_SECONDS = 3600;
 const BUCKET = "magnet-frame-elements";
 
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || user.email !== ADMIN_EMAIL) return null;
-  return { supabase, userId: user.id };
-}
-
 // Kept across every future design (fetched fresh on each editor load, independent of any one
 // magnet_frame_designs row) — matches api/magnet-frames/textures/route.ts's own pattern.
 export async function GET() {
-  const auth = await requireAdmin();
+  const auth = await requireDesignToolsUser();
   if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
   const { supabase, userId } = auth;
 
@@ -40,7 +30,7 @@ export async function GET() {
 // custom-ornament upload — the original filename travels in a header since the body itself is
 // opaque binary.
 export async function POST(request: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireDesignToolsUser();
   if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
   const { supabase, userId } = auth;
 

@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.60",
+    date: "2026-09-24",
+    changes: [
+      "עיצוב מסגרת מגנט פתוח עכשיו לכל המנויים במסלולי פרו ופרו+: כרטיס \"עיצוב מסגרת מגנט\" במסך הבית, עם הורדה של מסגרת לרוחב (20×15) ולאורך (15×20)",
+      "קובצי המסגרת מסומנים במידה האמיתית שלהם, כך שבית הדפוס ופוטושופ פותחים אותם ב-20×15 ס״מ",
+    ],
+  },
+  {
     version: "2.11.59",
     date: "2026-09-24",
     changes: [

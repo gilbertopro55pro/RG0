@@ -1,9 +1,8 @@
 import sharp from "sharp";
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { ADMIN_EMAIL } from "@/lib/admin";
+import { requireDesignToolsUser } from "@/lib/designTools";
 import { renderMagnetFrameBase, composeMagnetFrameElements, composeMagnetFrameTexture } from "@/lib/magnetFrame";
-import { DEFAULT_MAGNET_FRAME_SETTINGS } from "@/lib/magnetFrameShared";
+import { DEFAULT_MAGNET_FRAME_SETTINGS, MAGNET_FRAME_DPI } from "@/lib/magnetFrameShared";
 import { downloadObjectBuffer } from "@/lib/storage";
 import type { FrameOrientation, MagnetFrameCustomElementRow, MagnetFrameCustomTextureRow, MagnetFrameDesignRow } from "@/lib/types";
 
@@ -12,11 +11,9 @@ import type { FrameOrientation, MagnetFrameCustomElementRow, MagnetFrameCustomTe
 // reflects whatever was last saved.
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || user.email !== ADMIN_EMAIL) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
+  const auth = await requireDesignToolsUser();
+  if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
+  const { supabase, userId } = auth;
 
   const orientation = (new URL(request.url).searchParams.get("orientation") ?? "landscape") as FrameOrientation;
   if (orientation !== "landscape" && orientation !== "portrait") {
@@ -27,7 +24,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     .from("magnet_frame_designs")
     .select("*")
     .eq("id", id)
-    .eq("photographer_id", user.id)
+    .eq("photographer_id", userId)
     .maybeSingle<MagnetFrameDesignRow>();
   if (!design) return NextResponse.json({ error: "העיצוב לא נמצא" }, { status: 404 });
 
@@ -40,7 +37,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       .from("magnet_frame_custom_textures")
       .select("*")
       .eq("id", settings.customTextureAssetId)
-      .eq("photographer_id", user.id)
+      .eq("photographer_id", userId)
       .maybeSingle<MagnetFrameCustomTextureRow>();
     if (texture) customTextureImage = await downloadObjectBuffer("magnet-frame-textures", texture.storage_path);
   }
@@ -51,7 +48,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { data: customElements } = await supabase
       .from("magnet_frame_custom_elements")
       .select("*")
-      .eq("photographer_id", user.id)
+      .eq("photographer_id", userId)
       .in("id", customElementAssetIds)
       .returns<MagnetFrameCustomElementRow[]>();
     for (const ce of customElements ?? []) {
@@ -63,6 +60,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   let base = await renderMagnetFrameBase(orientation, settings);
   base = await composeMagnetFrameTexture(base, settings, orientation, customTextureImage);
   const elementsLayer = await composeMagnetFrameElements(elements, orientation, customElementBuffers);
-  const composed = await sharp(base).composite([{ input: elementsLayer, left: 0, top: 0 }]).png().toBuffer();
+  const composed = await sharp(base).composite([{ input: elementsLayer, left: 0, top: 0 }]).withMetadata({ density: MAGNET_FRAME_DPI }).png().toBuffer();
   return new NextResponse(new Uint8Array(composed), { headers: { "Content-Type": "image/png" } });
 }

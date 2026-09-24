@@ -1,21 +1,10 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { ADMIN_EMAIL } from "@/lib/admin";
+import { requireDesignToolsUser } from "@/lib/designTools";
 import { DEFAULT_MAGNET_FRAME_SETTINGS } from "@/lib/magnetFrameShared";
 import type { MagnetFrameDesignRow, MagnetFrameElement, MagnetFrameSettings } from "@/lib/types";
 
-// Admin-only for now (see the standing "עדכון אדמין" staged-rollout process) — not yet promoted.
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || user.email !== ADMIN_EMAIL) return null;
-  return { supabase, userId: user.id };
-}
-
 export async function GET() {
-  const auth = await requireAdmin();
+  const auth = await requireDesignToolsUser();
   if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
   const { supabase, userId } = auth;
 
@@ -35,7 +24,7 @@ export async function GET() {
 // between the two aspect ratios, so "same text and elements as the width frame" is a plain deep
 // clone, not a re-layout (see MagnetFrameEditor.tsx).
 export async function POST(request: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireDesignToolsUser();
   if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
   const { supabase, userId } = auth;
 
