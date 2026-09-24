@@ -30,7 +30,7 @@ through `notificationEmailFor`).
 | PDF | `export-pdf` | **Fly worker** (`worker/src/index.ts` polls pending pdf jobs) | one PDF, a page per spread | 10 pages, about 180KB, 5s |
 | JPG | `export-jpg` | Vercel (`after()` → `/api/internal/album-export-jobs/process`) | zip: `<album> - <gallery>/NN.jpg` | 3543×2362 px = 30×20 cm at 300 DPI, 13s |
 | PSD | `export-psd` | Vercel, same path as JPG | zip of layered PSDs, 300 DPI in resolution info | valid `8BPS` v1, 3543×2362, 11s |
-| בית דפוס | `send-to-print-house` | Vercel, same JPG job + `send_to_email` | email to the print house with a 7-day link; reply-to is the photographer | see below |
+| בית דפוס | `send-to-print-house` | Vercel, same JPG job + `send_to_email` | email to the print house with a 7-day link; reply-to is the photographer | toast "נשלח בהצלחה ל-…", job `ready`; JPGs at 300 DPI |
 
 Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs left `pending`.
 
@@ -47,7 +47,10 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   the import graph of `worker/src/index.ts`), wait for the "Deploy PDF worker" workflow before
   running `scripts/deploy.sh`.
 - JPG/PSD carry `density: 300` (the JPG metadata was added 2026-09-24; before that labs read
-  them as 72 DPI).
+  them as 72 DPI). Verified live after the fix: `dpi == (300, 300)` on every page.
+- Checking that the worker is current from the sandbox: `bash scripts/flyWorkerIsCurrent.sh` with
+  `FLY_API_TOKEN` cleaned of newlines/quotes **only**. The token has a space ("FlyV1 …"), so
+  stripping all whitespace gives a 401 that looks like "stale".
 
 ## Testing live (the procedure that passed)
 
@@ -68,7 +71,7 @@ clicks the export button, confirms the range dialog ("הורדה") and follows t
    - JPG: `zipfile` + Pillow, size = `round(cm/2.54*300)` on each side, `dpi == (300, 300)`.
    - PSD: first bytes `8BPS`, version 1, same pixel size.
 5. Print house: the account needs a row in `print_house_emails` (in settings, or in the send
-   sheet itself). **This sends a real email**, so send only to the user's own inbox
+   sheet itself). The test account already has one, "בדיקת מערכת (תיבת גילברטו)", as default. **This sends a real email**, so send only to the user's own inbox
    (gilbertopro55@gmail.com) and tell them. `node export-test.js print` → toast "נשלח בהצלחה ל-…".
 
 Sandbox-only noise: the in-browser download from R2 sometimes fails with
