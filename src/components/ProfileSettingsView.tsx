@@ -54,8 +54,6 @@ export default function ProfileSettingsView({
   const [appleDisconnecting, setAppleDisconnecting] = useState(false);
   const [appleError, setAppleError] = useState<string | null>(null);
   const [showAppleGuide, setShowAppleGuide] = useState(false);
-  const [leadFollowUpEnabled, setLeadFollowUpEnabled] = useState(photographer.lead_follow_up_enabled);
-  const [savingLeadFollowUp, setSavingLeadFollowUp] = useState(false);
   const [invoiceProvider, setInvoiceProvider] = useState(photographer.invoice_provider);
   const [finbotConnected, setFinbotConnected] = useState(!!photographer.finbot_api_key);
   const [finbotApiKey, setFinbotApiKey] = useState("");
@@ -225,14 +223,6 @@ export default function ProfileSettingsView({
     setSavingInvoicing(true);
     await supabase.from("photographers").update({ business_tax_status: status }).eq("id", photographer.id);
     setSavingInvoicing(false);
-  };
-
-  const toggleLeadFollowUp = async () => {
-    const next = !leadFollowUpEnabled;
-    setSavingLeadFollowUp(true);
-    await supabase.from("photographers").update({ lead_follow_up_enabled: next }).eq("id", photographer.id);
-    setLeadFollowUpEnabled(next);
-    setSavingLeadFollowUp(false);
   };
 
   const chooseColor = async (id: string) => {
@@ -899,29 +889,27 @@ export default function ProfileSettingsView({
         )}
       </div>
 
-      <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">מעקב אוטומטי אחר לידים</div>
-            <div className="text-xs text-ink-soft mt-0.5">
-              כשליד לא הופך ללקוח/מתעניין שאבד, נשלחות אוטומטית עד 3 הודעות מעקב בוואטסאפ (אחרי יומיים, 5 ימים ו-10 ימים)
-            </div>
-          </div>
-          <button
-            onClick={toggleLeadFollowUp}
-            disabled={savingLeadFollowUp}
-            role="switch"
-            aria-checked={leadFollowUpEnabled}
-            aria-label="הפעלת מעקב אוטומטי אחר לידים"
-            className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5 disabled:opacity-60"
-            style={{
-              background: leadFollowUpEnabled ? "var(--color-amber-deep)" : "var(--color-line)",
-              justifyContent: leadFollowUpEnabled ? "flex-start" : "flex-end",
-            }}
+      {/* The automatic WhatsApp follow-up sequence needs Meta-approved message templates, which
+          haven't been approved yet — so no follow-up has ever actually been sent. Shown as "בקרוב"
+          (same as the WhatsApp bot) instead of a switch that promises something that doesn't happen.
+          Bring the toggle back (photographers.lead_follow_up_enabled) once Meta approves. */}
+      <div className="rounded-2xl p-4 mt-5 bg-card">
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <span className="text-sm font-semibold">מעקב אוטומטי אחר לידים בוואטסאפ</span>
+          <span
+            className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
+            style={{ background: "var(--color-chip)", color: "var(--color-ink-soft)" }}
           >
-            <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
-          </button>
+            בקרוב
+          </span>
         </div>
+        <p className="text-xs text-ink-soft mb-2">
+          כשליד לא חוזר אליכם, יישלחו אליו אוטומטית עד 3 הודעות מעקב בוואטסאפ (אחרי יומיים, 5 ימים ו-10 ימים). התכונה ממתינה
+          לאישור של מטא לתבניות ההודעות, ותופעל ברגע שהאישור יתקבל.
+        </p>
+        <p className="text-xs text-ink-soft">
+          בינתיים: יומיים אחרי ששולחים ללקוח הצעת מחיר, מופיעה במסך הבית תזכורת עם הודעת מעקב מוכנה לשליחה.
+        </p>
       </div>
 
       {showAppleGuide && <AppleCalendarGuideModal onClose={() => setShowAppleGuide(false)} />}
