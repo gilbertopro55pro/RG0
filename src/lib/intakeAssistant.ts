@@ -53,7 +53,15 @@ export function intakeMonthlyCap(p: Pick<Photographer, "email" | "plan">): numbe
 }
 
 export function missingDetails(d: IntakeDetails): string[] {
-  return REQUIRED.filter((r) => !String(d[r.key] ?? "").trim()).map((r) => r.label);
+  // A client without a date yet is fine: an approximate time frame stands in for the date.
+  const hasDate = !!d.eventDate || (!!d.dateUndecided && !!d.approxDate?.trim());
+  return REQUIRED.filter((r) => (r.key === "eventDate" ? !hasDate : !String(d[r.key] ?? "").trim())).map((r) => r.label);
+}
+
+function dateText(d: IntakeDetails): string | null {
+  if (d.eventDate) return `${hebrewDate(d.eventDate)}${d.dateAvailable === false ? " (תפוס)" : ""}`;
+  if (d.dateUndecided) return `טרם נקבע${d.approxDate ? ` (בערך ${d.approxDate})` : ""}`;
+  return null;
 }
 
 export function studioName(p: IntakePhotographer): string {
@@ -91,6 +99,7 @@ function buildSystem(p: IntakePhotographer): string {
 - אם הלקוח שאל על מחיר, עונים על זה במפורש כבר בתשובה הראשונה (לפי כלל 1), ולא מתעלמים מהשאלה.
 - בלי אימוג'ים, חוץ מאחד לכל היותר בהודעת הסיכום.
 - פרטי חובה: ${REQUIRED.map((r) => r.label).join(", ")}. פרטים נוספים שכדאי לשאול: שעות האירוע, ומה חשוב ללקוח במיוחד.${p.intake_bot_extra_question?.trim() ? `\n- שאלה נוספת ש${name} ביקש לשאול: "${p.intake_bot_extra_question.trim()}"` : ""}
+- אם עוד אין תאריך, לא לוחצים: שואלים בערך מתי (חודש, עונה או שנה), שומרים עם save_details (dateUndecided=true ו-approxDate), וממשיכים לשאר הפרטים. אומרים שכשיהיה תאריך, ${name} יבדוק שהוא פנוי. אם הלקוח מתלבט בין כמה תאריכים, בודקים כל אחד ב-check_availability ושומרים אותם ב-approxDate.
 - ברגע שיש תאריך, קוראים ל-check_availability. אם התאריך תפוס, אומרים את זה בעדינות ומציעים להיכנס לרשימת ההמתנה (אחרי שיש שם וטלפון, קוראים ל-join_waitlist).
 - אחרי ש-join_waitlist החזיר ok, מסיימים בתודה ובהסבר ש${name} יעדכן אם התאריך יתפנה. לא ממשיכים לאסוף פרטים ולא מציעים הצעת מחיר לתאריך תפוס.
 - בכל פעם שהלקוח נותן פרט, קוראים ל-save_details עם מה שנאמר.
@@ -120,6 +129,8 @@ const TOOLS: Anthropic.Tool[] = [
       properties: {
         eventType: { type: "string", description: "סוג האירוע, למשל חתונה, בר מצווה, ברית" },
         eventDate: { type: "string", description: "YYYY-MM-DD" },
+        dateUndecided: { type: "boolean", description: "true כשללקוח עוד אין תאריך" },
+        approxDate: { type: "string", description: "מתי בערך, כשאין תאריך: חודש/עונה/שנה, או כמה תאריכים שמתלבטים ביניהם" },
         location: { type: "string", description: "מקום האירוע (אולם/עיר)" },
         guests: { type: "string", description: "מספר אורחים משוער" },
         startTime: { type: "string", description: "HH:MM" },
@@ -145,6 +156,7 @@ const TOOLS: Anthropic.Tool[] = [
 
 function leadNotes(d: IntakeDetails): string {
   const lines = [
+    !d.eventDate && d.dateUndecided ? `תאריך: ${dateText(d)}` : null,
     d.location ? `מקום: ${d.location}` : null,
     d.guests ? `אורחים: ${d.guests}` : null,
     d.startTime || d.endTime ? `שעות: ${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null,
@@ -185,7 +197,7 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
     d.clientName ? `שם: ${d.clientName}` : null,
     d.phone ? `טלפון: ${d.phone}` : null,
     d.eventType ? `אירוע: ${d.eventType}` : null,
-    d.eventDate ? `תאריך: ${hebrewDate(d.eventDate)}${d.dateAvailable === false ? " (תפוס)" : ""}` : null,
+    dateText(d) ? `תאריך: ${dateText(d)}` : null,
     d.location ? `מקום: ${d.location}` : null,
     d.guests ? `אורחים: ${d.guests}` : null,
     d.startTime || d.endTime ? `שעות: ${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null,
@@ -221,12 +233,15 @@ async function runTool(
   }
 
   if (name === "save_details") {
-    const allowed: (keyof IntakeDetails)[] = ["eventType", "eventDate", "location", "guests", "startTime", "endTime", "wishes", "clientName", "phone", "email"];
+    const allowed: (keyof IntakeDetails)[] = ["eventType", "eventDate", "approxDate", "location", "guests", "startTime", "endTime", "wishes", "clientName", "phone", "email"];
     const patch: IntakeDetails = {};
     for (const k of allowed) {
       const v = input[k];
       if (typeof v === "string" && v.trim()) (patch as Record<string, string>)[k] = v.trim().slice(0, 300);
     }
+    if (patch.eventDate && !/^\d{4}-\d{2}-\d{2}$/.test(patch.eventDate)) delete patch.eventDate;
+    if (input.dateUndecided === true && !patch.eventDate) patch.dateUndecided = true;
+    if (patch.eventDate) patch.dateUndecided = false;
     if (patch.eventDate && patch.eventDate !== conv.collected.eventDate) delete conv.collected.dateAvailable;
     conv.collected = { ...conv.collected, ...patch };
     conv.lead_id = await upsertLead(supabase, conv, false);
@@ -237,7 +252,7 @@ async function runTool(
   if (name === "complete_intake") {
     const missing = missingDetails(conv.collected);
     if (missing.length) return JSON.stringify({ error: "חסרים פרטי חובה", missing });
-    if (conv.collected.dateAvailable === undefined) return JSON.stringify({ error: "קודם לבדוק את התאריך עם check_availability" });
+    if (conv.collected.eventDate && conv.collected.dateAvailable === undefined) return JSON.stringify({ error: "קודם לבדוק את התאריך עם check_availability" });
     if (conv.completed_at) return JSON.stringify({ ok: true, alreadyDone: true, replyHours: p.intake_bot_reply_hours });
     conv.lead_id = await upsertLead(supabase, conv, true);
     conv.state = "completed";
@@ -245,7 +260,7 @@ async function runTool(
     const d = conv.collected;
     await notifyPhotographer(
       p,
-      `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : ""}`.trim(),
+      `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : "(תאריך טרם נקבע)"}`.trim(),
       d,
       siteUrl,
       "העוזר אסף את כל פרטי האירוע. הליד מחכה להצעת מחיר ממך."
