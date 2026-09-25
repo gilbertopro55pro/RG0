@@ -716,7 +716,11 @@ export async function generateAlbumPdf({
     }
 
     const image1 = await embedByPhotoId(spread.photo_id_1);
-    if (!image1) continue;
+    if (!image1) {
+      // Keep the page (white) so page numbers match the JPG/PSD exports.
+      pdfDoc.addPage([PAGE_WIDTH, pageHeightPt]);
+      continue;
+    }
     const image2 = await embedByPhotoId(spread.photo_id_2);
 
     const page = pdfDoc.addPage([PAGE_WIDTH, pageHeightPt]);

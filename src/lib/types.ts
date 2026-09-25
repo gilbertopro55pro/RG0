@@ -31,6 +31,10 @@ export type Photographer = {
   trial_ends_at: string | null;
   signup_plan: string | null;
   trial_reminder_sent_at: string | null;
+  // Trial data retention (migration 0128) — see lib/accountDeletion.ts.
+  keep_account: boolean;
+  trial_deletion_warned_at: string | null;
+  trial_deletion_final_warned_at: string | null;
   lead_follow_up_enabled: boolean;
   finbot_api_key: string | null;
   business_tax_status: "exempt" | "licensed";

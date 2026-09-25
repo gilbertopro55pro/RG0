@@ -1227,9 +1227,9 @@ export default function EventDetailView({
         <div className="space-y-2">
           {notifications.map((n) => (
             <div key={n.id} className="text-xs rounded-xl px-3.5 py-2.5 bg-chip text-ink-soft flex items-start justify-between gap-3 overflow-hidden">
-              {/* min-w-0 + overflow-wrap:anywhere — a long unbroken string (the Google Calendar link)
-                  wraps onto more lines instead of pushing the row wider than the screen. */}
-              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{n.text}</span>
+              {/* min-w-0 + overflow-wrap:anywhere — any long unbroken text still wraps instead of
+                  pushing the row wider than the screen; URLs render as short links (below). */}
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{renderNotificationText(n.text)}</span>
               <span className="font-data shrink-0">
                 {new Date(n.created_at).toLocaleString("he-IL", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
               </span>
@@ -1627,4 +1627,27 @@ function NavAppSheet({ location, onClose }: { location: string; onClose: () => v
       </div>
     </div>
   );
+}
+
+// Notification texts are stored as plain strings, some ending in a raw URL (the Google Calendar
+// event link). Show those as a short labeled link instead of a line of URL gibberish.
+function renderNotificationText(text: string) {
+  const parts = text.split(/(https?:\/\/\S+)/g);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) => {
+    if (!/^https?:\/\//.test(part)) return part.replace(/:\s*$/, "");
+    const label = /google\.com\/calendar/.test(part) ? "פתיחה ביומן Google" : "פתיחת הקישור";
+    return (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-semibold underline underline-offset-2 ms-1"
+        style={{ color: "var(--color-amber-deep)" }}
+      >
+        {label}
+      </a>
+    );
+  });
 }

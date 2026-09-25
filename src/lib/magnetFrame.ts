@@ -5,7 +5,7 @@ import { svgTextLayer, ornamentLayerRaw } from "@/lib/albumRaster";
 import { findOrnament } from "@/lib/albumOrnaments";
 import { findMagnetFrameTexture } from "@/lib/magnetFrameTextures";
 import { findMagnetFrameFloral } from "@/lib/magnetFrameFlorals";
-import { MAGNET_FRAME_DIMENSIONS } from "@/lib/magnetFrameShared";
+import { MAGNET_FRAME_DIMENSIONS, MAGNET_EXPORT_SCALE as S, magnetExportDimensions } from "@/lib/magnetFrameShared";
 import type { FrameOrientation, MagnetFrameElement, MagnetFrameSettings } from "@/lib/types";
 
 export { MAGNET_FRAME_DIMENSIONS };
@@ -48,7 +48,7 @@ function mixWithWhite(tint: string, ratio: number): string {
 // design choice (not just editor chrome), so it's baked into this export too, not only shown in
 // the live CSS preview.
 export async function renderMagnetFrameBase(orientation: FrameOrientation, settings: MagnetFrameSettings): Promise<Buffer> {
-  const { widthPx, heightPx } = MAGNET_FRAME_DIMENSIONS[orientation];
+  const { widthPx, heightPx } = magnetExportDimensions(orientation);
   const shorterSide = Math.min(widthPx, heightPx);
 
   const border = Math.round((settings.borderRatioPct / 100) * shorterSide);
@@ -66,8 +66,9 @@ export async function renderMagnetFrameBase(orientation: FrameOrientation, setti
 
   if (!settings.shadowEnabled) return cardBuf;
 
-  const blurPx = Math.min(MAX_SHADOW_BLUR_PX, Math.max(0, settings.shadowBlurPx));
-  const spreadPx = Math.min(MAX_SHADOW_SPREAD_PX, Math.max(0, settings.shadowDistancePx));
+  // Clamped in design units, then scaled to the export resolution.
+  const blurPx = Math.min(MAX_SHADOW_BLUR_PX, Math.max(0, settings.shadowBlurPx)) * S;
+  const spreadPx = Math.min(MAX_SHADOW_SPREAD_PX, Math.max(0, settings.shadowDistancePx)) * S;
   const alpha = Math.max(0, Math.min(1, settings.shadowOpacity / 100));
 
   // A thick stroke traced along the cutout's own boundary, then blurred, produces a soft band
@@ -89,11 +90,11 @@ async function renderBuiltinTextureLayer(textureId: string, widthPx: number, hei
   const texture = findMagnetFrameTexture(textureId);
   if (!texture) return null;
   const alpha = Math.max(0, Math.min(1, opacityPct / 100));
-  const svg = `<svg width="${widthPx}" height="${heightPx}" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="tex" width="${texture.tileSizePx}" height="${texture.tileSizePx}" patternUnits="userSpaceOnUse">${texture.content}</pattern></defs><rect width="${widthPx}" height="${heightPx}" fill="url(#tex)" opacity="${alpha}" /></svg>`;
+  const svg = `<svg width="${widthPx}" height="${heightPx}" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="tex" width="${texture.tileSizePx * S}" height="${texture.tileSizePx * S}" patternUnits="userSpaceOnUse"><g transform="scale(${S})">${texture.content}</g></pattern></defs><rect width="${widthPx}" height="${heightPx}" fill="url(#tex)" opacity="${alpha}" /></svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-const CUSTOM_TEXTURE_TILE_PX = 220;
+const CUSTOM_TEXTURE_TILE_PX = Math.round(220 * S);
 
 // Tiles the photographer's own uploaded image across the full canvas (sharp has no native
 // "repeating pattern fill" for an arbitrary raster, unlike the SVG <pattern> the built-in textures
@@ -129,7 +130,7 @@ async function renderCustomTextureLayer(customImage: Buffer, widthPx: number, he
 // so base's alpha channel is identical to the plain card's. customImage, when given, always wins
 // over settings.textureId — matching the editor's "picking one clears the other" rule.
 export async function composeMagnetFrameTexture(base: Buffer, settings: MagnetFrameSettings, orientation: FrameOrientation, customImage: Buffer | null): Promise<Buffer> {
-  const { widthPx, heightPx } = MAGNET_FRAME_DIMENSIONS[orientation];
+  const { widthPx, heightPx } = magnetExportDimensions(orientation);
   const textureLayer = customImage
     ? await renderCustomTextureLayer(customImage, widthPx, heightPx, settings.textureOpacity)
     : settings.textureId
@@ -147,17 +148,21 @@ export async function composeMagnetFrameTexture(base: Buffer, settings: MagnetFr
 // a text string's silhouette isn't a rectangle a single box-shadow-style blur could hug.
 async function composeTextElement(base: Buffer, el: Extract<MagnetFrameElement, { type: "text" }>, widthPx: number, heightPx: number): Promise<Buffer> {
   if (!el.text.trim()) return base;
+  // Stored sizes are in design pixels; the export canvas is S times larger.
+  const fontSizePx = el.fontSizePx * S;
+  const shadowDistancePx = el.shadowDistancePx * S;
+  const shadowBlurPx = el.shadowBlurPx * S;
   const boxWidth = widthPx * 0.92;
   const xPx = (el.xPct / 100) * widthPx - boxWidth / 2;
-  const yPx = (el.yPct / 100) * heightPx - el.fontSizePx / 2;
+  const yPx = (el.yPct / 100) * heightPx - fontSizePx / 2;
 
   const composites: OverlayOptions[] = [];
   if (el.shadowEnabled) {
     const shadowLayer = await svgTextLayer(el.text.trim(), {
-      xPx: xPx + el.shadowDistancePx,
-      yPx: yPx + el.shadowDistancePx,
+      xPx: xPx + shadowDistancePx,
+      yPx: yPx + shadowDistancePx,
       widthPx: boxWidth,
-      fontSizePx: el.fontSizePx,
+      fontSizePx: fontSizePx,
       color: "rgba(0,0,0,0.55)",
       align: "center",
       pageWidthPx: widthPx,
@@ -167,7 +172,7 @@ async function composeTextElement(base: Buffer, el: Extract<MagnetFrameElement, 
       italic: el.italic,
       underline: el.underline,
     });
-    const blurred = el.shadowBlurPx > 0 ? await sharp(shadowLayer).blur(Math.max(0.3, el.shadowBlurPx)).png().toBuffer() : shadowLayer;
+    const blurred = shadowBlurPx > 0 ? await sharp(shadowLayer).blur(Math.max(0.3, shadowBlurPx)).png().toBuffer() : shadowLayer;
     composites.push({ input: blurred, left: 0, top: 0 });
   }
 
@@ -175,7 +180,7 @@ async function composeTextElement(base: Buffer, el: Extract<MagnetFrameElement, 
     xPx,
     yPx,
     widthPx: boxWidth,
-    fontSizePx: el.fontSizePx,
+    fontSizePx: fontSizePx,
     color: el.color,
     align: "center",
     pageWidthPx: widthPx,
@@ -238,7 +243,7 @@ async function composeDecorationElement(base: Buffer, el: Extract<MagnetFrameEle
 // any customElementAssetId decorations to their real image bytes (the caller looks these up via
 // the DB + storage — this function has no DB access of its own).
 export async function composeMagnetFrameElements(elements: MagnetFrameElement[], orientation: FrameOrientation, customElementBuffers: Map<string, Buffer> = new Map()): Promise<Buffer> {
-  const { widthPx, heightPx } = MAGNET_FRAME_DIMENSIONS[orientation];
+  const { widthPx, heightPx } = magnetExportDimensions(orientation);
   let buffer = await sharp({ create: { width: widthPx, height: heightPx, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .png()
     .toBuffer();

@@ -33,13 +33,15 @@ function clamp(n: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, n));
 }
 
-function newTextElement(): MagnetFrameElement {
+// yPct: the vertical center of the bottom mat (see addText), so a new text starts ON the mat
+// instead of half over the photo window.
+function newTextElement(yPct: number): MagnetFrameElement {
   return {
     id: crypto.randomUUID(),
     type: "text",
     text: "רותם & דניאל",
     xPct: 50,
-    yPct: 85,
+    yPct,
     fontKey: "heebo",
     fontSizePx: 72,
     color: "#2e3142",
@@ -255,7 +257,7 @@ export default function MagnetFrameEditor() {
   };
 
   const addText = () => {
-    const el = newTextElement();
+    const el = newTextElement(100 - matInset.bottomPct / 2);
     setElements((prev) => [...prev, el]);
     setSelectedId(el.id);
   };

@@ -882,7 +882,6 @@ export async function renderAlbumPageJpeg({
   }
 
   const elements = resolvePageElements(spread, pageWidthPx, pageHeightPx);
-  let any = false;
   for (const el of elements) {
     if (el.kind === "text") {
       try {
@@ -920,7 +919,6 @@ export async function renderAlbumPageJpeg({
       if (!source) continue;
       const rendered = await ornamentLayerRaw(source, w, h, el.rotation, tintColor, { borderWidth: el.borderWidth, borderColor: el.borderColor });
       if (!rendered) continue;
-      any = true;
       const centerX = el.x + w / 2;
       const centerY = el.y + h / 2;
       const top = Math.round(centerY - rendered.height / 2);
@@ -938,7 +936,6 @@ export async function renderAlbumPageJpeg({
       const w = Math.max(1, Math.round(el.width));
       const h = Math.max(1, Math.round(el.height));
       const tile = await composeShapeTile(w, h, el.color, el.maskId, el.rotation, { borderWidth: el.borderWidth, borderColor: el.borderColor, shapeStyle: el.shapeStyle });
-      any = true;
       if (el.opacity !== undefined && el.opacity < 100) {
         const factor = Math.max(0, el.opacity) / 100;
         for (let i = 3; i < tile.data.length; i += 4) tile.data[i] = Math.round(tile.data[i] * factor);
@@ -968,12 +965,12 @@ export async function renderAlbumPageJpeg({
       sharpness: el.sharpness,
     });
     if (!tile) continue;
-    any = true;
     const shadow = await shadowLayerPng(width, height, el.shadow, frameX, frameY, el.rotation, el.shadowDistance, el.shadowBlur, el.shadowAngle, pageWidthPx, pageHeightPx);
     if (shadow) composites.push({ input: shadow.buffer, left: shadow.left, top: shadow.top });
     composites.push({ input: tile.data, raw: { width: tile.width, height: tile.height, channels: 4 }, left: Math.round(frameX + tile.left), top: Math.round(frameY + tile.top) });
   }
-  if (!any && !elements.some((e) => e.kind === "text") && !spread.background_photo_id) return null;
+  // An empty page still becomes a (white) file — every export format gives exactly one output per
+  // page in the range, so page numbers match between PDF, JPG and PSD (2026-09-25).
 
   return sharp({ create: { width: pageWidthPx, height: pageHeightPx, channels: 3, background: "#ffffff" } })
     .composite(await clampCompositesToCanvas(composites, pageWidthPx, pageHeightPx))

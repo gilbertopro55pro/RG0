@@ -330,7 +330,11 @@ export async function renderAlbumPagePsd({
       children.push({ name: "שחור-לבן", clipping: true, adjustment: { type: "black & white" } });
     }
   }
-  if (!any && !elements.some((e) => e.kind === "text") && !spread.background_photo_id) return null;
+  // An empty page still becomes a file (same rule as the JPG/PDF exports): a white Solid Color
+  // fill layer, which costs no pixel data even at 60×30cm/300 DPI.
+  if (!any && !elements.some((e) => e.kind === "text") && !spread.background_photo_id) {
+    children.unshift({ name: "רקע", vectorFill: { type: "color", color: { r: 255, g: 255, b: 255 } } });
+  }
 
   return writePsdBuffer({ width: pageWidthPx, height: pageHeightPx, children, imageResources: { resolutionInfo: PSD_RESOLUTION_INFO } });
 }
