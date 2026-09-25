@@ -103,8 +103,8 @@ function buildSystem(p: IntakePhotographer): string {
 - ברגע שיש תאריך, קוראים ל-check_availability. אם התאריך תפוס, אומרים את זה בעדינות ומציעים להיכנס לרשימת ההמתנה (אחרי שיש שם וטלפון, קוראים ל-join_waitlist).
 - אחרי ש-join_waitlist החזיר ok, מסיימים בתודה ובהסבר ש${name} יעדכן אם התאריך יתפנה. לא ממשיכים לאסוף פרטים ולא מציעים הצעת מחיר לתאריך תפוס.
 - בכל פעם שהלקוח נותן פרט, קוראים ל-save_details עם מה שנאמר.
-- כשכל פרטי החובה נשמרו, קוראים ל-complete_intake, ואז מסכמים ללקוח את מה שהועבר ואומרים שהצעת מחיר מ${name} תגיע תוך ${p.intake_bot_reply_hours} שעות.
-- אסור לכתוב ללקוח שהפרטים הועברו לפני ש-complete_intake או join_waitlist החזירו ok.
+- כש-save_details מחזיר handedOff=true, הפנייה כבר הועברה. מותר לשאול עוד שאלה או שתיים לא חובה (שעות, מה חשוב להם), ואז מסכמים. אם עוד לא הועברה וכל פרטי החובה נשמרו, קוראים ל-complete_intake, ואז מסכמים ללקוח את מה שהועבר ואומרים שהצעת מחיר מ${name} תגיע תוך ${p.intake_bot_reply_hours} שעות.
+- אסור לכתוב ללקוח שהפרטים הועברו לפני ש-complete_intake או join_waitlist החזירו ok, או ש-save_details החזיר handedOff=true.
 - תאריכים יחסיים ("שבת הבאה") מחשבים לפי התאריך של היום: ${israelToday()}. אם התאריך לא ברור, שואלים.
 
 שאלות נפוצות של ${name} (מותר לענות רק מתוכן):
@@ -214,6 +214,24 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
   }
 }
 
+// Marks the conversation done, turns its lead into a full one and emails the photographer. Runs
+// from complete_intake, and automatically from save_details the moment the last required detail
+// arrives — so a client who stops answering the optional questions never costs the photographer
+// the handoff (found in a live test, 2026-09-25).
+async function completeIntake(supabase: ServiceClient, conv: IntakeConversation, p: IntakePhotographer, siteUrl: string) {
+  conv.state = "completed";
+  conv.completed_at = new Date().toISOString();
+  conv.lead_id = await upsertLead(supabase, conv, true);
+  const d = conv.collected;
+  await notifyPhotographer(
+    p,
+    `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : "(תאריך טרם נקבע)"}`.trim(),
+    d,
+    siteUrl,
+    "העוזר אסף את כל פרטי האירוע. הליד מחכה להצעת מחיר ממך."
+  );
+}
+
 async function runTool(
   supabase: ServiceClient,
   conv: IntakeConversation,
@@ -244,9 +262,22 @@ async function runTool(
     if (patch.eventDate) patch.dateUndecided = false;
     if (patch.eventDate && patch.eventDate !== conv.collected.eventDate) delete conv.collected.dateAvailable;
     conv.collected = { ...conv.collected, ...patch };
-    conv.lead_id = await upsertLead(supabase, conv, false);
+    conv.lead_id = await upsertLead(supabase, conv, !!conv.completed_at);
     const missing = missingDetails(conv.collected);
-    return JSON.stringify({ saved: Object.keys(patch), missing, dateChecked: conv.collected.dateAvailable !== undefined });
+    const d = conv.collected;
+    const dateReady = d.eventDate ? d.dateAvailable === true : !!d.dateUndecided;
+    let handedOff = !!conv.completed_at;
+    if (!handedOff && missing.length === 0 && dateReady && conv.state !== "waitlisted") {
+      await completeIntake(supabase, conv, p, siteUrl);
+      handedOff = true;
+    }
+    return JSON.stringify({
+      saved: Object.keys(patch),
+      missing,
+      dateChecked: d.dateAvailable !== undefined,
+      // true = the lead already went to the photographer; optional questions may follow, then summarize.
+      handedOff,
+    });
   }
 
   if (name === "complete_intake") {
@@ -254,17 +285,7 @@ async function runTool(
     if (missing.length) return JSON.stringify({ error: "חסרים פרטי חובה", missing });
     if (conv.collected.eventDate && conv.collected.dateAvailable === undefined) return JSON.stringify({ error: "קודם לבדוק את התאריך עם check_availability" });
     if (conv.completed_at) return JSON.stringify({ ok: true, alreadyDone: true, replyHours: p.intake_bot_reply_hours });
-    conv.lead_id = await upsertLead(supabase, conv, true);
-    conv.state = "completed";
-    conv.completed_at = new Date().toISOString();
-    const d = conv.collected;
-    await notifyPhotographer(
-      p,
-      `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : "(תאריך טרם נקבע)"}`.trim(),
-      d,
-      siteUrl,
-      "העוזר אסף את כל פרטי האירוע. הליד מחכה להצעת מחיר ממך."
-    );
+    await completeIntake(supabase, conv, p, siteUrl);
     return JSON.stringify({ ok: true, replyHours: p.intake_bot_reply_hours });
   }
 
