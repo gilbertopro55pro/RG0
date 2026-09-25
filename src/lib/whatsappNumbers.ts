@@ -17,12 +17,21 @@ export type NumberStatus = {
   error?: { code?: number; subcode?: number; message?: string };
 };
 
-type GraphError = { code?: number; error_subcode?: number; message?: string; error_user_title?: string; error_user_msg?: string };
+type GraphError = {
+  code?: number;
+  error_subcode?: number;
+  message?: string;
+  error_user_title?: string;
+  error_user_msg?: string;
+  // WhatsApp Cloud API puts the actual reason here ("Invalid parameter" alone says nothing).
+  error_data?: { details?: string } | string;
+};
 
 // Meta's short message ("Invalid parameter") hides the reason; the subcode and user message carry it.
 function describeError(e: GraphError | undefined, fallback: string): string {
   if (!e) return fallback;
-  const parts = [e.message, e.error_user_title, e.error_user_msg].filter(Boolean);
+  const details = typeof e.error_data === "string" ? e.error_data : e.error_data?.details;
+  const parts = [e.message, details, e.error_user_title, e.error_user_msg].filter(Boolean);
   return `${parts.join(" | ")}${e.error_subcode ? ` (subcode ${e.error_subcode})` : ""}` || fallback;
 }
 
@@ -107,7 +116,8 @@ export function diagnoseNumber(s: NumberStatus, inTokenWaba: boolean, wabaSubscr
     out.push("מטא דחו את שם התצוגה. צריך לבחור שם אחר ב-WhatsApp Manager.");
   }
   if (!inTokenWaba) {
-    out.push("המספר לא מופיע באף חשבון וואטסאפ עסקי שהאסימון משויך אליו.");
+    // Read from the token's granular scopes, which can lag behind a newly assigned WABA.
+    out.push("ייתכן שלאסימון אין הרשאה על חשבון הוואטסאפ העסקי של המספר (החשבון לא מופיע ברשימת ההרשאות של האסימון). אם כבר שייכת אותו למשתמש המערכת, זה יכול להיות מידע ישן: נסו לרשום.");
   } else if (!wabaSubscribed) {
     out.push("האפליקציה לא רשומה ל-webhooks של חשבון הוואטסאפ העסקי של המספר, אז הודעות נכנסות לא יגיעו למערכת. אפשר לחבר בכפתור למטה.");
   }
