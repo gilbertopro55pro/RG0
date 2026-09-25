@@ -17,7 +17,16 @@ export type NumberStatus = {
   error?: { code?: number; subcode?: number; message?: string };
 };
 
-async function graph(path: string, init?: RequestInit): Promise<Record<string, unknown> & { error?: { code?: number; error_subcode?: number; message?: string } }> {
+type GraphError = { code?: number; error_subcode?: number; message?: string; error_user_title?: string; error_user_msg?: string };
+
+// Meta's short message ("Invalid parameter") hides the reason; the subcode and user message carry it.
+function describeError(e: GraphError | undefined, fallback: string): string {
+  if (!e) return fallback;
+  const parts = [e.message, e.error_user_title, e.error_user_msg].filter(Boolean);
+  return `${parts.join(" | ")}${e.error_subcode ? ` (subcode ${e.error_subcode})` : ""}` || fallback;
+}
+
+async function graph(path: string, init?: RequestInit): Promise<Record<string, unknown> & { error?: GraphError }> {
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!token) return { error: { message: "WHATSAPP_ACCESS_TOKEN is not set" } };
   const res = await fetch(`${GRAPH}/${path}`, {
@@ -110,12 +119,12 @@ export async function registerWhatsAppNumber(phoneNumberId: string, pin: string)
     method: "POST",
     body: JSON.stringify({ messaging_product: "whatsapp", pin }),
   });
-  if (data.error || !data.success) return { ok: false, error: data.error?.message ?? "הרישום נכשל" };
+  if (data.error || !data.success) return { ok: false, error: describeError(data.error, "הרישום נכשל") };
   return { ok: true };
 }
 
 export async function subscribeAppToWaba(wabaId: string): Promise<{ ok: boolean; error?: string }> {
   const data = await graph(`${wabaId}/subscribed_apps`, { method: "POST" });
-  if (data.error || !data.success) return { ok: false, error: data.error?.message ?? "החיבור נכשל" };
+  if (data.error || !data.success) return { ok: false, error: describeError(data.error, "החיבור נכשל") };
   return { ok: true };
 }
