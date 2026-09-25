@@ -5,6 +5,8 @@ import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import { createPayplusCheckoutLink, deletePayplusRecurring, PAYPLUS_BILLING } from "@/lib/payplus";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { Photographer } from "@/lib/types";
+import { ADMIN_EMAIL } from "@/lib/admin";
+import { deleteExpiredTrialAccount, isTrialDeletionCandidate, trialDeletionDate, TRIAL_RETENTION_DAYS, WARN_DAYS_BEFORE } from "@/lib/accountDeletion";
 
 const ANNUAL_REMINDER_DAYS_BEFORE = 30;
 const MONTHLY_REMINDER_DAYS_BEFORE = 7;
@@ -172,7 +174,7 @@ export async function GET(request: NextRequest) {
           `שלום ${photographer.name},\n\n` +
           `תקופת הניסיון שלך במערכת גילברטו מסתיימת מחר. כדי להמשיך לעבוד בלי הפסקה, בוחרים מסלול כאן:\n` +
           `${siteUrl}/billing\n\n` +
-          `כל האירועים, הגלריות והלקוחות שהכנסת נשמרים, ואחרי התשלום ממשיכים בדיוק מאיפה שעצרת.\n\n` +
+          `כל האירועים, הגלריות והלקוחות שהכנסת נשמרים 30 יום אחרי סוף הניסיון, ואחרי התשלום ממשיכים בדיוק מאיפה שעצרת. בלי תשלום עד אז, החשבון והנתונים נמחקים.\n\n` +
           `צוות גילברטו`,
       });
       await supabase.from("photographers").update({ trial_reminder_sent_at: now.toISOString() }).eq("id", photographer.id);
@@ -182,5 +184,92 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ finalized: finalizedCount, reminded: remindedCount, switched: switchedCount, trialReminded: trialRemindedCount });
+  // Trial data retention: an unpaid trial's data is kept TRIAL_RETENTION_DAYS after the trial end,
+  // then deleted — after an email WARN_DAYS_BEFORE and another 1 day before. Each step needs the
+  // previous one to have actually been sent, so nobody is ever deleted without both warnings, even
+  // if the cron skipped days (the first warning always comes at least 7 days before deletion).
+  const DAY_MS = 86_400_000;
+  const retentionFields = "id, name, email, subscription_status, trial_ends_at, payplus_recurring_uid, keep_account, trial_deletion_warned_at, trial_deletion_final_warned_at";
+  type RetentionRow = Pick<
+    Photographer,
+    "id" | "name" | "email" | "subscription_status" | "trial_ends_at" | "payplus_recurring_uid" | "keep_account" | "trial_deletion_warned_at" | "trial_deletion_final_warned_at"
+  >;
+  const { data: endedTrials } = await supabase
+    .from("photographers")
+    .select(retentionFields)
+    .eq("subscription_status", "trialing")
+    .eq("keep_account", false)
+    .is("payplus_recurring_uid", null)
+    .lte("trial_ends_at", now.toISOString())
+    .returns<RetentionRow[]>();
+
+  let retentionWarned = 0;
+  let retentionFinalWarned = 0;
+  const deletedAccounts: string[] = [];
+  for (const p of endedTrials ?? []) {
+    if (!isTrialDeletionCandidate(p, now) || !p.trial_ends_at) continue;
+    const deleteAt = trialDeletionDate(p.trial_ends_at);
+    const msLeft = deleteAt.getTime() - now.getTime();
+    const deleteAtHe = deleteAt.toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" });
+    try {
+      if (!p.trial_deletion_warned_at) {
+        if (msLeft > WARN_DAYS_BEFORE * DAY_MS) continue;
+        await sendEmail({
+          to: notificationEmailFor(p.email),
+          subject: `החשבון שלך בגילברטו יימחק ב-${deleteAtHe}`,
+          text:
+            `שלום ${p.name},\n\n` +
+            `תקופת הניסיון שלך בגילברטו הסתיימה, ועדיין לא נבחר מסלול. כפי שמופיע בתנאי השימוש, הנתונים נשמרים ` +
+            `${TRIAL_RETENTION_DAYS} יום מסוף הניסיון, ולכן ב-${deleteAtHe} החשבון וכל מה שבו יימחקו לצמיתות: ` +
+            `האירועים, הלקוחות, הגלריות והתמונות.\n\n` +
+            `כדי לשמור הכל ולהמשיך בדיוק מאיפה שעצרת, בוחרים מסלול כאן:\n${siteUrl}/billing\n\n` +
+            `צוות גילברטו`,
+        });
+        await supabase.from("photographers").update({ trial_deletion_warned_at: now.toISOString() }).eq("id", p.id);
+        retentionWarned++;
+        continue;
+      }
+      if (!p.trial_deletion_final_warned_at) {
+        const firstWarnAgeMs = now.getTime() - new Date(p.trial_deletion_warned_at).getTime();
+        if (msLeft > DAY_MS || firstWarnAgeMs < (WARN_DAYS_BEFORE - 1) * DAY_MS) continue;
+        await sendEmail({
+          to: notificationEmailFor(p.email),
+          subject: "תזכורת אחרונה: החשבון שלך בגילברטו יימחק מחר",
+          text:
+            `שלום ${p.name},\n\n` +
+            `מחר החשבון שלך בגילברטו וכל הנתונים שבו יימחקו לצמיתות, כי תקופת הניסיון הסתיימה ולא נבחר מסלול. ` +
+            `אחרי המחיקה אי אפשר לשחזר אותם.\n\n` +
+            `כדי לשמור הכל, בוחרים מסלול היום:\n${siteUrl}/billing\n\n` +
+            `צוות גילברטו`,
+        });
+        await supabase.from("photographers").update({ trial_deletion_final_warned_at: now.toISOString() }).eq("id", p.id);
+        retentionFinalWarned++;
+        continue;
+      }
+      const finalWarnAgeMs = now.getTime() - new Date(p.trial_deletion_final_warned_at).getTime();
+      // At most 5 deletions per run — each one walks the account's storage.
+      if (msLeft > 0 || finalWarnAgeMs < 20 * 60 * 60 * 1000 || deletedAccounts.length >= 5) continue;
+      const result = await deleteExpiredTrialAccount(supabase, p.id);
+      if (result.deleted) {
+        deletedAccounts.push(p.id);
+        await sendEmail({
+          to: ADMIN_EMAIL,
+          subject: "[ניסיון] חשבון נמחק אחרי 30 יום בלי תשלום",
+          text: `נמחק חשבון ${p.name} (${p.id}). קבצים שנמחקו מהאחסון: ${result.objects ?? 0}.`,
+        }).catch(() => {});
+      }
+    } catch (e) {
+      console.error("Trial retention step failed:", p.id, e);
+    }
+  }
+
+  return NextResponse.json({
+    finalized: finalizedCount,
+    reminded: remindedCount,
+    switched: switchedCount,
+    trialReminded: trialRemindedCount,
+    retentionWarned,
+    retentionFinalWarned,
+    deleted: deletedAccounts.length,
+  });
 }

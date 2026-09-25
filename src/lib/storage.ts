@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
   DeleteObjectsCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Upload } from "@aws-sdk/lib-storage";
@@ -309,4 +310,59 @@ export async function getSignedUploadUrl(
     ContentType: contentType,
   });
   return getSignedUrl(client(), command, { expiresIn: expiresInSeconds });
+}
+
+// Account deletion (lib/accountDeletion.ts) needs "everything under this photographer" without
+// knowing every path in advance. Raw keys here — no keyFor() — since callers pass full prefixes
+// ("galleries/<photographerId>/"), and the public previews bucket has no bucket-name prefix at all.
+async function listKeys(s3: S3Client, bucketName: string, prefix: string, delimiter?: string): Promise<{ keys: string[]; prefixes: string[] }> {
+  const keys: string[] = [];
+  const prefixes: string[] = [];
+  let token: string | undefined;
+  do {
+    const res = await s3.send(new ListObjectsV2Command({ Bucket: bucketName, Prefix: prefix, Delimiter: delimiter, ContinuationToken: token }));
+    for (const o of res.Contents ?? []) if (o.Key) keys.push(o.Key);
+    for (const p of res.CommonPrefixes ?? []) if (p.Prefix) prefixes.push(p.Prefix);
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token);
+  return { keys, prefixes };
+}
+
+async function deleteKeys(s3: S3Client, bucketName: string, keys: string[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += DELETE_OBJECTS_BATCH_SIZE) {
+    const batch = keys.slice(i, i + DELETE_OBJECTS_BATCH_SIZE);
+    const result = await s3.send(new DeleteObjectsCommand({ Bucket: bucketName, Delete: { Objects: batch.map((Key) => ({ Key })) } }));
+    if (result.Errors && result.Errors.length > 0) {
+      throw new Error(`מחיקת ${result.Errors.length} קבצים מהאחסון נכשלה`);
+    }
+  }
+}
+
+// Deletes every object whose key is "<any logical bucket>/<ownerId>/…" in the main bucket (every
+// upload path in the app starts with the owner's id — see the uploadObject callers), plus the
+// given exact keys. Returns how many objects were removed.
+export async function removeAllObjectsOfOwner(ownerId: string, extraKeys: string[] = []): Promise<number> {
+  const bucketName = requireEnv("R2_BUCKET_NAME");
+  const s3 = client();
+  const { prefixes: topLevel } = await listKeys(s3, bucketName, "", "/");
+  const keys = new Set(extraKeys);
+  for (const top of topLevel) {
+    const { keys: owned } = await listKeys(s3, bucketName, `${top}${ownerId}/`);
+    owned.forEach((k) => keys.add(k));
+  }
+  await deleteKeys(s3, bucketName, [...keys]);
+  return keys.size;
+}
+
+// Same for the public previews bucket, by exact key prefixes (e.g. "previews/<galleryId>/").
+export async function removePreviewPrefixes(prefixes: string[], extraKeys: string[] = []): Promise<number> {
+  const bucketName = requireEnv("R2_PREVIEWS_BUCKET_NAME");
+  const s3 = previewsClient();
+  const keys = new Set(extraKeys);
+  for (const prefix of prefixes) {
+    const { keys: found } = await listKeys(s3, bucketName, prefix);
+    found.forEach((k) => keys.add(k));
+  }
+  await deleteKeys(s3, bucketName, [...keys]);
+  return keys.size;
 }

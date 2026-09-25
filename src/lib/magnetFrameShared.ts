@@ -10,9 +10,16 @@ export const MAGNET_FRAME_DIMENSIONS: Record<FrameOrientation, { widthPx: number
   portrait: { widthPx: 1200, heightPx: 1600 },
 };
 
-// 80px/cm expressed as DPI (80 × 2.54). Stamped on the exported PNG so print shops and Photoshop
-// open it at its real 20×15cm instead of reading it as 72 DPI (~56cm wide).
-export const MAGNET_FRAME_DPI = 80 * 2.54;
+// MAGNET_FRAME_DIMENSIONS are the DESIGN units (80px/cm) the editor and every stored design use.
+// The export renders the same design at print resolution: 300 DPI, i.e. every pixel size scaled
+// by MAGNET_EXPORT_SCALE (a 20×15cm frame comes out 2362×1772). Stamped with the same DPI so print
+// shops and Photoshop open it at its real 20×15cm.
+export const MAGNET_FRAME_DPI = 300;
+export const MAGNET_EXPORT_SCALE = MAGNET_FRAME_DPI / (80 * 2.54);
+export function magnetExportDimensions(orientation: FrameOrientation): { widthPx: number; heightPx: number } {
+  const { widthPx, heightPx } = MAGNET_FRAME_DIMENSIONS[orientation];
+  return { widthPx: Math.round(widthPx * MAGNET_EXPORT_SCALE), heightPx: Math.round(heightPx * MAGNET_EXPORT_SCALE) };
+}
 
 export const DEFAULT_MAGNET_FRAME_SETTINGS: MagnetFrameSettings = {
   borderRatioPct: 12,
