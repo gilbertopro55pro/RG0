@@ -35,18 +35,23 @@ API returns 403.
 
 | Download | Verified result |
 |---|---|
-| לרוחב (20×15) | 1600×1200 RGBA PNG, 203.2 DPI = 20.0×15.0 cm, transparent photo window, opaque mat |
-| לאורך (15×20) | 1200×1600, same checks |
+| לרוחב (20×15) | 2362×1772 RGBA PNG, 300 DPI = 20.0×15.0 cm, transparent photo window, opaque mat (verified 2026-09-25) |
+| לאורך (15×20) | 1772×2362, same checks |
 
 ### Know before you answer a user
 
-- **Resolution is 80 px/cm (203 DPI)**, fixed in `MAGNET_FRAME_DIMENSIONS`. That's fine for a
-  20×15 magnet, but below 300 DPI. Since 2026-09-24 the PNG carries the matching density
-  (`MAGNET_FRAME_DPI`), so it opens at 20×15 cm. Before that it opened as 72 DPI (about 56 cm).
+- **Two coordinate systems.** Designs are stored and edited in design units: `MAGNET_FRAME_DIMENSIONS`,
+  1600×1200 at 80 px/cm. Positions are percentages, and font sizes, shadows and texture tiles are
+  in design pixels. The export renders at 300 DPI: `magnetExportDimensions()` gives 2362×1772, and
+  `magnetFrame.ts` multiplies every pixel size by `MAGNET_EXPORT_SCALE` (≈1.476). A new pixel-sized
+  setting has to be multiplied by `S` in `magnetFrame.ts` too, or it will look smaller in the
+  export than in the editor.
+  - History: until 2026-09-24 the export was 1600×1200 with no DPI tag, so it opened as 72 DPI
+    (about 56 cm wide). On 2026-09-24 it got a 203 DPI tag, and since 2026-09-25 it renders at 300 DPI.
 - `magnetFrameShared.ts` is in the Fly worker's import graph, so changing it changes the render
   hash and redeploys the worker (see CLAUDE.md, deployment section).
-- The default text sits low on the mat and can overlap the edge of the photo window. The
-  photographer drags it, and the export shows it exactly where it was left.
+- A new text starts centered on the bottom mat: `yPct = 100 − bottomPct/2`, from the current
+  mat settings (since 2026-09-25). Texts already saved keep their position.
 
 ## Testing live (the procedure that passed)
 
@@ -56,7 +61,7 @@ Run tests on the test account only: saving overwrites the account's design.
 2. `GF_STATE=… node export-test.js <outDir>`: closes the "install the app" card (it covers the
    editor buttons), adds a text and the first element, saves, then downloads both orientations.
    Pass = `save: 200` and two `download:` lines.
-3. Check the files with Pillow: size 1600×1200 / 1200×1600, `info['dpi'] == (203.2, 203.2)`,
+3. Check the files with Pillow: size 2362×1772 / 1772×2362, `info['dpi'] ≈ (300, 300)`,
    alpha 0 in the center (photo window) and 255 at the edge (mat). Look at them over a colored
    background.
 4. Access check: switch the test account to `basic_monthly` for a moment (SQL on `photographers.plan`),

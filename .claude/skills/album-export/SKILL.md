@@ -43,8 +43,10 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   every page was a fixed 1600×1000 pt (56.4×35.3 cm, ratio 1.6), which squeezed any album that
   isn't 1.6. The batched (Vercel resume) path only scales the pages the current call added
   (`firstNewPageIndex`), so a page is never scaled twice. It's still a proof: no bleed or trim marks.
-- **JPG/PSD skip empty pages.** A page with no photo, text or background returns `null` and
-  isn't in the zip, so a 10-page album with 3 filled pages gives 3 files. The PDF keeps all pages.
+- **One output per page in every format** (since 2026-09-25). An empty page becomes a white page:
+  a white JPG, a PSD with a white Solid Color fill layer (no pixel data, so no memory cost even at
+  60×30 cm), and a blank page in the PDF. Page numbers match across formats. Before this, JPG and PSD
+  skipped empty pages, and the PDF skipped preset-layout pages that had no first photo.
 - **PDF export blocks while the Fly worker is stale.** `checkRenderWorkerHealth` returns 503
   ("שרת הרינדור עדיין לא עודכן…") until the worker's `code_hash` matches this deploy. The client
   retries quietly for 2 minutes ("מכינים את השרת"). After any change to render code (anything in

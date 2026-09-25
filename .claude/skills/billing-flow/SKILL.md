@@ -99,6 +99,13 @@ Found in `payplus_webhook_events` on 2026-09-24 (Israel times):
   deleting an account.**
 - Account `146ad19b…`: renewal 13 days after the first payment (expected about 30).
 
+**Resolved 2026-09-25 (owner):**
+- Both leftover recurrings (`0b698301…`, `23934182…`) no longer appear in the PayPlus account.
+- The extra charges were refunded.
+- The missing receipts were issued.
+
+If a charge for an unknown account ever shows up again, the webhook now emails an alert.
+
 Most likely cause: PayPlus's recurring engine. The `instant_first_payment` + `start_date_on_payment_date`
 combination can produce a same-day second charge, but it didn't on every account. It wasn't
 changed blind (the docs weren't reachable). Check it with PayPlus support or the dashboard
@@ -125,3 +132,29 @@ from photographers where id = '<id>';
   the callback URL in PayPlus). A row with `outcome` null or an error means read the Vercel logs.
 - A missing receipt: the `receipt_status/receipt_error` of that transaction. On `failed`, issue
   one manually in Finbot.
+
+## Trial data retention (30 days, since 2026-09-25)
+
+Owner's decision: an account whose trial ended without a payment is **deleted 30 days after the
+trial end**.
+- **Where:** `lib/accountDeletion.ts`, driven by the `subscription-lifecycle` cron (daily 07:00 UTC).
+- **Warnings:** an email 7 days before (`trial_deletion_warned_at`) and 1 day before
+  (`trial_deletion_final_warned_at`). Each step requires the previous one to have been sent, and
+  the first warning is always at least 7 days before deletion, even if the cron skipped days.
+- **What deletion does:**
+  1. Removes every storage object under `<bucket>/<photographerId>/`.
+  2. Removes the job, export and spread-preview files, and `previews/<galleryId>/` in the previews bucket.
+  3. Deletes the auth user; everything in the DB cascades from `photographers`.
+  4. Writes a row in `deleted_accounts_log` (no personal data).
+  5. Emails the admin.
+  - At most 5 deletions per run.
+- **Never deleted:**
+  - the admin
+  - `keep_account = true` (the QA accounts, set by migration 0128)
+  - anyone with a `payplus_recurring_uid`
+  - anyone with a charged webhook event
+  - any status other than `trialing` (the three old `incomplete` users are untouched, as the owner decided)
+- The 30-day rule appears in the terms, cancellation policy, FAQ, /billing and the trial-end reminder.
+- **To exempt an account:** `update photographers set keep_account = true where id = '<id>';`
+- **Live test:** two disposable accounts, "QA מחיקה (מוכן למחיקה)" and "QA מחיקה (אזהרה ראשונה)",
+  were set up on 2026-09-25 to go through the 2026-09-26 cron run. Record the result here.
