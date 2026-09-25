@@ -161,3 +161,4 @@
 - migration 0131 (הורץ): photographers.whatsapp_bot_phone_number_id, whatsapp_inbound_messages, busy_until, מצבים ignored/human, whatsapp_known_contact.
 - whatsappBot.ts הישן נמחק. WHATSAPP_PHONE_NUMBER_ID נשאר המספר שממנו המערכת שולחת לכל הצלמים (לא הועבר לבוט, בכוונה).
 - ממתין: רישום המספר (PIN), חיבור בפאנל, הפעלת העוזר בחשבון האדמין, ובדיקה אמיתית מטלפון לא מוכר.
+- 2026-09-25 (המשך): הרישום נכשל עם "Phone Link to WABA Failed - Unverified": חשבון הוואטסאפ של הבוט (1024441510204076) מחכה לאימות העסק במטא (In review). משתמש המערכת photographer-flowApi קיבל Full control עליו. אחרי האימות: רישום עם PIN חדש בפאנל, חיבור, הפעלה, בדיקה. ממצא: המערכת שולחת וואטסאפ ממספר הבדיקה של מטא (+1 555-663-8639), כלומר הודעות לא מגיעות ללקוחות אמיתיים. ממתין להחלטת המשתמש מאיזה מספר אמיתי לשלוח.

@@ -148,6 +148,13 @@ where c.channel = 'whatsapp' order by c.created_at desc limit 5;
 select * from whatsapp_inbound_messages order by created_at desc limit 10;
 ```
 
+**Registration blocker found 2026-09-25:** register returned `(#100) Invalid parameter | Phone Link
+to WABA Failed - Unverified`: the bot number's WABA (1024441510204076) needs Meta business
+verification first (it was "In review"). The panel now shows `error_data.details`, where the Cloud
+API puts the real reason. The system user `photographer-flowApi` was given Full control on that
+WABA. The app's current sending number (+1 555-663-8639) is Meta's **test** number: WhatsApp
+messages from the app reach only pre-approved recipients (1 scheduled message ever sent).
+
 **Open points:** a pure Cloud API number can't be used in the WhatsApp app, so "the photographer
 replied by hand" is only detectable with coexistence echoes; with a Cloud API only number there's
 no manual inbox yet. No monthly cap on WhatsApp (admin only).
