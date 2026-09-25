@@ -1,8 +1,11 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, after, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { sendWhatsAppMessage, verifyWhatsAppSignature } from "@/lib/whatsapp";
-import { getOrCreateConversation, runBotTurn } from "@/lib/whatsappBot";
-import type { Photographer } from "@/lib/types";
+import { verifyWhatsAppSignature } from "@/lib/whatsapp";
+import { ingestWhatsAppChange, processWhatsAppConversation, type WaChangeValue } from "@/lib/whatsappIntake";
+
+export const runtime = "nodejs";
+// The intake assistant's reply runs after the 200 (Meta retries slow webhooks); a turn takes 5-10 s.
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get("hub.mode");
@@ -15,15 +18,6 @@ export async function GET(request: NextRequest) {
   return new NextResponse("Forbidden", { status: 403 });
 }
 
-type InboundMessage = { from: string; type: string; text?: { body: string } };
-
-// Paused pending Meta's approval of the message templates the bot's free-text replies rely on,
-// and until it sits behind the planned paid add-on (to cover the per-conversation Claude API
-// cost) rather than every photographer's base plan. Flip to true once both are in place — the
-// per-photographer whatsapp_bot_enabled toggle is intentionally not enough on its own to bring
-// this back, so it can't turn back on by accident from a stray DB value.
-const BOT_LIVE = false;
-
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   if (!verifyWhatsAppSignature(rawBody, request.headers.get("x-hub-signature-256"))) {
@@ -33,30 +27,24 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceRoleClient();
   await supabase.from("whatsapp_webhook_events").insert({ payload: body });
 
-  const messages: InboundMessage[] =
-    body?.entry?.[0]?.changes?.[0]?.value?.messages ?? [];
-
-  if (BOT_LIVE && messages.length > 0) {
-    // Single shared WhatsApp Business number for now (no per-photographer WABA routing yet) —
-    // the bot only ever answers for whichever photographer has explicitly opted in.
-    const { data: photographer } = await supabase
-      .from("photographers")
-      .select("*")
-      .eq("whatsapp_bot_enabled", true)
-      .limit(1)
-      .maybeSingle<Photographer>();
-
-    if (photographer) {
-      for (const message of messages) {
-        if (message.type !== "text" || !message.text?.body) continue;
-        try {
-          const conversation = await getOrCreateConversation(supabase, photographer.id, message.from);
-          const reply = await runBotTurn(supabase, conversation, photographer.name, message.text.body);
-          if (reply) await sendWhatsAppMessage(message.from, reply);
-        } catch (e) {
-          console.error("WhatsApp bot turn failed:", e);
-        }
+  // Intake assistant on WhatsApp (lib/whatsappIntake.ts): only for a number set as a
+  // photographer's whatsapp_bot_phone_number_id, admin only for now. Anything else is just logged.
+  const siteUrl = new URL(request.url).origin;
+  const changes: { value?: WaChangeValue }[] = (body?.entry ?? []).flatMap((e: { changes?: { value?: WaChangeValue }[] }) => e.changes ?? []);
+  for (const change of changes) {
+    if (!change.value) continue;
+    try {
+      const ingested = await ingestWhatsAppChange(supabase, change.value);
+      if (!ingested) continue;
+      for (const convId of ingested.conversationIds) {
+        after(() =>
+          processWhatsAppConversation(supabase, ingested.photographer, convId, siteUrl).catch((e) =>
+            console.error("WhatsApp intake turn failed:", convId, e)
+          )
+        );
       }
+    } catch (e) {
+      console.error("WhatsApp intake ingest failed:", e);
     }
   }
 

@@ -10,6 +10,7 @@ import PricingSettings from "@/components/PricingSettings";
 import PriceQuotesSettings from "@/components/PriceQuotesSettings";
 import PricingSuppliersSettings from "@/components/PricingSuppliersSettings";
 import BotSettings from "@/components/BotSettings";
+import WhatsAppBotAdmin from "@/components/WhatsAppBotAdmin";
 import BillingSettings from "@/components/BillingSettings";
 import StorageUsageSettings from "@/components/StorageUsageSettings";
 import BrandingSettings from "@/components/BrandingSettings";
@@ -147,12 +148,15 @@ export default async function SettingsPage({
             id: "automation",
             label: "אוטומציה",
             content: (
+              <>
               <BotSettings
                 photographer={photographer}
                 cap={intakeMonthlyCap(photographer)}
                 usedThisMonth={intakeUsedThisMonth ?? 0}
                 chatPath={`/chat/${photographer.portfolio_slug ?? photographer.intake_chat_token}`}
               />
+              {user?.email === ADMIN_EMAIL && <WhatsAppBotAdmin connectedId={photographer.whatsapp_bot_phone_number_id} />}
+              </>
             ),
           },
           {

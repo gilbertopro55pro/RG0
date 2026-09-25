@@ -109,13 +109,45 @@ where c.photographer_id = '<id>' and c.channel = 'web' order by c.created_at des
   prompt in `buildSystem`. Rules go in the prompt, not in code, except "never claim a handoff
   before the tool returned ok".
 
-## Phase 2 (not built)
+## Phase 2: WhatsApp (built 2026-09-25, admin only, waiting on the number's registration)
 
-WhatsApp through the same engine. Owner's decisions (2026-09-25): admin account only at first;
-start only on a new conversation whose first message matches (fully or partly) the ad's default
-text "שלום! אפשר לקבל מידע נוסף על זה?" / "Hello! Can I get more info on this?" (or carries an ad
-referral), and always answer in Hebrew. Never for a number that is already a client, lead, event
-contact or team member, or once the photographer has replied by hand. Blocker: the business
-number is not connected to the Cloud API (only 2 real inbound messages ever in
-`whatsapp_webhook_events`); it needs Meta coexistence onboarding first. The old `src/lib/whatsappBot.ts` (price-quoting, never enabled,
-gated off in `api/whatsapp/webhook`) must be replaced by `runIntakeTurn`, not revived.
+Owner's decisions (2026-09-25): admin account only at first; start only on a new conversation
+whose first message matches (fully or partly) the ad's default text "שלום! אפשר לקבל מידע נוסף על
+זה?" / "Hello! Can I get more info on this?" (or carries an ad referral), and always answer in
+Hebrew. Never for a number that is already a client, lead, event contact or team member, or once
+the photographer has replied by hand. The old price-quoting `whatsappBot.ts` was deleted; WhatsApp
+runs through `runIntakeTurn` with `channel = { kind: "whatsapp" }`.
+
+| Piece | Where |
+|---|---|
+| Dedicated bot number: +972 55-253-6596, Phone number ID `1268190219710434` | `photographers.whatsapp_bot_phone_number_id` (admin row). Not `WHATSAPP_PHONE_NUMBER_ID`, which stays the app's sending number for every photographer |
+| Webhook: logs, routes by `metadata.phone_number_id`, replies in `after()` | `src/app/api/whatsapp/webhook/route.ts` |
+| Trigger (`isAdOpening`), known-contact check, echo handling, queue + lock | `src/lib/whatsappIntake.ts` |
+| Graph status / register with PIN / subscribe WABA / connect | `src/lib/whatsappNumbers.ts`, `api/whatsapp/bot-number` (admin session only) |
+| Admin panel | `src/components/WhatsAppBotAdmin.tsx`, under the assistant in settings → אוטומציה |
+| DB (migration 0131, run) | `whatsapp_inbound_messages` (PK = WhatsApp message id, dedupes Meta retries), `bot_conversations.busy_until`, states `ignored` / `human`, unique (photographer, client_phone) for WhatsApp, `whatsapp_known_contact(photographer, phone)` (last 9 digits over events, galleries, leads, price_quotes, waitlist) |
+
+How a message flows: first message from a number → conversation row. Ad opening (or referral) and
+not a known contact → `collecting_info` with the phone prefilled; anything else → `ignored` for
+good. Messages of an active conversation go to the queue; one worker per conversation
+(`busy_until`) answers a burst in one turn, then rechecks the queue after unlocking. A
+`message_echoes` item (coexistence: the photographer wrote from the Business app) turns the
+conversation `human`; the save uses `.neq("state","human")` so a takeover mid-turn sends nothing.
+The bot answers only while the admin's `intake_bot_enabled` is on (kill switch).
+
+**Verifying it, and what can't be checked from the cloud environment:** the `WHATSAPP_*` Vercel
+variables are "sensitive" (the API never returns their values) and writing new Vercel secrets or a
+public status endpoint is blocked by the environment's permissions. Everything Graph-related is
+therefore checked by the admin in the panel. The webhook can't be simulated either (it needs
+`WHATSAPP_APP_SECRET` for the signature), so the end-to-end test is a real WhatsApp message from a
+phone that isn't a known contact. Then:
+```sql
+select c.state, c.client_phone, c.client_turns, c.usage, l.name, l.needs_details
+from bot_conversations c left join leads l on l.id = c.lead_id
+where c.channel = 'whatsapp' order by c.created_at desc limit 5;
+select * from whatsapp_inbound_messages order by created_at desc limit 10;
+```
+
+**Open points:** a pure Cloud API number can't be used in the WhatsApp app, so "the photographer
+replied by hand" is only detectable with coexistence echoes; with a Cloud API only number there's
+no manual inbox yet. No monthly cap on WhatsApp (admin only).

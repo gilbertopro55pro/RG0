@@ -77,11 +77,26 @@ function hebrewDate(iso: string): string {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("he-IL", { timeZone: "UTC", weekday: "long", day: "numeric", month: "numeric", year: "numeric" });
 }
 
-function buildSystem(p: IntakePhotographer): string {
+// Where the conversation happens. WhatsApp (phase 2) starts from the ad's opening message, always
+// answers in Hebrew, and already knows the client's phone number.
+export type IntakeChannel = { kind: "web" } | { kind: "whatsapp"; clientPhone: string; adContext?: string | null };
+
+function channelRules(name: string, channel: IntakeChannel): string {
+  if (channel.kind === "web") return "";
+  return `
+
+בוואטסאפ:
+- הלקוח פנה בוואטסאפ, בדרך כלל מתוך מודעה. ההודעה הראשונה שלו היא הודעת הפתיחה של המודעה ("אפשר לקבל מידע נוסף?"), אז פותחים בברכה קצרה ובהסבר שזה העוזר של ${name}, ושואלים על האירוע.${channel.adContext ? `\n- המודעה שממנה הגיע: ${channel.adContext}` : ""}
+- תמיד עונים בעברית, גם אם הלקוח כותב באנגלית או בשפה אחרת.
+- מספר הטלפון של הלקוח כבר ידוע (${channel.clientPhone}) ונשמר. לא שואלים עליו, אלא אם הלקוח מבקש שיחזרו אליו למספר אחר.
+- טקסט רגיל בלבד, בלי כוכביות ובלי עיצוב.`;
+}
+
+function buildSystem(p: IntakePhotographer, channel: IntakeChannel): string {
   const name = studioName(p);
   const faq = (p.intake_bot_faq ?? []).filter((f) => f.q?.trim() && f.a?.trim());
   const faqText = faq.length ? faq.map((f: IntakeFaqItem) => `ש: ${f.q.trim()}\nת: ${f.a.trim()}`).join("\n\n") : "(אין)";
-  return `זהו העוזר האוטומטי של ${name}, צלם אירועים. לקוחות פונים אליו דרך צ'אט באתר.
+  return `זהו העוזר האוטומטי של ${name}, צלם אירועים. לקוחות פונים אליו דרך ${channel.kind === "whatsapp" ? "וואטסאפ" : "צ'אט באתר"}.
 
 התפקיד: לענות בנעימות, לבדוק אם התאריך פנוי, ולאסוף את פרטי האירוע כדי ש${name} יחזור ללקוח עם הצעת מחיר אישית.
 
@@ -108,7 +123,7 @@ function buildSystem(p: IntakePhotographer): string {
 - תאריכים יחסיים ("שבת הבאה") מחשבים לפי התאריך של היום: ${israelToday()}. אם התאריך לא ברור, שואלים.
 
 שאלות נפוצות של ${name} (מותר לענות רק מתוכן):
-${faqText}`;
+${faqText}${channelRules(name, channel)}`;
 }
 
 const TOOLS: Anthropic.Tool[] = [
@@ -314,9 +329,16 @@ async function runTool(
 
 // Runs one client message through the model (with its tool rounds) and returns the reply.
 // Mutates `conv` (messages, collected, state, lead_id); the caller persists it.
-export async function runIntakeTurn(supabase: ServiceClient, conv: IntakeConversation, p: IntakePhotographer, clientText: string, siteUrl: string): Promise<string> {
+export async function runIntakeTurn(
+  supabase: ServiceClient,
+  conv: IntakeConversation,
+  p: IntakePhotographer,
+  clientText: string,
+  siteUrl: string,
+  channel: IntakeChannel = { kind: "web" }
+): Promise<string> {
   const client = new Anthropic();
-  const system: Anthropic.TextBlockParam[] = [{ type: "text", text: buildSystem(p), cache_control: { type: "ephemeral" } }];
+  const system: Anthropic.TextBlockParam[] = [{ type: "text", text: buildSystem(p, channel), cache_control: { type: "ephemeral" } }];
   const messages: Anthropic.MessageParam[] = [...conv.messages, { role: "user", content: clientText }];
   const fallback = `סליחה, משהו השתבש אצלי. אפשר לנסות שוב, או להשאיר שם וטלפון ו${studioName(p)} יחזור אליך.`;
   let reply = "";
