@@ -31,6 +31,9 @@ const PUBLIC_PATHS = [
   "/p",
   // The public portfolio's "load more" (PortfolioGrid.tsx) — same public audience as "/p" itself.
   "/api/portfolio",
+  // The intake assistant's public chat (and its API) — a prospective client, no account.
+  "/chat",
+  "/api/intake-chat",
   "/api/payplus/webhook",
   // Bearer-token authenticated (not cookie-based) — the separate desktop app has no cookie jar
   // shared with this site, so it can't pass this proxy's cookie-session check. The route itself

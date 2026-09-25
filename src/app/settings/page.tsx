@@ -28,6 +28,8 @@ import { CURRENT_VERSION } from "@/lib/changelog";
 import { SUBSCRIPTION_PLANS, TEAM_MEMBER_LIMIT_BY_TIER, STORAGE_CAP_BYTES_BY_TIER } from "@/lib/stages";
 import BackLink from "@/components/BackLink";
 import { hasAppAccess, isInTrial, TRIAL_STORAGE_CAP_BYTES } from "@/lib/subscription";
+import { intakeMonthlyCap } from "@/lib/intakeAssistant";
+import { monthStartIsrael } from "@/lib/intakeChatAccess";
 
 export default async function SettingsPage({
   searchParams,
@@ -75,6 +77,13 @@ export default async function SettingsPage({
 
   if (!photographer) redirect("/");
   if (!hasAppAccess(photographer)) redirect("/billing");
+
+  const { count: intakeUsedThisMonth } = await supabase
+    .from("bot_conversations")
+    .select("id", { count: "exact", head: true })
+    .eq("channel", "web")
+    .gt("client_turns", 0)
+    .gte("created_at", monthStartIsrael().toISOString());
 
   const logoUrl = photographer.logo_storage_path
     ? await getSignedDownloadUrl("logos", photographer.logo_storage_path, 3600)
@@ -137,7 +146,14 @@ export default async function SettingsPage({
           {
             id: "automation",
             label: "אוטומציה",
-            content: <BotSettings />,
+            content: (
+              <BotSettings
+                photographer={photographer}
+                cap={intakeMonthlyCap(photographer)}
+                usedThisMonth={intakeUsedThisMonth ?? 0}
+                chatPath={`/chat/${photographer.portfolio_slug ?? photographer.intake_chat_token}`}
+              />
+            ),
           },
           {
             id: "appearance",

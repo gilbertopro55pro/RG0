@@ -97,7 +97,22 @@ export default function LeadsView({
           <div key={lead.id} className="p-4">
             <div className="flex items-start justify-between gap-2 mb-2">
               <div className="min-w-0">
-                <div className="font-bold text-[15px]">{lead.name}</div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-bold text-[15px]">{lead.name}</span>
+                  {lead.source === "assistant" && (
+                    <span className="text-[10.5px] font-semibold rounded-full px-2 py-0.5" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
+                      מהעוזר
+                    </span>
+                  )}
+                  {lead.source === "form" && (
+                    <span className="text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-chip text-ink-soft">מטופס הפנייה</span>
+                  )}
+                  {lead.needs_details && (
+                    <span className="text-[10.5px] font-semibold rounded-full px-2 py-0.5" style={{ background: "var(--color-rose-bg)", color: "var(--color-rose)" }}>
+                      חסרים פרטים
+                    </span>
+                  )}
+                </div>
                 {(lead.event_date_interest || resolveLeadPackageLabel(lead.package_interest, customPackages)) && (
                   <div className="text-[13px] text-ink-soft">
                     {[
@@ -128,7 +143,9 @@ export default function LeadsView({
               </select>
             </div>
 
+            {lead.event_type_name && <p className="text-[13px] mb-1">{lead.event_type_name}</p>}
             {lead.notes && <p className="text-xs text-ink-soft mb-2.5">{lead.notes}</p>}
+            {lead.bot_conversation_id && <ConversationToggle leadId={lead.id} />}
 
             {lead.quoted_amount && (
               <div className="text-[13px] font-bold mb-2.5">
@@ -455,6 +472,48 @@ function AddLeadModal({
           }}
           onEventTypeDeleted={onEventTypeDeleted}
         />
+      )}
+    </div>
+  );
+}
+
+// The intake assistant's conversation behind a lead, loaded on demand.
+function ConversationToggle({ leadId }: { leadId: string }) {
+  const [open, setOpen] = useState(false);
+  const [lines, setLines] = useState<{ role: "client" | "assistant"; text: string }[] | null>(null);
+  return (
+    <div className="mb-2.5">
+      <button
+        type="button"
+        onClick={async () => {
+          const next = !open;
+          setOpen(next);
+          if (next && !lines) {
+            const res = await fetch(`/api/leads/${leadId}/conversation`).catch(() => null);
+            const data = res?.ok ? await res.json() : { transcript: [] };
+            setLines(data.transcript ?? []);
+          }
+        }}
+        className="text-xs font-semibold underline underline-offset-2"
+        style={{ color: "var(--color-amber-deep)" }}
+      >
+        {open ? "הסתרת השיחה" : "השיחה עם העוזר"}
+      </button>
+      {open && (
+        <div className="mt-2 rounded-xl p-3 bg-chip grid gap-1.5 text-xs">
+          {lines === null ? (
+            <span className="text-ink-soft">טוען…</span>
+          ) : lines.length === 0 ? (
+            <span className="text-ink-soft">אין הודעות.</span>
+          ) : (
+            lines.map((l, i) => (
+              <p key={i} className="[overflow-wrap:anywhere]">
+                <b>{l.role === "client" ? "לקוח/ה: " : "העוזר: "}</b>
+                {l.text}
+              </p>
+            ))
+          )}
+        </div>
       )}
     </div>
   );

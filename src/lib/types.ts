@@ -21,6 +21,12 @@ export type Photographer = {
   whatsapp_signature: string | null;
   custom_contract_terms: string | null;
   whatsapp_bot_enabled: boolean;
+  // Intake assistant (עוזר פניות, migration 0129) — see lib/intakeAssistant.ts.
+  intake_bot_enabled: boolean;
+  intake_bot_faq: IntakeFaqItem[];
+  intake_bot_reply_hours: number;
+  intake_bot_extra_question: string | null;
+  intake_chat_token: string;
   payplus_customer_uid: string | null;
   payplus_recurring_uid: string | null;
   subscription_status: SubscriptionStatus;
@@ -314,6 +320,23 @@ export type EventContractRow = {
 
 export type LeadStatus = "new" | "contacted" | "quoted" | "won" | "lost";
 
+export type IntakeFaqItem = { q: string; a: string };
+
+// What the intake assistant collected in a conversation (leads.details / bot_conversations.collected).
+export type IntakeDetails = {
+  eventType?: string;
+  eventDate?: string; // YYYY-MM-DD
+  dateAvailable?: boolean;
+  location?: string;
+  guests?: string;
+  startTime?: string;
+  endTime?: string;
+  wishes?: string;
+  clientName?: string;
+  phone?: string;
+  email?: string;
+};
+
 export type LeadRow = {
   id: string;
   photographer_id: string;
@@ -335,6 +358,12 @@ export type LeadRow = {
   // event), so the page can tell "not yet approved" / "approved, questionnaire pending" / "done"
   // apart. Part of the admin-gated quote-approval-to-event flow (see quotes/[token]/page.tsx).
   quote_approved_at: string | null;
+  // "manual" (added by the photographer) or "assistant" (the intake assistant, migration 0129).
+  source: string;
+  bot_conversation_id: string | null;
+  details: IntakeDetails | null;
+  // The client left before every required detail was collected (but left a phone number).
+  needs_details: boolean;
   converted_event_id: string | null;
   event_type_name: string | null;
   created_at: string;

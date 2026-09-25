@@ -24,9 +24,9 @@ export async function loadPortfolio(slug: string) {
   const supabase = createServiceRoleClient();
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("id, name, phone, portfolio_bio, logo_storage_path, portfolio_enabled, plan")
+    .select("id, name, phone, portfolio_bio, logo_storage_path, portfolio_enabled, plan, intake_bot_enabled")
     .eq("portfolio_slug", slug)
-    .maybeSingle<Pick<Photographer, "id" | "name" | "phone" | "portfolio_bio" | "logo_storage_path" | "portfolio_enabled" | "plan">>();
+    .maybeSingle<Pick<Photographer, "id" | "name" | "phone" | "portfolio_bio" | "logo_storage_path" | "portfolio_enabled" | "plan" | "intake_bot_enabled">>();
 
   if (!photographer || !photographer.portfolio_enabled) return null;
   // The real gate — PortfolioSettings.tsx disables the toggle client-side for entry-tier accounts,
