@@ -327,6 +327,9 @@ export type IntakeDetails = {
   eventType?: string;
   eventDate?: string; // YYYY-MM-DD
   dateAvailable?: boolean;
+  // The client hasn't set a date yet — then approxDate ("קיץ 2027", "מרץ") stands in for it.
+  dateUndecided?: boolean;
+  approxDate?: string;
   location?: string;
   guests?: string;
   startTime?: string;
