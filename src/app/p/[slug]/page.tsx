@@ -121,6 +121,18 @@ export default async function PortfolioPage({
             {photographer.name}
           </span>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+        {/* The intake assistant's chat (עוזר פניות) — the page falls back to a plain inquiry
+            form by itself if the assistant is unavailable, so the button is safe to show. */}
+        {photographer.intake_bot_enabled && (
+          <a
+            href={`/chat/${slug}`}
+            className="shrink-0 rounded-full px-4 py-2 text-xs font-semibold border"
+            style={{ borderColor: BRASS, color: BRASS }}
+          >
+            בדיקת תאריך
+          </a>
+        )}
         {contactHref && (
           <a
             href={contactHref}
@@ -132,6 +144,7 @@ export default async function PortfolioPage({
             יצירת קשר
           </a>
         )}
+        </div>
       </header>
 
       <PortfolioHeroCarousel photos={heroPhotos} />
