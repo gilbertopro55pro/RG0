@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.63",
+    date: "2026-09-25",
+    changes: [
+      "עוזר פניות: הודעת פתיחה מוכנה לוואטסאפ העסקי, עם הקישור שלך, בהגדרות › אוטומציה. מעתיקים, מדביקים ב\"הודעת פתיחה\" של WhatsApp Business, וכל לקוח חדש מקבל מיד קישור לעוזר",
+      "קישור העוזר מוצג עכשיו בוואטסאפ ובאינסטגרם ככרטיס מעוצב עם השם שלך, במקום קישור רגיל",
+    ],
+  },
+  {
     version: "2.11.62",
     date: "2026-09-25",
     changes: [

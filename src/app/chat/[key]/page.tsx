@@ -9,7 +9,18 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: { params: Promise<{ key: string }> }): Promise<Metadata> {
   const { key } = await params;
   const p = await resolveChatPhotographer(createServiceRoleClient(), key);
-  return { title: p ? `פנייה ל${p.name}` : "פנייה", robots: { index: false } };
+  if (!p) return { title: "פנייה", robots: { index: false } };
+  // The preview card WhatsApp/Instagram show when the link is shared (one image for every studio).
+  const title = `${p.name} | בדיקת תאריך ומענה מיידי`;
+  const description = "כתבו עכשיו ותקבלו תשובה תוך שניות: בודקים אם התאריך פנוי ואוספים את פרטי האירוע להצעה אישית.";
+  const images = [{ url: "/og/chat.png", width: 1200, height: 630, alt: "בדיקת תאריך בצ'אט, תשובה תוך שניות" }];
+  return {
+    title,
+    description,
+    robots: { index: false },
+    openGraph: { title, description, siteName: p.name, images, type: "website" },
+    twitter: { card: "summary_large_image", title, description, images: ["/og/chat.png"] },
+  };
 }
 
 // The intake assistant's public chat (עוזר פניות) — see lib/intakeAssistant.ts.

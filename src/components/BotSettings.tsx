@@ -15,7 +15,7 @@ export default function BotSettings({
   usedThisMonth,
   chatPath,
 }: {
-  photographer: Pick<Photographer, "id" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question">;
+  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question">;
   cap: number;
   usedThisMonth: number;
   chatPath: string;
@@ -27,6 +27,7 @@ export default function BotSettings({
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [greetingCopied, setGreetingCopied] = useState(false);
 
   if (cap <= 0) {
     return (
@@ -62,6 +63,14 @@ export default function BotSettings({
 
   const fullLink = typeof window !== "undefined" ? `${window.location.origin}${chatPath}` : chatPath;
   const field = "w-full rounded-lg px-3 py-2 text-sm border border-line";
+  // For the WhatsApp Business app's automatic greeting message (no Meta approval needed): sends
+  // every new client straight to the assistant. The link shows a preview card (public/og/chat.png).
+  const greeting = `היי, תודה שפניתם ל${photographer.name}! 📸
+רוצים לדעת עכשיו אם התאריך שלכם פנוי?
+בצ'אט הזה תקבלו תשובה תוך שניות, בלי לחכות:
+👈 https://myframeflow.com${chatPath}
+בודקים את התאריך, אוספים את הפרטים, והצעה אישית בדרך אליכם.
+(ואפשר תמיד להמשיך לכתוב גם כאן)`;
 
   return (
     <div className="rounded-2xl bg-card border border-line overflow-hidden">
@@ -117,6 +126,30 @@ export default function BotSettings({
         <p className="text-xs text-ink-soft mt-2">
           <span className="font-data">{usedThisMonth}</span> מתוך <span className="font-data">{cap}</span> שיחות החודש. אחרי המכסה הלקוחות מקבלים טופס פנייה רגיל, ושום פנייה לא הולכת לאיבוד.
         </p>
+      </div>
+
+      <div className="px-4 py-3 border-t border-line">
+        <div className="text-sm font-semibold mb-1">הודעת פתיחה לוואטסאפ העסקי</div>
+        <p className="text-xs text-ink-soft mb-2">
+          כל לקוח חדש שכותב לך בוואטסאפ יקבל אוטומטית את ההודעה הזו, עם הקישור לעוזר. באפליקציית WhatsApp Business: הגדרות › כלים לעסקים › הודעת פתיחה › להדליק ולהדביק.
+        </p>
+        <div className="rounded-xl border border-line p-3 text-sm whitespace-pre-line break-words" style={{ background: "var(--color-input-bg)" }}>
+          {greeting}
+        </div>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(greeting);
+              setGreetingCopied(true);
+              setTimeout(() => setGreetingCopied(false), 1500);
+            } catch {}
+          }}
+          className="mt-2 text-xs font-semibold rounded-lg px-3 py-1.5 border border-line"
+          style={{ background: "var(--color-input-bg)" }}
+        >
+          {greetingCopied ? "הועתק" : "העתקת ההודעה"}
+        </button>
       </div>
 
       <div className="px-4 py-3 border-t border-line grid gap-3">
