@@ -52,8 +52,10 @@ export function normalizeIsraeliPhone(phone: string): string {
   return digits;
 }
 
-export async function sendWhatsAppMessage(to: string, body: string): Promise<{ messageId: string }> {
-  const phoneNumberId = requireEnv("WHATSAPP_PHONE_NUMBER_ID");
+// `fromPhoneNumberId` sends from another Cloud API number on the same token (the intake bot's own
+// number, photographers.whatsapp_bot_phone_number_id); default is the app's number.
+export async function sendWhatsAppMessage(to: string, body: string, fromPhoneNumberId?: string): Promise<{ messageId: string }> {
+  const phoneNumberId = fromPhoneNumberId || requireEnv("WHATSAPP_PHONE_NUMBER_ID");
   const token = requireEnv("WHATSAPP_ACCESS_TOKEN");
 
   const res = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`, {
