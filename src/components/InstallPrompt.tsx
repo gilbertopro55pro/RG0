@@ -6,7 +6,7 @@ import { IconClose } from "@/components/icons/AlbumIcons";
 
 // Client-facing token pages never need "install the app" nudges — only the photographer's own
 // working screens do. "/p" is the public portfolio page (/p/[slug]) — shown to potential clients.
-const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/billing", "/p"];
+const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/billing", "/p", "/chat"];
 const DISMISS_KEY = "install-prompt-dismissed";
 
 type BeforeInstallPromptEvent = Event & {

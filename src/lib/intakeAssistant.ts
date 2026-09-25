@@ -43,6 +43,8 @@ export type IntakeConversation = {
   client_turns: number;
   session_token: string;
   completed_at: string | null;
+  // Summed token usage across this conversation's model calls (migration 0130).
+  usage: Record<string, number>;
 };
 
 export function intakeMonthlyCap(p: Pick<Photographer, "email" | "plan">): number {
@@ -84,6 +86,10 @@ function buildSystem(p: IntakePhotographer): string {
 
 איך מנהלים את השיחה:
 - עברית פשוטה וחמה, הודעות קצרות (עד 3 משפטים), שאלה אחת או שתיים בכל הודעה. פונים בלשון ניטרלית.
+- כל תשובה מתחילה בהתייחסות קצרה למה שהלקוח כתב (כולל פרטים שלא ביקשת, כמו בקשות מיוחדות), ורק אחר כך השאלה הבאה.
+- אם הלקוח שאל על מחיר, עונים על זה במפורש כבר בתשובה הראשונה (לפי כלל 1), ולא מתעלמים מהשאלה.
+- בלי אימוג'ים, חוץ מאחד לכל היותר בהודעת הסיכום.
+- אסור לכתוב ללקוח שהפרטים הועברו לפני ש-complete_intake או join_waitlist החזירו ok.
 - פרטי חובה: ${REQUIRED.map((r) => r.label).join(", ")}. פרטים נוספים שכדאי לשאול: שעות האירוע, ומה חשוב ללקוח במיוחד.${p.intake_bot_extra_question?.trim() ? `\n- שאלה נוספת ש${name} ביקש/ה לשאול: "${p.intake_bot_extra_question.trim()}"` : ""}
 - ברגע שיש תאריך, קוראים ל-check_availability. אם התאריך תפוס, אומרים את זה בעדינות ומציעים להיכנס לרשימת ההמתנה (אחרי שיש שם וטלפון, קוראים ל-join_waitlist).
 - בכל פעם שהלקוח נותן פרט, קוראים ל-save_details עם מה שנאמר.
@@ -290,6 +296,15 @@ export async function runIntakeTurn(supabase: ServiceClient, conv: IntakeConvers
       console.error("Intake assistant API error:", conv.id, e);
       return fallback;
     }
+    const u = response.usage;
+    const add = (k: string, v: number | null | undefined) => {
+      conv.usage = { ...conv.usage, [k]: (conv.usage?.[k] ?? 0) + (v ?? 0) };
+    };
+    add("input", u.input_tokens);
+    add("output", u.output_tokens);
+    add("cache_read", u.cache_read_input_tokens);
+    add("cache_write", u.cache_creation_input_tokens);
+    add("calls", 1);
     messages.push({ role: "assistant", content: response.content });
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")

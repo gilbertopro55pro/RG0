@@ -13,7 +13,7 @@ async function loadConversation(supabase: ReturnType<typeof createServiceRoleCli
   if (!token || !UUID_RE.test(token)) return null;
   const { data } = await supabase
     .from("bot_conversations")
-    .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at")
+    .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage")
     .eq("session_token", token)
     .eq("photographer_id", photographerId)
     .eq("channel", "web")
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: created, error } = await supabase
       .from("bot_conversations")
       .insert({ photographer_id: p.id, channel: "web", client_phone: null })
-      .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at")
+      .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage")
       .single<IntakeConversation>();
     if (error || !created) return NextResponse.json({ error: "שגיאה בפתיחת השיחה" }, { status: 500 });
     conv = created;
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const origin = new URL(request.url).origin;
   const reply = await runIntakeTurn(supabase, conv, p, text, origin);
-  await supabase
+  const { error: saveError } = await supabase
     .from("bot_conversations")
     .update({
       messages: conv.messages,
@@ -83,9 +83,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       client_turns: conv.client_turns + 1,
       completed_at: conv.completed_at,
       client_phone: conv.collected.phone ?? null,
+      usage: conv.usage,
       updated_at: new Date().toISOString(),
     })
     .eq("id", conv.id);
+  // The client already got this reply and any lead/email already happened — a failed save here
+  // would replay those tools on the next message, so it must be loud in the logs.
+  if (saveError) console.error("Intake conversation save failed:", conv.id, saveError);
 
   return NextResponse.json({ session: conv.session_token, reply, state: conv.state });
 }
