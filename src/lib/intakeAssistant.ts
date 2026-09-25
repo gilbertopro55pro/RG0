@@ -92,6 +92,7 @@ function buildSystem(p: IntakePhotographer): string {
 - בלי אימוג'ים, חוץ מאחד לכל היותר בהודעת הסיכום.
 - פרטי חובה: ${REQUIRED.map((r) => r.label).join(", ")}. פרטים נוספים שכדאי לשאול: שעות האירוע, ומה חשוב ללקוח במיוחד.${p.intake_bot_extra_question?.trim() ? `\n- שאלה נוספת ש${name} ביקש לשאול: "${p.intake_bot_extra_question.trim()}"` : ""}
 - ברגע שיש תאריך, קוראים ל-check_availability. אם התאריך תפוס, אומרים את זה בעדינות ומציעים להיכנס לרשימת ההמתנה (אחרי שיש שם וטלפון, קוראים ל-join_waitlist).
+- אחרי ש-join_waitlist החזיר ok, מסיימים בתודה ובהסבר ש${name} יעדכן אם התאריך יתפנה. לא ממשיכים לאסוף פרטים ולא מציעים הצעת מחיר לתאריך תפוס.
 - בכל פעם שהלקוח נותן פרט, קוראים ל-save_details עם מה שנאמר.
 - כשכל פרטי החובה נשמרו, קוראים ל-complete_intake, ואז מסכמים ללקוח את מה שהועבר ואומרים שהצעת מחיר מ${name} תגיע תוך ${p.intake_bot_reply_hours} שעות.
 - אסור לכתוב ללקוח שהפרטים הועברו לפני ש-complete_intake או join_waitlist החזירו ok.
@@ -154,9 +155,10 @@ function leadNotes(d: IntakeDetails): string {
 
 // Creates or updates the conversation's lead as soon as there is a phone number, so a client who
 // leaves mid-way is never lost. needs_details stays true until complete_intake.
-async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, complete: boolean): Promise<string | null> {
+async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, complete: boolean, notePrefix?: string): Promise<string | null> {
   const d = conv.collected;
   if (!d.phone?.trim()) return conv.lead_id;
+  const notes = [notePrefix, leadNotes(d)].filter(Boolean).join(" · ");
   const row = {
     photographer_id: conv.photographer_id,
     name: d.clientName?.trim() || "פנייה מהעוזר",
@@ -164,7 +166,7 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
     email: d.email?.trim() || null,
     event_date_interest: d.eventDate || null,
     event_type_name: d.eventType?.trim() || null,
-    notes: leadNotes(d) || null,
+    notes: notes || null,
     details: d,
     needs_details: !complete,
     source: "assistant",
@@ -255,7 +257,8 @@ async function runTool(
     const d = conv.collected;
     if (!d.eventDate || !d.clientName || !d.phone) return JSON.stringify({ error: "צריך תאריך, שם וטלפון לפני רשימת ההמתנה" });
     if (conv.state === "waitlisted") return JSON.stringify({ ok: true, alreadyDone: true });
-    conv.lead_id = await upsertLead(supabase, conv, false);
+    // Nothing more to collect for a taken date — not a "missing details" lead.
+    conv.lead_id = await upsertLead(supabase, conv, true, "ברשימת ההמתנה (התאריך תפוס)");
     await supabase.from("waitlist").insert({
       photographer_id: conv.photographer_id,
       requested_date: d.eventDate,
