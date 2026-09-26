@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 // Client-facing pages (galleries, contracts, quotes, portfolio…) and the auth pages never show
 // this — only the photographer's own app does.
-const HIDDEN_PREFIXES = ["/login", "/signup", "/reset-password", "/gallery", "/contracts", "/portal", "/quotes", "/billing", "/landing", "/p"];
+const HIDDEN_PREFIXES = ["/login", "/signup", "/reset-password", "/gallery", "/contracts", "/portal", "/quotes", "/billing", "/landing", "/p", "/chat"];
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const SNOOZE_MS = 10 * 60 * 1000;
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID;
