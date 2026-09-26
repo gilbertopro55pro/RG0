@@ -58,6 +58,10 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   `FLY_API_TOKEN` cleaned of newlines/quotes **only**. The token has a space ("FlyV1 …"), so
   stripping all whitespace gives a 401 that looks like "stale".
 
+Regions (since 2026-09-26): the Vercel functions run in `fra1` (vercel.json `regions`), next to
+Supabase; the Fly render worker is in `iad`. If exports slow down or time out after that move,
+check the Vercel→Fly leg first.
+
 ## Testing live (the procedure that passed)
 
 Run tests on the test account only, never on a real photographer's album. The script
