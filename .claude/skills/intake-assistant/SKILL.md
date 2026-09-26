@@ -140,6 +140,12 @@ never claims to be the photographer and answers honestly if asked whether it's a
 - The model once asked for details it had already been given. The prompt now requires
   acknowledging what the client said first.
 
+- The FAQ is the only source the assistant has for policy (cancellation, service area, second
+  photographer). Keep it in sync with the contract: the admin's FAQ cancellation answer mirrors
+  clause י (21+ days = deposit, under 21 = half, in writing; force majeure = full refund). When
+  a contract clause changes, update the FAQ answer in the same step, or the assistant quotes the
+  old terms.
+
 ## Testing
 
 `chat-test.js` (this folder): `NODE_PATH=<playwright-core> node chat-test.js studio-or "msg1" "msg2" …`.
