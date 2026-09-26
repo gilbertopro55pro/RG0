@@ -28,6 +28,8 @@ export type Photographer = {
   intake_bot_extra_question: string | null;
   // A morning and an evening event may share a date in the assistant's check (migration 0135).
   intake_allow_split_day: boolean;
+  // No work on Shabbat: Friday morning only, Saturday closed (migration 0136).
+  intake_shabbat_closed: boolean;
   intake_chat_token: string;
   // The Cloud API number that serves this photographer's intake bot on WhatsApp (migration 0131).
   whatsapp_bot_phone_number_id: string | null;

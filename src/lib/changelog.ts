@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.68",
+    date: "2026-09-26",
+    changes: [
+      "עוזר פניות: הגדרה \"לא מצלם בשבת\". ביום שישי העוזר מציע רק אירוע בוקר (עד 16:00), ושישי בערב ושבת מסומנים כלא זמינים. הלקוח מקבל הסבר ומתבקש לבחור תאריך אחר",
+    ],
+  },
+  {
     version: "2.11.67",
     date: "2026-09-26",
     changes: [

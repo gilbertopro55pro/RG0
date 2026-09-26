@@ -32,7 +32,7 @@ export type WaChangeValue = {
 
 const CONV_FIELDS = "id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, client_phone, referral_source";
 const BOT_FIELDS =
-  "id, name, email, plan, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, whatsapp_bot_phone_number_id";
+  "id, name, email, plan, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, whatsapp_bot_phone_number_id";
 const ACTIVE_STATES = ["collecting_info", "completed", "waitlisted"];
 
 const AD_OPENINGS = ["שלום! אפשר לקבל מידע נוסף על זה?", "Hello! Can I get more info on this?"];
