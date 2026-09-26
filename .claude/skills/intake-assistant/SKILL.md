@@ -115,6 +115,10 @@ never claims to be the photographer and answers honestly if asked whether it's a
 
 ## Pitfalls already hit
 
+- `runIntakeTurn` kept only the last round's text, so an answer written before a tool call was
+  dropped (the client's price / "bot?" questions looked ignored). Since 2026-09-26 all rounds' text
+  is joined with blank lines (they become separate bubbles).
+
 - `bot_conversations_state_check` (from the old WhatsApp bot) rejected `completed`, so the final
   save failed without any error while the lead and email had already gone out. A failed save
   replays tools (and sends a second email) on the next message. Save errors are now logged.
