@@ -105,6 +105,14 @@ The owner declined a "another lead wants this date" alert: a taken date is told 
 **Measured cost:** one full conversation (8 model calls) ≈ $0.029 ≈ 11 agorot. Per-conversation
 usage is in `bot_conversations.usage` (input, output, cache_read, cache_write, calls).
 
+## Voice (owner's request 2026-09-26: "as human as possible")
+
+WhatsApp-style: short, one question at a time, reacts to what was said ("מזל טוב" once), uses the
+client's name now and then, the photographer's first name, dates in words, no lists / dashes /
+service-desk phrases, an emoji only now and then. A blank line in a reply = separate bubbles (web
+chat, with a typing pause) and separate WhatsApp messages. Line kept on purpose: the assistant
+never claims to be the photographer and answers honestly if asked whether it's a bot.
+
 ## Pitfalls already hit
 
 - `bot_conversations_state_check` (from the old WhatsApp bot) rejected `completed`, so the final
