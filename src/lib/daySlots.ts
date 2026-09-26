@@ -1,13 +1,13 @@
 // Parts of an event day for the intake assistant's date check (photographers.intake_allow_split_day,
-// migration 0135): a morning event (bar mitzvah at the synagogue, up to 4 hours) and an evening
-// event (18:00-00:00) may share a date. An event blocks each part its hours overlap; an event with
+// migration 0135): a morning event (07:30-15:00, e.g. a bar mitzvah at the synagogue) and an evening
+// event (18:00-00:00) may share a date (owner's hours, 2026-09-26). An event blocks each part its hours overlap; an event with
 // no start time blocks the whole day.
 export type DaySlot = "morning" | "evening";
 
 export const SLOT_LABELS: Record<DaySlot, string> = { morning: "בוקר", evening: "ערב" };
 
 const WINDOWS: Record<DaySlot, [number, number]> = {
-  morning: [6 * 60, 17 * 60],
+  morning: [7 * 60 + 30, 15 * 60],
   evening: [18 * 60, 24 * 60],
 };
 
