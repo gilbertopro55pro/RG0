@@ -171,8 +171,8 @@ export default function BotSettings({
         </p>
       </div>
 
-      <div className="px-4 py-3 border-t border-line">
-        <div className="text-sm font-semibold mb-1">קישורים לפי מקור</div>
+      <details className="group px-4 py-3 border-t border-line">
+        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2 mb-1"><span>קישורים לפי מקור</span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
         <p className="text-xs text-ink-soft mb-2">
           אותו עוזר, קישור אחר לכל ערוץ. כך בעמוד הלידים רואים מאיפה הגיעה כל פנייה (הודעת הפתיחה לוואטסאפ והכפתור בפורטפוליו כבר מסומנים).
         </p>
@@ -205,7 +205,7 @@ export default function BotSettings({
             );
           })}
         </div>
-      </div>
+      </details>
 
       <div className="px-4 py-3 border-t border-line">
         <div className="text-sm font-semibold mb-1">הודעת פתיחה לוואטסאפ העסקי</div>
@@ -343,8 +343,8 @@ export default function BotSettings({
         </details>
       </div>
 
-      <div className="px-4 py-3 border-t border-line grid gap-2">
-        <div className="text-sm font-semibold">שאלות נפוצות</div>
+      <details className="group px-4 py-3 border-t border-line space-y-2">
+        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2"><span>שאלות נפוצות <span className="font-data text-ink-soft font-normal">({faq.length})</span></span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
         <p className="text-xs text-ink-soft">העוזר עונה על שאלות כלליות רק מתוך מה שכתוב כאן. בלי מחירים.</p>
         {faq.map((item, i) => (
           <div key={i} className="rounded-xl border border-line p-3 grid gap-2" style={{ background: "var(--color-input-bg)" }}>
@@ -375,7 +375,7 @@ export default function BotSettings({
             + שאלה חדשה
           </button>
         )}
-      </div>
+      </details>
 
       <div className="px-4 py-3 border-t border-line flex items-center gap-3">
         <button type="button" onClick={() => save()} disabled={saving} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
