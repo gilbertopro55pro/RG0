@@ -207,8 +207,8 @@ export default function BotSettings({
         </div>
       </details>
 
-      <div className="px-4 py-3 border-t border-line">
-        <div className="text-sm font-semibold mb-1">הודעת פתיחה לוואטסאפ העסקי</div>
+      <details className="group px-4 py-3 border-t border-line">
+        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2 mb-1"><span>הודעת פתיחה לוואטסאפ העסקי</span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
         <p className="text-xs text-ink-soft mb-2">
           כל לקוח חדש שכותב לך בוואטסאפ יקבל אוטומטית את ההודעה הזו, עם הקישור לעוזר. באפליקציית WhatsApp Business: הגדרות › כלים לעסקים › הודעת פתיחה › להדליק ולהדביק.
         </p>
@@ -260,9 +260,11 @@ export default function BotSettings({
           )}
         </div>
         {greetingStatus && <p className={`mt-1.5 text-xs ${greetingStatus === "נשמר" || greetingStatus.startsWith("נוסח") ? "text-sage" : "text-rose"}`}>{greetingStatus}</p>}
-      </div>
+      </details>
 
-      <div className="px-4 py-3 border-t border-line grid gap-3">
+      <details className="group px-4 py-3 border-t border-line">
+        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2"><span>כותרת בדף הצ&apos;אט והגדרות השיחה</span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
+        <div className="grid gap-3 mt-3">
         <div>
           <label htmlFor="intake-title" className="text-xs text-ink-soft block mb-1">
             כותרת בדף הצ&apos;אט
@@ -341,7 +343,14 @@ export default function BotSettings({
             </div>
           </div>
         </details>
-      </div>
+          <div className="flex items-center gap-3 pt-1">
+            <button type="button" onClick={() => save()} disabled={saving} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+              {saving ? "שומר…" : "שמירה"}
+            </button>
+            {status && <span className={`text-xs ${status === "נשמר" ? "text-sage" : "text-rose"}`}>{status}</span>}
+          </div>
+        </div>
+      </details>
 
       <details className="group px-4 py-3 border-t border-line space-y-2">
         <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2"><span>שאלות נפוצות <span className="font-data text-ink-soft font-normal">({faq.length})</span></span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
@@ -375,14 +384,13 @@ export default function BotSettings({
             + שאלה חדשה
           </button>
         )}
+        <div className="flex items-center gap-3 pt-1">
+          <button type="button" onClick={() => save()} disabled={saving} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+            {saving ? "שומר…" : "שמירה"}
+          </button>
+          {status && <span className={`text-xs ${status === "נשמר" ? "text-sage" : "text-rose"}`}>{status}</span>}
+        </div>
       </details>
-
-      <div className="px-4 py-3 border-t border-line flex items-center gap-3">
-        <button type="button" onClick={() => save()} disabled={saving} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-          {saving ? "שומר…" : "שמירה"}
-        </button>
-        {status && <span className={`text-xs ${status === "נשמר" ? "text-sage" : "text-rose"}`}>{status}</span>}
-      </div>
 
       <p className="px-4 pb-4 text-xs text-ink-soft">בקרוב: אותו עוזר גם בוואטסאפ העסקי.</p>
     </div>
