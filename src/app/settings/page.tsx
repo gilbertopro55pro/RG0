@@ -11,6 +11,7 @@ import PriceQuotesSettings from "@/components/PriceQuotesSettings";
 import PricingSuppliersSettings from "@/components/PricingSuppliersSettings";
 import BotSettings from "@/components/BotSettings";
 import WhatsAppBotAdmin from "@/components/WhatsAppBotAdmin";
+import IntakeGuide from "@/components/IntakeGuide";
 import BillingSettings from "@/components/BillingSettings";
 import StorageUsageSettings from "@/components/StorageUsageSettings";
 import BrandingSettings from "@/components/BrandingSettings";
@@ -149,13 +150,22 @@ export default async function SettingsPage({
             label: "אוטומציה",
             content: (
               <>
+              <IntakeGuide />
               <BotSettings
                 photographer={photographer}
                 cap={intakeMonthlyCap(photographer)}
                 usedThisMonth={intakeUsedThisMonth ?? 0}
                 chatPath={`/chat/${photographer.portfolio_slug ?? photographer.intake_chat_token}`}
               />
-              {user?.email === ADMIN_EMAIL && <WhatsAppBotAdmin connectedId={photographer.whatsapp_bot_phone_number_id} />}
+              {/* Meta connection details stay folded; only what the photographer edits is always visible. */}
+              {user?.email === ADMIN_EMAIL && (
+                <details className="mt-5 rounded-2xl bg-card border border-line">
+                  <summary className="p-4 text-sm font-semibold cursor-pointer">חיבור וואטסאפ (מטא)</summary>
+                  <div className="px-4 pb-4">
+                    <WhatsAppBotAdmin connectedId={photographer.whatsapp_bot_phone_number_id} />
+                  </div>
+                </details>
+              )}
               </>
             ),
           },
