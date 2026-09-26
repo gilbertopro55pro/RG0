@@ -393,6 +393,8 @@ function AddLeadModal({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Name of an existing lead with the same phone; set after the first submit warns about it.
+  const [duplicateName, setDuplicateName] = useState<string | null>(null);
   const entered = useModalEntered();
 
   const submit = async () => {
@@ -408,10 +410,16 @@ function AddLeadModal({
         eventDateInterest: eventDateInterest || undefined,
         packageInterest: packageInterest || undefined,
         notes,
+        allowDuplicate: !!duplicateName,
       }),
     });
     const data = await res.json();
     setSaving(false);
+    if (res.status === 409 && data.duplicate) {
+      // First time: warn. Pressing "הוספה" again adds it anyway (allowDuplicate).
+      setDuplicateName(data.duplicate.name);
+      return;
+    }
     if (!res.ok) {
       setError(data.error ?? "שגיאה בהוספת הליד");
       return;
@@ -443,7 +451,10 @@ function AddLeadModal({
           </div>
           <div>
             <label className="text-xs block mb-1 text-ink-soft">טלפון</label>
-            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data" />
+            <input type="tel" value={phone} onChange={(e) => {
+              setPhone(e.target.value);
+              setDuplicateName(null);
+            }} className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white font-data" />
           </div>
           <div>
             <label className="text-xs block mb-1 text-ink-soft">תאריך אירוע משוער</label>
@@ -481,8 +492,13 @@ function AddLeadModal({
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none" />
           </div>
           {error && <p className="text-xs text-rose">{error}</p>}
+          {duplicateName && (
+            <p className="text-xs rounded-lg px-3 py-2" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
+              כבר יש ליד עם הטלפון הזה ({duplicateName}). אם זה אותו לקוח ואותו אירוע, עדיף לעדכן את הליד הקיים. אם זה אירוע אחר, אפשר להוסיף בכל זאת.
+            </p>
+          )}
           <button onClick={submit} disabled={!name.trim() || saving} className="w-full rounded-lg py-3 text-sm font-semibold mt-2 bg-ink text-white disabled:opacity-60">
-            {saving ? "שומר..." : "הוספת ליד"}
+            {saving ? "שומר..." : duplicateName ? "להוסיף בכל זאת" : "הוספת ליד"}
           </button>
         </div>
       </div>

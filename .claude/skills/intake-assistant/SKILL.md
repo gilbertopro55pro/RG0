@@ -68,6 +68,13 @@ and a 30-day summary. `photographers.meta_pixel_id` (settings) loads the pixel o
 and Lead when the POST returns `newLead` or the fallback form is sent. No pixel existed in the owner's
 ad account (850673128465382) or business (771527666053009) as of 2026-09-26.
 
+**Duplicate leads (2026-09-26, migration 0134):** `find_leads_by_phone(photographer, phone)` (last 9
+digits, service role only; `lib/leadDuplicates.ts`). `upsertLead` reuses a returning client's open
+lead (not won/lost, last 180 days, same or missing event date) instead of inserting; it keeps the
+lead's name, status, source and the photographer's own notes. `POST /api/leads` returns 409 with
+`duplicate` unless `allowDuplicate`; the quote builder offers "לצרף לליד הקיים" / "ליד חדש", the new
+lead form warns once.
+
 `/chat` and `/api/intake-chat` are in the middleware's `PUBLIC_PATHS`, and `/chat` is in
 `InstallPrompt`'s `HIDDEN_PREFIXES`.
 

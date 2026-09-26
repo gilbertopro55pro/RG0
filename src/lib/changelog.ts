@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.66",
+    date: "2026-09-26",
+    changes: [
+      "בלי לידים כפולים: כשמוסיפים ללידים לקוח מהצעת מחיר, והטלפון שלו כבר קיים, המערכת מציעה לצרף את ההצעה לליד הקיים (או לפתוח ליד חדש אם זה אירוע אחר)",
+      "גם בהוספת ליד ידנית מופיעה התראה כשהטלפון כבר ברשימה, ולקוח שחוזר לעוזר הפניות מעדכן את הליד הפתוח שלו במקום לפתוח חדש",
+    ],
+  },
+  {
     version: "2.11.65",
     date: "2026-09-26",
     changes: [
