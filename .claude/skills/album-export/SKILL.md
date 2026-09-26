@@ -66,7 +66,10 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   shared in-flight requests, cache 600MB) and the "web" PDF caps photos at 2400px (`PHOTO_MAX_PX`,
   "high" stays 3200). Local benchmark (the real renderer against a fake R2 with 150ms + 40MB/s,
   24 photos of 22MB): 37.9s → 14.3s (prefetch alone 17.2s), PDF 8.8MB → 3.4MB, pages still
-  30×20cm. The test album's 5s isn't representative of real albums.
+  30×20cm. **Live on the worker the gain was smaller**: the same real 19-page album went 315s →
+  201s (2026-09-26, job 477ebeaa). The local machine decodes faster than shared-cpu-2x, so on Fly
+  most of the time is CPU (decoding originals), not download. The test album's 5s isn't
+  representative of real albums.
 - Checking that the worker is current from the sandbox: `bash scripts/flyWorkerIsCurrent.sh` with
   `FLY_API_TOKEN` cleaned of newlines/quotes **only**. The token has a space ("FlyV1 …"), so
   stripping all whitespace gives a 401 that looks like "stale".
