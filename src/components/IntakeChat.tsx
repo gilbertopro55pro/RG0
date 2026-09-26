@@ -42,12 +42,15 @@ type Line = { role: "client" | "assistant"; text: string };
 export default function IntakeChat({
   chatKey,
   studio,
+  title,
   logoUrl,
   replyHours,
   pixelId,
 }: {
   chatKey: string;
   studio: string;
+  // The page heading (photographers.intake_chat_title, else the name).
+  title: string;
   logoUrl: string | null;
   replyHours: number;
   pixelId: string | null;
@@ -151,7 +154,7 @@ export default function IntakeChat({
           </span>
         )}
         <div className="min-w-0">
-          <div className="font-bold truncate">{studio}</div>
+          <div className="font-bold truncate">{title}</div>
           <div className="text-xs text-ink-soft">{available === false ? "טופס פנייה" : "עונה מיד"}</div>
         </div>
       </header>
@@ -160,9 +163,6 @@ export default function IntakeChat({
         <InquiryForm chatKey={chatKey} studio={studio} />
       ) : (
         <>
-          <p className="text-[11.5px] text-ink-soft text-center px-4 py-2 bg-chip">
-            העוזר האוטומטי של {studio}. {studio} עצמו חוזר אליכם עם הצעת מחיר.
-          </p>
           <div className="flex-1 w-full max-w-xl mx-auto px-3 py-4 flex flex-col gap-2">
             {lines.map((line, i) => (
               <div

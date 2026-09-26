@@ -11,14 +11,14 @@ export async function generateMetadata({ params }: { params: Promise<{ key: stri
   const p = await resolveChatPhotographer(createServiceRoleClient(), key);
   if (!p) return { title: "פנייה", robots: { index: false } };
   // The preview card WhatsApp/Instagram show when the link is shared (one image for every studio).
-  const title = `${p.name} | בדיקת תאריך ומענה מיידי`;
+  const title = `${p.intake_chat_title?.trim() || p.name} | בדיקת תאריך ומענה מיידי`;
   const description = "כתבו עכשיו ותקבלו תשובה תוך שניות: בודקים אם התאריך פנוי ואוספים את פרטי האירוע להצעה אישית.";
   const images = [{ url: "/og/chat.png", width: 1200, height: 630, alt: "בדיקת תאריך בצ'אט, תשובה תוך שניות" }];
   return {
     title,
     description,
     robots: { index: false },
-    openGraph: { title, description, siteName: p.name, images, type: "website" },
+    openGraph: { title, description, siteName: p.intake_chat_title?.trim() || p.name, images, type: "website" },
     twitter: { card: "summary_large_image", title, description, images: ["/og/chat.png"] },
   };
 }
@@ -35,5 +35,5 @@ export default async function ChatPage({ params }: { params: Promise<{ key: stri
     );
   }
   const logoUrl = p.logo_storage_path ? await getSignedDownloadUrl("logos", p.logo_storage_path, 60 * 60 * 24) : null;
-  return <IntakeChat chatKey={key} studio={p.name} logoUrl={logoUrl} replyHours={p.intake_bot_reply_hours} pixelId={p.meta_pixel_id ?? null} />;
+  return <IntakeChat chatKey={key} studio={p.name} title={p.intake_chat_title?.trim() || p.name} logoUrl={logoUrl} replyHours={p.intake_bot_reply_hours} pixelId={p.meta_pixel_id ?? null} />;
 }

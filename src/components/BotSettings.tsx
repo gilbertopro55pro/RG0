@@ -17,7 +17,7 @@ export default function BotSettings({
   usedThisMonth,
   chatPath,
 }: {
-  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_whatsapp_greeting" | "meta_pixel_id" | "intake_allow_split_day" | "intake_shabbat_closed">;
+  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_whatsapp_greeting" | "meta_pixel_id" | "intake_allow_split_day" | "intake_shabbat_closed" | "intake_chat_title">;
   cap: number;
   usedThisMonth: number;
   chatPath: string;
@@ -33,6 +33,7 @@ export default function BotSettings({
   const [pixelId, setPixelId] = useState(photographer.meta_pixel_id ?? "");
   const [splitDay, setSplitDay] = useState(!!photographer.intake_allow_split_day);
   const [shabbatClosed, setShabbatClosed] = useState(!!photographer.intake_shabbat_closed);
+  const [chatTitle, setChatTitle] = useState(photographer.intake_chat_title ?? "");
   const [copiedSource, setCopiedSource] = useState<string | null>(null);
   const defaultGreeting = defaultWhatsAppGreeting(photographer.name, chatPath);
   const [greeting, setGreeting] = useState(photographer.intake_whatsapp_greeting?.trim() || defaultGreeting);
@@ -68,6 +69,7 @@ export default function BotSettings({
         meta_pixel_id: /^\d{8,20}$/.test(pixelId.trim()) ? pixelId.trim() : null,
         intake_allow_split_day: splitDay,
         intake_shabbat_closed: shabbatClosed,
+        intake_chat_title: chatTitle.trim().slice(0, 80) || null,
       })
       .eq("id", photographer.id);
     setSaving(false);
@@ -261,6 +263,21 @@ export default function BotSettings({
       </div>
 
       <div className="px-4 py-3 border-t border-line grid gap-3">
+        <div>
+          <label htmlFor="intake-title" className="text-xs text-ink-soft block mb-1">
+            כותרת בדף הצ&apos;אט
+          </label>
+          <input
+            id="intake-title"
+            value={chatTitle}
+            onChange={(e) => setChatTitle(e.target.value)}
+            maxLength={80}
+            placeholder={photographer.name}
+            className={field}
+            style={{ background: "var(--color-input-bg)" }}
+          />
+          <p className="text-xs text-ink-soft mt-1">מה הלקוח רואה בראש הצ&apos;אט, למשל &quot;{photographer.name} - צילום אירועים&quot;. ריק = השם שלך.</p>
+        </div>
         <div>
           <label htmlFor="intake-hours" className="text-xs text-ink-soft block mb-1">
             תוך כמה זמן אני חוזר/ת עם הצעה (מופיע ללקוח)
