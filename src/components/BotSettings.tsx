@@ -319,7 +319,7 @@ export default function BotSettings({
           <input type="checkbox" checked={shabbatClosed} onChange={(e) => setShabbatClosed(e.target.checked)} className="mt-1" />
           <span>
             לא מצלם בשבת
-            <span className="block text-xs text-ink-soft">ביום שישי רק אירוע בוקר (עד 16:00). שישי בערב ושבת מסומנים כלא זמינים.</span>
+            <span className="block text-xs text-ink-soft">ביום שישי רק אירוע בוקר (עד 16:00). שישי בערב ושבת במשך היום לא זמינים, מוצאי שבת זמין.</span>
           </span>
         </label>
         <details className="rounded-xl border border-line" style={{ background: "var(--color-input-bg)" }}>

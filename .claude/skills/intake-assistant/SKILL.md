@@ -81,7 +81,8 @@ morning, evening events to evening) and only events overlapping that window coun
 07:30-15:00, evening 18:00-24:00 (owner's hours), span = min(arrival, start) to end (no end: +4h before 14:00, else
 midnight; 00:00 = midnight; no start = whole day), `lib/daySlots.ts`. Off = any event takes the day.
 **Shabbat (migration 0136, owner's decision):** `photographers.intake_shabbat_closed` (on for the
-admin): Friday only a morning slot (until 16:00), Friday evening and Saturday closed
+admin): Friday only a morning slot (until 16:00), Friday evening and Saturday daytime closed,
+Saturday evening (motzei Shabbat) open (owner, 2026-09-26)
 (`shabbatClosure` in `lib/daySlots.ts`); `check_availability` returns `closedReason`, the prompt says
 so, offers no waitlist and asks for another date. Only a full-day wedding takes a whole day; old
 events stay as they are, new ones are entered with hours.
