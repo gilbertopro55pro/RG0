@@ -30,6 +30,8 @@ export type Photographer = {
   intake_allow_split_day: boolean;
   // No work on Shabbat: Friday morning only, Saturday closed (migration 0136).
   intake_shabbat_closed: boolean;
+  // Heading on the public chat page, e.g. "רועי גלברט - צילום אירועים" (migration 0137). Null = name.
+  intake_chat_title: string | null;
   intake_chat_token: string;
   // The Cloud API number that serves this photographer's intake bot on WhatsApp (migration 0131).
   whatsapp_bot_phone_number_id: string | null;
