@@ -5,6 +5,7 @@ import { notificationEmailFor } from "@/lib/notificationEmail";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { findLeadsByPhone } from "@/lib/leadDuplicates";
 import { SLOT_LABELS, blocksSlot, shabbatClosure, type DaySlot } from "@/lib/daySlots";
+import { googleBusyOnDate } from "@/lib/calendarBusy";
 import { SUBSCRIPTION_PLANS, type SubscriptionTier } from "@/lib/stages";
 import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
 
@@ -32,7 +33,7 @@ const REQUIRED: { key: keyof IntakeDetails; label: string }[] = [
 
 export type IntakePhotographer = Pick<
   Photographer,
-  "id" | "name" | "email" | "plan" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day" | "intake_shabbat_closed"
+  "id" | "name" | "email" | "plan" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day" | "intake_shabbat_closed" | "google_calendar_import_color_id" | "google_calendar_color_id"
 >;
 
 export type IntakeConversation = {
@@ -311,7 +312,9 @@ async function runTool(
       .select("arrival_time, event_start_time, event_end_time")
       .eq("photographer_id", conv.photographer_id)
       .eq("event_date", date);
-    const list = events ?? [];
+    // The app's events plus bookings written only in the photographer's Google Calendar (by color).
+    const calendar = await googleBusyOnDate(supabase, conv.photographer_id, [p.google_calendar_import_color_id, p.google_calendar_color_id], date);
+    const list = [...(events ?? []), ...calendar];
     const slot: DaySlot | undefined = p.intake_allow_split_day && (input.slot === "morning" || input.slot === "evening") ? input.slot : undefined;
     // Split day: only events overlapping the requested part of the day count. Otherwise any event
     // on the date makes it taken.
