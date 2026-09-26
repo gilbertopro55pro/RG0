@@ -26,6 +26,8 @@ export type Photographer = {
   intake_bot_faq: IntakeFaqItem[];
   intake_bot_reply_hours: number;
   intake_bot_extra_question: string | null;
+  // A morning and an evening event may share a date in the assistant's check (migration 0135).
+  intake_allow_split_day: boolean;
   intake_chat_token: string;
   // The Cloud API number that serves this photographer's intake bot on WhatsApp (migration 0131).
   whatsapp_bot_phone_number_id: string | null;
@@ -333,6 +335,8 @@ export type IntakeDetails = {
   eventType?: string;
   eventDate?: string; // YYYY-MM-DD
   dateAvailable?: boolean;
+  // Morning (bar mitzvah) or evening, when the photographer allows both on one date (lib/daySlots.ts).
+  eventSlot?: "morning" | "evening";
   // The client hasn't set a date yet — then approxDate ("קיץ 2027", "מרץ") stands in for it.
   dateUndecided?: boolean;
   approxDate?: string;

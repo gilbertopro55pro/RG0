@@ -17,7 +17,7 @@ export default function BotSettings({
   usedThisMonth,
   chatPath,
 }: {
-  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_whatsapp_greeting" | "meta_pixel_id">;
+  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_whatsapp_greeting" | "meta_pixel_id" | "intake_allow_split_day">;
   cap: number;
   usedThisMonth: number;
   chatPath: string;
@@ -31,6 +31,7 @@ export default function BotSettings({
   const [copied, setCopied] = useState(false);
   const [greetingCopied, setGreetingCopied] = useState(false);
   const [pixelId, setPixelId] = useState(photographer.meta_pixel_id ?? "");
+  const [splitDay, setSplitDay] = useState(!!photographer.intake_allow_split_day);
   const [copiedSource, setCopiedSource] = useState<string | null>(null);
   const defaultGreeting = defaultWhatsAppGreeting(photographer.name, chatPath);
   const [greeting, setGreeting] = useState(photographer.intake_whatsapp_greeting?.trim() || defaultGreeting);
@@ -64,6 +65,7 @@ export default function BotSettings({
         intake_bot_reply_hours: replyHours,
         intake_bot_extra_question: extraQuestion.trim().slice(0, 200) || null,
         meta_pixel_id: /^\d{8,20}$/.test(pixelId.trim()) ? pixelId.trim() : null,
+        intake_allow_split_day: splitDay,
       })
       .eq("id", photographer.id);
     setSaving(false);
@@ -283,6 +285,15 @@ export default function BotSettings({
             style={{ background: "var(--color-input-bg)" }}
           />
         </div>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={splitDay} onChange={(e) => setSplitDay(e.target.checked)} className="mt-1" />
+          <span>
+            אירוע בוקר ואירוע ערב באותו יום
+            <span className="block text-xs text-ink-soft">
+              עלייה לתורה בבוקר (עד 4 שעות) ואירוע ערב (18:00 עד 00:00) לא חוסמים זה את זה בבדיקת התאריך. אירוע בלי שעות, או אירוע שנמשך כל היום, חוסם את כל היום.
+            </span>
+          </span>
+        </label>
         <div>
           <label htmlFor="intake-pixel" className="text-xs text-ink-soft block mb-1">
             מזהה Meta Pixel (לא חובה)

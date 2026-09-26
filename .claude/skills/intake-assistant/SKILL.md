@@ -75,6 +75,13 @@ lead's name, status, source and the photographer's own notes. `POST /api/leads` 
 `duplicate` unless `allowDuplicate`; the quote builder offers "לצרף לליד הקיים" / "ליד חדש", the new
 lead form warns once.
 
+**Split day (2026-09-26, migration 0135, owner's decision):** with `photographers.intake_allow_split_day`
+(on for the admin), `check_availability` takes `slot` morning/evening (the prompt maps עלייה לתורה to
+morning, evening events to evening) and only events overlapping that window count: morning
+06:00-17:00, evening 18:00-24:00, span = min(arrival, start) to end (no end: +4h before 14:00, else
+midnight; 00:00 = midnight; no start = whole day), `lib/daySlots.ts`. Off = any event takes the day.
+The owner declined a "another lead wants this date" alert: a taken date is told to the client.
+
 `/chat` and `/api/intake-chat` are in the middleware's `PUBLIC_PATHS`, and `/chat` is in
 `InstallPrompt`'s `HIDDEN_PREFIXES`.
 

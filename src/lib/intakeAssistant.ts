@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { findLeadsByPhone } from "@/lib/leadDuplicates";
+import { SLOT_LABELS, blocksSlot, type DaySlot } from "@/lib/daySlots";
 import { SUBSCRIPTION_PLANS, type SubscriptionTier } from "@/lib/stages";
 import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
 
@@ -31,7 +32,7 @@ const REQUIRED: { key: keyof IntakeDetails; label: string }[] = [
 
 export type IntakePhotographer = Pick<
   Photographer,
-  "id" | "name" | "email" | "plan" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question"
+  "id" | "name" | "email" | "plan" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day"
 >;
 
 export type IntakeConversation = {
@@ -62,7 +63,7 @@ export function missingDetails(d: IntakeDetails): string[] {
 }
 
 function dateText(d: IntakeDetails): string | null {
-  if (d.eventDate) return `${hebrewDate(d.eventDate)}${d.dateAvailable === false ? " (תפוס)" : ""}`;
+  if (d.eventDate) return `${hebrewDate(d.eventDate)}${d.eventSlot ? `, ${SLOT_LABELS[d.eventSlot]}` : ""}${d.dateAvailable === false ? " (תפוס)" : ""}`;
   if (d.dateUndecided) return `טרם נקבע${d.approxDate ? ` (בערך ${d.approxDate})` : ""}`;
   return null;
 }
@@ -118,7 +119,8 @@ function buildSystem(p: IntakePhotographer, channel: IntakeChannel): string {
 - בלי אימוג'ים, חוץ מאחד לכל היותר בהודעת הסיכום.
 - פרטי חובה: ${REQUIRED.map((r) => r.label).join(", ")}. פרטים נוספים שכדאי לשאול: שעות האירוע, ומה חשוב ללקוח במיוחד.${p.intake_bot_extra_question?.trim() ? `\n- שאלה נוספת ש${name} ביקש לשאול: "${p.intake_bot_extra_question.trim()}"` : ""}
 - אם עוד אין תאריך, לא לוחצים: שואלים בערך מתי (חודש, עונה או שנה), שומרים עם save_details (dateUndecided=true ו-approxDate), וממשיכים לשאר הפרטים. אומרים שכשיהיה תאריך, ${name} יבדוק שהוא פנוי. אם הלקוח מתלבט בין כמה תאריכים, בודקים כל אחד ב-check_availability ושומרים אותם ב-approxDate.
-- ברגע שיש תאריך, קוראים ל-check_availability. אם התאריך תפוס, אומרים את זה בעדינות ומציעים להיכנס לרשימת ההמתנה (אחרי שיש שם וטלפון, קוראים ל-join_waitlist).
+${p.intake_allow_split_day ? `- ${name} יכול לצלם באותו יום גם אירוע בוקר וגם אירוע ערב. עלייה לתורה היא אירוע בוקר (slot="morning", עד 4 שעות). אירועי ערב (חתונה, מסיבת בר או בת מצווה, חינה, אירוע ערב אחר) הם slot="evening" (18:00 עד 00:00). כשבודקים תאריך, שולחים ל-check_availability את ה-slot לפי סוג האירוע. אם סוג האירוע עוד לא ידוע, קודם שואלים עליו.
+` : ""}- ברגע שיש תאריך, קוראים ל-check_availability. אם התאריך תפוס, אומרים את זה בעדינות ומציעים להיכנס לרשימת ההמתנה (אחרי שיש שם וטלפון, קוראים ל-join_waitlist).
 - אחרי ש-join_waitlist החזיר ok, מסיימים בתודה ובהסבר ש${name} יעדכן אם התאריך יתפנה. לא ממשיכים לאסוף פרטים ולא מציעים הצעת מחיר לתאריך תפוס.
 - בכל פעם שהלקוח נותן פרט, קוראים ל-save_details עם מה שנאמר.
 - כש-save_details מחזיר handedOff=true, הפנייה כבר הועברה. מותר לשאול עוד שאלה או שתיים לא חובה (שעות, מה חשוב להם), ואז מסכמים. אם עוד לא הועברה וכל פרטי החובה נשמרו, קוראים ל-complete_intake, ואז מסכמים ללקוח את מה שהועבר ואומרים שהצעת מחיר מ${name} תגיע תוך ${p.intake_bot_reply_hours} שעות.
@@ -135,7 +137,10 @@ const TOOLS: Anthropic.Tool[] = [
     description: "בודק אם תאריך פנוי אצל הצלם. לקרוא ברגע שהלקוח נותן תאריך.",
     input_schema: {
       type: "object",
-      properties: { date: { type: "string", description: "YYYY-MM-DD" } },
+      properties: {
+        date: { type: "string", description: "YYYY-MM-DD" },
+        slot: { type: "string", enum: ["morning", "evening"], description: "בוקר (עלייה לתורה) או ערב, כשהצלם מאפשר שני אירועים באותו יום" },
+      },
       required: ["date"],
     },
   },
@@ -175,6 +180,7 @@ const TOOLS: Anthropic.Tool[] = [
 function leadNotes(d: IntakeDetails): string {
   const lines = [
     !d.eventDate && d.dateUndecided ? `תאריך: ${dateText(d)}` : null,
+    d.eventDate && d.eventSlot ? `חלק ביום: ${SLOT_LABELS[d.eventSlot]}` : null,
     d.location ? `מקום: ${d.location}` : null,
     d.guests ? `אורחים: ${d.guests}` : null,
     d.startTime || d.endTime ? `שעות: ${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null,
@@ -289,10 +295,18 @@ async function runTool(
     const date = String(input.date ?? "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return JSON.stringify({ error: "פורמט תאריך לא תקין, צריך YYYY-MM-DD" });
     if (date < israelToday()) return JSON.stringify({ error: "התאריך כבר עבר. לבקש מהלקוח תאריך עתידי" });
-    const { count } = await supabase.from("events").select("id", { count: "exact", head: true }).eq("photographer_id", conv.photographer_id).eq("event_date", date);
-    const available = (count ?? 0) === 0;
-    conv.collected = { ...conv.collected, eventDate: date, dateAvailable: available };
-    return JSON.stringify({ date, available, hebrewDate: hebrewDate(date) });
+    const { data: events } = await supabase
+      .from("events")
+      .select("arrival_time, event_start_time, event_end_time")
+      .eq("photographer_id", conv.photographer_id)
+      .eq("event_date", date);
+    const list = events ?? [];
+    const slot: DaySlot | undefined = p.intake_allow_split_day && (input.slot === "morning" || input.slot === "evening") ? input.slot : undefined;
+    // Split day: only events overlapping the requested part of the day count. Otherwise any event
+    // on the date makes it taken.
+    const available = slot ? !list.some((e) => blocksSlot(e, slot)) : list.length === 0;
+    conv.collected = { ...conv.collected, eventDate: date, dateAvailable: available, ...(slot ? { eventSlot: slot } : {}) };
+    return JSON.stringify({ date, available, hebrewDate: hebrewDate(date), ...(slot ? { slot: SLOT_LABELS[slot] } : {}) });
   }
 
   if (name === "save_details") {

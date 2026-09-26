@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.67",
+    date: "2026-09-26",
+    changes: [
+      "עוזר פניות: אפשר לאפשר אירוע בוקר ואירוע ערב באותו יום (הגדרות › אוטומציה). עלייה לתורה בבוקר (עד 4 שעות) לא חוסמת אירוע ערב (18:00 עד 00:00), ולהפך. אירוע בלי שעות או אירוע של כל היום עדיין חוסם את כל היום",
+    ],
+  },
+  {
     version: "2.11.66",
     date: "2026-09-26",
     changes: [
