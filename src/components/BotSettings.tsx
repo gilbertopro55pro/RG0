@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { IntakeFaqItem, Photographer } from "@/lib/types";
+import { GREETING_MAX_CHARS, defaultWhatsAppGreeting } from "@/lib/intakeGreeting";
 
 const MAX_FAQ = 15;
 
@@ -15,7 +16,7 @@ export default function BotSettings({
   usedThisMonth,
   chatPath,
 }: {
-  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question">;
+  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_whatsapp_greeting">;
   cap: number;
   usedThisMonth: number;
   chatPath: string;
@@ -28,6 +29,11 @@ export default function BotSettings({
   const [status, setStatus] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [greetingCopied, setGreetingCopied] = useState(false);
+  const defaultGreeting = defaultWhatsAppGreeting(photographer.name, chatPath);
+  const [greeting, setGreeting] = useState(photographer.intake_whatsapp_greeting?.trim() || defaultGreeting);
+  const [savedGreeting, setSavedGreeting] = useState(greeting);
+  const [greetingBusy, setGreetingBusy] = useState<"save" | "ai" | null>(null);
+  const [greetingStatus, setGreetingStatus] = useState<string | null>(null);
 
   if (cap <= 0) {
     return (
@@ -63,14 +69,41 @@ export default function BotSettings({
 
   const fullLink = typeof window !== "undefined" ? `${window.location.origin}${chatPath}` : chatPath;
   const field = "w-full rounded-lg px-3 py-2 text-sm border border-line";
-  // For the WhatsApp Business app's automatic greeting message (no Meta approval needed): sends
-  // every new client straight to the assistant. The link shows a preview card (public/og/chat.png).
-  const greeting = `היי, תודה שפניתם ל${photographer.name}! 📸
-רוצים לדעת עכשיו אם התאריך שלכם פנוי?
-בצ'אט הזה תקבלו תשובה תוך שניות, בלי לחכות:
-👈 https://myframeflow.com${chatPath}
-בודקים את התאריך, אוספים את הפרטים, והצעה אישית בדרך אליכם.
-(ואפשר תמיד להמשיך לכתוב גם כאן)`;
+  // WhatsApp Business greeting (no Meta approval needed): sends every new client to the assistant.
+  // The chat link shows as a preview card (public/og/chat.png).
+  const saveGreeting = async () => {
+    setGreetingBusy("save");
+    setGreetingStatus(null);
+    const text = greeting.trim().slice(0, GREETING_MAX_CHARS);
+    const { error } = await createClient()
+      .from("photographers")
+      .update({ intake_whatsapp_greeting: text === defaultGreeting ? null : text })
+      .eq("id", photographer.id);
+    setGreetingBusy(null);
+    if (error) {
+      setGreetingStatus("השמירה נכשלה. נסו שוב");
+      return;
+    }
+    setSavedGreeting(text);
+    setGreetingStatus("נשמר");
+  };
+  const rewriteGreeting = async () => {
+    setGreetingBusy("ai");
+    setGreetingStatus(null);
+    const res = await fetch("/api/intake-bot/greeting-ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: greeting }),
+    }).catch(() => null);
+    const json = res ? await res.json().catch(() => ({})) : {};
+    setGreetingBusy(null);
+    if (!res?.ok || !json.text) {
+      setGreetingStatus(json.error ?? "הניסוח לא זמין כרגע. נסו שוב");
+      return;
+    }
+    setGreeting(json.text);
+    setGreetingStatus("נוסח מחדש. אפשר לערוך, ואז לשמור");
+  };
 
   return (
     <div className="rounded-2xl bg-card border border-line overflow-hidden">
@@ -133,23 +166,54 @@ export default function BotSettings({
         <p className="text-xs text-ink-soft mb-2">
           כל לקוח חדש שכותב לך בוואטסאפ יקבל אוטומטית את ההודעה הזו, עם הקישור לעוזר. באפליקציית WhatsApp Business: הגדרות › כלים לעסקים › הודעת פתיחה › להדליק ולהדביק.
         </p>
-        <div className="rounded-xl border border-line p-3 text-sm whitespace-pre-line break-words" style={{ background: "var(--color-input-bg)" }}>
-          {greeting}
-        </div>
-        <button
-          type="button"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(greeting);
-              setGreetingCopied(true);
-              setTimeout(() => setGreetingCopied(false), 1500);
-            } catch {}
-          }}
-          className="mt-2 text-xs font-semibold rounded-lg px-3 py-1.5 border border-line"
+        <textarea
+          aria-label="הודעת הפתיחה"
+          value={greeting}
+          onChange={(e) => setGreeting(e.target.value)}
+          rows={7}
+          maxLength={GREETING_MAX_CHARS}
+          className="w-full rounded-xl border border-line p-3 text-sm resize-y"
           style={{ background: "var(--color-input-bg)" }}
-        >
-          {greetingCopied ? "הועתק" : "העתקת ההודעה"}
-        </button>
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={saveGreeting}
+            disabled={greetingBusy !== null || greeting.trim() === savedGreeting}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-ink text-white disabled:opacity-50"
+          >
+            {greetingBusy === "save" ? "שומר…" : "שמירה"}
+          </button>
+          <button
+            type="button"
+            onClick={rewriteGreeting}
+            disabled={greetingBusy !== null || !greeting.trim()}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-line disabled:opacity-50"
+            style={{ background: "var(--color-input-bg)", color: "var(--color-amber-deep)" }}
+          >
+            {greetingBusy === "ai" ? "מנסח…" : "✦ ניסוח עם AI"}
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(greeting);
+                setGreetingCopied(true);
+                setTimeout(() => setGreetingCopied(false), 1500);
+              } catch {}
+            }}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-line"
+            style={{ background: "var(--color-input-bg)" }}
+          >
+            {greetingCopied ? "הועתק" : "העתקה"}
+          </button>
+          {greeting.trim() !== defaultGreeting && (
+            <button type="button" onClick={() => setGreeting(defaultGreeting)} className="text-xs text-ink-soft underline underline-offset-2">
+              חזרה לנוסח המקורי
+            </button>
+          )}
+        </div>
+        {greetingStatus && <p className={`mt-1.5 text-xs ${greetingStatus === "נשמר" || greetingStatus.startsWith("נוסח") ? "text-sage" : "text-rose"}`}>{greetingStatus}</p>}
       </div>
 
       <div className="px-4 py-3 border-t border-line grid gap-3">

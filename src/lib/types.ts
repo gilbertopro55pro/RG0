@@ -29,6 +29,8 @@ export type Photographer = {
   intake_chat_token: string;
   // The Cloud API number that serves this photographer's intake bot on WhatsApp (migration 0131).
   whatsapp_bot_phone_number_id: string | null;
+  // Own WhatsApp Business greeting text (migration 0132); null = defaultWhatsAppGreeting.
+  intake_whatsapp_greeting: string | null;
   payplus_customer_uid: string | null;
   payplus_recurring_uid: string | null;
   subscription_status: SubscriptionStatus;
