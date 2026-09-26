@@ -38,12 +38,13 @@ export function blocksSlot(e: TimedEvent, slot: DaySlot): boolean {
 }
 
 // Shabbat rule (photographers.intake_shabbat_closed, migration 0136): Friday is open only for a
-// morning event (08:00-16:00), Friday evening and all of Saturday are closed. Returns why the
-// requested date/part is closed, or null. `slot` undefined = the part of the day isn't known yet.
+// morning event (08:00-16:00), Friday evening and Saturday daytime are closed, and Saturday evening
+// (after Shabbat ends) is open (owner, 2026-09-26). Returns why the requested date/part is closed, or
+// null. `slot` undefined = the part of the day isn't known yet (treated as closed on Shabbat).
 export function shabbatClosure(dateIso: string, slot: DaySlot | undefined): "friday_evening" | "saturday" | null {
   const [y, m, d] = dateIso.split("-").map(Number);
   const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 5 = Friday, 6 = Saturday
-  if (weekday === 6) return "saturday";
+  if (weekday === 6) return slot === "evening" ? null : "saturday";
   if (weekday === 5 && slot !== "morning") return "friday_evening";
   return null;
 }
