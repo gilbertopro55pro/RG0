@@ -54,7 +54,7 @@ below, so don't change them without asking.
 
 **WhatsApp Business greeting (2026-09-25/26):** settings › אוטומציה has an editable greeting for
 the photographer's own WhatsApp Business app (no Meta approval): default text in
-`lib/intakeGreeting.ts` (chat link + "reply in WhatsApp within 45 minutes"), saved to
+`lib/intakeGreeting.ts` (chat link + "reply soon, usually within 45 minutes"), saved to
 `photographers.intake_whatsapp_greeting` (migration 0132, null = default), "ניסוח עם AI" via
 `api/intake-bot/greeting-ai` (INTAKE_MODEL, effort low, 20 an hour per photographer, re-appends the
 link if a rewrite drops it). `/chat/<key>` has Open Graph metadata with `public/og/chat.png`.
