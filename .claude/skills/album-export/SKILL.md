@@ -54,6 +54,15 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   running `scripts/deploy.sh`.
 - JPG/PSD carry `density: 300` (the JPG metadata was added 2026-09-24; before that labs read
   them as 72 DPI). Verified live after the fix: `dpi == (300, 300)` on every page.
+- **Automatic download after a long export fails on iPhone** (found live 2026-09-26: a 19-page PDF,
+  5 min on the worker, "ההורדה נכשלה" in the home quick-export sheet while the email link worked).
+  After minutes of polling, `navigator.share` no longer counts as the user's tap, and fetching the
+  whole file into a blob is heavy on a phone. Both the home quick export (`AlbumQuickAccessButton`)
+  and the gallery screen (`GalleryManageView`, toast `linkOnly`) now fall back to a plain
+  "הורדת הקובץ" link to the signed URL: the user's own tap opens it, like the email.
+- **Real albums render slowly on the worker**: the same job took 315s for 19 pages (about 16s per
+  page). `albumPdf.ts` downloads and decodes every full-size original (20MB+) on shared-cpu-2x,
+  even for the "web" (35%) quality. The test album's 5s isn't representative.
 - Checking that the worker is current from the sandbox: `bash scripts/flyWorkerIsCurrent.sh` with
   `FLY_API_TOKEN` cleaned of newlines/quotes **only**. The token has a space ("FlyV1 …"), so
   stripping all whitespace gives a 401 that looks like "stale".
