@@ -156,5 +156,10 @@ trial end**.
   - any status other than `trialing` (the three old `incomplete` users are untouched, as the owner decided)
 - The 30-day rule appears in the terms, cancellation policy, FAQ, /billing and the trial-end reminder.
 - **To exempt an account:** `update photographers set keep_account = true where id = '<id>';`
-- **Live test:** two disposable accounts, "QA מחיקה (מוכן למחיקה)" and "QA מחיקה (אזהרה ראשונה)",
-  were set up on 2026-09-25 to go through the 2026-09-26 cron run. Record the result here.
+- **Verified live (cron run 2026-09-26 07:00 UTC):**
+  - "QA מחיקה (מוכן למחיקה)" was deleted from `photographers` and `auth.users`, with no rows left
+    behind (its events are gone too), and a row was written to `deleted_accounts_log`.
+  - "QA מחיקה (אזהרה ראשונה)" got `trial_deletion_warned_at`.
+  - The 4 `keep_account` accounts were untouched, and no other account was deleted or warned.
+  - "QA מחיקה (אזהרה ראשונה)" will reach its final warning and deletion over the next cron runs;
+    delete it by hand if that's no longer wanted.
