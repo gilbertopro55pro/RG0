@@ -5,7 +5,7 @@ export function chatLinkFor(chatPath: string): string {
 }
 
 // The default greeting for the WhatsApp Business app (settings > automation): sends every new
-// client to the intake assistant, and promises a reply by hand within 45 minutes for anyone who
+// client to the intake assistant, and promises a reply by hand soon, usually within 45 minutes for anyone who
 // keeps writing in WhatsApp.
 export function defaultWhatsAppGreeting(studio: string, chatPath: string): string {
   return `היי, תודה שפניתם ל${studio}! 📸
@@ -13,5 +13,5 @@ export function defaultWhatsAppGreeting(studio: string, chatPath: string): strin
 בצ'אט הזה תקבלו תשובה תוך שניות, בלי לחכות:
 👈 ${chatLinkFor(chatPath)}
 בודקים את התאריך, אוספים את הפרטים, והצעה אישית בדרך אליכם.
-ומעדיפים לכתוב כאן? נחזור אליכם בוואטסאפ תוך 45 דקות לכל היותר.`;
+ומעדיפים לכתוב כאן? נחזור אליכם בהקדם, בדרך כלל תוך 45 דקות.`;
 }
