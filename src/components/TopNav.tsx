@@ -27,7 +27,7 @@ const NAV_ITEMS = [
 // marketing page for every logged-out visitor hitting "/".
 // "/p" (the public portfolio, /p/[slug]) added 2026-09-23 — it had been showing the photographer's
 // own dashboard nav to every potential client who opened a shared portfolio link.
-const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/billing", "/landing", "/p"];
+const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/billing", "/landing", "/p", "/chat"];
 
 export default function TopNav() {
   const pathname = usePathname();
