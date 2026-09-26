@@ -60,9 +60,13 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   whole file into a blob is heavy on a phone. Both the home quick export (`AlbumQuickAccessButton`)
   and the gallery screen (`GalleryManageView`, toast `linkOnly`) now fall back to a plain
   "הורדת הקובץ" link to the signed URL: the user's own tap opens it, like the email.
-- **Real albums render slowly on the worker**: the same job took 315s for 19 pages (about 16s per
-  page). `albumPdf.ts` downloads and decodes every full-size original (20MB+) on shared-cpu-2x,
-  even for the "web" (35%) quality. The test album's 5s isn't representative.
+- **Real albums used to render slowly on the worker**: 315s for 19 pages (about 120 originals of
+  13MB), because each photo was downloaded and then decoded strictly one after another. Since
+  2026-09-26 `generateAlbumPdf` prefetches the current and next page's originals (4 at a time,
+  shared in-flight requests, cache 600MB) and the "web" PDF caps photos at 2400px (`PHOTO_MAX_PX`,
+  "high" stays 3200). Local benchmark (the real renderer against a fake R2 with 150ms + 40MB/s,
+  24 photos of 22MB): 37.9s → 14.3s (prefetch alone 17.2s), PDF 8.8MB → 3.4MB, pages still
+  30×20cm. The test album's 5s isn't representative of real albums.
 - Checking that the worker is current from the sandbox: `bash scripts/flyWorkerIsCurrent.sh` with
   `FLY_API_TOKEN` cleaned of newlines/quotes **only**. The token has a space ("FlyV1 …"), so
   stripping all whitespace gives a 401 that looks like "stale".

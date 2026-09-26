@@ -213,6 +213,12 @@ const QUALITY_STEPS: Record<"high" | "web", number[]> = {
 // PDF export never needs original-resolution images). Went 5MB → 80MB → 150MB → 100MB — the last
 // move per explicit request (2026-09-03, alongside lowering the starting quality-step to 35% above)
 // tightening back down from 150MB.
+// Longest side of each photo in the PDF (see generateAlbumPdf's photoMaxPx). 2400px still covers a
+// full-bleed 30cm spread at about 200 DPI, plenty for the "web" screen proof.
+const PHOTO_MAX_PX: Record<"high" | "web", number> = {
+  high: 3200,
+  web: 2400,
+};
 const TARGET_MAX_BYTES: Record<"high" | "web", number> = {
   high: 20 * 1024 * 1024,
   web: 100 * 1024 * 1024,
@@ -423,6 +429,7 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
           photosById,
           customOrnamentsById,
           jpegQuality,
+          photoMaxPx: PHOTO_MAX_PX[quality],
           downloadCache: new Map<string, Buffer | null>(),
           resumeFromDoc,
           pageRange: { start: pageStart, end: pageEnd },
@@ -572,6 +579,7 @@ export async function processAlbumPdfJobOnWorker(jobId: string): Promise<void> {
         photosById,
         customOrnamentsById,
         jpegQuality,
+        photoMaxPx: PHOTO_MAX_PX[quality],
         downloadCache: new Map<string, Buffer | null>(),
         refetchSpread: (id) => refreshSpreadAndPhotos(supabase, id, photosById, customOrnamentsById),
         onPageRendered: () => {
