@@ -41,7 +41,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
   const ip = clientIpFrom(request);
-  const { allowed } = await checkRateLimit(`intake-msg:${ip}`, { maxRequests: 40, windowSeconds: 600 });
+  // Per IP, generous on purpose: Israeli mobile carriers put many customers behind one address
+  // (CGNAT), so tight limits would block real clients once an ad runs. The monthly cap is the
+  // real cost guard.
+  const { allowed } = await checkRateLimit(`intake-msg:${ip}`, { maxRequests: 200, windowSeconds: 600 });
   if (!allowed) return NextResponse.json({ error: "יותר מדי הודעות. נסו שוב בעוד כמה דקות" }, { status: 429 });
 
   const body: { session?: string; message?: string; src?: string } = await request.json().catch(() => ({}));
@@ -58,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // A new conversation counts toward the photographer's monthly cap and the per-IP daily limit.
     const reason = await assistantUnavailableReason(supabase, p);
     if (reason) return NextResponse.json({ unavailable: reason }, { status: 409 });
-    const { allowed: newAllowed } = await checkRateLimit(`intake-new:${ip}`, { maxRequests: 6, windowSeconds: 86_400 });
+    const { allowed: newAllowed } = await checkRateLimit(`intake-new:${ip}`, { maxRequests: 60, windowSeconds: 86_400 });
     if (!newAllowed) return NextResponse.json({ error: "יותר מדי שיחות חדשות מהמכשיר הזה היום" }, { status: 429 });
     const { data: created, error } = await supabase
       .from("bot_conversations")

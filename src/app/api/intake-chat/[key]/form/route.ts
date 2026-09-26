@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 // photographer (off, plan, or this month's cap). No model call; straight into leads.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
-  const { allowed } = await checkRateLimit(`intake-form:${clientIpFrom(request)}`, { maxRequests: 5, windowSeconds: 3600 });
+  const { allowed } = await checkRateLimit(`intake-form:${clientIpFrom(request)}`, { maxRequests: 30, windowSeconds: 3600 });
   if (!allowed) return NextResponse.json({ error: "יותר מדי פניות. נסו שוב מאוחר יותר" }, { status: 429 });
 
   const body: { name?: string; phone?: string; date?: string; eventType?: string; notes?: string; src?: string } = await request.json().catch(() => ({}));

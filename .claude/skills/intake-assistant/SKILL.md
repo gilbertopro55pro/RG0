@@ -39,15 +39,15 @@ below, so don't change them without asking.
 | Access and caps; chat key = `portfolio_slug`, else `intake_chat_token` | `src/lib/intakeChatAccess.ts` |
 | Public API: GET (bootstrap + transcript), POST (one client message) | `src/app/api/intake-chat/[key]/route.ts` |
 | Fallback form | `src/app/api/intake-chat/[key]/form/route.ts` |
-| Chat page (session kept in localStorage) | `src/app/chat/[key]/page.tsx`, `src/components/IntakeChat.tsx` |
+| Chat page (session in sessionStorage: a new visit = a clean conversation, a reload keeps it) | `src/app/chat/[key]/page.tsx`, `src/components/IntakeChat.tsx` |
 | Settings → אוטומציה (toggle, link and usage, reply time, extra question, FAQ) | `src/components/BotSettings.tsx` |
 | Leads: badges (מהעוזר / מטופס הפנייה / חסרים פרטים) and "השיחה עם העוזר" | `src/components/LeadsView.tsx`, `api/leads/[id]/conversation` |
 | Portfolio page: "בדיקת תאריך" button when enabled | `src/app/p/[slug]/page.tsx` |
 | DB (migrations 0129, 0130) | `bot_conversations` (channel, session_token, client_turns, completed_at, usage), `leads` (source, bot_conversation_id, details, needs_details), `photographers.intake_bot_*` and `intake_chat_token` |
 
 **Limits:**
-- 40 messages per IP per 10 minutes.
-- 6 new conversations per IP per day.
+- 200 messages per IP per 10 minutes and 60 new conversations per IP per day (raised 2026-09-26:
+  mobile carriers share one IP across many clients; the monthly cap guards the cost). Form: 30/hour.
 - 30 client turns per conversation.
 - 1000 characters per message.
 - Up to 5 tool rounds per turn.
