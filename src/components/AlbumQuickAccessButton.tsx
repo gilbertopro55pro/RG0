@@ -35,6 +35,8 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
   const [selectedId, setSelectedId] = useState(galleries[0]?.id ?? "");
   const [navigating, setNavigating] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // The finished file's signed link, shown as a button when the automatic download didn't go through.
+  const [readyLink, setReadyLink] = useState<string | null>(null);
   // Holds whichever job is currently being polled — a freshly created one, OR a pre-existing one
   // returned by findActiveExportJob (albumExportJobs.ts) when this gallery already has an export
   // running from somewhere else (the real album tool, another tab, or an earlier click here).
@@ -125,7 +127,10 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       const blob = await fileRes.blob();
       await downloadBlob(blob, filename, FORMAT_MIME[format]);
     } catch {
-      setExportError("הייצוא הושלם בהצלחה אבל ההורדה נכשלה, קישור להורדה נשלח גם למייל שלך.");
+      // Found live 2026-09-26 on iPhone: after a long export the share sheet no longer counts as
+      // the user's tap and the automatic download fails. A tap on a plain link to the same signed
+      // URL (what the email does) always works, so offer that instead of a dead end.
+      setReadyLink(downloadUrl);
     }
   };
 
@@ -146,6 +151,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       return;
     }
     setExportError(null);
+    setReadyLink(null);
     cancelledRef.current = false;
     setProgressPct(0);
     try {
@@ -228,6 +234,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                 onChange={(e) => {
                   setSelectedId(e.target.value);
                   setExportError(null);
+                  setReadyLink(null);
                 }}
                 className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-4"
               >
@@ -256,6 +263,19 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                   ))}
                 </div>
                 {exportError && <p className="text-xs text-rose mt-2">{exportError}</p>}
+                {readyLink && (
+                  <div className="mt-3 rounded-xl border border-line bg-white p-3">
+                    <p className="text-xs text-ink-soft mb-2">הקובץ מוכן. ההורדה האוטומטית לא עבדה במכשיר הזה, אפשר להוריד מכאן:</p>
+                    <a
+                      href={readyLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-10 items-center justify-center rounded-xl bg-ink text-white text-sm font-semibold"
+                    >
+                      הורדת הקובץ
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 

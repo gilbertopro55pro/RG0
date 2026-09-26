@@ -210,7 +210,7 @@ export default function GalleryManageView({
   // Rendered as a floating "export ready" toast (see the return statement below) alongside the
   // normal auto-download every completed export already gets, per explicit request that a finished
   // export always offers a WhatsApp share option too, not only the file itself.
-  const [completedExportToast, setCompletedExportToast] = useState<{ downloadUrl: string; filename: string; mimeType: string; label: string; allowSaveDialog: boolean } | null>(null);
+  const [completedExportToast, setCompletedExportToast] = useState<{ downloadUrl: string; filename: string; mimeType: string; label: string; allowSaveDialog: boolean; linkOnly?: boolean } | null>(null);
   const [downloadingCompletedToast, setDownloadingCompletedToast] = useState(false);
   // Neither photo uploads nor album exports (JPG/PDF/PSD — removed per explicit request, see
   // ProgressModal's own onBackground usage below) offer a "המשך ברקע" button any more — both modals
@@ -1452,9 +1452,17 @@ export default function GalleryManageView({
       // Album exports no longer offer a "המשך ברקע" button (removed per explicit request — see
       // ProgressModal's own onBackground usage below), so the modal is always still open and
       // visible by the time a job reaches here; the auto-download always fires.
-      const fileRes = await fetch(downloadUrl, { signal: controller.signal });
-      const blob = await fileRes.blob();
-      await downloadBlob(blob, filename, mimeType, allowSaveDialog);
+      try {
+        const fileRes = await fetch(downloadUrl, { signal: controller.signal });
+        const blob = await fileRes.blob();
+        await downloadBlob(blob, filename, mimeType, allowSaveDialog);
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") throw e;
+        // The export is done; only the automatic download failed (iPhone after a long export: the
+        // share sheet no longer counts as the user's tap). The toast offers a plain link instead.
+        setCompletedExportToast({ downloadUrl, filename, mimeType, label, allowSaveDialog, linkOnly: true });
+        return;
+      }
       await new Promise((resolve) => setTimeout(resolve, 500));
       // Also shown alongside the auto-download — per explicit request that a completed export
       // should immediately offer a WhatsApp share option too, not only a download. The toast's own
@@ -2739,7 +2747,20 @@ export default function GalleryManageView({
                 </svg>
               </button>
             </div>
+            {completedExportToast.linkOnly && (
+              <p className="text-xs opacity-70 mt-2">ההורדה האוטומטית לא עבדה במכשיר הזה, אפשר להוריד בכפתור.</p>
+            )}
             <div className="flex items-center gap-2 mt-3">
+              {completedExportToast.linkOnly ? (
+                <a
+                  href={completedExportToast.downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold bg-white text-ink text-center"
+                >
+                  הורדה
+                </a>
+              ) : (
               <button
                 onClick={async () => {
                   setDownloadingCompletedToast(true);
@@ -2748,7 +2769,7 @@ export default function GalleryManageView({
                     const blob = await res.blob();
                     await downloadBlob(blob, completedExportToast.filename, completedExportToast.mimeType, completedExportToast.allowSaveDialog);
                   } catch {
-                    setError("שגיאה בהורדת הקובץ");
+                    setCompletedExportToast({ ...completedExportToast, linkOnly: true });
                   } finally {
                     setDownloadingCompletedToast(false);
                   }
@@ -2758,6 +2779,7 @@ export default function GalleryManageView({
               >
                 {downloadingCompletedToast ? "מוריד..." : "הורדה"}
               </button>
+              )}
               {/* Straight to the client's own WhatsApp chat, matching the exact "send update"
                   pattern already used for gallery-published/photos-uploaded notifications — per
                   explicit request that a completed export should offer to share it immediately,
