@@ -62,7 +62,8 @@ async function applyPhotoFilter(
   blurPct?: number,
   adjustments?: PhotoAdjustments,
   jpegQuality: number = 90,
-  sharpness?: number
+  sharpness?: number,
+  maxPx: number = 3200
 ): Promise<Buffer> {
   let img = sharp(buffer).rotate(); // .rotate() with no args auto-applies EXIF orientation first
   // Capped BEFORE the rest of the pipeline — the photo is embedded at its FULL pixel dimensions
@@ -74,7 +75,7 @@ async function applyPhotoFilter(
   // consistently being the one export batches died on, no matter how the invocation/batching
   // architecture around it was hardened. 3200px comfortably covers even a full-bleed photo at good
   // quality for this page size with real margin to spare.
-  img = img.resize(3200, 3200, { fit: "inside", withoutEnlargement: true });
+  img = img.resize(maxPx, maxPx, { fit: "inside", withoutEnlargement: true });
   // Sepia = tinted — sharp's tint() already desaturates internally before recoloring, so this is
   // the standard sepia approximation. Chaining an explicit .grayscale() *before* .tint() looks
   // like the obvious way to write it, but empirically neutralizes the tint entirely (confirmed:
@@ -300,6 +301,7 @@ export async function generateAlbumPdf({
   photosById,
   customOrnamentsById,
   jpegQuality = 90,
+  photoMaxPx = 3200,
   downloadCache,
   onPageRendered,
   resumeFromDoc,
@@ -314,6 +316,10 @@ export async function generateAlbumPdf({
   // route) skip re-fetching every original from R2 on each retry — only the re-encode itself
   // differs between passes, so the network round-trips are the one thing worth sharing across them.
   jpegQuality?: number;
+  // Longest side each photo is resized to before embedding. The "web" PDF (a screen proof at 35%
+  // JPEG) passes a smaller cap than the default: decoding a 40MP original down to it costs about
+  // 40% less CPU, which is most of a long export's time on the worker.
+  photoMaxPx?: number;
   downloadCache?: Map<string, Buffer | null>;
   // Fired once per spread as it starts rendering — the only real progress signal the PDF export
   // job (see albumExportJobs.ts) has, since generateAlbumPdf otherwise runs as one opaque await.
@@ -347,12 +353,15 @@ export async function generateAlbumPdf({
   // memory: Killed process ... anon-rss:3836224kB"), which left the job orphaned as "processing"
   // forever. A photo is normally used on one page only, so evicting the oldest costs almost nothing;
   // the rare re-used one (a background repeated across pages) is simply downloaded again.
-  const CACHE_MAX_BYTES = 200 * 1024 * 1024;
+  // 600MB since downloads are prefetched (see prefetchSpreads below): the current and next page's
+  // originals must fit, or a prefetched one is evicted before use and downloaded twice.
+  const CACHE_MAX_BYTES = 600 * 1024 * 1024;
   const cacheBytes = () => {
     let total = 0;
     for (const v of cache.values()) total += v?.byteLength ?? 0;
     return total;
   };
+  const pendingDownloads = new Map<string, Promise<Buffer | null>>();
   const downloadCached = async (bucket: string, path: string): Promise<Buffer | null> => {
     const key = `${bucket}:${path}`;
     if (cache.has(key)) {
@@ -361,16 +370,59 @@ export async function generateAlbumPdf({
       cache.set(key, hit);
       return hit;
     }
-    const buffer = await downloadObjectBuffer(bucket, path);
-    cache.set(key, buffer);
-    // Map iteration order is insertion order, so the first key is the least recently used — always
-    // keep the entry just added, even if it alone exceeds the cap.
-    while (cache.size > 1 && cacheBytes() > CACHE_MAX_BYTES) {
-      const oldest = cache.keys().next().value;
-      if (oldest === undefined || oldest === key) break;
-      cache.delete(oldest);
+    // A prefetch may already be downloading it: share that request instead of starting another.
+    const inflight = pendingDownloads.get(key);
+    if (inflight) return inflight;
+    const request = downloadObjectBuffer(bucket, path)
+      .then((buffer) => {
+        cache.set(key, buffer);
+        // Map iteration order is insertion order, so the first key is the least recently used —
+        // always keep the entry just added, even if it alone exceeds the cap.
+        while (cache.size > 1 && cacheBytes() > CACHE_MAX_BYTES) {
+          const oldest = cache.keys().next().value;
+          if (oldest === undefined || oldest === key) break;
+          cache.delete(oldest);
+        }
+        return buffer;
+      })
+      .finally(() => pendingDownloads.delete(key));
+    pendingDownloads.set(key, request);
+    return request;
+  };
+
+  // Downloads a page's photos ahead of time, a few at a time, while the CPU renders the photo
+  // before them. Pages used to download and render every photo strictly one after another: a real
+  // 19-page album (about 120 originals of 13MB) took 315s on the worker (2026-09-26). Failures are
+  // swallowed here; the render's own downloadCached call retries and handles them as before.
+  const PREFETCH_CONCURRENCY = 4;
+  const prefetchQueue: string[] = [];
+  let prefetchRunning = 0;
+  const pumpPrefetch = () => {
+    while (prefetchRunning < PREFETCH_CONCURRENCY && prefetchQueue.length) {
+      const path = prefetchQueue.shift()!;
+      prefetchRunning++;
+      downloadCached("galleries", path)
+        .catch(() => null)
+        .finally(() => {
+          prefetchRunning--;
+          pumpPrefetch();
+        });
     }
-    return buffer;
+  };
+  const prefetchSpreads = (list: GalleryAlbumSpreadRow[]) => {
+    for (const s of list) {
+      const ids = [
+        s.background_photo_id,
+        s.photo_id_1,
+        s.photo_id_2,
+        ...(Array.isArray(s.elements) ? s.elements : []).map((el) => (el.type === "photo" ? el.photoId : null)),
+      ];
+      for (const id of ids) {
+        const path = id ? photosById.get(id)?.storage_path : undefined;
+        if (path && !cache.has(`galleries:${path}`) && !prefetchQueue.includes(path)) prefetchQueue.push(path);
+      }
+    }
+    pumpPrefetch();
   };
 
   const pdfDoc = resumeFromDoc ? await PDFDocument.load(resumeFromDoc) : await PDFDocument.create();
@@ -433,7 +485,7 @@ export async function generateAlbumPdf({
     // normalized (see applyPhotoFilter's comment); skipping it silently would un-fix that.
     if (buffer) {
       try {
-        buffer = await applyPhotoFilter(buffer, filter, blurPct, adjustments, jpegQuality, sharpness);
+        buffer = await applyPhotoFilter(buffer, filter, blurPct, adjustments, jpegQuality, sharpness, photoMaxPx);
       } catch {
         // Fall back to the unfiltered (and un-EXIF-corrected) image rather than dropping it entirely.
       }
@@ -576,7 +628,11 @@ export async function generateAlbumPdf({
 
   const batchStart = pageRange?.start ?? 0;
   const batchEnd = pageRange?.end ?? spreads.length;
-  for (const staleSpread of spreads.slice(batchStart, batchEnd)) {
+  const batchSpreads = spreads.slice(batchStart, batchEnd);
+  prefetchSpreads(batchSpreads.slice(0, 2));
+  for (const [index, staleSpread] of batchSpreads.entries()) {
+    // Queues the page after next, so one page of downloads is always ahead of the render.
+    prefetchSpreads(batchSpreads.slice(index + 2, index + 3));
     onPageRendered?.();
     const spread = (await refetchSpread?.(staleSpread.id)) ?? staleSpread;
     if (spread.layout === "custom") {
