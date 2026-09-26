@@ -320,22 +320,27 @@ export default function BotSettings({
             <span className="block text-xs text-ink-soft">ביום שישי רק אירוע בוקר (עד 16:00). שישי בערב ושבת מסומנים כלא זמינים.</span>
           </span>
         </label>
-        <div>
-          <label htmlFor="intake-pixel" className="text-xs text-ink-soft block mb-1">
-            מזהה Meta Pixel (לא חובה)
-          </label>
-          <input
-            id="intake-pixel"
-            value={pixelId}
-            onChange={(e) => setPixelId(e.target.value.replace(/\D/g, "").slice(0, 20))}
-            inputMode="numeric"
-            dir="ltr"
-            placeholder="למשל 1234567890123456"
-            className={`${field} font-data`}
-            style={{ background: "var(--color-input-bg)" }}
-          />
-          <p className="text-xs text-ink-soft mt-1">מדווח למטא על כל ליד שהעוזר יוצר, כדי שהמודעות ילמדו למצוא לקוחות שמשאירים פרטים. המספר נמצא במנהל האירועים של מטא.</p>
-        </div>
+        <details className="rounded-xl border border-line" style={{ background: "var(--color-input-bg)" }}>
+          <summary className="px-3 py-2.5 text-sm font-semibold cursor-pointer">חיבור למטא (פיקסל)</summary>
+          <div className="px-3 pb-3">
+            <div>
+              <label htmlFor="intake-pixel" className="text-xs text-ink-soft block mb-1">
+                מזהה Meta Pixel (לא חובה)
+              </label>
+              <input
+                id="intake-pixel"
+                value={pixelId}
+                onChange={(e) => setPixelId(e.target.value.replace(/\D/g, "").slice(0, 20))}
+                inputMode="numeric"
+                dir="ltr"
+                placeholder="למשל 1234567890123456"
+                className={`${field} font-data`}
+                style={{ background: "var(--color-input-bg)" }}
+              />
+              <p className="text-xs text-ink-soft mt-1">מדווח למטא על כל ליד שהעוזר יוצר, כדי שהמודעות ילמדו למצוא לקוחות שמשאירים פרטים. המספר נמצא במנהל האירועים של מטא.</p>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div className="px-4 py-3 border-t border-line grid gap-2">
