@@ -125,6 +125,7 @@ function buildSystem(p: IntakePhotographer, channel: IntakeChannel): string {
 - כשיש שני דברים נפרדים לומר (תשובה ואז שאלה), מפרידים ביניהם בשורה ריקה. הם יוצגו כשתי הודעות קצרות.
 - פונים ללקוח בלשון רבים (אתם, לכם, תקבלו). אף פעם לא כותבים צורות עם לוכסן כמו "את/ה" או "יכול/ה", וגם העוזר מדבר על עצמו בלי לוכסן ("אשמח", "אין לי אפשרות").
 - אם הלקוח שאל על מחיר, עונים על זה במפורש כבר בתשובה הראשונה (לפי כלל 1), ולא מתעלמים מהשאלה.
+- רק עברית ובאותיות עבריות, גם בביטויים כמו "מזל טוב".
 - כנות: העוזר לא מתחזה ל${name} ולא כותב "אני ${name}". אם שואלים אם זה בוט או אדם, עונים בפשטות שזה העוזר של ${name}, ושהוא עצמו חוזר אליהם עם ההצעה.
 - פרטי חובה: ${REQUIRED.map((r) => r.label).join(", ")}. פרטים נוספים שכדאי לשאול: שעות האירוע, ומה חשוב ללקוח במיוחד.${p.intake_bot_extra_question?.trim() ? `\n- שאלה נוספת ש${name} ביקש לשאול: "${p.intake_bot_extra_question.trim()}"` : ""}
 - אם עוד אין תאריך, לא לוחצים: שואלים בערך מתי (חודש, עונה או שנה), שומרים עם save_details (dateUndecided=true ו-approxDate), וממשיכים לשאר הפרטים. אומרים שכשיהיה תאריך, ${name} יבדוק שהוא פנוי. אם הלקוח מתלבט בין כמה תאריכים, בודקים כל אחד ב-check_availability ושומרים אותם ב-approxDate.
@@ -403,7 +404,11 @@ export async function runIntakeTurn(
   const system: Anthropic.TextBlockParam[] = [{ type: "text", text: buildSystem(p, channel), cache_control: { type: "ephemeral" } }];
   const messages: Anthropic.MessageParam[] = [...conv.messages, { role: "user", content: clientText }];
   const fallback = `סליחה, משהו השתבש אצלי. אפשר לנסות שוב, או להשאיר שם וטלפון ו${studioName(p)} יחזור אליכם.`;
-  let reply = "";
+  // Text from every round, not just the last: the model often answers the client's question, then
+  // calls a tool, then asks the next question. Keeping only the last round dropped the answer
+  // (price and "bot or human" questions went unanswered in a live test, 2026-09-26).
+  const texts: string[] = [];
+  let refused = false;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let response: Anthropic.Message;
@@ -435,10 +440,10 @@ export async function runIntakeTurn(
       .map((b) => b.text)
       .join("\n")
       .trim();
-    if (text) reply = text;
+    if (text) texts.push(text);
 
     if (response.stop_reason === "refusal") {
-      reply = `את זה ${studioName(p)} יענה לכם ישירות. נמשיך עם פרטי האירוע?`;
+      refused = true;
       break;
     }
     if (response.stop_reason !== "tool_use") break;
@@ -456,7 +461,8 @@ export async function runIntakeTurn(
   }
 
   conv.messages = messages;
-  return reply || fallback;
+  if (refused) return `את זה ${studioName(p)} יענה לכם ישירות. נמשיך עם פרטי האירוע?`;
+  return texts.join("\n\n") || fallback;
 }
 
 // The readable transcript (client text + assistant text only) for the chat page and the lead.
