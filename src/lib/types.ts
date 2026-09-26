@@ -31,6 +31,8 @@ export type Photographer = {
   whatsapp_bot_phone_number_id: string | null;
   // Own WhatsApp Business greeting text (migration 0132); null = defaultWhatsAppGreeting.
   intake_whatsapp_greeting: string | null;
+  // The photographer's Meta Pixel id, loaded on the chat page (migration 0133).
+  meta_pixel_id: string | null;
   payplus_customer_uid: string | null;
   payplus_recurring_uid: string | null;
   subscription_status: SubscriptionStatus;
@@ -371,6 +373,8 @@ export type LeadRow = {
   details: IntakeDetails | null;
   // The client left before every required detail was collected (but left a phone number).
   needs_details: boolean;
+  // Where the lead came from (lib/leadSource.ts, migration 0133).
+  referral_source: string | null;
   converted_event_id: string | null;
   event_type_name: string | null;
   created_at: string;

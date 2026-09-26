@@ -45,6 +45,8 @@ export type IntakeConversation = {
   completed_at: string | null;
   // Summed token usage across this conversation's model calls (migration 0130).
   usage: Record<string, number>;
+  // Where the client came from (lib/leadSource.ts, migration 0133).
+  referral_source?: string | null;
 };
 
 export function intakeMonthlyCap(p: Pick<Photographer, "email" | "plan">): number {
@@ -198,6 +200,7 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
     needs_details: !complete,
     source: "assistant",
     bot_conversation_id: conv.id,
+    referral_source: conv.referral_source ?? null,
   };
   if (conv.lead_id) {
     await supabase.from("leads").update(row).eq("id", conv.lead_id);

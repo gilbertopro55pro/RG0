@@ -6,7 +6,7 @@ import type { Photographer } from "@/lib/types";
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>;
 
-type ChatPhotographer = IntakePhotographer & Pick<Photographer, "subscription_status" | "trial_ends_at" | "portfolio_slug" | "logo_storage_path">;
+type ChatPhotographer = IntakePhotographer & Pick<Photographer, "subscription_status" | "trial_ends_at" | "portfolio_slug" | "logo_storage_path" | "meta_pixel_id">;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -14,7 +14,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // (readable to share), otherwise their private intake_chat_token.
 export async function resolveChatPhotographer(supabase: ServiceClient, key: string): Promise<ChatPhotographer | null> {
   const fields =
-    "id, name, email, plan, subscription_status, trial_ends_at, portfolio_slug, logo_storage_path, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question";
+    "id, name, email, plan, subscription_status, trial_ends_at, portfolio_slug, logo_storage_path, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, meta_pixel_id";
   const bySlug = await supabase.from("photographers").select(fields).eq("portfolio_slug", key).maybeSingle<ChatPhotographer>();
   if (bySlug.data) return bySlug.data;
   if (!UUID_RE.test(key)) return null;

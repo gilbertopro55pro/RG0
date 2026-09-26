@@ -46,7 +46,9 @@ export async function POST(request: NextRequest) {
   if (!text) return NextResponse.json({ error: "אין טקסט לנסח" }, { status: 400 });
   if (text.length > GREETING_MAX_CHARS) return NextResponse.json({ error: "ההודעה ארוכה מדי" }, { status: 400 });
 
-  const link = chatLinkFor(`/chat/${p.portfolio_slug ?? p.intake_chat_token}`);
+  const base = chatLinkFor(`/chat/${p.portfolio_slug ?? p.intake_chat_token}`);
+  // The link exactly as the photographer has it (it may carry ?src=whatsapp for source tracking).
+  const link = text.match(/https:\/\/myframeflow\.com\/chat\/\S+/)?.[0] ?? base;
   let reply = "";
   try {
     const response = await new Anthropic().messages.create({

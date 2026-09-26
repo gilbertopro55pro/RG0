@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.65",
+    date: "2026-09-26",
+    changes: [
+      "עוזר פניות: מעקב מקורות. בהגדרות › אוטומציה יש קישור נפרד למודעה, לאינסטגרם, לפייסבוק ולקוד QR, ובעמוד הלידים רואים ליד כל פנייה מאיפה היא הגיעה, וסיכום מקורות של 30 הימים האחרונים",
+      "אפשר לחבר Meta Pixel לעוזר: כל ליד שהעוזר יוצר מדווח למטא, כדי שהמודעות ילמדו להביא לקוחות שמשאירים פרטים",
+    ],
+  },
+  {
     version: "2.11.64",
     date: "2026-09-25",
     changes: [

@@ -59,6 +59,15 @@ the photographer's own WhatsApp Business app (no Meta approval): default text in
 `api/intake-bot/greeting-ai` (INTAKE_MODEL, effort low, 20 an hour per photographer, re-appends the
 link if a rewrite drops it). `/chat/<key>` has Open Graph metadata with `public/og/chat.png`.
 
+**Lead sources and Meta Pixel (2026-09-26, migration 0133):** the chat page sends `src` from the URL
+(`?src=`, else `utm_source`, else `fbclid`/`igshid`; `lib/leadSource.ts`) on the first message; it is
+stored on `bot_conversations.referral_source` and copied to `leads.referral_source` (form leads too;
+WhatsApp conversations get `whatsapp` / `whatsapp_ad`). Settings list one link per channel; the
+WhatsApp greeting uses `?src=whatsapp`, the portfolio button `?src=portfolio`. Leads show "מקור: …"
+and a 30-day summary. `photographers.meta_pixel_id` (settings) loads the pixel on `/chat`: PageView,
+and Lead when the POST returns `newLead` or the fallback form is sent. No pixel existed in the owner's
+ad account (850673128465382) or business (771527666053009) as of 2026-09-26.
+
 `/chat` and `/api/intake-chat` are in the middleware's `PUBLIC_PATHS`, and `/chat` is in
 `InstallPrompt`'s `HIDDEN_PREFIXES`.
 

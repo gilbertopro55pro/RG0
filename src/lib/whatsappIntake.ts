@@ -30,7 +30,7 @@ export type WaChangeValue = {
   message_echoes?: WaEcho[];
 };
 
-const CONV_FIELDS = "id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, client_phone";
+const CONV_FIELDS = "id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, client_phone, referral_source";
 const BOT_FIELDS =
   "id, name, email, plan, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, whatsapp_bot_phone_number_id";
 const ACTIVE_STATES = ["collecting_info", "completed", "waitlisted"];
@@ -80,11 +80,12 @@ async function createConversation(
   photographerId: string,
   clientPhone: string,
   state: string,
-  collected: Record<string, unknown>
+  collected: Record<string, unknown>,
+  referralSource: string | null = "whatsapp"
 ) {
   const { data, error } = await supabase
     .from("bot_conversations")
-    .insert({ photographer_id: photographerId, channel: "whatsapp", client_phone: clientPhone, state, collected })
+    .insert({ photographer_id: photographerId, channel: "whatsapp", client_phone: clientPhone, state, collected, referral_source: referralSource })
     .select(CONV_FIELDS)
     .single<IntakeConversation & { client_phone: string }>();
   // A parallel webhook for the same client created it first (unique index): use that one.
@@ -127,7 +128,7 @@ export async function ingestWhatsAppChange(
       const { data: known } = await supabase.rpc("whatsapp_known_contact", { p_photographer: p.id, p_phone: m.from });
       const start = fromAd && !known;
       const adContext = [m.referral?.headline, m.referral?.body].filter(Boolean).join(" | ").slice(0, 300) || undefined;
-      conv = await createConversation(supabase, p.id, m.from, start ? "collecting_info" : "ignored", start ? { phone: localPhone(m.from), ...(adContext ? { adContext } : {}) } : {});
+      conv = await createConversation(supabase, p.id, m.from, start ? "collecting_info" : "ignored", start ? { phone: localPhone(m.from), ...(adContext ? { adContext } : {}) } : {}, m.referral?.source_type === "ad" ? "whatsapp_ad" : "whatsapp");
     }
     if (!conv || !ACTIVE_STATES.includes(conv.state)) continue;
     // Primary key = WhatsApp message id: Meta's retries of the same webhook are dropped here.

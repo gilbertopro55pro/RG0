@@ -126,7 +126,7 @@ export default async function PortfolioPage({
             form by itself if the assistant is unavailable, so the button is safe to show. */}
         {photographer.intake_bot_enabled && (
           <a
-            href={`/chat/${slug}`}
+            href={`/chat/${slug}?src=portfolio`}
             className="shrink-0 rounded-full px-4 py-2 text-xs font-semibold border"
             style={{ borderColor: BRASS, color: BRASS }}
           >

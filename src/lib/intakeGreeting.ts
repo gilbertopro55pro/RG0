@@ -11,7 +11,7 @@ export function defaultWhatsAppGreeting(studio: string, chatPath: string): strin
   return `היי, תודה שפניתם ל${studio}! 📸
 רוצים לדעת עכשיו אם התאריך שלכם פנוי?
 בצ'אט הזה תקבלו תשובה תוך שניות, בלי לחכות:
-👈 ${chatLinkFor(chatPath)}
+👈 ${chatLinkFor(chatPath)}?src=whatsapp
 בודקים את התאריך, אוספים את הפרטים, והצעה אישית בדרך אליכם.
 ומעדיפים לכתוב כאן? נחזור אליכם בהקדם, בדרך כלל תוך 45 דקות.`;
 }

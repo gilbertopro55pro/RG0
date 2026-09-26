@@ -11,6 +11,7 @@ import PageGuide from "@/components/PageGuide";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import BackLink from "@/components/BackLink";
 import RowMenu from "@/components/RowMenu";
+import { sourceLabel } from "@/lib/leadSource";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
@@ -48,6 +49,8 @@ export default function LeadsView({
   isAdmin: boolean;
 }) {
   const [leads, setLeads] = useState(initialLeads);
+  // Start of the "sources in the last 30 days" window, fixed when the page opens.
+  const [sourcesSince] = useState(() => Date.now() - 30 * 86_400_000);
   // Owned here (not inside AddLeadModal) so a package created via "+ חבילה מותאמת אישית חדשה"
   // shows up immediately in the lead-row label below, without waiting for a page refresh.
   const [customPackages, setCustomPackages] = useState(initialCustomPackages);
@@ -89,6 +92,29 @@ export default function LeadsView({
         blurb="כל פנייה חדשה מתחילה כאן כליד. שולחים ללקוח/ה הצעת מחיר, ואחרי שהיא מאושרת אפשר להפוך אותה לאירוע סגור בלחיצה."
       />
 
+      {(() => {
+        // Leads per source over the last 30 days: which channel (ad, Instagram, WhatsApp, QR...) brings clients.
+        const counts = new Map<string, number>();
+        for (const l of leads) {
+          if (!l.referral_source || new Date(l.created_at).getTime() < sourcesSince) continue;
+          const label = sourceLabel(l.referral_source)!;
+          counts.set(label, (counts.get(label) ?? 0) + 1);
+        }
+        if (counts.size === 0) return null;
+        const parts = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+        return (
+          <p className="text-xs text-ink-soft mb-3">
+            מקורות ב-30 הימים האחרונים:{" "}
+            {parts.map(([label, n], i) => (
+              <span key={label}>
+                {i > 0 && ", "}
+                {label} <span className="font-data font-semibold text-ink">{n}</span>
+              </span>
+            ))}
+          </p>
+        );
+      })()}
+
       {leads.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">אין עדיין לידים. לחצו על &quot;ליד חדש&quot; כדי להוסיף</div>}
 
       {/* Design stage 5: one list split by hairlines, not a card per lead. */}
@@ -106,6 +132,9 @@ export default function LeadsView({
                   )}
                   {lead.source === "form" && (
                     <span className="text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-chip text-ink-soft">מטופס הפנייה</span>
+                  )}
+                  {sourceLabel(lead.referral_source) && (
+                    <span className="text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-chip text-ink-soft">מקור: {sourceLabel(lead.referral_source)}</span>
                   )}
                   {lead.needs_details && (
                     <span className="text-[10.5px] font-semibold rounded-full px-2 py-0.5" style={{ background: "var(--color-rose-bg)", color: "var(--color-rose)" }}>
