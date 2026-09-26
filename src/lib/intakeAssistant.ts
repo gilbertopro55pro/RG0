@@ -4,7 +4,7 @@ import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { findLeadsByPhone } from "@/lib/leadDuplicates";
-import { SLOT_LABELS, blocksSlot, type DaySlot } from "@/lib/daySlots";
+import { SLOT_LABELS, blocksSlot, shabbatClosure, type DaySlot } from "@/lib/daySlots";
 import { SUBSCRIPTION_PLANS, type SubscriptionTier } from "@/lib/stages";
 import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
 
@@ -32,7 +32,7 @@ const REQUIRED: { key: keyof IntakeDetails; label: string }[] = [
 
 export type IntakePhotographer = Pick<
   Photographer,
-  "id" | "name" | "email" | "plan" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day"
+  "id" | "name" | "email" | "plan" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day" | "intake_shabbat_closed"
 >;
 
 export type IntakeConversation = {
@@ -120,6 +120,7 @@ function buildSystem(p: IntakePhotographer, channel: IntakeChannel): string {
 - פרטי חובה: ${REQUIRED.map((r) => r.label).join(", ")}. פרטים נוספים שכדאי לשאול: שעות האירוע, ומה חשוב ללקוח במיוחד.${p.intake_bot_extra_question?.trim() ? `\n- שאלה נוספת ש${name} ביקש לשאול: "${p.intake_bot_extra_question.trim()}"` : ""}
 - אם עוד אין תאריך, לא לוחצים: שואלים בערך מתי (חודש, עונה או שנה), שומרים עם save_details (dateUndecided=true ו-approxDate), וממשיכים לשאר הפרטים. אומרים שכשיהיה תאריך, ${name} יבדוק שהוא פנוי. אם הלקוח מתלבט בין כמה תאריכים, בודקים כל אחד ב-check_availability ושומרים אותם ב-approxDate.
 ${p.intake_allow_split_day ? `- ${name} יכול לצלם באותו יום גם אירוע בוקר וגם אירוע ערב. עלייה לתורה היא אירוע בוקר (slot="morning", 07:30 עד 15:00). אירועי ערב (חתונה, מסיבת בר או בת מצווה, חינה, אירוע ערב אחר) הם slot="evening" (18:00 עד 00:00). כשבודקים תאריך, שולחים ל-check_availability את ה-slot לפי סוג האירוע. אם סוג האירוע עוד לא ידוע, קודם שואלים עליו.
+` : ""}${p.intake_shabbat_closed ? `- ${name} לא מצלם בשבת: ביום שישי אפשר רק אירוע בוקר (עד 16:00), ושישי בערב ושבת לא זמינים. כש-check_availability מחזיר closedReason, אומרים את זה ללקוח בפשטות ("בשישי בערב ובשבת ${name} לא מצלם"), לא מציעים רשימת המתנה, ומבקשים תאריך אחר.
 ` : ""}- ברגע שיש תאריך, קוראים ל-check_availability. אם התאריך תפוס, אומרים את זה בעדינות ומציעים להיכנס לרשימת ההמתנה (אחרי שיש שם וטלפון, קוראים ל-join_waitlist).
 - אחרי ש-join_waitlist החזיר ok, מסיימים בתודה ובהסבר ש${name} יעדכן אם התאריך יתפנה. לא ממשיכים לאסוף פרטים ולא מציעים הצעת מחיר לתאריך תפוס.
 - בכל פעם שהלקוח נותן פרט, קוראים ל-save_details עם מה שנאמר.
@@ -304,9 +305,17 @@ async function runTool(
     const slot: DaySlot | undefined = p.intake_allow_split_day && (input.slot === "morning" || input.slot === "evening") ? input.slot : undefined;
     // Split day: only events overlapping the requested part of the day count. Otherwise any event
     // on the date makes it taken.
-    const available = slot ? !list.some((e) => blocksSlot(e, slot)) : list.length === 0;
+    const closedReason = p.intake_shabbat_closed ? shabbatClosure(date, input.slot === "morning" || input.slot === "evening" ? input.slot : undefined) : null;
+    const available = closedReason ? false : slot ? !list.some((e) => blocksSlot(e, slot)) : list.length === 0;
     conv.collected = { ...conv.collected, eventDate: date, dateAvailable: available, ...(slot ? { eventSlot: slot } : {}) };
-    return JSON.stringify({ date, available, hebrewDate: hebrewDate(date), ...(slot ? { slot: SLOT_LABELS[slot] } : {}) });
+    return JSON.stringify({
+      date,
+      available,
+      hebrewDate: hebrewDate(date),
+      ...(slot ? { slot: SLOT_LABELS[slot] } : {}),
+      // Not a booked date: the photographer doesn't work then. No waitlist, ask for another date.
+      ...(closedReason ? { closedReason: closedReason === "saturday" ? "שבת" : "שישי בערב (בשישי רק אירוע בוקר עד 16:00)" } : {}),
+    });
   }
 
   if (name === "save_details") {
