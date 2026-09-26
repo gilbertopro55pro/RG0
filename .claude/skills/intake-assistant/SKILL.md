@@ -85,6 +85,12 @@ admin): Friday only a morning slot (until 16:00), Friday evening and Saturday cl
 (`shabbatClosure` in `lib/daySlots.ts`); `check_availability` returns `closedReason`, the prompt says
 so, offers no waitlist and asks for another date. Only a full-day wedding takes a whole day; old
 events stay as they are, new ones are entered with hours.
+**Google Calendar (2026-09-26, bug found by the owner):** `check_availability` also reads the
+photographer's Google Calendar for that date (`lib/calendarBusy.ts`, `listSyncedCalendarEvents`)
+and counts events in `google_calendar_import_color_id` or `google_calendar_color_id` (the admin's
+is "5", yellow), by their hours (all-day = whole day, clipped to the day in Asia/Jerusalem). Before
+this, a booking written only in the calendar (17.12 bar mitzvah) was reported free. A Google error
+falls back to the app's events and is logged as `Intake calendar check failed`.
 The owner declined a "another lead wants this date" alert: a taken date is told to the client.
 
 `/chat` and `/api/intake-chat` are in the middleware's `PUBLIC_PATHS`, and `/chat` is in
