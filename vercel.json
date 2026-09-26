@@ -1,4 +1,5 @@
 {
+  "regions": ["fra1"],
   "functions": {
     "src/app/api/internal/album-export-jobs/process/route.ts": {
       "memory": 3009
