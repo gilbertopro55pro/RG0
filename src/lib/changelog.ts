@@ -8,6 +8,14 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.64",
+    date: "2026-09-25",
+    changes: [
+      "הודעת הפתיחה לוואטסאפ בהגדרות › אוטומציה: אפשר לערוך אותה ולשמור, וכפתור \"ניסוח עם AI\" מנסח מחדש את מה שכתבת בלי לגעת בקישור",
+      "הנוסח המוצע כולל עכשיו גם מענה בוואטסאפ תוך 45 דקות, ללקוח שמעדיף להמשיך לכתוב",
+    ],
+  },
+  {
     version: "2.11.63",
     date: "2026-09-25",
     changes: [
