@@ -28,6 +28,12 @@ function loadPixel(pixelId: string) {
   fbq("track", "PageView");
 }
 
+// Splits a reply on blank lines into separate chat bubbles.
+function bubbles(text: string): string[] {
+  const parts = text.split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
+  return parts.length ? parts : [text];
+}
+
 function trackLead() {
   (window as unknown as { fbq?: Fbq }).fbq?.("track", "Lead");
 }
@@ -56,7 +62,7 @@ export default function IntakeChat({
   pixelId: string | null;
 }) {
   const storageKey = `intake-session:${chatKey}`;
-  const greeting: Line = { role: "assistant", text: `היי! אני העוזר של ${studio}. ספרו לי על האירוע: מה חוגגים, ומתי?` };
+  const greeting: Line = { role: "assistant", text: `היי 👋 כאן העוזר של ${studio}. מה חוגגים, ומתי?` };
   const [lines, setLines] = useState<Line[]>([greeting]);
   const [session, setSession] = useState<string | null>(null);
   const [state, setState] = useState<string | null>(null);
@@ -80,7 +86,7 @@ export default function IntakeChat({
       .then((data: { available?: boolean; transcript?: Line[]; state?: string | null }) => {
         if (saved && data.transcript && data.transcript.length > 0) {
           setSession(saved);
-          setLines([greeting, ...data.transcript]);
+          setLines([greeting, ...data.transcript.flatMap((l) => (l.role === "assistant" ? bubbles(l.text).map((text) => ({ role: l.role, text })) : [l]))]);
           setState(data.state ?? null);
           setAvailable(true);
         } else {
@@ -130,7 +136,12 @@ export default function IntakeChat({
       }
       setState(data.state ?? null);
       if (data.newLead) trackLead();
-      setLines((l) => [...l, { role: "assistant", text: data.reply! }]);
+      // A reply with a blank line comes in as short bubbles, one after another, the way people text.
+      const parts = bubbles(data.reply!);
+      for (let i = 0; i < parts.length; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, Math.min(1500, 500 + parts[i].length * 12)));
+        setLines((l) => [...l, { role: "assistant", text: parts[i] }]);
+      }
     } catch {
       setError("אין חיבור. נסו שוב");
       setLines((l) => l.slice(0, -1));
@@ -175,13 +186,15 @@ export default function IntakeChat({
               </div>
             ))}
             {sending && (
-              <div className="self-start bg-card border border-line rounded-2xl rounded-tr-md px-3 py-2 text-ink-soft text-sm" aria-live="polite">
-                כותב…
+              <div className="self-start bg-card border border-line rounded-2xl rounded-tr-md px-3.5 py-3 flex gap-1" aria-live="polite" aria-label="מקליד">
+                {[0, 1, 2].map((d) => (
+                  <span key={d} className="h-1.5 w-1.5 rounded-full bg-ink-soft animate-bounce" style={{ animationDelay: `${d * 150}ms` }} />
+                ))}
               </div>
             )}
             {handedOff && (
               <div className="self-stretch text-center text-[12.5px] font-semibold rounded-xl px-3 py-2 bg-amber-bg text-amber-deep">
-                הפרטים הועברו ל{studio} · תשובה תוך {replyHours} שעות
+                הפרטים הועברו ל{studio}, תשובה תוך {replyHours} שעות
               </div>
             )}
             <div ref={endRef} />

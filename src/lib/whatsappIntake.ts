@@ -203,7 +203,11 @@ export async function processWhatsAppConversation(supabase: ServiceClient, p: Bo
         if (error) console.error("WhatsApp intake save failed:", convId, error);
         if (!saved?.length) break;
         try {
-          await sendWhatsAppMessage(clientPhone, reply, p.whatsapp_bot_phone_number_id ?? undefined);
+          // A reply with a blank line goes out as separate short messages, the way people text.
+          const parts = reply.split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
+          for (const part of parts.length ? parts : [reply]) {
+            await sendWhatsAppMessage(clientPhone, part, p.whatsapp_bot_phone_number_id ?? undefined);
+          }
         } catch (e) {
           console.error("WhatsApp intake reply failed:", convId, e);
         }

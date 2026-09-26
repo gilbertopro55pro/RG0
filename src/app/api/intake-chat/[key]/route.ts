@@ -72,7 +72,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     conv = created;
   }
   if (conv.client_turns >= MAX_CLIENT_TURNS) {
-    return NextResponse.json({ session: conv.session_token, reply: `השיחה ארוכה מדי בשבילי. ${studioName(p)} יחזור אליך בהקדם עם כל מה שכבר כתבת.`, state: conv.state });
+    return NextResponse.json({ session: conv.session_token, reply: `קיבלתי את כל מה שכתבתם, ו${studioName(p)} יחזור אליכם בהקדם.`, state: conv.state });
   }
 
   const origin = new URL(request.url).origin;
