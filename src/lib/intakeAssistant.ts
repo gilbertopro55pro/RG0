@@ -3,6 +3,7 @@ import type { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { ADMIN_EMAIL } from "@/lib/admin";
+import { findLeadsByPhone } from "@/lib/leadDuplicates";
 import { SUBSCRIPTION_PLANS, type SubscriptionTier } from "@/lib/stages";
 import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
 
@@ -205,6 +206,32 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
   if (conv.lead_id) {
     await supabase.from("leads").update(row).eq("id", conv.lead_id);
     return conv.lead_id;
+  }
+  // A returning client (same phone) with an open lead from the last 180 days, for the same event
+  // date or with no date to compare: update that lead instead of opening a duplicate. Its name,
+  // status and source stay as the photographer has them.
+  const since = Date.now() - 180 * 86_400_000;
+  const existing = (await findLeadsByPhone(supabase, conv.photographer_id, d.phone)).find(
+    (l) =>
+      !["won", "lost"].includes(l.status) &&
+      new Date(l.created_at).getTime() >= since &&
+      (!l.event_date_interest || !d.eventDate || l.event_date_interest === d.eventDate)
+  );
+  if (existing) {
+    await supabase
+      .from("leads")
+      .update({
+        details: d,
+        bot_conversation_id: conv.id,
+        email: row.email ?? undefined,
+        event_date_interest: existing.event_date_interest ?? row.event_date_interest,
+        event_type_name: existing.event_type_name ?? row.event_type_name,
+        // The photographer's own notes on a lead they added stay untouched.
+        ...(existing.source === "assistant" && row.notes ? { notes: row.notes } : {}),
+        ...(complete ? { needs_details: false } : {}),
+      })
+      .eq("id", existing.id);
+    return existing.id;
   }
   const { data } = await supabase.from("leads").insert(row).select("id").single<{ id: string }>();
   return data?.id ?? null;

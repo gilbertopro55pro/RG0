@@ -21,7 +21,9 @@ type ContactPickerNavigator = Navigator & {
 };
 
 type Mode = "event" | "standard" | "freelance";
-type Step = "calculator" | "quoteForm" | "preview" | "savePrompt" | "leadFollowUp";
+type Step = "calculator" | "quoteForm" | "preview" | "savePrompt" | "leadFollowUp" | "leadDuplicate";
+
+type DuplicateLead = { id: string; name: string; phone: string | null; event_date_interest: string | null; event_type_name: string | null; status: string; source: string | null; created_at: string };
 // A row in the per-quote vendor list: either a real saved supplier (supplierId matches
 // PricingSupplier.id) or a free-typed one-off (supplierId === "__custom__", name in customName).
 type QuoteVendorRow = { id: string; supplierId: string; customName: string; price: number };
@@ -145,6 +147,8 @@ export default function EventPricingCalculator({
   const [saveQuoteName, setSaveQuoteName] = useState("");
   const [savingQuote, setSavingQuote] = useState(false);
   const [addingLead, setAddingLead] = useState(false);
+  // An existing lead with the same phone, found when adding this quote's client to the leads.
+  const [duplicateLead, setDuplicateLead] = useState<DuplicateLead | null>(null);
   // "עיגול מחיר" — lets the photographer round the VAT-included total to a clean number by nudging
   // one supplier's price up or down, instead of the total landing on an odd number like 5,213 ₪.
   const [roundingOpen, setRoundingOpen] = useState(false);
@@ -510,22 +514,48 @@ export default function EventPricingCalculator({
   // actually schedules the 2-day follow-up (scheduleLeadQuoteFollowUp), so this reuses the exact
   // reminder machinery already built for leads instead of inventing a second one just for quotes
   // sent from this calculator.
-  const addLeadForFollowUp = async () => {
+  const attachQuote = (leadId: string) =>
+    fetch(`/api/leads/${leadId}/quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: total, note: quoteNotes.trim() || undefined }),
+    });
+
+  // allowDuplicate: the photographer saw that a lead with this phone exists and still wants a new one.
+  const addLeadForFollowUp = async (allowDuplicate = false) => {
     setAddingLead(true);
+    let close = true;
     try {
       const leadRes = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: quoteClientName.trim(), phone: quoteClientPhone.trim() || undefined }),
+        body: JSON.stringify({
+          name: quoteClientName.trim(),
+          phone: quoteClientPhone.trim() || undefined,
+          eventDateInterest: quoteEventDate || undefined,
+          eventType: quoteEventType.trim() || undefined,
+          allowDuplicate,
+        }),
       });
-      const leadData = await leadRes.json();
-      if (leadRes.ok && leadData.lead?.id) {
-        await fetch(`/api/leads/${leadData.lead.id}/quote`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: total, note: quoteNotes.trim() || undefined }),
-        });
+      const leadData = await leadRes.json().catch(() => ({}));
+      if (leadRes.status === 409 && leadData.duplicate) {
+        setDuplicateLead(leadData.duplicate);
+        setStep("leadDuplicate");
+        close = false;
+        return;
       }
+      if (leadRes.ok && leadData.lead?.id) await attachQuote(leadData.lead.id);
+    } finally {
+      setAddingLead(false);
+      if (close) onClose();
+    }
+  };
+
+  const attachToExistingLead = async () => {
+    if (!duplicateLead) return;
+    setAddingLead(true);
+    try {
+      await attachQuote(duplicateLead.id);
     } finally {
       setAddingLead(false);
       onClose();
@@ -1170,11 +1200,44 @@ export default function EventPricingCalculator({
             </div>
             <p className="text-sm text-ink-soft mb-3.5">להוסיף את {quoteClientName || "הלקוח/ה"} לרשימת הלידים כדי לקבל תזכורת מעקב אם לא תחזרו אליה תוך יומיים?</p>
             <div className="flex gap-2">
-              <button onClick={addLeadForFollowUp} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+              <button onClick={() => addLeadForFollowUp()} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
                 {addingLead ? "מוסיף..." : "כן, להוסיף"}
               </button>
               <button onClick={onClose} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
                 לא
+              </button>
+            </div>
+          </>
+        )}
+        {step === "leadDuplicate" && duplicateLead && (
+          <>
+            <div className="mb-3.5">
+              <span className="text-base font-bold font-display">הלקוח כבר ברשימת הלידים</span>
+            </div>
+            <div className="rounded-xl border border-line p-3 mb-3.5 text-sm bg-card">
+              <div className="font-semibold">{duplicateLead.name}</div>
+              <div className="text-xs text-ink-soft mt-0.5">
+                {[
+                  duplicateLead.phone,
+                  duplicateLead.event_type_name,
+                  duplicateLead.event_date_interest ? new Date(duplicateLead.event_date_interest).toLocaleDateString("he-IL") : null,
+                  duplicateLead.source === "assistant" ? "מהעוזר" : null,
+                  `נוסף ב-${new Date(duplicateLead.created_at).toLocaleDateString("he-IL")}`,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+              </div>
+            </div>
+            <p className="text-sm text-ink-soft mb-3.5">כדי לא לפתוח ליד כפול, אפשר לצרף את ההצעה לליד הקיים. התזכורת למעקב תתוזמן עליו.</p>
+            <div className="grid gap-2">
+              <button onClick={attachToExistingLead} disabled={addingLead} className="rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+                {addingLead ? "מצרף..." : "לצרף לליד הקיים"}
+              </button>
+              <button onClick={() => addLeadForFollowUp(true)} disabled={addingLead} className="rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-60">
+                זה אירוע אחר, ליד חדש
+              </button>
+              <button onClick={onClose} disabled={addingLead} className="rounded-lg py-2 text-sm text-ink-soft disabled:opacity-60">
+                ביטול
               </button>
             </div>
           </>
