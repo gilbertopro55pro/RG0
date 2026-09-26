@@ -34,9 +34,11 @@ function trackLead() {
 
 type Line = { role: "client" | "assistant"; text: string };
 
-// Public chat with the intake assistant (עוזר פניות). The session token lives in localStorage so a
-// reload continues the same conversation. When the assistant isn't available (off, plan, or the
-// month's cap), the page shows the plain inquiry form instead — a client is never turned away.
+// Public chat with the intake assistant (עוזר פניות). The session token lives in sessionStorage: every
+// new visit (a new tab from the link) starts a clean conversation, while a reload of the same tab keeps
+// it (owner's decision, 2026-09-26; localStorage used to bring back the last conversation). When the
+// assistant isn't available (off, plan, or the month's cap), the page shows the plain inquiry form
+// instead — a client is never turned away.
 export default function IntakeChat({
   chatKey,
   studio,
@@ -68,7 +70,7 @@ export default function IntakeChat({
   useEffect(() => {
     let saved: string | null = null;
     try {
-      saved = localStorage.getItem(storageKey);
+      saved = sessionStorage.getItem(storageKey);
     } catch {}
     fetch(`/api/intake-chat/${encodeURIComponent(chatKey)}${saved ? `?session=${saved}` : ""}`)
       .then((r) => r.json())
@@ -120,7 +122,7 @@ export default function IntakeChat({
       if (data.session) {
         setSession(data.session);
         try {
-          localStorage.setItem(storageKey, data.session);
+          sessionStorage.setItem(storageKey, data.session);
         } catch {}
       }
       setState(data.state ?? null);
