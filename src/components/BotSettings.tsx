@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { IntakeFaqItem, Photographer } from "@/lib/types";
-import { GREETING_MAX_CHARS, defaultWhatsAppGreeting } from "@/lib/intakeGreeting";
+import { GREETING_MAX_CHARS, chatLinkFor, defaultWhatsAppGreeting } from "@/lib/intakeGreeting";
+import { SOURCE_LINKS } from "@/lib/leadSource";
 
 const MAX_FAQ = 15;
 
@@ -16,7 +17,7 @@ export default function BotSettings({
   usedThisMonth,
   chatPath,
 }: {
-  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_whatsapp_greeting">;
+  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_whatsapp_greeting" | "meta_pixel_id">;
   cap: number;
   usedThisMonth: number;
   chatPath: string;
@@ -29,6 +30,8 @@ export default function BotSettings({
   const [status, setStatus] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [greetingCopied, setGreetingCopied] = useState(false);
+  const [pixelId, setPixelId] = useState(photographer.meta_pixel_id ?? "");
+  const [copiedSource, setCopiedSource] = useState<string | null>(null);
   const defaultGreeting = defaultWhatsAppGreeting(photographer.name, chatPath);
   const [greeting, setGreeting] = useState(photographer.intake_whatsapp_greeting?.trim() || defaultGreeting);
   const [savedGreeting, setSavedGreeting] = useState(greeting);
@@ -60,6 +63,7 @@ export default function BotSettings({
         intake_bot_faq: cleanFaq,
         intake_bot_reply_hours: replyHours,
         intake_bot_extra_question: extraQuestion.trim().slice(0, 200) || null,
+        meta_pixel_id: /^\d{8,20}$/.test(pixelId.trim()) ? pixelId.trim() : null,
       })
       .eq("id", photographer.id);
     setSaving(false);
@@ -162,6 +166,42 @@ export default function BotSettings({
       </div>
 
       <div className="px-4 py-3 border-t border-line">
+        <div className="text-sm font-semibold mb-1">קישורים לפי מקור</div>
+        <p className="text-xs text-ink-soft mb-2">
+          אותו עוזר, קישור אחר לכל ערוץ. כך בעמוד הלידים רואים מאיפה הגיעה כל פנייה (הודעת הפתיחה לוואטסאפ והכפתור בפורטפוליו כבר מסומנים).
+        </p>
+        <div className="grid gap-1.5">
+          {SOURCE_LINKS.map(({ src, label }) => {
+            const url = `${chatLinkFor(chatPath)}?src=${src}`;
+            return (
+              <div key={src} className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold">{label}</div>
+                  <div className="text-xs text-ink-soft font-data truncate" dir="ltr">
+                    {url}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(url);
+                      setCopiedSource(src);
+                      setTimeout(() => setCopiedSource(null), 1500);
+                    } catch {}
+                  }}
+                  className="text-xs font-semibold rounded-lg px-3 py-1.5 border border-line shrink-0"
+                  style={{ background: "var(--color-input-bg)" }}
+                >
+                  {copiedSource === src ? "הועתק" : "העתקה"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="px-4 py-3 border-t border-line">
         <div className="text-sm font-semibold mb-1">הודעת פתיחה לוואטסאפ העסקי</div>
         <p className="text-xs text-ink-soft mb-2">
           כל לקוח חדש שכותב לך בוואטסאפ יקבל אוטומטית את ההודעה הזו, עם הקישור לעוזר. באפליקציית WhatsApp Business: הגדרות › כלים לעסקים › הודעת פתיחה › להדליק ולהדביק.
@@ -242,6 +282,22 @@ export default function BotSettings({
             className={field}
             style={{ background: "var(--color-input-bg)" }}
           />
+        </div>
+        <div>
+          <label htmlFor="intake-pixel" className="text-xs text-ink-soft block mb-1">
+            מזהה Meta Pixel (לא חובה)
+          </label>
+          <input
+            id="intake-pixel"
+            value={pixelId}
+            onChange={(e) => setPixelId(e.target.value.replace(/\D/g, "").slice(0, 20))}
+            inputMode="numeric"
+            dir="ltr"
+            placeholder="למשל 1234567890123456"
+            className={`${field} font-data`}
+            style={{ background: "var(--color-input-bg)" }}
+          />
+          <p className="text-xs text-ink-soft mt-1">מדווח למטא על כל ליד שהעוזר יוצר, כדי שהמודעות ילמדו למצוא לקוחות שמשאירים פרטים. המספר נמצא במנהל האירועים של מטא.</p>
         </div>
       </div>
 

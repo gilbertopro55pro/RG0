@@ -1,13 +1,55 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { sourceFromSearch } from "@/lib/leadSource";
+
+type Fbq = ((...args: unknown[]) => void) & { callMethod?: (...a: unknown[]) => void; queue?: unknown[][]; loaded?: boolean; version?: string; push?: unknown };
+
+// The photographer's own Meta Pixel (settings > automation): PageView on open, Lead when the chat
+// creates a lead or the fallback form is sent, so the photographer can optimize ads for leads.
+function loadPixel(pixelId: string) {
+  const w = window as unknown as { fbq?: Fbq; _fbq?: Fbq };
+  if (w.fbq) return;
+  const fbq: Fbq = (...args: unknown[]) => {
+    if (fbq.callMethod) fbq.callMethod(...args);
+    else fbq.queue!.push(args);
+  };
+  fbq.queue = [];
+  fbq.loaded = true;
+  fbq.version = "2.0";
+  fbq.push = fbq;
+  w.fbq = fbq;
+  w._fbq = fbq;
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = "https://connect.facebook.net/en_US/fbevents.js";
+  document.head.appendChild(script);
+  fbq("init", pixelId);
+  fbq("track", "PageView");
+}
+
+function trackLead() {
+  (window as unknown as { fbq?: Fbq }).fbq?.("track", "Lead");
+}
 
 type Line = { role: "client" | "assistant"; text: string };
 
 // Public chat with the intake assistant (עוזר פניות). The session token lives in localStorage so a
 // reload continues the same conversation. When the assistant isn't available (off, plan, or the
 // month's cap), the page shows the plain inquiry form instead — a client is never turned away.
-export default function IntakeChat({ chatKey, studio, logoUrl, replyHours }: { chatKey: string; studio: string; logoUrl: string | null; replyHours: number }) {
+export default function IntakeChat({
+  chatKey,
+  studio,
+  logoUrl,
+  replyHours,
+  pixelId,
+}: {
+  chatKey: string;
+  studio: string;
+  logoUrl: string | null;
+  replyHours: number;
+  pixelId: string | null;
+}) {
   const storageKey = `intake-session:${chatKey}`;
   const greeting: Line = { role: "assistant", text: `היי! אני העוזר של ${studio}. ספרו לי על האירוע: מה חוגגים, ומתי?` };
   const [lines, setLines] = useState<Line[]>([greeting]);
@@ -18,6 +60,10 @@ export default function IntakeChat({ chatKey, studio, logoUrl, replyHours }: { c
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (pixelId) loadPixel(pixelId);
+  }, [pixelId]);
 
   useEffect(() => {
     let saved: string | null = null;
@@ -55,9 +101,12 @@ export default function IntakeChat({ chatKey, studio, logoUrl, replyHours }: { c
       const res = await fetch(`/api/intake-chat/${encodeURIComponent(chatKey)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session, message: text }),
+        // src: which link the client came from (?src=, utm_source, fbclid); used when the conversation starts.
+        body: JSON.stringify({ session, message: text, src: sourceFromSearch(window.location.search) }),
       });
-      const data: { session?: string; reply?: string; state?: string; error?: string; unavailable?: string } = await res.json().catch(() => ({}));
+      const data: { session?: string; reply?: string; state?: string; error?: string; unavailable?: string; newLead?: boolean } = await res
+        .json()
+        .catch(() => ({}));
       if (data.unavailable) {
         setAvailable(false);
         return;
@@ -75,6 +124,7 @@ export default function IntakeChat({ chatKey, studio, logoUrl, replyHours }: { c
         } catch {}
       }
       setState(data.state ?? null);
+      if (data.newLead) trackLead();
       setLines((l) => [...l, { role: "assistant", text: data.reply! }]);
     } catch {
       setError("אין חיבור. נסו שוב");
@@ -207,10 +257,13 @@ function InquiryForm({ chatKey, studio }: { chatKey: string; studio: string }) {
         const res = await fetch(`/api/intake-chat/${encodeURIComponent(chatKey)}/form`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, phone, eventType, date, notes }),
+          body: JSON.stringify({ name, phone, eventType, date, notes, src: sourceFromSearch(window.location.search) }),
         }).catch(() => null);
         setSending(false);
-        if (res?.ok) setDone(true);
+        if (res?.ok) {
+          trackLead();
+          setDone(true);
+        }
         else setError((await res?.json().catch(() => null))?.error ?? "השליחה נכשלה. נסו שוב");
       }}
     >

@@ -35,5 +35,5 @@ export default async function ChatPage({ params }: { params: Promise<{ key: stri
     );
   }
   const logoUrl = p.logo_storage_path ? await getSignedDownloadUrl("logos", p.logo_storage_path, 60 * 60 * 24) : null;
-  return <IntakeChat chatKey={key} studio={p.name} logoUrl={logoUrl} replyHours={p.intake_bot_reply_hours} />;
+  return <IntakeChat chatKey={key} studio={p.name} logoUrl={logoUrl} replyHours={p.intake_bot_reply_hours} pixelId={p.meta_pixel_id ?? null} />;
 }

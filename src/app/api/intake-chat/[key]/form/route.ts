@@ -4,6 +4,7 @@ import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { resolveChatPhotographer } from "@/lib/intakeChatAccess";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
+import { cleanSource } from "@/lib/leadSource";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { allowed } = await checkRateLimit(`intake-form:${clientIpFrom(request)}`, { maxRequests: 5, windowSeconds: 3600 });
   if (!allowed) return NextResponse.json({ error: "יותר מדי פניות. נסו שוב מאוחר יותר" }, { status: 429 });
 
-  const body: { name?: string; phone?: string; date?: string; eventType?: string; notes?: string } = await request.json().catch(() => ({}));
+  const body: { name?: string; phone?: string; date?: string; eventType?: string; notes?: string; src?: string } = await request.json().catch(() => ({}));
   const name = (body.name ?? "").trim().slice(0, 100);
   const phone = (body.phone ?? "").trim().slice(0, 30);
   if (!name || !phone) return NextResponse.json({ error: "צריך שם וטלפון" }, { status: 400 });
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     event_type_name: eventType,
     notes,
     source: "form",
+    referral_source: cleanSource(body.src),
     details: { clientName: name, phone, eventDate: date ?? undefined, eventType: eventType ?? undefined, wishes: notes ?? undefined },
     needs_details: true,
   });
