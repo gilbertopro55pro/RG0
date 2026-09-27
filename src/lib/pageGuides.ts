@@ -578,11 +578,15 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         },
         {
           heading: "הפעלת הסריקה",
-          body: "לוחצים על כפתור הסריקה, בוחרים כמה קדימה בזמן לסרוק (חודש / 3 חודשים / חצי שנה / שנה), והמערכת מציגה רשימה של כל האירועים בצבע שנבחר שעדיין אין להם כרטיס.",
+          body: "לוחצים על כפתור הסריקה ובוחרים כמה קדימה בזמן לסרוק (חודש / 3 חודשים / חצי שנה / שנה). המערכת מציגה את כל האירועים בצבע שנבחר, וגם אירועים ביומן שכבר מקושרים לכרטיס במערכת.",
         },
         {
           heading: "השלמת הפרטים",
-          body: "לחיצה על אירוע ברשימה פותחת טופס \"אירוע חדש\" עם שם, תאריך, שעות, מיקום והערות ממולאים מראש (וגם מקדמה/יתרה אם זוהו בתיאור). כל שדה ניתן לעריכה או השלמה לפני השמירה. אחרי השמירה, האירוע המקורי ביומן מתעדכן ומקבל את צבע המערכת הרגיל, כך שהוא לא יופיע שוב בסריקה הבאה.",
+          body: "כל אירוע ברשימה מגיע עם שם, תאריך, שעות, מיקום, טלפון והערות ממולאים מראש (וגם מקדמה/יתרה אם זוהו בתיאור), ואפשר לתקן כל שדה ולבחור חבילה. מסמנים את האירועים הרצויים ומאשרים, וכל אחד נפתח ככרטיס אירוע. האירוע המקורי ביומן מקבל את צבע המערכת הרגיל.",
+        },
+        {
+          heading: "אירועים שכבר קיימים במערכת",
+          body: "אירוע שכבר יש לו כרטיס (אותו תאריך ושם לקוח, או שהוא מקושר ליומן) מופיע עם השורה \"האירוע כבר קיים במערכת\" ולא מסומן. אם שיניתם משהו ביומן, סמנו אותו כדי לסנכרן שוב: השעות, המיקום, הטלפון וההערות יתעדכנו בכרטיס הקיים, בלי ליצור כפילות. החבילה והתשלומים לא משתנים.",
         },
       ],
     },
@@ -605,7 +609,11 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         },
         {
           heading: "Finishing the details",
-          body: "Clicking an event in the list opens a \"new event\" form with name, date, times, location and notes prefilled (plus deposit/balance if detected in the description) — every field stays editable before saving. Once saved, the original calendar event is updated and recolored to the regular system color, so it won't show up again in the next scan.",
+          body: "Each event in the list comes with name, date, times, location, phone and notes prefilled (plus deposit/balance if detected in the description), and every field and the package can be edited. Tick the events you want and confirm, and each one opens as an event card. The original calendar event is recolored to the regular system color.",
+        },
+        {
+          heading: "Events already in the system",
+          body: "An event that already has a card (same date and client name, or linked to the calendar) is shown with \"already in the system\" and left unticked. If you changed something in the calendar, tick it to sync again: times, location, phone and notes update the existing card, with no duplicate. The package and payments are not changed.",
         },
       ],
     },
@@ -628,7 +636,11 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         },
         {
           heading: "Завершение данных",
-          body: "Нажатие на событие в списке открывает форму «новое событие» с предзаполненными именем, датой, временем, местом и заметками (а также задатком/остатком, если они распознаны в описании) — каждое поле можно отредактировать перед сохранением. После сохранения исходное событие в календаре обновляется и перекрашивается в обычный цвет системы, поэтому оно не появится снова при следующем сканировании.",
+          body: "Каждое событие в списке приходит с предзаполненными именем, датой, временем, местом, телефоном и заметками (а также задатком/остатком, если они распознаны в описании); любое поле и пакет можно изменить. Отметьте нужные события и подтвердите — каждое откроется как карточка события. Исходное событие в календаре перекрашивается в обычный цвет системы.",
+        },
+        {
+          heading: "События, которые уже есть в системе",
+          body: "Событие, у которого уже есть карточка (та же дата и имя клиента или связь с календарём), показывается с пометкой «уже есть в системе» и не отмечено. Если вы что-то изменили в календаре, отметьте его, чтобы синхронизировать снова: время, место, телефон и заметки обновятся в существующей карточке без дубликата. Пакет и платежи не меняются.",
         },
       ],
     },
