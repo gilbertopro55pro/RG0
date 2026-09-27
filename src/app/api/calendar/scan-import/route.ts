@@ -70,6 +70,20 @@ function extractPhone(description: string | undefined): { phone: string | null; 
   return { phone, remainingDescription };
 }
 
+// Calendar entries the app itself wrote (createEvent / event edit) carry a generated description:
+// "…\nלקוח/ה: X · טלפון: P\nשעת צילומי משפחה: T\nהערות: N". Syncing that text back as the
+// event's notes would nest the whole block inside the notes, one level deeper on every sync, so
+// only the real values are pulled out of it.
+function parseAppDescription(description: string | undefined): { phone: string | null; arrivalTime: string; notes: string } | null {
+  const text = (description ?? "").replace(BIDI_FORMATTING_CHARS, "");
+  if (!/שעת צילומי משפחה:/.test(text)) return null;
+  const phone = text.match(/טלפון:\s*([0-9+][0-9\-\s]{6,})/)?.[1]?.trim() ?? null;
+  const arrivalTime = text.match(/שעת צילומי משפחה:\s*(\d{1,2}:\d{2})/)?.[1] ?? "";
+  const notesIndex = text.indexOf("\nהערות: ");
+  const notes = notesIndex >= 0 ? text.slice(notesIndex + "\nהערות: ".length).trim() : "";
+  return { phone, arrivalTime, notes };
+}
+
 export async function GET(request: Request) {
   const requestedMonths = Number(new URL(request.url).searchParams.get("months"));
   const scanMonths = ALLOWED_SCAN_MONTHS.includes(requestedMonths) ? requestedMonths : DEFAULT_SCAN_MONTHS;
@@ -117,20 +131,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "יומן Google לא מחובר. יש לחבר אותו בהגדרות" }, { status: 400 });
   }
 
-  const candidates = calendarEvents.filter((e) => e.colorId === photographer.google_calendar_import_color_id);
+  // Calendar entries already linked to an app event (created by the app, or imported by an earlier
+  // scan) are shown too, flagged as existing and unselected, so the photographer can pull a
+  // calendar edit back into the event (owner's request, 2026-09-27). They used to be hidden, and
+  // since the app colors them with the synced color they never matched the import color anyway.
+  const { data: linkedEvents } = await supabase
+    .from("events")
+    .select("id, google_calendar_event_id")
+    .eq("photographer_id", user.id)
+    .not("google_calendar_event_id", "is", null)
+    .returns<{ id: string; google_calendar_event_id: string }[]>();
+  const eventIdByCalendarId = new Map((linkedEvents ?? []).map((e) => [e.google_calendar_event_id, e.id] as const));
+
+  const candidates = calendarEvents.filter(
+    (e) => e.colorId === photographer.google_calendar_import_color_id || eventIdByCalendarId.has(e.id)
+  );
   if (candidates.length === 0) {
     return NextResponse.json({ candidates: [] });
   }
-
-  // Excludes events already linked to a real app event (e.g. from a previous scan) — otherwise
-  // every past scan's results would keep reappearing until the photographer manually recolors them.
-  const { data: linkedEvents } = await supabase
-    .from("events")
-    .select("google_calendar_event_id")
-    .eq("photographer_id", user.id)
-    .not("google_calendar_event_id", "is", null)
-    .returns<{ google_calendar_event_id: string }[]>();
-  const linkedIds = new Set((linkedEvents ?? []).map((e) => e.google_calendar_event_id));
 
   // Separately excludes a candidate that already has a matching event saved in the system even
   // WITHOUT a calendar link — e.g. the photographer typed it in manually (via the plain new-event
@@ -150,6 +168,7 @@ export async function GET(request: Request) {
   const existingByDateName = new Map(
     (existingEvents ?? []).map((e) => [`${e.event_date}|${normalizeForMatch(e.client_name)}`, e] as const)
   );
+  const existingById = new Map((existingEvents ?? []).map((e) => [e.id, e] as const));
   // A photographer can legitimately have two DIFFERENT real bookings at the exact same date and
   // time — a second (freelance) photographer covering one of them while they're at the other.
   // That's NOT a duplicate to hide (see existingDateNameKeys above, which only matches on name)
@@ -164,31 +183,36 @@ export async function GET(request: Request) {
   }
 
   const results = candidates
-    .filter((e) => !linkedIds.has(e.id))
     .map((e) => {
       const eventDate = (e.start.dateTime ?? e.start.date ?? "").slice(0, 10);
       const eventStartTime = e.start.dateTime ? e.start.dateTime.slice(11, 16) : null;
       const eventEndTime = e.end.dateTime ? e.end.dateTime.slice(11, 16) : null;
-      const { phone: clientPhone, remainingDescription } = extractPhone(e.description);
+      const appFormat = parseAppDescription(e.description);
+      const { phone: parsedPhone, remainingDescription } = appFormat ? { phone: null, remainingDescription: "" } : extractPhone(e.description);
       return {
         calendarEventId: e.id,
         summary: e.summary ?? "",
-        description: remainingDescription,
+        description: appFormat ? appFormat.notes : remainingDescription,
         location: e.location ?? "",
         eventDate,
         eventStartTime,
         eventEndTime,
-        arrivalTime: "",
-        deposit: parseAmount(e.description, "מקדמה"),
-        balance: parseAmount(e.description, "יתרה"),
-        clientPhone,
+        arrivalTime: appFormat?.arrivalTime ?? "",
+        deposit: appFormat ? null : parseAmount(e.description, "מקדמה"),
+        balance: appFormat ? null : parseAmount(e.description, "יתרה"),
+        clientPhone: appFormat ? appFormat.phone : parsedPhone,
         pkg: "full",
       };
     })
     .filter((r) => r.eventDate)
     .map((r) => {
-      const existing = existingByDateName.get(`${r.eventDate}|${normalizeForMatch(r.summary)}`);
-      return { ...r, existingEventId: existing?.id ?? null, existingSlot: existing ? slotOf(existing.event_date, existing.event_start_time, existing.event_end_time) : null };
+      const linkedId = eventIdByCalendarId.get(r.calendarEventId);
+      const existing = (linkedId ? existingById.get(linkedId) : undefined) ?? existingByDateName.get(`${r.eventDate}|${normalizeForMatch(r.summary)}`);
+      return {
+        ...r,
+        existingEventId: linkedId ?? existing?.id ?? null,
+        existingSlot: existing ? slotOf(existing.event_date, existing.event_start_time, existing.event_end_time) : null,
+      };
     });
 
   // Second pass for the same-slot flag — needs the final `results` list itself, so two DIFFERENT
@@ -236,14 +260,15 @@ export async function POST(request: Request) {
   }
 
   // Re-checked here (not just trusted from the earlier GET) in case the results being confirmed
-  // are stale — e.g. a previous bulk-add already imported one of these since the scan ran.
+  // are stale — e.g. a previous bulk-add already imported one of these since the scan ran. A
+  // candidate linked to an app event updates that event (the calendar is where it was edited).
   const { data: linkedEvents } = await supabase
     .from("events")
-    .select("google_calendar_event_id")
+    .select(EXISTING_FIELDS)
     .eq("photographer_id", user.id)
-    .not("google_calendar_event_id", "is", null)
-    .returns<{ google_calendar_event_id: string }[]>();
-  const linkedIds = new Set((linkedEvents ?? []).map((e) => e.google_calendar_event_id));
+    .in("google_calendar_event_id", candidates.map((c) => c.calendarEventId))
+    .returns<ExistingEvent[]>();
+  const linkedByCalendarId = new Map((linkedEvents ?? []).map((e) => [e.google_calendar_event_id!, e] as const));
 
   // Same "already saved without a calendar link" re-check as the GET route's own dedup (same
   // reasoning: the results being confirmed here could be stale) — scoped to just the confirmed
@@ -268,11 +293,9 @@ export async function POST(request: Request) {
   // the events table fresh each call, so two candidates that conflict with each other need to run
   // one after the other for the second to correctly see the first's just-created row.
   for (const candidate of candidates) {
-    if (linkedIds.has(candidate.calendarEventId)) {
-      failed.push({ summary: candidate.summary || "אירוע ללא כותרת", error: "כבר יובא בעבר" });
-      continue;
-    }
-    const existing = existingByDateName.get(`${candidate.eventDate}|${normalizeForMatch(candidate.summary)}`);
+    const existing =
+      linkedByCalendarId.get(candidate.calendarEventId) ??
+      existingByDateName.get(`${candidate.eventDate}|${normalizeForMatch(candidate.summary)}`);
     if (existing) {
       const error = await updateExistingFromCalendar(supabase, user.id, existing, candidate);
       if (error) failed.push({ summary: existing.client_name, error });
@@ -352,6 +375,9 @@ async function updateExistingFromCalendar(
   candidate: ScanCandidate
 ): Promise<string | null> {
   const patch: Record<string, string> = {};
+  // Only a linked entry can move the event's date (a name match is by definition the same date).
+  const isLinked = existing.google_calendar_event_id === candidate.calendarEventId;
+  if (isLinked && candidate.eventDate && candidate.eventDate !== existing.event_date) patch.event_date = candidate.eventDate;
   if (candidate.eventStartTime) patch.event_start_time = candidate.eventStartTime;
   if (candidate.eventEndTime) patch.event_end_time = candidate.eventEndTime;
   if (candidate.location.trim()) patch.event_location = candidate.location.trim();
@@ -377,7 +403,10 @@ async function updateExistingFromCalendar(
     (merged.notes?.trim() ? `\nהערות: ${merged.notes.trim()}` : "");
   const calendarFields = { summary, description, date: merged.event_date, startTime, endTime };
   try {
-    if (!existing.google_calendar_event_id) {
+    if (isLinked) {
+      // The scanned entry is the event's own calendar event: rewrite it in the app's format.
+      await updateEventInGoogleCalendar(supabase, photographerId, candidate.calendarEventId, { ...calendarFields, recolorToSynced: true });
+    } else if (!existing.google_calendar_event_id) {
       // Not on the calendar through the app yet: the scanned entry becomes its calendar event,
       // recolored like any imported event so it stops showing up in scans.
       const linked = await updateEventInGoogleCalendar(supabase, photographerId, candidate.calendarEventId, { ...calendarFields, recolorToSynced: true });
