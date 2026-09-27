@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { ADMIN_EMAIL } from "@/lib/admin";
-import { listSyncedCalendarEvents } from "@/lib/googleCalendarSync";
+import { listSyncedCalendarEvents, updateEventInGoogleCalendar } from "@/lib/googleCalendarSync";
 import { createEventWithSideEffects } from "@/lib/createEvent";
 import type { ScanCandidate } from "@/components/ScanCandidateCard";
-import type { PackageType } from "@/lib/stages";
+import { packageLabel, type PackageType } from "@/lib/stages";
+import { calendarEventTitle } from "@/lib/eventDisplayName";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // The only forward-looking windows the UI offers (1/3/6/12 months) — anything else falls back to
 // the default rather than letting an arbitrary query param blow the scan window wide open.
@@ -138,13 +140,15 @@ export async function GET(request: Request) {
   // start/end time for the SEPARATE same-slot-collision check below (not a duplicate check).
   const { data: existingEvents } = await supabase
     .from("events")
-    .select("event_date, client_name, event_start_time, event_end_time")
+    .select("id, event_date, client_name, event_start_time, event_end_time")
     .eq("photographer_id", user.id)
     .gte("event_date", timeMin.slice(0, 10))
     .lte("event_date", timeMax.slice(0, 10))
-    .returns<{ event_date: string; client_name: string; event_start_time: string | null; event_end_time: string | null }[]>();
-  const existingDateNameKeys = new Set(
-    (existingEvents ?? []).map((e) => `${e.event_date}|${normalizeForMatch(e.client_name)}`)
+    .returns<{ id: string; event_date: string; client_name: string; event_start_time: string | null; event_end_time: string | null }[]>();
+  // Since 2026-09-27 a match is no longer hidden: it's shown flagged "already in the system" and
+  // syncing it updates that event instead of creating a duplicate (owner's request).
+  const existingByDateName = new Map(
+    (existingEvents ?? []).map((e) => [`${e.event_date}|${normalizeForMatch(e.client_name)}`, e] as const)
   );
   // A photographer can legitimately have two DIFFERENT real bookings at the exact same date and
   // time — a second (freelance) photographer covering one of them while they're at the other.
@@ -152,11 +156,12 @@ export async function GET(request: Request) {
   // — but it IS worth flagging, since it's exactly the situation the "שליחת צלם פרילנס מטעמך"
   // checkbox exists for. Only counts a slot when both times are actually set — comparing two
   // "no time entered" events would just be noise.
-  const existingTimeSlotKeys = new Set(
-    (existingEvents ?? [])
-      .filter((e) => e.event_start_time && e.event_end_time)
-      .map((e) => `${e.event_date}|${e.event_start_time}|${e.event_end_time}`)
-  );
+  const slotOf = (date: string, start: string | null, end: string | null) => (start && end ? `${date}|${start.slice(0, 5)}|${end.slice(0, 5)}` : null);
+  const existingSlotCounts = new Map<string, number>();
+  for (const e of existingEvents ?? []) {
+    const key = slotOf(e.event_date, e.event_start_time, e.event_end_time);
+    if (key) existingSlotCounts.set(key, (existingSlotCounts.get(key) ?? 0) + 1);
+  }
 
   const results = candidates
     .filter((e) => !linkedIds.has(e.id))
@@ -181,7 +186,10 @@ export async function GET(request: Request) {
       };
     })
     .filter((r) => r.eventDate)
-    .filter((r) => !existingDateNameKeys.has(`${r.eventDate}|${normalizeForMatch(r.summary)}`));
+    .map((r) => {
+      const existing = existingByDateName.get(`${r.eventDate}|${normalizeForMatch(r.summary)}`);
+      return { ...r, existingEventId: existing?.id ?? null, existingSlot: existing ? slotOf(existing.event_date, existing.event_start_time, existing.event_end_time) : null };
+    });
 
   // Second pass for the same-slot flag — needs the final `results` list itself, so two DIFFERENT
   // scanned candidates sharing an exact date+time (not just a candidate vs. an existing event) are
@@ -189,13 +197,15 @@ export async function GET(request: Request) {
   // something already saved.
   const timeSlotCounts = new Map<string, number>();
   for (const r of results) {
-    if (!r.eventStartTime || !r.eventEndTime) continue;
+    if (!r.eventStartTime || !r.eventEndTime || r.existingEventId) continue;
     const key = `${r.eventDate}|${r.eventStartTime}|${r.eventEndTime}`;
     timeSlotCounts.set(key, (timeSlotCounts.get(key) ?? 0) + 1);
   }
-  const finalResults = results.map((r) => {
-    const key = r.eventStartTime && r.eventEndTime ? `${r.eventDate}|${r.eventStartTime}|${r.eventEndTime}` : null;
-    const hasScheduleCollision = !!key && (existingTimeSlotKeys.has(key) || (timeSlotCounts.get(key) ?? 0) > 1);
+  const finalResults = results.map(({ existingSlot, ...r }) => {
+    const key = slotOf(r.eventDate, r.eventStartTime, r.eventEndTime);
+    // An event already in the system never collides with itself.
+    const existingInSlot = key ? (existingSlotCounts.get(key) ?? 0) - (existingSlot === key ? 1 : 0) : 0;
+    const hasScheduleCollision = !r.existingEventId && !!key && (existingInSlot > 0 || (timeSlotCounts.get(key) ?? 0) > 1);
     return { ...r, hasScheduleCollision, isFreelance: false };
   });
 
@@ -241,16 +251,17 @@ export async function POST(request: Request) {
   const candidateDates = candidates.map((c) => c.eventDate).sort();
   const { data: existingEvents } = await supabase
     .from("events")
-    .select("event_date, client_name")
+    .select(EXISTING_FIELDS)
     .eq("photographer_id", user.id)
     .gte("event_date", candidateDates[0])
     .lte("event_date", candidateDates[candidateDates.length - 1])
-    .returns<{ event_date: string; client_name: string }[]>();
-  const existingDateNameKeys = new Set(
-    (existingEvents ?? []).map((e) => `${e.event_date}|${normalizeForMatch(e.client_name)}`)
+    .returns<ExistingEvent[]>();
+  const existingByDateName = new Map(
+    (existingEvents ?? []).map((e) => [`${e.event_date}|${normalizeForMatch(e.client_name)}`, e] as const)
   );
 
   let created = 0;
+  const updated: string[] = [];
   const failed: { summary: string; error: string }[] = [];
 
   // Sequential, not parallel — createEventWithSideEffects's own same-day conflict check queries
@@ -261,8 +272,11 @@ export async function POST(request: Request) {
       failed.push({ summary: candidate.summary || "אירוע ללא כותרת", error: "כבר יובא בעבר" });
       continue;
     }
-    if (existingDateNameKeys.has(`${candidate.eventDate}|${normalizeForMatch(candidate.summary)}`)) {
-      failed.push({ summary: candidate.summary || "אירוע ללא כותרת", error: "כבר קיים אירוע תואם במערכת" });
+    const existing = existingByDateName.get(`${candidate.eventDate}|${normalizeForMatch(candidate.summary)}`);
+    if (existing) {
+      const error = await updateExistingFromCalendar(supabase, user.id, existing, candidate);
+      if (error) failed.push({ summary: existing.client_name, error });
+      else updated.push(existing.client_name);
       continue;
     }
     const isCustomPkg = candidate.pkg.startsWith("custom:");
@@ -305,5 +319,79 @@ export async function POST(request: Request) {
     created += 1;
   }
 
-  return NextResponse.json({ created, failed });
+  return NextResponse.json({ created, updated, failed });
+}
+
+const EXISTING_FIELDS =
+  "id, event_date, client_name, client_phone, event_type, event_location, event_start_time, event_end_time, arrival_time, notes, package, google_calendar_event_id, custom_packages(name)";
+type ExistingEvent = {
+  id: string;
+  event_date: string;
+  client_name: string;
+  client_phone: string | null;
+  event_type: string | null;
+  event_location: string | null;
+  event_start_time: string | null;
+  event_end_time: string | null;
+  arrival_time: string | null;
+  notes: string | null;
+  package: PackageType | null;
+  google_calendar_event_id: string | null;
+  custom_packages: { name: string } | null;
+};
+
+// A scanned calendar entry that matches an event already in the system (same date + client name):
+// updates that event from the calendar's data instead of creating a duplicate. Only fields the
+// calendar actually has a value for are written, so an empty calendar field never erases what the
+// photographer typed. Package and payments are never touched (the package drives the event's
+// stages, and amounts are money data the scan only guesses at).
+async function updateExistingFromCalendar(
+  supabase: SupabaseClient,
+  photographerId: string,
+  existing: ExistingEvent,
+  candidate: ScanCandidate
+): Promise<string | null> {
+  const patch: Record<string, string> = {};
+  if (candidate.eventStartTime) patch.event_start_time = candidate.eventStartTime;
+  if (candidate.eventEndTime) patch.event_end_time = candidate.eventEndTime;
+  if (candidate.location.trim()) patch.event_location = candidate.location.trim();
+  if (candidate.clientPhone?.trim()) patch.client_phone = candidate.clientPhone.trim();
+  if (candidate.arrivalTime.trim()) patch.arrival_time = candidate.arrivalTime.trim();
+  if (candidate.description.trim()) patch.notes = candidate.description.trim();
+  if (Object.keys(patch).length) {
+    const { error } = await supabase.from("events").update(patch).eq("id", existing.id);
+    if (error) return `עדכון האירוע הקיים נכשל: ${error.message}`;
+  }
+  const merged = { ...existing, ...patch };
+
+  // Same calendar text as editing an event (api/events/[id]).
+  const label = packageLabel(merged.package, merged.custom_packages?.name ?? null);
+  const startTime = merged.event_start_time?.slice(0, 5) ?? null;
+  const endTime = merged.event_end_time?.slice(0, 5) ?? null;
+  const summary = calendarEventTitle(merged);
+  const description =
+    `${label} · ${merged.client_name}\n` +
+    `תאריך: ${new Date(merged.event_date).toLocaleDateString("he-IL")}${startTime ? ` · ${startTime}${endTime ? `-${endTime}` : ""}` : ""}\n` +
+    `לקוח/ה: ${merged.client_name} · טלפון: ${merged.client_phone || "לא הוזן"}\n` +
+    `שעת צילומי משפחה: ${merged.arrival_time || "יעודכן"}` +
+    (merged.notes?.trim() ? `\nהערות: ${merged.notes.trim()}` : "");
+  const calendarFields = { summary, description, date: merged.event_date, startTime, endTime };
+  try {
+    if (!existing.google_calendar_event_id) {
+      // Not on the calendar through the app yet: the scanned entry becomes its calendar event,
+      // recolored like any imported event so it stops showing up in scans.
+      const linked = await updateEventInGoogleCalendar(supabase, photographerId, candidate.calendarEventId, { ...calendarFields, recolorToSynced: true });
+      if (linked) await supabase.from("events").update({ google_calendar_event_id: linked.id }).eq("id", existing.id);
+    } else {
+      // Already has its own calendar event: update that one, and recolor the scanned entry so it
+      // leaves the import color (it's left on the calendar; deleting a calendar entry is the
+      // photographer's call).
+      await updateEventInGoogleCalendar(supabase, photographerId, existing.google_calendar_event_id, calendarFields);
+      await updateEventInGoogleCalendar(supabase, photographerId, candidate.calendarEventId, { ...calendarFields, recolorToSynced: true });
+    }
+  } catch {
+    // The event itself is updated; a calendar failure here isn't worth failing the sync over.
+  }
+  await supabase.from("event_notifications").insert({ event_id: existing.id, text: "פרטי האירוע עודכנו מסנכרון היומן" });
+  return null;
 }
