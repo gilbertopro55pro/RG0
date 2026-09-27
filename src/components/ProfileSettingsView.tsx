@@ -252,7 +252,7 @@ export default function ProfileSettingsView({
   const [scanCandidates, setScanCandidates] = useState<ScanCandidate[] | null>(null);
   const [selectedCalendarEventIds, setSelectedCalendarEventIds] = useState<Set<string>>(new Set());
   const [bulkCreating, setBulkCreating] = useState(false);
-  const [bulkResult, setBulkResult] = useState<{ created: number; failed: { summary: string; error: string }[] } | null>(null);
+  const [bulkResult, setBulkResult] = useState<{ created: number; updated: string[]; failed: { summary: string; error: string }[] } | null>(null);
   // For the results screen's package <select> — fetched once per sheet-open rather than kept in
   // sync live, since these rarely change mid-session and the sheet is short-lived.
   const [scanCustomPackages, setScanCustomPackages] = useState<{ id: string; name: string }[]>([]);
@@ -348,9 +348,9 @@ export default function ProfileSettingsView({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "ההוספה נכשלה");
-      setBulkResult({ created: data.created ?? 0, failed: data.failed ?? [] });
+      setBulkResult({ created: data.created ?? 0, updated: data.updated ?? [], failed: data.failed ?? [] });
     } catch (e) {
-      setBulkResult({ created: 0, failed: selectedCandidates.map((c) => ({ summary: c.summary || "אירוע ללא כותרת", error: e instanceof Error ? e.message : "ההוספה נכשלה" })) });
+      setBulkResult({ created: 0, updated: [], failed: selectedCandidates.map((c) => ({ summary: c.summary || "אירוע ללא כותרת", error: e instanceof Error ? e.message : "ההוספה נכשלה" })) });
     } finally {
       setBulkCreating(false);
       setScanStep("done");
@@ -589,15 +589,23 @@ export default function ProfileSettingsView({
             {scanStep === "confirm" && (
               <div>
                 <p className="text-sm mb-3">
-                  להוסיף {selectedCandidates.length} אירועים לדף האירועים? כל אירוע ייפתח ישירות, בלי שאלות נוספות. אפשר להשלים
-                  ולתקן פרטים בכל אירוע לאחר מכן.
+                  {(() => {
+                    const toUpdate = selectedCandidates.filter((c) => c.existingEventId).length;
+                    const toCreate = selectedCandidates.length - toUpdate;
+                    const parts = [
+                      toCreate > 0 ? `להוסיף ${toCreate} אירועים חדשים לדף האירועים` : null,
+                      toUpdate > 0 ? `לעדכן ${toUpdate} אירועים שכבר קיימים במערכת` : null,
+                    ].filter(Boolean);
+                    return `${parts.join(" ו")}? אין צורך בשאלות נוספות, ואפשר להשלים ולתקן פרטים בכל אירוע לאחר מכן.`;
+                  })()}
                 </p>
                 <div className="space-y-1.5 mb-3.5 max-h-48 overflow-y-auto">
                   {selectedCandidates.map((c) => (
                     <div key={c.calendarEventId} className="text-xs rounded-lg px-2.5 py-1.5 bg-chip">
                       <span className="font-semibold">{c.summary || "אירוע ללא כותרת"}</span>
+                      {c.existingEventId && <span className="text-sage font-semibold"> (קיים, יעודכן)</span>}
                       <span className="text-ink-soft font-data">, {new Date(c.eventDate).toLocaleDateString("he-IL")}</span>
-                      <span className="text-ink-soft">, {scanPackageLabel(c.pkg)}</span>
+                      <span className="text-ink-soft">, {c.existingEventId ? "החבילה הקיימת" : scanPackageLabel(c.pkg)}</span>
                       {c.eventStartTime && (
                         <span className="text-ink-soft font-data">
                           {", "}
@@ -636,6 +644,21 @@ export default function ProfileSettingsView({
               <div>
                 {bulkResult.created > 0 && (
                   <p className="text-sm text-sage font-semibold mb-2">נוספו {bulkResult.created} אירועים לדף האירועים</p>
+                )}
+                {bulkResult.updated.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-sm text-sage font-semibold mb-1.5">
+                      {bulkResult.updated.length === 1 ? "אירוע אחד כבר היה קיים במערכת, והפרטים שלו עודכנו:" : `${bulkResult.updated.length} אירועים כבר היו קיימים במערכת, והפרטים שלהם עודכנו:`}
+                    </p>
+                    <div className="space-y-1">
+                      {bulkResult.updated.map((name, i) => (
+                        <div key={i} className="text-xs rounded-lg px-2.5 py-1.5 bg-chip">
+                          <span className="font-semibold">{name}</span>
+                          <span className="text-ink-soft"> — היה קיים במערכת, הנתונים התעדכנו לפי היומן</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
                 {bulkResult.failed.length > 0 && (
                   <div className="mb-3">

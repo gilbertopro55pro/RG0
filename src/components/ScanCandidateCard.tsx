@@ -30,6 +30,9 @@ export type ScanCandidate = {
   // at the same slot by sending a second (freelance) photographer to cover one of them. Only
   // controls whether the freelance-dispatch checkbox below is shown.
   hasScheduleCollision: boolean;
+  // The event already in the system that this entry matches (same date + client name), or null.
+  // Syncing a match updates that event instead of creating a duplicate (route.ts).
+  existingEventId: string | null;
   // The photographer's own answer to "is this the freelance-covered half of that collision?" —
   // read by EventsListView.tsx (is_freelance column) to badge/tint the created event's card.
   isFreelance: boolean;
@@ -84,8 +87,15 @@ export default function ScanCandidateCard({
             rows={2}
             className="w-full rounded-lg px-2 py-1.5 text-sm font-semibold border border-line bg-white resize-none"
           />
+          {candidate.existingEventId && (
+            <p className="text-[11px] leading-relaxed mt-1 rounded-lg px-2 py-1.5 bg-sage-bg text-sage">
+              האירוע כבר קיים במערכת. בסנכרון הפרטים שלו יתעדכנו לפי היומן, בלי ליצור כפילות (החבילה והתשלומים לא משתנים).
+            </p>
+          )}
         </div>
         <div className="text-xs text-ink-soft font-data">{new Date(candidate.eventDate).toLocaleDateString("he-IL")}</div>
+        {/* An existing event keeps its package (it drives the event's stages), so there's nothing to pick. */}
+        {!candidate.existingEventId && (
         <div>
           <label className="text-[10px] text-ink-soft block mb-0.5">חבילה</label>
           <select
@@ -105,6 +115,7 @@ export default function ScanCandidateCard({
             ))}
           </select>
         </div>
+        )}
         <div>
           <label className="text-[10px] text-ink-soft block mb-0.5">טלפון הלקוח</label>
           <input
