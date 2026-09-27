@@ -144,19 +144,21 @@ export default async function DashboardPage() {
 
   // Feeds the album-design quick-access dropdown below — published and draft galleries alike (an
   // album can be designed before the client-facing gallery ever goes live), excluding the hidden
-  // portfolio-only gallery and anything archived.
+  // portfolio-only gallery and anything archived. Only galleries whose event's package has an album
+  // design stage (the built-in one, or a custom stage named "עיצוב אלבום"), plus any gallery that
+  // already has an album so started work never disappears (owner's request, 2026-09-27).
   // Album design and magnet frames are פרו / פרו+ features (designToolsAllowed); admin always.
   const albumToolAllowed = !!photographer && designToolsAllowed(photographer);
   let albumQuickGalleries: { id: string; title: string; published: boolean; hasActiveAlbum: boolean }[] = [];
   if (photographer && albumToolAllowed) {
     const { data: galleriesForAlbum } = await supabase
       .from("galleries")
-      .select("id, title, published")
+      .select("id, title, published, event_id")
       .eq("photographer_id", photographer.id)
       .eq("is_portfolio_only", false)
       .is("archived_at", null)
       .order("created_at", { ascending: false })
-      .returns<{ id: string; title: string; published: boolean }[]>();
+      .returns<{ id: string; title: string; published: boolean; event_id: string | null }[]>();
     // hasActiveAlbum drives the quick-export shortcut in AlbumQuickAccessButton — a gallery only
     // gets one of these rows once the photographer has actually started designing its album (see
     // buildStyledAlbum/buildAlbumFromBookTemplate in GalleryManageView.tsx, both of which insert
@@ -168,7 +170,17 @@ export default async function DashboardPage() {
         ? await supabase.from("gallery_albums").select("gallery_id").in("gallery_id", galleryIds).returns<{ gallery_id: string }[]>()
         : { data: [] as { gallery_id: string }[] };
     const galleriesWithAlbum = new Set((albumsForGalleries ?? []).map((a) => a.gallery_id));
-    albumQuickGalleries = (galleriesForAlbum ?? []).map((g) => ({ ...g, hasActiveAlbum: galleriesWithAlbum.has(g.id) }));
+    const albumCustomStageIds = (customStageNames ?? []).filter((c) => c.name.includes("עיצוב אלבום")).map((c) => c.id);
+    const eventIds = [...new Set((galleriesForAlbum ?? []).map((g) => g.event_id).filter((id): id is string => !!id))];
+    const stageFilter = ["stage_key.eq.album_design", ...(albumCustomStageIds.length ? [`custom_stage_id.in.(${albumCustomStageIds.join(",")})`] : [])].join(",");
+    const { data: albumStages } =
+      eventIds.length > 0
+        ? await supabase.from("event_stages").select("event_id").in("event_id", eventIds).or(stageFilter).returns<{ event_id: string }[]>()
+        : { data: [] as { event_id: string }[] };
+    const eventsWithAlbumStage = new Set((albumStages ?? []).map((s) => s.event_id));
+    albumQuickGalleries = (galleriesForAlbum ?? [])
+      .filter((g) => galleriesWithAlbum.has(g.id) || (g.event_id !== null && eventsWithAlbumStage.has(g.event_id)))
+      .map(({ id, title, published }) => ({ id, title, published, hasActiveAlbum: galleriesWithAlbum.has(id) }));
   }
 
   // The first stage (by order) not done yet, per event. null = every stage is done, i.e. the event

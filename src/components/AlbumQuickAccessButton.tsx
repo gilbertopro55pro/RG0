@@ -227,7 +227,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
             <p className="text-xs text-ink-soft mb-4">באיזו גלריה תרצו לעבוד?</p>
 
             {galleries.length === 0 ? (
-              <p className="text-sm text-ink-soft mb-4">עדיין אין לך גלריות</p>
+              <p className="text-sm text-ink-soft mb-4">אין גלריות של אירועים שבחבילה שלהם יש שלב עיצוב אלבום.</p>
             ) : (
               <select
                 value={selectedId}
