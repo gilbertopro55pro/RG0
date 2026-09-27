@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { PAGE_GUIDES, GUIDE_LANG_LABELS, type GuideLang, type PageGuideKey } from "@/lib/pageGuides";
 import { IconClose } from "@/components/icons/AlbumIcons";
 
@@ -25,15 +26,18 @@ export default function CompactGuideModal({ pageKey }: { pageKey: PageGuideKey }
         ?
       </button>
 
-      {open && (
+      {/* Portaled to <body>: rendered inside a settings card, an animated ancestor became the
+          containing block for this fixed overlay and the bottom nav stacked over it, cutting off the
+          guide's lower part on a phone (reported 2026-09-27, settings › יומן Google). */}
+      {open && createPortal(
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[140] flex items-center justify-center p-4"
           style={{ background: "rgba(28, 27, 25, 0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
           onClick={() => setOpen(false)}
         >
           <div
             dir={lang === "he" ? "rtl" : "ltr"}
-            className="w-full max-w-lg rounded-3xl bg-paper shadow-sheet max-h-[85vh] flex flex-col"
+            className="w-full max-w-lg rounded-3xl bg-paper shadow-sheet max-h-[85dvh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between p-5 pb-3 border-b border-line shrink-0">
@@ -73,7 +77,8 @@ export default function CompactGuideModal({ pageKey }: { pageKey: PageGuideKey }
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
