@@ -280,7 +280,8 @@ export default function ProfileSettingsView({
       if (!res.ok) throw new Error(data.error ?? "הסריקה נכשלה");
       const candidates: ScanCandidate[] = data.candidates ?? [];
       setScanCandidates(candidates);
-      setSelectedCalendarEventIds(new Set(candidates.map((c) => c.calendarEventId)));
+      // Events already in the system start unselected: syncing them again is the photographer's call.
+      setSelectedCalendarEventIds(new Set(candidates.filter((c) => !c.existingEventId).map((c) => c.calendarEventId)));
     } catch (e) {
       setScanError(e instanceof Error ? e.message : "הסריקה נכשלה");
     } finally {
@@ -551,7 +552,7 @@ export default function ProfileSettingsView({
               (scanError ? (
                 <p className="text-sm text-rose">{scanError}</p>
               ) : scanCandidates && scanCandidates.length === 0 ? (
-                <p className="text-sm text-ink-soft">לא נמצאו אירועים חדשים בצבע שהוגדר.</p>
+                <p className="text-sm text-ink-soft">לא נמצאו ביומן אירועים בצבע שהוגדר או אירועים שמקושרים למערכת בטווח הזה.</p>
               ) : (
                 <div>
                   <label className="flex items-center gap-1.5 text-xs text-ink-soft mb-2.5">
@@ -562,6 +563,15 @@ export default function ProfileSettingsView({
                     />
                     בחירת הכל ({scanCandidates?.length ?? 0})
                   </label>
+                  {(() => {
+                    const existingCount = (scanCandidates ?? []).filter((c) => c.existingEventId).length;
+                    const newCount = (scanCandidates?.length ?? 0) - existingCount;
+                    return existingCount > 0 ? (
+                      <p className="text-xs text-ink-soft mb-2.5">
+                        {newCount} חדשים · {existingCount} כבר קיימים במערכת (לא מסומנים, אפשר לסמן כדי לסנכרן שוב)
+                      </p>
+                    ) : null;
+                  })()}
                   <div className="space-y-2 mb-3.5">
                     {scanCandidates?.map((c) => (
                       <ScanCandidateCard

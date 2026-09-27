@@ -89,7 +89,7 @@ export default function ScanCandidateCard({
           />
           {candidate.existingEventId && (
             <p className="text-[11px] leading-relaxed mt-1 rounded-lg px-2 py-1.5 bg-sage-bg text-sage">
-              האירוע כבר קיים במערכת. בסנכרון הפרטים שלו יתעדכנו לפי היומן, בלי ליצור כפילות (החבילה והתשלומים לא משתנים).
+              האירוע כבר קיים במערכת. אפשר לסמן אותו כדי לסנכרן שוב: הפרטים שלו יתעדכנו לפי היומן, בלי ליצור כפילות (החבילה והתשלומים לא משתנים).
             </p>
           )}
         </div>
