@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import { listSyncedCalendarEvents, updateEventInGoogleCalendar } from "@/lib/googleCalendarSync";
 import { createEventWithSideEffects } from "@/lib/createEvent";
 import type { ScanCandidate } from "@/components/ScanCandidateCard";
@@ -94,11 +93,6 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
-  }
-  // Admin-gated for now — this is a brand new, unproven flow (recolors real calendar events and
-  // creates real event cards), rolling out to every photographer once it's been used for a while.
-  if (user.email !== ADMIN_EMAIL) {
-    return NextResponse.json({ error: "התכונה עדיין לא זמינה לחשבון זה" }, { status: 403 });
   }
 
   const { data: photographer } = await supabase
@@ -249,9 +243,6 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
-  }
-  if (user.email !== ADMIN_EMAIL) {
-    return NextResponse.json({ error: "התכונה עדיין לא זמינה לחשבון זה" }, { status: 403 });
   }
 
   const { candidates }: { candidates: ScanCandidate[] } = await request.json();

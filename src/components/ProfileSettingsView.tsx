@@ -3,7 +3,6 @@
 import { useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Photographer } from "@/lib/types";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import { GOOGLE_EVENT_COLORS, googleColorHex } from "@/lib/googleColors";
 import { setHapticsEnabled, subscribeHaptics, getHapticsSnapshot, getHapticsServerSnapshot } from "@/lib/haptics";
 import type { AppleCalendarOption } from "@/lib/appleCalendar";
@@ -43,7 +42,6 @@ export default function ProfileSettingsView({
   const [savingColor, setSavingColor] = useState<string | null>(null);
   const [importColorId, setImportColorId] = useState(photographer.google_calendar_import_color_id);
   const [savingImportColor, setSavingImportColor] = useState<string | null>(null);
-  const isAdmin = photographer.email === ADMIN_EMAIL;
   const [appleConnected, setAppleConnected] = useState(photographer.apple_calendar_connected);
   const [appleDisplayName, setAppleDisplayName] = useState(photographer.apple_calendar_display_name);
   const [appleEmail, setAppleEmail] = useState("");
@@ -417,7 +415,7 @@ export default function ProfileSettingsView({
       <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
         <div className="flex items-center gap-2 mb-3.5">
           <span className="text-sm font-semibold">יומן Google</span>
-          {isAdmin && <CompactGuideModal pageKey="calendar-scan" />}
+          <CompactGuideModal pageKey="calendar-scan" />
         </div>
         {connected ? (
           <div className="space-y-3">
@@ -450,7 +448,6 @@ export default function ProfileSettingsView({
               </div>
             </div>
 
-            {isAdmin && (
               <div>
                 <label className="text-xs mb-1.5 block text-ink-soft">צבע לזיהוי אירועים לייבוא (סריקת יומן)</label>
                 <div className="flex items-center gap-2">
@@ -485,7 +482,6 @@ export default function ProfileSettingsView({
                   סריקת יומן לאירועים חדשים
                 </button>
               </div>
-            )}
 
             <button
               onClick={disconnectGoogle}
