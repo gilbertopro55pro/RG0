@@ -566,7 +566,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
     he: {
       title: "מדריך: סריקת יומן לאירועים חדשים",
       intro:
-        "התכונה הזו מוצאת אירועי לקוחות שכבר נמצאים ביומן Google שלכם אך עדיין אין להם כרטיס במערכת, ופותחת לכל אחד מהם טופס \"אירוע חדש\" ממולא מראש: כדי לחסוך את ההקלדה החוזרת.",
+        "התכונה הזו מוצאת אירועי לקוחות שכבר נמצאים ביומן Google שלכם ופותחת להם כרטיסי אירוע במערכת, עם הפרטים ממולאים מראש, כדי לחסוך את ההקלדה החוזרת. אירוע שכבר קיים במערכת אפשר לעדכן לפי היומן.",
       sections: [
         {
           heading: "שני צבעים, שני תפקידים",
@@ -593,7 +593,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
     en: {
       title: "Guide: Calendar Scan for New Events",
       intro:
-        "This feature finds client events that already exist in your Google Calendar but have no event card in the system yet, and opens a prefilled \"new event\" form for each one — saving you re-typing everything.",
+        "This feature finds client events already in your Google Calendar and opens event cards for them in the system with the details prefilled, so you don't re-type everything. An event that's already in the system can be updated from the calendar.",
       sections: [
         {
           heading: "Two colors, two roles",
@@ -620,7 +620,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
     ru: {
       title: "Руководство: сканирование календаря на новые события",
       intro:
-        "Эта функция находит события клиентов, которые уже есть в вашем Google Календаре, но ещё не имеют карточки в системе, и открывает для каждого из них предзаполненную форму «новое событие» — экономя повторный ввод данных.",
+        "Эта функция находит события клиентов, которые уже есть в вашем Google Календаре, и открывает для них карточки событий в системе с предзаполненными данными, чтобы не вводить всё заново. Событие, которое уже есть в системе, можно обновить по календарю.",
       sections: [
         {
           heading: "Два цвета, две роли",
