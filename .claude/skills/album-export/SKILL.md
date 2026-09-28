@@ -39,6 +39,30 @@ as `send_notes` (migration 0139) and added to the print-house email under "הנ�
 The home "עיצוב אלבום" quick access (`AlbumQuickAccessButton`) has the same "שליחה לבית דפוס" flow
 (print-house emails, notes, whole album via `to: 9999`), polled with the same ProgressModal.
 
+Print-house download tracking (since 2026-09-28, migration 0140). The email links to
+`https://myframeflow.com/print/<share_token>`, not to R2. The page shows the album, the notes and
+a "הורדת הקבצים" button. Only the button counts (a POST to `/api/print/<token>/download`), because
+mail scanners open links on their own. The route calls the RPC `record_print_house_download`, adds
+one `event_notifications` row (`is_client_action`, so it's a red badge on the event) on the
+**first** download only, and redirects 303 to a signed URL valid for 1 hour.
+- The link works 7 days from when the files are ready (`link_expires_at`, set in
+  `processAlbumExportJob`). The file is kept 30 days (`expires_at`). The cron clears
+  `storage_path` on print jobs instead of deleting the row, so the history stays.
+- The send sheets (gallery + home quick access) show "שליחות קודמות" (`PrintHouseSendsHistory`,
+  `GET …/album/print-sends`): downloaded at … (N), extend/renew the link by a week while the file
+  exists (`POST …/print-sends/<job>/renew`, same link works again), copy the link, or send again
+  once the file is gone.
+- Jobs from before 0140 have no `share_token` and keep the direct signed link ("בלי מעקב הורדה").
+- Verified live 2026-09-28 (test account, job 7b3cd568): processing set `link_expires_at`. Page
+  GETs and a GET on the download route left the count at 0. POST ×2 gave count 2 and exactly one
+  notification, and the zip held 10 JPGs. With `link_expires_at` in the past, the page shows "תוקף
+  הקישור פג" and the POST doesn't count. With `expires_at` in the past, the cron deleted the file
+  and kept the row. Not tested live: the renew/print-sends routes (no photographer session in the
+  sandbox). The component was tested in Chromium against a stubbed API.
+- Test without a UI session: insert a pending print job on the test account with SQL (with
+  `share_token`, `link_expires_at`, `expires_at`, and the default `print_house_emails` address,
+  which is the owner's inbox). The every-minute cron renders and emails it.
+
 Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs left `pending`.
 
 ### Known behavior (not bugs, but know them before you answer a user)
