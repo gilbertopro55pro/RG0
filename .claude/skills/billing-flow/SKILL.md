@@ -119,6 +119,10 @@ arrived, so the app never saw it. Access isn't affected (`hasAppAccess` is statu
 based). That account was charged 28.8 (payment page) and again 10.9 (the early "renewal" noted
 above), so it's paid through 28.10 while `current_period_end` says 10.10. If error 6 repeats on a
 recurring (no CVV is entered on one), it's a PayPlus terminal / issuer setting: PayPlus support.
+Its `current_period_end` was corrected to 28.10 (owner approved). Since 2026-09-28 the
+`subscription-lifecycle` cron (step 6) emails the admin "[חיובים] חידוש מנוי לא נקלט" when an
+active account with a recurring has `current_period_end` more than 2 days in the past (a success
+would have moved it forward), once per period (`missed_renewal_alerted_for`, migration 0138).
 
 **Receipt failure 2026-09-28 (first renewal receipt through the code):** account `78a97d91…`,
 renewal ₪50 (transaction `d2855d49…`), charged fine, but Finbot refused the חשבונית מס קבלה:
