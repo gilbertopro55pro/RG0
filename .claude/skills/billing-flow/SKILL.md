@@ -111,12 +111,14 @@ renewal ₪50 (transaction `d2855d49…`), charged fine, but Finbot refused the 
 "סכום הפריטים אינו תואם לסכום התקבולים". The line price is sent before VAT (Finbot's rule) and
 50/1.18 = 42.3728… was rounded to 42.37; Finbot's own VAT math on it didn't land on the ₪50
 payment (even though 42.37 + 18% rounds to 50.00 the usual way, so its rounding isn't the obvious
-one). ₪59 divides exactly (50.00), which is why it never showed before. Fix (`issueReceipt` in
-`lib/finbot.ts`): tries a 6-decimal price just above the exact quotient first (42.372882), then
-2-decimal prices one agora apart, retrying only on Finbot validation rejections (no document is
-created on a rejection). **Not verified against Finbot** (keys are sensitive, docs blocked from the
+one). ₪59 divides exactly (50.00), which is why it never showed before. The owner's manual issue
+in Finbot's own screen showed 42.37 + VAT 7.63 = 50.00 (standard rounding), so the price was right
+and the suspect is the `rounding: true` flag the API call sent. Fix (`issueReceipt` in
+`lib/finbot.ts`): first 42.37 with `rounding: false` (what the screen does), then a 6-decimal price
+(42.372882) without and with the flag, retrying only on Finbot validation rejections (no document
+is created on a rejection). **Not verified against Finbot** (keys are sensitive, docs blocked from the
 sandbox): confirm on the next non-round renewal that `receipt_status='issued'`. The failed receipt
-itself has to be issued by hand in Finbot (asked the owner on 2026-09-28).
+itself was issued by hand in Finbot by the owner (2026-09-28).
 
 Most likely cause: PayPlus's recurring engine. The `instant_first_payment` + `start_date_on_payment_date`
 combination can produce a same-day second charge, but it didn't on every account. It wasn't
