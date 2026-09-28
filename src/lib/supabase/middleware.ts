@@ -34,6 +34,9 @@ const PUBLIC_PATHS = [
   // The intake assistant's public chat (and its API) — a prospective client, no account.
   "/chat",
   "/api/intake-chat",
+  // The print house's download page for album files (a tracked link, token-authenticated).
+  "/print",
+  "/api/print",
   "/api/payplus/webhook",
   // Bearer-token authenticated (not cookie-based) — the separate desktop app has no cookie jar
   // shared with this site, so it can't pass this proxy's cookie-session check. The route itself

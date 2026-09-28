@@ -12,6 +12,7 @@ import { renderAlbumPagePsd } from "@/lib/albumPsd";
 import { generateAlbumPdf } from "@/lib/albumPdf";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
+import { PRINT_LINK_DAYS, daysFromNow, formatPrintDay, printLinkUrl } from "@/lib/printHouseLinks";
 import type { GalleryAlbumExportJobRow, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 function sanitizeSegment(name: string): string {
@@ -495,7 +496,19 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
     // Print-house jobs don't end in a client download — the deliverable IS the email, sent once
     // the file is actually ready rather than the old route's synchronous zip-then-email round trip.
     if (job.send_to_email) {
-      const downloadUrl = await getSignedDownloadUrl("galleries", storagePath, 60 * 60 * 24 * 7, `${rootDir}.zip`);
+      // The tracked link on our own site (records the download, can be renewed). Jobs created
+      // before migration 0140 have no token and keep the direct signed link.
+      let downloadUrl: string;
+      let validUntil = `הקישור בתוקף לשבוע ימים.`;
+      if (job.share_token) {
+        // The week counts from when the files are actually ready, not from when the job was queued.
+        const linkExpiresAt = daysFromNow(PRINT_LINK_DAYS);
+        await supabase.from("gallery_album_export_jobs").update({ link_expires_at: linkExpiresAt }).eq("id", jobId);
+        downloadUrl = printLinkUrl(job.share_token);
+        validUntil = `הקישור בתוקף עד ${formatPrintDay(linkExpiresAt)}.`;
+      } else {
+        downloadUrl = await getSignedDownloadUrl("galleries", storagePath, 60 * 60 * 24 * 7, `${rootDir}.zip`);
+      }
       // Goes to the photographer's print house, so it's sent in the photographer's name.
       const { data: sender } = await supabase
         .from("photographers")
@@ -510,7 +523,7 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
         text:
           `שלום,\n\nמצורף קישור להורדת קובצי ה-JPG להדפסה עבור האלבום "${album.title}" (${resolved.gallery.title}):\n${downloadUrl}\n\n` +
           (job.send_notes?.trim() ? `הנחיות והערות:\n${job.send_notes.trim()}\n\n` : "") +
-          `הקישור בתוקף לשבוע ימים.`,
+          validUntil,
       });
     }
     await notifyPhotographerExportReady(supabase, job, album.title, storagePath);

@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { authenticateGalleryRequest } from "@/lib/desktopAuth";
 import { countExportPages, triggerAlbumExportProcessing } from "@/lib/albumExportJobs";
+import { PRINT_FILE_DAYS, PRINT_LINK_DAYS, daysFromNow, newPrintShareToken } from "@/lib/printHouseLinks";
 import type { GalleryAlbumRow, GalleryRow } from "@/lib/types";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -58,9 +59,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       total_count: totalCount,
       send_to_email: email,
       send_notes: notes || null,
-      // A week is plenty for a print house to pick up the file, and keeps the link from being a
-      // permanent, unauthenticated way to redownload a client's paid deliverable indefinitely.
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      // The link works for a week (so it isn't a permanent, unauthenticated way to redownload a
+      // client's paid deliverable). The file is kept longer, so the photographer can renew the
+      // link from the send sheet without rendering the album again (printHouseLinks.ts).
+      share_token: newPrintShareToken(),
+      link_expires_at: daysFromNow(PRINT_LINK_DAYS),
+      expires_at: daysFromNow(PRINT_FILE_DAYS),
     })
     .select("id")
     .single<{ id: string }>();

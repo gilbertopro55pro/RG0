@@ -7,6 +7,7 @@ import { ProgressModal } from "@/components/ProgressModal";
 import { pdfBandedPct } from "@/lib/pdfBandedPct";
 import { createClient } from "@/lib/supabase/client";
 import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
+import PrintHouseSendsHistory from "@/components/PrintHouseSendsHistory";
 import type { PrintHouseEmailRow } from "@/lib/types";
 
 type GalleryOption = { id: string; title: string; published: boolean; hasActiveAlbum: boolean };
@@ -383,6 +384,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                         return t ? `שליחה ל-${t.label || t.email}` : "בחרו כתובת לשליחה";
                       })()}
                     </button>
+                    {selectedId && <PrintHouseSendsHistory galleryId={selectedId} />}
                   </div>
                 )}
                 {printHouseSent && <p className="text-xs text-sage font-semibold mt-2">{printHouseSent}</p>}

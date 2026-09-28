@@ -22,6 +22,7 @@ import type {
 } from "@/lib/types";
 import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
+import PrintHouseSendsHistory from "@/components/PrintHouseSendsHistory";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { readDataTransferItems, folderNameFromPath, isHiddenFileName } from "@/lib/fileDrop";
 import { ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
@@ -3947,6 +3948,7 @@ export default function GalleryManageView({
             >
               שליחה
             </button>
+            <PrintHouseSendsHistory galleryId={gallery.id} />
           </div>
         </div>
       )}
