@@ -2,7 +2,7 @@
 // public/magnet-elements/digits/<style>-<number>.png, transparent, 800×800.
 //
 // Each digit's outline comes from one of the app's own bundled fonts (src/assets/fonts), and the
-// style (metallic, balloon, cake, script, rainbow, 3D, floral, Star of David) is drawn around it in SVG, then
+// style (metallic, balloon, script, rainbow, 3D, floral, Star of David) is drawn around it in SVG, then
 // rasterized with sharp. Original artwork: the owner's reference only set the kinds of styles.
 //
 // Run: node scripts/magnet-digits/generate.mjs
@@ -17,6 +17,19 @@ const SIZE = 800;
 export const NUMBERS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12", "13"];
 // Styles added later cover only 0–10.
 const SHORT = new Set(["swirl", "rainbow", "threeD"]);
+// 3D color variants: [face top, face bottom, extrusion]. Keys match the `colors` of the threeD
+// style in src/lib/magnetFrameDigits.ts.
+const THREE_D_COLORS = {
+  blue: ["#5ab8ff", "#1f6fd1", "#0d3a78"],
+  red: ["#ff7a6b", "#d8342a", "#7a1510"],
+  green: ["#6fe0a0", "#1f9e5c", "#0b5230"],
+  purple: ["#b99bff", "#6b45d8", "#321a78"],
+  orange: ["#ffc15a", "#e0851f", "#7a3f08"],
+  pink: ["#ffa8d2", "#e8499a", "#7d1850"],
+  gold: ["#fbe39a", "#d4a531", "#6e4f0c"],
+  black: ["#6b6f78", "#2a2d33", "#0b0c0e"],
+};
+const variantsFor = (style) => (style === "threeD" ? Object.keys(THREE_D_COLORS) : [null]);
 export const numbersFor = (style) => (SHORT.has(style) ? NUMBERS.slice(0, 11) : NUMBERS);
 
 const fonts = {};
@@ -126,41 +139,6 @@ const STYLES = {
       <ellipse cx="${bbox.x + bbox.w * 0.3}" cy="${bbox.y + 40}" rx="18" ry="30" fill="#ffffff" opacity="0.75" transform="rotate(25 ${bbox.x + bbox.w * 0.3} ${bbox.y + 40})"/>`;
   },
 
-  // Sponge with dripping frosting, sprinkles and a candle.
-  cake(n) {
-    const { d, bbox } = digitPath(n, "Righteous-Latin.ttf", { x: 150, y: 210, w: 500, h: 500 });
-    const r = rng(seedOf("cake" + n));
-    const frost = ["#f4a3b6", "#a7e0c6", "#b9a7f0"][Number(n) % 3];
-    const top = bbox.y - 30;
-    const dripY = bbox.y + bbox.h * 0.42;
-    let drip = `M0 ${top} H${SIZE} V${dripY}`;
-    for (let x = SIZE; x > 0; x -= 50) {
-      const deep = dripY + (r() > 0.5 ? 30 + r() * 45 : 8);
-      drip += ` Q${x - 12} ${deep} ${x - 25} ${deep - 4} Q${x - 38} ${dripY - 6} ${x - 50} ${dripY}`;
-    }
-    drip += " Z";
-    let sprinkles = "";
-    const sc = ["#ffffff", "#f7c948", "#5bc0eb", "#e4572e", "#9bc53d"];
-    for (let i = 0; i < 60; i++) {
-      const x = bbox.x + r() * bbox.w;
-      const y = top + 20 + r() * (dripY - top - 10);
-      sprinkles += `<rect x="${x}" y="${y}" width="16" height="5" rx="2.5" fill="${sc[i % 5]}" transform="rotate(${r() * 180} ${x + 8} ${y + 2})"/>`;
-    }
-    let crumbs = "";
-    for (let i = 0; i < 40; i++) crumbs += `<circle cx="${bbox.x + r() * bbox.w}" cy="${dripY + r() * (bbox.h * 0.6)}" r="${2 + r() * 3}" fill="#e8a33c" opacity="0.7"/>`;
-    const cx = bbox.x + bbox.w / 2;
-    return `
-      <defs><clipPath id="c"><path d="${d}"/></clipPath></defs>
-      <rect x="${cx - 12}" y="${bbox.y - 120}" width="24" height="100" rx="6" fill="#fff3d6" stroke="#6b3a1e" stroke-width="5"/>
-      <path d="M${cx - 12} ${bbox.y - 95} L${cx + 12} ${bbox.y - 110} M${cx - 12} ${bbox.y - 65} L${cx + 12} ${bbox.y - 80} M${cx - 12} ${bbox.y - 35} L${cx + 12} ${bbox.y - 50}" stroke="#f06b8b" stroke-width="6"/>
-      <path d="M${cx} ${bbox.y - 185} Q${cx + 24} ${bbox.y - 145} ${cx} ${bbox.y - 128} Q${cx - 24} ${bbox.y - 145} ${cx} ${bbox.y - 185}Z" fill="#ffb627" stroke="#e8601c" stroke-width="4"/>
-      <g clip-path="url(#c)">
-        <rect x="0" y="0" width="${SIZE}" height="${SIZE}" fill="#f9d98b"/>${crumbs}
-        <path d="${drip}" fill="${frost}"/>${sprinkles}
-      </g>
-      <path d="${d}" fill="none" stroke="#6b3a1e" stroke-width="12" stroke-linejoin="round"/>`;
-  },
-
   // Script digit in a plum-to-rose gradient with gold flourish curls.
   swirl(n) {
     const { d, bbox } = digitPath(n, "Pacifico-Latin.ttf", { x: 170, y: 150, w: 460, h: 500 });
@@ -202,17 +180,10 @@ const STYLES = {
       <path d="${d}" fill="none" stroke="#ffffff" stroke-width="4" stroke-dasharray="2 14" stroke-linecap="round" opacity="0.8" transform="translate(-3 -3)"/>`;
   },
 
-  // Extruded 3D block digit; the color cycles by number.
-  threeD(n) {
+  // Extruded 3D block digit, one file per color in THREE_D_COLORS.
+  threeD(n, color) {
     const { d } = digitPath(n, "Montserrat-Latin.ttf", { x: 140, y: 110, w: 470, h: 530 });
-    const palettes = [
-      ["#5ab8ff", "#1f6fd1", "#0d3a78"],
-      ["#ff7a6b", "#d8342a", "#7a1510"],
-      ["#6fe0a0", "#1f9e5c", "#0b5230"],
-      ["#b99bff", "#6b45d8", "#321a78"],
-      ["#ffc15a", "#e0851f", "#7a3f08"],
-    ];
-    const [light, mid, dark] = palettes[Number(n) % palettes.length];
+    const [light, mid, dark] = THREE_D_COLORS[color];
     let extrude = "";
     for (let i = 36; i >= 1; i--) extrude += `<path d="${d}" fill="${dark}" stroke="${dark}" stroke-width="2" transform="translate(${i * 1.3} ${i * 1.1})"/>`;
     return `
@@ -281,12 +252,14 @@ async function main() {
   let files = 0;
   for (const f of fs.readdirSync(OUT)) fs.unlinkSync(path.join(OUT, f));
   for (const style of STYLE_KEYS) {
-    for (const n of numbersFor(style)) {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}">${STYLES[style](n)}</svg>`;
-      const png = await sharp(Buffer.from(svg)).png({ compressionLevel: 9, palette: true, quality: 90, effort: 8 }).toBuffer();
-      fs.writeFileSync(path.join(OUT, `${style}-${n}.png`), png);
-      bytes += png.length;
-      files++;
+    for (const variant of variantsFor(style)) {
+      for (const n of numbersFor(style)) {
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}">${STYLES[style](n, variant)}</svg>`;
+        const png = await sharp(Buffer.from(svg)).png({ compressionLevel: 9, palette: true, quality: 90, effort: 8 }).toBuffer();
+        fs.writeFileSync(path.join(OUT, `${variant ? `${style}-${variant}` : style}-${n}.png`), png);
+        bytes += png.length;
+        files++;
+      }
     }
   }
   console.log(`wrote ${files} files, ${(bytes / 1e6).toFixed(2)} MB`);

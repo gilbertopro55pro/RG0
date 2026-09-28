@@ -5,7 +5,7 @@ import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/a
 import { ALBUM_ORNAMENTS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { MAGNET_FRAME_TEXTURES, findMagnetFrameTexture, textureDataUrl } from "@/lib/magnetFrameTextures";
 import { MAGNET_FRAME_FLORALS, findMagnetFrameFloral } from "@/lib/magnetFrameFlorals";
-import { MAGNET_DIGIT_STYLES, magnetDigitId } from "@/lib/magnetFrameDigits";
+import { MAGNET_DIGIT_STYLES, magnetDigitId, magnetDigitUrl } from "@/lib/magnetFrameDigits";
 import { MAGNET_FRAME_DIMENSIONS, DEFAULT_MAGNET_FRAME_SETTINGS, getMatInsetPct, getCutoutRadiusPx } from "@/lib/magnetFrameShared";
 import type { MagnetFrameElement, MagnetFrameTextElement, MagnetFrameDesignRow, MagnetFrameSettings, MagnetFrameCustomTextureRow, MagnetFrameCustomElementRow } from "@/lib/types";
 import { IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight } from "@/components/icons/NavIcons";
@@ -167,6 +167,8 @@ export default function MagnetFrameEditor() {
   const [loaded, setLoaded] = useState(false);
   const [designId, setDesignId] = useState<string | null>(null);
   const [elements, setElements] = useState<MagnetFrameElement[]>([]);
+  // Chosen color per illustrated-digit style that has color variants (the 3D digits).
+  const [digitColors, setDigitColors] = useState<Record<string, string>>({});
   const [frameSettings, setFrameSettings] = useState<MagnetFrameSettings>(DEFAULT_MAGNET_FRAME_SETTINGS);
   const [activeTab, setActiveTab] = useState<TabKey | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1035,24 +1037,43 @@ export default function MagnetFrameEditor() {
               )}
               {elementTab === "digits" ? (
                 <div className="space-y-2.5 max-h-[40vh] overflow-y-auto">
-                  {MAGNET_DIGIT_STYLES.map((style) => (
-                    <div key={style.key}>
-                      <div className="text-[10px] font-semibold text-ink-soft mb-1">{style.label}</div>
-                      <div className="grid grid-cols-7 sm:grid-cols-13 gap-1.5" dir="ltr">
-                        {style.numbers.map((n) => (
-                          <button
-                            key={n}
-                            onClick={() => addFloral(magnetDigitId(style.key, n), 22)}
-                            title={`${style.label} ${n}`}
-                            className="rounded-lg border border-line p-0.5 bg-chip aspect-square flex items-center justify-center"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={`/magnet-elements/digits/${style.key}-${n}.png`} loading="lazy" className="w-full h-full" style={{ objectFit: "contain" }} alt={n} />
-                          </button>
-                        ))}
+                  {MAGNET_DIGIT_STYLES.map((style) => {
+                    const color = style.colors ? (style.colors.find((c) => c.key === digitColors[style.key]) ?? style.colors[0]) : undefined;
+                    return (
+                      <div key={style.key}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="text-[10px] font-semibold text-ink-soft">{style.label}</div>
+                          {style.colors && (
+                            <div className="flex items-center gap-1">
+                              {style.colors.map((c) => (
+                                <button
+                                  key={c.key}
+                                  onClick={() => setDigitColors((prev) => ({ ...prev, [style.key]: c.key }))}
+                                  title={c.label}
+                                  aria-label={c.label}
+                                  className="w-4 h-4 rounded-full border-2"
+                                  style={{ background: c.swatch, borderColor: color?.key === c.key ? "var(--color-amber-deep)" : "transparent" }}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-7 sm:grid-cols-13 gap-1.5" dir="ltr">
+                          {style.numbers.map((n) => (
+                            <button
+                              key={n}
+                              onClick={() => addFloral(magnetDigitId(style.key, n, color?.key), 22)}
+                              title={[style.label, color?.label, n].filter(Boolean).join(" ")}
+                              className="rounded-lg border border-line p-0.5 bg-chip aspect-square flex items-center justify-center"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={magnetDigitUrl(style.key, n, color?.key)} loading="lazy" className="w-full h-full" style={{ objectFit: "contain" }} alt={n} />
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {DIGIT_STYLES.map((style) => (
                     <div key={style.key}>
                       <div className="text-[10px] font-semibold text-ink-soft mb-1">{style.label}</div>
