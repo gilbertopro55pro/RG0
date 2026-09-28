@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalPage } from "@/components/LandingChrome";
 
 export const metadata: Metadata = {
   title: "פרטי העסק — גילברטו",
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 // email either — this page is public, so it gets its own address rather than exposing either.
 export default function BusinessInfoPage() {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12 text-sm leading-relaxed text-ink">
+    <LegalPage>
       <h1 className="text-xl font-bold mb-6">פרטי העסק</h1>
 
       <section className="space-y-4">
@@ -67,6 +68,6 @@ export default function BusinessInfoPage() {
           </p>
         </div>
       </section>
-    </div>
+    </LegalPage>
   );
 }

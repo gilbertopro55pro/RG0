@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalPage } from "@/components/LandingChrome";
 
 export const metadata: Metadata = {
   title: "מדיניות עוגיות — גילברטו",
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 // tracking. Same "starting draft, review before relying on it" status as /privacy.
 export default function CookiesPolicyPage() {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12 text-sm leading-relaxed text-ink">
+    <LegalPage>
       <h1 className="text-xl font-bold mb-6">מדיניות עוגיות (Cookies)</h1>
       <p className="text-ink-soft mb-6">עודכן לאחרונה: {new Date().toLocaleDateString("he-IL")}</p>
 
@@ -54,6 +55,6 @@ export default function CookiesPolicyPage() {
           .
         </p>
       </section>
-    </div>
+    </LegalPage>
   );
 }
