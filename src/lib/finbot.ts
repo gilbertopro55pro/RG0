@@ -91,22 +91,27 @@ export async function issueReceipt({
   // actually changed hands, not a pre-VAT figure.
   const isLicensedDocument = documentType === TAX_INVOICE_DOCUMENT_TYPE;
 
-  // Backing a VAT-inclusive sum out to a 2-decimal pre-VAT price isn't exact for most amounts
-  // (₪50 / 1.18 = 42.3728…), and Finbot then rejects the document when its own VAT math on that
-  // price doesn't land on the payment sum: "סכום הפריטים אינו תואם לסכום התקבולים" (first real
-  // renewal receipt, ₪50, 2026-09-28; ₪59 happens to divide exactly, which hid it). 42.37 was
-  // rejected even though 42.37 + 18% rounds to 50.00 the usual way, so Finbot's rounding isn't the
-  // obvious one and isn't documented. First try a 6-decimal price just above the exact quotient
-  // (42.372882 × 1.18 = 50.0000008, which rounds, floors or ceils to 50.00), then 2-decimal prices
-  // one agora apart. A rejected request creates no document, so exactly one receipt is issued.
+  // Backing a VAT-inclusive sum out to a pre-VAT line price (Finbot's rule for a VAT document)
+  // isn't exact for most amounts: ₪50 / 1.18 = 42.3728…. The first real renewal receipt (₪50,
+  // 2026-09-28) was refused with "סכום הפריטים אינו תואם לסכום התקבולים" at 42.37 with
+  // rounding: true, yet Finbot's own screen computes 42.37 + 7.63 = 50.00 for the same sum (owner's
+  // screenshot, same day). So the standard 2-decimal price is right and the rounding flag is the
+  // suspect: it's tried without it first. The rest are fallbacks for behavior we couldn't test from
+  // here. A refused request creates no document, and an accepted one always totals the payment,
+  // so exactly one correct receipt is issued.
   const exact = amount / (1 + VAT_RATE);
   const round2 = (x: number) => Math.round(x * 100) / 100;
-  const candidatePrices = isLicensedDocument
-    ? [Math.ceil(exact * 1e6) / 1e6, round2(exact), round2(exact + 0.01), round2(exact - 0.01)]
-    : [amount];
+  const attempts: { price: number; rounding: boolean }[] = isLicensedDocument
+    ? [
+        { price: round2(exact), rounding: false },
+        { price: Math.ceil(exact * 1e6) / 1e6, rounding: false },
+        // 42.37 with rounding: true is the exact request that was refused, so not repeated.
+        { price: Math.ceil(exact * 1e6) / 1e6, rounding: true },
+      ]
+    : [{ price: amount, rounding: true }];
 
   let lastError: Error | null = null;
-  for (const lineItemPrice of candidatePrices) {
+  for (const { price: lineItemPrice, rounding } of attempts) {
     try {
       return await postIncomeDocument(key, {
         type: documentType,
@@ -120,7 +125,7 @@ export async function issueReceipt({
         // true at all). Then line-item prices are BEFORE VAT ("יש לרשום את המחיר לפני מע"מ") and
         // Finbot adds VAT itself. The payments entry stays the real amount received either way.
         vatType: isLicensedDocument,
-        rounding: true,
+        rounding,
         customer: {
           name: customerName,
           email: customerEmail,
