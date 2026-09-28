@@ -33,6 +33,10 @@ through `notificationEmailFor`).
 | PSD | `export-psd` | Vercel, same path as JPG | zip of layered PSDs, 300 DPI in resolution info | valid `8BPS` v1, 3543×2362, 11s |
 | בית דפוס | `send-to-print-house` | Vercel, same JPG job + `send_to_email` | email to the print house with a 7-day link; reply-to is the photographer | toast "נשלח בהצלחה ל-…", job `ready`; JPGs at 300 DPI; email confirmed delivered to the inbox (not spam) |
 
+Print-house notes (since 2026-09-28): the "שליחה לבית דפוס" sheet has an optional
+"הנחיות והערות לבית הדפוס" textarea. It's sent as `notes` (trimmed, max 2000), stored on the job
+as `send_notes` (migration 0139) and added to the print-house email under "הנחיות והערות:".
+
 Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs left `pending`.
 
 ### Known behavior (not bugs, but know them before you answer a user)
