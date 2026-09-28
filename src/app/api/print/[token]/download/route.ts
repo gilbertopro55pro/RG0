@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const who = house?.label?.trim() || job.send_to_email;
     await supabase.from("event_notifications").insert({
       event_id: eventId,
-      text: `בית הדפוס (${who}) הוריד את קובצי האלבום "${albumTitle}"`,
+      text: `קובצי האלבום "${albumTitle}" הורדו ע״י בית הדפוס: ${who}`,
       is_client_action: true,
     });
   }
