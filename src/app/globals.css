@@ -154,9 +154,9 @@ body:has(.landing-warm) {
   --color-chip: var(--color-chip);
   --color-chip-tint: var(--color-chip-tint);
 
-  --font-display: var(--font-plex-hebrew), var(--font-assistant), sans-serif;
-  --font-sans: var(--font-assistant), sans-serif;
-  --font-data: var(--font-plex-hebrew), var(--font-assistant), sans-serif;
+  --font-display: var(--font-rubik), sans-serif;
+  --font-sans: var(--font-rubik), sans-serif;
+  --font-data: var(--font-rubik), sans-serif;
 
   /* Soft, diffused, faintly violet-tinted shadows (not flat gray) — reads as premium glass
      lifting off the pastel canvas rather than a flat card with a generic drop shadow. A tight
@@ -166,7 +166,7 @@ body:has(.landing-warm) {
   --shadow-sheet: 0 4px 18px rgba(28, 27, 25, 0.10), 0 28px 64px rgba(28, 27, 25, 0.18);
 }
 
-/* Prices, dates and counters: the heading face (Plex) with fixed-width digits so columns of
+/* Prices, dates and counters: the same face with fixed-width digits so columns of
    numbers still line up and a changing value (a progress %, a running total) doesn't jitter. */
 .font-data {
   font-family: var(--font-data);
