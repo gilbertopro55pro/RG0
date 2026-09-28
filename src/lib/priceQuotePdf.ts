@@ -174,6 +174,13 @@ export async function buildPriceQuotePdf(params: {
     if (current) lines.push(current);
     return lines;
   };
+  // Keeps the photographer's own line breaks (e.g. "זמני אספקה:" then one line per deliverable):
+  // each typed line wraps on its own, and an empty line stays as a gap.
+  const wrapParagraphs = (t: string, boxWidth: number, font: typeof hebrewRegular, size = WRAP_SIZE): string[] =>
+    t
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .flatMap((paragraph) => (paragraph.trim() ? wrapLines(paragraph, boxWidth, font, size) : [""]));
 
   // ── Recipient + event details: one paper card with a gold rail on its right edge.
   const detailPairs = (
@@ -233,7 +240,7 @@ export async function buildPriceQuotePdf(params: {
 
   for (const row of displayItems) {
     const itemLines = wrapLines(row.item, colItemW, hebrewBold);
-    const detailLines = row.details?.trim() ? wrapLines(row.details, colDetailsW - 16, hebrewRegular) : [];
+    const detailLines = row.details?.trim() ? wrapParagraphs(row.details.trim(), colDetailsW - 16, hebrewRegular) : [];
     const rowHeight = Math.max(30, Math.max(itemLines.length, detailLines.length) * 13 + 17);
     if (y - rowHeight < MARGIN) {
       ensureSpace(rowHeight + 20);
@@ -272,7 +279,7 @@ export async function buildPriceQuotePdf(params: {
   // ── Notes.
   if (notes?.trim()) {
     y -= 26;
-    const noteLines = wrapLines(notes.trim(), contentWidth, hebrewRegular);
+    const noteLines = wrapParagraphs(notes.trim(), contentWidth, hebrewRegular);
     ensureSpace(40 + noteLines.length * 14);
     heading("הערות");
     noteLines.forEach((line, i) => text(line, { x: MARGIN, width: contentWidth, y: y - i * 14, size: 9.5, font: regular, color: INK }));
