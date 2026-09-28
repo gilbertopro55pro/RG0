@@ -26,7 +26,11 @@ API returns 403.
 - One design per photographer: `magnet_frame_designs` (the latest row). "שמירה" POSTs
   `/api/magnet-frames` with the landscape elements; the portrait layout is a deep copy (positions
   are percentages, so they carry over).
-- The download buttons appear only after a save. They are synchronous GETs, with no job table:
+- The download buttons ("הורדת מסגרת רוחב (20×15)" / "הורדת מסגרת אורך (15×20)") are always shown
+  and **save first** (since 2026-09-28): `download()` awaits `save()` and exports the returned id, so
+  the file always matches the screen (before that, an edit after the last save was missing from the
+  download). Checked in Chromium with a stubbed API: `POST /api/magnet-frames` then `GET …/export`.
+  The export itself is a synchronous GET, with no job table:
   `/api/magnet-frames/<designId>/export?orientation=landscape|portrait` renders with sharp on
   Vercel (`magnetFrame.ts`: base mat → texture → elements) and returns the PNG, which the browser
   saves as `מגנט-לרוחב.png` / `מגנט-לאורך.png`.
@@ -50,6 +54,11 @@ API returns 403.
     (about 56 cm wide). On 2026-09-24 it got a 203 DPI tag, and since 2026-09-25 it renders at 300 DPI.
 - `magnetFrameShared.ts` is in the Fly worker's import graph, so changing it changes the render
   hash and redeploys the worker (see CLAUDE.md, deployment section).
+- Sizes in Hebrew UI text must be wrapped in `<Dim>` (a `dir="ltr"` isolate): a bare "20×15" in
+  an RTL line renders as "15×20" (the owner read the landscape button as "(15X20)", 2026-09-28).
+- The "ספרות" element tab (0–10 in קומיקס / מלכותי / אלגנטי / נקי) adds text elements in Permanent
+  Marker / Cinzel Decorative / Playfair Display italic / Montserrat. Latin-subset fonts only: the
+  Hebrew-subset fonts (Rubik Bubbles, Fredoka) have no digit glyphs.
 - A new text starts centered on the bottom mat: `yPct = 100 − bottomPct/2`, from the current
   mat settings (since 2026-09-25). Texts already saved keep their position.
 
