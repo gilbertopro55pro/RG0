@@ -6,7 +6,7 @@ import { ALBUM_ORNAMENTS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnam
 import { MAGNET_FRAME_TEXTURES, findMagnetFrameTexture, textureDataUrl } from "@/lib/magnetFrameTextures";
 import { MAGNET_FRAME_FLORALS, findMagnetFrameFloral } from "@/lib/magnetFrameFlorals";
 import { MAGNET_FRAME_DIMENSIONS, DEFAULT_MAGNET_FRAME_SETTINGS, getMatInsetPct, getCutoutRadiusPx } from "@/lib/magnetFrameShared";
-import type { MagnetFrameElement, MagnetFrameDesignRow, MagnetFrameSettings, MagnetFrameCustomTextureRow, MagnetFrameCustomElementRow } from "@/lib/types";
+import type { MagnetFrameElement, MagnetFrameTextElement, MagnetFrameDesignRow, MagnetFrameSettings, MagnetFrameCustomTextureRow, MagnetFrameCustomElementRow } from "@/lib/types";
 import { IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight } from "@/components/icons/NavIcons";
 
 const COLOR_SWATCHES = [
@@ -18,8 +18,11 @@ const COLOR_SWATCHES = [
   { label: "ורוד עתיק", value: "#c98a8a" },
 ];
 
-const ELEMENT_TABS: { key: "symbols" | "floral" | "geometric" | "vintage" | "watercolor" | "custom"; label: string }[] = [
+type ElementTabKey = "symbols" | "digits" | "floral" | "geometric" | "vintage" | "watercolor" | "custom";
+
+const ELEMENT_TABS: { key: ElementTabKey; label: string }[] = [
   { key: "symbols", label: "סמלים" },
+  { key: "digits", label: "ספרות" },
   { key: "floral", label: "פרחוני" },
   { key: "watercolor", label: "פרחי מים" },
   { key: "geometric", label: "גיאומטרי" },
@@ -28,6 +31,27 @@ const ELEMENT_TABS: { key: "symbols" | "floral" | "geometric" | "vintage" | "wat
 ];
 
 type TabKey = "elements" | "texture" | "settings";
+
+// A size like "20×15" inside Hebrew text is laid out right-to-left and reads "15×20" (the owner saw
+// the landscape button as "(15X20)"). Isolating it left-to-right keeps width × height in order.
+function Dim({ children }: { children: string }) {
+  return (
+    <span dir="ltr" style={{ unicodeBidi: "isolate" }}>
+      {children}
+    </span>
+  );
+}
+
+// The "ספרות" tab: 0–10 in four styles. Each one is added as a text element in the style's font, so
+// it resizes, recolors, moves and takes a shadow like any text, and the export already renders it.
+// Latin-subset fonts only: the Hebrew-subset ones (Rubik Bubbles, Fredoka) have no digit glyphs.
+const DIGITS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+const DIGIT_STYLES: { key: string; label: string; fontKey: string; bold: boolean; italic: boolean }[] = [
+  { key: "comic", label: "קומיקס", fontKey: "permanent-marker", bold: false, italic: false },
+  { key: "royal", label: "מלכותי", fontKey: "cinzel-decorative", bold: true, italic: false },
+  { key: "elegant", label: "אלגנטי", fontKey: "playfair-display", bold: false, italic: true },
+  { key: "clean", label: "נקי", fontKey: "montserrat", bold: true, italic: false },
+];
 
 function clamp(n: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, n));
@@ -147,7 +171,7 @@ export default function MagnetFrameEditor() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [snapGuide, setSnapGuide] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
-  const [elementTab, setElementTab] = useState<"symbols" | "floral" | "geometric" | "vintage" | "watercolor" | "custom">("symbols");
+  const [elementTab, setElementTab] = useState<ElementTabKey>("symbols");
   const [decorationColor, setDecorationColor] = useState("#2e3142");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -258,6 +282,20 @@ export default function MagnetFrameEditor() {
 
   const addText = () => {
     const el = newTextElement(100 - matInset.bottomPct / 2);
+    setElements((prev) => [...prev, el]);
+    setSelectedId(el.id);
+  };
+
+  const addDigit = (digit: string, style: (typeof DIGIT_STYLES)[number]) => {
+    const el: MagnetFrameTextElement = {
+      ...(newTextElement(100 - matInset.bottomPct / 2) as MagnetFrameTextElement),
+      text: digit,
+      fontKey: style.fontKey,
+      fontSizePx: 140,
+      color: decorationColor,
+      bold: style.bold,
+      italic: style.italic,
+    };
     setElements((prev) => [...prev, el]);
     setSelectedId(el.id);
   };
@@ -376,8 +414,10 @@ export default function MagnetFrameEditor() {
     updateElement(draggingId, { xPct: snapX ? 50 : rawX, yPct: snapY ? 50 : rawY });
   };
 
-  const save = async () => {
-    if (saving) return;
+  // Returns the saved design's id (null on failure), so a download can save first and then export
+  // exactly what's on screen.
+  const save = async (): Promise<string | null> => {
+    if (saving) return null;
     setSaving(true);
     setError(null);
     try {
@@ -389,21 +429,29 @@ export default function MagnetFrameEditor() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "שגיאה בשמירה");
-        return;
+        return null;
       }
       setDesignId(data.design.id);
       setSavedOnce(true);
+      return data.design.id as string;
+    } catch {
+      setError("שגיאה בשמירה");
+      return null;
     } finally {
       setSaving(false);
     }
   };
 
+  // Saves first (owner's request, 2026-09-28): the export renders the design stored on the server,
+  // so an edit made after the last save used to be missing from the downloaded file.
   const download = async (orientation: "landscape" | "portrait") => {
-    if (!designId || exportBusy) return;
+    if (exportBusy || saving) return;
     setExportBusy(orientation);
     setError(null);
     try {
-      const res = await fetch(`/api/magnet-frames/${designId}/export?orientation=${orientation}`);
+      const id = await save();
+      if (!id) return;
+      const res = await fetch(`/api/magnet-frames/${id}/export?orientation=${orientation}`);
       if (!res.ok) throw new Error();
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -430,7 +478,7 @@ export default function MagnetFrameEditor() {
       <div>
         <div className="text-sm font-semibold mb-1">עיצוב מסגרת מגנט</div>
         <p className="text-xs leading-relaxed text-ink-soft">
-          בסיס לבן פשוט במידה 20×15 ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך (15×20) עם אותו הטקסט והאלמנטים.
+          בסיס לבן פשוט במידה <Dim>20×15</Dim> ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך (<Dim>15×20</Dim>) עם אותו הטקסט והאלמנטים.
         </p>
       </div>
 
@@ -984,7 +1032,33 @@ export default function MagnetFrameEditor() {
                   <FreeColorPicker value={decorationColor} onChange={setDecorationColor} />
                 </div>
               )}
-              {elementTab === "custom" ? (
+              {elementTab === "digits" ? (
+                <div className="space-y-2.5 max-h-[40vh] overflow-y-auto">
+                  {DIGIT_STYLES.map((style) => (
+                    <div key={style.key}>
+                      <div className="text-[10px] font-semibold text-ink-soft mb-1">{style.label}</div>
+                      <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5" dir="ltr">
+                        {DIGITS.map((digit) => (
+                          <button
+                            key={digit}
+                            onClick={() => addDigit(digit, style)}
+                            title={`${style.label} ${digit}`}
+                            className="rounded-lg border border-line bg-chip aspect-square flex items-center justify-center text-xl leading-none"
+                            style={{
+                              fontFamily: albumFontFamilyCss(style.fontKey),
+                              fontWeight: style.bold ? 700 : 400,
+                              fontStyle: style.italic ? "italic" : "normal",
+                              color: decorationColor === "#ffffff" ? "var(--color-ink)" : decorationColor,
+                            }}
+                          >
+                            {digit}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : elementTab === "custom" ? (
                 <div className="space-y-2">
                   <label className="flex items-center justify-center rounded-lg border border-dashed border-line p-3 text-center bg-card cursor-pointer">
                     <input
@@ -1057,19 +1131,16 @@ export default function MagnetFrameEditor() {
       {error && <p className="text-xs text-rose">{error}</p>}
 
       <div className="flex items-center gap-2.5 flex-wrap">
-        <button onClick={save} disabled={saving} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-          {saving ? "שומר..." : "שמירה"}
+        <button onClick={() => void save()} disabled={saving || !!exportBusy} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+          {saving && !exportBusy ? "שומר..." : "שמירה"}
         </button>
-        {designId && (
-          <>
-            <button onClick={() => download("landscape")} disabled={!!exportBusy} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink disabled:opacity-60">
-              {exportBusy === "landscape" ? "מוריד..." : "מסגרת לרוחב (20×15)"}
-            </button>
-            <button onClick={() => download("portrait")} disabled={!!exportBusy} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink disabled:opacity-60">
-              {exportBusy === "portrait" ? "מוריד..." : "מסגרת לאורך (15×20)"}
-            </button>
-          </>
-        )}
+        {/* Always shown now: a download saves the design first, so there's no need to save before. */}
+        <button onClick={() => download("landscape")} disabled={!!exportBusy || saving} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink disabled:opacity-60">
+          {exportBusy === "landscape" ? (saving ? "שומר..." : "מוריד...") : <>הורדת מסגרת רוחב (<Dim>20×15</Dim>)</>}
+        </button>
+        <button onClick={() => download("portrait")} disabled={!!exportBusy || saving} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink disabled:opacity-60">
+          {exportBusy === "portrait" ? (saving ? "שומר..." : "מוריד...") : <>הורדת מסגרת אורך (<Dim>15×20</Dim>)</>}
+        </button>
       </div>
       {savedOnce && !designId && <p className="text-[11px] text-ink-soft">השמירה נכשלה. נסו שוב.</p>}
     </div>
