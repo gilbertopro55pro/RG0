@@ -7,19 +7,46 @@ import type { MagnetFrameFloral } from "@/lib/magnetFrameFlorals";
 const ALL = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12", "13"];
 const TO_TEN = ALL.slice(0, 11);
 
-export const MAGNET_DIGIT_STYLES: { key: string; label: string; numbers: string[] }[] = [
+export type MagnetDigitColor = { key: string; label: string; swatch: string };
+
+// A style with `colors` has one image per color (the photographer picks the color above the row).
+export type MagnetDigitStyle = { key: string; label: string; numbers: string[]; colors?: MagnetDigitColor[] };
+
+export const MAGNET_DIGIT_STYLES: MagnetDigitStyle[] = [
   { key: "gold", label: "זהב וכסף", numbers: ALL },
   { key: "balloon", label: "מסיבה", numbers: ALL },
-  { key: "cake", label: "עוגה", numbers: ALL },
   { key: "swirl", label: "מסולסל", numbers: TO_TEN },
   { key: "rainbow", label: "צבע מתחלף", numbers: TO_TEN },
-  { key: "threeD", label: "תלת מימד", numbers: TO_TEN },
+  {
+    key: "threeD",
+    label: "תלת מימד",
+    numbers: TO_TEN,
+    // Keys match THREE_D_COLORS in scripts/magnet-digits/generate.mjs.
+    colors: [
+      { key: "blue", label: "כחול", swatch: "#1f6fd1" },
+      { key: "red", label: "אדום", swatch: "#d8342a" },
+      { key: "green", label: "ירוק", swatch: "#1f9e5c" },
+      { key: "purple", label: "סגול", swatch: "#6b45d8" },
+      { key: "orange", label: "כתום", swatch: "#e0851f" },
+      { key: "pink", label: "ורוד", swatch: "#e8499a" },
+      { key: "gold", label: "זהב", swatch: "#d4a531" },
+      { key: "black", label: "שחור", swatch: "#2a2d33" },
+    ],
+  },
   { key: "batmitzva", label: "בת מצווה", numbers: ALL },
   { key: "barmitzva", label: "בר מצווה", numbers: ALL },
 ];
 
-export const magnetDigitId = (style: string, n: string) => `digit-${style}-${n}`;
+const base = (style: string, n: string, color?: string) => (color ? `${style}-${color}-${n}` : `${style}-${n}`);
+export const magnetDigitId = (style: string, n: string, color?: string) => `digit-${base(style, n, color)}`;
+export const magnetDigitUrl = (style: string, n: string, color?: string) => `/magnet-elements/digits/${base(style, n, color)}.png`;
 
 export const MAGNET_FRAME_DIGITS: MagnetFrameFloral[] = MAGNET_DIGIT_STYLES.flatMap((s) =>
-  s.numbers.map((n) => ({ id: magnetDigitId(s.key, n), label: `${s.label} ${n}`, url: `/magnet-elements/digits/${s.key}-${n}.png` }))
+  (s.colors ?? [undefined]).flatMap((c) =>
+    s.numbers.map((n) => ({
+      id: magnetDigitId(s.key, n, c?.key),
+      label: [s.label, c?.label, n].filter(Boolean).join(" "),
+      url: magnetDigitUrl(s.key, n, c?.key),
+    }))
+  )
 );
