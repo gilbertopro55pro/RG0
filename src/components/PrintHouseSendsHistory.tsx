@@ -116,6 +116,7 @@ export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { 
               {!preparing && !failed && s.linkExpiresAt && (
                 <div className="text-[11px] text-ink-soft mt-0.5">
                   {expired ? `הקישור פג תוקף ב-${formatPrintDay(s.linkExpiresAt)}` : `הקישור בתוקף עד ${formatPrintDay(s.linkExpiresAt)}`}
+                  {!s.fileAvailable && " · הקבצים כבר נמחקו מהשרת"}
                 </div>
               )}
               <div className="flex flex-wrap gap-1.5 mt-2">
