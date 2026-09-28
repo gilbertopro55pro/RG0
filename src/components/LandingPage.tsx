@@ -1,52 +1,61 @@
-import Image from "next/image";
 import Link from "next/link";
 import LandingFaq from "@/components/LandingFaq";
 import TimeSavingsCalculator from "@/components/TimeSavingsCalculator";
 import PricingToggle from "@/components/PricingToggle";
 import PlanComparison from "@/components/PlanComparison";
 
-// Landing page, rebuilt 2026-09-24 against the frontend-design review (approved sketch):
-// the hero shows the product itself (the real overview tour, muted and looping; its captions are
-// burned in, so it reads without sound), the middle tells the road every event takes as a real
-// sequence, and a photographer's own voice replaces the generic "without / with" and the
-// unsourced "what it would cost with separate tools" stack.
+// Landing page, design 2026-09-28 (canvas "דף נחיתה Gilberto 2026", approved by the owner): white
+// and cool grey with deep-navy bands and the app's deep brass as the one accent (tokens:
+// .landing-2026 in globals.css). Owner's rules for this page: square corners (no pills), no italic
+// emphasis, no numbered 01/02 labels, no monospace, no cream background. The hero still plays the
+// real product tour (captions burned in, so it reads without sound).
 
 // A typical road an event takes. Every line is something the product actually does today, worded
 // as what it does: reminders are prepared and the photographer sends them, nothing goes out on its own.
 const JOURNEY = [
   {
     title: "פנייה",
-    text: "כל ליד נכנס למקום אחד, ובונים לו הצעת מחיר מעוצבת ישר מהטלפון. לליד שלא חזר אליכם, המערכת מכינה הודעת מעקב ומזכירה לכם לשלוח.",
+    icon: "M4 5h16v11H8l-4 4z",
+    text: "כל ליד נכנס למקום אחד, והצעת מחיר מעוצבת יוצאת ישר מהטלפון. לליד שלא חזר, מחכה הודעת מעקב מוכנה.",
   },
   {
     title: "סגירה",
-    text: "הלקוח חותם על החוזה דיגיטלית, מהטלפון. המקדמה נרשמת, והאירוע נכנס ליומן Google או Apple שחיברתם.",
+    icon: "M6 3h9l3 3v15H6zM9 13l2 2 4-4",
+    text: "חוזה דיגיטלי שנחתם מהטלפון. המקדמה נרשמת, והאירוע נכנס ליומן Google או Apple.",
   },
   {
     title: "לפני האירוע",
-    text: "הלקוח מקבל קישור לפורטל אישי: שלבי האירוע, מה מחכה לו ומצב התשלומים. כשמגיע מועד היתרה, תזכורת מוכנה מחכה לכם לשליחה בוואטסאפ.",
+    icon: "M4 6h16v14H4zM4 10h16M9 3v4M15 3v4",
+    text: "פורטל אישי ללקוח עם השלבים והתשלומים. כשמגיע מועד היתרה, תזכורת מוכנה לשליחה בוואטסאפ.",
   },
   {
     title: "יום הצילום",
-    text: "כל פרטי היום במקום אחד: מקום עם ניווט בלחיצה, שעות, טלפון הלקוח והחבילה שנסגרה. במסלול פרו+ אפשר להעלות תמונות לגלריה ישירות מהמצלמה, עוד במהלך האירוע.",
+    icon: "M4 8h3l2-3h6l2 3h3v11H4zM12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
+    text: "מקום עם ניווט, שעות, טלפון הלקוח והחבילה, במסך אחד. בפרו+ מעלים לגלריה ישר מהמצלמה.",
   },
   {
     title: "גלריה ואלבום",
-    text: "גלריה פרטית ללקוח, שבה הוא בוחר את התמונות לאלבום. במסלולי פרו ופרו+ מעצבים את האלבום מתוך הגלריה, והלקוח מאשר את העיצוב בפורטל.",
+    icon: "M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6",
+    text: "גלריה פרטית שבה הלקוח בוחר תמונות. מעצבים אלבום מתוך הגלריה, והלקוח מאשר בפורטל.",
   },
   {
     title: "מסירה",
-    text: "מסירה סופית וסגירת האירוע, עם תמונה ברורה של מה שולם. כמה ימים אחרי, המערכת מזכירה לכם לבקש מהלקוח ביקורת.",
+    icon: "M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z",
+    text: "מסירה וסגירה עם תמונה ברורה של מה שולם. כמה ימים אחרי, תזכורת לבקש ביקורת.",
   },
 ];
 
 const MORE = [
-  { title: "לידים והצעות מחיר", text: "כל פנייה במקום אחד, הצעת מחיר מעוצבת בלחיצה." },
-  { title: "חבילות ושלבים משלכם", text: "מחירים, שלבי עבודה ונוסח ההודעות ללקוח, מותאמים לשיטת העבודה שלכם." },
-  { title: "פורטפוליו ציבורי", text: "תיק עבודות לשיתוף, שמוסיפים אליו תמונות וגלריות בלחיצה (פרו ופרו+)." },
-  { title: "דשבורד עסקי", text: "הכנסות לפי חודש, מגמה, ותשלומים פתוחים." },
-  { title: "צוות", text: "עוזרים וצלמים נוספים, כל אחד רואה את האירועים שלו." },
-  { title: "ייבוא מיומן Google", text: "אירועים שכבר ביומן נכנסים למערכת בסריקה אחת, בלי להקליד מחדש." },
+  { title: "לידים והצעות מחיר", icon: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5", text: "כל פנייה במקום אחד, הצעת מחיר מעוצבת בלחיצה." },
+  { title: "חבילות ושלבים משלכם", icon: "M4 6h10M4 12h16M4 18h7M17 4v4M13 16v4", text: "מחירים, שלבי עבודה ונוסח ההודעות ללקוח, מותאמים לשיטה שלכם." },
+  { title: "פורטפוליו ציבורי", icon: "M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z", text: "תיק עבודות לשיתוף, מתמלא מהגלריות שלכם בלחיצה (פרו ופרו+)." },
+  { title: "דשבורד עסקי", icon: "M4 20V10M10 20V4M16 20v-7M22 20H2", text: "הכנסות לפי חודש, מגמה, ותשלומים פתוחים." },
+  {
+    title: "צוות",
+    icon: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a7 7 0 0 1 14 0v1M17 11a3 3 0 1 0 0-6M22 21v-1a5 5 0 0 0-4-4.9",
+    text: "עוזרים וצלמים נוספים, כל אחד רואה רק את האירועים שלו.",
+  },
+  { title: "ייבוא מיומן Google", icon: "M4 6h16v14H4zM4 10h16M12 13v5M9.5 15.5L12 18l2.5-2.5", text: "אירועים שכבר ביומן נכנסים למערכת בסריקה אחת, בלי להקליד מחדש." },
 ];
 
 const FOOTER_LINKS = [
@@ -59,161 +68,226 @@ const FOOTER_LINKS = [
   { href: "/business-info", label: "פרטי העסק" },
 ];
 
+function Icon({ d, size = 24, className = "", strokeWidth = 1.9 }: { d: string; size?: number; className?: string; strokeWidth?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+
 function PrimaryCta({ className = "" }: { className?: string }) {
   return (
-    <Link href="/signup" className={`rounded-2xl px-6 py-3.5 text-base font-extrabold bg-ink text-white ${className}`}>
-      14 יום חינם
+    <Link
+      href="/signup"
+      className={`h-14 px-7 rounded-[1px] inline-flex items-center justify-center gap-2.5 text-lg font-bold bg-[var(--l-accent)] text-[var(--l-on-accent)] ${className}`}
+    >
+      להתחיל 14 יום חינם
+      <Icon d="M19 12H5M11 6l-6 6 6 6" size={18} strokeWidth={2.2} />
     </Link>
   );
 }
 
+// 1248px of content at full width, with side padding kept at every size in between.
+const CONTAINER = "max-w-[1344px] mx-auto px-5 sm:px-8 lg:px-12";
+
 export default function LandingPage() {
   return (
-    // landing-warm: the landing's own warmer paper/ink tokens (see globals.css). min-h-screen + an
-    // explicit background paint over the app body's fixed glow gradients.
-    <div className="w-full min-h-screen landing-warm" style={{ background: "var(--color-paper)" }}>
-      <header className="max-w-6xl mx-auto px-4 sm:px-8 pt-6 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <Image src="/icons/icon-192.png" alt="" width={38} height={38} className="rounded-xl" />
-          <div className="flex flex-col leading-tight">
-            <span className="font-display font-extrabold text-lg">גילברטו</span>
-            <span className="text-[11px] text-ink-soft">ניהול אירועים לצלמים</span>
-          </div>
-        </div>
-        <nav className="flex items-center gap-4 text-sm">
-          <a href="#pricing" className="text-ink-soft hidden sm:inline">
-            מחירים
-          </a>
-          <Link href="/login" className="text-ink-soft">
-            התחברות
-          </Link>
-          <Link href="/signup" className="rounded-xl px-4 py-2 font-bold bg-ink text-white">
-            הרשמה
-          </Link>
-        </nav>
-      </header>
+    // min-h-screen + the opaque wrapper paint over the app body's fixed glow gradients (and the
+    // body:has(.landing-2026) rule in globals.css turns that fixed layer off on this page).
+    <div className="w-full min-h-screen landing-2026 font-sans">
+      {/* HERO (navy) */}
+      <section className="bg-[var(--l-navy)] text-[var(--l-on-navy)]">
+        <div className={CONTAINER}>
+          <header className="h-16 lg:h-[88px] flex items-center justify-between border-b border-[var(--l-navy-line)]">
+            <Link href="/" className="flex items-center gap-2.5 text-[var(--l-on-navy)]">
+              <span className="w-8 h-8 lg:w-9 lg:h-9 rounded-[8px] bg-[var(--l-accent)] text-[var(--l-on-accent)] flex items-center justify-center">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+                  <circle cx="12" cy="13" r="3.5" />
+                </svg>
+              </span>
+              <span className="font-display text-[19px] lg:text-[21px] font-bold tracking-tight">גילברטו</span>
+            </Link>
+            <nav className="flex items-center gap-4 lg:gap-8 text-[15px] lg:text-base">
+              <a href="#features" className="hidden lg:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
+                איך זה עובד
+              </a>
+              <a href="#pricing" className="hidden sm:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
+                מחירים
+              </a>
+              <a href="#faq" className="hidden lg:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
+                שאלות
+              </a>
+              <Link href="/login" className="text-[var(--l-on-navy)]">
+                התחברות
+              </Link>
+              <Link href="/signup" className="h-11 px-4 lg:px-5 rounded-[10px] inline-flex items-center font-bold bg-[var(--l-on-navy)] text-[var(--l-navy)]">
+                הרשמה
+              </Link>
+            </nav>
+          </header>
 
-      {/* Hero: the claim, and the product itself playing next to it. */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-8 pt-10 sm:pt-14 pb-16 sm:pb-24 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-10 lg:gap-16">
-        <div className="flex flex-col gap-5 max-w-xl">
-          <h1 className="text-[44px] sm:text-6xl lg:text-7xl font-black font-display leading-[1.02] tracking-tight text-balance">
-            פחות ניהול.
-            <br />
-            יותר צילום.
-          </h1>
-          <p className="text-[17px] sm:text-xl leading-relaxed text-ink-soft max-w-lg">
-            גילברטו מרכזת לצלמי אירועים את הלידים, החוזים, התשלומים, הגלריות והאלבומים במקום אחד, ומזכירה לכם
-            מה הצעד הבא בכל אירוע. הכל לפי שיטת העבודה שלכם.
-          </p>
-          <div className="flex items-center gap-3 flex-wrap">
-            <PrimaryCta />
-            <a href="#pricing" className="rounded-2xl px-6 py-3.5 text-base font-bold border border-line" style={{ background: "var(--color-card)" }}>
-              כמה זה עולה
-            </a>
+          <div className="pt-10 pb-16 lg:pt-[88px] lg:pb-28 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-12 lg:gap-16">
+            <div className="flex flex-col gap-6 lg:gap-8 lg:max-w-[720px]">
+              <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-on-navy-soft)]">
+                <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
+                מערכת ניהול לצלמי אירועים
+              </div>
+              <h1 className="font-display m-0 text-[54px] sm:text-7xl lg:text-[112px] leading-[0.98] font-bold tracking-[-0.035em] text-white text-balance">
+                פחות ניהול.
+                <br />
+                יותר צילום.
+              </h1>
+              <p className="m-0 text-lg lg:text-[22px] leading-[1.55] text-[var(--l-on-navy-soft)] lg:max-w-[600px]">
+                לידים, חוזים, תשלומים, גלריות ואלבומים במקום אחד. גילברטו מראה לכם בכל אירוע מה הצעד הבא, ומכינה את ההודעות
+                ללקוח לפי שיטת העבודה שלכם.
+              </p>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3">
+                <PrimaryCta />
+                <a
+                  href="#pricing"
+                  className="h-[52px] sm:h-14 px-6 rounded-[1px] inline-flex items-center justify-center border border-[var(--l-navy-border)] text-[var(--l-on-navy)] text-[17px] sm:text-lg font-semibold"
+                >
+                  כמה זה עולה
+                </a>
+              </div>
+              <p className="m-0 text-sm lg:text-[15px] text-[var(--l-on-navy-mute)] text-center sm:text-right">
+                בלי כרטיס אשראי. בזמן הניסיון כל האפשרויות של פרו+ פתוחות.
+              </p>
+            </div>
+
+            {/* The product itself: the real tour, playing in a phone frame. */}
+            <div className="relative self-center shrink-0 w-[260px] sm:w-[300px] lg:w-[440px] lg:h-[620px]">
+              <div className="hidden lg:block absolute inset-[40px_20px_0_60px] rounded-[28px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)]" />
+              <div className="relative lg:absolute lg:left-[100px] lg:top-0 w-full lg:w-[300px] rounded-[44px] p-3 bg-[#060a14] border border-[#2a3650] shadow-[0_40px_90px_rgba(0,0,0,0.5)]">
+                <video
+                  src="/guides/overview.mp4"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                  aria-label="סיור במערכת גילברטו"
+                  className="block w-full aspect-[480/768] object-cover object-top rounded-[34px] bg-[var(--l-bg-alt)]"
+                />
+              </div>
+              <div className="hidden lg:flex absolute right-0 bottom-16 w-[210px] flex-col gap-1 rounded-[14px] bg-white text-[var(--l-ink)] px-4 py-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+                <span className="text-xs text-[var(--l-ink-soft)]">עכשיו</span>
+                <span className="text-sm font-bold leading-snug">הלקוחה אישרה את עיצוב האלבום</span>
+              </div>
+            </div>
           </div>
-          <p className="text-sm text-ink-soft">בלי כרטיס אשראי. בזמן הניסיון כל האפשרויות של מסלול פרו+ פתוחות.</p>
-        </div>
-        <div className="self-center shrink-0 w-[260px] sm:w-[300px] lg:w-[330px] rounded-[44px] p-3 bg-[#1b1712] border border-line shadow-[0_40px_80px_rgba(36,29,21,0.22),0_8px_20px_rgba(36,29,21,0.12)]">
-          <video
-            src="/guides/overview.mp4"
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            aria-label="סיור במערכת גילברטו"
-            className="block w-full aspect-[480/768] object-cover object-top rounded-[32px]"
-            style={{ background: "var(--color-paper)" }}
-          />
         </div>
       </section>
 
-      {/* The road every event takes — numbered because it really is a sequence. */}
-      <section className="border-y border-line" style={{ background: "var(--color-card)" }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-16 sm:py-20 flex flex-col gap-8">
-          <div className="flex flex-col gap-3 max-w-2xl">
-            <h2 className="text-3xl sm:text-4xl font-black font-display tracking-tight text-balance">מהפנייה הראשונה ועד המסירה</h2>
-            <p className="text-base sm:text-lg text-ink-soft">
-              כל צלם עובד אחרת. אתם מגדירים את החבילות, השלבים וההודעות ללקוח, וגילברטו מסדרת את העבודה סביבם: מה
-              הבא בתור, מה הלקוח צריך לעשות ומה עוד לא שולם. ככה נראית דרך טיפוסית של אירוע:
+      {/* JOURNEY — a real sequence, drawn as a line of icons rather than numbers. */}
+      <section id="features" className="bg-[var(--l-bg)] scroll-mt-4">
+        <div className={`${CONTAINER} py-16 lg:py-32 flex flex-col gap-8 lg:gap-16`}>
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3.5 lg:gap-16">
+            <h2 className="font-display m-0 text-4xl lg:text-6xl leading-[1.05] font-bold tracking-[-0.03em] lg:max-w-[620px] text-balance">
+              מהפנייה הראשונה ועד המסירה.
+            </h2>
+            <p className="m-0 text-[17px] lg:text-[19px] leading-relaxed text-[var(--l-ink-soft)] lg:max-w-[520px]">
+              כל צלם עובד אחרת. אתם מגדירים את החבילות, השלבים וההודעות ללקוח, וגילברטו מסדרת את העבודה סביבם. ככה נראית דרך
+              טיפוסית של אירוע:
             </p>
           </div>
-          <ol className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-10">
-            {JOURNEY.map((step, i) => (
-              <li key={step.title} className="flex flex-col gap-1.5 py-5 border-t border-line">
-                <span className="text-[13px] font-extrabold font-data" style={{ color: "var(--color-amber-deep)" }}>
-                  {String(i + 1).padStart(2, "0")}
+          <ol className="relative m-0 p-0 list-none grid grid-cols-1 lg:grid-cols-6 gap-7">
+            <span aria-hidden="true" className="absolute bg-[var(--l-line)] right-[23px] top-6 bottom-6 w-0.5 lg:right-7 lg:left-7 lg:top-[27px] lg:bottom-auto lg:w-auto lg:h-0.5" />
+            {JOURNEY.map((step) => (
+              <li key={step.title} className="relative flex lg:flex-col gap-4">
+                <span className="w-12 h-12 lg:w-14 lg:h-14 shrink-0 rounded-[12px] lg:rounded-[14px] bg-[var(--l-navy)] text-[var(--l-accent)] flex items-center justify-center shadow-[0_0_0_6px_#fff] lg:shadow-[0_0_0_8px_#fff]">
+                  <Icon d={step.icon} size={22} />
                 </span>
-                <span className="text-xl font-extrabold">{step.title}</span>
-                <span className="text-[15px] leading-relaxed text-ink-soft">{step.text}</span>
+                <span className="flex flex-col gap-1.5 lg:gap-4 pt-1 lg:pt-0">
+                  <span className="font-display text-xl lg:text-[22px] font-bold tracking-tight">{step.title}</span>
+                  <span className="text-base leading-relaxed text-[var(--l-ink-soft)]">{step.text}</span>
+                </span>
               </li>
             ))}
           </ol>
-          <p className="text-[15px] text-ink-soft max-w-2xl">
-            השלבים כאן הם דוגמה. בכל חבילה בונים מסלול משלכם, עם השלבים שלכם ובסדר שלכם, ואפשר לסמן שלב כבוצע
-            בכל סדר, כי לא כל לקוח מתקדם באותו קצב.
+          <p className="m-0 flex items-start gap-3.5 rounded-[14px] bg-[var(--l-bg-alt)] px-5 py-4 lg:px-6 lg:py-5 text-base lg:text-[17px] text-[#3a4560]">
+            <Icon d="M4 6h16M4 12h10M4 18h6" size={22} className="shrink-0 mt-0.5 text-[var(--l-ink)]" />
+            השלבים כאן הם דוגמה. בכל חבילה בונים מסלול משלכם, ואפשר לסמן שלב כבוצע בכל סדר, כי לא כל לקוח מתקדם באותו קצב.
           </p>
         </div>
       </section>
 
-      <section className="max-w-6xl mx-auto px-4 sm:px-8 py-16 sm:py-20 flex flex-col gap-6">
-        <h2 className="text-2xl sm:text-3xl font-black font-display tracking-tight">ועוד כמה דברים שתשתמשו בהם כל שבוע</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-10">
-          {MORE.map((item) => (
-            <div key={item.title} className="flex flex-col gap-1 py-4 border-t border-line">
-              <span className="text-base font-extrabold">{item.title}</span>
-              <span className="text-sm leading-relaxed text-ink-soft">{item.text}</span>
-            </div>
-          ))}
+      {/* MORE */}
+      <section className="bg-[var(--l-bg-alt)]">
+        <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col gap-6 lg:gap-12`}>
+          <h2 className="font-display m-0 text-3xl lg:text-5xl leading-[1.1] font-bold tracking-[-0.025em]">ועוד דברים שתשתמשו בהם כל שבוע</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 lg:gap-4">
+            {MORE.map((item) => (
+              <div key={item.title} className="flex lg:flex-col gap-3.5 rounded-[16px] lg:rounded-[18px] bg-white border border-[var(--l-line)] p-5 lg:p-8 lg:min-h-[180px]">
+                <Icon d={item.icon} size={28} className="shrink-0 text-[var(--l-accent)] w-6 h-6 lg:w-7 lg:h-7" />
+                <span className="flex flex-col gap-1 lg:gap-3.5">
+                  <span className="font-display text-lg lg:text-[22px] font-bold tracking-tight">{item.title}</span>
+                  <span className="text-[15px] lg:text-[17px] leading-relaxed text-[var(--l-ink-soft)]">{item.text}</span>
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* Interactive time-savings calculator: the visitor's own numbers, not ours. */}
       <TimeSavingsCalculator />
 
-      <section id="pricing" className="max-w-3xl mx-auto px-4 py-14 scroll-mt-6">
-        <h2 className="text-3xl font-black font-display text-center mb-2">מחיר קבוע, בלי הפתעות</h2>
-        <p className="text-sm text-ink-soft text-center mb-9">14 יום ניסיון חינם, בלי כרטיס אשראי. אחר כך שלושה מסלולים, בלי עמלות נסתרות, וביטול בכל עת</p>
-        <PricingToggle />
-        <PlanComparison />
-      </section>
-
-      {/* A person behind the product. */}
-      {/* Inline colors, not bg-ink: the app's dark theme repaints .bg-ink as brass (globals.css). Ink/paper
-          simply swap here, so the band inverts in both themes. */}
-      <section style={{ background: "var(--color-ink)", color: "var(--color-paper)" }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-16 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
-          <figure className="flex flex-col gap-4 max-w-2xl m-0">
-            <blockquote className="m-0 text-[22px] sm:text-2xl leading-relaxed font-semibold">
-              &quot;בניתי את גילברטו כי אחרי כל צילום אירוע חיכו לי עוד שעות של וואטסאפים, קבצים ותזכורות. היום כל זה
-              מסודר ומוכן מראש, ואני חוזר לצלם.&quot;
-            </blockquote>
-            <figcaption className="text-[15px] opacity-75">רועי גלברט, צלם אירועים ומייסד גילברטו</figcaption>
-          </figure>
-          <Link
-            href="/signup"
-            className="self-start lg:self-center rounded-2xl px-7 py-4 text-base font-extrabold whitespace-nowrap"
-            style={{ background: "#d2ad68", color: "#1b1712" }}
-          >
-            14 יום חינם
-          </Link>
+      <section id="pricing" className="bg-[var(--l-bg-alt)] scroll-mt-4">
+        <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col gap-6 lg:gap-10`}>
+          <div className="flex flex-col gap-2.5 lg:gap-3.5 lg:items-center lg:text-center">
+            <h2 className="font-display m-0 text-[34px] lg:text-[56px] leading-[1.05] font-bold tracking-[-0.03em]">מחיר קבוע, בלי הפתעות</h2>
+            <p className="m-0 text-base lg:text-[19px] text-[var(--l-ink-soft)]">14 יום ניסיון חינם, בלי כרטיס אשראי. בלי עמלות נסתרות, וביטול בכל עת.</p>
+          </div>
+          <PricingToggle />
+          <PlanComparison />
         </div>
       </section>
 
-      <section className="max-w-2xl mx-auto px-4 py-14">
-        <h2 className="text-3xl font-black font-display text-center mb-9">שאלות נפוצות</h2>
-        <LandingFaq />
+      {/* A person behind the product. */}
+      <section className="bg-[var(--l-navy)] text-[var(--l-on-navy)]">
+        <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 lg:gap-20`}>
+          <figure className="m-0 flex flex-col gap-6 lg:gap-7 lg:max-w-[900px]">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="var(--l-accent)" aria-hidden="true">
+              <path d="M10 7H6a2 2 0 0 0-2 2v4h4v4h2V7zM20 7h-4a2 2 0 0 0-2 2v4h4v4h2V7z" />
+            </svg>
+            <blockquote className="font-display m-0 text-2xl lg:text-[38px] leading-[1.35] font-semibold tracking-[-0.015em]">
+              בניתי את גילברטו כי אחרי כל צילום אירוע חיכו לי עוד שעות של וואטסאפים, קבצים ותזכורות. היום כל זה מסודר ומוכן מראש,
+              ואני חוזר לצלם.
+            </blockquote>
+            <figcaption className="text-base lg:text-lg text-[var(--l-on-navy-soft)]">רועי גלברט, צלם אירועים ומייסד גילברטו</figcaption>
+          </figure>
+          <PrimaryCta className="whitespace-nowrap" />
+        </div>
       </section>
 
-      <footer className="max-w-6xl mx-auto px-4 sm:px-8 pb-10 pt-6 border-t border-line flex flex-col gap-3">
-        <p className="text-xs text-ink-soft">© {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט, צילום אירועים</p>
-        <nav className="flex items-center gap-x-5 gap-y-2 flex-wrap">
-          {FOOTER_LINKS.map((l) => (
-            <Link key={l.href} href={l.href} className="text-xs text-ink-soft underline underline-offset-2">
-              {l.label}
-            </Link>
-          ))}
-        </nav>
+      <section id="faq" className="bg-[var(--l-bg)] scroll-mt-4">
+        <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col lg:flex-row gap-5 lg:gap-24`}>
+          <div className="lg:w-[380px] shrink-0">
+            <h2 className="font-display m-0 text-3xl lg:text-5xl leading-[1.1] font-bold tracking-[-0.025em]">שאלות נפוצות</h2>
+          </div>
+          <div className="flex-1 min-w-0">
+            <LandingFaq />
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t border-[var(--l-line)] bg-[var(--l-bg)]">
+        <div className={`${CONTAINER} pt-7 pb-10 lg:pt-10 lg:pb-14 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5`}>
+          <div className="flex flex-col lg:flex-row lg:items-center gap-1.5 lg:gap-3">
+            <span className="font-display text-[17px] lg:text-lg font-bold">גילברטו</span>
+            <span className="text-[13px] lg:text-sm text-[var(--l-ink-soft)]">© {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט, צילום אירועים</span>
+          </div>
+          <nav className="flex flex-wrap gap-x-5 gap-y-2.5">
+            {FOOTER_LINKS.map((l) => (
+              <Link key={l.href} href={l.href} className="text-sm text-[var(--l-ink-soft)] hover:text-[var(--l-ink)]">
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
       </footer>
     </div>
   );

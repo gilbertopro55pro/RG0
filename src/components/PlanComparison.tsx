@@ -20,43 +20,54 @@ const ROWS: { label: string; basic: string | boolean; flow: string | boolean; fr
 function Cell({ value }: { value: string | boolean }) {
   if (value === true) {
     return (
-      <span
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-        style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="var(--l-accent)"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        role="img"
+        aria-label="כלול"
+        className="inline-block h-[18px] w-[18px]"
       >
-        ✓
-      </span>
+        <path d="M5 12l5 5 9-10" />
+      </svg>
     );
   }
   if (value === false) {
-    return <span className="text-ink-soft text-sm">—</span>;
+    return (
+      <span className="text-[var(--l-line)] text-base" aria-label="לא כלול">
+        —
+      </span>
+    );
   }
-  return <span className="text-[11px] font-semibold whitespace-nowrap">{value}</span>;
+  return <span className="text-[13px] font-semibold whitespace-nowrap text-[var(--l-ink)]">{value}</span>;
 }
 
 export default function PlanComparison() {
   return (
-    <div className="mt-10 overflow-x-auto">
-      <table className="w-full text-[13px]">
+    <div className="mt-10 sm:mt-12 overflow-x-auto rounded-[16px] border border-[var(--l-line)] bg-[var(--l-bg)] shadow-[0_1px_2px_rgba(11,18,32,0.04)]">
+      <table className="w-full min-w-[520px] text-sm text-[var(--l-ink)]">
         <thead>
-          <tr className="text-right border-b border-line">
-            <th className="py-2.5 font-medium text-[11px] text-ink-soft">כלול במסלול</th>
-            <th className="py-2.5 font-semibold font-display text-center w-11">פרו סטארט</th>
-            <th className="py-2.5 font-semibold font-display text-center w-11">פרו</th>
-            <th className="py-2.5 font-semibold font-display text-center w-11">פרו+</th>
+          <tr className="text-right border-b border-[var(--l-line)]">
+            <th className="py-4 px-4 sm:px-6 font-bold text-[var(--l-ink)]">כלול במסלול</th>
+            <th className="py-4 px-3 font-display font-bold text-center whitespace-nowrap">פרו סטארט</th>
+            <th className="py-4 px-3 font-display font-bold text-center whitespace-nowrap">פרו</th>
+            <th className="py-4 px-3 font-display font-bold text-center whitespace-nowrap">פרו+</th>
           </tr>
         </thead>
         <tbody>
           {ROWS.map((row) => (
-            <tr key={row.label} className="border-b border-line last:border-0">
-              <td className="py-2.5 pl-1.5">{row.label}</td>
-              <td className="py-2.5 text-center">
+            <tr key={row.label} className="border-b border-[var(--l-line)] last:border-0">
+              <td className="py-3 px-4 sm:px-6 text-[var(--l-ink-soft)] leading-snug">{row.label}</td>
+              <td className="py-3 px-3 text-center">
                 <Cell value={row.basic} />
               </td>
-              <td className="py-2.5 text-center">
+              <td className="py-3 px-3 text-center">
                 <Cell value={row.flow} />
               </td>
-              <td className="py-2.5 text-center">
+              <td className="py-3 px-3 text-center">
                 <Cell value={row.frame} />
               </td>
             </tr>

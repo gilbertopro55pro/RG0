@@ -4,112 +4,152 @@ import { useState } from "react";
 import Link from "next/link";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 
-// Both cards show a per-month figure at all times — switching the toggle swaps which cycle's
+// Every card shows a per-month figure at all times — switching the toggle swaps which cycle's
 // pricePerMonth is shown (and, for annual, the flat billed-total note), rather than switching
 // between "a monthly price" and "an annual total" (the usual SaaS pattern: the toggle changes
 // which number you're looking at, not what UNIT that number is in).
+
+type Card = {
+  key: SubscriptionPlan;
+  featured: boolean;
+  features: string[];
+};
+
+function CheckIcon({ color }: { color: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-4 w-4 sm:h-[18px] sm:w-[18px] shrink-0 mt-[3px] sm:mt-0.5"
+    >
+      <path d="M5 12l5 5 9-10" />
+    </svg>
+  );
+}
+
 export default function PricingToggle() {
   const [cycle, setCycle] = useState<"monthly" | "annual">("annual");
+  const annual = cycle === "annual";
 
-  const basicKey: SubscriptionPlan = cycle === "annual" ? "basic_annual" : "basic_monthly";
-  const flowKey: SubscriptionPlan = cycle === "annual" ? "annual" : "monthly";
-  const frameKey: SubscriptionPlan = cycle === "annual" ? "studio_pro_annual" : "studio_pro_monthly";
-  const basic = SUBSCRIPTION_PLANS[basicKey];
-  const flow = SUBSCRIPTION_PLANS[flowKey];
-  const frame = SUBSCRIPTION_PLANS[frameKey];
+  const cards: Card[] = [
+    {
+      key: annual ? "basic_annual" : "basic_monthly",
+      featured: false,
+      features: [
+        "ניהול אירועים, לידים והצעות מחיר",
+        "חוזים דיגיטליים ותזכורות תשלום",
+        "גלריות ללקוחות, 100GB",
+        "שמירת גלריה עד 14 יום",
+      ],
+    },
+    {
+      key: annual ? "annual" : "monthly",
+      featured: true,
+      features: [
+        "כל מה שבפרו סטארט",
+        "עורך אלבומים מובנה",
+        "פורטפוליו ציבורי, 750GB",
+        "שמירת גלריה עד 90 יום, עד 2 בצוות",
+      ],
+    },
+    {
+      key: annual ? "studio_pro_annual" : "studio_pro_monthly",
+      featured: false,
+      features: [
+        "כל מה שבפרו",
+        "אחסון ללא הגבלה",
+        "מיתוג מלא: לוגו וצבע בכל הגלריות",
+        "FTP Live מהמצלמה באירוע, עד 3 בצוות",
+      ],
+    },
+  ];
+
+  const segment = (active: boolean) =>
+    `flex-1 sm:flex-none h-11 px-4 sm:px-[22px] rounded-[9px] text-[15px] sm:text-base font-bold transition-colors text-[var(--l-ink)] ${
+      active ? "bg-[var(--l-bg)] shadow-[0_1px_2px_rgba(11,18,32,0.08)]" : "bg-transparent hover:bg-[var(--l-bg)]/50"
+    }`;
 
   return (
-    <div>
-      <div className="flex justify-center mb-8">
-        <div className="inline-flex items-center gap-1 p-1 rounded-full bg-chip">
-          <button
-            onClick={() => setCycle("monthly")}
-            className="rounded-full px-4 py-2 text-xs font-semibold transition-colors"
-            style={{
-              background: cycle === "monthly" ? "var(--color-amber-deep)" : "transparent",
-              color: cycle === "monthly" ? "#fff" : "var(--color-ink-soft)",
-            }}
-          >
-            חודשי
-          </button>
-          <button
-            onClick={() => setCycle("annual")}
-            className="rounded-full px-4 py-2 text-xs font-semibold transition-colors flex items-center gap-1.5"
-            style={{
-              background: cycle === "annual" ? "var(--color-amber-deep)" : "transparent",
-              color: cycle === "annual" ? "#fff" : "var(--color-ink-soft)",
-            }}
-          >
-            שנתי
-            <span
-              className="text-[9px] px-1.5 py-0.5 rounded-full"
-              style={{
-                background: cycle === "annual" ? "rgba(255,255,255,0.25)" : "var(--color-amber-bg)",
-                color: cycle === "annual" ? "var(--color-on-accent)" : "var(--color-amber-deep)",
-              }}
-            >
-              חוסכים
-            </span>
-          </button>
-        </div>
+    <div className="flex flex-col items-stretch sm:items-center gap-6 sm:gap-10">
+      <div
+        role="group"
+        aria-label="מחזור חיוב"
+        className="flex gap-1 p-1 rounded-[12px] bg-[var(--l-line)] sm:self-center"
+      >
+        <button type="button" aria-pressed={!annual} onClick={() => setCycle("monthly")} className={segment(!annual)}>
+          חודשי
+        </button>
+        <button type="button" aria-pressed={annual} onClick={() => setCycle("annual")} className={segment(annual)}>
+          <span className="sm:hidden">שנתי, חוסכים</span>
+          <span className="hidden sm:inline">שנתי, חוסכים עד 3 חודשים</span>
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <div className="rounded-2xl p-7 bg-card border border-line shadow-card">
-          <div className="text-sm font-semibold text-ink-soft mb-2 font-display">{basic.tierName}</div>
-          <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-2 bg-amber-bg text-amber-deep">
-            מסלול כניסה
-          </span>
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-3xl font-bold font-display">₪{basic.pricePerMonth}</span>
-            <span className="text-base text-ink-soft line-through">₪{basic.regularPricePerMonth}</span>
-            <span className="text-xs text-ink-soft">/ לחודש</span>
-          </div>
-          <p className="text-xs text-ink-soft mb-2">{basic.note}</p>
-          <p className="text-xs text-ink-soft mb-6">100GB אחסון, שמירת גלריה עד 14 יום</p>
-          <Link href="/signup" className="block w-full text-center rounded-xl py-3 text-sm font-semibold bg-card border border-line shadow-card">
-            בחירת {basic.tierName}
-          </Link>
-        </div>
-        <div className="rounded-2xl p-7 bg-card border border-line shadow-card">
-          <div className="text-sm font-semibold text-ink-soft mb-2 font-display">{flow.tierName}</div>
-          <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-2 bg-amber-bg text-amber-deep">
-            מחיר השקה
-          </span>
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-3xl font-bold font-display">₪{flow.pricePerMonth}</span>
-            <span className="text-base text-ink-soft line-through">₪{flow.regularPricePerMonth}</span>
-            <span className="text-xs text-ink-soft">/ לחודש</span>
-          </div>
-          <p className="text-xs text-ink-soft mb-2">{flow.note}</p>
-          <p className="text-xs text-ink-soft mb-6">750GB אחסון, עד 2 חברי צוות, שמירת גלריה עד 90 יום</p>
-          <Link href="/signup" className="block w-full text-center rounded-xl py-3 text-sm font-semibold bg-card border border-line shadow-card">
-            בחירת {flow.tierName}
-          </Link>
-        </div>
-        <div className="rounded-2xl p-7 relative bg-white border-[1.5px] border-amber shadow-card">
-          {frame.badge && (
-            <span className="absolute -top-2.5 right-6 text-[10px] px-2.5 py-0.5 rounded-full bg-amber text-white">
-              {frame.badge}
-            </span>
-          )}
-          <div className="text-sm font-semibold text-ink-soft mb-2 font-display">{frame.tierName}</div>
-          <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-2 bg-amber-bg text-amber-deep">
-            מחיר השקה
-          </span>
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-3xl font-bold font-display">₪{frame.pricePerMonth}</span>
-            <span className="text-base text-ink-soft line-through">₪{frame.regularPricePerMonth}</span>
-            <span className="text-xs text-ink-soft">/ לחודש</span>
-          </div>
-          <p className="text-xs text-ink-soft mb-2">{frame.note}</p>
-          <p className="text-xs text-ink-soft mb-6">אחסון ללא הגבלה, עד 3 חברי צוות, שמירת גלריה עד שנה, ומיתוג מלא: לוגו וצבע מותג על כל הגלריות</p>
-          <Link href="/signup" className="block w-full text-center rounded-xl py-3 text-sm font-semibold bg-amber-deep text-white">
-            בחירת {frame.tierName}
-          </Link>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+        {cards.map(({ key, featured, features }) => {
+          const plan = SUBSCRIPTION_PLANS[key];
+          return (
+            <div
+              key={key}
+              className={`flex flex-col gap-4 sm:gap-[22px] rounded-[18px] sm:rounded-[20px] p-6 sm:p-9 border ${
+                featured
+                  ? "bg-[var(--l-navy)] text-[var(--l-on-navy)] border-[var(--l-navy-line)]"
+                  : "bg-[var(--l-bg)] text-[var(--l-ink)] border-[var(--l-line)]"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-display text-[22px] sm:text-2xl font-bold">{plan.tierName}</div>
+                {featured && (
+                  <span className="rounded-[1px] bg-[var(--l-accent)] text-[var(--l-on-accent)] text-xs sm:text-[13px] font-bold px-[9px] py-1 sm:px-2.5 sm:py-[5px]">
+                    הכי משתלם
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-baseline gap-2 sm:gap-2.5 flex-wrap">
+                <span className="font-display text-5xl sm:text-[64px] leading-none font-bold tracking-[-0.04em]">
+                  ₪{plan.pricePerMonth}
+                </span>
+                <span className="text-[15px] sm:text-[17px] opacity-70">לחודש</span>
+                {plan.regularPricePerMonth != null && (
+                  <span className="text-[15px] sm:text-[17px] opacity-50 line-through">₪{plan.regularPricePerMonth}</span>
+                )}
+              </div>
+
+              <div className="text-sm sm:text-[15px] opacity-75">{plan.note}</div>
+
+              <div className={`h-px ${featured ? "bg-[var(--l-navy-line)]" : "bg-[var(--l-line)]"}`} />
+
+              <ul className="flex flex-col gap-2.5 sm:gap-3">
+                {features.map((f) => (
+                  <li key={f} className="flex gap-2 sm:gap-2.5 text-[15px] sm:text-base leading-[1.45]">
+                    <CheckIcon color={featured ? "var(--l-accent)" : "var(--l-ink)"} />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Link
+                href="/signup"
+                className={`mt-auto h-[50px] sm:h-[52px] flex items-center justify-center rounded-[1px] text-base sm:text-[17px] font-bold transition-opacity hover:opacity-90 ${
+                  featured
+                    ? "bg-[var(--l-accent)] text-[var(--l-on-accent)]"
+                    : "bg-[var(--l-navy)] text-[var(--l-on-navy)]"
+                }`}
+              >
+                להתחיל ניסיון חינם
+              </Link>
+            </div>
+          );
+        })}
       </div>
-      <p className="text-center text-xs text-ink-soft mt-6">ביטול בכל עת, בלי התחייבות</p>
+
+      <p className="text-center text-sm text-[var(--l-ink-soft)] -mt-2 sm:-mt-4">ביטול בכל עת, בלי התחייבות</p>
     </div>
   );
 }
