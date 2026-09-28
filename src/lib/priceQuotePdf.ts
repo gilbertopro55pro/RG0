@@ -10,18 +10,21 @@ import { notificationEmailFor } from "@/lib/notificationEmail";
 // landscape spread size, so this gets its own page-size constant rather than reusing albumPdf's.
 const PAGE_WIDTH = 595;
 const PAGE_HEIGHT = 842;
-const MARGIN = 40;
+const MARGIN = 44;
 
-// Invoice-style layout (owner's reference, 2026-09-28: a Finbot tax invoice): a navy header block
-// with the business details, navy section bars, light cells for the table, and a navy total box.
-const NAVY = rgb(0.122, 0.302, 0.475);
-const NAVY_TINT = rgb(0.886, 0.914, 0.945);
-const ACCENT = rgb(0.18, 0.8, 0.62);
-const CELL = rgb(0.933, 0.933, 0.933);
-const INK = rgb(0.13, 0.13, 0.15);
-const INK_SOFT = rgb(0.38, 0.38, 0.42);
+// The app's own palette (globals.css light theme): ink, gold and paper. The layout is the app's own
+// too (owner's request, 2026-09-28: invoice-like, but nothing that reads as another product's
+// document): a full-width ink band with a gold rule, the logo in a round badge over its edge, gold
+// section headings, a paper card with a gold rail, a hairline table and a rounded totals card.
+const INK = rgb(0.11, 0.106, 0.098); // --color-ink
+const INK_SOFT = rgb(0.384, 0.369, 0.337); // --color-ink-soft
+const GOLD = rgb(0.612, 0.478, 0.235); // --color-amber
+const GOLD_DEEP = rgb(0.486, 0.373, 0.153); // --color-amber-deep
+const GOLD_LIGHT = rgb(0.824, 0.678, 0.408); // the dark theme's amber, readable on ink
+const PAPER = rgb(0.949, 0.937, 0.914); // --color-paper
+const HAIRLINE = rgb(0.886, 0.867, 0.827); // --color-line
+const ON_INK_SOFT = rgb(0.78, 0.76, 0.72);
 const WHITE = rgb(1, 1, 1);
-const WHITE_SOFT = rgb(0.85, 0.9, 0.95);
 
 // "ש״ח" instead of the ₪ symbol used everywhere else in the app — this embedded Heebo font subset
 // has no glyph for ₪ at all (confirmed by rendering it: comes out as a missing-glyph box), while
@@ -100,60 +103,55 @@ export async function buildPriceQuotePdf(params: {
   const text = (t: string, opts: { x: number; width: number; y: number; size: number; font: Font; color: RGB; align?: "left" | "center" | "right" }) =>
     drawAlignedBidiText(page, t, { boxX: opts.x, boxWidth: opts.width, y: opts.y, size: opts.size, align: opts.align ?? "right", color: opts.color, ...opts.font });
 
-  // ── Header: navy block from the top-right corner, rounded bottom-left corner, green accent
-  // peeking out beneath that corner. Business details and the document title sit inside it.
-  const headerWidth = PAGE_WIDTH * 0.62;
-  const headerX = PAGE_WIDTH - headerWidth;
-  const headerLines: [string, number, Font, RGB][] = [[photographer.name, 14, bold, WHITE]];
+  // ── Header: full-width ink band, gold rule along its bottom edge. Right: the title and business
+  // details. Left: the date. The logo sits in a round white badge straddling the band's edge.
+  const bandHeight = 132;
+  const bandBottom = PAGE_HEIGHT - bandHeight;
+  page.drawRectangle({ x: 0, y: bandBottom, width: PAGE_WIDTH, height: bandHeight, color: INK });
+  page.drawRectangle({ x: 0, y: bandBottom - 3, width: PAGE_WIDTH, height: 3, color: GOLD });
+
+  const rightColW = contentWidth * 0.62;
+  const rightColX = PAGE_WIDTH - MARGIN - rightColW;
+  text("הצעת מחיר", { x: rightColX, width: rightColW, y: PAGE_HEIGHT - 44, size: 11, font: bold, color: GOLD_LIGHT });
+  text(photographer.name, { x: rightColX, width: rightColW, y: PAGE_HEIGHT - 70, size: 20, font: bold, color: WHITE });
   const businessLabel = showVat ? "עוסק מורשה" : "עוסק פטור";
-  if (photographer.business_id?.trim()) headerLines.push([`${businessLabel} ${photographer.business_id.trim()}`, 9.5, regular, WHITE_SOFT]);
-  // The address a client sees on the quote must be one that actually receives mail.
-  if (photographer.phone?.trim()) headerLines.push([`טלפון: ${photographer.phone.trim()}`, 9.5, regular, WHITE_SOFT]);
-  headerLines.push([notificationEmailFor(photographer.email), 9.5, regular, WHITE_SOFT]);
-  const headerHeight = 34 + headerLines.length * 15 + 44;
-  const cornerRadius = 26;
-  const accentPath = (dy: number) =>
-    `M 0 0 H ${headerWidth} V ${headerHeight + dy} H ${cornerRadius} Q 0 ${headerHeight + dy} 0 ${headerHeight + dy - cornerRadius} Z`;
-  page.drawSvgPath(accentPath(5), { x: headerX, y: PAGE_HEIGHT, color: ACCENT, borderWidth: 0 });
-  page.drawSvgPath(accentPath(0), { x: headerX, y: PAGE_HEIGHT, color: NAVY, borderWidth: 0 });
-
-  const headerTextX = headerX + 24;
-  const headerTextWidth = headerWidth - 24 - MARGIN;
-  let hy = PAGE_HEIGHT - 34;
-  headerLines.forEach(([t, size, font, color], i) => {
-    text(t, { x: headerTextX, width: headerTextWidth, y: hy, size, font, color });
-    hy -= i === 0 ? 17 : 14;
+  const contact = [
+    photographer.business_id?.trim() ? `${businessLabel} ${photographer.business_id.trim()}` : null,
+    photographer.phone?.trim() || null,
+    // The address a client sees on the quote must be one that actually receives mail.
+    notificationEmailFor(photographer.email),
+  ].filter((v): v is string => !!v);
+  contact.forEach((line, i) => {
+    text(line, { x: rightColX, width: rightColW, y: PAGE_HEIGHT - 92 - i * 13, size: 9, font: regular, color: ON_INK_SOFT });
   });
-  hy -= 4;
-  page.drawLine({ start: { x: headerTextX, y: hy }, end: { x: headerTextX + headerTextWidth, y: hy }, thickness: 0.75, color: WHITE_SOFT });
-  text("הצעת מחיר", { x: headerTextX, width: headerTextWidth, y: hy - 24, size: 19, font: bold, color: WHITE });
+  text(formatDateDMY(createdAt), { x: MARGIN, width: contentWidth * 0.3, y: PAGE_HEIGHT - 44, size: 10, font: regular, color: ON_INK_SOFT, align: "left" });
 
-  // Logo, in the free space left of the header, kept to its own aspect ratio.
+  const badgeR = 40;
+  const badgeCx = MARGIN + badgeR + 4;
+  const badgeCy = bandBottom - 1;
+  page.drawCircle({ x: badgeCx, y: badgeCy, size: badgeR + 3, color: GOLD });
+  page.drawCircle({ x: badgeCx, y: badgeCy, size: badgeR, color: WHITE });
   if (logo) {
-    const maxW = headerX - MARGIN - 20;
-    const maxH = headerHeight - 30;
-    const scale = Math.min(maxW / logo.width, maxH / logo.height, 1);
+    const box = badgeR * 1.4;
+    const scale = Math.min(box / logo.width, box / logo.height);
     const w = logo.width * scale;
     const h = logo.height * scale;
-    page.drawImage(logo, { x: MARGIN + (maxW - w) / 2, y: PAGE_HEIGHT - 15 - (maxH + h) / 2, width: w, height: h });
+    page.drawImage(logo, { x: badgeCx - w / 2, y: badgeCy - h / 2, width: w, height: h });
   }
 
-  // ── Recipient and date.
-  let y = PAGE_HEIGHT - headerHeight - 30;
-  text(`לכבוד: ${clientName || "לקוח/ה"}`, { x: MARGIN, width: contentWidth, y, size: 11.5, font: bold, color: INK });
-  text(formatDateDMY(createdAt), { x: MARGIN, width: contentWidth, y, size: 10, font: regular, color: INK_SOFT, align: "left" });
-  y -= 18;
-
-  const sectionBar = (title: string) => {
-    page.drawRectangle({ x: MARGIN, y: y - 24, width: contentWidth, height: 24, color: NAVY });
-    text(title, { x: MARGIN + 12, width: contentWidth - 24, y: y - 16.5, size: 10.5, font: bold, color: WHITE });
-    y -= 24 + 12;
-  };
+  let y = bandBottom - 34;
   const ensureSpace = (needed: number) => {
-    if (y - needed < MARGIN + 10) {
+    if (y - needed < MARGIN) {
       page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 6, width: PAGE_WIDTH, height: 6, color: INK });
       y = PAGE_HEIGHT - MARGIN;
     }
+  };
+  // Section heading: gold title with a short gold underline, right-aligned.
+  const heading = (title: string) => {
+    text(title, { x: MARGIN, width: contentWidth, y: y - 12, size: 12, font: bold, color: GOLD_DEEP });
+    page.drawRectangle({ x: PAGE_WIDTH - MARGIN - 28, y: y - 20, width: 28, height: 2, color: GOLD });
+    y -= 34;
   };
 
   const WRAP_SIZE = 9.5;
@@ -176,119 +174,116 @@ export async function buildPriceQuotePdf(params: {
     if (current) lines.push(current);
     return lines;
   };
+  // Keeps the photographer's own line breaks (e.g. "זמני אספקה:" then one line per deliverable):
+  // each typed line wraps on its own, and an empty line stays as a gap.
+  const wrapParagraphs = (t: string, boxWidth: number, font: typeof hebrewRegular, size = WRAP_SIZE): string[] =>
+    t
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .flatMap((paragraph) => (paragraph.trim() ? wrapLines(paragraph, boxWidth, font, size) : [""]));
 
-  // ── Event details: label/value cells, two pairs per row.
+  // ── Recipient + event details: one paper card with a gold rail on its right edge.
   const detailPairs = (
     [
       ["סוג האירוע", eventDetails?.type],
       ["תאריך", eventDetails?.date],
-      ["מיקום האירוע", eventDetails?.location],
+      ["מיקום", eventDetails?.location],
       ["שעות העבודה", eventDetails?.workHours],
     ] as [string, string | undefined][]
   ).filter((p): p is [string, string] => !!p[1]?.trim());
-  if (detailPairs.length) {
-    y -= 6;
-    sectionBar("פרטי האירוע");
-    const gap = 6;
-    const pairWidth = (contentWidth - gap) / 2;
-    const labelWidth = 84;
-    for (let i = 0; i < detailPairs.length; i += 2) {
-      const rowHeight = 22;
-      detailPairs.slice(i, i + 2).forEach(([label, value], j) => {
-        const pairX = MARGIN + contentWidth - pairWidth - j * (pairWidth + gap);
-        roundedRect(page, pairX + pairWidth - labelWidth, y, labelWidth, rowHeight, 3, NAVY_TINT);
-        roundedRect(page, pairX, y, pairWidth - labelWidth - 4, rowHeight, 3, CELL);
-        text(label, { x: pairX + pairWidth - labelWidth + 6, width: labelWidth - 12, y: y - 14.5, size: 9, font: bold, color: NAVY });
-        text(value.trim(), { x: pairX + 6, width: pairWidth - labelWidth - 16, y: y - 14.5, size: 9.5, font: regular, color: INK });
-      });
-      y -= rowHeight + 5;
-    }
-    y -= 8;
-  }
+  const detailRows = Math.ceil(detailPairs.length / 2);
+  const cardHeight = 44 + detailRows * 30 + (detailRows ? 6 : 0);
+  // Keeps the card clear of the logo badge that hangs below the band on the left.
+  const cardX = MARGIN + badgeR * 2 + 22;
+  const cardWidth = PAGE_WIDTH - MARGIN - cardX;
+  roundedRect(page, cardX, y, cardWidth, cardHeight, 8, PAPER);
+  page.drawRectangle({ x: PAGE_WIDTH - MARGIN - 4, y: y - cardHeight, width: 4, height: cardHeight, color: GOLD });
+  const cardInnerX = cardX + 16;
+  const cardInnerW = cardWidth - 36;
+  text("לכבוד", { x: cardInnerX, width: cardInnerW, y: y - 18, size: 8.5, font: regular, color: INK_SOFT });
+  text(clientName || "לקוח/ה", { x: cardInnerX, width: cardInnerW, y: y - 34, size: 13, font: bold, color: INK });
+  const pairW = cardInnerW / 2;
+  detailPairs.forEach(([label, value], i) => {
+    const row = Math.floor(i / 2);
+    const col = i % 2;
+    const px = cardInnerX + cardInnerW - pairW * (col + 1);
+    const py = y - 52 - row * 30;
+    text(label, { x: px, width: pairW - 8, y: py - 4, size: 8, font: regular, color: INK_SOFT });
+    text(value.trim(), { x: px, width: pairW - 8, y: py - 17, size: 10, font: bold, color: INK });
+  });
+  y -= cardHeight + 26;
 
-  // ── Items table: right-to-left column order (פריט rightmost) — פריט 30%, פרטים 48%, מחיר 22%.
-  ensureSpace(80);
-  sectionBar("פריטים");
-  const gap = 4;
-  const colPriceW = contentWidth * 0.22;
-  const colItemW = contentWidth * 0.3;
-  const colDetailsW = contentWidth - colPriceW - colItemW - gap * 2;
+  // ── Items: hairline-separated rows, price on the left. Right-to-left column order —
+  // פריט 32%, פרטים 44%, מחיר 24%.
+  ensureSpace(90);
+  heading("פירוט ההצעה");
+  const colPriceW = contentWidth * 0.24;
+  const colItemW = contentWidth * 0.32;
+  const colDetailsW = contentWidth - colPriceW - colItemW;
   const colPriceX = MARGIN;
-  const colDetailsX = colPriceX + colPriceW + gap;
-  const colItemX = colDetailsX + colDetailsW + gap;
+  const colDetailsX = colPriceX + colPriceW;
+  const colItemX = colDetailsX + colDetailsW;
   const columnHeader = () => {
-    text("פריט", { x: colItemX + 6, width: colItemW - 12, y: y - 10, size: 9.5, font: bold, color: NAVY });
-    text("פרטים", { x: colDetailsX + 6, width: colDetailsW - 12, y: y - 10, size: 9.5, font: bold, color: NAVY });
-    text("מחיר", { x: colPriceX + 6, width: colPriceW - 12, y: y - 10, size: 9.5, font: bold, color: NAVY });
-    y -= 20;
+    text("פריט", { x: colItemX, width: colItemW, y: y - 8, size: 8.5, font: bold, color: INK_SOFT });
+    text("פרטים", { x: colDetailsX + 8, width: colDetailsW - 16, y: y - 8, size: 8.5, font: bold, color: INK_SOFT });
+    text("מחיר", { x: colPriceX, width: colPriceW, y: y - 8, size: 8.5, font: bold, color: INK_SOFT, align: "left" });
+    y -= 14;
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 1, color: INK });
   };
   columnHeader();
 
   // The calculator auto-adds a "צילום אירוע" (event shoot) row summarizing the hours/rate — that's
-  // redundant with the "סוג האירוע"/"שעות העבודה" cells already shown above, so it's dropped from
+  // redundant with the "סוג האירוע"/"שעות העבודה" details already shown above, so it's dropped from
   // the printed table. Its price still counts toward subtotal/total (those come in already computed
   // from the full item list, not derived from what's rendered here).
   const displayItems = items.filter((row) => row.item.trim() !== "צילום אירוע");
 
   for (const row of displayItems) {
-    const itemLines = wrapLines(row.item, colItemW, hebrewRegular);
-    const detailLines = row.details?.trim() ? wrapLines(row.details, colDetailsW, hebrewRegular) : [];
-    const rowHeight = Math.max(24, Math.max(itemLines.length, detailLines.length) * 13 + 11);
-    if (y - rowHeight < MARGIN + 10) {
-      page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-      y = PAGE_HEIGHT - MARGIN;
+    const itemLines = wrapLines(row.item, colItemW, hebrewBold);
+    const detailLines = row.details?.trim() ? wrapParagraphs(row.details.trim(), colDetailsW - 16, hebrewRegular) : [];
+    const rowHeight = Math.max(30, Math.max(itemLines.length, detailLines.length) * 13 + 17);
+    if (y - rowHeight < MARGIN) {
+      ensureSpace(rowHeight + 20);
       columnHeader();
     }
-    roundedRect(page, colItemX, y, colItemW, rowHeight, 3, CELL);
-    roundedRect(page, colDetailsX, y, colDetailsW, rowHeight, 3, CELL);
-    roundedRect(page, colPriceX, y, colPriceW, rowHeight, 3, CELL);
-    itemLines.forEach((line, i) => text(line, { x: colItemX + 6, width: colItemW - 12, y: y - 15.5 - i * 13, size: WRAP_SIZE, font: bold, color: INK }));
-    detailLines.forEach((line, i) => text(line, { x: colDetailsX + 6, width: colDetailsW - 12, y: y - 15.5 - i * 13, size: WRAP_SIZE, font: regular, color: INK_SOFT }));
-    text(currency(row.price), { x: colPriceX + 6, width: colPriceW - 12, y: y - 15.5, size: WRAP_SIZE, font: regular, color: INK, align: "left" });
-    y -= rowHeight + gap;
+    itemLines.forEach((line, i) => text(line, { x: colItemX, width: colItemW, y: y - 19 - i * 13, size: WRAP_SIZE, font: bold, color: INK }));
+    detailLines.forEach((line, i) => text(line, { x: colDetailsX + 8, width: colDetailsW - 16, y: y - 19 - i * 13, size: WRAP_SIZE, font: regular, color: INK_SOFT }));
+    text(currency(row.price), { x: colPriceX, width: colPriceW, y: y - 19, size: WRAP_SIZE, font: regular, color: INK, align: "left" });
+    y -= rowHeight;
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 0.6, color: HAIRLINE });
   }
 
-  // ── Totals, on the left like an invoice: label cells in a navy tint, the final line in navy.
-  y -= 12;
+  // ── Totals: a rounded paper card on the left; the amount due on an ink strip, in gold.
+  y -= 20;
   const summaryRows: [string, number][] = showVat
     ? [
         ["סה״כ לפני מע״מ", subtotal],
-        ["מע״מ", vatAmount],
+        ["מע״מ 18%", vatAmount],
       ]
     : [];
-  ensureSpace(summaryRows.length * 26 + 34);
-  const valueW = 92;
-  const labelW = 150;
-  const labelX = MARGIN + valueW + gap;
+  const totalsW = 236;
+  const totalsH = 16 + summaryRows.length * 22 + 40;
+  ensureSpace(totalsH + 10);
+  roundedRect(page, MARGIN, y, totalsW, totalsH, 10, PAPER);
+  let ty = y - 12;
   for (const [label, value] of summaryRows) {
-    roundedRect(page, labelX, y, labelW, 22, 3, NAVY_TINT);
-    roundedRect(page, MARGIN, y, valueW, 22, 3, CELL);
-    text(label, { x: labelX + 8, width: labelW - 16, y: y - 14.5, size: 9.5, font: bold, color: NAVY });
-    text(currency(value), { x: MARGIN + 6, width: valueW - 12, y: y - 14.5, size: 9.5, font: regular, color: INK, align: "left" });
-    y -= 26;
+    text(label, { x: MARGIN + 14, width: totalsW - 28, y: ty - 10, size: 9.5, font: regular, color: INK_SOFT });
+    text(currency(value), { x: MARGIN + 14, width: totalsW - 28, y: ty - 10, size: 9.5, font: regular, color: INK, align: "left" });
+    ty -= 22;
   }
-  page.drawRectangle({ x: MARGIN, y: y - 28, width: valueW + gap + labelW, height: 28, color: NAVY });
-  text(showVat ? "סה״כ לתשלום כולל מע״מ" : "סה״כ לתשלום (עוסק פטור)", {
-    x: labelX + 8,
-    width: labelW - 16,
-    y: y - 18.5,
-    size: 10,
-    font: bold,
-    color: WHITE,
-  });
-  text(currency(total), { x: MARGIN + 6, width: valueW - 12, y: y - 18.5, size: 11, font: bold, color: WHITE, align: "left" });
-  y -= 28;
+  roundedRect(page, MARGIN + 6, ty - 2, totalsW - 12, 34, 8, INK);
+  text(showVat ? "לתשלום, כולל מע״מ" : "לתשלום (עוסק פטור)", { x: MARGIN + 18, width: totalsW - 36, y: ty - 23, size: 10, font: bold, color: WHITE });
+  text(currency(total), { x: MARGIN + 18, width: totalsW - 36, y: ty - 23.5, size: 13, font: bold, color: GOLD_LIGHT, align: "left" });
+  y -= totalsH;
 
   // ── Notes.
   if (notes?.trim()) {
-    y -= 22;
-    const noteLines = wrapLines(notes.trim(), contentWidth - 24, hebrewRegular);
-    ensureSpace(36 + noteLines.length * 13 + 16);
-    sectionBar("הערות");
-    const blockHeight = noteLines.length * 13 + 14;
-    roundedRect(page, MARGIN, y, contentWidth, blockHeight, 4, CELL);
-    noteLines.forEach((line, i) => text(line, { x: MARGIN + 12, width: contentWidth - 24, y: y - 16 - i * 13, size: 9.5, font: regular, color: INK }));
-    y -= blockHeight;
+    y -= 26;
+    const noteLines = wrapParagraphs(notes.trim(), contentWidth, hebrewRegular);
+    ensureSpace(40 + noteLines.length * 14);
+    heading("הערות");
+    noteLines.forEach((line, i) => text(line, { x: MARGIN, width: contentWidth, y: y - i * 14, size: 9.5, font: regular, color: INK }));
+    y -= noteLines.length * 14;
   }
 
   return pdfDoc.save();
