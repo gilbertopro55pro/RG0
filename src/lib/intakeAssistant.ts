@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
+import { buildIntakeTranscriptPdf } from "@/lib/intakeTranscriptPdf";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { findLeadsByPhone } from "@/lib/leadDuplicates";
@@ -256,7 +257,22 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
   return data?.id ?? null;
 }
 
-async function notifyPhotographer(p: IntakePhotographer, subject: string, d: IntakeDetails, siteUrl: string, intro: string) {
+// The lead's details as [label, value] pairs for the conversation PDF.
+function detailPairs(d: IntakeDetails): [string, string][] {
+  const pairs: [string, string | null | undefined][] = [
+    ["שם", d.clientName],
+    ["טלפון", d.phone],
+    ["סוג האירוע", d.eventType],
+    ["תאריך", dateText(d)],
+    ["מקום", d.location],
+    ["אורחים", d.guests],
+    ["שעות", d.startTime || d.endTime ? `${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null],
+    ["חשוב להם", d.wishes],
+  ];
+  return pairs.filter((x): x is [string, string] => !!x[1]?.toString().trim()).map(([l, v]) => [l, String(v)]);
+}
+
+async function notifyPhotographer(p: IntakePhotographer, subject: string, d: IntakeDetails, siteUrl: string, intro: string, messages?: Anthropic.MessageParam[]) {
   const lines = [
     d.clientName ? `שם: ${d.clientName}` : null,
     d.phone ? `טלפון: ${d.phone}` : null,
@@ -267,15 +283,45 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
     d.startTime || d.endTime ? `שעות: ${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null,
     d.wishes ? `חשוב להם: ${d.wishes}` : null,
   ].filter(Boolean);
+  // The whole conversation as a designed PDF the photographer can forward to the client on
+  // WhatsApp (owner's request, 2026-09-28). Best-effort: the email goes out without it on failure.
+  let attachments: { filename: string; content: string }[] | undefined;
+  const transcript = messages ? transcriptOf(messages) : [];
+  if (transcript.length) {
+    try {
+      const pdf = await buildIntakeTranscriptPdf({ studio: studioName(p), clientName: d.clientName ?? "", details: detailPairs(d), transcript, createdAt: new Date() });
+      const who = (d.clientName ?? "").replace(/[\\/:*?"<>|]+/g, " ").trim();
+      attachments = [{ filename: `סיכום-השיחה${who ? `-${who}` : ""}.pdf`, content: Buffer.from(pdf).toString("base64") }];
+    } catch (e) {
+      console.error("Intake transcript PDF failed:", p.id, e);
+    }
+  }
   try {
     await sendEmail({
       to: notificationEmailFor(p.email),
       subject,
-      text: `שלום ${p.name},\n\n${intro}\n\n${lines.join("\n")}\n\nלכל הלידים: ${siteUrl}/leads`,
+      text:
+        `שלום ${p.name},\n\n${intro}\n\n${lines.join("\n")}\n\nלכל הלידים: ${siteUrl}/leads` +
+        (attachments ? `\n\nמצורף סיכום השיחה כקובץ PDF. אפשר להעביר אותו ללקוח בוואטסאפ.` : ""),
+      attachments,
     });
   } catch (e) {
     console.error("Intake notification email failed:", p.id, e);
   }
+}
+
+// Handoff emails are queued during a turn and sent once the turn ends, so the attached
+// conversation includes the assistant's closing reply (the handoff itself happens mid-turn, from a
+// tool call, before that reply is written).
+type PendingNotice = { subject: string; intro: string };
+const pendingNotices = new WeakMap<IntakeConversation, PendingNotice[]>();
+function queueNotice(conv: IntakeConversation, n: PendingNotice) {
+  pendingNotices.set(conv, [...(pendingNotices.get(conv) ?? []), n]);
+}
+async function flushNotices(conv: IntakeConversation, p: IntakePhotographer, siteUrl: string, messages: Anthropic.MessageParam[]) {
+  const list = pendingNotices.get(conv) ?? [];
+  pendingNotices.delete(conv);
+  for (const n of list) await notifyPhotographer(p, n.subject, conv.collected, siteUrl, n.intro, messages);
 }
 
 // Marks the conversation done, turns its lead into a full one and emails the photographer. Runs
@@ -287,13 +333,11 @@ async function completeIntake(supabase: ServiceClient, conv: IntakeConversation,
   conv.completed_at = new Date().toISOString();
   conv.lead_id = await upsertLead(supabase, conv, true);
   const d = conv.collected;
-  await notifyPhotographer(
-    p,
-    `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : "(תאריך טרם נקבע)"}`.trim(),
-    d,
-    siteUrl,
-    "העוזר אסף את כל פרטי האירוע. הליד מחכה להצעת מחיר ממך."
-  );
+  void siteUrl;
+  queueNotice(conv, {
+    subject: `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : "(תאריך טרם נקבע)"}`.trim(),
+    intro: "העוזר אסף את כל פרטי האירוע. הליד מחכה להצעת מחיר ממך.",
+  });
 }
 
 async function runTool(
@@ -387,7 +431,7 @@ async function runTool(
     });
     conv.state = "waitlisted";
     conv.completed_at = new Date().toISOString();
-    await notifyPhotographer(p, `פנייה לתאריך תפוס נכנסה לרשימת ההמתנה: ${d.clientName}`, d, siteUrl, "לקוח/ה פנה/תה לתאריך שכבר תפוס אצלך, ונכנס/ה לרשימת ההמתנה.");
+    queueNotice(conv, { subject: `פנייה לתאריך תפוס נכנסה לרשימת ההמתנה: ${d.clientName}`, intro: "לקוח/ה פנה/תה לתאריך שכבר תפוס אצלך, ונכנס/ה לרשימת ההמתנה." });
     return JSON.stringify({ ok: true });
   }
 
@@ -427,6 +471,7 @@ export async function runIntakeTurn(
       });
     } catch (e) {
       console.error("Intake assistant API error:", conv.id, e);
+      await flushNotices(conv, p, siteUrl, messages);
       return fallback;
     }
     const u = response.usage;
@@ -465,6 +510,8 @@ export async function runIntakeTurn(
   }
 
   conv.messages = messages;
+  // `messages` now ends with the assistant's closing reply: send any queued handoff email with it.
+  await flushNotices(conv, p, siteUrl, messages);
   if (refused) return `את זה ${studioName(p)} יענה לכם ישירות. נמשיך עם פרטי האירוע?`;
   return texts.join("\n\n") || fallback;
 }
