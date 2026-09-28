@@ -232,6 +232,80 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* The intake assistant: a real recorded conversation with the test account's assistant
+          (public/guides/intake-demo.mp4, recorded with the guide-video skill), and the FAQ it
+          answers from. Plan limits mirror INTAKE_MONTHLY_CAP in lib/intakeAssistant.ts. */}
+      <section id="assistant" className="bg-[var(--l-navy)] text-[var(--l-on-navy)] scroll-mt-4">
+        <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-12 lg:gap-20`}>
+          <div className="flex flex-col gap-6 lg:gap-7 lg:max-w-[640px]">
+            <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-on-navy-soft)]">
+              <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
+              עוזר פניות חכם
+            </div>
+            <h2 className="font-display m-0 text-4xl lg:text-[56px] leading-[1.05] font-bold tracking-[-0.03em] text-white text-balance">
+              לקוח כותב בשתיים בלילה. מישהו כבר עונה לו.
+            </h2>
+            <p className="m-0 text-[17px] lg:text-[19px] leading-relaxed text-[var(--l-on-navy-soft)]">
+              עוזר הפניות מדבר עם לקוחות חדשים כמו בן אדם, מהקישור בוואטסאפ או באתר שלכם. הוא בודק ביומן אם התאריך פנוי, אוסף את
+              פרטי האירוע, ומעביר לכם ליד מסודר ברגע שיש טלפון. על מחירים הוא לא עונה: את ההצעה שולחים אתם.
+            </p>
+            <ul className="m-0 p-0 list-none flex flex-col gap-3.5">
+              {[
+                { icon: "M4 6h16v14H4zM4 10h16M9 3v4M15 3v4M9 15l2 2 4-4", text: "בודק זמינות מול האירועים ויומן Google שלכם" },
+                { icon: "M4 5h16v11H8l-4 4zM9 9h6M9 12h4", text: "עונה בשפה אנושית, שאלה אחת בכל פעם" },
+                { icon: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a7 7 0 0 1 14 0v1M19 8v6M16 11h6", text: "כל שיחה עם טלפון נכנסת אצלכם כליד, עם כל הפרטים" },
+              ].map((f) => (
+                <li key={f.text} className="flex items-center gap-3.5 text-base lg:text-[17px]">
+                  <span className="w-10 h-10 shrink-0 rounded-[10px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] text-[var(--l-accent)] flex items-center justify-center">
+                    <Icon d={f.icon} size={20} />
+                  </span>
+                  {f.text}
+                </li>
+              ))}
+            </ul>
+
+            {/* Behind the scenes: what the photographer writes in settings › אוטומציה. */}
+            <div className="rounded-[14px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-5 lg:p-6 flex flex-col gap-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-display text-lg font-bold text-white">מאחורי הקלעים: שאלות ותשובות משלכם</span>
+                <span className="text-xs text-[var(--l-on-navy-mute)] whitespace-nowrap">הגדרות › אוטומציה</span>
+              </div>
+              <p className="m-0 text-[15px] leading-relaxed text-[var(--l-on-navy-soft)]">
+                כותבים לעוזר את התשובות שלכם, והוא עונה לפיהן במקום להמציא. אפשר גם להוסיף שאלה משלכם שהוא ישאל כל לקוח.
+              </p>
+              {[
+                { q: "מתי מקבלים את התמונות?", a: "גלריה ראשונה תוך שבוע, וכל התמונות תוך 45 יום." },
+                { q: "מגיעים גם לצפון?", a: "כן, לכל הארץ. פרטי הנסיעה יופיעו בהצעת המחיר." },
+              ].map((item) => (
+                <div key={item.q} className="rounded-[10px] bg-[var(--l-navy)] border border-[var(--l-navy-line)] px-4 py-3 flex flex-col gap-1">
+                  <span className="text-[15px] font-semibold text-white">{item.q}</span>
+                  <span className="text-sm text-[var(--l-on-navy-soft)]">{item.a}</span>
+                </div>
+              ))}
+              <span className="text-sm font-semibold text-[var(--l-accent)]">+ שאלה חדשה</span>
+            </div>
+            <p className="m-0 text-sm text-[var(--l-on-navy-mute)]">במסלול פרו עד 100 שיחות בחודש, בפרו+ עד 200.</p>
+          </div>
+
+          {/* A real conversation with the assistant, recorded from the live site. */}
+          <div className="self-center shrink-0 w-[260px] sm:w-[300px] lg:w-[340px]">
+            <div className="rounded-[44px] p-3 bg-[#060a14] border border-[#2a3650] shadow-[0_40px_90px_rgba(0,0,0,0.5)]">
+              <video
+                src="/guides/intake-demo.mp4"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                aria-label="הדגמה: שיחה של לקוח עם עוזר הפניות"
+                className="block w-full aspect-[480/768] object-cover object-top rounded-[34px] bg-[var(--l-bg-alt)]"
+              />
+            </div>
+            <p className="m-0 mt-3 text-center text-xs text-[var(--l-on-navy-mute)]">שיחה אמיתית עם העוזר, מחשבון הדגמה</p>
+          </div>
+        </div>
+      </section>
+
       {/* Interactive time-savings calculator: the visitor's own numbers, not ours. */}
       <TimeSavingsCalculator />
 

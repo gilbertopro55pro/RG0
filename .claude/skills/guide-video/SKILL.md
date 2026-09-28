@@ -14,7 +14,8 @@ scenario file in `scenarios/<key>.js`; the engine is `record.js`; `convert.py` c
 - `record.js` — engine. `node record.js <key>` runs `scenarios/<key>.js` and writes a raw .webm + `<key>.json` to `$GF_OUT`.
 - `convert.py` — `python3 convert.py <key>` → `$GF_OUT/<key>.mp4` (480x768 H.264) + `<key>-strip.png` for review.
 - `login.js` — creates the session file (`$GF_STATE`) the recorder logs in with.
-- `scenarios/*.js` — overview, portfolio, settings, galleries, client-portals, leads, waitlist, analytics.
+- `scenarios/*.js` — overview, portfolio, settings, galleries, client-portals, leads, waitlist, analytics, intake-demo.
+- `intake-demo` is the landing page's assistant demo (`public/guides/intake-demo.mp4`, the "עוזר פניות חכם" section of `LandingPage.tsx`), not a page guide. It holds a real conversation on `/chat/studio-or?src=demo` (live model replies, so they differ per run: review the frames), then settings › אוטומציה › שאלות נפוצות. `GF_CHAT_ONLY=1` records only the chat (no login needed; any `GF_STATE`, even `{"cookies":[],"origins":[]}`). Each run creates a lead "נועה" (0500000123, source `demo`) in the test account. Published 2026-09-28 as chat-only (no test-account session in the sandbox yet).
 
 ## Setup (once per container)
 1. Scratch dir outside the repo: `export GF_OUT=<scratchpad>/guide-video GF_STATE=<scratchpad>/qa-state.json`.
