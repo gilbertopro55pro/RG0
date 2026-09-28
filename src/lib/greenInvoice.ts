@@ -79,7 +79,19 @@ export async function issueDocument({
         emails: [customerEmail],
         add: false,
       },
-      income: [{ description, quantity: 1, price: amount, currency: "ILS", vatType: 0 }],
+      // `amount` is the real sum received, VAT included. Income-row vatType 0 means "VAT is added on
+      // top per the business type", which for an עוסק מורשה (320) would bill amount + 18% against a
+      // payment of `amount`. 1 = "VAT included in the price", so Green Invoice backs the VAT out of
+      // the paid sum itself. A 400 receipt (עוסק פטור) carries no VAT, so it keeps the default.
+      income: [
+        {
+          description,
+          quantity: 1,
+          price: amount,
+          currency: "ILS",
+          vatType: documentType === TAX_INVOICE_DOCUMENT_TYPE ? 1 : 0,
+        },
+      ],
       // Document types 320/400 require a payment array to close the document. Type 11 ("Other")
       // — same reasoning as Finbot's type "7": the payment already happened elsewhere (PayPlus /
       // bank transfer / cash), we're only recording it, and we don't hold real card details to
