@@ -116,7 +116,7 @@ one). ₪59 divides exactly (50.00), which is why it never showed before. Fix (`
 2-decimal prices one agora apart, retrying only on Finbot validation rejections (no document is
 created on a rejection). **Not verified against Finbot** (keys are sensitive, docs blocked from the
 sandbox): confirm on the next non-round renewal that `receipt_status='issued'`. The failed receipt
-itself was issued by hand in Finbot by the owner.
+itself has to be issued by hand in Finbot (asked the owner on 2026-09-28).
 
 Most likely cause: PayPlus's recurring engine. The `instant_first_payment` + `start_date_on_payment_date`
 combination can produce a same-day second charge, but it didn't on every account. It wasn't
