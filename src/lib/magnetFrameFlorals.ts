@@ -5,6 +5,8 @@
 // library asset, not anyone's own upload. Not recolorable (unlike an AlbumOrnament) since each is a
 // real painted image, not a procedural shape — same reasoning as a photographer's own uploaded
 // customElementAssetId image.
+import { MAGNET_FRAME_DIGITS } from "@/lib/magnetFrameDigits";
+
 export type MagnetFrameFloral = { id: string; label: string; url: string };
 
 export const MAGNET_FRAME_FLORALS: MagnetFrameFloral[] = [
@@ -58,7 +60,7 @@ export const MAGNET_FRAME_FLORALS: MagnetFrameFloral[] = [
   { id: "wc3-boho-dried", label: "זר בוהו יבש", url: "/magnet-elements/wc3-boho-dried.png" },
 ];
 
-const byId = new Map(MAGNET_FRAME_FLORALS.map((f) => [f.id, f]));
+const byId = new Map([...MAGNET_FRAME_FLORALS, ...MAGNET_FRAME_DIGITS].map((f) => [f.id, f]));
 
 export function findMagnetFrameFloral(id: string | undefined): MagnetFrameFloral | undefined {
   return id ? byId.get(id) : undefined;
