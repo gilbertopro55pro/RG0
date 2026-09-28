@@ -106,6 +106,20 @@ Found in `payplus_webhook_events` on 2026-09-24 (Israel times):
 
 If a charge for an unknown account ever shows up again, the webhook now emails an alert.
 
+**2026-09-28 correction:** the two leftover recurrings were in fact still active in PayPlus (not
+removed on 09-25 as noted above): `1PnrE` (`test-photographer-id`) and `jsUQn` (deleted account
+`cca6cfe0…`, charged as late as 09-23), both on the owner's own card, so no refund was owed. The
+owner deleted both in PayPlus (הוראות קבע › רשימת הוראות קבע › ⋮ › מחק הוראת קבע). Active after
+that: `TBoog` (`146ad19b…`, rudyaz) and `6stUu` (`78a97d91…`). To match a PayPlus recurring to an
+account, query `payload->'transaction'->'recurring_charge_information'->>'recurring_number'`.
+
+**Failed recurring charges don't reach the webhook.** `146ad19b…` (TBoog) was declined by Max on
+09-28 04:10 (error 6, "ת.ז או CVV שגויים"), visible only in PayPlus › דו״ח נכשלים; no callback
+arrived, so the app never saw it. Access isn't affected (`hasAppAccess` is status-based, not date-
+based). That account was charged 28.8 (payment page) and again 10.9 (the early "renewal" noted
+above), so it's paid through 28.10 while `current_period_end` says 10.10. If error 6 repeats on a
+recurring (no CVV is entered on one), it's a PayPlus terminal / issuer setting: PayPlus support.
+
 **Receipt failure 2026-09-28 (first renewal receipt through the code):** account `78a97d91…`,
 renewal ₪50 (transaction `d2855d49…`), charged fine, but Finbot refused the חשבונית מס קבלה:
 "סכום הפריטים אינו תואם לסכום התקבולים". The line price is sent before VAT (Finbot's rule) and
