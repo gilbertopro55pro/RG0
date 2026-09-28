@@ -97,15 +97,22 @@ export async function GET(request: NextRequest) {
   // Same two housekeeping steps, for album_export_jobs — expire finished exports past their own
   // storage cleanup date, then retry any job whose invocation crashed mid-render (stuck in
   // "processing") or was never picked up at all (stuck in "pending" past the trigger window).
+  // Print-house jobs keep their row after the file is deleted (storage_path cleared), so the send
+  // sheet can still show "sent / downloaded" and offer to send again; the filter skips rows
+  // already cleaned that way.
   const { data: expiredAlbumJobs } = await supabase
     .from("gallery_album_export_jobs")
-    .select("id, storage_path")
+    .select("id, storage_path, send_to_email")
     .lt("expires_at", new Date().toISOString())
-    .returns<{ id: string; storage_path: string | null }[]>();
+    .or("send_to_email.is.null,storage_path.not.is.null")
+    .returns<{ id: string; storage_path: string | null; send_to_email: string | null }[]>();
   if (expiredAlbumJobs && expiredAlbumJobs.length > 0) {
     const paths = expiredAlbumJobs.map((j) => j.storage_path).filter((p): p is string => !!p);
     if (paths.length > 0) await removeObjects("galleries", paths);
-    await supabase.from("gallery_album_export_jobs").delete().in("id", expiredAlbumJobs.map((j) => j.id));
+    const printIds = expiredAlbumJobs.filter((j) => j.send_to_email).map((j) => j.id);
+    const otherIds = expiredAlbumJobs.filter((j) => !j.send_to_email).map((j) => j.id);
+    if (printIds.length > 0) await supabase.from("gallery_album_export_jobs").update({ storage_path: null }).in("id", printIds);
+    if (otherIds.length > 0) await supabase.from("gallery_album_export_jobs").delete().in("id", otherIds);
   }
 
   await supabase
