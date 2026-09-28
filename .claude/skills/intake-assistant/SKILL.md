@@ -97,6 +97,13 @@ The owner declined a "another lead wants this date" alert: a taken date is told 
 `/chat` and `/api/intake-chat` are in the middleware's `PUBLIC_PATHS`, and `/chat` is in
 `InstallPrompt`'s `HIDDEN_PREFIXES`.
 
+## On the landing page (2026-09-28)
+
+Section "עוזר פניות חכם" (`#assistant` in `LandingPage.tsx`): a real recorded conversation
+(`public/guides/intake-demo.mp4`, guide-video scenario `intake-demo`) and the FAQ it answers from.
+Its plan line and the comparison-table row (`PlanComparison.tsx`) mirror `INTAKE_MONTHLY_CAP`
+(פרו 100, פרו+ 200): change them together.
+
 ## Verified live (2026-09-25, test account "סטודיו אור", key `studio-or`)
 
 | Scenario | Result |
