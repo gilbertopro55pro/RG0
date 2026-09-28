@@ -21,9 +21,14 @@ scenario file in `scenarios/<key>.js`; the engine is `record.js`; `convert.py` c
 1. Scratch dir outside the repo: `export GF_OUT=<scratchpad>/guide-video GF_STATE=<scratchpad>/qa-state.json`.
 2. `playwright-core` is needed (`npm i playwright-core` in the scratchpad if missing; Chromium is at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`). Run node with `NODE_PATH` pointing at that node_modules.
 3. ffmpeg with libx264: `pip install imageio-ffmpeg --target <scratchpad>/pylib` then `PYTHONPATH=<scratchpad>/pylib`.
-4. Session: if `$GF_STATE` doesn't exist, ask the user for the test account login **once** and run
-   `GF_EMAIL=… GF_PASSWORD=… node login.js`. Never write the password to any file, commit, log or
-   message, and never repeat it back. The session file stays outside the repo — never commit it.
+4. Session: nobody keeps the test account's password (owner's decision, 2026-09-28). If `$GF_STATE`
+   doesn't exist, set a fresh one-session password: `pip install bcrypt --target <scratchpad>/pylib`,
+   then `PYTHONPATH=<scratchpad>/pylib python3 test-password.py <scratchpad>/gf-pass > <scratchpad>/gf-hash`
+   (the password goes to a mode-600 file outside the repo; only the bcrypt hash is printed). Put the
+   hash on the test account with the Supabase connector (write it as `$2a$…`):
+   `update auth.users set encrypted_password = '<hash>' where id = '631b740d-9f78-4e6b-9daa-ace853329cfc'`.
+   Then `GF_EMAIL=<the test account's email, from auth.users> GF_PASSWORD="$(cat <scratchpad>/gf-pass)" node login.js`.
+   Never print, commit or message the password, and never do this for any other account.
 5. `export GF_VER=<CHANGELOG[0].version from src/lib/changelog.ts>` so the "what's new" modal stays closed.
 
 ## Record → review → publish
