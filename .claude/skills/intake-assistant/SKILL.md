@@ -97,6 +97,16 @@ The owner declined a "another lead wants this date" alert: a taken date is told 
 `/chat` and `/api/intake-chat` are in the middleware's `PUBLIC_PATHS`, and `/chat` is in
 `InstallPrompt`'s `HIDDEN_PREFIXES`.
 
+## Conversation PDF in the handoff email (2026-09-28, owner's request)
+
+The photographer's "new lead" and "waitlist" emails attach `סיכום-השיחה-<name>.pdf`
+(`lib/intakeTranscriptPdf.ts`: landing palette, Rubik subset, navy header, details card, the chat
+as bubbles, page breaks), meant to be forwarded to the client on WhatsApp. The handoff happens
+mid-turn (a tool call), so the email is queued (`queueNotice`) and sent by `flushNotices` when the
+turn ends, with the assistant's closing reply included (also on the API-error path). Characters
+Rubik can't draw (emoji) are dropped. PDF failure = the email goes out without it (logged as
+`Intake transcript PDF failed`).
+
 ## On the landing page (2026-09-28)
 
 Section "עוזר פניות חכם" (`#assistant` in `LandingPage.tsx`): a real recorded conversation
