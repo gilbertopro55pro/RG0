@@ -19,6 +19,10 @@ const MARGIN = 44;
 // The landing page's palette (.landing-2026 in globals.css, since 2026-09-28): navy, the app's deep
 // brass, cool grey and white, so the quote a client receives matches the brand they saw.
 const INK = rgb(0.043, 0.071, 0.125); // --l-navy #0b1220
+// The total box: the header's navy one step lighter. At #0b1220 a small box between light grey and
+// white reads as black (owner, 2026-09-28), while the large header band reads as navy; this makes
+// the box look like the header.
+const TOTAL_NAVY = rgb(0.094, 0.141, 0.235); // #18243c
 const INK_SOFT = rgb(0.337, 0.376, 0.478); // --l-ink-soft #56607a
 const GOLD = rgb(0.561, 0.435, 0.184); // --l-accent #8f6f2f
 const GOLD_DEEP = rgb(0.486, 0.373, 0.153); // #7c5f27, the accent a step darker (text on white)
@@ -274,7 +278,7 @@ export async function buildPriceQuotePdf(params: {
     text(currency(value), { x: MARGIN + 14, width: totalsW - 28, y: ty - 10, size: 9.5, font: regular, color: INK, align: "left" });
     ty -= 22;
   }
-  roundedRect(page, MARGIN + 6, ty - 2, totalsW - 12, 34, 8, INK);
+  roundedRect(page, MARGIN + 6, ty - 2, totalsW - 12, 34, 8, TOTAL_NAVY);
   text(showVat ? "לתשלום, כולל מע״מ" : "לתשלום (עוסק פטור)", { x: MARGIN + 18, width: totalsW - 36, y: ty - 23, size: 10, font: bold, color: WHITE });
   text(currency(total), { x: MARGIN + 18, width: totalsW - 36, y: ty - 23.5, size: 13, font: bold, color: GOLD_LIGHT, align: "left" });
   y -= totalsH;
