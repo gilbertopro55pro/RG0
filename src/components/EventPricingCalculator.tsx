@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import type { PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
@@ -143,6 +143,12 @@ export default function EventPricingCalculator({
   const [sendingQuote, setSendingQuote] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [quoteFile, setQuoteFile] = useState<File | null>(null);
+  // The prepared PDF as a link, so the photographer can open the exact document the client will get
+  // before sending it (the preview screen itself only lists the details in text).
+  const quoteFileUrl = useMemo(() => (quoteFile ? URL.createObjectURL(quoteFile) : null), [quoteFile]);
+  useEffect(() => () => {
+    if (quoteFileUrl) URL.revokeObjectURL(quoteFileUrl);
+  }, [quoteFileUrl]);
   const [savePromptStep, setSavePromptStep] = useState<"ask" | "name">("ask");
   const [saveQuoteName, setSaveQuoteName] = useState("");
   const [savingQuote, setSavingQuote] = useState(false);
@@ -1142,6 +1148,22 @@ export default function EventPricingCalculator({
               )}
             </div>
             {sendError && <p className="text-xs text-rose mb-2">{sendError}</p>}
+            {/* A plain link to the already-prepared file: the tap opens it directly (the phone's own
+                PDF viewer on iOS), with no async step that a browser could block. */}
+            {quoteFileUrl ? (
+              <a
+                href={quoteFileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex w-full items-center justify-center rounded-lg py-2.5 mb-2 text-sm font-semibold bg-white border border-line text-ink"
+              >
+                צפייה בהצעה כפי שהלקוח יקבל
+              </a>
+            ) : (
+              <div className="flex w-full items-center justify-center rounded-lg py-2.5 mb-2 text-sm font-semibold bg-white border border-line text-ink-soft opacity-60">
+                {sendingQuote ? "מכין את הקובץ..." : "הקובץ לא מוכן"}
+              </div>
+            )}
             <div className="flex gap-2">
               <button onClick={sendQuote} disabled={sendingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
                 {sendingQuote ? "מכין..." : "שליחה ללקוח/ה"}

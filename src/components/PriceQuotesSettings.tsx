@@ -193,6 +193,8 @@ export default function PriceQuotesSettings({
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  // Set only when the browser refused to open the preview window: shown as a link to tap instead.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const [sendOpenFor, setSendOpenFor] = useState<string | "draft" | null>(null);
@@ -361,6 +363,10 @@ export default function PriceQuotesSettings({
   const preview = async () => {
     setPreviewing(true);
     setFormError(null);
+    setPreviewUrl(null);
+    // Opened right on the tap: iOS Safari blocks a window.open that comes after an await (the PDF
+    // fetch), so the preview button did nothing on a phone. The file is loaded into it when ready.
+    const previewWindow = window.open("", "_blank");
     try {
       const items = cleanItems(draft.items);
       const { subtotal, vatAmount, total } = computeTotals(items);
@@ -383,8 +389,11 @@ export default function PriceQuotesSettings({
       });
       if (!res.ok) throw new Error("יצירת התצוגה המקדימה נכשלה");
       const blob = await res.blob();
-      window.open(URL.createObjectURL(blob), "_blank");
+      const url = URL.createObjectURL(blob);
+      if (previewWindow && !previewWindow.closed) previewWindow.location.href = url;
+      else setPreviewUrl(url);
     } catch (err) {
+      previewWindow?.close();
       setFormError(err instanceof Error ? err.message : "יצירת התצוגה המקדימה נכשלה");
     } finally {
       setPreviewing(false);
@@ -969,6 +978,11 @@ export default function PriceQuotesSettings({
           <CostSummary items={draft.items} />
 
           {formError && <p className="text-xs text-rose">{formError}</p>}
+          {previewUrl && (
+            <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="block text-center text-xs font-semibold text-amber-deep underline">
+              התצוגה המקדימה מוכנה, לחצו לפתיחה
+            </a>
+          )}
 
           <div className="flex gap-2">
             <button
