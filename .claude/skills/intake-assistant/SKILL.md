@@ -121,7 +121,7 @@ usage is in `bot_conversations.usage` (input, output, cache_read, cache_write, c
 
 ## Voice (owner's request 2026-09-26: "as human as possible")
 
-WhatsApp-style: short, one question at a time, reacts to what was said ("מזל טוב" once), uses the
+WhatsApp-style: short, one question at a time, the date asked as "כבר חשבתם על תאריך לאירוע? אשמח לבדוק אם הוא פנוי" and never "איזה תאריך אתם חושבים עליו?" (owner, 2026-09-28), reacts to what was said ("מזל טוב" once), uses the
 client's name now and then, the photographer's first name, dates in words, no lists / dashes /
 service-desk phrases, an emoji only now and then. A blank line in a reply = separate bubbles (web
 chat, with a typing pause) and separate WhatsApp messages. Line kept on purpose: the assistant

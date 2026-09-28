@@ -11,8 +11,13 @@ const { chromium } = require("playwright-core");
   if (require("path").resolve(GF_STATE).startsWith(require("path").resolve(__dirname, "../../.."))) throw new Error("GF_STATE must be outside the repo");
   const browser = await chromium.launch({ executablePath: process.env.GF_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", proxy: process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined });
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true, locale: "he-IL" });
+  // Same retry as record.js: the sandbox proxy drops requests, and a missed JS chunk leaves the page
+  // on the boot splash, unhydrated, so Enter does nothing (hit 2026-09-28).
+  await ctx.route(/myframeflow\.com|supabase\.co/, async (route) => { for (let a = 0; a < 5; a++) { try { const r = await route.fetch({ timeout: 60000 }); return route.fulfill({ response: r }); } catch { await new Promise((r) => setTimeout(r, 700 * (a + 1))); } } return route.abort(); });
   const page = await ctx.newPage();
   await page.goto("https://myframeflow.com/login", { waitUntil: "domcontentloaded", timeout: 90000 });
+  await page.waitForFunction(() => !document.getElementById("boot-splash") || document.body.classList.contains("app-content-in"), null, { timeout: 90000 }).catch(() => {});
+  await page.waitForTimeout(1500);
   await page.locator('input[type="email"]').first().fill(GF_EMAIL);
   await page.locator('input[type="password"]').first().fill(GF_PASSWORD);
   await page.locator('input[type="password"]').first().press("Enter");

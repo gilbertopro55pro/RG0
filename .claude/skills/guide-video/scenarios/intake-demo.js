@@ -30,6 +30,9 @@ module.exports = async ({ page, go, say, point, tap, scroll, sleep, capTop, on, 
   };
 
   await go("/chat/studio-or?src=demo");
+  // Captions must never cover the conversation: the sticky chat header grows into a band that
+  // holds the caption, so messages scroll under the band instead of under the caption text.
+  await page.addStyleTag({ content: "header.sticky{padding-bottom:112px !important;align-items:flex-start !important} #gf-cap.top{top:70px !important}" });
   await capTop(1);
   await say("ככה לקוח חדש מדבר עם העוזר שלכם, מקישור בוואטסאפ או באתר.");
   await sleep(4200);
