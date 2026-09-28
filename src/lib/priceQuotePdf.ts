@@ -28,9 +28,9 @@ const HAIRLINE = rgb(0.863, 0.882, 0.918); // --l-line #dce1ea
 const ON_INK_SOFT = rgb(0.682, 0.722, 0.8); // --l-on-navy-soft #aeb8cc
 const WHITE = rgb(1, 1, 1);
 
-// "ש״ח" instead of the ₪ symbol used everywhere else in the app — this embedded Heebo font subset
-// has no glyph for ₪ at all (confirmed by rendering it: comes out as a missing-glyph box), while
-// the Hebrew abbreviation renders correctly since it's just ordinary Hebrew letters/punctuation.
+// "ש״ח" instead of the ₪ symbol used everywhere else in the app. It started because the old Heebo
+// subset had no ₪ glyph; Rubik (since 2026-09-28) does have one, but quotes kept the Hebrew
+// abbreviation clients already know from them.
 function currency(n: number): string {
   return `${n.toLocaleString("he-IL", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ש״ח`;
 }
@@ -88,14 +88,15 @@ export async function buildPriceQuotePdf(params: {
   pdfDoc.registerFontkit(fontkit);
 
   const fontsDir = path.join(process.cwd(), "src/assets/fonts");
-  const [hebrewBold, latinBold, hebrewRegular, latinRegular] = await Promise.all([
-    pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, "Heebo-Hebrew-Bold.ttf"))),
-    pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, "Heebo-Latin-Bold.ttf"))),
-    pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, "Heebo-Hebrew-Regular.ttf"))),
-    pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, "Heebo-Latin-Regular.ttf"))),
+  // Rubik, the app's and the landing page's font (since 2026-09-28). Each file (Google Fonts' full
+  // static TTF) covers Hebrew, Latin, digits and ₪, so one face serves both scripts; subset so the
+  // PDF only carries the glyphs it uses.
+  const [rubikBold, rubikRegular] = await Promise.all([
+    pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, "Rubik-Bold.ttf")), { subset: true }),
+    pdfDoc.embedFont(await fs.readFile(path.join(fontsDir, "Rubik-Regular.ttf")), { subset: true }),
   ]);
-  const bold = { hebrewFont: hebrewBold, latinFont: latinBold };
-  const regular = { hebrewFont: hebrewRegular, latinFont: latinRegular };
+  const bold = { hebrewFont: rubikBold, latinFont: rubikBold };
+  const regular = { hebrewFont: rubikRegular, latinFont: rubikRegular };
   type Font = typeof regular;
 
   const logo = logoBuffer ? await embedImageAuto(pdfDoc, logoBuffer) : null;
@@ -157,7 +158,7 @@ export async function buildPriceQuotePdf(params: {
   };
 
   const WRAP_SIZE = 9.5;
-  const wrapLines = (t: string, boxWidth: number, font: typeof hebrewRegular, size = WRAP_SIZE): string[] => {
+  const wrapLines = (t: string, boxWidth: number, font: typeof rubikRegular, size = WRAP_SIZE): string[] => {
     // Whole-string width estimate per line via the Hebrew font metrics (good enough for wrapping
     // purposes even for mixed Latin runs — this only decides where to break, not how to draw).
     const words = t.split(/\s+/).filter(Boolean);
@@ -178,7 +179,7 @@ export async function buildPriceQuotePdf(params: {
   };
   // Keeps the photographer's own line breaks (e.g. "זמני אספקה:" then one line per deliverable):
   // each typed line wraps on its own, and an empty line stays as a gap.
-  const wrapParagraphs = (t: string, boxWidth: number, font: typeof hebrewRegular, size = WRAP_SIZE): string[] =>
+  const wrapParagraphs = (t: string, boxWidth: number, font: typeof rubikRegular, size = WRAP_SIZE): string[] =>
     t
       .replace(/\r\n?/g, "\n")
       .split("\n")
@@ -241,8 +242,8 @@ export async function buildPriceQuotePdf(params: {
   const displayItems = items.filter((row) => row.item.trim() !== "צילום אירוע");
 
   for (const row of displayItems) {
-    const itemLines = wrapLines(row.item, colItemW, hebrewBold);
-    const detailLines = row.details?.trim() ? wrapParagraphs(row.details.trim(), colDetailsW - 16, hebrewRegular) : [];
+    const itemLines = wrapLines(row.item, colItemW, rubikBold);
+    const detailLines = row.details?.trim() ? wrapParagraphs(row.details.trim(), colDetailsW - 16, rubikRegular) : [];
     const rowHeight = Math.max(30, Math.max(itemLines.length, detailLines.length) * 13 + 17);
     if (y - rowHeight < MARGIN) {
       ensureSpace(rowHeight + 20);
@@ -281,7 +282,7 @@ export async function buildPriceQuotePdf(params: {
   // ── Notes.
   if (notes?.trim()) {
     y -= 26;
-    const noteLines = wrapParagraphs(notes.trim(), contentWidth, hebrewRegular);
+    const noteLines = wrapParagraphs(notes.trim(), contentWidth, rubikRegular);
     ensureSpace(40 + noteLines.length * 14);
     heading("הערות");
     noteLines.forEach((line, i) => text(line, { x: MARGIN, width: contentWidth, y: y - i * 14, size: 9.5, font: regular, color: INK }));
