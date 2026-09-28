@@ -106,6 +106,18 @@ Found in `payplus_webhook_events` on 2026-09-24 (Israel times):
 
 If a charge for an unknown account ever shows up again, the webhook now emails an alert.
 
+**Receipt failure 2026-09-28 (first renewal receipt through the code):** account `78a97d91…`,
+renewal ₪50 (transaction `d2855d49…`), charged fine, but Finbot refused the חשבונית מס קבלה:
+"סכום הפריטים אינו תואם לסכום התקבולים". The line price is sent before VAT (Finbot's rule) and
+50/1.18 = 42.3728… was rounded to 42.37; Finbot's own VAT math on it didn't land on the ₪50
+payment (even though 42.37 + 18% rounds to 50.00 the usual way, so its rounding isn't the obvious
+one). ₪59 divides exactly (50.00), which is why it never showed before. Fix (`issueReceipt` in
+`lib/finbot.ts`): tries a 6-decimal price just above the exact quotient first (42.372882), then
+2-decimal prices one agora apart, retrying only on Finbot validation rejections (no document is
+created on a rejection). **Not verified against Finbot** (keys are sensitive, docs blocked from the
+sandbox): confirm on the next non-round renewal that `receipt_status='issued'`. The failed receipt
+itself was issued by hand in Finbot by the owner.
+
 Most likely cause: PayPlus's recurring engine. The `instant_first_payment` + `start_date_on_payment_date`
 combination can produce a same-day second charge, but it didn't on every account. It wasn't
 changed blind (the docs weren't reachable). Check it with PayPlus support or the dashboard
