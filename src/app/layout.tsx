@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Assistant, IBM_Plex_Sans_Hebrew } from "next/font/google";
+import { Rubik } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import PWARegister from "@/components/PWARegister";
@@ -12,19 +12,14 @@ import GlobalLoadingBar from "@/components/GlobalLoadingBar";
 import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
 
-// Headings in IBM Plex Sans Hebrew, text in Assistant (design round 3, 2026-09-28: the same pair
-// as the landing page, so the site and the app read as one brand; replaces Heebo). No monospace
-// for numbers: prices, dates and counters use Plex's tabular figures via .font-data
+// One family: Rubik, a print sans with slightly rounded corners (design round 3, 2026-09-28,
+// the owner's pick: "כתב דפוס אבל מעוגל מעט"; replaces Heebo, same face as the landing page). No
+// monospace for numbers: prices, dates and counters use Rubik's tabular figures via .font-data
 // (globals.css); real codes/credentials still use the system monospace via font-mono.
-const plexHebrew = IBM_Plex_Sans_Hebrew({
-  variable: "--font-plex-hebrew",
+const rubik = Rubik({
+  variable: "--font-rubik",
   subsets: ["latin", "hebrew"],
-  weight: ["400", "500", "600", "700"],
-});
-const assistant = Assistant({
-  variable: "--font-assistant",
-  subsets: ["latin", "hebrew"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700", "800", "900"],
 });
 
 // Physical-pixel splash images (public/splash) matched to CSS size + device-pixel-ratio, so iOS
@@ -95,7 +90,7 @@ export default function RootLayout({
     <html
       lang="he"
       dir="rtl"
-      className={`${plexHebrew.variable} ${assistant.variable} h-full antialiased`}
+      className={`${rubik.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
