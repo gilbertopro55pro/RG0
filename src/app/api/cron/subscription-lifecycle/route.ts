@@ -263,7 +263,49 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // 6. Missed renewals. PayPlus sends no callback when a recurring charge fails (a card decline
+  // showed up only in PayPlus's own failed report, 2026-09-28), so nothing in the app changed and
+  // nobody knew. An active account with a recurring whose paid period ended more than
+  // MISSED_RENEWAL_GRACE_DAYS ago means the expected charge never landed (a success would have
+  // moved current_period_end forward). Access is untouched (hasAppAccess is status-based); this
+  // only tells the admin, once per period (missed_renewal_alerted_for).
+  const MISSED_RENEWAL_GRACE_DAYS = 2;
+  const missedCutoff = new Date(now.getTime() - MISSED_RENEWAL_GRACE_DAYS * 24 * 60 * 60 * 1000);
+  const { data: missedCandidates } = await supabase
+    .from("photographers")
+    .select("id, name, email, plan, current_period_end, missed_renewal_alerted_for")
+    .eq("subscription_status", "active")
+    .eq("cancel_at_period_end", false)
+    .not("payplus_recurring_uid", "is", null)
+    .not("current_period_end", "is", null)
+    .lt("current_period_end", missedCutoff.toISOString())
+    .returns<(Pick<Photographer, "id" | "name" | "email" | "plan" | "current_period_end"> & { missed_renewal_alerted_for: string | null })[]>();
+
+  let missedAlerted = 0;
+  for (const p of missedCandidates ?? []) {
+    const periodEnd = p.current_period_end!;
+    if (p.missed_renewal_alerted_for && new Date(p.missed_renewal_alerted_for).getTime() === new Date(periodEnd).getTime()) continue;
+    const periodEndHe = new Date(periodEnd).toLocaleDateString("he-IL");
+    try {
+      await sendEmail({
+        to: ADMIN_EMAIL,
+        subject: `[חיובים] חידוש מנוי לא נקלט: ${p.name}`,
+        text:
+          `למנוי של ${p.name} (${p.email}, ${p.id}) הייתה אמורה להיות הוראת קבע שמחדשת אותו עד ${periodEndHe}, ` +
+          `ועברו יותר מ-${MISSED_RENEWAL_GRACE_DAYS} ימים בלי חיוב שנקלט.\n\n` +
+          `מה לבדוק: ב-PayPlus › עסקאות ודו״חות › דו״ח נכשלים, אם החיוב נדחה ולמה, ` +
+          `וב-הוראות קבע › רשימת הוראות קבע, שההוראה של הלקוח עדיין פעילה.\n` +
+          `החשבון לא ננעל. ההתראה נשלחת פעם אחת לכל תקופה.`,
+      });
+      await supabase.from("photographers").update({ missed_renewal_alerted_for: periodEnd }).eq("id", p.id);
+      missedAlerted++;
+    } catch (e) {
+      console.error("Missed renewal alert failed:", p.id, e);
+    }
+  }
+
   return NextResponse.json({
+    missedRenewalAlerted: missedAlerted,
     finalized: finalizedCount,
     reminded: remindedCount,
     switched: switchedCount,
