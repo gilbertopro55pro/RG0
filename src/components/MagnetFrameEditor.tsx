@@ -5,7 +5,7 @@ import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/a
 import { ALBUM_ORNAMENTS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { MAGNET_FRAME_TEXTURES, findMagnetFrameTexture, textureDataUrl } from "@/lib/magnetFrameTextures";
 import { MAGNET_FRAME_FLORALS, findMagnetFrameFloral } from "@/lib/magnetFrameFlorals";
-import { MAGNET_DIGIT_NUMBERS, MAGNET_DIGIT_STYLES, magnetDigitId } from "@/lib/magnetFrameDigits";
+import { MAGNET_DIGIT_STYLES, magnetDigitId } from "@/lib/magnetFrameDigits";
 import { MAGNET_FRAME_DIMENSIONS, DEFAULT_MAGNET_FRAME_SETTINGS, getMatInsetPct, getCutoutRadiusPx } from "@/lib/magnetFrameShared";
 import type { MagnetFrameElement, MagnetFrameTextElement, MagnetFrameDesignRow, MagnetFrameSettings, MagnetFrameCustomTextureRow, MagnetFrameCustomElementRow } from "@/lib/types";
 import { IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight } from "@/components/icons/NavIcons";
@@ -1039,7 +1039,7 @@ export default function MagnetFrameEditor() {
                     <div key={style.key}>
                       <div className="text-[10px] font-semibold text-ink-soft mb-1">{style.label}</div>
                       <div className="grid grid-cols-7 sm:grid-cols-13 gap-1.5" dir="ltr">
-                        {MAGNET_DIGIT_NUMBERS.map((n) => (
+                        {style.numbers.map((n) => (
                           <button
                             key={n}
                             onClick={() => addFloral(magnetDigitId(style.key, n), 22)}

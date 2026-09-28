@@ -4,19 +4,22 @@
 // findMagnetFrameFloral resolves these ids too.
 import type { MagnetFrameFloral } from "@/lib/magnetFrameFlorals";
 
-export const MAGNET_DIGIT_NUMBERS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12", "13"];
+const ALL = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12", "13"];
+const TO_TEN = ALL.slice(0, 11);
 
-export const MAGNET_DIGIT_STYLES: { key: string; label: string }[] = [
-  { key: "gold", label: "זהב וכסף" },
-  { key: "balloon", label: "בלון מסיבה" },
-  { key: "cake", label: "עוגה" },
-  { key: "animals", label: "חיות" },
-  { key: "batmitzva", label: "בת מצווה" },
-  { key: "barmitzva", label: "בר מצווה" },
+export const MAGNET_DIGIT_STYLES: { key: string; label: string; numbers: string[] }[] = [
+  { key: "gold", label: "זהב וכסף", numbers: ALL },
+  { key: "balloon", label: "מסיבה", numbers: ALL },
+  { key: "cake", label: "עוגה", numbers: ALL },
+  { key: "swirl", label: "מסולסל", numbers: TO_TEN },
+  { key: "rainbow", label: "צבע מתחלף", numbers: TO_TEN },
+  { key: "threeD", label: "תלת מימד", numbers: TO_TEN },
+  { key: "batmitzva", label: "בת מצווה", numbers: ALL },
+  { key: "barmitzva", label: "בר מצווה", numbers: ALL },
 ];
 
 export const magnetDigitId = (style: string, n: string) => `digit-${style}-${n}`;
 
 export const MAGNET_FRAME_DIGITS: MagnetFrameFloral[] = MAGNET_DIGIT_STYLES.flatMap((s) =>
-  MAGNET_DIGIT_NUMBERS.map((n) => ({ id: magnetDigitId(s.key, n), label: `${s.label} ${n}`, url: `/magnet-elements/digits/${s.key}-${n}.png` }))
+  s.numbers.map((n) => ({ id: magnetDigitId(s.key, n), label: `${s.label} ${n}`, url: `/magnet-elements/digits/${s.key}-${n}.png` }))
 );

@@ -2,7 +2,7 @@
 // public/magnet-elements/digits/<style>-<number>.png, transparent, 800×800.
 //
 // Each digit's outline comes from one of the app's own bundled fonts (src/assets/fonts), and the
-// style (metallic, balloon, cake, animal, floral, Star of David) is drawn around it in SVG, then
+// style (metallic, balloon, cake, script, rainbow, 3D, floral, Star of David) is drawn around it in SVG, then
 // rasterized with sharp. Original artwork: the owner's reference only set the kinds of styles.
 //
 // Run: node scripts/magnet-digits/generate.mjs
@@ -15,6 +15,9 @@ const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../.
 const OUT = path.join(ROOT, "public/magnet-elements/digits");
 const SIZE = 800;
 export const NUMBERS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12", "13"];
+// Styles added later cover only 0–10.
+const SHORT = new Set(["swirl", "rainbow", "threeD"]);
+export const numbersFor = (style) => (SHORT.has(style) ? NUMBERS.slice(0, 11) : NUMBERS);
 
 const fonts = {};
 function font(file) {
@@ -158,46 +161,72 @@ const STYLES = {
       <path d="${d}" fill="none" stroke="#6b3a1e" stroke-width="12" stroke-linejoin="round"/>`;
   },
 
-  // Wooden digit with a small party animal (bear or bunny) beside it.
-  animals(n) {
-    const { d, bbox } = digitPath(n, "Righteous-Latin.ttf", { x: 110, y: 120, w: 440, h: 560 });
-    const r = rng(seedOf("animals" + n));
-    let grain = "";
-    for (let i = 0; i < 18; i++) {
-      const y = bbox.y + r() * bbox.h;
-      grain += `<path d="M${bbox.x - 20} ${y} Q${bbox.x + bbox.w / 2} ${y + (r() - 0.5) * 40} ${bbox.x + bbox.w + 20} ${y}" stroke="#a3561c" stroke-width="${2 + r() * 3}" fill="none" opacity="0.45"/>`;
-    }
-    const ax = Math.min(640, bbox.x + bbox.w + 60);
-    const ay = 560;
-    const bunny = Number(n) % 2 === 1;
-    const fur = bunny ? "#f3ece4" : "#f5f1ea";
-    const dark = bunny ? "#c9a58c" : "#2b2b2b";
-    const ears = bunny
-      ? `<ellipse cx="${ax - 30}" cy="${ay - 175}" rx="20" ry="60" fill="${fur}" stroke="#8a7766" stroke-width="4"/><ellipse cx="${ax - 30}" cy="${ay - 175}" rx="9" ry="42" fill="#f4b6c2"/>
-         <ellipse cx="${ax + 30}" cy="${ay - 175}" rx="20" ry="60" fill="${fur}" stroke="#8a7766" stroke-width="4"/><ellipse cx="${ax + 30}" cy="${ay - 175}" rx="9" ry="42" fill="#f4b6c2"/>`
-      : `<circle cx="${ax - 55}" cy="${ay - 125}" r="28" fill="${dark}"/><circle cx="${ax + 55}" cy="${ay - 125}" r="28" fill="${dark}"/>`;
-    const eyes = bunny
-      ? `<circle cx="${ax - 25}" cy="${ay - 85}" r="8" fill="#3a2a22"/><circle cx="${ax + 25}" cy="${ay - 85}" r="8" fill="#3a2a22"/>`
-      : `<ellipse cx="${ax - 28}" cy="${ay - 88}" rx="20" ry="24" fill="${dark}" transform="rotate(-20 ${ax - 28} ${ay - 88})"/><ellipse cx="${ax + 28}" cy="${ay - 88}" rx="20" ry="24" fill="${dark}" transform="rotate(20 ${ax + 28} ${ay - 88})"/>
-         <circle cx="${ax - 26}" cy="${ay - 88}" r="7" fill="#ffffff"/><circle cx="${ax + 26}" cy="${ay - 88}" r="7" fill="#ffffff"/>`;
+  // Script digit in a plum-to-rose gradient with gold flourish curls.
+  swirl(n) {
+    const { d, bbox } = digitPath(n, "Pacifico-Latin.ttf", { x: 170, y: 150, w: 460, h: 500 });
+    const curl = (x, y, s, flip) =>
+      `<g transform="translate(${x} ${y}) scale(${flip ? -s : s} ${s})">
+        <path d="M0 0 C40 -10 80 20 70 60 C62 92 22 96 12 72 C4 52 22 38 38 46 C50 52 46 66 36 66" fill="none" stroke="#c9a04e" stroke-width="7" stroke-linecap="round"/>
+        <path d="M0 0 C-60 8 -110 -8 -150 -40" fill="none" stroke="#c9a04e" stroke-width="6" stroke-linecap="round"/>
+        <path d="M-70 4 C-80 -20 -60 -34 -46 -24" fill="none" stroke="#c9a04e" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="-150" cy="-40" r="7" fill="#e6c77e"/>
+      </g>`;
     return `
       <defs>
-        <linearGradient id="w" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eaa04b"/><stop offset="1" stop-color="#b8651f"/></linearGradient>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#7a2e6b"/><stop offset="0.55" stop-color="#d0567f"/><stop offset="1" stop-color="#f3a78b"/>
+        </linearGradient>
         <clipPath id="c"><path d="${d}"/></clipPath>
       </defs>
-      <path d="${d}" fill="url(#w)" stroke="#7c4214" stroke-width="8" stroke-linejoin="round"/>
-      <g clip-path="url(#c)">${grain}</g>
-      <ellipse cx="${ax}" cy="${ay + 5}" rx="78" ry="85" fill="${fur}" stroke="#8a7766" stroke-width="4"/>
-      <ellipse cx="${ax - 60}" cy="${ay + 60}" rx="26" ry="20" fill="${bunny ? fur : dark}"/><ellipse cx="${ax + 60}" cy="${ay + 60}" rx="26" ry="20" fill="${bunny ? fur : dark}"/>
-      ${ears}
-      <circle cx="${ax}" cy="${ay - 80}" r="72" fill="${fur}" stroke="#8a7766" stroke-width="4"/>
-      ${eyes}
-      <ellipse cx="${ax}" cy="${ay - 58}" rx="22" ry="16" fill="#ffffff" stroke="#8a7766" stroke-width="2"/>
-      <ellipse cx="${ax}" cy="${ay - 64}" rx="9" ry="6" fill="#3a2a22"/>
-      <circle cx="${ax - 48}" cy="${ay - 58}" r="10" fill="#f4a3b6" opacity="0.6"/><circle cx="${ax + 48}" cy="${ay - 58}" r="10" fill="#f4a3b6" opacity="0.6"/>
-      <path d="M${ax - 36} ${ay - 138} L${ax + 4} ${ay - 230} L${ax + 40} ${ay - 142} Z" fill="#8fd3c7" stroke="#3f8f83" stroke-width="4" stroke-linejoin="round"/>
-      <circle cx="${ax - 6}" cy="${ay - 170}" r="6" fill="#f7c948"/><circle cx="${ax + 12}" cy="${ay - 195}" r="5" fill="#f062a8"/><circle cx="${ax + 18}" cy="${ay - 158}" r="5" fill="#ffffff"/>
-      <circle cx="${ax + 4}" cy="${ay - 234}" r="10" fill="#f7c948"/>`;
+      ${curl(bbox.x + bbox.w + 10, bbox.y + bbox.h - 20, 1.25, false)}
+      ${curl(bbox.x - 10, bbox.y + 30, 1.1, true)}
+      <path d="${d}" fill="#4a1640" transform="translate(7 9)" opacity="0.3"/>
+      <path d="${d}" fill="url(#g)" stroke="#c9a04e" stroke-width="9" stroke-linejoin="round"/>
+      <g clip-path="url(#c)" opacity="0.45">
+        <path d="${d}" fill="none" stroke="#ffffff" stroke-width="10" stroke-linejoin="round" transform="translate(-8 -10)"/>
+      </g>`;
+  },
+
+  // Bold rounded digit whose color shifts through the rainbow; each number starts on a different hue.
+  rainbow(n) {
+    const { d } = digitPath(n, "Poppins-Latin.ttf", { x: 160, y: 130, w: 480, h: 540 });
+    const start = (Number(n) * 36) % 360;
+    const stops = [0, 1, 2, 3, 4, 5]
+      .map((k) => `<stop offset="${k / 5}" stop-color="hsl(${(start + k * 60) % 360} 78% 60%)"/>`)
+      .join("");
+    return `
+      <defs><linearGradient id="r" x1="0" y1="0" x2="1" y2="1">${stops}</linearGradient></defs>
+      <path d="${d}" fill="#2a2140" transform="translate(10 14)" opacity="0.25" stroke="#2a2140" stroke-width="34" stroke-linejoin="round"/>
+      <path d="${d}" fill="#ffffff" stroke="#ffffff" stroke-width="34" stroke-linejoin="round"/>
+      <path d="${d}" fill="url(#r)" stroke="url(#r)" stroke-width="4" stroke-linejoin="round"/>
+      <path d="${d}" fill="none" stroke="#ffffff" stroke-width="4" stroke-dasharray="2 14" stroke-linecap="round" opacity="0.8" transform="translate(-3 -3)"/>`;
+  },
+
+  // Extruded 3D block digit; the color cycles by number.
+  threeD(n) {
+    const { d } = digitPath(n, "Montserrat-Latin.ttf", { x: 140, y: 110, w: 470, h: 530 });
+    const palettes = [
+      ["#5ab8ff", "#1f6fd1", "#0d3a78"],
+      ["#ff7a6b", "#d8342a", "#7a1510"],
+      ["#6fe0a0", "#1f9e5c", "#0b5230"],
+      ["#b99bff", "#6b45d8", "#321a78"],
+      ["#ffc15a", "#e0851f", "#7a3f08"],
+    ];
+    const [light, mid, dark] = palettes[Number(n) % palettes.length];
+    let extrude = "";
+    for (let i = 36; i >= 1; i--) extrude += `<path d="${d}" fill="${dark}" stroke="${dark}" stroke-width="2" transform="translate(${i * 1.3} ${i * 1.1})"/>`;
+    return `
+      <defs>
+        <linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${light}"/><stop offset="1" stop-color="${mid}"/></linearGradient>
+        <linearGradient id="e" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.35"/></linearGradient>
+        <linearGradient id="h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.35"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+        <clipPath id="c"><path d="${d}"/></clipPath>
+      </defs>
+      <ellipse cx="420" cy="${700}" rx="260" ry="26" fill="#000" opacity="0.12"/>
+      ${extrude}
+      <path d="${d}" fill="url(#e)" transform="translate(47 40)" opacity="0.6"/>
+      <path d="${d}" fill="url(#f)"/>
+      <g clip-path="url(#c)"><rect x="0" y="0" width="${SIZE}" height="300" fill="url(#h)"/></g>`;
   },
 
   // Blush digit filled with small roses, in a gold outline.
@@ -249,15 +278,18 @@ export const STYLE_KEYS = Object.keys(STYLES);
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   let bytes = 0;
+  let files = 0;
+  for (const f of fs.readdirSync(OUT)) fs.unlinkSync(path.join(OUT, f));
   for (const style of STYLE_KEYS) {
-    for (const n of NUMBERS) {
+    for (const n of numbersFor(style)) {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}">${STYLES[style](n)}</svg>`;
       const png = await sharp(Buffer.from(svg)).png({ compressionLevel: 9, palette: true, quality: 90, effort: 8 }).toBuffer();
       fs.writeFileSync(path.join(OUT, `${style}-${n}.png`), png);
       bytes += png.length;
+      files++;
     }
   }
-  console.log(`wrote ${STYLE_KEYS.length * NUMBERS.length} files, ${(bytes / 1e6).toFixed(2)} MB`);
+  console.log(`wrote ${files} files, ${(bytes / 1e6).toFixed(2)} MB`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
