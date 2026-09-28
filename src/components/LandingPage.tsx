@@ -3,6 +3,7 @@ import LandingFaq from "@/components/LandingFaq";
 import TimeSavingsCalculator from "@/components/TimeSavingsCalculator";
 import PricingToggle from "@/components/PricingToggle";
 import PlanComparison from "@/components/PlanComparison";
+import { LandingFooter, LANDING_CONTAINER } from "@/components/LandingChrome";
 
 // Landing page, design 2026-09-28 (canvas "דף נחיתה Gilberto 2026", approved by the owner): white
 // and cool grey with deep-navy bands and the app's deep brass as the one accent (tokens:
@@ -58,15 +59,6 @@ const MORE = [
   { title: "ייבוא מיומן Google", icon: "M4 6h16v14H4zM4 10h16M12 13v5M9.5 15.5L12 18l2.5-2.5", text: "אירועים שכבר ביומן נכנסים למערכת בסריקה אחת, בלי להקליד מחדש." },
 ];
 
-const FOOTER_LINKS = [
-  { href: "/login", label: "כניסה למשתמשים קיימים" },
-  { href: "/terms", label: "תקנון שימוש" },
-  { href: "/privacy", label: "מדיניות פרטיות" },
-  { href: "/cookies", label: "מדיניות עוגיות" },
-  { href: "/cancellation-policy", label: "מדיניות ביטולים" },
-  { href: "/accessibility", label: "הצהרת נגישות" },
-  { href: "/business-info", label: "פרטי העסק" },
-];
 
 function Icon({ d, size = 24, className = "", strokeWidth = 1.9 }: { d: string; size?: number; className?: string; strokeWidth?: number }) {
   return (
@@ -88,8 +80,7 @@ function PrimaryCta({ className = "" }: { className?: string }) {
   );
 }
 
-// 1248px of content at full width, with side padding kept at every size in between.
-const CONTAINER = "max-w-[1344px] mx-auto px-5 sm:px-8 lg:px-12";
+const CONTAINER = LANDING_CONTAINER;
 
 export default function LandingPage() {
   return (
@@ -348,21 +339,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-[var(--l-line)] bg-[var(--l-bg)]">
-        <div className={`${CONTAINER} pt-7 pb-10 lg:pt-10 lg:pb-14 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5`}>
-          <div className="flex flex-col lg:flex-row lg:items-center gap-1.5 lg:gap-3">
-            <span className="font-display text-[17px] lg:text-lg font-bold">גילברטו</span>
-            <span className="text-[13px] lg:text-sm text-[var(--l-ink-soft)]">© {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט, צילום אירועים</span>
-          </div>
-          <nav className="flex flex-wrap gap-x-5 gap-y-2.5">
-            {FOOTER_LINKS.map((l) => (
-              <Link key={l.href} href={l.href} className="text-sm text-[var(--l-ink-soft)] hover:text-[var(--l-ink)]">
-                {l.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      </footer>
+      <LandingFooter />
     </div>
   );
 }

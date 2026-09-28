@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalPage } from "@/components/LandingChrome";
 
 export const metadata: Metadata = {
   title: "תקנון שימוש — גילברטו",
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 // generic boilerplate that promises something the product doesn't do.
 export default function TermsPage() {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12 text-sm leading-relaxed text-ink">
+    <LegalPage>
       <h1 className="text-xl font-bold mb-6">תקנון שימוש</h1>
       <p className="text-ink-soft mb-6">עודכן לאחרונה: {new Date().toLocaleDateString("he-IL")}</p>
 
@@ -90,6 +91,6 @@ export default function TermsPage() {
           .
         </p>
       </section>
-    </div>
+    </LegalPage>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalPage } from "@/components/LandingChrome";
 
 export const metadata: Metadata = {
   title: "מדיניות פרטיות — גילברטו",
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 // reviewed (and the contact details filled in) before relying on it as a real legal document.
 export default function PrivacyPolicyPage() {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12 text-sm leading-relaxed text-ink">
+    <LegalPage>
       <h1 className="text-xl font-bold mb-6">מדיניות פרטיות</h1>
       <p className="text-ink-soft mb-6">עודכן לאחרונה: {new Date().toLocaleDateString("he-IL")}</p>
 
@@ -64,6 +65,6 @@ export default function PrivacyPolicyPage() {
           .
         </p>
       </section>
-    </div>
+    </LegalPage>
   );
 }

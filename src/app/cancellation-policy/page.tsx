@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalPage } from "@/components/LandingChrome";
 
 export const metadata: Metadata = {
   title: "מדיניות ביטולים — גילברטו",
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 // cancellation boilerplate that would promise behavior the product doesn't actually have.
 export default function CancellationPolicyPage() {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12 text-sm leading-relaxed text-ink">
+    <LegalPage>
       <h1 className="text-xl font-bold mb-6">מדיניות ביטולים</h1>
       <p className="text-ink-soft mb-6">עודכן לאחרונה: {new Date().toLocaleDateString("he-IL")}</p>
 
@@ -63,6 +64,6 @@ export default function CancellationPolicyPage() {
           .
         </p>
       </section>
-    </div>
+    </LegalPage>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalPage } from "@/components/LandingChrome";
 
 export const metadata: Metadata = {
   title: "הצהרת נגישות — גילברטו",
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 // in before this is a complete, compliant statement.
 export default function AccessibilityPage() {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12 text-sm leading-relaxed text-ink">
+    <LegalPage>
       <h1 className="text-xl font-bold mb-6">הצהרת נגישות</h1>
       <p className="text-ink-soft mb-6">עודכן לאחרונה: {new Date().toLocaleDateString("he-IL")}</p>
 
@@ -46,6 +47,6 @@ export default function AccessibilityPage() {
           .
         </p>
       </section>
-    </div>
+    </LegalPage>
   );
 }
