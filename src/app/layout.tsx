@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Heebo } from "next/font/google";
+import { Assistant, IBM_Plex_Sans_Hebrew } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import PWARegister from "@/components/PWARegister";
@@ -12,15 +12,19 @@ import GlobalLoadingBar from "@/components/GlobalLoadingBar";
 import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
 
-// One family for everything (design round 2, 2026-09-23). This used to pair Heebo headings with
-// Rubik body text — two near-identical Hebrew sans faces that muddied rather than contrasted —
-// plus IBM Plex Mono for prices/dates, which lacks a ₪ glyph (it fell back mid-number) and read as
-// a dev dashboard. Numbers now use Heebo's tabular figures instead (see .font-data in
-// globals.css); real codes/credentials use the system monospace via font-mono.
-const heebo = Heebo({
-  variable: "--font-heebo",
+// Headings in IBM Plex Sans Hebrew, text in Assistant (design round 3, 2026-09-28: the same pair
+// as the landing page, so the site and the app read as one brand; replaces Heebo). No monospace
+// for numbers: prices, dates and counters use Plex's tabular figures via .font-data
+// (globals.css); real codes/credentials still use the system monospace via font-mono.
+const plexHebrew = IBM_Plex_Sans_Hebrew({
+  variable: "--font-plex-hebrew",
   subsets: ["latin", "hebrew"],
-  weight: ["400", "500", "600", "700", "800", "900"],
+  weight: ["400", "500", "600", "700"],
+});
+const assistant = Assistant({
+  variable: "--font-assistant",
+  subsets: ["latin", "hebrew"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 // Physical-pixel splash images (public/splash) matched to CSS size + device-pixel-ratio, so iOS
@@ -91,7 +95,7 @@ export default function RootLayout({
     <html
       lang="he"
       dir="rtl"
-      className={`${heebo.variable} h-full antialiased`}
+      className={`${plexHebrew.variable} ${assistant.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
