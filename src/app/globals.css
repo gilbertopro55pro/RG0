@@ -95,25 +95,39 @@
    also paints an opaque background over the body's own fixed colorful gradient blobs — see body's
    own comment above — so nothing from the authenticated app's glass aesthetic bleeds through) so
    the dashboard and every other screen keep their current look untouched. */
-.landing-warm {
-  --color-paper: #f7f2ea;
-  --color-ink: #241d15;
-  --color-ink-soft: #6b5f4f;
-  --color-line: #e6dcc9;
+/* Landing page (design 2026-09-28, canvas "דף נחיתה Gilberto 2026"): white and cool grey with
+   deep-navy bands and the app's deep brass (#8F6F2F) as the one accent. Fixed palette in both app
+   themes, so the app's dark theme doesn't repaint the marketing page. The --color-* overrides keep
+   any shared utility (text-ink-soft, border-line, bg-card) on the landing palette; --l-* are the
+   landing's own tokens. */
+.landing-2026 {
+  --color-paper: #ffffff;
+  --color-ink: #0b1220;
+  --color-ink-soft: #56607a;
+  --color-line: #dce1ea;
   --color-card: #ffffff;
-  --color-chip: #f1ebe0;
+  --color-chip: #eef1f6;
+  --color-amber: #8f6f2f;
+  --color-amber-deep: #8f6f2f;
+  --color-amber-bg: #f3eee4;
+  --l-navy: #0b1220;
+  --l-navy-2: #131c2e;
+  --l-navy-line: #1c2638;
+  --l-navy-border: #33405a;
+  --l-on-navy: #f4f6fa;
+  --l-on-navy-soft: #aeb8cc;
+  --l-on-navy-mute: #8792ab;
+  --l-bg: #ffffff;
+  --l-bg-alt: #eef1f6;
+  --l-ink: #0b1220;
+  --l-ink-soft: #56607a;
+  --l-line: #dce1ea;
+  --l-accent: #8f6f2f;
+  --l-on-accent: #ffffff;
+  color: var(--l-ink);
+  background: var(--l-bg);
 }
-:root[data-theme="dark"] .landing-warm {
-  --color-paper: #1c1712;
-  --color-ink: #efe6d8;
-  --color-ink-soft: #b3a48e;
-  --color-line: #3a3025;
-  --color-card: #262019;
-  --color-chip: #2b241c;
-}
-/* No colorful body gradient shows through an opaque --color-card here, so the blur/saturate glass
-   effect would just be wasted GPU work — turned off within this scope only. */
-.landing-warm .bg-card {
+.landing-2026 .bg-card {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -126,8 +140,8 @@
    stacking context can't affect). Simplest robust fix: body never establishes the fixed-attachment
    layer at all on this page, via :has() rather than any JS/route wiring. --color-paper here is
    deliberately body's own (unwarmed) token, not landing-warm's — irrelevant, since the opaque
-   .landing-warm wrapper (w-full min-h-screen) always fully covers body beneath it. */
-body:has(.landing-warm) {
+   .landing-2026 wrapper (w-full min-h-screen) always fully covers body beneath it. */
+body:has(.landing-2026) {
   background: var(--color-paper);
   background-attachment: scroll;
 }

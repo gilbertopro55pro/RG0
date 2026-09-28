@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 
 const FAQ_ITEMS = [
   {
@@ -43,27 +43,42 @@ const FAQ_ITEMS = [
 
 export default function LandingFaq() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const baseId = useId();
 
   return (
-    <div className="space-y-2.5">
+    <div className="flex flex-col border-t border-[var(--l-line)]">
       {FAQ_ITEMS.map((item, i) => {
         const isOpen = openIndex === i;
+        const answerId = `${baseId}-faq-${i}`;
         return (
-          <div key={item.q} className="rounded-2xl bg-card border border-line shadow-card overflow-hidden">
+          <div key={item.q} className="border-b border-[var(--l-line)]">
             <button
+              type="button"
               onClick={() => setOpenIndex(isOpen ? null : i)}
-              className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-right"
+              className="flex min-h-16 w-full cursor-pointer items-center justify-between gap-4 bg-transparent py-3 text-right text-[var(--l-ink)] md:min-h-[72px] md:gap-6"
               aria-expanded={isOpen}
+              aria-controls={answerId}
             >
-              <span className="text-sm font-semibold">{item.q}</span>
-              <span
-                className="shrink-0 text-lg text-ink-soft transition-transform duration-200"
-                style={{ transform: isOpen ? "rotate(45deg)" : "rotate(0deg)" }}
+              <span className="font-display text-[17px] font-semibold leading-snug md:text-[21px]">{item.q}</span>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                aria-hidden="true"
+                className={`h-5 w-5 shrink-0 transition-transform duration-200 md:h-[22px] md:w-[22px] ${isOpen ? "rotate-45" : "rotate-0"}`}
               >
-                +
-              </span>
+                <path d="M12 5v14M5 12h14" />
+              </svg>
             </button>
-            {isOpen && <p className="px-4 pb-3.5 text-xs text-ink-soft leading-relaxed">{item.a}</p>}
+            <div
+              id={answerId}
+              hidden={!isOpen}
+              className="max-w-[720px] pb-[18px] text-base leading-[1.65] text-[var(--l-ink-soft)] md:pb-6 md:text-[18px]"
+            >
+              {item.a}
+            </div>
           </div>
         );
       })}
