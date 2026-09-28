@@ -90,39 +90,73 @@ export async function issueReceipt({
   // the `payments` entry below stays the real amount received either way, since that's what
   // actually changed hands, not a pre-VAT figure.
   const isLicensedDocument = documentType === TAX_INVOICE_DOCUMENT_TYPE;
-  const lineItemPrice = isLicensedDocument ? Math.round((amount / (1 + VAT_RATE)) * 100) / 100 : amount;
 
+  // Backing a VAT-inclusive sum out to a 2-decimal pre-VAT price isn't exact for most amounts
+  // (₪50 / 1.18 = 42.3728…), and Finbot then rejects the document when its own VAT math on that
+  // price doesn't land on the payment sum: "סכום הפריטים אינו תואם לסכום התקבולים" (first real
+  // renewal receipt, ₪50, 2026-09-28; ₪59 happens to divide exactly, which hid it). 42.37 was
+  // rejected even though 42.37 + 18% rounds to 50.00 the usual way, so Finbot's rounding isn't the
+  // obvious one and isn't documented. First try a 6-decimal price just above the exact quotient
+  // (42.372882 × 1.18 = 50.0000008, which rounds, floors or ceils to 50.00), then 2-decimal prices
+  // one agora apart. A rejected request creates no document, so exactly one receipt is issued.
+  const exact = amount / (1 + VAT_RATE);
+  const round2 = (x: number) => Math.round(x * 100) / 100;
+  const candidatePrices = isLicensedDocument
+    ? [Math.ceil(exact * 1e6) / 1e6, round2(exact), round2(exact + 0.01), round2(exact - 0.01)]
+    : [amount];
+
+  let lastError: Error | null = null;
+  for (const lineItemPrice of candidatePrices) {
+    try {
+      return await postIncomeDocument(key, {
+        type: documentType,
+        date: dateStr,
+        // Finbot's real API rejects lowercase "he"/"en" (code 109) despite the docs page showing
+        // lowercase — the actual enum, confirmed against the live Swagger schema, is uppercase.
+        language: "HE",
+        currency: "ILS",
+        // Finbot: "מסמך כולל/ לא כולל מע"מ" — vatType true means the document CHARGES VAT (only
+        // valid for a licensed/עוסק מורשה document; an exempt business gets error 115 if this is
+        // true at all). Then line-item prices are BEFORE VAT ("יש לרשום את המחיר לפני מע"מ") and
+        // Finbot adds VAT itself. The payments entry stays the real amount received either way.
+        vatType: isLicensedDocument,
+        rounding: true,
+        customer: {
+          name: customerName,
+          email: customerEmail,
+          ...(cleanPhone ? { phone: cleanPhone } : {}),
+          save: false,
+        },
+        items: [{ name: description, amount: 1, price: lineItemPrice }],
+        // A receipt can't be issued without a payments entry (Finbot: "לא ניתן להפיק מסמך זה ללא
+        // אמצעי תשלום"). Using type "7" (Other) rather than "2" (credit card) — credit card entries
+        // require a real cardNumber + numberPayments, which PayPlus's webhook callback doesn't
+        // currently surface to us, and fabricating a card number on a real customer receipt would
+        // be wrong bookkeeping.
+        payments: [{ type: "7", date: dateStr, sum: amount }],
+        email: {
+          to: customerEmail,
+          subject: emailSubject,
+          body: emailBody,
+        },
+      });
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      // Only Finbot's own validation rejections (JSON, status != 1) are worth another price; an
+      // invalid key or a network failure would fail the same way every time.
+      if (!(e instanceof FinbotRejection)) throw lastError;
+    }
+  }
+  throw lastError ?? new Error("Finbot receipt issuance failed");
+}
+
+class FinbotRejection extends Error {}
+
+async function postIncomeDocument(key: string, body: Record<string, unknown>): Promise<{ documentLink: string }> {
   const res = await fetch(FINBOT_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", secret: key },
-    body: JSON.stringify({
-      type: documentType,
-      date: dateStr,
-      // Finbot's real API rejects lowercase "he"/"en" (code 109) despite the docs page showing
-      // lowercase — the actual enum, confirmed against the live Swagger schema, is uppercase.
-      language: "HE",
-      currency: "ILS",
-      vatType: isLicensedDocument,
-      rounding: true,
-      customer: {
-        name: customerName,
-        email: customerEmail,
-        ...(cleanPhone ? { phone: cleanPhone } : {}),
-        save: false,
-      },
-      items: [{ name: description, amount: 1, price: lineItemPrice }],
-      // A receipt can't be issued without a payments entry (Finbot: "לא ניתן להפיק מסמך זה ללא
-      // אמצעי תשלום"). Using type "7" (Other) rather than "2" (credit card) — credit card entries
-      // require a real cardNumber + numberPayments, which PayPlus's webhook callback doesn't
-      // currently surface to us, and fabricating a card number on a real customer receipt would
-      // be wrong bookkeeping.
-      payments: [{ type: "7", date: dateStr, sum: amount }],
-      email: {
-        to: customerEmail,
-        subject: emailSubject,
-        body: emailBody,
-      },
-    }),
+    body: JSON.stringify(body),
   });
 
   // An invalid/expired API key gets rejected before Finbot's own JSON-aware logic runs — the
@@ -140,7 +174,7 @@ export async function issueReceipt({
     );
   }
   if (!res.ok || data?.status !== 1) {
-    throw new Error(`Finbot receipt issuance failed: ${JSON.stringify(data)}`);
+    throw new FinbotRejection(`Finbot receipt issuance failed: ${JSON.stringify(data)}`);
   }
   return { documentLink: data.data as string };
 }
