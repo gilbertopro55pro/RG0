@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { downloadBlob } from "@/lib/downloadBlob";
 import { ProgressModal } from "@/components/ProgressModal";
 import { pdfBandedPct } from "@/lib/pdfBandedPct";
+import { createClient } from "@/lib/supabase/client";
+import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
+import type { PrintHouseEmailRow } from "@/lib/types";
 
 type GalleryOption = { id: string; title: string; published: boolean; hasActiveAlbum: boolean };
 
@@ -47,6 +50,13 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
   const [currentJob, setCurrentJob] = useState<{ id: string; format: ExportFormat; alreadyActive: boolean } | null>(null);
   const [progressPct, setProgressPct] = useState(0);
   const cancelledRef = useRef(false);
+  // "שליחה לבית דפוס" from here too (owner's request, 2026-09-28): same print-house emails and notes
+  // as the album tool's own sheet (GalleryManageView), same send-to-print-house job.
+  const [printHouseOpen, setPrintHouseOpen] = useState(false);
+  const [printHouseEmails, setPrintHouseEmails] = useState<PrintHouseEmailRow[] | null>(null);
+  const [printHouseSelectedId, setPrintHouseSelectedId] = useState<string | null>(null);
+  const [printHouseNotes, setPrintHouseNotes] = useState("");
+  const [printHouseSent, setPrintHouseSent] = useState<string | null>(null);
 
   const go = () => {
     if (!selectedId) return;
@@ -178,6 +188,76 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
     }
   };
 
+  const openPrintHouse = async () => {
+    setExportError(null);
+    setPrintHouseSent(null);
+    if (!printHouseEmails) {
+      const { data } = await createClient()
+        .from("print_house_emails")
+        .select("*")
+        .order("created_at", { ascending: true })
+        .returns<PrintHouseEmailRow[]>();
+      const rows = data ?? [];
+      setPrintHouseEmails(rows);
+      setPrintHouseSelectedId((rows.find((r) => r.is_default) ?? rows[0])?.id ?? null);
+    }
+    setPrintHouseOpen(true);
+  };
+
+  // Same job flow as an export (create, then poll with the ProgressModal up), except the server
+  // emails the print house once the JPGs are ready instead of this tab downloading anything.
+  const sendToPrintHouse = async () => {
+    const target = printHouseEmails?.find((e) => e.id === printHouseSelectedId);
+    if (!selectedId || !target || currentJob) return;
+    setExportError(null);
+    setPrintHouseSent(null);
+    cancelledRef.current = false;
+    setProgressPct(0);
+    try {
+      const createRes = await fetch(`/api/galleries/${selectedId}/album/send-to-print-house`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: target.email, from: 1, to: 9999, notes: printHouseNotes.trim() || undefined }),
+      });
+      const createData: { jobId?: string; error?: string } = await createRes.json().catch(() => ({}));
+      if (!createRes.ok || !createData.jobId) {
+        setExportError(createData.error ?? "שליחה לבית הדפוס נכשלה");
+        return;
+      }
+      setCurrentJob({ id: createData.jobId, format: "jpg", alreadyActive: false });
+      let failures = 0;
+      while (!cancelledRef.current) {
+        const res = await fetch(`/api/galleries/${selectedId}/album/export-jobs/${createData.jobId}`).catch(() => null);
+        if (!res || !res.ok) {
+          if (++failures >= 5) {
+            setExportError("שגיאה בבדיקת התקדמות השליחה. נסו לרענן את העמוד");
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          continue;
+        }
+        failures = 0;
+        const data: { status: string; processedCount: number; totalCount: number; errorMessage: string | null } = await res.json();
+        setProgressPct(data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0);
+        if (data.status === "ready") {
+          setPrintHouseSent(`נשלח בהצלחה ל-${target.label || target.email}`);
+          setPrintHouseNotes("");
+          setPrintHouseOpen(false);
+          return;
+        }
+        if (data.status === "failed" || data.status === "cancelled") {
+          if (data.status === "failed") setExportError(data.errorMessage ?? "שליחה לבית הדפוס נכשלה");
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    } catch {
+      setExportError("שליחה לבית הדפוס נכשלה");
+    } finally {
+      setCurrentJob(null);
+    }
+  };
+
   const cancelCurrentJob = async () => {
     if (!currentJob || !selectedId) return;
     cancelledRef.current = true;
@@ -210,7 +290,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
 
       {currentJob && (
         <ProgressModal
-          label={`ייצוא ${FORMAT_LABEL[currentJob.format]}${currentJob.alreadyActive ? " (כבר פעיל)" : ""}`}
+          label={printHouseOpen ? "שליחה לבית דפוס" : `ייצוא ${FORMAT_LABEL[currentJob.format]}${currentJob.alreadyActive ? " (כבר פעיל)" : ""}`}
           pct={progressPct}
           onCancel={cancelCurrentJob}
         />
@@ -235,6 +315,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                   setSelectedId(e.target.value);
                   setExportError(null);
                   setReadyLink(null);
+                  setPrintHouseSent(null);
                 }}
                 className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-4"
               >
@@ -262,6 +343,49 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => (printHouseOpen ? setPrintHouseOpen(false) : openPrintHouse())}
+                  className="mt-2 w-full h-10 rounded-xl border border-line bg-white text-xs font-semibold"
+                >
+                  שליחה לבית דפוס
+                </button>
+                {printHouseOpen && printHouseEmails && (
+                  <div className="mt-3 rounded-xl border border-line bg-white p-3 max-h-[50vh] overflow-y-auto">
+                    <p className="text-xs text-ink-soft mb-2">קובצי ה-JPG של כל עמודי האלבום יישלחו כקישור להורדה, לכתובת שתבחרו.</p>
+                    <PrintHouseEmailsSettings
+                      initialEmails={printHouseEmails}
+                      selectable
+                      selectedId={printHouseSelectedId}
+                      onSelect={setPrintHouseSelectedId}
+                      onChange={setPrintHouseEmails}
+                      compact
+                    />
+                    <label className="block mt-3">
+                      <span className="text-xs font-semibold text-ink-soft">הנחיות והערות לבית הדפוס (אופציונלי)</span>
+                      <textarea
+                        value={printHouseNotes}
+                        onChange={(e) => setPrintHouseNotes(e.target.value)}
+                        rows={3}
+                        maxLength={2000}
+                        placeholder="למשל: נייר מט, כריכה קשה, 2 עותקים"
+                        className="mt-1.5 w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={sendToPrintHouse}
+                      disabled={!printHouseSelectedId}
+                      className="mt-3 w-full h-10 rounded-xl bg-ink text-white text-sm font-semibold disabled:opacity-40"
+                    >
+                      {(() => {
+                        const t = printHouseEmails.find((e) => e.id === printHouseSelectedId);
+                        return t ? `שליחה ל-${t.label || t.email}` : "בחרו כתובת לשליחה";
+                      })()}
+                    </button>
+                  </div>
+                )}
+                {printHouseSent && <p className="text-xs text-sage font-semibold mt-2">{printHouseSent}</p>}
                 {exportError && <p className="text-xs text-rose mt-2">{exportError}</p>}
                 {readyLink && (
                   <div className="mt-3 rounded-xl border border-line bg-white p-3">

@@ -36,6 +36,8 @@ through `notificationEmailFor`).
 Print-house notes (since 2026-09-28): the "שליחה לבית דפוס" sheet has an optional
 "הנחיות והערות לבית הדפוס" textarea. It's sent as `notes` (trimmed, max 2000), stored on the job
 as `send_notes` (migration 0139) and added to the print-house email under "הנחיות והערות:".
+The home "עיצוב אלבום" quick access (`AlbumQuickAccessButton`) has the same "שליחה לבית דפוס" flow
+(print-house emails, notes, whole album via `to: 9999`), polled with the same ProgressModal.
 
 Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs left `pending`.
 
