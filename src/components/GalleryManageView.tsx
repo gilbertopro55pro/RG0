@@ -492,6 +492,8 @@ export default function GalleryManageView({
   const [printHouseEmailsLoaded, setPrintHouseEmailsLoaded] = useState(false);
   const [printHouseModalOpen, setPrintHouseModalOpen] = useState(false);
   const [printHouseSelectedId, setPrintHouseSelectedId] = useState<string | null>(null);
+  // Instructions for the print house (paper, finish, quantity…), added to the email.
+  const [printHouseNotes, setPrintHouseNotes] = useState("");
   const [printHouseConfirmOpen, setPrintHouseConfirmOpen] = useState(false);
   const [sendingToPrintHouse, setSendingToPrintHouse] = useState(false);
   const [printHouseSendProgress, setPrintHouseSendProgress] = useState<number | null>(null);
@@ -1558,7 +1560,7 @@ export default function GalleryManageView({
       const createRes = await fetch(`/api/galleries/${gallery.id}/album/send-to-print-house`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: target.email, from: 1, to: albumTotalPages }),
+        body: JSON.stringify({ email: target.email, from: 1, to: albumTotalPages, notes: printHouseNotes.trim() || undefined }),
         signal: controller.signal,
       });
       const createData = await createRes.json().catch(() => null);
@@ -3927,6 +3929,17 @@ export default function GalleryManageView({
               onChange={setPrintHouseEmails}
               compact
             />
+            <label className="block mt-4">
+              <span className="text-xs font-semibold text-ink-soft">הנחיות והערות לבית הדפוס (אופציונלי)</span>
+              <textarea
+                value={printHouseNotes}
+                onChange={(e) => setPrintHouseNotes(e.target.value)}
+                rows={3}
+                maxLength={2000}
+                placeholder="למשל: נייר מט, כריכה קשה, 2 עותקים"
+                className="mt-1.5 w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none"
+              />
+            </label>
             <button
               onClick={() => setPrintHouseConfirmOpen(true)}
               disabled={!printHouseSelectedId}

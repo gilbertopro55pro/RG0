@@ -18,7 +18,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const auth = await authenticateGalleryRequest(request);
   if ("error" in auth) return auth.error;
 
-  const body: { email?: string; from?: number; to?: number } = await request.json().catch(() => ({}));
+  const body: { email?: string; from?: number; to?: number; notes?: string } = await request.json().catch(() => ({}));
+  // Free-text instructions for the print house, capped so the email stays sane.
+  const notes = typeof body.notes === "string" ? body.notes.trim().slice(0, 2000) : "";
   const email = (body.email ?? "").trim();
   if (!EMAIL_RE.test(email)) {
     return NextResponse.json({ error: "כתובת מייל לא תקינה" }, { status: 400 });
@@ -55,6 +57,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       to_page: toPage,
       total_count: totalCount,
       send_to_email: email,
+      send_notes: notes || null,
       // A week is plenty for a print house to pick up the file, and keeps the link from being a
       // permanent, unauthenticated way to redownload a client's paid deliverable indefinitely.
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),

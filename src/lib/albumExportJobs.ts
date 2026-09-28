@@ -507,7 +507,10 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
         fromName: sender?.name ?? undefined,
         replyTo: sender?.email ? notificationEmailFor(sender.email) : undefined,
         subject: `קבצי הדפסה | ${album.title}`,
-        text: `שלום,\n\nמצורף קישור להורדת קובצי ה-JPG להדפסה עבור האלבום "${album.title}" (${resolved.gallery.title}):\n${downloadUrl}\n\nהקישור בתוקף לשבוע ימים.`,
+        text:
+          `שלום,\n\nמצורף קישור להורדת קובצי ה-JPG להדפסה עבור האלבום "${album.title}" (${resolved.gallery.title}):\n${downloadUrl}\n\n` +
+          (job.send_notes?.trim() ? `הנחיות והערות:\n${job.send_notes.trim()}\n\n` : "") +
+          `הקישור בתוקף לשבוע ימים.`,
       });
     }
     await notifyPhotographerExportReady(supabase, job, album.title, storagePath);

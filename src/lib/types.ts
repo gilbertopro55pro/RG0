@@ -597,6 +597,8 @@ export type GalleryAlbumExportJobRow = {
   storage_path: string | null;
   error_message: string | null;
   send_to_email: string | null;
+  // Photographer's instructions to the print house, included in the email (migration 0139).
+  send_notes: string | null;
   // PDF only — which entry of QUALITY_STEPS (albumExportJobs.ts) the NEXT invocation should try.
   // Lets a size-fitting retry pass run as its own fresh invocation instead of looping inline inside
   // one, so a timeout mid-loop no longer restarts every quality step from the top.
