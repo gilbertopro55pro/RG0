@@ -105,7 +105,7 @@ as bubbles, page breaks), meant to be forwarded to the client on WhatsApp. The h
 mid-turn (a tool call), so the email is queued (`queueNotice`) and sent by `flushNotices` when the
 turn ends, with the assistant's closing reply included (also on the API-error path). Characters
 Rubik can't draw (emoji) are dropped. PDF failure = the email goes out without it (logged as
-`Intake transcript PDF failed`).
+`Intake transcript PDF failed`). Verified live 2026-09-28: a full test-account conversation reached handoff and the email arrived with the PDF attached (confirmed by the owner).
 
 ## On the landing page (2026-09-28)
 
