@@ -16,14 +16,16 @@ const MARGIN = 44;
 // too (owner's request, 2026-09-28: invoice-like, but nothing that reads as another product's
 // document): a full-width ink band with a gold rule, the logo in a round badge over its edge, gold
 // section headings, a paper card with a gold rail, a hairline table and a rounded totals card.
-const INK = rgb(0.11, 0.106, 0.098); // --color-ink
-const INK_SOFT = rgb(0.384, 0.369, 0.337); // --color-ink-soft
-const GOLD = rgb(0.612, 0.478, 0.235); // --color-amber
-const GOLD_DEEP = rgb(0.486, 0.373, 0.153); // --color-amber-deep
-const GOLD_LIGHT = rgb(0.824, 0.678, 0.408); // the dark theme's amber, readable on ink
-const PAPER = rgb(0.949, 0.937, 0.914); // --color-paper
-const HAIRLINE = rgb(0.886, 0.867, 0.827); // --color-line
-const ON_INK_SOFT = rgb(0.78, 0.76, 0.72);
+// The landing page's palette (.landing-2026 in globals.css, since 2026-09-28): navy, the app's deep
+// brass, cool grey and white, so the quote a client receives matches the brand they saw.
+const INK = rgb(0.043, 0.071, 0.125); // --l-navy #0b1220
+const INK_SOFT = rgb(0.337, 0.376, 0.478); // --l-ink-soft #56607a
+const GOLD = rgb(0.561, 0.435, 0.184); // --l-accent #8f6f2f
+const GOLD_DEEP = rgb(0.486, 0.373, 0.153); // #7c5f27, the accent a step darker (text on white)
+const GOLD_LIGHT = rgb(0.788, 0.631, 0.353); // #c9a15a, the accent readable on navy
+const PAPER = rgb(0.933, 0.945, 0.965); // --l-bg-alt #eef1f6
+const HAIRLINE = rgb(0.863, 0.882, 0.918); // --l-line #dce1ea
+const ON_INK_SOFT = rgb(0.682, 0.722, 0.8); // --l-on-navy-soft #aeb8cc
 const WHITE = rgb(1, 1, 1);
 
 // "ש״ח" instead of the ₪ symbol used everywhere else in the app — this embedded Heebo font subset
