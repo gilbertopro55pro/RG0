@@ -32,6 +32,7 @@ import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery, IconTrash } from "@/components/icons/NavIcons";
 import { IconClose as IconAlbumClose, IconPalette, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck, IconRotateDevice } from "@/components/icons/AlbumIcons";
 import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor } from "@/components/AlbumSpreadCanvasEditor";
+import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAutoDesigner";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
 import { isLightTextColor } from "@/lib/textColor";
 import {
@@ -467,6 +468,9 @@ export default function GalleryManageView({
   const [starterPageCount, setStarterPageCount] = useState(10);
   const [starterPhotoCount, setStarterPhotoCount] = useState(30);
   const [buildingAlbumBook, setBuildingAlbumBook] = useState(false);
+  // Admin-only "עיצוב אוטומטי" (AlbumAutoDesigner) shown in place of the manual wizard.
+  const [autoDesignOpen, setAutoDesignOpen] = useState(false);
+  const [autoDesignEventType, setAutoDesignEventType] = useState<string | null>(null);
   const [saveBookTemplateOpen, setSaveBookTemplateOpen] = useState(false);
   const [bookTemplateNameDraft, setBookTemplateNameDraft] = useState("");
   const [savingBookTemplate, setSavingBookTemplate] = useState(false);
@@ -1109,6 +1113,74 @@ export default function GalleryManageView({
     setAlbum(newAlbum);
     await insertSpreadsFromFrameLists(newAlbum, generateStarterBookPages(templateId, pageCount, photoCount));
     setBuildingAlbumBook(false);
+  };
+
+  // Admin-only auto design (AlbumAutoDesigner): same album creation as the wizard paths above,
+  // then an optional cover page (sort_order 0, its own size) and the designed spreads, every
+  // element fitted into its page's safe margin exactly like fitFramesToSafeArea does for frames.
+  const openAutoDesign = async () => {
+    setAutoDesignOpen(true);
+    if (!eventId) return;
+    const { data } = await supabase.from("events").select("event_type").eq("id", eventId).maybeSingle<{ event_type: string | null }>();
+    setAutoDesignEventType(data?.event_type ?? null);
+  };
+
+  const createAutoDesignedAlbum = async ({ size, cover, spreads }: AutoDesignResult) => {
+    const { data: newAlbum, error: albumErr } = await supabase
+      .from("gallery_albums")
+      .insert({
+        gallery_id: gallery.id,
+        photographer_id: gallery.photographer_id,
+        width_cm: size.width,
+        height_cm: size.height,
+        safe_margin_cm: size.margin,
+      })
+      .select()
+      .single<GalleryAlbumRow>();
+    if (albumErr || !newAlbum) throw new Error(albumErr?.message ?? "album");
+    const favoritePool = photos.filter((p) => p.is_favorite);
+    const fallbackPhotoId = (favoritePool.length > 0 ? favoritePool : photos)[0]?.id;
+    const fitElements = (elements: AlbumElement[], inset: { x: number; y: number } | null): AlbumElement[] => {
+      if (!inset) return elements;
+      const safeW = 100 - 2 * inset.x;
+      const safeH = 100 - 2 * inset.y;
+      if (safeW <= 0 || safeH <= 0) return elements;
+      return elements.map((el) => ({
+        ...el,
+        xPct: inset.x + (el.xPct / 100) * safeW,
+        yPct: inset.y + (el.yPct / 100) * safeH,
+        widthPct: (el.widthPct / 100) * safeW,
+        ...(el.heightPct !== undefined ? { heightPct: (el.heightPct / 100) * safeH } : {}),
+      })) as AlbumElement[];
+    };
+    const firstPhotoId = (elements: AlbumElement[]) =>
+      elements.find((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId)?.photoId ?? fallbackPhotoId;
+    const rows: Record<string, unknown>[] = [];
+    if (cover) {
+      const elements = fitElements(cover.elements, marginInsetPctFor({ width_cm: cover.widthCm, height_cm: cover.heightCm, safe_margin_cm: size.margin }));
+      rows.push({
+        album_id: newAlbum.id,
+        sort_order: 0,
+        layout: "custom",
+        elements,
+        photo_id_1: firstPhotoId(elements),
+        width_cm: cover.widthCm,
+        height_cm: cover.heightCm,
+      });
+    }
+    const bookInset = marginInsetPctFor(newAlbum);
+    for (const raw of spreads) {
+      const elements = fitElements(raw, bookInset);
+      rows.push({ album_id: newAlbum.id, sort_order: rows.length, layout: "custom", elements, photo_id_1: firstPhotoId(elements) });
+    }
+    const { error: spreadsErr } = await supabase.from("gallery_album_spreads").insert(rows);
+    if (spreadsErr) {
+      // Don't leave an empty album behind: the wizard (and a retry) only shows while there's none.
+      await supabase.from("gallery_albums").delete().eq("id", newAlbum.id);
+      throw new Error(spreadsErr.message);
+    }
+    setAutoDesignOpen(false);
+    await loadAlbum();
   };
 
   // Saves the album's CURRENT full set of pages (whatever their frame shapes are right now,
@@ -4509,8 +4581,32 @@ export default function GalleryManageView({
                     עורך האלבומים זמין ממסלול פרו ומעלה, שדרגו מסלול בהגדרות כדי להתחיל לעצב אלבום לגלריה זו.
                   </p>
                 </div>
+              ) : photographerEmail === ADMIN_EMAIL && autoDesignOpen ? (
+                <AlbumAutoDesigner
+                  galleryId={gallery.id}
+                  galleryTitle={gallery.title}
+                  eventType={autoDesignEventType}
+                  photos={photos}
+                  defaultSize={albumSizeDraft}
+                  sizePresets={ALBUM_SIZE_PRESETS}
+                  onCreate={createAutoDesignedAlbum}
+                  onCancel={() => setAutoDesignOpen(false)}
+                />
               ) : (
               <>
+                {photographerEmail === ADMIN_EMAIL && (
+                  <button
+                    type="button"
+                    onClick={openAutoDesign}
+                    className="w-full text-right rounded-lg border border-ink bg-white p-3.5 mb-4 flex items-center justify-between gap-3"
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold">עיצוב אוטומטי של כל האלבום</span>
+                      <span className="block text-xs text-ink-soft mt-0.5">בוחרים מידות, סגנון ומשפחה, והאלבום כולו מעוצב לבד</span>
+                    </span>
+                    <span className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold bg-ink text-white">התחלה</span>
+                  </button>
+                )}
                 <p className="text-xs text-ink-soft mb-3.5">
                   קודם כל, מה מידות האלבום להדפסה? תתחילו מעמוד ריק אחד, ומשם תוכלו לבחור תבנית מוכנה או לעצב בעצמכם, ולהוסיף עוד עמודים בהמשך.
                 </p>

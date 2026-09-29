@@ -1,0 +1,765 @@
+"use client";
+
+import { useMemo, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { optimizedImageUrl } from "@/lib/imageOptimize";
+import { detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
+import LiquidProgressBar from "@/components/LiquidProgressBar";
+import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type FamilyCellId, type PhotoFaces } from "@/lib/albumAuto/types";
+import { CELL_ORDER, cellLabel, countNames, detectEventKind, pickCellFaces, planAlbum } from "@/lib/albumAuto/planner";
+import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
+import type { AlbumElement } from "@/lib/types";
+
+// Auto album design (admin only while it's being polished, 2026-09-29): the photographer picks the
+// album + cover size and a style, marks up to four family reference photos, and the whole book is
+// planned (lib/albumAuto/planner.ts) and laid out (lib/albumAuto/layouts.ts) in the browser. The
+// parent (GalleryManageView) saves the result as a normal album and opens it in the editor.
+
+export type AutoDesignerPhoto = {
+  id: string;
+  is_favorite: boolean;
+  preview_aspect_ratio: number | null;
+  original_filename: string | null;
+  url: string;
+  previewUrl?: string | null;
+};
+
+type AlbumSize = { width: number; height: number; margin: number };
+
+export type AutoDesignResult = {
+  size: AlbumSize;
+  cover: { widthCm: number; heightCm: number; elements: AlbumElement[] } | null;
+  spreads: AlbumElement[][];
+};
+
+type CellState = {
+  photoId: string | null;
+  names: string;
+  faces: DetectedFace[] | null;
+  detecting: boolean;
+  error: string | null;
+};
+
+type Phase = "times" | "faces" | "plan" | "layout" | "save";
+
+const PHASES: { id: Phase; label: string }[] = [
+  { id: "times", label: "קורא את שעות הצילום" },
+  { id: "faces", label: "מזהה פרצופים" },
+  { id: "plan", label: "מתכנן את האלבום" },
+  { id: "layout", label: "מעצב את העמודים" },
+  { id: "save", label: "שומר ופותח את האלבום בעורך" },
+];
+
+// Share of the overall bar each phase fills (face detection is by far the slowest).
+const PHASE_SPAN: Record<Phase, [number, number]> = {
+  times: [0, 15],
+  faces: [15, 80],
+  plan: [80, 85],
+  layout: [85, 90],
+  save: [90, 100],
+};
+
+const PICKER_PAGE = 120;
+const PAGE_SIZE = 1000;
+
+const emptyCell = (): CellState => ({ photoId: null, names: "", faces: null, detecting: false, error: null });
+
+class CancelledError extends Error {}
+
+export default function AlbumAutoDesigner({
+  galleryId,
+  galleryTitle,
+  eventType,
+  photos,
+  defaultSize,
+  sizePresets,
+  onCreate,
+  onCancel,
+}: {
+  galleryId: string;
+  galleryTitle: string;
+  eventType: string | null;
+  photos: AutoDesignerPhoto[];
+  defaultSize: AlbumSize;
+  sizePresets: { label: string; width: number; height: number; margin: number }[];
+  onCreate: (result: AutoDesignResult) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const supabase = createClient();
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [size, setSize] = useState<AlbumSize>(defaultSize);
+  const [coverMode, setCoverMode] = useState<"on" | "none">("on");
+  const [coverSize, setCoverSize] = useState(() => singlePageOf(defaultSize));
+  const [coverTouched, setCoverTouched] = useState(false);
+  const [style, setStyle] = useState<AutoStyleId>("clean");
+  const [spreadCount, setSpreadCount] = useState("");
+  const [cells, setCells] = useState<Record<FamilyCellId, CellState>>(() => ({
+    parents: emptyCell(),
+    owners: emptyCell(),
+    siblings: emptyCell(),
+    grandparents: emptyCell(),
+  }));
+  const [pickerFor, setPickerFor] = useState<FamilyCellId | null>(null);
+  const [pickerLimit, setPickerLimit] = useState(PICKER_PAGE);
+
+  const [running, setRunning] = useState(false);
+  const [phase, setPhase] = useState<Phase>("times");
+  const [phaseDetail, setPhaseDetail] = useState("");
+  const [pct, setPct] = useState(0);
+  const [runError, setRunError] = useState<string | null>(null);
+  const cancelRef = useRef(false);
+  const skipFacesRef = useRef(false);
+
+  const eventKind = useMemo(() => detectEventKind(galleryTitle, eventType), [galleryTitle, eventType]);
+  const favorites = useMemo(() => photos.filter((p) => p.is_favorite), [photos]);
+  const candidates = favorites.length > 0 ? favorites : photos;
+  const pickerPhotos = useMemo(() => [...favorites, ...photos.filter((p) => !p.is_favorite)], [favorites, photos]);
+  const photoById = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos]);
+
+  const singlePage = singlePageOf(size);
+  const coverPresets = useMemo(() => {
+    const list = [{ label: `כמו עמוד באלבום (${fmt(singlePage.width)}×${fmt(singlePage.height)})`, width: singlePage.width, height: singlePage.height }];
+    for (const [w, h] of [
+      [30, 30],
+      [25, 25],
+      [20, 30],
+      [30, 20],
+    ]) {
+      if (!list.some((p) => p.width === w && p.height === h)) list.push({ label: `${w}×${h}`, width: w, height: h });
+    }
+    return list;
+  }, [singlePage.width, singlePage.height]);
+
+  const setAlbumSize = (next: AlbumSize) => {
+    setSize(next);
+    // Until the photographer set the cover explicitly, it follows the album's single page.
+    if (!coverTouched) setCoverSize(singlePageOf(next));
+  };
+
+  const updateCell = (id: FamilyCellId, patch: Partial<CellState>) => setCells((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+
+  const choosePhoto = async (cellId: FamilyCellId, photoId: string) => {
+    setPickerFor(null);
+    updateCell(cellId, { photoId, faces: null, detecting: true, error: null });
+    try {
+      const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${photoId}/image`);
+      setCells((prev) => (prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], faces, detecting: false } } : prev));
+    } catch {
+      setCells((prev) =>
+        prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], detecting: false, error: "לא הצלחנו לזהות פרצופים בתמונה הזו" } } : prev
+      );
+    }
+  };
+
+  const sizeValid = size.width > 0 && size.height > 0 && (coverMode === "none" || (coverSize.width > 0 && coverSize.height > 0));
+  const anyCellDetecting = CELL_ORDER.some((id) => cells[id].detecting);
+
+  const setProgress = (p: Phase, fraction: number, detail = "") => {
+    const [from, to] = PHASE_SPAN[p];
+    setPhase(p);
+    setPhaseDetail(detail);
+    setPct(from + (to - from) * Math.max(0, Math.min(1, fraction)));
+  };
+
+  const checkCancel = () => {
+    if (cancelRef.current) throw new CancelledError();
+  };
+
+  const run = async () => {
+    if (running || candidates.length === 0) return;
+    cancelRef.current = false;
+    skipFacesRef.current = false;
+    setRunError(null);
+    setRunning(true);
+    setStep(3);
+    try {
+      // (a) Shooting times from EXIF — the route reads a batch per call until nothing is left.
+      setProgress("times", 0);
+      let checkedSoFar = 0;
+      for (let guard = 0; guard < 500; guard++) {
+        checkCancel();
+        const res = await fetch(`/api/galleries/${galleryId}/photos/capture-times`, { method: "POST" });
+        if (!res.ok) throw new Error("times");
+        const data = (await res.json()) as { checked: number; withDate: number; remaining: number };
+        checkedSoFar += data.checked;
+        const total = checkedSoFar + data.remaining;
+        setProgress("times", total > 0 ? checkedSoFar / total : 1, `${checkedSoFar} מתוך ${total}`);
+        if (data.remaining <= 0 || data.checked <= 0) break;
+      }
+      const takenAt = new Map<string, number>();
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data, error } = await supabase
+          .from("gallery_photos")
+          .select("id, taken_at")
+          .eq("gallery_id", galleryId)
+          .order("id")
+          .range(from, from + PAGE_SIZE - 1)
+          .returns<{ id: string; taken_at: string | null }[]>();
+        if (error) throw new Error("times");
+        for (const row of data ?? []) {
+          const t = row.taken_at ? Date.parse(row.taken_at) : NaN;
+          if (Number.isFinite(t)) takenAt.set(row.id, t);
+        }
+        if (!data || data.length < PAGE_SIZE) break;
+      }
+      checkCancel();
+
+      // Reference people per cell.
+      const cellPeople: CellPeople[] = [];
+      for (const id of CELL_ORDER) {
+        const cell = cells[id];
+        if (!cell.photoId || !cell.faces || cell.faces.length === 0) continue;
+        const descriptors = pickCellFaces(
+          cell.faces.map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })),
+          cell.names
+        ).filter((d) => d.length > 0);
+        if (descriptors.length > 0) cellPeople.push({ id, descriptors });
+      }
+
+      // (b) Faces in the candidate photos: the gallery's cached detection first, then detect the
+      // rest in memory only (gallery_photo_faces' clusters drive the face filter, so never write).
+      const facesByPhoto = new Map<string, { descriptor: number[]; area: number }[]>();
+      if (cellPeople.length > 0) {
+        setProgress("faces", 0, "טוען זיהוי קודם");
+        const candidateIds = new Set(candidates.map((p) => p.id));
+        const cachedIds = new Set<string>();
+        for (let from = 0; ; from += PAGE_SIZE) {
+          const { data, error } = await supabase
+            .from("gallery_photo_faces")
+            .select("id, photo_id, box_width, box_height, descriptor")
+            .eq("gallery_id", galleryId)
+            .order("id")
+            .range(from, from + PAGE_SIZE - 1)
+            .returns<{ id: string; photo_id: string; box_width: number; box_height: number; descriptor: number[] }[]>();
+          if (error) break; // no cache is fine, everything just gets detected below
+          for (const row of data ?? []) {
+            if (!candidateIds.has(row.photo_id) || !Array.isArray(row.descriptor)) continue;
+            cachedIds.add(row.photo_id);
+            const list = facesByPhoto.get(row.photo_id) ?? [];
+            list.push({ descriptor: row.descriptor.map(Number), area: row.box_width * row.box_height });
+            facesByPhoto.set(row.photo_id, list);
+          }
+          if (!data || data.length < PAGE_SIZE) break;
+        }
+        const toDetect = candidates.filter((p) => !cachedIds.has(p.id));
+        for (let i = 0; i < toDetect.length; i++) {
+          checkCancel();
+          if (skipFacesRef.current) break;
+          setProgress("faces", i / toDetect.length, `${i} מתוך ${toDetect.length} תמונות`);
+          try {
+            const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${toDetect[i].id}/image`);
+            if (faces.length > 0) facesByPhoto.set(toDetect[i].id, faces.map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })));
+          } catch {
+            // One unreadable photo shouldn't stop the whole design.
+          }
+        }
+      }
+      setProgress("faces", 1);
+      checkCancel();
+
+      // (c) The plan.
+      setProgress("plan", 0);
+      await nextFrame();
+      const autoPhotos: AutoPhoto[] = candidates.map((p) => ({
+        id: p.id,
+        aspect: p.preview_aspect_ratio && p.preview_aspect_ratio > 0 ? p.preview_aspect_ratio : 1.5,
+        takenAt: takenAt.get(p.id) ?? null,
+        filename: p.original_filename ?? "",
+      }));
+      const photoFaces: PhotoFaces[] = [...facesByPhoto.entries()].map(([photoId, faces]) => ({ photoId, faces }));
+      const target = parseInt(spreadCount, 10);
+      const referencePhotos = CELL_ORDER.filter((id) => cells[id].photoId).map((id) => ({ id, photoId: cells[id].photoId }));
+      const plan = planAlbum(
+        autoPhotos,
+        photoFaces,
+        cellPeople,
+        { style, targetSpreads: Number.isFinite(target) && target > 0 ? target : null },
+        referencePhotos
+      );
+      if (plan.spreads.length === 0) throw new Error("empty");
+      setProgress("plan", 1);
+      checkCancel();
+
+      // (d) The layouts.
+      setProgress("layout", 0);
+      await nextFrame();
+      const aspectOf = new Map(autoPhotos.map((p) => [p.id, p.aspect]));
+      const spreads = plan.spreads.map(
+        (s, i) =>
+          layoutSpread({
+            style,
+            photos: s.photoIds.map((id) => ({ id, aspect: aspectOf.get(id) ?? 1.5 })),
+            heroId: s.heroId,
+            section: s.section,
+            spreadIndex: i,
+            widthCm: size.width,
+            heightCm: size.height,
+          }).elements
+      );
+      const cover =
+        coverMode === "on"
+          ? {
+              widthCm: coverSize.width,
+              heightCm: coverSize.height,
+              elements: layoutCover({
+                style,
+                photo: plan.coverPhotoId ? { id: plan.coverPhotoId, aspect: aspectOf.get(plan.coverPhotoId) ?? 1.5 } : null,
+                title: galleryTitle,
+                widthCm: coverSize.width,
+                heightCm: coverSize.height,
+              }).elements,
+            }
+          : null;
+      setProgress("layout", 1, `${spreads.length} כפולות`);
+      checkCancel();
+
+      // (e) Save — the parent creates the album and opens it (this component unmounts then).
+      setProgress("save", 0.3);
+      await onCreate({ size, cover, spreads });
+      setProgress("save", 1);
+    } catch (e) {
+      if (e instanceof CancelledError) {
+        setStep(2);
+      } else {
+        const msg = e instanceof Error ? e.message : "";
+        setRunError(
+          msg === "times"
+            ? "לא הצלחנו לקרוא את שעות הצילום של התמונות."
+            : msg === "empty"
+              ? "לא נמצאו תמונות לעיצוב האלבום."
+              : "משהו השתבש בעיצוב האלבום."
+        );
+      }
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const filledCells = CELL_ORDER.filter((id) => cells[id].photoId).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-line bg-white p-3.5">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm font-semibold">עיצוב אוטומטי של כל האלבום</p>
+          <span className="text-[11px] rounded-full px-2.5 py-1 bg-chip text-ink-soft">זמין כרגע רק בחשבון האדמין, עד להשלמת הליטוש</span>
+        </div>
+        <div className="flex items-center gap-1.5 mt-3" aria-hidden>
+          {[1, 2, 3].map((n) => (
+            <div key={n} className={`h-1 flex-1 rounded-full ${step >= n ? "bg-ink" : "bg-chip"}`} />
+          ))}
+        </div>
+        <p className="text-xs text-ink-soft mt-2">
+          {step === 1 && "שלב 1 מתוך 3: מידות וסגנון"}
+          {step === 2 && "שלב 2 מתוך 3: המשפחה"}
+          {step === 3 && "שלב 3 מתוך 3: עיצוב"}
+        </p>
+      </div>
+
+      {step === 1 && (
+        <>
+          <section className="rounded-lg border border-line bg-white p-3.5 space-y-3">
+            <p className="text-sm font-semibold">מידות האלבום (ס״מ)</p>
+            <div className="flex items-end gap-2 flex-wrap">
+              <label className="block">
+                <span className="block text-xs text-ink-soft mb-1.5">מידה נפוצה</span>
+                <select
+                  value={sizePresets.find((p) => p.width === size.width && p.height === size.height)?.label ?? ""}
+                  onChange={(e) => {
+                    const preset = sizePresets.find((p) => p.label === e.target.value);
+                    if (preset) setAlbumSize({ width: preset.width, height: preset.height, margin: preset.margin });
+                  }}
+                  className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white min-w-[110px]"
+                >
+                  <option value="">בחירה...</option>
+                  {sizePresets.map((p) => (
+                    <option key={p.label} value={p.label}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <NumberField label="רוחב" value={size.width} onChange={(v) => setAlbumSize({ ...size, width: v })} />
+              <NumberField label="גובה" value={size.height} onChange={(v) => setAlbumSize({ ...size, height: v })} />
+              <NumberField label="שוליים" value={size.margin} step={0.1} min={0} onChange={(v) => setSize({ ...size, margin: v })} />
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-line bg-white p-3.5 space-y-3">
+            <p className="text-sm font-semibold">מידות הכריכה (ס״מ)</p>
+            <div className="flex items-end gap-2 flex-wrap">
+              <label className="block">
+                <span className="block text-xs text-ink-soft mb-1.5">מידה</span>
+                <select
+                  value={
+                    coverMode === "none"
+                      ? "none"
+                      : (coverPresets.find((p) => p.width === coverSize.width && p.height === coverSize.height)?.label ?? "")
+                  }
+                  onChange={(e) => {
+                    setCoverTouched(true);
+                    if (e.target.value === "none") {
+                      setCoverMode("none");
+                      return;
+                    }
+                    setCoverMode("on");
+                    const preset = coverPresets.find((p) => p.label === e.target.value);
+                    if (preset) setCoverSize({ width: preset.width, height: preset.height });
+                  }}
+                  className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white min-w-[110px] max-w-full"
+                >
+                  <option value="">מידה אחרת</option>
+                  {coverPresets.map((p) => (
+                    <option key={p.label} value={p.label}>
+                      {p.label}
+                    </option>
+                  ))}
+                  <option value="none">בלי כריכה</option>
+                </select>
+              </label>
+              {coverMode === "on" && (
+                <>
+                  <NumberField
+                    label="רוחב"
+                    value={coverSize.width}
+                    onChange={(v) => {
+                      setCoverTouched(true);
+                      setCoverSize({ ...coverSize, width: v });
+                    }}
+                  />
+                  <NumberField
+                    label="גובה"
+                    value={coverSize.height}
+                    onChange={(v) => {
+                      setCoverTouched(true);
+                      setCoverSize({ ...coverSize, height: v });
+                    }}
+                  />
+                </>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-line bg-white p-3.5 space-y-3">
+            <p className="text-sm font-semibold">סגנון</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {AUTO_STYLES.map((s) => {
+                const selected = s.id === style;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setStyle(s.id)}
+                    aria-pressed={selected}
+                    className={`text-right rounded-lg border p-3 transition-colors ${selected ? "border-ink bg-chip" : "border-line bg-white"}`}
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold">{s.name}</span>
+                      <span
+                        className={`h-4 w-4 shrink-0 rounded-full border-2 ${selected ? "border-ink bg-ink" : "border-line bg-white"}`}
+                        aria-hidden
+                      />
+                    </span>
+                    <span className="block text-xs text-ink-soft mt-1 leading-relaxed">{s.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <label className="flex items-center gap-2 flex-wrap pt-1">
+              <input
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={spreadCount}
+                onChange={(e) => setSpreadCount(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="אוטומטי"
+                className="w-24 rounded-lg border border-line px-2.5 py-2 text-sm text-center bg-white"
+              />
+              <span className="text-xs text-ink-soft">מספר כפולות (ריק: לפי כמות התמונות)</span>
+            </label>
+          </section>
+
+          <p className="text-xs text-ink-soft">
+            {favorites.length > 0
+              ? `האלבום ייבנה מ־${favorites.length} התמונות שסומנו בלב.`
+              : `לא סומנו תמונות בלב, אז האלבום ייבנה מכל ${photos.length} התמונות בגלריה.`}
+          </p>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              disabled={!sizeValid || candidates.length === 0}
+              className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+            >
+              המשך
+            </button>
+            <button type="button" onClick={onCancel} className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
+              חזרה
+            </button>
+          </div>
+        </>
+      )}
+
+      {step === 2 && pickerFor && (
+        <section className="rounded-lg border border-line bg-white p-3.5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold">
+              תמונה לתא {CELL_ORDER.indexOf(pickerFor) + 1}: {cellLabel(pickerFor, eventKind)}
+            </p>
+            <button type="button" onClick={() => setPickerFor(null)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-white border border-line text-ink-soft">
+              ביטול
+            </button>
+          </div>
+          <p className="text-xs text-ink-soft">בחרו תמונה שבה רואים את הפנים בבירור. התמונות שסומנו בלב מופיעות ראשונות.</p>
+          <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-6 gap-1.5 max-h-[55vh] overflow-y-auto">
+            {pickerPhotos.slice(0, pickerLimit).map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => choosePhoto(pickerFor, p.id)}
+                className={`relative aspect-square rounded-md overflow-hidden bg-chip ${cells[pickerFor].photoId === p.id ? "ring-2 ring-ink" : ""}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={thumbOf(p)} alt="" loading="lazy" className="h-full w-full object-cover" />
+                {p.is_favorite && (
+                  <span className="absolute top-1 right-1 h-5 w-5 rounded-full bg-white/90 flex items-center justify-center text-[11px] text-rose" aria-hidden>
+                    ♥
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          {pickerPhotos.length > pickerLimit && (
+            <button
+              type="button"
+              onClick={() => setPickerLimit((n) => n + PICKER_PAGE)}
+              className="w-full rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
+            >
+              הצגת עוד תמונות
+            </button>
+          )}
+        </section>
+      )}
+
+      {step === 2 && !pickerFor && (
+        <>
+          <p className="text-xs text-ink-soft leading-relaxed">
+            סמנו לכל תא תמונה אחת שבה רואים את האנשים, וכתבו מי בתמונה. כל התאים לא חובה, אבל ככל שתמלאו יותר תאים, סדר האלבום יהיה מדויק יותר.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {CELL_ORDER.map((id, i) => {
+              const cell = cells[id];
+              const photo = cell.photoId ? photoById.get(cell.photoId) : undefined;
+              return (
+                <div key={id} className="rounded-lg border border-line bg-white p-3 space-y-2.5">
+                  <p className="text-sm font-semibold">
+                    {i + 1}. {cellLabel(id, eventKind)}
+                  </p>
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPickerLimit(PICKER_PAGE);
+                        setPickerFor(id);
+                      }}
+                      className="h-20 w-20 shrink-0 rounded-lg overflow-hidden bg-chip border border-line flex items-center justify-center text-xs text-ink-soft"
+                    >
+                      {photo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={thumbOf(photo)} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="px-1 text-center leading-snug">בחירת תמונה</span>
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <textarea
+                        rows={2}
+                        value={cell.names}
+                        onChange={(e) => updateCell(id, { names: e.target.value })}
+                        placeholder="מי בתמונה? (למשל: אמא רחל, אבא דוד)"
+                        className="w-full resize-none rounded-lg border border-line px-2.5 py-2 text-sm leading-snug bg-white"
+                      />
+                      <FaceHint cell={cell} />
+                      {photo && (
+                        <button
+                          type="button"
+                          onClick={() => updateCell(id, emptyCell())}
+                          className="text-[11px] text-ink-soft underline underline-offset-2"
+                        >
+                          ניקוי התא
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {runError && <p className="text-xs text-rose">{runError}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={run}
+              disabled={anyCellDetecting || running}
+              className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+            >
+              {anyCellDetecting ? "מזהה פרצופים..." : filledCells === 0 ? "התחלת עיצוב (בלי תאי משפחה)" : "התחלת עיצוב"}
+            </button>
+            <button type="button" onClick={() => setStep(1)} className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
+              חזרה
+            </button>
+          </div>
+        </>
+      )}
+
+      {step === 3 && (
+        <section className="rounded-lg border border-line bg-white p-3.5 space-y-3.5">
+          <div className="h-2.5">
+            <LiquidProgressBar pct={pct} />
+          </div>
+          <ol className="space-y-2">
+            {PHASES.map((p) => {
+              const idx = PHASES.findIndex((x) => x.id === phase);
+              const mine = PHASES.findIndex((x) => x.id === p.id);
+              const state = runError && mine === idx ? "error" : mine < idx || (mine === idx && pct >= 100) ? "done" : mine === idx ? "active" : "todo";
+              return (
+                <li key={p.id} className="flex items-center gap-2.5 text-sm">
+                  <span
+                    className={`h-5 w-5 shrink-0 rounded-full flex items-center justify-center text-[11px] ${
+                      state === "done"
+                        ? "bg-ink text-white"
+                        : state === "active"
+                          ? "border-2 border-ink border-t-transparent animate-spin"
+                          : state === "error"
+                            ? "bg-rose text-white"
+                            : "border border-line"
+                    }`}
+                    aria-hidden
+                  >
+                    {state === "done" ? "✓" : state === "error" ? "!" : ""}
+                  </span>
+                  <span className={state === "todo" ? "text-ink-soft" : "text-ink"}>{p.label}</span>
+                  {state === "active" && phaseDetail && <span className="text-xs text-ink-soft">({phaseDetail})</span>}
+                </li>
+              );
+            })}
+          </ol>
+          {runError ? (
+            <>
+              <p className="text-xs text-rose">{runError}</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={run} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
+                  לנסות שוב
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRunError(null);
+                    setStep(2);
+                  }}
+                  className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft"
+                >
+                  חזרה
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex gap-2 flex-wrap">
+              {phase === "faces" && running && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    skipFacesRef.current = true;
+                  }}
+                  className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-white border border-line text-ink"
+                >
+                  דילוג: להמשיך עם מה שכבר זוהה
+                </button>
+              )}
+              {running && phase !== "save" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    cancelRef.current = true;
+                  }}
+                  className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
+                >
+                  ביטול
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function FaceHint({ cell }: { cell: CellState }) {
+  if (!cell.photoId) return null;
+  if (cell.detecting) return <p className="text-[11px] text-ink-soft">מזהה פרצופים...</p>;
+  if (cell.error) return <p className="text-[11px] text-rose">{cell.error}</p>;
+  if (!cell.faces) return null;
+  const found = cell.faces.length;
+  if (found === 0) return <p className="text-[11px] text-rose">לא זוהו פרצופים בתמונה הזו, כדאי לבחור תמונה אחרת</p>;
+  const names = countNames(cell.names);
+  let extra = "";
+  if (names > 0 && names < found) extra = `, ישמשו ${names} הפרצופים הגדולים בתמונה`;
+  else if (names > found) extra = `, אבל כתבתם ${names} שמות`;
+  return (
+    <p className="text-[11px] text-ink-soft">
+      {found === 1 ? "זוהה פרצוף אחד" : `זוהו ${found} פרצופים`}
+      {extra}
+    </p>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+  step = 1,
+  min = 1,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  step?: number;
+  min?: number;
+}) {
+  return (
+    <label className="block">
+      <span className="block text-xs text-ink-soft mb-1.5">{label}</span>
+      <input
+        type="number"
+        min={min}
+        step={step}
+        value={value}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (Number.isFinite(v) && v >= min) onChange(v);
+        }}
+        className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center bg-white"
+      />
+    </label>
+  );
+}
+
+// One page of the album: a double spread (width/height >= 1.6, fold at 50%) halves the width.
+function singlePageOf(size: { width: number; height: number }) {
+  const isSpread = size.height > 0 && size.width / size.height >= 1.6;
+  return { width: isSpread ? size.width / 2 : size.width, height: size.height };
+}
+
+function fmt(n: number) {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function thumbOf(p: AutoDesignerPhoto) {
+  return p.previewUrl ?? optimizedImageUrl(p.url, 384);
+}
+
+function nextFrame() {
+  return new Promise<void>((r) => requestAnimationFrame(() => r()));
+}
