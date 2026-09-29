@@ -2,7 +2,7 @@
   "home": {
     "clip": "teaser-home",
     "skip": 0.3,
-    "speed": 1.2,
+    "speed": 1.6,
     "kicker": "גילברטו · בקרוב",
     "headline": "כל העסק שלכם, במסך אחד.",
     "lines": [
@@ -13,7 +13,7 @@
   "galleries": {
     "clip": "teaser-galleries",
     "skip": 0.3,
-    "speed": 1.1,
+    "speed": 1.6,
     "kicker": "גילברטו · בקרוב",
     "headline": "גלריות שהלקוחות מתאהבים בהן.",
     "lines": [
@@ -24,7 +24,7 @@
   "leads": {
     "clip": "teaser-leads",
     "skip": 0.3,
-    "speed": 1.2,
+    "speed": 1.5,
     "kicker": "גילברטו · בקרוב",
     "headline": "אף פנייה לא הולכת לאיבוד.",
     "lines": [
@@ -35,7 +35,7 @@
   "quotes": {
     "clip": "teaser-quotes",
     "skip": 0.3,
-    "speed": 1.0,
+    "speed": 1.5,
     "kicker": "גילברטו · בקרוב",
     "headline": "הצעת מחיר שסוגרת עסקה.",
     "lines": [
@@ -46,7 +46,7 @@
   "assistant": {
     "clip": "teaser-assistant",
     "skip": 0.3,
-    "speed": 1.6,
+    "speed": 2.4,
     "kicker": "גילברטו · בקרוב",
     "headline": "העוזר שעונה ללקוחות בשבילכם.",
     "lines": [

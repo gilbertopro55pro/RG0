@@ -1,4 +1,4 @@
-// Coming-soon teaser (1080x1920, 17s, no audio) built around a clean screen recording.
+// Coming-soon teaser (1080x1920, 13s, no audio) built around a clean screen recording.
 // Usage: node teaser.js <key>     (<key> from teasers.json)
 // Needs $GF_OUT/<clip>.mp4 first: record the caption-less scenario scenarios/<clip>.js with
 // record.js + convert.py as usual. Writes $GF_OUT/coming-soon-<key>.mp4 and coming-soon-<key>-strip.png.
@@ -51,7 +51,7 @@ const FPS = 30;
     framesDir: "file://" + framesDir,
     logo: "file://" + path.join(REPO, "public/icons/icon-512.png"),
   });
-  const duration = await page.evaluate(() => window.DURATION);
+  const [duration, phoneStart] = await page.evaluate(() => [window.DURATION, window.PHONE_START]);
 
   // 3. Render every frame and pipe it into ffmpeg.
   const out = path.join(OUT, `coming-soon-${key}.mp4`);
@@ -67,7 +67,7 @@ const FPS = 30;
   await new Promise((r) => ff.on("close", r));
   await browser.close();
   execFileSync(FF, ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=1,scale=180:-1,tile=9x2", "-frames:v", "1", path.join(OUT, `coming-soon-${key}-strip.png`)]);
-  console.log(out, `${total} frames, clip frames used up to`, Math.min(frames, Math.floor((duration - 2.6) * FPS * c.speed)), "of", frames);
+  console.log(out, `${total} frames, clip frames used up to`, Math.min(frames, Math.floor((duration - phoneStart) * FPS * c.speed)), "of", frames);
 })().catch((e) => {
   console.error("FATAL", e.message);
   process.exit(1);
