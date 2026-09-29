@@ -1169,12 +1169,23 @@ export default function GalleryManageView({
         photo_id_1: firstPhotoId(elements),
         width_cm: cover.widthCm,
         height_cm: cover.heightCm,
+        background_photo_id: null,
+        background_blur: 0,
       });
     }
     const bookInset = marginInsetPctFor(newAlbum);
     for (const spread of spreads) {
       const elements = fitElements(spread.elements, bookInset, spread.bleedIds);
-      rows.push({ album_id: newAlbum.id, sort_order: rows.length, layout: "custom", elements, photo_id_1: firstPhotoId(elements) });
+      rows.push({
+        album_id: newAlbum.id,
+        sort_order: rows.length,
+        layout: "custom",
+        elements,
+        photo_id_1: firstPhotoId(elements),
+        // Set on every row (a batch insert sends the union of the columns; a missing one would be null).
+        background_photo_id: spread.background?.photoId ?? null,
+        background_blur: spread.background?.blur ?? 0,
+      });
     }
     const { error: spreadsErr } = await supabase.from("gallery_album_spreads").insert(rows);
     if (spreadsErr) {
