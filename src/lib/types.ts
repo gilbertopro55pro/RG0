@@ -349,6 +349,12 @@ export type IntakeDetails = {
   startTime?: string;
   endTime?: string;
   wishes?: string;
+  // What the coverage should include: photos, video, magnets, a designed digital album (owner, 2026-09-29).
+  coverage?: string;
+  // With video: whether a separate videographer is needed (two crew members).
+  videoCrew?: string;
+  // The client was asked "anything else about the event?" and answered; only then is the lead handed off.
+  nothingElse?: boolean;
   clientName?: string;
   phone?: string;
   email?: string;
