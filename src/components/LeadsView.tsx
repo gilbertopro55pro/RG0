@@ -50,6 +50,8 @@ export default function LeadsView({
   isAdmin: boolean;
 }) {
   const [leads, setLeads] = useState(initialLeads);
+  // "Now" for the days-since-quote counters, fixed when the page opens.
+  const [now] = useState(() => Date.now());
   // Start of the "sources in the last 30 days" window, fixed when the page opens.
   const [sourcesSince] = useState(() => Date.now() - 30 * 86_400_000);
   // Owned here (not inside AddLeadModal) so a package created via "+ חבילה מותאמת אישית חדשה"
@@ -159,18 +161,21 @@ export default function LeadsView({
                   </div>
                 )}
               </div>
-              <select
-                value={lead.status}
-                onChange={(e) => setStatus(lead.id, e.target.value as LeadStatus)}
-                className="text-[11px] px-2 py-1 rounded-full font-medium border-none"
-                style={{ background: STATUS_COLORS[lead.status].bg, color: STATUS_COLORS[lead.status].text }}
-              >
-                {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <select
+                  value={lead.status}
+                  onChange={(e) => setStatus(lead.id, e.target.value as LeadStatus)}
+                  className="text-[11px] px-2 py-1 rounded-full font-medium border-none"
+                  style={{ background: STATUS_COLORS[lead.status].bg, color: STATUS_COLORS[lead.status].text }}
+                >
+                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                {lead.quote_sent_at && <QuoteSentAge sentAt={lead.quote_sent_at} closed={lead.status === "won" || lead.status === "lost"} now={now} />}
+              </div>
             </div>
 
             {lead.event_type_name && <p className="text-[13px] mb-1">{lead.event_type_name}</p>}
@@ -519,6 +524,22 @@ function AddLeadModal({
           onEventTypeDeleted={onEventTypeDeleted}
         />
       )}
+    </div>
+  );
+}
+
+// When the quote went out, and (in red, while the lead is still open) how many days ago, so a quote
+// that's waiting too long stands out. Days are counted by the calendar in Israel.
+function QuoteSentAge({ sentAt, closed, now }: { sentAt: string; closed: boolean; now: number }) {
+  const day = (t: number) => new Date(t).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  const days = Math.max(0, Math.round((Date.parse(day(now)) - Date.parse(day(Date.parse(sentAt)))) / 86400000));
+  const ago = days === 0 ? "נשלחה היום" : days === 1 ? "לפני יום" : days === 2 ? "לפני יומיים" : `לפני ${days} ימים`;
+  return (
+    <div className="text-left leading-tight">
+      <div className="text-[10.5px] text-ink-soft">
+        הצעת מחיר: {new Date(sentAt).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric", year: "2-digit" })}
+      </div>
+      {!closed && <div className="text-[11px] font-bold text-rose">{ago}</div>}
     </div>
   );
 }
