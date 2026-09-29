@@ -83,7 +83,13 @@ export type LayoutInput = {
   // page with a fold at 50%: layouts keep faces and frame edges off the fold.
   widthCm: number;
   heightCm: number;
+  // Scribble: the ornament libraries to decorate with — the editor's tabs, built-in (ids from
+  // lib/albumOrnaments.ts) and the photographer's uploaded ones (custom_ornaments ids). Default:
+  // the built-in tabs only.
+  ornamentTabs?: OrnamentTab[];
 };
+
+export type OrnamentTab = { id: string; custom: boolean; items: string[] };
 
 // Output: elements in percent of the whole spread (0-100), same model the editor uses
 // (AlbumPhotoElement etc. in lib/types.ts). Photo elements carry their photoId already. The UI
