@@ -18,7 +18,7 @@ scenario file in `scenarios/<key>.js`; the engine is `record.js`; `convert.py` c
 - `intake-demo` is the landing page's assistant demo (`public/guides/intake-demo.mp4`, the "עוזר פניות חכם" section of `LandingPage.tsx`), not a page guide. It holds a real conversation on `/chat/studio-or?src=demo` (live model replies, so they differ per run: review the frames), then settings › אוטומציה › שאלות נפוצות. `GF_CHAT_ONLY=1` records only the chat (no login needed; any `GF_STATE`, even `{"cookies":[],"origins":[]}`). Each run creates a lead "נועה" (0500000123, source `demo`) in the test account. Full version (chat + settings, 1:54) published 2026-09-28, recorded after the date-question prompt change.
 
 ## Coming-soon teasers (סרטוני "בקרוב", 2026-09-29)
-Vertical 1080x1920, 17s, no audio (music is added on Instagram/TikTok), for social media, not the
+Vertical 1080x1920, 13s (owner: 10–15s), no audio (music is added on Instagram/TikTok), for social media, not the
 site. Five exist: home, galleries, leads, quotes, assistant. Owner asked: every video ends on the
 logo, in a "coming soon" reveal style.
 - `teasers.json`: per teaser the clip scenario, `skip`/`speed`, the kicker, the headline (revealed
@@ -27,7 +27,7 @@ logo, in a "coming soon" reveal style.
   (deterministic, no dropped frames) → `$GF_OUT/coming-soon-<key>.mp4` + `-strip.png`.
 - Clips: `scenarios/teaser-<key>.js` have no captions (only scrolling and the pointer). Record
   them the usual way (`node record.js teaser-<key> && python3 convert.py teaser-<key>`), then
-  `node teaser.js <key>`. A clip needs about 11s of content (17s timeline, screen shown 2.6–11.9s
+  `node teaser.js <key>`. A clip needs about 8s of content (13s timeline, screen shown 1.9–9.0s
   at `speed`). `teaser-assistant` is a live chat without a phone number, so no lead is created.
 - Delivered to the owner as files (not in `public/`). Review the strip and a frame at 6s and 16s.
 
