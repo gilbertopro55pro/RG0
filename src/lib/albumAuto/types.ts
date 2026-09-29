@@ -64,10 +64,15 @@ export type PlanOptions = {
   targetSpreads: number | null;
 };
 
+// A photo as the layouts see it. faces: face boxes as fractions of the photo (0-1, x/y = top-left),
+// when face detection ran for it — used to place the crop so no head is cut. Empty/undefined =
+// unknown, the layout then keeps the upper part of the photo (where heads usually are).
+export type LayoutPhoto = { id: string; aspect: number; faces?: { x: number; y: number; width: number; height: number }[] };
+
 // Input to one spread's layout.
 export type LayoutInput = {
   style: AutoStyleId;
-  photos: { id: string; aspect: number }[]; // in reading order, 1..~8 photos
+  photos: LayoutPhoto[]; // in reading order, 1..~8 photos
   heroId?: string;
   section: SectionKind;
   spreadIndex: number; // 0-based position in the book (for variety between consecutive spreads)
@@ -80,11 +85,13 @@ export type LayoutInput = {
 // Output: elements in percent of the whole spread (0-100), same model the editor uses
 // (AlbumPhotoElement etc. in lib/types.ts). Photo elements carry their photoId already. The UI
 // then fits them into the safe margin (fitFramesToSafeArea) before saving.
-export type LayoutOutput = { elements: AlbumElement[] };
+// bleedIds: elements that deliberately run to the page edge (a full half-page photo, a full cover
+// photo). The UI must NOT pull these into the print safe margin; everything else it fits.
+export type LayoutOutput = { elements: AlbumElement[]; bleedIds?: string[] };
 
 export type CoverInput = {
   style: AutoStyleId;
-  photo: { id: string; aspect: number } | null;
+  photo: LayoutPhoto | null;
   title: string; // the event / gallery name
   widthCm: number;
   heightCm: number;

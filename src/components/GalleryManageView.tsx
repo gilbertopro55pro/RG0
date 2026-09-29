@@ -1140,12 +1140,15 @@ export default function GalleryManageView({
     if (albumErr || !newAlbum) throw new Error(albumErr?.message ?? "album");
     const favoritePool = photos.filter((p) => p.is_favorite);
     const fallbackPhotoId = (favoritePool.length > 0 ? favoritePool : photos)[0]?.id;
-    const fitElements = (elements: AlbumElement[], inset: { x: number; y: number } | null): AlbumElement[] => {
+    // Bleed elements (a full half-page photo, a full cover photo) run to the page edge on purpose,
+    // so they're left as laid out; everything else is pulled into the safe margin.
+    const fitElements = (elements: AlbumElement[], inset: { x: number; y: number } | null, bleedIds: string[] = []): AlbumElement[] => {
       if (!inset) return elements;
       const safeW = 100 - 2 * inset.x;
       const safeH = 100 - 2 * inset.y;
       if (safeW <= 0 || safeH <= 0) return elements;
-      return elements.map((el) => ({
+      const bleed = new Set(bleedIds);
+      return elements.map((el) => bleed.has(el.id) ? el : ({
         ...el,
         xPct: inset.x + (el.xPct / 100) * safeW,
         yPct: inset.y + (el.yPct / 100) * safeH,
@@ -1157,7 +1160,7 @@ export default function GalleryManageView({
       elements.find((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId)?.photoId ?? fallbackPhotoId;
     const rows: Record<string, unknown>[] = [];
     if (cover) {
-      const elements = fitElements(cover.elements, marginInsetPctFor({ width_cm: cover.widthCm, height_cm: cover.heightCm, safe_margin_cm: size.margin }));
+      const elements = fitElements(cover.elements, marginInsetPctFor({ width_cm: cover.widthCm, height_cm: cover.heightCm, safe_margin_cm: size.margin }), cover.bleedIds);
       rows.push({
         album_id: newAlbum.id,
         sort_order: 0,
@@ -1169,8 +1172,8 @@ export default function GalleryManageView({
       });
     }
     const bookInset = marginInsetPctFor(newAlbum);
-    for (const raw of spreads) {
-      const elements = fitElements(raw, bookInset);
+    for (const spread of spreads) {
+      const elements = fitElements(spread.elements, bookInset, spread.bleedIds);
       rows.push({ album_id: newAlbum.id, sort_order: rows.length, layout: "custom", elements, photo_id_1: firstPhotoId(elements) });
     }
     const { error: spreadsErr } = await supabase.from("gallery_album_spreads").insert(rows);
@@ -4587,6 +4590,7 @@ export default function GalleryManageView({
                   galleryTitle={gallery.title}
                   eventType={autoDesignEventType}
                   photos={photos}
+                  folders={folders}
                   defaultSize={albumSizeDraft}
                   sizePresets={ALBUM_SIZE_PRESETS}
                   onCreate={createAutoDesignedAlbum}
