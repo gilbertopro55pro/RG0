@@ -7,22 +7,23 @@ import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput, LayoutPhoto } 
 // comes from a seeded hash of spreadIndex + the photo ids, never Math.random.
 //
 // Everything is computed in real centimetres (so aspect ratios are true) and converted to percent
-// of the whole spread only when the elements are built. The core is a guillotine ("slicing tree")
-// packer: every way of cutting a page region into rows/columns of the given photos is enumerated,
-// each laid out with the photos' own aspect ratios (a uniform stretch of at most MAX_STRETCH
-// absorbs the leftover), and the best-scoring arrangement is used. That keeps crops tiny and edges
-// aligned, which is most of what makes a page look designed. Each style then decides how photos are
-// split between the two pages, the margins/gaps, and the decoration.
+// of the whole spread only when the elements are built.
+//
+// Composition (owner's rules, 2026-09-29, the same for every style — see composeSpread): one
+// dominant hero photo bleeding to the page edges (a half page, a faded ~60-80% of the spread, or with
+// many photos a band across its page) plus ONE tight, centred block of the other photos per page,
+// at least 70% of the canvas covered by photos. Blocks are justified rows or, for a few photos, the
+// best guillotine ("slicing tree") arrangement. The styles differ in their preferences and finish:
+// clean = straight blocks; catalog = strict justified grid, plain half-page hero; scribble = small
+// tilts and tape; modern = bolder faded hero, thin accent lines in existing whitespace.
 //
 // Hebrew albums open right to left, so on a double page the first photos (reading order) go on the
 // right-hand page.
 //
-// Finishing pass (owner's rules, 2026-09-29), applied to every style in finalizeSpread():
-//   - every framed photo gets a 3px white outline and a 35% shadow; full-bleed photos get neither;
-//   - on a double page, a photo left alone on its page fills that whole half page (a bleed element);
-//   - every photo's crop (focalX/focalY) is placed from its face boxes so no head is cut.
-// Some spreads (not catalog) use the "overlap + fade" variant: one big photo bleeding across the
-// fold with a faded inner edge, the other photos overlapping the faded zone on the other page.
+// Finishing pass, applied to every style in finalizeSpread(): every framed photo gets a 3px white
+// outline and a 35% shadow, bleeding photos get neither; every photo's crop (focalX/focalY) is placed
+// from its face boxes so no head is cut (bleeding photos also keep faces off the fold, out of the
+// fade and from under the block).
 
 type P = { id: string; aspect: number };
 type Rect = { x: number; y: number; w: number; h: number };
@@ -32,8 +33,6 @@ type Align = "start" | "center" | "end";
 // A frame's aspect may differ from its photo's by at most this factor in the packer (the photo is
 // cropped to fill the frame; 1.2 keeps ~83% of the picture).
 const MAX_STRETCH = 1.2;
-// Hard limit anywhere (the deliberate full-bleed hero of "modern" may use it): keeps 75%.
-const MAX_CROP = 1.335;
 
 // ---------------------------------------------------------------------------------------------
 // Seeded pseudo-randomness
@@ -364,31 +363,6 @@ function pack(photos: P[], idxs: number[], region: Rect, g: number, opts: PackOp
   };
 }
 
-// Makes sure the hero is clearly the largest frame on the spread by shrinking the other frames (per
-// page, around the centre of that page's group) when needed.
-function enforceHero(placed: Placed[], heroIdx: number | undefined, groups: Placed[][]) {
-  if (heroIdx === undefined) return;
-  const hero = placed.find((p) => p.idx === heroIdx);
-  if (!hero) return;
-  const heroA = area(hero.r);
-  for (const grp of groups) {
-    const others = grp.filter((p) => p.idx !== heroIdx);
-    if (!others.length) continue;
-    const maxA = Math.max(...others.map((p) => area(p.r)));
-    if (maxA * 1.3 <= heroA) continue;
-    const f = Math.sqrt(heroA / (maxA * 1.3));
-    const b = boundsOf(others.map((p) => p.r));
-    for (const p of others) p.r = scaleRect(p.r, f, b.x + b.w / 2, b.y + b.h / 2);
-  }
-  // Last resort (the hero shares a page with frames the packer couldn't make smaller): shrink each
-  // offending frame around its own centre.
-  for (const p of placed) {
-    if (p.idx === heroIdx) continue;
-    const a = area(p.r);
-    if (a * 1.3 > heroA) p.r = scaleRect(p.r, Math.sqrt(heroA / (a * 1.3)), p.r.x + p.r.w / 2, p.r.y + p.r.h / 2);
-  }
-}
-
 // ---------------------------------------------------------------------------------------------
 // Face-aware crop
 // ---------------------------------------------------------------------------------------------
@@ -417,12 +391,13 @@ const ASSUMED_FACES: FaceBox = { x: 0.35, y: 0.15, width: 0.3, height: 0.3 };
 // height above the top face for hair, a little on the other sides) is kept fully visible — inside
 // `zone` of the frame when given — centred horizontally and sitting in the upper-middle vertically.
 // Unknown faces: the crop leans to the upper part of the photo. `fits` = the padded faces are
-// entirely inside the zone (always true when faces are unknown).
+// entirely inside the zone (always true when faces are unknown). pad = false checks the bare face boxes.
 export function faceCropFocal(
   photoAspect: number,
   frameAspect: number,
   faces?: FaceBox[] | null,
-  zone?: Partial<FaceZone>
+  zone?: Partial<FaceZone>,
+  pad = true
 ): { focalX: number; focalY: number; zoom: number; fits: boolean } {
   const z: FaceZone = { x0: 0, x1: 1, y0: 0, y1: 1, ...zone };
   const pa = safeAspect(photoAspect);
@@ -433,8 +408,8 @@ export function faceCropFocal(
   const known = list.length > 0;
   let ax: number, bx: number, ay: number, by: number;
   if (known) {
-    const maxW = Math.max(...list.map((f) => f.width));
-    const maxH = Math.max(...list.map((f) => f.height));
+    const maxW = pad ? Math.max(...list.map((f) => f.width)) : 0;
+    const maxH = pad ? Math.max(...list.map((f) => f.height)) : 0;
     ax = clamp(Math.min(...list.map((f) => f.x)) - 0.08 * maxW, 0, 1);
     bx = clamp(Math.max(...list.map((f) => f.x + f.width)) + 0.08 * maxW, 0, 1);
     ay = clamp(Math.min(...list.map((f) => f.y)) - 0.25 * maxH, 0, 1);
@@ -519,6 +494,8 @@ type Ctx = {
   // Element ids whose focal point a layout already placed (with constraints the finishing pass
   // doesn't know about, e.g. "keep the faces out of the fade").
   fixedFocal: Set<string>;
+  // Cluster layouts already computed for this spread (many candidates share them).
+  cache: Map<string, Rel | null>;
 };
 
 function safeAspect(a: number): number {
@@ -539,6 +516,7 @@ function makeCtx(input: LayoutInput): Ctx {
     faces: new Map(input.photos.map((p) => [p.id, validFaces(p)])),
     bleed: new Set(),
     fixedFocal: new Set(),
+    cache: new Map(),
   };
 }
 
@@ -554,324 +532,8 @@ const range = (a: number, b: number) => Array.from({ length: Math.max(0, b - a) 
 const FIRST = 1;
 const SECOND = 0;
 
-// Splits the spread's photos between the two pages: tries a few split points, in reading order and
-// grouped by orientation (landscapes together pack far better than a landscape beside a portrait),
-// and keeps the pair of pages that packs best. Returns [first page, second page].
-function bestSplit(ctx: Ctx, regionOf: (p: number) => Rect, gap: number, opts: PackOpts = {}): Placed[][] | null {
-  const { photos, heroIdx, rng } = ctx;
-  const n = photos.length;
-  const all = range(0, n);
-  const land = all.filter((i) => photos[i].aspect >= 1);
-  const port = all.filter((i) => photos[i].aspect < 1);
-  const orders: { order: number[]; pen: number }[] = [{ order: all, pen: 0 }];
-  if (land.length && port.length) {
-    orders.push({ order: [...land, ...port], pen: 0.05 });
-    orders.push({ order: [...port, ...land], pen: 0.05 });
-  }
-  let best: { a: number[]; b: number[]; score: number } | null = null;
-  const seen = new Set<string>();
-  for (const { order, pen } of orders) {
-    for (let k = 1; k < n; k++) {
-      if (Math.abs(k - n / 2) > 1) continue;
-      const a = order.slice(0, k);
-      const b = order.slice(k);
-      const key = `${[...a].sort().join(",")}|${[...b].sort().join(",")}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const ra = pack(photos, a, regionOf(FIRST), gap, { ...opts, heroIdx, permute: true });
-      const rb = pack(photos, b, regionOf(SECOND), gap, { ...opts, heroIdx, permute: true });
-      if (!ra || !rb) continue;
-      // A photo alone on a page fills the whole half page (finishing pass): with a hero on the spread,
-      // a non-hero must not get that page to itself.
-      const loneOther = heroIdx !== undefined && n > 2 && [a, b].some((g) => g.length === 1 && g[0] !== heroIdx);
-      const score =
-        ra.score + rb.score - pen - Math.abs(a.length - b.length) * 0.04 - Math.abs(ra.score - rb.score) * 0.3 - (loneOther ? 0.6 : 0);
-      if (!best || score > best.score) best = { a, b, score };
-    }
-  }
-  if (!best) return null;
-  const ra = pack(photos, best.a, regionOf(FIRST), gap, { ...opts, heroIdx, permute: true, rng });
-  const rb = pack(photos, best.b, regionOf(SECOND), gap, { ...opts, heroIdx, permute: true, rng });
-  if (!ra || !rb) return null;
-  return [ra.placed, rb.placed];
-}
-
 // ---------------------------------------------------------------------------------------------
-// "clean" — white page, generous whitespace, thin even gaps, no borders/shadows/rotation.
-// ---------------------------------------------------------------------------------------------
-
-function layoutClean(ctx: Ctx): AlbumElement[] {
-  const { geo, photos, heroIdx, rng, input } = ctx;
-  const n = photos.length;
-  const H = geo.H;
-  const m = 0.12 * H;
-  const gap = 0.022 * H;
-  const all = range(0, n);
-
-  if (!geo.double) {
-    const region = pageRegion(geo, 0, m, 0, m, m);
-    const res = pack(photos, all, region, gap, { heroIdx, rng, permute: true, cropWeight: 1.4 });
-    if (!res) return [];
-    enforceHero(res.placed, heroIdx, []);
-    return placedToEls(ctx, res.placed);
-  }
-
-  const regionOf = (p: number) => pageRegion(geo, p, m, 0.09 * H, m, m);
-
-  if (n === 1) {
-    const page = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
-    const r = fitOne(photos[0].aspect, regionOf(page), "center", "center", 1.1);
-    return placedToEls(ctx, [{ idx: 0, r }]);
-  }
-
-  const feature = heroIdx ?? 0;
-  const heroPageEligible = n <= 4 || (heroIdx !== undefined && n <= 5);
-  const useHeroPage = heroPageEligible && (heroIdx !== undefined || input.spreadIndex % 3 === 0 || n === 2);
-
-  if (useHeroPage) {
-    // The feature alone on one page, the rest smaller on the other, aligned to the feature's top and
-    // bottom so both pages share the same horizontal lines.
-    const heroPage = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
-    const otherPage = 1 - heroPage;
-    const heroRegion = regionOf(heroPage);
-    const heroR = fitOne(photos[feature].aspect, heroRegion, "center", "center", 1.1);
-    const rest = all.filter((i) => i !== feature);
-    const base = regionOf(otherPage);
-    let restRegion: Rect = { x: base.x, y: heroR.y, w: base.w, h: heroR.h };
-    if (heroR.h < base.h * 0.7) restRegion = { x: base.x, y: base.y + base.h * 0.1, w: base.w, h: base.h * 0.8 };
-    if (rest.length === 1) restRegion = inset(restRegion, restRegion.w * 0.14, restRegion.h * 0.14);
-    else restRegion = inset(restRegion, restRegion.w * 0.06, 0);
-    const res = pack(photos, rest, restRegion, gap, { rng, permute: true, cropWeight: 1.4 });
-    const placed: Placed[] = [{ idx: feature, r: heroR }, ...(res ? res.placed : [])];
-    enforceHero(placed, feature, [res ? res.placed : []]);
-    return placedToEls(ctx, placed);
-  }
-
-  const groups = bestSplit(ctx, regionOf, gap, { cropWeight: 1.4 });
-  if (!groups) return [];
-  const placed = groups.flat();
-  if (heroIdx !== undefined) enforceHero(placed, heroIdx, groups.filter((g) => !g.some((p) => p.idx === heroIdx)));
-  return placedToEls(ctx, placed);
-}
-
-// ---------------------------------------------------------------------------------------------
-// "catalog" — equal cells in consistent rows, uniform gutters, a thin caption rule under the grid.
-// ---------------------------------------------------------------------------------------------
-
-type CatalogPage = { idxs: number[]; region: Rect };
-
-// Per-photo cell aspect: all landscapes share one cell shape and all portraits another, so cells are
-// equal within an orientation; an outlier (panorama etc.) keeps a shape close to its own.
-function cellAspects(photos: P[]): number[] {
-  const geoMean = (xs: number[]) => Math.exp(xs.reduce((s, x) => s + Math.log(x), 0) / xs.length);
-  const land = photos.filter((p) => p.aspect >= 1).map((p) => p.aspect);
-  const port = photos.filter((p) => p.aspect < 1).map((p) => p.aspect);
-  const L = land.length ? geoMean(land) : 1.5;
-  const Pt = port.length ? geoMean(port) : 0.67;
-  return photos.map((p) => {
-    const c = p.aspect >= 1 ? L : Pt;
-    const crop = Math.max(c / p.aspect, p.aspect / c);
-    if (crop <= 1.15) return c;
-    return Math.min(p.aspect * 1.15, Math.max(p.aspect / 1.15, c));
-  });
-}
-
-// A grid of equal-width columns (the same column count throughout); landscapes and portraits never
-// share a row, so every row is truly equal cells, and portrait rows are simply taller. Returns the
-// column width that fits (cm) and the rows.
-function catalogRows(cells: number[], idxs: number[], region: Rect, g: number, photos: P[]): { h: number; rows: number[][] } {
-  const k = idxs.length;
-  const land = idxs.filter((i) => photos[i].aspect >= 1);
-  const port = idxs.filter((i) => photos[i].aspect < 1);
-  const groups = [land, port].filter((x) => x.length);
-  if (idxs.length && photos[idxs[0]].aspect < 1) groups.reverse();
-  let best: { h: number; rows: number[][]; score: number } = { h: 0, rows: [idxs], score: -Infinity };
-  for (let c = 1; c <= k; c++) {
-    const rows: number[][] = [];
-    for (const grp of groups) {
-      // Balanced chunks of at most c (5 at 3 columns -> 3+2, never 3+1+1).
-      const r = Math.ceil(grp.length / c);
-      const base = Math.floor(grp.length / r);
-      let extra = grp.length % r;
-      let at = 0;
-      for (let i = 0; i < r; i++) {
-        const cnt = base + (extra > 0 ? 1 : 0);
-        if (extra > 0) extra--;
-        rows.push(grp.slice(at, at + cnt));
-        at += cnt;
-      }
-    }
-    // Row height = cw / rowAspect; total height sum(cw / rowAspect) + gaps <= region.h.
-    const invSum = rows.reduce((s, row) => s + 1 / rowAspect(cells, row), 0);
-    let h = (region.h - g * (rows.length - 1)) / invSum;
-    for (const row of rows) {
-      const widthPerCw = row.reduce((s, i) => s + cells[i] / rowAspect(cells, row), 0);
-      h = Math.min(h, (region.w - g * (row.length - 1)) / widthPerCw);
-    }
-    if (h <= 0) continue;
-    const covered = rows.reduce((s, row) => s + row.reduce((t, i) => t + (cells[i] / rowAspect(cells, row)) * (h * h) / rowAspect(cells, row), 0), 0);
-    // Prefer full rows (a lone photo in the last row reads as a leftover).
-    const ragged = rows.filter((row) => row.length < Math.max(...rows.map((x) => x.length))).length;
-    const score = covered / area(region) - ragged * 0.02;
-    if (score > best.score + 1e-9) best = { h, rows, score };
-  }
-  return { h: best.h, rows: best.rows };
-}
-
-// The shared cell aspect of a row (its cells are one orientation class).
-function rowAspect(cells: number[], row: number[]): number {
-  return Math.exp(row.reduce((s, i) => s + Math.log(cells[i]), 0) / row.length);
-}
-
-// Places rows for column width `cw`: row height cw / rowAspect, rows centred on the page.
-function placeCatalogPage(cells: number[], page: CatalogPage, cw: number, rows: number[][], g: number): Placed[] {
-  const heights = rows.map((row) => cw / rowAspect(cells, row));
-  const blockH = heights.reduce((s, h) => s + h, 0) + (rows.length - 1) * g;
-  let y = page.region.y + (page.region.h - blockH) / 2;
-  const out: Placed[] = [];
-  rows.forEach((row, ri) => {
-    const h = heights[ri];
-    const rowW = row.reduce((s, i) => s + cells[i] * h, 0) + g * (row.length - 1);
-    let x = page.region.x + (page.region.w - rowW) / 2;
-    for (const i of row) {
-      const w = cells[i] * h;
-      out.push({ idx: i, r: { x, y, w, h } });
-      x += w + g;
-    }
-    y += h + g;
-  });
-  return out;
-}
-
-function layoutCatalog(ctx: Ctx): AlbumElement[] {
-  const { geo, photos, heroIdx, input } = ctx;
-  const n = photos.length;
-  const H = geo.H;
-  const gap = 0.018 * H;
-  const cells = cellAspects(photos);
-  const els: AlbumElement[] = [];
-  const captionColor = "#a3a3a3";
-  const regionOf = (p: number) => pageRegion(geo, p, 0.08 * H, 0.075 * H, 0.08 * H, 0.13 * H);
-
-  const addCaption = (placed: Placed[], key: string, pageBottomLimit: number) => {
-    if (!placed.length) return;
-    const b = boundsOf(placed.map((p) => p.r));
-    const y = b.y + b.h + 0.035 * H;
-    if (y > pageBottomLimit) return;
-    const len = Math.min(b.w * 0.3, 0.16 * geo.pageW);
-    els.push(lineEl(`${ctx.prefix}-cap-${key}`, b.x + b.w - len, y, len, geo, captionColor));
-  };
-
-  if (!geo.double) {
-    const region = regionOf(0);
-    let placed: Placed[];
-    if (heroIdx !== undefined && n > 1) {
-      // Hero as a wide top cell, the rest as an equal-cell row(s) below.
-      const heroRegion = { ...region, h: region.h * 0.52 };
-      const heroR = fitOne(photos[heroIdx].aspect, heroRegion);
-      const restRegion = { x: region.x, y: heroR.y + heroR.h + gap, w: region.w, h: region.y + region.h - (heroR.y + heroR.h + gap) };
-      const rest = range(0, n).filter((i) => i !== heroIdx);
-      const { h, rows } = catalogRows(cells, rest, restRegion, gap, photos);
-      placed = [{ idx: heroIdx, r: heroR }, ...placeCatalogPage(cells, { idxs: rest, region: restRegion }, h, rows, gap)];
-      enforceHero(placed, heroIdx, [placed.filter((p) => p.idx !== heroIdx)]);
-    } else {
-      const { h, rows } = catalogRows(cells, range(0, n), region, gap, photos);
-      placed = placeCatalogPage(cells, { idxs: range(0, n), region }, h, rows, gap);
-    }
-    const out: AlbumElement[] = placedToEls(ctx, placed);
-    addCaption(placed, "0", geo.H - 0.05 * H);
-    return [...out, ...els];
-  }
-
-  if (n === 1) {
-    const page = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
-    const region = inset(regionOf(page), regionOf(page).w * 0.06, 0);
-    const placed = [{ idx: 0, r: fitOne(photos[0].aspect, region) }];
-    const out: AlbumElement[] = placedToEls(ctx, placed);
-    addCaption(placed, "0", geo.H - 0.05 * H);
-    return [...out, ...els];
-  }
-
-  // Hero: alone as the big cell on one page, the grid on the other.
-  if (heroIdx !== undefined) {
-    const heroPage = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
-    const heroR = fitOne(photos[heroIdx].aspect, regionOf(heroPage));
-    const rest = range(0, n).filter((i) => i !== heroIdx);
-    let restRegion = regionOf(1 - heroPage);
-    if (rest.length === 1) restRegion = inset(restRegion, restRegion.w * 0.18, restRegion.h * 0.18);
-    const { h, rows } = catalogRows(cells, rest, restRegion, gap, photos);
-    const grid = placeCatalogPage(cells, { idxs: rest, region: restRegion }, h, rows, gap);
-    // Align the grid's top with the hero's top when there's room: consistent rows across the spread.
-    const gb = boundsOf(grid.map((p) => p.r));
-    if (gb.h <= heroR.h + 0.01 && rest.length > 1) {
-      const dy = heroR.y + (heroR.h - gb.h) / 2 - gb.y;
-      for (const p of grid) p.r = { ...p.r, y: p.r.y + dy };
-    }
-    const placed = [{ idx: heroIdx, r: heroR }, ...grid];
-    enforceHero(placed, heroIdx, [grid]);
-    const out: AlbumElement[] = placedToEls(ctx, placed);
-    addCaption([{ idx: heroIdx, r: heroR }], "h", geo.H - 0.05 * H);
-    addCaption(grid, "g", geo.H - 0.05 * H);
-    return [...out, ...els];
-  }
-
-  // Grid on both pages. Try the reading order and orientation-grouped orders (so a page tends to hold
-  // one orientation = truly equal cells), and a few split points; keep the one with the biggest
-  // common cell height.
-  const all = range(0, n);
-  const land = all.filter((i) => photos[i].aspect >= 1);
-  const port = all.filter((i) => photos[i].aspect < 1);
-  const orders: number[][] = [all];
-  if (land.length && port.length) orders.push([...land, ...port], [...port, ...land]);
-  let best: { placed: Placed[][]; score: number } | null = null;
-  orders.forEach((order, oi) => {
-    for (let k = 1; k < n; k++) {
-      const a = order.slice(0, k);
-      const b = order.slice(k);
-      const pa: CatalogPage = { idxs: a, region: regionOf(FIRST) };
-      const pb: CatalogPage = { idxs: b, region: regionOf(SECOND) };
-      const ra = catalogRows(cells, a, pa.region, gap, photos);
-      const rb = catalogRows(cells, b, pb.region, gap, photos);
-      // One common row height across the spread when the two pages are comparable.
-      const common = Math.min(ra.h, rb.h);
-      const cls = (idxs: number[]) => (idxs.every((i) => photos[i].aspect >= 1) ? "L" : idxs.every((i) => photos[i].aspect < 1) ? "P" : "M");
-      const unify = cls(a) === cls(b) && common >= 0.7 * Math.max(ra.h, rb.h);
-      const ha = unify ? common : ra.h;
-      const hb = unify ? common : rb.h;
-      const cov = (idxs: number[], cw: number) => idxs.reduce((s, i) => s + (cw * cw) / cells[i], 0);
-      const homo = (idxs: number[]) => (idxs.every((i) => photos[i].aspect >= 1) || idxs.every((i) => photos[i].aspect < 1) ? 0.08 : 0);
-      const score =
-        (cov(a, ha) + cov(b, hb)) / (area(pa.region) + area(pb.region)) +
-        homo(a) +
-        homo(b) +
-        (unify ? 0.05 : 0) -
-        Math.max(0, Math.abs(a.length - b.length) - 1) * 0.07 -
-        (oi > 0 ? 0.02 : 0);
-      if (!best || score > best.score)
-        best = { placed: [placeCatalogPage(cells, pa, ha, ra.rows, gap), placeCatalogPage(cells, pb, hb, rb.rows, gap)], score };
-    }
-  });
-  if (!best) return [];
-  const groups = (best as { placed: Placed[][] }).placed;
-  // Align both grids to the same top line when they're the same height class.
-  const ba = boundsOf(groups[0].map((p) => p.r));
-  const bb = boundsOf(groups[1].map((p) => p.r));
-  const top = Math.min(ba.y, bb.y);
-  if (Math.abs(ba.h - bb.h) < 0.5 * Math.max(ba.h, bb.h)) {
-    for (const [grp, b] of [
-      [groups[0], ba],
-      [groups[1], bb],
-    ] as const)
-      for (const p of grp) p.r = { ...p.r, y: p.r.y - (b.y - top) };
-  }
-  const out: AlbumElement[] = placedToEls(ctx, groups.flat());
-  addCaption(groups[0], "a", geo.H - 0.05 * H);
-  addCaption(groups[1], "b", geo.H - 0.05 * H);
-  return [...out, ...els];
-}
-
-// ---------------------------------------------------------------------------------------------
-// "scribble" — polaroid-bordered, tilted, slightly overlapping, with tape.
+// Scribble helpers
 // ---------------------------------------------------------------------------------------------
 
 type Tilted = Placed & { rot: number };
@@ -879,22 +541,6 @@ type Tilted = Placed & { rot: number };
 function rotatedHalfExtents(r: Rect, deg: number): [number, number] {
   const t = (Math.abs(deg) * Math.PI) / 180;
   return [(r.w * Math.cos(t) + r.h * Math.sin(t)) / 2, (r.w * Math.sin(t) + r.h * Math.cos(t)) / 2];
-}
-
-// Keeps a rotated frame's bounding box inside `lim` (shrinking it when needed).
-function clampTilted(t: Tilted, lim: Rect) {
-  let [ex, ey] = rotatedHalfExtents(t.r, t.rot);
-  const f = Math.min(1, lim.w / (2 * ex), lim.h / (2 * ey));
-  let cx = t.r.x + t.r.w / 2;
-  let cy = t.r.y + t.r.h / 2;
-  if (f < 1) {
-    t.r = scaleRect(t.r, f, cx, cy);
-    ex *= f;
-    ey *= f;
-  }
-  cx = Math.min(lim.x + lim.w - ex, Math.max(lim.x + ex, cx));
-  cy = Math.min(lim.y + lim.h - ey, Math.max(lim.y + ey, cy));
-  t.r = { ...t.r, x: cx - t.r.w / 2, y: cy - t.r.h / 2 };
 }
 
 // Tape strips across one or two top corners of some of the (tilted) frames.
@@ -928,414 +574,632 @@ function tapeEls(ctx: Ctx, frames: Tilted[], phase: number, n: number): AlbumSha
   return out;
 }
 
-function layoutScribble(ctx: Ctx): AlbumElement[] {
-  const { geo, photos, heroIdx, rng, input } = ctx;
-  const n = photos.length;
-  const H = geo.H;
-  const m = 0.1 * H;
-  const gap = 0.065 * H;
-  const all = range(0, n);
-  const groups: { placed: Placed[]; lim: Rect }[] = [];
+// ---------------------------------------------------------------------------------------------
+// Clusters: the non-hero photos of a page, packed into one tight block
+// ---------------------------------------------------------------------------------------------
 
-  const limitOf = (p: number): Rect => {
-    if (!geo.double) return { x: 0.045 * geo.W, y: 0.045 * H, w: geo.W * 0.91, h: H * 0.91 };
-    const fold = 0.032 * geo.W;
-    const outer = 0.045 * geo.W;
-    return p === 0
-      ? { x: outer, y: 0.045 * H, w: geo.pageW - outer - fold, h: H * 0.91 }
-      : { x: geo.pageW + fold, y: 0.045 * H, w: geo.pageW - outer - fold, h: H * 0.91 };
-  };
-  const regionOf = (p: number) => pageRegion(geo, p, m, 0.1 * H, m, m);
+// A cluster laid out at the origin: rects relative to (0,0), its size, and a quality score.
+type Rel = { rects: Placed[]; w: number; h: number; score: number };
 
-  if (!geo.double) {
-    const res = pack(photos, all, regionOf(0), gap, { heroIdx, rng, permute: true });
-    if (res) groups.push({ placed: res.placed, lim: limitOf(0) });
-  } else if (n === 1) {
-    const page = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
-    const reg = inset(regionOf(page), regionOf(page).w * 0.05, regionOf(page).h * 0.05);
-    groups.push({ placed: [{ idx: 0, r: fitOne(photos[0].aspect, reg) }], lim: limitOf(page) });
-  } else if (heroIdx !== undefined && n <= 4) {
-    // Few photos with a hero: the hero alone on one page, the rest gathered on the other.
-    const heroPage = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
-    const hr = regionOf(heroPage);
-    groups.push({ placed: [{ idx: heroIdx, r: fitOne(photos[heroIdx].aspect, inset(hr, hr.w * 0.03, hr.h * 0.03)) }], lim: limitOf(heroPage) });
-    const rest = all.filter((i) => i !== heroIdx);
-    const or = regionOf(1 - heroPage);
-    const restRegion = rest.length === 1 ? inset(or, or.w * 0.14, or.h * 0.14) : or;
-    const res = pack(photos, rest, restRegion, gap, { rng, permute: true });
-    if (res) groups.push({ placed: res.placed, lim: limitOf(1 - heroPage) });
-  } else {
-    const split = bestSplit(ctx, regionOf, gap);
-    if (split) {
-      groups.push({ placed: split[0], lim: limitOf(FIRST) });
-      groups.push({ placed: split[1], lim: limitOf(SECOND) });
+// Fill of the box, minus crop and "one photo far smaller than the rest".
+function rateRel(photos: P[], rects: Placed[], bw: number, bh: number): number {
+  let a = 0;
+  let mn = Infinity;
+  let mx = 0;
+  let crop = 0;
+  for (const p of rects) {
+    const ar = area(p.r);
+    a += ar;
+    mn = Math.min(mn, ar);
+    mx = Math.max(mx, ar);
+    crop += Math.abs(Math.log(p.r.w / p.r.h / photos[p.idx].aspect));
+  }
+  return a / (bw * bh) - (0.7 * crop) / rects.length - 0.6 * Math.max(0, 0.3 - mn / mx);
+}
+
+// Rows of consecutive photos whose aspect sums are as equal as possible (equal-height rows then
+// have equal natural widths).
+function balancedRows(photos: P[], idxs: number[], r: number): number[][] {
+  const k = idxs.length;
+  const pre = [0];
+  for (const i of idxs) pre.push(pre[pre.length - 1] + photos[i].aspect);
+  const T = pre[k] / r;
+  // dp[j][m] = best cost splitting the first m photos into j rows.
+  const dp: number[][] = Array.from({ length: r + 1 }, () => Array(k + 1).fill(Infinity));
+  const cut: number[][] = Array.from({ length: r + 1 }, () => Array(k + 1).fill(0));
+  dp[0][0] = 0;
+  for (let j = 1; j <= r; j++)
+    for (let m = j; m <= k; m++)
+      for (let s = j - 1; s < m; s++) {
+        const c = dp[j - 1][s] + (pre[m] - pre[s] - T) ** 2;
+        if (c < dp[j][m]) {
+          dp[j][m] = c;
+          cut[j][m] = s;
+        }
+      }
+  const rows: number[][] = [];
+  let m = k;
+  for (let j = r; j >= 1; j--) {
+    const s = cut[j][m];
+    rows.unshift(idxs.slice(s, m));
+    m = s;
+  }
+  return rows;
+}
+
+// Same, ignoring the reading order (largest aspect first into the lightest row).
+function lptRows(photos: P[], idxs: number[], r: number): number[][] {
+  const rows: number[][] = Array.from({ length: r }, () => []);
+  const sums = Array(r).fill(0);
+  for (const i of idxs.slice().sort((a, b) => photos[b].aspect - photos[a].aspect || a - b)) {
+    let j = 0;
+    for (let t = 1; t < r; t++) if (sums[t] < sums[j] - 1e-9) j = t;
+    rows[j].push(i);
+    sums[j] += photos[i].aspect;
+  }
+  for (const row of rows) row.sort((a, b) => a - b);
+  return rows.filter((row) => row.length).sort((a, b) => a[0] - b[0]);
+}
+
+// Justified rows: one common row height, each row stretched (at most MAX_STRETCH, the photos
+// cropped a little) to the box width. `strict` (catalog) punishes rows that can't reach the width.
+function placeRows(photos: P[], rows: number[][], bw: number, bh: number, g: number, strict: boolean, k: number): Rel | null {
+  const r = rows.length;
+  const A = rows.map((row) => row.reduce((s, i) => s + photos[i].aspect, 0));
+  let h = (bh - (r - 1) * g) / r;
+  rows.forEach((row, i) => {
+    h = Math.min(h, ((bw - g * (row.length - 1)) * MAX_STRETCH) / A[i]);
+  });
+  if (!(h > 0.3)) return null;
+  const fit = rows.map((row, i) => {
+    const s = clamp((bw - g * (row.length - 1)) / (h * A[i]), 1 / MAX_STRETCH, MAX_STRETCH);
+    return { s, w: h * A[i] * s + g * (row.length - 1) };
+  });
+  const maxW = Math.max(...fit.map((f) => f.w));
+  const rects: Placed[] = [];
+  let y = 0;
+  let ragged = 0;
+  rows.forEach((row, i) => {
+    let x = (maxW - fit[i].w) / 2;
+    for (const idx of row) {
+      const w = h * photos[idx].aspect * fit[i].s;
+      rects.push({ idx, r: { x, y, w, h } });
+      x += w + g;
+    }
+    y += h + g;
+    if (fit[i].w < maxW * 0.97) ragged++;
+  });
+  const lonely = k >= 4 ? rows.filter((row) => row.length === 1).length : 0;
+  const score = rateRel(photos, rects, bw, bh) - ragged * (strict ? 0.3 : 0.12) - lonely * 0.06;
+  return { rects, w: maxW, h: r * h + (r - 1) * g, score };
+}
+
+type Alt = Rel & { fill: number };
+
+function justifyAll(photos: P[], idxs: number[], bw: number, bh: number, g: number, strict: boolean): Alt[] {
+  const k = idxs.length;
+  const out: Alt[] = [];
+  for (let r = 1; r <= Math.min(k, 8); r++) {
+    const parts = [balancedRows(photos, idxs, r)];
+    if (r > 1 && k > r) parts.push(lptRows(photos, idxs, r));
+    for (const rows of parts) {
+      const res = placeRows(photos, rows, bw, bh, g, strict, k);
+      if (res) out.push({ ...res, fill: res.rects.reduce((s, p) => s + area(p.r), 0) / (bw * bh) });
     }
   }
-  const flat = groups.flatMap((g) => g.placed);
-  if (heroIdx !== undefined)
-    enforceHero(
-      flat,
-      heroIdx,
-      groups.filter((g) => !g.placed.some((p) => p.idx === heroIdx)).map((g) => g.placed)
-    );
+  return out;
+}
 
-  // Tilt, enlarge a little (so neighbours overlap at the corners), jitter, clamp to the page.
-  const signStart = rng() < 0.5 ? 1 : -1;
-  const tilted: { t: Tilted; lim: Rect }[] = [];
-  groups.forEach((g) => {
-    g.placed.forEach((p) => {
-      const k = tilted.length;
-      const mag = 2.5 + rng() * 4.5;
-      const rot = Math.round((k % 2 === 0 ? signStart : -signStart) * mag * 10) / 10;
-      const grow = p.idx === heroIdx ? 1.06 : 1.1 + rng() * 0.04;
-      const cx = p.r.x + p.r.w / 2 + (rng() - 0.5) * 0.04 * H;
-      const cy = p.r.y + p.r.h / 2 + (rng() - 0.5) * 0.04 * H;
-      const t: Tilted = { idx: p.idx, r: scaleRect({ ...p.r, x: cx - p.r.w / 2, y: cy - p.r.h / 2 }, grow, cx, cy), rot };
-      clampTilted(t, g.lim);
-      tilted.push({ t, lim: g.lim });
-    });
+function justify(photos: P[], idxs: number[], bw: number, bh: number, g: number, strict: boolean): Rel | null {
+  let best: Rel | null = null;
+  for (const a of justifyAll(photos, idxs, bw, bh, g, strict)) if (!best || a.score > best.score) best = a;
+  return best;
+}
+
+// The best block for `idxs` inside a bw x bh box: justified rows, or (few photos, not catalog) any
+// guillotine arrangement (a column of portraits beside a bigger photo, a 2x2 grid...). `fill` picks
+// the block covering the most of the box instead (used when the tidiest block misses the coverage).
+function clusterIn(ctx: Ctx, idxs: number[], bw: number, bh: number, g: number, strict: boolean, fill = false): Rel | null {
+  const key = `${idxs.join(",")}|${bw.toFixed(3)}|${bh.toFixed(3)}|${g.toFixed(3)}|${strict ? 1 : 0}|${fill ? 1 : 0}`;
+  const hit = ctx.cache.get(key);
+  if (hit !== undefined) return hit;
+  const alts = justifyAll(ctx.photos, idxs, bw, bh, g, strict);
+  if (!strict && idxs.length <= 5) {
+    const res = pack(ctx.photos, idxs, { x: 0, y: 0, w: bw, h: bh }, g, { permute: idxs.length <= 4, preferEqual: 0.6, cropWeight: 1.2 });
+    if (res) {
+      const b = boundsOf(res.placed.map((p) => p.r));
+      const rects = res.placed.map((p) => ({ idx: p.idx, r: { ...p.r, x: p.r.x - b.x, y: p.r.y - b.y } }));
+      // (+0.01: on a tie the guillotine block, which aligns every edge, wins.)
+      alts.push({ rects, w: b.w, h: b.h, score: rateRel(ctx.photos, rects, bw, bh) + 0.01, fill: rects.reduce((s, p) => s + area(p.r), 0) / (bw * bh) });
+    }
+  }
+  let best: Alt | null = null;
+  for (const a of alts) if (!best || (fill ? a.fill > best.fill + 1e-9 : a.score > best.score)) best = a;
+  ctx.cache.set(key, best);
+  return best;
+}
+
+// The largest box centred on `avail`'s centre that stays inside `region` (so a cluster laid out in
+// it and centred is centred in its available space and respects the margins).
+function centeredBox(avail: Rect, region: Rect): Rect | null {
+  const cx = avail.x + avail.w / 2;
+  const cy = avail.y + avail.h / 2;
+  const hw = Math.min(cx - region.x, region.x + region.w - cx);
+  const hh = Math.min(cy - region.y, region.y + region.h - cy);
+  if (hw < 0.5 || hh < 0.5) return null;
+  return { x: cx - hw, y: cy - hh, w: 2 * hw, h: 2 * hh };
+}
+
+// Union area of axis-aligned rects clipped to the canvas (coordinate compression; n is small).
+function unionArea(rs: Rect[], W: number, H: number): number {
+  const cl = rs
+    .map((r) => ({ x0: clamp(r.x, 0, W), x1: clamp(r.x + r.w, 0, W), y0: clamp(r.y, 0, H), y1: clamp(r.y + r.h, 0, H) }))
+    .filter((r) => r.x1 > r.x0 && r.y1 > r.y0);
+  const xs = [...new Set(cl.flatMap((r) => [r.x0, r.x1]))].sort((a, b) => a - b);
+  const ys = [...new Set(cl.flatMap((r) => [r.y0, r.y1]))].sort((a, b) => a - b);
+  let s = 0;
+  for (let i = 0; i + 1 < xs.length; i++) {
+    const mx = (xs[i] + xs[i + 1]) / 2;
+    for (let j = 0; j + 1 < ys.length; j++) {
+      const my = (ys[j] + ys[j + 1]) / 2;
+      if (cl.some((r) => mx > r.x0 && mx < r.x1 && my > r.y0 && my < r.y1)) s += (xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j]);
+    }
+  }
+  return s;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Spread composition (all styles): one dominant hero + one tight cluster per page
+// ---------------------------------------------------------------------------------------------
+//
+// Owner's rules (2026-09-29, after testing on a real event):
+//   - one dominant hero that bleeds to the page edges (a half page, or ~60-75% of the spread with a
+//     25% fade toward the other page), and the other photos in ONE tight block per page, centred
+//     vertically in its half and balanced horizontally in the space it has — no scattered islands;
+//   - at least 70% of the canvas is covered by photos (measured below; candidates under it lose);
+//   - 2-20 photos per spread; with many photos the hero gets smaller (a band across its page) and
+//     each page carries a justified-rows block.
+// Every candidate composition ("template") is laid out, measured (coverage, the smallest photo, crop,
+// how dominant the hero is) and scored; the style's preferences and a seeded jitter (variety between
+// spreads) pick among those that pass.
+
+type MaskId = "fade-right-25" | "fade-left-25";
+type BleedSpec = { idx: number; r: Rect; mask?: MaskId; zone: Partial<FaceZone> };
+type ClusterSpec = { idxs: number[]; avail: Rect; region: Rect };
+type Kind = "fade" | "half" | "two" | "dense" | "band" | "side" | "sfade" | "inset";
+type Spec = {
+  kind: Kind;
+  bleeds: BleedSpec[];
+  clusters: ClusterSpec[];
+  // Bleeds that depend on where the clusters landed (the faded hero reaches under the cluster).
+  adjust?: (cbs: Rect[]) => BleedSpec[] | null;
+  pen?: number;
+};
+type Frame = { idx: number; r: Rect; rot: number };
+type Cand = {
+  kind: Kind;
+  bleeds: (BleedSpec & { focalX: number; focalY: number })[];
+  frames: Frame[];
+  clusters: { bounds: Rect; avail: Rect }[];
+  coverage: number;
+  score: number;
+};
+
+type StyleCfg = {
+  gap: number; // fraction of the spread height
+  strict: boolean; // catalog: strict justified grid
+  tilt: boolean; // scribble
+  fadeMin: number; // faded hero width, fraction of the spread width
+  fadeMax: number;
+  w: Record<Kind, number>;
+};
+
+const STYLE_CFG: Record<AutoStyleId, StyleCfg> = {
+  clean: { gap: 0.022, strict: false, tilt: false, fadeMin: 0.6, fadeMax: 0.75, w: { fade: 1, half: 0.8, two: 0.78, dense: 0.85, band: 1, side: 0.92, sfade: 0.85, inset: 0.2 } },
+  catalog: { gap: 0.02, strict: true, tilt: false, fadeMin: 0.6, fadeMax: 0.72, w: { fade: 0.45, half: 1, two: 0.25, dense: 0.9, band: 1, side: 0.9, sfade: 0.3, inset: 0.2 } },
+  scribble: { gap: 0.034, strict: false, tilt: true, fadeMin: 0.6, fadeMax: 0.75, w: { fade: 0.95, half: 0.88, two: 0.72, dense: 0.85, band: 0.95, side: 0.92, sfade: 0.8, inset: 0.2 } },
+  modern: { gap: 0.02, strict: false, tilt: false, fadeMin: 0.66, fadeMax: 0.8, w: { fade: 1.15, half: 0.65, two: 0.95, dense: 0.85, band: 0.9, side: 0.95, sfade: 1.05, inset: 0.2 } },
+};
+
+const MIN_COVERAGE = 0.7;
+// A bleeding hero may be cropped more than a framed photo (it's the page's background), up to this;
+// only when nothing else reaches the coverage, up to BLEED_CROP_MAX.
+const BLEED_CROP = 1.5;
+const BLEED_CROP_MAX = 1.85;
+
+function cropOf(photoAspect: number, r: Rect): number {
+  const fa = r.w / r.h;
+  return Math.max(fa / photoAspect, photoAspect / fa);
+}
+
+// The hero when the planner didn't name one: the first comfortable landscape (it can bleed wide).
+function pickHero(photos: P[]): number {
+  let best = 0;
+  let bs = -Infinity;
+  photos.forEach((p, i) => {
+    const s = (p.aspect >= 1.25 && p.aspect <= 1.9 ? 2 : p.aspect >= 1 ? 1 : 0) - i * 0.01;
+    if (s > bs) {
+      bs = s;
+      best = i;
+    }
   });
+  return best;
+}
 
-  // Hero on top of the pile; otherwise reading order.
-  tilted.sort((a, b) => (a.t.idx === heroIdx ? 1 : b.t.idx === heroIdx ? -1 : a.t.idx - b.t.idx));
-  // (The 3px white outline + shadow are set by the finishing pass, like every style.)
-  const els: AlbumElement[] = tilted.map(({ t }, i) => photoEl(`${ctx.prefix}-${i}`, photos[t.idx].id, t.r, geo, { rotation: t.rot }));
+// Small tilts for scribble (from the photo id, so a candidate's tilt doesn't depend on what was
+// evaluated before it), then the block is shrunk about its centre until the tilted corners are
+// back inside its region.
+function tiltCluster(ctx: Ctx, frames: Frame[], region: Rect, cx: number, cy: number): Frame[] {
+  const order = frames.slice().sort((a, b) => a.r.y - b.r.y || a.r.x - b.r.x);
+  const sign0 = hashString(`${ctx.input.spreadIndex}|tilt`) % 2 === 0 ? 1 : -1;
+  const out = order.map((f, k) => {
+    const mag = 2 + ((hashString(`${ctx.photos[f.idx].id}|${ctx.input.spreadIndex}`) % 1000) / 1000) * 1.8;
+    return { ...f, rot: Math.round((k % 2 === 0 ? sign0 : -sign0) * mag * 10) / 10 };
+  });
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (const f of out) {
+    const [ex, ey] = rotatedHalfExtents(f.r, f.rot);
+    const fx = f.r.x + f.r.w / 2;
+    const fy = f.r.y + f.r.h / 2;
+    x0 = Math.min(x0, fx - ex);
+    x1 = Math.max(x1, fx + ex);
+    y0 = Math.min(y0, fy - ey);
+    y1 = Math.max(y1, fy + ey);
+  }
+  const s = Math.min(
+    1,
+    (region.x + region.w - cx) / Math.max(1e-6, x1 - cx),
+    (cx - region.x) / Math.max(1e-6, cx - x0),
+    (region.y + region.h - cy) / Math.max(1e-6, y1 - cy),
+    (cy - region.y) / Math.max(1e-6, cy - y0)
+  );
+  if (s < 1) for (const f of out) f.r = scaleRect(f.r, s * 0.999, cx, cy);
+  return out;
+}
 
-  els.push(...tapeEls(ctx, tilted.map(({ t }) => t), signStart > 0 ? 0 : 1, n));
+// Face-safe crop of a bleeding photo inside `zone`; unpadded faces as a last resort (penalised).
+function bleedFocal(ctx: Ctx, idx: number, r: Rect, zone: Partial<FaceZone>): { focalX: number; focalY: number; pen: number } | null {
+  const faces = ctx.faces.get(ctx.photos[idx].id) ?? [];
+  const a = ctx.photos[idx].aspect;
+  const c = faceCropFocal(a, r.w / r.h, faces, zone);
+  if (c.fits) return { focalX: c.focalX, focalY: c.focalY, pen: 0 };
+  const c2 = faceCropFocal(a, r.w / r.h, faces, zone, false);
+  if (c2.fits) return { focalX: c2.focalX, focalY: c2.focalY, pen: 0.15 };
+  return null;
+}
+
+function evaluate(ctx: Ctx, cfg: StyleCfg, spec: Spec, hero: number, bc: number, jitter: number, fillMode = false): Cand | null {
+  const { geo, photos } = ctx;
+  const { W, H } = geo;
+  const g = cfg.gap * H;
+  const frames: Frame[] = [];
+  const clusters: { bounds: Rect; avail: Rect }[] = [];
+  let fill = 0;
+  for (const cl of spec.clusters) {
+    if (!cl.idxs.length) continue;
+    const box = centeredBox(cl.avail, cl.region);
+    if (!box) return null;
+    const rel = clusterIn(ctx, cl.idxs, box.w, box.h, g, cfg.strict, fillMode);
+    if (!rel) return null;
+    const ox = box.x + (box.w - rel.w) / 2;
+    const oy = box.y + (box.h - rel.h) / 2;
+    let fs: Frame[] = rel.rects.map((p) => ({ idx: p.idx, r: { x: p.r.x + ox, y: p.r.y + oy, w: p.r.w, h: p.r.h }, rot: 0 }));
+    if (cfg.tilt) fs = tiltCluster(ctx, fs, cl.region, box.x + box.w / 2, box.y + box.h / 2);
+    frames.push(...fs);
+    clusters.push({ bounds: boundsOf(fs.map((f) => f.r)), avail: cl.avail });
+    fill += rel.score / spec.clusters.length;
+  }
+  const bleedSpecs = spec.adjust ? spec.adjust(clusters.map((c) => c.bounds)) : spec.bleeds;
+  if (!bleedSpecs) return null;
+  let pen = (spec.pen ?? 0) + (fillMode ? 0.5 : 0);
+  const bleeds: Cand["bleeds"] = [];
+  for (const b of bleedSpecs) {
+    if (cropOf(photos[b.idx].aspect, b.r) > bc + 1e-9) return null;
+    const f = bleedFocal(ctx, b.idx, b.r, b.zone);
+    if (!f) return null;
+    pen += f.pen;
+    bleeds.push({ ...b, focalX: f.focalX, focalY: f.focalY });
+  }
+  // The hero is clearly the biggest photo.
+  const all = [...bleeds.map((b) => ({ idx: b.idx, r: b.r })), ...frames];
+  const heroR = all.find((p) => p.idx === hero);
+  if (!heroR) return null;
+  const heroA = area(heroR.r);
+  if (all.some((p) => p.idx !== hero && area(p.r) > heroA * 0.97)) return null;
+  const coverage = unionArea(all.map((p) => p.r), W, H) / (W * H);
+  const minArea = frames.length ? Math.min(...frames.map((f) => area(f.r))) : 0.05 * W * H;
+  const crop = frames.length ? frames.reduce((s, f) => s + Math.log(cropOf(photos[f.idx].aspect, f.r)), 0) / frames.length : 0;
+  const bleedCrop = bleeds.reduce((s, b) => s + Math.max(0, Math.log(cropOf(photos[b.idx].aspect, b.r)) - Math.log(1.25)), 0);
+  const score =
+    cfg.w[spec.kind] +
+    jitter +
+    1.2 * Math.min(1, minArea / (0.03 * W * H)) +
+    0.3 * fill -
+    0.5 * crop -
+    0.4 * bleedCrop +
+    0.3 * (heroA / (W * H)) +
+    (coverage >= MIN_COVERAGE + 0.02 ? 0.05 : 0) -
+    pen;
+  return { kind: spec.kind, bleeds, frames, clusters, coverage, score };
+}
+
+// The faded hero: from its outer edge to just under the cluster (the cluster covers the faded 25%
+// and the unfaded picture ends about where the cluster starts). `near` = distance from the hero's
+// outer edge to the cluster's near edge; returns the hero's width or null.
+function fadeWidth(near: number, cb: Rect, lo: number, hi: number, aspect: number, H: number, bc: number, W: number): number | null {
+  let e = clamp(near + 0.3 * cb.w, lo, hi);
+  e = Math.min(e, (near + 0.02 * W) / 0.75);
+  e = clamp(e, (H * aspect) / bc, H * aspect * bc);
+  if (e < near + Math.min(1, 0.1 * cb.w)) return null; // nothing overlaps the fade
+  if (0.75 * e > near + 0.02 * W + 1e-6) return null; // the cluster would hide the unfaded picture
+  return e;
+}
+
+function doubleSpecs(ctx: Ctx, cfg: StyleCfg, hero: number, bc: number): Spec[] {
+  const { geo, photos, input } = ctx;
+  const { W, H, pageW: pw } = geo;
+  const n = photos.length;
+  const others = range(0, n).filter((i) => i !== hero);
+  const k = others.length;
+  const a = photos[hero].aspect;
+  const g = cfg.gap * H;
+  const gut = 0.03 * W;
+  const outer = 0.04 * W;
+  const tb = 0.04 * H;
+  const heroPage = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
+  const region = (p: number): Rect => (p === 0 ? { x: outer, y: tb, w: pw - outer - gut, h: H - 2 * tb } : { x: pw + gut, y: tb, w: pw - gut - outer, h: H - 2 * tb });
+  const availOf = (p: number): Rect => ({ x: region(p).x, y: 0, w: region(p).w, h: H });
+  const offFold = (p: number): Partial<FaceZone> => (p === 0 ? { x0: 0.02, x1: 1 - gut / pw } : { x0: gut / pw, x1: 0.98 });
+  const pageRect = (p: number): Rect => ({ x: p * pw, y: 0, w: pw, h: H });
+  const specs: Spec[] = [];
+
+  for (const hp of [heroPage, 1 - heroPage]) {
+    const op = 1 - hp;
+    const sidePen = hp === heroPage ? 0 : 0.2;
+    // Half page: the hero fills its page, the cluster sits on the other one.
+    specs.push({ kind: "half", pen: sidePen, bleeds: [{ idx: hero, r: pageRect(hp), zone: offFold(hp) }], clusters: [{ idxs: others, avail: availOf(op), region: region(op) }] });
+    if (!k) continue;
+    // Faded hero across the fold, the cluster over its faded edge.
+    specs.push({
+      kind: "fade",
+      pen: sidePen,
+      bleeds: [],
+      clusters: [{ idxs: others, avail: availOf(op), region: region(op) }],
+      adjust: ([cb]) => {
+        const left = hp === 0;
+        const near = left ? cb.x : W - (cb.x + cb.w);
+        const e = fadeWidth(near, cb, cfg.fadeMin * W, cfg.fadeMax * W, a, H, bc, W);
+        if (e === null) return null;
+        const r = left ? { x: 0, y: 0, w: e, h: H } : { x: W - e, y: 0, w: e, h: H };
+        const zone = left ? { x0: 0.03, x1: Math.min(0.75, (pw - gut) / e) } : { x0: Math.max(0.25, (pw + gut - (W - e)) / e), x1: 0.97 };
+        return [{ idx: hero, r, mask: left ? "fade-right-25" : "fade-left-25", zone }];
+      },
+    });
+    // Two heroes: the hero fills its page; on the other page a second, narrower photo bleeds from the
+    // outer edge with its inner edge faded, and the cluster sits over that fade.
+    if (k >= 3) {
+      const seconds = others
+        .map((s) => {
+          const w2 = clamp(H * photos[s].aspect, 0.5 * pw, 0.72 * pw);
+          return { s, w2, crop: cropOf(photos[s].aspect, { x: 0, y: 0, w: w2, h: H }) };
+        })
+        .filter((c) => c.crop <= Math.min(bc, 1.4))
+        .sort((x, y) => x.crop - y.crop || x.s - y.s)
+        .slice(0, 2);
+      for (const { s, w2 } of seconds) {
+        const rest = others.filter((i) => i !== s);
+        const reg: Rect =
+          op === 0
+            ? { x: Math.max(outer, 0.7 * w2), y: tb, w: pw - gut - Math.max(outer, 0.7 * w2), h: H - 2 * tb }
+            : { x: pw + gut, y: tb, w: W - Math.max(outer, 0.7 * w2) - (pw + gut), h: H - 2 * tb };
+        if (reg.w < 0.28 * pw) continue;
+        specs.push({
+          kind: "two",
+          pen: sidePen,
+          bleeds: [],
+          clusters: [{ idxs: rest, avail: { x: reg.x, y: 0, w: reg.w, h: H }, region: reg }],
+          adjust: ([cb]) => {
+            const left = op === 0;
+            const near = left ? cb.x : W - (cb.x + cb.w);
+            const e = fadeWidth(near, cb, 0.45 * pw, 0.8 * pw, photos[s].aspect, H, Math.min(bc, 1.4), W);
+            if (e === null) return null;
+            const r2 = left ? { x: 0, y: 0, w: e, h: H } : { x: W - e, y: 0, w: e, h: H };
+            const zone2 = left ? { x0: 0.03, x1: Math.min(0.75, (near - 0.3) / e) } : { x0: Math.max(0.25, 1 - (near - 0.3) / e), x1: 0.97 };
+            return [
+              { idx: s, r: r2, mask: left ? "fade-right-25" : "fade-left-25", zone: zone2 },
+              { idx: hero, r: pageRect(hp), zone: offFold(hp) },
+            ];
+          },
+        });
+      }
+    }
+    // Dense: a smaller hero as a band across its page (top/bottom; a portrait: a column at the outer
+    // edge) with a block beside it, and a justified block on the other page.
+    if (k >= 5 && hp === heroPage) {
+      const bands: { r: Rect; avail: Rect; reg: Rect }[] = [];
+      const R = region(hp);
+      if (a >= 0.95) {
+        const top = Math.floor(input.spreadIndex / 2) % 2 === 0;
+        for (const hh of [...new Set([clamp(pw / a, 0.42 * H, 0.66 * H), 0.5 * H, 0.6 * H].map((v) => Math.round(v * 100) / 100))]) {
+          bands.push({
+            r: { x: hp * pw, y: top ? 0 : H - hh, w: pw, h: hh },
+            avail: { x: R.x, y: top ? hh : 0, w: R.w, h: H - hh },
+            reg: { x: R.x, y: top ? hh + g : tb, w: R.w, h: H - hh - g - tb },
+          });
+        }
+      } else {
+        for (const hw of [...new Set([clamp(H * a, 0.5 * pw, 0.7 * pw), 0.6 * pw].map((v) => Math.round(v * 100) / 100))]) {
+          const r = hp === 0 ? { x: 0, y: 0, w: hw, h: H } : { x: W - hw, y: 0, w: hw, h: H };
+          const x0 = hp === 0 ? hw + g : pw + gut;
+          const w = pw - gut - hw - g;
+          bands.push({ r, avail: { x: hp === 0 ? hw : pw, y: 0, w: pw - hw, h: H }, reg: { x: x0, y: tb, w, h: H - 2 * tb } });
+        }
+      }
+      for (const band of bands)
+        for (let kA = 1; kA <= Math.min(6, k - 1); kA++) {
+          const A = heroPage === FIRST ? others.slice(0, kA) : others.slice(k - kA);
+          const B = others.filter((i) => !A.includes(i));
+          specs.push({
+            kind: "dense",
+            bleeds: [{ idx: hero, r: band.r, zone: offFold(hp) }],
+            clusters: [
+              { idxs: A, avail: band.avail, region: band.reg },
+              { idxs: B, avail: availOf(op), region: region(op) },
+            ],
+          });
+        }
+    }
+  }
+  return specs;
+}
+
+function singleSpecs(ctx: Ctx, cfg: StyleCfg, hero: number, bc: number): Spec[] {
+  const { geo, photos, input } = ctx;
+  const { W, H } = geo;
+  const others = range(0, photos.length).filter((i) => i !== hero);
+  const a = photos[hero].aspect;
+  const g = cfg.gap * H;
+  const o = 0.04 * W;
+  const tb = 0.04 * H;
+  const specs: Spec[] = [];
+  const uniq = (vs: number[]) => [...new Set(vs.map((v) => Math.round(v * 100) / 100))];
+  const pref = input.spreadIndex % 2 === 0;
+  for (const first of [pref, !pref]) {
+    const pen = first === pref ? 0 : 0.2;
+    // A band across the top (or bottom), the cluster centred in the rest.
+    for (const hh of uniq([clamp(W / a, 0.35 * H, 0.68 * H), 0.45 * H, 0.58 * H])) {
+      const top = first;
+      specs.push({
+        kind: "band",
+        pen,
+        bleeds: [{ idx: hero, r: { x: 0, y: top ? 0 : H - hh, w: W, h: hh }, zone: {} }],
+        clusters: [{ idxs: others, avail: { x: 0, y: top ? hh : 0, w: W, h: H - hh }, region: { x: o, y: top ? hh + g : tb, w: W - 2 * o, h: H - hh - g - tb } }],
+      });
+    }
+    // A full-height column at one side.
+    for (const hw of uniq([clamp(H * a, 0.4 * W, 0.66 * W), 0.5 * W, 0.6 * W])) {
+      const left = first;
+      specs.push({
+        kind: "side",
+        pen,
+        bleeds: [{ idx: hero, r: { x: left ? 0 : W - hw, y: 0, w: hw, h: H }, zone: {} }],
+        clusters: [{ idxs: others, avail: { x: left ? hw : 0, y: 0, w: W - hw, h: H }, region: { x: left ? hw + g : o, y: tb, w: W - hw - g - o, h: H - 2 * tb } }],
+      });
+    }
+    // Faded hero from one side, the cluster over its faded edge.
+    if (others.length) {
+      const left = first;
+      const reg: Rect = left ? { x: 0.45 * W, y: tb, w: 0.55 * W - o, h: H - 2 * tb } : { x: o, y: tb, w: 0.55 * W - o, h: H - 2 * tb };
+      specs.push({
+        kind: "sfade",
+        pen,
+        bleeds: [],
+        clusters: [{ idxs: others, avail: { x: reg.x, y: 0, w: reg.w, h: H }, region: reg }],
+        adjust: ([cb]) => {
+          const near = left ? cb.x : W - (cb.x + cb.w);
+          const e = fadeWidth(near, cb, 0.55 * W, 0.8 * W, a, H, bc, W);
+          if (e === null) return null;
+          const r = left ? { x: 0, y: 0, w: e, h: H } : { x: W - e, y: 0, w: e, h: H };
+          const zone = left ? { x0: 0.03, x1: Math.min(0.75, (near - 0.3) / e) } : { x0: Math.max(0.25, 1 - (near - 0.3) / e), x1: 0.97 };
+          return [{ idx: hero, r, mask: left ? "fade-right-25" : "fade-left-25", zone }];
+        },
+      });
+    }
+    // (Few photos only, when nothing else reaches the coverage.) The hero covers the whole page and
+    // the others sit framed over one side of it, clear of its faces.
+    if (others.length && others.length <= 3) {
+      const left = !first;
+      const reg: Rect = left ? { x: o, y: tb, w: 0.44 * W - o, h: H - 2 * tb } : { x: 0.56 * W, y: tb, w: 0.44 * W - o, h: H - 2 * tb };
+      specs.push({
+        kind: "inset",
+        pen,
+        bleeds: [],
+        clusters: [{ idxs: others, avail: { x: reg.x, y: 0, w: reg.w, h: H }, region: reg }],
+        adjust: ([cb]) => {
+          const zone = left ? { x0: Math.min(0.97, (cb.x + cb.w + 0.3) / W), x1: 0.98 } : { x0: 0.02, x1: Math.max(0.03, (cb.x - 0.3) / W) };
+          return [{ idx: hero, r: { x: 0, y: 0, w: W, h: H }, zone }];
+        },
+      });
+    }
+  }
+  return specs;
+}
+
+function composeSpread(ctx: Ctx): AlbumElement[] | null {
+  const { geo, photos, input } = ctx;
+  const cfg = STYLE_CFG[input.style] ?? STYLE_CFG.clean;
+  const hero = ctx.heroIdx ?? pickHero(photos);
+  const jit = makeRng(hashString(`${input.style}|${input.spreadIndex}|jitter`));
+  const jitter = Object.fromEntries((["fade", "half", "two", "dense", "band", "side", "sfade", "inset"] as Kind[]).map((kd) => [kd, jit() * 0.3])) as Record<Kind, number>;
+  let best: Cand | null = null;
+  let bestAny: Cand | null = null;
+  for (const bc of [BLEED_CROP, BLEED_CROP_MAX]) {
+    const specs = geo.double ? doubleSpecs(ctx, cfg, hero, bc) : singleSpecs(ctx, cfg, hero, bc);
+    for (const spec of specs) {
+      for (const fillMode of [false, true]) {
+        const c = evaluate(ctx, cfg, spec, hero, bc, jitter[spec.kind] - (bc > BLEED_CROP ? 0.3 : 0), fillMode);
+        if (!c) continue;
+        if (!bestAny || c.coverage > bestAny.coverage + 1e-9) bestAny = c;
+        if (c.coverage >= MIN_COVERAGE && (!best || c.score > best.score)) best = c;
+        if (c.coverage >= MIN_COVERAGE) break; // the tidiest block already passes
+      }
+    }
+    if (best) break;
+  }
+  const pick = best ?? bestAny;
+  if (!pick) return null;
+  return buildElements(ctx, pick);
+}
+
+function buildElements(ctx: Ctx, c: Cand): AlbumElement[] {
+  const { geo, photos, input } = ctx;
+  const { W, H } = geo;
+  const els: AlbumElement[] = [];
+  let n = 0;
+  // Faded photos first (the bottom of the stack), then the other bleeds, then the framed photos.
+  const bleeds = c.bleeds.slice().sort((a, b) => (a.mask ? 0 : 1) - (b.mask ? 0 : 1));
+  for (const b of bleeds) {
+    const el = photoEl(`${ctx.prefix}-${n++}`, photos[b.idx].id, b.r, geo, { focalX: b.focalX, focalY: b.focalY, ...(b.mask ? { maskId: b.mask } : {}) });
+    ctx.bleed.add(el.id);
+    ctx.fixedFocal.add(el.id);
+    els.push(el);
+  }
+  const frames = c.frames.slice().sort((a, b) => a.idx - b.idx);
+  for (const f of frames) els.push(photoEl(`${ctx.prefix}-${n++}`, photos[f.idx].id, f.r, geo, f.rot ? { rotation: f.rot } : {}));
+  if (input.style === "scribble" && frames.length) {
+    const phase = hashString(`${input.spreadIndex}|tape`) % 2;
+    els.push(...tapeEls(ctx, frames, phase, frames.length));
+  }
+  if (input.style === "modern") {
+    // A thin accent line in the space under a block that doesn't reach the page's lower part.
+    const lineColor = hashString(`${input.spreadIndex}|line`) % 2 === 0 ? "#1a1a1a" : "#b08d57";
+    c.clusters.forEach((cl, i) => {
+      const cb = cl.bounds;
+      const below = cl.avail.y + cl.avail.h - (cb.y + cb.h);
+      if (below < 0.12 * H) return;
+      const len = Math.min(0.4 * cb.w, 0.16 * W);
+      const y = cb.y + cb.h + below / 2;
+      const t = Math.max(0.06, H * 0.004);
+      for (const x of [cb.x + cb.w - len, cb.x]) {
+        const lr = { x, y: y - t / 2, w: len, h: t };
+        const hits = [...c.bleeds.map((b) => b.r), ...c.frames.map((f) => f.r)].some(
+          (r) => lr.x < r.x + r.w && lr.x + lr.w > r.x && lr.y < r.y + r.h && lr.y + lr.h > r.y
+        );
+        if (!hits && x >= 0.04 * W && x + len <= 0.96 * W) {
+          els.push(lineEl(`${ctx.prefix}-line-${i}`, x, y, len, geo, lineColor));
+          break;
+        }
+      }
+    });
+  }
   return els;
 }
 
 // ---------------------------------------------------------------------------------------------
-// "modern" — a bold hero (full page height, or a full-bleed across the spread), asymmetric blocks,
-// thin accent lines, lots of negative space.
-// ---------------------------------------------------------------------------------------------
-
-// Splits a page area into a bleeding hero frame and (optionally) a leftover area for more photos.
-// `page` is the full page rect; `foldSide` is -1 when the fold is on the left of it, +1 right, 0 none.
-function modernHeroSplit(
-  page: Rect,
-  foldSide: -1 | 0 | 1,
-  aspect: number,
-  wantRest: boolean,
-  geo: Geo,
-  anchorTop: boolean,
-  minRestFrac = 0.3
-): { hero: Rect; rest: Rect | null } {
-  const gut = foldSide === 0 ? 0 : 0.03 * geo.W;
-  const usableX = foldSide === -1 ? page.x + gut : page.x;
-  const usableW = page.w - gut;
-  const gap = 0.035 * geo.H;
-  const minRestW = minRestFrac * usableW;
-  const minRestH = minRestFrac * page.h;
-  // The hero hugs the page's outer edge: the left edge unless the fold is on the left (right page).
-  const outerLeft = foldSide !== -1;
-
-  type Cand = { hero: Rect; rest: Rect | null; cost: number };
-  const cands: Cand[] = [];
-  // Side split: hero full height, anchored to the outer edge.
-  {
-    const maxW = usableW - (wantRest ? minRestW + gap : 0);
-    let w = page.h * aspect;
-    let s = 1;
-    if (w > maxW) {
-      s = maxW / w;
-      w = maxW;
-    }
-    if (s >= 1 / MAX_STRETCH) {
-      const hero = outerLeft ? { x: usableX, y: page.y, w, h: page.h } : { x: usableX + usableW - w, y: page.y, w, h: page.h };
-      const restW = usableW - w - gap;
-      const rest =
-        wantRest && restW >= minRestW * 0.95
-          ? outerLeft
-            ? { x: hero.x + w + gap, y: page.y, w: restW, h: page.h }
-            : { x: usableX, y: page.y, w: restW, h: page.h }
-          : null;
-      cands.push({ hero, rest, cost: Math.abs(Math.log(s)) + (aspect >= 1.15 ? 0.15 : 0) + (wantRest && !rest ? 1 : 0) });
-    }
-  }
-  // Band: hero across the page's usable width, anchored to top or bottom.
-  {
-    const maxH = page.h - (wantRest ? minRestH + gap : 0);
-    let h = usableW / aspect;
-    let s = 1;
-    if (h > maxH) {
-      s = h / maxH;
-      h = maxH;
-    }
-    if (s <= MAX_STRETCH) {
-      const hero = anchorTop ? { x: usableX, y: page.y, w: usableW, h } : { x: usableX, y: page.y + page.h - h, w: usableW, h };
-      const restH = page.h - h - gap;
-      const rest =
-        wantRest && restH >= minRestH * 0.95
-          ? anchorTop
-            ? { x: usableX, y: hero.y + h + gap, w: usableW, h: restH }
-            : { x: usableX, y: page.y, w: usableW, h: restH }
-          : null;
-      cands.push({ hero, rest, cost: Math.abs(Math.log(s)) + (aspect < 1.15 ? 0.15 : 0) + (wantRest && !rest ? 1 : 0) });
-    }
-  }
-  cands.sort((a, b) => a.cost - b.cost);
-  if (cands.length && (!wantRest || cands[0].rest)) return { hero: cands[0].hero, rest: cands[0].rest };
-  if (!wantRest) {
-    // Nothing bleeds nicely: a large inset frame.
-    const hero = fitOne(aspect, inset({ x: usableX, y: page.y, w: usableW, h: page.h }, 0.05 * geo.H, 0.06 * geo.H));
-    return { hero, rest: null };
-  }
-  // Room is needed for more photos but no bleeding hero leaves it: split the page in two parts along
-  // its longer side and put the hero (bleeding on its outer edges, as close to its aspect as the
-  // stretch allows) in the bigger one.
-  const side = usableW / page.h >= aspect;
-  if (side) {
-    const hw = Math.min(usableW * (1 - minRestFrac), page.h * aspect * MAX_STRETCH);
-    const hh = Math.min(page.h, (hw / aspect) * MAX_STRETCH);
-    const hero = outerLeft
-      ? { x: usableX, y: page.y + (page.h - hh) / 2, w: hw, h: hh }
-      : { x: usableX + usableW - hw, y: page.y + (page.h - hh) / 2, w: hw, h: hh };
-    const rest = outerLeft ? { x: hero.x + hw + gap, y: page.y, w: usableW - hw - gap, h: page.h } : { x: usableX, y: page.y, w: usableW - hw - gap, h: page.h };
-    return { hero, rest };
-  }
-  const hh = Math.min(page.h * (1 - minRestFrac), (usableW / aspect) * MAX_STRETCH);
-  const hw = Math.min(usableW, hh * aspect * MAX_STRETCH);
-  const hero = anchorTop ? { x: usableX + (usableW - hw) / 2, y: page.y, w: hw, h: hh } : { x: usableX + (usableW - hw) / 2, y: page.y + page.h - hh, w: hw, h: hh };
-  const rest = anchorTop ? { x: usableX, y: hero.y + hh + gap, w: usableW, h: page.h - hh - gap } : { x: usableX, y: page.y, w: usableW, h: page.h - hh - gap };
-  return { hero, rest };
-}
-
-// Leaves inner margins on the sides of a leftover area that touch page edges (not the hero side).
-function restInner(rest: Rect, geo: Geo): Rect {
-  const mx = 0.06 * geo.H;
-  const my = 0.07 * geo.H;
-  const x0 = Math.max(rest.x, (rest.x < 0.5 ? 0.045 * geo.W : rest.x));
-  const x1 = Math.min(rest.x + rest.w, rest.x + rest.w > geo.W - 0.5 ? geo.W - Math.max(mx, 0.045 * geo.W) : rest.x + rest.w);
-  const y0 = rest.y < 0.5 ? Math.max(my, 0.045 * geo.H) : rest.y;
-  const y1 = rest.y + rest.h > geo.H - 0.5 ? geo.H - Math.max(my, 0.045 * geo.H) : rest.y + rest.h;
-  return { x: x0, y: y0, w: Math.max(0.5, x1 - x0), h: Math.max(0.5, y1 - y0) };
-}
-
-function layoutModern(ctx: Ctx): AlbumElement[] {
-  const { geo, photos, heroIdx, rng, input } = ctx;
-  const n = photos.length;
-  const H = geo.H;
-  const feature = heroIdx ?? 0;
-  const fa = photos[feature].aspect;
-  const lineColor = rng() < 0.5 ? "#1a1a1a" : "#b08d57";
-  const blockGap = 0.014 * H;
-  const lines: AlbumShapeElement[] = [];
-  let lineN = 0;
-  const addLine = (x: number, y: number, len: number, vertical = false) => {
-    lines.push(lineEl(`${ctx.prefix}-line-${lineN++}`, x, y, len, geo, lineColor, vertical));
-  };
-  const rest = range(0, n).filter((i) => i !== feature);
-  const placed: Placed[] = [];
-
-  // Block of photos in a region, with a line accent on the side of the negative space.
-  const block = (idxs: number[], region: Rect, ax: Align, ay: Align, accent: boolean) => {
-    if (!idxs.length) return;
-    const res = pack(photos, idxs, region, blockGap, { rng, permute: true, alignX: ax, alignY: ay, preferEqual: 0.4 });
-    if (!res) return;
-    placed.push(...res.placed);
-    if (!accent) return;
-    const u = res.used;
-    const len = Math.min(0.42 * geo.pageW, Math.max(u.w * 0.55, 0.18 * geo.pageW));
-    const below = u.y + u.h + 0.045 * H;
-    const above = u.y - 0.045 * H;
-    const startX = ax === "end" ? u.x + u.w - len : u.x;
-    if (below < H - 0.07 * H) addLine(startX, below, len);
-    else if (above > 0.07 * H) addLine(startX, above, len);
-  };
-
-  if (!geo.double) {
-    const page = { x: 0, y: 0, w: geo.W, h: H };
-    if (n === 1) {
-      const full = geo.W / H;
-      const crop = Math.max(full / fa, fa / full);
-      if (crop <= MAX_STRETCH) {
-        placed.push({ idx: 0, r: page });
-        const els = placedToEls(ctx, placed);
-        ctx.bleed.add(els[0].id);
-        return els;
-      } else {
-        const { hero } = modernHeroSplit(page, 0, fa, false, geo, true);
-        placed.push({ idx: 0, r: hero });
-      }
-    } else {
-      const restFrac = Math.min(0.5, 0.3 + 0.05 * (rest.length - 1));
-      const { hero, rest: left } = modernHeroSplit(page, 0, fa, true, geo, input.spreadIndex % 2 === 0, restFrac);
-      placed.push({ idx: feature, r: hero });
-      if (left) block(rest, restInner(left, geo), "center", "center", true);
-    }
-    enforceHero(placed, feature, [placed.filter((p) => p.idx !== feature)]);
-    return [...placedToEls(ctx, placed), ...lines];
-  }
-
-  // (A single photo that can't fill the whole spread falls through: alone on a page, the finishing
-  // pass makes it a full half page.)
-  const bleed = input.spreadIndex % 4 === 2 && fa >= 1.3 && n <= 4 && (n > 1 || geo.W / H / fa <= MAX_CROP);
-  if (bleed) {
-    // The one deliberate spread-wide hero: full height, from the left edge across the fold.
-    if (n === 1) {
-      placed.push({ idx: 0, r: { x: 0, y: 0, w: geo.W, h: H } });
-    } else {
-      const stripW = Math.min(0.36 * geo.W, Math.max(0.22 * geo.W, geo.W - H * fa));
-      let heroW = geo.W - stripW;
-      heroW = Math.min(heroW, H * fa * MAX_STRETCH);
-      heroW = Math.max(heroW, H * fa / MAX_STRETCH);
-      placed.push({ idx: feature, r: { x: 0, y: 0, w: heroW, h: H } });
-      const region = { x: heroW + 0.03 * H, y: 0.1 * H, w: geo.W - heroW - 0.03 * H - 0.05 * geo.W, h: 0.8 * H };
-      block(rest, region, "start", rest.length === 1 ? "end" : "center", true);
-    }
-    enforceHero(placed, feature, [placed.filter((p) => p.idx !== feature)]);
-    const els = placedToEls(ctx, placed);
-    const heroEl = els.find((e) => e.photoId === photos[feature].id);
-    if (heroEl) ctx.bleed.add(heroEl.id);
-    return [...els, ...lines];
-  }
-
-  const heroPage = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
-  const otherPage = 1 - heroPage;
-  const pageRect = (p: number): Rect => ({ x: p * geo.pageW, y: 0, w: geo.pageW, h: H });
-  const heroFold: -1 | 1 = heroPage === 1 ? -1 : 1;
-  // A landscape hero leaves a band under/over it: one or two small photos sit there once the other
-  // page would get busy. A portrait hero leaves only a narrow column, used for the 7th/8th photo.
-  const heroHolds = fa >= 1.15 ? (rest.length >= 5 ? 2 : rest.length >= 3 ? 1 : 0) : rest.length > 5 ? Math.min(2, rest.length - 5) : 0;
-  const split = modernHeroSplit(pageRect(heroPage), heroFold, fa, heroHolds > 0, geo, input.spreadIndex % 4 < 2);
-  placed.push({ idx: feature, r: split.hero });
-  let onOther = rest;
-  if (heroHolds > 0 && split.rest) {
-    // Landscapes suit the band under a landscape hero, portraits the column beside a portrait one;
-    // take the best-suited photos from the end of the reading order.
-    const wantLand = split.rest.w > split.rest.h;
-    const byFit = rest
-      .map((i, pos) => ({ i, pos }))
-      .sort((a, b) => {
-        const fa2 = (photos[a.i].aspect >= 1) === wantLand ? 0 : 1;
-        const fb2 = (photos[b.i].aspect >= 1) === wantLand ? 0 : 1;
-        return fa2 - fb2 || b.pos - a.pos;
-      });
-    const mineSet = new Set(byFit.slice(0, heroHolds).map((x) => x.i));
-    const mine = rest.filter((i) => mineSet.has(i));
-    onOther = rest.filter((i) => !mineSet.has(i));
-    const inner = restInner(split.rest, geo);
-    const bandBelow = split.rest.y > split.hero.y;
-    block(mine, inner, heroPage === 0 ? "start" : "end", split.rest.w < geo.pageW * 0.6 ? "center" : bandBelow ? "start" : "end", false);
-  } else {
-    // Negative space next to the hero gets a single accent line.
-    const hr = split.hero;
-    const pr = pageRect(heroPage);
-    const len = 0.3 * geo.pageW;
-    const outerX = heroPage === 0 ? pr.x + 0.07 * H : pr.x + pr.w - 0.07 * H - len;
-    if (hr.h < H * 0.8) {
-      const y = hr.y < 1 ? hr.y + hr.h + 0.07 * H : hr.y - 0.07 * H;
-      addLine(outerX, y, len);
-    } else if (pr.w - hr.w > 0.28 * geo.pageW) {
-      const free = heroPage === 0 ? { x0: hr.x + hr.w, x1: pr.x + pr.w - 0.03 * geo.W } : { x0: pr.x + 0.03 * geo.W, x1: hr.x };
-      const l2 = Math.min(len, (free.x1 - free.x0) * 0.6);
-      addLine(heroPage === 0 ? free.x0 + 0.04 * H : free.x1 - 0.04 * H - l2, H * 0.88, l2);
-    }
-  }
-
-  // The other page: an asymmetric block pushed toward one side, the rest negative space.
-  const k = onOther.length;
-  const full = pageRegion(geo, otherPage, 0.07 * H, 0.08 * H, 0.08 * H, 0.08 * H);
-  if (k === 0) {
-    const len = full.w * 0.4;
-    addLine(full.x + (otherPage === 1 ? full.w - len : 0), H * 0.62, len);
-  } else {
-    const towardOuter = rng() < 0.5;
-    const wFrac = k === 1 ? 0.66 : k === 2 ? 0.86 : k <= 4 ? 0.92 : 1;
-    const hFrac = k === 1 ? 0.66 : k <= 3 ? 0.84 : 0.88;
-    const w = full.w * wFrac;
-    const h = full.h * hFrac;
-    const outerIsLeft = otherPage === 0;
-    const atLeft = towardOuter ? outerIsLeft : !outerIsLeft;
-    const top = rng() < 0.5;
-    const region = { x: atLeft ? full.x : full.x + full.w - w, y: top ? full.y : full.y + full.h - h, w, h };
-    block(onOther, region, atLeft ? "start" : "end", top ? "start" : "end", true);
-  }
-  enforceHero(placed, feature, [placed.filter((p) => p.idx !== feature)]);
-  return [...placedToEls(ctx, placed), ...lines];
-}
-
-// ---------------------------------------------------------------------------------------------
-// "overlap + fade" — one big photo from its outer edge across the fold to ~70% of the spread, its
-// inner edge faded (fade-right-25 / fade-left-25); the other 1-4 photos on the other page, partly
-// over the faded zone. Used on some spreads of every style but catalog.
-// ---------------------------------------------------------------------------------------------
-
-const OVERLAP_BIG_FRAC = 0.7;
-
-function layoutOverlap(ctx: Ctx): AlbumElement[] | null {
-  const { geo, photos, heroIdx, input, rng } = ctx;
-  const n = photos.length;
-  if (!geo.double || input.style === "catalog" || n < 2 || n > 5 || input.spreadIndex % 3 !== 1) return null;
-  // The big photo: the hero, or else the first landscape. A portrait would be cropped to a sliver.
-  const bigIdx = heroIdx !== undefined ? (photos[heroIdx].aspect >= 1.2 ? heroIdx : -1) : photos.findIndex((p) => p.aspect >= 1.2);
-  if (bigIdx < 0) return null;
-  const { W, H } = geo;
-  const bigW = OVERLAP_BIG_FRAC * W;
-  const fold = W / 2;
-  const gut = 0.03 * W;
-  const big = photos[bigIdx];
-  const faces = ctx.faces.get(big.id) ?? [];
-  // Faces stay on the big photo's own page (off the fold), which also keeps them out of the faded
-  // 25% and from under the overlapping photos (both are past the fold).
-  const zoneFor = (left: boolean): Partial<FaceZone> =>
-    left ? { x0: 0.03, x1: (fold - gut) / bigW } : { x0: (fold + gut - (W - bigW)) / bigW, x1: 0.97 };
-  const preferLeft = Math.floor(input.spreadIndex / 3) % 2 === 0;
-  let left: boolean | null = null;
-  let crop: ReturnType<typeof faceCropFocal> | null = null;
-  for (const side of [preferLeft, !preferLeft]) {
-    const c = faceCropFocal(big.aspect, bigW / H, faces, zoneFor(side));
-    if (c.fits) {
-      left = side;
-      crop = c;
-      break;
-    }
-  }
-  if (left === null || !crop) return null; // a wide group photo: no side keeps every face clear
-
-  const bigR: Rect = left ? { x: 0, y: 0, w: bigW, h: H } : { x: W - bigW, y: 0, w: bigW, h: H };
-  // The others' block starts inside the faded zone (which spans the big photo's inner 25%).
-  const reach = 0.14 * W;
-  const outer = 0.05 * W;
-  const region: Rect = left
-    ? { x: bigW - reach, y: 0.1 * H, w: W - outer - (bigW - reach), h: 0.8 * H }
-    : { x: outer, y: 0.1 * H, w: W - bigW + reach - outer, h: 0.8 * H };
-  const rest = range(0, n).filter((i) => i !== bigIdx);
-  const res = pack(photos, rest, region, 0.025 * H, { rng, permute: true, alignX: left ? "start" : "end", alignY: "center", cropWeight: 1.2 });
-  if (!res) return null;
-
-  const bigEl = photoEl(`${ctx.prefix}-0`, big.id, bigR, geo, {
-    maskId: left ? "fade-right-25" : "fade-left-25",
-    focalX: crop.focalX,
-    focalY: crop.focalY,
-  });
-  ctx.bleed.add(bigEl.id);
-  ctx.fixedFocal.add(bigEl.id);
-
-  const sorted = res.placed.slice().sort((a, b) => a.idx - b.idx);
-  if (input.style !== "scribble") return [bigEl, ...sorted.map((p, i) => photoEl(`${ctx.prefix}-${i + 1}`, photos[p.idx].id, p.r, geo))];
-
-  // Scribble keeps its character: small tilts and tape.
-  const lim: Rect = left
-    ? { x: fold + 0.032 * W, y: 0.045 * H, w: W - 0.045 * W - (fold + 0.032 * W), h: 0.91 * H }
-    : { x: 0.045 * W, y: 0.045 * H, w: fold - 0.032 * W - 0.045 * W, h: 0.91 * H };
-  const sign = rng() < 0.5 ? 1 : -1;
-  const tilted: Tilted[] = sorted.map((p, k) => {
-    const rot = Math.round((k % 2 === 0 ? sign : -sign) * (1.5 + rng() * 2.5) * 10) / 10;
-    const t: Tilted = { idx: p.idx, r: p.r, rot };
-    clampTilted(t, lim);
-    return t;
-  });
-  return [
-    bigEl,
-    ...tilted.map((t, i) => photoEl(`${ctx.prefix}-${i + 1}`, photos[t.idx].id, t.r, geo, { rotation: t.rot })),
-    ...tapeEls(ctx, tilted, 0, tilted.length),
-  ];
-}
-
-// ---------------------------------------------------------------------------------------------
-// Finishing pass (all styles): lone photo -> full half page, borders/shadows, face-aware crops.
+// Finishing pass (all styles): borders/shadows, face-aware crops, stacking order.
 // ---------------------------------------------------------------------------------------------
 
 const FRAME_BORDER = { borderWidth: 3, borderColor: "#ffffff", shadow: 35 } as const;
@@ -1346,38 +1210,9 @@ function frameAspectOf(e: AlbumPhotoElement, geo: Geo): number {
 
 function finalizeSpread(ctx: Ctx, input: AlbumElement[]): LayoutOutput {
   const { geo, photos } = ctx;
-  let els = input.slice();
   const isPhoto = (e: AlbumElement): e is AlbumPhotoElement => e.type === "photo";
   const aspectOf = (id: string | null) => photos.find((p) => p.id === id)?.aspect ?? 1.5;
-
-  if (geo.double) {
-    for (const page of [0, 1]) {
-      const x0 = page * 50;
-      const x1 = x0 + 50;
-      const onPage = (e: AlbumElement) => {
-        const cx = e.xPct + e.widthPct / 2;
-        return cx >= x0 && cx < x1;
-      };
-      // A bleed element reaching into this page (the overlap/spread-wide hero) owns it already.
-      const taken = els.some((e) => ctx.bleed.has(e.id) && e.xPct < x1 - 1 && e.xPct + e.widthPct > x0 + 1);
-      if (taken) continue;
-      const lone = els.filter((e) => isPhoto(e) && onPage(e));
-      if (lone.length !== 1) continue;
-      const el = lone[0] as AlbumPhotoElement;
-      const faces = ctx.faces.get(el.photoId ?? "") ?? [];
-      const crop = faceCropFocal(aspectOf(el.photoId), geo.pageW / geo.H, faces);
-      // Known faces that no half-page crop can keep whole (a wide group): leave it framed.
-      if (!crop.fits) continue;
-      const full: AlbumPhotoElement = { ...el, xPct: x0, yPct: 0, widthPct: 50, heightPct: 100, focalX: crop.focalX, focalY: crop.focalY };
-      delete full.rotation;
-      ctx.bleed.add(el.id);
-      ctx.fixedFocal.add(el.id);
-      // Accent lines / tape on that page would now sit on the photo.
-      els = els.filter((e) => e === el || isPhoto(e) || e.type === "text" || !onPage(e)).map((e) => (e === el ? full : e));
-    }
-  }
-
-  els = els.map((e) => {
+  const els = input.map((e) => {
     if (!isPhoto(e)) return e;
     const out: AlbumPhotoElement = { ...e };
     delete out.shadowAngle;
@@ -1385,6 +1220,7 @@ function finalizeSpread(ctx: Ctx, input: AlbumElement[]): LayoutOutput {
       delete out.borderWidth;
       delete out.borderColor;
       delete out.shadow;
+      delete out.rotation;
     } else Object.assign(out, FRAME_BORDER);
     if (!ctx.fixedFocal.has(e.id)) {
       const c = faceCropFocal(aspectOf(e.photoId), frameAspectOf(e, geo), ctx.faces.get(e.photoId ?? "") ?? []);
@@ -1394,7 +1230,8 @@ function finalizeSpread(ctx: Ctx, input: AlbumElement[]): LayoutOutput {
     out.zoom = 100;
     return out;
   });
-  // Bleed photos at the bottom of the stack; everything else keeps its order above them.
+  // Bleed photos at the bottom of the stack (in their given order: faded ones first); everything
+  // else keeps its order above them.
   const bottom = els.filter((e) => ctx.bleed.has(e.id));
   const top = els.filter((e) => !ctx.bleed.has(e.id));
   const bleedIds = bottom.map((e) => e.id);
@@ -1405,28 +1242,28 @@ function finalizeSpread(ctx: Ctx, input: AlbumElement[]): LayoutOutput {
 // Public API
 // ---------------------------------------------------------------------------------------------
 
+// Last resort (should never be needed): everything packed into the page(s).
 function fallbackLayout(ctx: Ctx): AlbumElement[] {
-  const { geo, photos, heroIdx } = ctx;
+  const { geo, photos } = ctx;
   const H = geo.H;
   const gap = 0.02 * H;
   const regionOf = (p: number) => pageRegion(geo, p, 0.08 * H, 0.07 * H, 0.08 * H, 0.08 * H);
-  let placed: Placed[] = [];
-  if (geo.double && photos.length > 1) {
-    const k = Math.ceil(photos.length / 2);
-    for (const [page, idxs] of [
-      [FIRST, range(0, k)],
-      [SECOND, range(k, photos.length)],
-    ] as const) {
-      const res = pack(photos, idxs, regionOf(page), gap, { heroIdx });
-      if (res) placed.push(...res.placed);
-      else idxs.forEach((i, j) => placed.push({ idx: i, r: fitOne(photos[i].aspect, stripCell(regionOf(page), j, idxs.length)) }));
-    }
-  } else {
-    const region = regionOf(geo.double ? FIRST : 0);
-    const res = pack(photos, range(0, photos.length), region, gap, { heroIdx });
-    placed = res ? res.placed : photos.map((p, j) => ({ idx: j, r: fitOne(p.aspect, stripCell(region, j, photos.length)) }));
+  const placed: Placed[] = [];
+  const groups: [number, number[]][] = geo.double && photos.length > 1
+    ? [
+        [FIRST, range(0, Math.ceil(photos.length / 2))],
+        [SECOND, range(Math.ceil(photos.length / 2), photos.length)],
+      ]
+    : [[geo.double ? FIRST : 0, range(0, photos.length)]];
+  for (const [page, idxs] of groups) {
+    const region = regionOf(page);
+    const res = justify(photos, idxs, region.w, region.h, gap, false);
+    if (res) {
+      const ox = region.x + (region.w - res.w) / 2;
+      const oy = region.y + (region.h - res.h) / 2;
+      for (const p of res.rects) placed.push({ idx: p.idx, r: { ...p.r, x: p.r.x + ox, y: p.r.y + oy } });
+    } else idxs.forEach((i, j) => placed.push({ idx: i, r: fitOne(photos[i].aspect, stripCell(region, j, idxs.length)) }));
   }
-  enforceHero(placed, heroIdx, []);
   return placedToEls(ctx, placed);
 }
 
@@ -1436,22 +1273,17 @@ function stripCell(region: Rect, j: number, count: number): Rect {
   return inset({ x: region.x + j * w, y: region.y, w, h: region.h }, w * 0.03, 0);
 }
 
-const STYLE_LAYOUTS: Record<AutoStyleId, (ctx: Ctx) => AlbumElement[]> = {
-  clean: layoutClean,
-  catalog: layoutCatalog,
-  scribble: layoutScribble,
-  modern: layoutModern,
-};
-
 export function layoutSpread(input: LayoutInput): LayoutOutput {
   if (!input.photos.length) return { elements: [] };
-  const ctx = makeCtx({ ...input, photos: input.photos.slice(0, 8) });
-  const fn = STYLE_LAYOUTS[input.style] ?? layoutClean;
-  const elements = layoutOverlap(ctx) ?? fn(ctx);
-  // Safety net: a dropped photo means a missing picture in a printed book. Should a style ever fail
-  // to place every photo exactly once, fall back to a plain packed layout that always does.
-  const placedIds = elements.filter((e): e is AlbumPhotoElement => e.type === "photo").map((e) => e.photoId);
-  const complete = placedIds.length === ctx.photos.length && ctx.photos.every((p) => placedIds.includes(p.id));
+  // Every photo exactly once: an id the planner repeated is placed once.
+  const seen = new Set<string>();
+  const photos = input.photos.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+  const ctx = makeCtx({ ...input, photos });
+  const elements = composeSpread(ctx);
+  // Safety net: a dropped photo means a missing picture in a printed book. Should the composer ever
+  // fail to place every photo exactly once, fall back to a plain packed layout that always does.
+  const placedIds = (elements ?? []).filter((e): e is AlbumPhotoElement => e.type === "photo").map((e) => e.photoId);
+  const complete = elements && placedIds.length === ctx.photos.length && ctx.photos.every((p) => placedIds.includes(p.id));
   if (complete) return finalizeSpread(ctx, elements);
   ctx.bleed.clear();
   ctx.fixedFocal.clear();
@@ -1548,3 +1380,4 @@ export function layoutCover(input: CoverInput): LayoutOutput {
   els.push(text(fsFor(ts.maxFs, 0.6), 50, ts.color, ts.font));
   return { elements: els };
 }
+
