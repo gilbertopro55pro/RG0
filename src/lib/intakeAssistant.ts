@@ -272,6 +272,19 @@ function detailPairs(d: IntakeDetails): [string, string][] {
   return pairs.filter((x): x is [string, string] => !!x[1]?.toString().trim()).map(([l, v]) => [l, String(v)]);
 }
 
+// The conversation as the designed PDF (lib/intakeTranscriptPdf.ts), for the handoff email and the
+// lead's "send the summary on WhatsApp" button. Null when there is nothing to show.
+export async function conversationPdf(p: IntakePhotographer, d: IntakeDetails, messages: Anthropic.MessageParam[]): Promise<Uint8Array | null> {
+  const transcript = transcriptOf(messages);
+  if (!transcript.length) return null;
+  return buildIntakeTranscriptPdf({ studio: studioName(p), clientName: d.clientName ?? "", details: detailPairs(d), transcript, createdAt: new Date() });
+}
+
+export function conversationPdfName(d: IntakeDetails): string {
+  const who = (d.clientName ?? "").replace(/[\\/:*?"<>|]+/g, " ").trim();
+  return `סיכום-השיחה${who ? `-${who}` : ""}.pdf`;
+}
+
 async function notifyPhotographer(p: IntakePhotographer, subject: string, d: IntakeDetails, siteUrl: string, intro: string, messages?: Anthropic.MessageParam[]) {
   const lines = [
     d.clientName ? `שם: ${d.clientName}` : null,
@@ -286,12 +299,10 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
   // The whole conversation as a designed PDF the photographer can forward to the client on
   // WhatsApp (owner's request, 2026-09-28). Best-effort: the email goes out without it on failure.
   let attachments: { filename: string; content: string }[] | undefined;
-  const transcript = messages ? transcriptOf(messages) : [];
-  if (transcript.length) {
+  if (messages) {
     try {
-      const pdf = await buildIntakeTranscriptPdf({ studio: studioName(p), clientName: d.clientName ?? "", details: detailPairs(d), transcript, createdAt: new Date() });
-      const who = (d.clientName ?? "").replace(/[\\/:*?"<>|]+/g, " ").trim();
-      attachments = [{ filename: `סיכום-השיחה${who ? `-${who}` : ""}.pdf`, content: Buffer.from(pdf).toString("base64") }];
+      const pdf = await conversationPdf(p, d, messages);
+      if (pdf) attachments = [{ filename: conversationPdfName(d), content: Buffer.from(pdf).toString("base64") }];
     } catch (e) {
       console.error("Intake transcript PDF failed:", p.id, e);
     }

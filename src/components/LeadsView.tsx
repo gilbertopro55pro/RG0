@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { buildWaMeLink } from "@/lib/waLink";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { PACKAGE_LABELS, resolveLeadPackageLabel, type PackageType } from "@/lib/stages";
@@ -174,7 +175,7 @@ export default function LeadsView({
 
             {lead.event_type_name && <p className="text-[13px] mb-1">{lead.event_type_name}</p>}
             {lead.notes && <p className="text-xs text-ink-soft mb-2.5">{lead.notes}</p>}
-            {lead.bot_conversation_id && <ConversationToggle leadId={lead.id} />}
+            {lead.bot_conversation_id && <ConversationToggle leadId={lead.id} hasPhone={!!lead.phone} />}
 
             {lead.quoted_amount && (
               <div className="text-[13px] font-bold mb-2.5">
@@ -522,12 +523,38 @@ function AddLeadModal({
   );
 }
 
-// The intake assistant's conversation behind a lead, loaded on demand.
-function ConversationToggle({ leadId }: { leadId: string }) {
+// The intake assistant's conversation behind a lead, loaded on demand, plus sending its PDF summary
+// (api/leads/[id]/conversation/pdf) to the client on WhatsApp.
+function ConversationToggle({ leadId, hasPhone }: { leadId: string; hasPhone: boolean }) {
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<{ role: "client" | "assistant"; text: string }[] | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const sendSummary = async () => {
+    setSendError(null);
+    setSending(true);
+    // Opened on the tap itself (before the await) so browsers don't block it as a popup; it's
+    // pointed at the client's chat once the link is ready.
+    const win = window.open("", "_blank");
+    try {
+      const res = await fetch(`/api/leads/${leadId}/conversation/pdf`, { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) throw new Error(data?.error ?? "יצירת הסיכום נכשלה");
+      const link = data.phone ? buildWaMeLink(data.phone, data.message) : `https://wa.me/?text=${encodeURIComponent(data.message)}`;
+      if (win) win.location.href = link;
+      else window.location.href = link;
+    } catch (e) {
+      win?.close();
+      setSendError(e instanceof Error ? e.message : "יצירת הסיכום נכשלה");
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="mb-2.5">
+      <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap">
       <button
         type="button"
         onClick={async () => {
@@ -544,6 +571,19 @@ function ConversationToggle({ leadId }: { leadId: string }) {
       >
         {open ? "הסתרת השיחה" : "השיחה עם העוזר"}
       </button>
+      {hasPhone && (
+        <button
+          type="button"
+          onClick={sendSummary}
+          disabled={sending}
+          className="text-xs font-semibold underline underline-offset-2 disabled:opacity-60"
+          style={{ color: "var(--color-amber-deep)" }}
+        >
+          {sending ? "מכין את הסיכום…" : "שליחת סיכום השיחה בוואטסאפ"}
+        </button>
+      )}
+      </div>
+      {sendError && <p className="text-xs text-rose mt-1">{sendError}</p>}
       {open && (
         <div className="mt-2 rounded-xl p-3 bg-chip grid gap-1.5 text-xs">
           {lines === null ? (
