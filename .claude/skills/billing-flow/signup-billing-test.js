@@ -22,7 +22,16 @@ const flag = path.join(workDir, "confirmed.flag");
   const ctx = await browser.newContext({ viewport: { width: 430, height: 900 }, ignoreHTTPSErrors: true, locale: "he-IL" });
   await ctx.route(/myframeflow\.com|supabase\.co/, async (route) => {
     for (let a = 0; a < 5; a++) {
-      try { return route.fulfill({ response: await route.fetch({ timeout: 60000 }) }); } catch { await new Promise((r) => setTimeout(r, 700 * (a + 1))); }
+      try {
+        const resp = await route.fetch({ timeout: 60000 });
+        // The page leaves for PayPlus right after checkout answers, so the payment link can only be
+        // read here, at the network level (the page-side response body is gone by then).
+        if (route.request().url().endsWith("/api/payplus/checkout")) {
+          const j = await resp.json().catch(() => ({}));
+          console.log("CHECKOUT_LINK:", resp.status(), j.url ? "payment link on " + new URL(j.url).host : "error=" + j.error);
+        }
+        return route.fulfill({ response: resp });
+      } catch { await new Promise((r) => setTimeout(r, 700 * (a + 1))); }
     }
     return route.abort();
   });
@@ -93,6 +102,6 @@ const flag = path.join(workDir, "confirmed.flag");
   await page.getByRole("button", { name: "מעבר לתשלום מאובטח" }).click();
   const res = await checkout;
   const data = await res.json().catch(() => ({}));
-  console.log("checkout:", res.status(), data.url ? "payment link on " + new URL(data.url).host : data.error);
+  console.log("checkout:", res.status(), data.url ? "payment link on " + new URL(data.url).host : data.error ?? "(see CHECKOUT_LINK above)");
   await browser.close();
 })();

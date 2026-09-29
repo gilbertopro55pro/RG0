@@ -65,6 +65,13 @@ data needs a short confirmation from the user first (CLAUDE.md).
 | Checkout | 200, real PayPlus payment link generated |
 | Unsigned webhook | 401 |
 
+**Re-run 2026-09-29** (two new accounts, random mixed-case plus-addresses on Gmail, e.g.
+`gilbertopro55+New.Client…@Gmail.com`): signup 200, duplicate phone 409, Hebrew "not confirmed"
+message, trialing 14.00 days on פרו+ with `signup_plan` monthly, login → /onboarding, /billing
+"נשארו 14 ימים", checkout 200 with a real `payments.payplus.co.il` link. Capitals, dots and `+` in
+the address caused no email error (Supabase stores it lower-cased). The page leaves for PayPlus
+right after checkout, so the script reads the link at the network level (`CHECKOUT_LINK:`).
+
 **Not verifiable from the sandbox:**
 - The PayPlus payment page itself: `payments.payplus.co.il` is blocked by the egress proxy.
 - A real charge, the webhook's success path and the Finbot receipt. They need a real card, or the
