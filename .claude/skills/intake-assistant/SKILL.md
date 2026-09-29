@@ -107,6 +107,12 @@ turn ends, with the assistant's closing reply included (also on the API-error pa
 Rubik can't draw (emoji) are dropped. PDF failure = the email goes out without it (logged as
 `Intake transcript PDF failed`). Verified live 2026-09-28: a full test-account conversation reached handoff and the email arrived with the PDF attached (confirmed by the owner).
 
+**On the lead (2026-09-29):** "שליחת סיכום השיחה בוואטסאפ" next to "השיחה עם העוזר" (`LeadsView`
+`ConversationToggle`, only when the lead has a phone). `POST /api/leads/<id>/conversation/pdf`
+builds the same PDF (`conversationPdf`), uploads it to the `price-quotes` bucket and returns a 7-day
+signed link + message; the button opens wa.me to the client's number with it (window opened on the
+tap, before the fetch, so it isn't blocked as a popup).
+
 ## On the landing page (2026-09-28)
 
 Section "עוזר פניות חכם" (`#assistant` in `LandingPage.tsx`): a real recorded conversation
