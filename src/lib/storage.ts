@@ -181,6 +181,33 @@ export async function downloadObjectBuffer(bucket: string, path: string): Promis
   }
 }
 
+// Only the first `maxBytes` of an object — for reading a header (e.g. a JPEG's EXIF block, which
+// sits at the very start) without pulling a 10-30MB original across the network. Same outer
+// timeout as downloadObjectBuffer for the same stalled-body reason; null on any failure.
+export async function downloadObjectRange(bucket: string, path: string, maxBytes: number): Promise<Uint8Array | null> {
+  try {
+    return await Promise.race([
+      (async () => {
+        const res = await client().send(
+          new GetObjectCommand({
+            Bucket: requireEnv("R2_BUCKET_NAME"),
+            Key: keyFor(bucket, path),
+            Range: `bytes=0-${Math.max(0, maxBytes - 1)}`,
+          })
+        );
+        if (!res.Body) return null;
+        return res.Body.transformToByteArray();
+      })(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`downloadObjectRange timed out after 20s for ${bucket}/${path}`)), 20000)
+      ),
+    ]);
+  } catch (e) {
+    console.error(`downloadObjectRange failed for ${bucket}/${path}`, e);
+    return null;
+  }
+}
+
 // Multipart streaming upload — the body is consumed as it's produced (e.g. a zip archive being
 // written to) instead of needing the whole thing buffered in memory first, which matters once a
 // gallery zip runs into the gigabytes. Takes a web ReadableStream (Readable.toWeb(nodeStream)) —
