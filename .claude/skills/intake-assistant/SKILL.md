@@ -13,8 +13,17 @@ below, so don't change them without asking.
 - **No prices, ever.** No price, range, "החל מ-", packages, discounts or comparisons. A price
   question gets an explicit answer ("the price depends on the details; <studio> sends a personal
   quote") and the chat goes back to collecting details. The photographer sends the quote.
-- Collects: event type, date (checked against the photographer's events), location, guests, name
-  and phone. Recommended extras: hours, what matters to them, and the photographer's extra question.
+- Collects: event type, date (checked against the photographer's events), location, guests, what
+  the coverage should include (photos, video, magnets, designed digital album; `coverage`), name
+  and phone. With video: whether a separate videographer is needed (`videoCrew`). A bar/bat
+  mitzvah: morning (עלייה לתורה) or evening (`eventSlot`). Recommended extras: hours, what matters
+  to them, and the photographer's extra question (asked before the handoff).
+- **Handoff only after "anything else?" (owner, 2026-09-29):** once everything is collected the
+  assistant asks if there's anything else about the event; only after the client answers does it
+  save `nothingElse=true`, and only then does the lead go to the photographer (enforced in code:
+  the auto-handoff in `save_details` and `complete_intake` both require it). No questions after the
+  handoff. Before this, it handed off the moment the required details were in and kept asking,
+  so the email/PDF missed the end of the conversation (seen live on the admin's chat).
 - **No date yet:** the assistant asks for an approximate month/season, saves `dateUndecided` +
   `approxDate`, and the lead says "תאריך: טרם נקבע (בערך …)". The date check happens later, by
   the photographer.
@@ -169,7 +178,8 @@ never claims to be the photographer and answers honestly if asked whether it's a
   the client is addressed in the plural.
 - The model asked optional questions before calling `complete_intake`, so a client who stopped
   answering stayed "חסרים פרטים". Since 2026-09-25 `save_details` hands off by itself once
-  nothing required is missing and the date is checked-available or undecided (`handedOff`).
+  nothing required is missing and the date is checked-available or undecided (`handedOff`), and
+  since 2026-09-29 also only after the "anything else?" answer (`nothingElse`).
 - The model once asked for details it had already been given. The prompt now requires
   acknowledging what the client said first.
 

@@ -28,9 +28,13 @@ const REQUIRED: { key: keyof IntakeDetails; label: string }[] = [
   { key: "eventDate", label: "תאריך" },
   { key: "location", label: "מקום" },
   { key: "guests", label: "מספר אורחים משוער" },
+  { key: "coverage", label: "מה ייכלל בצילום" },
   { key: "clientName", label: "שם" },
   { key: "phone", label: "טלפון" },
 ];
+
+const wantsVideo = (d: IntakeDetails) => /וידא|וידיאו|video/i.test(d.coverage ?? "");
+const isMitzvah = (d: IntakeDetails) => /(בר|בת)[\s-]*מצו/.test(d.eventType ?? "");
 
 export type IntakePhotographer = Pick<
   Photographer,
@@ -61,7 +65,12 @@ export function intakeMonthlyCap(p: Pick<Photographer, "email" | "plan">): numbe
 export function missingDetails(d: IntakeDetails): string[] {
   // A client without a date yet is fine: an approximate time frame stands in for the date.
   const hasDate = !!d.eventDate || (!!d.dateUndecided && !!d.approxDate?.trim());
-  return REQUIRED.filter((r) => (r.key === "eventDate" ? !hasDate : !String(d[r.key] ?? "").trim())).map((r) => r.label);
+  const missing = REQUIRED.filter((r) => (r.key === "eventDate" ? !hasDate : !String(d[r.key] ?? "").trim())).map((r) => r.label);
+  // Conditional details (owner, 2026-09-29): with video, whether a separate videographer is needed;
+  // for a bar/bat mitzvah, morning (עלייה לתורה) or evening.
+  if (wantsVideo(d) && !d.videoCrew?.trim()) missing.push("האם צריך צלם וידאו נוסף");
+  if (isMitzvah(d) && !d.eventSlot) missing.push("אירוע בוקר או ערב");
+  return missing;
 }
 
 function dateText(d: IntakeDetails): string | null {
@@ -137,7 +146,12 @@ ${p.intake_allow_split_day ? `- ${name} יכול לצלם באותו יום גם
 ` : ""}- ברגע שיש תאריך, קוראים ל-check_availability. אם התאריך תפוס, אומרים את זה בעדינות ומציעים להיכנס לרשימת ההמתנה (אחרי שיש שם וטלפון, קוראים ל-join_waitlist).
 - אחרי ש-join_waitlist החזיר ok, מסיימים בתודה ובהסבר ש${name} יעדכן אם התאריך יתפנה. לא ממשיכים לאסוף פרטים ולא מציעים הצעת מחיר לתאריך תפוס.
 - בכל פעם שהלקוח נותן פרט, קוראים ל-save_details עם מה שנאמר.
-- כש-save_details מחזיר handedOff=true, הפנייה כבר הועברה. מותר לשאול עוד שאלה או שתיים לא חובה (שעות, מה חשוב להם), ואז מסכמים. אם עוד לא הועברה וכל פרטי החובה נשמרו, קוראים ל-complete_intake, ואז מסכמים ללקוח את מה שהועבר ואומרים שהצעת מחיר מ${name} תגיע תוך ${p.intake_bot_reply_hours} שעות.
+- מה הצילום יכלול: שואלים מה הם רוצים שהצילום יכלול. אם שואלים מה האפשרויות: תמונות, וידאו, מגנטים ואלבום דיגיטלי מעוצב. שומרים ב-save_details בשדה coverage.
+- אם רוצים וידאו: שואלים אם צריך צלם וידאו נוסף, כלומר שני אנשי צוות (צלם סטילס, ${name}, וצלם וידאו). אם בשאלות הנפוצות יש מידע על צלם וידאו או צלם שני, עונים לפיו. שומרים בשדה videoCrew.
+- בר מצווה או בת מצווה: מוודאים אם זה אירוע בוקר (עלייה לתורה) או אירוע ערב, כי יש שקוראים לעלייה לתורה "בר מצווה". שומרים ב-save_details בשדה eventSlot (ובבדיקת התאריך שולחים את ה-slot המתאים).
+- השאלה הנוספת ש${name} ביקש לשאול (אם יש) נשאלת לפני שהפנייה מועברת.
+- לפני שמעבירים את הפנייה: כשכל הפרטים נאספו, שואלים אם יש עוד משהו שחשוב לדעת על האירוע. רק אחרי שהלקוח ענה, קוראים ל-save_details עם nothingElse=true (ועם מה שהוסיף, בשדה wishes). רק אז הפנייה מועברת (handedOff=true). אם save_details עוד לא העביר, קוראים ל-complete_intake.
+- אחרי שהפנייה הועברה, מסכמים ללקוח בקצרה את מה שהועבר, אומרים שהצעת מחיר מ${name} תגיע תוך ${p.intake_bot_reply_hours} שעות, ומודים. לא שואלים יותר שאלות אחרי ההעברה.
 - אסור לכתוב ללקוח שהפרטים הועברו לפני ש-complete_intake או join_waitlist החזירו ok, או ש-save_details החזיר handedOff=true.
 - תאריכים יחסיים ("שבת הבאה") מחשבים לפי התאריך של היום: ${israelToday()}. אם התאריך לא ברור, שואלים.
 
@@ -172,7 +186,11 @@ const TOOLS: Anthropic.Tool[] = [
         guests: { type: "string", description: "מספר אורחים משוער" },
         startTime: { type: "string", description: "HH:MM" },
         endTime: { type: "string", description: "HH:MM" },
-        wishes: { type: "string", description: "מה חשוב ללקוח / בקשות מיוחדות" },
+        wishes: { type: "string", description: "מה חשוב ללקוח / בקשות מיוחדות / פרטים נוספים על האירוע" },
+        coverage: { type: "string", description: "מה הצילום יכלול: תמונות, וידאו, מגנטים, אלבום דיגיטלי מעוצב (מה שהלקוח בחר)" },
+        videoCrew: { type: "string", description: "כשרוצים וידאו: האם צריך צלם וידאו נוסף (שני אנשי צוות), במילים של הלקוח" },
+        eventSlot: { type: "string", enum: ["morning", "evening"], description: "בר/בת מצווה: אירוע בוקר (עלייה לתורה) או אירוע ערב" },
+        nothingElse: { type: "boolean", description: "true רק אחרי ששאלת אם יש עוד משהו שחשוב לדעת על האירוע והלקוח ענה" },
         clientName: { type: "string" },
         phone: { type: "string" },
         email: { type: "string" },
@@ -181,7 +199,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "complete_intake",
-    description: "מעביר את הפנייה לצלם/ת כליד מלא. לקרוא רק כשכל פרטי החובה נשמרו.",
+    description: "מעביר את הפנייה לצלם/ת כליד מלא. לקרוא רק כשכל פרטי החובה נשמרו ואחרי ששאלת אם יש עוד משהו והלקוח ענה.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -197,6 +215,8 @@ function leadNotes(d: IntakeDetails): string {
     d.eventDate && d.eventSlot ? `חלק ביום: ${SLOT_LABELS[d.eventSlot]}` : null,
     d.location ? `מקום: ${d.location}` : null,
     d.guests ? `אורחים: ${d.guests}` : null,
+    d.coverage ? `לכלול: ${d.coverage}` : null,
+    d.videoCrew ? `צלם וידאו נוסף: ${d.videoCrew}` : null,
     d.startTime || d.endTime ? `שעות: ${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null,
     d.wishes ? `חשוב להם: ${d.wishes}` : null,
   ].filter(Boolean);
@@ -268,6 +288,9 @@ function detailPairs(d: IntakeDetails): [string, string][] {
     ["תאריך", dateText(d)],
     ["מקום", d.location],
     ["אורחים", d.guests],
+    ["חלק ביום", d.eventSlot ? SLOT_LABELS[d.eventSlot] : null],
+    ["מה ייכלל בצילום", d.coverage],
+    ["צלם וידאו נוסף", d.videoCrew],
     ["שעות", d.startTime || d.endTime ? `${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null],
     ["חשוב להם", d.wishes],
   ];
@@ -295,6 +318,9 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
     dateText(d) ? `תאריך: ${dateText(d)}` : null,
     d.location ? `מקום: ${d.location}` : null,
     d.guests ? `אורחים: ${d.guests}` : null,
+    d.eventSlot ? `חלק ביום: ${SLOT_LABELS[d.eventSlot]}` : null,
+    d.coverage ? `לכלול: ${d.coverage}` : null,
+    d.videoCrew ? `צלם וידאו נוסף: ${d.videoCrew}` : null,
     d.startTime || d.endTime ? `שעות: ${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null,
     d.wishes ? `חשוב להם: ${d.wishes}` : null,
   ].filter(Boolean);
@@ -390,7 +416,7 @@ async function runTool(
   }
 
   if (name === "save_details") {
-    const allowed: (keyof IntakeDetails)[] = ["eventType", "eventDate", "approxDate", "location", "guests", "startTime", "endTime", "wishes", "clientName", "phone", "email"];
+    const allowed: (keyof IntakeDetails)[] = ["eventType", "eventDate", "approxDate", "location", "guests", "startTime", "endTime", "wishes", "coverage", "videoCrew", "clientName", "phone", "email"];
     const patch: IntakeDetails = {};
     for (const k of allowed) {
       const v = input[k];
@@ -400,13 +426,16 @@ async function runTool(
     if (input.dateUndecided === true && !patch.eventDate) patch.dateUndecided = true;
     if (patch.eventDate) patch.dateUndecided = false;
     if (patch.eventDate && patch.eventDate !== conv.collected.eventDate) delete conv.collected.dateAvailable;
+    if (input.eventSlot === "morning" || input.eventSlot === "evening") patch.eventSlot = input.eventSlot;
+    if (input.nothingElse === true) patch.nothingElse = true;
     conv.collected = { ...conv.collected, ...patch };
     conv.lead_id = await upsertLead(supabase, conv, !!conv.completed_at);
     const missing = missingDetails(conv.collected);
     const d = conv.collected;
     const dateReady = d.eventDate ? d.dateAvailable === true : !!d.dateUndecided;
     let handedOff = !!conv.completed_at;
-    if (!handedOff && missing.length === 0 && dateReady && conv.state !== "waitlisted") {
+    // Handed off only after the "anything else?" question was answered (owner, 2026-09-29).
+    if (!handedOff && missing.length === 0 && dateReady && d.nothingElse && conv.state !== "waitlisted") {
       await completeIntake(supabase, conv, p, siteUrl);
       handedOff = true;
     }
@@ -414,8 +443,9 @@ async function runTool(
       saved: Object.keys(patch),
       missing,
       dateChecked: d.dateAvailable !== undefined,
-      // true = the lead already went to the photographer; optional questions may follow, then summarize.
+      // true = the lead went to the photographer: thank and close, no more questions.
       handedOff,
+      ...(!handedOff && missing.length === 0 && dateReady && !d.nothingElse ? { next: "לשאול אם יש עוד משהו שחשוב לדעת על האירוע, ואחרי שענו לשמור עם nothingElse=true" } : {}),
     });
   }
 
@@ -423,6 +453,7 @@ async function runTool(
     const missing = missingDetails(conv.collected);
     if (missing.length) return JSON.stringify({ error: "חסרים פרטי חובה", missing });
     if (conv.collected.eventDate && conv.collected.dateAvailable === undefined) return JSON.stringify({ error: "קודם לבדוק את התאריך עם check_availability" });
+    if (!conv.collected.nothingElse && !conv.completed_at) return JSON.stringify({ error: "קודם לשאול אם יש עוד משהו שחשוב לדעת על האירוע, ולשמור את התשובה עם save_details (nothingElse=true)" });
     if (conv.completed_at) return JSON.stringify({ ok: true, alreadyDone: true, replyHours: p.intake_bot_reply_hours });
     await completeIntake(supabase, conv, p, siteUrl);
     return JSON.stringify({ ok: true, replyHours: p.intake_bot_reply_hours });
