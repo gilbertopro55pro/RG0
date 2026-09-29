@@ -315,7 +315,7 @@ export default function AlbumAutoDesigner({
         autoPhotos,
         photoFaces,
         cellPeople,
-        { style, targetSpreads: Number.isFinite(target) && target > 0 ? target : null },
+        { style, targetSpreads: Number.isFinite(target) && target > 0 ? Math.min(30, target) : null, hasCover: coverMode === "on" },
         referencePhotos
       );
       if (plan.spreads.length === 0) throw new Error("empty");
@@ -356,7 +356,7 @@ export default function AlbumAutoDesigner({
               })(),
             }
           : null;
-      setProgress("layout", 1, `${spreads.length} כפולות`);
+      setProgress("layout", 1, `${spreads.length + (cover ? 1 : 0)} עמודים`);
       checkCancel();
 
       // (e) Save — the parent creates the album and opens it (this component unmounts then).
@@ -514,14 +514,18 @@ export default function AlbumAutoDesigner({
             <label className="flex items-center gap-2 flex-wrap pt-1">
               <input
                 type="number"
-                min={1}
+                min={2}
+                max={30}
                 inputMode="numeric"
                 value={spreadCount}
-                onChange={(e) => setSpreadCount(e.target.value.replace(/[^0-9]/g, ""))}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^0-9]/g, "");
+                  setSpreadCount(v && parseInt(v, 10) > 30 ? "30" : v);
+                }}
                 placeholder="אוטומטי"
                 className="w-24 rounded-lg border border-line px-2.5 py-2 text-sm text-center bg-white"
               />
-              <span className="text-xs text-ink-soft">מספר כפולות (ריק: אוטומטי, עד 30)</span>
+              <span className="text-xs text-ink-soft">מספר עמודים רצוי באלבום, כולל הכריכה (ריק: אוטומטי, עד 30)</span>
             </label>
           </section>
 

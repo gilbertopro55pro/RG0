@@ -121,9 +121,10 @@ const STYLE_BOUNDS: Record<AutoStyleId, Record<SectionGroup, Bounds>> = {
   modern: { owners: { min: 2, max: 3 }, family: { min: 2, max: 4 }, event: { min: 3, max: 5 } },
 };
 // Owner's rules (2026-09-29): never a spread with a single photo (every minimum above is ≥ 2, and
-// mergeSingles() catches the rest), at most 30 spreads when the photographer leaves the count
-// empty, and up to 20 photos on one spread.
-const AUTO_MAX_SPREADS = 30;
+// mergeSingles() catches the rest), and a HARD limit of 30 pages ("דפים") counting the cover — with
+// the count left empty the book never goes past it and puts more photos on each page instead; a
+// count the photographer typed is capped at 30 too. Per-page photo caps by position: see pageCap().
+const AUTO_MAX_PAGES = 30;
 // Shots this close together are a burst of the same moment: never on the same spread.
 const BURST_MS = 3000;
 
@@ -332,28 +333,117 @@ function separateBursts(chunks: string[][], time: Map<string, number>): void {
   }
 }
 
-// The spread cap is a hard rule: while the book is longer than `cap`, the two adjacent event
-// spreads with the fewest photos between them merge (never past HARD_MAX_PER_SPREAD).
-function enforceCap(spreads: PlannedSpread[], cap: number, byId: Map<string, AutoPhoto>): void {
-  while (spreads.length > cap) {
-    let best = -1;
-    let bestSize = Infinity;
-    for (let i = 0; i + 1 < spreads.length; i++) {
-      const a = spreads[i];
-      const b = spreads[i + 1];
-      if (a.section !== b.section) continue;
-      const size = a.photoIds.length + b.photoIds.length;
-      if (size <= HARD_MAX_PER_SPREAD && size < bestSize) {
-        best = i;
-        bestSize = size;
+// Owner's per-page caps (2026-09-29), by the spread's position in the book (1-based, the cover not
+// counted): pages 1-5 up to 6 photos, 6-10 up to 8, 11-20 up to 15, 21-30 up to 20. With the 250
+// photos clients may pick at most, 29 spreads hold 400, so there's room.
+export function pageCap(pos: number): number {
+  return pos <= 5 ? 6 : pos <= 10 ? 8 : pos <= 20 ? 15 : 20;
+}
+
+// The last pass, and the one that makes the limits hard: when the plan has more spreads than
+// `maxSpreads`, or a spread over its page cap, the whole book (in its planned order) is split again
+// into at most `maxSpreads` spreads, each of 2..pageCap photos, as even as the caps allow. Cuts are
+// placed by dynamic programming: it prefers cutting at section boundaries and stage gaps and avoids
+// burst shots on one spread. Only when even `maxSpreads` full spreads can't hold every photo (a
+// short typed count with very many photos) do the last spreads go past their cap — a photo is
+// never dropped.
+function fitPages(
+  spreads: PlannedSpread[],
+  maxSpreads: number,
+  time: Map<string, number> | null,
+  heroFor: (section: SectionKind, ids: string[]) => string
+): PlannedSpread[] {
+  const fits = spreads.length <= maxSpreads && spreads.every((s, i) => s.photoIds.length <= pageCap(i + 1) && (s.photoIds.length >= 2 || spreads.length === 1));
+  const ids = spreads.flatMap((s) => s.photoIds);
+  const P = ids.length;
+  if (fits || P < 4) return spreads;
+  const sec = spreads.flatMap((s) => s.photoIds.map(() => s.section));
+  // Where the plan already cut (its stage-aware chunking): kept when the sizes allow.
+  const planCut = new Set<number>();
+  spreads.reduce((pos, s) => (planCut.add(pos + s.photoIds.length), pos + s.photoIds.length), 0);
+  const maxN = Math.max(1, Math.min(maxSpreads, Math.floor(P / 2)));
+  const capSum = (n: number) => Array.from({ length: n }, (_, i) => pageCap(i + 1)).reduce((a, b) => a + b, 0);
+  let N = Math.min(spreads.length, maxN);
+  while (N < maxN && capSum(N) < P) N++;
+  const caps = Array.from({ length: N }, (_, i) => pageCap(i + 1));
+  // Not enough room: the last spreads take the extra photos first (up to HARD_MAX_PER_SPREAD each,
+  // from the end backwards), and only past that, round robin from the end.
+  let total = capSum(N);
+  for (let i = N - 1; i >= 0 && total < P; i--) {
+    const add = Math.min(P - total, Math.max(0, HARD_MAX_PER_SPREAD - caps[i]));
+    caps[i] += add;
+    total += add;
+  }
+  for (let i = N - 1; total < P; total++, i = i === 0 ? N - 1 : i - 1) caps[i]++;
+  // Even sizes: the level L with sum(min(cap, L)) = P.
+  let lo = 0;
+  let hi = Math.max(...caps);
+  for (let it = 0; it < 40; it++) {
+    const mid = (lo + hi) / 2;
+    if (caps.reduce((a, c) => a + Math.min(c, mid), 0) < P) lo = mid;
+    else hi = mid;
+  }
+  const want = caps.map((c) => Math.min(c, hi));
+  // Prefix counts: section changes and burst pairs between neighbours k, k+1.
+  const secCh = [0];
+  const burst = [0];
+  for (let k = 0; k + 1 < P; k++) {
+    secCh.push(secCh[k] + (sec[k] !== sec[k + 1] ? 1 : 0));
+    const ta = time?.get(ids[k]);
+    const tb = time?.get(ids[k + 1]);
+    burst.push(burst[k] + (ta !== undefined && tb !== undefined && Math.abs(tb - ta) < BURST_MS ? 1 : 0));
+  }
+  const inside = (pre: number[], a: number, b: number) => pre[b - 1] - pre[a]; // pairs within [a, b)
+  const cutBonus = (b: number) => {
+    if (b >= P) return 0;
+    let bonus = (sec[b - 1] !== sec[b] ? 3 : 0) + (planCut.has(b) ? 0.5 : 0);
+    const ta = time?.get(ids[b - 1]);
+    const tb = time?.get(ids[b]);
+    if (ta !== undefined && tb !== undefined && tb - ta > STAGE_GAP_MS) bonus += 1;
+    return bonus;
+  };
+  const INF = Number.POSITIVE_INFINITY;
+  const best: number[][] = Array.from({ length: N + 1 }, () => new Array(P + 1).fill(INF));
+  const from: number[][] = Array.from({ length: N + 1 }, () => new Array(P + 1).fill(-1));
+  best[0][0] = 0;
+  for (let i = 0; i < N; i++)
+    for (let a = 0; a < P; a++) {
+      if (best[i][a] === INF) continue;
+      for (let size = 2; size <= caps[i] && a + size <= P; size++) {
+        const b = a + size;
+        const c = best[i][a] + (size - want[i]) ** 2 + 6 * inside(secCh, a, b) + 2 * inside(burst, a, b) - cutBonus(b);
+        if (c < best[i + 1][b]) {
+          best[i + 1][b] = c;
+          from[i + 1][b] = a;
+        }
       }
     }
-    if (best < 0) return;
-    const a = spreads[best];
-    a.photoIds.push(...spreads[best + 1].photoIds);
-    if (a.section === "event") a.heroId = a.photoIds.find((id) => isLandscape(byId.get(id))) ?? a.photoIds[0];
-    spreads.splice(best + 1, 1);
+  // The best book of at most N spreads that holds every photo.
+  let n = -1;
+  for (let k = 1; k <= N; k++) if (best[k][P] < INF && (n < 0 || best[k][P] < best[n][P])) n = k;
+  if (n < 0) return spreads;
+  const cuts: [number, number][] = [];
+  for (let k = n, b = P; k > 0; k--) {
+    const a = from[k][b];
+    cuts.unshift([a, b]);
+    b = a;
   }
+  const chunks = cuts.map(([a, b]) => ids.slice(a, b));
+  const sections = cuts.map(([a]) => sec[a]);
+  // Bursts that still share a spread swap apart inside runs of event spreads (sizes stay the same).
+  if (time) {
+    for (let i = 0; i < chunks.length; ) {
+      if (sections[i] !== "event") {
+        i++;
+        continue;
+      }
+      let j = i;
+      while (j < chunks.length && sections[j] === "event") j++;
+      separateBursts(chunks.slice(i, j), time);
+      i = j;
+    }
+  }
+  return chunks.map((c, i) => ({ section: sections[i], photoIds: c, heroId: heroFor(sections[i], c) }));
 }
 
 // A spread with one photo is never allowed (owner's rule): it joins its neighbour — the previous
@@ -506,17 +596,20 @@ export function planAlbum(
   }
 
   // Event spreads: target-aware bounds, breaking at stage gaps when times are known. With no
-  // target, the style's natural sizes are used unless they'd go past AUTO_MAX_SPREADS.
+  // target, the style's natural sizes are used unless they'd go past the page limit.
   const gapAfter = time
     ? (i: number) =>
         i + 1 < eventIds.length ? (time.get(eventIds[i + 1]) as number) - (time.get(eventIds[i]) as number) : 0
     : undefined;
   const familySpreads = spreads.length;
+  // Spreads the book may have: the pages (typed count, capped at 30; else 30) minus the cover.
+  const typed = opts.targetSpreads && opts.targetSpreads > 0 ? Math.min(AUTO_MAX_PAGES, Math.floor(opts.targetSpreads)) : null;
+  const maxSpreads = Math.max(1, (typed ?? AUTO_MAX_PAGES) - (opts.hasCover === false ? 0 : 1));
   let eventBounds = bounds.event;
-  if (opts.targetSpreads && opts.targetSpreads > 0) {
-    eventBounds = targetEventBounds(bounds.event, eventIds.length, opts.targetSpreads - familySpreads);
-  } else if (familySpreads + chunk(eventIds, bounds.event, seed, gapAfter).length > AUTO_MAX_SPREADS) {
-    eventBounds = targetEventBounds(bounds.event, eventIds.length, Math.max(1, AUTO_MAX_SPREADS - familySpreads));
+  if (typed) {
+    eventBounds = targetEventBounds(bounds.event, eventIds.length, Math.max(1, maxSpreads - familySpreads));
+  } else if (familySpreads + chunk(eventIds, bounds.event, seed, gapAfter).length > maxSpreads) {
+    eventBounds = targetEventBounds(bounds.event, eventIds.length, Math.max(1, maxSpreads - familySpreads));
   }
   const eventChunks = chunk(eventIds, eventBounds, seed, gapAfter);
   if (time) separateBursts(eventChunks, time);
@@ -526,7 +619,10 @@ export function planAlbum(
     seed++;
   }
   mergeSingles(spreads, byId);
-  enforceCap(spreads, opts.targetSpreads && opts.targetSpreads > 0 ? opts.targetSpreads : AUTO_MAX_SPREADS, byId);
+  const heroFor = (section: SectionKind, ids: string[]) =>
+    section === "event" ? (ids.find((id) => isLandscape(byId.get(id))) ?? ids[0]) : heroByFaces(ids);
+  const book = fitPages(spreads, maxSpreads, time, heroFor);
+  spreads.splice(0, spreads.length, ...book);
 
   // Cover: the closest owners shot (a slight preference for portrait — covers are single pages).
   let coverPhotoId: string | null = null;
