@@ -174,19 +174,32 @@ export default function LandingPage() {
 
       {/* A person behind the product, right after the hero: a photographer who built it for himself is
           the one thing no competitor can copy, so it comes before the features (visitor feedback,
-          2026-09-29). Light, so it doesn't merge with the navy hero. */}
-      <section className="bg-[var(--l-bg-alt)] border-b border-[var(--l-line)]">
-        <div className={`${CONTAINER} py-14 lg:py-24`}>
-          <figure className="m-0 flex flex-col gap-5 lg:gap-7 lg:max-w-[980px]">
+          2026-09-29). Dark so the quote stands out (owner's call); navy-2 with a rule on top so it
+          reads as its own section, not the hero's tail. */}
+      <section className="bg-[var(--l-navy-2)] text-[var(--l-on-navy)] border-t border-[var(--l-navy-line)]">
+        <div className={`${CONTAINER} py-14 lg:py-24 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8 lg:gap-20`}>
+          <figure className="m-0 flex flex-col gap-5 lg:gap-7 lg:max-w-[820px]">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="var(--l-accent)" aria-hidden="true">
               <path d="M10 7H6a2 2 0 0 0-2 2v4h4v4h2V7zM20 7h-4a2 2 0 0 0-2 2v4h4v4h2V7z" />
             </svg>
-            <blockquote className="font-display m-0 text-2xl lg:text-[38px] leading-[1.35] font-semibold tracking-[-0.015em] text-[var(--l-ink)]">
+            <blockquote className="font-display m-0 text-2xl lg:text-[38px] leading-[1.35] font-semibold tracking-[-0.015em] text-white">
               בניתי את גילברטו כי אחרי כל צילום אירוע חיכו לי עוד שעות של וואטסאפים, קבצים ותזכורות. היום כל זה מסודר ומוכן מראש,
               ואני חוזר לצלם.
             </blockquote>
-            <figcaption className="text-base lg:text-lg text-[var(--l-ink-soft)]">רועי גלברט, צלם אירועים ומייסד גילברטו</figcaption>
+            <figcaption className="flex items-center gap-3.5 text-base lg:text-lg text-[var(--l-on-navy-soft)]">
+              {/* Phones: a small portrait next to the name. Desktop shows the large one beside the quote. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/landing/founder-face.jpg" alt="" className="lg:hidden w-[72px] h-[72px] object-cover rounded-[2px] border border-[var(--l-navy-border)]" />
+              <span>רועי גלברט, צלם אירועים ומייסד גילברטו</span>
+            </figcaption>
           </figure>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/landing/founder.jpg"
+            alt="רועי גלברט, צלם אירועים ומייסד גילברטו"
+            loading="lazy"
+            className="hidden lg:block w-[340px] aspect-[635/744] object-cover shrink-0 rounded-[2px] border border-[var(--l-navy-border)] shadow-[0_30px_70px_rgba(0,0,0,0.45)]"
+          />
         </div>
       </section>
 
