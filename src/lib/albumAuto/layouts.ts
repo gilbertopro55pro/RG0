@@ -766,7 +766,7 @@ function unionArea(rs: Rect[], W: number, H: number): number {
 type MaskId = "fade-right-25" | "fade-left-25";
 type BleedSpec = { idx: number; r: Rect; mask?: MaskId; zone: Partial<FaceZone> };
 type ClusterSpec = { idxs: number[]; avail: Rect; region: Rect };
-type Kind = "fade" | "half" | "two" | "dense" | "band" | "side" | "sfade" | "inset";
+type Kind = "fade" | "half" | "two" | "dense" | "band" | "side" | "sfade" | "inset" | "wide";
 type Spec = {
   kind: Kind;
   bleeds: BleedSpec[];
@@ -795,10 +795,10 @@ type StyleCfg = {
 };
 
 const STYLE_CFG: Record<AutoStyleId, StyleCfg> = {
-  clean: { gap: 0.022, strict: false, tilt: false, fadeMin: 0.6, fadeMax: 0.75, w: { fade: 1, half: 0.8, two: 0.78, dense: 0.85, band: 1, side: 0.92, sfade: 0.85, inset: 0.2 } },
-  catalog: { gap: 0.02, strict: true, tilt: false, fadeMin: 0.6, fadeMax: 0.72, w: { fade: 0.45, half: 1, two: 0.25, dense: 0.9, band: 1, side: 0.9, sfade: 0.3, inset: 0.2 } },
-  scribble: { gap: 0.034, strict: false, tilt: true, fadeMin: 0.6, fadeMax: 0.75, w: { fade: 0.95, half: 0.88, two: 0.72, dense: 0.85, band: 0.95, side: 0.92, sfade: 0.8, inset: 0.2 } },
-  modern: { gap: 0.02, strict: false, tilt: false, fadeMin: 0.66, fadeMax: 0.8, w: { fade: 1.15, half: 0.65, two: 0.95, dense: 0.85, band: 0.9, side: 0.95, sfade: 1.05, inset: 0.2 } },
+  clean: { gap: 0.022, strict: false, tilt: false, fadeMin: 0.6, fadeMax: 0.75, w: { fade: 1, half: 0.8, two: 0.78, dense: 0.85, band: 1, side: 0.92, sfade: 0.85, inset: 0.2, wide: 0.8 } },
+  catalog: { gap: 0.02, strict: true, tilt: false, fadeMin: 0.6, fadeMax: 0.72, w: { fade: 0.45, half: 1, two: 0.25, dense: 0.9, band: 1, side: 0.9, sfade: 0.3, inset: 0.2, wide: 0.5 } },
+  scribble: { gap: 0.034, strict: false, tilt: true, fadeMin: 0.6, fadeMax: 0.75, w: { fade: 0.95, half: 0.88, two: 0.72, dense: 0.85, band: 0.95, side: 0.92, sfade: 0.8, inset: 0.2, wide: 0.7 } },
+  modern: { gap: 0.02, strict: false, tilt: false, fadeMin: 0.66, fadeMax: 0.8, w: { fade: 1.15, half: 0.65, two: 0.95, dense: 0.85, band: 0.9, side: 0.95, sfade: 1.05, inset: 0.2, wide: 0.8 } },
 };
 
 const MIN_COVERAGE = 0.7;
@@ -1128,12 +1128,181 @@ function singleSpecs(ctx: Ctx, cfg: StyleCfg, hero: number, bc: number): Spec[] 
   return specs;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Clean style ("קו נקי"), double pages — measured from the owner's own correction of an auto album
+// (2026-09-29, 40 spreads at 60×30; the rules are also written in CLAUDE.md, "סגנון קו נקי"):
+//   - One hero bleeding the full height from its page's outer edge, in one of three widths: ~70% of
+//     the spread with fade-25 toward the fold (a landscape is then barely cropped), exactly its half
+//     page, or a wide ~60% (no mask). Heroes alternate sides from spread to spread.
+//   - On the other page ONE tidy grid of framed tiles from a small set of templates (one big photo,
+//     a column of 2, two side by side, 2×2, a big one + 2 small, a big one + a column of 3, ...),
+//     ~0.7cm gaps, centred, 5-12% top/bottom margins, as large as the page allows. With the faded
+//     hero the grid lies over the faded strip (never over the unfaded picture), ~6.4% from the
+//     outer edge.
+// Spreads it can't lay out this way (a single page, more than 7 photos) use the general composer.
+// ---------------------------------------------------------------------------------------------
+
+type Cell = [number, number, number, number]; // column, row, column span, row span (grid units)
+type Tpl = { cols: number; rows: number; cells: Cell[] };
+
+const CLEAN_BASE: Tpl[] = [
+  { cols: 1, rows: 1, cells: [[0, 0, 1, 1]] },
+  { cols: 1, rows: 2, cells: [[0, 0, 1, 1], [0, 1, 1, 1]] },
+  { cols: 2, rows: 1, cells: [[0, 0, 1, 1], [1, 0, 1, 1]] },
+  { cols: 2, rows: 3, cells: [[0, 0, 2, 2], [0, 2, 1, 1], [1, 2, 1, 1]] },
+  { cols: 2, rows: 2, cells: [[0, 0, 1, 2], [1, 0, 1, 1], [1, 1, 1, 1]] },
+  { cols: 3, rows: 2, cells: [[0, 0, 2, 2], [2, 0, 1, 1], [2, 1, 1, 1]] },
+  { cols: 3, rows: 1, cells: [[0, 0, 1, 1], [1, 0, 1, 1], [2, 0, 1, 1]] },
+  { cols: 1, rows: 3, cells: [[0, 0, 1, 1], [0, 1, 1, 1], [0, 2, 1, 1]] },
+  { cols: 2, rows: 2, cells: [[0, 0, 1, 1], [1, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1]] },
+  { cols: 3, rows: 3, cells: [[0, 0, 2, 3], [2, 0, 1, 1], [2, 1, 1, 1], [2, 2, 1, 1]] },
+  { cols: 4, rows: 1, cells: [[0, 0, 1, 1], [1, 0, 1, 1], [2, 0, 1, 1], [3, 0, 1, 1]] },
+  { cols: 4, rows: 2, cells: [[0, 0, 2, 2], [2, 0, 1, 1], [3, 0, 1, 1], [2, 1, 1, 1], [3, 1, 1, 1]] },
+  { cols: 2, rows: 3, cells: [[0, 0, 2, 1], [0, 1, 1, 1], [1, 1, 1, 1], [0, 2, 1, 1], [1, 2, 1, 1]] },
+  { cols: 3, rows: 2, cells: [[0, 0, 1, 2], [1, 0, 1, 1], [2, 0, 1, 1], [1, 1, 1, 1], [2, 1, 1, 1]] },
+  { cols: 2, rows: 4, cells: [[0, 0, 1, 1], [1, 0, 1, 1], [0, 1, 2, 2], [0, 3, 1, 1], [1, 3, 1, 1]] },
+  { cols: 3, rows: 2, cells: [[0, 0, 1, 1], [1, 0, 1, 1], [2, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1], [2, 1, 1, 1]] },
+  { cols: 2, rows: 3, cells: [[0, 0, 1, 1], [1, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1], [0, 2, 1, 1], [1, 2, 1, 1]] },
+  { cols: 3, rows: 3, cells: [[0, 0, 2, 2], [2, 0, 1, 1], [2, 1, 1, 1], [0, 2, 1, 1], [1, 2, 1, 1], [2, 2, 1, 1]] },
+];
+
+// Every template with its mirror images, grouped by tile count.
+const CLEAN_TPLS: Map<number, Tpl[]> = (() => {
+  const out = new Map<number, Tpl[]>();
+  const seen = new Set<string>();
+  for (const t of CLEAN_BASE)
+    for (const fh of [false, true])
+      for (const fv of [false, true]) {
+        const cells = t.cells.map(([c, r, cs, rs]): Cell => [fh ? t.cols - c - cs : c, fv ? t.rows - r - rs : r, cs, rs]);
+        const key = `${t.cols}x${t.rows}:${cells.map((c) => c.join(",")).sort().join("|")}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.set(cells.length, [...(out.get(cells.length) ?? []), { cols: t.cols, rows: t.rows, cells }]);
+      }
+  return out;
+})();
+
+// A framed tile may crop its photo by at most this factor (the owner's grids go to ~1.28).
+const CLEAN_MAX_CROP = 1.3;
+
+// The best template grid for `idxs` inside `box`, centred in it.
+function cleanGrid(ctx: Ctx, idxs: number[], box: Rect, g: number): { frames: Frame[]; bounds: Rect; score: number } | null {
+  const { photos, geo } = ctx;
+  const tpls = CLEAN_TPLS.get(idxs.length);
+  if (!tpls || box.w <= 0 || box.h <= 0) return null;
+  const minArea = 0.012 * geo.W * geo.H;
+  const photoOrder = idxs.slice().sort((a, b) => photos[a].aspect - photos[b].aspect || a - b);
+  let best: { frames: Frame[]; bounds: Rect; score: number } | null = null;
+  for (const t of tpls)
+    for (const s of [1, 0.92, 0.84, 0.76, 0.68, 0.6])
+      for (const q of [1, 0.9, 0.8, 0.7, 0.6]) {
+        const cw = box.w * q;
+        const ch = box.h * s;
+        const uw = (cw - (t.cols - 1) * g) / t.cols;
+        const uh = (ch - (t.rows - 1) * g) / t.rows;
+        if (uw <= 0 || uh <= 0) continue;
+        const rects = t.cells.map(([c, r, cs, rs]) => ({ x: c * (uw + g), y: r * (uh + g), w: cs * uw + (cs - 1) * g, h: rs * uh + (rs - 1) * g }));
+        const smallest = Math.min(...rects.map(area));
+        if (smallest < minArea) continue;
+        // The widest photo to the widest tile (reading order on ties).
+        const cellOrder = rects.map((_, i) => i).sort((a, b) => rects[a].w / rects[a].h - rects[b].w / rects[b].h || a - b);
+        let crop = 0;
+        let worst = 1;
+        const ox = box.x + (box.w - cw) / 2;
+        const oy = box.y + (box.h - ch) / 2;
+        const frames: Frame[] = cellOrder.map((ci, j) => {
+          const idx = photoOrder[j];
+          const c = cropOf(photos[idx].aspect, rects[ci]);
+          // A portrait never goes into a landscape tile, nor a landscape into a portrait tile.
+          const fa = rects[ci].w / rects[ci].h;
+          if ((photos[idx].aspect < 1 && fa >= 1) || (photos[idx].aspect > 1.1 && fa < 0.95)) worst = Infinity;
+          worst = Math.max(worst, c);
+          crop += Math.log(c);
+          return { idx, r: { x: rects[ci].x + ox, y: rects[ci].y + oy, w: rects[ci].w, h: rects[ci].h }, rot: 0 };
+        });
+        if (worst > CLEAN_MAX_CROP) continue;
+        const score = (cw * ch) / (box.w * box.h) - (0.9 * crop) / idxs.length + 0.15 * Math.min(1, smallest / (0.04 * geo.W * geo.H));
+        if (!best || score > best.score) best = { frames, bounds: { x: ox, y: oy, w: cw, h: ch }, score };
+      }
+  return best;
+}
+
+function composeClean(ctx: Ctx): Cand | null {
+  const { geo, photos, input } = ctx;
+  const { W, H, pageW: pw } = geo;
+  const n = photos.length;
+  if (!geo.double || n < 2 || n > 7) return null;
+  const hero = ctx.heroIdx ?? pickHero(photos);
+  const others = range(0, n).filter((i) => i !== hero);
+  const a = photos[hero].aspect;
+  const g = Math.max(0.4, 0.023 * H); // ~0.7cm on a 30cm page
+  const gut = 0.03 * W;
+  const prefPage = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
+  const jit = makeRng(hashString(`clean|${input.spreadIndex}|${photos.map((p) => p.id).join(",")}`));
+  const weight: Record<"fade" | "half" | "wide", number> = { fade: 1 + jit() * 0.25, half: 0.93 + jit() * 0.25, wide: 0.86 + jit() * 0.25 };
+  type Variant = { kind: "fade" | "half" | "wide"; r: Rect; mask?: MaskId; zone: Partial<FaceZone>; box: Rect };
+  let best: Cand | null = null;
+  for (const hp of [prefPage, 1 - prefPage]) {
+    const left = hp === 0;
+    const variants: Variant[] = [];
+    const heroRect = (e: number): Rect => (left ? { x: 0, y: 0, w: e, h: H } : { x: W - e, y: 0, w: e, h: H });
+    const boxAt = (near: number, far: number, top: number): Rect => ({ x: left ? near : W - far, y: top * H, w: far - near, h: (1 - 2 * top) * H });
+    // Faded ~70%: the grid over the faded strip, clear of the unfaded picture, 6.4% from the edge.
+    {
+      const e = clamp(H * a, 0.62 * W, 0.7 * W);
+      const near = Math.max(0.75 * e + 0.02 * W, pw + gut);
+      const zone = left ? { x0: 0.03, x1: Math.min(0.75, (pw - gut) / e) } : { x0: Math.max(0.25, 1 - (pw - gut) / e), x1: 0.97 };
+      variants.push({ kind: "fade", r: heroRect(e), mask: left ? "fade-right-25" : "fade-left-25", zone, box: boxAt(near, 0.936 * W, 0.06) });
+    }
+    // Exactly the half page; the grid fills the other page.
+    variants.push({
+      kind: "half",
+      r: { x: hp * pw, y: 0, w: pw, h: H },
+      zone: left ? { x0: 0.02, x1: 1 - gut / pw } : { x0: gut / pw, x1: 0.98 },
+      box: boxAt(pw + 0.035 * W, 0.955 * W, 0.055),
+    });
+    // Wide ~60% (crosses the fold, faces stay on its own page); the grid in the rest.
+    {
+      const e = clamp(H * a, 0.58 * W, 0.64 * W);
+      if (W - e - 0.075 * W >= 0.22 * W) {
+        const zone = left ? { x0: 0.03, x1: (pw - gut) / e } : { x0: 1 - (pw - gut) / e, x1: 0.97 };
+        variants.push({ kind: "wide", r: heroRect(e), zone, box: boxAt(e + 0.03 * W, 0.955 * W, 0.055) });
+      }
+    }
+    for (const v of variants) {
+      const hc = cropOf(a, v.r);
+      if (hc > BLEED_CROP + 1e-9) continue;
+      const f = bleedFocal(ctx, hero, v.r, v.zone);
+      if (!f) continue;
+      const grid = cleanGrid(ctx, others, v.box, g);
+      if (!grid) continue;
+      const coverage = unionArea([v.r, ...grid.frames.map((fr) => fr.r)], W, H) / (W * H);
+      if (coverage < MIN_COVERAGE) continue;
+      const score = weight[v.kind] + grid.score - (hp === prefPage ? 0 : 0.3) - f.pen - 0.4 * Math.max(0, Math.log(hc) - Math.log(1.25));
+      if (best && score <= best.score) continue;
+      best = {
+        kind: v.kind,
+        bleeds: [{ idx: hero, r: v.r, zone: v.zone, focalX: f.focalX, focalY: f.focalY, ...(v.mask ? { mask: v.mask } : {}) }],
+        frames: grid.frames,
+        clusters: [{ bounds: grid.bounds, avail: v.box }],
+        coverage,
+        score,
+      };
+    }
+  }
+  return best;
+}
+
 function composeSpread(ctx: Ctx): AlbumElement[] | null {
   const { geo, photos, input } = ctx;
+  if (input.style === "clean") {
+    const c = composeClean(ctx);
+    if (c) return buildElements(ctx, c);
+  }
   const cfg = STYLE_CFG[input.style] ?? STYLE_CFG.clean;
   const hero = ctx.heroIdx ?? pickHero(photos);
   const jit = makeRng(hashString(`${input.style}|${input.spreadIndex}|jitter`));
-  const jitter = Object.fromEntries((["fade", "half", "two", "dense", "band", "side", "sfade", "inset"] as Kind[]).map((kd) => [kd, jit() * 0.3])) as Record<Kind, number>;
+  const jitter = Object.fromEntries((["fade", "half", "two", "dense", "band", "side", "sfade", "inset", "wide"] as Kind[]).map((kd) => [kd, jit() * 0.3])) as Record<Kind, number>;
   let best: Cand | null = null;
   let bestAny: Cand | null = null;
   for (const bc of [BLEED_CROP, BLEED_CROP_MAX]) {
