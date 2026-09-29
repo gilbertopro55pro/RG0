@@ -1329,11 +1329,13 @@ export default function GalleryManageView({
   };
 
   // "עיצוב מחדש" (admin, with the auto designer): lays the same photos of one page out again in the
-  // album's auto style. Each click is a new variation — the hero rotates through the page's photos
-  // and the layout's seed moves on — and a variation identical to the current page is skipped, so
-  // the photographer can keep clicking until they like it.
+  // album's auto style. Each click moves to a STRUCTURALLY different layout (layoutSpread's
+  // `variant`: another hero variant / grid template) with another hero photo; a shape already shown
+  // on this page — its mirror image included — is skipped until every shape has been seen, so the
+  // change is always visible, and the photographer can keep clicking until they like it.
   const [redesigning, setRedesigning] = useState<string | null>(null);
   const redesignCountRef = useRef(new Map<string, number>());
+  const redesignSeenRef = useRef(new Map<string, Set<string>>());
   const redesignSpread = async (spread: GalleryAlbumSpreadRow, index: number) => {
     if (!album || redesigning) return;
     const photoEls = (spread.elements ?? []).filter((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId);
@@ -1366,31 +1368,70 @@ export default function GalleryManageView({
       }
       // Hero candidates: landscapes first (they bleed best), then the rest.
       const heroes = [...layoutPhotos].sort((a, b) => Number(b.aspect > 1.05) - Number(a.aspect > 1.05)).map((p) => p.id);
-      const signature = (els: AlbumElement[]) =>
-        els
-          .filter((el): el is AlbumPhotoElement => el.type === "photo")
-          .map((el) => `${el.photoId}:${Math.round(el.xPct)}:${Math.round(el.yPct)}:${Math.round(el.widthPct)}:${Math.round(el.heightPct)}`)
-          .sort()
-          .join("|");
+      // The page's shape as the eye reads it: the grid of framed photos by its own structure (each
+      // frame relative to the grid's bounding box, 10% steps — the same template a bit bigger or
+      // shifted is the same design) and which page it's on, plus where the edge-to-edge photos sit
+      // (which page, full height or a band — not their exact width: a half page and a slightly wider
+      // faded one read as the same). A mirror image is the same design.
+      const shapeOf = (els: AlbumElement[]) => {
+        const photoEls = els.filter((el): el is AlbumPhotoElement => el.type === "photo");
+        const framed = photoEls.filter((el) => el.borderWidth);
+        const key = (flip: boolean) => {
+          const xOf = (el: AlbumPhotoElement) => (flip ? 100 - el.xPct - el.widthPct : el.xPct);
+          const side = (x: number, w: number) => (w > 80 ? "LR" : x + w / 2 < 50 ? "L" : "R");
+          const parts = photoEls
+            .filter((el) => !el.borderWidth)
+            .map((el) => `B:${side(xOf(el), el.widthPct)}:${el.heightPct > 90 ? "full" : el.yPct < 5 ? "top" : "bottom"}`);
+          if (framed.length) {
+            const x0 = Math.min(...framed.map(xOf));
+            const x1 = Math.max(...framed.map((el) => xOf(el) + el.widthPct));
+            const y0 = Math.min(...framed.map((el) => el.yPct));
+            const y1 = Math.max(...framed.map((el) => el.yPct + el.heightPct));
+            const nx = (v: number) => Math.round(((v - x0) / Math.max(1, x1 - x0)) * 10);
+            const ny = (v: number) => Math.round(((v - y0) / Math.max(1, y1 - y0)) * 10);
+            parts.push(`G:${side(x0, x1 - x0)}`);
+            for (const el of framed) parts.push(`F:${nx(xOf(el))}:${ny(el.yPct)}:${nx(xOf(el) + el.widthPct)}:${ny(el.yPct + el.heightPct)}`);
+          }
+          return parts.sort().join("|");
+        };
+        const a = key(false);
+        const b = key(true);
+        return a < b ? a : b;
+      };
       const inset = marginInsetPctFor(album);
-      const current = signature(spread.elements ?? []);
-      let next: { elements: AlbumElement[]; background?: { photoId: string; blur: number } } | null = null;
+      const seen = redesignSeenRef.current.get(spread.id) ?? new Set<string>();
+      const current = shapeOf(spread.elements ?? []);
+      seen.add(current);
+      type Redesigned = { elements: AlbumElement[]; background?: { photoId: string; blur: number } };
+      let next = null as Redesigned | null;
+      let fallback = null as Redesigned | null;
       let count = redesignCountRef.current.get(spread.id) ?? 0;
-      for (let attempt = 0; attempt < 12 && !next; attempt++) {
+      for (let attempt = 0; attempt < 16 && !next; attempt++) {
         count++;
         const out = layoutSpread({
           style,
           photos: layoutPhotos,
           heroId: heroes[count % heroes.length],
           section: "event",
-          spreadIndex: index + count,
+          spreadIndex: index,
+          variant: count,
           widthCm: album.width_cm,
           heightCm: album.height_cm,
           ornamentTabs,
         });
         const elements = fitAutoElements(out.elements, inset, out.bleedIds);
-        if (signature(elements) !== current || attempt === 11) next = { elements, background: out.background };
+        const shape = shapeOf(elements);
+        if (!seen.has(shape)) next = { elements, background: out.background };
+        else if (!fallback && shape !== current) fallback = { elements, background: out.background };
       }
+      // Every shape seen already: start the round again (anything but the current page).
+      if (!next) {
+        next = fallback;
+        seen.clear();
+        seen.add(current);
+      }
+      if (next) seen.add(shapeOf(next.elements));
+      redesignSeenRef.current.set(spread.id, seen);
       redesignCountRef.current.set(spread.id, count);
       if (!next) return;
       const patch = {

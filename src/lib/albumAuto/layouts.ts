@@ -1146,7 +1146,7 @@ function singleSpecs(ctx: Ctx, cfg: StyleCfg, hero: number, bc: number): Spec[] 
 // ---------------------------------------------------------------------------------------------
 
 type Cell = [number, number, number, number]; // column, row, column span, row span (grid units)
-type Tpl = { cols: number; rows: number; cells: Cell[] };
+type Tpl = { cols: number; rows: number; cells: Cell[]; base?: number };
 
 const CLEAN_BASE: Tpl[] = [
   { cols: 1, rows: 1, cells: [[0, 0, 1, 1]] },
@@ -1180,15 +1180,16 @@ const CLEAN_BASE: Tpl[] = [
 const CLEAN_TPLS: Map<number, Tpl[]> = (() => {
   const out = new Map<number, Tpl[]>();
   const seen = new Set<string>();
-  for (const t of CLEAN_BASE)
+  CLEAN_BASE.forEach((t, base) => {
     for (const fh of [false, true])
       for (const fv of [false, true]) {
         const cells = t.cells.map(([c, r, cs, rs]): Cell => [fh ? t.cols - c - cs : c, fv ? t.rows - r - rs : r, cs, rs]);
         const key = `${t.cols}x${t.rows}:${cells.map((c) => c.join(",")).sort().join("|")}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        out.set(cells.length, [...(out.get(cells.length) ?? []), { cols: t.cols, rows: t.rows, cells }]);
+        out.set(cells.length, [...(out.get(cells.length) ?? []), { cols: t.cols, rows: t.rows, cells, base }]);
       }
+  });
   return out;
 })();
 
@@ -1196,13 +1197,17 @@ const CLEAN_TPLS: Map<number, Tpl[]> = (() => {
 const CLEAN_MAX_CROP = 1.3;
 
 // The best template grid for `idxs` inside `box`, centred in it.
-function cleanGrid(ctx: Ctx, idxs: number[], box: Rect, g: number): { frames: Frame[]; bounds: Rect; score: number } | null {
+type GridPick = { frames: Frame[]; bounds: Rect; score: number; tpl: number };
+
+// The best layout of each template (mirror images count as one template), centred in `box`;
+// tpl = -1 is the justified-rows fallback when no template fits.
+function cleanGrids(ctx: Ctx, idxs: number[], box: Rect, g: number): GridPick[] {
   const { photos, geo } = ctx;
   const tpls = CLEAN_TPLS.get(idxs.length);
-  if (!tpls || box.w <= 0 || box.h <= 0) return null;
+  if (!tpls || box.w <= 0 || box.h <= 0) return [];
   const minArea = 0.012 * geo.W * geo.H;
   const photoOrder = idxs.slice().sort((a, b) => photos[a].aspect - photos[b].aspect || a - b);
-  let best: { frames: Frame[]; bounds: Rect; score: number } | null = null;
+  const bestOf = new Map<number, GridPick>();
   for (const t of tpls)
     for (const s of [1, 0.92, 0.84, 0.76, 0.68, 0.6])
       for (const q of [1, 0.9, 0.8, 0.7, 0.6]) {
@@ -1232,25 +1237,31 @@ function cleanGrid(ctx: Ctx, idxs: number[], box: Rect, g: number): { frames: Fr
         });
         if (worst > CLEAN_MAX_CROP) continue;
         const score = (cw * ch) / (box.w * box.h) - (0.9 * crop) / idxs.length + 0.15 * Math.min(1, smallest / (0.04 * geo.W * geo.H));
-        if (!best || score > best.score) best = { frames, bounds: { x: ox, y: oy, w: cw, h: ch }, score };
+        const key = t.base ?? 0;
+        const prev = bestOf.get(key);
+        if (!prev || score > prev.score) bestOf.set(key, { frames, bounds: { x: ox, y: oy, w: cw, h: ch }, score, tpl: key });
       }
-  if (best) return best;
+  if (bestOf.size) return [...bestOf.values()];
   // No template fits (typically a mix of portraits and landscapes on a busy page): justified rows in
   // the same box — still one tidy block, just not from the template set.
   const rel = clusterIn(ctx, idxs, box.w, box.h, g, false);
-  if (!rel) return null;
+  if (!rel) return [];
   const ox = box.x + (box.w - rel.w) / 2;
   const oy = box.y + (box.h - rel.h) / 2;
   const frames: Frame[] = rel.rects.map((p) => ({ idx: p.idx, r: { x: p.r.x + ox, y: p.r.y + oy, w: p.r.w, h: p.r.h }, rot: 0 }));
-  if (frames.some((f) => area(f.r) < minArea || cropOf(photos[f.idx].aspect, f.r) > CLEAN_MAX_CROP)) return null;
-  return { frames, bounds: { x: ox, y: oy, w: rel.w, h: rel.h }, score: (rel.w * rel.h) / (box.w * box.h) - 0.2 };
+  if (frames.some((f) => area(f.r) < minArea || cropOf(photos[f.idx].aspect, f.r) > CLEAN_MAX_CROP)) return [];
+  return [{ frames, bounds: { x: ox, y: oy, w: rel.w, h: rel.h }, score: (rel.w * rel.h) / (box.w * box.h) - 0.2, tpl: -1 }];
 }
 
 function composeClean(ctx: Ctx): Cand | null {
+  return pickVariant(cleanCandidates(ctx), ctx.input.variant);
+}
+
+function cleanCandidates(ctx: Ctx): Cand[] {
   const { geo, photos, input } = ctx;
   const { W, H, pageW: pw } = geo;
   const n = photos.length;
-  if (!geo.double || n < 2 || n > 9) return null;
+  if (!geo.double || n < 2 || n > 9) return [];
   const hero = ctx.heroIdx ?? pickHero(photos);
   const others = range(0, n).filter((i) => i !== hero);
   const a = photos[hero].aspect;
@@ -1260,7 +1271,9 @@ function composeClean(ctx: Ctx): Cand | null {
   const jit = makeRng(hashString(`clean|${input.spreadIndex}|${photos.map((p) => p.id).join(",")}`));
   const weight: Record<"fade" | "half" | "wide", number> = { fade: 1 + jit() * 0.25, half: 0.93 + jit() * 0.25, wide: 0.86 + jit() * 0.25 };
   type Variant = { kind: "fade" | "half" | "wide"; r: Rect; mask?: MaskId; zone: Partial<FaceZone>; box: Rect };
-  let best: Cand | null = null;
+  // Every (hero variant, grid template) structure's best candidate; mirror images (the other side)
+  // are the same structure.
+  const byStructure = new Map<string, Cand>();
   for (const hp of [prefPage, 1 - prefPage]) {
     const left = hp === 0;
     const variants: Variant[] = [];
@@ -1293,32 +1306,84 @@ function composeClean(ctx: Ctx): Cand | null {
       if (hc > BLEED_CROP + 1e-9) continue;
       const f = bleedFocal(ctx, hero, v.r, v.zone);
       if (!f) continue;
-      const grid = cleanGrid(ctx, others, v.box, g);
-      if (!grid) continue;
-      const coverage = unionArea([v.r, ...grid.frames.map((fr) => fr.r)], W, H) / (W * H);
-      if (coverage < MIN_COVERAGE) continue;
-      const score = weight[v.kind] + grid.score - (hp === prefPage ? 0 : 0.3) - f.pen - 0.4 * Math.max(0, Math.log(hc) - Math.log(1.25));
-      if (best && score <= best.score) continue;
-      best = {
-        kind: v.kind,
-        bleeds: [{ idx: hero, r: v.r, zone: v.zone, focalX: f.focalX, focalY: f.focalY, ...(v.mask ? { mask: v.mask } : {}) }],
-        frames: grid.frames,
-        clusters: [{ bounds: grid.bounds, avail: v.box }],
-        coverage,
-        score,
-      };
+      for (const grid of cleanGrids(ctx, others, v.box, g)) {
+        const coverage = unionArea([v.r, ...grid.frames.map((fr) => fr.r)], W, H) / (W * H);
+        if (coverage < MIN_COVERAGE) continue;
+        const score = weight[v.kind] + grid.score - (hp === prefPage ? 0 : 0.3) - f.pen - 0.4 * Math.max(0, Math.log(hc) - Math.log(1.25));
+        const key = `${v.kind}|${grid.tpl}`;
+        const prev = byStructure.get(key);
+        if (prev && score <= prev.score) continue;
+        byStructure.set(key, {
+          kind: v.kind,
+          bleeds: [{ idx: hero, r: v.r, zone: v.zone, focalX: f.focalX, focalY: f.focalY, ...(v.mask ? { mask: v.mask } : {}) }],
+          frames: grid.frames,
+          clusters: [{ bounds: grid.bounds, avail: v.box }],
+          coverage,
+          score,
+        });
+      }
     }
   }
-  return best;
+  return [...byStructure.values()];
+}
+
+// variant 0 = the best candidate; n = the n-th entry of a round robin over the composition kinds
+// (fade, half, wide, band, two, ...; each kind's best 3 structures, best kinds first), cycling — so
+// consecutive redesigns change the big picture, not just a detail.
+function pickVariant(cands: Cand[], variant: number | undefined): Cand | null {
+  if (!cands.length) return null;
+  const sorted = cands.slice().sort((a, b) => b.score - a.score);
+  if (!variant) return sorted[0];
+  const kinds = [...new Set(sorted.map((c) => c.kind))];
+  const lanes = kinds.map((k) => sorted.filter((c) => c.kind === k).slice(0, 3));
+  const order: Cand[] = [];
+  for (let i = 0; i < 3; i++) for (const lane of lanes) if (lane[i] && lane[i] !== sorted[0]) order.push(lane[i]);
+  // (The best one is what the page already shows: every variant is something else.)
+  return order.length ? order[(variant - 1) % order.length] : sorted[0];
+}
+
+// The general composer's candidates, one per distinct shape (for "עיצוב מחדש"; pickVariant takes
+// the best 3 of each kind).
+function candidatesPerKind(ctx: Ctx, hero: number, jitter: Record<Kind, number>): Cand[] {
+  const cfg = STYLE_CFG[ctx.input.style] ?? STYLE_CFG.clean;
+  // Distinct shapes only (rounded frame boxes, side-independent), best score kept per shape.
+  const byShape = new Map<string, Cand>();
+  const { W, H } = ctx.geo;
+  for (const bc of [BLEED_CROP, BLEED_CROP_MAX]) {
+    const specs = ctx.geo.double ? doubleSpecs(ctx, cfg, hero, bc) : singleSpecs(ctx, cfg, hero, bc);
+    for (const spec of specs) {
+      const c = evaluate(ctx, cfg, spec, hero, bc, jitter[spec.kind] - (bc > BLEED_CROP ? 0.3 : 0), false);
+      if (!c || c.coverage < MIN_COVERAGE) continue;
+      const rects = [...c.bleeds.map((b) => b.r), ...c.frames.map((f) => f.r)];
+      const key = (flip: boolean) =>
+        rects
+          .map((r) => [flip ? W - r.x - r.w : r.x, r.y, r.w, r.h].map((v, i) => Math.round((v / (i % 2 ? H : W)) * 33)).join(":"))
+          .sort()
+          .join("|");
+      const k = `${c.kind}|${[key(false), key(true)].sort()[0]}`;
+      const prev = byShape.get(k);
+      if (!prev || c.score > prev.score) byShape.set(k, c);
+    }
+  }
+  return [...byShape.values()];
 }
 
 function composeSpread(ctx: Ctx): AlbumElement[] | null {
   const { geo, photos, input } = ctx;
+  const cfg = STYLE_CFG[input.style] ?? STYLE_CFG.clean;
   if (input.style === "clean") {
+    if (input.variant) {
+      // Redesign: the clean structures plus the general composer's other kinds (two heroes, a band
+      // across the top, a hero column...), so the new page is clearly different.
+      const h = ctx.heroIdx ?? pickHero(photos);
+      const zero = Object.fromEntries((["fade", "half", "two", "dense", "band", "side", "sfade", "inset", "wide"] as Kind[]).map((k) => [k, 0])) as Record<Kind, number>;
+      const extra = candidatesPerKind(ctx, h, zero).filter((c) => c.kind !== "fade" && c.kind !== "half" && c.kind !== "inset");
+      const alt = pickVariant([...cleanCandidates(ctx), ...extra], input.variant);
+      if (alt) return buildElements(ctx, alt);
+    }
     const c = composeClean(ctx);
     if (c) return buildElements(ctx, c);
   }
-  const cfg = STYLE_CFG[input.style] ?? STYLE_CFG.clean;
   const hero = ctx.heroIdx ?? pickHero(photos);
   const jit = makeRng(hashString(`${input.style}|${input.spreadIndex}|jitter`));
   const jitter = Object.fromEntries((["fade", "half", "two", "dense", "band", "side", "sfade", "inset", "wide"] as Kind[]).map((kd) => [kd, jit() * 0.3])) as Record<Kind, number>;
@@ -1337,8 +1402,13 @@ function composeSpread(ctx: Ctx): AlbumElement[] | null {
     }
     if (best) break;
   }
-  const pick = best ?? bestAny;
+  let pick = best ?? bestAny;
   if (!pick) return null;
+  if (input.variant) {
+    // Redesign: the best candidate of each composition kind (fade, half, band, ...), cycling.
+    const alt = pickVariant(candidatesPerKind(ctx, hero, jitter), input.variant);
+    if (alt) pick = alt;
+  }
   return buildElements(ctx, pick);
 }
 

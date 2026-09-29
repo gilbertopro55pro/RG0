@@ -87,6 +87,9 @@ export type LayoutInput = {
   // lib/albumOrnaments.ts) and the photographer's uploaded ones (custom_ornaments ids). Default:
   // the built-in tabs only.
   ornamentTabs?: OrnamentTab[];
+  // "עיצוב מחדש": 0/undefined = the best layout; n = the n-th best STRUCTURALLY different one (a
+  // different hero variant or grid template, not just a mirror image), cycling.
+  variant?: number;
 };
 
 export type OrnamentTab = { id: string; custom: boolean; items: string[] };
