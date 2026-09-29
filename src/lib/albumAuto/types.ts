@@ -90,7 +90,9 @@ export type LayoutInput = {
 // then fits them into the safe margin (fitFramesToSafeArea) before saving.
 // bleedIds: elements that deliberately run to the page edge (a full half-page photo, a full cover
 // photo). The UI must NOT pull these into the print safe margin; everything else it fits.
-export type LayoutOutput = { elements: AlbumElement[]; bleedIds?: string[] };
+// background: the spread's background photo (gallery_album_spreads.background_photo_id) and its blur
+// (0-100, same scale as the editor's slider). Clean style: one of the spread's own photos at 45%.
+export type LayoutOutput = { elements: AlbumElement[]; bleedIds?: string[]; background?: { photoId: string; blur: number } };
 
 export type CoverInput = {
   style: AutoStyleId;

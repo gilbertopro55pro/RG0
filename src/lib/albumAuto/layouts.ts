@@ -1469,11 +1469,19 @@ export function layoutSpread(input: LayoutInput): LayoutOutput {
   // fail to place every photo exactly once, fall back to a plain packed layout that always does.
   const placedIds = (elements ?? []).filter((e): e is AlbumPhotoElement => e.type === "photo").map((e) => e.photoId);
   const complete = elements && placedIds.length === ctx.photos.length && ctx.photos.every((p) => placedIds.includes(p.id));
-  if (complete) return finalizeSpread(ctx, elements);
-  ctx.bleed.clear();
-  ctx.fixedFocal.clear();
-  return finalizeSpread(ctx, fallbackLayout(ctx));
+  if (!complete) {
+    ctx.bleed.clear();
+    ctx.fixedFocal.clear();
+  }
+  const out = finalizeSpread(ctx, complete ? elements : fallbackLayout(ctx));
+  // Clean style (owner, 2026-09-29): every spread (the cover aside) has a background — its hero,
+  // blurred 45%, so the faded hero melts into a soft copy of itself and the white around the grid
+  // takes the page's colours.
+  if (input.style === "clean") out.background = { photoId: ctx.photos[ctx.heroIdx ?? pickHero(ctx.photos)].id, blur: CLEAN_BACKGROUND_BLUR };
+  return out;
 }
+
+const CLEAN_BACKGROUND_BLUR = 45;
 
 type CoverStyle = { font: string; color: string; maxFs: number };
 

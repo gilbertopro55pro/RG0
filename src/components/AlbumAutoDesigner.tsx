@@ -34,7 +34,8 @@ export type AutoDesignResult = {
   // bleedIds: elements that run to the page edge on purpose; the parent must not fit them into
   // the safe margin (see LayoutOutput in lib/albumAuto/types.ts).
   cover: { widthCm: number; heightCm: number; elements: AlbumElement[]; bleedIds: string[] } | null;
-  spreads: { elements: AlbumElement[]; bleedIds: string[] }[];
+  // background: the spread's blurred background photo (clean style), saved on the spread row.
+  spreads: { elements: AlbumElement[]; bleedIds: string[]; background?: { photoId: string; blur: number } }[];
 };
 
 type CellState = {
@@ -337,7 +338,7 @@ export default function AlbumAutoDesigner({
           widthCm: size.width,
           heightCm: size.height,
         });
-        return { elements: out.elements, bleedIds: out.bleedIds ?? [] };
+        return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...(out.background ? { background: out.background } : {}) };
       });
       const cover =
         coverMode === "on"
