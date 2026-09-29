@@ -33,8 +33,9 @@ below, so don't change them without asking.
 - **Taken date:** offer the waitlist → `join_waitlist` (a `waitlist` row + a lead noted "ברשימת
   ההמתנה", not "missing details"), then close the conversation. No quote talk for a taken date.
 - **Model:** Claude Sonnet 5 (`INTAKE_MODEL`), effort `low`, with a cached system prompt.
-- **Caps:** פרו 100 and פרו+ 200 conversations a month; the admin gets 1000; פרו סטארט can't use
-  it. A conversation counts once it has at least one client message.
+- **Caps (owner's decision, 2026-09-29):** פרו סטארט 100, פרו 150 and פרו+ 200 conversations a
+  month; the admin gets 1000. Every plan has the assistant (until 09-29 פרו סטארט had none and פרו
+  had 100). A conversation counts once it has at least one client message.
   - When the assistant is off, the plan has lapsed, or the cap is reached, the same page shows a
     plain inquiry form (`/api/intake-chat/<key>/form`, no model call, lead `source='form'`).
     A client is never turned away.
@@ -136,8 +137,9 @@ Follow-up reminders skip archived leads.
 
 Section "עוזר פניות חכם" (`#assistant` in `LandingPage.tsx`): a real recorded conversation
 (`public/guides/intake-demo.mp4`, guide-video scenario `intake-demo`) and the FAQ it answers from.
-Its plan line and the comparison-table row (`PlanComparison.tsx`) mirror `INTAKE_MONTHLY_CAP`
-(פרו 100, פרו+ 200): change them together.
+Its plan line, the comparison-table row (`PlanComparison.tsx`) and the plan cards
+(`PricingToggle.tsx`) mirror `INTAKE_MONTHLY_CAP` (פרו סטארט 100, פרו 150, פרו+ 200): change them
+together.
 
 ## Verified live (2026-09-25, test account "סטודיו אור", key `studio-or`)
 
@@ -204,7 +206,7 @@ where c.photographer_id = '<id>' and c.channel = 'web' order by c.created_at des
 - **"The chat doesn't answer":** `ANTHROPIC_API_KEY` in Vercel. Engine errors are logged as
   `Intake assistant API error` and the client gets the fallback line.
 - **"The form shows instead of the chat":** check the reason — the toggle is off, `hasAppAccess`
-  is false, the tier is basic, or the monthly cap is reached (count `channel='web'`,
+  is false, or the monthly cap is reached (count `channel='web'`,
   `client_turns > 0` this month).
 - **A missing lead:** the client never gave a phone number (by design). Look at
   `bot_conversations.collected`.

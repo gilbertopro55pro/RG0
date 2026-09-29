@@ -306,7 +306,7 @@ export default function LandingPage() {
               ))}
               <span className="text-sm font-semibold text-[var(--l-accent)]">+ שאלה חדשה</span>
             </div>
-            <p className="m-0 text-sm text-[var(--l-on-navy-mute)]">במסלול פרו עד 100 שיחות בחודש, בפרו+ עד 200.</p>
+            <p className="m-0 text-sm text-[var(--l-on-navy-mute)]">בכל המסלולים: פרו סטארט עד 100 שיחות בחודש, פרו עד 150, ופרו+ עד 200.</p>
           </div>
 
           {/* A real conversation with the assistant, recorded from the live site. */}
