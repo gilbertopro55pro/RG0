@@ -1,6 +1,6 @@
 import type { AlbumElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement } from "@/lib/types";
 import { textHeightPctForFontSize } from "@/lib/albumTextSizing";
-import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput } from "./types";
+import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput, LayoutPhoto } from "./types";
 
 // The layout engine of the auto album designer (see types.ts for the contract). Pure and
 // deterministic: the same input always gives the same spread; variety between consecutive spreads
@@ -16,6 +16,13 @@ import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput } from "./types
 //
 // Hebrew albums open right to left, so on a double page the first photos (reading order) go on the
 // right-hand page.
+//
+// Finishing pass (owner's rules, 2026-09-29), applied to every style in finalizeSpread():
+//   - every framed photo gets a 3px white outline and a 35% shadow; full-bleed photos get neither;
+//   - on a double page, a photo left alone on its page fills that whole half page (a bleed element);
+//   - every photo's crop (focalX/focalY) is placed from its face boxes so no head is cut.
+// Some spreads (not catalog) use the "overlap + fade" variant: one big photo bleeding across the
+// fold with a faded inner edge, the other photos overlapping the faded zone on the other page.
 
 type P = { id: string; aspect: number };
 type Rect = { x: number; y: number; w: number; h: number };
@@ -383,6 +390,82 @@ function enforceHero(placed: Placed[], heroIdx: number | undefined, groups: Plac
 }
 
 // ---------------------------------------------------------------------------------------------
+// Face-aware crop
+// ---------------------------------------------------------------------------------------------
+
+type FaceBox = { x: number; y: number; width: number; height: number };
+// A sub-area of the FRAME (0-1 fractions of its width/height) the faces must stay inside, e.g. the
+// part of a faded photo that isn't faded or covered by other photos.
+export type FaceZone = { x0: number; x1: number; y0: number; y1: number };
+
+function validFaces(p: LayoutPhoto | undefined): FaceBox[] {
+  return (p?.faces ?? []).filter(
+    (f) =>
+      [f.x, f.y, f.width, f.height].every(Number.isFinite) && f.width > 0 && f.height > 0 && f.x < 1 && f.y < 1 && f.x + f.width > 0 && f.y + f.height > 0
+  );
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+// Where the heads are assumed to be when face detection didn't run: the upper middle of the photo.
+const ASSUMED_FACES: FaceBox = { x: 0.35, y: 0.15, width: 0.3, height: 0.3 };
+
+// Picks focalX/focalY (0-100, zoom 100) for a photo of `photoAspect` shown cover-fit in a frame of
+// `frameAspect` (real proportions, cm), matching computePhotoFraming in lib/albumRender.ts: with
+// v = the visible fraction of the photo along the cropped axis, the visible window starts at
+// (1 - v) * focal / 100 (in photo fractions). The union of the face boxes (padded: ~25% of a face's
+// height above the top face for hair, a little on the other sides) is kept fully visible — inside
+// `zone` of the frame when given — centred horizontally and sitting in the upper-middle vertically.
+// Unknown faces: the crop leans to the upper part of the photo. `fits` = the padded faces are
+// entirely inside the zone (always true when faces are unknown).
+export function faceCropFocal(
+  photoAspect: number,
+  frameAspect: number,
+  faces?: FaceBox[] | null,
+  zone?: Partial<FaceZone>
+): { focalX: number; focalY: number; zoom: number; fits: boolean } {
+  const z: FaceZone = { x0: 0, x1: 1, y0: 0, y1: 1, ...zone };
+  const pa = safeAspect(photoAspect);
+  const fr = safeAspect(frameAspect);
+  const vx = pa > fr ? fr / pa : 1;
+  const vy = pa < fr ? pa / fr : 1;
+  const list = (faces ?? []).filter((f) => f.width > 0 && f.height > 0);
+  const known = list.length > 0;
+  let ax: number, bx: number, ay: number, by: number;
+  if (known) {
+    const maxW = Math.max(...list.map((f) => f.width));
+    const maxH = Math.max(...list.map((f) => f.height));
+    ax = clamp(Math.min(...list.map((f) => f.x)) - 0.08 * maxW, 0, 1);
+    bx = clamp(Math.max(...list.map((f) => f.x + f.width)) + 0.08 * maxW, 0, 1);
+    ay = clamp(Math.min(...list.map((f) => f.y)) - 0.25 * maxH, 0, 1);
+    by = clamp(Math.max(...list.map((f) => f.y + f.height)) + 0.08 * maxH, 0, 1);
+  } else {
+    ax = ASSUMED_FACES.x;
+    bx = ASSUMED_FACES.x + ASSUMED_FACES.width;
+    ay = ASSUMED_FACES.y;
+    by = ASSUMED_FACES.y + ASSUMED_FACES.height;
+  }
+  // One axis: the window [s, s + v] (photo fractions) must hold [a, b] inside the zone [u0, u1] of the
+  // frame, i.e. s + u0 * v <= a and b <= s + u1 * v.
+  const axis = (v: number, a: number, b: number, u0: number, u1: number, want: number, fallback: number) => {
+    const slack = 1 - v;
+    if (slack < 1e-6) return { f: 50, ok: a >= u0 - 1e-6 && b <= u1 + 1e-6 };
+    const lo = Math.max(0, b - u1 * v);
+    const hi = Math.min(slack, a - u0 * v);
+    const ok = lo <= hi + 1e-9;
+    const s = ok ? clamp(want, lo, Math.max(lo, hi)) : clamp(fallback, 0, slack);
+    return { f: Math.round((s / slack) * 1000) / 10, ok };
+  };
+  const wantX = (ax + bx) / 2 - (vx * (z.x0 + z.x1)) / 2;
+  const hx = axis(vx, ax, bx, z.x0, z.x1, wantX, wantX);
+  // Vertically: faces' centre at 40% of the zone; unknown faces: the window's centre at 40% of the
+  // photo. When the faces can't all fit, keep their tops (a cut chin beats a cut forehead).
+  const wantY = known ? (ay + by) / 2 - vy * (z.y0 + 0.4 * (z.y1 - z.y0)) : 0.4 - vy / 2;
+  const hy = axis(vy, ay, by, z.y0, z.y1, wantY, ay - z.y0 * vy);
+  return { focalX: hx.f, focalY: hy.f, zoom: 100, fits: !known || (hx.ok && hy.ok) };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Element builders
 // ---------------------------------------------------------------------------------------------
 
@@ -423,10 +506,27 @@ function lineEl(id: string, x: number, y: number, len: number, geo: Geo, color: 
   return shapeEl(id, r, geo, color, { shapeStyle: "line" });
 }
 
-type Ctx = { input: LayoutInput; geo: Geo; photos: P[]; heroIdx: number | undefined; rng: () => number; prefix: string };
+type Ctx = {
+  input: LayoutInput;
+  geo: Geo;
+  photos: P[];
+  heroIdx: number | undefined;
+  rng: () => number;
+  prefix: string;
+  faces: Map<string, FaceBox[]>;
+  // Element ids that deliberately run to the page edges (no border/shadow, no safe-margin fitting).
+  bleed: Set<string>;
+  // Element ids whose focal point a layout already placed (with constraints the finishing pass
+  // doesn't know about, e.g. "keep the faces out of the fade").
+  fixedFocal: Set<string>;
+};
+
+function safeAspect(a: number): number {
+  return a > 0.05 && Number.isFinite(a) ? a : 1.5;
+}
 
 function makeCtx(input: LayoutInput): Ctx {
-  const photos = input.photos.map((p) => ({ id: p.id, aspect: p.aspect > 0.05 && Number.isFinite(p.aspect) ? p.aspect : 1.5 }));
+  const photos = input.photos.map((p) => ({ id: p.id, aspect: safeAspect(p.aspect) }));
   const hi = input.heroId ? photos.findIndex((p) => p.id === input.heroId) : -1;
   const seed = hashString(`${input.style}|${input.spreadIndex}|${photos.map((p) => p.id).join(",")}`);
   return {
@@ -436,6 +536,9 @@ function makeCtx(input: LayoutInput): Ctx {
     heroIdx: hi >= 0 ? hi : undefined,
     rng: makeRng(seed),
     prefix: `auto-${input.spreadIndex}`,
+    faces: new Map(input.photos.map((p) => [p.id, validFaces(p)])),
+    bleed: new Set(),
+    fixedFocal: new Set(),
   };
 }
 
@@ -478,7 +581,11 @@ function bestSplit(ctx: Ctx, regionOf: (p: number) => Rect, gap: number, opts: P
       const ra = pack(photos, a, regionOf(FIRST), gap, { ...opts, heroIdx, permute: true });
       const rb = pack(photos, b, regionOf(SECOND), gap, { ...opts, heroIdx, permute: true });
       if (!ra || !rb) continue;
-      const score = ra.score + rb.score - pen - Math.abs(a.length - b.length) * 0.04 - Math.abs(ra.score - rb.score) * 0.3;
+      // A photo alone on a page fills the whole half page (finishing pass): with a hero on the spread,
+      // a non-hero must not get that page to itself.
+      const loneOther = heroIdx !== undefined && n > 2 && [a, b].some((g) => g.length === 1 && g[0] !== heroIdx);
+      const score =
+        ra.score + rb.score - pen - Math.abs(a.length - b.length) * 0.04 - Math.abs(ra.score - rb.score) * 0.3 - (loneOther ? 0.6 : 0);
       if (!best || score > best.score) best = { a, b, score };
     }
   }
@@ -790,6 +897,37 @@ function clampTilted(t: Tilted, lim: Rect) {
   t.r = { ...t.r, x: cx - t.r.w / 2, y: cy - t.r.h / 2 };
 }
 
+// Tape strips across one or two top corners of some of the (tilted) frames.
+function tapeEls(ctx: Ctx, frames: Tilted[], phase: number, n: number): AlbumShapeElement[] {
+  const { geo } = ctx;
+  const H = geo.H;
+  const out: AlbumShapeElement[] = [];
+  let tapeN = 0;
+  frames.forEach((t, i) => {
+    if ((i + phase) % 2 === 1 && n > 1) return;
+    const corners = n <= 2 ? [-1, 1] : [i % 2 === 0 ? -1 : 1];
+    for (const side of corners) {
+      const tw = Math.min(0.13 * H, t.r.w * 0.36);
+      const th = tw * 0.3;
+      const rad = (t.rot * Math.PI) / 180;
+      // Corner position (top-left / top-right) of the rotated frame, pulled slightly inward.
+      const lx = side * (t.r.w / 2 - tw * 0.18);
+      const ly = -(t.r.h / 2 - th * 0.15);
+      const cx = t.r.x + t.r.w / 2 + lx * Math.cos(rad) - ly * Math.sin(rad);
+      const cy = t.r.y + t.r.h / 2 + lx * Math.sin(rad) + ly * Math.cos(rad);
+      const rect = { x: cx - tw / 2, y: cy - th / 2, w: tw, h: th };
+      if (rect.x < 0.01 * geo.W || rect.y < 0.01 * H || rect.x + rect.w > geo.W * 0.99 || rect.y + rect.h > H * 0.99) continue;
+      out.push(
+        shapeEl(`${ctx.prefix}-tape-${tapeN++}`, rect, geo, "#e8dcc4", {
+          rotation: Math.round((t.rot + side * -38) * 10) / 10,
+          opacity: 72,
+        })
+      );
+    }
+  });
+  return out;
+}
+
 function layoutScribble(ctx: Ctx): AlbumElement[] {
   const { geo, photos, heroIdx, rng, input } = ctx;
   const n = photos.length;
@@ -860,41 +998,10 @@ function layoutScribble(ctx: Ctx): AlbumElement[] {
 
   // Hero on top of the pile; otherwise reading order.
   tilted.sort((a, b) => (a.t.idx === heroIdx ? 1 : b.t.idx === heroIdx ? -1 : a.t.idx - b.t.idx));
-  const border = Math.max(8, Math.round(H * 0.4));
-  const els: AlbumElement[] = tilted.map(({ t }, i) =>
-    photoEl(`${ctx.prefix}-${i}`, photos[t.idx].id, t.r, geo, {
-      rotation: t.rot,
-      borderWidth: border,
-      borderColor: "#ffffff",
-      shadow: 42,
-      shadowAngle: 60,
-    })
-  );
+  // (The 3px white outline + shadow are set by the finishing pass, like every style.)
+  const els: AlbumElement[] = tilted.map(({ t }, i) => photoEl(`${ctx.prefix}-${i}`, photos[t.idx].id, t.r, geo, { rotation: t.rot }));
 
-  // Tape across one or two top corners of some photos.
-  let tapeN = 0;
-  tilted.forEach(({ t }, i) => {
-    if ((i + (signStart > 0 ? 0 : 1)) % 2 === 1 && n > 1) return;
-    const corners = n <= 2 ? [-1, 1] : [i % 2 === 0 ? -1 : 1];
-    for (const side of corners) {
-      const tw = Math.min(0.13 * H, t.r.w * 0.36);
-      const th = tw * 0.3;
-      const rad = (t.rot * Math.PI) / 180;
-      // Corner position (top-left / top-right) of the rotated frame, pulled slightly inward.
-      const lx = side * (t.r.w / 2 - tw * 0.18);
-      const ly = -(t.r.h / 2 - th * 0.15);
-      const cx = t.r.x + t.r.w / 2 + lx * Math.cos(rad) - ly * Math.sin(rad);
-      const cy = t.r.y + t.r.h / 2 + lx * Math.sin(rad) + ly * Math.cos(rad);
-      const rect = { x: cx - tw / 2, y: cy - th / 2, w: tw, h: th };
-      if (rect.x < 0.01 * geo.W || rect.y < 0.01 * H || rect.x + rect.w > geo.W * 0.99 || rect.y + rect.h > H * 0.99) continue;
-      els.push(
-        shapeEl(`${ctx.prefix}-tape-${tapeN++}`, rect, geo, "#e8dcc4", {
-          rotation: Math.round((t.rot + side * -38) * 10) / 10,
-          opacity: 72,
-        })
-      );
-    }
-  });
+  els.push(...tapeEls(ctx, tilted.map(({ t }) => t), signStart > 0 ? 0 : 1, n));
   return els;
 }
 
@@ -1042,8 +1149,12 @@ function layoutModern(ctx: Ctx): AlbumElement[] {
     if (n === 1) {
       const full = geo.W / H;
       const crop = Math.max(full / fa, fa / full);
-      if (crop <= MAX_STRETCH) placed.push({ idx: 0, r: page });
-      else {
+      if (crop <= MAX_STRETCH) {
+        placed.push({ idx: 0, r: page });
+        const els = placedToEls(ctx, placed);
+        ctx.bleed.add(els[0].id);
+        return els;
+      } else {
         const { hero } = modernHeroSplit(page, 0, fa, false, geo, true);
         placed.push({ idx: 0, r: hero });
       }
@@ -1057,13 +1168,13 @@ function layoutModern(ctx: Ctx): AlbumElement[] {
     return [...placedToEls(ctx, placed), ...lines];
   }
 
-  const bleed = input.spreadIndex % 4 === 2 && fa >= 1.3 && n <= 4;
+  // (A single photo that can't fill the whole spread falls through: alone on a page, the finishing
+  // pass makes it a full half page.)
+  const bleed = input.spreadIndex % 4 === 2 && fa >= 1.3 && n <= 4 && (n > 1 || geo.W / H / fa <= MAX_CROP);
   if (bleed) {
     // The one deliberate spread-wide hero: full height, from the left edge across the fold.
     if (n === 1) {
-      const full = geo.W / H;
-      if (full / fa <= MAX_CROP) placed.push({ idx: 0, r: { x: 0, y: 0, w: geo.W, h: H } });
-      else placed.push({ idx: 0, r: { x: 0, y: 0, w: Math.min(geo.W, H * fa * MAX_STRETCH), h: H } });
+      placed.push({ idx: 0, r: { x: 0, y: 0, w: geo.W, h: H } });
     } else {
       const stripW = Math.min(0.36 * geo.W, Math.max(0.22 * geo.W, geo.W - H * fa));
       let heroW = geo.W - stripW;
@@ -1074,7 +1185,10 @@ function layoutModern(ctx: Ctx): AlbumElement[] {
       block(rest, region, "start", rest.length === 1 ? "end" : "center", true);
     }
     enforceHero(placed, feature, [placed.filter((p) => p.idx !== feature)]);
-    return [...placedToEls(ctx, placed), ...lines];
+    const els = placedToEls(ctx, placed);
+    const heroEl = els.find((e) => e.photoId === photos[feature].id);
+    if (heroEl) ctx.bleed.add(heroEl.id);
+    return [...els, ...lines];
   }
 
   const heroPage = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
@@ -1143,6 +1257,151 @@ function layoutModern(ctx: Ctx): AlbumElement[] {
 }
 
 // ---------------------------------------------------------------------------------------------
+// "overlap + fade" — one big photo from its outer edge across the fold to ~70% of the spread, its
+// inner edge faded (fade-right-25 / fade-left-25); the other 1-4 photos on the other page, partly
+// over the faded zone. Used on some spreads of every style but catalog.
+// ---------------------------------------------------------------------------------------------
+
+const OVERLAP_BIG_FRAC = 0.7;
+
+function layoutOverlap(ctx: Ctx): AlbumElement[] | null {
+  const { geo, photos, heroIdx, input, rng } = ctx;
+  const n = photos.length;
+  if (!geo.double || input.style === "catalog" || n < 2 || n > 5 || input.spreadIndex % 3 !== 1) return null;
+  // The big photo: the hero, or else the first landscape. A portrait would be cropped to a sliver.
+  const bigIdx = heroIdx !== undefined ? (photos[heroIdx].aspect >= 1.2 ? heroIdx : -1) : photos.findIndex((p) => p.aspect >= 1.2);
+  if (bigIdx < 0) return null;
+  const { W, H } = geo;
+  const bigW = OVERLAP_BIG_FRAC * W;
+  const fold = W / 2;
+  const gut = 0.03 * W;
+  const big = photos[bigIdx];
+  const faces = ctx.faces.get(big.id) ?? [];
+  // Faces stay on the big photo's own page (off the fold), which also keeps them out of the faded
+  // 25% and from under the overlapping photos (both are past the fold).
+  const zoneFor = (left: boolean): Partial<FaceZone> =>
+    left ? { x0: 0.03, x1: (fold - gut) / bigW } : { x0: (fold + gut - (W - bigW)) / bigW, x1: 0.97 };
+  const preferLeft = Math.floor(input.spreadIndex / 3) % 2 === 0;
+  let left: boolean | null = null;
+  let crop: ReturnType<typeof faceCropFocal> | null = null;
+  for (const side of [preferLeft, !preferLeft]) {
+    const c = faceCropFocal(big.aspect, bigW / H, faces, zoneFor(side));
+    if (c.fits) {
+      left = side;
+      crop = c;
+      break;
+    }
+  }
+  if (left === null || !crop) return null; // a wide group photo: no side keeps every face clear
+
+  const bigR: Rect = left ? { x: 0, y: 0, w: bigW, h: H } : { x: W - bigW, y: 0, w: bigW, h: H };
+  // The others' block starts inside the faded zone (which spans the big photo's inner 25%).
+  const reach = 0.14 * W;
+  const outer = 0.05 * W;
+  const region: Rect = left
+    ? { x: bigW - reach, y: 0.1 * H, w: W - outer - (bigW - reach), h: 0.8 * H }
+    : { x: outer, y: 0.1 * H, w: W - bigW + reach - outer, h: 0.8 * H };
+  const rest = range(0, n).filter((i) => i !== bigIdx);
+  const res = pack(photos, rest, region, 0.025 * H, { rng, permute: true, alignX: left ? "start" : "end", alignY: "center", cropWeight: 1.2 });
+  if (!res) return null;
+
+  const bigEl = photoEl(`${ctx.prefix}-0`, big.id, bigR, geo, {
+    maskId: left ? "fade-right-25" : "fade-left-25",
+    focalX: crop.focalX,
+    focalY: crop.focalY,
+  });
+  ctx.bleed.add(bigEl.id);
+  ctx.fixedFocal.add(bigEl.id);
+
+  const sorted = res.placed.slice().sort((a, b) => a.idx - b.idx);
+  if (input.style !== "scribble") return [bigEl, ...sorted.map((p, i) => photoEl(`${ctx.prefix}-${i + 1}`, photos[p.idx].id, p.r, geo))];
+
+  // Scribble keeps its character: small tilts and tape.
+  const lim: Rect = left
+    ? { x: fold + 0.032 * W, y: 0.045 * H, w: W - 0.045 * W - (fold + 0.032 * W), h: 0.91 * H }
+    : { x: 0.045 * W, y: 0.045 * H, w: fold - 0.032 * W - 0.045 * W, h: 0.91 * H };
+  const sign = rng() < 0.5 ? 1 : -1;
+  const tilted: Tilted[] = sorted.map((p, k) => {
+    const rot = Math.round((k % 2 === 0 ? sign : -sign) * (1.5 + rng() * 2.5) * 10) / 10;
+    const t: Tilted = { idx: p.idx, r: p.r, rot };
+    clampTilted(t, lim);
+    return t;
+  });
+  return [
+    bigEl,
+    ...tilted.map((t, i) => photoEl(`${ctx.prefix}-${i + 1}`, photos[t.idx].id, t.r, geo, { rotation: t.rot })),
+    ...tapeEls(ctx, tilted, 0, tilted.length),
+  ];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Finishing pass (all styles): lone photo -> full half page, borders/shadows, face-aware crops.
+// ---------------------------------------------------------------------------------------------
+
+const FRAME_BORDER = { borderWidth: 3, borderColor: "#ffffff", shadow: 35 } as const;
+
+function frameAspectOf(e: AlbumPhotoElement, geo: Geo): number {
+  return (e.widthPct * geo.W) / Math.max(1e-6, e.heightPct * geo.H);
+}
+
+function finalizeSpread(ctx: Ctx, input: AlbumElement[]): LayoutOutput {
+  const { geo, photos } = ctx;
+  let els = input.slice();
+  const isPhoto = (e: AlbumElement): e is AlbumPhotoElement => e.type === "photo";
+  const aspectOf = (id: string | null) => photos.find((p) => p.id === id)?.aspect ?? 1.5;
+
+  if (geo.double) {
+    for (const page of [0, 1]) {
+      const x0 = page * 50;
+      const x1 = x0 + 50;
+      const onPage = (e: AlbumElement) => {
+        const cx = e.xPct + e.widthPct / 2;
+        return cx >= x0 && cx < x1;
+      };
+      // A bleed element reaching into this page (the overlap/spread-wide hero) owns it already.
+      const taken = els.some((e) => ctx.bleed.has(e.id) && e.xPct < x1 - 1 && e.xPct + e.widthPct > x0 + 1);
+      if (taken) continue;
+      const lone = els.filter((e) => isPhoto(e) && onPage(e));
+      if (lone.length !== 1) continue;
+      const el = lone[0] as AlbumPhotoElement;
+      const faces = ctx.faces.get(el.photoId ?? "") ?? [];
+      const crop = faceCropFocal(aspectOf(el.photoId), geo.pageW / geo.H, faces);
+      // Known faces that no half-page crop can keep whole (a wide group): leave it framed.
+      if (!crop.fits) continue;
+      const full: AlbumPhotoElement = { ...el, xPct: x0, yPct: 0, widthPct: 50, heightPct: 100, focalX: crop.focalX, focalY: crop.focalY };
+      delete full.rotation;
+      ctx.bleed.add(el.id);
+      ctx.fixedFocal.add(el.id);
+      // Accent lines / tape on that page would now sit on the photo.
+      els = els.filter((e) => e === el || isPhoto(e) || e.type === "text" || !onPage(e)).map((e) => (e === el ? full : e));
+    }
+  }
+
+  els = els.map((e) => {
+    if (!isPhoto(e)) return e;
+    const out: AlbumPhotoElement = { ...e };
+    delete out.shadowAngle;
+    if (ctx.bleed.has(e.id)) {
+      delete out.borderWidth;
+      delete out.borderColor;
+      delete out.shadow;
+    } else Object.assign(out, FRAME_BORDER);
+    if (!ctx.fixedFocal.has(e.id)) {
+      const c = faceCropFocal(aspectOf(e.photoId), frameAspectOf(e, geo), ctx.faces.get(e.photoId ?? "") ?? []);
+      out.focalX = c.focalX;
+      out.focalY = c.focalY;
+    }
+    out.zoom = 100;
+    return out;
+  });
+  // Bleed photos at the bottom of the stack; everything else keeps its order above them.
+  const bottom = els.filter((e) => ctx.bleed.has(e.id));
+  const top = els.filter((e) => !ctx.bleed.has(e.id));
+  const bleedIds = bottom.map((e) => e.id);
+  return bleedIds.length ? { elements: [...bottom, ...top], bleedIds } : { elements: top };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------------------------
 
@@ -1188,12 +1447,15 @@ export function layoutSpread(input: LayoutInput): LayoutOutput {
   if (!input.photos.length) return { elements: [] };
   const ctx = makeCtx({ ...input, photos: input.photos.slice(0, 8) });
   const fn = STYLE_LAYOUTS[input.style] ?? layoutClean;
-  const elements = fn(ctx);
+  const elements = layoutOverlap(ctx) ?? fn(ctx);
   // Safety net: a dropped photo means a missing picture in a printed book. Should a style ever fail
   // to place every photo exactly once, fall back to a plain packed layout that always does.
   const placedIds = elements.filter((e): e is AlbumPhotoElement => e.type === "photo").map((e) => e.photoId);
   const complete = placedIds.length === ctx.photos.length && ctx.photos.every((p) => placedIds.includes(p.id));
-  return { elements: complete ? elements : fallbackLayout(ctx) };
+  if (complete) return finalizeSpread(ctx, elements);
+  ctx.bleed.clear();
+  ctx.fixedFocal.clear();
+  return finalizeSpread(ctx, fallbackLayout(ctx));
 }
 
 type CoverStyle = { font: string; color: string; maxFs: number };
@@ -1211,7 +1473,7 @@ export function layoutCover(input: CoverInput): LayoutOutput {
   const style = COVER_TYPE[input.style] ? input.style : "clean";
   const ts = COVER_TYPE[style];
   const title = input.title.trim() || "אלבום";
-  const photo = input.photo ? { id: input.photo.id, aspect: input.photo.aspect > 0.05 ? input.photo.aspect : 1.5 } : null;
+  const photo = input.photo ? { id: input.photo.id, aspect: safeAspect(input.photo.aspect) } : null;
   const els: AlbumElement[] = [];
   const album = { width_cm: W, height_cm: H };
   // Text of `chars` characters at most ~78% of the page width (Hebrew averages ~0.55em per glyph).
@@ -1236,108 +1498,53 @@ export function layoutCover(input: CoverInput): LayoutOutput {
     };
   };
 
-  if (style === "modern") {
-    if (photo) {
-      const full = W / H;
-      const crop = Math.max(full / photo.aspect, photo.aspect / full);
-      if (crop <= MAX_CROP) {
-        els.push(photoEl("auto-cover-photo", photo.id, { x: 0, y: 0, w: W, h: H }, geo));
-        const fs = fsFor(ts.maxFs);
-        els.push(text(fs, 80, "#ffffff", ts.font, { shadow: 65 }));
-        const th = textHeightPctForFontSize(fs, album);
-        els.push(lineEl("auto-cover-line", W * 0.42, (H * (80 + th / 2 + 2.5)) / 100, W * 0.16, geo, "#d8b77a"));
-      } else {
-        // Can't fill the cover without a heavy crop: bleed on one side, title in the negative space.
-        const { hero } = modernHeroSplit({ x: 0, y: 0, w: W, h: H }, 0, photo.aspect, true, geo, true);
-        els.push(photoEl("auto-cover-photo", photo.id, hero, geo));
-        const freeTop = hero.y + hero.h < H * 0.7;
-        const cy = freeTop ? ((hero.y + hero.h + H) / 2 / H) * 100 : 50;
-        const fs = fsFor(ts.maxFs * 0.8, freeTop ? 0.78 : 0.36);
-        const t = text(fs, cy, "#1a1a1a", ts.font);
-        if (!freeTop) {
-          const leftFree = hero.x > W * 0.3;
-          const fx = leftFree ? 0 : hero.x + hero.w;
-          const fw = leftFree ? hero.x : W - (hero.x + hero.w);
-          t.xPct = r3(((fx + fw * 0.08) / W) * 100);
-          t.widthPct = r3(((fw * 0.84) / W) * 100);
-        }
-        els.push(t);
-      }
-    } else {
-      els.push(shapeEl("auto-cover-bg", { x: 0, y: 0, w: W, h: H }, geo, "#161616"));
-      const fs = fsFor(ts.maxFs);
-      els.push(text(fs, 46, "#f4efe6", ts.font));
+  if (photo) {
+    // The photo covers the whole canvas (a bleed element, no border), cropped around the faces and
+    // keeping them above the title band; the title sits on the photo, white with a soft shadow.
+    const TITLE_Y = 80;
+    const c = faceCropFocal(photo.aspect, W / H, validFaces(input.photo ?? undefined), { y0: 0.03, y1: 0.66 });
+    const fallback = c.fits ? c : faceCropFocal(photo.aspect, W / H, validFaces(input.photo ?? undefined));
+    els.push(photoEl("auto-cover-photo", photo.id, { x: 0, y: 0, w: W, h: H }, geo, { focalX: fallback.focalX, focalY: fallback.focalY, zoom: 100 }));
+    const fs = fsFor(ts.maxFs);
+    els.push(text(fs, TITLE_Y, "#ffffff", ts.font, { shadow: 60 }));
+    if (style === "modern") {
       const th = textHeightPctForFontSize(fs, album);
-      els.push(lineEl("auto-cover-line", W * 0.4, (H * (46 + th / 2 + 3)) / 100, W * 0.2, geo, "#b08d57"));
-      els.push(lineEl("auto-cover-line-2", W * 0.4, (H * (46 - th / 2 - 3)) / 100, W * 0.2, geo, "#b08d57"));
+      const ly = TITLE_Y + th / 2 + 2.5;
+      if (ly < 96) els.push(lineEl("auto-cover-line", W * 0.42, (H * ly) / 100, W * 0.16, geo, "#d8b77a"));
     }
+    return { elements: els, bleedIds: ["auto-cover-photo"] };
+  }
+
+  if (style === "modern") {
+    els.push(shapeEl("auto-cover-bg", { x: 0, y: 0, w: W, h: H }, geo, "#161616"));
+    const fs = fsFor(ts.maxFs);
+    els.push(text(fs, 46, "#f4efe6", ts.font));
+    const th = textHeightPctForFontSize(fs, album);
+    els.push(lineEl("auto-cover-line", W * 0.4, (H * (46 + th / 2 + 3)) / 100, W * 0.2, geo, "#b08d57"));
+    els.push(lineEl("auto-cover-line-2", W * 0.4, (H * (46 - th / 2 - 3)) / 100, W * 0.2, geo, "#b08d57"));
     return { elements: els };
   }
 
   if (style === "scribble") {
-    let photoBottom = 0.1 * H;
-    if (photo) {
-      const region = { x: W * 0.14, y: H * 0.1, w: W * 0.72, h: H * 0.6 };
-      const r = fitOne(photo.aspect, region);
-      const rot = -3.5;
-      const t: Tilted = { idx: 0, r, rot };
-      clampTilted(t, { x: W * 0.05, y: H * 0.05, w: W * 0.9, h: H * 0.72 });
-      els.push(
-        photoEl("auto-cover-photo", photo.id, t.r, geo, {
-          rotation: rot,
-          borderWidth: Math.max(10, Math.round(H * 0.45)),
-          borderColor: "#ffffff",
-          shadow: 45,
-          shadowAngle: 60,
-        })
-      );
-      const tw = Math.min(W * 0.16, t.r.w * 0.3);
-      const rad = (rot * Math.PI) / 180;
-      const cx = t.r.x + t.r.w / 2 + (t.r.h / 2) * Math.sin(rad);
-      const cy = t.r.y + t.r.h / 2 - (t.r.h / 2) * Math.cos(rad);
-      els.push(shapeEl("auto-cover-tape", { x: cx - tw / 2, y: cy - tw * 0.15, w: tw, h: tw * 0.3 }, geo, "#e8dcc4", { rotation: rot + 4, opacity: 72 }));
-      photoBottom = rotatedHalfExtents(t.r, rot)[1] + t.r.y + t.r.h / 2;
-    }
-    const cy = photo ? ((photoBottom + H * 0.97) / 2 / H) * 100 : 48;
     const fs = fsFor(ts.maxFs);
-    els.push(text(fs, cy, ts.color, ts.font));
-    if (!photo) {
-      const th = textHeightPctForFontSize(fs, album);
-      els.push(lineEl("auto-cover-line", W * 0.3, (H * (48 + th / 2 + 1)) / 100, W * 0.4, geo, "#c9a96e"));
-      els.push(shapeEl("auto-cover-tape", { x: W * 0.08, y: H * 0.1, w: W * 0.18, h: W * 0.05 }, geo, "#e8dcc4", { rotation: -32, opacity: 72 }));
-      els.push(shapeEl("auto-cover-tape-2", { x: W * 0.74, y: H * 0.84, w: W * 0.18, h: W * 0.05 }, geo, "#e8dcc4", { rotation: -32, opacity: 72 }));
-    }
+    els.push(text(fs, 48, ts.color, ts.font));
+    const th = textHeightPctForFontSize(fs, album);
+    els.push(lineEl("auto-cover-line", W * 0.3, (H * (48 + th / 2 + 1)) / 100, W * 0.4, geo, "#c9a96e"));
+    els.push(shapeEl("auto-cover-tape", { x: W * 0.08, y: H * 0.1, w: W * 0.18, h: W * 0.05 }, geo, "#e8dcc4", { rotation: -32, opacity: 72 }));
+    els.push(shapeEl("auto-cover-tape-2", { x: W * 0.74, y: H * 0.84, w: W * 0.18, h: W * 0.05 }, geo, "#e8dcc4", { rotation: -32, opacity: 72 }));
     return { elements: els };
   }
 
   if (style === "catalog") {
-    if (photo) {
-      const region = { x: W * 0.08, y: H * 0.07, w: W * 0.84, h: H * 0.62 };
-      const r = fitOne(photo.aspect, region, "center", "start");
-      els.push(photoEl("auto-cover-photo", photo.id, r, geo));
-      const lineY = r.y + r.h + H * 0.045;
-      els.push(lineEl("auto-cover-line", W * 0.08, lineY, W * 0.84, geo, "#bdbdbd"));
-      const cy = ((lineY + H * 0.94) / 2 / H) * 100;
-      els.push(text(fsFor(ts.maxFs), cy, ts.color, ts.font));
-    } else {
-      const fs = fsFor(ts.maxFs);
-      const th = textHeightPctForFontSize(fs, album);
-      els.push(lineEl("auto-cover-line", W * 0.12, (H * (50 - th / 2 - 3)) / 100, W * 0.76, geo, "#9e9e9e"));
-      els.push(text(fs, 50, ts.color, ts.font));
-      els.push(lineEl("auto-cover-line-2", W * 0.12, (H * (50 + th / 2 + 3)) / 100, W * 0.76, geo, "#9e9e9e"));
-    }
+    const fs = fsFor(ts.maxFs);
+    const th = textHeightPctForFontSize(fs, album);
+    els.push(lineEl("auto-cover-line", W * 0.12, (H * (50 - th / 2 - 3)) / 100, W * 0.76, geo, "#9e9e9e"));
+    els.push(text(fs, 50, ts.color, ts.font));
+    els.push(lineEl("auto-cover-line-2", W * 0.12, (H * (50 + th / 2 + 3)) / 100, W * 0.76, geo, "#9e9e9e"));
     return { elements: els };
   }
 
   // clean
-  if (photo) {
-    const region = { x: W * 0.14, y: H * 0.11, w: W * 0.72, h: H * 0.6 };
-    const r = fitOne(photo.aspect, region);
-    els.push(photoEl("auto-cover-photo", photo.id, r, geo));
-    const cy = ((r.y + r.h + H * 0.92) / 2 / H) * 100;
-    els.push(text(fsFor(ts.maxFs, 0.6), cy, ts.color, ts.font));
-  } else {
-    els.push(text(fsFor(ts.maxFs, 0.6), 50, ts.color, ts.font));
-  }
+  els.push(text(fsFor(ts.maxFs, 0.6), 50, ts.color, ts.font));
   return { elements: els };
 }

@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
-import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type FamilyCellId, type PhotoFaces } from "@/lib/albumAuto/types";
+import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
 import { CELL_ORDER, cellLabel, countNames, detectEventKind, pickCellFaces, planAlbum } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
 import type { AlbumElement } from "@/lib/types";
@@ -22,14 +22,19 @@ export type AutoDesignerPhoto = {
   original_filename: string | null;
   url: string;
   previewUrl?: string | null;
+  folder_id?: string | null;
 };
+
+export type AutoDesignerFolder = { id: string; name: string };
 
 type AlbumSize = { width: number; height: number; margin: number };
 
 export type AutoDesignResult = {
   size: AlbumSize;
-  cover: { widthCm: number; heightCm: number; elements: AlbumElement[] } | null;
-  spreads: AlbumElement[][];
+  // bleedIds: elements that run to the page edge on purpose; the parent must not fit them into
+  // the safe margin (see LayoutOutput in lib/albumAuto/types.ts).
+  cover: { widthCm: number; heightCm: number; elements: AlbumElement[]; bleedIds: string[] } | null;
+  spreads: { elements: AlbumElement[]; bleedIds: string[] }[];
 };
 
 type CellState = {
@@ -71,6 +76,7 @@ export default function AlbumAutoDesigner({
   galleryTitle,
   eventType,
   photos,
+  folders = [],
   defaultSize,
   sizePresets,
   onCreate,
@@ -80,6 +86,7 @@ export default function AlbumAutoDesigner({
   galleryTitle: string;
   eventType: string | null;
   photos: AutoDesignerPhoto[];
+  folders?: AutoDesignerFolder[];
   defaultSize: AlbumSize;
   sizePresets: { label: string; width: number; height: number; margin: number }[];
   onCreate: (result: AutoDesignResult) => Promise<void>;
@@ -101,6 +108,8 @@ export default function AlbumAutoDesigner({
   }));
   const [pickerFor, setPickerFor] = useState<FamilyCellId | null>(null);
   const [pickerLimit, setPickerLimit] = useState(PICKER_PAGE);
+  // The picker shows the gallery as it is: its own order, split by its tabs (folders) when it has them.
+  const [pickerTab, setPickerTab] = useState<string>("all");
 
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState<Phase>("times");
@@ -113,7 +122,11 @@ export default function AlbumAutoDesigner({
   const eventKind = useMemo(() => detectEventKind(galleryTitle, eventType), [galleryTitle, eventType]);
   const favorites = useMemo(() => photos.filter((p) => p.is_favorite), [photos]);
   const candidates = favorites.length > 0 ? favorites : photos;
-  const pickerPhotos = useMemo(() => [...favorites, ...photos.filter((p) => !p.is_favorite)], [favorites, photos]);
+  const hasUnfiled = folders.length > 0 && photos.some((p) => !p.folder_id);
+  const pickerPhotos = useMemo(
+    () => (pickerTab === "all" ? photos : pickerTab === "none" ? photos.filter((p) => !p.folder_id) : photos.filter((p) => p.folder_id === pickerTab)),
+    [photos, pickerTab]
+  );
   const photoById = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos]);
 
   const singlePage = singlePageOf(size);
@@ -138,21 +151,36 @@ export default function AlbumAutoDesigner({
 
   const updateCell = (id: FamilyCellId, patch: Partial<CellState>) => setCells((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
 
-  const choosePhoto = async (cellId: FamilyCellId, photoId: string) => {
+  // Choosing a photo only marks it; face detection runs from the "זיהוי פרצופים" button, for all
+  // the cells one after another (owner's request, 2026-09-29).
+  const choosePhoto = (cellId: FamilyCellId, photoId: string) => {
     setPickerFor(null);
-    updateCell(cellId, { photoId, faces: null, detecting: true, error: null });
-    try {
-      const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${photoId}/image`);
-      setCells((prev) => (prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], faces, detecting: false } } : prev));
-    } catch {
-      setCells((prev) =>
-        prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], detecting: false, error: "לא הצלחנו לזהות פרצופים בתמונה הזו" } } : prev
-      );
+    updateCell(cellId, { photoId, faces: null, detecting: false, error: null });
+  };
+
+  const [detectingAll, setDetectingAll] = useState(false);
+  const detectAllCells = async () => {
+    if (detectingAll) return;
+    setDetectingAll(true);
+    for (const cellId of CELL_ORDER) {
+      const photoId = cells[cellId].photoId;
+      if (!photoId || cells[cellId].faces) continue;
+      updateCell(cellId, { detecting: true, error: null });
+      try {
+        const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${photoId}/image`);
+        setCells((prev) => (prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], faces, detecting: false } } : prev));
+      } catch {
+        setCells((prev) =>
+          prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], detecting: false, error: "לא הצלחנו לזהות פרצופים בתמונה הזו" } } : prev
+        );
+      }
     }
+    setDetectingAll(false);
   };
 
   const sizeValid = size.width > 0 && size.height > 0 && (coverMode === "none" || (coverSize.width > 0 && coverSize.height > 0));
-  const anyCellDetecting = CELL_ORDER.some((id) => cells[id].detecting);
+  const anyCellDetecting = detectingAll || CELL_ORDER.some((id) => cells[id].detecting);
+  const cellsAwaitingFaces = CELL_ORDER.filter((id) => cells[id].photoId && !cells[id].faces).length;
 
   const setProgress = (p: Phase, fraction: number, detail = "") => {
     const [from, to] = PHASE_SPAN[p];
@@ -219,6 +247,13 @@ export default function AlbumAutoDesigner({
       // (b) Faces in the candidate photos: the gallery's cached detection first, then detect the
       // rest in memory only (gallery_photo_faces' clusters drive the face filter, so never write).
       const facesByPhoto = new Map<string, { descriptor: number[]; area: number }[]>();
+      // Face boxes per photo, so the layouts can crop without cutting heads.
+      const boxesByPhoto = new Map<string, { x: number; y: number; width: number; height: number }[]>();
+      const addBox = (photoId: string, box: { x: number; y: number; width: number; height: number }) => {
+        const list = boxesByPhoto.get(photoId) ?? [];
+        list.push(box);
+        boxesByPhoto.set(photoId, list);
+      };
       if (cellPeople.length > 0) {
         setProgress("faces", 0, "טוען זיהוי קודם");
         const candidateIds = new Set(candidates.map((p) => p.id));
@@ -226,15 +261,16 @@ export default function AlbumAutoDesigner({
         for (let from = 0; ; from += PAGE_SIZE) {
           const { data, error } = await supabase
             .from("gallery_photo_faces")
-            .select("id, photo_id, box_width, box_height, descriptor")
+            .select("id, photo_id, box_x, box_y, box_width, box_height, descriptor")
             .eq("gallery_id", galleryId)
             .order("id")
             .range(from, from + PAGE_SIZE - 1)
-            .returns<{ id: string; photo_id: string; box_width: number; box_height: number; descriptor: number[] }[]>();
+            .returns<{ id: string; photo_id: string; box_x: number; box_y: number; box_width: number; box_height: number; descriptor: number[] }[]>();
           if (error) break; // no cache is fine, everything just gets detected below
           for (const row of data ?? []) {
             if (!candidateIds.has(row.photo_id) || !Array.isArray(row.descriptor)) continue;
             cachedIds.add(row.photo_id);
+            addBox(row.photo_id, { x: row.box_x, y: row.box_y, width: row.box_width, height: row.box_height });
             const list = facesByPhoto.get(row.photo_id) ?? [];
             list.push({ descriptor: row.descriptor.map(Number), area: row.box_width * row.box_height });
             facesByPhoto.set(row.photo_id, list);
@@ -249,6 +285,7 @@ export default function AlbumAutoDesigner({
           try {
             const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${toDetect[i].id}/image`);
             if (faces.length > 0) facesByPhoto.set(toDetect[i].id, faces.map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })));
+            for (const f of faces) addBox(toDetect[i].id, f.box);
           } catch {
             // One unreadable photo shouldn't stop the whole design.
           }
@@ -256,6 +293,11 @@ export default function AlbumAutoDesigner({
       }
       setProgress("faces", 1);
       checkCancel();
+
+      for (const id of CELL_ORDER) {
+        const cell = cells[id];
+        if (cell.photoId && cell.faces && !boxesByPhoto.has(cell.photoId)) for (const f of cell.faces) addBox(cell.photoId, f.box);
+      }
 
       // (c) The plan.
       setProgress("plan", 0);
@@ -284,30 +326,34 @@ export default function AlbumAutoDesigner({
       setProgress("layout", 0);
       await nextFrame();
       const aspectOf = new Map(autoPhotos.map((p) => [p.id, p.aspect]));
-      const spreads = plan.spreads.map(
-        (s, i) =>
-          layoutSpread({
-            style,
-            photos: s.photoIds.map((id) => ({ id, aspect: aspectOf.get(id) ?? 1.5 })),
-            heroId: s.heroId,
-            section: s.section,
-            spreadIndex: i,
-            widthCm: size.width,
-            heightCm: size.height,
-          }).elements
-      );
+      const layoutPhoto = (id: string): LayoutPhoto => ({ id, aspect: aspectOf.get(id) ?? 1.5, faces: boxesByPhoto.get(id) });
+      const spreads = plan.spreads.map((s, i) => {
+        const out = layoutSpread({
+          style,
+          photos: s.photoIds.map(layoutPhoto),
+          heroId: s.heroId,
+          section: s.section,
+          spreadIndex: i,
+          widthCm: size.width,
+          heightCm: size.height,
+        });
+        return { elements: out.elements, bleedIds: out.bleedIds ?? [] };
+      });
       const cover =
         coverMode === "on"
           ? {
               widthCm: coverSize.width,
               heightCm: coverSize.height,
-              elements: layoutCover({
-                style,
-                photo: plan.coverPhotoId ? { id: plan.coverPhotoId, aspect: aspectOf.get(plan.coverPhotoId) ?? 1.5 } : null,
-                title: galleryTitle,
-                widthCm: coverSize.width,
-                heightCm: coverSize.height,
-              }).elements,
+              ...(() => {
+                const out = layoutCover({
+                  style,
+                  photo: plan.coverPhotoId ? layoutPhoto(plan.coverPhotoId) : null,
+                  title: galleryTitle,
+                  widthCm: coverSize.width,
+                  heightCm: coverSize.height,
+                });
+                return { elements: out.elements, bleedIds: out.bleedIds ?? [] };
+              })(),
             }
           : null;
       setProgress("layout", 1, `${spreads.length} כפולות`);
@@ -511,17 +557,38 @@ export default function AlbumAutoDesigner({
               ביטול
             </button>
           </div>
-          <p className="text-xs text-ink-soft">בחרו תמונה שבה רואים את הפנים בבירור. התמונות שסומנו בלב מופיעות ראשונות.</p>
-          <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-6 gap-1.5 max-h-[55vh] overflow-y-auto">
+          <p className="text-xs text-ink-soft">בחרו תמונה שבה רואים את הפנים בבירור.</p>
+          {folders.length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {[{ id: "all", name: "הכל" }, ...folders, ...(hasUnfiled ? [{ id: "none", name: "ללא לשונית" }] : [])].map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    setPickerTab(t.id);
+                    setPickerLimit(PICKER_PAGE);
+                  }}
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold border ${pickerTab === t.id ? "bg-ink text-white border-ink" : "bg-white text-ink-soft border-line"}`}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* The scroll box and the grid are separate elements: a grid that is itself height-capped
+              squeezes its rows into thin strips instead of scrolling. */}
+          <div className="max-h-[60vh] overflow-y-auto">
+            <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-6 gap-1.5">
+            {pickerPhotos.length === 0 && <p className="col-span-full py-6 text-center text-xs text-ink-soft">אין תמונות בלשונית הזו.</p>}
             {pickerPhotos.slice(0, pickerLimit).map((p) => (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => choosePhoto(pickerFor, p.id)}
-                className={`relative aspect-square rounded-md overflow-hidden bg-chip ${cells[pickerFor].photoId === p.id ? "ring-2 ring-ink" : ""}`}
+                className={`relative block w-full pt-[100%] rounded-md overflow-hidden bg-chip ${cells[pickerFor].photoId === p.id ? "ring-2 ring-ink" : ""}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={thumbOf(p)} alt="" loading="lazy" className="h-full w-full object-cover" />
+                <img src={thumbOf(p)} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
                 {p.is_favorite && (
                   <span className="absolute top-1 right-1 h-5 w-5 rounded-full bg-white/90 flex items-center justify-center text-[11px] text-rose" aria-hidden>
                     ♥
@@ -529,6 +596,7 @@ export default function AlbumAutoDesigner({
                 )}
               </button>
             ))}
+            </div>
           </div>
           {pickerPhotos.length > pickerLimit && (
             <button
@@ -596,6 +664,22 @@ export default function AlbumAutoDesigner({
               );
             })}
           </div>
+          {filledCells > 0 && (
+            <div className="rounded-lg bg-chip p-3 space-y-2">
+              <p className="text-xs text-ink-soft leading-relaxed">
+                אחרי שבחרתם תמונות לתאים, לחצו על זיהוי פרצופים. הזיהוי רץ על כל התאים אחד אחרי השני.
+                {cellsAwaitingFaces > 0 && !anyCellDetecting ? ` ${cellsAwaitingFaces === 1 ? "תא אחד עוד לא זוהה" : `${cellsAwaitingFaces} תאים עוד לא זוהו`}, ותא בלי זיהוי לא ישמש בעיצוב.` : ""}
+              </p>
+              <button
+                type="button"
+                onClick={detectAllCells}
+                disabled={anyCellDetecting || cellsAwaitingFaces === 0}
+                className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-60"
+              >
+                {anyCellDetecting ? "מזהה פרצופים..." : cellsAwaitingFaces === 0 ? "הפרצופים זוהו בכל התאים" : "זיהוי פרצופים"}
+              </button>
+            </div>
+          )}
           {runError && <p className="text-xs text-rose">{runError}</p>}
           <div className="flex gap-2">
             <button
@@ -700,7 +784,7 @@ function FaceHint({ cell }: { cell: CellState }) {
   if (!cell.photoId) return null;
   if (cell.detecting) return <p className="text-[11px] text-ink-soft">מזהה פרצופים...</p>;
   if (cell.error) return <p className="text-[11px] text-rose">{cell.error}</p>;
-  if (!cell.faces) return null;
+  if (!cell.faces) return <p className="text-[11px] text-ink-soft">ממתין לזיהוי פרצופים</p>;
   const found = cell.faces.length;
   if (found === 0) return <p className="text-[11px] text-rose">לא זוהו פרצופים בתמונה הזו, כדאי לבחור תמונה אחרת</p>;
   const names = countNames(cell.names);
