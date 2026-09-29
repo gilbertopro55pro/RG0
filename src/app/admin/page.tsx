@@ -7,8 +7,8 @@ import AdminDashboardView from "@/components/AdminDashboardView";
 
 export type AdminPhotographerRow = Pick<
   Photographer,
-  "id" | "name" | "email" | "plan" | "subscription_status" | "created_at"
->;
+  "id" | "name" | "email" | "plan" | "subscription_status" | "created_at" | "current_period_end" | "cancel_at_period_end"
+> & { has_recurring: boolean };
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -23,13 +23,15 @@ export default async function AdminPage() {
   const serviceRole = createServiceRoleClient();
   const { data: photographers } = await serviceRole
     .from("photographers")
-    .select("id, name, email, plan, subscription_status, created_at")
+    .select("id, name, email, plan, subscription_status, created_at, current_period_end, cancel_at_period_end, payplus_recurring_uid")
     .order("created_at", { ascending: false })
-    .returns<AdminPhotographerRow[]>();
+    .returns<(Omit<AdminPhotographerRow, "has_recurring"> & { payplus_recurring_uid: string | null })[]>();
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <AdminDashboardView photographers={photographers ?? []} />
+      <AdminDashboardView
+        photographers={(photographers ?? []).map(({ payplus_recurring_uid, ...p }) => ({ ...p, has_recurring: !!payplus_recurring_uid }))}
+      />
     </div>
   );
 }

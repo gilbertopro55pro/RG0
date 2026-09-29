@@ -127,14 +127,24 @@ would have moved it forward), once per period (`missed_renewal_alerted_for`, mig
 **2026-09-29, TBoog keeps being declined (Max SMS to the customer daily at 04:09):** one recurring
 only (no second channel), PayPlus retrying it every day. The owner deletes TBoog in PayPlus and
 calls the customer. `payplus_recurring_uid` on `146ad19b…` was cleared (owner approved; it was
-`ca82dc0c-602e-48f9-942c-052ed95586e5`). The `subscription-lifecycle` cron now has step 1b: an
-active account, not cancelling, with **no recurring** and `current_period_end` passed becomes
-`past_due`, so /billing shows "התשלום לא עבר" › עדכון אמצעי תשלום. Its checkout charges on the spot
-and starts a new recurring, and the webhook turns it active again. Step 2 (renewal reminder) now
-skips accounts with no recurring, since nothing renews them. Accounts with no recurring and no
-`current_period_end` (the test account, `c5a49746…`) are untouched. Watch out: a cleared uid
-means the webhook's "cancel the superseded recurring" can't catch the old one, so the recurring
-must really be deleted in PayPlus.
+`ca82dc0c-602e-48f9-942c-052ed95586e5`). A cleared uid means the webhook's "cancel the superseded
+recurring" can't catch the old one, so it must really be deleted in PayPlus.
+
+**Locking over a missed payment is manual (owner's decision, 2026-09-29).** Admin dashboard ›
+"חשבונות שלא העבירו תשלום" lists active accounts (not cancelling) whose `current_period_end` has
+passed, plus locked (`past_due`) ones, and a search over every account; each row has נעילה /
+הסרת נעילה (`POST /api/admin/subscription-lock`, admin only, only active ⇄ past_due). Locked =
+`past_due` → /billing "התשלום לא עבר" › עדכון אמצעי תשלום; paying there makes the webhook set it
+active, extend `current_period_end`, and cancel the stored old recurring. Nothing locks
+automatically: cron step 6 only emails the admin (now also for an account with no recurring), and
+renewal reminders (step 2) skip accounts with no recurring.
+
+**The extra charge on every new subscription (found 2026-09-29):** TBoog's details in PayPlus show
+"חיוב נוסף מעבר לתשלומי הוראת הקבע – החיוב יחוייב מחר" ticked. All four subscriptions so far got
+exactly one charge beyond the page payment and the monthly schedule (6stUu 3 hours later; TBoog,
+1PnrE, jsUQn in one batch on 09-10 04:58). Main suspect: `instant_first_payment: true` while the
+payment page already charges the first payment. Not changed yet: the owner is asking PayPlus
+support which settings give exactly one charge today and then monthly.
 
 **Receipt failure 2026-09-28 (first renewal receipt through the code):** account `78a97d91…`,
 renewal ₪50 (transaction `d2855d49…`), charged fine, but Finbot refused the חשבונית מס קבלה:

@@ -1,10 +1,11 @@
 import type { AdminPhotographerRow } from "@/app/admin/page";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
+import AdminPaymentLocks from "@/components/AdminPaymentLocks";
 
 const STATUS_LABELS: Record<string, string> = {
   active: "פעיל",
   trialing: "בתקופת ניסיון",
-  past_due: "תשלום מאוחר",
+  past_due: "נעול (תשלום)",
   canceled: "בוטל",
   incomplete: "לא הושלם",
 };
@@ -70,6 +71,8 @@ export default function AdminDashboardView({ photographers }: { photographers: A
           ))}
         </div>
       </div>
+
+      <AdminPaymentLocks photographers={photographers} />
 
       <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
         <div className="text-sm font-semibold mb-3">כל הצלמים ({total})</div>
