@@ -110,7 +110,7 @@ If a charge for an unknown account ever shows up again, the webhook now emails a
 removed on 09-25 as noted above): `1PnrE` (`test-photographer-id`) and `jsUQn` (deleted account
 `cca6cfe0…`, charged as late as 09-23), both on the owner's own card, so no refund was owed. The
 owner deleted both in PayPlus (הוראות קבע › רשימת הוראות קבע › ⋮ › מחק הוראת קבע). Active after
-that: `TBoog` (`146ad19b…`, rudyaz) and `6stUu` (`78a97d91…`). To match a PayPlus recurring to an
+that: `TBoog` (`146ad19b…`, rudyaz; deleted 2026-09-29) and `6stUu` (`78a97d91…`, the only one left). To match a PayPlus recurring to an
 account, query `payload->'transaction'->'recurring_charge_information'->>'recurring_number'`.
 
 **Failed recurring charges don't reach the webhook.** `146ad19b…` (TBoog) was declined by Max on
@@ -125,8 +125,8 @@ active account with a recurring has `current_period_end` more than 2 days in the
 would have moved it forward), once per period (`missed_renewal_alerted_for`, migration 0138).
 
 **2026-09-29, TBoog keeps being declined (Max SMS to the customer daily at 04:09):** one recurring
-only (no second channel), PayPlus retrying it every day. The owner deletes TBoog in PayPlus and
-calls the customer. `payplus_recurring_uid` on `146ad19b…` was cleared (owner approved; it was
+only (no second channel), PayPlus retrying it every day. The owner deleted TBoog in PayPlus
+(2026-09-29) and is calling the customer. `payplus_recurring_uid` on `146ad19b…` was cleared (owner approved; it was
 `ca82dc0c-602e-48f9-942c-052ed95586e5`). A cleared uid means the webhook's "cancel the superseded
 recurring" can't catch the old one, so it must really be deleted in PayPlus.
 
