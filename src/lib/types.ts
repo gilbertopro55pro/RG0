@@ -375,6 +375,11 @@ export type LeadRow = {
   // event), so the page can tell "not yet approved" / "approved, questionnaire pending" / "done"
   // apart. Part of the admin-gated quote-approval-to-event flow (see quotes/[token]/page.tsx).
   quote_approved_at: string | null;
+  // Lead retention (migration 0141): any change to the lead bumps last_activity_at (DB trigger); an
+  // open, unconverted lead idle for 13 days gets archived_at on day 14 (gallery-lifecycle cron) and
+  // is deleted for good 14 days later (LEAD_ARCHIVE_DAYS in lib/leadRetention.ts).
+  last_activity_at: string;
+  archived_at: string | null;
   // "manual" (added by the photographer) or "assistant" (the intake assistant, migration 0129).
   source: string;
   bot_conversation_id: string | null;

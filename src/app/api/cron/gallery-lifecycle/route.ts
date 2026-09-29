@@ -6,6 +6,7 @@ import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { GENERIC_STAGE_UPDATE_TEMPLATE } from "@/lib/stages";
 import { removeObjects, removePreviewObjects } from "@/lib/storage";
 import type { GalleryRow } from "@/lib/types";
+import { runLeadRetention } from "@/lib/leadRetention";
 
 type GalleryWithRelations = GalleryRow & {
   photographers: { name: string; email: string } | null;
@@ -240,10 +241,21 @@ export async function GET(request: NextRequest) {
     deletedCount++;
   }
 
+  // Lead retention (lib/leadRetention.ts): idle open leads to the archive, expired archive rows
+  // deleted for good. Isolated so a failure here never hides the gallery results above.
+  let leadRetention: { archived: number; purged: number } | { error: string };
+  try {
+    leadRetention = await runLeadRetention(supabase);
+  } catch (e) {
+    console.error("Lead retention failed:", e);
+    leadRetention = { error: e instanceof Error ? e.message : String(e) };
+  }
+
   return NextResponse.json({
     reminded: remindedCount,
     remindedWhatsApp: remindedWhatsAppCount,
     archived: archivedCount,
     deleted: deletedCount,
+    leadRetention,
   });
 }
