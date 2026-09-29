@@ -115,14 +115,20 @@ type Bounds = { min: number; max: number };
 type SectionGroup = "owners" | "family" | "event";
 
 const STYLE_BOUNDS: Record<AutoStyleId, Record<SectionGroup, Bounds>> = {
-  clean: { owners: { min: 1, max: 3 }, family: { min: 2, max: 4 }, event: { min: 3, max: 5 } },
+  clean: { owners: { min: 2, max: 3 }, family: { min: 2, max: 4 }, event: { min: 3, max: 5 } },
   catalog: { owners: { min: 2, max: 4 }, family: { min: 3, max: 6 }, event: { min: 4, max: 8 } },
   scribble: { owners: { min: 2, max: 3 }, family: { min: 3, max: 5 }, event: { min: 3, max: 6 } },
-  modern: { owners: { min: 1, max: 3 }, family: { min: 2, max: 4 }, event: { min: 3, max: 5 } },
+  modern: { owners: { min: 2, max: 3 }, family: { min: 2, max: 4 }, event: { min: 3, max: 5 } },
 };
+// Owner's rules (2026-09-29): never a spread with a single photo (every minimum above is ≥ 2, and
+// mergeSingles() catches the rest), at most 30 spreads when the photographer leaves the count
+// empty, and up to 20 photos on one spread.
+const AUTO_MAX_SPREADS = 30;
+// Shots this close together are a burst of the same moment: never on the same spread.
+const BURST_MS = 3000;
 
 // Absolute ceiling of photos on one spread, even when a target spread count forces stretching.
-const HARD_MAX_PER_SPREAD = 8;
+const HARD_MAX_PER_SPREAD = 20;
 // A gap this long between consecutive shots usually means a new stage of the event.
 const STAGE_GAP_MS = 15 * 60 * 1000;
 // Book order (differs from the UI's CELL_ORDER).
@@ -298,8 +304,78 @@ function chunk<T>(items: T[], bounds: Bounds, seed: number, gapAfter?: (i: numbe
   return out;
 }
 
+// Moves burst shots (taken within BURST_MS of each other) apart: when a spread holds two, the later
+// one swaps with a photo of the next spread that clashes with nothing there. Order stays roughly
+// chronological (a swap only ever crosses one spread boundary).
+function separateBursts(chunks: string[][], time: Map<string, number>): void {
+  const clashes = (id: string, group: string[]) =>
+    group.some((o) => o !== id && Math.abs((time.get(o) as number) - (time.get(id) as number)) < BURST_MS);
+  // A long burst (10 frames in 12 s at this event) can't be split by swapping with the next spread
+  // only, so the swap partner may come from up to two spreads ahead.
+  for (let i = 0; i + 1 < chunks.length; i++) {
+    for (let guard = 0; guard < chunks[i].length * 2; guard++) {
+      const cur = chunks[i];
+      const dup = [...cur].reverse().find((id) => clashes(id, cur));
+      if (!dup) break;
+      let done = false;
+      for (let j = i + 1; j <= Math.min(i + 2, chunks.length - 1) && !done; j++) {
+        const other = chunks[j];
+        const swap = other.find((x) => !clashes(x, cur.filter((c) => c !== dup)) && !clashes(dup, other.filter((n) => n !== x)));
+        if (swap) {
+          cur[cur.indexOf(dup)] = swap;
+          other[other.indexOf(swap)] = dup;
+          done = true;
+        }
+      }
+      if (!done) break;
+    }
+  }
+}
+
+// The spread cap is a hard rule: while the book is longer than `cap`, the two adjacent event
+// spreads with the fewest photos between them merge (never past HARD_MAX_PER_SPREAD).
+function enforceCap(spreads: PlannedSpread[], cap: number, byId: Map<string, AutoPhoto>): void {
+  while (spreads.length > cap) {
+    let best = -1;
+    let bestSize = Infinity;
+    for (let i = 0; i + 1 < spreads.length; i++) {
+      const a = spreads[i];
+      const b = spreads[i + 1];
+      if (a.section !== b.section) continue;
+      const size = a.photoIds.length + b.photoIds.length;
+      if (size <= HARD_MAX_PER_SPREAD && size < bestSize) {
+        best = i;
+        bestSize = size;
+      }
+    }
+    if (best < 0) return;
+    const a = spreads[best];
+    a.photoIds.push(...spreads[best + 1].photoIds);
+    if (a.section === "event") a.heroId = a.photoIds.find((id) => isLandscape(byId.get(id))) ?? a.photoIds[0];
+    spreads.splice(best + 1, 1);
+  }
+}
+
+// A spread with one photo is never allowed (owner's rule): it joins its neighbour — the previous
+// spread when it's the same section, else the next, else the previous regardless of section.
+function mergeSingles(spreads: PlannedSpread[], byId: Map<string, AutoPhoto>): void {
+  for (let i = 0; i < spreads.length && spreads.length > 1; i++) {
+    const s = spreads[i];
+    if (s.photoIds.length !== 1) continue;
+    const prev = spreads[i - 1];
+    const next = spreads[i + 1];
+    const target = prev && prev.section === s.section ? prev : next ?? prev;
+    if (!target) continue;
+    if (target === prev) target.photoIds.push(...s.photoIds);
+    else target.photoIds.unshift(...s.photoIds);
+    if (target.section === "event") target.heroId = target.photoIds.find((id) => isLandscape(byId.get(id))) ?? target.photoIds[0];
+    spreads.splice(i, 1);
+    i--;
+  }
+}
+
 // Event bounds aimed at a target spread count: centre the style's bounds on the needed average,
-// stretching up to 8 per spread when there are many photos. Never below the style's minimum —
+// stretching up to HARD_MAX_PER_SPREAD per spread when there are many photos. Never below the style's minimum —
 // with too few photos the book simply has fewer spreads (the contract: never repeat a photo).
 function targetEventBounds(base: Bounds, photos: number, spreads: number): Bounds {
   if (spreads <= 0 || photos <= 0) return base;
@@ -429,20 +505,28 @@ export function planAlbum(
     }
   }
 
-  // Event spreads: target-aware bounds, breaking at stage gaps when times are known.
-  let eventBounds = bounds.event;
-  if (opts.targetSpreads && opts.targetSpreads > 0) {
-    eventBounds = targetEventBounds(bounds.event, eventIds.length, opts.targetSpreads - spreads.length);
-  }
+  // Event spreads: target-aware bounds, breaking at stage gaps when times are known. With no
+  // target, the style's natural sizes are used unless they'd go past AUTO_MAX_SPREADS.
   const gapAfter = time
     ? (i: number) =>
         i + 1 < eventIds.length ? (time.get(eventIds[i + 1]) as number) - (time.get(eventIds[i]) as number) : 0
     : undefined;
-  for (const c of chunk(eventIds, eventBounds, seed, gapAfter)) {
+  const familySpreads = spreads.length;
+  let eventBounds = bounds.event;
+  if (opts.targetSpreads && opts.targetSpreads > 0) {
+    eventBounds = targetEventBounds(bounds.event, eventIds.length, opts.targetSpreads - familySpreads);
+  } else if (familySpreads + chunk(eventIds, bounds.event, seed, gapAfter).length > AUTO_MAX_SPREADS) {
+    eventBounds = targetEventBounds(bounds.event, eventIds.length, Math.max(1, AUTO_MAX_SPREADS - familySpreads));
+  }
+  const eventChunks = chunk(eventIds, eventBounds, seed, gapAfter);
+  if (time) separateBursts(eventChunks, time);
+  for (const c of eventChunks) {
     const hero = c.find((id) => isLandscape(byId.get(id))) ?? c[0];
     spreads.push({ section: "event", photoIds: c, heroId: hero });
     seed++;
   }
+  mergeSingles(spreads, byId);
+  enforceCap(spreads, opts.targetSpreads && opts.targetSpreads > 0 ? opts.targetSpreads : AUTO_MAX_SPREADS, byId);
 
   // Cover: the closest owners shot (a slight preference for portrait — covers are single pages).
   let coverPhotoId: string | null = null;

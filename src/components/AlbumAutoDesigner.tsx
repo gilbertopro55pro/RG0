@@ -521,7 +521,7 @@ export default function AlbumAutoDesigner({
                 placeholder="אוטומטי"
                 className="w-24 rounded-lg border border-line px-2.5 py-2 text-sm text-center bg-white"
               />
-              <span className="text-xs text-ink-soft">מספר כפולות (ריק: לפי כמות התמונות)</span>
+              <span className="text-xs text-ink-soft">מספר כפולות (ריק: אוטומטי, עד 30)</span>
             </label>
           </section>
 
