@@ -11,7 +11,7 @@ const ROWS: { label: string; basic: string | boolean; flow: string | boolean; fr
   { label: "וידאו בגלריה: גודל קובץ מקסימלי", basic: false, flow: "300MB", frame: "500MB" },
   { label: "פורטפוליו ציבורי", basic: false, flow: true, frame: true },
   // INTAKE_MONTHLY_CAP in lib/intakeAssistant.ts.
-  { label: "עוזר פניות חכם: שיחות בחודש", basic: false, flow: "100", frame: "200" },
+  { label: "עוזר פניות חכם: שיחות בחודש", basic: "100", flow: "150", frame: "200" },
   { label: "נפח אחסון", basic: "100GB", flow: "750GB", frame: "ללא הגבלה" },
   { label: "שמירת גלריה", basic: "עד 14 יום", flow: "עד 90 יום", frame: "עד שנה" },
   { label: "חברי צוות", basic: "עד 1", flow: "עד 2", frame: "עד 3" },

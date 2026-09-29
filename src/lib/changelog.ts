@@ -8,6 +8,13 @@ export type ChangelogEntry = {
 // entry at the top, not by editing this constant directly.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.71",
+    date: "2026-09-29",
+    changes: [
+      "עוזר הפניות זמין עכשיו בכל המסלולים: בפרו סטארט עד 100 שיחות בחודש, בפרו עד 150 (במקום 100), ובפרו+ עד 200. מפעילים בהגדרות › אוטומציה",
+    ],
+  },
+  {
     version: "2.11.70",
     date: "2026-09-27",
     changes: [

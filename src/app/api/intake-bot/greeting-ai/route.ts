@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     .select("id, name, email, plan, portfolio_slug, intake_chat_token")
     .eq("id", user.id)
     .maybeSingle<Pick<Photographer, "id" | "name" | "email" | "plan" | "portfolio_slug" | "intake_chat_token">>();
-  if (!p || intakeMonthlyCap(p) <= 0) return NextResponse.json({ error: "זמין במסלולי פרו ופרו+" }, { status: 403 });
+  if (!p || intakeMonthlyCap(p) <= 0) return NextResponse.json({ error: "העוזר לא זמין בחשבון הזה" }, { status: 403 });
 
   const { allowed } = await checkRateLimit(`greeting-ai:${p.id}`, { maxRequests: 20, windowSeconds: 3600 });
   if (!allowed) return NextResponse.json({ error: "הרבה ניסוחים בשעה האחרונה. נסו שוב מאוחר יותר" }, { status: 429 });

@@ -46,7 +46,7 @@ export default function BotSettings({
       <div className="rounded-2xl p-4 bg-card border border-line">
         <div className="text-sm font-semibold mb-1">עוזר פניות</div>
         <p className="text-xs text-ink-soft">
-          עוזר שעונה ללקוחות חדשים מיד, בודק שהתאריך פנוי ואוסף את פרטי האירוע, ומעביר לך ליד מוכן להצעת מחיר. זמין במסלולי פרו ופרו+ (שדרוג בלשונית &quot;מנוי וצוות&quot;).
+          עוזר שעונה ללקוחות חדשים מיד, בודק שהתאריך פנוי ואוסף את פרטי האירוע, ומעביר לך ליד מוכן להצעת מחיר. העוזר לא זמין בחשבון הזה כרגע.
         </p>
       </div>
     );

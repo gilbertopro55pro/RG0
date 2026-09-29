@@ -18,7 +18,7 @@ import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
 type ServiceClient = ReturnType<typeof createServiceRoleClient>;
 
 export const INTAKE_MODEL = "claude-sonnet-5";
-export const INTAKE_MONTHLY_CAP: Record<SubscriptionTier, number> = { basic: 0, standard: 100, studio_pro: 200 };
+export const INTAKE_MONTHLY_CAP: Record<SubscriptionTier, number> = { basic: 100, standard: 150, studio_pro: 200 };
 export const MAX_CLIENT_TURNS = 30;
 export const MAX_MESSAGE_CHARS = 1000;
 const MAX_TOOL_ROUNDS = 5;
