@@ -6,7 +6,7 @@ const ROWS: { label: string; basic: string | boolean; flow: string | boolean; fr
   { label: "גלריות מאובטחות ללקוחות, 5 ערכות עיצוב", basic: true, flow: true, frame: true },
   { label: "חוזים דיגיטליים לחתימה מרחוק", basic: true, flow: true, frame: true },
   { label: "תזכורות תשלום בזמן, מוכנות לשליחה בוואטסאפ", basic: true, flow: true, frame: true },
-  { label: "סנכרון יומן (Google / Apple)", basic: true, flow: true, frame: true },
+  { label: "סנכרון יומן Google / Apple", basic: true, flow: true, frame: true },
   { label: "עורך אלבומים מובנה", basic: false, flow: true, frame: true },
   { label: "וידאו בגלריה: גודל קובץ מקסימלי", basic: false, flow: "300MB", frame: "500MB" },
   { label: "פורטפוליו ציבורי", basic: false, flow: true, frame: true },
@@ -44,32 +44,34 @@ function Cell({ value }: { value: string | boolean }) {
       </span>
     );
   }
-  return <span className="text-[13px] font-semibold whitespace-nowrap text-[var(--l-ink)]">{value}</span>;
+  return <span className="text-xs sm:text-[13px] font-semibold leading-tight sm:whitespace-nowrap text-[var(--l-ink)]">{value}</span>;
 }
 
 export default function PlanComparison() {
   return (
     <div className="mt-10 sm:mt-12 overflow-x-auto rounded-[16px] border border-[var(--l-line)] bg-[var(--l-bg)] shadow-[0_1px_2px_rgba(11,18,32,0.04)]">
-      <table className="w-full min-w-[520px] text-sm text-[var(--l-ink)]">
+      {/* Phones: a fixed layout that fits the screen (no sideways scroll), label column ~42%, plan
+          names and values wrap to two lines. From sm up: the natural auto layout. */}
+      <table className="w-full table-fixed sm:table-auto sm:min-w-[520px] text-[13px] sm:text-sm text-[var(--l-ink)]">
         <thead>
           <tr className="text-right border-b border-[var(--l-line)]">
-            <th className="py-4 px-4 sm:px-6 font-bold text-[var(--l-ink)]">כלול במסלול</th>
-            <th className="py-4 px-3 font-display font-bold text-center whitespace-nowrap">פרו סטארט</th>
-            <th className="py-4 px-3 font-display font-bold text-center whitespace-nowrap">פרו</th>
-            <th className="py-4 px-3 font-display font-bold text-center whitespace-nowrap">פרו+</th>
+            <th className="w-[42%] sm:w-auto py-4 px-3 sm:px-6 font-bold text-[var(--l-ink)]">כלול במסלול</th>
+            <th className="py-4 px-1 sm:px-3 font-display font-bold text-center leading-tight sm:whitespace-nowrap">פרו סטארט</th>
+            <th className="py-4 px-1 sm:px-3 font-display font-bold text-center leading-tight sm:whitespace-nowrap">פרו</th>
+            <th className="py-4 px-1 sm:px-3 font-display font-bold text-center leading-tight sm:whitespace-nowrap">פרו+</th>
           </tr>
         </thead>
         <tbody>
           {ROWS.map((row) => (
             <tr key={row.label} className="border-b border-[var(--l-line)] last:border-0">
-              <td className="py-3 px-4 sm:px-6 text-[var(--l-ink-soft)] leading-snug">{row.label}</td>
-              <td className="py-3 px-3 text-center">
+              <td className="py-3 px-3 sm:px-6 text-[var(--l-ink-soft)] leading-snug">{row.label}</td>
+              <td className="py-3 px-1 sm:px-3 text-center">
                 <Cell value={row.basic} />
               </td>
-              <td className="py-3 px-3 text-center">
+              <td className="py-3 px-1 sm:px-3 text-center">
                 <Cell value={row.flow} />
               </td>
-              <td className="py-3 px-3 text-center">
+              <td className="py-3 px-1 sm:px-3 text-center">
                 <Cell value={row.frame} />
               </td>
             </tr>
