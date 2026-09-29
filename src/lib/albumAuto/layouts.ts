@@ -253,7 +253,8 @@ function pack(photos: P[], idxs: number[], region: Rect, g: number, opts: PackOp
     // Grouping by orientation often packs much better.
     const land = idxs.filter((i) => photos[i].aspect >= 1);
     const port = idxs.filter((i) => photos[i].aspect < 1);
-    if (land.length && port.length) {
+    // (Skipped for 7+ photos, where the tree count alone is in the tens of thousands.)
+    if (land.length && port.length && n <= 6) {
       orders.push([...land, ...port]);
       orders.push([...port, ...land]);
     }
@@ -277,7 +278,7 @@ function pack(photos: P[], idxs: number[], region: Rect, g: number, opts: PackOp
       if (widthAt(Math.exp(lo)) >= region.w) s = Math.exp(lo);
       else if (widthAt(Math.exp(hi)) <= region.w) s = Math.exp(hi);
       else {
-        for (let it = 0; it < 28; it++) {
+        for (let it = 0; it < 22; it++) {
           const mid = (lo + hi) / 2;
           if (widthAt(Math.exp(mid)) > region.w) hi = mid;
           else lo = mid;
@@ -568,40 +569,61 @@ function cellAspects(photos: P[]): number[] {
   });
 }
 
-// Rows of equal height; returns the row height that fits, and the row split.
-function catalogRows(cells: number[], idxs: number[], region: Rect, g: number): { h: number; rows: number[][] } {
+// A grid of equal-width columns (the same column count throughout); landscapes and portraits never
+// share a row, so every row is truly equal cells, and portrait rows are simply taller. Returns the
+// column width that fits (cm) and the rows.
+function catalogRows(cells: number[], idxs: number[], region: Rect, g: number, photos: P[]): { h: number; rows: number[][] } {
   const k = idxs.length;
+  const land = idxs.filter((i) => photos[i].aspect >= 1);
+  const port = idxs.filter((i) => photos[i].aspect < 1);
+  const groups = [land, port].filter((x) => x.length);
+  if (idxs.length && photos[idxs[0]].aspect < 1) groups.reverse();
   let best: { h: number; rows: number[][]; score: number } = { h: 0, rows: [idxs], score: -Infinity };
-  for (let r = 1; r <= k; r++) {
-    // Split into r consecutive rows as evenly as possible by count (orderly catalog rows).
+  for (let c = 1; c <= k; c++) {
     const rows: number[][] = [];
-    const base = Math.floor(k / r);
-    let extra = k % r;
-    let at = 0;
-    for (let i = 0; i < r; i++) {
-      const cnt = base + (extra > 0 ? 1 : 0);
-      if (extra > 0) extra--;
-      rows.push(idxs.slice(at, at + cnt));
-      at += cnt;
+    for (const grp of groups) {
+      // Balanced chunks of at most c (5 at 3 columns -> 3+2, never 3+1+1).
+      const r = Math.ceil(grp.length / c);
+      const base = Math.floor(grp.length / r);
+      let extra = grp.length % r;
+      let at = 0;
+      for (let i = 0; i < r; i++) {
+        const cnt = base + (extra > 0 ? 1 : 0);
+        if (extra > 0) extra--;
+        rows.push(grp.slice(at, at + cnt));
+        at += cnt;
+      }
     }
-    let h = (region.h - g * (r - 1)) / r;
+    // Row height = cw / rowAspect; total height sum(cw / rowAspect) + gaps <= region.h.
+    const invSum = rows.reduce((s, row) => s + 1 / rowAspect(cells, row), 0);
+    let h = (region.h - g * (rows.length - 1)) / invSum;
     for (const row of rows) {
-      const sa = row.reduce((s, i) => s + cells[i], 0);
-      h = Math.min(h, (region.w - g * (row.length - 1)) / sa);
+      const widthPerCw = row.reduce((s, i) => s + cells[i] / rowAspect(cells, row), 0);
+      h = Math.min(h, (region.w - g * (row.length - 1)) / widthPerCw);
     }
     if (h <= 0) continue;
-    const covered = cells.reduce((s, c, i) => (idxs.includes(i) ? s + c * h * h : s), 0);
-    const score = covered / area(region);
+    const covered = rows.reduce((s, row) => s + row.reduce((t, i) => t + (cells[i] / rowAspect(cells, row)) * (h * h) / rowAspect(cells, row), 0), 0);
+    // Prefer full rows (a lone photo in the last row reads as a leftover).
+    const ragged = rows.filter((row) => row.length < Math.max(...rows.map((x) => x.length))).length;
+    const score = covered / area(region) - ragged * 0.02;
     if (score > best.score + 1e-9) best = { h, rows, score };
   }
   return { h: best.h, rows: best.rows };
 }
 
-function placeCatalogPage(cells: number[], page: CatalogPage, h: number, rows: number[][], g: number): Placed[] {
-  const blockH = rows.length * h + (rows.length - 1) * g;
+// The shared cell aspect of a row (its cells are one orientation class).
+function rowAspect(cells: number[], row: number[]): number {
+  return Math.exp(row.reduce((s, i) => s + Math.log(cells[i]), 0) / row.length);
+}
+
+// Places rows for column width `cw`: row height cw / rowAspect, rows centred on the page.
+function placeCatalogPage(cells: number[], page: CatalogPage, cw: number, rows: number[][], g: number): Placed[] {
+  const heights = rows.map((row) => cw / rowAspect(cells, row));
+  const blockH = heights.reduce((s, h) => s + h, 0) + (rows.length - 1) * g;
   let y = page.region.y + (page.region.h - blockH) / 2;
   const out: Placed[] = [];
-  for (const row of rows) {
+  rows.forEach((row, ri) => {
+    const h = heights[ri];
     const rowW = row.reduce((s, i) => s + cells[i] * h, 0) + g * (row.length - 1);
     let x = page.region.x + (page.region.w - rowW) / 2;
     for (const i of row) {
@@ -610,7 +632,7 @@ function placeCatalogPage(cells: number[], page: CatalogPage, h: number, rows: n
       x += w + g;
     }
     y += h + g;
-  }
+  });
   return out;
 }
 
@@ -638,15 +660,15 @@ function layoutCatalog(ctx: Ctx): AlbumElement[] {
     let placed: Placed[];
     if (heroIdx !== undefined && n > 1) {
       // Hero as a wide top cell, the rest as an equal-cell row(s) below.
-      const heroRegion = { ...region, h: region.h * 0.58 };
+      const heroRegion = { ...region, h: region.h * 0.52 };
       const heroR = fitOne(photos[heroIdx].aspect, heroRegion);
       const restRegion = { x: region.x, y: heroR.y + heroR.h + gap, w: region.w, h: region.y + region.h - (heroR.y + heroR.h + gap) };
       const rest = range(0, n).filter((i) => i !== heroIdx);
-      const { h, rows } = catalogRows(cells, rest, restRegion, gap);
+      const { h, rows } = catalogRows(cells, rest, restRegion, gap, photos);
       placed = [{ idx: heroIdx, r: heroR }, ...placeCatalogPage(cells, { idxs: rest, region: restRegion }, h, rows, gap)];
       enforceHero(placed, heroIdx, [placed.filter((p) => p.idx !== heroIdx)]);
     } else {
-      const { h, rows } = catalogRows(cells, range(0, n), region, gap);
+      const { h, rows } = catalogRows(cells, range(0, n), region, gap, photos);
       placed = placeCatalogPage(cells, { idxs: range(0, n), region }, h, rows, gap);
     }
     const out: AlbumElement[] = placedToEls(ctx, placed);
@@ -670,7 +692,7 @@ function layoutCatalog(ctx: Ctx): AlbumElement[] {
     const rest = range(0, n).filter((i) => i !== heroIdx);
     let restRegion = regionOf(1 - heroPage);
     if (rest.length === 1) restRegion = inset(restRegion, restRegion.w * 0.18, restRegion.h * 0.18);
-    const { h, rows } = catalogRows(cells, rest, restRegion, gap);
+    const { h, rows } = catalogRows(cells, rest, restRegion, gap, photos);
     const grid = placeCatalogPage(cells, { idxs: rest, region: restRegion }, h, rows, gap);
     // Align the grid's top with the hero's top when there's room: consistent rows across the spread.
     const gb = boundsOf(grid.map((p) => p.r));
@@ -697,26 +719,26 @@ function layoutCatalog(ctx: Ctx): AlbumElement[] {
   let best: { placed: Placed[][]; score: number } | null = null;
   orders.forEach((order, oi) => {
     for (let k = 1; k < n; k++) {
-      if (Math.abs(k - n / 2) > 1.5) continue;
       const a = order.slice(0, k);
       const b = order.slice(k);
       const pa: CatalogPage = { idxs: a, region: regionOf(FIRST) };
       const pb: CatalogPage = { idxs: b, region: regionOf(SECOND) };
-      const ra = catalogRows(cells, a, pa.region, gap);
-      const rb = catalogRows(cells, b, pb.region, gap);
+      const ra = catalogRows(cells, a, pa.region, gap, photos);
+      const rb = catalogRows(cells, b, pb.region, gap, photos);
       // One common row height across the spread when the two pages are comparable.
       const common = Math.min(ra.h, rb.h);
-      const unify = common >= 0.7 * Math.max(ra.h, rb.h);
+      const cls = (idxs: number[]) => (idxs.every((i) => photos[i].aspect >= 1) ? "L" : idxs.every((i) => photos[i].aspect < 1) ? "P" : "M");
+      const unify = cls(a) === cls(b) && common >= 0.7 * Math.max(ra.h, rb.h);
       const ha = unify ? common : ra.h;
       const hb = unify ? common : rb.h;
-      const cov = (idxs: number[], h: number) => idxs.reduce((s, i) => s + cells[i] * h * h, 0);
-      const homo = (idxs: number[]) => (idxs.every((i) => photos[i].aspect >= 1) || idxs.every((i) => photos[i].aspect < 1) ? 0.04 : 0);
+      const cov = (idxs: number[], cw: number) => idxs.reduce((s, i) => s + (cw * cw) / cells[i], 0);
+      const homo = (idxs: number[]) => (idxs.every((i) => photos[i].aspect >= 1) || idxs.every((i) => photos[i].aspect < 1) ? 0.08 : 0);
       const score =
         (cov(a, ha) + cov(b, hb)) / (area(pa.region) + area(pb.region)) +
         homo(a) +
         homo(b) +
         (unify ? 0.05 : 0) -
-        Math.abs(a.length - b.length) * 0.03 -
+        Math.max(0, Math.abs(a.length - b.length) - 1) * 0.07 -
         (oi > 0 ? 0.02 : 0);
       if (!best || score > best.score)
         best = { placed: [placeCatalogPage(cells, pa, ha, ra.rows, gap), placeCatalogPage(cells, pb, hb, rb.rows, gap)], score };
@@ -794,6 +816,16 @@ function layoutScribble(ctx: Ctx): AlbumElement[] {
     const page = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
     const reg = inset(regionOf(page), regionOf(page).w * 0.05, regionOf(page).h * 0.05);
     groups.push({ placed: [{ idx: 0, r: fitOne(photos[0].aspect, reg) }], lim: limitOf(page) });
+  } else if (heroIdx !== undefined && n <= 4) {
+    // Few photos with a hero: the hero alone on one page, the rest gathered on the other.
+    const heroPage = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
+    const hr = regionOf(heroPage);
+    groups.push({ placed: [{ idx: heroIdx, r: fitOne(photos[heroIdx].aspect, inset(hr, hr.w * 0.03, hr.h * 0.03)) }], lim: limitOf(heroPage) });
+    const rest = all.filter((i) => i !== heroIdx);
+    const or = regionOf(1 - heroPage);
+    const restRegion = rest.length === 1 ? inset(or, or.w * 0.14, or.h * 0.14) : or;
+    const res = pack(photos, rest, restRegion, gap, { rng, permute: true });
+    if (res) groups.push({ placed: res.placed, lim: limitOf(1 - heroPage) });
   } else {
     const split = bestSplit(ctx, regionOf, gap);
     if (split) {
@@ -817,7 +849,7 @@ function layoutScribble(ctx: Ctx): AlbumElement[] {
       const k = tilted.length;
       const mag = 2.5 + rng() * 4.5;
       const rot = Math.round((k % 2 === 0 ? signStart : -signStart) * mag * 10) / 10;
-      const grow = p.idx === heroIdx ? 1.04 : 1.07 + rng() * 0.03;
+      const grow = p.idx === heroIdx ? 1.06 : 1.1 + rng() * 0.04;
       const cx = p.r.x + p.r.w / 2 + (rng() - 0.5) * 0.04 * H;
       const cy = p.r.y + p.r.h / 2 + (rng() - 0.5) * 0.04 * H;
       const t: Tilted = { idx: p.idx, r: scaleRect({ ...p.r, x: cx - p.r.w / 2, y: cy - p.r.h / 2 }, grow, cx, cy), rot };
@@ -879,14 +911,15 @@ function modernHeroSplit(
   aspect: number,
   wantRest: boolean,
   geo: Geo,
-  anchorTop: boolean
+  anchorTop: boolean,
+  minRestFrac = 0.3
 ): { hero: Rect; rest: Rect | null } {
   const gut = foldSide === 0 ? 0 : 0.03 * geo.W;
   const usableX = foldSide === -1 ? page.x + gut : page.x;
   const usableW = page.w - gut;
   const gap = 0.035 * geo.H;
-  const minRestW = 0.3 * usableW;
-  const minRestH = 0.3 * page.h;
+  const minRestW = minRestFrac * usableW;
+  const minRestH = minRestFrac * page.h;
   // The hero hugs the page's outer edge: the left edge unless the fold is on the left (right page).
   const outerLeft = foldSide !== -1;
 
@@ -946,7 +979,7 @@ function modernHeroSplit(
   // stretch allows) in the bigger one.
   const side = usableW / page.h >= aspect;
   if (side) {
-    const hw = Math.min(usableW * 0.62, page.h * aspect * MAX_STRETCH);
+    const hw = Math.min(usableW * (1 - minRestFrac), page.h * aspect * MAX_STRETCH);
     const hh = Math.min(page.h, (hw / aspect) * MAX_STRETCH);
     const hero = outerLeft
       ? { x: usableX, y: page.y + (page.h - hh) / 2, w: hw, h: hh }
@@ -954,7 +987,7 @@ function modernHeroSplit(
     const rest = outerLeft ? { x: hero.x + hw + gap, y: page.y, w: usableW - hw - gap, h: page.h } : { x: usableX, y: page.y, w: usableW - hw - gap, h: page.h };
     return { hero, rest };
   }
-  const hh = Math.min(page.h * 0.62, (usableW / aspect) * MAX_STRETCH);
+  const hh = Math.min(page.h * (1 - minRestFrac), (usableW / aspect) * MAX_STRETCH);
   const hw = Math.min(usableW, hh * aspect * MAX_STRETCH);
   const hero = anchorTop ? { x: usableX + (usableW - hw) / 2, y: page.y, w: hw, h: hh } : { x: usableX + (usableW - hw) / 2, y: page.y + page.h - hh, w: hw, h: hh };
   const rest = anchorTop ? { x: usableX, y: hero.y + hh + gap, w: usableW, h: page.h - hh - gap } : { x: usableX, y: page.y, w: usableW, h: page.h - hh - gap };
@@ -1015,7 +1048,8 @@ function layoutModern(ctx: Ctx): AlbumElement[] {
         placed.push({ idx: 0, r: hero });
       }
     } else {
-      const { hero, rest: left } = modernHeroSplit(page, 0, fa, true, geo, input.spreadIndex % 2 === 0);
+      const restFrac = Math.min(0.5, 0.3 + 0.05 * (rest.length - 1));
+      const { hero, rest: left } = modernHeroSplit(page, 0, fa, true, geo, input.spreadIndex % 2 === 0, restFrac);
       placed.push({ idx: feature, r: hero });
       if (left) block(rest, restInner(left, geo), "center", "center", true);
     }
@@ -1047,14 +1081,43 @@ function layoutModern(ctx: Ctx): AlbumElement[] {
   const otherPage = 1 - heroPage;
   const pageRect = (p: number): Rect => ({ x: p * geo.pageW, y: 0, w: geo.pageW, h: H });
   const heroFold: -1 | 1 = heroPage === 1 ? -1 : 1;
-  const heroHolds = rest.length > 5 ? Math.min(2, rest.length - 5) : 0;
+  // A landscape hero leaves a band under/over it: one or two small photos sit there once the other
+  // page would get busy. A portrait hero leaves only a narrow column, used for the 7th/8th photo.
+  const heroHolds = fa >= 1.15 ? (rest.length >= 5 ? 2 : rest.length >= 3 ? 1 : 0) : rest.length > 5 ? Math.min(2, rest.length - 5) : 0;
   const split = modernHeroSplit(pageRect(heroPage), heroFold, fa, heroHolds > 0, geo, input.spreadIndex % 4 < 2);
   placed.push({ idx: feature, r: split.hero });
   let onOther = rest;
   if (heroHolds > 0 && split.rest) {
-    const mine = rest.slice(rest.length - heroHolds);
-    onOther = rest.slice(0, rest.length - heroHolds);
-    block(mine, restInner(split.rest, geo), "center", "center", false);
+    // Landscapes suit the band under a landscape hero, portraits the column beside a portrait one;
+    // take the best-suited photos from the end of the reading order.
+    const wantLand = split.rest.w > split.rest.h;
+    const byFit = rest
+      .map((i, pos) => ({ i, pos }))
+      .sort((a, b) => {
+        const fa2 = (photos[a.i].aspect >= 1) === wantLand ? 0 : 1;
+        const fb2 = (photos[b.i].aspect >= 1) === wantLand ? 0 : 1;
+        return fa2 - fb2 || b.pos - a.pos;
+      });
+    const mineSet = new Set(byFit.slice(0, heroHolds).map((x) => x.i));
+    const mine = rest.filter((i) => mineSet.has(i));
+    onOther = rest.filter((i) => !mineSet.has(i));
+    const inner = restInner(split.rest, geo);
+    const bandBelow = split.rest.y > split.hero.y;
+    block(mine, inner, heroPage === 0 ? "start" : "end", split.rest.w < geo.pageW * 0.6 ? "center" : bandBelow ? "start" : "end", false);
+  } else {
+    // Negative space next to the hero gets a single accent line.
+    const hr = split.hero;
+    const pr = pageRect(heroPage);
+    const len = 0.3 * geo.pageW;
+    const outerX = heroPage === 0 ? pr.x + 0.07 * H : pr.x + pr.w - 0.07 * H - len;
+    if (hr.h < H * 0.8) {
+      const y = hr.y < 1 ? hr.y + hr.h + 0.07 * H : hr.y - 0.07 * H;
+      addLine(outerX, y, len);
+    } else if (pr.w - hr.w > 0.28 * geo.pageW) {
+      const free = heroPage === 0 ? { x0: hr.x + hr.w, x1: pr.x + pr.w - 0.03 * geo.W } : { x0: pr.x + 0.03 * geo.W, x1: hr.x };
+      const l2 = Math.min(len, (free.x1 - free.x0) * 0.6);
+      addLine(heroPage === 0 ? free.x0 + 0.04 * H : free.x1 - 0.04 * H - l2, H * 0.88, l2);
+    }
   }
 
   // The other page: an asymmetric block pushed toward one side, the rest negative space.
@@ -1065,8 +1128,8 @@ function layoutModern(ctx: Ctx): AlbumElement[] {
     addLine(full.x + (otherPage === 1 ? full.w - len : 0), H * 0.62, len);
   } else {
     const towardOuter = rng() < 0.5;
-    const wFrac = k === 1 ? 0.62 : k === 2 ? 0.8 : k <= 4 ? 0.9 : 1;
-    const hFrac = k === 1 ? 0.62 : k <= 3 ? 0.78 : 0.86;
+    const wFrac = k === 1 ? 0.66 : k === 2 ? 0.86 : k <= 4 ? 0.92 : 1;
+    const hFrac = k === 1 ? 0.66 : k <= 3 ? 0.84 : 0.88;
     const w = full.w * wFrac;
     const h = full.h * hFrac;
     const outerIsLeft = otherPage === 0;
@@ -1136,10 +1199,10 @@ export function layoutSpread(input: LayoutInput): LayoutOutput {
 type CoverStyle = { font: string; color: string; maxFs: number };
 
 const COVER_TYPE: Record<AutoStyleId, CoverStyle> = {
-  clean: { font: "assistant", color: "#2b2b2b", maxFs: 62 },
-  catalog: { font: "frank-ruhl-libre", color: "#1f1f1f", maxFs: 66 },
-  scribble: { font: "amatic-sc", color: "#3a3530", maxFs: 92 },
-  modern: { font: "bellefair", color: "#ffffff", maxFs: 84 },
+  clean: { font: "assistant", color: "#2b2b2b", maxFs: 78 },
+  catalog: { font: "frank-ruhl-libre", color: "#1f1f1f", maxFs: 84 },
+  scribble: { font: "amatic-sc", color: "#3a3530", maxFs: 96 },
+  modern: { font: "bellefair", color: "#ffffff", maxFs: 96 },
 };
 
 export function layoutCover(input: CoverInput): LayoutOutput {
