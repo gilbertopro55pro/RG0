@@ -1139,7 +1139,7 @@ function singleSpecs(ctx: Ctx, cfg: StyleCfg, hero: number, bc: number): Spec[] 
 //     ~0.7cm gaps, centred, 5-12% top/bottom margins, as large as the page allows. With the faded
 //     hero the grid lies over the faded strip (never over the unfaded picture), ~6.4% from the
 //     outer edge.
-// Spreads it can't lay out this way (a single page, more than 7 photos) use the general composer.
+// Spreads it can't lay out this way (a single page, more than 9 photos) use the general composer.
 // ---------------------------------------------------------------------------------------------
 
 type Cell = [number, number, number, number]; // column, row, column span, row span (grid units)
@@ -1164,6 +1164,13 @@ const CLEAN_BASE: Tpl[] = [
   { cols: 3, rows: 2, cells: [[0, 0, 1, 1], [1, 0, 1, 1], [2, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1], [2, 1, 1, 1]] },
   { cols: 2, rows: 3, cells: [[0, 0, 1, 1], [1, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1], [0, 2, 1, 1], [1, 2, 1, 1]] },
   { cols: 3, rows: 3, cells: [[0, 0, 2, 2], [2, 0, 1, 1], [2, 1, 1, 1], [0, 2, 1, 1], [1, 2, 1, 1], [2, 2, 1, 1]] },
+  // Busier pages (the per-page caps allow up to 20 photos): 7-8 tiles, still one tidy grid.
+  { cols: 2, rows: 4, cells: [[0, 0, 2, 1], [0, 1, 1, 1], [1, 1, 1, 1], [0, 2, 1, 1], [1, 2, 1, 1], [0, 3, 1, 1], [1, 3, 1, 1]] },
+  { cols: 4, rows: 2, cells: [[0, 0, 2, 1], [2, 0, 1, 1], [3, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1], [2, 1, 1, 1], [3, 1, 1, 1]] },
+  { cols: 3, rows: 3, cells: [[0, 0, 2, 1], [2, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1], [2, 1, 1, 1], [0, 2, 1, 1], [1, 2, 1, 1], [2, 2, 1, 1]] },
+  { cols: 3, rows: 3, cells: [[0, 0, 1, 2], [1, 0, 1, 1], [2, 0, 1, 1], [1, 1, 1, 1], [2, 1, 1, 1], [0, 2, 1, 1], [1, 2, 1, 1], [2, 2, 1, 1]] },
+  { cols: 2, rows: 4, cells: [[0, 0, 1, 1], [1, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1], [0, 2, 1, 1], [1, 2, 1, 1], [0, 3, 1, 1], [1, 3, 1, 1]] },
+  { cols: 4, rows: 2, cells: [[0, 0, 1, 1], [1, 0, 1, 1], [2, 0, 1, 1], [3, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1], [2, 1, 1, 1], [3, 1, 1, 1]] },
 ];
 
 // Every template with its mirror images, grouped by tile count.
@@ -1224,14 +1231,23 @@ function cleanGrid(ctx: Ctx, idxs: number[], box: Rect, g: number): { frames: Fr
         const score = (cw * ch) / (box.w * box.h) - (0.9 * crop) / idxs.length + 0.15 * Math.min(1, smallest / (0.04 * geo.W * geo.H));
         if (!best || score > best.score) best = { frames, bounds: { x: ox, y: oy, w: cw, h: ch }, score };
       }
-  return best;
+  if (best) return best;
+  // No template fits (typically a mix of portraits and landscapes on a busy page): justified rows in
+  // the same box — still one tidy block, just not from the template set.
+  const rel = clusterIn(ctx, idxs, box.w, box.h, g, false);
+  if (!rel) return null;
+  const ox = box.x + (box.w - rel.w) / 2;
+  const oy = box.y + (box.h - rel.h) / 2;
+  const frames: Frame[] = rel.rects.map((p) => ({ idx: p.idx, r: { x: p.r.x + ox, y: p.r.y + oy, w: p.r.w, h: p.r.h }, rot: 0 }));
+  if (frames.some((f) => area(f.r) < minArea || cropOf(photos[f.idx].aspect, f.r) > CLEAN_MAX_CROP)) return null;
+  return { frames, bounds: { x: ox, y: oy, w: rel.w, h: rel.h }, score: (rel.w * rel.h) / (box.w * box.h) - 0.2 };
 }
 
 function composeClean(ctx: Ctx): Cand | null {
   const { geo, photos, input } = ctx;
   const { W, H, pageW: pw } = geo;
   const n = photos.length;
-  if (!geo.double || n < 2 || n > 7) return null;
+  if (!geo.double || n < 2 || n > 9) return null;
   const hero = ctx.heroIdx ?? pickHero(photos);
   const others = range(0, n).filter((i) => i !== hero);
   const a = photos[hero].aspect;

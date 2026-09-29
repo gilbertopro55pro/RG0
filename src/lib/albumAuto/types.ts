@@ -59,9 +59,12 @@ export type AlbumPlan = { coverPhotoId: string | null; spreads: PlannedSpread[] 
 
 export type PlanOptions = {
   style: AutoStyleId;
-  // null = decide from the photo count. Otherwise the book aims for about this many spreads
-  // (it never repeats a photo; with too few photos it uses fewer spreads).
+  // The book's pages ("דפים"), COUNTING THE COVER when there is one (owner, 2026-09-29: "20 דפים" =
+  // 19 spreads + the cover). null = decide from the photo count, never more than 30 pages. Otherwise
+  // exactly this many at most (never a repeated photo; with too few photos it uses fewer).
   targetSpreads: number | null;
+  // Whether the book has a cover (it then takes one of the pages). Default true.
+  hasCover?: boolean;
 };
 
 // A photo as the layouts see it. faces: face boxes as fractions of the photo (0-1, x/y = top-left),
