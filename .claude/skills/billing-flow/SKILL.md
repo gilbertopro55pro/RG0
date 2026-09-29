@@ -124,6 +124,18 @@ Its `current_period_end` was corrected to 28.10 (owner approved). Since 2026-09-
 active account with a recurring has `current_period_end` more than 2 days in the past (a success
 would have moved it forward), once per period (`missed_renewal_alerted_for`, migration 0138).
 
+**2026-09-29, TBoog keeps being declined (Max SMS to the customer daily at 04:09):** one recurring
+only (no second channel), PayPlus retrying it every day. The owner deletes TBoog in PayPlus and
+calls the customer. `payplus_recurring_uid` on `146ad19b…` was cleared (owner approved; it was
+`ca82dc0c-602e-48f9-942c-052ed95586e5`). The `subscription-lifecycle` cron now has step 1b: an
+active account, not cancelling, with **no recurring** and `current_period_end` passed becomes
+`past_due`, so /billing shows "התשלום לא עבר" › עדכון אמצעי תשלום. Its checkout charges on the spot
+and starts a new recurring, and the webhook turns it active again. Step 2 (renewal reminder) now
+skips accounts with no recurring, since nothing renews them. Accounts with no recurring and no
+`current_period_end` (the test account, `c5a49746…`) are untouched. Watch out: a cleared uid
+means the webhook's "cancel the superseded recurring" can't catch the old one, so the recurring
+must really be deleted in PayPlus.
+
 **Receipt failure 2026-09-28 (first renewal receipt through the code):** account `78a97d91…`,
 renewal ₪50 (transaction `d2855d49…`), charged fine, but Finbot refused the חשבונית מס קבלה:
 "סכום הפריטים אינו תואם לסכום התקבולים". The line price is sent before VAT (Finbot's rule) and

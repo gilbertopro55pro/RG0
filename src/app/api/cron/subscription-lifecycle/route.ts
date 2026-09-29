@@ -38,6 +38,26 @@ export async function GET(request: NextRequest) {
     finalizedCount++;
   }
 
+  // 1b. An active account whose paid period ended with no PayPlus recurring left to renew it (its
+  // recurring was removed in PayPlus after repeated card declines, 2026-09-29) can never renew on
+  // its own. past_due sends it to /billing ("התשלום לא עבר" › עדכון אמצעי תשלום): a new checkout
+  // charges right away, starts a new recurring, and the webhook turns the account active again.
+  const { data: toPastDue } = await supabase
+    .from("photographers")
+    .select("id")
+    .eq("subscription_status", "active")
+    .eq("cancel_at_period_end", false)
+    .is("payplus_recurring_uid", null)
+    .not("current_period_end", "is", null)
+    .lte("current_period_end", now.toISOString())
+    .returns<{ id: string }[]>();
+
+  let pastDueCount = 0;
+  for (const photographer of toPastDue ?? []) {
+    await supabase.from("photographers").update({ subscription_status: "past_due" }).eq("id", photographer.id);
+    pastDueCount++;
+  }
+
   // 2. Renewal reminders — annual gets a month's notice, monthly a week's. Guarded by
   // renewal_reminder_sent_at, which the PayPlus webhook clears on every successful charge so
   // each new cycle gets its own fresh reminder instead of being silenced forever. Excludes
@@ -51,6 +71,8 @@ export async function GET(request: NextRequest) {
     .eq("subscription_status", "active")
     .is("renewal_reminder_sent_at", null)
     .is("pending_plan", null)
+    // No recurring means nothing renews automatically (step 1b handles the period end instead).
+    .not("payplus_recurring_uid", "is", null)
     .not("current_period_end", "is", null)
     .gt("current_period_end", now.toISOString())
     .returns<Photographer[]>();
@@ -307,6 +329,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     missedRenewalAlerted: missedAlerted,
     finalized: finalizedCount,
+    pastDue: pastDueCount,
     reminded: remindedCount,
     switched: switchedCount,
     trialReminded: trialRemindedCount,
