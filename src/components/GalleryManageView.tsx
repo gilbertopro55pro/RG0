@@ -33,6 +33,9 @@ import { IconGallery, IconTrash } from "@/components/icons/NavIcons";
 import { IconClose as IconAlbumClose, IconPalette, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck, IconRotateDevice } from "@/components/icons/AlbumIcons";
 import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor } from "@/components/AlbumSpreadCanvasEditor";
 import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAutoDesigner";
+import { layoutSpread } from "@/lib/albumAuto/layouts";
+import { AUTO_STYLES, type AutoStyleId, type LayoutPhoto, type OrnamentTab } from "@/lib/albumAuto/types";
+import { ALBUM_ORNAMENTS, ORNAMENT_TABS } from "@/lib/albumOrnaments";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
 import { isLightTextColor } from "@/lib/textColor";
 import {
@@ -141,6 +144,27 @@ function addDays(date: Date, days: number): Date {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
+}
+
+// Auto album design: bleed elements (a full half-page photo, a full cover photo) run to the page
+// edge on purpose, so they're left as laid out; everything else is pulled into the safe margin.
+function fitAutoElements(elements: AlbumElement[], inset: { x: number; y: number } | null, bleedIds: string[] = []): AlbumElement[] {
+  if (!inset) return elements;
+  const safeW = 100 - 2 * inset.x;
+  const safeH = 100 - 2 * inset.y;
+  if (safeW <= 0 || safeH <= 0) return elements;
+  const bleed = new Set(bleedIds);
+  return elements.map((el) =>
+    bleed.has(el.id)
+      ? el
+      : {
+          ...el,
+          xPct: inset.x + (el.xPct / 100) * safeW,
+          yPct: inset.y + (el.yPct / 100) * safeH,
+          widthPct: (el.widthPct / 100) * safeW,
+          ...(el.heightPct !== undefined ? { heightPct: (el.heightPct / 100) * safeH } : {}),
+        }
+  ) as AlbumElement[];
 }
 
 export default function GalleryManageView({
@@ -1125,7 +1149,7 @@ export default function GalleryManageView({
     setAutoDesignEventType(data?.event_type ?? null);
   };
 
-  const createAutoDesignedAlbum = async ({ size, cover, spreads }: AutoDesignResult) => {
+  const createAutoDesignedAlbum = async ({ size, style, cover, spreads }: AutoDesignResult) => {
     const { data: newAlbum, error: albumErr } = await supabase
       .from("gallery_albums")
       .insert({
@@ -1134,33 +1158,18 @@ export default function GalleryManageView({
         width_cm: size.width,
         height_cm: size.height,
         safe_margin_cm: size.margin,
+        auto_style: style,
       })
       .select()
       .single<GalleryAlbumRow>();
     if (albumErr || !newAlbum) throw new Error(albumErr?.message ?? "album");
     const favoritePool = photos.filter((p) => p.is_favorite);
     const fallbackPhotoId = (favoritePool.length > 0 ? favoritePool : photos)[0]?.id;
-    // Bleed elements (a full half-page photo, a full cover photo) run to the page edge on purpose,
-    // so they're left as laid out; everything else is pulled into the safe margin.
-    const fitElements = (elements: AlbumElement[], inset: { x: number; y: number } | null, bleedIds: string[] = []): AlbumElement[] => {
-      if (!inset) return elements;
-      const safeW = 100 - 2 * inset.x;
-      const safeH = 100 - 2 * inset.y;
-      if (safeW <= 0 || safeH <= 0) return elements;
-      const bleed = new Set(bleedIds);
-      return elements.map((el) => bleed.has(el.id) ? el : ({
-        ...el,
-        xPct: inset.x + (el.xPct / 100) * safeW,
-        yPct: inset.y + (el.yPct / 100) * safeH,
-        widthPct: (el.widthPct / 100) * safeW,
-        ...(el.heightPct !== undefined ? { heightPct: (el.heightPct / 100) * safeH } : {}),
-      })) as AlbumElement[];
-    };
     const firstPhotoId = (elements: AlbumElement[]) =>
       elements.find((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId)?.photoId ?? fallbackPhotoId;
     const rows: Record<string, unknown>[] = [];
     if (cover) {
-      const elements = fitElements(cover.elements, marginInsetPctFor({ width_cm: cover.widthCm, height_cm: cover.heightCm, safe_margin_cm: size.margin }), cover.bleedIds);
+      const elements = fitAutoElements(cover.elements, marginInsetPctFor({ width_cm: cover.widthCm, height_cm: cover.heightCm, safe_margin_cm: size.margin }), cover.bleedIds);
       rows.push({
         album_id: newAlbum.id,
         sort_order: 0,
@@ -1175,7 +1184,7 @@ export default function GalleryManageView({
     }
     const bookInset = marginInsetPctFor(newAlbum);
     for (const spread of spreads) {
-      const elements = fitElements(spread.elements, bookInset, spread.bleedIds);
+      const elements = fitAutoElements(spread.elements, bookInset, spread.bleedIds);
       rows.push({
         album_id: newAlbum.id,
         sort_order: rows.length,
@@ -1317,6 +1326,85 @@ export default function GalleryManageView({
     setAlbumSpreads(next);
     setDraggedSpreadId(null);
     await Promise.all(next.map((s, i) => supabase.from("gallery_album_spreads").update({ sort_order: i }).eq("id", s.id)));
+  };
+
+  // "עיצוב מחדש" (admin, with the auto designer): lays the same photos of one page out again in the
+  // album's auto style. Each click is a new variation — the hero rotates through the page's photos
+  // and the layout's seed moves on — and a variation identical to the current page is skipped, so
+  // the photographer can keep clicking until they like it.
+  const [redesigning, setRedesigning] = useState<string | null>(null);
+  const redesignCountRef = useRef(new Map<string, number>());
+  const redesignSpread = async (spread: GalleryAlbumSpreadRow, index: number) => {
+    if (!album || redesigning) return;
+    const photoEls = (spread.elements ?? []).filter((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId);
+    const ids = [...new Set(photoEls.map((el) => el.photoId as string))];
+    if (ids.length === 0) return;
+    setRedesigning(spread.id);
+    try {
+      const style: AutoStyleId = AUTO_STYLES.some((st) => st.id === album.auto_style) ? (album.auto_style as AutoStyleId) : "clean";
+      const faces = new Map<string, { x: number; y: number; width: number; height: number }[]>();
+      const { data: faceRows } = await supabase
+        .from("gallery_photo_faces")
+        .select("photo_id, box_x, box_y, box_width, box_height")
+        .in("photo_id", ids)
+        .returns<{ photo_id: string; box_x: number; box_y: number; box_width: number; box_height: number }[]>();
+      for (const r of faceRows ?? []) faces.set(r.photo_id, [...(faces.get(r.photo_id) ?? []), { x: r.box_x, y: r.box_y, width: r.box_width, height: r.box_height }]);
+      const layoutPhotos: LayoutPhoto[] = ids.map((id) => {
+        const p = photos.find((q) => q.id === id);
+        const aspect = p?.preview_aspect_ratio && p.preview_aspect_ratio > 0 ? p.preview_aspect_ratio : 1.5;
+        return { id, aspect, ...(faces.get(id)?.length ? { faces: faces.get(id) } : {}) };
+      });
+      let ornamentTabs: OrnamentTab[] | undefined;
+      if (style === "scribble") {
+        ornamentTabs = ORNAMENT_TABS.map((t) => ({ id: t.key, custom: false, items: ALBUM_ORNAMENTS.filter((o) => o.category === t.key).map((o) => o.id) }));
+        try {
+          const data = await fetchCustomOrnaments();
+          for (const t of data.tabs) ornamentTabs.push({ id: t.id, custom: true, items: data.ornaments.filter((o) => o.tab_id === t.id).map((o) => o.id) });
+        } catch {
+          // built-in tabs only
+        }
+      }
+      // Hero candidates: landscapes first (they bleed best), then the rest.
+      const heroes = [...layoutPhotos].sort((a, b) => Number(b.aspect > 1.05) - Number(a.aspect > 1.05)).map((p) => p.id);
+      const signature = (els: AlbumElement[]) =>
+        els
+          .filter((el): el is AlbumPhotoElement => el.type === "photo")
+          .map((el) => `${el.photoId}:${Math.round(el.xPct)}:${Math.round(el.yPct)}:${Math.round(el.widthPct)}:${Math.round(el.heightPct)}`)
+          .sort()
+          .join("|");
+      const inset = marginInsetPctFor(album);
+      const current = signature(spread.elements ?? []);
+      let next: { elements: AlbumElement[]; background?: { photoId: string; blur: number } } | null = null;
+      let count = redesignCountRef.current.get(spread.id) ?? 0;
+      for (let attempt = 0; attempt < 12 && !next; attempt++) {
+        count++;
+        const out = layoutSpread({
+          style,
+          photos: layoutPhotos,
+          heroId: heroes[count % heroes.length],
+          section: "event",
+          spreadIndex: index + count,
+          widthCm: album.width_cm,
+          heightCm: album.height_cm,
+          ornamentTabs,
+        });
+        const elements = fitAutoElements(out.elements, inset, out.bleedIds);
+        if (signature(elements) !== current || attempt === 11) next = { elements, background: out.background };
+      }
+      redesignCountRef.current.set(spread.id, count);
+      if (!next) return;
+      const patch = {
+        elements: next.elements,
+        layout: "custom" as const,
+        ...(next.background ? { background_photo_id: next.background.photoId, background_blur: next.background.blur } : {}),
+      };
+      setAlbumSpreads((prev) => prev.map((row) => (row.id === spread.id ? { ...row, ...patch } : row)));
+      await supabase.from("gallery_album_spreads").update(patch).eq("id", spread.id);
+      // Keep the page's rendered snapshot in step, same as leaving the editor does.
+      fetch(`/api/album-spreads/${spread.id}/render-preview`, { method: "POST" }).catch(() => {});
+    } finally {
+      setRedesigning(null);
+    }
   };
 
   // Swaps in a different photo for one slot of an existing spread without disturbing the other
@@ -5003,6 +5091,17 @@ export default function GalleryManageView({
                           >
                             <IconAlbumClose size={9} />
                           </button>
+                          {photographerEmail === ADMIN_EMAIL && spread.width_cm === null && (
+                            <button
+                              onClick={() => redesignSpread(spread, i)}
+                              disabled={redesigning !== null}
+                              className="absolute bottom-1 left-1 h-5 rounded-full bg-black/60 text-white px-1.5 flex items-center gap-1 text-[9px] font-semibold disabled:opacity-60"
+                              title="עיצוב מחדש של העמוד עם אותן התמונות. אפשר ללחוץ שוב עד שהעיצוב מתאים"
+                            >
+                              <span className={redesigning === spread.id ? "inline-block animate-spin" : "inline-block"}>↻</span>
+                              עיצוב מחדש
+                            </button>
+                          )}
                           {commentCount > 0 && (
                             <span className="absolute bottom-1 right-1 h-5 min-w-5 px-1 rounded-full bg-amber-deep text-white text-[9px] font-semibold flex items-center justify-center gap-0.5 pointer-events-none">
                               <IconChat size={9} />

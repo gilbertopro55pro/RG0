@@ -5,9 +5,11 @@ import { createClient } from "@/lib/supabase/client";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
-import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
+import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type FamilyCellId, type LayoutPhoto, type OrnamentTab, type PhotoFaces } from "@/lib/albumAuto/types";
 import { CELL_ORDER, cellLabel, countNames, detectEventKind, pickCellFaces, planAlbum } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
+import { ALBUM_ORNAMENTS, ORNAMENT_TABS } from "@/lib/albumOrnaments";
+import { fetchCustomOrnaments } from "@/lib/customOrnaments";
 import type { AlbumElement } from "@/lib/types";
 
 // Auto album design (admin only while it's being polished, 2026-09-29): the photographer picks the
@@ -31,6 +33,7 @@ type AlbumSize = { width: number; height: number; margin: number };
 
 export type AutoDesignResult = {
   size: AlbumSize;
+  style: AutoStyleId;
   // bleedIds: elements that run to the page edge on purpose; the parent must not fit them into
   // the safe margin (see LayoutOutput in lib/albumAuto/types.ts).
   cover: { widthCm: number; heightCm: number; elements: AlbumElement[]; bleedIds: string[] } | null;
@@ -46,9 +49,10 @@ type CellState = {
   error: string | null;
 };
 
-type Phase = "times" | "faces" | "plan" | "layout" | "save";
+type Phase = "cells" | "times" | "faces" | "plan" | "layout" | "save";
 
 const PHASES: { id: Phase; label: string }[] = [
+  { id: "cells", label: "מזהה פרצופים בתאים" },
   { id: "times", label: "קורא את שעות הצילום" },
   { id: "faces", label: "מזהה פרצופים" },
   { id: "plan", label: "מתכנן את האלבום" },
@@ -58,8 +62,9 @@ const PHASES: { id: Phase; label: string }[] = [
 
 // Share of the overall bar each phase fills (face detection is by far the slowest).
 const PHASE_SPAN: Record<Phase, [number, number]> = {
-  times: [0, 15],
-  faces: [15, 80],
+  cells: [0, 8],
+  times: [8, 20],
+  faces: [20, 80],
   plan: [80, 85],
   layout: [85, 90],
   save: [90, 100],
@@ -152,36 +157,14 @@ export default function AlbumAutoDesigner({
 
   const updateCell = (id: FamilyCellId, patch: Partial<CellState>) => setCells((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
 
-  // Choosing a photo only marks it; face detection runs from the "זיהוי פרצופים" button, for all
-  // the cells one after another (owner's request, 2026-09-29).
+  // Choosing a photo only marks it; the cells' faces are detected when the design starts, the
+  // first step of run() (owner's request, 2026-09-29: one button instead of a separate one).
   const choosePhoto = (cellId: FamilyCellId, photoId: string) => {
     setPickerFor(null);
     updateCell(cellId, { photoId, faces: null, detecting: false, error: null });
   };
 
-  const [detectingAll, setDetectingAll] = useState(false);
-  const detectAllCells = async () => {
-    if (detectingAll) return;
-    setDetectingAll(true);
-    for (const cellId of CELL_ORDER) {
-      const photoId = cells[cellId].photoId;
-      if (!photoId || cells[cellId].faces) continue;
-      updateCell(cellId, { detecting: true, error: null });
-      try {
-        const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${photoId}/image`);
-        setCells((prev) => (prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], faces, detecting: false } } : prev));
-      } catch {
-        setCells((prev) =>
-          prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], detecting: false, error: "לא הצלחנו לזהות פרצופים בתמונה הזו" } } : prev
-        );
-      }
-    }
-    setDetectingAll(false);
-  };
-
   const sizeValid = size.width > 0 && size.height > 0 && (coverMode === "none" || (coverSize.width > 0 && coverSize.height > 0));
-  const anyCellDetecting = detectingAll || CELL_ORDER.some((id) => cells[id].detecting);
-  const cellsAwaitingFaces = CELL_ORDER.filter((id) => cells[id].photoId && !cells[id].faces).length;
 
   const setProgress = (p: Phase, fraction: number, detail = "") => {
     const [from, to] = PHASE_SPAN[p];
@@ -202,6 +185,33 @@ export default function AlbumAutoDesigner({
     setRunning(true);
     setStep(3);
     try {
+      // (0) Faces in the cells' reference photos, one cell after another (already detected ones —
+      // from an earlier run — are kept). A cell whose detection fails is left out of the design.
+      const cellFaces = new Map<FamilyCellId, DetectedFace[]>();
+      const toDetect = CELL_ORDER.filter((id) => cells[id].photoId);
+      setProgress("cells", 0, toDetect.length ? `0 מתוך ${toDetect.length} תאים` : "");
+      for (let i = 0; i < toDetect.length; i++) {
+        checkCancel();
+        const cellId = toDetect[i];
+        const cell = cells[cellId];
+        const photoId = cell.photoId as string;
+        if (cell.faces) cellFaces.set(cellId, cell.faces);
+        else {
+          updateCell(cellId, { detecting: true, error: null });
+          try {
+            const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${photoId}/image`);
+            cellFaces.set(cellId, faces);
+            setCells((prev) => (prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], faces, detecting: false } } : prev));
+          } catch {
+            setCells((prev) =>
+              prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], detecting: false, error: "לא הצלחנו לזהות פרצופים בתמונה הזו" } } : prev
+            );
+          }
+        }
+        setProgress("cells", (i + 1) / toDetect.length, `${i + 1} מתוך ${toDetect.length} תאים`);
+      }
+      checkCancel();
+
       // (a) Shooting times from EXIF — the route reads a batch per call until nothing is left.
       setProgress("times", 0);
       let checkedSoFar = 0;
@@ -237,9 +247,10 @@ export default function AlbumAutoDesigner({
       const cellPeople: CellPeople[] = [];
       for (const id of CELL_ORDER) {
         const cell = cells[id];
-        if (!cell.photoId || !cell.faces || cell.faces.length === 0) continue;
+        const faces = cellFaces.get(id);
+        if (!cell.photoId || !faces || faces.length === 0) continue;
         const descriptors = pickCellFaces(
-          cell.faces.map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })),
+          faces.map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })),
           cell.names
         ).filter((d) => d.length > 0);
         if (descriptors.length > 0) cellPeople.push({ id, descriptors });
@@ -325,6 +336,18 @@ export default function AlbumAutoDesigner({
 
       // (d) The layouts.
       setProgress("layout", 0);
+      // Scribble decorates every page from the editor's ornament tabs: the built-in ones plus the
+      // photographer's uploaded tabs (best effort — without them, the built-in tabs only).
+      let ornamentTabs: OrnamentTab[] | undefined;
+      if (style === "scribble") {
+        ornamentTabs = ORNAMENT_TABS.map((t) => ({ id: t.key, custom: false, items: ALBUM_ORNAMENTS.filter((o) => o.category === t.key).map((o) => o.id) }));
+        try {
+          const { tabs, ornaments } = await fetchCustomOrnaments();
+          for (const t of tabs) ornamentTabs.push({ id: t.id, custom: true, items: ornaments.filter((o) => o.tab_id === t.id).map((o) => o.id) });
+        } catch {
+          // uploaded tabs unavailable: built-in only
+        }
+      }
       await nextFrame();
       const aspectOf = new Map(autoPhotos.map((p) => [p.id, p.aspect]));
       const layoutPhoto = (id: string): LayoutPhoto => ({ id, aspect: aspectOf.get(id) ?? 1.5, faces: boxesByPhoto.get(id) });
@@ -337,6 +360,7 @@ export default function AlbumAutoDesigner({
           spreadIndex: i,
           widthCm: size.width,
           heightCm: size.height,
+          ornamentTabs,
         });
         return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...(out.background ? { background: out.background } : {}) };
       });
@@ -362,7 +386,7 @@ export default function AlbumAutoDesigner({
 
       // (e) Save — the parent creates the album and opens it (this component unmounts then).
       setProgress("save", 0.3);
-      await onCreate({ size, cover, spreads });
+      await onCreate({ size, style, cover, spreads });
       setProgress("save", 1);
     } catch (e) {
       if (e instanceof CancelledError) {
@@ -386,17 +410,17 @@ export default function AlbumAutoDesigner({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-line bg-white p-3.5">
+      <div className="rounded-xl border-2 border-amber bg-amber-bg p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-sm font-semibold">עיצוב אוטומטי של כל האלבום</p>
-          <span className="text-[11px] rounded-full px-2.5 py-1 bg-chip text-ink-soft">זמין כרגע רק בחשבון האדמין, עד להשלמת הליטוש</span>
+          <p className="text-base font-bold text-amber-deep">עיצוב אוטומטי של כל האלבום</p>
+          <span className="text-[11px] rounded-full px-2.5 py-1 bg-white/70 text-ink-soft">זמין כרגע רק בחשבון האדמין, עד להשלמת הליטוש</span>
         </div>
         <div className="flex items-center gap-1.5 mt-3" aria-hidden>
           {[1, 2, 3].map((n) => (
-            <div key={n} className={`h-1 flex-1 rounded-full ${step >= n ? "bg-ink" : "bg-chip"}`} />
+            <div key={n} className={`h-1.5 flex-1 rounded-full ${step >= n ? "bg-amber-deep" : "bg-white/70"}`} />
           ))}
         </div>
-        <p className="text-xs text-ink-soft mt-2">
+        <p className="text-xs text-ink mt-2">
           {step === 1 && "שלב 1 מתוך 3: מידות וסגנון"}
           {step === 2 && "שלב 2 מתוך 3: המשפחה"}
           {step === 3 && "שלב 3 מתוך 3: עיצוב"}
@@ -405,85 +429,88 @@ export default function AlbumAutoDesigner({
 
       {step === 1 && (
         <>
-          <section className="rounded-lg border border-line bg-white p-3.5 space-y-3">
-            <p className="text-sm font-semibold">מידות האלבום (ס״מ)</p>
-            <div className="flex items-end gap-2 flex-wrap">
-              <label className="block">
-                <span className="block text-xs text-ink-soft mb-1.5">מידה נפוצה</span>
-                <select
-                  value={sizePresets.find((p) => p.width === size.width && p.height === size.height)?.label ?? ""}
-                  onChange={(e) => {
-                    const preset = sizePresets.find((p) => p.label === e.target.value);
-                    if (preset) setAlbumSize({ width: preset.width, height: preset.height, margin: preset.margin });
-                  }}
-                  className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white min-w-[110px]"
-                >
-                  <option value="">בחירה...</option>
-                  {sizePresets.map((p) => (
-                    <option key={p.label} value={p.label}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <NumberField label="רוחב" value={size.width} onChange={(v) => setAlbumSize({ ...size, width: v })} />
-              <NumberField label="גובה" value={size.height} onChange={(v) => setAlbumSize({ ...size, height: v })} />
-              <NumberField label="שוליים" value={size.margin} step={0.1} min={0} onChange={(v) => setSize({ ...size, margin: v })} />
+          {/* One section: the album's size on the right (first in RTL), the cover's on the left. */}
+          <section className="rounded-lg border border-line bg-white p-3.5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-3 min-w-0">
+              <p className="text-sm font-semibold">מידות האלבום (ס״מ)</p>
+              <div className="flex items-end gap-2 flex-wrap">
+                <label className="block">
+                  <span className="block text-xs text-ink-soft mb-1.5">מידה נפוצה</span>
+                  <select
+                    value={sizePresets.find((p) => p.width === size.width && p.height === size.height)?.label ?? ""}
+                    onChange={(e) => {
+                      const preset = sizePresets.find((p) => p.label === e.target.value);
+                      if (preset) setAlbumSize({ width: preset.width, height: preset.height, margin: preset.margin });
+                    }}
+                    className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white min-w-[110px]"
+                  >
+                    <option value="">בחירה...</option>
+                    {sizePresets.map((p) => (
+                      <option key={p.label} value={p.label}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <NumberField label="רוחב" value={size.width} onChange={(v) => setAlbumSize({ ...size, width: v })} />
+                <NumberField label="גובה" value={size.height} onChange={(v) => setAlbumSize({ ...size, height: v })} />
+                <NumberField label="שוליים" value={size.margin} step={0.1} min={0} onChange={(v) => setSize({ ...size, margin: v })} />
+              </div>
             </div>
-          </section>
 
-          <section className="rounded-lg border border-line bg-white p-3.5 space-y-3">
-            <p className="text-sm font-semibold">מידות הכריכה (ס״מ)</p>
-            <div className="flex items-end gap-2 flex-wrap">
-              <label className="block">
-                <span className="block text-xs text-ink-soft mb-1.5">מידה</span>
-                <select
-                  value={
-                    coverMode === "none"
-                      ? "none"
-                      : (coverPresets.find((p) => p.width === coverSize.width && p.height === coverSize.height)?.label ?? "")
-                  }
-                  onChange={(e) => {
-                    setCoverTouched(true);
-                    if (e.target.value === "none") {
-                      setCoverMode("none");
-                      return;
+            <div className="space-y-3 min-w-0 border-t border-line pt-4 md:border-t-0 md:pt-0 md:border-s md:ps-4">
+              <p className="text-sm font-semibold">מידות הכריכה (ס״מ)</p>
+              <div className="flex items-end gap-2 flex-wrap">
+                <label className="block">
+                  <span className="block text-xs text-ink-soft mb-1.5">מידה</span>
+                  <select
+                    value={
+                      coverMode === "none"
+                        ? "none"
+                        : (coverPresets.find((p) => p.width === coverSize.width && p.height === coverSize.height)?.label ?? "")
                     }
-                    setCoverMode("on");
-                    const preset = coverPresets.find((p) => p.label === e.target.value);
-                    if (preset) setCoverSize({ width: preset.width, height: preset.height });
-                  }}
-                  className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white min-w-[110px] max-w-full"
-                >
-                  <option value="">מידה אחרת</option>
-                  {coverPresets.map((p) => (
-                    <option key={p.label} value={p.label}>
-                      {p.label}
-                    </option>
-                  ))}
-                  <option value="none">בלי כריכה</option>
-                </select>
-              </label>
-              {coverMode === "on" && (
-                <>
-                  <NumberField
-                    label="רוחב"
-                    value={coverSize.width}
-                    onChange={(v) => {
+                    onChange={(e) => {
                       setCoverTouched(true);
-                      setCoverSize({ ...coverSize, width: v });
+                      if (e.target.value === "none") {
+                        setCoverMode("none");
+                        return;
+                      }
+                      setCoverMode("on");
+                      const preset = coverPresets.find((p) => p.label === e.target.value);
+                      if (preset) setCoverSize({ width: preset.width, height: preset.height });
                     }}
-                  />
-                  <NumberField
-                    label="גובה"
-                    value={coverSize.height}
-                    onChange={(v) => {
-                      setCoverTouched(true);
-                      setCoverSize({ ...coverSize, height: v });
-                    }}
-                  />
-                </>
-              )}
+                    className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white min-w-[110px] max-w-full"
+                  >
+                    <option value="">מידה אחרת</option>
+                    {coverPresets.map((p) => (
+                      <option key={p.label} value={p.label}>
+                        {p.label}
+                      </option>
+                    ))}
+                    <option value="none">בלי כריכה</option>
+                  </select>
+                </label>
+                {coverMode === "on" && (
+                  <>
+                    <NumberField
+                      label="רוחב"
+                      value={coverSize.width}
+                      onChange={(v) => {
+                        setCoverTouched(true);
+                        setCoverSize({ ...coverSize, width: v });
+                      }}
+                    />
+                    <NumberField
+                      label="גובה"
+                      value={coverSize.height}
+                      onChange={(v) => {
+                        setCoverTouched(true);
+                        setCoverSize({ ...coverSize, height: v });
+                      }}
+                    />
+                  </>
+                )}
+              </div>
             </div>
           </section>
 
@@ -670,30 +697,19 @@ export default function AlbumAutoDesigner({
             })}
           </div>
           {filledCells > 0 && (
-            <div className="rounded-lg bg-chip p-3 space-y-2">
-              <p className="text-xs text-ink-soft leading-relaxed">
-                אחרי שבחרתם תמונות לתאים, לחצו על זיהוי פרצופים. הזיהוי רץ על כל התאים אחד אחרי השני.
-                {cellsAwaitingFaces > 0 && !anyCellDetecting ? ` ${cellsAwaitingFaces === 1 ? "תא אחד עוד לא זוהה" : `${cellsAwaitingFaces} תאים עוד לא זוהו`}, ותא בלי זיהוי לא ישמש בעיצוב.` : ""}
-              </p>
-              <button
-                type="button"
-                onClick={detectAllCells}
-                disabled={anyCellDetecting || cellsAwaitingFaces === 0}
-                className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-60"
-              >
-                {anyCellDetecting ? "מזהה פרצופים..." : cellsAwaitingFaces === 0 ? "הפרצופים זוהו בכל התאים" : "זיהוי פרצופים"}
-              </button>
-            </div>
+            <p className="rounded-lg bg-chip p-3 text-xs text-ink-soft leading-relaxed">
+              הפרצופים בתאים מזוהים אוטומטית בשלב הראשון של העיצוב, תא אחרי תא.
+            </p>
           )}
           {runError && <p className="text-xs text-rose">{runError}</p>}
           <div className="flex gap-2">
             <button
               type="button"
               onClick={run}
-              disabled={anyCellDetecting || running}
+              disabled={running}
               className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
             >
-              {anyCellDetecting ? "מזהה פרצופים..." : filledCells === 0 ? "התחלת עיצוב (בלי תאי משפחה)" : "התחלת עיצוב"}
+              {filledCells === 0 ? "התחלת עיצוב (בלי תאי משפחה)" : "התחלת עיצוב"}
             </button>
             <button type="button" onClick={() => setStep(1)} className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
               חזרה
@@ -789,7 +805,7 @@ function FaceHint({ cell }: { cell: CellState }) {
   if (!cell.photoId) return null;
   if (cell.detecting) return <p className="text-[11px] text-ink-soft">מזהה פרצופים...</p>;
   if (cell.error) return <p className="text-[11px] text-rose">{cell.error}</p>;
-  if (!cell.faces) return <p className="text-[11px] text-ink-soft">ממתין לזיהוי פרצופים</p>;
+  if (!cell.faces) return <p className="text-[11px] text-ink-soft">הפרצופים יזוהו בתחילת העיצוב</p>;
   const found = cell.faces.length;
   if (found === 0) return <p className="text-[11px] text-rose">לא זוהו פרצופים בתמונה הזו, כדאי לבחור תמונה אחרת</p>;
   const names = countNames(cell.names);

@@ -817,6 +817,8 @@ export type GalleryAlbumRow = {
   safe_margin_cm: number;
   approved_at: string | null;
   created_at: string;
+  // Auto album design: the style it was designed in (lib/albumAuto AutoStyleId), null otherwise.
+  auto_style?: string | null;
 };
 
 export type GalleryAlbumSpreadRow = {

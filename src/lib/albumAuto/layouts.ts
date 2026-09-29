@@ -1,6 +1,9 @@
 import type { AlbumElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement } from "@/lib/types";
 import { textHeightPctForFontSize } from "@/lib/albumTextSizing";
-import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput, LayoutPhoto } from "./types";
+import { computePhotoFraming } from "@/lib/albumRender";
+import { ALBUM_ORNAMENTS, ORNAMENT_TABS } from "@/lib/albumOrnaments";
+import type { AlbumOrnamentElement } from "@/lib/types";
+import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput, LayoutPhoto, OrnamentTab } from "./types";
 
 // The layout engine of the auto album designer (see types.ts for the contract). Pure and
 // deterministic: the same input always gives the same spread; variety between consecutive spreads
@@ -1474,14 +1477,119 @@ export function layoutSpread(input: LayoutInput): LayoutOutput {
     ctx.fixedFocal.clear();
   }
   const out = finalizeSpread(ctx, complete ? elements : fallbackLayout(ctx));
-  // Clean style (owner, 2026-09-29): every spread (the cover aside) has a background — its hero,
+  if (input.style === "scribble") out.elements.push(...scribbleOrnaments(ctx, out.elements));
+  // Clean and catalog (owner, 2026-09-29): every spread (the cover aside) has a background — its hero,
   // blurred 45%, so the faded hero melts into a soft copy of itself and the white around the grid
   // takes the page's colours.
-  if (input.style === "clean") out.background = { photoId: ctx.photos[ctx.heroIdx ?? pickHero(ctx.photos)].id, blur: CLEAN_BACKGROUND_BLUR };
+  if (input.style === "clean" || input.style === "catalog") out.background = { photoId: ctx.photos[ctx.heroIdx ?? pickHero(ctx.photos)].id, blur: CLEAN_BACKGROUND_BLUR };
   return out;
 }
 
 const CLEAN_BACKGROUND_BLUR = 45;
+
+// ---------------------------------------------------------------------------------------------
+// Scribble ornaments (owner, 2026-09-29): an ornament on every page (each half of a double spread)
+// from the editor's ornament libraries. Over the book every tab is used — spread i takes its
+// ornaments from tab i mod T — but only some of each tab's items (a seeded pick). An ornament sits
+// on white paper next to the photos when there's room, else over a bleeding photo away from its
+// faces; never over a framed photo, never across the fold.
+// ---------------------------------------------------------------------------------------------
+
+const DEFAULT_ORNAMENT_TABS: OrnamentTab[] = ORNAMENT_TABS.map((t) => ({
+  id: t.key,
+  custom: false,
+  items: ALBUM_ORNAMENTS.filter((o) => o.category === t.key).map((o) => o.id),
+}));
+const ORNAMENT_INK = "#6b5a4a"; // on paper: the scribble cover's warm brown family
+const ORNAMENT_ON_PHOTO = "#ffffff";
+
+function scribbleOrnaments(ctx: Ctx, els: AlbumElement[]): AlbumOrnamentElement[] {
+  const { geo, input } = ctx;
+  const { W, H } = geo;
+  const tabs = (input.ornamentTabs && input.ornamentTabs.length ? input.ornamentTabs : DEFAULT_ORNAMENT_TABS).filter((t) => t.items.length > 0);
+  if (!tabs.length) return [];
+  const tab = tabs[input.spreadIndex % tabs.length];
+  const photos = els.filter((e): e is AlbumPhotoElement => e.type === "photo");
+  const cm = (e: { xPct: number; yPct: number; widthPct: number; heightPct: number }): Rect => ({ x: (e.xPct / 100) * W, y: (e.yPct / 100) * H, w: (e.widthPct / 100) * W, h: (e.heightPct / 100) * H });
+  // Every photo's faces are off limits (padded); a framed photo also blocks its middle — an
+  // ornament may lap over its corner or edge, scrapbook style, but not cover the picture.
+  const blocked: Rect[] = [];
+  const photoRects: Rect[] = [];
+  for (const e of photos) {
+    const r = cm(e);
+    photoRects.push(r);
+    const p = ctx.photos.find((q) => q.id === e.photoId);
+    const f = computePhotoFraming(p?.aspect ?? 1.5, r.w / r.h, e.zoom ?? 100, e.focalX ?? 50, e.focalY ?? 50);
+    const faces = ctx.faces.get(e.photoId ?? "") ?? [];
+    for (const fb of faces.length ? faces : [ASSUMED_FACES]) {
+      const fx = r.x + ((f.leftPct + fb.x * f.widthPct) / 100) * r.w;
+      const fy = r.y + ((f.topPct + fb.y * f.heightPct) / 100) * r.h;
+      const fw = (fb.width * f.widthPct * r.w) / 100;
+      const fh = (fb.height * f.heightPct * r.h) / 100;
+      blocked.push({ x: fx - 0.4 * fw, y: fy - 0.5 * fh, w: fw * 1.8, h: fh * 2.2 });
+    }
+    if (!ctx.bleed.has(e.id)) blocked.push(inset(r, 0.3 * r.w, 0.3 * r.h));
+  }
+  const hit = (a: Rect, b: Rect) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  const corners = photos.filter((e) => !ctx.bleed.has(e.id)).flatMap((e) => {
+    const r = cm(e);
+    return [
+      [r.x, r.y],
+      [r.x + r.w, r.y],
+      [r.x, r.y + r.h],
+      [r.x + r.w, r.y + r.h],
+    ];
+  });
+  const pages = geo.double ? [FIRST, SECOND] : [0];
+  const out: AlbumOrnamentElement[] = [];
+  const used = new Set<string>();
+  pages.forEach((page, k) => {
+    const px0 = geo.double ? page * geo.pageW : 0;
+    const pw = geo.pageW;
+    const gut = geo.double ? 0.03 * W : 0;
+    const m = 0.045 * Math.min(W, H);
+    let best = null as { r: Rect; onPhoto: boolean; score: number } | null;
+    for (const size of [0.2 * H, 0.16 * H, 0.12 * H]) {
+      const x0 = px0 + (page === 0 || !geo.double ? m : gut);
+      const x1 = px0 + pw - (page === 1 || !geo.double ? m : gut) - size;
+      const y0 = m;
+      const y1 = H - m - size;
+      for (let gy = 0; gy <= 10; gy++)
+        for (let gx = 0; gx <= 10; gx++) {
+          const r = { x: x0 + ((x1 - x0) * gx) / 10, y: y0 + ((y1 - y0) * gy) / 10, w: size, h: size };
+          if (x1 < x0 || y1 < y0) continue;
+          if (blocked.some((b) => hit(r, b)) || out.some((o) => hit(r, cm(o)))) continue;
+          const covered = unionArea(photoRects.filter((q) => hit(r, q)).map((q) => ({ x: Math.max(q.x, r.x), y: Math.max(q.y, r.y), w: Math.min(q.x + q.w, r.x + r.w) - Math.max(q.x, r.x), h: Math.min(q.y + q.h, r.y + r.h) - Math.max(q.y, r.y) })), W, H) / (size * size);
+          const onPhoto = covered > 0.5;
+          const cx = r.x + size / 2;
+          const cy = r.y + size / 2;
+          const near = corners.length ? Math.min(...corners.map(([x, y]) => Math.hypot(x - cx, y - cy))) : H;
+          // Mostly on paper and tucked against a photo's corner beats floating or sitting on a photo.
+          const score = 2 * (1 - covered) + Math.max(0, 1 - near / (0.25 * H)) + size / H + (hashString(`${input.spreadIndex}|${k}|${gx}|${gy}`) % 100) / 1000;
+          if (!best || score > best.score) best = { r, onPhoto, score };
+        }
+      if (best && best.score >= 2.4) break;
+    }
+    if (!best) return;
+    // A seeded item of the spread's tab, different on the two pages.
+    let pick = tab.items[hashString(`${input.spreadIndex}|${k}|orn`) % tab.items.length];
+    for (let t = 1; used.has(pick) && t < tab.items.length; t++) pick = tab.items[(hashString(`${input.spreadIndex}|${k}|orn`) + t) % tab.items.length];
+    used.add(pick);
+    const rot = Math.round((((hashString(`${input.spreadIndex}|${k}|rot`) % 1000) / 1000) * 24 - 12) * 10) / 10;
+    out.push({
+      id: `${ctx.prefix}-orn-${k}`,
+      type: "ornament",
+      ...(tab.custom ? { customOrnamentId: pick } : { ornamentId: pick, color: best.onPhoto ? ORNAMENT_ON_PHOTO : ORNAMENT_INK }),
+      xPct: r3((best.r.x / W) * 100),
+      yPct: r3((best.r.y / H) * 100),
+      widthPct: r3((best.r.w / W) * 100),
+      heightPct: r3((best.r.h / H) * 100),
+      rotation: rot,
+      opacity: 100,
+    });
+  });
+  return out;
+}
 
 type CoverStyle = { font: string; color: string; maxFs: number };
 
