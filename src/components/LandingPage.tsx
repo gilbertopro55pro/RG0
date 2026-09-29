@@ -187,9 +187,9 @@ export default function LandingPage() {
               ואני חוזר לצלם.
             </blockquote>
             <figcaption className="flex items-center gap-3.5 text-base lg:text-lg text-[var(--l-on-navy-soft)]">
-              {/* Phones: a small portrait next to the name. Desktop shows the large one beside the quote. */}
+              {/* Phones: the whole photo, small, next to the name (owner: not just the face). Desktop shows the large one beside the quote. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/landing/founder-face.jpg" alt="" className="lg:hidden w-[72px] h-[72px] object-cover rounded-[2px] border border-[var(--l-navy-border)]" />
+              <img src="/landing/founder.jpg" alt="" className="lg:hidden w-[62px] h-[72px] object-cover rounded-[2px] border border-[var(--l-navy-border)]" />
               <span>רועי גלברט, צלם אירועים ומייסד גילברטו</span>
             </figcaption>
           </figure>
