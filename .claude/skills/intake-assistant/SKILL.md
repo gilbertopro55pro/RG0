@@ -201,6 +201,11 @@ from bot_conversations c left join leads l on l.id = c.lead_id
 where c.photographer_id = '<id>' and c.channel = 'web' order by c.created_at desc limit 5;
 ```
 
+**Hebrew-only greetings are enforced in code too (2026-09-29):** the prompt already said "Hebrew
+letters only, even for מזל טוב", yet a live reply opened "mazal tov! מזל טוב :)". `hebrewGreetings`
+turns Latin mazal tov / shalom / toda / behatzlacha into Hebrew and drops a back-to-back repeat, on
+every text block before it's stored, so the lead's conversation and PDF match.
+
 ## Diagnosis
 
 - **"The chat doesn't answer":** `ANTHROPIC_API_KEY` in Vercel. Engine errors are logged as

@@ -482,6 +482,26 @@ async function runTool(
   return JSON.stringify({ error: `כלי לא מוכר: ${name}` });
 }
 
+// The prompt says "Hebrew letters only, even for מזל טוב", and the model still opened a reply with
+// "mazal tov! מזל טוב :)" (live, 2026-09-29). Greetings in Latin letters become Hebrew, and a
+// greeting that then repeats back-to-back is kept once. Applied to the stored message too, so the
+// lead's conversation view and its PDF match what the client saw.
+const LATIN_GREETINGS: [RegExp, string][] = [
+  [/\bmaz[ae]l\s+tov\b/gi, "מזל טוב"],
+  [/\bb[e']?\s?hatzlach[ae]\b/gi, "בהצלחה"],
+  [/\btoda\s+raba\b/gi, "תודה רבה"],
+  [/\btoda\b/gi, "תודה"],
+  [/\bshalom\b/gi, "שלום"],
+];
+export function hebrewGreetings(text: string): string {
+  let out = text;
+  for (const [re, he] of LATIN_GREETINGS) out = out.replace(re, he);
+  for (const he of new Set(LATIN_GREETINGS.map(([, h]) => h))) {
+    out = out.replace(new RegExp(`${he}[!.,]?\\s+(?=${he})`, "g"), "");
+  }
+  return out;
+}
+
 // Runs one client message through the model (with its tool rounds) and returns the reply.
 // Mutates `conv` (messages, collected, state, lead_id); the caller persists it.
 export async function runIntakeTurn(
@@ -527,6 +547,7 @@ export async function runIntakeTurn(
     add("cache_read", u.cache_read_input_tokens);
     add("cache_write", u.cache_creation_input_tokens);
     add("calls", 1);
+    for (const b of response.content) if (b.type === "text") b.text = hebrewGreetings(b.text);
     messages.push({ role: "assistant", content: response.content });
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
