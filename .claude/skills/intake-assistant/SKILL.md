@@ -113,6 +113,16 @@ builds the same PDF (`conversationPdf`), uploads it to the `price-quotes` bucket
 signed link + message; the button opens wa.me to the client's number with it (window opened on the
 tap, before the fetch, so it isn't blocked as a popup).
 
+**Lead retention (2026-09-29, owner's decision, migration 0141):** every lead (not only the
+assistant's) that isn't converted to an event and had no activity for 13 days moves to the archive
+on day 14, and is deleted for good 14 days later (`lib/leadRetention.ts`, run daily by the
+gallery-lifecycle cron). Activity = any update to the lead (DB trigger `leads_touch_activity` bumps
+`last_activity_at` and takes it out of the archive; archiving itself doesn't count). Existing leads
+started their clock on 2026-09-29. The archive (`LeadsView`, "ארכיון (N)") offers "המרה לאירוע" and
+"מחיקה לצמיתות"; a permanent delete (manual or automatic) also deletes the assistant conversation.
+A returning client's archived lead is reused and comes back (`upsertLead` clears `archived_at`).
+Follow-up reminders skip archived leads.
+
 ## On the landing page (2026-09-28)
 
 Section "עוזר פניות חכם" (`#assistant` in `LandingPage.tsx`): a real recorded conversation

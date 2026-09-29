@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type { LeadStatus } from "@/lib/types";
 import { cancelLeadFollowUps } from "@/lib/leadFollowUp";
 
@@ -67,9 +68,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
   }
 
+  const { data: lead } = await supabase.from("leads").select("bot_conversation_id").eq("id", leadId).maybeSingle<{ bot_conversation_id: string | null }>();
   const { error } = await supabase.from("leads").delete().eq("id", leadId);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  // The assistant conversation holds the client's details too; it goes with the lead (same as the
+  // automatic purge in lib/leadRetention.ts). Service role, scoped to this photographer.
+  if (lead?.bot_conversation_id) {
+    await createServiceRoleClient().from("bot_conversations").delete().eq("id", lead.bot_conversation_id).eq("photographer_id", user.id);
   }
 
   return NextResponse.json({ ok: true });

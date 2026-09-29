@@ -249,6 +249,8 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
         // The photographer's own notes on a lead they added stay untouched.
         ...(existing.source === "assistant" && row.notes ? { notes: row.notes } : {}),
         ...(complete ? { needs_details: false } : {}),
+        // A returning client's archived lead comes back to the active list (lib/leadRetention.ts).
+        archived_at: null,
       })
       .eq("id", existing.id);
     return existing.id;

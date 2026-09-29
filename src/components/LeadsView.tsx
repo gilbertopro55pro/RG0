@@ -13,6 +13,8 @@ import { IconClose } from "@/components/icons/AlbumIcons";
 import BackLink from "@/components/BackLink";
 import RowMenu from "@/components/RowMenu";
 import { sourceLabel } from "@/lib/leadSource";
+import { daysUntilPurge } from "@/lib/leadRetention";
+import { createClient } from "@/lib/supabase/client";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
@@ -38,12 +40,15 @@ const STATUS_COLORS: Record<LeadStatus, { bg: string; text: string }> = {
 
 export default function LeadsView({
   initialLeads,
+  archivedLeads,
   customPackages: initialCustomPackages,
   eventTypes: initialEventTypes,
   prices: initialPrices,
   isAdmin,
 }: {
   initialLeads: LeadRow[];
+  // Idle leads the daily retention job moved out of the list (lib/leadRetention.ts).
+  archivedLeads: LeadRow[];
   customPackages: CustomPackageRow[];
   eventTypes: EventTypeRow[];
   prices: PackagePriceRow[];
@@ -62,6 +67,43 @@ export default function LeadsView({
   const [showAdd, setShowAdd] = useState(false);
   const [quoteFormLeadId, setQuoteFormLeadId] = useState<string | null>(null);
   const [convertLead, setConvertLead] = useState<LeadRow | null>(null);
+  const [archived, setArchived] = useState(archivedLeads);
+  const [showArchive, setShowArchive] = useState(false);
+  // Archived lead whose "delete for good" is waiting for the second tap, and a failed delete's message.
+  const [purgeConfirmId, setPurgeConfirmId] = useState<string | null>(null);
+  const [purgingId, setPurgingId] = useState<string | null>(null);
+  const [purgeError, setPurgeError] = useState<{ id: string; message: string } | null>(null);
+
+  const purgeArchivedLead = async (id: string) => {
+    setPurgingId(id);
+    setPurgeError(null);
+    const res = await fetch(`/api/leads/${id}`, { method: "DELETE" }).catch(() => null);
+    setPurgingId(null);
+    if (!res?.ok) {
+      const data = await res?.json().catch(() => null);
+      setPurgeError({ id, message: data?.error ?? "המחיקה נכשלה, נסו שוב" });
+      return;
+    }
+    setPurgeConfirmId(null);
+    setArchived((prev) => prev.filter((l) => l.id !== id));
+  };
+
+  // NewEventModal has no success callback (it navigates to the new event when finished). If it was
+  // closed after the event was already created from an archived lead, the DB trigger has cleared
+  // archived_at; re-read the lead and move it back to the active list as converted.
+  const closeConvert = async () => {
+    const lead = convertLead;
+    setConvertLead(null);
+    if (!lead?.archived_at) return;
+    const { data } = await createClient()
+      .from("leads")
+      .select("status, converted_event_id, archived_at, last_activity_at")
+      .eq("id", lead.id)
+      .maybeSingle<Pick<LeadRow, "status" | "converted_event_id" | "archived_at" | "last_activity_at">>();
+    if (!data?.converted_event_id) return;
+    setArchived((prev) => prev.filter((l) => l.id !== lead.id));
+    setLeads((prev) => [{ ...lead, ...data, archived_at: null }, ...prev.filter((l) => l.id !== lead.id)]);
+  };
 
   const updateLead = (id: string, patch: Partial<LeadRow>) => {
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
@@ -251,6 +293,100 @@ export default function LeadsView({
         ))}
       </div>
 
+      {archived.length > 0 && (
+        <div className="mt-6 text-right">
+          <button
+            type="button"
+            onClick={() => setShowArchive((v) => !v)}
+            aria-expanded={showArchive}
+            className="text-xs font-semibold underline underline-offset-2"
+            style={{ color: "var(--color-amber-deep)" }}
+          >
+            ארכיון ({archived.length})
+          </button>
+          <p className="text-ink-soft text-xs mt-1">לידים בלי פעילות 13 יום עוברים לכאן, ונמחקים לצמיתות אחרי 14 ימים נוספים.</p>
+
+          {showArchive && (
+            <div className="mt-3 rounded-2xl bg-card overflow-hidden divide-y divide-[var(--color-line)]">
+              {archived.map((lead) => {
+                const days = daysUntilPurge(lead.archived_at ?? new Date(now).toISOString(), now);
+                const purgeLabel =
+                  days === 0 ? "יימחק לצמיתות היום" : days === 1 ? "יימחק לצמיתות מחר" : `יימחק לצמיתות בעוד ${days} ימים`;
+                const packageLabel = resolveLeadPackageLabel(lead.package_interest, customPackages);
+                return (
+                  <div key={lead.id} className="p-4">
+                    <div className="min-w-0 mb-2">
+                      <span className="font-bold text-[15px]">{lead.name}</span>
+                      {(lead.event_date_interest || packageLabel) && (
+                        <div className="text-[13px] text-ink-soft">
+                          {[lead.event_date_interest ? new Date(lead.event_date_interest).toLocaleDateString("he-IL") : null, packageLabel]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </div>
+                      )}
+                      {lead.phone && (
+                        <div className="text-[13px] text-ink-soft font-data" dir="ltr" style={{ textAlign: "right" }}>
+                          {lead.phone}
+                        </div>
+                      )}
+                    </div>
+                    {lead.event_type_name && <p className="text-[13px] mb-1">{lead.event_type_name}</p>}
+                    <p className="text-[11px] font-bold text-rose">{purgeLabel}</p>
+
+                    {purgeConfirmId === lead.id ? (
+                      <div className="mt-2.5 rounded-xl p-3 bg-chip space-y-2">
+                        <p className="text-xs font-semibold text-rose">למחוק את הליד לצמיתות? אי אפשר לשחזר.</p>
+                        {purgeError?.id === lead.id && <p className="text-xs text-rose">{purgeError.message}</p>}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => purgeArchivedLead(lead.id)}
+                            disabled={purgingId === lead.id}
+                            className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white disabled:opacity-60"
+                          >
+                            {purgingId === lead.id ? "מוחק..." : "מחיקה לצמיתות"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPurgeConfirmId(null);
+                              setPurgeError(null);
+                            }}
+                            className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
+                          >
+                            ביטול
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setConvertLead(lead)}
+                          className="text-[13px] font-bold h-9 px-3 rounded-lg bg-ink text-white"
+                        >
+                          המרה לאירוע
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPurgeConfirmId(lead.id);
+                            setPurgeError(null);
+                          }}
+                          className="text-[13px] font-bold h-9 px-3 rounded-lg bg-white border border-line text-rose"
+                        >
+                          מחיקה לצמיתות
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {showAdd && (
         <AddLeadModal
           customPackages={customPackages}
@@ -275,7 +411,7 @@ export default function LeadsView({
 
       {convertLead && (
         <NewEventModal
-          onClose={() => setConvertLead(null)}
+          onClose={closeConvert}
           leadId={convertLead.id}
           customPackages={customPackages}
           initial={{

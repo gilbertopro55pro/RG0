@@ -21,10 +21,15 @@ export default async function LeadsPage() {
   if (!photographer) redirect("/");
   if (!hasAppAccess(photographer)) redirect("/billing");
 
+  // Archived leads (lib/leadRetention.ts) get their own section in the view.
+  const active = (leads ?? []).filter((l) => !l.archived_at);
+  const archived = (leads ?? []).filter((l) => !!l.archived_at);
+
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <LeadsView
-        initialLeads={leads ?? []}
+        initialLeads={active}
+        archivedLeads={archived}
         customPackages={customPackages ?? []}
         eventTypes={eventTypes ?? []}
         prices={prices ?? []}
