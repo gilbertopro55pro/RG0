@@ -17,6 +17,20 @@ scenario file in `scenarios/<key>.js`; the engine is `record.js`; `convert.py` c
 - `scenarios/*.js` — overview, portfolio, settings, galleries, client-portals, leads, waitlist, analytics, intake-demo.
 - `intake-demo` is the landing page's assistant demo (`public/guides/intake-demo.mp4`, the "עוזר פניות חכם" section of `LandingPage.tsx`), not a page guide. It holds a real conversation on `/chat/studio-or?src=demo` (live model replies, so they differ per run: review the frames), then settings › אוטומציה › שאלות נפוצות. `GF_CHAT_ONLY=1` records only the chat (no login needed; any `GF_STATE`, even `{"cookies":[],"origins":[]}`). Each run creates a lead "נועה" (0500000123, source `demo`) in the test account. Full version (chat + settings, 1:54) published 2026-09-28, recorded after the date-question prompt change.
 
+## Coming-soon teasers (סרטוני "בקרוב", 2026-09-29)
+Vertical 1080x1920, 17s, no audio (music is added on Instagram/TikTok), for social media, not the
+site. Five exist: home, galleries, leads, quotes, assistant. Owner asked: every video ends on the
+logo, in a "coming soon" reveal style.
+- `teasers.json`: per teaser the clip scenario, `skip`/`speed`, the kicker, the headline (revealed
+  word by word) and two feature lines. `teaser.html` is the frame template (navy, brass line,
+  phone frame, "בקרוב.", logo end card); `teaser.js <key>` renders it frame by frame at a fixed t
+  (deterministic, no dropped frames) → `$GF_OUT/coming-soon-<key>.mp4` + `-strip.png`.
+- Clips: `scenarios/teaser-<key>.js` have no captions (only scrolling and the pointer). Record
+  them the usual way (`node record.js teaser-<key> && python3 convert.py teaser-<key>`), then
+  `node teaser.js <key>`. A clip needs about 11s of content (17s timeline, screen shown 2.6–11.9s
+  at `speed`). `teaser-assistant` is a live chat without a phone number, so no lead is created.
+- Delivered to the owner as files (not in `public/`). Review the strip and a frame at 6s and 16s.
+
 ## Setup (once per container)
 1. Scratch dir outside the repo: `export GF_OUT=<scratchpad>/guide-video GF_STATE=<scratchpad>/qa-state.json`.
 2. `playwright-core` is needed (`npm i playwright-core` in the scratchpad if missing; Chromium is at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`). Run node with `NODE_PATH` pointing at that node_modules.

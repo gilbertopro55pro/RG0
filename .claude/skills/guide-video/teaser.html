@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Coming-soon teaser frame (1080x1920). Driven frame by frame by teaser.js: window.renderAt(t). -->
+<style>
+  @font-face { font-family: Rubik; src: url("RUBIK_REGULAR") format("truetype"); font-weight: 400; }
+  @font-face { font-family: Rubik; src: url("RUBIK_BOLD") format("truetype"); font-weight: 700; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; }
+  body { font-family: Rubik, sans-serif; background: radial-gradient(120% 80% at 50% 40%, #16213a 0%, #0b1220 60%, #070c16 100%); color: #fff; position: relative; }
+  .abs { position: absolute; left: 0; right: 0; }
+  #glow { position: absolute; left: 90px; right: 90px; top: 640px; height: 980px; background: radial-gradient(closest-side, rgba(201,161,90,.22), rgba(201,161,90,0)); }
+  #line { top: 300px; margin: 0 auto; height: 3px; background: #c9a15a; width: 0; }
+  #kicker { top: 336px; text-align: center; font-size: 34px; letter-spacing: .12em; color: #c9a15a; font-weight: 700; }
+  #head { top: 400px; padding: 0 70px; text-align: center; font-size: 86px; line-height: 1.08; font-weight: 700; letter-spacing: -.02em; text-wrap: balance; }
+  #head span { display: inline-block; white-space: pre; }
+  #phone { position: absolute; left: 240px; top: 660px; width: 600px; height: 938px; padding: 18px; border-radius: 66px; background: #060a14; border: 2px solid #2a3650;
+    box-shadow: 0 60px 120px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03) inset; transform-origin: 50% 40%; }
+  #phone img { display: block; width: 564px; height: 902px; border-radius: 48px; object-fit: cover; object-position: top; background: #eef1f6; }
+  .feat { top: 1650px; text-align: center; font-size: 40px; color: #d5dbe7; font-weight: 400; }
+  .feat i { display: inline-block; width: 14px; height: 14px; background: #c9a15a; border-radius: 2px; margin-left: 18px; vertical-align: middle; font-style: normal; }
+  #soon { top: 800px; text-align: center; }
+  #soon b { display: block; font-size: 190px; font-weight: 700; letter-spacing: -.03em; }
+  #soon u { display: block; margin: 26px auto 0; width: 200px; height: 5px; background: #c9a15a; text-decoration: none; }
+  #end { top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; }
+  #end img { width: 230px; height: 230px; border-radius: 52px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  #end b { font-size: 104px; font-weight: 700; letter-spacing: -.02em; margin-top: 18px; }
+  #end span { font-size: 40px; color: #aeb8cc; }
+  #end em { font-style: normal; font-size: 36px; color: #c9a15a; letter-spacing: .04em; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <div id="glow"></div>
+  <div id="line" class="abs"></div>
+  <div id="kicker" class="abs"></div>
+  <div id="head" class="abs"></div>
+  <div id="phone"><img id="screen" alt=""></div>
+  <div id="f1" class="feat abs"></div>
+  <div id="f2" class="feat abs"></div>
+  <div id="soon" class="abs"><b>בקרוב.</b><u></u></div>
+  <div id="end" class="abs"><img id="logo" alt=""><b>גילברטו</b><span>ניהול אירועים לצלמים</span><em>myframeflow.com</em></div>
+<script>
+  // Timeline (seconds). Everything is a pure function of t, so any frame renders the same every time.
+  const T = { line: [0.2, 1.2], kicker: [0.7, 1.5], head: [1.1, 2.6], phone: [2.6, 3.6], f1: [3.8, 7.4], f2: [7.6, 11.2], out: [11.3, 11.9], soon: [11.9, 13.9], end: [14.1, 17] };
+  const DURATION = 17;
+  const clamp = (x) => Math.max(0, Math.min(1, x));
+  const ease = (x) => 1 - Math.pow(1 - clamp(x), 3);
+  const prog = (t, [a, b]) => ease((t - a) / (b - a));
+  // Fade in over `fi` at a, fade out over `fo` ending at b.
+  const window_ = (t, a, b, fi = 0.45, fo = 0.4) => Math.min(ease((t - a) / fi), ease((b - t) / fo));
+  const $ = (id) => document.getElementById(id);
+  let cfg, words = [], lastFrame = -1;
+
+  window.setup = async (c) => {
+    cfg = c;
+    $("kicker").textContent = c.kicker;
+    $("head").innerHTML = c.headline.split(/(\s+)/).map((w) => `<span>${w}</span>`).join("");
+    words = [...$("head").querySelectorAll("span")];
+    $("f1").innerHTML = `<i></i>${c.lines[0]}`;
+    $("f2").innerHTML = `<i></i>${c.lines[1]}`;
+    $("logo").src = c.logo;
+    await document.fonts.ready;
+    await $("logo").decode().catch(() => {});
+  };
+
+  window.renderAt = async (t) => {
+    const out = 1 - prog(t, T.out);
+    $("line").style.width = 560 * prog(t, T.line) + "px";
+    $("line").style.opacity = out;
+    $("kicker").style.opacity = prog(t, T.kicker) * out;
+    const [ha, hb] = T.head, step = (hb - ha) / Math.max(1, words.length);
+    words.forEach((w, i) => {
+      const p = ease((t - ha - i * step * 0.8) / 0.55);
+      w.style.opacity = p * out;
+      w.style.transform = `translateY(${(1 - p) * 40}px)`;
+    });
+    const pp = prog(t, T.phone);
+    $("phone").style.opacity = pp * out;
+    $("phone").style.transform = `translateY(${(1 - pp) * 260}px) scale(${1 - (1 - out) * 0.06})`;
+    $("glow").style.opacity = pp * out;
+    $("f1").style.opacity = window_(t, ...T.f1);
+    $("f2").style.opacity = window_(t, ...T.f2);
+    const s = window_(t, ...T.soon, 0.5, 0.35);
+    $("soon").style.opacity = s;
+    $("soon").style.transform = `scale(${0.9 + 0.1 * ease((t - T.soon[0]) / 0.7)})`;
+    const e = prog(t, [T.end[0], T.end[0] + 0.8]);
+    $("end").style.opacity = e;
+    $("end").style.transform = `translateY(${(1 - e) * 30}px)`;
+    // The screen recording: one pre-extracted frame per video frame, played from the phone's entry.
+    const n = Math.min(cfg.frames, Math.max(1, Math.floor(Math.max(0, t - T.phone[0]) * 30 * cfg.speed) + 1));
+    if (n !== lastFrame) {
+      lastFrame = n;
+      $("screen").src = `${cfg.framesDir}/${String(n).padStart(5, "0")}.jpg`;
+      await $("screen").decode().catch(() => {});
+    }
+  };
+  window.DURATION = DURATION;
+</script>
+</body>
+</html>
