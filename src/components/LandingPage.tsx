@@ -123,7 +123,7 @@ export default function LandingPage() {
             <div className="flex flex-col gap-6 lg:gap-8 lg:max-w-[720px]">
               <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-on-navy-soft)]">
                 <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
-                מערכת ניהול לצלמי אירועים
+                מערכת לצלמי אירועים, שנבנתה ע״י צלם אירועים
               </div>
               <h1 className="font-display m-0 text-[54px] sm:text-7xl lg:text-[112px] leading-[0.98] font-bold tracking-[-0.035em] text-white text-balance">
                 פחות ניהול.
@@ -169,6 +169,24 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* A person behind the product, right after the hero: a photographer who built it for himself is
+          the one thing no competitor can copy, so it comes before the features (visitor feedback,
+          2026-09-29). Light, so it doesn't merge with the navy hero. */}
+      <section className="bg-[var(--l-bg-alt)] border-b border-[var(--l-line)]">
+        <div className={`${CONTAINER} py-14 lg:py-24`}>
+          <figure className="m-0 flex flex-col gap-5 lg:gap-7 lg:max-w-[980px]">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="var(--l-accent)" aria-hidden="true">
+              <path d="M10 7H6a2 2 0 0 0-2 2v4h4v4h2V7zM20 7h-4a2 2 0 0 0-2 2v4h4v4h2V7z" />
+            </svg>
+            <blockquote className="font-display m-0 text-2xl lg:text-[38px] leading-[1.35] font-semibold tracking-[-0.015em] text-[var(--l-ink)]">
+              בניתי את גילברטו כי אחרי כל צילום אירוע חיכו לי עוד שעות של וואטסאפים, קבצים ותזכורות. היום כל זה מסודר ומוכן מראש,
+              ואני חוזר לצלם.
+            </blockquote>
+            <figcaption className="text-base lg:text-lg text-[var(--l-ink-soft)]">רועי גלברט, צלם אירועים ומייסד גילברטו</figcaption>
+          </figure>
         </div>
       </section>
 
@@ -308,23 +326,6 @@ export default function LandingPage() {
           </div>
           <PricingToggle />
           <PlanComparison />
-        </div>
-      </section>
-
-      {/* A person behind the product. */}
-      <section className="bg-[var(--l-navy)] text-[var(--l-on-navy)]">
-        <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 lg:gap-20`}>
-          <figure className="m-0 flex flex-col gap-6 lg:gap-7 lg:max-w-[900px]">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="var(--l-accent)" aria-hidden="true">
-              <path d="M10 7H6a2 2 0 0 0-2 2v4h4v4h2V7zM20 7h-4a2 2 0 0 0-2 2v4h4v4h2V7z" />
-            </svg>
-            <blockquote className="font-display m-0 text-2xl lg:text-[38px] leading-[1.35] font-semibold tracking-[-0.015em]">
-              בניתי את גילברטו כי אחרי כל צילום אירוע חיכו לי עוד שעות של וואטסאפים, קבצים ותזכורות. היום כל זה מסודר ומוכן מראש,
-              ואני חוזר לצלם.
-            </blockquote>
-            <figcaption className="text-base lg:text-lg text-[var(--l-on-navy-soft)]">רועי גלברט, צלם אירועים ומייסד גילברטו</figcaption>
-          </figure>
-          <PrimaryCta className="whitespace-nowrap" />
         </div>
       </section>
 
