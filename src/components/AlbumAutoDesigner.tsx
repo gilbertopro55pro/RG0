@@ -450,7 +450,6 @@ export default function AlbumAutoDesigner({
       <div className="rounded-xl border-2 border-amber bg-amber-bg p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-base font-bold text-amber-deep">עיצוב אוטומטי של כל האלבום</p>
-          <span className="text-[11px] rounded-full px-2.5 py-1 bg-white/70 text-ink-soft">זמין כרגע רק בחשבון האדמין, עד להשלמת הליטוש</span>
         </div>
         <div className="flex items-center gap-1.5 mt-3" aria-hidden>
           {[1, 2, 3].map((n) => (

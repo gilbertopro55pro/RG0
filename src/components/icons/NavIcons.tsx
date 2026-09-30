@@ -198,15 +198,14 @@ export function IconAlbum({ className }: IconProps) {
   );
 }
 
-// A magnet frame: a framed photo with a small horseshoe magnet on its top edge (so it doesn't read
-// as the gallery icon).
+// A horseshoe magnet — clearer at this size than a framed photo, which read as the gallery icon.
 export function IconMagnetFrame({ className }: IconProps) {
   return (
     <svg {...base} className={className}>
-      <rect x="4" y="8" width="16" height="12.5" rx="2.2" />
-      <path d="M9.5 8V5.5a2.5 2.5 0 0 1 5 0V8" />
-      <path d="M9.5 6.3h1.4M13.1 6.3h1.4" />
-      <path d="M7 18l2.8-3 2 2 2-2.2 3.2 3.2" />
+      <path d="M5.5 4.5v7a6.5 6.5 0 0 0 13 0v-7" />
+      <path d="M9.5 4.5v7a2.5 2.5 0 0 0 5 0v-7" />
+      <path d="M5.5 4.5h4M14.5 4.5h4" />
+      <path d="M5.5 8h4M14.5 8h4" />
     </svg>
   );
 }

@@ -4877,7 +4877,7 @@ export default function GalleryManageView({
                     עורך האלבומים זמין ממסלול פרו ומעלה, שדרגו מסלול בהגדרות כדי להתחיל לעצב אלבום לגלריה זו.
                   </p>
                 </div>
-              ) : photographerEmail === ADMIN_EMAIL && autoDesignOpen ? (
+              ) : autoDesignOpen ? (
                 <AlbumAutoDesigner
                   galleryId={gallery.id}
                   galleryTitle={gallery.title}
@@ -4891,19 +4891,19 @@ export default function GalleryManageView({
                 />
               ) : (
               <>
-                {photographerEmail === ADMIN_EMAIL && (
-                  <button
-                    type="button"
-                    onClick={openAutoDesign}
-                    className="w-full text-right rounded-lg border border-ink bg-white p-3.5 mb-4 flex items-center justify-between gap-3"
-                  >
-                    <span>
-                      <span className="block text-sm font-semibold">עיצוב אוטומטי של כל האלבום</span>
-                      <span className="block text-xs text-ink-soft mt-0.5">בוחרים מידות, סגנון ומשפחה, והאלבום כולו מעוצב לבד</span>
-                    </span>
-                    <span className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold bg-ink text-white">התחלה</span>
-                  </button>
-                )}
+                {/* Open to every plan with the album editor (owner, 2026-09-30; was admin-only
+                    while being polished) — this whole branch is already behind nonBasicTierAllowed. */}
+                <button
+                  type="button"
+                  onClick={openAutoDesign}
+                  className="w-full text-right rounded-lg border border-ink bg-white p-3.5 mb-4 flex items-center justify-between gap-3"
+                >
+                  <span>
+                    <span className="block text-sm font-semibold">עיצוב אוטומטי של כל האלבום</span>
+                    <span className="block text-xs text-ink-soft mt-0.5">בוחרים מידות, סגנון ומשפחה, והאלבום כולו מעוצב לבד</span>
+                  </span>
+                  <span className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold bg-ink text-white">התחלה</span>
+                </button>
                 <p className="text-xs text-ink-soft mb-3.5">
                   קודם כל, מה מידות האלבום להדפסה? תתחילו מעמוד ריק אחד, ומשם תוכלו לבחור תבנית מוכנה או לעצב בעצמכם, ולהוסיף עוד עמודים בהמשך.
                 </p>
@@ -5337,7 +5337,7 @@ export default function GalleryManageView({
                           >
                             <IconAlbumClose size={9} />
                           </button>
-                          {photographerEmail === ADMIN_EMAIL && spread.width_cm === null && (
+                          {nonBasicTierAllowed && spread.width_cm === null && (
                             <button
                               onClick={() => redesignSpread(spread)}
                               disabled={redesigning !== null}
