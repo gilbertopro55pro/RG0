@@ -2194,9 +2194,18 @@ export default function AlbumSpreadCanvasEditor({
   // marks that thumbnail and blocks double clicks / Escape until the save resolves and we switch.
   const [switchingToSpreadId, setSwitchingToSpreadId] = useState<string | null>(null);
   const [pageSwitchError, setPageSwitchError] = useState(false);
-  const [skipExitConfirm, setSkipExitConfirm] = useState(
-    () => typeof window !== "undefined" && localStorage.getItem("albumEditorSkipExitConfirm") === "1"
-  );
+  // The page the unsaved-changes dialog would switch to (leaveKind "switch").
+  const pendingSwitchIdRef = useRef<string | null>(null);
+  // (The old "don't show this again — always save automatically" preference is gone: the owner
+  // wants the save / don't-save question every time a changed page is left, 2026-09-30. Its stored
+  // value is cleared so a browser that had it switched on asks again.)
+  useEffect(() => {
+    try {
+      localStorage.removeItem("albumEditorSkipExitConfirm");
+    } catch {
+      // storage unavailable: nothing to clear
+    }
+  }, []);
   const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
   // "+ תמונה" opens the picker in multi-select mode — pick any number of photos, and the system
   // builds a fresh orientation-aware layout for all of them at once (replacing the page's current
@@ -3706,20 +3715,13 @@ export default function AlbumSpreadCanvasEditor({
   // the main screen (onClose) and switching to a different album page via the bottom strip
   // (onSwitchSpread) — the photographer explicitly asked for page-switching to require the same
   // save-or-discard guard as exiting, since both abandon this page's in-progress edits the same way.
-  // Also the single choke point every leave path funnels through BEFORE branching (immediate,
-  // skip-confirm, or the exit-confirm dialog) — firing renderPreviewNow() once here, right as
-  // leaving is requested, covers all of them instead of needing it at each dialog button too.
-  const requestLeave = async (action: () => void) => {
+  // Also the single choke point every leave path funnels through BEFORE branching (immediate, or
+  // the exit-confirm dialog) — firing renderPreviewNow() once here, right as leaving is requested,
+  // covers all of them instead of needing it at each dialog button too. A changed page is never
+  // saved silently: the dialog always asks (owner, 2026-09-30).
+  const requestLeave = (action: () => void) => {
     renderPreviewNow();
     if (!isDirty()) {
-      action();
-      return;
-    }
-    if (skipExitConfirm) {
-      // onSave (saveSpreadElements) ends by nulling the editor's own target state once its
-      // save request resolves — awaiting it here ensures that null-out lands BEFORE action()
-      // runs, so a page-switch action isn't clobbered by the save's own trailing state reset.
-      await onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom });
       action();
       return;
     }
@@ -3730,33 +3732,21 @@ export default function AlbumSpreadCanvasEditor({
 
   const handleCloseAttempt = () => requestLeave(onClose);
 
-  // Page strip under the canvas — per explicit request "לוודא שמירה של השינויים בדף הנוכחי לפני מעבר
-  // לדף אחר": switching pages never asks, it SAVES a dirty page first and only then switches. The
-  // switch runs strictly after onSave resolves — saveSpreadElements (GalleryManageView) ends by
-  // nulling the editor target, so switching earlier would get clobbered by that trailing reset
-  // (same ordering as requestLeave's skip-confirm path).
-  const switchToSpread = async (spreadId: string) => {
+  // Page strip under the canvas: a page with no changes switches straight away; a changed page
+  // always asks first — save and switch / switch without saving / stay (owner, 2026-09-30: "מעבר בין
+  // דפים ישר שומר ולא מפנה שאלה למשתמש"). "Save and switch" in the dialog awaits onSave before the
+  // switch — saveSpreadElements (GalleryManageView) ends by nulling the editor target, so switching
+  // earlier would get clobbered by that trailing reset.
+  const switchToSpread = (spreadId: string) => {
     if (!onSwitchSpread || switchingToSpreadId || spreadId === spread.id) return;
     renderPreviewNow();
     setPageSwitchError(false);
-    // Unsaved changes: ask first — save and switch / switch without saving / stay (owner,
-    // 2026-09-30: "מעבר בין דפים ישר שומר ולא מפנה שאלה למשתמש"). Only a photographer who ticked
-    // "don't show this again" gets the silent save below.
-    if (isDirty() && !skipExitConfirm) {
+    if (isDirty()) {
       setLeaveKind("switch");
+      pendingSwitchIdRef.current = spreadId;
       setPendingLeaveAction(() => () => onSwitchSpread(spreadId));
       setExitConfirmOpen(true);
       return;
-    }
-    if (isDirty()) {
-      setSwitchingToSpreadId(spreadId);
-      try {
-        await onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom });
-      } catch {
-        setSwitchingToSpreadId(null);
-        setPageSwitchError(true);
-        return;
-      }
     }
     onSwitchSpread(spreadId);
   };
@@ -4254,36 +4244,24 @@ export default function AlbumSpreadCanvasEditor({
                 {leaveKind === "switch" ? "לשמור אותם לפני המעבר לעמוד שבחרתם, או לעבור בלי לשמור?" : "לשמור אותם עכשיו, או לצאת בלי לשמור?"}
               </p>
 
-              <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip mb-4">
-                <span className="text-xs text-ink-soft leading-relaxed flex-1">
-                  אל תציג לי את החלון הזה שוב. תמיד שמור אוטומטית ביציאה ובמעבר עמוד
-                </span>
-                <button
-                  onClick={() => {
-                    const next = !skipExitConfirm;
-                    setSkipExitConfirm(next);
-                    localStorage.setItem("albumEditorSkipExitConfirm", next ? "1" : "0");
-                  }}
-                  role="switch"
-                  aria-checked={skipExitConfirm}
-                  className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
-                  style={{
-                    background: skipExitConfirm ? "var(--color-amber-deep)" : "var(--color-line)",
-                    justifyContent: skipExitConfirm ? "flex-start" : "flex-end",
-                  }}
-                >
-                  <span className="h-5 w-5 rounded-full shadow" style={{ background: "#fff" }} />
-                </button>
-              </div>
-
               <div className="flex flex-col gap-2">
                 <button
                   onClick={async () => {
-                    // Same ordering fix as requestLeave's skip-confirm path: onSave nulls the
-                    // editor's own target state once it resolves, so it must finish before the
-                    // pending switch/close action runs, or the save's trailing reset wins the race.
-                    await onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom });
+                    // onSave nulls the editor's own target state once it resolves, so it must
+                    // finish before the pending switch/close action runs, or the save's trailing
+                    // reset wins the race. A page switch marks its target in the strip while saving
+                    // and stays on this page (with an error in the strip) if the save fails.
+                    const target = leaveKind === "switch" ? pendingSwitchIdRef.current : null;
                     setExitConfirmOpen(false);
+                    if (target) setSwitchingToSpreadId(target);
+                    try {
+                      await onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom });
+                    } catch {
+                      setSwitchingToSpreadId(null);
+                      setPendingLeaveAction(null);
+                      if (target) setPageSwitchError(true);
+                      return;
+                    }
                     pendingLeaveAction?.();
                     setPendingLeaveAction(null);
                   }}
