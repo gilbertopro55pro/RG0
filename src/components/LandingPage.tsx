@@ -1,6 +1,7 @@
 import Link from "next/link";
 import LandingFaq from "@/components/LandingFaq";
 import LandingAlbumSection from "@/components/LandingAlbumSection";
+import LandingMagnetSection from "@/components/LandingMagnetSection";
 import TimeSavingsCalculator from "@/components/TimeSavingsCalculator";
 import PricingToggle from "@/components/PricingToggle";
 import PlanComparison from "@/components/PlanComparison";
@@ -260,6 +261,9 @@ export default function LandingPage() {
 
       {/* The automatic album designer (owner, 2026-09-30). */}
       <LandingAlbumSection />
+
+      {/* The magnet frame designer, its own section (owner, 2026-09-30). */}
+      <LandingMagnetSection />
 
       {/* The intake assistant: a real recorded conversation with the test account's assistant
           (public/guides/intake-demo.mp4, recorded with the guide-video skill), and the FAQ it

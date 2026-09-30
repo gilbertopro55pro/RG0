@@ -49,21 +49,7 @@ export default function LandingAlbumSection() {
             </p>
           ))}
         </div>
-        {/* The other design tool, magnet frames (/magnet-frames), same plans. */}
-        <div className="flex items-start gap-4 rounded-[14px] bg-[var(--l-bg-alt)] px-5 py-5 lg:px-7 lg:py-6">
-          <span className="w-11 h-11 shrink-0 rounded-[10px] bg-[var(--l-navy)] text-[var(--l-accent)] flex items-center justify-center">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M5.5 4.5v7a6.5 6.5 0 0 0 13 0v-7M9.5 4.5v7a2.5 2.5 0 0 0 5 0v-7M5.5 4.5h4M14.5 4.5h4M5.5 8h4M14.5 8h4" />
-            </svg>
-          </span>
-          <span className="flex flex-col gap-1">
-            <span className="font-display text-lg lg:text-xl font-bold tracking-tight">וגם: מסגרות מגנט לאירוע</span>
-            <span className="text-[15px] lg:text-[17px] leading-relaxed text-[var(--l-ink-soft)]">
-              מעצבים מסגרת למגנטים עם בסיס לבן, טקסט ואלמנטים, ומורידים קובץ מוכן להדפסה, <span dir="ltr">20×15</span> לרוחב או <span dir="ltr">15×20</span> לאורך.
-            </span>
-          </span>
-        </div>
-        <p className="m-0 text-sm text-[var(--l-ink-soft)]">העיצוב האוטומטי ומסגרות המגנט במסלולי פרו ופרו+. בזמן הניסיון החינמי הם פתוחים לכם.</p>
+        <p className="m-0 text-sm text-[var(--l-ink-soft)]">במסלולי פרו ופרו+. בזמן הניסיון החינמי זה פתוח לכם.</p>
       </div>
     </section>
   );
