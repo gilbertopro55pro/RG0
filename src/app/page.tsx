@@ -398,19 +398,19 @@ export default async function DashboardPage() {
         // Same total width (row + gap) as DashboardHero's card above — both are unconstrained
         // block-level children of this same padded container, so a plain flex row with gap-3
         // naturally lines up without any explicit width math.
-        <div className="flex items-center gap-3 mb-5 flex-wrap">
+        <div className="flex items-stretch gap-3 mb-5 flex-wrap">
           <a
             href="/magnet-frames"
-            className="flex-1 min-w-0 flex items-center justify-between gap-3 rounded-2xl p-4 bg-card border border-line shadow-card"
+            className="flex-1 min-w-0 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl p-3 sm:p-4 bg-card border border-line shadow-card"
           >
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg bg-amber-bg">🧲</span>
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full text-lg bg-amber-bg">🧲</span>
               <div className="min-w-0">
-                <div className="text-sm font-semibold truncate">עיצוב מסגרת מגנט</div>
-                <div className="text-xs text-ink-soft truncate">בסיס לבן, טקסט ואלמנטים חופשי</div>
+                <div className="text-sm font-semibold leading-snug">עיצוב מסגרת מגנט</div>
+                <div className="text-xs text-ink-soft leading-snug mt-0.5">בסיס לבן, טקסט ואלמנטים חופשי</div>
               </div>
             </div>
-            <span className="text-ink-soft shrink-0">←</span>
+            <span className="hidden sm:inline text-ink-soft shrink-0">←</span>
           </a>
           <AlbumQuickAccessButton galleries={albumQuickGalleries} />
         </div>

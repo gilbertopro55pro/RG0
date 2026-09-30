@@ -34,8 +34,11 @@ import { IconClose as IconAlbumClose, IconPalette, IconChat, IconSave as IconAlb
 import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor } from "@/components/AlbumSpreadCanvasEditor";
 import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAutoDesigner";
 import { hasAutoDesignSession } from "@/lib/albumAuto/session";
+import { swapPhotoPatches, type SwapPick } from "@/lib/albumAuto/swapPhotos";
 import { frameElements, rankTemplates, templatesForCount } from "@/lib/albumAuto/templateFill";
-import type { LayoutPhoto } from "@/lib/albumAuto/types";
+import { layoutSpread } from "@/lib/albumAuto/layouts";
+import { generateTemplateFrames } from "@/lib/albumTemplateBank";
+import { AUTO_STYLES, type AutoStyleId, type LayoutPhoto } from "@/lib/albumAuto/types";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
 import { isLightTextColor } from "@/lib/textColor";
 import {
@@ -1350,8 +1353,36 @@ export default function GalleryManageView({
   // another page, the last template of the previous page is saved to the library (album_templates,
   // which the editor shows in the tab of its photo count).
   const [redesigning, setRedesigning] = useState<string | null>(null);
+  // Swapping photos between pages in the preview (owner, 2026-09-30): in swap mode a tap marks a
+  // photo, a tap on another photo (on any page, the same one too) swaps the two — see
+  // swapPhotoPatches for what changes.
+  const [photoSwapMode, setPhotoSwapMode] = useState(false);
+  const [photoSwapPick, setPhotoSwapPick] = useState<{ spreadId: string; elId: string } | null>(null);
+  const [photoSwapping, setPhotoSwapping] = useState(false);
+  const swapPhotos = async (a: SwapPick, b: SwapPick) => {
+    const patches = swapPhotoPatches(albumSpreads, a, b);
+    if (!patches) return;
+    const targets = albumSpreads.filter((sp) => patches.has(sp.id));
+    setPhotoSwapping(true);
+    setAlbumSpreads((prev) => prev.map((sp) => (patches.has(sp.id) ? { ...sp, ...patches.get(sp.id) } : sp)));
+    try {
+      const results = await Promise.all([...patches].map(([id, patch]) => supabase.from("gallery_album_spreads").update(patch).eq("id", id)));
+      if (results.some((r) => r.error)) {
+        // Put the pages back as they were, so the screen never shows a swap that didn't save.
+        setAlbumSpreads((prev) => prev.map((sp) => targets.find((t) => t.id === sp.id) ?? sp));
+        alert("ההחלפה לא נשמרה, נסו שוב");
+        return;
+      }
+      for (const id of patches.keys()) fetch(`/api/album-spreads/${id}/render-preview`, { method: "POST" }).catch(() => {});
+    } finally {
+      setPhotoSwapping(false);
+    }
+  };
   const redesignCountRef = useRef(new Map<string, number>());
   const redesignSeenRef = useRef(new Map<string, Set<string>>());
+  // The engine's layouts per page and photo set: computing all its variants takes a moment (most
+  // on a phone), so only the first click on a page pays for it.
+  const redesignEngineCacheRef = useRef(new Map<string, { els: AlbumElement[]; photos: AlbumPhotoElement[] }[]>());
   const lastRedesignRef = useRef<{ spreadId: string; frames: AlbumFrame[] } | null>(null);
   const saveLastRedesign = async () => {
     const last = lastRedesignRef.current;
@@ -1398,8 +1429,10 @@ export default function GalleryManageView({
       const W = album.width_cm;
       const H = album.height_cm;
       const inset = marginInsetPctFor(album);
-      const candidates = rankTemplates(templatesForCount(ids.length, albumTemplates.map((t) => t.frames)), layoutPhotos, W, H);
-      if (candidates.length === 0) return;
+      // The library plus extra generated templates for this count: with few photos the bank's 50
+      // per tab hold only a handful of different shapes, so the button ran out and repeated.
+      const extra = Array.from({ length: 120 }, (_, k) => generateTemplateFrames(ids.length, 104729 + k * 7919));
+      const templates = rankTemplates([...templatesForCount(ids.length, albumTemplates.map((t) => t.frames)), ...extra], layoutPhotos, W, H);
       // The page keeps its look: the finish of its photos that don't run to the edge — including
       // none at all (modern's bare photos); only a page with nothing but edge-to-edge photos gets a
       // white frame + shadow.
@@ -1426,20 +1459,82 @@ export default function GalleryManageView({
         const b = key(true);
         return a < b ? a : b;
       };
+      // Candidate designs, alternating (owner, 2026-09-30: "more varied and creative, never
+      // repeating"): the auto engine's structurally different compositions for the album's style
+      // (edge-to-edge hero, faded hero over a grid, half page, band...) and the library's
+      // templates (framed grids). The library alone was all grids, so every click read the same.
+      type Design = { rects: { xPct: number; yPct: number; widthPct: number; heightPct: number }[]; build: () => AlbumElement[] };
+      const style = AUTO_STYLES.some((st) => st.id === album.auto_style) ? (album.auto_style as AutoStyleId) : "clean";
+      const pageIndex = Math.max(0, albumSpreads.filter((sp) => sp.width_cm === null).findIndex((sp) => sp.id === spread.id));
+      const keptNonPhoto = (spread.elements ?? []).filter((el) => el.type !== "photo");
+      const cacheKey = `${spread.id}|${style}|${W}x${H}|${pageIndex}|${ids.join(",")}`;
+      let engineOuts = redesignEngineCacheRef.current.get(cacheKey);
+      if (!engineOuts) {
+        engineOuts = [];
+        for (let v = 0; v < 14; v++) {
+          const out = layoutSpread({ style, photos: layoutPhotos, section: "event", spreadIndex: pageIndex, widthCm: W, heightCm: H, variant: v });
+          const els = fitAutoElements(out.elements, inset, out.bleedIds ?? []).map((el) => ({ ...el, id: `${el.id}-rd${v}` })) as AlbumElement[];
+          const photosOut = els.filter((el): el is AlbumPhotoElement => el.type === "photo");
+          if (photosOut.length === ids.length) engineOuts.push({ els, photos: photosOut });
+        }
+        redesignEngineCacheRef.current.set(cacheKey, engineOuts);
+      }
+      const engine: Design[] = [];
+      for (const { els, photos: photosOut } of engineOuts) {
+        engine.push({
+          rects: photosOut,
+          // The engine's own page dressing (page colour, tape, lines) replaces the page's previous
+          // auto dressing; anything the photographer added (text, ornaments) stays.
+          build: () => [
+            ...els.filter((el) => el.type === "shape"),
+            ...photosOut,
+            ...keptNonPhoto.filter((el) => !(el.type === "shape" && el.id.startsWith("auto-"))),
+            ...els.filter((el) => el.type !== "shape" && el.type !== "photo"),
+          ],
+        });
+      }
+      const library: Design[] = templates.map((frames) => {
+        const fitted = fitFramesToSafeArea(frames, inset);
+        return {
+          rects: fitted,
+          build: () => {
+            const newPhotos = frameElements(fitted, layoutPhotos, W, H, `rd-${Date.now()}`, finish);
+            return [...keptNonPhoto.filter((el) => el.type === "shape"), ...newPhotos, ...keptNonPhoto.filter((el) => el.type !== "shape")];
+          },
+        };
+      });
+      const designs: Design[] = [];
+      for (let i = 0; i < Math.max(engine.length, library.length); i++) {
+        if (engine[i]) designs.push(engine[i]);
+        if (library[i]) designs.push(library[i]);
+      }
+      if (designs.length === 0) return;
       const seen = redesignSeenRef.current.get(spread.id) ?? new Set<string>();
       const current = shapeOf(photoEls);
       seen.add(current);
+      // The neighbouring pages' designs come last, so two pages side by side don't look alike.
+      const idx = albumSpreads.findIndex((sp) => sp.id === spread.id);
+      const neighbours = new Set(
+        [albumSpreads[idx - 1], albumSpreads[idx + 1]]
+          .filter((sp): sp is GalleryAlbumSpreadRow => !!sp)
+          .map((sp) => shapeOf((sp.elements ?? []).filter((el): el is AlbumPhotoElement => el.type === "photo")))
+      );
       let count = redesignCountRef.current.get(spread.id) ?? -1;
-      let chosen: AlbumFrame[] | null = null;
-      let fallback: AlbumFrame[] | null = null;
-      for (let attempt = 0; attempt < candidates.length && !chosen; attempt++) {
+      let chosen: Design | null = null;
+      let nearNeighbour: Design | null = null;
+      let fallback: Design | null = null;
+      for (let attempt = 0; attempt < designs.length && !chosen; attempt++) {
         count++;
-        const frames = candidates[count % candidates.length];
-        const shape = shapeOf(frames);
-        if (!seen.has(shape)) chosen = frames;
-        else if (!fallback && shape !== current) fallback = frames;
+        const d = designs[count % designs.length];
+        const shape = shapeOf(d.rects);
+        if (seen.has(shape)) {
+          if (!fallback && shape !== current) fallback = d;
+        } else if (neighbours.has(shape)) {
+          if (!nearNeighbour) nearNeighbour = d;
+        } else chosen = d;
       }
-      // Every template seen already: start the round again (anything but the current page).
+      if (!chosen && nearNeighbour) chosen = nearNeighbour;
+      // Every design seen already: start the round again (anything but the current page).
       if (!chosen) {
         chosen = fallback;
         seen.clear();
@@ -1447,13 +1542,22 @@ export default function GalleryManageView({
       }
       redesignCountRef.current.set(spread.id, count);
       if (!chosen) return;
-      seen.add(shapeOf(chosen));
+      seen.add(shapeOf(chosen.rects));
       redesignSeenRef.current.set(spread.id, seen);
-      const fitted = fitFramesToSafeArea(chosen, inset);
-      const newPhotos = frameElements(fitted, layoutPhotos, W, H, `rd-${Date.now()}`, finish);
-      const others = (spread.elements ?? []).filter((el) => el.type !== "photo");
-      const elements: AlbumElement[] = [...others.filter((el) => el.type === "shape"), ...newPhotos, ...others.filter((el) => el.type !== "shape")];
-      lastRedesignRef.current = { spreadId: spread.id, frames: chosen.map((f) => ({ ...f, ...finish })) };
+      const elements = chosen.build();
+      const newPhotoEls = elements.filter((el): el is AlbumPhotoElement => el.type === "photo");
+      lastRedesignRef.current = {
+        spreadId: spread.id,
+        frames: newPhotoEls.map((el) => ({
+          id: el.id,
+          xPct: el.xPct,
+          yPct: el.yPct,
+          widthPct: el.widthPct,
+          heightPct: el.heightPct,
+          ...(el.borderWidth ? { borderWidth: el.borderWidth, borderColor: el.borderColor } : {}),
+          ...(el.shadow ? { shadow: el.shadow } : {}),
+        })),
+      };
       const patch = { elements, layout: "custom" as const };
       setAlbumSpreads((prev) => prev.map((row) => (row.id === spread.id ? { ...row, ...patch } : row)));
       await supabase.from("gallery_album_spreads").update(patch).eq("id", spread.id);
@@ -5141,14 +5245,35 @@ export default function GalleryManageView({
                 )}
                 {albumSpreads.length > 0 && (
                   <>
-                    <p className="text-xs font-bold text-ink-soft mb-2">תצוגה מקדימה</p>
+                    <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                      <p className="text-xs font-bold text-ink-soft">תצוגה מקדימה</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPhotoSwapMode((v) => !v);
+                          setPhotoSwapPick(null);
+                        }}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold border ${photoSwapMode ? "bg-amber-deep text-white border-amber-deep" : "bg-white text-ink border-line"}`}
+                      >
+                        {photoSwapMode ? "סיום החלפת תמונות" : "⇄ החלפת תמונות בין עמודים"}
+                      </button>
+                    </div>
+                    {photoSwapMode && (
+                      <p className="text-xs text-ink mb-2 rounded-lg bg-amber-bg px-3 py-2">
+                        {photoSwapping
+                          ? "שומר את ההחלפה..."
+                          : photoSwapPick
+                            ? "עכשיו לחצו על התמונה שאיתה להחליף, בכל עמוד. לחיצה שוב על אותה תמונה מבטלת."
+                            : "לחצו על תמונה באחד העמודים, ואז על התמונה שאיתה להחליף."}
+                      </p>
+                    )}
                     <div className="grid grid-cols-5 gap-1.5 mb-4">
                     {albumSpreads.map((spread, i) => {
                       const commentCount = albumComments.filter((c) => c.spread_id === spread.id).length;
                       return (
                         <div
                           key={spread.id}
-                          draggable
+                          draggable={!photoSwapMode}
                           onDragStart={() => setDraggedSpreadId(spread.id)}
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={(e) => {
@@ -5164,13 +5289,44 @@ export default function GalleryManageView({
                               any thumbnail (legacy layouts included, auto-seeded into editable
                               elements by seedElementsFromPreset) drops straight into the full-screen
                               free-design editor, which already covers every one of those. */}
+                          <div className="relative">
                           <AlbumSpreadThumbnail
                             spread={spread}
                             album={album}
                             photos={photos}
                             customOrnaments={customOrnaments}
-                            onClick={() => setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" })}
+                            onClick={() => {
+                              if (!photoSwapMode) setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" });
+                            }}
                           />
+                          {photoSwapMode && (
+                            <div className="absolute inset-0 z-[1]">
+                              {(spread.elements ?? [])
+                                .filter((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId)
+                                .map((el) => {
+                                  const picked = photoSwapPick?.spreadId === spread.id && photoSwapPick.elId === el.id;
+                                  return (
+                                    <button
+                                      key={el.id}
+                                      type="button"
+                                      disabled={photoSwapping}
+                                      aria-label={picked ? "התמונה שנבחרה להחלפה" : "בחירת תמונה להחלפה"}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (picked) return setPhotoSwapPick(null);
+                                        if (!photoSwapPick) return setPhotoSwapPick({ spreadId: spread.id, elId: el.id });
+                                        const first = photoSwapPick;
+                                        setPhotoSwapPick(null);
+                                        void swapPhotos(first, { spreadId: spread.id, elId: el.id });
+                                      }}
+                                      className={`absolute ${picked ? "ring-[3px] ring-amber-deep bg-amber-deep/30" : "hover:ring-2 hover:ring-white/90 hover:bg-white/15"}`}
+                                      style={{ left: `${el.xPct}%`, top: `${el.yPct}%`, width: `${el.widthPct}%`, height: `${el.heightPct}%` }}
+                                    />
+                                  );
+                                })}
+                            </div>
+                          )}
+                          </div>
                           <span className="absolute top-1 right-1 h-5 min-w-5 px-1 rounded-full bg-black/60 text-white text-[9px] font-semibold flex items-center justify-center pointer-events-none">
                             {i + 1}
                           </span>
@@ -5186,7 +5342,7 @@ export default function GalleryManageView({
                               onClick={() => redesignSpread(spread)}
                               disabled={redesigning !== null}
                               className="w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-bold text-white bg-amber-deep hover:opacity-90 disabled:opacity-60"
-                              title="עיצוב מחדש של העמוד עם אותן התמונות, מתוך ספריית התבניות. אפשר ללחוץ שוב עד שהעיצוב מתאים"
+                              title="עיצוב מחדש של העמוד עם אותן התמונות: כל לחיצה פריסה אחרת, בלי לחזור על פריסות שכבר הוצגו"
                             >
                               <span className={redesigning === spread.id ? "inline-block animate-spin" : "inline-block"}>↻</span>
                               עיצוב מחדש
