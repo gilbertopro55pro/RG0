@@ -30,6 +30,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "התמונה לא נמצאה" }, { status: 404 });
   }
 
+  // ?size= (600-2000, default 900): the auto album designer asks for more pixels, since a face in a
+  // group shot is only a few dozen pixels at 900 and its recognition descriptor gets unreliable.
+  const requested = Number(new URL(request.url).searchParams.get("size"));
+  const size = Number.isFinite(requested) && requested > 0 ? Math.min(2000, Math.max(600, Math.round(requested))) : 900;
+
   const buffer = await downloadObjectBuffer("galleries", photo.storage_path);
   if (!buffer) {
     return NextResponse.json({ error: "שגיאה בטעינת התמונה" }, { status: 404 });
@@ -37,7 +42,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const resized = await sharp(buffer)
     .rotate()
-    .resize(900, 900, { fit: "inside", withoutEnlargement: true })
+    .resize(size, size, { fit: "inside", withoutEnlargement: true })
     .jpeg({ quality: 85 })
     .toBuffer();
 

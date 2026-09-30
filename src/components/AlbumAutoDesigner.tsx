@@ -71,6 +71,12 @@ const PHASE_SPAN: Record<Phase, [number, number]> = {
   save: [90, 100],
 };
 
+// Face detection resolution: each family member's reference face is what every other photo is
+// compared against, so the (at most four) reference photos get the most pixels; the book's photos
+// get more than the gallery's 900px default so faces in group shots stay recognizable.
+const CELL_IMAGE_SIZE = 1600;
+const PHOTO_IMAGE_SIZE = 1280;
+
 const PICKER_PAGE = 120;
 const PAGE_SIZE = 1000;
 
@@ -224,7 +230,7 @@ export default function AlbumAutoDesigner({
         else {
           updateCell(cellId, { detecting: true, error: null });
           try {
-            const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${photoId}/image`);
+            const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${photoId}/image?size=${CELL_IMAGE_SIZE}`);
             cellFaces.set(cellId, faces);
             setCells((prev) => (prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], faces, detecting: false } } : prev));
           } catch {
@@ -325,7 +331,7 @@ export default function AlbumAutoDesigner({
           if (skipFacesRef.current) break;
           setProgress("faces", i / toDetect.length, `${i} מתוך ${toDetect.length} תמונות`);
           try {
-            const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${toDetect[i].id}/image`);
+            const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${toDetect[i].id}/image?size=${PHOTO_IMAGE_SIZE}`);
             if (faces.length > 0) facesByPhoto.set(toDetect[i].id, faces.map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })));
             for (const f of faces) addBox(toDetect[i].id, f.box);
           } catch {
