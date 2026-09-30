@@ -1267,7 +1267,8 @@ function cleanCandidates(ctx: Ctx): Cand[] {
   const { geo, photos, input } = ctx;
   const { W, H, pageW: pw } = geo;
   const n = photos.length;
-  if (!geo.double || n < 2 || n > 9) return [];
+  if (!geo.double) return cleanSingleCandidates(ctx);
+  if (n < 2 || n > 9) return [];
   const hero = ctx.heroIdx ?? pickHero(photos);
   const others = range(0, n).filter((i) => i !== hero);
   const a = photos[hero].aspect;
@@ -1327,6 +1328,145 @@ function cleanCandidates(ctx: Ctx): Cand[] {
           coverage,
           score,
         });
+      }
+    }
+  }
+  return [...byStructure.values()];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Clean style, single landscape-ish pages (W/H ~1.25-1.6: 30×20, 40×30...) — owner, 2026-09-30:
+// a 30×20 clean album came out as the same page every time (a hero band across the top and one
+// strip of small photos under it), "fairly simple"; wanted: that look mixed with the double-page
+// clean design. So each page is one of:
+//   - band: the hero bleeding across the full width at the top (or bottom), the others in one neat
+//     row (two when many) under it — equal heights, equal gaps, centred;
+//   - fade: the hero bleeding the full height from a side edge, ~62-68% of the width, fade-25
+//     toward a template grid that lies over the faded strip (starting at >= 75% of the hero, never
+//     over the unfaded picture), ~6.4% from the outer edge, centred vertically;
+//   - half: the hero exactly half the page (a portrait hero; a landscape can't fill a half page of
+//     a 1.5 page without a heavy crop), the grid filling the other half;
+//   - wide: the hero ~2/3 of the width, no mask, a column grid in the rest (few photos).
+// A fixed cycle by spread index (fade, band, half/wide, fade, band) gets a bonus, and the hero's
+// side alternates (left/right, top/bottom) from page to page, so consecutive pages never repeat;
+// a kind the photo count can't lay out cleanly falls to the others (band handles many photos).
+// More than 9 others (or square/portrait pages) use the general composer.
+// ---------------------------------------------------------------------------------------------
+
+type SingleKind = "fade" | "band" | "half" | "wide";
+const SINGLE_CYCLE: SingleKind[] = ["fade", "band", "half", "fade", "band"];
+
+function cleanSingleCandidates(ctx: Ctx): Cand[] {
+  const { geo, photos, input } = ctx;
+  const { W, H } = geo;
+  const n = photos.length;
+  const ratio = W / H;
+  if (geo.double || ratio < 1.25 || n < 2 || n > 10) return [];
+  const hero = ctx.heroIdx ?? pickHero(photos);
+  const others = range(0, n).filter((i) => i !== hero);
+  const k = others.length;
+  const a = photos[hero].aspect;
+  const g = Math.max(0.4, 0.023 * H); // ~0.7cm on a 30cm page, ~0.46cm on 20cm
+  const si = Math.max(0, input.spreadIndex);
+  const cyc = SINGLE_CYCLE[si % SINGLE_CYCLE.length];
+  const prefFirst = si % 2 === 0; // hero left (fade/half/wide) or top (band)
+  const jit = makeRng(hashString(`clean1|${input.spreadIndex}|${photos.map((p) => p.id).join(",")}`));
+  const weight: Record<SingleKind, number> = { fade: 1 + jit() * 0.15, band: 0.95 + jit() * 0.15, half: 0.95 + jit() * 0.15, wide: 0.85 + jit() * 0.15 };
+  const bonus = (kind: SingleKind): number =>
+    (kind === cyc || (cyc === "half" && kind === "wide") ? 0.6 : 0) + (k >= 6 && kind === "band" ? 0.3 : 0) + (k <= 4 && kind !== "band" ? 0.1 : 0);
+  const byStructure = new Map<string, Cand>();
+  const WH = W * H;
+  const push = (kind: SingleKind, key: string, first: boolean, bleed: Cand["bleeds"][number], frames: Frame[], box: Rect, extraPen: number) => {
+    if (frames.length !== k) return;
+    const coverage = unionArea([bleed.r, ...frames.map((f) => f.r)], W, H) / WH;
+    if (coverage < MIN_COVERAGE) return;
+    const smallest = Math.min(...frames.map((f) => area(f.r)));
+    const crop = frames.reduce((s, f) => s + Math.log(cropOf(photos[f.idx].aspect, f.r)), 0) / k;
+    const hc = cropOf(a, bleed.r);
+    const score =
+      weight[kind] +
+      bonus(kind) +
+      0.8 * coverage +
+      0.6 * Math.min(1, smallest / (0.035 * WH)) -
+      0.9 * crop -
+      0.4 * Math.max(0, Math.log(hc) - Math.log(1.25)) -
+      (hc > BLEED_CROP + 1e-9 ? 0.1 : 0) -
+      (first === prefFirst ? 0 : 0.3) -
+      extraPen;
+    const prev = byStructure.get(key);
+    if (prev && score <= prev.score) return;
+    byStructure.set(key, { kind, bleeds: [bleed], frames, clusters: [{ bounds: boundsOf(frames.map((f) => f.r)), avail: box }], coverage, score });
+  };
+
+  for (const first of [prefFirst, !prefFirst]) {
+    const left = first;
+    // Side heroes (fade / half / wide), laid out for a left hero and mirrored for a right one.
+    const mirror = (r: Rect): Rect => (left ? r : { x: W - r.x - r.w, y: r.y, w: r.w, h: r.h });
+    type SideVariant = { kind: SingleKind; e: number; mask: boolean; box: Rect; zone: Partial<FaceZone> };
+    const variants: SideVariant[] = [];
+    if (k >= 1) {
+      // (On a 4:3 page a landscape needs ~75% of the width to bleed the full height within the crop.)
+      const minW = (H * a) / BLEED_CROP;
+      const widths = [...new Set([clamp(H * a, 0.62 * W, 0.68 * W), 0.64 * W, 0.68 * W, ...(minW > 0.68 * W && minW <= 0.76 * W ? [minW * 1.01] : [])].map((v) => Math.round(v * 1000) / 1000))];
+      for (const e of widths) {
+        const near = 0.75 * e + 0.005 * W;
+        const far = 0.936 * W;
+        if (far - near < 0.3 * W) continue;
+        // Faces clear of the fade and of the grid.
+        variants.push({ kind: "fade", e, mask: true, box: { x: near, y: 0.06 * H, w: far - near, h: 0.88 * H }, zone: { x0: 0.03, x1: Math.min(0.74, (near - 0.005 * W) / e) } });
+      }
+      // Exactly half the page (a hero that can fill a portrait half page).
+      variants.push({ kind: "half", e: W / 2, mask: false, box: { x: W / 2 + 0.035 * W, y: 0.055 * H, w: 0.42 * W, h: 0.89 * H }, zone: { x0: 0.03, x1: 0.97 } });
+      // ~2/3 of the width, no mask, a column of 1-3 photos beside it.
+      if (k <= 3) {
+        const e = clamp(H * a, 0.6 * W, 0.68 * W);
+        const box = { x: e + 0.035 * W, y: 0.055 * H, w: 0.955 * W - (e + 0.035 * W), h: 0.89 * H };
+        if (box.w >= 0.22 * W) variants.push({ kind: "wide", e, mask: false, box, zone: { x0: 0.03, x1: 0.97 } });
+      }
+    }
+    for (const v of variants) {
+      const r0: Rect = { x: 0, y: 0, w: v.e, h: H };
+      const r = mirror(r0);
+      if (cropOf(a, r) > BLEED_CROP + 1e-9) continue;
+      const zone = left ? v.zone : { x0: 1 - (v.zone.x1 ?? 1), x1: 1 - (v.zone.x0 ?? 0) };
+      const f = bleedFocal(ctx, hero, r, zone);
+      if (!f) continue;
+      const box = mirror(v.box);
+      const mask: MaskId | undefined = v.mask ? (left ? "fade-right-25" : "fade-left-25") : undefined;
+      const bleed = { idx: hero, r, zone, focalX: f.focalX, focalY: f.focalY, ...(mask ? { mask } : {}) };
+      for (const grid of cleanGrids(ctx, others, box, g)) push(v.kind, `${v.kind}|${grid.tpl}`, first, bleed, grid.frames, box, f.pen + (grid.tpl < 0 ? 0.15 : 0) - 0.3 * grid.score);
+    }
+    // Band: the hero across the full width at the top (first) or bottom, the others in one neat row
+    // (or two) centred in the strip left over (equal space above and below the rows).
+    // (Not for 2 others: a row of two leaves the strip mostly white.)
+    if (k >= 3) {
+      const top = first;
+      const m = Math.max(0.05 * H, g);
+      const bx = 0.05 * W;
+      for (let r = 1; r <= (k >= 4 ? 2 : 1); r++) {
+        const rowSets = r === 1 ? [[others]] : [[...balancedRows(photos, others, r)], lptRows(photos, others, r)];
+        for (let hf = 0.5; hf <= 0.745; hf += 0.02) {
+          const hh = hf * H;
+          const band: Rect = { x: 0, y: top ? 0 : H - hh, w: W, h: hh };
+          if (cropOf(a, band) > BLEED_CROP_MAX + 1e-9) continue;
+          const box: Rect = { x: bx, y: top ? hh + m : m, w: W - 2 * bx, h: H - hh - 2 * m };
+          if (box.h < 0.1 * H) continue;
+          let best: Rel | null = null;
+          for (const rows of rowSets) {
+            if (rows.length !== r || rows.some((row) => !row.length)) continue;
+            const rel = placeRows(photos, rows, box.w, box.h, g, true, k);
+            if (rel && (!best || rel.score > best.score)) best = rel;
+          }
+          if (!best) continue;
+          const ox = box.x + (box.w - best.w) / 2;
+          const oy = box.y + (box.h - best.h) / 2;
+          const frames: Frame[] = best.rects.map((p) => ({ idx: p.idx, r: { x: p.r.x + ox, y: p.r.y + oy, w: p.r.w, h: p.r.h }, rot: 0 }));
+          if (frames.some((fr) => area(fr.r) < 0.012 * WH || cropOf(photos[fr.idx].aspect, fr.r) > CLEAN_MAX_CROP)) continue;
+          const zone = {};
+          const f = bleedFocal(ctx, hero, band, zone);
+          if (!f) continue;
+          push("band", `band|${r}`, first, { idx: hero, r: band, zone, focalX: f.focalX, focalY: f.focalY }, frames, { x: 0, y: top ? hh : 0, w: W, h: H - hh }, f.pen);
+        }
       }
     }
   }
@@ -1633,8 +1773,14 @@ function composeSpread(ctx: Ctx): AlbumElement[] | null {
       // across the top, a hero column...), so the new page is clearly different.
       const h = ctx.heroIdx ?? pickHero(photos);
       const zero = Object.fromEntries((["fade", "half", "two", "dense", "band", "side", "sfade", "inset", "wide"] as Kind[]).map((k) => [k, 0])) as Record<Kind, number>;
-      const extra = candidatesPerKind(ctx, h, zero).filter((c) => c.kind !== "fade" && c.kind !== "half" && c.kind !== "inset");
-      const alt = pickVariant([...cleanCandidates(ctx), ...extra], input.variant);
+      const own = cleanCandidates(ctx);
+      // Single pages with their own clean structures add only the general kinds they don't have
+      // (a hero column at the side, two heroes...), so a redesign still has room to change.
+      const ownKinds = new Set(own.map((c) => c.kind));
+      const extra = candidatesPerKind(ctx, h, zero).filter(
+        (c) => c.kind !== "fade" && c.kind !== "half" && c.kind !== "inset" && (geo.double || !own.length || (!ownKinds.has(c.kind) && c.kind !== "sfade" && c.kind !== "band"))
+      );
+      const alt = pickVariant([...own, ...extra], input.variant);
       if (alt) return buildElements(ctx, alt);
     }
     const c = composeClean(ctx);
