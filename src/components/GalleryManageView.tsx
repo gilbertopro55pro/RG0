@@ -33,9 +33,8 @@ import { IconGallery, IconTrash } from "@/components/icons/NavIcons";
 import { IconClose as IconAlbumClose, IconPalette, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck, IconRotateDevice } from "@/components/icons/AlbumIcons";
 import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor } from "@/components/AlbumSpreadCanvasEditor";
 import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAutoDesigner";
-import { layoutSpread } from "@/lib/albumAuto/layouts";
-import { AUTO_STYLES, type AutoStyleId, type LayoutPhoto, type OrnamentTab } from "@/lib/albumAuto/types";
-import { ALBUM_ORNAMENTS, ORNAMENT_TABS } from "@/lib/albumOrnaments";
+import { frameElements, rankTemplates, templatesForCount } from "@/lib/albumAuto/templateFill";
+import type { LayoutPhoto } from "@/lib/albumAuto/types";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
 import { isLightTextColor } from "@/lib/textColor";
 import {
@@ -1328,22 +1327,48 @@ export default function GalleryManageView({
     await Promise.all(next.map((s, i) => supabase.from("gallery_album_spreads").update({ sort_order: i }).eq("id", s.id)));
   };
 
-  // "עיצוב מחדש" (admin, with the auto designer): lays the same photos of one page out again in the
-  // album's auto style. Each click moves to a STRUCTURALLY different layout (layoutSpread's
-  // `variant`: another hero variant / grid template) with another hero photo; a shape already shown
-  // on this page — its mirror image included — is skipped until every shape has been seen, so the
-  // change is always visible, and the photographer can keep clicking until they like it.
+  // "עיצוב מחדש" (admin, with the auto designer), owner's flow (2026-09-30): a click checks how many
+  // photos the page holds and applies the next template for exactly that count from the template
+  // library (the photographer's album_templates first, then the built-in TEMPLATE_BANK tab), ranked
+  // by how well these photos fit it; the same photos, the page's own frame finish. A template that
+  // reads as the same design as one already shown (its mirror image included) is skipped until
+  // every one has been seen, so each click is a visible change. When the photographer moves on to
+  // another page, the last template of the previous page is saved to the library (album_templates,
+  // which the editor shows in the tab of its photo count).
   const [redesigning, setRedesigning] = useState<string | null>(null);
   const redesignCountRef = useRef(new Map<string, number>());
   const redesignSeenRef = useRef(new Map<string, Set<string>>());
-  const redesignSpread = async (spread: GalleryAlbumSpreadRow, index: number) => {
+  const lastRedesignRef = useRef<{ spreadId: string; frames: AlbumFrame[] } | null>(null);
+  const saveLastRedesign = async () => {
+    const last = lastRedesignRef.current;
+    lastRedesignRef.current = null;
+    if (!last || last.frames.length === 0) return;
+    const sig = (frames: AlbumFrame[]) =>
+      frames
+        .map((f) => [f.xPct, f.yPct, f.widthPct, f.heightPct].map((v) => Math.round(v)).join(":"))
+        .sort()
+        .join("|");
+    const mine = sig(last.frames);
+    if (albumTemplates.some((t) => t.frames.length === last.frames.length && sig(t.frames) === mine)) return;
+    await saveAlbumTemplate(`עיצוב מחדש · ${last.frames.length} תמונות`, last.frames);
+  };
+  // Opening the editor on another page, or closing the album, counts as moving on too.
+  useEffect(() => {
+    if (lastRedesignRef.current && canvasEditorTarget && canvasEditorTarget.spreadId !== lastRedesignRef.current.spreadId) void saveLastRedesign();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- react to the target only
+  }, [canvasEditorTarget]);
+  useEffect(() => {
+    if (!albumManageOpen && lastRedesignRef.current) void saveLastRedesign();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- react to closing only
+  }, [albumManageOpen]);
+  const redesignSpread = async (spread: GalleryAlbumSpreadRow) => {
     if (!album || redesigning) return;
     const photoEls = (spread.elements ?? []).filter((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId);
     const ids = [...new Set(photoEls.map((el) => el.photoId as string))];
     if (ids.length === 0) return;
     setRedesigning(spread.id);
     try {
-      const style: AutoStyleId = AUTO_STYLES.some((st) => st.id === album.auto_style) ? (album.auto_style as AutoStyleId) : "clean";
+      if (lastRedesignRef.current && lastRedesignRef.current.spreadId !== spread.id) await saveLastRedesign();
       const faces = new Map<string, { x: number; y: number; width: number; height: number }[]>();
       const { data: faceRows } = await supabase
         .from("gallery_photo_faces")
@@ -1356,89 +1381,66 @@ export default function GalleryManageView({
         const aspect = p?.preview_aspect_ratio && p.preview_aspect_ratio > 0 ? p.preview_aspect_ratio : 1.5;
         return { id, aspect, ...(faces.get(id)?.length ? { faces: faces.get(id) } : {}) };
       });
-      let ornamentTabs: OrnamentTab[] | undefined;
-      if (style === "scribble") {
-        ornamentTabs = ORNAMENT_TABS.map((t) => ({ id: t.key, custom: false, items: ALBUM_ORNAMENTS.filter((o) => o.category === t.key).map((o) => o.id) }));
-        try {
-          const data = await fetchCustomOrnaments();
-          for (const t of data.tabs) ornamentTabs.push({ id: t.id, custom: true, items: data.ornaments.filter((o) => o.tab_id === t.id).map((o) => o.id) });
-        } catch {
-          // built-in tabs only
-        }
-      }
-      // Hero candidates: landscapes first (they bleed best), then the rest.
-      const heroes = [...layoutPhotos].sort((a, b) => Number(b.aspect > 1.05) - Number(a.aspect > 1.05)).map((p) => p.id);
-      // The page's shape as the eye reads it: the grid of framed photos by its own structure (each
-      // frame relative to the grid's bounding box, 10% steps — the same template a bit bigger or
-      // shifted is the same design) and which page it's on, plus where the edge-to-edge photos sit
-      // (which page, full height or a band — not their exact width: a half page and a slightly wider
-      // faded one read as the same). A mirror image is the same design.
-      const shapeOf = (els: AlbumElement[]) => {
-        const photoEls = els.filter((el): el is AlbumPhotoElement => el.type === "photo");
-        const framed = photoEls.filter((el) => el.borderWidth);
+      const W = album.width_cm;
+      const H = album.height_cm;
+      const inset = marginInsetPctFor(album);
+      const candidates = rankTemplates(templatesForCount(ids.length, albumTemplates.map((t) => t.frames)), layoutPhotos, W, H);
+      if (candidates.length === 0) return;
+      // The page keeps its look: the finish of its photos that don't run to the edge — including
+      // none at all (modern's bare photos); only a page with nothing but edge-to-edge photos gets a
+      // white frame + shadow.
+      const inner = photoEls.filter((el) => el.xPct > 0.5 && el.yPct > 0.5 && el.xPct + el.widthPct < 99.5 && el.yPct + el.heightPct < 99.5);
+      const src = inner.find((el) => el.borderWidth || el.shadow) ?? inner[0];
+      const finish = src
+        ? { ...(src.borderWidth ? { borderWidth: src.borderWidth, borderColor: src.borderColor ?? "#ffffff" } : {}), ...(src.shadow ? { shadow: src.shadow } : {}) }
+        : { borderWidth: 3, borderColor: "#ffffff", shadow: 35 };
+      // The page's shape as the eye reads it: its frames relative to their bounding box (10% steps),
+      // mirror images being the same design.
+      const shapeOf = (rects: { xPct: number; yPct: number; widthPct: number; heightPct: number }[]) => {
+        if (!rects.length) return "";
         const key = (flip: boolean) => {
-          const xOf = (el: AlbumPhotoElement) => (flip ? 100 - el.xPct - el.widthPct : el.xPct);
-          const side = (x: number, w: number) => (w > 80 ? "LR" : x + w / 2 < 50 ? "L" : "R");
-          const parts = photoEls
-            .filter((el) => !el.borderWidth)
-            .map((el) => `B:${side(xOf(el), el.widthPct)}:${el.heightPct > 90 ? "full" : el.yPct < 5 ? "top" : "bottom"}`);
-          if (framed.length) {
-            const x0 = Math.min(...framed.map(xOf));
-            const x1 = Math.max(...framed.map((el) => xOf(el) + el.widthPct));
-            const y0 = Math.min(...framed.map((el) => el.yPct));
-            const y1 = Math.max(...framed.map((el) => el.yPct + el.heightPct));
-            const nx = (v: number) => Math.round(((v - x0) / Math.max(1, x1 - x0)) * 10);
-            const ny = (v: number) => Math.round(((v - y0) / Math.max(1, y1 - y0)) * 10);
-            parts.push(`G:${side(x0, x1 - x0)}`);
-            for (const el of framed) parts.push(`F:${nx(xOf(el))}:${ny(el.yPct)}:${nx(xOf(el) + el.widthPct)}:${ny(el.yPct + el.heightPct)}`);
-          }
-          return parts.sort().join("|");
+          const xs = rects.map((r) => (flip ? 100 - r.xPct - r.widthPct : r.xPct));
+          const x0 = Math.min(...xs);
+          const x1 = Math.max(...rects.map((r, i) => xs[i] + r.widthPct));
+          const y0 = Math.min(...rects.map((r) => r.yPct));
+          const y1 = Math.max(...rects.map((r) => r.yPct + r.heightPct));
+          const nx = (v: number) => Math.round(((v - x0) / Math.max(1, x1 - x0)) * 10);
+          const ny = (v: number) => Math.round(((v - y0) / Math.max(1, y1 - y0)) * 10);
+          return rects.map((r, i) => `${nx(xs[i])}:${ny(r.yPct)}:${nx(xs[i] + r.widthPct)}:${ny(r.yPct + r.heightPct)}`).sort().join("|");
         };
         const a = key(false);
         const b = key(true);
         return a < b ? a : b;
       };
-      const inset = marginInsetPctFor(album);
       const seen = redesignSeenRef.current.get(spread.id) ?? new Set<string>();
-      const current = shapeOf(spread.elements ?? []);
+      const current = shapeOf(photoEls);
       seen.add(current);
-      type Redesigned = { elements: AlbumElement[]; background?: { photoId: string; blur: number } };
-      let next = null as Redesigned | null;
-      let fallback = null as Redesigned | null;
-      let count = redesignCountRef.current.get(spread.id) ?? 0;
-      for (let attempt = 0; attempt < 16 && !next; attempt++) {
+      let count = redesignCountRef.current.get(spread.id) ?? -1;
+      let chosen: AlbumFrame[] | null = null;
+      let fallback: AlbumFrame[] | null = null;
+      for (let attempt = 0; attempt < candidates.length && !chosen; attempt++) {
         count++;
-        const out = layoutSpread({
-          style,
-          photos: layoutPhotos,
-          heroId: heroes[count % heroes.length],
-          section: "event",
-          spreadIndex: index,
-          variant: count,
-          widthCm: album.width_cm,
-          heightCm: album.height_cm,
-          ornamentTabs,
-        });
-        const elements = fitAutoElements(out.elements, inset, out.bleedIds);
-        const shape = shapeOf(elements);
-        if (!seen.has(shape)) next = { elements, background: out.background };
-        else if (!fallback && shape !== current) fallback = { elements, background: out.background };
+        const frames = candidates[count % candidates.length];
+        const shape = shapeOf(frames);
+        if (!seen.has(shape)) chosen = frames;
+        else if (!fallback && shape !== current) fallback = frames;
       }
-      // Every shape seen already: start the round again (anything but the current page).
-      if (!next) {
-        next = fallback;
+      // Every template seen already: start the round again (anything but the current page).
+      if (!chosen) {
+        chosen = fallback;
         seen.clear();
         seen.add(current);
       }
-      if (next) seen.add(shapeOf(next.elements));
-      redesignSeenRef.current.set(spread.id, seen);
       redesignCountRef.current.set(spread.id, count);
-      if (!next) return;
-      const patch = {
-        elements: next.elements,
-        layout: "custom" as const,
-        ...(next.background ? { background_photo_id: next.background.photoId, background_blur: next.background.blur } : {}),
-      };
+      if (!chosen) return;
+      seen.add(shapeOf(chosen));
+      redesignSeenRef.current.set(spread.id, seen);
+      const fitted = fitFramesToSafeArea(chosen, inset);
+      const newPhotos = frameElements(fitted, layoutPhotos, W, H, `rd-${Date.now()}`, finish);
+      const others = (spread.elements ?? []).filter((el) => el.type !== "photo");
+      const elements: AlbumElement[] = [...others.filter((el) => el.type === "shape"), ...newPhotos, ...others.filter((el) => el.type !== "shape")];
+      lastRedesignRef.current = { spreadId: spread.id, frames: chosen.map((f) => ({ ...f, ...finish })) };
+      const patch = { elements, layout: "custom" as const };
       setAlbumSpreads((prev) => prev.map((row) => (row.id === spread.id ? { ...row, ...patch } : row)));
       await supabase.from("gallery_album_spreads").update(patch).eq("id", spread.id);
       // Keep the page's rendered snapshot in step, same as leaving the editor does.
@@ -5134,10 +5136,10 @@ export default function GalleryManageView({
                           </button>
                           {photographerEmail === ADMIN_EMAIL && spread.width_cm === null && (
                             <button
-                              onClick={() => redesignSpread(spread, i)}
+                              onClick={() => redesignSpread(spread)}
                               disabled={redesigning !== null}
-                              className="absolute bottom-1 left-1 h-5 rounded-full bg-black/60 text-white px-1.5 flex items-center gap-1 text-[9px] font-semibold disabled:opacity-60"
-                              title="עיצוב מחדש של העמוד עם אותן התמונות. אפשר ללחוץ שוב עד שהעיצוב מתאים"
+                              className="w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-bold text-white bg-amber-deep hover:opacity-90 disabled:opacity-60"
+                              title="עיצוב מחדש של העמוד עם אותן התמונות, מתוך ספריית התבניות. אפשר ללחוץ שוב עד שהעיצוב מתאים"
                             >
                               <span className={redesigning === spread.id ? "inline-block animate-spin" : "inline-block"}>↻</span>
                               עיצוב מחדש

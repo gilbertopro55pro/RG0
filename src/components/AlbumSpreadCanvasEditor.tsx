@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { AlbumElement, AlbumFrame, AlbumOrnamentElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement, AlbumTemplateRow, GalleryAlbumSpreadRow } from "@/lib/types";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { TEXT_COLOR_PALETTE, isLightTextColor } from "@/lib/textColor";
-import { TEMPLATE_TABS, TEMPLATE_BANK, type TemplateTabKey } from "@/lib/albumTemplateBank";
+import { TEMPLATE_TABS, TEMPLATE_BANK, templateTabFor, type TemplateTabKey } from "@/lib/albumTemplateBank";
 import { ALBUM_MASKS, maskCssUrl, findMask } from "@/lib/albumMasks";
 import { ALBUM_ORNAMENTS, ORNAMENT_TABS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsSvgFilter } from "@/lib/albumAdjustments";
@@ -5842,23 +5842,13 @@ export default function AlbumSpreadCanvasEditor({
                 </button>
               ))}
             </div>
-            <div className={`grid mb-4 ${isPhone ? "grid-cols-2 gap-1.5" : "grid-cols-3 gap-2.5"}`}>
-              {TEMPLATE_BANK[templateTab].map((t) => (
-                <button key={t.name} onClick={() => applyTemplate(t.frames)} className={`rounded-xl border border-line text-center ${isPhone ? "p-1" : "p-2"}`}>
-                  <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
-                    {t.frames.map((f) => (
-                      <div key={f.id} className="absolute rounded-sm bg-white border border-line" style={{ left: `${f.xPct}%`, top: `${f.yPct}%`, width: `${f.widthPct}%`, height: `${f.heightPct}%` }} />
-                    ))}
-                  </div>
-                  <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[11px]"}`}>{t.name}</span>
-                </button>
-              ))}
-            </div>
-            {templates.length > 0 && (
+            {/* The photographer's own saved templates live in the tab matching their frame count,
+                above that tab's built-in templates. */}
+            {templates.some((t) => templateTabFor(t.frames.length) === templateTab) && (
               <>
                 <p className={`font-bold mb-3 ${isPhone ? "text-[11px]" : "text-sm"}`}>התבניות שלי</p>
-                <div className={`grid ${isPhone ? "grid-cols-2 gap-1.5" : "grid-cols-3 gap-2.5"}`}>
-                  {templates.map((t) => (
+                <div className={`grid mb-4 ${isPhone ? "grid-cols-2 gap-1.5" : "grid-cols-3 gap-2.5"}`}>
+                  {templates.filter((t) => templateTabFor(t.frames.length) === templateTab).map((t) => (
                     <button key={t.id} onClick={() => applyTemplate(t.frames)} className={`rounded-xl border border-line text-center ${isPhone ? "p-1" : "p-2"}`}>
                       <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
                         {t.frames.map((f) => (
@@ -5871,6 +5861,18 @@ export default function AlbumSpreadCanvasEditor({
                 </div>
               </>
             )}
+            <div className={`grid mb-4 ${isPhone ? "grid-cols-2 gap-1.5" : "grid-cols-3 gap-2.5"}`}>
+              {TEMPLATE_BANK[templateTab].map((t) => (
+                <button key={t.name} onClick={() => applyTemplate(t.frames)} className={`rounded-xl border border-line text-center ${isPhone ? "p-1" : "p-2"}`}>
+                  <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
+                    {t.frames.map((f) => (
+                      <div key={f.id} className="absolute rounded-sm bg-white border border-line" style={{ left: `${f.xPct}%`, top: `${f.yPct}%`, width: `${f.widthPct}%`, height: `${f.heightPct}%` }} />
+                    ))}
+                  </div>
+                  <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[11px]"}`}>{t.name}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </>
       )}

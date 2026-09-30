@@ -13,10 +13,10 @@ import type { AlbumElement } from "@/lib/types";
 export type AutoStyleId = "clean" | "catalog" | "scribble" | "modern";
 
 export const AUTO_STYLES: { id: AutoStyleId; name: string; description: string }[] = [
-  { id: "clean", name: "קו נקי", description: "רקע לבן, מרווחים נדיבים, בלי מסגרות וצללים" },
-  { id: "catalog", name: "קטלוג", description: "רשת מסודרת של תמונות בגודל אחיד, כמו מגזין" },
-  { id: "scribble", name: "מקושקש", description: "תמונות מוטות עם מסגרת לבנה, מפוזרות כמו אלבום הדבקות" },
-  { id: "modern", name: "מודרני", description: "תמונה גדולה עד הקצה לצד בלוקים א־סימטריים וקווים דקים" },
+  { id: "clean", name: "קו נקי", description: "תמונה ראשית עד הקצה עם דהייה, רשת מסודרת ורקע מטושטש" },
+  { id: "catalog", name: "קטלוג", description: "מגזין: תמונה ראשית ממוסגרת ושורות מדויקות, בלי תמונות עד הקצה" },
+  { id: "scribble", name: "מקושקש", description: "תמונות מוטות במסגרת פולארויד על נייר קרפט, כמו אלבום הדבקות" },
+  { id: "modern", name: "מודרני", description: "רקע כהה, תמונות צמודות בלי מסגרות וקווים זהובים דקים" },
 ];
 
 // What kind of event: decides the cell labels (who "the owners" are).
@@ -83,16 +83,10 @@ export type LayoutInput = {
   // page with a fold at 50%: layouts keep faces and frame edges off the fold.
   widthCm: number;
   heightCm: number;
-  // Scribble: the ornament libraries to decorate with — the editor's tabs, built-in (ids from
-  // lib/albumOrnaments.ts) and the photographer's uploaded ones (custom_ornaments ids). Default:
-  // the built-in tabs only.
-  ornamentTabs?: OrnamentTab[];
   // "עיצוב מחדש": 0/undefined = the best layout; n = the n-th best STRUCTURALLY different one (a
   // different hero variant or grid template, not just a mirror image), cycling.
   variant?: number;
 };
-
-export type OrnamentTab = { id: string; custom: boolean; items: string[] };
 
 // Output: elements in percent of the whole spread (0-100), same model the editor uses
 // (AlbumPhotoElement etc. in lib/types.ts). Photo elements carry their photoId already. The UI
