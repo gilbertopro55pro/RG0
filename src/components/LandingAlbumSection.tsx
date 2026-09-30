@@ -1,53 +1,8 @@
 import { LANDING_CONTAINER } from "@/components/LandingChrome";
 
 // Landing section for the automatic album designer (owner, 2026-09-30: market it to new visitors).
-// The four spreads are drawn, not screenshots — each one is the style's real structure (see
-// lib/albumAuto/layouts.ts): clean = a faded hero with the grid over its faded strip; catalog = a
-// framed hero and exact rows, nothing bleeds; scribble = tilted taped photos on kraft; modern =
-// bare photos on charcoal with thin gold lines. Warm gradients stand in for photos (no client
-// photos on a public page). Plan: Pro and up, same gate as the album editor (nonBasicTierAllowed).
-
-const PHOTO = [
-  "linear-gradient(135deg,#d9b99b,#a77b5b)",
-  "linear-gradient(135deg,#c7cfd9,#7d8ca3)",
-  "linear-gradient(135deg,#e6cfb8,#b98c6a)",
-  "linear-gradient(135deg,#b9c4b1,#7a8c70)",
-  "linear-gradient(135deg,#e2c6c0,#b3837a)",
-  "linear-gradient(135deg,#d3c3a4,#9c8660)",
-];
-
-type Box = { x: number; y: number; w: number; h: number };
-
-function Photo({ b, i, frame, tilt = 0, className = "" }: { b: Box; i: number; frame?: string; tilt?: number; className?: string }) {
-  return (
-    <span
-      className={`absolute ${className}`}
-      style={{
-        left: `${b.x}%`,
-        top: `${b.y}%`,
-        width: `${b.w}%`,
-        height: `${b.h}%`,
-        background: PHOTO[i % PHOTO.length],
-        border: frame,
-        transform: tilt ? `rotate(${tilt}deg)` : undefined,
-        boxShadow: frame ? "0 2px 6px rgba(20,24,40,0.28)" : undefined,
-      }}
-    />
-  );
-}
-
-function Spread({ label, children, bg }: { label: string; children: React.ReactNode; bg: string }) {
-  return (
-    <figure className="m-0 flex flex-col gap-2.5">
-      <div className="relative w-full aspect-[2/1] overflow-hidden rounded-[2px] border border-[var(--l-line)] shadow-[0_18px_40px_rgba(15,23,42,0.12)]" style={{ background: bg }}>
-        {children}
-        {/* the fold */}
-        <span aria-hidden="true" className="absolute top-0 bottom-0 left-1/2 w-px bg-black/10" />
-      </div>
-      <figcaption className="text-[15px] font-semibold text-[var(--l-ink)]">{label}</figcaption>
-    </figure>
-  );
-}
+// Text only — the owner dropped the drawn style illustration. Plan: Pro and up, same gate as the
+// album editor (nonBasicTierAllowed).
 
 function Check() {
   return (
@@ -56,8 +11,6 @@ function Check() {
     </svg>
   );
 }
-
-const WHITE = "2px solid #fff";
 
 export default function LandingAlbumSection() {
   return (
@@ -77,42 +30,6 @@ export default function LandingAlbumSection() {
             בוחרים מידות, כריכה וסגנון, ומסמנים תמונה אחת של בעלי השמחה, ההורים, האחים והסבים. גילברטו מזהה את הפרצופים, מסדרת את
             התמונות שהלקוח בחר לפי המשפחה ולפי סדר האירוע, ומעצבת את כל העמודים.
           </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 lg:gap-8">
-          <Spread label="קו נקי" bg="#f7f5f2">
-            <span
-              className="absolute"
-              style={{ left: 0, top: 0, width: "68%", height: "100%", background: PHOTO[0], WebkitMaskImage: "linear-gradient(to right,#000 70%,transparent)", maskImage: "linear-gradient(to right,#000 70%,transparent)" }}
-            />
-            <Photo b={{ x: 56, y: 9, w: 17.5, h: 38 }} i={1} frame={WHITE} />
-            <Photo b={{ x: 75.5, y: 9, w: 17.5, h: 38 }} i={2} frame={WHITE} />
-            <Photo b={{ x: 56, y: 51, w: 37, h: 40 }} i={3} frame={WHITE} />
-          </Spread>
-          <Spread label="קטלוג" bg="#f4f1ec">
-            <Photo b={{ x: 3, y: 6, w: 44, h: 88 }} i={4} frame={WHITE} />
-            <Photo b={{ x: 53, y: 8, w: 13.5, h: 40 }} i={0} frame={WHITE} />
-            <Photo b={{ x: 68, y: 8, w: 13.5, h: 40 }} i={2} frame={WHITE} />
-            <Photo b={{ x: 83, y: 8, w: 13.5, h: 40 }} i={5} frame={WHITE} />
-            <Photo b={{ x: 53, y: 52, w: 21, h: 40 }} i={1} frame={WHITE} />
-            <Photo b={{ x: 76, y: 52, w: 20.5, h: 40 }} i={3} frame={WHITE} />
-          </Spread>
-          <Spread label="מקושקש" bg="linear-gradient(135deg,#d8bf97,#c7a77a)">
-            <Photo b={{ x: 6, y: 12, w: 34, h: 56 }} i={2} frame="3px solid #fff" tilt={-4} />
-            <Photo b={{ x: 26, y: 46, w: 22, h: 42 }} i={0} frame="3px solid #fff" tilt={5} />
-            <Photo b={{ x: 56, y: 10, w: 22, h: 44 }} i={4} frame="3px solid #fff" tilt={3} />
-            <Photo b={{ x: 70, y: 44, w: 24, h: 46 }} i={1} frame="3px solid #fff" tilt={-3} />
-            <span className="absolute" style={{ left: "16%", top: "8%", width: "10%", height: "7%", background: "rgba(255,250,235,0.7)", transform: "rotate(-8deg)" }} />
-            <span className="absolute" style={{ left: "62%", top: "6%", width: "9%", height: "7%", background: "rgba(255,250,235,0.7)", transform: "rotate(6deg)" }} />
-          </Spread>
-          <Spread label="מודרני" bg="#23262b">
-            <Photo b={{ x: 0, y: 0, w: 50, h: 100 }} i={5} />
-            <Photo b={{ x: 55, y: 10, w: 19.5, h: 38 }} i={1} />
-            <Photo b={{ x: 75.5, y: 10, w: 19.5, h: 38 }} i={3} />
-            <Photo b={{ x: 55, y: 49.5, w: 40, h: 40 }} i={0} />
-            <span className="absolute" style={{ left: "55%", top: "94%", width: "40%", height: "1px", background: "#c9a75e" }} />
-            <span className="absolute" style={{ left: "55%", top: "5%", width: "12%", height: "1px", background: "#c9a75e" }} />
-          </Spread>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-16 gap-y-4">
