@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
@@ -10,6 +10,7 @@ import { bleedIdsOf, bookPagesWithoutCover, fillBookTemplate } from "@/lib/album
 import type { AlbumBookTemplateRow, AlbumTemplateRow } from "@/lib/types";
 import { CELL_ORDER, cellLabel, countNames, detectEventKind, pickCellFaces, planAlbum } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
+import { endAutoDesignSession, getAutoDesignSession, mountAutoDesigner, useSessionState, waitForAutoDesigner } from "@/lib/albumAuto/session";
 import type { AlbumElement } from "@/lib/types";
 
 // Auto album design (admin only while it's being polished, 2026-09-29): the photographer picks the
@@ -99,14 +100,18 @@ export default function AlbumAutoDesigner({
   onCancel: () => void;
 }) {
   const supabase = createClient();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [size, setSize] = useState<AlbumSize>(defaultSize);
-  const [coverMode, setCoverMode] = useState<"on" | "none">("on");
-  const [coverSize, setCoverSize] = useState(() => singlePageOf(defaultSize));
-  const [coverTouched, setCoverTouched] = useState(false);
+  // Everything the photographer filled in and a running design's progress live in the session
+  // (lib/albumAuto/session.ts), so turning the phone doesn't wipe them.
+  const session = getAutoDesignSession(galleryId);
+  useEffect(() => mountAutoDesigner(session, onCreate as (result: never) => Promise<void>), [session, onCreate]);
+  const [step, setStep] = useSessionState<1 | 2 | 3>(session, "step", 1);
+  const [size, setSize] = useSessionState<AlbumSize>(session, "size", defaultSize);
+  const [coverMode, setCoverMode] = useSessionState<"on" | "none">(session, "coverMode", "on");
+  const [coverSize, setCoverSize] = useSessionState(session, "coverSize", () => singlePageOf(defaultSize));
+  const [coverTouched, setCoverTouched] = useSessionState(session, "coverTouched", false);
   // The dropdown's choice: "style:<id>" (an auto style) or "tpl:<id>" (a saved book template, whose
   // pages are filled with the photos — owner, 2026-09-30).
-  const [choice, setChoice] = useState<string>("style:clean");
+  const [choice, setChoice] = useSessionState<string>(session, "choice", "style:clean");
   const style: AutoStyleId = choice.startsWith("style:") ? (choice.slice(6) as AutoStyleId) : "clean";
   const [bookTemplates, setBookTemplates] = useState<AlbumBookTemplateRow[]>([]);
   const [pageTemplates, setPageTemplates] = useState<AlbumTemplateRow[]>([]);
@@ -126,8 +131,8 @@ export default function AlbumAutoDesigner({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on open
   }, []);
   const chosenTemplate = choice.startsWith("tpl:") ? bookTemplates.find((t) => t.id === choice.slice(4)) ?? null : null;
-  const [spreadCount, setSpreadCount] = useState("");
-  const [cells, setCells] = useState<Record<FamilyCellId, CellState>>(() => ({
+  const [spreadCount, setSpreadCount] = useSessionState(session, "spreadCount", "");
+  const [cells, setCells] = useSessionState<Record<FamilyCellId, CellState>>(session, "cells", () => ({
     parents: emptyCell(),
     owners: emptyCell(),
     siblings: emptyCell(),
@@ -138,13 +143,12 @@ export default function AlbumAutoDesigner({
   // The picker shows the gallery as it is: its own order, split by its tabs (folders) when it has them.
   const [pickerTab, setPickerTab] = useState<string>("all");
 
-  const [running, setRunning] = useState(false);
-  const [phase, setPhase] = useState<Phase>("times");
-  const [phaseDetail, setPhaseDetail] = useState("");
-  const [pct, setPct] = useState(0);
-  const [runError, setRunError] = useState<string | null>(null);
-  const cancelRef = useRef(false);
-  const skipFacesRef = useRef(false);
+  const [running, setRunning] = useSessionState(session, "running", false);
+  const [phase, setPhase] = useSessionState<Phase>(session, "phase", "times");
+  const [phaseDetail, setPhaseDetail] = useSessionState(session, "phaseDetail", "");
+  const [pct, setPct] = useSessionState(session, "pct", 0);
+  const [runError, setRunError] = useSessionState<string | null>(session, "runError", null);
+  const { cancelRef, skipFacesRef } = session;
 
   const eventKind = useMemo(() => detectEventKind(galleryTitle, eventType), [galleryTitle, eventType]);
   const favorites = useMemo(() => photos.filter((p) => p.is_favorite), [photos]);
@@ -199,7 +203,7 @@ export default function AlbumAutoDesigner({
   };
 
   const run = async () => {
-    if (running || candidates.length === 0) return;
+    if (session.values.get("running") || candidates.length === 0) return;
     cancelRef.current = false;
     skipFacesRef.current = false;
     setRunError(null);
@@ -233,12 +237,18 @@ export default function AlbumAutoDesigner({
       }
       checkCancel();
 
-      // (a) Shooting times from EXIF — the route reads a batch per call until nothing is left.
+      // (a) Shooting times from EXIF — the route reads a batch per call until nothing is left. Only
+      // the photos the book is built from: the favorites when there are any, not the whole gallery.
+      const favoritesOnly = favorites.length > 0;
       setProgress("times", 0);
       let checkedSoFar = 0;
       for (let guard = 0; guard < 500; guard++) {
         checkCancel();
-        const res = await fetch(`/api/galleries/${galleryId}/photos/capture-times`, { method: "POST" });
+        const res = await fetch(`/api/galleries/${galleryId}/photos/capture-times`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ favoritesOnly }),
+        });
         if (!res.ok) throw new Error("times");
         const data = (await res.json()) as { checked: number; withDate: number; remaining: number };
         checkedSoFar += data.checked;
@@ -248,10 +258,9 @@ export default function AlbumAutoDesigner({
       }
       const takenAt = new Map<string, number>();
       for (let from = 0; ; from += PAGE_SIZE) {
-        const { data, error } = await supabase
-          .from("gallery_photos")
-          .select("id, taken_at")
-          .eq("gallery_id", galleryId)
+        let timesQuery = supabase.from("gallery_photos").select("id, taken_at").eq("gallery_id", galleryId);
+        if (favoritesOnly) timesQuery = timesQuery.eq("is_favorite", true);
+        const { data, error } = await timesQuery
           .order("id")
           .range(from, from + PAGE_SIZE - 1)
           .returns<{ id: string; taken_at: string | null }[]>();
@@ -403,8 +412,13 @@ export default function AlbumAutoDesigner({
 
       // (e) Save — the parent creates the album and opens it (this component unmounts then).
       setProgress("save", 0.3);
-      await onCreate({ size, style, cover, spreads });
+      // Through the parent mounted NOW (the one that started may be gone after a rotation); a design
+      // that finished in portrait waits until the phone is turned back.
+      await waitForAutoDesigner(session);
+      checkCancel();
+      await (session.onCreate as (r: AutoDesignResult) => Promise<void>)({ size, style, cover, spreads });
       setProgress("save", 1);
+      endAutoDesignSession(galleryId);
     } catch (e) {
       if (e instanceof CancelledError) {
         setStep(2);
@@ -602,7 +616,13 @@ export default function AlbumAutoDesigner({
             >
               המשך
             </button>
-            <button type="button" onClick={onCancel} className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
+            <button
+              type="button"
+              onClick={() => {
+                endAutoDesignSession(galleryId);
+                onCancel();
+              }}
+              className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
               חזרה
             </button>
           </div>

@@ -17,8 +17,12 @@ const HEAD_BYTES = 131072;
 // Fills gallery_photos.taken_at from each original's EXIF shooting time (migration 0142), so the
 // automatic album designer can order the event's stages chronologically. taken_at_checked_at marks
 // a photo as done even when it has no date, so it's never re-downloaded.
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: galleryId } = await params;
+  // favoritesOnly: the designer builds the book from the favorites when there are any, so only
+  // those need a shooting time (owner, 2026-09-30) — not the whole gallery.
+  const body = (await request.json().catch(() => null)) as { favoritesOnly?: boolean } | null;
+  const favoritesOnly = body?.favoritesOnly === true;
   const supabase = await createClient();
   const {
     data: { user },
@@ -37,11 +41,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "אין הרשאה לגלריה הזו" }, { status: 403 });
   }
 
-  const { data: photos, error } = await admin
-    .from("gallery_photos")
-    .select("id, storage_path")
-    .eq("gallery_id", galleryId)
-    .is("taken_at_checked_at", null)
+  let photosQuery = admin.from("gallery_photos").select("id, storage_path").eq("gallery_id", galleryId).is("taken_at_checked_at", null);
+  if (favoritesOnly) photosQuery = photosQuery.eq("is_favorite", true);
+  const { data: photos, error } = await photosQuery
     .order("sort_order", { ascending: true })
     .limit(BATCH_SIZE)
     .returns<{ id: string; storage_path: string }[]>();
@@ -69,11 +71,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
-  const { count } = await admin
-    .from("gallery_photos")
-    .select("id", { count: "exact", head: true })
-    .eq("gallery_id", galleryId)
-    .is("taken_at_checked_at", null);
+  let countQuery = admin.from("gallery_photos").select("id", { count: "exact", head: true }).eq("gallery_id", galleryId).is("taken_at_checked_at", null);
+  if (favoritesOnly) countQuery = countQuery.eq("is_favorite", true);
+  const { count } = await countQuery;
 
   return NextResponse.json({ checked, withDate, remaining: count ?? 0 });
 }
