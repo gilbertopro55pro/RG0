@@ -41,7 +41,6 @@ import {
   fetchCustomOrnaments,
   createCustomOrnamentTab,
   uploadCustomOrnament,
-  fetchCustomOrnamentBytes,
   deleteCustomOrnament,
   type CustomOrnamentTab,
 } from "@/lib/customOrnaments";
@@ -1535,26 +1534,17 @@ export default function GalleryManageView({
     if (!albumManageOpen || ornamentsFetchedRef.current) return;
     ornamentsFetchedRef.current = true;
     let cancelled = false;
-    let revokedUrls: string[] = [];
     setCustomOrnamentsLoading(true);
     (async () => {
       try {
+        // Only the list (one request): each ornament's image is its own route URL, which the browser
+        // loads when it's actually shown (and caches). Downloading every ornament up front — 97+
+        // separate server round trips — is what made the tool slow to open on phones, where the
+        // editor waits for this list (owner, 2026-09-30).
         const data = await fetchCustomOrnaments();
-        const urls = await Promise.all(
-          data.ornaments.map(async (o) => {
-            try {
-              const bytes = await fetchCustomOrnamentBytes(o.id);
-              const url = URL.createObjectURL(new Blob([bytes]));
-              revokedUrls.push(url);
-              return { id: o.id, tab_id: o.tab_id, url };
-            } catch {
-              return { id: o.id, tab_id: o.tab_id, url: "" };
-            }
-          })
-        );
         if (cancelled) return;
         setCustomOrnamentTabs(data.tabs);
-        setCustomOrnaments(urls);
+        setCustomOrnaments(data.ornaments.map((o) => ({ id: o.id, tab_id: o.tab_id, url: `/api/desktop/ornaments/${o.id}` })));
       } catch {
         // A failed ornament-tab load shouldn't block opening the editor itself.
       } finally {
@@ -1563,7 +1553,6 @@ export default function GalleryManageView({
     })();
     return () => {
       cancelled = true;
-      revokedUrls.forEach((u) => URL.revokeObjectURL(u));
     };
   }, [albumManageOpen]);
 

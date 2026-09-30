@@ -158,7 +158,7 @@ export default function AlbumAutoDesigner({
 
   const singlePage = singlePageOf(size);
   const coverPresets = useMemo(() => {
-    const list = [{ label: `כמו עמוד באלבום (${fmt(singlePage.width)}×${fmt(singlePage.height)})`, width: singlePage.width, height: singlePage.height }];
+    const list = [{ label: `כמו עמוד (${fmt(singlePage.width)}×${fmt(singlePage.height)})`, width: singlePage.width, height: singlePage.height }];
     for (const [w, h] of [
       [30, 30],
       [25, 25],
@@ -449,11 +449,11 @@ export default function AlbumAutoDesigner({
           {/* One section, one row: the album's size on the right (first in RTL), the cover's in the
               middle, the style (or a saved template) on the left. */}
           <section className="rounded-lg border border-line bg-white p-3.5 space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4">
             <div className="space-y-3 min-w-0">
               <p className="text-sm font-semibold">מידות האלבום (ס״מ)</p>
-              <div className="flex items-end gap-2 flex-wrap">
-                <label className="block">
+              <div className="space-y-2">
+                <label className="block min-w-0">
                   <span className="block text-xs text-ink-soft mb-1.5">מידה נפוצה</span>
                   <select
                     value={sizePresets.find((p) => p.width === size.width && p.height === size.height)?.label ?? ""}
@@ -461,7 +461,7 @@ export default function AlbumAutoDesigner({
                       const preset = sizePresets.find((p) => p.label === e.target.value);
                       if (preset) setAlbumSize({ width: preset.width, height: preset.height, margin: preset.margin });
                     }}
-                    className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white min-w-[110px]"
+                    className="w-full min-w-0 rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
                   >
                     <option value="">בחירה...</option>
                     {sizePresets.map((p) => (
@@ -471,16 +471,18 @@ export default function AlbumAutoDesigner({
                     ))}
                   </select>
                 </label>
-                <NumberField label="רוחב" value={size.width} onChange={(v) => setAlbumSize({ ...size, width: v })} />
-                <NumberField label="גובה" value={size.height} onChange={(v) => setAlbumSize({ ...size, height: v })} />
-                <NumberField label="שוליים" value={size.margin} step={0.1} min={0} onChange={(v) => setSize({ ...size, margin: v })} />
+                <div className="grid grid-cols-3 gap-2">
+                  <NumberField label="רוחב" value={size.width} onChange={(v) => setAlbumSize({ ...size, width: v })} />
+                  <NumberField label="גובה" value={size.height} onChange={(v) => setAlbumSize({ ...size, height: v })} />
+                  <NumberField label="שוליים" value={size.margin} step={0.1} min={0} onChange={(v) => setSize({ ...size, margin: v })} />
+                </div>
               </div>
             </div>
 
-            <div className="space-y-3 min-w-0 border-t border-line pt-4 lg:border-t-0 lg:pt-0 lg:border-s lg:ps-4">
+            <div className="space-y-3 min-w-0 border-t border-line pt-4 sm:border-t-0 sm:pt-0 sm:border-s sm:ps-3 lg:ps-4">
               <p className="text-sm font-semibold">מידות הכריכה (ס״מ)</p>
-              <div className="flex items-end gap-2 flex-wrap">
-                <label className="block">
+              <div className="space-y-2">
+                <label className="block min-w-0">
                   <span className="block text-xs text-ink-soft mb-1.5">מידה</span>
                   <select
                     value={
@@ -498,7 +500,7 @@ export default function AlbumAutoDesigner({
                       const preset = coverPresets.find((p) => p.label === e.target.value);
                       if (preset) setCoverSize({ width: preset.width, height: preset.height });
                     }}
-                    className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white min-w-[110px] max-w-full"
+                    className="w-full min-w-0 rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
                   >
                     <option value="">מידה אחרת</option>
                     {coverPresets.map((p) => (
@@ -510,7 +512,7 @@ export default function AlbumAutoDesigner({
                   </select>
                 </label>
                 {coverMode === "on" && (
-                  <>
+                  <div className="grid grid-cols-2 gap-2">
                     <NumberField
                       label="רוחב"
                       value={coverSize.width}
@@ -527,14 +529,14 @@ export default function AlbumAutoDesigner({
                         setCoverSize({ ...coverSize, height: v });
                       }}
                     />
-                  </>
+                  </div>
                 )}
               </div>
             </div>
 
-            <div className="space-y-3 min-w-0 border-t border-line pt-4 lg:border-t-0 lg:pt-0 lg:border-s lg:ps-4">
+            <div className="space-y-3 min-w-0 border-t border-line pt-4 sm:border-t-0 sm:pt-0 sm:border-s sm:ps-3 lg:ps-4">
               <p className="text-sm font-semibold">סגנון</p>
-              <label className="block">
+              <label className="block min-w-0">
                 <span className="block text-xs text-ink-soft mb-1.5">סגנון או תבנית שמורה</span>
                 <select
                   value={choice}
@@ -862,8 +864,8 @@ function NumberField({
   min?: number;
 }) {
   return (
-    <label className="block">
-      <span className="block text-xs text-ink-soft mb-1.5">{label}</span>
+    <label className="block min-w-0">
+      <span className="block text-xs text-ink-soft mb-1.5 truncate">{label}</span>
       <input
         type="number"
         min={min}
@@ -873,7 +875,7 @@ function NumberField({
           const v = Number(e.target.value);
           if (Number.isFinite(v) && v >= min) onChange(v);
         }}
-        className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center bg-white"
+        className="w-full min-w-0 rounded-lg border border-line px-1.5 py-2 text-sm text-center bg-white"
       />
     </label>
   );

@@ -290,8 +290,11 @@ body {
    16px, then leaves it zoomed in after the input blurs (e.g. closing a modal) — the user has to
    manually pinch back out. Forcing 16px on every form field on mobile prevents the zoom from
    triggering in the first place, without touching maximum-scale/user-scalable (which would kill
-   pinch-zoom for everyone, an accessibility regression). Desktop is unaffected. */
-@media (max-width: 767px) {
+   pinch-zoom for everyone, an accessibility regression). Desktop is unaffected. Touch devices of
+   any width too: a phone held sideways (844-932px, where the album tool runs) is wider than 767px,
+   so without the second query it zoomed in and the album screens looked cut off / scrolled
+   sideways (owner, 2026-09-30). */
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   /* date/time inputs are excluded: they open a native wheel picker on focus rather than a
      zoomable text caret, so they don't trigger the zoom bug — and forcing 16px here only made
      their intrinsic rendered width wider, fighting the min-w-0 fix on the side-by-side time
