@@ -2020,6 +2020,7 @@ export default function AlbumSpreadCanvasEditor({
   spreads,
   onSwitchSpread,
   onApplyBorderToAll,
+  onApplyBackgroundToAll,
   onAddPage,
   sidePanelOffset,
   onSidePanelOffsetChange,
@@ -2058,6 +2059,9 @@ export default function AlbumSpreadCanvasEditor({
   // it to its own page locally, so it shows immediately and is saved with the page as usual.
   // Omitted-safe: no button renders without it.
   onApplyBorderToAll?: (border: { borderWidth: number; borderColor: string }) => Promise<void>;
+  // "החלה על כל דפי האלבום" in the background panel (owner, 2026-09-30): the parent puts this page's
+  // background (the same photo, blur, opacity and zoom) on every OTHER page of the album.
+  onApplyBackgroundToAll?: (background: { photoId: string; blur: number; opacity: number; zoom: number }) => Promise<void>;
   // Creates a fresh blank page and jumps straight into it — lets the photographer add a page
   // without leaving this editor first. Gated behind the same unsaved-changes check as closing or
   // switching pages (see requestLeave below), omitted-safe: no button renders without it.
@@ -2261,6 +2265,7 @@ export default function AlbumSpreadCanvasEditor({
   // remove, opacity/blur — instead of silently dropping the ability to fine-tune a background once
   // it's already sitting on the page.
   const [backgroundPanelOpen, setBackgroundPanelOpen] = useState(false);
+  const [backgroundAllStatus, setBackgroundAllStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [backgroundPanelRect, setBackgroundPanelRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const backgroundButtonRef = useRef<HTMLButtonElement>(null);
   // The small circle at the canvas's own bottom-left corner that opens the background opacity/
@@ -4990,7 +4995,7 @@ export default function AlbumSpreadCanvasEditor({
               onClick={(e) => {
                 e.stopPropagation();
                 const r = bgSlidersButtonRef.current?.getBoundingClientRect();
-                if (r) setBackgroundPanelRect({ top: Math.max(8, r.top - 210), left: r.left, width: 220 });
+                if (r) setBackgroundPanelRect({ top: Math.max(8, r.top - (onApplyBackgroundToAll ? 270 : 210)), left: r.left, width: 220 });
                 setBackgroundPanelOpen((v) => !v);
               }}
               title="שקיפות וטשטוש רקע"
@@ -6028,6 +6033,28 @@ export default function AlbumSpreadCanvasEditor({
             <SliderControl label="שקיפות רקע" value={backgroundOpacity} min={0} max={100} unit="%" onChange={setBackgroundOpacity} />
             <SliderControl label="טשטוש רקע (Blur)" value={backgroundBlur} min={0} max={100} unit="%" onChange={setBackgroundBlur} />
             <SliderControl label="זום רקע" value={backgroundZoom} min={100} max={400} unit="%" onChange={setBackgroundZoom} />
+            {onApplyBackgroundToAll && backgroundPhotoId && (
+              <>
+                <button
+                  onClick={async () => {
+                    setBackgroundAllStatus("busy");
+                    try {
+                      await onApplyBackgroundToAll({ photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom });
+                      setBackgroundAllStatus("done");
+                    } catch {
+                      setBackgroundAllStatus("error");
+                    }
+                    setTimeout(() => setBackgroundAllStatus("idle"), 3500);
+                  }}
+                  disabled={backgroundAllStatus === "busy"}
+                  className="w-full rounded-lg py-2 text-[11px] font-semibold bg-white border border-line text-amber-deep disabled:opacity-60"
+                >
+                  {backgroundAllStatus === "busy" ? "מחיל על כל הדפים..." : "החלה על כל דפי האלבום"}
+                </button>
+                {backgroundAllStatus === "done" && <p className="text-[10px] text-ink-soft text-center">הרקע הוחל על כל דפי האלבום</p>}
+                {backgroundAllStatus === "error" && <p className="text-[10px] text-rose text-center">לא הצלחנו להחיל על כל הדפים, נסו שוב</p>}
+              </>
+            )}
           </div>
         </>
       )}

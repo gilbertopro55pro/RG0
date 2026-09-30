@@ -1478,6 +1478,21 @@ export default function GalleryManageView({
     if (failed?.error) throw new Error(failed.error.message);
   };
 
+  // "החלה על כל דפי האלבום" in the editor's background panel (owner, 2026-09-30): the same
+  // background photo with the same blur / opacity / zoom on every OTHER inner page (the editor's own
+  // page keeps it and saves it with the page). The cover keeps its own look.
+  const applyBackgroundToAllSpreads = async (bg: { photoId: string; blur: number; opacity: number; zoom: number }, exceptSpreadId: string) => {
+    const patch = { background_photo_id: bg.photoId, background_blur: bg.blur, background_opacity: bg.opacity, background_zoom: bg.zoom };
+    const targets = albumSpreads.filter((sp) => sp.id !== exceptSpreadId && sp.width_cm === null);
+    if (targets.length === 0) return;
+    const results = await Promise.all(targets.map((sp) => supabase.from("gallery_album_spreads").update(patch).eq("id", sp.id)));
+    const ids = new Set(targets.map((sp) => sp.id));
+    setAlbumSpreads((prev) => prev.map((sp) => (ids.has(sp.id) ? { ...sp, ...patch } : sp)));
+    for (const sp of targets) fetch(`/api/album-spreads/${sp.id}/render-preview`, { method: "POST" }).catch(() => {});
+    const failed = results.find((r) => r.error);
+    if (failed?.error) throw new Error(failed.error.message);
+  };
+
   // Swaps in a different photo for one slot of an existing spread without disturbing the other
   // slot, the spread's position, layout, or the client's comments (comments are tied to spread_id,
   // not to a specific photo, so a swapped-in photo still shows prior feedback in context).
@@ -5274,6 +5289,7 @@ export default function GalleryManageView({
               spreads={albumSpreads}
               onSwitchSpread={(id) => setCanvasEditorTarget({ spreadId: id, mode: "custom" })}
               onApplyBorderToAll={(border) => applyBorderToAllSpreads(border, spread.id)}
+              onApplyBackgroundToAll={(bg) => applyBackgroundToAllSpreads(bg, spread.id)}
               onAddPage={createBlankSpread}
               sidePanelOffset={albumSidePanelOffset}
               onSidePanelOffsetChange={setAlbumSidePanelOffset}
