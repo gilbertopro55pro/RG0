@@ -25,10 +25,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ orna
     return NextResponse.json({ error: "שגיאה בטעינת העיטור" }, { status: 404 });
   }
 
+  // A real image type (from the stored file's extension), so the editor can point <img> / CSS
+  // masks straight at this route instead of downloading every ornament up front as a blob.
+  const ext = ornament.storage_path.split(".").pop()?.toLowerCase() ?? "";
+  const contentType =
+    ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : ext === "svg" ? "image/svg+xml" : ext === "gif" ? "image/gif" : "application/octet-stream";
   return new Response(new Uint8Array(buffer), {
     headers: {
-      "Content-Type": "application/octet-stream",
-      "Cache-Control": "private, max-age=3600",
+      "Content-Type": contentType,
+      "Cache-Control": "private, max-age=86400",
     },
   });
 }
