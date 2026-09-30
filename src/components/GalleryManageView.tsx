@@ -33,6 +33,7 @@ import { IconGallery, IconTrash } from "@/components/icons/NavIcons";
 import { IconClose as IconAlbumClose, IconPalette, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck, IconRotateDevice } from "@/components/icons/AlbumIcons";
 import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor } from "@/components/AlbumSpreadCanvasEditor";
 import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAutoDesigner";
+import { hasAutoDesignSession } from "@/lib/albumAuto/session";
 import { frameElements, rankTemplates, templatesForCount } from "@/lib/albumAuto/templateFill";
 import type { LayoutPhoto } from "@/lib/albumAuto/types";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
@@ -491,7 +492,9 @@ export default function GalleryManageView({
   const [starterPhotoCount, setStarterPhotoCount] = useState(30);
   const [buildingAlbumBook, setBuildingAlbumBook] = useState(false);
   // Admin-only "עיצוב אוטומטי" (AlbumAutoDesigner) shown in place of the manual wizard.
-  const [autoDesignOpen, setAutoDesignOpen] = useState(false);
+  // Starts open when a design for this gallery is still in progress (lib/albumAuto/session.ts): the
+  // phone's rotate round trip remounts this page, and the photographer must land back in it.
+  const [autoDesignOpen, setAutoDesignOpen] = useState(() => hasAutoDesignSession(gallery.id));
   const [autoDesignEventType, setAutoDesignEventType] = useState<string | null>(null);
   const [saveBookTemplateOpen, setSaveBookTemplateOpen] = useState(false);
   const [bookTemplateNameDraft, setBookTemplateNameDraft] = useState("");
@@ -1146,6 +1149,18 @@ export default function GalleryManageView({
     const { data } = await supabase.from("events").select("event_type").eq("id", eventId).maybeSingle<{ event_type: string | null }>();
     setAutoDesignEventType(data?.event_type ?? null);
   };
+  // A design resumed after the rotate round trip (autoDesignOpen starts true) never ran
+  // openAutoDesign on this page instance, so its event type is fetched here.
+  useEffect(() => {
+    if (!hasAutoDesignSession(gallery.id) || !eventId) return;
+    supabase
+      .from("events")
+      .select("event_type")
+      .eq("id", eventId)
+      .maybeSingle<{ event_type: string | null }>()
+      .then(({ data }) => setAutoDesignEventType(data?.event_type ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+  }, []);
 
   const createAutoDesignedAlbum = async ({ size, style, cover, spreads }: AutoDesignResult) => {
     const { data: newAlbum, error: albumErr } = await supabase
