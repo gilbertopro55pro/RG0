@@ -1,5 +1,6 @@
 import Link from "next/link";
 import LandingFaq from "@/components/LandingFaq";
+import LandingAlbumSection from "@/components/LandingAlbumSection";
 import TimeSavingsCalculator from "@/components/TimeSavingsCalculator";
 import PricingToggle from "@/components/PricingToggle";
 import PlanComparison from "@/components/PlanComparison";
@@ -37,7 +38,7 @@ const JOURNEY = [
   {
     title: "גלריה ואלבום",
     icon: "M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6",
-    text: "גלריה פרטית שבה הלקוח בוחר תמונות. מעצבים אלבום מתוך הגלריה, והלקוח מאשר בפורטל.",
+    text: "גלריה פרטית שבה הלקוח בוחר תמונות. האלבום מעוצב אוטומטית מהתמונות שבחר, והלקוח מאשר בפורטל.",
   },
   {
     title: "מסירה",
@@ -103,6 +104,9 @@ export default function LandingPage() {
             <nav className="flex items-center gap-4 lg:gap-8 text-[15px] lg:text-base">
               <a href="#features" className="hidden lg:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
                 איך זה עובד
+              </a>
+              <a href="#album" className="hidden lg:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
+                עיצוב אלבום
               </a>
               <a href="#pricing" className="hidden sm:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
                 מחירים
@@ -253,6 +257,9 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* The automatic album designer (owner, 2026-09-30). */}
+      <LandingAlbumSection />
 
       {/* The intake assistant: a real recorded conversation with the test account's assistant
           (public/guides/intake-demo.mp4, recorded with the guide-video skill), and the FAQ it
