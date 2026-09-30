@@ -2187,6 +2187,9 @@ export default function AlbumSpreadCanvasEditor({
   // What to actually do once the exit-confirm dialog resolves — closing back to the main screen,
   // or switching to a different album page picked from the bottom strip while this one was dirty.
   const [pendingLeaveAction, setPendingLeaveAction] = useState<(() => void) | null>(null);
+  // What the unsaved-changes dialog is guarding: closing the editor, or switching to another page
+  // from the strip under the canvas (same choices, worded for the switch).
+  const [leaveKind, setLeaveKind] = useState<"close" | "switch">("close");
   // The page being switched to from the strip under the canvas while this page's changes save —
   // marks that thumbnail and blocks double clicks / Escape until the save resolves and we switch.
   const [switchingToSpreadId, setSwitchingToSpreadId] = useState<string | null>(null);
@@ -3720,6 +3723,7 @@ export default function AlbumSpreadCanvasEditor({
       action();
       return;
     }
+    setLeaveKind("close");
     setPendingLeaveAction(() => action);
     setExitConfirmOpen(true);
   };
@@ -3735,6 +3739,15 @@ export default function AlbumSpreadCanvasEditor({
     if (!onSwitchSpread || switchingToSpreadId || spreadId === spread.id) return;
     renderPreviewNow();
     setPageSwitchError(false);
+    // Unsaved changes: ask first — save and switch / switch without saving / stay (owner,
+    // 2026-09-30: "מעבר בין דפים ישר שומר ולא מפנה שאלה למשתמש"). Only a photographer who ticked
+    // "don't show this again" gets the silent save below.
+    if (isDirty() && !skipExitConfirm) {
+      setLeaveKind("switch");
+      setPendingLeaveAction(() => () => onSwitchSpread(spreadId));
+      setExitConfirmOpen(true);
+      return;
+    }
     if (isDirty()) {
       setSwitchingToSpreadId(spreadId);
       try {
@@ -4237,11 +4250,13 @@ export default function AlbumSpreadCanvasEditor({
           >
             <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-base font-bold font-display mb-2">השינויים בעמוד לא נשמרו</h2>
-              <p className="text-sm text-ink-soft leading-relaxed mb-4">לשמור אותם עכשיו, או לצאת בלי לשמור?</p>
+              <p className="text-sm text-ink-soft leading-relaxed mb-4">
+                {leaveKind === "switch" ? "לשמור אותם לפני המעבר לעמוד שבחרתם, או לעבור בלי לשמור?" : "לשמור אותם עכשיו, או לצאת בלי לשמור?"}
+              </p>
 
               <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip mb-4">
                 <span className="text-xs text-ink-soft leading-relaxed flex-1">
-                  אל תציג לי את החלון הזה שוב. תמיד שמור אוטומטית ביציאה
+                  אל תציג לי את החלון הזה שוב. תמיד שמור אוטומטית ביציאה ובמעבר עמוד
                 </span>
                 <button
                   onClick={() => {
@@ -4274,7 +4289,7 @@ export default function AlbumSpreadCanvasEditor({
                   }}
                   className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white"
                 >
-                  שמירה ויציאה
+                  {leaveKind === "switch" ? "שמירה ומעבר לעמוד" : "שמירה ויציאה"}
                 </button>
                 <button
                   onClick={() => {
@@ -4284,7 +4299,7 @@ export default function AlbumSpreadCanvasEditor({
                   }}
                   className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-rose"
                 >
-                  יציאה בלי שמירה
+                  {leaveKind === "switch" ? "מעבר בלי שמירה" : "יציאה בלי שמירה"}
                 </button>
                 <button
                   onClick={() => {
