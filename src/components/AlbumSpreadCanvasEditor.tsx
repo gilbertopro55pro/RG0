@@ -2519,12 +2519,18 @@ export default function AlbumSpreadCanvasEditor({
   // actual pixel width/height in JS — plain arithmetic, no CSS min()/aspect-ratio involved, so
   // there's nothing left for this engine quirk to silently skip.
   const [canvasWrapWidthPx, setCanvasWrapWidthPx] = useState<number | null>(null);
+  // The wrap's real vertical padding — 24 on desktop, but phone adds a 1cm padding-top that the
+  // flat "-24" below never counted; only matters once the page strip also has to fit (see
+  // pageStripReservePx), so a single-page album keeps its exact previous canvas size.
+  const [canvasWrapPadYPx, setCanvasWrapPadYPx] = useState(24);
   useEffect(() => {
     const el = canvasWrapRef.current;
     if (!el) return;
     const update = () => {
       setCanvasWrapHeightPx(el.clientHeight);
       setCanvasWrapWidthPx(el.clientWidth);
+      const cs = getComputedStyle(el);
+      setCanvasWrapPadYPx((parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0));
     };
     update();
     const ro = new ResizeObserver(update);
@@ -2559,6 +2565,7 @@ export default function AlbumSpreadCanvasEditor({
     const tr = t.getBoundingClientRect();
     c.scrollLeft += tr.left + tr.width / 2 - (cr.left + cr.width / 2);
   }, [showPageStrip, spread.id]);
+  const pageStripReservePx = showPageStrip && pageStripHeightPx > 0 ? pageStripHeightPx + Math.max(0, canvasWrapPadYPx - 24) : 0;
   // Real desktop (≥1024px) canvas box, computed once in JS from both real measured dimensions —
   // see the comment on canvasWrapWidthPx above for why this replaced the old CSS min()/aspect-ratio
   // combo. null until the first ResizeObserver measurement lands; the className below has a static
@@ -2570,7 +2577,7 @@ export default function AlbumSpreadCanvasEditor({
           // -24 on both axes: the wrap's own 12px padding (added so the always-white page has a
           // visible gray margin around it, not just below/beside it) on each side.
           const availW = Math.max(0, canvasWrapWidthPx - 24);
-          const availH = Math.max(0, canvasWrapHeightPx - 24 - pageStripHeightPx);
+          const availH = Math.max(0, canvasWrapHeightPx - 24 - pageStripReservePx);
           return availW / canvasRatio <= availH
             ? { width: availW, height: availW / canvasRatio }
             : { width: availH * canvasRatio, height: availH };
@@ -4042,7 +4049,11 @@ export default function AlbumSpreadCanvasEditor({
             margin: 0 !important;
           }
           /* The page strip now lives INSIDE .gf-album-canvas-wrap, under the canvas (see the JSX),
-             so it no longer needs a grid cell of its own here — row 3 stays empty. */
+             so it no longer needs a grid cell of its own here — row 3 stays empty. Start-aligned
+             (not centered) to line up with the canvas, which sits at the start edge on phone. */
+          .gf-album-pageswitcher {
+            margin-inline: 0 !important;
+          }
           .gf-album-dragpanel {
             grid-column: 1;
             /* Still spans what used to be the canvas+page-switcher rows, even though the
@@ -4492,7 +4503,7 @@ export default function AlbumSpreadCanvasEditor({
             // at the same flat vh-based guess every other ratio uses too (fine for a wide page,
             // wastefully small for a square one). Left unset (falling through to the stylesheet's
             // own vh-based default) until the first real measurement lands.
-            ...(canvasWrapHeightPx ? { ["--canvas-h-cap" as string]: `${Math.max(0, canvasWrapHeightPx - 24 - pageStripHeightPx)}px` } : {}),
+            ...(canvasWrapHeightPx ? { ["--canvas-h-cap" as string]: `${Math.max(0, canvasWrapHeightPx - 24 - pageStripReservePx)}px` } : {}),
           } as React.CSSProperties}
         >
           <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
@@ -5211,8 +5222,6 @@ export default function AlbumSpreadCanvasEditor({
                     className="relative shrink-0 rounded-md overflow-hidden bg-white"
                     style={{
                       width: Math.round(thumbH * canvasRatio),
-                      outline: isCurrent || isTarget ? "2px solid var(--color-amber-deep)" : "1px solid rgba(28, 27, 25, 0.18)",
-                      outlineOffset: isCurrent || isTarget ? "-2px" : "-1px",
                       cursor: isCurrent ? "default" : switchingToSpreadId ? "wait" : "pointer",
                       opacity: switchingToSpreadId && !isTarget && !isCurrent ? 0.6 : 1,
                     }}
@@ -5223,6 +5232,13 @@ export default function AlbumSpreadCanvasEditor({
                       photos={photos}
                       customOrnaments={customOrnaments}
                       onClick={isCurrent ? undefined : () => void switchToSpread(s.id)}
+                    />
+                    {/* The frame is an overlay ON TOP of the thumbnail (an outline on this box gets painted
+                        over by the thumbnail's own full-size button) — amber for the current page
+                        and for the page being switched to, a hairline for the rest. */}
+                    <span
+                      className="absolute inset-0 rounded-md pointer-events-none"
+                      style={{ boxShadow: isCurrent || isTarget ? "inset 0 0 0 3px var(--color-amber-deep)" : "inset 0 0 0 1px rgba(28, 27, 25, 0.18)" }}
                     />
                     <span
                       className={`absolute top-0.5 right-0.5 rounded-full flex items-center justify-center font-bold text-white pointer-events-none ${isPhone ? "h-3 min-w-3 px-0.5 text-[7px]" : "h-4 min-w-4 px-1 text-[9px]"}`}
