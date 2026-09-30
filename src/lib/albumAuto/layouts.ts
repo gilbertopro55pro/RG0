@@ -9,19 +9,28 @@ import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput, LayoutPhoto } 
 // Everything is computed in real centimetres (so aspect ratios are true) and converted to percent
 // of the whole spread only when the elements are built.
 //
-// Composition (owner's rules, 2026-09-29, the same for every style — see composeSpread): one
-// dominant hero photo bleeding to the page edges (a half page, a faded ~60-80% of the spread, or with
-// many photos a band across its page) plus ONE tight, centred block of the other photos per page,
-// at least 70% of the canvas covered by photos. Blocks are justified rows or, for a few photos, the
-// best guillotine ("slicing tree") arrangement. The styles differ in their preferences and finish:
-// clean = straight blocks; catalog = strict justified grid, plain half-page hero; scribble = small
-// tilts and tape; modern = bolder faded hero, thin accent lines in existing whitespace.
+// Composition (owner's rules, 2026-09-29 — see composeSpread): one dominant hero photo bleeding to
+// the page edges (a half page, a faded ~60-80% of the spread, or with many photos a band across its
+// page) plus ONE tight, centred block of the other photos per page, at least 70% of the canvas
+// covered by photos. Blocks are justified rows or, for a few photos, the best guillotine ("slicing
+// tree") arrangement.
+//
+// The four styles must look completely different from each other (owner, 2026-09-30):
+//   clean    — the owner's corrected album (composeClean): faded/half/wide hero, one tidy template
+//              grid, 3px white outlines, the hero blurred 45% as the page background;
+//   catalog  — a magazine (composeCatalog): NOTHING bleeds; a large framed hero fills its page inside
+//              equal margins, the others in strict full-width justified rows; 5px white mats, light
+//              shadow, blurred background like clean;
+//   scribble — the general composer with small tilts and tape, 10px white "polaroid" borders with a
+//              deep shadow, on warm kraft paper (a full-spread shape at the bottom);
+//   modern   — the general composer with a bolder faded hero, bare photos (no border, no shadow)
+//              with tight ~0.25cm gaps, on a charcoal page, thin gold accent lines.
 //
 // Hebrew albums open right to left, so on a double page the first photos (reading order) go on the
 // right-hand page.
 //
-// Finishing pass, applied to every style in finalizeSpread(): every framed photo gets a 3px white
-// outline and a 35% shadow, bleeding photos get neither; every photo's crop (focalX/focalY) is placed
+// Finishing pass, applied to every style in finalizeSpread(): every framed photo gets its style's
+// frame finish (FRAME_FINISH), bleeding photos get none; every photo's crop (focalX/focalY) is placed
 // from its face boxes so no head is cut (bleeding photos also keep faces off the fold, out of the
 // fade and from under the block).
 
@@ -1371,15 +1380,15 @@ function candidatesPerKind(ctx: Ctx, hero: number, jitter: Record<Kind, number>)
 //   - the hero is one large FRAMED photo filling its own page inside equal margins (~5% of the page
 //     height on the outer edge, top and bottom; ~3% of the spread from the fold), cropped up to 1.5
 //     when that's what fills the page (the face-aware crop keeps the heads in);
-//   - the other photos in strict justified rows (one row height, equal ~0.6cm gutters) on the other
-//     page, centred inside the same margins; with many photos (more than ~7 others) the hero's page
+//   - the other photos in strict justified rows (every row the block's full width, one height per
+//     row, equal ~0.6cm gutters) on the other page, centred inside the same margins; with many photos (more than ~7 others) the hero's page
 //     also carries one strict row under the hero, so neither page is crowded;
 //   - the hero's page alternates sides from spread to spread.
 // Single pages and spreads this can't lay out (too few photos to cover 70% without a bleed, faces
 // that don't survive the crop) use the general composer.
 // ---------------------------------------------------------------------------------------------
 
-const CATALOG_HERO_CROPS = [1, 1.15, 1.3, 1.5];
+const CATALOG_HERO_CROPS = [1, 1.15, 1.3, 1.49];
 
 // One strict row of `idxs` across `w` (equal heights, equal gutters, stretched at most MAX_STRETCH),
 // its height kept within [hMin, hMax] when the stretch allows; rects relative to (0, 0).
@@ -1402,10 +1411,11 @@ function catalogRow(photos: P[], idxs: number[], w: number, g: number, hMin: num
 
 // Strict justified rows for catalog: every row spans the block's full width, the photos of a row
 // share one height, all gutters are equal — a crisp rectangle, never a ragged row. The rows keep the
-// reading order (every split into rows of 1-4 photos for up to 10 photos, else balanced splits); one
-// uniform stretch (at most 1.15, the photos cropped a little) fits the block to the box, and the
-// block shrinks when it's still too tall. Rects relative to (0, 0).
-const CATALOG_ROW_STRETCH = 1.15;
+// reading order (every split into rows of 1-4 photos for up to 10 photos, else balanced splits). A
+// row's photos may be stretched (at most MAX_STRETCH, cropped a little) to fit the block to the box
+// — all rows alike, or each toward one common row height — and the block shrinks when it's still
+// too tall. Rects relative to (0, 0).
+const CATALOG_ROW_STRETCH = MAX_STRETCH;
 
 function catalogRowSplits(photos: P[], idxs: number[]): number[][][] {
   const k = idxs.length;
@@ -1430,54 +1440,77 @@ function catalogRowSplits(photos: P[], idxs: number[]): number[][][] {
   return out;
 }
 
+// A portrait shown in a landscape frame (or a clear landscape in a portrait one).
+function orientationFlips(aspect: number, r: Rect): boolean {
+  const fa = r.w / r.h;
+  return (aspect < 1 && fa >= 1) || (aspect > 1.1 && fa < 0.95);
+}
+
 function catalogBlocks(photos: P[], idxs: number[], bw: number, bh: number, g: number, minArea: number): Alt[] {
   const out: Alt[] = [];
   if (!idxs.length) return out;
+  const lo = 1 / CATALOG_ROW_STRETCH;
+  const hi = CATALOG_ROW_STRETCH;
   for (const rows of catalogRowSplits(photos, idxs)) {
-    const A = rows.map((row) => row.reduce((s, i) => s + photos[i].aspect, 0));
+    const A = rows.map((row) => row.reduce((t, i) => t + photos[i].aspect, 0));
+    const inner = (w: number, i: number) => w - g * (rows[i].length - 1);
     const gaps = g * (rows.length - 1);
     if (bh - gaps <= 0) continue;
-    // Height of the block at width w and stretch s: sum over rows of (w - row gutters) / (s * A).
-    const heightAt = (w: number, s: number) => rows.reduce((t, row, i) => t + (w - g * (row.length - 1)) / (s * A[i]), 0) + gaps;
-    let s = clamp((heightAt(bw, 1) - gaps) / (bh - gaps), 1 / CATALOG_ROW_STRETCH, CATALOG_ROW_STRETCH);
-    let w = bw;
-    if (heightAt(w, s) > bh) {
-      // Too tall: shrink the width (height is linear in it).
-      const perW = rows.reduce((t, _, i) => t + 1 / (s * A[i]), 0);
-      const fixed = rows.reduce((t, row, i) => t + (g * (row.length - 1)) / (s * A[i]), 0);
-      w = (bh - gaps + fixed) / perW;
-      // (Less stretch now suffices? Keep the crop as small as the box allows.)
-      s = clamp(s, 1 / CATALOG_ROW_STRETCH, CATALOG_ROW_STRETCH);
-    }
-    if (!(w > 0)) continue;
-    const rects: Placed[] = [];
-    let y = 0;
-    let hMin = Infinity;
-    let hMax = 0;
-    let ok = true;
-    rows.forEach((row, i) => {
-      const h = (w - g * (row.length - 1)) / (s * A[i]);
-      if (!(h > 0)) ok = false;
-      hMin = Math.min(hMin, h);
-      hMax = Math.max(hMax, h);
-      let x = 0;
-      for (const idx of row) {
-        const pw = h * s * photos[idx].aspect;
-        rects.push({ idx, r: { x, y, w: pw, h } });
-        x += pw + g;
+    const heightAt = (w: number, ss: number[]) => rows.reduce((t, _, i) => t + inner(w, i) / (ss[i] * A[i]), 0) + gaps;
+    // Stretch options: one stretch for every row (least crop), or each row stretched toward one
+    // common row height (rows of 1 and of 3 landscapes then look like one grid).
+    const uniform = clamp((heightAt(bw, rows.map(() => 1)) - gaps) / (bh - gaps), lo, hi);
+    const options: number[][] = [rows.map(() => uniform)];
+    if (rows.length > 1) {
+      const at = (T: number) => rows.map((_, i) => clamp(inner(bw, i) / (T * A[i]), lo, hi));
+      let tLo = 0.01;
+      let tHi = bh;
+      for (let it = 0; it < 30; it++) {
+        const mid = (tLo + tHi) / 2;
+        if (heightAt(bw, at(mid)) > bh) tHi = mid;
+        else tLo = mid;
       }
-      y += h + g;
-    });
-    if (!ok || rects.some((p) => area(p.r) < minArea)) continue;
-    const h = y - g;
-    const fill = rects.reduce((t, p) => t + area(p.r), 0) / (bw * bh);
-    const areas = rects.map((p) => area(p.r));
-    const lonely = idxs.length >= 4 ? rows.filter((row) => row.length === 1).length : 0;
-    const score = fill - 0.6 * Math.abs(Math.log(s)) - 0.25 * Math.max(0, hMax / hMin - 1.6) - 0.4 * Math.max(0, 0.3 - Math.min(...areas) / Math.max(...areas)) - 0.08 * lonely;
-    out.push({ rects, w, h, score, fill });
+      options.push(at(tLo));
+    }
+    for (const ss of options) {
+      let w = bw;
+      if (heightAt(w, ss) > bh) {
+        // Too tall: shrink the width (the height is linear in it).
+        const perW = rows.reduce((t, _, i) => t + 1 / (ss[i] * A[i]), 0);
+        const fixed = rows.reduce((t, row, i) => t + (g * (row.length - 1)) / (ss[i] * A[i]), 0);
+        w = (bh - gaps + fixed) / perW;
+      }
+      if (!(w > 0)) continue;
+      const rects: Placed[] = [];
+      let y = 0;
+      let hMin = Infinity;
+      let hMax = 0;
+      let ok = true;
+      rows.forEach((row, i) => {
+        const h = inner(w, i) / (ss[i] * A[i]);
+        if (!(h > 0)) ok = false;
+        hMin = Math.min(hMin, h);
+        hMax = Math.max(hMax, h);
+        let x = 0;
+        for (const idx of row) {
+          const pw = h * ss[i] * photos[idx].aspect;
+          rects.push({ idx, r: { x, y, w: pw, h } });
+          x += pw + g;
+        }
+        y += h + g;
+      });
+      // (Rows of very different heights — one huge photo over a strip of thumbnails — aren't a grid.)
+      if (!ok || hMax > 2 * hMin || rects.some((p) => area(p.r) < minArea || orientationFlips(photos[p.idx].aspect, p.r))) continue;
+      const fill = rects.reduce((t, p) => t + area(p.r), 0) / (bw * bh);
+      const areas = rects.map((p) => area(p.r));
+      const crop = rows.reduce((t, row, i) => t + row.length * Math.abs(Math.log(ss[i])), 0) / idxs.length;
+      const lonely = idxs.length >= 4 ? rows.filter((row) => row.length === 1).length : 0;
+      const score = fill - 0.6 * crop - 0.3 * Math.max(0, hMax / hMin - 1.4) - Math.max(0, 0.35 - Math.min(...areas) / Math.max(...areas)) - 0.08 * lonely;
+      out.push({ rects, w, h: y - g, score, fill });
+    }
   }
   // The best few only (the caller combines them with every hero variant).
-  return out.sort((a, b) => b.score - a.score).slice(0, 12);
+  return out.sort((x, y) => y.score - x.score).slice(0, 12);
 }
 
 // The hero framed inside `box` at crop `c` at most (its frame as close to the box's shape as that
@@ -1485,7 +1518,8 @@ function catalogBlocks(photos: P[], idxs: number[], bw: number, bh: number, g: n
 function catalogHero(ctx: Ctx, hero: number, box: Rect, c: number): Rect | null {
   if (box.w <= 0.5 || box.h <= 0.5) return null;
   const a = ctx.photos[hero].aspect;
-  const r = fitOne(a, box, "center", "center", c);
+  // A portrait stays a portrait, a landscape a landscape.
+  const r = fitOne(a, box, "center", "center", a < 1 ? Math.max(1, Math.min(c, 0.97 / a)) : a > 1.1 ? Math.max(1, Math.min(c, a)) : c);
   if (c > 1.2 + 1e-9 && !faceCropFocal(a, r.w / r.h, ctx.faces.get(ctx.photos[hero].id) ?? []).fits) return null;
   return r;
 }
@@ -1510,13 +1544,14 @@ function catalogCandidates(ctx: Ctx): Cand[] {
     const RH = region(hp);
     const RO = region(op);
     // How many of the others ride in a row under the hero (0 = the hero alone on its page).
-    const rowCounts = k > 7 ? range(2, Math.min(7, k - 3) + 1) : k >= 6 ? [0, 2, 3] : [0];
+    // (With more than 7 others the hero alone on its page is a last resort: the other page gets crowded.)
+    const rowCounts = k > 7 ? [0, ...range(2, Math.min(7, k - 3) + 1)] : k >= 6 ? [0, 2, 3] : k >= 4 ? [0, 2] : [0];
     for (const j of rowCounts) {
       // The hero's page is read first when it's the right-hand page: its row takes the first photos.
       const rowIdxs = j ? (hp === FIRST ? others.slice(0, j) : others.slice(k - j)) : [];
       const rest = others.filter((i) => !rowIdxs.includes(i));
       const row = j ? catalogRow(photos, rowIdxs, RH.w, g, 0.2 * RH.h, 0.34 * RH.h) : null;
-      if (j && !row) continue;
+      if (j && (!row || row.rects.some((p) => orientationFlips(photos[p.idx].aspect, p.r)))) continue;
       const heroBox: Rect = row ? { x: RH.x, y: RH.y, w: RH.w, h: RH.h - row.h - g } : RH;
       const alts = catalogBlocks(photos, rest, RO.w, RO.h, g, minArea);
       for (const c of CATALOG_HERO_CROPS) {
@@ -1539,9 +1574,8 @@ function catalogCandidates(ctx: Ctx): Cand[] {
           const rest0 = frames.filter((f) => f.idx !== hero);
           const maxOther = Math.max(...rest0.map((f) => area(f.r)));
           const minOther = Math.min(...rest0.map((f) => area(f.r)));
-          if (heroA < 1.2 * maxOther || minOther < minArea) continue;
           const coverage = unionArea(frames.map((f) => f.r), W, H) / (W * H);
-          if (coverage < MIN_COVERAGE) continue;
+          if (heroA < 1.1 * maxOther || minOther < minArea || coverage < MIN_COVERAGE) continue;
           const heroCrop = cropOf(photos[hero].aspect, hr);
           const crop = rest0.reduce((s, f) => s + Math.log(cropOf(photos[f.idx].aspect, f.r)), 0) / rest0.length;
           // Both pages' photos about the same size when the hero's page carries a row.
@@ -1555,9 +1589,12 @@ function catalogCandidates(ctx: Ctx): Cand[] {
             0.6 * crop -
             0.25 * balance +
             0.1 * Math.min(1, minOther / (0.02 * W * H)) -
-            (hp === prefPage ? 0 : 0.4);
-          // One candidate per structure (the hero's frame shape, the row under it, the rows' shape).
-          const key = [j, Math.round((hr.w / hr.h) * 20), alt.rects.length ? alt.rects.map((p) => Math.round(p.r.y)).join(".") : "", hp === prefPage ? 0 : 1].join("|");
+            (hp === prefPage ? 0 : 0.4) -
+            (j === 0 && k > 7 ? 0.3 + 0.03 * (k - 7) : 0) -
+            (j > 0 && k <= 7 ? 0.2 : 0);
+          // One candidate per structure (the hero's frame shape, the row under it, the rows' shape; the
+          // mirror image on the other side is the same structure).
+          const key = [j, Math.round((hr.w / hr.h) * 20), alt.rects.map((p) => Math.round(p.r.y)).join(".")].join("|");
           const prev = byKey.get(key);
           if (prev && prev.score >= score) continue;
           byKey.set(key, {

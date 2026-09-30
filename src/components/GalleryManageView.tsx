@@ -1386,8 +1386,11 @@ export default function GalleryManageView({
       const inset = marginInsetPctFor(album);
       const candidates = rankTemplates(templatesForCount(ids.length, albumTemplates.map((t) => t.frames)), layoutPhotos, W, H);
       if (candidates.length === 0) return;
-      // The page keeps its look: the finish of its current framed photos (else a white frame + shadow).
-      const src = photoEls.find((el) => el.borderWidth || el.shadow);
+      // The page keeps its look: the finish of its photos that don't run to the edge — including
+      // none at all (modern's bare photos); only a page with nothing but edge-to-edge photos gets a
+      // white frame + shadow.
+      const inner = photoEls.filter((el) => el.xPct > 0.5 && el.yPct > 0.5 && el.xPct + el.widthPct < 99.5 && el.yPct + el.heightPct < 99.5);
+      const src = inner.find((el) => el.borderWidth || el.shadow) ?? inner[0];
       const finish = src
         ? { ...(src.borderWidth ? { borderWidth: src.borderWidth, borderColor: src.borderColor ?? "#ffffff" } : {}), ...(src.shadow ? { shadow: src.shadow } : {}) }
         : { borderWidth: 3, borderColor: "#ffffff", shadow: 35 };
