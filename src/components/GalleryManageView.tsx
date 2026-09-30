@@ -1450,6 +1450,34 @@ export default function GalleryManageView({
     }
   };
 
+  // "החלה על כל דפי האלבום" in the editor's outline panel (owner, 2026-09-30): the same outline
+  // (width + colour) on the photos of every OTHER page of the album — the editor applies it to its
+  // own page itself (saved with that page). Photos that run to the edge without a frame (bleeds)
+  // keep having none; borderWidth 0 removes the outline.
+  const applyBorderToAllSpreads = async (border: { borderWidth: number; borderColor: string }, exceptSpreadId: string) => {
+    const touchesEdge = (el: AlbumPhotoElement) => el.xPct <= 0.5 || el.yPct <= 0.5 || el.xPct + el.widthPct >= 99.5 || el.yPct + el.heightPct >= 99.5;
+    const updates = albumSpreads
+      .filter((sp) => sp.id !== exceptSpreadId)
+      .map((sp) => {
+        let changed = false;
+        const elements = (sp.elements ?? []).map((el) => {
+          if (el.type !== "photo" || (!el.borderWidth && touchesEdge(el))) return el;
+          if (el.borderWidth === border.borderWidth && el.borderColor === border.borderColor) return el;
+          changed = true;
+          return { ...el, borderWidth: border.borderWidth, borderColor: border.borderColor };
+        });
+        return changed ? { id: sp.id, elements } : null;
+      })
+      .filter((u): u is { id: string; elements: AlbumElement[] } => u !== null);
+    if (updates.length === 0) return;
+    const results = await Promise.all(updates.map((u) => supabase.from("gallery_album_spreads").update({ elements: u.elements }).eq("id", u.id)));
+    const failed = results.find((r) => r.error);
+    const byId = new Map(updates.map((u) => [u.id, u.elements]));
+    setAlbumSpreads((prev) => prev.map((sp) => (byId.has(sp.id) ? { ...sp, elements: byId.get(sp.id) as AlbumElement[] } : sp)));
+    for (const u of updates) fetch(`/api/album-spreads/${u.id}/render-preview`, { method: "POST" }).catch(() => {});
+    if (failed?.error) throw new Error(failed.error.message);
+  };
+
   // Swaps in a different photo for one slot of an existing spread without disturbing the other
   // slot, the spread's position, layout, or the client's comments (comments are tied to spread_id,
   // not to a specific photo, so a swapped-in photo still shows prior feedback in context).
@@ -5245,6 +5273,7 @@ export default function GalleryManageView({
               onDeleteCustomOrnament={handleDeleteCustomOrnament}
               spreads={albumSpreads}
               onSwitchSpread={(id) => setCanvasEditorTarget({ spreadId: id, mode: "custom" })}
+              onApplyBorderToAll={(border) => applyBorderToAllSpreads(border, spread.id)}
               onAddPage={createBlankSpread}
               sidePanelOffset={albumSidePanelOffset}
               onSidePanelOffsetChange={setAlbumSidePanelOffset}
