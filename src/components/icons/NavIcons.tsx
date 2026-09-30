@@ -185,3 +185,28 @@ export function IconArrowDown({ className }: IconProps) {
     </svg>
   );
 }
+
+// An open photo album: two pages meeting at the fold, a small photo on the right page.
+export function IconAlbum({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M12 6.5C10.2 5.3 7.3 4.8 3.5 5v13c3.8-.2 6.7.3 8.5 1.5 1.8-1.2 4.7-1.7 8.5-1.5V5c-3.8-.2-6.7.3-8.5 1.5Z" />
+      <path d="M12 6.5v13" />
+      <path d="M14.5 13.8l1.6-1.7 1.4 1.4 1-1 1 1.1" />
+      <circle cx="16" cy="9.2" r="0.9" />
+    </svg>
+  );
+}
+
+// A magnet frame: a framed photo with a small horseshoe magnet on its top edge (so it doesn't read
+// as the gallery icon).
+export function IconMagnetFrame({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <rect x="4" y="8" width="16" height="12.5" rx="2.2" />
+      <path d="M9.5 8V5.5a2.5 2.5 0 0 1 5 0V8" />
+      <path d="M9.5 6.3h1.4M13.1 6.3h1.4" />
+      <path d="M7 18l2.8-3 2 2 2-2.2 3.2 3.2" />
+    </svg>
+  );
+}
