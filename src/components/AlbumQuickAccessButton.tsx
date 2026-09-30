@@ -277,16 +277,16 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex-1 min-w-0 flex items-center justify-between gap-3 rounded-2xl p-4 bg-card border border-line shadow-card text-right"
+        className="flex-1 min-w-0 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl p-3 sm:p-4 bg-card border border-line shadow-card text-right"
       >
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg bg-amber-bg">📖</span>
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full text-lg bg-amber-bg">📖</span>
           <div className="min-w-0">
-            <div className="text-sm font-semibold truncate">עיצוב אלבום</div>
-            <div className="text-xs text-ink-soft truncate">גישה מהירה לפי גלריה</div>
+            <div className="text-sm font-semibold leading-snug">עיצוב אלבום</div>
+            <div className="text-xs text-ink-soft leading-snug mt-0.5">גישה מהירה לפי גלריה</div>
           </div>
         </div>
-        <span className="text-ink-soft shrink-0">←</span>
+        <span className="hidden sm:inline text-ink-soft shrink-0">←</span>
       </button>
 
       {currentJob && (
