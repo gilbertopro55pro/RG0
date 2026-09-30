@@ -134,9 +134,11 @@ const HARD_MAX_PER_SPREAD = 20;
 const STAGE_GAP_MS = 15 * 60 * 1000;
 // Book order (differs from the UI's CELL_ORDER).
 const SECTION_PRIORITY: FamilyCellId[] = ["owners", "parents", "siblings", "grandparents"];
-const FAMILY_SPREAD_CAP = 2;
-const OWNERS_SPREAD_CAP = 3;
-const OWNERS_SHARE_CAP = 0.15;
+// Owner's book structure (2026-09-30), when the photographer filled the family cells: the pages
+// after the cover run owners (1-3), parents (4-5), siblings (6-8), grandparents (9-11), then the rest
+// of the event in shooting order. These are each section's page SLOTS: a section with fewer photos
+// takes fewer pages (never an empty page or a page short of photos), and the next one moves up.
+const SECTION_SLOTS: Record<FamilyCellId, number> = { owners: 3, parents: 2, siblings: 3, grandparents: 3 };
 
 function groupOf(section: SectionKind): SectionGroup {
   if (section === "owners") return "owners";
@@ -200,15 +202,68 @@ function shootingOrder(photos: AutoPhoto[]): { ordered: AutoPhoto[]; time: Map<s
 
 type PhotoInfo = {
   faceCount: number;
-  identified: number; // faces matched to any cell person
-  cells: Set<FamilyCellId>; // cells with at least one person in the photo
+  identified: number; // faces matched to a cell person
+  cells: Set<FamilyCellId>; // cells with at least one person in the photo (ambiguous faces add both)
   cellArea: Record<FamilyCellId, number>; // summed face area per cell
   identifiedArea: number;
 };
 
-// Each face goes to its single nearest cell person under the threshold (not to every person it's
-// close to), so one face never counts as both a parent and a grandparent.
-function analyzeFaces(faces: PhotoFaces["faces"], people: { cell: FamilyCellId; descriptor: number[] }[]): PhotoInfo {
+type Person = { cell: FamilyCellId; refs: number[][] };
+
+// Face matching, made as precise as the descriptors allow (owner, 2026-09-30: the book's family
+// pages depend on it):
+// - Per PERSON, not per cell: one face is one person, and one person appears once per photo (two
+//   faces never both match the same sibling). Pairs are assigned greedily, closest first.
+// - Look-alikes: a face whose best match is not clearly better (MARGIN) than the best person of
+//   ANOTHER cell counts for both cells, so it can't slip onto the owners-only pages (a father who
+//   looks like the groom's grandfather). The section filters are strict, so this errs on precision.
+// - Small faces carry the least reliable descriptors: they need a tighter distance.
+// - Reference expansion (expandReferences): a single reference face per person misses the same
+//   person at another angle or light, so faces that match very confidently join that person's
+//   references before the real matching pass.
+const MARGIN = 0.05;
+const SMALL_FACE_AREA = 0.0025; // ~5% × 5% of the photo
+const SMALL_FACE_THRESHOLD = FACE_MATCH_THRESHOLD - 0.05;
+const EXPAND_THRESHOLD = 0.42;
+const EXPAND_MARGIN = 0.1;
+const EXPAND_MAX_REFS = 12;
+
+function personDistance(descriptor: number[], person: Person): number {
+  let best = Number.POSITIVE_INFINITY;
+  for (const r of person.refs) {
+    const d = euclidean(descriptor, r);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function expandReferences(people: Person[], faces: PhotoFaces[]): Person[] {
+  if (people.length === 0) return people;
+  const extra: { d: number; descriptor: number[] }[][] = people.map(() => []);
+  for (const photo of faces) {
+    for (const face of photo.faces) {
+      if (face.area < SMALL_FACE_AREA) continue;
+      let bi = -1;
+      let bd = Number.POSITIVE_INFINITY;
+      let second = Number.POSITIVE_INFINITY; // nearest OTHER person
+      people.forEach((p, i) => {
+        const d = personDistance(face.descriptor, p);
+        if (d < bd) {
+          second = bd;
+          bd = d;
+          bi = i;
+        } else if (d < second) second = d;
+      });
+      if (bi >= 0 && bd < EXPAND_THRESHOLD && second - bd >= EXPAND_MARGIN) extra[bi].push({ d: bd, descriptor: face.descriptor });
+    }
+  }
+  return people.map((p, i) => ({
+    cell: p.cell,
+    refs: [...p.refs, ...extra[i].sort((a, b) => a.d - b.d).slice(0, EXPAND_MAX_REFS).map((e) => e.descriptor)],
+  }));
+}
+
+function analyzeFaces(faces: PhotoFaces["faces"], people: Person[]): PhotoInfo {
   const info: PhotoInfo = {
     faceCount: faces.length,
     identified: 0,
@@ -216,19 +271,59 @@ function analyzeFaces(faces: PhotoFaces["faces"], people: { cell: FamilyCellId; 
     cellArea: { owners: 0, parents: 0, siblings: 0, grandparents: 0 },
     identifiedArea: 0,
   };
-  for (const face of faces) {
-    let best: { cell: FamilyCellId; dist: number } | null = null;
-    for (const person of people) {
-      const d = euclidean(face.descriptor, person.descriptor);
-      if (d < FACE_MATCH_THRESHOLD && (!best || d < best.dist)) best = { cell: person.cell, dist: d };
-    }
-    if (!best) continue;
+  if (people.length === 0) return info;
+  const pairs: { f: number; p: number; d: number }[] = [];
+  faces.forEach((face, f) => {
+    const limit = face.area < SMALL_FACE_AREA ? SMALL_FACE_THRESHOLD : FACE_MATCH_THRESHOLD;
+    people.forEach((person, p) => {
+      const d = personDistance(face.descriptor, person);
+      if (d < limit) pairs.push({ f, p, d });
+    });
+  });
+  pairs.sort((a, b) => a.d - b.d);
+  const faceDone = new Set<number>();
+  const personDone = new Set<number>();
+  for (const { f, p, d } of pairs) {
+    if (faceDone.has(f) || personDone.has(p)) continue;
+    faceDone.add(f);
+    personDone.add(p);
+    const cell = people[p].cell;
+    const face = faces[f];
     info.identified++;
-    info.cells.add(best.cell);
-    info.cellArea[best.cell] += face.area;
+    info.cells.add(cell);
+    info.cellArea[cell] += face.area;
     info.identifiedArea += face.area;
+    // Look-alike from another cell within the margin: the face counts for that cell too.
+    for (const q of pairs) {
+      if (q.f === f && people[q.p].cell !== cell && q.d - d < MARGIN) info.cells.add(people[q.p].cell);
+    }
   }
   return info;
+}
+
+// A family section's photos over at most `slots` pages, never a page short of photos: as many
+// pages as the section's minimum per page allows, two pages split 60:40 (owner, 2026-09-30), more
+// pages as even as possible. Pages keep consecutive runs, so the section stays in shooting order.
+function splitSection(ids: string[], slots: number, b: Bounds): string[][] {
+  const n = ids.length;
+  if (n === 0) return [];
+  const pages = Math.max(1, Math.min(slots, Math.floor(n / b.min), Math.ceil(n / 2)));
+  let sizes: number[];
+  if (pages === 1) sizes = [n];
+  else if (pages === 2) {
+    const first = Math.ceil(n * 0.6);
+    sizes = [first, n - first];
+  } else {
+    const base = Math.floor(n / pages);
+    sizes = Array.from({ length: pages }, (_, i) => base + (i < n % pages ? 1 : 0));
+  }
+  const out: string[][] = [];
+  let pos = 0;
+  for (const size of sizes) {
+    out.push(ids.slice(pos, pos + size));
+    pos += size;
+  }
+  return out;
 }
 
 // Deterministic variety: consecutive spreads cycle through different sizes inside the bounds.
@@ -339,6 +434,7 @@ function separateBursts(chunks: string[][], time: Map<string, number>): void {
 export function pageCap(pos: number): number {
   return pos <= 5 ? 6 : pos <= 10 ? 8 : pos <= 20 ? 15 : 20;
 }
+const pageCapAt = pageCap;
 
 // The last pass, and the one that makes the limits hard: when the plan has more spreads than
 // `maxSpreads`, or a spread over its page cap, the whole book (in its planned order) is split again
@@ -351,8 +447,11 @@ function fitPages(
   spreads: PlannedSpread[],
   maxSpreads: number,
   time: Map<string, number> | null,
-  heroFor: (section: SectionKind, ids: string[]) => string
+  heroFor: (section: SectionKind, ids: string[]) => string,
+  // Book position of the first spread here (the family pages before the event take the first ones).
+  offset = 0
 ): PlannedSpread[] {
+  const pageCap = (pos: number) => pageCapAt(pos + offset);
   const fits = spreads.length <= maxSpreads && spreads.every((s, i) => s.photoIds.length <= pageCap(i + 1) && (s.photoIds.length >= 2 || spreads.length === 1));
   const ids = spreads.flatMap((s) => s.photoIds);
   const P = ids.length;
@@ -454,7 +553,10 @@ function mergeSingles(spreads: PlannedSpread[], byId: Map<string, AutoPhoto>): v
     if (s.photoIds.length !== 1) continue;
     const prev = spreads[i - 1];
     const next = spreads[i + 1];
-    const target = prev && prev.section === s.section ? prev : next ?? prev;
+    // The owners' pages hold only the owners (owner, 2026-09-30): another section's single photo
+    // never joins them.
+    const ok = (t: PlannedSpread | undefined) => !!t && (t.section !== "owners" || s.section === "owners");
+    const target = prev && prev.section === s.section ? prev : ok(next) ? next : ok(prev) ? prev : next ?? prev;
     if (!target) continue;
     if (target === prev) target.photoIds.push(...s.photoIds);
     else target.photoIds.unshift(...s.photoIds);
@@ -504,33 +606,21 @@ export function planAlbum(
   const byId = new Map(allPhotos.map((p) => [p.id, p] as const));
 
   // Cell people.
-  const people: { cell: FamilyCellId; descriptor: number[] }[] = [];
+  let people: Person[] = [];
   const cellSize: Record<FamilyCellId, number> = { owners: 0, parents: 0, siblings: 0, grandparents: 0 };
   for (const c of cells) {
     for (const d of c.descriptors ?? []) {
       if (!Array.isArray(d) || d.length === 0) continue;
-      people.push({ cell: c.id, descriptor: d });
+      people.push({ cell: c.id, refs: [d] });
       cellSize[c.id]++;
     }
   }
+  const candidateIds = new Set(allPhotos.map((p) => p.id));
+  people = expandReferences(people, faces.filter((f) => candidateIds.has(f.photoId)));
 
   const facesById = new Map(faces.map((f) => [f.photoId, f.faces] as const));
   const info = new Map<string, PhotoInfo>();
   for (const p of allPhotos) info.set(p.id, analyzeFaces(facesById.get(p.id) ?? [], people));
-
-  const used = new Set<string>();
-  const sectionPhotos: Record<FamilyCellId, string[]> = { owners: [], parents: [], siblings: [], grandparents: [] };
-  const refIds: Record<FamilyCellId, string | null> = { owners: null, parents: null, siblings: null, grandparents: null };
-
-  // 1. Reference photos open their sections (owners' reference wins if one photo is marked twice).
-  for (const cell of SECTION_PRIORITY) {
-    const ref = referencePhotos?.find((r) => r.id === cell)?.photoId;
-    if (ref && byId.has(ref) && !used.has(ref)) {
-      used.add(ref);
-      refIds[cell] = ref;
-      sectionPhotos[cell].push(ref);
-    }
-  }
 
   // 2. Family sections, in priority order. Which other cells may share the frame: owners only with
   // themselves; parents with the owners; siblings with owners/parents; grandparents with anyone.
@@ -542,37 +632,71 @@ export function planAlbum(
     siblings: ["owners", "parents", "siblings"],
     grandparents: ["owners", "parents", "siblings", "grandparents"],
   };
-  const total = allPhotos.length;
-  for (const cell of SECTION_PRIORITY) {
-    if (cellSize[cell] === 0) continue; // unfilled cell → empty section (its reference photo aside)
-    const capByShape =
-      cell === "owners"
-        ? Math.min(Math.max(1, Math.round(total * OWNERS_SHARE_CAP)), OWNERS_SPREAD_CAP * bounds.owners.max)
-        : FAMILY_SPREAD_CAP * bounds.family.max;
-    const room = capByShape - sectionPhotos[cell].length;
-    if (room <= 0) continue;
-    const candidates = allPhotos.filter((p) => {
-      if (used.has(p.id)) return false;
-      const fi = info.get(p.id) as PhotoInfo;
-      if (!fi.cells.has(cell)) return false;
-      for (const c of fi.cells) if (!allowed[cell].includes(c)) return false;
-      if (cell === "owners") return fi.faceCount <= cellSize.owners + 1; // portrait-like shots
-      return fi.faceCount <= fi.identified + 1;
-    });
-    // Closer (bigger face) first; shooting order breaks ties.
-    candidates.sort(
-      (a, b) =>
-        (info.get(b.id) as PhotoInfo).cellArea[cell] - (info.get(a.id) as PhotoInfo).cellArea[cell] ||
-        (orderIdx.get(a.id) as number) - (orderIdx.get(b.id) as number)
-    );
-    const picked = candidates.slice(0, room);
-    // Inside a section the chosen photos run in shooting order (keeps outfits/locations together),
-    // with the reference photo leading.
-    picked.sort((a, b) => (orderIdx.get(a.id) as number) - (orderIdx.get(b.id) as number));
-    for (const p of picked) {
-      used.add(p.id);
-      sectionPhotos[cell].push(p.id);
+  // Spreads the book may have: the pages (typed count, capped at 30; else 30) minus the cover.
+  const typed = opts.targetSpreads && opts.targetSpreads > 0 ? Math.min(AUTO_MAX_PAGES, Math.floor(opts.targetSpreads)) : null;
+  const maxSpreads = Math.max(1, (typed ?? AUTO_MAX_PAGES) - (opts.hasCover === false ? 0 : 1));
+  // Section slots, trimmed to fit the book: the family pages never squeeze the rest of the event
+  // past the hard per-page ceiling (a short typed count with many photos). The section with the
+  // most slots gives one up first, the later section on a tie; then the selection runs again.
+  const used = new Set<string>();
+  const sectionPhotos: Record<FamilyCellId, string[]> = { owners: [], parents: [], siblings: [], grandparents: [] };
+  const refIds: Record<FamilyCellId, string | null> = { owners: null, parents: null, siblings: null, grandparents: null };
+  const slots = { ...SECTION_SLOTS };
+  let familyBudget = Math.max(0, maxSpreads - 1);
+  for (let round = 0; round < 20; round++) {
+    for (let guard = 0; guard < 20 && SECTION_PRIORITY.reduce((a, c) => a + slots[c], 0) > familyBudget; guard++) {
+      const c = [...SECTION_PRIORITY].reverse().reduce((m, x) => (slots[x] > slots[m] ? x : m), "grandparents" as FamilyCellId);
+      slots[c]--;
     }
+    used.clear();
+    for (const c of SECTION_PRIORITY) {
+      sectionPhotos[c] = [];
+      refIds[c] = null;
+    }
+
+    // 1. Reference photos open their sections (owners' reference wins if one photo is marked twice).
+    for (const cell of SECTION_PRIORITY) {
+      const ref = referencePhotos?.find((r) => r.id === cell)?.photoId;
+      if (ref && slots[cell] > 0 && byId.has(ref) && !used.has(ref)) {
+        used.add(ref);
+        refIds[cell] = ref;
+        sectionPhotos[cell].push(ref);
+      }
+    }
+
+    for (const cell of SECTION_PRIORITY) {
+      if (cellSize[cell] === 0) continue; // unfilled cell → empty section (its reference photo aside)
+      const capByShape = slots[cell] * bounds[groupOf(cell)].max;
+      const room = capByShape - sectionPhotos[cell].length;
+      if (room <= 0) continue;
+      const candidates = allPhotos.filter((p) => {
+        if (used.has(p.id)) return false;
+        const fi = info.get(p.id) as PhotoInfo;
+        if (!fi.cells.has(cell)) return false;
+        for (const c of fi.cells) if (!allowed[cell].includes(c)) return false;
+        if (cell === "owners") return fi.faceCount <= cellSize.owners + 1; // portrait-like shots
+        return fi.faceCount <= fi.identified + 1;
+      });
+      // Closer (bigger face) first; shooting order breaks ties.
+      candidates.sort(
+        (a, b) =>
+          (info.get(b.id) as PhotoInfo).cellArea[cell] - (info.get(a.id) as PhotoInfo).cellArea[cell] ||
+          (orderIdx.get(a.id) as number) - (orderIdx.get(b.id) as number)
+      );
+      const picked = candidates.slice(0, room);
+      // Inside a section the chosen photos run in shooting order (keeps outfits/locations together),
+      // with the reference photo leading.
+      picked.sort((a, b) => (orderIdx.get(a.id) as number) - (orderIdx.get(b.id) as number));
+      for (const p of picked) {
+        used.add(p.id);
+        sectionPhotos[cell].push(p.id);
+      }
+    }
+
+    const familyPages = SECTION_PRIORITY.reduce((a, c) => a + splitSection(sectionPhotos[c], Math.max(1, slots[c]), bounds[groupOf(c)]).length, 0);
+    const eventLeft = allPhotos.length - used.size;
+    if (familyBudget === 0 || eventLeft === 0 || (maxSpreads - familyPages) * HARD_MAX_PER_SPREAD >= eventLeft) break;
+    familyBudget = Math.min(familyBudget, familyPages) - 1;
   }
 
   // 3. Everything else is the event, in shooting order.
@@ -588,8 +712,7 @@ export function planAlbum(
   for (const cell of SECTION_PRIORITY) {
     const ids = sectionPhotos[cell];
     if (ids.length === 0) continue;
-    const b = bounds[groupOf(cell)];
-    for (const c of chunk(ids, b, seed)) {
+    for (const c of splitSection(ids, Math.max(1, slots[cell]), bounds[groupOf(cell)])) {
       spreads.push({ section: cell, photoIds: c, heroId: heroByFaces(c) });
       seed++;
     }
@@ -602,9 +725,6 @@ export function planAlbum(
         i + 1 < eventIds.length ? (time.get(eventIds[i + 1]) as number) - (time.get(eventIds[i]) as number) : 0
     : undefined;
   const familySpreads = spreads.length;
-  // Spreads the book may have: the pages (typed count, capped at 30; else 30) minus the cover.
-  const typed = opts.targetSpreads && opts.targetSpreads > 0 ? Math.min(AUTO_MAX_PAGES, Math.floor(opts.targetSpreads)) : null;
-  const maxSpreads = Math.max(1, (typed ?? AUTO_MAX_PAGES) - (opts.hasCover === false ? 0 : 1));
   let eventBounds = bounds.event;
   if (typed) {
     eventBounds = targetEventBounds(bounds.event, eventIds.length, Math.max(1, maxSpreads - familySpreads));
@@ -621,7 +741,12 @@ export function planAlbum(
   mergeSingles(spreads, byId);
   const heroFor = (section: SectionKind, ids: string[]) =>
     section === "event" ? (ids.find((id) => isLandscape(byId.get(id))) ?? ids[0]) : heroByFaces(ids);
-  const book = fitPages(spreads, maxSpreads, time, heroFor);
+  // The family pages stay exactly as sectioned; only the event part is re-fitted to the limits,
+  // from the book position right after them.
+  const famCount = spreads.findIndex((sp) => sp.section === "event");
+  const head = famCount < 0 ? spreads.slice() : spreads.slice(0, famCount);
+  const tail = famCount < 0 ? [] : spreads.slice(famCount);
+  const book = tail.length > 0 ? [...head, ...fitPages(tail, Math.max(1, maxSpreads - head.length), time, heroFor, head.length)] : head;
   spreads.splice(0, spreads.length, ...book);
 
   // Cover: the closest owners shot (a slight preference for portrait — covers are single pages).

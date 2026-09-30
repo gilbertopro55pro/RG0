@@ -4298,10 +4298,21 @@ export default function AlbumSpreadCanvasEditor({
           </div>
         )}
 
-        <div ref={canvasWrapRef} className="gf-album-canvas-wrap flex-1 flex flex-col items-center justify-center min-h-0">
+        <div
+          ref={canvasWrapRef}
+          className="gf-album-canvas-wrap flex-1 flex flex-col items-center justify-center min-h-0"
+          // A click on the grey area around the canvas deselects too (owner, 2026-09-30): an album
+          // laid out edge to edge has no bare canvas left to click, so the selection (and the photo's
+          // panels, like "צל וקו מתאר") could never be dismissed. Only the empty grey itself counts,
+          // never a panel, menu or the page strip inside it.
+          onClick={(e) => {
+            const t = e.target as HTMLElement;
+            if (t === e.currentTarget || t.dataset.deselectZone === "1") setSelectedIds(new Set());
+          }}
+        >
         {/* Not overflow-hidden (unlike the canvas below) so the floating photo menu — and the
             flyout sliders it opens — can bleed past the canvas's own edge, not just the photo's. */}
-        <div className="relative w-full max-w-full">
+        <div className="relative w-full max-w-full" data-deselect-zone="1">
         <div
           ref={canvasRef}
           onPointerDown={(e) => {
@@ -5038,9 +5049,17 @@ export default function AlbumSpreadCanvasEditor({
             dragOffset={photoMenuDrag.offset}
             dragGripHandlers={photoMenuDrag.gripHandlers}
             shadowPanelOpen={photoShadowPanelOpen}
-            onToggleShadowPanel={() => setPhotoShadowPanelOpen((v) => !v)}
+            // The two panels share one spot on screen (the shadow one layered on top), so opening
+            // one closes the other — "עריכת תמונה" used to open underneath and couldn't be used.
+            onToggleShadowPanel={() => {
+              setPhotoAdjustPanelOpen(false);
+              setPhotoShadowPanelOpen((v) => !v);
+            }}
             photoAdjustPanelOpen={photoAdjustPanelOpen}
-            onTogglePhotoAdjustPanel={() => setPhotoAdjustPanelOpen((v) => !v)}
+            onTogglePhotoAdjustPanel={() => {
+              setPhotoShadowPanelOpen(false);
+              setPhotoAdjustPanelOpen((v) => !v);
+            }}
           />
           );
         })()}
