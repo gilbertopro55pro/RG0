@@ -26,6 +26,103 @@ const BORDER_COLORS = ["#ffffff", "#000000", "#d4af37", "#e07a5f"];
 const CIRCLE_MENU_BUTTON_COUNT = 14;
 const CIRCLE_MENU_GAP_PX = 2;
 
+// The number next to every slider in this editor — a small editable field instead of a static label,
+// per explicit request: "תאפשר שבפאנלים יהיה אפשר גם להזיז את הסליידרים וגם להקליד את הערך". While
+// the field is focused/being typed in, `draft` holds the raw text (so a half-typed "-" or "" doesn't
+// get clobbered); every valid number typed is applied live (clamped to min..max), blur/Enter commits
+// and re-syncs to the clamped value, an invalid/empty entry reverts, ArrowUp/Down step by `step`.
+function SliderValueInput({
+  value,
+  min,
+  max,
+  step = 1,
+  unit = "",
+  onChange,
+  label,
+  className = "",
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  unit?: string;
+  onChange: (v: number) => void;
+  label?: string;
+  className?: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const decimals = (String(step).split(".")[1] ?? "").length;
+  const clamp = (v: number) => {
+    const c = Math.min(max, Math.max(min, v));
+    return decimals ? Number(c.toFixed(decimals)) : Math.round(c);
+  };
+  const parse = (raw: string): number | null => {
+    const t = raw.trim().replace(",", ".");
+    if (t === "" || t === "-" || t === ".") return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  };
+  const commit = () => {
+    if (draft != null) {
+      const n = parse(draft);
+      if (n != null) {
+        const c = clamp(n);
+        if (c !== value) onChange(c);
+      }
+    }
+    setDraft(null);
+  };
+  const text = draft ?? String(value);
+  return (
+    <span
+      dir="ltr"
+      className={`inline-flex items-center shrink-0 rounded-md border border-line bg-card px-1 font-data focus-within:border-amber ${className}`}
+    >
+      <input
+        type="text"
+        inputMode={decimals || min < 0 ? "decimal" : "numeric"}
+        aria-label={label}
+        value={text}
+        size={Math.max(2, String(max).length, text.length)}
+        onFocus={(e) => {
+          setDraft(String(value));
+          e.currentTarget.select();
+        }}
+        onChange={(e) => {
+          const raw = e.target.value.replace(/[^0-9.,-]/g, "");
+          setDraft(raw);
+          const n = parse(raw);
+          // Live-apply only values already inside the range, so typing "1" on the way to "15" in a
+          // 5..40 slider doesn't briefly snap to 5 — out-of-range entries get clamped on blur/Enter.
+          if (n != null && n >= min && n <= max) onChange(clamp(n));
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+            e.currentTarget.blur();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setDraft(null);
+            e.currentTarget.blur();
+          } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            const base = parse(draft ?? "") ?? value;
+            const next = clamp(base + (e.key === "ArrowUp" ? step : -step) * (e.shiftKey ? 10 : 1));
+            setDraft(String(next));
+            if (next !== value) onChange(next);
+          }
+        }}
+        className="bg-transparent outline-none border-0 p-0 text-right text-ink"
+        style={{ width: `${Math.max(2, String(max).length, text.length) + 0.5}ch`, font: "inherit" }}
+      />
+      {unit && <span className="text-ink-soft">{unit}</span>}
+    </span>
+  );
+}
+
 function SliderControl({
   label,
   value,
@@ -55,10 +152,7 @@ function SliderControl({
         onChange={(e) => onChange(Number(e.target.value))}
         className="gf-slider-thumb flex-1 min-w-0"
       />
-      <span dir="ltr" className="font-data shrink-0">
-        {value}
-        {unit}
-      </span>
+      <SliderValueInput value={value} min={min} max={max} step={step} unit={unit} onChange={onChange} label={label} className="py-0.5" />
     </div>
   );
 }
@@ -406,6 +500,11 @@ function MiniSlider({
       });
     }
   };
+  // A typed value (SliderValueInput) applies straight through — no drag backlog to coalesce there.
+  const applyTyped = (v: number) => {
+    setLiveValue(v);
+    onChange(v);
+  };
   const input = (
     <input
       type="range"
@@ -434,10 +533,7 @@ function MiniSlider({
       <div className="flex items-center gap-1">
         <span title={label} className="text-[7px] font-semibold text-ink-soft shrink-0 w-7 truncate">{label}</span>
         {input}
-        <span dir="ltr" className="text-[7px] font-data shrink-0 w-5 text-left">
-          {liveValue}
-          {unit}
-        </span>
+        <SliderValueInput value={liveValue} min={min} max={max} step={step} unit={unit} onChange={applyTyped} label={label} className="text-[7px] px-0.5 rounded" />
       </div>
     );
   }
@@ -445,10 +541,7 @@ function MiniSlider({
     <div>
       <div className="flex items-center justify-between text-[10px] font-semibold text-ink-soft mb-1">
         <span>{label}</span>
-        <span dir="ltr" className="font-data">
-          {liveValue}
-          {unit}
-        </span>
+        <SliderValueInput value={liveValue} min={min} max={max} step={step} unit={unit} onChange={applyTyped} label={label} className="py-px" />
       </div>
       {input}
     </div>
@@ -780,13 +873,23 @@ function PhotoShadowOverlayPanel({
   el,
   onUpdate,
   onApplyShadowToAll,
+  onApplyBorderToAllPages,
   widthPx,
 }: {
   el: AlbumPhotoElement;
   onUpdate: (patch: Partial<AlbumPhotoElement>) => void;
   onApplyShadowToAll: () => void;
+  // Applies this photo's current outline (width + color) to the photos of every page in the album
+  // — see the parent's applyBorderToAllPages. Omitted → no button.
+  onApplyBorderToAllPages?: () => Promise<void>;
   widthPx: number;
 }) {
+  const [borderAllStatus, setBorderAllStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
+  useEffect(() => {
+    if (borderAllStatus !== "done" && borderAllStatus !== "error") return;
+    const t = setTimeout(() => setBorderAllStatus("idle"), 3500);
+    return () => clearTimeout(t);
+  }, [borderAllStatus]);
   // The מרחק/טשטוש (distance/blur) sliders' displayed value falls back to `el.shadow` (the עוצמה
   // slider) while unset — needed so an existing shadow that predates these two fields still shows
   // a sensible starting point instead of 0. But left purely reactive, that fallback also made
@@ -860,6 +963,31 @@ function PhotoShadowOverlayPanel({
       <button onClick={onApplyShadowToAll} className="w-full rounded-lg py-1.5 text-[10px] font-semibold bg-chip text-ink-soft">
         החל על כל התמונות בדף
       </button>
+      {onApplyBorderToAllPages && (
+        <>
+          {/* Outline only (width + color), on every page — per explicit request "תוסיף אפשרות לשינוי
+              קו מתאר בכל דפי האלבום". Edge-to-edge photos without a frame are skipped (see
+              applyBorderToAllPages), so a full-bleed photo doesn't suddenly get a frame. */}
+          <button
+            disabled={borderAllStatus === "busy"}
+            onClick={async () => {
+              setBorderAllStatus("busy");
+              try {
+                await onApplyBorderToAllPages();
+                setBorderAllStatus("done");
+              } catch {
+                setBorderAllStatus("error");
+              }
+            }}
+            className="w-full rounded-lg py-1.5 text-[10px] font-semibold bg-white border border-line disabled:opacity-60"
+            style={{ color: "var(--color-amber-deep)" }}
+          >
+            {borderAllStatus === "busy" ? "מחיל על כל הדפים..." : "החלה על כל דפי האלבום"}
+          </button>
+          {borderAllStatus === "done" && <p className="text-[10px] font-semibold text-center text-sage">קו המתאר הוחל על כל דפי האלבום</p>}
+          {borderAllStatus === "error" && <p className="text-[10px] font-semibold text-center text-rose">לא הצלחנו להחיל על כל הדפים, נסו שוב</p>}
+        </>
+      )}
     </div>
   );
 }
@@ -1891,6 +2019,7 @@ export default function AlbumSpreadCanvasEditor({
   onDeleteCustomOrnament,
   spreads,
   onSwitchSpread,
+  onApplyBorderToAll,
   onAddPage,
   sidePanelOffset,
   onSidePanelOffsetChange,
@@ -1924,6 +2053,11 @@ export default function AlbumSpreadCanvasEditor({
   // omitted-safe: no strip renders without it, same as the other optional props above.
   spreads?: GalleryAlbumSpreadRow[];
   onSwitchSpread?: (spreadId: string) => void;
+  // "החלה על כל דפי האלבום" in the shadow/outline panel — the parent applies this border to the
+  // photos of every OTHER page (it knows which spread is current and skips it); this editor applies
+  // it to its own page locally, so it shows immediately and is saved with the page as usual.
+  // Omitted-safe: no button renders without it.
+  onApplyBorderToAll?: (border: { borderWidth: number; borderColor: string }) => Promise<void>;
   // Creates a fresh blank page and jumps straight into it — lets the photographer add a page
   // without leaving this editor first. Gated behind the same unsaved-changes check as closing or
   // switching pages (see requestLeave below), omitted-safe: no button renders without it.
@@ -2053,6 +2187,10 @@ export default function AlbumSpreadCanvasEditor({
   // What to actually do once the exit-confirm dialog resolves — closing back to the main screen,
   // or switching to a different album page picked from the bottom strip while this one was dirty.
   const [pendingLeaveAction, setPendingLeaveAction] = useState<(() => void) | null>(null);
+  // The page being switched to from the strip under the canvas while this page's changes save —
+  // marks that thumbnail and blocks double clicks / Escape until the save resolves and we switch.
+  const [switchingToSpreadId, setSwitchingToSpreadId] = useState<string | null>(null);
+  const [pageSwitchError, setPageSwitchError] = useState(false);
   const [skipExitConfirm, setSkipExitConfirm] = useState(
     () => typeof window !== "undefined" && localStorage.getItem("albumEditorSkipExitConfirm") === "1"
   );
@@ -2394,6 +2532,33 @@ export default function AlbumSpreadCanvasEditor({
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The page strip under the canvas (inside the same grey wrap) — its real height incl. its 8px
+  // top margin, taken out of the canvas's height budget below so the two always fit together.
+  const showPageStrip = mode === "custom" && !!spreads && spreads.length > 1 && !!onSwitchSpread;
+  const pageStripRef = useRef<HTMLDivElement>(null);
+  const pageStripScrollRef = useRef<HTMLDivElement>(null);
+  const [pageStripHeightPx, setPageStripHeightPx] = useState(0);
+  useEffect(() => {
+    const el = pageStripRef.current;
+    if (!showPageStrip || !el) return;
+    // ResizeObserver always delivers an initial observation, so no synchronous measure is needed.
+    const ro = new ResizeObserver(() => setPageStripHeightPx(el.offsetHeight + 8));
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      setPageStripHeightPx(0);
+    };
+  }, [showPageStrip]);
+  // Brings the current page's thumbnail into view in the strip (the editor remounts per page). A
+  // relative delta, so it works the same in this RTL layout without any scrollLeft-sign quirks.
+  useEffect(() => {
+    const c = pageStripScrollRef.current;
+    const t = c?.querySelector<HTMLElement>('[data-current="1"]');
+    if (!c || !t) return;
+    const cr = c.getBoundingClientRect();
+    const tr = t.getBoundingClientRect();
+    c.scrollLeft += tr.left + tr.width / 2 - (cr.left + cr.width / 2);
+  }, [showPageStrip, spread.id]);
   // Real desktop (≥1024px) canvas box, computed once in JS from both real measured dimensions —
   // see the comment on canvasWrapWidthPx above for why this replaced the old CSS min()/aspect-ratio
   // combo. null until the first ResizeObserver measurement lands; the className below has a static
@@ -2405,7 +2570,7 @@ export default function AlbumSpreadCanvasEditor({
           // -24 on both axes: the wrap's own 12px padding (added so the always-white page has a
           // visible gray margin around it, not just below/beside it) on each side.
           const availW = Math.max(0, canvasWrapWidthPx - 24);
-          const availH = Math.max(0, canvasWrapHeightPx - 24);
+          const availH = Math.max(0, canvasWrapHeightPx - 24 - pageStripHeightPx);
           return availW / canvasRatio <= availH
             ? { width: availW, height: availW / canvasRatio }
             : { width: availH * canvasRatio, height: availH };
@@ -2907,6 +3072,21 @@ export default function AlbumSpreadCanvasEditor({
     setElements((prev) =>
       prev.map((e) => (e.type === "photo" ? { ...e, shadow, shadowDistance, shadowBlur, shadowAngle, borderWidth, borderColor } : e))
     );
+  };
+
+  // "החלה על כל דפי האלבום" — the chosen photo's outline (width + color) goes onto every photo on
+  // THIS page locally (so it shows at once and is saved with the page like any other edit), then the
+  // parent applies the same outline to every other page. Same skip rule as the parent: an
+  // edge-to-edge photo with no frame stays frameless. borderWidth 0 = remove the outline everywhere.
+  const applyBorderToAllPages = async (id: string) => {
+    if (!onApplyBorderToAll) return;
+    const source = elements.find((e) => e.id === id);
+    if (!source || source.type !== "photo") return;
+    const border = { borderWidth: source.borderWidth ?? 0, borderColor: source.borderColor ?? "#ffffff" };
+    const isUnframedBleed = (e: AlbumPhotoElement) =>
+      !e.borderWidth && (e.xPct <= 0.5 || e.yPct <= 0.5 || e.xPct + e.widthPct >= 99.5 || e.yPct + e.heightPct >= 99.5);
+    setElements((prev) => prev.map((e) => (e.type === "photo" && !isUnframedBleed(e) ? { ...e, ...border } : e)));
+    await onApplyBorderToAll(border);
   };
 
   // Adds each newly-picked photo as its own medium-sized, orientation-aware frame ALONGSIDE
@@ -3539,6 +3719,79 @@ export default function AlbumSpreadCanvasEditor({
 
   const handleCloseAttempt = () => requestLeave(onClose);
 
+  // Page strip under the canvas — per explicit request "לוודא שמירה של השינויים בדף הנוכחי לפני מעבר
+  // לדף אחר": switching pages never asks, it SAVES a dirty page first and only then switches. The
+  // switch runs strictly after onSave resolves — saveSpreadElements (GalleryManageView) ends by
+  // nulling the editor target, so switching earlier would get clobbered by that trailing reset
+  // (same ordering as requestLeave's skip-confirm path).
+  const switchToSpread = async (spreadId: string) => {
+    if (!onSwitchSpread || switchingToSpreadId || spreadId === spread.id) return;
+    renderPreviewNow();
+    setPageSwitchError(false);
+    if (isDirty()) {
+      setSwitchingToSpreadId(spreadId);
+      try {
+        await onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom });
+      } catch {
+        setSwitchingToSpreadId(null);
+        setPageSwitchError(true);
+        return;
+      }
+    }
+    onSwitchSpread(spreadId);
+  };
+
+  // Escape = the X button (handleCloseAttempt: closes straight away when nothing changed, otherwise
+  // the save / discard / stay dialog) — per explicit request "מקש ESC מבצע סגירה של דף עיצוב חופשי
+  // ובמידה והיו שינויים ישאל את המשתמש מה לעשות". The innermost open thing always closes first: the
+  // exit dialog itself (Escape there = stay), then any modal / picker / panel / context menu, then the
+  // current selection (which is what keeps the floating photo menu + side panels open), and only
+  // when nothing is open does Escape try to close the editor. Ignored while typing in a field (the
+  // field keeps its own Escape) and while a page-switch save is in flight. Re-subscribed every
+  // render (no deps) so it always sees the current state without a long dependency list.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || e.isComposing) return;
+      if (switchingToSpreadId) return;
+      if (exitConfirmOpen) {
+        e.preventDefault();
+        setExitConfirmOpen(false);
+        setPendingLeaveAction(null);
+        return;
+      }
+      const active = document.activeElement as HTMLElement | null;
+      const nonTextInputs = ["range", "checkbox", "radio", "button", "submit", "reset", "color", "file", "image"];
+      const typing =
+        !!active &&
+        ((active.tagName === "INPUT" && !nonTextInputs.includes((active as HTMLInputElement).type)) ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT" ||
+          active.isContentEditable);
+      if (typing) return;
+      e.preventDefault();
+      if (guideOpen) return setGuideOpen(false);
+      if (customTabModalOpen) return setCustomTabModalOpen(false);
+      if (saveTemplateOpen) return setSaveTemplateOpen(false);
+      if (photoPickerOpen) return setPhotoPickerOpen(false);
+      if (photoContextMenu) return setPhotoContextMenu(null);
+      if (photoSizePickerOpen) return setPhotoSizePickerOpen(false);
+      if (textDraftOpen) return void (textDraftClosing || closeTextPanel());
+      if (backgroundPanelOpen) return setBackgroundPanelOpen(false);
+      if (templatePickerOpen) return void (templatePickerClosing || closeTemplatePanel());
+      if (masksPickerOpen) return void (masksPickerClosing || closeMasksPicker());
+      if (ornamentsPickerOpen) return void (ornamentsPickerClosing || closeOrnamentsPicker());
+      if (shapesPickerOpen) return void (shapesPickerClosing || closeShapesPicker());
+      if (photoShadowPanelOpen) return setPhotoShadowPanelOpen(false);
+      if (photoAdjustPanelOpen) return setPhotoAdjustPanelOpen(false);
+      if (textPanelOpen) return setTextPanelOpen(false);
+      if (panModeId) return setPanModeId(null);
+      if (selectedIds.size > 0) return setSelectedIds(new Set());
+      handleCloseAttempt();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
   // Shown instead of the whole tool below — see the needsRotate comment above for why this isn't
   // just a one-time dismissible tip: it reappears every time the modal is opened (or left) in
   // portrait, and the real canvas never mounts until the device is already in landscape.
@@ -3689,6 +3942,9 @@ export default function AlbumSpreadCanvasEditor({
         :root[data-theme="dark"] .gf-album-canvas-wrap {
           background: #37333f;
         }
+        :root[data-theme="dark"] .gf-album-pageswitcher-label {
+          color: rgba(255, 255, 255, 0.72);
+        }
         @media (max-width: 1023.98px) {
           .gf-album-editor-card {
             width: 96vw !important;
@@ -3785,11 +4041,8 @@ export default function AlbumSpreadCanvasEditor({
             max-height: var(--canvas-h-cap, calc(32vh - 1.5cm)) !important;
             margin: 0 !important;
           }
-          /* Dropped entirely on phone too now, per explicit request — matches the same change
-             already made for desktop (it wasn't visible in practice and added clutter). */
-          .gf-album-pageswitcher {
-            display: none !important;
-          }
+          /* The page strip now lives INSIDE .gf-album-canvas-wrap, under the canvas (see the JSX),
+             so it no longer needs a grid cell of its own here — row 3 stays empty. */
           .gf-album-dragpanel {
             grid-column: 1;
             /* Still spans what used to be the canvas+page-switcher rows, even though the
@@ -3906,12 +4159,10 @@ export default function AlbumSpreadCanvasEditor({
             max-height: var(--canvas-h-cap, calc(40vh - 1cm)) !important;
             margin: 0 auto !important;
           }
-          /* Dropped entirely on desktop, per explicit request — it wasn't even visible in practice
-             and was adding clutter/vertical pressure the layout doesn't need. Phone keeps it
-             unchanged; this only removes it from the real-desktop grid painted above. */
-          .gf-album-pageswitcher {
-            display: none !important;
-          }
+          /* The page strip used to be its own grid item here and was hidden (display:none) on
+             both desktop and phone — which is why it never showed. It now renders inside
+             .gf-album-canvas-wrap, in the grey area directly under the canvas (see the JSX), per
+             explicit request "תוסיף באיזור האפור הזה את תצוגת הדפים הנוספים של האלבום". */
           .gf-album-dragpanel {
             grid-column: 2;
             /* Still spans what used to be the canvas+page-switcher rows, even though the
@@ -4038,7 +4289,7 @@ export default function AlbumSpreadCanvasEditor({
           </div>
         )}
 
-        <div ref={canvasWrapRef} className="gf-album-canvas-wrap flex-1 flex items-center justify-center min-h-0">
+        <div ref={canvasWrapRef} className="gf-album-canvas-wrap flex-1 flex flex-col items-center justify-center min-h-0">
         {/* Not overflow-hidden (unlike the canvas below) so the floating photo menu — and the
             flyout sliders it opens — can bleed past the canvas's own edge, not just the photo's. */}
         <div className="relative w-full max-w-full">
@@ -4241,7 +4492,7 @@ export default function AlbumSpreadCanvasEditor({
             // at the same flat vh-based guess every other ratio uses too (fine for a wide page,
             // wastefully small for a square one). Left unset (falling through to the stylesheet's
             // own vh-based default) until the first real measurement lands.
-            ...(canvasWrapHeightPx ? { ["--canvas-h-cap" as string]: `${Math.max(0, canvasWrapHeightPx - 24)}px` } : {}),
+            ...(canvasWrapHeightPx ? { ["--canvas-h-cap" as string]: `${Math.max(0, canvasWrapHeightPx - 24 - pageStripHeightPx)}px` } : {}),
           } as React.CSSProperties}
         >
           <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
@@ -4915,52 +5166,55 @@ export default function AlbumSpreadCanvasEditor({
               el={anchorPhoto}
               onUpdate={(patch) => applyToSelectedPhotos(patch)}
               onApplyShadowToAll={() => applyShadowToAllPhotos(anchorPhoto.id)}
+              onApplyBorderToAllPages={onApplyBorderToAll ? () => applyBorderToAllPages(anchorPhoto.id) : undefined}
               widthPx={photoPanelSize.width}
             />
           </div>
         )}
         </div>
-        </div>
 
-        {/* Quick page switcher — every page in this album (the current one included, just marked
-            and inert), at the same live-preview shape as the main album grid, so a photographer can
-            jump between pages without leaving to the main screen and losing their place. Switching
-            pages goes through the exact same unsaved-changes gate as the X button (requestLeave),
-            since abandoning this page's edits to look at another one is the same kind of "leaving"
-            as closing the whole tool. Desktop-only, matching the rest of this hidden lg:flex layout.
-
-            The current page used to be filtered OUT of this list — which meant every page switch
-            removed a different item from the strip, so the whole row visibly reflowed/shifted even
-            though the underlying page order (spreads' own sort_order) never actually changed. Always
-            rendering every page keeps the row's order and positions stable across switches; the
-            current one is just visually marked instead of vanishing. A card background (not just a
-            thin border-t) gives this its own clearly separated region instead of blending into the
-            controls sidebar above it. */}
-        {mode === "custom" && spreads && spreads.length > 1 && onSwitchSpread && (
+        {/* Quick page switcher — every page of the album as a small live-preview thumbnail (the
+            current one marked, not removed, so the row never reflows between switches), in the grey
+            area directly under the canvas, per explicit request "תוסיף באיזור האפור הזה את תצוגת
+            הדפים הנוספים של האלבום ותאפשר מעבר בין הדפים בלחיצה". It used to be a separate grid item
+            that the stylesheet hid (display:none) on desktop and phone alike, so it never showed.
+            A click saves this page first when it has changes and only then switches (switchToSpread)
+            — no dialog. Its real height is measured (pageStripHeightPx) and taken out of the
+            canvas's own height budget, so the canvas + strip always fit this grey box together.
+            Thumbnails have a fixed height (width follows the page ratio) and scroll sideways. */}
+        {showPageStrip && spreads && (
           <div
-            className={`gf-album-pageswitcher block shrink-0 mt-3 rounded-2xl ${isPhone ? "p-2" : "p-3"}`}
-            // Pinned to the canvas's own actually-rendered width (not just its grid cell's, which
-            // can be wider than the canvas itself once aspect-ratio makes height the binding
-            // dimension — see .gf-album-canvas's own comment) via canvasRestRect, on both phone and
-            // desktop now, per explicit request that this strip stay strictly within the canvas's
-            // own width bounds on both.
-            style={{ background: "var(--color-chip)", width: canvasRestRect ? canvasRestRect.width : undefined }}
+            ref={pageStripRef}
+            className="gf-album-pageswitcher shrink-0 mt-2 w-full mx-auto"
+            style={{ maxWidth: canvasSizePx ? canvasSizePx.width : canvasRestRect ? canvasRestRect.width : undefined }}
           >
-            <p className="text-[11px] font-bold text-ink-soft mb-2">שאר העמודים באלבום</p>
-            {/* Always horizontal-scroll, never wraps — sized so exactly 4 thumbnails fit across the
-                strip's own width before the rest need a sideways scroll to reach, on both phone and
-                desktop now (desktop used to be a fixed w-24 regardless of the strip's real width). */}
-            <div className={`flex items-center overflow-x-auto overscroll-contain pb-1 ${isPhone ? "gap-1.5" : "gap-2"}`}>
+            {!isPhone && (
+              <div className="flex items-center justify-between gap-2 mb-1 text-[11px] font-bold" style={{ color: "rgba(46, 49, 66, 0.75)" }}>
+                <span className="gf-album-pageswitcher-label">עמודי האלבום</span>
+                {switchingToSpreadId ? (
+                  <span className="gf-album-pageswitcher-label font-semibold">שומר את העמוד ועובר...</span>
+                ) : pageSwitchError ? (
+                  <span className="font-semibold text-rose">השמירה נכשלה, נסו שוב</span>
+                ) : null}
+              </div>
+            )}
+            <div ref={pageStripScrollRef} className={`flex items-center overflow-x-auto overscroll-contain ${isPhone ? "gap-1 pb-0.5" : "gap-2 pb-1"}`}>
               {spreads.map((s, i) => {
                 const isCurrent = s.id === spread.id;
+                const isTarget = s.id === switchingToSpreadId;
+                const thumbH = isPhone ? 34 : 64;
                 return (
                   <div
                     key={s.id}
-                    className="relative shrink-0 rounded-lg overflow-hidden w-[calc(25%-5px)]"
+                    data-current={isCurrent ? "1" : undefined}
+                    title={isCurrent ? `עמוד ${i + 1} (העמוד הנוכחי)` : `מעבר לעמוד ${i + 1}`}
+                    className="relative shrink-0 rounded-md overflow-hidden bg-white"
                     style={{
-                      outline: isCurrent ? "2px solid var(--color-amber-deep)" : "1px solid var(--color-line)",
-                      outlineOffset: isCurrent ? "-2px" : undefined,
-                      opacity: isCurrent ? 0.7 : 1,
+                      width: Math.round(thumbH * canvasRatio),
+                      outline: isCurrent || isTarget ? "2px solid var(--color-amber-deep)" : "1px solid rgba(28, 27, 25, 0.18)",
+                      outlineOffset: isCurrent || isTarget ? "-2px" : "-1px",
+                      cursor: isCurrent ? "default" : switchingToSpreadId ? "wait" : "pointer",
+                      opacity: switchingToSpreadId && !isTarget && !isCurrent ? 0.6 : 1,
                     }}
                   >
                     <AlbumSpreadThumbnail
@@ -4968,10 +5222,10 @@ export default function AlbumSpreadCanvasEditor({
                       album={album}
                       photos={photos}
                       customOrnaments={customOrnaments}
-                      onClick={isCurrent ? undefined : () => requestLeave(() => onSwitchSpread(s.id))}
+                      onClick={isCurrent ? undefined : () => void switchToSpread(s.id)}
                     />
                     <span
-                      className="absolute top-1 right-1 h-4 min-w-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                      className={`absolute top-0.5 right-0.5 rounded-full flex items-center justify-center font-bold text-white pointer-events-none ${isPhone ? "h-3 min-w-3 px-0.5 text-[7px]" : "h-4 min-w-4 px-1 text-[9px]"}`}
                       style={{ background: isCurrent ? "var(--color-amber-deep)" : "rgba(28, 27, 25, 0.65)" }}
                     >
                       {i + 1}
@@ -4982,6 +5236,8 @@ export default function AlbumSpreadCanvasEditor({
             </div>
           </div>
         )}
+        </div>
+
         {/* Moved here (from the sidebar) so this favorites drag panel is an actual grid child
             of gf-album-editor-main and can be positioned into the left grid column on phone via
             .gf-album-dragpanel's grid-column/grid-row rules above — those rules are no-ops on any

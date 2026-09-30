@@ -21,7 +21,7 @@ import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput, LayoutPhoto } 
 //   catalog  — a magazine (composeCatalog): NOTHING bleeds; a large framed hero fills its page inside
 //              equal margins, the others in strict full-width justified rows; 5px white mats, light
 //              shadow, blurred background like clean;
-//   scribble — the general composer with small tilts and tape, 10px white "polaroid" borders with a
+//   scribble — the general composer with small tilts and tape, 3px white borders with a
 //              deep shadow, on warm kraft paper (a full-spread shape at the bottom);
 //   modern   — the general composer with a bolder faded hero, bare photos (no border, no shadow)
 //              with tight ~0.25cm gaps, on a charcoal page, thin gold accent lines.
@@ -1723,13 +1723,14 @@ function buildElements(ctx: Ctx, c: Cand): AlbumElement[] {
 // The frame finish of each style (framed photos only; bleeding photos never get one):
 //   clean    — a 3px white outline and a 35% shadow (the owner's corrected album);
 //   catalog  — a 5px white mat and a light 15% shadow (magazine prints);
-//   scribble — a 10px white "polaroid" border and a deep 45% shadow, lifted off the kraft paper;
+//   scribble — a 3px white border and a deep 45% shadow, lifted off the kraft paper;
 //   modern   — nothing: bare photos, edge to edge with tight gaps on the charcoal page.
 const FRAME_BORDER = { borderWidth: 3, borderColor: "#ffffff", shadow: 35 } as const;
 const FRAME_FINISH: Record<AutoStyleId, { borderWidth: number; borderColor: string; shadow: number } | null> = {
   clean: FRAME_BORDER,
   catalog: { borderWidth: 5, borderColor: "#ffffff", shadow: 15 },
-  scribble: { borderWidth: 10, borderColor: "#ffffff", shadow: 45 },
+  // (3px like clean — owner, 2026-09-30: the 10px polaroid border was too thick.)
+  scribble: { borderWidth: 3, borderColor: "#ffffff", shadow: 45 },
   modern: null,
 };
 
