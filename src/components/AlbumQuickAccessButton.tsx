@@ -1,5 +1,6 @@
 "use client";
 
+import { IconAlbum } from "@/components/icons/NavIcons";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { downloadBlob } from "@/lib/downloadBlob";
@@ -280,7 +281,9 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
         className="flex-1 min-w-0 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl p-3 sm:p-4 bg-card border border-line shadow-card text-right"
       >
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full text-lg bg-amber-bg">📖</span>
+          <span className="flex w-6 shrink-0 items-center justify-center" style={{ color: "var(--color-brass)" }}>
+              <IconAlbum className="h-5 w-5" />
+            </span>
           <div className="min-w-0">
             <div className="text-sm font-semibold leading-snug">עיצוב אלבום</div>
             <div className="text-xs text-ink-soft leading-snug mt-0.5">גישה מהירה לפי גלריה</div>
