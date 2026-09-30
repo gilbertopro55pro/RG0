@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
-import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type FamilyCellId, type LayoutPhoto, type OrnamentTab, type PhotoFaces } from "@/lib/albumAuto/types";
+import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
+import { bleedIdsOf, bookPagesWithoutCover, fillBookTemplate } from "@/lib/albumAuto/templateFill";
+import type { AlbumBookTemplateRow, AlbumTemplateRow } from "@/lib/types";
 import { CELL_ORDER, cellLabel, countNames, detectEventKind, pickCellFaces, planAlbum } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
-import { ALBUM_ORNAMENTS, ORNAMENT_TABS } from "@/lib/albumOrnaments";
-import { fetchCustomOrnaments } from "@/lib/customOrnaments";
 import type { AlbumElement } from "@/lib/types";
 
 // Auto album design (admin only while it's being polished, 2026-09-29): the photographer picks the
@@ -104,7 +104,28 @@ export default function AlbumAutoDesigner({
   const [coverMode, setCoverMode] = useState<"on" | "none">("on");
   const [coverSize, setCoverSize] = useState(() => singlePageOf(defaultSize));
   const [coverTouched, setCoverTouched] = useState(false);
-  const [style, setStyle] = useState<AutoStyleId>("clean");
+  // The dropdown's choice: "style:<id>" (an auto style) or "tpl:<id>" (a saved book template, whose
+  // pages are filled with the photos — owner, 2026-09-30).
+  const [choice, setChoice] = useState<string>("style:clean");
+  const style: AutoStyleId = choice.startsWith("style:") ? (choice.slice(6) as AutoStyleId) : "clean";
+  const [bookTemplates, setBookTemplates] = useState<AlbumBookTemplateRow[]>([]);
+  const [pageTemplates, setPageTemplates] = useState<AlbumTemplateRow[]>([]);
+  useEffect(() => {
+    supabase
+      .from("album_book_templates")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .returns<AlbumBookTemplateRow[]>()
+      .then(({ data }) => setBookTemplates((data ?? []).filter((t) => Array.isArray(t.pages) && t.pages.some((pg) => pg.length > 0))));
+    supabase
+      .from("album_templates")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .returns<AlbumTemplateRow[]>()
+      .then(({ data }) => setPageTemplates(data ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on open
+  }, []);
+  const chosenTemplate = choice.startsWith("tpl:") ? bookTemplates.find((t) => t.id === choice.slice(4)) ?? null : null;
   const [spreadCount, setSpreadCount] = useState("");
   const [cells, setCells] = useState<Record<FamilyCellId, CellState>>(() => ({
     parents: emptyCell(),
@@ -336,34 +357,30 @@ export default function AlbumAutoDesigner({
 
       // (d) The layouts.
       setProgress("layout", 0);
-      // Scribble decorates every page from the editor's ornament tabs: the built-in ones plus the
-      // photographer's uploaded tabs (best effort — without them, the built-in tabs only).
-      let ornamentTabs: OrnamentTab[] | undefined;
-      if (style === "scribble") {
-        ornamentTabs = ORNAMENT_TABS.map((t) => ({ id: t.key, custom: false, items: ALBUM_ORNAMENTS.filter((o) => o.category === t.key).map((o) => o.id) }));
-        try {
-          const { tabs, ornaments } = await fetchCustomOrnaments();
-          for (const t of tabs) ornamentTabs.push({ id: t.id, custom: true, items: ornaments.filter((o) => o.tab_id === t.id).map((o) => o.id) });
-        } catch {
-          // uploaded tabs unavailable: built-in only
-        }
-      }
       await nextFrame();
       const aspectOf = new Map(autoPhotos.map((p) => [p.id, p.aspect]));
       const layoutPhoto = (id: string): LayoutPhoto => ({ id, aspect: aspectOf.get(id) ?? 1.5, faces: boxesByPhoto.get(id) });
-      const spreads = plan.spreads.map((s, i) => {
-        const out = layoutSpread({
-          style,
-          photos: s.photoIds.map(layoutPhoto),
-          heroId: s.heroId,
-          section: s.section,
-          spreadIndex: i,
-          widthCm: size.width,
-          heightCm: size.height,
-          ornamentTabs,
-        });
-        return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...(out.background ? { background: out.background } : {}) };
-      });
+      const spreads: AutoDesignResult["spreads"] = chosenTemplate
+        ? // A saved book template: the photos in the planned book order (owners, family, event
+          // stages), page after page into the template's frames (see fillBookTemplate's rules).
+          fillBookTemplate(coverMode === "on" ? bookPagesWithoutCover(chosenTemplate.pages) : chosenTemplate.pages, plan.spreads.flatMap((s) => s.photoIds).map(layoutPhoto), {
+            maxSpreads: (Number.isFinite(target) && target > 0 ? Math.min(30, target) : 30) - (coverMode === "on" ? 1 : 0),
+            widthCm: size.width,
+            heightCm: size.height,
+            userTemplates: pageTemplates.map((t) => t.frames),
+          }).map((elements) => ({ elements, bleedIds: bleedIdsOf(elements) }))
+        : plan.spreads.map((s, i) => {
+            const out = layoutSpread({
+              style,
+              photos: s.photoIds.map(layoutPhoto),
+              heroId: s.heroId,
+              section: s.section,
+              spreadIndex: i,
+              widthCm: size.width,
+              heightCm: size.height,
+            });
+            return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...(out.background ? { background: out.background } : {}) };
+          });
       const cover =
         coverMode === "on"
           ? {
@@ -429,8 +446,10 @@ export default function AlbumAutoDesigner({
 
       {step === 1 && (
         <>
-          {/* One section: the album's size on the right (first in RTL), the cover's on the left. */}
-          <section className="rounded-lg border border-line bg-white p-3.5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* One section, one row: the album's size on the right (first in RTL), the cover's in the
+              middle, the style (or a saved template) on the left. */}
+          <section className="rounded-lg border border-line bg-white p-3.5 space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="space-y-3 min-w-0">
               <p className="text-sm font-semibold">מידות האלבום (ס״מ)</p>
               <div className="flex items-end gap-2 flex-wrap">
@@ -458,7 +477,7 @@ export default function AlbumAutoDesigner({
               </div>
             </div>
 
-            <div className="space-y-3 min-w-0 border-t border-line pt-4 md:border-t-0 md:pt-0 md:border-s md:ps-4">
+            <div className="space-y-3 min-w-0 border-t border-line pt-4 lg:border-t-0 lg:pt-0 lg:border-s lg:ps-4">
               <p className="text-sm font-semibold">מידות הכריכה (ס״מ)</p>
               <div className="flex items-end gap-2 flex-wrap">
                 <label className="block">
@@ -512,33 +531,42 @@ export default function AlbumAutoDesigner({
                 )}
               </div>
             </div>
-          </section>
 
-          <section className="rounded-lg border border-line bg-white p-3.5 space-y-3">
-            <p className="text-sm font-semibold">סגנון</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {AUTO_STYLES.map((s) => {
-                const selected = s.id === style;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setStyle(s.id)}
-                    aria-pressed={selected}
-                    className={`text-right rounded-lg border p-3 transition-colors ${selected ? "border-ink bg-chip" : "border-line bg-white"}`}
-                  >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold">{s.name}</span>
-                      <span
-                        className={`h-4 w-4 shrink-0 rounded-full border-2 ${selected ? "border-ink bg-ink" : "border-line bg-white"}`}
-                        aria-hidden
-                      />
-                    </span>
-                    <span className="block text-xs text-ink-soft mt-1 leading-relaxed">{s.description}</span>
-                  </button>
-                );
-              })}
+            <div className="space-y-3 min-w-0 border-t border-line pt-4 lg:border-t-0 lg:pt-0 lg:border-s lg:ps-4">
+              <p className="text-sm font-semibold">סגנון</p>
+              <label className="block">
+                <span className="block text-xs text-ink-soft mb-1.5">סגנון או תבנית שמורה</span>
+                <select
+                  value={choice}
+                  onChange={(e) => setChoice(e.target.value)}
+                  className="w-full rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
+                >
+                  <optgroup label="סגנונות">
+                    {AUTO_STYLES.map((st) => (
+                      <option key={st.id} value={`style:${st.id}`}>
+                        {st.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {bookTemplates.length > 0 && (
+                    <optgroup label="התבניות השמורות שלי">
+                      {bookTemplates.map((t) => (
+                        <option key={t.id} value={`tpl:${t.id}`}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </label>
+              <p className="text-xs text-ink-soft leading-relaxed">
+                {chosenTemplate
+                  ? `התמונות ייכנסו לפי התבנית (${chosenTemplate.pages.filter((pg) => pg.length > 0).length} עמודים). עמודים עודפים יימחקו, והעמוד האחרון יותאם לתמונות שנשארו.`
+                  : AUTO_STYLES.find((st) => st.id === style)?.description}
+              </p>
             </div>
+          </div>
+
             <label className="flex items-center gap-2 flex-wrap pt-1">
               <input
                 type="number"

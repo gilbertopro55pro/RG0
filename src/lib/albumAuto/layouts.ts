@@ -1,9 +1,6 @@
 import type { AlbumElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement } from "@/lib/types";
 import { textHeightPctForFontSize } from "@/lib/albumTextSizing";
-import { computePhotoFraming } from "@/lib/albumRender";
-import { ALBUM_ORNAMENTS, ORNAMENT_TABS } from "@/lib/albumOrnaments";
-import type { AlbumOrnamentElement } from "@/lib/types";
-import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput, LayoutPhoto, OrnamentTab } from "./types";
+import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput, LayoutPhoto } from "./types";
 
 // The layout engine of the auto album designer (see types.ts for the contract). Pure and
 // deterministic: the same input always gives the same spread; variety between consecutive spreads
@@ -801,7 +798,7 @@ const STYLE_CFG: Record<AutoStyleId, StyleCfg> = {
   clean: { gap: 0.022, strict: false, tilt: false, fadeMin: 0.6, fadeMax: 0.75, w: { fade: 1, half: 0.8, two: 0.78, dense: 0.85, band: 1, side: 0.92, sfade: 0.85, inset: 0.2, wide: 0.8 } },
   catalog: { gap: 0.02, strict: true, tilt: false, fadeMin: 0.6, fadeMax: 0.72, w: { fade: 0.45, half: 1, two: 0.25, dense: 0.9, band: 1, side: 0.9, sfade: 0.3, inset: 0.2, wide: 0.5 } },
   scribble: { gap: 0.034, strict: false, tilt: true, fadeMin: 0.6, fadeMax: 0.75, w: { fade: 0.95, half: 0.88, two: 0.72, dense: 0.85, band: 0.95, side: 0.92, sfade: 0.8, inset: 0.2, wide: 0.7 } },
-  modern: { gap: 0.02, strict: false, tilt: false, fadeMin: 0.66, fadeMax: 0.8, w: { fade: 1.15, half: 0.65, two: 0.95, dense: 0.85, band: 0.9, side: 0.95, sfade: 1.05, inset: 0.2, wide: 0.8 } },
+  modern: { gap: 0.008, strict: false, tilt: false, fadeMin: 0.66, fadeMax: 0.8, w: { fade: 1.15, half: 0.65, two: 0.95, dense: 0.85, band: 0.9, side: 0.95, sfade: 1.05, inset: 0.2, wide: 0.8 } },
 };
 
 const MIN_COVERAGE = 0.7;
@@ -1368,6 +1365,228 @@ function candidatesPerKind(ctx: Ctx, hero: number, jitter: Record<Kind, number>)
   return [...byShape.values()];
 }
 
+// ---------------------------------------------------------------------------------------------
+// Catalog style ("קטלוג"), double pages — a magazine look (owner, 2026-09-30: every style must be
+// clearly different). Nothing bleeds to the edge:
+//   - the hero is one large FRAMED photo filling its own page inside equal margins (~5% of the page
+//     height on the outer edge, top and bottom; ~3% of the spread from the fold), cropped up to 1.5
+//     when that's what fills the page (the face-aware crop keeps the heads in);
+//   - the other photos in strict justified rows (one row height, equal ~0.6cm gutters) on the other
+//     page, centred inside the same margins; with many photos (more than ~7 others) the hero's page
+//     also carries one strict row under the hero, so neither page is crowded;
+//   - the hero's page alternates sides from spread to spread.
+// Single pages and spreads this can't lay out (too few photos to cover 70% without a bleed, faces
+// that don't survive the crop) use the general composer.
+// ---------------------------------------------------------------------------------------------
+
+const CATALOG_HERO_CROPS = [1, 1.15, 1.3, 1.5];
+
+// One strict row of `idxs` across `w` (equal heights, equal gutters, stretched at most MAX_STRETCH),
+// its height kept within [hMin, hMax] when the stretch allows; rects relative to (0, 0).
+function catalogRow(photos: P[], idxs: number[], w: number, g: number, hMin: number, hMax: number): { rects: Placed[]; h: number } | null {
+  const A = idxs.reduce((s, i) => s + photos[i].aspect, 0);
+  const inner = w - g * (idxs.length - 1);
+  if (inner <= 0) return null;
+  const natural = inner / A;
+  const h = clamp(clamp(natural, hMin, hMax), natural / MAX_STRETCH, natural * MAX_STRETCH);
+  const s = inner / (h * A);
+  const rects: Placed[] = [];
+  let x = 0;
+  for (const i of idxs) {
+    const pw = h * photos[i].aspect * s;
+    rects.push({ idx: i, r: { x, y: 0, w: pw, h } });
+    x += pw + g;
+  }
+  return { rects, h };
+}
+
+// Strict justified rows for catalog: every row spans the block's full width, the photos of a row
+// share one height, all gutters are equal — a crisp rectangle, never a ragged row. The rows keep the
+// reading order (every split into rows of 1-4 photos for up to 10 photos, else balanced splits); one
+// uniform stretch (at most 1.15, the photos cropped a little) fits the block to the box, and the
+// block shrinks when it's still too tall. Rects relative to (0, 0).
+const CATALOG_ROW_STRETCH = 1.15;
+
+function catalogRowSplits(photos: P[], idxs: number[]): number[][][] {
+  const k = idxs.length;
+  if (k > 10) {
+    const out: number[][][] = [];
+    for (let r = 2; r <= Math.min(k, 7); r++) out.push(balancedRows(photos, idxs, r), lptRows(photos, idxs, r));
+    return out;
+  }
+  const out: number[][][] = [];
+  const rec = (start: number, acc: number[][]) => {
+    if (start === k) {
+      out.push(acc.slice());
+      return;
+    }
+    for (let len = 1; len <= Math.min(4, k - start); len++) {
+      acc.push(idxs.slice(start, start + len));
+      rec(start + len, acc);
+      acc.pop();
+    }
+  };
+  rec(0, []);
+  return out;
+}
+
+function catalogBlocks(photos: P[], idxs: number[], bw: number, bh: number, g: number, minArea: number): Alt[] {
+  const out: Alt[] = [];
+  if (!idxs.length) return out;
+  for (const rows of catalogRowSplits(photos, idxs)) {
+    const A = rows.map((row) => row.reduce((s, i) => s + photos[i].aspect, 0));
+    const gaps = g * (rows.length - 1);
+    if (bh - gaps <= 0) continue;
+    // Height of the block at width w and stretch s: sum over rows of (w - row gutters) / (s * A).
+    const heightAt = (w: number, s: number) => rows.reduce((t, row, i) => t + (w - g * (row.length - 1)) / (s * A[i]), 0) + gaps;
+    let s = clamp((heightAt(bw, 1) - gaps) / (bh - gaps), 1 / CATALOG_ROW_STRETCH, CATALOG_ROW_STRETCH);
+    let w = bw;
+    if (heightAt(w, s) > bh) {
+      // Too tall: shrink the width (height is linear in it).
+      const perW = rows.reduce((t, _, i) => t + 1 / (s * A[i]), 0);
+      const fixed = rows.reduce((t, row, i) => t + (g * (row.length - 1)) / (s * A[i]), 0);
+      w = (bh - gaps + fixed) / perW;
+      // (Less stretch now suffices? Keep the crop as small as the box allows.)
+      s = clamp(s, 1 / CATALOG_ROW_STRETCH, CATALOG_ROW_STRETCH);
+    }
+    if (!(w > 0)) continue;
+    const rects: Placed[] = [];
+    let y = 0;
+    let hMin = Infinity;
+    let hMax = 0;
+    let ok = true;
+    rows.forEach((row, i) => {
+      const h = (w - g * (row.length - 1)) / (s * A[i]);
+      if (!(h > 0)) ok = false;
+      hMin = Math.min(hMin, h);
+      hMax = Math.max(hMax, h);
+      let x = 0;
+      for (const idx of row) {
+        const pw = h * s * photos[idx].aspect;
+        rects.push({ idx, r: { x, y, w: pw, h } });
+        x += pw + g;
+      }
+      y += h + g;
+    });
+    if (!ok || rects.some((p) => area(p.r) < minArea)) continue;
+    const h = y - g;
+    const fill = rects.reduce((t, p) => t + area(p.r), 0) / (bw * bh);
+    const areas = rects.map((p) => area(p.r));
+    const lonely = idxs.length >= 4 ? rows.filter((row) => row.length === 1).length : 0;
+    const score = fill - 0.6 * Math.abs(Math.log(s)) - 0.25 * Math.max(0, hMax / hMin - 1.6) - 0.4 * Math.max(0, 0.3 - Math.min(...areas) / Math.max(...areas)) - 0.08 * lonely;
+    out.push({ rects, w, h, score, fill });
+  }
+  // The best few only (the caller combines them with every hero variant).
+  return out.sort((a, b) => b.score - a.score).slice(0, 12);
+}
+
+// The hero framed inside `box` at crop `c` at most (its frame as close to the box's shape as that
+// allows), or null when its faces wouldn't survive that crop.
+function catalogHero(ctx: Ctx, hero: number, box: Rect, c: number): Rect | null {
+  if (box.w <= 0.5 || box.h <= 0.5) return null;
+  const a = ctx.photos[hero].aspect;
+  const r = fitOne(a, box, "center", "center", c);
+  if (c > 1.2 + 1e-9 && !faceCropFocal(a, r.w / r.h, ctx.faces.get(ctx.photos[hero].id) ?? []).fits) return null;
+  return r;
+}
+
+function catalogCandidates(ctx: Ctx): Cand[] {
+  const { geo, photos, input } = ctx;
+  const { W, H, pageW: pw } = geo;
+  const n = photos.length;
+  if (!geo.double || n < 2) return [];
+  const hero = ctx.heroIdx ?? pickHero(photos);
+  const others = range(0, n).filter((i) => i !== hero);
+  const k = others.length;
+  const g = Math.max(0.3, 0.02 * H); // ~0.6cm on a 30cm page
+  const m = 0.05 * H;
+  const gut = 0.03 * W;
+  const region = (p: number): Rect => (p === 0 ? { x: m, y: m, w: pw - m - gut, h: H - 2 * m } : { x: pw + gut, y: m, w: pw - gut - m, h: H - 2 * m });
+  const prefPage = input.spreadIndex % 2 === 0 ? FIRST : SECOND;
+  const minArea = 0.006 * W * H;
+  const byKey = new Map<string, Cand>();
+  for (const hp of [prefPage, 1 - prefPage]) {
+    const op = 1 - hp;
+    const RH = region(hp);
+    const RO = region(op);
+    // How many of the others ride in a row under the hero (0 = the hero alone on its page).
+    const rowCounts = k > 7 ? range(2, Math.min(7, k - 3) + 1) : k >= 6 ? [0, 2, 3] : [0];
+    for (const j of rowCounts) {
+      // The hero's page is read first when it's the right-hand page: its row takes the first photos.
+      const rowIdxs = j ? (hp === FIRST ? others.slice(0, j) : others.slice(k - j)) : [];
+      const rest = others.filter((i) => !rowIdxs.includes(i));
+      const row = j ? catalogRow(photos, rowIdxs, RH.w, g, 0.2 * RH.h, 0.34 * RH.h) : null;
+      if (j && !row) continue;
+      const heroBox: Rect = row ? { x: RH.x, y: RH.y, w: RH.w, h: RH.h - row.h - g } : RH;
+      const alts = catalogBlocks(photos, rest, RO.w, RO.h, g, minArea);
+      for (const c of CATALOG_HERO_CROPS) {
+        const hr0 = catalogHero(ctx, hero, heroBox, c);
+        if (!hr0) continue;
+        // The hero (and its row) as one block, centred vertically on its page.
+        const blockH = hr0.h + (row ? g + row.h : 0);
+        const dy = RH.y + (RH.h - blockH) / 2 - hr0.y;
+        const hr: Rect = { ...hr0, y: hr0.y + dy };
+        const heroFrames: Frame[] = [{ idx: hero, r: hr, rot: 0 }];
+        if (row) {
+          const rx = RH.x + (RH.w - (row.rects[row.rects.length - 1].r.x + row.rects[row.rects.length - 1].r.w)) / 2;
+          for (const p of row.rects) heroFrames.push({ idx: p.idx, r: { ...p.r, x: p.r.x + rx, y: hr.y + hr.h + g }, rot: 0 });
+        }
+        const heroA = area(hr);
+        for (const alt of alts) {
+          const ox = RO.x + (RO.w - alt.w) / 2;
+          const oy = RO.y + (RO.h - alt.h) / 2;
+          const frames: Frame[] = [...heroFrames, ...alt.rects.map((p) => ({ idx: p.idx, r: { ...p.r, x: p.r.x + ox, y: p.r.y + oy }, rot: 0 }))];
+          const rest0 = frames.filter((f) => f.idx !== hero);
+          const maxOther = Math.max(...rest0.map((f) => area(f.r)));
+          const minOther = Math.min(...rest0.map((f) => area(f.r)));
+          if (heroA < 1.2 * maxOther || minOther < minArea) continue;
+          const coverage = unionArea(frames.map((f) => f.r), W, H) / (W * H);
+          if (coverage < MIN_COVERAGE) continue;
+          const heroCrop = cropOf(photos[hero].aspect, hr);
+          const crop = rest0.reduce((s, f) => s + Math.log(cropOf(photos[f.idx].aspect, f.r)), 0) / rest0.length;
+          // Both pages' photos about the same size when the hero's page carries a row.
+          const rowA = row ? area(heroFrames[1].r) : 0;
+          const otherA = alt.rects.length ? alt.rects.reduce((s, p) => s + area(p.r), 0) / alt.rects.length : 0;
+          const balance = row && otherA ? Math.abs(Math.log(rowA / otherA)) : 0;
+          const score =
+            1.5 * Math.min(coverage, 0.86) +
+            0.4 * alt.score -
+            0.9 * Math.log(heroCrop) -
+            0.6 * crop -
+            0.25 * balance +
+            0.1 * Math.min(1, minOther / (0.02 * W * H)) -
+            (hp === prefPage ? 0 : 0.4);
+          // One candidate per structure (the hero's frame shape, the row under it, the rows' shape).
+          const key = [j, Math.round((hr.w / hr.h) * 20), alt.rects.length ? alt.rects.map((p) => Math.round(p.r.y)).join(".") : "", hp === prefPage ? 0 : 1].join("|");
+          const prev = byKey.get(key);
+          if (prev && prev.score >= score) continue;
+          byKey.set(key, {
+            kind: j ? "dense" : "half",
+            bleeds: [],
+            frames,
+            clusters: [
+              { bounds: boundsOf(heroFrames.map((f) => f.r)), avail: RH },
+              ...(alt.rects.length ? [{ bounds: boundsOf(frames.slice(heroFrames.length).map((f) => f.r)), avail: RO }] : []),
+            ],
+            coverage,
+            score,
+          });
+        }
+      }
+    }
+  }
+  return [...byKey.values()];
+}
+
+// variant 0 = the best layout; n = the n-th of the other structures, best first, cycling.
+function composeCatalog(ctx: Ctx): Cand | null {
+  const cands = catalogCandidates(ctx).sort((a, b) => b.score - a.score);
+  if (!cands.length) return null;
+  const v = ctx.input.variant;
+  if (!v || cands.length === 1) return cands[0];
+  return cands[1 + ((v - 1) % (cands.length - 1))];
+}
+
 function composeSpread(ctx: Ctx): AlbumElement[] | null {
   const { geo, photos, input } = ctx;
   const cfg = STYLE_CFG[input.style] ?? STYLE_CFG.clean;
@@ -1382,6 +1601,10 @@ function composeSpread(ctx: Ctx): AlbumElement[] | null {
       if (alt) return buildElements(ctx, alt);
     }
     const c = composeClean(ctx);
+    if (c) return buildElements(ctx, c);
+  }
+  if (input.style === "catalog") {
+    const c = composeCatalog(ctx);
     if (c) return buildElements(ctx, c);
   }
   const hero = ctx.heroIdx ?? pickHero(photos);
@@ -1433,7 +1656,7 @@ function buildElements(ctx: Ctx, c: Cand): AlbumElement[] {
   }
   if (input.style === "modern") {
     // A thin accent line in the space under a block that doesn't reach the page's lower part.
-    const lineColor = hashString(`${input.spreadIndex}|line`) % 2 === 0 ? "#1a1a1a" : "#b08d57";
+    const lineColor = "#b08d57"; // gold on the charcoal page
     c.clusters.forEach((cl, i) => {
       const cb = cl.bounds;
       const below = cl.avail.y + cl.avail.h - (cb.y + cb.h);
@@ -1460,7 +1683,25 @@ function buildElements(ctx: Ctx, c: Cand): AlbumElement[] {
 // Finishing pass (all styles): borders/shadows, face-aware crops, stacking order.
 // ---------------------------------------------------------------------------------------------
 
+// The frame finish of each style (framed photos only; bleeding photos never get one):
+//   clean    — a 3px white outline and a 35% shadow (the owner's corrected album);
+//   catalog  — a 5px white mat and a light 15% shadow (magazine prints);
+//   scribble — a 10px white "polaroid" border and a deep 45% shadow, lifted off the kraft paper;
+//   modern   — nothing: bare photos, edge to edge with tight gaps on the charcoal page.
 const FRAME_BORDER = { borderWidth: 3, borderColor: "#ffffff", shadow: 35 } as const;
+const FRAME_FINISH: Record<AutoStyleId, { borderWidth: number; borderColor: string; shadow: number } | null> = {
+  clean: FRAME_BORDER,
+  catalog: { borderWidth: 5, borderColor: "#ffffff", shadow: 15 },
+  scribble: { borderWidth: 10, borderColor: "#ffffff", shadow: 45 },
+  modern: null,
+};
+
+// A full-spread colour under everything (the paper of the page): scribble's warm kraft paper and
+// modern's charcoal. It's a bleed (the UI must not pull it into the safe margin).
+const PAGE_COLOR: Partial<Record<AutoStyleId, { suffix: string; color: string }>> = {
+  scribble: { suffix: "paper", color: "#efe6d6" },
+  modern: { suffix: "bg", color: "#1c1c1c" },
+};
 
 function frameAspectOf(e: AlbumPhotoElement, geo: Geo): number {
   return (e.widthPct * geo.W) / Math.max(1e-6, e.heightPct * geo.H);
@@ -1474,12 +1715,13 @@ function finalizeSpread(ctx: Ctx, input: AlbumElement[]): LayoutOutput {
     if (!isPhoto(e)) return e;
     const out: AlbumPhotoElement = { ...e };
     delete out.shadowAngle;
-    if (ctx.bleed.has(e.id)) {
+    const finish = FRAME_FINISH[ctx.input.style] === undefined ? FRAME_BORDER : FRAME_FINISH[ctx.input.style];
+    if (ctx.bleed.has(e.id) || !finish) {
       delete out.borderWidth;
       delete out.borderColor;
       delete out.shadow;
-      delete out.rotation;
-    } else Object.assign(out, FRAME_BORDER);
+      if (ctx.bleed.has(e.id)) delete out.rotation;
+    } else Object.assign(out, finish);
     if (!ctx.fixedFocal.has(e.id)) {
       const c = faceCropFocal(aspectOf(e.photoId), frameAspectOf(e, geo), ctx.faces.get(e.photoId ?? "") ?? []);
       out.focalX = c.focalX;
@@ -1547,7 +1789,12 @@ export function layoutSpread(input: LayoutInput): LayoutOutput {
     ctx.fixedFocal.clear();
   }
   const out = finalizeSpread(ctx, complete ? elements : fallbackLayout(ctx));
-  if (input.style === "scribble") out.elements.push(...scribbleOrnaments(ctx, out.elements));
+  const page = PAGE_COLOR[input.style];
+  if (page) {
+    const bg = shapeEl(`${ctx.prefix}-${page.suffix}`, { x: 0, y: 0, w: ctx.geo.W, h: ctx.geo.H }, ctx.geo, page.color);
+    out.elements.unshift(bg);
+    out.bleedIds = [bg.id, ...(out.bleedIds ?? [])];
+  }
   // Clean and catalog (owner, 2026-09-29): every spread (the cover aside) has a background — its hero,
   // blurred 45%, so the faded hero melts into a soft copy of itself and the white around the grid
   // takes the page's colours.
@@ -1556,110 +1803,6 @@ export function layoutSpread(input: LayoutInput): LayoutOutput {
 }
 
 const CLEAN_BACKGROUND_BLUR = 45;
-
-// ---------------------------------------------------------------------------------------------
-// Scribble ornaments (owner, 2026-09-29): an ornament on every page (each half of a double spread)
-// from the editor's ornament libraries. Over the book every tab is used — spread i takes its
-// ornaments from tab i mod T — but only some of each tab's items (a seeded pick). An ornament sits
-// on white paper next to the photos when there's room, else over a bleeding photo away from its
-// faces; never over a framed photo, never across the fold.
-// ---------------------------------------------------------------------------------------------
-
-const DEFAULT_ORNAMENT_TABS: OrnamentTab[] = ORNAMENT_TABS.map((t) => ({
-  id: t.key,
-  custom: false,
-  items: ALBUM_ORNAMENTS.filter((o) => o.category === t.key).map((o) => o.id),
-}));
-const ORNAMENT_INK = "#6b5a4a"; // on paper: the scribble cover's warm brown family
-const ORNAMENT_ON_PHOTO = "#ffffff";
-
-function scribbleOrnaments(ctx: Ctx, els: AlbumElement[]): AlbumOrnamentElement[] {
-  const { geo, input } = ctx;
-  const { W, H } = geo;
-  const tabs = (input.ornamentTabs && input.ornamentTabs.length ? input.ornamentTabs : DEFAULT_ORNAMENT_TABS).filter((t) => t.items.length > 0);
-  if (!tabs.length) return [];
-  const tab = tabs[input.spreadIndex % tabs.length];
-  const photos = els.filter((e): e is AlbumPhotoElement => e.type === "photo");
-  const cm = (e: { xPct: number; yPct: number; widthPct: number; heightPct: number }): Rect => ({ x: (e.xPct / 100) * W, y: (e.yPct / 100) * H, w: (e.widthPct / 100) * W, h: (e.heightPct / 100) * H });
-  // Every photo's faces are off limits (padded); a framed photo also blocks its middle — an
-  // ornament may lap over its corner or edge, scrapbook style, but not cover the picture.
-  const blocked: Rect[] = [];
-  const photoRects: Rect[] = [];
-  for (const e of photos) {
-    const r = cm(e);
-    photoRects.push(r);
-    const p = ctx.photos.find((q) => q.id === e.photoId);
-    const f = computePhotoFraming(p?.aspect ?? 1.5, r.w / r.h, e.zoom ?? 100, e.focalX ?? 50, e.focalY ?? 50);
-    const faces = ctx.faces.get(e.photoId ?? "") ?? [];
-    for (const fb of faces.length ? faces : [ASSUMED_FACES]) {
-      const fx = r.x + ((f.leftPct + fb.x * f.widthPct) / 100) * r.w;
-      const fy = r.y + ((f.topPct + fb.y * f.heightPct) / 100) * r.h;
-      const fw = (fb.width * f.widthPct * r.w) / 100;
-      const fh = (fb.height * f.heightPct * r.h) / 100;
-      blocked.push({ x: fx - 0.4 * fw, y: fy - 0.5 * fh, w: fw * 1.8, h: fh * 2.2 });
-    }
-    if (!ctx.bleed.has(e.id)) blocked.push(inset(r, 0.3 * r.w, 0.3 * r.h));
-  }
-  const hit = (a: Rect, b: Rect) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-  const corners = photos.filter((e) => !ctx.bleed.has(e.id)).flatMap((e) => {
-    const r = cm(e);
-    return [
-      [r.x, r.y],
-      [r.x + r.w, r.y],
-      [r.x, r.y + r.h],
-      [r.x + r.w, r.y + r.h],
-    ];
-  });
-  const pages = geo.double ? [FIRST, SECOND] : [0];
-  const out: AlbumOrnamentElement[] = [];
-  const used = new Set<string>();
-  pages.forEach((page, k) => {
-    const px0 = geo.double ? page * geo.pageW : 0;
-    const pw = geo.pageW;
-    const gut = geo.double ? 0.03 * W : 0;
-    const m = 0.045 * Math.min(W, H);
-    let best = null as { r: Rect; onPhoto: boolean; score: number } | null;
-    for (const size of [0.2 * H, 0.16 * H, 0.12 * H]) {
-      const x0 = px0 + (page === 0 || !geo.double ? m : gut);
-      const x1 = px0 + pw - (page === 1 || !geo.double ? m : gut) - size;
-      const y0 = m;
-      const y1 = H - m - size;
-      for (let gy = 0; gy <= 10; gy++)
-        for (let gx = 0; gx <= 10; gx++) {
-          const r = { x: x0 + ((x1 - x0) * gx) / 10, y: y0 + ((y1 - y0) * gy) / 10, w: size, h: size };
-          if (x1 < x0 || y1 < y0) continue;
-          if (blocked.some((b) => hit(r, b)) || out.some((o) => hit(r, cm(o)))) continue;
-          const covered = unionArea(photoRects.filter((q) => hit(r, q)).map((q) => ({ x: Math.max(q.x, r.x), y: Math.max(q.y, r.y), w: Math.min(q.x + q.w, r.x + r.w) - Math.max(q.x, r.x), h: Math.min(q.y + q.h, r.y + r.h) - Math.max(q.y, r.y) })), W, H) / (size * size);
-          const onPhoto = covered > 0.5;
-          const cx = r.x + size / 2;
-          const cy = r.y + size / 2;
-          const near = corners.length ? Math.min(...corners.map(([x, y]) => Math.hypot(x - cx, y - cy))) : H;
-          // Mostly on paper and tucked against a photo's corner beats floating or sitting on a photo.
-          const score = 2 * (1 - covered) + Math.max(0, 1 - near / (0.25 * H)) + size / H + (hashString(`${input.spreadIndex}|${k}|${gx}|${gy}`) % 100) / 1000;
-          if (!best || score > best.score) best = { r, onPhoto, score };
-        }
-      if (best && best.score >= 2.4) break;
-    }
-    if (!best) return;
-    // A seeded item of the spread's tab, different on the two pages.
-    let pick = tab.items[hashString(`${input.spreadIndex}|${k}|orn`) % tab.items.length];
-    for (let t = 1; used.has(pick) && t < tab.items.length; t++) pick = tab.items[(hashString(`${input.spreadIndex}|${k}|orn`) + t) % tab.items.length];
-    used.add(pick);
-    const rot = Math.round((((hashString(`${input.spreadIndex}|${k}|rot`) % 1000) / 1000) * 24 - 12) * 10) / 10;
-    out.push({
-      id: `${ctx.prefix}-orn-${k}`,
-      type: "ornament",
-      ...(tab.custom ? { customOrnamentId: pick } : { ornamentId: pick, color: best.onPhoto ? ORNAMENT_ON_PHOTO : ORNAMENT_INK }),
-      xPct: r3((best.r.x / W) * 100),
-      yPct: r3((best.r.y / H) * 100),
-      widthPct: r3((best.r.w / W) * 100),
-      heightPct: r3((best.r.h / H) * 100),
-      rotation: rot,
-      opacity: 100,
-    });
-  });
-  return out;
-}
 
 type CoverStyle = { font: string; color: string; maxFs: number };
 
