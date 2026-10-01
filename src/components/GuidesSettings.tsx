@@ -13,6 +13,7 @@ const GUIDES: { key: string; title: string; description: string; duration: strin
   { key: "galleries", title: "גלריות", description: "יצירת גלריה, העלאת תמונות ושליחה ללקוח", duration: "0:39" },
   { key: "client-portals", title: "פורטל לקוח", description: "הקישור האישי ומה הלקוח רואה בו", duration: "0:30" },
   { key: "leads", title: "לידים ופניות", description: "מעקב פניות, הצעות מחיר והמרה לאירוע", duration: "0:40" },
+  { key: "quote-flow", title: "שליחת הצעת מחיר", description: "מהליד לוואטסאפ, אישור הלקוח, שאלון וחתימה על החוזה", duration: "0:24" },
   { key: "waitlist", title: "רשימת המתנה", description: "לקוחות לתאריכים תפוסים, והמרה לאירוע", duration: "0:32" },
   { key: "analytics", title: "דשבורד עסקי", description: "הכנסות, מגמות, ותשלומים פתוחים", duration: "0:37" },
 ];

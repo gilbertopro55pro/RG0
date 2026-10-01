@@ -1,6 +1,7 @@
 import Link from "next/link";
 import LandingFaq from "@/components/LandingFaq";
 import LandingAlbumSection from "@/components/LandingAlbumSection";
+import LandingQuoteSection from "@/components/LandingQuoteSection";
 import LandingMagnetSection from "@/components/LandingMagnetSection";
 import TimeSavingsCalculator from "@/components/TimeSavingsCalculator";
 import PricingToggle from "@/components/PricingToggle";
@@ -19,12 +20,12 @@ const JOURNEY = [
   {
     title: "פנייה",
     icon: "M4 5h16v11H8l-4 4z",
-    text: "כל ליד נכנס למקום אחד, והצעת מחיר מעוצבת יוצאת ישר מהטלפון. לליד שלא חזר, מחכה הודעת מעקב מוכנה.",
+    text: "כל ליד נכנס למקום אחד, והצעת מחיר יוצאת בקישור בוואטסאפ. הלקוח מאשר בטלפון. לליד שלא חזר, מחכה הודעת מעקב מוכנה.",
   },
   {
     title: "סגירה",
     icon: "M6 3h9l3 3v15H6zM9 13l2 2 4-4",
-    text: "חוזה דיגיטלי שנחתם מהטלפון. המקדמה נרשמת, והאירוע נכנס ליומן Google או Apple.",
+    text: "הלקוח ממלא שאלון קצר וחותם על החוזה באותו קישור. האירוע נפתח לבד ונכנס ליומן Google או Apple.",
   },
   {
     title: "לפני האירוע",
@@ -49,7 +50,7 @@ const JOURNEY = [
 ];
 
 const MORE = [
-  { title: "לידים והצעות מחיר", icon: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5", text: "כל פנייה במקום אחד, הצעת מחיר מעוצבת בלחיצה." },
+  { title: "לידים והצעות מחיר", icon: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5", text: "כל פנייה במקום אחד, והצעת מחיר בקישור שהלקוח מאשר בטלפון." },
   { title: "חבילות ושלבים משלכם", icon: "M4 6h10M4 12h16M4 18h7M17 4v4M13 16v4", text: "מחירים, שלבי עבודה ונוסח ההודעות ללקוח, מותאמים לשיטה שלכם." },
   { title: "פורטפוליו ציבורי", icon: "M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z", text: "תיק עבודות לשיתוף, מתמלא מהגלריות שלכם בלחיצה (פרו ופרו+)." },
   { title: "דשבורד עסקי", icon: "M4 20V10M10 20V4M16 20v-7M22 20H2", text: "הכנסות לפי חודש, מגמה, ותשלומים פתוחים." },
@@ -259,6 +260,9 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* The quote flow: link → approval → questionnaire → contract → event (owner, 2026-10-01). */}
+      <LandingQuoteSection />
+
       {/* The automatic album designer (owner, 2026-09-30). */}
       <LandingAlbumSection />
 
@@ -317,7 +321,7 @@ export default function LandingPage() {
               ))}
               <span className="text-sm font-semibold text-[var(--l-accent)]">+ שאלה חדשה</span>
             </div>
-            <p className="m-0 text-sm text-[var(--l-on-navy-mute)]">בכל המסלולים: פרו סטארט עד 100 שיחות בחודש, פרו עד 150, ופרו+ עד 200.</p>
+            <p className="m-0 text-sm text-[var(--l-on-navy-mute)]">בכל המסלולים: פרו סטארט עד 100 שיחות בחודש, פרו עד 150, ופרו+ עד 200. צריכים יותר? מוסיפים חבילת שיחות, בלי להחליף מסלול.</p>
           </div>
 
           {/* A real conversation with the assistant, recorded from the live site. */}

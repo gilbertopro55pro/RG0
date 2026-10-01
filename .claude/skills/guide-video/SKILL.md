@@ -17,6 +17,10 @@ scenario file in `scenarios/<key>.js`; the engine is `record.js`; `convert.py` c
 - `scenarios/*.js` — overview, portfolio, settings, galleries, client-portals, leads, waitlist, analytics, intake-demo.
 - `intake-demo` is the landing page's assistant demo (`public/guides/intake-demo.mp4`, the "עוזר פניות חכם" section of `LandingPage.tsx`), not a page guide. It holds a real conversation on `/chat/studio-or?src=demo` (live model replies, so they differ per run: review the frames), then settings › אוטומציה › שאלות נפוצות. `GF_CHAT_ONLY=1` records only the chat (no login needed; any `GF_STATE`, even `{"cookies":[],"origins":[]}`). Each run creates a lead "נועה" (0500000123, source `demo`) in the test account. Full version (chat + settings, 1:54) published 2026-09-28, recorded after the date-question prompt change.
 
+## Quote flow video (`quote-flow`, 2026-10-01)
+- 24s, on the landing page (`LandingQuoteSection`) and in Settings › מדריכים: lead → builder → "send a contract too?" → the WhatsApp message → client approves → questionnaire → signs → done.
+- **Recorded locally, not from the live site.** Reaching myframeflow.com from the recorder needs a TLS exception for the proxy, which the environment refuses (2026-10-01). So it was recorded from the real components bundled with esbuild on `http://127.0.0.1` with demo data ("נועה ואיתי", סטודיו אור) and mocked fetch, with its own small caption/pointer overlay, then cut and sped up ×1.24 with ffmpeg. The scratch files are not in the repo; re-create the same way if the screens change.
+
 ## Coming-soon teasers (סרטוני "בקרוב", 2026-09-29)
 Vertical 1080x1920, 13s (owner: 10–15s), no audio (music is added on Instagram/TikTok), for social media, not the
 site. Five exist: home, galleries, leads, quotes, assistant. Owner asked: every video ends on the
