@@ -101,10 +101,13 @@ export async function issueReceipt({
   // so exactly one correct receipt is issued.
   const exact = amount / (1 + VAT_RATE);
   const round2 = (x: number) => Math.round(x * 100) / 100;
+  // Verified live 2026-10-01 (a ₪10 assistant pack): 8.47 without rounding was refused (and Finbot
+  // emailed an error), the 6-decimal 8.474577 without rounding was accepted (receipt 30001). So the
+  // 6-decimal price goes first now; each refused attempt costs the owner an error email.
   const attempts: { price: number; rounding: boolean }[] = isLicensedDocument
     ? [
-        { price: round2(exact), rounding: false },
         { price: Math.ceil(exact * 1e6) / 1e6, rounding: false },
+        { price: round2(exact), rounding: false },
         // 42.37 with rounding: true is the exact request that was refused, so not repeated.
         { price: Math.ceil(exact * 1e6) / 1e6, rounding: true },
       ]

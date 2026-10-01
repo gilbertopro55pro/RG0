@@ -188,8 +188,13 @@ changed blind (the docs weren't reachable). Check it with PayPlus support or the
   select created_at, conversations, amount, status, charged_amount, receipt_status, receipt_error
   from intake_credit_purchases order by created_at desc limit 5;
   ```
-- **Not verified end to end:** `charge_method: 1` on the existing payment page wasn't testable from
-  the sandbox (PayPlus is blocked). The first real purchase confirms it.
+- **Verified live 2026-10-01 (owner, ₪10 pack):** PayPlus charged ₪10 as a one-time charge, the
+  webhook marked the purchase paid, the 10 conversations were added, and the receipt was issued
+  (Finbot document 30001). The subscription was untouched.
+- **Finbot price finding from that purchase:** 10/1.18 at 2 decimals (8.47) was refused ("סכום
+  הפריטים אינו תואם לסכום התקבולים", and Finbot emails an error for each refusal), while the
+  6-decimal 8.474577 without rounding was accepted. `issueReceipt` now tries the 6-decimal price
+  first. This also applies to subscription renewals at non-round amounts (the ₪50 case above).
 
 ## Billing columns are server-only (migration 0148, 2026-10-01)
 
