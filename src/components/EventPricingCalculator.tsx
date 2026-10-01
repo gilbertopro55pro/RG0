@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { deliveryNotes, quoteShareCaption } from "@/lib/quoteDefaults";
+import { deliveryNotes, quoteLinkMessage, quoteShareCaption } from "@/lib/quoteDefaults";
+import { buildWaMeLink } from "@/lib/waLink";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import type { LeadRow, PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
@@ -23,7 +24,7 @@ type ContactPickerNavigator = Navigator & {
 };
 
 type Mode = "event" | "standard" | "freelance";
-type Step = "calculator" | "quoteForm" | "preview" | "savePrompt" | "leadFollowUp" | "leadDuplicate";
+type Step = "calculator" | "quoteForm" | "preview" | "savePrompt" | "leadFollowUp" | "leadDuplicate" | "linkReady";
 
 type DuplicateLead = { id: string; name: string; phone: string | null; event_date_interest: string | null; event_type_name: string | null; status: string; source: string | null; created_at: string };
 // A row in the per-quote vendor list: either a real saved supplier (supplierId matches
@@ -177,6 +178,29 @@ export default function EventPricingCalculator({
   const [addingLead, setAddingLead] = useState(false);
   // An existing lead with the same phone, found when adding this quote's client to the leads.
   const [duplicateLead, setDuplicateLead] = useState<DuplicateLead | null>(null);
+  // quoteExtras accounts send the client a WhatsApp message with the /quotes/<token> link instead of
+  // the PDF file (owner, 2026-10-01). The quote is attached to a lead first (that's where the token
+  // lives), so sending always goes through the leads; the PDF is downloadable from the lead card.
+  const [linkMode, setLinkMode] = useState(false);
+  const [linkMessage, setLinkMessage] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [signature, setSignature] = useState<string | null>(null);
+  useEffect(() => {
+    if (!quoteExtras) return;
+    let alive = true;
+    const sb = createClient();
+    void (async () => {
+      const {
+        data: { user },
+      } = await sb.auth.getUser();
+      if (!user) return;
+      const { data } = await sb.from("photographers").select("whatsapp_signature").eq("id", user.id).maybeSingle<{ whatsapp_signature: string | null }>();
+      if (alive) setSignature(data?.whatsapp_signature ?? null);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [quoteExtras]);
   // "עיגול מחיר" — lets the photographer round the VAT-included total to a clean number by nudging
   // one supplier's price up or down, instead of the total landing on an odd number like 5,213 ₪.
   const [roundingOpen, setRoundingOpen] = useState(false);
@@ -538,7 +562,9 @@ export default function EventPricingCalculator({
       });
     }
     setSavingQuote(false);
-    setStep("leadFollowUp");
+    // Link mode already put the quote on a lead.
+    if (linkMode) onClose();
+    else setStep("leadFollowUp");
   };
 
   // Creates a lead from the quote's client details and immediately attaches this quote's amount to
@@ -572,7 +598,8 @@ export default function EventPricingCalculator({
     });
 
   // allowDuplicate: the photographer saw that a lead with this phone exists and still wants a new one.
-  const addLeadForFollowUp = async (allowDuplicate = false) => {
+  // forLink: link mode (sendLink below), passed explicitly because the state update isn't visible yet.
+  const addLeadForFollowUp = async (allowDuplicate = false, forLink = linkMode) => {
     setAddingLead(true);
     let close = true;
     try {
@@ -594,10 +621,52 @@ export default function EventPricingCalculator({
         close = false;
         return;
       }
-      if (leadRes.ok && leadData.lead?.id) await attachQuote(leadData.lead.id);
+      if (leadRes.ok && leadData.lead?.id) {
+        if (forLink) {
+          close = false;
+          await attachForLink(leadData.lead.id);
+        } else await attachQuote(leadData.lead.id);
+      } else if (forLink) {
+        close = false;
+        setSendError(leadData.error ?? "הוספת הליד נכשלה");
+        setStep("preview");
+      }
     } finally {
       setAddingLead(false);
       if (close) onClose();
+    }
+  };
+
+  // Link mode: attach the quote to the lead and build the message with its /quotes/<token> link.
+  const attachForLink = async (id: string) => {
+    const res = await attachQuote(id);
+    const data = await res.json().catch(() => null);
+    const token = data?.lead?.quote_token as string | undefined;
+    if (!res.ok || !token) {
+      setSendError(data?.error ?? "צירוף ההצעה לליד נכשל");
+      setStep("preview");
+      return;
+    }
+    if (leadId === id) onLeadQuoted?.(data.lead);
+    const caption = quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate));
+    setLinkMessage(quoteLinkMessage(caption, `${window.location.origin}/quotes/${token}`, signature));
+    setLinkCopied(false);
+    setStep("linkReady");
+  };
+
+  const sendLink = async () => {
+    setSendError(null);
+    setLinkMode(true);
+    if (!leadId) {
+      // Same lead creation (and duplicate check) as the follow-up step; linkMode carries it on.
+      await addLeadForFollowUp(false, true);
+      return;
+    }
+    setAddingLead(true);
+    try {
+      await attachForLink(leadId);
+    } finally {
+      setAddingLead(false);
     }
   };
 
@@ -620,10 +689,11 @@ export default function EventPricingCalculator({
     if (!duplicateLead) return;
     setAddingLead(true);
     try {
-      await attachQuote(duplicateLead.id);
+      if (linkMode) await attachForLink(duplicateLead.id);
+      else await attachQuote(duplicateLead.id);
     } finally {
       setAddingLead(false);
-      onClose();
+      if (!linkMode) onClose();
     }
   };
 
@@ -1237,15 +1307,62 @@ export default function EventPricingCalculator({
               </div>
             )}
             <div className="flex gap-2">
-              <button onClick={sendQuote} disabled={sendingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-                {sendingQuote ? "מכין..." : "שליחה ללקוח/ה"}
-              </button>
+              {quoteExtras ? (
+                <button onClick={() => void sendLink()} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+                  {addingLead ? "מכין קישור..." : "שליחה ללקוח/ה"}
+                </button>
+              ) : (
+                <button onClick={sendQuote} disabled={sendingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+                  {sendingQuote ? "מכין..." : "שליחה ללקוח/ה"}
+                </button>
+              )}
               <button
                 onClick={() => setStep("quoteForm")}
-                disabled={sendingQuote}
+                disabled={sendingQuote || addingLead}
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
               >
                 ביטול
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "linkReady" && (
+          <>
+            <div className="mb-3.5">
+              <span className="text-base font-bold font-display">ההודעה ללקוח/ה מוכנה</span>
+            </div>
+            <p className="text-xs text-ink-soft mb-2">ההצעה צורפה לליד. קובץ ה-PDF זמין להורדה בעמוד הלידים.</p>
+            <div className="rounded-xl border border-line bg-card p-3 mb-3.5 text-sm whitespace-pre-wrap break-words" dir="rtl">
+              {linkMessage}
+            </div>
+            {/* A plain link: the tap opens WhatsApp directly, with nothing async a browser could block. */}
+            <a
+              href={quoteClientPhone.trim() ? buildWaMeLink(quoteClientPhone, linkMessage) : `https://wa.me/?text=${encodeURIComponent(linkMessage)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                setSavePromptStep("ask");
+                setTimeout(() => setStep("savePrompt"), 300);
+              }}
+              className="flex w-full items-center justify-center rounded-lg py-2.5 mb-2 text-sm font-semibold bg-ink text-white"
+            >
+              שליחה בוואטסאפ
+            </a>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(linkMessage);
+                    setLinkCopied(true);
+                  } catch {}
+                }}
+                className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
+              >
+                {linkCopied ? "הועתק ✓" : "העתקת ההודעה"}
+              </button>
+              <button onClick={onClose} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft">
+                סגירה
               </button>
             </div>
           </>
@@ -1262,7 +1379,7 @@ export default function EventPricingCalculator({
                 <button onClick={() => setSavePromptStep("name")} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
                   כן, לשמור
                 </button>
-                <button onClick={() => setStep("leadFollowUp")} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft">
+                <button onClick={() => (linkMode ? onClose() : setStep("leadFollowUp"))} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft">
                   לא
                 </button>
               </div>
@@ -1278,7 +1395,7 @@ export default function EventPricingCalculator({
                   <button onClick={confirmSaveQuote} disabled={savingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
                     {savingQuote ? "שומר..." : "שמירה"}
                   </button>
-                  <button onClick={() => setStep("leadFollowUp")} disabled={savingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
+                  <button onClick={() => (linkMode ? onClose() : setStep("leadFollowUp"))} disabled={savingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
                     ביטול
                   </button>
                 </div>
