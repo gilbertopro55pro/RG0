@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { deliveryNotes, quoteShareCaption } from "@/lib/quoteDefaults";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import type { LeadRow, PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
@@ -83,6 +84,7 @@ export default function EventPricingCalculator({
   prefill,
   leadId,
   onLeadQuoted,
+  quoteExtras,
   onClose,
 }: {
   hourlyRate: number;
@@ -100,6 +102,9 @@ export default function EventPricingCalculator({
   // offering to create a new one.
   leadId?: string;
   onLeadQuoted?: (lead: Partial<LeadRow>) => void;
+  // Admin-only for now (lib/quoteDefaults.ts): delivery-time notes that follow the quote's items,
+  // and a WhatsApp caption naming the client, the event and the date.
+  quoteExtras?: boolean;
   onClose: () => void;
 }) {
   const supabase = createClient();
@@ -143,6 +148,9 @@ export default function EventPricingCalculator({
   const [quoteEventDate, setQuoteEventDate] = useState(prefill?.eventDate ?? "");
   const [quoteEventLocation, setQuoteEventLocation] = useState(prefill?.eventLocation ?? "");
   const [quoteNotes, setQuoteNotes] = useState("");
+  // Until the photographer edits the notes, they follow the quote: the video / magnets lines appear
+  // only when the quote has such an item (quoteExtras accounts only).
+  const [notesTouched, setNotesTouched] = useState(false);
   // Only asked for (and only relevant) outside freelance mode — freelance already has its own
   // fixed hours/rate cells on the main screen, set before this wizard ever opens.
   const [quoteStartTime, setQuoteStartTime] = useState(prefill?.startTime ?? "");
@@ -375,6 +383,7 @@ export default function EventPricingCalculator({
       .filter((it): it is PriceQuoteItem => it !== null);
     return [shootItem, ...supplierItems];
   }, [quoteVendorRows, supplierList, hours, rate, mode, shootDetails, vendorRowPrice]);
+  const notesValue = quoteExtras && !notesTouched ? deliveryNotes(quoteItems.map((it) => it.item)) : quoteNotes;
 
   const openQuoteForm = () => {
     setQuoteFormError(null);
@@ -453,7 +462,7 @@ export default function EventPricingCalculator({
             location: quoteEventLocation.trim(),
             workHours: mode !== "freelance" && quoteStartTime && quoteEndTime ? `${quoteStartTime}-${quoteEndTime}` : undefined,
           },
-          notes: quoteNotes.trim() || undefined,
+          notes: notesValue.trim() || undefined,
         }),
       });
       if (!res.ok) throw new Error("יצירת הקובץ נכשלה");
@@ -478,7 +487,10 @@ export default function EventPricingCalculator({
     (async () => {
       try {
         if (navigator.canShare?.({ files: [quoteFile] })) {
-          await navigator.share({ files: [quoteFile], title: "הצעת מחיר" });
+          await navigator.share({
+            files: [quoteFile],
+            title: quoteExtras ? quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate)) : "הצעת מחיר",
+          });
         } else {
           window.open(URL.createObjectURL(quoteFile), "_blank");
         }
@@ -522,7 +534,7 @@ export default function EventPricingCalculator({
         event_location: quoteEventLocation.trim() || null,
         work_start_time: mode !== "freelance" && quoteStartTime ? quoteStartTime : null,
         work_end_time: mode !== "freelance" && quoteEndTime ? quoteEndTime : null,
-        notes: quoteNotes.trim() || null,
+        notes: notesValue.trim() || null,
       });
     }
     setSavingQuote(false);
@@ -538,7 +550,7 @@ export default function EventPricingCalculator({
     fetch(`/api/leads/${leadId}/quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: total, note: quoteNotes.trim() || undefined }),
+      body: JSON.stringify({ amount: total, note: notesValue.trim() || undefined }),
     });
 
   // allowDuplicate: the photographer saw that a lead with this phone exists and still wants a new one.
@@ -1092,8 +1104,11 @@ export default function EventPricingCalculator({
               <div className="rounded-lg border border-line bg-white p-2.5">
                 <div className="text-[10px] text-ink-soft mb-1">הערות (אופציונלי)</div>
                 <textarea
-                  value={quoteNotes}
-                  onChange={(e) => setQuoteNotes(e.target.value)}
+                  value={notesValue}
+                  onChange={(e) => {
+                    setNotesTouched(true);
+                    setQuoteNotes(e.target.value);
+                  }}
                   rows={4}
                   placeholder="הערות חופשיות שיופיעו בהצעת המחיר..."
                   className="w-full text-sm bg-transparent outline-none resize-none"

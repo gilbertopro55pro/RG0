@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { quoteExtrasFor } from "@/lib/quoteDefaults";
 import { createClient } from "@/lib/supabase/server";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import type { CustomPackageRow, EventTypeRow, LeadRow, PackagePriceRow, Photographer, PriceQuoteRow, PriceQuoteTemplateRow } from "@/lib/types";
@@ -52,6 +53,7 @@ export default async function LeadsPage() {
           templates: priceQuoteTemplates ?? [],
           customEventTypes: photographer.quote_event_type_suggestions ?? [],
           defaultTaxStatus: photographer.business_tax_status,
+          quoteExtras: quoteExtrasFor(photographer.email),
         }}
       />
     </div>
