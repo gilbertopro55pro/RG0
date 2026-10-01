@@ -5,6 +5,8 @@ import { intakeMonthlyCap, type IntakePhotographer } from "@/lib/intakeAssistant
 import type { Photographer } from "@/lib/types";
 import { INTAKE_ALERT_RATIO, monthKeyIsrael } from "@/lib/intakeCredits";
 import { sendPushToPhotographer } from "@/lib/push";
+import { sendEmail } from "@/lib/resend";
+import { notificationEmailFor } from "@/lib/notificationEmail";
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>;
 
@@ -60,11 +62,50 @@ export async function claimConversationSlot(supabase: ServiceClient, p: ChatPhot
   const cap = intakeMonthlyCap(p);
   const used = await intakeUsedThisMonth(supabase, p.id);
   if (used < cap) {
-    if (used + 1 >= Math.ceil(cap * INTAKE_ALERT_RATIO)) await alertNearCap(supabase, p, used + 1, cap);
+    if (used + 1 >= cap) await alertCapFull(supabase, p, cap);
+    else if (used + 1 >= Math.ceil(cap * INTAKE_ALERT_RATIO)) await alertNearCap(supabase, p, used + 1, cap);
     return { extraCredit: false };
   }
   const { data: took } = await supabase.rpc("consume_intake_extra", { p_photographer: p.id });
-  return took === true ? { extraCredit: true } : null;
+  if (took !== true) return null;
+  // This one took the last bought conversation: from the next one, clients get the form.
+  if ((p.intake_extra_conversations ?? 0) <= 1) await alertExtrasGone(p, cap);
+  return { extraCredit: true };
+}
+
+// The conversation that uses up the month's cap (owner, 2026-10-01): phone + email, once a month.
+async function alertCapFull(supabase: ServiceClient, p: ChatPhotographer, cap: number) {
+  const month = monthKeyIsrael();
+  const { data } = await supabase
+    .from("photographers")
+    .update({ intake_cap_full_alerted_month: month, intake_cap_alerted_month: month })
+    .eq("id", p.id)
+    .or(`intake_cap_full_alerted_month.is.null,intake_cap_full_alerted_month.neq.${month}`)
+    .select("id");
+  if (!data?.length) return;
+  const extra = p.intake_extra_conversations ?? 0;
+  const body =
+    extra > 0
+      ? `נוצלו כל ${cap} השיחות של החודש. העוזר ממשיך עם ${extra} השיחות שרכשת.`
+      : `נוצלו כל ${cap} השיחות של החודש. מעכשיו לקוחות חדשים מקבלים טופס פנייה רגיל עד תחילת החודש הבא. אפשר לרכוש שיחות נוספות בהגדרות.`;
+  await notifyUsage(p, "עוזר הפניות: המכסה החודשית נוצלה", body);
+}
+
+async function alertExtrasGone(p: ChatPhotographer, cap: number) {
+  await notifyUsage(
+    p,
+    "עוזר הפניות: השיחות שרכשת נגמרו",
+    `השתמשת בשיחה האחרונה שרכשת, ומכסת ${cap} השיחות של החודש כבר נוצלה. מעכשיו לקוחות חדשים מקבלים טופס פנייה רגיל עד תחילת החודש הבא, או עד שתרכוש שיחות נוספות בהגדרות.`
+  );
+}
+
+// Phone and email: the email reaches a photographer who never turned notifications on.
+async function notifyUsage(p: ChatPhotographer, title: string, body: string) {
+  await sendPushToPhotographer(p.id, { title, body, url: "/settings?tab=automation", tag: "intake-cap" });
+  const link = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://myframeflow.com"}/settings?tab=automation`;
+  await sendEmail({ to: notificationEmailFor(p.email), subject: title, text: `שלום ${p.name},\n\n${body}\n\nהגדרות העוזר:\n${link}` }).catch((e) =>
+    console.error("Intake usage email failed:", p.id, e)
+  );
 }
 
 async function alertNearCap(supabase: ServiceClient, p: ChatPhotographer, used: number, cap: number) {
