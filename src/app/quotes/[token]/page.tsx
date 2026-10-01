@@ -1,11 +1,12 @@
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { resolveLeadPackageLabel } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
-import type { CustomPackageRow, EventRow, LeadRow } from "@/lib/types";
+import type { CustomPackageRow, EventContractRow, EventRow, LeadRow } from "@/lib/types";
 import QuoteApprovalFlow from "@/components/QuoteApprovalFlow";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { slotFor, type LeadQuoteDetails } from "@/lib/leadQuote";
+import { latestContract } from "@/lib/quoteContract";
 
 export default async function QuotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -58,6 +59,9 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
       .maybeSingle<Pick<EventRow, "client_access_token">>();
     convertedClientAccessToken = convertedEvent?.client_access_token ?? null;
   }
+  // Sent with a contract: a returning client lands back on the signing step until it's signed.
+  const contract: EventContractRow | null =
+    isAdminLead && lead.converted_event_id && lead.quote_details?.withContract ? await latestContract(supabase, lead.converted_event_id) : null;
 
   if (isAdminLead) {
     const ph = lead.photographers;
@@ -87,6 +91,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
         initialApprovedAt={lead.quote_approved_at}
         initialConvertedEventId={lead.converted_event_id}
         initialClientAccessToken={convertedClientAccessToken}
+        initialContract={contract}
       />
     );
   }

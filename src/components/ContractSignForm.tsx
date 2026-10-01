@@ -23,7 +23,8 @@ function splitContractText(text: string): { main: string; details: string; rest:
   };
 }
 
-export default function ContractSignForm({ contract: initialContract }: { contract: EventContractRow }) {
+// onSigned: the quote page's questionnaire moves on once the contract is signed (QuoteApprovalFlow).
+export default function ContractSignForm({ contract: initialContract, onSigned }: { contract: EventContractRow; onSigned?: (contract: EventContractRow) => void }) {
   const [contract, setContract] = useState(initialContract);
   const [signerName, setSignerName] = useState("");
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
@@ -48,6 +49,7 @@ export default function ContractSignForm({ contract: initialContract }: { contra
       return;
     }
     setContract(data.contract);
+    onSigned?.(data.contract);
   };
 
   return (

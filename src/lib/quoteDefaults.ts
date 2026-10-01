@@ -36,8 +36,16 @@ export function quoteShareCaption(clientName: string, eventType: string, dateDMY
 
 // The WhatsApp message that sends the client the quote link (admin only, owner 2026-10-01): the
 // caption, the /quotes/<token> link, and the photographer's signature from Settings when set.
-export function quoteLinkMessage(caption: string, url: string, signature: string | null | undefined): string {
-  return [caption, "", `קישור להצעת המחיר: ${url}`, "יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר.", signature?.trim() || null]
+// withContract: the quote page ends with signing the contract, so the message says so.
+export function quoteLinkMessage(caption: string, url: string, signature: string | null | undefined, withContract = false): string {
+  return [
+    caption,
+    "",
+    `קישור להצעת המחיר: ${url}`,
+    "יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר.",
+    withContract ? "אחרי האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור." : null,
+    signature?.trim() || null,
+  ]
     .filter((l) => l !== null)
     .join("\n");
 }
