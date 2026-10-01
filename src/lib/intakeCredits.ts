@@ -7,7 +7,7 @@ export const INTAKE_PACKS: { conversations: number; price: number }[] = [
   { conversations: 10, price: 10 },
   { conversations: 20, price: 18 },
   { conversations: 30, price: 25 },
-  { conversations: 40, price: 35 },
+  { conversations: 40, price: 33 },
   { conversations: 50, price: 40 },
 ];
 
