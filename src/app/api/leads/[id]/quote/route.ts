@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { LeadQuoteDetails } from "@/lib/leadQuote";
 import { createClient } from "@/lib/supabase/server";
 import { scheduleLeadQuoteFollowUp } from "@/lib/leadFollowUp";
 
@@ -12,7 +13,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
   }
 
-  const { amount, note }: { amount: number; note?: string } = await request.json();
+  const { amount, note, details }: { amount: number; note?: string; details?: LeadQuoteDetails } = await request.json();
   if (!amount || amount <= 0) {
     return NextResponse.json({ error: "יש להזין סכום תקין" }, { status: 400 });
   }
@@ -22,6 +23,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .update({
       quoted_amount: amount,
       quote_note: note || null,
+      // The full quote from the builder (lib/leadQuote.ts); the old amount-only form sends none.
+      ...(details && Array.isArray(details.items) && JSON.stringify(details).length < 20000 ? { quote_details: details } : {}),
       quote_sent_at: new Date().toISOString(),
       status: "quoted",
     })

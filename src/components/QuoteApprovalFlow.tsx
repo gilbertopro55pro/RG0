@@ -1,20 +1,59 @@
 "use client";
 
 import { useState } from "react";
+import { extraHoursNotice, familyPhotosTime, SLOT_HOURS, type DaySlotKind, type LeadQuoteDetails } from "@/lib/leadQuote";
+
+// The client's quote page (/quotes/<token>), admin account for now. Designed like the quote PDF
+// (lib/priceQuotePdf.ts, owner 2026-10-01: "more convenient for the client"): a navy header with
+// the studio, the logo on a gold ring, a "לכבוד" card with the event, the line items, the totals and
+// the notes; then "אישור ההצעה" and a short questionnaire that opens the event in the studio's
+// calendar. The questionnaire starts from what's already known (the quote and the conversation)
+// and the owner's hours (lib/leadQuote.ts): evening 19:00-00:00, morning 09:00-13:00, family photos
+// 30 minutes before the start; hours past the package show the extra-cost notice.
 
 type Step = "view" | "questionnaire" | "done";
+
+export type QuotePhotographer = {
+  name: string;
+  phone: string;
+  email: string;
+  businessId: string | null;
+  taxStatus: "exempt" | "licensed" | null;
+  logoUrl: string | null;
+  whatsappSignature: string | null;
+};
+
+// Same palette as the PDF.
+const NAVY = "#0b1220";
+const TOTAL_NAVY = "#18243c";
+const GOLD = "#8f6f2f";
+const GOLD_DEEP = "#7c5f27";
+const GOLD_LIGHT = "#c9a15a";
+const PAPER = "#eef1f6";
+const HAIRLINE = "#dce1ea";
+const INK_SOFT = "#56607a";
+const ON_NAVY_SOFT = "#aeb8cc";
+
+const money = (n: number) => `${Math.round(n * 100) / 100 === Math.round(n) ? Math.round(n).toLocaleString("he-IL") : n.toLocaleString("he-IL")} ש״ח`;
+
+function dmy(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return y && m && d ? `${d}.${m}.${y}` : "";
+}
 
 export default function QuoteApprovalFlow({
   token,
   clientName,
   clientPhone,
   eventDateInterest,
-  photographerName,
-  photographerPhone,
-  whatsappSignature,
+  eventTypeName,
+  photographer,
   quotedAmount,
   quoteNote,
-  packageLabelText,
+  details,
+  slot,
+  knownLocation,
   initialApprovedAt,
   initialConvertedEventId,
   initialClientAccessToken,
@@ -23,12 +62,13 @@ export default function QuoteApprovalFlow({
   clientName: string;
   clientPhone: string | null;
   eventDateInterest: string | null;
-  photographerName: string;
-  photographerPhone: string;
-  whatsappSignature: string | null;
+  eventTypeName: string | null;
+  photographer: QuotePhotographer;
   quotedAmount: number;
   quoteNote: string | null;
-  packageLabelText: string | null;
+  details: LeadQuoteDetails | null;
+  slot: DaySlotKind;
+  knownLocation: string | null;
   initialApprovedAt: string | null;
   initialConvertedEventId: string | null;
   initialClientAccessToken: string | null;
@@ -38,15 +78,21 @@ export default function QuoteApprovalFlow({
   const [error, setError] = useState<string | null>(null);
   const [clientAccessToken, setClientAccessToken] = useState<string | null>(initialClientAccessToken);
 
+  const eventDate = details?.eventDate || eventDateInterest || "";
+  const eventType = details?.eventType || eventTypeName || "";
+  const location = details?.eventLocation || knownLocation || "";
+  const notes = details?.notes ?? quoteNote ?? "";
+
   const [formName, setFormName] = useState(clientName);
   const [formPhone, setFormPhone] = useState(clientPhone ?? "");
-  const [formDate, setFormDate] = useState(eventDateInterest ?? "");
-  const [formStartTime, setFormStartTime] = useState("");
-  const [formEndTime, setFormEndTime] = useState("");
-  const [formLocation, setFormLocation] = useState("");
-  const [formArrivalTime, setFormArrivalTime] = useState("");
+  const [formDate, setFormDate] = useState(eventDate);
+  const [formStartTime, setFormStartTime] = useState(details?.startTime || SLOT_HOURS[slot].start);
+  const [formEndTime, setFormEndTime] = useState(details?.endTime || SLOT_HOURS[slot].end);
+  const [formLocation, setFormLocation] = useState(location);
   const [formNotes, setFormNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const familyTime = familyPhotosTime(formStartTime);
+  const hoursNotice = extraHoursNotice(slot, formStartTime, formEndTime);
 
   const approve = async () => {
     setApproving(true);
@@ -56,6 +102,7 @@ export default function QuoteApprovalFlow({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "האישור נכשל");
       setStep("questionnaire");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "האישור נכשל");
     } finally {
@@ -81,14 +128,17 @@ export default function QuoteApprovalFlow({
           eventStartTime: formStartTime || null,
           eventEndTime: formEndTime || null,
           eventLocation: formLocation.trim(),
-          arrivalTime: formArrivalTime.trim(),
+          arrivalTime: familyTime,
           notes: formNotes.trim(),
+          // What the client was told about the hours, so the studio sees it on the event.
+          hoursNotice: hoursNotice ?? undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שליחת הפרטים נכשלה");
       setClientAccessToken(data.clientAccessToken ?? null);
       setStep("done");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "שליחת הפרטים נכשלה");
     } finally {
@@ -96,131 +146,262 @@ export default function QuoteApprovalFlow({
     }
   };
 
-  const inputClass = "w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white";
+  const inputClass = "w-full rounded-lg px-3 py-2.5 text-base border bg-white outline-none focus:border-[#8f6f2f]";
+  const label = "text-xs block mb-1";
+  const taxLine = photographer.businessId ? `${photographer.taxStatus === "exempt" ? "עוסק פטור" : "עוסק מורשה"} ${photographer.businessId}` : null;
+  const items = details?.items ?? [];
 
   return (
-    <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <h1 className="text-[22px] font-bold mb-1 font-display">הצעת מחיר לצילום</h1>
-      <p className="text-xs mb-5 text-ink-soft">מאת {photographerName}</p>
-
-      {step === "view" && (
-        <>
-          <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-            <div className="text-xs text-ink-soft mb-1">עבור</div>
-            <div className="text-sm font-semibold mb-3.5">{clientName}</div>
-
-            {eventDateInterest && (
-              <>
-                <div className="text-xs text-ink-soft mb-1">תאריך משוער</div>
-                <div className="text-sm mb-3.5">{new Date(eventDateInterest).toLocaleDateString("he-IL")}</div>
-              </>
-            )}
-
-            {packageLabelText && (
-              <>
-                <div className="text-xs text-ink-soft mb-1">חבילה</div>
-                <div className="text-sm mb-3.5">{packageLabelText}</div>
-              </>
-            )}
-
-            <div className="text-xs text-ink-soft mb-1">מחיר</div>
-            <div className="text-xl font-bold font-display mb-3.5">₪{quotedAmount.toLocaleString("he-IL")}</div>
-
-            {quoteNote && (
-              <>
-                <div className="text-xs text-ink-soft mb-1">הערות</div>
-                <div className="text-sm whitespace-pre-wrap">{quoteNote}</div>
-              </>
+    <div className="min-h-screen w-full" style={{ background: "#f3f4f7" }}>
+      <div className="max-w-[640px] mx-auto bg-white min-h-screen shadow-[0_0_40px_rgba(11,18,32,0.08)]">
+        {/* Header, like the PDF */}
+        <header className="relative px-6 sm:px-10 pt-8 pb-14" style={{ background: NAVY, borderBottom: `3px solid ${GOLD}` }}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-sm font-bold" style={{ color: GOLD_LIGHT }}>
+                הצעת מחיר
+              </div>
+              <div className="text-[26px] sm:text-[30px] font-bold text-white leading-tight mt-1 font-display">{photographer.name}</div>
+              <div className="mt-2 space-y-0.5 text-[13px]" style={{ color: ON_NAVY_SOFT }}>
+                {taxLine && <div>{taxLine}</div>}
+                {photographer.phone && <div dir="ltr" className="text-right">{photographer.phone}</div>}
+                {photographer.email && <div dir="ltr" className="text-right">{photographer.email}</div>}
+              </div>
+            </div>
+            {details?.createdAt && (
+              <div className="text-[13px] shrink-0" style={{ color: ON_NAVY_SOFT }}>
+                {new Date(details.createdAt).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, ".")}
+              </div>
             )}
           </div>
-
-          {error && <p className="text-xs text-rose mb-3">{error}</p>}
-
-          <button
-            onClick={approve}
-            disabled={approving}
-            className="w-full rounded-xl py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60 mb-3"
+          {/* Logo on a gold ring, overlapping the header's bottom edge */}
+          <div
+            className="absolute left-6 sm:left-10 -bottom-12 h-24 w-24 rounded-full bg-white flex items-center justify-center overflow-hidden"
+            style={{ border: `3px solid ${GOLD}` }}
           >
-            {approving ? "מאשר..." : "אישור ההצעה"}
-          </button>
-
-          <div className="rounded-2xl p-4 bg-card border border-line shadow-card text-sm">
-            שאלות לפני שמאשרים? צרו קשר עם {photographerName} בטלפון <span dir="ltr">{photographerPhone}</span>.
-            {whatsappSignature && <div className="mt-2 text-xs text-ink-soft">{whatsappSignature}</div>}
+            {photographer.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={photographer.logoUrl} alt="" className="h-full w-full object-contain p-2" />
+            ) : null}
           </div>
-        </>
-      )}
+        </header>
 
-      {step === "questionnaire" && (
-        <>
-          <p className="text-sm mb-5 text-ink-soft">
-            ההצעה אושרה. עוד רגע אחד, כמה פרטים על האירוע כדי שנפתח אותו במערכת.
-          </p>
-          <div className="rounded-2xl p-4 bg-card border border-line shadow-card space-y-2.5">
-            <div>
-              <label className="text-xs text-ink-soft block mb-1">שם מלא</label>
-              <input value={formName} onChange={(e) => setFormName(e.target.value)} className={inputClass} />
-            </div>
-            <div>
-              <label className="text-xs text-ink-soft block mb-1">טלפון</label>
-              <input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} dir="ltr" className={`${inputClass} text-left font-data`} />
-            </div>
-            <div>
-              <label className="text-xs text-ink-soft block mb-1">תאריך האירוע</label>
-              <input value={formDate} onChange={(e) => setFormDate(e.target.value)} type="date" dir="ltr" className={`${inputClass} font-data`} />
-            </div>
-            <div className="flex gap-2">
-              <div className="flex-1 min-w-0">
-                <label className="text-xs text-ink-soft block mb-1">שעת התחלה</label>
-                <input value={formStartTime} onChange={(e) => setFormStartTime(e.target.value)} type="time" dir="ltr" className={`${inputClass} font-data`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <label className="text-xs text-ink-soft block mb-1">שעת סיום</label>
-                <input value={formEndTime} onChange={(e) => setFormEndTime(e.target.value)} type="time" dir="ltr" className={`${inputClass} font-data`} />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-ink-soft block mb-1">מיקום האירוע</label>
-              <input
-                value={formLocation}
-                onChange={(e) => setFormLocation(e.target.value)}
-                placeholder="לדוגמה: אולם וגן אירועים"
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-ink-soft block mb-1">שעת הגעה לצילומי משפחה (אופציונלי)</label>
-              <input value={formArrivalTime} onChange={(e) => setFormArrivalTime(e.target.value)} type="time" dir="ltr" className={`${inputClass} font-data`} />
-            </div>
-            <div>
-              <label className="text-xs text-ink-soft block mb-1">הערות נוספות (אופציונלי)</label>
-              <textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} rows={3} className={inputClass} />
-            </div>
+        <main className="px-6 sm:px-10 pt-16 pb-10">
+          {step === "view" && (
+            <>
+              {/* "לכבוד" card */}
+              <section className="rounded-xl p-4 sm:p-5" style={{ background: PAPER, borderRight: `4px solid ${GOLD}` }}>
+                <div className="text-xs" style={{ color: INK_SOFT }}>
+                  לכבוד
+                </div>
+                <div className="text-xl font-bold mt-0.5" style={{ color: NAVY }}>
+                  {clientName}
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-4">
+                  {eventType && <Field labelText="סוג האירוע" value={eventType} />}
+                  {eventDate && <Field labelText="תאריך" value={dmy(eventDate)} ltr />}
+                  {location && <Field labelText="מיקום" value={location} />}
+                  {details?.startTime && details?.endTime && <Field labelText="שעות העבודה" value={`${details.startTime}-${details.endTime}`} ltr />}
+                </div>
+              </section>
 
-            {error && <p className="text-xs text-rose">{error}</p>}
+              {/* Line items */}
+              {items.length > 0 && (
+                <section className="mt-8">
+                  <h2 className="text-base font-bold inline-block pb-1" style={{ color: GOLD_DEEP, borderBottom: `2px solid ${GOLD}` }}>
+                    פירוט ההצעה
+                  </h2>
+                  <div className="mt-3">
+                    <div className="flex items-center text-xs font-semibold pb-2" style={{ color: INK_SOFT, borderBottom: `1.5px solid ${NAVY}` }}>
+                      <span className="flex-1">פריט</span>
+                      <span className="w-24 text-left">מחיר</span>
+                    </div>
+                    {items.map((it, i) => (
+                      <div key={i} className="flex items-start py-3 text-[15px]" style={{ borderBottom: `1px solid ${HAIRLINE}` }}>
+                        <span className="flex-1 min-w-0">
+                          <span className="font-semibold" style={{ color: NAVY }}>
+                            {it.item}
+                          </span>
+                          {it.details && it.details !== "1" && (
+                            <span className="block text-xs mt-0.5" style={{ color: INK_SOFT }}>
+                              {it.details}
+                            </span>
+                          )}
+                        </span>
+                        <span className="w-24 text-left shrink-0" style={{ color: NAVY }}>
+                          {money(it.price)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
 
-            <button
-              onClick={submitQuestionnaire}
-              disabled={submitting}
-              className="w-full rounded-xl py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-            >
-              {submitting ? "שולח..." : "שליחת הפרטים"}
-            </button>
-          </div>
-        </>
-      )}
+              {/* Totals */}
+              <section className="mt-6 rounded-xl p-3 sm:max-w-[300px]" style={{ background: PAPER }}>
+                {details?.showVat !== false && details && (
+                  <>
+                    <div className="flex justify-between px-2 py-1.5 text-sm" style={{ color: INK_SOFT }}>
+                      <span>סה״כ לפני מע״מ</span>
+                      <span style={{ color: NAVY }}>{money(details.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between px-2 py-1.5 text-sm" style={{ color: INK_SOFT }}>
+                      <span>מע״מ 18%</span>
+                      <span style={{ color: NAVY }}>{money(details.vatAmount)}</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between items-center rounded-lg px-4 py-3 mt-1.5" style={{ background: TOTAL_NAVY }}>
+                  <span className="text-sm font-bold text-white">{details?.showVat === false ? "לתשלום" : "לתשלום, כולל מע״מ"}</span>
+                  <span className="text-xl font-bold" style={{ color: GOLD_LIGHT }}>
+                    {money(details?.total ?? quotedAmount)}
+                  </span>
+                </div>
+              </section>
 
-      {step === "done" && (
-        <div className="rounded-2xl p-4 bg-card border border-line shadow-card text-center">
-          <div className="text-lg font-bold font-display mb-2">תודה, האירוע נקבע!</div>
-          <p className="text-sm text-ink-soft mb-4">{photographerName} קיבל/ה את הפרטים והאירוע נכנס ליומן.</p>
-          {clientAccessToken && (
-            <a href={`/portal/${clientAccessToken}`} className="inline-block rounded-xl px-5 py-2.5 text-sm font-semibold bg-ink text-white">
-              מעבר לעמוד האירוע שלכם
-            </a>
+              {notes && (
+                <section className="mt-8">
+                  <h2 className="text-base font-bold inline-block pb-1" style={{ color: GOLD_DEEP, borderBottom: `2px solid ${GOLD}` }}>
+                    הערות
+                  </h2>
+                  <p className="mt-3 text-[15px] leading-relaxed whitespace-pre-wrap" style={{ color: NAVY }}>
+                    {notes}
+                  </p>
+                </section>
+              )}
+
+              {error && <p className="text-sm text-rose mt-6">{error}</p>}
+              <button
+                onClick={approve}
+                disabled={approving}
+                className="w-full rounded-xl py-4 mt-8 text-base font-bold text-white disabled:opacity-60"
+                style={{ background: NAVY }}
+              >
+                {approving ? "מאשר..." : "אישור ההצעה"}
+              </button>
+              <p className="mt-4 text-sm text-center leading-relaxed" style={{ color: INK_SOFT }}>
+                שאלות לפני שמאשרים? {photographer.name}, <span dir="ltr">{photographer.phone}</span>
+                {photographer.whatsappSignature && <span className="block text-xs mt-1">{photographer.whatsappSignature}</span>}
+              </p>
+            </>
           )}
-        </div>
-      )}
+
+          {step === "questionnaire" && (
+            <>
+              <h2 className="text-xl font-bold font-display" style={{ color: NAVY }}>
+                ההצעה אושרה, תודה!
+              </h2>
+              <p className="text-[15px] mt-1 mb-5" style={{ color: INK_SOFT }}>
+                עוד רגע אחד: נבדוק יחד את פרטי האירוע, והוא ייכנס ליומן של {photographer.name}.
+              </p>
+              <div className="space-y-3.5">
+                <div>
+                  <label className={label} style={{ color: INK_SOFT }}>
+                    שם מלא
+                  </label>
+                  <input value={formName} onChange={(e) => setFormName(e.target.value)} className={inputClass} style={{ borderColor: HAIRLINE }} />
+                </div>
+                <div>
+                  <label className={label} style={{ color: INK_SOFT }}>
+                    טלפון
+                  </label>
+                  <input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} dir="ltr" className={`${inputClass} text-left`} style={{ borderColor: HAIRLINE }} />
+                </div>
+                <div>
+                  <label className={label} style={{ color: INK_SOFT }}>
+                    תאריך האירוע
+                  </label>
+                  <input value={formDate} onChange={(e) => setFormDate(e.target.value)} type="date" dir="ltr" className={inputClass} style={{ borderColor: HAIRLINE }} />
+                </div>
+                <div>
+                  <label className={label} style={{ color: INK_SOFT }}>
+                    מיקום האירוע
+                  </label>
+                  <input value={formLocation} onChange={(e) => setFormLocation(e.target.value)} placeholder="לדוגמה: אולם וגן אירועים" className={inputClass} style={{ borderColor: HAIRLINE }} />
+                </div>
+
+                <div className="rounded-xl p-4" style={{ background: PAPER }}>
+                  <div className="text-sm font-bold mb-0.5" style={{ color: NAVY }}>
+                    שעות הצילום ({slot === "evening" ? "אירוע ערב" : "אירוע בוקר"})
+                  </div>
+                  <p className="text-xs mb-3" style={{ color: INK_SOFT }}>
+                    אפשר לשנות לפי מה שמתאים לכם.
+                  </p>
+                  <div className="flex gap-2">
+                    <div className="flex-1 min-w-0">
+                      <label className={label} style={{ color: INK_SOFT }}>
+                        תחילת האירוע
+                      </label>
+                      <input value={formStartTime} onChange={(e) => setFormStartTime(e.target.value)} type="time" dir="ltr" className={inputClass} style={{ borderColor: HAIRLINE }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <label className={label} style={{ color: INK_SOFT }}>
+                        סיום
+                      </label>
+                      <input value={formEndTime} onChange={(e) => setFormEndTime(e.target.value)} type="time" dir="ltr" className={inputClass} style={{ borderColor: HAIRLINE }} />
+                    </div>
+                  </div>
+                  {familyTime && (
+                    <p className="text-sm mt-3" style={{ color: NAVY }}>
+                      צילומי משפחה: <span dir="ltr" className="font-bold">{familyTime}</span>
+                      <span className="text-xs" style={{ color: INK_SOFT }}>
+                        {" "}
+                        (30 דקות לפני תחילת האירוע)
+                      </span>
+                    </p>
+                  )}
+                  {hoursNotice && (
+                    <p className="text-sm mt-3 rounded-lg px-3 py-2.5 leading-relaxed" style={{ background: "#fbf3e2", color: GOLD_DEEP, border: `1px solid #ead9b5` }}>
+                      {hoursNotice}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className={label} style={{ color: INK_SOFT }}>
+                    הערות נוספות (אופציונלי)
+                  </label>
+                  <textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} rows={3} className={inputClass} style={{ borderColor: HAIRLINE }} />
+                </div>
+
+                {error && <p className="text-sm text-rose">{error}</p>}
+                <button onClick={submitQuestionnaire} disabled={submitting} className="w-full rounded-xl py-4 text-base font-bold text-white disabled:opacity-60" style={{ background: NAVY }}>
+                  {submitting ? "שולח..." : "שליחת הפרטים"}
+                </button>
+              </div>
+            </>
+          )}
+
+          {step === "done" && (
+            <div className="text-center py-6">
+              <div className="text-2xl font-bold font-display" style={{ color: NAVY }}>
+                תודה, האירוע נקבע!
+              </div>
+              <p className="text-[15px] mt-2 mb-6" style={{ color: INK_SOFT }}>
+                {photographer.name} קיבל את הפרטים, והאירוע נכנס ליומן.
+              </p>
+              {clientAccessToken && (
+                <a href={`/portal/${clientAccessToken}`} className="inline-block rounded-xl px-6 py-3 text-base font-bold text-white" style={{ background: NAVY }}>
+                  מעבר לעמוד האירוע שלכם
+                </a>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function Field({ labelText, value, ltr }: { labelText: string; value: string; ltr?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-xs" style={{ color: INK_SOFT }}>
+        {labelText}
+      </div>
+      <div className="text-[15px] font-bold mt-0.5 break-words" style={{ color: NAVY }}>
+        <span dir={ltr ? "ltr" : undefined}>{value}</span>
+      </div>
     </div>
   );
 }
