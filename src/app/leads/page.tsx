@@ -33,9 +33,22 @@ export default async function LeadsPage() {
   if (!photographer) redirect("/");
   if (!hasAppAccess(photographer)) redirect("/billing");
 
+  // A lead that finished the quote flow leaves the list (owner, 2026-10-01): the client approved the
+  // quote, the questionnaire opened the event, and, when a contract was sent with the quote, it's
+  // signed. The row itself stays (the client's /quotes/<token> link and the event depend on it).
+  const withContractEvents = (leads ?? [])
+    .filter((l) => l.quote_approved_at && l.converted_event_id && l.quote_details?.withContract)
+    .map((l) => l.converted_event_id!);
+  const { data: signedContracts } = withContractEvents.length
+    ? await supabase.from("event_contracts").select("event_id").in("event_id", withContractEvents).eq("status", "signed").returns<{ event_id: string }[]>()
+    : { data: [] as { event_id: string }[] };
+  const signedEvents = new Set((signedContracts ?? []).map((c) => c.event_id));
+  const closedByQuote = (l: LeadRow) =>
+    !!l.quote_approved_at && !!l.converted_event_id && (!l.quote_details?.withContract || signedEvents.has(l.converted_event_id));
+
   // Archived leads (lib/leadRetention.ts) get their own section in the view.
-  const active = (leads ?? []).filter((l) => !l.archived_at);
-  const archived = (leads ?? []).filter((l) => !!l.archived_at);
+  const active = (leads ?? []).filter((l) => !l.archived_at && !closedByQuote(l));
+  const archived = (leads ?? []).filter((l) => !!l.archived_at && !closedByQuote(l));
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">

@@ -74,6 +74,14 @@ const GUIDE: Record<Lang, Guide> = {
         ],
       },
       {
+        title: "מכסת שיחות ושיחות נוספות",
+        items: [
+          "בהגדרות › אוטומציה מוצג מונה: כמה שיחות היו החודש מתוך המכסה של המסלול. המכסה מתחדשת בתחילת כל חודש.",
+          "התראה לטלפון ולמייל מגיעה ב-90% מהמכסה, וגם כשהמכסה נגמרת. אחרי המכסה הלקוחות מקבלים טופס פנייה רגיל, ושום פנייה לא הולכת לאיבוד.",
+          "\"רכישת שיחות נוספות\": חבילות של 10 עד 50 שיחות, בתשלום חד-פעמי נפרד מהמנוי, עם קבלה במייל. שיחות שנרכשו לא פגות, ונכנסות לפעולה רק אחרי המכסה החודשית.",
+        ],
+      },
+      {
         title: "וואטסאפ העסקי ומקורות",
         items: [
           "את \"הודעת הפתיחה לוואטסאפ העסקי\" מעתיקים ומדביקים ב-WhatsApp Business: הגדרות › כלים לעסקים › הודעת פתיחה. כל לקוח חדש מקבל מיד קישור לעוזר.",
@@ -151,6 +159,14 @@ const GUIDE: Record<Lang, Guide> = {
         ],
       },
       {
+        title: "Conversation cap and extra conversations",
+        items: [
+          "Settings › Automation shows a meter: this month's conversations out of your plan's cap. The cap renews at the start of every month.",
+          "A phone and email notification arrives at 90% of the cap, and again when it's used up. After the cap, clients get a plain inquiry form, so no inquiry is lost.",
+          "\"Buy more conversations\": packs of 10 to 50 conversations, a one-time payment separate from the subscription, with a receipt by email. Bought conversations never expire and are used only after the monthly cap.",
+        ],
+      },
+      {
         title: "WhatsApp Business and sources",
         items: [
           "Copy the \"הודעת פתיחה לוואטסאפ העסקי\" (WhatsApp greeting) and paste it in WhatsApp Business: Settings › Business tools › Greeting message. Every new client instantly gets a link to the assistant.",
@@ -225,6 +241,14 @@ const GUIDE: Record<Lang, Guide> = {
           "Обложка видео: кадр с лицами и трогательным моментом, а не пейзаж или стена.",
           "После публикации: нажмите на рекламу сами и убедитесь, что открывается чат.",
           "После 10–20 лидов, с подключённым пикселем: перейдите на кампанию \"Лиды\" › место конверсии \"Сайт\" › событие Lead. Meta научится приводить тех, кто оставляет данные, а не просто нажимает.",
+        ],
+      },
+      {
+        title: "Лимит бесед и дополнительные беседы",
+        items: [
+          "В Настройки › Автоматизация показан счётчик: сколько бесед было в этом месяце из лимита тарифа. Лимит обновляется в начале каждого месяца.",
+          "Уведомление на телефон и почту приходит при 90% лимита и когда он исчерпан. После лимита клиенты получают обычную форму обращения, ни одно обращение не теряется.",
+          "«Купить дополнительные беседы»: пакеты от 10 до 50 бесед, разовый платёж отдельно от подписки, с квитанцией по почте. Купленные беседы не сгорают и используются только после месячного лимита.",
         ],
       },
       {

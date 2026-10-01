@@ -235,12 +235,24 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
           body: "כל ליד עובר בין סטטוסים: חדש → יצרתי קשר → נשלחה הצעת מחיר → הפך ללקוח (או לא התקדם). כך רואים בבת אחת איפה כל פנייה עומדת.",
         },
         {
-          heading: "בניית הצעת מחיר",
-          body: "ישר מתוך הליד אפשר לבנות ולשלוח הצעת מחיר מותאמת אישית, בלי לצאת לעמוד אחר.",
+          heading: "שליחת הצעת מחיר בשלבים",
+          body: "1. בליד, לוחצים \"שליחת הצעת מחיר\". הבונה נפתח עם הפרטים שכבר ידועים.\n2. בודקים פריטים ומחירים, ולוחצים \"יצירת הצעת מחיר ללקוח\".\n3. משלימים פרטים ושעות, ועוברים לתצוגה המקדימה.\n4. לוחצים \"שליחה ללקוח/ה\" ובוחרים: עם חוזה או בלי.\n5. וואטסאפ נפתח עם הודעה מוכנה וקישור להצעה. שולחים.\nאחרי שנשלחה הצעה, הכפתור בליד מתחלף ל\"עדכון הצעת מחיר\".",
         },
         {
-          heading: "המרה לאירוע סגור",
-          body: "כשהלקוח מאשר, לחיצה אחת הופכת את הליד לאירוע מלא במערכת, עם כל הפרטים שכבר הוזנו, בלי להקליד שוב.",
+          heading: "מה הלקוח רואה",
+          body: "הלקוח פותח את הקישור, רואה את ההצעה בעמוד מעוצב ומאשר אותה. אחר כך הוא ממלא שאלון קצר על האירוע, והאירוע נפתח לבד ביומן. אם בחרתם לשלוח חוזה, הלקוח חותם עליו בשלב האחרון. מקבלים עדכון לטלפון כשההצעה אושרה וכשהחוזה נחתם.",
+        },
+        {
+          heading: "חוזה באותו קישור",
+          body: "החוזה נבנה מתנאי החוזה שלכם (הגדרות › תבנית חוזה). כשהלקוח חותם, השלב \"סגירת האירוע\" מסומן כבוצע, ומגיע עדכון לטלפון ובמייל.",
+        },
+        {
+          heading: "ליד שהפך לאירוע",
+          body: "ברגע שהלקוח אישר, האירוע נפתח וגם החוזה נחתם (כשנשלח), הליד יוצא מרשימת הלידים. את הכל ממשיכים בעמוד האירוע. אפשר גם להמיר ליד לאירוע ידנית, ב\"המרה לאירוע\".",
+        },
+        {
+          heading: "קובץ ה-PDF של ההצעה",
+          body: "בכרטיס של ליד שנשלחה לו הצעה יש כפתור \"הורדת PDF\", למקרה שהלקוח מבקש את הקובץ עצמו.",
         },
         {
           heading: "מעקב אוטומטי אחרי לידים",
@@ -263,12 +275,24 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
           body: "Every lead moves through statuses: New → Contacted → Quote sent → Became a client (or Didn't proceed). This gives you an at-a-glance view of where every inquiry stands.",
         },
         {
-          heading: "Building a price quote",
-          body: "Build and send a customized price quote right from the lead, without leaving to another page.",
+          heading: "Sending a price quote, step by step",
+          body: "1. On the lead, tap \"Send a price quote\". The builder opens with what's already known.\n2. Check the items and prices, and tap \"Create a quote for a client\".\n3. Complete the details and hours, then go to the preview.\n4. Tap \"Send to client\" and choose: with a contract or without.\n5. WhatsApp opens with a ready message and the quote link. Send it.\nOnce a quote was sent, the lead's button reads \"Update price quote\".",
         },
         {
-          heading: "Converting to a booked event",
-          body: "Once the client confirms, one tap turns the lead into a full event in the system, with all the details already entered — no retyping needed.",
+          heading: "What the client sees",
+          body: "The client opens the link, sees the quote on a designed page and approves it. Then they fill in a short questionnaire about the event, and the event opens in your calendar on its own. If you chose to send a contract, the client signs it as the last step. Your phone gets a notification when the quote is approved and when the contract is signed.",
+        },
+        {
+          heading: "A contract in the same link",
+          body: "The contract is built from your own contract terms (Settings › Contract template). When the client signs, the \"Event closing\" stage is marked done, and you get a phone notification and an email.",
+        },
+        {
+          heading: "A lead that became an event",
+          body: "Once the client approved, the event opened and the contract was signed (when one was sent), the lead leaves the leads list. Everything continues on the event's page. You can still convert a lead by hand with \"Convert to event\".",
+        },
+        {
+          heading: "The quote's PDF",
+          body: "A lead that was sent a quote has a \"Download PDF\" button, for a client who asks for the file itself.",
         },
         {
           heading: "Automatic lead follow-up",
@@ -291,12 +315,24 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
           body: "Каждая заявка проходит статусы: Новая → Связались → Отправлено предложение → Стал клиентом (или Не продвинулось). Так вы сразу видите, на каком этапе находится каждое обращение.",
         },
         {
-          heading: "Составление коммерческого предложения",
-          body: "Прямо из заявки можно составить и отправить индивидуальное ценовое предложение, не переходя на другую страницу.",
+          heading: "Отправка ценового предложения по шагам",
+          body: "1. В заявке нажмите «Отправить ценовое предложение». Конструктор откроется с уже известными данными.\n2. Проверьте позиции и цены и нажмите «Создать предложение для клиента».\n3. Дополните данные и часы и перейдите к предпросмотру.\n4. Нажмите «Отправить клиенту» и выберите: с договором или без.\n5. Откроется WhatsApp с готовым сообщением и ссылкой на предложение. Отправьте.\nПосле отправки кнопка в заявке меняется на «Обновить ценовое предложение».",
         },
         {
-          heading: "Превращение в подтверждённое мероприятие",
-          body: "Как только клиент подтверждает — одно нажатие превращает заявку в полноценное мероприятие в системе, со всеми уже введёнными данными, без повторного ввода.",
+          heading: "Что видит клиент",
+          body: "Клиент открывает ссылку, видит предложение на оформленной странице и подтверждает его. Затем заполняет короткую анкету о мероприятии, и мероприятие само появляется в вашем календаре. Если вы выбрали отправку договора, клиент подписывает его на последнем шаге. Телефон получает уведомление, когда предложение подтверждено и когда договор подписан.",
+        },
+        {
+          heading: "Договор в той же ссылке",
+          body: "Договор составляется из ваших условий договора (Настройки › Шаблон договора). Когда клиент подписывает, этап «Закрытие мероприятия» отмечается выполненным, и приходят уведомление на телефон и письмо.",
+        },
+        {
+          heading: "Заявка, ставшая мероприятием",
+          body: "Когда клиент подтвердил, мероприятие открылось и договор подписан (если отправлялся), заявка уходит из списка заявок. Всё продолжается на странице мероприятия. Заявку по-прежнему можно превратить в мероприятие вручную кнопкой «Превратить в мероприятие».",
+        },
+        {
+          heading: "PDF предложения",
+          body: "В заявке, которой отправлено предложение, есть кнопка «Скачать PDF» — для клиента, который просит сам файл.",
         },
         {
           heading: "Автоматическое сопровождение заявок",
@@ -475,7 +511,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
       sections: [
         {
           heading: "שלבים להכנת הצעת מחיר",
-          body: "1. בחרו למעלה את סוג ההצעה, אירוע, סטנדרטי או פרילנס.\n2. הזינו שעות צילום ותעריף לשעה, או טענו הצעה קודמת או תבנית שמורה.\n3. הוסיפו ספקים רלוונטיים באמצעות הכפתור הבולט \"+ הוספת ספק\", ואם צריך שנו את המחיר של כל ספק ישירות בשורה.\n4. בדקו את הסכום הכולל בתחתית המסך (כולל מע\"מ אם רלוונטי).\n5. לחצו \"יצירת הצעת מחיר ללקוח\" ומלאו את פרטי הלקוח/ה והאירוע.\n6. עברו על התצוגה המקדימה ולחצו \"שליחה ללקוח/ה\" כדי לשתף את קובץ ה-PDF.\n7. אחרי השליחה אפשר לשמור את ההצעה לרשימה, ולהוסיף את הלקוח/ה לרשימת הלידים כדי לקבל תזכורת מעקב אם לא תחזרו אליה תוך יומיים.",
+          body: "1. בחרו למעלה את סוג ההצעה, אירוע, סטנדרטי או פרילנס.\n2. הזינו שעות צילום ותעריף לשעה, או טענו הצעה קודמת או תבנית שמורה.\n3. הוסיפו ספקים רלוונטיים באמצעות הכפתור הבולט \"+ הוספת ספק\", ואם צריך שנו את המחיר של כל ספק ישירות בשורה.\n4. בדקו את הסכום הכולל בתחתית המסך (כולל מע\"מ אם רלוונטי).\n5. לחצו \"יצירת הצעת מחיר ללקוח\" ומלאו את פרטי הלקוח/ה והאירוע.\n6. בתצוגה המקדימה לוחצים \"שליחה ללקוח/ה\" ובוחרים אם לשלוח גם חוזה לחתימה.\n7. וואטסאפ נפתח עם הודעה מוכנה וקישור להצעה. ההצעה נשמרת על ליד, עם תזכורת מעקב אחרי יומיים.",
         },
         {
           heading: "בחירת סוג ההצעה",
@@ -495,7 +531,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         },
         {
           heading: "יצירת הצעת מחיר ללקוח",
-          body: "פותח טופס קצר לפרטי הלקוח/ה והאירוע (כולל שדה הערות חופשי), ואז מציג תצוגה מקדימה של קובץ ה-PDF לפני השליחה. אפשר לשתף אותו ישירות מהמכשיר, לשמור אותו לרשימת ההצעות השמורות, ולהוסיף את הלקוח/ה לרשימת הלידים לקבלת תזכורת מעקב.",
+          body: "פותח טופס קצר לפרטי הלקוח/ה והאירוע (כולל שדה הערות חופשי), ואז תצוגה מקדימה. \"צפייה בהצעה כפי שהלקוח יקבל\" פותח את קובץ ה-PDF. \"שליחה ללקוח/ה\" שולח בוואטסאפ קישור להצעה: הלקוח מאשר אותה, ממלא שאלון קצר, והאירוע נפתח לבד. עם חוזה, הלקוח גם חותם עליו באותו קישור. אם ללקוח כבר יש ליד עם אותו טלפון, בוחרים בתצוגה המקדימה אם לצרף אליו או לפתוח ליד חדש.",
         },
       ],
     },
@@ -506,7 +542,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
       sections: [
         {
           heading: "Steps to prepare a price quote",
-          body: "1. Choose the quote type at the top — Event, Standard, or Freelance.\n2. Enter shoot hours and hourly rate, or load a previous quote or a saved template.\n3. Add relevant vendors with the prominent \"+ Add vendor\" button — edit each vendor's price directly in its row if needed.\n4. Check the total at the bottom of the screen (including VAT if relevant).\n5. Tap \"Create a quote for a client\" and fill in the client's and event's details.\n6. Review the PDF preview and tap \"Send to client\" to share the file.\n7. After sending, you can save the quote to your list, and add the client to your leads list to get a follow-up reminder if you haven't gotten back to them within two days.",
+          body: "1. Choose the quote type at the top — Event, Standard, or Freelance.\n2. Enter shoot hours and hourly rate, or load a previous quote or a saved template.\n3. Add relevant vendors with the prominent \"+ Add vendor\" button — edit each vendor's price directly in its row if needed.\n4. Check the total at the bottom of the screen (including VAT if relevant).\n5. Tap \"Create a quote for a client\" and fill in the client's and event's details.\n6. In the preview, tap \"Send to client\" and choose whether to send a contract to sign too.\n7. WhatsApp opens with a ready message and the quote link. The quote is saved on a lead, with a follow-up reminder after two days.",
         },
         {
           heading: "Choosing the quote type",
@@ -526,7 +562,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         },
         {
           heading: "Creating a quote for a client",
-          body: "Opens a short form for the client's and event's details (including a free-text notes field), then shows a PDF preview before sending — share it straight from the device, save it to the list of saved quotes, and add the client to your leads list for a follow-up reminder.",
+          body: "Opens a short form for the client's and event's details (including a free-text notes field), then a preview. \"View the quote as the client will get it\" opens the PDF. \"Send to client\" sends a link to the quote on WhatsApp: the client approves it, fills in a short questionnaire, and the event opens on its own. With a contract, the client also signs it in the same link. If the client already has a lead with the same phone, the preview lets you attach to it or open a new lead.",
         },
       ],
     },
@@ -537,7 +573,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
       sections: [
         {
           heading: "Шаги для подготовки ценового предложения",
-          body: "1. Выберите тип предложения сверху — Мероприятие, Стандарт или Фриланс.\n2. Введите часы съёмки и почасовую ставку, либо загрузите предыдущее предложение или сохранённый шаблон.\n3. Добавьте нужных поставщиков с помощью заметной кнопки «+ Добавить поставщика» — при необходимости измените цену каждого поставщика прямо в строке.\n4. Проверьте итоговую сумму внизу экрана (включая НДС, если применимо).\n5. Нажмите «Создать предложение для клиента» и заполните данные клиента и мероприятия.\n6. Просмотрите предпросмотр PDF и нажмите «Отправить клиенту», чтобы поделиться файлом.\n7. После отправки можно сохранить предложение в список и добавить клиента в список лидов, чтобы получить напоминание о необходимости связаться с ним, если вы не сделаете этого в течение двух дней.",
+          body: "1. Выберите тип предложения сверху — Мероприятие, Стандарт или Фриланс.\n2. Введите часы съёмки и почасовую ставку, либо загрузите предыдущее предложение или сохранённый шаблон.\n3. Добавьте нужных поставщиков с помощью заметной кнопки «+ Добавить поставщика» — при необходимости измените цену каждого поставщика прямо в строке.\n4. Проверьте итоговую сумму внизу экрана (включая НДС, если применимо).\n5. Нажмите «Создать предложение для клиента» и заполните данные клиента и мероприятия.\n6. В предпросмотре нажмите «Отправить клиенту» и выберите, отправлять ли также договор на подпись.\n7. Откроется WhatsApp с готовым сообщением и ссылкой на предложение. Предложение сохраняется в заявке с напоминанием через два дня.",
         },
         {
           heading: "Выбор типа предложения",
@@ -557,7 +593,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         },
         {
           heading: "Создание предложения для клиента",
-          body: "Открывает короткую форму с данными клиента и мероприятия (включая поле для свободных заметок), затем показывает предпросмотр PDF перед отправкой — можно поделиться им прямо с устройства, сохранить в список сохранённых предложений и добавить клиента в список лидов для напоминания о последующем контакте.",
+          body: "Открывает короткую форму с данными клиента и мероприятия (включая поле для заметок), затем предпросмотр. «Посмотреть предложение так, как его получит клиент» открывает PDF. «Отправить клиенту» отправляет в WhatsApp ссылку на предложение: клиент подтверждает его, заполняет короткую анкету, и мероприятие открывается само. С договором клиент подписывает его по той же ссылке. Если у клиента уже есть заявка с тем же телефоном, в предпросмотре можно прикрепить к ней или открыть новую.",
         },
       ],
     },

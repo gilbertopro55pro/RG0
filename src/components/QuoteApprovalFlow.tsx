@@ -60,6 +60,8 @@ export default function QuoteApprovalFlow({
   initialConvertedEventId,
   initialClientAccessToken,
   initialContract = null,
+  businessRules = false,
+  packageLabel = null,
 }: {
   token: string;
   clientName: string;
@@ -77,6 +79,11 @@ export default function QuoteApprovalFlow({
   initialClientAccessToken: string | null;
   // Sent with a contract (details.withContract): the contract the questionnaire opened, if any yet.
   initialContract?: EventContractRow | null;
+  // The owner's own hours rules (lib/leadQuote.ts: default evening/morning hours, family photos 30
+  // minutes before, the extra-hours notice). Other photographers' clients get the plain times.
+  businessRules?: boolean;
+  // An amount-only quote (the leads page's quick form, no builder details): its package as one line.
+  packageLabel?: string | null;
 }) {
   const withContract = !!details?.withContract;
   const [contract, setContract] = useState<EventContractRow | null>(initialContract);
@@ -95,13 +102,13 @@ export default function QuoteApprovalFlow({
   const [formName, setFormName] = useState(clientName);
   const [formPhone, setFormPhone] = useState(clientPhone ?? "");
   const [formDate, setFormDate] = useState(eventDate);
-  const [formStartTime, setFormStartTime] = useState(details?.startTime || SLOT_HOURS[slot].start);
-  const [formEndTime, setFormEndTime] = useState(details?.endTime || SLOT_HOURS[slot].end);
+  const [formStartTime, setFormStartTime] = useState(details?.startTime || (businessRules ? SLOT_HOURS[slot].start : ""));
+  const [formEndTime, setFormEndTime] = useState(details?.endTime || (businessRules ? SLOT_HOURS[slot].end : ""));
   const [formLocation, setFormLocation] = useState(location);
   const [formNotes, setFormNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const familyTime = familyPhotosTime(formStartTime);
-  const hoursNotice = extraHoursNotice(slot, formStartTime, formEndTime);
+  const familyTime = businessRules ? familyPhotosTime(formStartTime) : null;
+  const hoursNotice = businessRules ? extraHoursNotice(slot, formStartTime, formEndTime) : null;
 
   const approve = async () => {
     setApproving(true);
@@ -163,7 +170,7 @@ export default function QuoteApprovalFlow({
   const inputClass = "qf-input block w-full min-w-0 rounded-lg px-3 py-2.5 text-base border bg-white outline-none focus:border-[#8f6f2f]";
   const label = "text-xs block mb-1";
   const taxLine = photographer.businessId ? `${photographer.taxStatus === "exempt" ? "עוסק פטור" : "עוסק מורשה"} ${photographer.businessId}` : null;
-  const items = details?.items ?? [];
+  const items = details?.items ?? (packageLabel ? [{ item: packageLabel, details: "", price: quotedAmount }] : []);
 
   return (
     <div className="min-h-screen w-full" style={{ background: "#f3f4f7" }}>
@@ -272,7 +279,7 @@ export default function QuoteApprovalFlow({
                   </>
                 )}
                 <div className="flex justify-between items-center rounded-lg px-4 py-3 mt-1.5" style={{ background: TOTAL_NAVY }}>
-                  <span className="text-sm font-bold text-white">{details?.showVat === false ? "לתשלום" : "לתשלום, כולל מע״מ"}</span>
+                  <span className="text-sm font-bold text-white">{!details || details.showVat === false ? "לתשלום" : "לתשלום, כולל מע״מ"}</span>
                   <span className="text-xl font-bold" style={{ color: GOLD_LIGHT }}>
                     {money(details?.total ?? quotedAmount)}
                   </span>
@@ -342,7 +349,7 @@ export default function QuoteApprovalFlow({
 
                 <div className="rounded-xl p-4" style={{ background: PAPER }}>
                   <div className="text-sm font-bold mb-0.5" style={{ color: NAVY }}>
-                    שעות הצילום ({slot === "evening" ? "אירוע ערב" : "אירוע בוקר"})
+                    שעות הצילום{businessRules ? ` (${slot === "evening" ? "אירוע ערב" : "אירוע בוקר"})` : ""}
                   </div>
                   <p className="text-xs mb-3" style={{ color: INK_SOFT }}>
                     אפשר לשנות לפי מה שמתאים לכם.

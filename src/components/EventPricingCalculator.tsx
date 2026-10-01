@@ -103,8 +103,8 @@ export default function EventPricingCalculator({
   // offering to create a new one.
   leadId?: string;
   onLeadQuoted?: (lead: Partial<LeadRow>) => void;
-  // Admin-only for now (lib/quoteDefaults.ts): delivery-time notes that follow the quote's items,
-  // and a WhatsApp caption naming the client, the event and the date.
+  // The owner's own delivery-time notes (lib/quoteDefaults.ts), admin account only. Everything else
+  // here (the caption, the one-tap link, the contract question) is for every photographer.
   quoteExtras?: boolean;
   onClose: () => void;
 }) {
@@ -197,7 +197,6 @@ export default function EventPricingCalculator({
   const [sentWithContract, setSentWithContract] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   useEffect(() => {
-    if (!quoteExtras) return;
     let alive = true;
     const sb = createClient();
     void (async () => {
@@ -211,7 +210,7 @@ export default function EventPricingCalculator({
     return () => {
       alive = false;
     };
-  }, [quoteExtras]);
+  }, []);
   // "עיגול מחיר" — lets the photographer round the VAT-included total to a clean number by nudging
   // one supplier's price up or down, instead of the total landing on an odd number like 5,213 ₪.
   const [roundingOpen, setRoundingOpen] = useState(false);
@@ -469,7 +468,7 @@ export default function EventPricingCalculator({
     setQuoteFile(null);
     setStep("preview");
     void prepareQuoteFile();
-    if (quoteExtras) void prepareLink();
+    void prepareLink();
   };
 
   // Generates the PDF as soon as the preview screen opens, well before the person taps "שליחה" —
@@ -509,43 +508,6 @@ export default function EventPricingCalculator({
     } finally {
       setSendingQuote(false);
     }
-  };
-
-  // Bound directly to the button's onClick and stays synchronous up to the navigator.share() call
-  // itself (see prepareQuoteFile above for why). If the file somehow isn't ready yet, retries
-  // preparing it instead of trying to share nothing.
-  const sendQuote = () => {
-    if (!quoteFile) {
-      if (!sendingQuote) void prepareQuoteFile();
-      return;
-    }
-    setSendError(null);
-    (async () => {
-      try {
-        if (navigator.canShare?.({ files: [quoteFile] })) {
-          await navigator.share({
-            files: [quoteFile],
-            title: quoteExtras ? quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate)) : "הצעת מחיר",
-          });
-        } else {
-          window.open(URL.createObjectURL(quoteFile), "_blank");
-        }
-        setSavePromptStep("ask");
-        setStep("savePrompt");
-      } catch (err) {
-        // AbortError = the person just closed the native share sheet — not a real failure.
-        if (err instanceof Error && err.name === "AbortError") return;
-        // A "not allowed" rejection from Safari/iOS still means the person tapped Send — fall back
-        // to just opening the file so they can share it manually, instead of a dead-end error.
-        if (err instanceof Error && err.name === "NotAllowedError") {
-          window.open(URL.createObjectURL(quoteFile), "_blank");
-          setSavePromptStep("ask");
-          setStep("savePrompt");
-          return;
-        }
-        setSendError(err instanceof Error ? err.message : "השיתוף נכשל");
-      }
-    })();
   };
 
   const confirmSaveQuote = async () => {
@@ -1354,7 +1316,7 @@ export default function EventPricingCalculator({
               )}
             </div>
             {sendError && <p className="text-xs text-rose mb-2">{sendError}</p>}
-            {quoteExtras && !leadId && duplicateLead && existingTarget && (
+            {!leadId && duplicateLead && existingTarget && (
               <div className="rounded-xl border border-line bg-card p-3 mb-2 text-sm">
                 <div className="font-semibold mb-1">ל{duplicateLead.name} כבר יש ליד</div>
                 <div className="text-xs text-ink-soft mb-2">
@@ -1399,23 +1361,17 @@ export default function EventPricingCalculator({
               </div>
             )}
             <div className="flex gap-2">
-              {quoteExtras ? (
-                linkTarget ? (
-                  <button onClick={() => setAskContract(true)} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
-                    שליחה ללקוח/ה
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => void prepareLink()}
-                    disabled={linkPreparing}
-                    className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-                  >
-                    {linkPreparing ? "מכין קישור..." : "נסו שוב"}
-                  </button>
-                )
+              {linkTarget ? (
+                <button onClick={() => setAskContract(true)} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
+                  שליחה ללקוח/ה
+                </button>
               ) : (
-                <button onClick={sendQuote} disabled={sendingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-                  {sendingQuote ? "מכין..." : "שליחה ללקוח/ה"}
+                <button
+                  onClick={() => void prepareLink()}
+                  disabled={linkPreparing}
+                  className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                >
+                  {linkPreparing ? "מכין קישור..." : "נסו שוב"}
                 </button>
               )}
               <button
