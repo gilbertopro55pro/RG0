@@ -11,6 +11,7 @@ import BodyScrollLock from "@/components/BodyScrollLock";
 import GlobalLoadingBar from "@/components/GlobalLoadingBar";
 import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
+import AssistantLeadPopup from "@/components/AssistantLeadPopup";
 
 // One family: Rubik, a print sans with slightly rounded corners (design round 3, 2026-09-28,
 // the owner's pick: "כתב דפוס אבל מעוגל מעט"; replaces Heebo, same face as the landing page). No
@@ -268,6 +269,7 @@ export default function RootLayout({
         <PageTransition>{children}</PageTransition>
         <InstallPrompt />
         <ChangelogModal />
+        <AssistantLeadPopup />
       </body>
     </html>
   );

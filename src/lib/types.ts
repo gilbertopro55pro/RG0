@@ -355,6 +355,8 @@ export type IntakeDetails = {
   videoCrew?: string;
   // The client was asked "anything else about the event?" and answered; only then is the lead handed off.
   nothingElse?: boolean;
+  // A partial lead's "client stopped answering" email was sent (finalizeIdleConversations).
+  idleNotified?: boolean;
   clientName?: string;
   phone?: string;
   email?: string;

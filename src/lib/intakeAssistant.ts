@@ -599,3 +599,77 @@ export function transcriptOf(messages: Anthropic.MessageParam[]): { role: "clien
   }
   return out;
 }
+
+// A conversation that went quiet (owner, 2026-10-01). The handoff waits for the client's answer to
+// "anything else?", so a client who gave every detail and then stopped answering left the lead as
+// "חסרים פרטים" with no email at all (seen live: הילה שפירו, 29.9). Run by a cron: after
+// IDLE_MINUTES without a message, a conversation with a lead (a phone number) is closed for the
+// photographer:
+//   - every required detail in and the date checked (or undecided): the normal handoff — full
+//     lead, the "new lead" email with the conversation PDF;
+//   - something still missing: one email that a partial lead is waiting (the lead stays "חסרים
+//     פרטים"), marked with collected.idleNotified so it's sent once.
+// A client who comes back later continues the same conversation as usual.
+export const IDLE_MINUTES = 20;
+
+const PHOTOGRAPHER_FIELDS =
+  "id, name, email, plan, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, google_calendar_import_color_id, google_calendar_color_id";
+
+export async function finalizeIdleConversations(supabase: ServiceClient, siteUrl: string): Promise<{ completed: number; partial: number }> {
+  const now = Date.now();
+  const { data: convs } = await supabase
+    .from("bot_conversations")
+    .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, referral_source, busy_until")
+    .eq("state", "collecting_info")
+    .is("completed_at", null)
+    .not("lead_id", "is", null)
+    .lt("updated_at", new Date(now - IDLE_MINUTES * 60_000).toISOString())
+    // Only recent ones: older conversations predate this and were already seen by the photographer.
+    .gt("updated_at", new Date(now - 3 * 86_400_000).toISOString())
+    .limit(50)
+    .returns<(IntakeConversation & { busy_until: string | null })[]>();
+  let completed = 0;
+  let partial = 0;
+  for (const conv of convs ?? []) {
+    if (conv.busy_until && new Date(conv.busy_until).getTime() > now) continue;
+    if (conv.collected?.idleNotified) continue;
+    const { data: p } = await supabase.from("photographers").select(PHOTOGRAPHER_FIELDS).eq("id", conv.photographer_id).maybeSingle<IntakePhotographer>();
+    if (!p) continue;
+    const d = conv.collected ?? {};
+    const dateReady = d.eventDate ? d.dateAvailable === true : !!d.dateUndecided;
+    if (missingDetails(d).length === 0 && dateReady) {
+      await completeIntake(supabase, conv, p, siteUrl);
+      // The queued notice says "העוזר אסף את כל הפרטים"; this one says why it came now.
+      pendingNotices.delete(conv);
+      await notifyPhotographer(
+        p,
+        `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : "(תאריך טרם נקבע)"}`.trim(),
+        d,
+        siteUrl,
+        "העוזר אסף את כל פרטי האירוע. הלקוח/ה לא ענה/תה על השאלה האחרונה, אז הפנייה מועברת אליך עכשיו. הליד מחכה להצעת מחיר ממך.",
+        conv.messages
+      );
+      const { error } = await supabase
+        .from("bot_conversations")
+        .update({ state: conv.state, completed_at: conv.completed_at, lead_id: conv.lead_id })
+        .eq("id", conv.id)
+        .eq("state", "collecting_info");
+      if (error) console.error("Intake idle handoff save failed:", conv.id, error.message);
+      completed++;
+    } else {
+      conv.collected = { ...d, idleNotified: true };
+      await notifyPhotographer(
+        p,
+        `פנייה חלקית מהעוזר: ${d.clientName || d.phone}`,
+        d,
+        siteUrl,
+        `לקוח/ה התחיל/ה שיחה עם העוזר והשאיר/ה טלפון, אבל לא סיים/ה. חסר: ${missingDetails(d).join(", ") || "בדיקת התאריך"}. כדאי ליצור קשר.`,
+        conv.messages
+      );
+      const { error } = await supabase.from("bot_conversations").update({ collected: conv.collected }).eq("id", conv.id);
+      if (error) console.error("Intake idle notice save failed:", conv.id, error.message);
+      partial++;
+    }
+  }
+  return { completed, partial };
+}

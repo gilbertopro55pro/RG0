@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
-import type { PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
+import type { LeadRow, PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
+import type { LeadQuotePrefill } from "@/lib/leadQuotePrefill";
 import CompactGuideModal from "@/components/CompactGuideModal";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { IconArrowRight } from "@/components/icons/NavIcons";
@@ -79,6 +80,9 @@ export default function EventPricingCalculator({
   eventTypes,
   initialCustomEventTypes,
   defaultTaxStatus,
+  prefill,
+  leadId,
+  onLeadQuoted,
   onClose,
 }: {
   hourlyRate: number;
@@ -88,6 +92,14 @@ export default function EventPricingCalculator({
   eventTypes: { id: string; name: string }[];
   initialCustomEventTypes: string[];
   defaultTaxStatus: "exempt" | "licensed";
+  // Opened from a lead the intake assistant brought in (LeadsView): every field and the supplier
+  // rows start filled from the conversation (lib/leadQuotePrefill.ts), all still editable, and
+  // nothing goes out until the photographer taps send.
+  prefill?: LeadQuotePrefill;
+  // Opened from an existing lead: after sending, the quote is attached to that lead instead of
+  // offering to create a new one.
+  leadId?: string;
+  onLeadQuoted?: (lead: Partial<LeadRow>) => void;
   onClose: () => void;
 }) {
   const supabase = createClient();
@@ -99,13 +111,13 @@ export default function EventPricingCalculator({
   const [selectedQuoteId, setSelectedQuoteId] = useState("");
   // Same "starts unselected" reasoning as selectedQuoteId above — picking a template is always an
   // explicit action, never something a freshly opened builder should look like it already did.
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState(prefill?.templateId ?? "");
   // Defaults to the photographer's own business status from Settings (ProfileSettingsView.tsx),
   // but stays a per-calculation toggle — a photographer occasionally quoting for a different
   // business arrangement can still switch it for just this one quote without touching Settings.
   const [taxStatus, setTaxStatus] = useState<"exempt" | "licensed">(defaultTaxStatus);
   const isExempt = taxStatus === "exempt";
-  const [hours, setHours] = useState(0);
+  const [hours, setHours] = useState(() => (prefill?.startTime && prefill.endTime ? hoursBetween(prefill.startTime, prefill.endTime) ?? 0 : 0));
   const [rate, setRate] = useState(hourlyRate);
 
   // The photographer's saved default supplier list — only read from here (to populate the picker
@@ -115,7 +127,9 @@ export default function EventPricingCalculator({
   const supplierList: PricingSupplier[] = suppliers;
   // Starts empty — a new quote must never inherit the vendor list from whatever quote was open
   // before; the photographer explicitly builds the vendor rows relevant to this one.
-  const [quoteVendorRows, setQuoteVendorRows] = useState<QuoteVendorRow[]>([]);
+  const [quoteVendorRows, setQuoteVendorRows] = useState<QuoteVendorRow[]>(() =>
+    (prefill?.vendorRows ?? []).map((r) => ({ id: makeId(), supplierId: r.supplierId, customName: r.customName, price: r.price }))
+  );
   // "עריכת ספקים" here means bulk-managing THIS quote's own vendor rows (multi-select + delete) —
   // every row is already directly editable (name/price) without entering this mode; it's purely a
   // faster way to remove several at once. Nothing here touches the account-wide supplier defaults.
@@ -123,16 +137,16 @@ export default function EventPricingCalculator({
   const [deleteSelectedIds, setDeleteSelectedIds] = useState<Set<string>>(new Set());
 
   // The "יצירת הצעת מחיר ללקוח" wizard
-  const [quoteClientName, setQuoteClientName] = useState("");
-  const [quoteClientPhone, setQuoteClientPhone] = useState("");
-  const [quoteEventType, setQuoteEventType] = useState("");
-  const [quoteEventDate, setQuoteEventDate] = useState("");
-  const [quoteEventLocation, setQuoteEventLocation] = useState("");
+  const [quoteClientName, setQuoteClientName] = useState(prefill?.clientName ?? "");
+  const [quoteClientPhone, setQuoteClientPhone] = useState(prefill?.clientPhone ?? "");
+  const [quoteEventType, setQuoteEventType] = useState(prefill?.eventType ?? "");
+  const [quoteEventDate, setQuoteEventDate] = useState(prefill?.eventDate ?? "");
+  const [quoteEventLocation, setQuoteEventLocation] = useState(prefill?.eventLocation ?? "");
   const [quoteNotes, setQuoteNotes] = useState("");
   // Only asked for (and only relevant) outside freelance mode — freelance already has its own
   // fixed hours/rate cells on the main screen, set before this wizard ever opens.
-  const [quoteStartTime, setQuoteStartTime] = useState("");
-  const [quoteEndTime, setQuoteEndTime] = useState("");
+  const [quoteStartTime, setQuoteStartTime] = useState(prefill?.startTime ?? "");
+  const [quoteEndTime, setQuoteEndTime] = useState(prefill?.endTime ?? "");
   const [eventTypeFocused, setEventTypeFocused] = useState(false);
   // Whatever the photographer types beyond the built-in suggestions, most-recent-first — persisted
   // on the photographer row (see rememberEventType below) so it carries over next time, on any
@@ -557,6 +571,21 @@ export default function EventPricingCalculator({
     }
   };
 
+  // Opened from a lead: attach the sent quote to it (status "נשלחה הצעת מחיר" + the follow-up
+  // reminder, same route as above) and hand the updated row back to the leads list.
+  const attachToSourceLead = async () => {
+    if (!leadId) return;
+    setAddingLead(true);
+    try {
+      const res = await attachQuote(leadId);
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.lead) onLeadQuoted?.(data.lead);
+    } finally {
+      setAddingLead(false);
+      onClose();
+    }
+  };
+
   const attachToExistingLead = async () => {
     if (!duplicateLead) return;
     setAddingLead(true);
@@ -589,6 +618,16 @@ export default function EventPricingCalculator({
                 <IconClose className="h-3.5 w-3.5" />
               </button>
             </div>
+
+            {prefill && (
+              <div className="rounded-lg p-2.5 mb-3 text-xs leading-relaxed" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
+                <div className="font-semibold mb-0.5">מולא מהשיחה עם העוזר. כדאי לעבור ולאשר לפני השליחה.</div>
+                {prefill.hints.length > 0 && <div className="[overflow-wrap:anywhere]">{prefill.hints.join(" · ")}</div>}
+                {prefill.vendorRows.some((r) => r.supplierId === "__custom__" && !r.price) && (
+                  <div className="mt-0.5">לשורות בלי מחיר צריך להזין מחיר.</div>
+                )}
+              </div>
+            )}
 
             <div className="flex gap-1.5 mb-3">
               {([
@@ -1215,7 +1254,25 @@ export default function EventPricingCalculator({
           </>
         )}
 
-        {step === "leadFollowUp" && (
+        {step === "leadFollowUp" && leadId && (
+          <>
+            <div className="mb-3.5">
+              <span className="text-base font-bold font-display">מעקב אחרי ההצעה</span>
+            </div>
+            <p className="text-sm text-ink-soft mb-3.5">
+              לעדכן את הליד של {quoteClientName || "הלקוח/ה"} שנשלחה הצעת מחיר? תקבלו תזכורת מעקב אם לא תחזרו אליה תוך יומיים.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={attachToSourceLead} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+                {addingLead ? "מעדכן..." : "כן, לעדכן"}
+              </button>
+              <button onClick={onClose} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
+                לא
+              </button>
+            </div>
+          </>
+        )}
+        {step === "leadFollowUp" && !leadId && (
           <>
             <div className="mb-3.5">
               <span className="text-base font-bold font-display">מעקב אחרי ההצעה</span>

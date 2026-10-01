@@ -1,5 +1,7 @@
 {
-  "regions": ["fra1"],
+  "regions": [
+    "fra1"
+  ],
   "functions": {
     "src/app/api/internal/album-export-jobs/process/route.ts": {
       "memory": 3009
@@ -21,6 +23,10 @@
     {
       "path": "/api/cron/retry-stuck-zip-jobs",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/intake-idle",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
