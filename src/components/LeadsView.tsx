@@ -301,6 +301,7 @@ export default function LeadsView({
                 </button>
               )}
               {lead.quoted_amount && <CopyQuoteLinkButton token={lead.quote_token} />}
+              {quoteBuilder.quoteExtras && lead.quote_details?.items?.length ? <QuotePdfButton lead={lead} /> : null}
               <span className="flex-1" />
               <RowMenu items={[{ label: "מחיקת הליד", onClick: () => deleteLead(lead.id), danger: true }]} />
             </div>
@@ -473,6 +474,59 @@ export default function LeadsView({
         />
       )}
     </div>
+  );
+}
+
+// The PDF of the quote sent from the builder, rebuilt from leads.quote_details (admin only for now:
+// the builder sends the client a link, and the file lives here, owner 2026-10-01).
+function QuotePdfButton({ lead }: { lead: LeadRow }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const d = lead.quote_details;
+  if (!d) return null;
+  const download = async () => {
+    setBusy(true);
+    setFailed(false);
+    try {
+      const [y, m, day] = (d.eventDate ?? "").split("-");
+      const res = await fetch("/api/price-quotes/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName: lead.name,
+          items: d.items,
+          subtotal: d.subtotal,
+          vatAmount: d.vatAmount,
+          total: d.total,
+          showVat: d.showVat,
+          eventDetails: {
+            type: d.eventType,
+            date: y && m && day ? `${day}.${m}.${y}` : undefined,
+            location: d.eventLocation,
+            workHours: d.startTime && d.endTime ? `${d.startTime}-${d.endTime}` : undefined,
+          },
+          notes: d.notes,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `הצעת-מחיר-${lead.name}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button onClick={download} disabled={busy} className="text-[13px] font-bold h-9 px-3 rounded-lg bg-white border border-line text-ink disabled:opacity-60">
+      {busy ? "מכין PDF..." : failed ? "נכשל, לנסות שוב" : "הורדת PDF"}
+    </button>
   );
 }
 

@@ -1,3 +1,4 @@
+import type { LeadQuoteDetails } from "@/lib/leadQuote";
 import type { PackageType, StageKey, SubscriptionPlan } from "@/lib/stages";
 
 export type SubscriptionStatus = "incomplete" | "active" | "past_due" | "canceled" | "trialing";
@@ -399,6 +400,8 @@ export type LeadRow = {
   converted_event_id: string | null;
   event_type_name: string | null;
   created_at: string;
+  // The quote sent from the builder (migration 0146): the client's quote page and the PDF download.
+  quote_details?: LeadQuoteDetails | null;
 };
 
 export type EventTypeRow = {

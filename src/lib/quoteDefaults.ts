@@ -33,3 +33,11 @@ export function quoteShareCaption(clientName: string, eventType: string, dateDMY
   const date = dateDMY.trim();
   return [name, "הצעת מחיר", type ? `ל${type}` : null, date ? `בתאריך ${date}` : null].filter(Boolean).join(" ");
 }
+
+// The WhatsApp message that sends the client the quote link (admin only, owner 2026-10-01): the
+// caption, the /quotes/<token> link, and the photographer's signature from Settings when set.
+export function quoteLinkMessage(caption: string, url: string, signature: string | null | undefined): string {
+  return [caption, "", `קישור להצעת המחיר: ${url}`, "יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר.", signature?.trim() || null]
+    .filter((l) => l !== null)
+    .join("\n");
+}
