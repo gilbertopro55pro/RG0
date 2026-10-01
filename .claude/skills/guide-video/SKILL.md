@@ -21,6 +21,9 @@ scenario file in `scenarios/<key>.js`; the engine is `record.js`; `convert.py` c
 - 24s, on the landing page (`LandingQuoteSection`) and in Settings › מדריכים: lead → builder → "send a contract too?" → the WhatsApp message → client approves → questionnaire → signs → done.
 - **Recorded locally, not from the live site.** Reaching myframeflow.com from the recorder needs a TLS exception for the proxy, which the environment refuses (2026-10-01). So it was recorded from the real components bundled with esbuild on `http://127.0.0.1` with demo data ("נועה ואיתי", סטודיו אור) and mocked fetch, with its own small caption/pointer overlay, then cut and sped up ×1.24 with ffmpeg. The scratch files are not in the repo; re-create the same way if the screens change.
 
+## Leads video re-recorded locally (2026-10-01)
+- `public/guides/leads.mp4` (0:40) was re-recorded the same local way as `quote-flow` (real `LeadsView`, demo leads, own overlay), because the live recorder is blocked. Captions match the new buttons: "שליחת הצעת מחיר", "עדכון הצעת מחיר", "הורדת PDF", and a lead that leaves the list after approval and signing. `scenarios/leads.js` was updated to the same captions for a future live re-shoot.
+
 ## Coming-soon teasers (סרטוני "בקרוב", 2026-09-29)
 Vertical 1080x1920, 13s (owner: 10–15s), no audio (music is added on Instagram/TikTok), for social media, not the
 site. Five exist: home, galleries, leads, quotes, assistant. Owner asked: every video ends on the
