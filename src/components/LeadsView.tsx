@@ -30,6 +30,7 @@ export type LeadsQuoteBuilderData = {
   templates: PriceQuoteTemplateRow[];
   customEventTypes: string[];
   defaultTaxStatus: "exempt" | "licensed";
+  defaultNotes?: string;
 };
 
 // "נוצר ב-29.9.2026, 15:55", Israel time.
@@ -443,6 +444,7 @@ export default function LeadsView({
           eventTypes={eventTypes.map((t) => ({ id: t.id, name: t.name }))}
           initialCustomEventTypes={quoteBuilder.customEventTypes}
           defaultTaxStatus={quoteBuilder.defaultTaxStatus}
+          defaultNotes={quoteBuilder.defaultNotes}
           prefill={buildLeadQuotePrefill({
             details: builderLead.details,
             leadName: builderLead.name,

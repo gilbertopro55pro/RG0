@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { defaultQuoteNotesFor } from "@/lib/quoteDefaults";
 import { IconMagnetFrame } from "@/components/icons/NavIcons";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
@@ -392,6 +393,7 @@ export default async function DashboardPage() {
           eventTypes={(eventTypes ?? []).map((t) => ({ id: t.id, name: t.name }))}
           initialCustomEventTypes={photographer.quote_event_type_suggestions}
           defaultTaxStatus={photographer.business_tax_status}
+          defaultNotes={defaultQuoteNotesFor(photographer.email)}
         />
       )}
 

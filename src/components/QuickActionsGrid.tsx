@@ -33,6 +33,7 @@ export default function QuickActionsGrid({
   eventTypes,
   initialCustomEventTypes,
   defaultTaxStatus,
+  defaultNotes,
 }: {
   hourlyRate: number;
   suppliers: PricingSupplier[];
@@ -41,6 +42,7 @@ export default function QuickActionsGrid({
   eventTypes: { id: string; name: string }[];
   initialCustomEventTypes: string[];
   defaultTaxStatus: "exempt" | "licensed";
+  defaultNotes?: string;
 }) {
   const [calculatorOpen, setCalculatorOpen] = useState(false);
 
@@ -78,6 +80,7 @@ export default function QuickActionsGrid({
           eventTypes={eventTypes}
           initialCustomEventTypes={initialCustomEventTypes}
           defaultTaxStatus={defaultTaxStatus}
+          defaultNotes={defaultNotes}
           onClose={() => setCalculatorOpen(false)}
         />
       )}

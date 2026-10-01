@@ -83,6 +83,7 @@ export default function EventPricingCalculator({
   prefill,
   leadId,
   onLeadQuoted,
+  defaultNotes,
   onClose,
 }: {
   hourlyRate: number;
@@ -100,6 +101,8 @@ export default function EventPricingCalculator({
   // offering to create a new one.
   leadId?: string;
   onLeadQuoted?: (lead: Partial<LeadRow>) => void;
+  // The notes field's starting text (lib/quoteDefaults.ts: delivery times, admin only for now).
+  defaultNotes?: string;
   onClose: () => void;
 }) {
   const supabase = createClient();
@@ -142,7 +145,7 @@ export default function EventPricingCalculator({
   const [quoteEventType, setQuoteEventType] = useState(prefill?.eventType ?? "");
   const [quoteEventDate, setQuoteEventDate] = useState(prefill?.eventDate ?? "");
   const [quoteEventLocation, setQuoteEventLocation] = useState(prefill?.eventLocation ?? "");
-  const [quoteNotes, setQuoteNotes] = useState("");
+  const [quoteNotes, setQuoteNotes] = useState(defaultNotes ?? "");
   // Only asked for (and only relevant) outside freelance mode — freelance already has its own
   // fixed hours/rate cells on the main screen, set before this wizard ever opens.
   const [quoteStartTime, setQuoteStartTime] = useState(prefill?.startTime ?? "");
