@@ -11,18 +11,30 @@ export function quoteExtrasFor(email: string | null | undefined): boolean {
   return email === ADMIN_EMAIL;
 }
 
-export function deliveryNotes(itemNames: string[]): string {
-  const cats = new Set(itemNames.map((n) => classifyName(n)));
-  const video = cats.has("video") || cats.has("clip");
-  const magnets = cats.has("magnets");
-  return [
-    "זמני אספקה:",
-    "תמונות עד 7 ימי עסקים",
-    video ? "וידאו עד 35 ימי עסקים" : null,
-    "גלריית תמונות בתוקף ל-3 חודשים",
-    magnets ? "מגנטים טרמיים בגודל 7.5x10 ס״מ, 8 הגדלות מגנט." : null,
-  ]
+const VIDEO_LINE = "וידאו עד 35 ימי עסקים";
+const MAGNETS_LINE = "מגנטים טרמיים בגודל 7.5x10 ס״מ, 8 הגדלות מגנט.";
+
+// Which conditional lines the quote's items call for. A row left at ₪0 doesn't count (owner,
+// 2026-10-01: the magnets line must never show on a quote without magnets).
+function itemCategories(items: { item: string; price: number }[]) {
+  const cats = new Set(items.filter((it) => it.price > 0).map((it) => classifyName(it.item)));
+  return { video: cats.has("video") || cats.has("clip"), magnets: cats.has("magnets") };
+}
+
+export function deliveryNotes(items: { item: string; price: number }[]): string {
+  const { video, magnets } = itemCategories(items);
+  return ["זמני אספקה:", "תמונות עד 7 ימי עסקים", video ? VIDEO_LINE : null, "גלריית תמונות בתוקף ל-3 חודשים", magnets ? MAGNETS_LINE : null]
     .filter(Boolean)
+    .join("\n");
+}
+
+// Notes the photographer edited by hand stop following the items, but the video and magnets lines
+// still come out when their item isn't on the quote (only those exact lines, nothing they wrote).
+export function withoutStaleDeliveryLines(notes: string, items: { item: string; price: number }[]): string {
+  const { video, magnets } = itemCategories(items);
+  return notes
+    .split("\n")
+    .filter((line) => (video || line.trim() !== VIDEO_LINE) && (magnets || line.trim() !== MAGNETS_LINE))
     .join("\n");
 }
 
