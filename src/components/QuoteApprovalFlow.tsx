@@ -146,13 +146,21 @@ export default function QuoteApprovalFlow({
     }
   };
 
-  const inputClass = "w-full rounded-lg px-3 py-2.5 text-base border bg-white outline-none focus:border-[#8f6f2f]";
+  // qf-input: iOS Safari gives date/time fields a native minimum width that ignores w-full (the
+  // date overflowed and the two time fields overlapped, owner's screenshot 2026-10-01); see the
+  // <style> below.
+  const inputClass = "qf-input block w-full min-w-0 rounded-lg px-3 py-2.5 text-base border bg-white outline-none focus:border-[#8f6f2f]";
   const label = "text-xs block mb-1";
   const taxLine = photographer.businessId ? `${photographer.taxStatus === "exempt" ? "עוסק פטור" : "עוסק מורשה"} ${photographer.businessId}` : null;
   const items = details?.items ?? [];
 
   return (
     <div className="min-h-screen w-full" style={{ background: "#f3f4f7" }}>
+      <style>{`
+        .qf-input[type="date"], .qf-input[type="time"] { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; min-height: 46px; }
+        .qf-input::-webkit-date-and-time-value { text-align: right; margin: 0; }
+        .qf-input::-webkit-datetime-edit { padding: 0; }
+      `}</style>
       <div className="max-w-[640px] mx-auto bg-white min-h-screen shadow-[0_0_40px_rgba(11,18,32,0.08)]">
         {/* Header, like the PDF */}
         <header className="relative px-6 sm:px-10 pt-8 pb-14" style={{ background: NAVY, borderBottom: `3px solid ${GOLD}` }}>
@@ -327,14 +335,14 @@ export default function QuoteApprovalFlow({
                   <p className="text-xs mb-3" style={{ color: INK_SOFT }}>
                     אפשר לשנות לפי מה שמתאים לכם.
                   </p>
-                  <div className="flex gap-2">
-                    <div className="flex-1 min-w-0">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="min-w-0">
                       <label className={label} style={{ color: INK_SOFT }}>
                         תחילת האירוע
                       </label>
                       <input value={formStartTime} onChange={(e) => setFormStartTime(e.target.value)} type="time" dir="ltr" className={inputClass} style={{ borderColor: HAIRLINE }} />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="min-w-0">
                       <label className={label} style={{ color: INK_SOFT }}>
                         סיום
                       </label>
