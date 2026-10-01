@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { sendPushToPhotographer } from "@/lib/push";
 import type { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
 import { buildIntakeTranscriptPdf } from "@/lib/intakeTranscriptPdf";
@@ -276,6 +277,16 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
     return existing.id;
   }
   const { data } = await supabase.from("leads").insert(row).select("id").single<{ id: string }>();
+  // A new lead the moment there's a phone number: the phone notification goes out now (lib/push.ts),
+  // the email once the conversation is handed off.
+  if (data?.id) {
+    await sendPushToPhotographer(conv.photographer_id, {
+      title: `פנייה חדשה מהעוזר: ${row.name}`,
+      body: [d.eventType, d.eventDate ? hebrewDate(d.eventDate) : null].filter(Boolean).join(" · ") || "לחצו לפתיחת הלידים",
+      url: "/leads",
+      tag: "new-lead",
+    });
+  }
   return data?.id ?? null;
 }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendPushToPhotographer } from "@/lib/push";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
 import { ADMIN_EMAIL } from "@/lib/admin";
@@ -71,6 +72,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     .eq("id", contract.event_id)
     .maybeSingle<EventRow & { custom_packages: { name: string } | null }>();
   if (event) {
+    await sendPushToPhotographer(event.photographer_id, {
+      title: `${event.client_name} חתמו על החוזה`,
+      body: `האירוע ב-${new Date(event.event_date).toLocaleDateString("he-IL")}. לחצו לפתיחת האירוע`,
+      url: `/events/${event.id}`,
+      tag: `contract-${event.id}`,
+    });
     const { data: photographer } = await supabase
       .from("photographers")
       .select("*")

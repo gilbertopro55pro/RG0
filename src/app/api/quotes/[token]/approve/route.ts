@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendPushToPhotographer } from "@/lib/push";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import type { LeadRow } from "@/lib/types";
@@ -30,6 +31,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  await sendPushToPhotographer(lead.photographer_id, {
+    title: `${lead.name} אישרו את הצעת המחיר`,
+    body: "לחצו לפתיחת הלידים",
+    url: "/leads",
+    tag: `quote-${lead.id}`,
+  });
 
   // No event_notifications entry here — that table's event_id is NOT NULL (no event exists yet at
   // this point). The photographer finds out once the questionnaire step actually creates the
