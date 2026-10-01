@@ -5,7 +5,8 @@ import { buildWaMeLink } from "@/lib/waLink";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { PACKAGE_LABELS, resolveLeadPackageLabel, type PackageType } from "@/lib/stages";
-import type { CustomPackageRow, EventTypeRow, LeadRow, LeadStatus, PackagePriceRow } from "@/lib/types";
+import type { CustomPackageRow, EventTypeRow, LeadRow, LeadStatus, PackagePriceRow, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
+import { buildLeadQuotePrefill, hasQuotePrefill } from "@/lib/leadQuotePrefill";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
 import PageGuide from "@/components/PageGuide";
@@ -19,6 +20,25 @@ import { createClient } from "@/lib/supabase/client";
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
+const EventPricingCalculator = dynamic(() => import("@/components/EventPricingCalculator"), { ssr: false });
+
+// What the quote builder (EventPricingCalculator) needs, loaded by the leads page.
+export type LeadsQuoteBuilderData = {
+  hourlyRate: number;
+  suppliers: PricingSupplier[];
+  priceQuotes: PriceQuoteRow[];
+  templates: PriceQuoteTemplateRow[];
+  customEventTypes: string[];
+  defaultTaxStatus: "exempt" | "licensed";
+};
+
+// "נוצר ב-29.9.2026, 15:55", Israel time.
+function createdLabel(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric", year: "numeric" });
+  const time = d.toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", hour12: false });
+  return `נוצר ב-${date}, ${time}`;
+}
 
 const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "חדש",
@@ -45,6 +65,7 @@ export default function LeadsView({
   eventTypes: initialEventTypes,
   prices: initialPrices,
   isAdmin,
+  quoteBuilder,
 }: {
   initialLeads: LeadRow[];
   // Idle leads the daily retention job moved out of the list (lib/leadRetention.ts).
@@ -53,6 +74,7 @@ export default function LeadsView({
   eventTypes: EventTypeRow[];
   prices: PackagePriceRow[];
   isAdmin: boolean;
+  quoteBuilder: LeadsQuoteBuilderData;
 }) {
   const [leads, setLeads] = useState(initialLeads);
   // "Now" for the days-since-quote counters, fixed when the page opens.
@@ -66,6 +88,8 @@ export default function LeadsView({
   const [prices, setPrices] = useState(initialPrices);
   const [showAdd, setShowAdd] = useState(false);
   const [quoteFormLeadId, setQuoteFormLeadId] = useState<string | null>(null);
+  // A lead from the intake assistant whose quote opens in the full builder, pre-filled from the chat.
+  const [builderLead, setBuilderLead] = useState<LeadRow | null>(null);
   const [convertLead, setConvertLead] = useState<LeadRow | null>(null);
   const [archived, setArchived] = useState(archivedLeads);
   const [showArchive, setShowArchive] = useState(false);
@@ -216,6 +240,7 @@ export default function LeadsView({
                     </option>
                   ))}
                 </select>
+                <div className="text-[10.5px] text-ink-soft leading-tight">{createdLabel(lead.created_at)}</div>
                 {lead.quote_sent_at && <QuoteSentAge sentAt={lead.quote_sent_at} closed={lead.status === "won" || lead.status === "lost"} now={now} />}
               </div>
             </div>
@@ -268,7 +293,7 @@ export default function LeadsView({
               )}
               {quoteFormLeadId !== lead.id && !lead.converted_event_id && (
                 <button
-                  onClick={() => setQuoteFormLeadId(lead.id)}
+                  onClick={() => (hasQuotePrefill(lead.details) ? setBuilderLead(lead) : setQuoteFormLeadId(lead.id))}
                   className="text-[13px] font-bold h-9 px-3 rounded-lg bg-white border border-line text-ink"
                 >
                   {lead.quoted_amount ? "עדכון הצעה" : "הצעת מחיר"}
@@ -406,6 +431,28 @@ export default function LeadsView({
             setLeads((prev) => [lead, ...prev]);
             setShowAdd(false);
           }}
+        />
+      )}
+
+      {builderLead && hasQuotePrefill(builderLead.details) && (
+        <EventPricingCalculator
+          hourlyRate={quoteBuilder.hourlyRate}
+          suppliers={quoteBuilder.suppliers}
+          priceQuotes={quoteBuilder.priceQuotes}
+          templates={quoteBuilder.templates}
+          eventTypes={eventTypes.map((t) => ({ id: t.id, name: t.name }))}
+          initialCustomEventTypes={quoteBuilder.customEventTypes}
+          defaultTaxStatus={quoteBuilder.defaultTaxStatus}
+          prefill={buildLeadQuotePrefill({
+            details: builderLead.details,
+            leadName: builderLead.name,
+            leadPhone: builderLead.phone,
+            suppliers: quoteBuilder.suppliers,
+            templates: quoteBuilder.templates,
+          })}
+          leadId={builderLead.id}
+          onLeadQuoted={(patch) => updateLead(builderLead.id, patch)}
+          onClose={() => setBuilderLead(null)}
         />
       )}
 

@@ -24,6 +24,19 @@ below, so don't change them without asking.
   the auto-handoff in `save_details` and `complete_intake` both require it). No questions after the
   handoff. Before this, it handed off the moment the required details were in and kept asking,
   so the email/PDF missed the end of the conversation (seen live on the admin's chat).
+- **A conversation that went quiet (2026-10-01, found live):** the client gave every detail and
+  didn't answer "anything else?", so there was no handoff and no email (הילה שפירו, 29.9).
+  `finalizeIdleConversations` (cron `/api/cron/intake-idle`, every 5 minutes): after
+  `IDLE_MINUTES` (20) without a message, a conversation with a lead and everything required →
+  the normal handoff (full lead + email with the PDF, the intro says the client didn't answer the
+  last question). Something still missing → one "פנייה חלקית" email, `collected.idleNotified`.
+  Only conversations from the last 3 days.
+- **Popup on every screen (2026-10-01, owner's request):** every assistant lead (partial ones
+  too) pops up on whatever app screen the photographer is on until it's seen once
+  (`AssistantLeadPopup` in `app/layout.tsx`, `api/leads/assistant-new`, `leads.assistant_seen_at`,
+  migration 0144). Not on public/client pages (TopNav's `HIDDEN_PREFIXES`). Polls every minute and
+  on returning to the app. Marking seen doesn't count as lead activity (the `leads_touch_activity`
+  trigger skips an update that only changes `assistant_seen_at`).
 - **No date yet:** the assistant asks for an approximate month/season, saves `dateUndecided` +
   `approxDate`, and the lead says "תאריך: טרם נקבע (בערך …)". The date check happens later, by
   the photographer.
