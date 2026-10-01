@@ -18,6 +18,9 @@ export type LeadQuoteDetails = {
   endTime?: string; // HH:MM
   notes?: string;
   createdAt: string; // ISO
+  // The photographer chose to send a contract with the quote (owner, 2026-10-01): the client's
+  // questionnaire ends with signing it (lib/quoteContract.ts).
+  withContract?: boolean;
 };
 
 // The owner's shooting hours (2026-10-01): evening 19:00-00:00 with family photos at 18:30, morning

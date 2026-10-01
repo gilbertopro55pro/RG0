@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import ContractSignForm from "@/components/ContractSignForm";
+import type { EventContractRow } from "@/lib/types";
 import { extraHoursNotice, familyPhotosTime, SLOT_HOURS, type DaySlotKind, type LeadQuoteDetails } from "@/lib/leadQuote";
 
 // The client's quote page (/quotes/<token>), admin account for now. Designed like the quote PDF
@@ -11,7 +13,7 @@ import { extraHoursNotice, familyPhotosTime, SLOT_HOURS, type DaySlotKind, type 
 // and the owner's hours (lib/leadQuote.ts): evening 19:00-00:00, morning 09:00-13:00, family photos
 // 30 minutes before the start; hours past the package show the extra-cost notice.
 
-type Step = "view" | "questionnaire" | "done";
+type Step = "view" | "questionnaire" | "contract" | "done";
 
 export type QuotePhotographer = {
   name: string;
@@ -57,6 +59,7 @@ export default function QuoteApprovalFlow({
   initialApprovedAt,
   initialConvertedEventId,
   initialClientAccessToken,
+  initialContract = null,
 }: {
   token: string;
   clientName: string;
@@ -72,8 +75,14 @@ export default function QuoteApprovalFlow({
   initialApprovedAt: string | null;
   initialConvertedEventId: string | null;
   initialClientAccessToken: string | null;
+  // Sent with a contract (details.withContract): the contract the questionnaire opened, if any yet.
+  initialContract?: EventContractRow | null;
 }) {
-  const [step, setStep] = useState<Step>(initialConvertedEventId ? "done" : initialApprovedAt ? "questionnaire" : "view");
+  const withContract = !!details?.withContract;
+  const [contract, setContract] = useState<EventContractRow | null>(initialContract);
+  const [step, setStep] = useState<Step>(
+    initialConvertedEventId ? (initialContract && initialContract.status !== "signed" ? "contract" : "done") : initialApprovedAt ? "questionnaire" : "view"
+  );
   const [approving, setApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clientAccessToken, setClientAccessToken] = useState<string | null>(initialClientAccessToken);
@@ -137,7 +146,9 @@ export default function QuoteApprovalFlow({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שליחת הפרטים נכשלה");
       setClientAccessToken(data.clientAccessToken ?? null);
-      setStep("done");
+      const next: EventContractRow | null = data.contract ?? null;
+      setContract(next);
+      setStep(next && next.status !== "signed" ? "contract" : "done");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "שליחת הפרטים נכשלה");
@@ -195,6 +206,7 @@ export default function QuoteApprovalFlow({
         </header>
 
         <main className="px-6 sm:px-10 pt-16 pb-10">
+          {withContract && <StepsBar current={step === "view" ? 0 : step === "questionnaire" ? 1 : step === "contract" ? 2 : 3} />}
           {step === "view" && (
             <>
               {/* "לכבוד" card */}
@@ -380,13 +392,34 @@ export default function QuoteApprovalFlow({
             </>
           )}
 
+          {step === "contract" && contract && (
+            <>
+              <h2 className="text-xl font-bold font-display" style={{ color: NAVY }}>
+                שלב אחרון: חתימה על החוזה
+              </h2>
+              <p className="text-[15px] mt-1 mb-5" style={{ color: INK_SOFT }}>
+                האירוע נכנס ליומן של {photographer.name}. נשאר רק לקרוא את החוזה ולחתום עליו.
+              </p>
+              <ContractSignForm
+                contract={contract}
+                onSigned={(signed) => {
+                  setContract(signed);
+                  setTimeout(() => {
+                    setStep("done");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }, 1200);
+                }}
+              />
+            </>
+          )}
+
           {step === "done" && (
             <div className="text-center py-6">
               <div className="text-2xl font-bold font-display" style={{ color: NAVY }}>
                 תודה, האירוע נקבע!
               </div>
               <p className="text-[15px] mt-2 mb-6" style={{ color: INK_SOFT }}>
-                {photographer.name} קיבל את הפרטים, והאירוע נכנס ליומן.
+                {photographer.name} קיבל את הפרטים, והאירוע נכנס ליומן.{contract?.status === "signed" ? " החוזה נחתם." : ""}
               </p>
               {clientAccessToken && (
                 <a href={`/portal/${clientAccessToken}`} className="inline-block rounded-xl px-6 py-3 text-base font-bold text-white" style={{ background: NAVY }}>
@@ -411,5 +444,31 @@ function Field({ labelText, value, ltr }: { labelText: string; value: string; lt
         <span dir={ltr ? "ltr" : undefined}>{value}</span>
       </div>
     </div>
+  );
+}
+
+// Approve, details, contract: shown only when the quote was sent with a contract.
+function StepsBar({ current }: { current: number }) {
+  const steps = ["אישור ההצעה", "פרטי האירוע", "חתימה"];
+  return (
+    <ol className="flex items-center gap-1.5 mb-6 text-xs" aria-label="שלבים">
+      {steps.map((label, i) => {
+        const done = i < current;
+        const active = i === current;
+        return (
+          <li key={label} className="flex items-center gap-1.5 flex-1 min-w-0">
+            <span
+              className="h-6 w-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold"
+              style={{ background: done || active ? NAVY : HAIRLINE, color: done || active ? "#fff" : INK_SOFT }}
+            >
+              {done ? "✓" : i + 1}
+            </span>
+            <span className="truncate font-semibold" style={{ color: active ? NAVY : INK_SOFT }}>
+              {label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

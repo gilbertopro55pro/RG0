@@ -192,6 +192,9 @@ export default function EventPricingCalculator({
   const [existingTarget, setExistingTarget] = useState<{ id: string; token: string } | null>(null);
   const [newLeadToken, setNewLeadToken] = useState("");
   const [useExistingLead, setUseExistingLead] = useState(true);
+  // "Send a contract too?" — asked on the send tap; each answer is itself the WhatsApp link.
+  const [askContract, setAskContract] = useState(false);
+  const [sentWithContract, setSentWithContract] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   useEffect(() => {
     if (!quoteExtras) return;
@@ -678,25 +681,33 @@ export default function EventPricingCalculator({
       : newLeadToken && !linkPreparing
         ? { kind: "new", token: newLeadToken }
         : null;
-  const linkMessage = linkTarget
-    ? quoteLinkMessage(
-        quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate)),
-        `${typeof window === "undefined" ? "" : window.location.origin}/quotes/${linkTarget.token}`,
-        signature
-      )
-    : "";
+  const messageFor = (withContract: boolean) =>
+    linkTarget
+      ? quoteLinkMessage(
+          quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate)),
+          `${typeof window === "undefined" ? "" : window.location.origin}/quotes/${linkTarget.token}`,
+          signature,
+          withContract
+        )
+      : "";
+  const linkMessage = messageFor(sentWithContract);
 
   // Bound to the WhatsApp link's onClick: the browser opens WhatsApp from the link itself, and this
   // saves the quote on the lead alongside (keepalive, since WhatsApp takes the screen right away).
-  const saveLinkedQuote = () => {
+  // withContract (owner, 2026-10-01): the photographer answered "send a contract too?"; the client's
+  // questionnaire then ends with signing it (details.withContract, lib/quoteContract.ts).
+  const saveLinkedQuote = (withContract: boolean) => {
     if (!linkTarget) return;
+    setSentWithContract(withContract);
+    setAskContract(false);
     setLinkMode(true);
     setLinkSaveError(null);
     setLinkSaved(false);
     setLinkCopied(false);
     setSavePromptStep("ask");
     setStep("savePrompt");
-    const payload = quotePayload();
+    const base = quotePayload();
+    const payload = { ...base, details: { ...base.details, withContract: withContract || undefined } };
     const req =
       linkTarget.kind === "existing"
         ? fetch(`/api/leads/${linkTarget.id}/quote`, { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
@@ -1390,16 +1401,9 @@ export default function EventPricingCalculator({
             <div className="flex gap-2">
               {quoteExtras ? (
                 linkTarget ? (
-                  // A plain link: the tap opens WhatsApp directly, with nothing async a browser could block.
-                  <a
-                    href={buildWaMeLink(quoteClientPhone, linkMessage)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={saveLinkedQuote}
-                    className="flex flex-1 items-center justify-center rounded-lg py-2.5 text-sm font-semibold bg-ink text-white"
-                  >
+                  <button onClick={() => setAskContract(true)} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
                     שליחה ללקוח/ה
-                  </a>
+                  </button>
                 ) : (
                   <button
                     onClick={() => void prepareLink()}
@@ -1425,6 +1429,41 @@ export default function EventPricingCalculator({
           </>
         )}
 
+        {step === "preview" && askContract && linkTarget && (
+          <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.35)" }} onClick={() => setAskContract(false)}>
+            <div className="w-full max-w-sm rounded-2xl bg-paper p-5 shadow-sheet" onClick={(e) => e.stopPropagation()}>
+              <div className="text-base font-bold font-display mb-1">לשלוח גם חוזה לחתימה?</div>
+              <p className="text-xs text-ink-soft mb-4">
+                עם חוזה: אחרי שהלקוח/ה מאשרים את ההצעה וממלאים את פרטי האירוע, הם חותמים על החוזה באותו קישור. כשהחוזה נחתם, שלב סגירת האירוע מסומן כבוצע ותקבלו עדכון.
+              </p>
+              {/* Plain links: the tap opens WhatsApp directly, with nothing async a browser could block. */}
+              <div className="grid gap-2">
+                <a
+                  href={buildWaMeLink(quoteClientPhone, messageFor(true))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => saveLinkedQuote(true)}
+                  className="flex items-center justify-center rounded-lg py-2.5 text-sm font-semibold bg-ink text-white"
+                >
+                  כן, עם חוזה
+                </a>
+                <a
+                  href={buildWaMeLink(quoteClientPhone, messageFor(false))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => saveLinkedQuote(false)}
+                  className="flex items-center justify-center rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
+                >
+                  לא, רק הצעת המחיר
+                </a>
+                <button onClick={() => setAskContract(false)} className="rounded-lg py-2 text-sm text-ink-soft">
+                  ביטול
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {step === "savePrompt" && (
           <>
             <div className="mb-3.5">
@@ -1435,7 +1474,7 @@ export default function EventPricingCalculator({
                 {linkSaveError ? (
                   <div className="rounded-xl border border-rose bg-rose-bg p-3 mb-3.5 text-sm text-rose">
                     {linkSaveError}
-                    <button onClick={saveLinkedQuote} className="block mt-2 font-semibold underline">
+                    <button onClick={() => saveLinkedQuote(sentWithContract)} className="block mt-2 font-semibold underline">
                       לשמור שוב
                     </button>
                   </div>

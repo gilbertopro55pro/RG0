@@ -7,6 +7,8 @@ import { notificationEmailFor } from "@/lib/notificationEmail";
 import { packageLabel, type PackageType } from "@/lib/stages";
 import type { LeadRow, Photographer } from "@/lib/types";
 import { packageFromItems, type LeadQuoteDetails } from "@/lib/leadQuote";
+import { createQuoteContract, latestContract } from "@/lib/quoteContract";
+import type { EventContractRow } from "@/lib/types";
 
 // Public, token-authenticated, admin-gated (see approve/route.ts's own comment) — the second and
 // final step of the quote-approval flow. The client fills in exactly the details a "new event"
@@ -41,7 +43,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         .select("client_access_token")
         .eq("id", lead.converted_event_id)
         .maybeSingle<{ client_access_token: string }>();
-      return NextResponse.json({ ok: true, alreadyConverted: true, clientAccessToken: existing?.client_access_token ?? null });
+      // A reload after the questionnaire: back to the contract step when one was sent.
+      const contract = lead.quote_details?.withContract ? await latestContract(supabase, lead.converted_event_id) : null;
+      return NextResponse.json({ ok: true, alreadyConverted: true, clientAccessToken: existing?.client_access_token ?? null, contract });
     }
 
     const body: {
@@ -99,6 +103,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       .update({ converted_event_id: result.event.id, status: "won" })
       .eq("id", lead.id);
 
+    // "With a contract": the questionnaire's last step is signing it (lib/quoteContract.ts).
+    let contract: EventContractRow | null = null;
+    if (lead.quote_details?.withContract) {
+      contract = await createQuoteContract(supabase, result.event.id).catch((e) => {
+        console.error("[submit-questionnaire] contract creation failed", e);
+        return null;
+      });
+    }
+
     if (lead.photographers?.email) {
       const eventDateStr = new Date(result.event.event_date).toLocaleDateString("he-IL");
       try {
@@ -117,6 +130,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 חבילה: ${packageLabel(result.event.package, null)}
 מקדמה: ₪0 · יתרה לתשלום: ₪${lead.quoted_amount}${pkgFromItems ? `\n(החבילה נבחרה לפי פריטי ההצעה. אפשר לשנות אותה בעמוד האירוע.)` : ""}${hoursNotice ? `\n${hoursNotice}` : ""}
 
+${contract ? "\nהחוזה הוצג ללקוח/ה לחתימה כשלב האחרון בשאלון. כשייחתם, שלב סגירת האירוע יסומן כבוצע ותקבל/י עדכון.\n" : ""}
 ניתן לעדכן את פרטי המקדמה/יתרה ולעקוב אחרי האירוע בעמוד האירוע במערכת.`,
         });
       } catch (e) {
@@ -124,7 +138,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       }
     }
 
-    return NextResponse.json({ ok: true, eventId: result.event.id, clientAccessToken: result.event.client_access_token });
+    return NextResponse.json({ ok: true, eventId: result.event.id, clientAccessToken: result.event.client_access_token, contract });
   } catch (e) {
     console.error("[submit-questionnaire] unhandled error", e);
     return NextResponse.json({ error: "שגיאה ביצירת האירוע" }, { status: 500 });
