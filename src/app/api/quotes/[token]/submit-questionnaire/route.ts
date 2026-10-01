@@ -6,6 +6,7 @@ import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { packageLabel, type PackageType } from "@/lib/stages";
 import type { LeadRow, Photographer } from "@/lib/types";
+import { packageFromItems, type LeadQuoteDetails } from "@/lib/leadQuote";
 
 // Public, token-authenticated, admin-gated (see approve/route.ts's own comment) — the second and
 // final step of the quote-approval flow. The client fills in exactly the details a "new event"
@@ -23,7 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       .from("leads")
       .select("*, photographers(*)")
       .eq("quote_token", token)
-      .maybeSingle<LeadRow & { photographers: Photographer | null }>();
+      .maybeSingle<LeadRow & { quote_details: LeadQuoteDetails | null; photographers: Photographer | null }>();
 
     if (!lead || !lead.quoted_amount) {
       return NextResponse.json({ error: "הצעת המחיר לא נמצאה" }, { status: 404 });
@@ -52,6 +53,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       eventLocation?: string;
       arrivalTime?: string;
       notes?: string;
+      hoursNotice?: string;
     } = await request.json().catch(() => ({}));
 
     if (!body.clientName?.trim() || !body.eventDate) {
@@ -59,11 +61,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     }
 
     const isCustom = lead.package_interest?.startsWith("custom:") ?? false;
-    const pkg = (!isCustom ? (lead.package_interest as PackageType | null) : null) ?? null;
     const customPackageId = isCustom ? lead.package_interest!.slice(7) : null;
-    if (!pkg && !customPackageId) {
-      return NextResponse.json({ error: "לא הוגדרה חבילה להצעת המחיר הזו" }, { status: 400 });
-    }
+    // A quote from the quote builder has items, not a package (owner, 2026-10-01: the client got
+    // "לא הוגדרה חבילה" right after approving). The event's stages come from the items then
+    // (lib/leadQuote.ts), and the photographer can change the package on the event.
+    const pkgFromItems = !lead.package_interest && lead.quote_details?.items?.length ? packageFromItems(lead.quote_details.items) : null;
+    const pkg = (!isCustom ? (lead.package_interest as PackageType | null) : null) ?? pkgFromItems ?? (customPackageId ? null : "stills");
+    // The quote's lines and what the client was told about the hours go on the event's notes.
+    const quoteLines = lead.quote_details?.items?.length ? `הצעת המחיר: ${lead.quote_details.items.map((it) => it.item).join(", ")}` : null;
+    const hoursNotice = body.hoursNotice?.trim() ? `שעות מעבר לחבילה: ${body.hoursNotice.trim().slice(0, 300)}` : null;
+    const eventNotes = [(body.notes ?? "").trim(), hoursNotice, quoteLines].filter(Boolean).join("\n");
 
     const result = await createEventWithSideEffects(supabase, {
       photographerId: lead.photographer_id,
@@ -77,7 +84,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       eventEndTime: body.eventEndTime || null,
       eventLocation: (body.eventLocation ?? "").trim(),
       arrivalTime: (body.arrivalTime ?? "").trim(),
-      notes: (body.notes ?? "").trim(),
+      notes: eventNotes,
       deposit: 0,
       balance: lead.quoted_amount,
       paymentReminderDate: null,
@@ -108,7 +115,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 תאריך: ${eventDateStr}
 מיקום: ${result.event.event_location || "יעודכן"}
 חבילה: ${packageLabel(result.event.package, null)}
-מקדמה: ₪0 · יתרה לתשלום: ₪${lead.quoted_amount}
+מקדמה: ₪0 · יתרה לתשלום: ₪${lead.quoted_amount}${pkgFromItems ? `\n(החבילה נבחרה לפי פריטי ההצעה. אפשר לשנות אותה בעמוד האירוע.)` : ""}${hoursNotice ? `\n${hoursNotice}` : ""}
 
 ניתן לעדכן את פרטי המקדמה/יתרה ולעקוב אחרי האירוע בעמוד האירוע במערכת.`,
         });

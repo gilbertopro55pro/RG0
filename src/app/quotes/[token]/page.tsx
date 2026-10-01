@@ -3,6 +3,9 @@ import { resolveLeadPackageLabel } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import type { CustomPackageRow, EventRow, LeadRow } from "@/lib/types";
 import QuoteApprovalFlow from "@/components/QuoteApprovalFlow";
+import { getSignedDownloadUrl } from "@/lib/storage";
+import { notificationEmailFor } from "@/lib/notificationEmail";
+import { slotFor, type LeadQuoteDetails } from "@/lib/leadQuote";
 
 export default async function QuotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -10,9 +13,22 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("*, photographers(name, phone, email, whatsapp_signature)")
+    .select("*, photographers(name, phone, email, whatsapp_signature, business_id, business_tax_status, logo_storage_path)")
     .eq("quote_token", token)
-    .maybeSingle<LeadRow & { photographers: { name: string; phone: string; email: string; whatsapp_signature: string | null } }>();
+    .maybeSingle<
+      LeadRow & {
+        quote_details: LeadQuoteDetails | null;
+        photographers: {
+          name: string;
+          phone: string;
+          email: string;
+          whatsapp_signature: string | null;
+          business_id: string | null;
+          business_tax_status: "exempt" | "licensed" | null;
+          logo_storage_path: string | null;
+        };
+      }
+    >();
 
   if (!lead || !lead.quoted_amount) {
     return (
@@ -44,18 +60,30 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
   }
 
   if (isAdminLead) {
+    const ph = lead.photographers;
+    const logoUrl = ph.logo_storage_path ? await getSignedDownloadUrl("logos", ph.logo_storage_path, 60 * 60 * 24) : null;
+    const conv = (lead.details ?? null) as { eventSlot?: string; location?: string } | null;
     return (
       <QuoteApprovalFlow
         token={token}
         clientName={lead.name}
         clientPhone={lead.phone}
         eventDateInterest={lead.event_date_interest}
-        photographerName={lead.photographers.name}
-        photographerPhone={lead.photographers.phone}
-        whatsappSignature={lead.photographers.whatsapp_signature}
+        eventTypeName={lead.event_type_name}
+        photographer={{
+          name: ph.name,
+          phone: ph.phone,
+          email: notificationEmailFor(ph.email),
+          businessId: ph.business_id,
+          taxStatus: ph.business_tax_status,
+          logoUrl,
+          whatsappSignature: ph.whatsapp_signature,
+        }}
         quotedAmount={lead.quoted_amount}
         quoteNote={lead.quote_note}
-        packageLabelText={packageLabelText}
+        details={lead.quote_details}
+        slot={slotFor(conv?.eventSlot, lead.quote_details?.startTime)}
+        knownLocation={conv?.location ?? null}
         initialApprovedAt={lead.quote_approved_at}
         initialConvertedEventId={lead.converted_event_id}
         initialClientAccessToken={convertedClientAccessToken}

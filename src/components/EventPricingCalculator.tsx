@@ -550,7 +550,25 @@ export default function EventPricingCalculator({
     fetch(`/api/leads/${leadId}/quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: total, note: notesValue.trim() || undefined }),
+      body: JSON.stringify({
+        amount: total,
+        note: notesValue.trim() || undefined,
+        // The whole quote, for the client's quote page (designed like the PDF) and the questionnaire.
+        details: {
+          items: quoteItems.filter((it) => it.price > 0 || it.item !== "צילום אירוע"),
+          subtotal,
+          vatAmount,
+          total,
+          showVat: !isExempt,
+          eventType: quoteEventType.trim() || undefined,
+          eventDate: quoteEventDate || undefined,
+          eventLocation: quoteEventLocation.trim() || undefined,
+          startTime: mode !== "freelance" && quoteStartTime ? quoteStartTime : undefined,
+          endTime: mode !== "freelance" && quoteEndTime ? quoteEndTime : undefined,
+          notes: notesValue.trim() || undefined,
+          createdAt: new Date().toISOString(),
+        },
+      }),
     });
 
   // allowDuplicate: the photographer saw that a lead with this phone exists and still wants a new one.
