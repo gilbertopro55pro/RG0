@@ -29,6 +29,9 @@ export const SLOT_HOURS: Record<DaySlotKind, { start: string; end: string }> = {
 };
 export const EXTRA_HOUR_PRICE = 250;
 export const MORNING_PACKAGE_HOURS = 4;
+// An evening event is up to 5 hours (owner, 2026-10-01): 19:00-00:00, or 18:00-23:00 when it starts
+// earlier — the extra hours start after 5.
+export const EVENING_PACKAGE_HOURS = 5;
 
 function toMin(t: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
@@ -57,27 +60,20 @@ export function spanMinutes(start: string, end: string): number | null {
 }
 
 // The extra-cost notice for hours outside the package (owner's rules, 2026-10-01):
-// - evening: an end later than midnight;
-// - morning: a span longer than 4 hours (the packages are for 4 shooting hours).
+// - evening: longer than 5 hours (19:00-00:00 is in; 18:00-23:30 is half an hour over);
+// - morning: longer than 4 hours (the packages are for 4 shooting hours).
 // Null when the hours are within the package.
 export function extraHoursNotice(slot: DaySlotKind, start: string, end: string): string | null {
   const span = spanMinutes(start, end);
   if (span === null) return null;
-  if (slot === "evening") {
-    const s = toMin(start) as number;
-    // Minutes past midnight: the end falls on the next day after 00:00.
-    const endAbs = s + span;
-    const over = endAbs - 1440;
-    if (over > 0) {
-      const hours = Math.ceil(over / 60);
-      return `סיום אחרי 00:00 כרוך בתשלום נוסף של ${EXTRA_HOUR_PRICE} ₪ לשעה לכל צלם (${hours === 1 ? "שעה נוספת" : `${hours} שעות נוספות`}).`;
-    }
-    return null;
-  }
-  const limit = MORNING_PACKAGE_HOURS * 60;
+  const packageHours = slot === "evening" ? EVENING_PACKAGE_HOURS : MORNING_PACKAGE_HOURS;
+  const limit = packageHours * 60;
   if (span > limit) {
     const hours = Math.ceil((span - limit) / 60);
-    return `החבילות הן ל-${MORNING_PACKAGE_HOURS} שעות צילום. מסגרת ארוכה יותר כרוכה בתשלום נוסף של ${EXTRA_HOUR_PRICE} ₪ לשעה לכל צלם (${hours === 1 ? "שעה נוספת" : `${hours} שעות נוספות`}).`;
+    const extra = hours === 1 ? "שעה נוספת" : `${hours} שעות נוספות`;
+    return slot === "evening"
+      ? `אירוע ערב הוא עד ${EVENING_PACKAGE_HOURS} שעות צילום. מעבר לזה יש תשלום נוסף של ${EXTRA_HOUR_PRICE} ₪ לשעה לכל צלם (${extra}).`
+      : `החבילות הן ל-${MORNING_PACKAGE_HOURS} שעות צילום. מסגרת ארוכה יותר כרוכה בתשלום נוסף של ${EXTRA_HOUR_PRICE} ₪ לשעה לכל צלם (${extra}).`;
   }
   return null;
 }
