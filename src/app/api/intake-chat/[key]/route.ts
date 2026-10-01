@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
-import { resolveChatPhotographer, assistantUnavailableReason } from "@/lib/intakeChatAccess";
+import { resolveChatPhotographer, assistantUnavailableReason, claimConversationSlot } from "@/lib/intakeChatAccess";
 import { cleanSource } from "@/lib/leadSource";
 import { runIntakeTurn, transcriptOf, MAX_CLIENT_TURNS, MAX_MESSAGE_CHARS, studioName, type IntakeConversation } from "@/lib/intakeAssistant";
 
@@ -63,9 +63,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (reason) return NextResponse.json({ unavailable: reason }, { status: 409 });
     const { allowed: newAllowed } = await checkRateLimit(`intake-new:${ip}`, { maxRequests: 60, windowSeconds: 86_400 });
     if (!newAllowed) return NextResponse.json({ error: "יותר מדי שיחות חדשות מהמכשיר הזה היום" }, { status: 429 });
+    // The monthly cap first, then a bought conversation (lib/intakeChatAccess.ts).
+    const slot = await claimConversationSlot(supabase, p);
+    if (!slot) return NextResponse.json({ unavailable: "cap" }, { status: 409 });
     const { data: created, error } = await supabase
       .from("bot_conversations")
-      .insert({ photographer_id: p.id, channel: "web", client_phone: null, referral_source: cleanSource(body.src) })
+      .insert({ photographer_id: p.id, channel: "web", client_phone: null, referral_source: cleanSource(body.src), extra_credit: slot.extraCredit })
       .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, referral_source")
       .single<IntakeConversation>();
     if (error || !created) return NextResponse.json({ error: "שגיאה בפתיחת השיחה" }, { status: 500 });

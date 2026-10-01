@@ -297,7 +297,7 @@ export default function LeadsView({
                   onClick={() => (hasQuotePrefill(lead.details) ? setBuilderLead(lead) : setQuoteFormLeadId(lead.id))}
                   className="text-[13px] font-bold h-9 px-3 rounded-lg bg-white border border-line text-ink"
                 >
-                  {lead.quoted_amount ? "עדכון הצעה" : "הצעת מחיר"}
+                  {lead.quote_sent_at || lead.quoted_amount ? "עדכון הצעת מחיר" : "שליחת הצעת מחיר"}
                 </button>
               )}
               {lead.quoted_amount && <CopyQuoteLinkButton token={lead.quote_token} />}

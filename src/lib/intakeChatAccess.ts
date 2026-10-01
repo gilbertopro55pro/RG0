@@ -3,10 +3,16 @@ import { hasAppAccess } from "@/lib/subscription";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { intakeMonthlyCap, type IntakePhotographer } from "@/lib/intakeAssistant";
 import type { Photographer } from "@/lib/types";
+import { INTAKE_ALERT_RATIO, monthKeyIsrael } from "@/lib/intakeCredits";
+import { sendPushToPhotographer } from "@/lib/push";
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>;
 
-type ChatPhotographer = IntakePhotographer & Pick<Photographer, "subscription_status" | "trial_ends_at" | "portfolio_slug" | "logo_storage_path" | "meta_pixel_id" | "intake_chat_title">;
+type ChatPhotographer = IntakePhotographer &
+  Pick<Photographer, "subscription_status" | "trial_ends_at" | "portfolio_slug" | "logo_storage_path" | "meta_pixel_id" | "intake_chat_title"> & {
+    // Bought conversations left (migration 0147).
+    intake_extra_conversations: number;
+  };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -14,7 +20,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // (readable to share), otherwise their private intake_chat_token.
 export async function resolveChatPhotographer(supabase: ServiceClient, key: string): Promise<ChatPhotographer | null> {
   const fields =
-    "id, name, email, plan, subscription_status, trial_ends_at, portfolio_slug, logo_storage_path, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, google_calendar_import_color_id, google_calendar_color_id, meta_pixel_id, intake_chat_title";
+    "id, name, email, plan, subscription_status, trial_ends_at, portfolio_slug, logo_storage_path, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, google_calendar_import_color_id, google_calendar_color_id, meta_pixel_id, intake_chat_title, intake_extra_conversations";
   const bySlug = await supabase.from("photographers").select(fields).eq("portfolio_slug", key).maybeSingle<ChatPhotographer>();
   if (bySlug.data) return bySlug.data;
   if (!UUID_RE.test(key)) return null;
@@ -29,14 +35,58 @@ export async function assistantUnavailableReason(supabase: ServiceClient, p: Cha
   if (p.email !== ADMIN_EMAIL && !hasAppAccess(p)) return "plan";
   const cap = intakeMonthlyCap(p);
   if (cap <= 0) return "plan";
+  const used = await intakeUsedThisMonth(supabase, p.id);
+  return used >= cap && (p.intake_extra_conversations ?? 0) <= 0 ? "cap" : null;
+}
+
+// This month's web conversations that count toward the plan's cap (a client wrote at least once;
+// conversations paid with a bought credit don't count).
+export async function intakeUsedThisMonth(supabase: ServiceClient, photographerId: string): Promise<number> {
   const { count } = await supabase
     .from("bot_conversations")
     .select("id", { count: "exact", head: true })
-    .eq("photographer_id", p.id)
+    .eq("photographer_id", photographerId)
     .eq("channel", "web")
+    .eq("extra_credit", false)
     .gt("client_turns", 0)
     .gte("created_at", monthStartIsrael().toISOString());
-  return (count ?? 0) >= cap ? "cap" : null;
+  return count ?? 0;
+}
+
+// A new conversation takes a slot: the plan's monthly cap first, then a bought conversation.
+// Null = no slot (the caller shows the form). When this conversation brings the month to 90% of
+// the cap, the photographer's phone gets one notification for the month (owner, 2026-10-01).
+export async function claimConversationSlot(supabase: ServiceClient, p: ChatPhotographer): Promise<{ extraCredit: boolean } | null> {
+  const cap = intakeMonthlyCap(p);
+  const used = await intakeUsedThisMonth(supabase, p.id);
+  if (used < cap) {
+    if (used + 1 >= Math.ceil(cap * INTAKE_ALERT_RATIO)) await alertNearCap(supabase, p, used + 1, cap);
+    return { extraCredit: false };
+  }
+  const { data: took } = await supabase.rpc("consume_intake_extra", { p_photographer: p.id });
+  return took === true ? { extraCredit: true } : null;
+}
+
+async function alertNearCap(supabase: ServiceClient, p: ChatPhotographer, used: number, cap: number) {
+  const month = monthKeyIsrael();
+  // Conditional update: only the request that flips the month sends, even if two run at once.
+  const { data } = await supabase
+    .from("photographers")
+    .update({ intake_cap_alerted_month: month })
+    .eq("id", p.id)
+    .or(`intake_cap_alerted_month.is.null,intake_cap_alerted_month.neq.${month}`)
+    .select("id");
+  if (!data?.length) return;
+  const left = Math.max(cap - used, 0);
+  const extra = p.intake_extra_conversations ?? 0;
+  await sendPushToPhotographer(p.id, {
+    title: "עוזר הפניות: נוצלו 90% מהמכסה",
+    body:
+      `${used} מתוך ${cap} שיחות החודש. נשארו ${left}` +
+      (extra > 0 ? `, ועוד ${extra} שיחות שרכשת.` : ". אחרי המכסה הלקוחות יקבלו טופס פנייה רגיל. אפשר לרכוש שיחות נוספות בהגדרות."),
+    url: "/settings?tab=automation",
+    tag: "intake-cap",
+  });
 }
 
 export function monthStartIsrael(): Date {

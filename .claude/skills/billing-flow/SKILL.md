@@ -172,6 +172,34 @@ combination can produce a same-day second charge, but it didn't on every account
 changed blind (the docs weren't reachable). Check it with PayPlus support or the dashboard
 (the recurring's "next charge date").
 
+## Extra assistant conversation packs (2026-10-01)
+
+- A one-time charge, separate from the subscription: `POST /api/intake-credits/checkout` creates a
+  pending `intake_credit_purchases` row, then `createPayplusOneTimeLink` (`charge_method: 1`, no
+  recurring_settings, `more_info_1 = intake_pack:<purchase id>`).
+- The webhook branches on that tag **before** any subscription logic (`handleIntakePack`). It never
+  touches status, plan, period or the recurring, and never cancels a "superseded" recurring.
+  Outcomes: `pack_charged`, `pack_failed`, `pack_already_paid`, `pack_not_found`, `pack_credit_failed`.
+  `pack_charged` is not `charged`, so the double-charge alert ignores it.
+- Credits are added once by `credit_intake_purchase` (paid only from pending). A receipt (חשבונית מס
+  קבלה) goes through Finbot with the pack's description; any failure emails the admin.
+- Purchase is admin only (`canBuyIntakePacks`) until the owner verifies a real purchase. To check one:
+  ```sql
+  select created_at, conversations, amount, status, charged_amount, receipt_status, receipt_error
+  from intake_credit_purchases order by created_at desc limit 5;
+  ```
+- **Not verified end to end:** `charge_method: 1` on the existing payment page wasn't testable from
+  the sandbox (PayPlus is blocked). The first real purchase confirms it.
+
+## Billing columns are server-only (migration 0148, 2026-10-01)
+
+`photographers_update_own` used to let a photographer update every column of their own row from the
+browser, subscription and plan included. The trigger `photographers_guard_privileged` now refuses
+changes to email, plan, subscription_status, current_period_end, trial_ends_at, signup_plan,
+keep_account, the payplus uids, the warning/alert stamps and the intake balance from an
+authenticated/anon session. Every writer of these columns must use the service role. Verified with
+a simulated user session: plan and balance changes refused, normal settings allowed.
+
 ## Diagnosis
 
 ```sql

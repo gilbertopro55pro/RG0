@@ -7,6 +7,7 @@ import { notificationEmailFor } from "@/lib/notificationEmail";
 import { sendEmail } from "@/lib/resend";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import type { Photographer } from "@/lib/types";
+import { INTAKE_PACK_TAG } from "@/lib/intakeCredits";
 
 type PayplusCallbackBody = {
   transaction_uid?: string;
@@ -92,6 +93,23 @@ export async function POST(request: NextRequest) {
           `מה לעשות: לבטל את הוראת הקבע בממשק PayPlus ולשקול זיכוי ללקוח.`
       );
     }
+    return NextResponse.json({ received: true });
+  }
+
+  // A pack of extra assistant conversations (a one-time charge, lib/intakeCredits.ts): handled on its
+  // own and never touches the subscription (status, plan, period, recurring).
+  if (planFromCheckout?.startsWith(INTAKE_PACK_TAG)) {
+    const purchaseId = planFromCheckout.slice(INTAKE_PACK_TAG.length);
+    const outcome = await handleIntakePack({
+      supabase,
+      purchaseId,
+      photographerId,
+      photographer: photographerRow,
+      isSuccess,
+      transactionUid,
+      chargedAmount,
+    });
+    await markEvent({ outcome });
     return NextResponse.json({ received: true });
   }
 
@@ -207,6 +225,101 @@ export async function POST(request: NextRequest) {
 
   await markEvent({ outcome: isSuccess ? "charged" : "failed" });
   return NextResponse.json({ received: true });
+}
+
+async function handleIntakePack(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>;
+  purchaseId: string;
+  photographerId: string;
+  photographer: Pick<Photographer, "name" | "email" | "phone">;
+  isSuccess: boolean;
+  transactionUid: string | null;
+  chargedAmount: number | null;
+}): Promise<string> {
+  const { supabase, purchaseId, photographerId, photographer, isSuccess, transactionUid, chargedAmount } = args;
+  const { data: purchase } = await supabase
+    .from("intake_credit_purchases")
+    .select("id, photographer_id, conversations, amount, status")
+    .eq("id", purchaseId)
+    .maybeSingle<{ id: string; photographer_id: string; conversations: number; amount: number; status: string }>();
+  if (!purchase || purchase.photographer_id !== photographerId) {
+    if (isSuccess) {
+      await alertAdmin(
+        "חיוב על חבילת שיחות שלא נמצאה",
+        `PayPlus חייב ₪${chargedAmount ?? "?"} על חבילת שיחות לעוזר, אבל הרכישה לא נמצאה במערכת.
+
+` +
+          `מזהה חשבון: ${photographerId}
+מזהה רכישה: ${purchaseId}
+מזהה עסקה: ${transactionUid ?? "?"}
+
+מה לעשות: לבדוק ולטעון את השיחות ידנית או לזכות.`
+      );
+    }
+    return "pack_not_found";
+  }
+  if (!isSuccess) {
+    if (purchase.status === "pending") await supabase.from("intake_credit_purchases").update({ status: "failed" }).eq("id", purchase.id);
+    return "pack_failed";
+  }
+
+  // Adds the conversations once (the function only acts on a purchase that isn't paid yet).
+  const { data: added, error } = await supabase.rpc("credit_intake_purchase", {
+    p_purchase: purchase.id,
+    p_transaction: transactionUid,
+    p_charged: chargedAmount,
+  });
+  if (error) {
+    await alertAdmin(
+      "טעינת שיחות אחרי תשלום נכשלה",
+      `החשבון ${photographer.name} (${photographerId}) שילם על ${purchase.conversations} שיחות, אבל הטעינה נכשלה.
+
+שגיאה: ${error.message}
+מזהה רכישה: ${purchase.id}
+
+מה לעשות: לטעון ידנית.`
+    );
+    return "pack_credit_failed";
+  }
+  if (added == null) return "pack_already_paid";
+  if (chargedAmount != null && Math.abs(chargedAmount - Number(purchase.amount)) > 0.01) {
+    await alertAdmin(
+      "סכום חבילת שיחות לא תואם",
+      `החשבון ${photographer.name} (${photographerId}) חויב ₪${chargedAmount} על חבילה של ${purchase.conversations} שיחות שמחירה ₪${purchase.amount}. השיחות נטענו.
+
+מזהה רכישה: ${purchase.id}`
+    );
+  }
+
+  const amount = chargedAmount ?? Number(purchase.amount);
+  try {
+    const { documentLink } = await issueReceipt({
+      documentType: documentTypeForTaxStatus("licensed"),
+      customerName: photographer.name,
+      customerEmail: notificationEmailFor(photographer.email),
+      customerPhone: photographer.phone,
+      amount,
+      description: `חבילת ${purchase.conversations} שיחות נוספות לעוזר הפניות - מערכת גילברטו`,
+    });
+    await supabase.from("intake_credit_purchases").update({ receipt_status: "issued", receipt_link: documentLink }).eq("id", purchase.id);
+  } catch (e) {
+    await supabase
+      .from("intake_credit_purchases")
+      .update({ receipt_status: "failed", receipt_error: e instanceof Error ? e.message.slice(0, 500) : "unknown" })
+      .eq("id", purchase.id);
+    await alertAdmin(
+      "הפקת קבלה על חבילת שיחות נכשלה",
+      `החשבון ${photographer.name} (${photographerId}) שילם ₪${amount} על ${purchase.conversations} שיחות (נטענו), אבל הפקת הקבלה ב-Finbot נכשלה.
+
+` +
+        `שגיאה: ${e instanceof Error ? e.message : "לא ידועה"}
+מזהה עסקה: ${transactionUid ?? "?"}
+
+מה לעשות: להפיק קבלה ידנית ב-Finbot ולשלוח ללקוח.`
+    );
+    console.error(`Finbot receipt failed for intake pack ${purchase.id}:`, e);
+  }
+  return "pack_charged";
 }
 
 function isSuccessCode(code: string | undefined) {
