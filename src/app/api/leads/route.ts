@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { findLeadsByPhone } from "@/lib/leadDuplicates";
 import type { PackageType } from "@/lib/stages";
+import type { LeadQuoteDetails } from "@/lib/leadQuote";
+import { scheduleLeadQuoteFollowUp } from "@/lib/leadFollowUp";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -23,6 +27,13 @@ export async function POST(request: Request) {
     notes?: string;
     // true = the photographer saw the duplicate warning and chose a new lead anyway.
     allowDuplicate?: boolean;
+    // Only run the duplicate check (the quote builder asks before the send tap).
+    dryRun?: boolean;
+    // The quote builder's one-tap send (admin, lib/quoteDefaults.ts): the link in the WhatsApp
+    // message is built before the lead exists, so the builder picks the token, and the quote is
+    // attached in the same request (the page may be backgrounded by WhatsApp right after).
+    quoteToken?: string;
+    quote?: { amount: number; note?: string; details?: LeadQuoteDetails };
   } = await request.json();
 
   if (!body.name?.trim()) {
@@ -37,6 +48,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "כבר קיים ליד עם מספר הטלפון הזה", duplicate: matches[0] }, { status: 409 });
     }
   }
+  if (body.dryRun) return NextResponse.json({ ok: true });
+
+  const quote = body.quote && body.quote.amount > 0 ? body.quote : null;
+  const details = quote?.details && Array.isArray(quote.details.items) && JSON.stringify(quote.details).length < 20000 ? quote.details : null;
 
   const { data: lead, error } = await supabase
     .from("leads")
@@ -49,6 +64,16 @@ export async function POST(request: Request) {
       package_interest: body.packageInterest || null,
       event_type_name: body.eventType?.trim() || null,
       notes: body.notes || null,
+      ...(body.quoteToken && UUID_RE.test(body.quoteToken) ? { quote_token: body.quoteToken } : {}),
+      ...(quote
+        ? {
+            quoted_amount: quote.amount,
+            quote_note: quote.note || null,
+            ...(details ? { quote_details: details } : {}),
+            quote_sent_at: new Date().toISOString(),
+            status: "quoted",
+          }
+        : {}),
     })
     .select()
     .single();
@@ -56,6 +81,8 @@ export async function POST(request: Request) {
   if (error || !lead) {
     return NextResponse.json({ error: error?.message ?? "שגיאה ביצירת הליד" }, { status: 500 });
   }
+
+  if (quote) await scheduleLeadQuoteFollowUp(supabase, lead.id);
 
   return NextResponse.json({ lead });
 }

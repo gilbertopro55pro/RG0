@@ -24,7 +24,7 @@ type ContactPickerNavigator = Navigator & {
 };
 
 type Mode = "event" | "standard" | "freelance";
-type Step = "calculator" | "quoteForm" | "preview" | "savePrompt" | "leadFollowUp" | "leadDuplicate" | "linkReady";
+type Step = "calculator" | "quoteForm" | "preview" | "savePrompt" | "leadFollowUp" | "leadDuplicate";
 
 type DuplicateLead = { id: string; name: string; phone: string | null; event_date_interest: string | null; event_type_name: string | null; status: string; source: string | null; created_at: string };
 // A row in the per-quote vendor list: either a real saved supplier (supplierId matches
@@ -179,11 +179,19 @@ export default function EventPricingCalculator({
   // An existing lead with the same phone, found when adding this quote's client to the leads.
   const [duplicateLead, setDuplicateLead] = useState<DuplicateLead | null>(null);
   // quoteExtras accounts send the client a WhatsApp message with the /quotes/<token> link instead of
-  // the PDF file (owner, 2026-10-01). The quote is attached to a lead first (that's where the token
-  // lives), so sending always goes through the leads; the PDF is downloadable from the lead card.
+  // the PDF file (owner, 2026-10-01), in one tap. The token lives on the lead, so it's worked out
+  // when the preview opens, read-only: the source lead's, a lead with the same phone (the
+  // photographer picks it or a new one on the preview), or a fresh token for a lead created on the
+  // tap. The tap itself opens WhatsApp (a plain link, nothing async before it, so iOS doesn't block
+  // it) and saves the quote on the lead in the same moment. The PDF is downloadable from the lead.
   const [linkMode, setLinkMode] = useState(false);
-  const [linkMessage, setLinkMessage] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
+  const [linkSaveError, setLinkSaveError] = useState<string | null>(null);
+  const [linkSaved, setLinkSaved] = useState(false);
+  const [linkPreparing, setLinkPreparing] = useState(false);
+  const [existingTarget, setExistingTarget] = useState<{ id: string; token: string } | null>(null);
+  const [newLeadToken, setNewLeadToken] = useState("");
+  const [useExistingLead, setUseExistingLead] = useState(true);
   const [signature, setSignature] = useState<string | null>(null);
   useEffect(() => {
     if (!quoteExtras) return;
@@ -458,6 +466,7 @@ export default function EventPricingCalculator({
     setQuoteFile(null);
     setStep("preview");
     void prepareQuoteFile();
+    if (quoteExtras) void prepareLink();
   };
 
   // Generates the PDF as soon as the preview screen opens, well before the person taps "שליחה" —
@@ -572,34 +581,34 @@ export default function EventPricingCalculator({
   // actually schedules the 2-day follow-up (scheduleLeadQuoteFollowUp), so this reuses the exact
   // reminder machinery already built for leads instead of inventing a second one just for quotes
   // sent from this calculator.
+  const quotePayload = () => ({
+    amount: total,
+    note: notesValue.trim() || undefined,
+    // The whole quote, for the client's quote page (designed like the PDF) and the questionnaire.
+    details: {
+      items: quoteItems.filter((it) => it.price > 0 || it.item !== "צילום אירוע"),
+      subtotal,
+      vatAmount,
+      total,
+      showVat: !isExempt,
+      eventType: quoteEventType.trim() || undefined,
+      eventDate: quoteEventDate || undefined,
+      eventLocation: quoteEventLocation.trim() || undefined,
+      startTime: mode !== "freelance" && quoteStartTime ? quoteStartTime : undefined,
+      endTime: mode !== "freelance" && quoteEndTime ? quoteEndTime : undefined,
+      notes: notesValue.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    },
+      });
   const attachQuote = (leadId: string) =>
     fetch(`/api/leads/${leadId}/quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: total,
-        note: notesValue.trim() || undefined,
-        // The whole quote, for the client's quote page (designed like the PDF) and the questionnaire.
-        details: {
-          items: quoteItems.filter((it) => it.price > 0 || it.item !== "צילום אירוע"),
-          subtotal,
-          vatAmount,
-          total,
-          showVat: !isExempt,
-          eventType: quoteEventType.trim() || undefined,
-          eventDate: quoteEventDate || undefined,
-          eventLocation: quoteEventLocation.trim() || undefined,
-          startTime: mode !== "freelance" && quoteStartTime ? quoteStartTime : undefined,
-          endTime: mode !== "freelance" && quoteEndTime ? quoteEndTime : undefined,
-          notes: notesValue.trim() || undefined,
-          createdAt: new Date().toISOString(),
-        },
-      }),
+      body: JSON.stringify(quotePayload()),
     });
 
   // allowDuplicate: the photographer saw that a lead with this phone exists and still wants a new one.
-  // forLink: link mode (sendLink below), passed explicitly because the state update isn't visible yet.
-  const addLeadForFollowUp = async (allowDuplicate = false, forLink = linkMode) => {
+  const addLeadForFollowUp = async (allowDuplicate = false) => {
     setAddingLead(true);
     let close = true;
     try {
@@ -621,53 +630,98 @@ export default function EventPricingCalculator({
         close = false;
         return;
       }
-      if (leadRes.ok && leadData.lead?.id) {
-        if (forLink) {
-          close = false;
-          await attachForLink(leadData.lead.id);
-        } else await attachQuote(leadData.lead.id);
-      } else if (forLink) {
-        close = false;
-        setSendError(leadData.error ?? "הוספת הליד נכשלה");
-        setStep("preview");
-      }
+      if (leadRes.ok && leadData.lead?.id) await attachQuote(leadData.lead.id);
     } finally {
       setAddingLead(false);
       if (close) onClose();
     }
   };
 
-  // Link mode: attach the quote to the lead and build the message with its /quotes/<token> link.
-  const attachForLink = async (id: string) => {
-    const res = await attachQuote(id);
-    const data = await res.json().catch(() => null);
-    const token = data?.lead?.quote_token as string | undefined;
-    if (!res.ok || !token) {
-      setSendError(data?.error ?? "צירוף ההצעה לליד נכשל");
-      setStep("preview");
-      return;
+  // Link mode, when the preview opens: which lead the quote goes on, and its link token. Reads only.
+  const prepareLink = async () => {
+    setLinkPreparing(true);
+    setExistingTarget(null);
+    setDuplicateLead(null);
+    setUseExistingLead(true);
+    setNewLeadToken(crypto.randomUUID());
+    try {
+      let id = leadId ?? null;
+      if (!id) {
+        const res = await fetch("/api/leads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: quoteClientName.trim(), phone: quoteClientPhone.trim(), dryRun: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409 && data.duplicate) {
+          setDuplicateLead(data.duplicate);
+          id = data.duplicate.id as string;
+        }
+      }
+      if (id) {
+        const { data } = await supabase.from("leads").select("quote_token").eq("id", id).maybeSingle<{ quote_token: string }>();
+        if (data?.quote_token) setExistingTarget({ id, token: data.quote_token });
+        else if (leadId) setSendError("לא נמצא הליד של ההצעה");
+      }
+    } catch {
+      setSendError("הכנת הקישור נכשלה, נסו שוב");
+    } finally {
+      setLinkPreparing(false);
     }
-    if (leadId === id) onLeadQuoted?.(data.lead);
-    const caption = quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate));
-    setLinkMessage(quoteLinkMessage(caption, `${window.location.origin}/quotes/${token}`, signature));
-    setLinkCopied(false);
-    setStep("linkReady");
   };
 
-  const sendLink = async () => {
-    setSendError(null);
+  // The lead the tap sends to: the source lead, the same-phone lead when picked, or a new one.
+  const linkTarget: { kind: "existing"; id: string; token: string } | { kind: "new"; token: string } | null = leadId
+    ? existingTarget && { kind: "existing", ...existingTarget }
+    : existingTarget && useExistingLead
+      ? { kind: "existing", ...existingTarget }
+      : newLeadToken && !linkPreparing
+        ? { kind: "new", token: newLeadToken }
+        : null;
+  const linkMessage = linkTarget
+    ? quoteLinkMessage(
+        quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate)),
+        `${typeof window === "undefined" ? "" : window.location.origin}/quotes/${linkTarget.token}`,
+        signature
+      )
+    : "";
+
+  // Bound to the WhatsApp link's onClick: the browser opens WhatsApp from the link itself, and this
+  // saves the quote on the lead alongside (keepalive, since WhatsApp takes the screen right away).
+  const saveLinkedQuote = () => {
+    if (!linkTarget) return;
     setLinkMode(true);
-    if (!leadId) {
-      // Same lead creation (and duplicate check) as the follow-up step; linkMode carries it on.
-      await addLeadForFollowUp(false, true);
-      return;
-    }
-    setAddingLead(true);
-    try {
-      await attachForLink(leadId);
-    } finally {
-      setAddingLead(false);
-    }
+    setLinkSaveError(null);
+    setLinkSaved(false);
+    setLinkCopied(false);
+    setSavePromptStep("ask");
+    setStep("savePrompt");
+    const payload = quotePayload();
+    const req =
+      linkTarget.kind === "existing"
+        ? fetch(`/api/leads/${linkTarget.id}/quote`, { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+        : fetch("/api/leads", {
+            method: "POST",
+            keepalive: true,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: quoteClientName.trim(),
+              phone: quoteClientPhone.trim() || undefined,
+              eventDateInterest: quoteEventDate || undefined,
+              eventType: quoteEventType.trim() || undefined,
+              allowDuplicate: true,
+              quoteToken: linkTarget.token,
+              quote: payload,
+            }),
+          });
+    void req
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.lead) throw new Error(data?.error);
+        setLinkSaved(true);
+        if (leadId && data.lead.id === leadId) onLeadQuoted?.(data.lead);
+      })
+      .catch(() => setLinkSaveError("ההצעה לא נשמרה על הליד, ולכן הקישור ששלחתם עוד לא פעיל."));
   };
 
   // Opened from a lead: attach the sent quote to it (status "נשלחה הצעת מחיר" + the follow-up
@@ -689,11 +743,10 @@ export default function EventPricingCalculator({
     if (!duplicateLead) return;
     setAddingLead(true);
     try {
-      if (linkMode) await attachForLink(duplicateLead.id);
-      else await attachQuote(duplicateLead.id);
+      await attachQuote(duplicateLead.id);
     } finally {
       setAddingLead(false);
-      if (!linkMode) onClose();
+      onClose();
     }
   };
 
@@ -1290,6 +1343,34 @@ export default function EventPricingCalculator({
               )}
             </div>
             {sendError && <p className="text-xs text-rose mb-2">{sendError}</p>}
+            {quoteExtras && !leadId && duplicateLead && existingTarget && (
+              <div className="rounded-xl border border-line bg-card p-3 mb-2 text-sm">
+                <div className="font-semibold mb-1">ל{duplicateLead.name} כבר יש ליד</div>
+                <div className="text-xs text-ink-soft mb-2">
+                  {[
+                    duplicateLead.event_type_name,
+                    duplicateLead.event_date_interest ? new Date(duplicateLead.event_date_interest).toLocaleDateString("he-IL") : null,
+                    `נוסף ב-${new Date(duplicateLead.created_at).toLocaleDateString("he-IL")}`,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setUseExistingLead(true)}
+                    className={`flex-1 rounded-lg py-2 text-xs font-semibold border ${useExistingLead ? "bg-ink text-white border-ink" : "bg-white border-line text-ink"}`}
+                  >
+                    לצרף לליד הקיים
+                  </button>
+                  <button
+                    onClick={() => setUseExistingLead(false)}
+                    className={`flex-1 rounded-lg py-2 text-xs font-semibold border ${!useExistingLead ? "bg-ink text-white border-ink" : "bg-white border-line text-ink"}`}
+                  >
+                    אירוע אחר, ליד חדש
+                  </button>
+                </div>
+              </div>
+            )}
             {/* A plain link to the already-prepared file: the tap opens it directly (the phone's own
                 PDF viewer on iOS), with no async step that a browser could block. */}
             {quoteFileUrl ? (
@@ -1308,9 +1389,26 @@ export default function EventPricingCalculator({
             )}
             <div className="flex gap-2">
               {quoteExtras ? (
-                <button onClick={() => void sendLink()} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-                  {addingLead ? "מכין קישור..." : "שליחה ללקוח/ה"}
-                </button>
+                linkTarget ? (
+                  // A plain link: the tap opens WhatsApp directly, with nothing async a browser could block.
+                  <a
+                    href={buildWaMeLink(quoteClientPhone, linkMessage)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={saveLinkedQuote}
+                    className="flex flex-1 items-center justify-center rounded-lg py-2.5 text-sm font-semibold bg-ink text-white"
+                  >
+                    שליחה ללקוח/ה
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => void prepareLink()}
+                    disabled={linkPreparing}
+                    className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                  >
+                    {linkPreparing ? "מכין קישור..." : "נסו שוב"}
+                  </button>
+                )
               ) : (
                 <button onClick={sendQuote} disabled={sendingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
                   {sendingQuote ? "מכין..." : "שליחה ללקוח/ה"}
@@ -1327,52 +1425,38 @@ export default function EventPricingCalculator({
           </>
         )}
 
-        {step === "linkReady" && (
-          <>
-            <div className="mb-3.5">
-              <span className="text-base font-bold font-display">ההודעה ללקוח/ה מוכנה</span>
-            </div>
-            <p className="text-xs text-ink-soft mb-2">ההצעה צורפה לליד. קובץ ה-PDF זמין להורדה בעמוד הלידים.</p>
-            <div className="rounded-xl border border-line bg-card p-3 mb-3.5 text-sm whitespace-pre-wrap break-words" dir="rtl">
-              {linkMessage}
-            </div>
-            {/* A plain link: the tap opens WhatsApp directly, with nothing async a browser could block. */}
-            <a
-              href={quoteClientPhone.trim() ? buildWaMeLink(quoteClientPhone, linkMessage) : `https://wa.me/?text=${encodeURIComponent(linkMessage)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => {
-                setSavePromptStep("ask");
-                setTimeout(() => setStep("savePrompt"), 300);
-              }}
-              className="flex w-full items-center justify-center rounded-lg py-2.5 mb-2 text-sm font-semibold bg-ink text-white"
-            >
-              שליחה בוואטסאפ
-            </a>
-            <div className="flex gap-2">
-              <button
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(linkMessage);
-                    setLinkCopied(true);
-                  } catch {}
-                }}
-                className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
-              >
-                {linkCopied ? "הועתק ✓" : "העתקת ההודעה"}
-              </button>
-              <button onClick={onClose} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft">
-                סגירה
-              </button>
-            </div>
-          </>
-        )}
-
         {step === "savePrompt" && (
           <>
             <div className="mb-3.5">
               <span className="text-base font-bold font-display">נשלח בהצלחה</span>
             </div>
+            {linkMode && (
+              <>
+                {linkSaveError ? (
+                  <div className="rounded-xl border border-rose bg-rose-bg p-3 mb-3.5 text-sm text-rose">
+                    {linkSaveError}
+                    <button onClick={saveLinkedQuote} className="block mt-2 font-semibold underline">
+                      לשמור שוב
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-ink-soft mb-2">
+                    {linkSaved ? "ההצעה נשמרה על הליד. קובץ ה-PDF זמין להורדה בעמוד הלידים." : "שומר את ההצעה על הליד..."}
+                  </p>
+                )}
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(linkMessage);
+                      setLinkCopied(true);
+                    } catch {}
+                  }}
+                  className="w-full rounded-lg py-2 mb-3.5 text-xs font-semibold bg-white border border-line text-ink"
+                >
+                  {linkCopied ? "ההודעה הועתקה ✓" : "וואטסאפ לא נפתח? העתקת ההודעה"}
+                </button>
+              </>
+            )}
             <p className="text-sm text-ink-soft mb-3.5">לשמור את ההצעה גם ברשימת הצעות המחיר?</p>
             {savePromptStep === "ask" ? (
               <div className="flex gap-2">
