@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { deliveryNotes, quoteLinkMessage, quoteShareCaption } from "@/lib/quoteDefaults";
+import { deliveryNotes, quoteLinkMessage, quoteShareCaption, withoutStaleDeliveryLines } from "@/lib/quoteDefaults";
 import { buildWaMeLink } from "@/lib/waLink";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
@@ -418,7 +418,7 @@ export default function EventPricingCalculator({
       .filter((it): it is PriceQuoteItem => it !== null);
     return [shootItem, ...supplierItems];
   }, [quoteVendorRows, supplierList, hours, rate, mode, shootDetails, vendorRowPrice]);
-  const notesValue = quoteExtras && !notesTouched ? deliveryNotes(quoteItems.map((it) => it.item)) : quoteNotes;
+  const notesValue = !quoteExtras ? quoteNotes : notesTouched ? withoutStaleDeliveryLines(quoteNotes, quoteItems) : deliveryNotes(quoteItems);
 
   const openQuoteForm = () => {
     setQuoteFormError(null);
