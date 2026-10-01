@@ -55,6 +55,11 @@ below, so don't change them without asking.
   - When the assistant is off, the plan has lapsed, or the cap is reached, the same page shows a
     plain inquiry form (`/api/intake-chat/<key>/form`, no model call, lead `source='form'`).
     A client is never turned away.
+  - **Bought conversations (2026-10-01):** packs from settings (`lib/intakeCredits.ts`, billing-flow
+    skill). After the cap, a new conversation takes one bought conversation (`consume_intake_extra`,
+    `bot_conversations.extra_credit = true`, not counted in the cap). They never expire.
+  - **90% notification:** the conversation that brings the month to 90% of the cap pushes "נוצלו 90%
+    מהמכסה" once a month (`claimConversationSlot`, `intake_cap_alerted_month`).
 
 ## How it works
 

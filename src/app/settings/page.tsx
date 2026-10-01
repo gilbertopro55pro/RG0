@@ -33,6 +33,7 @@ import BackLink from "@/components/BackLink";
 import { hasAppAccess, isInTrial, TRIAL_STORAGE_CAP_BYTES } from "@/lib/subscription";
 import { intakeMonthlyCap } from "@/lib/intakeAssistant";
 import { monthStartIsrael } from "@/lib/intakeChatAccess";
+import { canBuyIntakePacks } from "@/lib/intakeCredits";
 
 export default async function SettingsPage({
   searchParams,
@@ -85,6 +86,7 @@ export default async function SettingsPage({
     .from("bot_conversations")
     .select("id", { count: "exact", head: true })
     .eq("channel", "web")
+    .eq("extra_credit", false)
     .gt("client_turns", 0)
     .gte("created_at", monthStartIsrael().toISOString());
 
@@ -158,6 +160,8 @@ export default async function SettingsPage({
                 photographer={photographer}
                 cap={intakeMonthlyCap(photographer)}
                 usedThisMonth={intakeUsedThisMonth ?? 0}
+                extraConversations={(photographer as { intake_extra_conversations?: number }).intake_extra_conversations ?? 0}
+                canBuyPacks={canBuyIntakePacks(photographer.email)}
                 chatPath={`/chat/${photographer.portfolio_slug ?? photographer.intake_chat_token}`}
               />
               {/* Meta connection details stay folded; only what the photographer edits is always visible. */}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { INTAKE_PACKS } from "@/lib/intakeCredits";
 import { createClient } from "@/lib/supabase/client";
 import type { IntakeFaqItem, Photographer } from "@/lib/types";
 import { GREETING_MAX_CHARS, chatLinkFor, defaultWhatsAppGreeting } from "@/lib/intakeGreeting";
@@ -15,11 +16,16 @@ export default function BotSettings({
   photographer,
   cap,
   usedThisMonth,
+  extraConversations = 0,
+  canBuyPacks = false,
   chatPath,
 }: {
   photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_whatsapp_greeting" | "meta_pixel_id" | "intake_allow_split_day" | "intake_shabbat_closed" | "intake_chat_title">;
   cap: number;
   usedThisMonth: number;
+  // Bought conversations left (used after the monthly cap, never expire).
+  extraConversations?: number;
+  canBuyPacks?: boolean;
   chatPath: string;
 }) {
   const [enabled, setEnabled] = useState(photographer.intake_bot_enabled);
@@ -40,6 +46,15 @@ export default function BotSettings({
   const [savedGreeting, setSavedGreeting] = useState(greeting);
   const [greetingBusy, setGreetingBusy] = useState<"save" | "ai" | null>(null);
   const [greetingStatus, setGreetingStatus] = useState<string | null>(null);
+  const [buyingPack, setBuyingPack] = useState<number | null>(null);
+  const [packError, setPackError] = useState<string | null>(null);
+  useEffect(() => {
+    // Back from a PayPlus page that didn't go through (failureUrl in api/intake-credits/checkout).
+    if (new URLSearchParams(window.location.search).get("intakePurchase") === "failed") {
+      const t = setTimeout(() => setPackError("התשלום לא עבר, ולא חויבת. אפשר לנסות שוב."), 0);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   if (cap <= 0) {
     return (
@@ -166,10 +181,33 @@ export default function BotSettings({
             לנסות
           </a>
         </div>
-        <p className="text-xs text-ink-soft mt-2">
-          <span className="font-data">{usedThisMonth}</span> מתוך <span className="font-data">{cap}</span> שיחות החודש. אחרי המכסה הלקוחות מקבלים טופס פנייה רגיל, ושום פנייה לא הולכת לאיבוד.
-        </p>
       </div>
+
+      <IntakeUsageMeter
+        used={usedThisMonth}
+        cap={cap}
+        extra={extraConversations}
+        canBuy={canBuyPacks}
+        buying={buyingPack}
+        error={packError}
+        onBuy={async (conversations) => {
+          setBuyingPack(conversations);
+          setPackError(null);
+          try {
+            const res = await fetch("/api/intake-credits/checkout", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ conversations }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.url) throw new Error(data.error || "פתיחת התשלום נכשלה");
+            window.location.href = data.url;
+          } catch (e) {
+            setPackError(e instanceof Error ? e.message : "פתיחת התשלום נכשלה");
+            setBuyingPack(null);
+          }
+        }}
+      />
 
       <details className="group px-4 py-3 border-t border-line">
         <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2 mb-1"><span>קישורים לפי מקור</span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
@@ -393,6 +431,90 @@ export default function BotSettings({
       </details>
 
       <p className="px-4 pb-4 text-xs text-ink-soft">בקרוב: אותו עוזר גם בוואטסאפ העסקי.</p>
+    </div>
+  );
+}
+
+// The month's conversations against the plan's cap, the bought conversations left, and the packs.
+function IntakeUsageMeter({
+  used,
+  cap,
+  extra,
+  canBuy,
+  buying,
+  error,
+  onBuy,
+}: {
+  used: number;
+  cap: number;
+  extra: number;
+  canBuy: boolean;
+  buying: number | null;
+  error: string | null;
+  onBuy: (conversations: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+  const near = pct >= 90;
+  const full = used >= cap;
+  return (
+    <div className="px-4 py-3 border-t border-line">
+      <div className="flex items-baseline justify-between gap-2 mb-1.5">
+        <span className="text-sm font-semibold">שיחות החודש</span>
+        <span className="text-sm">
+          <span className="font-data font-semibold">{used}</span>
+          <span className="text-ink-soft"> מתוך </span>
+          <span className="font-data">{cap}</span>
+        </span>
+      </div>
+      <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--color-chip)" }} role="progressbar" aria-valuenow={used} aria-valuemin={0} aria-valuemax={cap}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: full ? "var(--color-rose)" : near ? "var(--color-amber-deep)" : "var(--color-sage)" }} />
+      </div>
+      <p className="text-xs text-ink-soft mt-2">
+        {extra > 0 ? (
+          <>
+            ועוד <span className="font-data font-semibold text-ink">{extra}</span> שיחות שרכשת. הן נכנסות לפעולה אחרי המכסה החודשית, ולא פגות.
+          </>
+        ) : full ? (
+          "המכסה החודשית נוצלה. לקוחות חדשים מקבלים עכשיו טופס פנייה רגיל, ושום פנייה לא הולכת לאיבוד."
+        ) : (
+          "המכסה מתחדשת בתחילת כל חודש. כשמגיעים ל-90% נשלחת התראה לטלפון. אחרי המכסה הלקוחות מקבלים טופס פנייה רגיל."
+        )}
+      </p>
+      {canBuy && (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="mt-2.5 text-xs font-semibold rounded-lg px-3 py-1.5 border border-line"
+            style={{ background: "var(--color-input-bg)" }}
+          >
+            {open ? "סגירה" : "רכישת שיחות נוספות"}
+          </button>
+          {open && (
+            <div className="mt-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {INTAKE_PACKS.map((p) => (
+                  <button
+                    key={p.conversations}
+                    type="button"
+                    disabled={buying !== null}
+                    onClick={() => onBuy(p.conversations)}
+                    className="rounded-xl border border-line bg-white px-2 py-2.5 text-center disabled:opacity-60"
+                  >
+                    <div className="text-sm font-semibold">
+                      <span className="font-data">{p.conversations}</span> שיחות
+                    </div>
+                    <div className="text-xs text-ink-soft mt-0.5">{buying === p.conversations ? "פותח תשלום..." : <span className="font-data">₪{p.price}</span>}</div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-ink-soft mt-2">תשלום חד-פעמי, בנפרד מהמנוי. המחירים כוללים מע״מ, והקבלה נשלחת למייל.</p>
+            </div>
+          )}
+        </>
+      )}
+      {error && <p className="text-xs text-rose mt-2">{error}</p>}
     </div>
   );
 }

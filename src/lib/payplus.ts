@@ -79,6 +79,52 @@ export async function createPayplusCheckoutLink(params: {
   return { paymentPageLink: data.data.payment_page_link };
 }
 
+// A one-time charge on the same payment page (extra assistant conversations, lib/intakeCredits.ts).
+// No recurring_settings, and charge_method 1 (a regular charge) instead of 3 (recurring), so it never
+// creates a recurring and never touches the subscription's. more_info_1 carries the pack tag, which
+// is how the webhook tells it apart from a subscription charge.
+export async function createPayplusOneTimeLink(params: {
+  photographerId: string;
+  amount: number;
+  tag: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  successUrl: string;
+  failureUrl: string;
+  baseUrl: string;
+}): Promise<{ paymentPageLink: string }> {
+  const res = await fetch(`${API_BASE}/PaymentPages/generateLink`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      payment_page_uid: requireEnv("PAYPLUS_PAYMENT_PAGE_UID"),
+      amount: params.amount,
+      currency_code: "ILS",
+      charge_method: 1, // a regular one-time charge
+      sendEmailApproval: true,
+      sendEmailFailure: true,
+      language_code: "he",
+      customer: {
+        customer_name: params.customerName,
+        email: params.customerEmail,
+        phone: params.customerPhone,
+      },
+      more_info: params.photographerId,
+      more_info_1: params.tag,
+      refURL_success: params.successUrl,
+      refURL_failure: params.failureUrl,
+      refURL_callback: `${params.baseUrl}/api/payplus/webhook`,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok || data?.results?.status !== "success" || !data?.data?.payment_page_link) {
+    throw new Error(data?.results?.description ?? "יצירת קישור לתשלום נכשלה");
+  }
+  return { paymentPageLink: data.data.payment_page_link };
+}
+
 // Verifies the `hash` header PayPlus signs every webhook/callback request with, per their docs:
 // HMAC-SHA256 of the raw JSON body, base64-encoded, using the account's secret key.
 export function verifyPayplusWebhookSignature(rawBody: string, hashHeader: string | null): boolean {
