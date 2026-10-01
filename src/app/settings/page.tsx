@@ -23,6 +23,7 @@ import ContractTemplateSettings from "@/components/ContractTemplateSettings";
 import ContractTemplateLibrarySettings from "@/components/ContractTemplateLibrarySettings";
 import PortfolioSettings from "@/components/PortfolioSettings";
 import AppearanceSettings from "@/components/AppearanceSettings";
+import PushNotificationsSettings from "@/components/PushNotificationsSettings";
 import GuidesSettings from "@/components/GuidesSettings";
 import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
@@ -36,9 +37,9 @@ import { monthStartIsrael } from "@/lib/intakeChatAccess";
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ google_connected?: string; google_error?: string }>;
+  searchParams: Promise<{ google_connected?: string; google_error?: string; tab?: string }>;
 }) {
-  const { google_connected, google_error } = await searchParams;
+  const { google_connected, google_error, tab } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -96,6 +97,7 @@ export default async function SettingsPage({
       <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
       <h1 className="text-[22px] font-bold mb-5 font-display">הגדרות</h1>
       <SettingsTabs
+        initialTab={tab}
         tabs={[
           {
             id: "profile",
@@ -150,6 +152,7 @@ export default async function SettingsPage({
             label: "אוטומציה",
             content: (
               <>
+              <PushNotificationsSettings />
               <IntakeGuide />
               <BotSettings
                 photographer={photographer}

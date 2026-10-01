@@ -4,10 +4,13 @@ import { useState, type ReactNode } from "react";
 
 export default function SettingsTabs({
   tabs,
+  initialTab,
 }: {
   tabs: { id: string; label: string; content: ReactNode }[];
+  // ?tab=<id> on /settings opens that tab (e.g. the new-lead popup's link to notifications).
+  initialTab?: string;
 }) {
-  const [active, setActive] = useState(tabs[0]?.id);
+  const [active, setActive] = useState(tabs.some((t) => t.id === initialTab) ? initialTab : tabs[0]?.id);
 
   return (
     <div>

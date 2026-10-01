@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sendPushToPhotographer } from "@/lib/push";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { ALBUM_ACTIVITY_TEMPLATE } from "@/lib/stages";
 
@@ -17,6 +18,14 @@ export async function notifyPhotographerOfAlbumActivity(
     .eq("id", eventId)
     .maybeSingle<{ client_name: string; photographer_id: string }>();
   if (!event) return;
+
+  // Phone notification (lib/push.ts); one per event, a burst of comments replaces the previous one.
+  await sendPushToPhotographer(event.photographer_id, {
+    title: `${event.client_name}: ${action}`,
+    body: "לחצו לפתיחת האירוע",
+    url: `/events/${eventId}`,
+    tag: `album-${eventId}`,
+  });
 
   const { data: photographer } = await supabase
     .from("photographers")

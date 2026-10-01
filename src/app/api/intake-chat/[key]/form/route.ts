@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { sendPushToPhotographer } from "@/lib/push";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { resolveChatPhotographer } from "@/lib/intakeChatAccess";
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     needs_details: true,
   });
   if (error) return NextResponse.json({ error: "שגיאה בשליחת הפנייה" }, { status: 500 });
+  await sendPushToPhotographer(p.id, { title: `פנייה חדשה: ${name}`, body: [eventType, date].filter(Boolean).join(" · ") || "מטופס הפנייה", url: "/leads", tag: "new-lead" });
 
   const origin = new URL(request.url).origin;
   await sendEmail({

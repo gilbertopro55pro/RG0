@@ -32,6 +32,21 @@ export default function AssistantLeadPopup() {
   const pathname = usePathname();
   const router = useRouter();
   const [leads, setLeads] = useState<NewLead[]>([]);
+  // Phone notifications not on for this device yet (components/PushNotificationsSettings.tsx):
+  // the popup invites to turn them on.
+  const [pushOff, setPushOff] = useState(false);
+  useEffect(() => {
+    if (leads.length === 0 || typeof Notification === "undefined") return;
+    let cancelled = false;
+    (async () => {
+      const reg = await navigator.serviceWorker?.getRegistration().catch(() => undefined);
+      const sub = await reg?.pushManager?.getSubscription().catch(() => null);
+      if (!cancelled) setPushOff(!(sub && Notification.permission === "granted"));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [leads.length]);
   const busy = useRef(false);
   const hidden = HIDDEN_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
@@ -71,12 +86,13 @@ export default function AssistantLeadPopup() {
   const lead = leads[0];
   const more = leads.length - 1;
 
-  const markSeen = async (open: boolean) => {
+  const markSeenAnd = (path: string | null) => {
     const ids = leads.map((l) => l.id);
     setLeads([]);
     fetch("/api/leads/assistant-new", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) }).catch(() => {});
-    if (open) router.push("/leads");
+    if (path) router.push(path);
   };
+  const markSeen = (open: boolean) => markSeenAnd(open ? "/leads" : null);
 
   const facts = [lead.event_type_name, dateLabel(lead.event_date_interest)].filter(Boolean).join(" · ");
 
@@ -98,6 +114,11 @@ export default function AssistantLeadPopup() {
         )}
         {lead.needs_details && <p className="text-xs text-rose mt-2">השיחה עוד לא הסתיימה, חסרים חלק מהפרטים.</p>}
         {more > 0 && <p className="text-xs text-ink-soft mt-2">ועוד {more === 1 ? "פנייה חדשה אחת" : `${more} פניות חדשות`}</p>}
+        {pushOff && (
+          <button type="button" onClick={() => markSeenAnd("/settings?tab=automation")} className="mt-3 text-xs font-semibold underline" style={{ color: "var(--color-amber-deep)" }}>
+            לקבל פניות כאלה גם כהתראה בטלפון
+          </button>
+        )}
         <div className="flex gap-2 mt-5">
           <button type="button" onClick={() => markSeen(true)} className="flex-1 h-11 rounded-xl bg-ink text-white text-sm font-semibold">
             לצפייה בליד

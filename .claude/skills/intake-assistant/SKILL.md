@@ -37,6 +37,9 @@ below, so don't change them without asking.
   migration 0144). Not on public/client pages (TopNav's `HIDDEN_PREFIXES`). Polls every minute and
   on returning to the app. Marking seen doesn't count as lead activity (the `leads_touch_activity`
   trigger skips an update that only changes `assistant_seen_at`).
+- **Phone notification (2026-10-01):** a new assistant lead pushes "פנייה חדשה מהעוזר" to the
+  photographer's devices the moment the lead row is first inserted (`upsertLead`, `lib/push.ts`),
+  ahead of the handoff email. Form leads push too. The popup invites to turn notifications on.
 - **No date yet:** the assistant asks for an approximate month/season, saves `dateUndecided` +
   `approxDate`, and the lead says "תאריך: טרם נקבע (בערך …)". The date check happens later, by
   the photographer.
