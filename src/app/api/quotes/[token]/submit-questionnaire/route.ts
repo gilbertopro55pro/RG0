@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import { createEventWithSideEffects } from "@/lib/createEvent";
+import { ADMIN_EMAIL } from "@/lib/admin";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { packageLabel, type PackageType } from "@/lib/stages";
@@ -30,9 +30,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
     if (!lead || !lead.quoted_amount) {
       return NextResponse.json({ error: "הצעת המחיר לא נמצאה" }, { status: 404 });
-    }
-    if (lead.photographers?.email !== ADMIN_EMAIL) {
-      return NextResponse.json({ error: "התכונה עדיין לא זמינה" }, { status: 403 });
     }
     if (!lead.quote_approved_at) {
       return NextResponse.json({ error: "יש לאשר קודם את הצעת המחיר" }, { status: 400 });
@@ -73,7 +70,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const pkg = (!isCustom ? (lead.package_interest as PackageType | null) : null) ?? pkgFromItems ?? (customPackageId ? null : "stills");
     // The quote's lines and what the client was told about the hours go on the event's notes.
     const quoteLines = lead.quote_details?.items?.length ? `הצעת המחיר: ${lead.quote_details.items.map((it) => it.item).join(", ")}` : null;
-    const hoursNotice = body.hoursNotice?.trim() ? `שעות מעבר לחבילה: ${body.hoursNotice.trim().slice(0, 300)}` : null;
+    // The extra-hours notice is the owner's own rule (lib/leadQuote.ts): only their clients see it.
+    const hoursNotice = lead.photographers?.email === ADMIN_EMAIL && body.hoursNotice?.trim() ? `שעות מעבר לחבילה: ${body.hoursNotice.trim().slice(0, 300)}` : null;
     const eventNotes = [(body.notes ?? "").trim(), hoursNotice, quoteLines].filter(Boolean).join("\n");
 
     const result = await createEventWithSideEffects(supabase, {

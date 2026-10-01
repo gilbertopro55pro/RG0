@@ -301,7 +301,7 @@ export default function LeadsView({
                 </button>
               )}
               {lead.quoted_amount && <CopyQuoteLinkButton token={lead.quote_token} />}
-              {quoteBuilder.quoteExtras && lead.quote_details?.items?.length ? <QuotePdfButton lead={lead} /> : null}
+              {lead.quote_details?.items?.length ? <QuotePdfButton lead={lead} /> : null}
               <span className="flex-1" />
               <RowMenu items={[{ label: "מחיקת הליד", onClick: () => deleteLead(lead.id), danger: true }]} />
             </div>

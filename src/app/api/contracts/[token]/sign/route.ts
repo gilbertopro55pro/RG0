@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { sendPushToPhotographer } from "@/lib/push";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { packageLabel } from "@/lib/stages";
 import type { EventContractRow, EventRow, Photographer } from "@/lib/types";
@@ -61,11 +60,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     is_client_action: true,
   });
 
-  // Admin-only for now (see the standing "עדכון אדמין" staged-rollout process): event_closing
-  // stays open (not the auto-done-at-creation behavior every other photographer still gets — see
-  // /api/events/route.ts) until either this happens (contract signed) or the photographer sends
-  // the opening WhatsApp message manually (EventDetailView.tsx's event-closing banner). A signed
-  // contract is unambiguous proof the booking is real, so it marks the stage done outright.
+  // event_closing stays open for every photographer (lib/createEvent.ts) until either this happens
+  // (contract signed) or the photographer sends the opening WhatsApp message manually
+  // (EventDetailView.tsx's event-closing banner). A signed contract is unambiguous proof the booking
+  // is real, so it marks the stage done outright and emails the photographer (all accounts since
+  // 2026-10-01; it was admin only).
   const { data: event } = await supabase
     .from("events")
     .select("*, custom_packages(name)")
@@ -83,7 +82,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       .select("*")
       .eq("id", event.photographer_id)
       .maybeSingle<Photographer>();
-    if (photographer?.email === ADMIN_EMAIL) {
+    if (photographer) {
       await supabase
         .from("event_stages")
         .update({ done: true, done_at: new Date().toISOString() })

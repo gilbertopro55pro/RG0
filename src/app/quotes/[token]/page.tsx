@@ -46,12 +46,12 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     .returns<CustomPackageRow[]>();
   const packageLabelText = resolveLeadPackageLabel(lead.package_interest, customPackages ?? []);
 
-  // Admin-only for now (see the standing "עדכון אדמין" staged-rollout process): every other
-  // photographer's clients keep seeing the original read-only quote page below, unchanged.
+  // The owner's own hours rules (default hours, family photos, the extra-hours notice) are for their
+  // clients only; every photographer's client gets the page, the approval and the questionnaire.
   const isAdminLead = lead.photographers.email === ADMIN_EMAIL;
 
   let convertedClientAccessToken: string | null = null;
-  if (isAdminLead && lead.converted_event_id) {
+  if (lead.converted_event_id) {
     const { data: convertedEvent } = await supabase
       .from("events")
       .select("client_access_token")
@@ -61,82 +61,38 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
   }
   // Sent with a contract: a returning client lands back on the signing step until it's signed.
   const contract: EventContractRow | null =
-    isAdminLead && lead.converted_event_id && lead.quote_details?.withContract ? await latestContract(supabase, lead.converted_event_id) : null;
+    lead.converted_event_id && lead.quote_details?.withContract ? await latestContract(supabase, lead.converted_event_id) : null;
 
-  if (isAdminLead) {
-    const ph = lead.photographers;
-    const logoUrl = ph.logo_storage_path ? await getSignedDownloadUrl("logos", ph.logo_storage_path, 60 * 60 * 24) : null;
-    const conv = (lead.details ?? null) as { eventSlot?: string; location?: string } | null;
-    return (
-      <QuoteApprovalFlow
-        token={token}
-        clientName={lead.name}
-        clientPhone={lead.phone}
-        eventDateInterest={lead.event_date_interest}
-        eventTypeName={lead.event_type_name}
-        photographer={{
-          name: ph.name,
-          phone: ph.phone,
-          email: notificationEmailFor(ph.email),
-          businessId: ph.business_id,
-          taxStatus: ph.business_tax_status,
-          logoUrl,
-          whatsappSignature: ph.whatsapp_signature,
-        }}
-        quotedAmount={lead.quoted_amount}
-        quoteNote={lead.quote_note}
-        details={lead.quote_details}
-        slot={slotFor(conv?.eventSlot, lead.quote_details?.startTime)}
-        knownLocation={conv?.location ?? null}
-        initialApprovedAt={lead.quote_approved_at}
-        initialConvertedEventId={lead.converted_event_id}
-        initialClientAccessToken={convertedClientAccessToken}
-        initialContract={contract}
-      />
-    );
-  }
-
+  const ph = lead.photographers;
+  const logoUrl = ph.logo_storage_path ? await getSignedDownloadUrl("logos", ph.logo_storage_path, 60 * 60 * 24) : null;
+  const conv = (lead.details ?? null) as { eventSlot?: string; location?: string } | null;
   return (
-    <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <h1 className="text-[22px] font-bold mb-1 font-display">הצעת מחיר לצילום</h1>
-      <p className="text-xs mb-5 text-ink-soft">מאת {lead.photographers.name}</p>
-
-      <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-xs text-ink-soft mb-1">עבור</div>
-        <div className="text-sm font-semibold mb-3.5">{lead.name}</div>
-
-        {lead.event_date_interest && (
-          <>
-            <div className="text-xs text-ink-soft mb-1">תאריך משוער</div>
-            <div className="text-sm mb-3.5">{new Date(lead.event_date_interest).toLocaleDateString("he-IL")}</div>
-          </>
-        )}
-
-        {packageLabelText && (
-          <>
-            <div className="text-xs text-ink-soft mb-1">חבילה</div>
-            <div className="text-sm mb-3.5">{packageLabelText}</div>
-          </>
-        )}
-
-        <div className="text-xs text-ink-soft mb-1">מחיר</div>
-        <div className="text-xl font-bold font-display mb-3.5">₪{lead.quoted_amount.toLocaleString("he-IL")}</div>
-
-        {lead.quote_note && (
-          <>
-            <div className="text-xs text-ink-soft mb-1">הערות</div>
-            <div className="text-sm whitespace-pre-wrap">{lead.quote_note}</div>
-          </>
-        )}
-      </div>
-
-      <div className="rounded-2xl p-4 bg-card border border-line shadow-card text-sm">
-        לתיאום ואישור ההזמנה, צרו קשר עם {lead.photographers.name} בטלפון{" "}
-        <span dir="ltr">{lead.photographers.phone}</span>.
-        {lead.photographers.whatsapp_signature && (
-          <div className="mt-2 text-xs text-ink-soft">{lead.photographers.whatsapp_signature}</div>
-        )}
-      </div>
-    </div>
+    <QuoteApprovalFlow
+      token={token}
+      clientName={lead.name}
+      clientPhone={lead.phone}
+      eventDateInterest={lead.event_date_interest}
+      eventTypeName={lead.event_type_name}
+      photographer={{
+        name: ph.name,
+        phone: ph.phone,
+        email: notificationEmailFor(ph.email),
+        businessId: ph.business_id,
+        taxStatus: ph.business_tax_status,
+        logoUrl,
+        whatsappSignature: ph.whatsapp_signature,
+      }}
+      quotedAmount={lead.quoted_amount}
+      quoteNote={lead.quote_note}
+      details={lead.quote_details}
+      slot={slotFor(conv?.eventSlot, lead.quote_details?.startTime)}
+      knownLocation={conv?.location ?? null}
+      initialApprovedAt={lead.quote_approved_at}
+      initialConvertedEventId={lead.converted_event_id}
+      initialClientAccessToken={convertedClientAccessToken}
+      initialContract={contract}
+      businessRules={isAdminLead}
+      packageLabel={packageLabelText || null}
+    />
   );
 }

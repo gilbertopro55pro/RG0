@@ -1,5 +1,3 @@
-import { ADMIN_EMAIL } from "@/lib/admin";
-
 // Extra assistant conversations sold in packs (owner, 2026-10-01). A one-time charge, separate from
 // the subscription; bought conversations don't expire and are used only after the plan's monthly
 // cap is reached (bot_conversations.extra_credit, migration 0147). Prices include VAT.
@@ -21,9 +19,10 @@ export const INTAKE_PACK_TAG = "intake_pack:";
 // The "90% of the monthly cap" phone notification.
 export const INTAKE_ALERT_RATIO = 0.9;
 
-// Buying packs is admin only until the owner checks a real purchase end to end (2026-10-01).
-export function canBuyIntakePacks(email: string | null | undefined): boolean {
-  return email === ADMIN_EMAIL;
+// Open to every account since the owner verified a real purchase end to end (2026-10-01, "תשחרר").
+export function canBuyIntakePacks(email?: string | null): boolean {
+  void email;
+  return true;
 }
 
 // "2026-10" in Israel time.

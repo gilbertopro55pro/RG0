@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { sendPushToPhotographer } from "@/lib/push";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { ADMIN_EMAIL } from "@/lib/admin";
 import type { LeadRow } from "@/lib/types";
 
 // Public, token-authenticated (the client has no login) — admin-gated for now, same staged-rollout
@@ -19,9 +18,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   if (!lead || !lead.quoted_amount) {
     return NextResponse.json({ error: "הצעת המחיר לא נמצאה" }, { status: 404 });
-  }
-  if (lead.photographers?.email !== ADMIN_EMAIL) {
-    return NextResponse.json({ error: "התכונה עדיין לא זמינה" }, { status: 403 });
   }
   if (lead.quote_approved_at) {
     return NextResponse.json({ ok: true, alreadyApproved: true });
