@@ -4,6 +4,9 @@ import { authenticateGalleryRequest } from "@/lib/desktopAuth";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { GalleryRow, Photographer } from "@/lib/types";
+import { photographerLang } from "@/lib/clientLang";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 export const runtime = "nodejs";
 
@@ -27,18 +30,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const { data: photographer } = await supabase
       .from("photographers")
-      .select("email")
+      .select("email, ui_lang")
       .eq("id", gallery.photographer_id)
-      .maybeSingle<Pick<Photographer, "email">>();
+      .maybeSingle<Pick<Photographer, "email" | "ui_lang">>();
     if (!photographer?.email) return NextResponse.json({ ok: true });
 
     const origin = new URL(request.url).origin;
     const galleryUrl = `${origin}/galleries/${gallery.id}`;
-    const countNote = succeededCount != null && totalCount != null ? `, ${succeededCount} מתוך ${totalCount} תמונות הועלו בהצלחה` : "";
+    // In the photographer's own language (photographers.ui_lang); Hebrew when unset.
+    const t = makeT(messagesFor(photographerLang(photographer.ui_lang)));
+    const done =
+      succeededCount != null && totalCount != null
+        ? t("העלאת התמונות לגלריה \"{title}\" הסתיימה, {ok} מתוך {total} תמונות הועלו בהצלחה.", { title: gallery.title, ok: succeededCount, total: totalCount })
+        : t("העלאת התמונות לגלריה \"{title}\" הסתיימה.", { title: gallery.title });
     await sendEmail({
       to: notificationEmailFor(photographer.email),
-      subject: `העלאת התמונות ל"${gallery.title}" הסתיימה`,
-      text: `שלום,\n\nהעלאת התמונות לגלריה "${gallery.title}" הסתיימה${countNote}.\n\nלצפייה בגלריה:\n${galleryUrl}`,
+      subject: t("העלאת התמונות ל\"{title}\" הסתיימה", { title: gallery.title }),
+      text: `${t("שלום,")}\n\n${done}\n\n${t("לצפייה בגלריה:")}\n${galleryUrl}`,
     });
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -5,6 +5,10 @@ import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { packageLabel } from "@/lib/stages";
 import type { EventContractRow, EventRow, Photographer } from "@/lib/types";
+import { photographerLang } from "@/lib/clientLang";
+import { dateLocale } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -71,17 +75,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     .eq("id", contract.event_id)
     .maybeSingle<EventRow & { custom_packages: { name: string } | null }>();
   if (event) {
-    await sendPushToPhotographer(event.photographer_id, {
-      title: `${event.client_name} חתמו על החוזה`,
-      body: `האירוע ב-${new Date(event.event_date).toLocaleDateString("he-IL")}. לחצו לפתיחת האירוע`,
-      url: `/events/${event.id}`,
-      tag: `contract-${event.id}`,
-    });
+    // Push and email go to the photographer, in their own language (photographers.ui_lang).
     const { data: photographer } = await supabase
       .from("photographers")
       .select("*")
       .eq("id", event.photographer_id)
       .maybeSingle<Photographer>();
+    const lang = photographerLang(photographer?.ui_lang);
+    const t = makeT(messagesFor(lang));
+    const eventDateStr = new Date(event.event_date).toLocaleDateString(dateLocale(lang));
+    await sendPushToPhotographer(event.photographer_id, {
+      title: t("{name} חתמו על החוזה", { name: event.client_name }),
+      body: t("האירוע ב-{date}. לחצו לפתיחת האירוע", { date: eventDateStr }),
+      url: `/events/${event.id}`,
+      tag: `contract-${event.id}`,
+    });
     if (photographer) {
       await supabase
         .from("event_stages")
@@ -90,23 +98,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         .eq("stage_key", "event_closing")
         .eq("done", false);
 
-      const eventDateStr = new Date(event.event_date).toLocaleDateString("he-IL");
       const eventUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://myframeflow.com"}/events/${event.id}`;
       await sendEmail({
         to: notificationEmailFor(photographer.email),
-        subject: `החוזה עם ${event.client_name} נחתם`,
-        text: `שלום ${photographer.name},
-
-החוזה עבור האירוע של ${event.client_name} נחתם דיגיטלית על ידי ${signerName.trim()}.
-
-פרטי האירוע:
-תאריך: ${eventDateStr}
-מיקום: ${event.event_location || "יעודכן"}
-חבילה: ${packageLabel(event.package, event.custom_packages?.name)}
-טלפון הלקוח/ה: ${event.client_phone || "לא הוזן"}
-
-מעבר לעמוד האירוע לשליחת הודעת פתיחה ללקוח/ה:
-${eventUrl}`,
+        subject: t("החוזה עם {name} נחתם", { name: event.client_name }),
+        text:
+          `${t("שלום {name},", { name: photographer.name })}\n\n` +
+          `${t("החוזה עבור האירוע של {name} נחתם דיגיטלית על ידי {signer}.", { name: event.client_name, signer: signerName.trim() })}\n\n` +
+          `${t("פרטי האירוע:")}\n` +
+          `${t("תאריך: {v}", { v: eventDateStr })}\n` +
+          `${t("מיקום: {v}", { v: event.event_location || t("יעודכן") })}\n` +
+          `${t("חבילה: {v}", { v: t(packageLabel(event.package, event.custom_packages?.name)) })}\n` +
+          `${t("טלפון הלקוח/ה: {v}", { v: event.client_phone || t("לא הוזן") })}\n\n` +
+          `${t("מעבר לעמוד האירוע לשליחת הודעת פתיחה ללקוח/ה:")}\n${eventUrl}`,
       }).catch((e) => console.error("Contract-signed email failed:", e));
     }
   }

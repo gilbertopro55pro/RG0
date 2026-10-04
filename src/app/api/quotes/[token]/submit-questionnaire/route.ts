@@ -9,6 +9,10 @@ import type { LeadRow, Photographer } from "@/lib/types";
 import { packageFromItems, type LeadQuoteDetails } from "@/lib/leadQuote";
 import { createQuoteContract, latestContract } from "@/lib/quoteContract";
 import type { EventContractRow } from "@/lib/types";
+import { photographerLang } from "@/lib/clientLang";
+import { dateLocale } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 // Public, token-authenticated, admin-gated (see approve/route.ts's own comment) — the second and
 // final step of the quote-approval flow. The client fills in exactly the details a "new event"
@@ -118,25 +122,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     }
 
     if (lead.photographers?.email) {
-      const eventDateStr = new Date(result.event.event_date).toLocaleDateString("he-IL");
+      // To the photographer, in their own language (photographers.ui_lang); Hebrew when unset.
+      const lang = photographerLang(lead.photographers.ui_lang);
+      const t = makeT(messagesFor(lang));
+      const money = (n: number | null) => (lang === "he" ? `₪${n}` : `₪${(n ?? 0).toLocaleString(dateLocale(lang))}`);
+      const eventDateStr = new Date(result.event.event_date).toLocaleDateString(dateLocale(lang));
       try {
         await sendEmail({
           to: notificationEmailFor(lead.photographers.email),
-          subject: `אירוע חדש נוצר אוטומטית | ${result.event.client_name}`,
-          text: `שלום ${lead.photographers.name},
-
-הלקוח/ה ${result.event.client_name} אישר/ה את הצעת המחיר ומילא/ה שאלון פרטים. האירוע נוסף אוטומטית ליומן שלך.
-
-פרטי האירוע:
-שם הלקוח/ה: ${result.event.client_name}
-טלפון: ${result.event.client_phone || "לא הוזן"}
-תאריך: ${eventDateStr}
-מיקום: ${result.event.event_location || "יעודכן"}
-חבילה: ${packageLabel(result.event.package, null)}
-מקדמה: ₪0 · יתרה לתשלום: ₪${lead.quoted_amount}${pkgFromItems ? `\n(החבילה נבחרה לפי פריטי ההצעה. אפשר לשנות אותה בעמוד האירוע.)` : ""}${hoursNotice ? `\n${hoursNotice}` : ""}
-
-${contract ? "\nהחוזה הוצג ללקוח/ה לחתימה כשלב האחרון בשאלון. כשייחתם, שלב סגירת האירוע יסומן כבוצע ותקבל/י עדכון.\n" : ""}
-ניתן לעדכן את פרטי המקדמה/יתרה ולעקוב אחרי האירוע בעמוד האירוע במערכת.`,
+          subject: t("אירוע חדש נוצר אוטומטית | {name}", { name: result.event.client_name }),
+          text:
+            `${t("שלום {name},", { name: lead.photographers.name })}\n\n` +
+            `${t("הלקוח/ה {name} אישר/ה את הצעת המחיר ומילא/ה שאלון פרטים. האירוע נוסף אוטומטית ליומן שלך.", { name: result.event.client_name })}\n\n` +
+            `${t("פרטי האירוע:")}\n` +
+            `${t("שם הלקוח/ה: {v}", { v: result.event.client_name })}\n` +
+            `${t("טלפון: {v}", { v: result.event.client_phone || t("לא הוזן") })}\n` +
+            `${t("תאריך: {v}", { v: eventDateStr })}\n` +
+            `${t("מיקום: {v}", { v: result.event.event_location || t("יעודכן") })}\n` +
+            `${t("חבילה: {v}", { v: t(packageLabel(result.event.package, null)) })}\n` +
+            `${t("מקדמה: {deposit} · יתרה לתשלום: {balance}", { deposit: money(0), balance: money(lead.quoted_amount) })}` +
+            `${pkgFromItems ? `\n${t("(החבילה נבחרה לפי פריטי ההצעה. אפשר לשנות אותה בעמוד האירוע.)")}` : ""}${hoursNotice ? `\n${hoursNotice}` : ""}\n\n` +
+            `${contract ? `\n${t("החוזה הוצג ללקוח/ה לחתימה כשלב האחרון בשאלון. כשייחתם, שלב סגירת האירוע יסומן כבוצע ותקבל/י עדכון.")}\n` : ""}\n` +
+            t("ניתן לעדכן את פרטי המקדמה/יתרה ולעקוב אחרי האירוע בעמוד האירוע במערכת."),
         });
       } catch (e) {
         console.error("[submit-questionnaire] failed to send new-event email", e);

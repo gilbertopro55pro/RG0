@@ -3,6 +3,10 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { EventRow, GalleryRow, Photographer } from "@/lib/types";
+import { photographerLang } from "@/lib/clientLang";
+import { dateLocale } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -42,7 +46,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   // Standalone galleries (no event) have no event_stages row or event_notifications feed to
   // update — the stage/notification side only applies when a real event owns this gallery.
   let clientLabel = gallery.title;
-  let formattedDate = gallery.shoot_date ? new Date(gallery.shoot_date).toLocaleDateString("he-IL") : "";
+  // The date's raw value; formatted below in the photographer's language for their email.
+  let dateValue: string | null = gallery.shoot_date ?? null;
   if (gallery.event_id) {
     await supabase
       .from("event_stages")
@@ -57,7 +62,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       .maybeSingle<Pick<EventRow, "client_name" | "event_date">>();
 
     clientLabel = event?.client_name ?? clientLabel;
-    formattedDate = event?.event_date ? new Date(event.event_date).toLocaleDateString("he-IL") : formattedDate;
+    dateValue = event?.event_date ?? dateValue;
 
     await supabase.from("event_notifications").insert({
       event_id: gallery.event_id,
@@ -68,22 +73,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("name, email")
+    .select("name, email, ui_lang")
     .eq("id", gallery.photographer_id)
-    .maybeSingle<Pick<Photographer, "name" | "email">>();
+    .maybeSingle<Pick<Photographer, "name" | "email" | "ui_lang">>();
 
   if (photographer?.email) {
+    // To the photographer, in their own language (photographers.ui_lang); Hebrew when unset.
+    const lang = photographerLang(photographer.ui_lang);
+    const t = makeT(messagesFor(lang));
+    const formattedDate = dateValue ? new Date(dateValue).toLocaleDateString(dateLocale(lang)) : "";
     const origin = new URL(request.url).origin;
     const favoritesLink = `${origin}/galleries/${gallery.id}?favorites=1`;
     try {
       await sendEmail({
         to: notificationEmailFor(photographer.email),
-        subject: `${clientLabel} סיימו לבחור תמונות מהגלריה`,
+        subject: t("{name} סיימו לבחור תמונות מהגלריה", { name: clientLabel }),
         text:
-          `שלום ${photographer.name},\n\n` +
-          `הלקוח/ה של "${clientLabel}"${formattedDate ? ` (${formattedDate})` : ""} סיימו לבחור תמונות מהגלריה.\n` +
-          `נבחרו ${count ?? 0} תמונות.\n\n` +
-          `לצפייה והורדה של התמונות שנבחרו:\n${favoritesLink}\n`,
+          `${t("שלום {name},", { name: photographer.name })}\n\n` +
+          `${formattedDate ? t("הלקוח/ה של \"{name}\" ({date}) סיימו לבחור תמונות מהגלריה.", { name: clientLabel, date: formattedDate }) : t("הלקוח/ה של \"{name}\" סיימו לבחור תמונות מהגלריה.", { name: clientLabel })}\n` +
+          `${t("נבחרו {n} תמונות.", { n: count ?? 0 })}\n\n` +
+          `${t("לצפייה והורדה של התמונות שנבחרו:")}\n${favoritesLink}\n`,
       });
     } catch (e) {
       console.error("Selection confirmation email failed:", e);

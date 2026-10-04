@@ -12,6 +12,12 @@ import { renderAlbumPagePsd } from "@/lib/albumPsd";
 import { generateAlbumPdf } from "@/lib/albumPdf";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
+import { photographerLang } from "@/lib/clientLang";
+// Only the photographer-notification dictionary, not every area's (src/i18n/dict/index.ts): this
+// file is in the Fly worker's render graph (scripts/computeRenderHash.js), so importing all the
+// dictionaries would force a worker redeploy on every unrelated translation change.
+import photographerNotifyDict from "@/i18n/dict/photographerNotify";
+import { makeT } from "@/i18n/translate";
 import { PRINT_LINK_DAYS, daysFromNow, formatPrintDay, printLinkUrl } from "@/lib/printHouseLinks";
 import type { GalleryAlbumExportJobRow, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
@@ -242,17 +248,20 @@ async function notifyPhotographerExportReady(
   try {
     const { data: photographer } = await supabase
       .from("photographers")
-      .select("email")
+      .select("email, ui_lang")
       .eq("id", job.photographer_id)
-      .maybeSingle<{ email: string | null }>();
+      .maybeSingle<{ email: string | null; ui_lang: string | null }>();
     if (!photographer?.email) return;
+    // In the photographer's own language (photographers.ui_lang); Hebrew when unset.
+    const lang = photographerLang(photographer.ui_lang);
+    const t = makeT(lang === "he" ? {} : photographerNotifyDict[lang]);
     const formatLabel = job.format === "pdf" ? "PDF" : job.format === "jpg" ? "JPG" : "PSD";
     const filename = job.format === "pdf" ? `${sanitizeSegment(albumTitle)}.pdf` : `${sanitizeSegment(albumTitle)}-${job.format}.zip`;
     const downloadUrl = await getSignedDownloadUrl("galleries", storagePath, 60 * 60 * 24 * 7, filename);
     await sendEmail({
       to: notificationEmailFor(photographer.email),
-      subject: `ייצוא ${formatLabel} מוכן להורדה | ${albumTitle}`,
-      text: `שלום,\n\nייצוא ה-${formatLabel} של האלבום "${albumTitle}" הסתיים ומוכן להורדה:\n${downloadUrl}\n\nהקישור בתוקף לשבוע ימים.`,
+      subject: t("ייצוא {format} מוכן להורדה | {title}", { format: formatLabel, title: albumTitle }),
+      text: `${t("שלום,")}\n\n${t("ייצוא ה-{format} של האלבום \"{title}\" הסתיים ומוכן להורדה:", { format: formatLabel, title: albumTitle })}\n${downloadUrl}\n\n${t("הקישור בתוקף לשבוע ימים.")}`,
     });
   } catch (e) {
     // Best-effort — a failed notification email must never fail the export itself (see the

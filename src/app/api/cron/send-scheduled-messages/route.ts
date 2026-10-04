@@ -5,7 +5,8 @@ import { LEAD_FOLLOW_UP_TEMPLATES } from "@/lib/stages";
 import { friendlyWhatsAppError, sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
-import { clientLangFor } from "@/lib/clientLang";
+import { clientLangFor, photographerLang } from "@/lib/clientLang";
+import { dateLocale } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 
@@ -141,23 +142,26 @@ async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: 
 
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("email, name")
+    .select("email, name, ui_lang")
     .eq("id", lead.photographer_id)
-    .maybeSingle<{ email: string; name: string | null }>();
-
-  const detailsBlock =
-    `שם מלא: ${lead.name}\n` +
-    `טלפון: ${lead.phone ?? "לא צוין"}\n` +
-    `תאריך האירוע: ${lead.event_date_interest ? new Date(lead.event_date_interest).toLocaleDateString("he-IL") : "לא צוין"}\n` +
-    `סוג האירוע: ${lead.event_type_name ?? "לא צוין"}\n` +
-    `סכום ההצעה: ₪${lead.quoted_amount ?? 0}`;
+    .maybeSingle<{ email: string; name: string | null; ui_lang: string | null }>();
 
   if (photographer?.email) {
+    // The reminder to the photographer, in their own language (photographers.ui_lang).
+    const pLang = photographerLang(photographer.ui_lang);
+    const pt = makeT(messagesFor(pLang));
+    const amount = lead.quoted_amount ?? 0;
+    const detailsBlock =
+      `${pt("שם מלא: {v}", { v: lead.name })}\n` +
+      `${pt("טלפון: {v}", { v: lead.phone ?? pt("לא צוין") })}\n` +
+      `${pt("תאריך האירוע: {v}", { v: lead.event_date_interest ? new Date(lead.event_date_interest).toLocaleDateString(dateLocale(pLang)) : pt("לא צוין") })}\n` +
+      `${pt("סוג האירוע: {v}", { v: lead.event_type_name ?? pt("לא צוין") })}\n` +
+      pt("סכום ההצעה: {v}", { v: pLang === "he" ? `₪${amount}` : `₪${Number(amount).toLocaleString(dateLocale(pLang))}` });
     try {
       await sendEmail({
         to: notificationEmailFor(photographer.email),
-        subject: `תזכורת מעקב אחרי הצעת מחיר | ${lead.name}`,
-        text: `שלום,\n\nעברו יומיים מאז שנשלחה הצעת מחיר ל${lead.name} ועדיין לא התקבלה תשובה. כדאי לבצע פולואפ:\n\n${detailsBlock}\n\nאפשר לבצע את הפולואפ ישירות מהאפליקציה, בעמוד הלידים.`,
+        subject: pt("תזכורת מעקב אחרי הצעת מחיר | {name}", { name: lead.name }),
+        text: `${pt("שלום,")}\n\n${pt("עברו יומיים מאז שנשלחה הצעת מחיר ל{name} ועדיין לא התקבלה תשובה. כדאי לבצע פולואפ:", { name: lead.name })}\n\n${detailsBlock}\n\n${pt("אפשר לבצע את הפולואפ ישירות מהאפליקציה, בעמוד הלידים.")}`,
       });
     } catch (e) {
       console.error("Lead quote follow-up email to photographer failed:", e);

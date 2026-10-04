@@ -335,7 +335,7 @@
 - **כל טקסט חדש במערכת עובר דרך `t()` עם תרגום לאנגלית ולרוסית.** גם רשומה חדשה ב-CHANGELOG צריכה `en` ו-`ru`.
 
 **שלוש שפות שונות, שלושה מקורות:**
-1. **שפת הממשק של הצלם:** cookie `ui_lang` לכל מכשיר (הגדרות › תצוגה, `/api/ui-language`), וגם `photographers.ui_lang` (migration 0151) כדי שמיילים, התראות לטלפון ודף התשלום של PayPlus ייצאו בשפה שלו (`photographerLang`).
+1. **שפת הממשק של הצלם:** cookie `ui_lang` לכל מכשיר (הגדרות › מראה, `/api/ui-language`), וגם `photographers.ui_lang` (migration 0151) כדי שמיילים, התראות לטלפון ודף התשלום של PayPlus ייצאו בשפה שלו (`photographerLang`).
 2. **שפת הלקוח:** `leads.client_lang` / `events.client_lang` (migration 0150, null = עברית), נבחרת בבונה ההצעות, בכרטיס הליד ובעריכת אירוע. דפי הלקוח עטופים ב-`ClientLangScope`, וקומפוננטות שרת בהם מתרגמות עם `makeT(messagesFor(lang))`, לא `getT()`.
 3. **שפת המבקר בדפי השיווק:** `/en`, `/ru` (דף הנחיתה), `/signup?lang=`, `/login?lang=`, `/reset-password?lang=`. נרשם בשפה אחרת מקבל את ה-cookie ואת `ui_lang`.
 
