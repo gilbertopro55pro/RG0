@@ -20,6 +20,22 @@ import { galleryThemeById, galleryThemeVars, galleryFont } from "@/lib/galleryTh
 import type { GalleryStyleOverrides } from "@/lib/galleryTheme";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import { isLightTextColor } from "@/lib/textColor";
+import { clientLangFor } from "@/lib/clientLang";
+import ClientLangScope from "@/i18n/ClientLangScope";
+import { dateLocale, type Lang } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
+
+// The client's language for this gallery (UI languages phase 2): the event's client_lang, gated by
+// clientLangFor (Hebrew for every non-admin photographer). A gallery with no event stays Hebrew.
+async function galleryLang(supabase: ReturnType<typeof createServiceRoleClient>, gallery: GalleryRow): Promise<Lang> {
+  if (!gallery.event_id) return "he";
+  const [{ data: event }, { data: photographer }] = await Promise.all([
+    supabase.from("events").select("client_lang").eq("id", gallery.event_id).maybeSingle<Pick<EventRow, "client_lang">>(),
+    supabase.from("photographers").select("email").eq("id", gallery.photographer_id).maybeSingle<{ email: string | null }>(),
+  ]);
+  return clientLangFor(photographer?.email, event?.client_lang);
+}
 
 // Powers the link-preview card WhatsApp/iMessage/etc. show when a photographer sends the gallery
 // link to a client — without this, every gallery link previewed with the same generic app icon
@@ -35,6 +51,7 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
   // below) — matching that here so a link preview never leaks a photo from a gallery the client
   // isn't actually supposed to be able to see yet.
   if (!gallery || !gallery.published || gallery.archived_at) return {};
+  const t = makeT(messagesFor(await galleryLang(supabase, gallery)));
 
   let imageUrl: string | null = null;
   if (gallery.cover_photo_id) {
@@ -54,14 +71,14 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
     }
   }
 
-  const title = gallery.title || "גלריית תמונות";
-  const description = "צפו וסמנו את התמונות הנבחרות שלכם מתוך הגלריה";
+  const title = gallery.title || t("גלריית תמונות");
+  const description = t("צפו וסמנו את התמונות הנבחרות שלכם מתוך הגלריה");
   return {
     title,
     openGraph: {
       title,
       description,
-      siteName: "גילברטו",
+      siteName: t("גילברטו"),
       images: imageUrl ? [{ url: imageUrl }] : undefined,
     },
     twitter: {
@@ -104,19 +121,26 @@ export default async function PublicGalleryPage({
     isOwnerPreview = !!user && user.id === gallery.photographer_id;
   }
 
+  const lang: Lang = gallery ? await galleryLang(supabase, gallery) : "he";
+  const t = makeT(messagesFor(lang));
+
   if (!gallery || (!gallery.published && !isOwnerPreview)) {
     return (
-      <div className="max-w-md mx-auto px-4 pt-16 pb-10 w-full text-center">
-        <p className="text-sm text-ink-soft">הגלריה לא נמצאה, או שעדיין לא פורסמה.</p>
-      </div>
+      <ClientLangScope lang={lang}>
+        <div className="max-w-md mx-auto px-4 pt-16 pb-10 w-full text-center">
+          <p className="text-sm text-ink-soft">{t("הגלריה לא נמצאה, או שעדיין לא פורסמה.")}</p>
+        </div>
+      </ClientLangScope>
     );
   }
 
   if (gallery.archived_at) {
     return (
-      <div className="max-w-md mx-auto px-4 pt-16 pb-10 w-full text-center">
-        <p className="text-sm text-ink-soft">הגלריה כבר לא זמינה. פנו לצלם/ת שלכם לפרטים נוספים.</p>
-      </div>
+      <ClientLangScope lang={lang}>
+        <div className="max-w-md mx-auto px-4 pt-16 pb-10 w-full text-center">
+          <p className="text-sm text-ink-soft">{t("הגלריה כבר לא זמינה. פנו לצלם/ת שלכם לפרטים נוספים.")}</p>
+        </div>
+      </ClientLangScope>
     );
   }
 
@@ -350,19 +374,20 @@ export default async function PublicGalleryPage({
   // banner-less gallery reads as broken, and most galleries only ever need one obvious hero shot.
   const coverPhoto = (gallery.cover_photo_id ? photosWithUrls.find((p) => p.id === gallery.cover_photo_id) : null) ?? photosWithUrls[0];
   const dateLabel = event
-    ? `${event.client_name}, ${new Date(event.event_date).toLocaleDateString("he-IL")}`
+    ? `${event.client_name}, ${new Date(event.event_date).toLocaleDateString(dateLocale(lang))}`
     : gallery.shoot_date
-      ? new Date(gallery.shoot_date).toLocaleDateString("he-IL")
+      ? new Date(gallery.shoot_date).toLocaleDateString(dateLocale(lang))
       : null;
 
   return (
+    <ClientLangScope lang={lang}>
     <div
       className={`${galleryFont.variable} max-w-2xl lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full min-h-screen`}
       style={{ background: theme.bg, ...galleryThemeVars(gallery.theme, styleOverrides), ...brandAccentVars }}
     >
       {isOwnerPreview && (
         <div className="sticky top-0 z-50 -mx-4 mb-3 px-4 py-2 text-center text-xs font-semibold text-white" style={{ background: "var(--color-amber-deep)" }}>
-          תצוגה מקדימה. כך הלקוח/ה יראו את הגלריה לאחר הפרסום. הגלריה עצמה עדיין לא פורסמה.
+          {t("תצוגה מקדימה. כך הלקוח/ה יראו את הגלריה לאחר הפרסום. הגלריה עצמה עדיין לא פורסמה.")}
         </div>
       )}
       {brandLogoUrl && (
@@ -412,5 +437,6 @@ export default async function PublicGalleryPage({
         restrictedQuality={restrictedQuality}
       />
     </div>
+    </ClientLangScope>
   );
 }
