@@ -36,7 +36,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const path = `${user.id}/conversation-${lead.id}-${Date.now()}.pdf`;
   await uploadObject("price-quotes", path, Buffer.from(pdf), "application/pdf");
-  const url = await getSignedDownloadUrl("price-quotes", path, 60 * 60 * 24 * 7, conversationPdfName(details));
+  const url = await getSignedDownloadUrl("price-quotes", path, 60 * 60 * 24 * 7, conversationPdfName(details, photographer));
   const first = (details.clientName ?? "").trim().split(/\s+/)[0];
   const message = `${first ? `היי ${first}, ` : "היי, "}מצורף סיכום השיחה שלנו עם כל פרטי האירוע:\n${url}\n\n${studioName(photographer)}`;
   return NextResponse.json({ url, message, phone: lead.phone ?? details.phone ?? null });
