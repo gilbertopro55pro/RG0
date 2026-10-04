@@ -87,7 +87,7 @@ right after checkout, so the script reads the link at the network level (`CHECKO
 PayPlus's docs were unreachable from the cloud environment, so "en" isn't verified and "ru" isn't
 used. If PayPlus rejects a non-Hebrew request, the link is generated again in Hebrew (logged as
 `PayPlus link in en failed, retrying in Hebrew`), so a language problem never blocks a payment.
-Not yet tested with a real checkout.
+**Verified live 2026-10-04:** the owner bought a ₪10 intake pack with the app set to English: the PayPlus page and PayPlus's own confirmation email came in English ("Thank you for your payment…"), the purchase was marked paid, the 10 conversations credited, and the Finbot receipt issued. So "en" is accepted; "ru" is still unverified and unused.
 
 ## Testing
 
