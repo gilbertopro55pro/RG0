@@ -12,6 +12,7 @@ import { SUBSCRIPTION_PLANS, type SubscriptionTier } from "@/lib/stages";
 import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
 import { canChooseClientLang } from "@/lib/clientLang";
 import { detectTextLang } from "@/i18n/detect";
+import { lookupPlace } from "@/lib/placeLookup";
 import { isLang, type Lang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
@@ -27,7 +28,7 @@ export const INTAKE_MODEL = "claude-sonnet-5";
 export const INTAKE_MONTHLY_CAP: Record<SubscriptionTier, number> = { basic: 100, standard: 150, studio_pro: 200 };
 export const MAX_CLIENT_TURNS = 30;
 export const MAX_MESSAGE_CHARS = 1000;
-const MAX_TOOL_ROUNDS = 5;
+const MAX_TOOL_ROUNDS = 6;
 
 const REQUIRED: { key: keyof IntakeDetails; label: string }[] = [
   { key: "eventType", label: "סוג האירוע" },
@@ -184,6 +185,12 @@ ${p.intake_allow_split_day ? `- ${name} יכול לצלם באותו יום גם
 ` : ""}- ברגע שיש תאריך, קוראים ל-check_availability. אם התאריך תפוס, אומרים את זה בעדינות ומציעים להיכנס לרשימת ההמתנה (אחרי שיש שם וטלפון, קוראים ל-join_waitlist).
 - אחרי ש-join_waitlist החזיר ok, מסיימים בתודה ובהסבר ש${name} יעדכן אם התאריך יתפנה. לא ממשיכים לאסוף פרטים ולא מציעים הצעת מחיר לתאריך תפוס.
 - בכל פעם שהלקוח נותן פרט, קוראים ל-save_details עם מה שנאמר.
+- אסור לכתוב ללקוח שפרט נרשם, נשמר או "סומן" אם לא קראתם באותו סבב ל-save_details והוא החזיר אותו ב-saved.
+- מקום האירוע (בעל העסק ביקש, 2026-10-04): כשהלקוח כותב מקום, קודם קוראים ל-check_location, ורק אחר כך שומרים.
+  - נמצאה התאמה ברורה: שומרים בשם הנכון (גם אם הלקוח כתב עם שגיאת כתיב), עם העיר, וממשיכים בלי להעיר על זה.
+  - יש התאמה דומה אבל לא זהה: שואלים בטבעיות אם התכוונו אליה ("רק לוודא, הכוונה לאולמי X בראשון לציון?"), ושומרים אחרי שאישרו.
+  - לא נמצא, ואין עיר מוכרת: לא שומרים ולא אומרים שזה נרשם. שואלים בעדינות, בלי להאשים: לבדוק את השם, או באיזו עיר המקום. אולמות ובתי כנסת קטנים לפעמים לא מופיעים במפה, אז אם הלקוח מאשר שהמקום קיים ואומר באיזו עיר, שומרים "שם המקום, העיר" וממשיכים.
+  - אם הלקוח שואל אם המקום קיים, עונים לפי מה שהבדיקה מצאה, בכנות.
 - מה הצילום יכלול: שואלים מה הם רוצים שהצילום יכלול. אם שואלים מה האפשרויות: תמונות, וידאו, מגנטים ואלבום דיגיטלי מעוצב. שומרים ב-save_details בשדה coverage.
 - אם רוצים וידאו: שואלים אם צריך צלם וידאו נוסף, כלומר שני אנשי צוות (צלם סטילס, ${name}, וצלם וידאו). אם בשאלות הנפוצות יש מידע על צלם וידאו או צלם שני, עונים לפיו. שומרים בשדה videoCrew.
 - בר מצווה או בת מצווה: מוודאים אם זה אירוע בוקר (עלייה לתורה) או אירוע ערב, כי יש שקוראים לעלייה לתורה "בר מצווה". שומרים ב-save_details בשדה eventSlot (ובבדיקת התאריך שולחים את ה-slot המתאים).
@@ -208,6 +215,15 @@ const TOOLS: Anthropic.Tool[] = [
         slot: { type: "string", enum: ["morning", "evening"], description: "בוקר (עלייה לתורה) או ערב, כשהצלם מאפשר שני אירועים באותו יום" },
       },
       required: ["date"],
+    },
+  },
+  {
+    name: "check_location",
+    description: "בודק במפה אם מקום האירוע שהלקוח כתב קיים בישראל (עיר, יישוב, אולם, בית כנסת). לקרוא כל פעם שהלקוח נותן מקום, לפני שמירה. מחזיר התאמות אפשריות.",
+    input_schema: {
+      type: "object",
+      properties: { query: { type: "string", description: "המקום כפי שהלקוח כתב, בתוספת העיר אם נאמרה" } },
+      required: ["query"],
     },
   },
   {
@@ -456,6 +472,11 @@ async function runTool(
   input: Record<string, unknown>,
   siteUrl: string
 ): Promise<string> {
+  if (name === "check_location") {
+    const r = await lookupPlace(String(input.query ?? ""));
+    if (r.error) return JSON.stringify({ checked: false, note: "הבדיקה במפה לא זמינה כרגע. אם המקום לא מוכר לכם או לא כולל עיר, לשאול את הלקוח באיזו עיר הוא" });
+    return JSON.stringify(r.found ? { found: true, matches: r.matches } : { found: false, note: "לא נמצא במפה. ייתכן שגיאת כתיב או מקום קטן שלא במפה: לשאול את הלקוח" });
+  }
   if (name === "check_availability") {
     const date = String(input.date ?? "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return JSON.stringify({ error: "פורמט תאריך לא תקין, צריך YYYY-MM-DD" });
@@ -597,6 +618,7 @@ export async function runIntakeTurn(
   // (price and "bot or human" questions went unanswered in a live test, 2026-09-26).
   const texts: string[] = [];
   let refused = false;
+  let retriedEmpty = false;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let response: Anthropic.Message;
@@ -632,6 +654,14 @@ export async function runIntakeTurn(
       .join("\n")
       .trim();
     if (text) texts.push(text);
+
+    // A turn that ends with no text at all (seen live 2026-10-04: only an empty thinking block)
+    // used to show the client the "something went wrong" fallback. Drop it and ask once more.
+    if (!text && response.stop_reason === "end_turn" && !retriedEmpty) {
+      retriedEmpty = true;
+      messages.pop();
+      continue;
+    }
 
     if (response.stop_reason === "refusal") {
       refused = true;

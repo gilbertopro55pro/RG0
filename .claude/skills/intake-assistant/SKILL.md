@@ -74,7 +74,7 @@ below, so don't change them without asking.
 | Piece | Where |
 |---|---|
 | Engine: system prompt, 4 tools, manual tool loop (official `@anthropic-ai/sdk`) | `src/lib/intakeAssistant.ts` |
-| Tools | `check_availability` (events on that date), `save_details` (merge + upsert lead), `complete_intake`, `join_waitlist` |
+| Tools | `check_availability` (events on that date), `check_location` (OpenStreetMap: Nominatim, Photon fallback, Israel only; `lib/placeLookup.ts`), `save_details` (merge + upsert lead), `complete_intake`, `join_waitlist` |
 | Access and caps; chat key = `portfolio_slug`, else `intake_chat_token` | `src/lib/intakeChatAccess.ts` |
 | Public API: GET (bootstrap + transcript), POST (one client message) | `src/app/api/intake-chat/[key]/route.ts` |
 | Fallback form | `src/app/api/intake-chat/[key]/form/route.ts` |
@@ -89,7 +89,7 @@ below, so don't change them without asking.
   mobile carriers share one IP across many clients; the monthly cap guards the cost). Form: 30/hour.
 - 30 client turns per conversation.
 - 1000 characters per message.
-- Up to 5 tool rounds per turn.
+- Up to 6 tool rounds per turn.
 
 **WhatsApp Business greeting (2026-09-25/26):** settings › אוטומציה has an editable greeting for
 the photographer's own WhatsApp Business app (no Meta approval): default text in
@@ -219,6 +219,16 @@ never claims to be the photographer and answers honestly if asked whether it's a
   clause י (21+ days = deposit, under 21 = half, in writing; force majeure = full refund). When
   a contract clause changes, update the FAQ answer in the same step, or the assistant quotes the
   old terms.
+
+- **A location that doesn't exist was accepted (2026-10-04, owner's report):** "Kirtay sababa" got
+  "Got it, noted the location" and the model never even called save_details. Now: `check_location`
+  before saving a place; a clear match is saved with the correct spelling and city; a near match
+  → "did you mean X in Y?"; not found → ask (spelling / which city), never claim it was noted.
+  Small halls/synagogues are often missing from OSM, so a client who confirms the place + city is
+  believed. The prompt also forbids saying a detail was saved unless save_details returned it.
+- **Empty turn → fallback (2026-10-04):** the model once ended a turn with only an empty thinking
+  block, so the client got "something went wrong". `runIntakeTurn` now drops such a response and
+  asks once more (`retriedEmpty`).
 
 ## Testing
 
