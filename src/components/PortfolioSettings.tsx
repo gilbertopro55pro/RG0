@@ -7,6 +7,7 @@ import PortfolioManagePanel from "@/components/PortfolioManagePanel";
 import PortfolioFeaturedPicker from "@/components/PortfolioFeaturedPicker";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import type { Photographer } from "@/lib/types";
+import { useT } from "@/i18n/client";
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,48}[a-z0-9])?$/;
 // Must match NO_CATEGORY_TAB in src/app/p/[slug]/page.tsx — the sentinel a curated share link uses
@@ -26,6 +27,7 @@ function slugify(input: string): string {
 
 export default function PortfolioSettings({ photographer }: { photographer: Photographer }) {
   const supabase = createClient();
+  const t = useT();
   // Entry-tier ("פרו סטארט") photographers don't get the public portfolio page — real
   // enforcement lives server-side too, in the /p/[slug] route itself (loadPortfolio checks the
   // photographer's tier before ever returning data), so this toggle being merely disabled here is
@@ -99,7 +101,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
     const effectiveEnabled = enabled && portfolioAllowed;
     const cleanSlug = slugify(slug);
     if (effectiveEnabled && !SLUG_PATTERN.test(cleanSlug)) {
-      setError("כתובת לא תקינה. רק אותיות אנגלית קטנות, מספרים ומקפים, לפחות 2 תווים");
+      setError(t("כתובת לא תקינה. רק אותיות אנגלית קטנות, מספרים ומקפים, לפחות 2 תווים"));
       return;
     }
     setSaving(true);
@@ -113,7 +115,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
       .eq("id", photographer.id);
     setSaving(false);
     if (updateError) {
-      setError(updateError.code === "23505" ? "הכתובת הזו כבר תפוסה. נסו כתובת אחרת" : "שגיאה בשמירה");
+      setError(updateError.code === "23505" ? t("הכתובת הזו כבר תפוסה. נסו כתובת אחרת") : t("שגיאה בשמירה"));
       return;
     }
     setSlug(cleanSlug);
@@ -166,7 +168,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
       }
     } else {
       await navigator.clipboard.writeText(text);
-      setShareStatus("הקישור הועתק ✓");
+      setShareStatus(t("הקישור הועתק ✓"));
       setTimeout(() => setShareStatus(null), 2000);
     }
     setShareOpen(false);
@@ -175,12 +177,12 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-sm font-semibold">פורטפוליו ציבורי</span>
+        <span className="text-sm font-semibold">{t("פורטפוליו ציבורי")}</span>
         <button
           onClick={() => portfolioAllowed && setEnabled((v) => !v)}
           role="switch"
           aria-checked={enabled}
-          aria-label="פורטפוליו ציבורי"
+          aria-label={t("פורטפוליו ציבורי")}
           disabled={!portfolioAllowed}
           className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5 disabled:opacity-50"
           style={{
@@ -193,18 +195,17 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
       </div>
       {!portfolioAllowed ? (
         <p className="text-xs mb-3.5 text-ink-soft">
-          זמין ממסלול פרו ומעלה, שדרגו מסלול בהגדרות כדי לפתוח עמוד תיק עבודות ציבורי.
+          {t("זמין ממסלול פרו ומעלה, שדרגו מסלול בהגדרות כדי לפתוח עמוד תיק עבודות ציבורי.")}
         </p>
       ) : (
         <p className="text-xs mb-3.5 text-ink-soft">
-          עמוד ציבורי עם תמונות שתבחרו מהגלריות שלכם. אפשר לשתף כתיק עבודות ללקוחות פוטנציאליים. סימון תמונה
-          &quot;לתיק עבודות&quot; נעשה מתוך ניהול הגלריה עצמה, בתפריט הפעולות של כל תמונה.
+          {t("עמוד ציבורי עם תמונות שתבחרו מהגלריות שלכם. אפשר לשתף כתיק עבודות ללקוחות פוטנציאליים. סימון תמונה \"לתיק עבודות\" נעשה מתוך ניהול הגלריה עצמה, בתפריט הפעולות של כל תמונה.")}
         </p>
       )}
 
       {enabled && portfolioAllowed && (
         <>
-          <label className="text-xs block mb-1 text-ink-soft">כתובת הפורטפוליו</label>
+          <label className="text-xs block mb-1 text-ink-soft">{t("כתובת הפורטפוליו")}</label>
           <div className="flex items-center gap-1 mb-3">
             <span className="text-xs text-ink-soft font-mono shrink-0">myframeflow.com/p/</span>
             <input
@@ -216,16 +217,15 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
             />
           </div>
 
-          <label className="text-xs block mb-1 text-ink-soft">טקסט פתיחה (אופציונלי)</label>
+          <label className="text-xs block mb-1 text-ink-soft">{t("טקסט פתיחה (אופציונלי)")}</label>
           <p className="text-[11px] text-ink-soft mb-1.5 leading-relaxed">
-            זה המקום להציג את עצמך ללקוחות: כמה מילים עליך, על הסטודיו והסגנון שלך. הטקסט יופיע באיזור ההיכרות בראש
-            עמוד הפורטפוליו הציבורי.
+            {t("זה המקום להציג את עצמך ללקוחות: כמה מילים עליך, על הסטודיו והסגנון שלך. הטקסט יופיע באיזור ההיכרות בראש עמוד הפורטפוליו הציבורי.")}
           </p>
           <textarea
             value={bio}
             onChange={(e) => setBio(e.target.value)}
             rows={3}
-            placeholder="כמה מילים עליכם ועל הסטודיו"
+            placeholder={t("כמה מילים עליכם ועל הסטודיו")}
             className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-3 resize-none"
           />
           <PortfolioUploadPanel photographerId={photographer.id} />
@@ -242,11 +242,11 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
           disabled={saving}
           className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
         >
-          {saving ? "שומר..." : saved ? "נשמר ✓" : "שמירה"}
+          {saving ? t("שומר...") : saved ? t("נשמר ✓") : t("שמירה")}
         </button>
         {enabled && previewUrl && (
           <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold underline text-ink-soft">
-            צפייה בפורטפוליו ←
+            {t("צפייה בפורטפוליו")} <span className="inline-block ltr:rotate-180">←</span>
           </a>
         )}
       </div>
@@ -261,10 +261,10 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
               color: copied ? "var(--color-sage)" : "var(--color-ink-soft)",
             }}
           >
-            {copied ? "הועתק ✓" : "העתקת קישור"}
+            {copied ? t("הועתק ✓") : t("העתקת קישור")}
           </button>
           <button onClick={() => setShareOpen(true)} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink-soft">
-            שיתוף
+            {t("שיתוף")}
           </button>
         </div>
       )}
@@ -274,20 +274,20 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {shareView === "main" ? (
               <>
-                <h2 className="text-lg font-bold font-display mb-1">שיתוף הפורטפוליו</h2>
+                <h2 className="text-lg font-bold font-display mb-1">{t("שיתוף הפורטפוליו")}</h2>
                 {availableTabs.length > 1 && (
                   <>
                     <p className="text-xs text-ink-soft mb-2.5">
-                      אפשר לבחור אילו לשוניות יוצגו בקישור הזה. רק מה שמסומן יופיע אצל מי שיקבל אותו.
+                      {t("אפשר לבחור אילו לשוניות יוצגו בקישור הזה. רק מה שמסומן יופיע אצל מי שיקבל אותו.")}
                     </p>
                     <div className="flex flex-wrap gap-1.5 mb-4">
-                      {availableTabs.map((t) => {
-                        const active = selectedTabs.has(t.key);
+                      {availableTabs.map((tab) => {
+                        const active = selectedTabs.has(tab.key);
                         return (
                           <button
-                            key={t.key}
+                            key={tab.key}
                             type="button"
-                            onClick={() => toggleTab(t.key)}
+                            onClick={() => toggleTab(tab.key)}
                             aria-pressed={active}
                             className="rounded-full px-3 py-1.5 text-xs font-semibold border"
                             style={{
@@ -296,7 +296,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
                               borderColor: active ? "var(--color-amber-deep)" : "var(--color-line)",
                             }}
                           >
-                            {t.label}
+                            {tab.key === NO_CATEGORY_TAB ? t(tab.label) : tab.label}
                           </button>
                         );
                       })}
@@ -309,40 +309,40 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
                     disabled={selectedTabs.size === 0}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-sage-bg text-sage disabled:opacity-50"
                   >
-                    וואטסאפ
+                    {t("וואטסאפ")}
                   </button>
                   <button
                     onClick={shareViaQr}
                     disabled={selectedTabs.size === 0}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink disabled:opacity-50"
                   >
-                    קוד QR
+                    {t("קוד QR")}
                   </button>
                   <button
                     onClick={shareViaOther}
                     disabled={selectedTabs.size === 0}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink disabled:opacity-50"
                   >
-                    אחר
+                    {t("אחר")}
                   </button>
                 </div>
                 <button onClick={() => setShareOpen(false)} className="w-full text-center mt-4 text-xs text-ink-soft">
-                  ביטול
+                  {t("ביטול")}
                 </button>
               </>
             ) : (
               <>
-                <h2 className="text-lg font-bold font-display mb-4">קוד QR לפורטפוליו</h2>
+                <h2 className="text-lg font-bold font-display mb-4">{t("קוד QR לפורטפוליו")}</h2>
                 {qrDataUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qrDataUrl} alt="קוד QR לפורטפוליו" className="w-full rounded-2xl mb-4" />
+                  <img src={qrDataUrl} alt={t("קוד QR לפורטפוליו")} className="w-full rounded-2xl mb-4" />
                 )}
                 <div className="flex gap-2">
                   <button onClick={() => setShareView("main")} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft">
-                    חזרה
+                    {t("חזרה")}
                   </button>
                   <button onClick={() => setShareOpen(false)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-                    סגירה
+                    {t("סגירה")}
                   </button>
                 </div>
               </>

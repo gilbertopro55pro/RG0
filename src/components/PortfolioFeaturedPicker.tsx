@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/paginatedFetch";
+import { useT } from "@/i18n/client";
 
 const MAX_FEATURED = 25; // mirrors the enforce_portfolio_featured trigger (migration 0125)
 const PAGE_SIZE = 60;
@@ -18,6 +19,7 @@ type PickerPhoto = { id: string; gallery_id: string; portfolio_featured: boolean
 // gallery manager uses. The DB trigger is the real cap — this UI just explains it up front.
 export default function PortfolioFeaturedPicker({ photographerId }: { photographerId: string }) {
   const supabase = createClient();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [featuredCount, setFeaturedCount] = useState(0);
   const [categories, setCategories] = useState<string[]>([]);
@@ -92,7 +94,7 @@ export default function PortfolioFeaturedPicker({ photographerId }: { photograph
   const toggle = async (photo: PickerPhoto) => {
     const next = !photo.portfolio_featured;
     if (next && featuredCount >= MAX_FEATURED) {
-      setMessage(`אפשר לסמן עד ${MAX_FEATURED} תמונות, הסירו כוכב מתמונה אחרת קודם`);
+      setMessage(t("אפשר לסמן עד {n} תמונות, הסירו כוכב מתמונה אחרת קודם", { n: MAX_FEATURED }));
       return;
     }
     setMessage(null);
@@ -103,26 +105,25 @@ export default function PortfolioFeaturedPicker({ photographerId }: { photograph
     if (error) {
       setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, portfolio_featured: !next } : p)));
       await refreshCount();
-      setMessage(error.message.includes("portfolio_featured_limit") ? `אפשר לסמן עד ${MAX_FEATURED} תמונות` : "שגיאה בשמירה. נסו שוב");
+      setMessage(error.message.includes("portfolio_featured_limit") ? t("אפשר לסמן עד {n} תמונות", { n: MAX_FEATURED }) : t("שגיאה בשמירה. נסו שוב"));
     }
   };
 
   return (
     <div className="mt-3.5 pt-3.5 border-t border-line">
       <div className="flex items-center justify-between gap-2 mb-1">
-        <p className="text-sm font-semibold">תמונות לרצועה הראשית</p>
+        <p className="text-sm font-semibold">{t("תמונות לרצועה הראשית")}</p>
         <span className="text-xs font-data text-ink-soft">
           {featuredCount}/{MAX_FEATURED}
         </span>
       </div>
       <p className="text-xs text-ink-soft mb-3">
-        סמנו בכוכב עד {MAX_FEATURED} תמונות מהפורטפוליו. רק הן יופיעו ברצועת התמונות הגדולות שמתחלפת בראש העמוד. בלי תמונות
-        מסומנות, הרצועה לא תוצג.
+        {t("סמנו בכוכב עד {n} תמונות מהפורטפוליו. רק הן יופיעו ברצועת התמונות הגדולות שמתחלפת בראש העמוד. בלי תמונות מסומנות, הרצועה לא תוצג.", { n: MAX_FEATURED })}
       </p>
 
       {!open ? (
         <button onClick={() => setOpen(true)} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-chip text-ink">
-          בחירת תמונות
+          {t("בחירת תמונות")}
         </button>
       ) : (
         <>
@@ -131,21 +132,21 @@ export default function PortfolioFeaturedPicker({ photographerId }: { photograph
             onChange={(e) => setFilter(e.target.value)}
             className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-3"
           >
-            <option value={FILTER_FEATURED}>מסומנות בכוכב ({featuredCount})</option>
-            <option value={FILTER_ALL}>כל התמונות בפורטפוליו</option>
+            <option value={FILTER_FEATURED}>{t("מסומנות בכוכב ({n})", { n: featuredCount })}</option>
+            <option value={FILTER_ALL}>{t("כל התמונות בפורטפוליו")}</option>
             {categories.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
-            {hasUncategorized && <option value={FILTER_UNCATEGORIZED}>כללי (ללא נושא)</option>}
+            {hasUncategorized && <option value={FILTER_UNCATEGORIZED}>{t("כללי (ללא נושא)")}</option>}
           </select>
 
           {message && <p className="text-xs text-rose mb-2">{message}</p>}
 
           {photos.length === 0 && !loading ? (
             <p className="text-xs text-ink-soft py-4 text-center">
-              {filter === FILTER_FEATURED ? "עדיין לא סומנו תמונות. בחרו \"כל התמונות\" כדי להתחיל." : "אין תמונות כאן."}
+              {filter === FILTER_FEATURED ? t("עדיין לא סומנו תמונות. בחרו \"כל התמונות\" כדי להתחיל.") : t("אין תמונות כאן.")}
             </p>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
@@ -155,7 +156,7 @@ export default function PortfolioFeaturedPicker({ photographerId }: { photograph
                   type="button"
                   onClick={() => toggle(p)}
                   aria-pressed={p.portfolio_featured}
-                  aria-label={p.portfolio_featured ? "הסרת כוכב" : "סימון בכוכב"}
+                  aria-label={p.portfolio_featured ? t("הסרת כוכב") : t("סימון בכוכב")}
                   className="relative aspect-square overflow-hidden rounded-md bg-chip"
                   style={{ boxShadow: p.portfolio_featured ? "0 0 0 2px var(--color-brass)" : undefined }}
                 >
@@ -176,7 +177,7 @@ export default function PortfolioFeaturedPicker({ photographerId }: { photograph
 
           {hasMore && (
             <button onClick={() => loadPage(false)} disabled={loading} className="w-full mt-2 rounded-lg py-2 text-xs font-semibold bg-chip text-ink-soft disabled:opacity-60">
-              {loading ? "טוען..." : "טעינת עוד תמונות"}
+              {loading ? t("טוען...") : t("טעינת עוד תמונות")}
             </button>
           )}
         </>

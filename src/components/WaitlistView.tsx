@@ -9,6 +9,8 @@ import { openWhatsApp } from "@/lib/waLink";
 import PageGuide from "@/components/PageGuide";
 import BackLink from "@/components/BackLink";
 import RowMenu from "@/components/RowMenu";
+import { useT, useLang } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
 
@@ -22,6 +24,8 @@ export default function WaitlistView({
   customPackages: CustomPackageRow[];
 }) {
   const router = useRouter();
+  const t = useT();
+  const lang = useLang();
   const [entries, setEntries] = useState(initialEntries);
   const [convertEntry, setConvertEntry] = useState<WaitlistRow | null>(null);
   const [confirmEntry, setConfirmEntry] = useState<WaitlistRow | null>(null);
@@ -35,16 +39,16 @@ export default function WaitlistView({
 
   return (
     <div className="pb-8">
-      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
-      <h1 className="text-[26px] font-bold mb-1.5 font-display">רשימת המתנה</h1>
+      <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-5" />
+      <h1 className="text-[26px] font-bold mb-1.5 font-display">{t("רשימת המתנה")}</h1>
       <PageGuide
         pageKey="waitlist"
-        blurb="כשלקוח מבקש תאריך שכבר תפוס, המערכת מציעה להוסיף אותו לרשימת המתנה. ברגע שהתאריך מתפנה, הופכים אותו לאירוע בלחיצה."
+        blurb={t("כשלקוח מבקש תאריך שכבר תפוס, המערכת מציעה להוסיף אותו לרשימת המתנה. ברגע שהתאריך מתפנה, הופכים אותו לאירוע בלחיצה.")}
       />
 
       {entries.length === 0 && (
         <div className="text-center py-16 text-sm text-ink-soft">
-          אין ממתינים כרגע, כשלקוח מבקש תאריך שכבר תפוס תופיע כאן אפשרות להוסיף אותו לרשימה
+          {t("אין ממתינים כרגע, כשלקוח מבקש תאריך שכבר תפוס תופיע כאן אפשרות להוסיף אותו לרשימה")}
         </div>
       )}
 
@@ -55,27 +59,27 @@ export default function WaitlistView({
             <div key={entry.id} className="p-4">
               <div className="font-bold text-[15px]">{entry.client_name}</div>
               <div className="text-[13px] text-ink-soft">
-                מבקשים את <span className="font-data">{new Date(entry.requested_date).toLocaleDateString("he-IL")}</span>
+                {t("מבקשים את")} <span className="font-data">{new Date(entry.requested_date).toLocaleDateString(dateLocale(lang))}</span>
               </div>
               {entry.client_phone && (
-                <div className="text-[13px] text-ink-soft font-data" dir="ltr" style={{ textAlign: "right" }}>
+                <div className="text-[13px] text-ink-soft font-data" dir="ltr" style={{ textAlign: lang === "he" ? "right" : "left" }}>
                   {entry.client_phone}
                 </div>
               )}
               {entry.notes && <p className="text-[13px] leading-relaxed rounded-lg px-2.5 py-2 mt-2 bg-chip">{entry.notes}</p>}
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <button onClick={() => setConvertEntry(entry)} className="text-[13px] font-bold h-9 px-3 rounded-lg bg-ink text-white">
-                  התפנה, יצירת אירוע
+                  {t("התפנה, יצירת אירוע")}
                 </button>
                 <button
                   onClick={() => setConfirmEntry(entry)}
                   className="text-[13px] font-bold h-9 px-3 rounded-lg bg-amber-bg"
                   style={{ color: "var(--color-amber-deep)" }}
                 >
-                  אישור האירוע
+                  {t("אישור האירוע")}
                 </button>
                 <span className="flex-1" />
-                <RowMenu items={[{ label: "מחיקה מהרשימה", onClick: () => setDeleteEntry(entry) }]} />
+                <RowMenu items={[{ label: t("מחיקה מהרשימה"), onClick: () => setDeleteEntry(entry) }]} />
               </div>
             </div>
           ))}
@@ -113,20 +117,20 @@ export default function WaitlistView({
           onClick={() => setDeleteEntry(null)}
         >
           <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">למחוק את {deleteEntry.client_name}?</h2>
-            <p className="text-sm text-ink-soft mb-5">הרשומה תוסר לצמיתות מרשימת ההמתנה.</p>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("למחוק את {name}?", { name: deleteEntry.client_name })}</h2>
+            <p className="text-sm text-ink-soft mb-5">{t("הרשומה תוסר לצמיתות מרשימת ההמתנה.")}</p>
             <div className="flex gap-2">
               <button
                 onClick={() => remove(deleteEntry.id)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white"
               >
-                כן, מחיקה
+                {t("כן, מחיקה")}
               </button>
               <button
                 onClick={() => setDeleteEntry(null)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -145,6 +149,8 @@ function ConfirmEventDialog({
   onClose: () => void;
   onConfirmed: () => void;
 }) {
+  const t = useT();
+  const lang = useLang();
   const [selected, setSelected] = useState<string>(RESOLUTION_OPTIONS[0]);
   const [customText, setCustomText] = useState("");
   const [saving, setSaving] = useState(false);
@@ -163,7 +169,7 @@ function ConfirmEventDialog({
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "שגיאה באישור האירוע");
+      setError(data.error ?? t("שגיאה באישור האירוע"));
       setSaving(false);
       return;
     }
@@ -192,9 +198,9 @@ function ConfirmEventDialog({
       onClick={onClose}
     >
       <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-2 font-display">אישור האירוע: {entry.client_name}</h2>
+        <h2 className="text-lg font-bold mb-2 font-display">{t("אישור האירוע: {name}", { name: entry.client_name })}</h2>
         <p className="text-xs text-ink-soft mb-4">
-          התאריך ({new Date(entry.requested_date).toLocaleDateString("he-IL")}) כבר תפוס, איך האירוע כוסה?
+          {t("התאריך ({date}) כבר תפוס, איך האירוע כוסה?", { date: new Date(entry.requested_date).toLocaleDateString(dateLocale(lang)) })}
         </p>
         <div className="space-y-2 mb-3">
           {RESOLUTION_OPTIONS.map((option) => (
@@ -203,18 +209,18 @@ function ConfirmEventDialog({
               className="flex items-center gap-2 text-sm rounded-lg border border-line bg-white px-3 py-2.5 cursor-pointer"
             >
               <input type="radio" name="resolution" checked={selected === option} onChange={() => setSelected(option)} />
-              {option}
+              {t(option)}
             </label>
           ))}
           <label className="flex items-center gap-2 text-sm rounded-lg border border-line bg-white px-3 py-2.5 cursor-pointer">
             <input type="radio" name="resolution" checked={isCustom} onChange={() => setSelected("custom")} />
-            טקסט חופשי
+            {t("טקסט חופשי")}
           </label>
           {isCustom && (
             <input
               value={customText}
               onChange={(e) => setCustomText(e.target.value)}
-              placeholder="לדוגמה: חברת צילום חיצונית"
+              placeholder={t("לדוגמה: חברת צילום חיצונית")}
               className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
               autoFocus
             />
@@ -229,14 +235,14 @@ function ConfirmEventDialog({
             disabled={saving || !resolution}
             className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
           >
-            {saving ? "מאשר..." : "אישור והעברה לאירועים"}
+            {saving ? t("מאשר...") : t("אישור והעברה לאירועים")}
           </button>
           <button
             onClick={onClose}
             disabled={saving}
             className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
           >
-            ביטול
+            {t("ביטול")}
           </button>
         </div>
       </div>

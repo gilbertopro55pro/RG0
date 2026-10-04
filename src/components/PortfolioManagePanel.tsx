@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/paginatedFetch";
+import { useT } from "@/i18n/client";
 
 const UNCATEGORIZED = "__uncategorized__";
 
@@ -15,6 +16,7 @@ type CategoryGroup = { key: string; label: string; count: number };
 // the only place it comes back out.
 export default function PortfolioManagePanel({ photographerId }: { photographerId: string }) {
   const supabase = createClient();
+  const t = useT();
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<CategoryGroup[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -79,17 +81,17 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
 
   return (
     <div className="mt-3.5 pt-3.5 border-t border-line">
-      <p className="text-sm font-semibold mb-1">ניהול הפורטפוליו</p>
-      <p className="text-xs text-ink-soft mb-3">התמונות נשארות בפורטפוליו הציבורי עד שתחליטו להסיר אותן.</p>
+      <p className="text-sm font-semibold mb-1">{t("ניהול הפורטפוליו")}</p>
+      <p className="text-xs text-ink-soft mb-3">{t("התמונות נשארות בפורטפוליו הציבורי עד שתחליטו להסיר אותן.")}</p>
       {error && <p className="text-xs text-rose mb-2">{error}</p>}
       <div className="space-y-1.5">
         {groups.map((g) => (
           <div key={g.key} className="flex items-center justify-between rounded-lg px-3 py-2 bg-chip text-sm">
             <span>
-              {g.label} <span className="text-ink-soft font-data">({g.count})</span>
+              {g.key === UNCATEGORIZED ? t(g.label) : g.label} <span className="text-ink-soft font-data">({g.count})</span>
             </span>
             <button onClick={() => setConfirmKey(g.key)} className="text-xs font-semibold text-rose">
-              הסרה
+              {t("הסרה")}
             </button>
           </div>
         ))}
@@ -98,17 +100,18 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
       {confirmKey && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmKey(null)}>
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-base font-bold mb-1 font-display">הסרה מהפורטפוליו</h2>
+            <h2 className="text-base font-bold mb-1 font-display">{t("הסרה מהפורטפוליו")}</h2>
             <p className="text-xs text-ink-soft mb-4">
-              כל התמונות בנושא &quot;{groups.find((g) => g.key === confirmKey)?.label}&quot; יוסרו מעמוד הפורטפוליו הציבורי. אפשר להוסיף
-              אותן שוב בכל שלב.
+              {t("כל התמונות בנושא \"{name}\" יוסרו מעמוד הפורטפוליו הציבורי. אפשר להוסיף אותן שוב בכל שלב.", {
+                name: confirmKey === UNCATEGORIZED ? t("כללי (ללא נושא)") : groups.find((g) => g.key === confirmKey)?.label ?? "",
+              })}
             </p>
             <div className="flex gap-2">
               <button onClick={confirmRemove} disabled={removing} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white disabled:opacity-50">
-                {removing ? "מסיר..." : "כן, הסרה"}
+                {removing ? t("מסיר...") : t("כן, הסרה")}
               </button>
               <button onClick={() => setConfirmKey(null)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
