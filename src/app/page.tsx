@@ -32,6 +32,7 @@ import PendingClientMessagePrompts, {
   type PendingPaymentReminder,
   type PendingReviewRequest,
   type PendingLeadFollowUp,
+  type PendingClientReminder,
 } from "@/components/PendingClientMessagePrompts";
 import DashboardHero from "@/components/DashboardHero";
 import NextEventHero, { type NextEventHeroData } from "@/components/NextEventHero";
@@ -98,14 +99,14 @@ export default async function DashboardPage() {
     supabase
       .from("scheduled_messages")
       .select("id, event_id, lead_id, kind, events(client_name), leads(name, phone, quoted_amount)")
-      .in("kind", ["payment_reminder", "review_request", "lead_quote_followup"])
+      .in("kind", ["payment_reminder", "review_request", "lead_quote_followup", "album_approval_reminder", "song_selection_reminder"])
       .eq("status", "awaiting_confirmation")
       .returns<
         {
           id: string;
           event_id: string | null;
           lead_id: string | null;
-          kind: "payment_reminder" | "review_request" | "lead_quote_followup";
+          kind: "payment_reminder" | "review_request" | "lead_quote_followup" | "album_approval_reminder" | "song_selection_reminder";
           events: { client_name: string } | null;
           leads: { name: string; phone: string | null; quoted_amount: number | null } | null;
         }[]
@@ -338,6 +339,15 @@ export default async function DashboardPage() {
         .filter((s) => s.kind === "review_request")
         .map((s) => ({ type: "review" as const, id: s.id, clientName: s.events?.client_name ?? t("לקוח") }))
     : [];
+  const pendingClientReminders: PendingClientReminder[] = photographer
+    ? (scheduledReminders ?? [])
+        .filter((s) => s.kind === "album_approval_reminder" || s.kind === "song_selection_reminder")
+        .map((s) => ({
+          type: s.kind === "album_approval_reminder" ? ("album_reminder" as const) : ("song_reminder" as const),
+          id: s.id,
+          clientName: s.events?.client_name ?? t("לקוח"),
+        }))
+    : [];
   const pendingLeadFollowUps: PendingLeadFollowUp[] = photographer
     ? (scheduledReminders ?? [])
         .filter((s) => s.kind === "lead_quote_followup")
@@ -441,6 +451,7 @@ export default async function DashboardPage() {
         paymentReminders={pendingReminders}
         reviewRequests={pendingReviewRequests}
         leadFollowUps={pendingLeadFollowUps}
+        clientReminders={pendingClientReminders}
       />
     </div>
   );

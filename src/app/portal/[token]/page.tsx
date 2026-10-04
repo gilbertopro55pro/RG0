@@ -3,6 +3,7 @@ import { PACKAGE_FLOWS, PACKAGE_LABELS, STAGE_LABELS, STAGE_TYPE, currentStageIn
 import { normalizeIsraeliPhone } from "@/lib/whatsapp";
 import type { CustomPackageStageRow, EventPaymentRow, EventRow, EventStageRow, GalleryRow } from "@/lib/types";
 import PortalStageActions from "@/components/PortalStageActions";
+import { stageRole } from "@/lib/clientReminders";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { clientLangFor } from "@/lib/clientLang";
 import ClientLangScope from "@/i18n/ClientLangScope";
@@ -85,11 +86,26 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
   // about checkpoints that involve them or mark real progress.
   const clientStages = event.custom_package_id
     ? (customStagesData ?? [])
-        .map((cs, i) => ({ key: `custom:${cs.id}`, label: cs.name /* typed by the photographer: as is */, stage: byKey.get(`custom:${cs.id}`)!, index: i, notify: cs.notify_client }))
+        .map((cs, i) => ({
+          key: `custom:${cs.id}`,
+          label: cs.name /* typed by the photographer: as is */,
+          stage: byKey.get(`custom:${cs.id}`)!,
+          index: i,
+          notify: cs.notify_client,
+          role: stageRole(null, cs),
+        }))
         .filter((s) => s.notify)
     : PACKAGE_FLOWS[event.package!]
-        .map((key, i) => ({ key, label: t(STAGE_LABELS[key]), stage: byKey.get(key)!, index: i }))
+        .map((key, i) => ({ key, label: t(STAGE_LABELS[key]), stage: byKey.get(key)!, index: i, role: stageRole(key) }))
         .filter(({ key }) => STAGE_TYPE[key] === "checkpoint");
+  // The client's own approval / song choice (lib/clientReminders.ts). A custom album stage is
+  // marked done when the photographer uploads the PDF, so for it only the client's approval counts.
+  const clientDone = (s: (typeof clientStages)[number]) =>
+    s.role === "album_approval"
+      ? !!event.album_approved_at || (!s.key.startsWith("custom:") && s.stage.done)
+      : s.role === "client_song_selection"
+        ? s.stage.done || !!event.songs_chosen_at
+        : s.stage.done;
 
   return (
     <ClientLangScope lang={lang}>
@@ -104,11 +120,12 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
         <div className="text-sm font-semibold mb-3.5">{t("סטטוס האירוע")}</div>
         <PortalStageActions
           eventToken={token}
-          stages={clientStages.map(({ key, label, stage, index }) => ({
-            key,
-            label,
-            done: stage.done,
-            isCurrent: index === curIdx,
+          stages={clientStages.map((s) => ({
+            key: s.key,
+            role: s.role,
+            label: s.label,
+            done: clientDone(s),
+            isCurrent: s.index === curIdx,
           }))}
           galleryLink={galleryLink}
           albumDesignUrl={albumDesignUrl}

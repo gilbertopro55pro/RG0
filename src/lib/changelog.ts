@@ -25,6 +25,25 @@ export function changesFor(entry: ChangelogEntry, lang: Lang): string[] {
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.1",
+    date: "2026-10-04",
+    changes: [
+      "תזכורת לאישור עיצוב האלבום: 3 ימים אחרי ששלחתם ללקוח שהעיצוב מוכן, אם הוא עוד לא אישר בפורטל, תקבלו התראה וחלון במסך הראשי עם תזכורת מוכנה לשליחה בוואטסאפ",
+      "תזכורת לבחירת שירים לקליפ: 3 ימים אחרי ההודעה שהסרט המלא מוכן, אם הלקוח עוד לא בחר שירים, תקבלו תזכורת לבקש ממנו להוריד את הסרט ולבחור שיר שקט ושיר קצבי",
+      "אם הלקוח כבר אישר או בחר שירים בתוך 3 הימים, לא תקבלו תזכורת. בפורטל הלקוח אפשר עכשיו לאשר את עיצוב האלבום ואת בחירת השירים גם בחבילות מותאמות",
+    ],
+    en: [
+      "Album design approval reminder: 3 days after you tell the client the design is ready, if they haven't approved it in the portal yet, you get a notification and a prompt on the home screen with a reminder ready to send on WhatsApp",
+      "Clip song reminder: 3 days after the \"full film is ready\" message, if the client hasn't picked songs yet, you get a reminder to ask them to download the film and pick a calm song and an upbeat one",
+      "If the client already approved or picked songs within the 3 days, there's no reminder. In the client portal, clients can now approve the album design and the song choice in custom packages too",
+    ],
+    ru: [
+      "Напоминание об утверждении дизайна альбома: через 3 дня после того, как вы сообщили клиенту, что дизайн готов, если он ещё не утвердил его в портале, вы получите уведомление и окно на главном экране с готовым напоминанием для отправки в WhatsApp",
+      "Напоминание о выборе песен для клипа: через 3 дня после сообщения «полный фильм готов», если клиент ещё не выбрал песни, вы получите напоминание попросить его скачать фильм и выбрать спокойную и ритмичную песню",
+      "Если клиент уже утвердил дизайн или выбрал песни в течение 3 дней, напоминания не будет. В портале клиента теперь можно утвердить дизайн альбома и выбор песен и в индивидуальных пакетах",
+    ],
+  },
+  {
     version: "2.12.0",
     date: "2026-10-04",
     changes: [

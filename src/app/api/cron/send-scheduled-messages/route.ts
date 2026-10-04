@@ -9,12 +9,14 @@ import { clientLangFor, photographerLang } from "@/lib/clientLang";
 import { dateLocale } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
+import { reminderStillNeeded, type ClientReminderKind } from "@/lib/clientReminders";
+import { sendPushToPhotographer } from "@/lib/push";
 
 type ScheduledMessage = {
   id: string;
   event_id: string | null;
   lead_id: string | null;
-  kind: "review_request" | "payment_reminder" | "lead_follow_up" | "lead_quote_followup";
+  kind: "review_request" | "payment_reminder" | "lead_follow_up" | "lead_quote_followup" | ClientReminderKind;
   sequence_step: number | null;
 };
 
@@ -42,6 +44,10 @@ export async function GET(request: NextRequest) {
     }
     if (message.kind === "lead_quote_followup") {
       results.push(await processLeadQuoteFollowup(supabase, message));
+      continue;
+    }
+    if (message.kind === "album_approval_reminder" || message.kind === "song_selection_reminder") {
+      results.push(await processClientReminder(supabase, message, message.kind));
       continue;
     }
 
@@ -192,5 +198,45 @@ async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: 
     text: "הגיע מועד המעקב אחרי הצעת המחיר שנשלחה, ממתין לאישורך לשליחה בוואטסאפ",
   });
 
+  return { id: message.id, status: "awaiting_confirmation" };
+}
+
+// 3 days after the album-design-ready / full-film-ready message (lib/clientReminders.ts): if the
+// client still hasn't approved the album / picked the clip songs, tell the PHOTOGRAPHER (push +
+// the dashboard prompt, which opens WhatsApp with a ready reminder to the client). Already done →
+// canceled quietly.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function processClientReminder(supabase: SupabaseClient<any>, message: ScheduledMessage, kind: ClientReminderKind) {
+  if (!message.event_id || !(await reminderStillNeeded(supabase, message.event_id, kind))) {
+    await supabase.from("scheduled_messages").update({ status: "canceled" }).eq("id", message.id);
+    return { id: message.id, status: "canceled", reason: "client already did it" };
+  }
+  const { data: event } = await supabase
+    .from("events")
+    .select("id, client_name, client_phone, photographer_id, photographers(ui_lang)")
+    .eq("id", message.event_id)
+    .maybeSingle<{ id: string; client_name: string; client_phone: string | null; photographer_id: string; photographers: { ui_lang: string | null } | null }>();
+  if (!event?.client_phone) {
+    await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", message.id);
+    return { id: message.id, status: "failed", reason: "no client phone" };
+  }
+
+  await supabase.from("scheduled_messages").update({ status: "awaiting_confirmation" }).eq("id", message.id);
+  // Activity log (stored, Hebrew like every other log line).
+  await supabase.from("event_notifications").insert({
+    event_id: event.id,
+    text: kind === "album_approval_reminder"
+      ? "עברו 3 ימים ועיצוב האלבום עוד לא אושר. ממתין לאישורך לשליחת תזכורת ללקוח"
+      : "עברו 3 ימים והלקוח עוד לא בחר שירים לקליפ. ממתין לאישורך לשליחת תזכורת",
+  });
+  const t = makeT(messagesFor(photographerLang(event.photographers?.ui_lang)));
+  await sendPushToPhotographer(event.photographer_id, {
+    title: kind === "album_approval_reminder"
+      ? t("{name} עוד לא אישרו את עיצוב האלבום", { name: event.client_name })
+      : t("{name} עוד לא בחרו שירים לקליפ", { name: event.client_name }),
+    body: t("עברו 3 ימים מאז ההודעה. לחצו לשליחת תזכורת בוואטסאפ"),
+    url: "/",
+    tag: `${kind}-${event.id}`,
+  });
   return { id: message.id, status: "awaiting_confirmation" };
 }

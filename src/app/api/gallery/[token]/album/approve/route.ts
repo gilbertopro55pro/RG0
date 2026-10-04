@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { notifyPhotographerOfAlbumActivity } from "@/lib/albumNotify";
 import type { GalleryAlbumRow, GalleryRow } from "@/lib/types";
+import { markClientDone } from "@/lib/clientReminders";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -35,6 +36,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     .eq("id", album.id);
 
   if (gallery.event_id) {
+    // Counts as the client's album approval for the 3-day reminder (lib/clientReminders.ts).
+    await markClientDone(supabase, gallery.event_id, "album_approval");
     await supabase.from("event_notifications").insert({
       event_id: gallery.event_id,
       text: "הלקוח/ה אישרו את עיצוב האלבום",
