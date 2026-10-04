@@ -5,6 +5,9 @@ import { LEAD_FOLLOW_UP_TEMPLATES } from "@/lib/stages";
 import { friendlyWhatsAppError, sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
+import { clientLangFor } from "@/lib/clientLang";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 type ScheduledMessage = {
   id: string;
@@ -114,6 +117,7 @@ type FollowUpLead = {
   status: string;
   photographer_id: string;
   archived_at: string | null;
+  client_lang: string | null;
 };
 
 // Fires 2 days after a quote is sent from the leads page. Unlike processLeadFollowUp above, this
@@ -126,7 +130,7 @@ type FollowUpLead = {
 async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: ScheduledMessage) {
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, name, phone, email, event_date_interest, event_type_name, quoted_amount, status, photographer_id, archived_at")
+    .select("id, name, phone, email, event_date_interest, event_type_name, quoted_amount, status, photographer_id, archived_at, client_lang")
     .eq("id", message.lead_id)
     .single<FollowUpLead>();
 
@@ -163,13 +167,15 @@ async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: 
   // Bonus: a gentle automatic nudge straight to the client too, when we actually have an email
   // for them — free-form, so no WhatsApp-template limitation applies here.
   if (lead.email) {
+    // In the lead's language (UI languages phase 3); "he" for every non-admin account.
+    const t = makeT(messagesFor(clientLangFor(photographer?.email, lead.client_lang)));
     try {
       await sendEmail({
         to: lead.email,
         fromName: photographer?.name ?? undefined,
         replyTo: photographer?.email ? notificationEmailFor(photographer.email) : undefined,
-        subject: "רק מזכירים את ההצעה שלנו",
-        text: `שלום ${lead.name},\n\nרצינו להזכיר שההצעת מחיר ששלחנו לכם עדיין פתוחה, ונשמח לעמוד לרשותכם לכל שאלה או לתיאום.`,
+        subject: t("רק מזכירים את ההצעה שלנו"),
+        text: t("שלום {name},\n\nרצינו להזכיר שההצעת מחיר ששלחנו לכם עדיין פתוחה, ונשמח לעמוד לרשותכם לכל שאלה או לתיאום.", { name: lead.name }),
       });
     } catch (e) {
       console.error("Lead quote follow-up email to lead failed:", e);

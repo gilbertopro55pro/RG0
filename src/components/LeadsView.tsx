@@ -543,6 +543,8 @@ function QuotePdfButton({ lead }: { lead: LeadRow }) {
             workHours: d.startTime && d.endTime ? `${d.startTime}-${d.endTime}` : undefined,
           },
           notes: d.notes,
+          // The client's language (the route keeps Hebrew for every non-admin account).
+          clientLang: lead.client_lang ?? undefined,
         }),
       });
       if (!res.ok) throw new Error();

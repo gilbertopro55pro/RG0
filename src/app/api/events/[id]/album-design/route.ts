@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import type { EventRow } from "@/lib/types";
+import { clientLangFor } from "@/lib/clientLang";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 // Attaching the album design PDF is deliberately separate from marking "אישור עיצוב אלבום" done —
 // the file needs to reach the client (and the portal needs to offer the approve button) *before*
@@ -32,8 +35,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       album_design_pdf_filename: albumDesignPdfFilename ?? "album-design.pdf",
     })
     .eq("id", eventId)
-    .select("client_name, client_phone")
-    .single<Pick<EventRow, "client_name" | "client_phone">>();
+    .select("client_name, client_phone, client_lang")
+    .single<Pick<EventRow, "client_name" | "client_phone" | "client_lang">>();
 
   if (updateError || !event) {
     return NextResponse.json({ error: updateError?.message ?? "האירוע לא נמצא" }, { status: 404 });
@@ -43,7 +46,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // themselves — see EventDetailView.tsx's uploadAlbumDesign and src/lib/waLink.ts), same as the
   // rest of the client-update flow. wa.me can't attach a file, so the signed download link travels
   // in the message text instead of a document header.
-  let notify: { text: string; downloadUrl: string } | null = null;
+  // `message` is the whole ready-to-send WhatsApp text in the client's language (UI languages
+  // phase 3; "he" for every non-admin account, where it equals what EventDetailView builds from
+  // `text` today). `text` stays the Hebrew line for callers that still build the message themselves.
+  let notify: { text: string; downloadUrl: string; message: string } | null = null;
 
   if (event.client_phone) {
     const signedUrl = await getSignedDownloadUrl(
@@ -53,7 +59,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       albumDesignPdfFilename ?? "album-design.pdf"
     );
     if (signedUrl) {
-      notify = { text: "עיצוב האלבום מוכן לאישור", downloadUrl: signedUrl };
+      const t = makeT(messagesFor(clientLangFor(user.email, event.client_lang)));
+      notify = {
+        text: "עיצוב האלבום מוכן לאישור",
+        downloadUrl: signedUrl,
+        message: t("שלום {name},\nעיצוב האלבום מוכן לאישור ✓\n{url}", { name: event.client_name, url: signedUrl }),
+      };
     } else {
       await supabase
         .from("event_notifications")

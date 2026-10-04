@@ -1,3 +1,5 @@
+import type { Lang } from "@/i18n/config";
+
 export type StageKey =
   | "event_closing"
   | "second_shooter_coordination"
@@ -106,13 +108,74 @@ export const RECOMMENDED_CLIENT_MESSAGE_TEMPLATES: Partial<Record<StageKey, stri
     "שלום {{שם}},\nעיצוב האלבום שלכם מוכן לצפייה! נשמח לשמוע מה אתם חושבים ולקבל הערות לפני שממשיכים להדפסה.\nקישור: ",
 };
 
-export function resolveClientMessageTemplate(stageKey: string, savedOverride: string | undefined | null): string {
-  return (
-    savedOverride ??
-    RECOMMENDED_CLIENT_MESSAGE_TEMPLATES[stageKey as StageKey] ??
-    DEFAULT_CLIENT_MESSAGE_TEMPLATE
-  );
+// UI languages, phase 3 (2026-10-04): the same built-in templates for a client whose language is
+// English or Russian (events.client_lang, admin only for now — lib/clientLang.ts). Written as real
+// messages, not word-for-word. The {{…}} tokens stay the same internal Hebrew tokens; the link
+// marker is the one word per language that gets the link appended (CLIENT_MESSAGE_LINK_MARKER).
+export const CLIENT_MESSAGE_LINK_MARKER: Record<Lang, string> = { he: "קישור:", en: "Link:", ru: "Ссылка:" };
+
+export const DEFAULT_CLIENT_MESSAGE_TEMPLATE_I18N: Record<"en" | "ru", string> = {
+  en: "Hi {{שם}},\nAn update on your event: {{שלב}} ✓\nLink: ",
+  ru: "Здравствуйте, {{שם}}!\nНовости по вашему мероприятию: {{שלב}} ✓\nСсылка: ",
+};
+
+export const RECOMMENDED_CLIENT_MESSAGE_TEMPLATES_I18N: Record<"en" | "ru", Partial<Record<StageKey, string>>> = {
+  en: {
+    event_closing:
+      "Hi {{שם}},\nYour event is officially booked in our calendar 🎉 We can't wait to photograph you!\nWe'll keep you posted here on every important step along the way.\nLink: ",
+    shoot_day:
+      "Hi {{שם}},\nToday's the big day! I can't wait to photograph you and capture your most meaningful moments 📸\nSee you soon!\nLink: ",
+    gallery_upload:
+      "Hi {{שם}},\nThe gallery from your event is up and ready to view! You can go in now and pick your favorite photos.\nLink: ",
+    client_song_selection:
+      "Hi {{שם}},\nIt's time to choose the song for your video clip 🎵 Have a listen and pick the one that speaks to you most.\nLink: ",
+    album_design:
+      "Hi {{שם}},\nYour album design is ready to view! We'd love to hear what you think and get your notes before we send it to print.\nLink: ",
+  },
+  ru: {
+    event_closing:
+      "Здравствуйте, {{שם}}!\nВаше мероприятие официально у нас в календаре 🎉 Мы с нетерпением ждём съёмки!\nЗдесь мы будем сообщать вам о каждом важном этапе подготовки.\nСсылка: ",
+    shoot_day:
+      "Здравствуйте, {{שם}}!\nСегодня тот самый день! Жду встречи, чтобы запечатлеть ваши самые важные моменты 📸\nДо скорой встречи!\nСсылка: ",
+    gallery_upload:
+      "Здравствуйте, {{שם}}!\nГалерея с вашего мероприятия готова к просмотру! Вы уже можете зайти и выбрать любимые фотографии.\nСсылка: ",
+    client_song_selection:
+      "Здравствуйте, {{שם}}!\nПришло время выбрать песню для вашего видеоклипа 🎵 Послушайте и выберите ту, что ближе всего вам.\nСсылка: ",
+    album_design:
+      "Здравствуйте, {{שם}}!\nДизайн вашего альбома готов к просмотру! Будем рады узнать ваше мнение и получить замечания перед печатью.\nСсылка: ",
+  },
+};
+
+// The built-in template for a stage in a language: the topic-specific recommendation, else the
+// generic default. What Settings pre-fills, and the send-time fallback with no saved override.
+export function builtInClientMessageTemplate(stageKey: string, lang: Lang = "he"): string {
+  if (lang === "he") return RECOMMENDED_CLIENT_MESSAGE_TEMPLATES[stageKey as StageKey] ?? DEFAULT_CLIENT_MESSAGE_TEMPLATE;
+  return RECOMMENDED_CLIENT_MESSAGE_TEMPLATES_I18N[lang][stageKey as StageKey] ?? DEFAULT_CLIENT_MESSAGE_TEMPLATE_I18N[lang];
 }
+
+// `savedOverride` must be the photographer's saved template FOR THAT LANGUAGE (the row under
+// clientTemplateKey(stageKey, lang) in lib/clientMessage.ts) — never their Hebrew one for an
+// English/Russian client, which would send Hebrew text to a client who doesn't read it.
+export function resolveClientMessageTemplate(stageKey: string, savedOverride: string | undefined | null, lang: Lang = "he"): string {
+  return savedOverride ?? builtInClientMessageTemplate(stageKey, lang);
+}
+
+// The client-facing wording of the short stage-ready notices (STAGE_NOTIFY_CLIENT) and the greeting
+// in front of them, for an English/Russian client. Hebrew uses the strings above as they are.
+export const STAGE_NOTIFY_CLIENT_I18N: Record<"en" | "ru", Partial<Record<StageKey, string>> & { greeting: string }> = {
+  en: {
+    greeting: "Hi {name},",
+    gallery_upload: "Your gallery is ready. You can pick your photos now",
+    video_approval: "Your video is ready to watch and approve",
+    album_approval: "Your album design is ready for approval",
+  },
+  ru: {
+    greeting: "Здравствуйте, {name}!",
+    gallery_upload: "Ваша галерея готова. Можно выбирать фотографии",
+    video_approval: "Ваше видео готово к просмотру и утверждению",
+    album_approval: "Дизайн вашего альбома готов к утверждению",
+  },
+};
 
 // Fields a photographer can insert into a client message template — the dropdown in Settings →
 // הודעות ללקוח/ה offers these labels, and EventDetailView's sendWhatsAppUpdate resolves every
@@ -143,6 +206,35 @@ export const CLIENT_MESSAGE_INSERT_OPTIONS: { label: string; token: string; inse
   { label: "שם השלב", token: "{{שלב}}", insertText: "שם השלב: {{שלב}}" },
   { label: "קישור", token: "קישור: ", insertText: "מצורף קישור לפורטל האישי שלכם למעקב התקדמות:\nקישור: " },
 ];
+
+// What the same insert options drop into an English/Russian template (Settings › הודעות ללקוח/ה
+// with the language switch on English/Русский), keyed by token.
+export const CLIENT_MESSAGE_INSERT_TEXT_I18N: Record<"en" | "ru", Record<string, string>> = {
+  en: {
+    "{{תאריך}}": "Date: {{תאריך}}",
+    "{{מיקום}}": "Location: {{מיקום}}",
+    "{{שם}}": "Name: {{שם}}",
+    "{{שעות}}": "Hours: {{שעות}}",
+    "{{צילומי_משפחה}}": "Family photos: {{צילומי_משפחה}}",
+    "{{חבילה}}": "Package: {{חבילה}}",
+    "{{מקדמה}}": "Deposit: {{מקדמה}}",
+    "{{יתרה}}": "Balance: {{יתרה}}",
+    "{{שלב}}": "Stage: {{שלב}}",
+    "קישור: ": "Here's the link to your personal page, where you can follow the progress:\nLink: ",
+  },
+  ru: {
+    "{{תאריך}}": "Дата: {{תאריך}}",
+    "{{מיקום}}": "Место: {{מיקום}}",
+    "{{שם}}": "Имя: {{שם}}",
+    "{{שעות}}": "Время съёмки: {{שעות}}",
+    "{{צילומי_משפחה}}": "Семейные фото: {{צילומי_משפחה}}",
+    "{{חבילה}}": "Пакет: {{חבילה}}",
+    "{{מקדמה}}": "Предоплата: {{מקדמה}}",
+    "{{יתרה}}": "Остаток: {{יתרה}}",
+    "{{שלב}}": "Этап: {{שלב}}",
+    "קישור: ": "Ссылка на вашу личную страницу, где можно следить за ходом работы:\nСсылка: ",
+  },
+};
 
 export const GENERIC_STAGE_UPDATE_TEMPLATE = "stage_update_v2";
 export const REVIEW_REQUEST_DELAY_DAYS = 3;

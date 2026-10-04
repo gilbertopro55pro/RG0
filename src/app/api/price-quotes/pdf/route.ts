@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { downloadObjectBuffer } from "@/lib/storage";
 import { buildPriceQuotePdf } from "@/lib/priceQuotePdf";
 import type { Photographer, PriceQuoteItem } from "@/lib/types";
+import { clientLangFor } from "@/lib/clientLang";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
   }
 
-  const { clientName, items, subtotal, vatAmount, total, showVat, eventDetails, notes }: {
+  // clientLang: the client's language (the builder's picker, or the lead's client_lang for the lead
+  // card's download); clientLangFor keeps Hebrew for every non-admin account.
+  const { clientName, items, subtotal, vatAmount, total, showVat, eventDetails, notes, clientLang }: {
     clientName: string;
     items: PriceQuoteItem[];
     subtotal: number;
@@ -27,6 +30,7 @@ export async function POST(request: Request) {
     showVat?: boolean;
     eventDetails?: { type?: string; date?: string; location?: string; workHours?: string };
     notes?: string;
+    clientLang?: string;
   } = await request.json();
 
   const { data: photographer } = await supabase
@@ -54,6 +58,7 @@ export async function POST(request: Request) {
     showVat,
     eventDetails,
     notes,
+    lang: clientLangFor(photographer.email, clientLang),
   });
 
   return new NextResponse(new Uint8Array(pdfBytes), {

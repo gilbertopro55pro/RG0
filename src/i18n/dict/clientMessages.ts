@@ -1,10 +1,19 @@
 import type { AreaDict } from "@/i18n/types";
 
 // Area "clientMessages" (UI languages phase 3: text sent to the client; see src/i18n/dict/index.ts).
-// Hebrew source text → translation.
+// Hebrew source text → translation. The client update templates themselves (long, multi-line) are
+// typed constants next to the Hebrew ones in src/lib/stages.ts; this file holds the settings chrome.
 const dict: AreaDict = {
-  en: {},
-  ru: {},
+  en: {
+    "שפת ההודעה": "Message language",
+    "הנוסח הזה נשלח ללקוחות שהשפה שלהם באירוע היא {lang}. ללקוחות בעברית נשלח הנוסח בעברית.":
+      "This version is sent to clients whose event language is {lang}. Hebrew-speaking clients get the Hebrew version.",
+  },
+  ru: {
+    "שפת ההודעה": "Язык сообщения",
+    "הנוסח הזה נשלח ללקוחות שהשפה שלהם באירוע היא {lang}. ללקוחות בעברית נשלח הנוסח בעברית.":
+      "Этот текст отправляется клиентам, у которых в мероприятии выбран язык {lang}. Клиенты на иврите получают текст на иврите.",
+  },
 };
 
 export default dict;

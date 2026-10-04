@@ -30,7 +30,7 @@ import ContractSection from "@/components/ContractSection";
 import PortalLinkSection from "@/components/PortalLinkSection";
 import GallerySection from "@/components/GallerySection";
 import { useModalEntered } from "@/lib/useModalEntered";
-import { buildClientMessageText } from "@/lib/clientMessage";
+import { buildClientMessageText, buildStageNoticeText, clientTemplateKey } from "@/lib/clientMessage";
 import CompactGuideModal from "@/components/CompactGuideModal";
 import CloseEventConfirmModal from "@/components/CloseEventConfirmModal";
 import { useLang, useT } from "@/i18n/client";
@@ -221,6 +221,7 @@ export default function EventDetailView({
   messageTemplates,
   whatsappSignature,
   canChooseClientLang = false,
+  clientMessageLang = "he",
 }: {
   event: EventRow;
   initialStages: EventStageRow[];
@@ -239,6 +240,8 @@ export default function EventDetailView({
   whatsappSignature: string | null;
   // The client-language picker in the edit form (admin only for now, lib/clientLang.ts).
   canChooseClientLang?: boolean;
+  // The language of the WhatsApp updates to this client (clientLangFor on the server page).
+  clientMessageLang?: Lang;
 }) {
   const router = useRouter();
   const t = useT();
@@ -432,7 +435,8 @@ export default function EventDetailView({
     return buildClientMessageText({
       stageKey: key,
       stageLabel: label,
-      savedTemplate: messageTemplates[key],
+      // The saved template for the client's language only (Hebrew row for Hebrew, "<key>@en" …).
+      savedTemplate: messageTemplates[clientTemplateKey(key, clientMessageLang)],
       clientName: event.client_name,
       eventDateIso: event.event_date,
       eventLocation: event.event_location,
@@ -444,6 +448,7 @@ export default function EventDetailView({
       balanceAmount: payments ? payments.balance_amount : null,
       linkUrl: galleryLink ?? `${window.location.origin}/portal/${event.client_access_token}`,
       whatsappSignature,
+      lang: clientMessageLang,
     });
   };
 
@@ -563,7 +568,13 @@ export default function EventDetailView({
         if (data.notify) {
           await notifyClientByWhatsApp(
             STAGE_LABELS.album_approval,
-            `שלום ${event.client_name},\n${data.notify.text} ✓\n${data.notify.downloadUrl}`
+            buildStageNoticeText({
+              stageKey: "album_approval",
+              serverText: data.notify.text,
+              clientName: event.client_name,
+              url: data.notify.downloadUrl,
+              lang: clientMessageLang,
+            })
           );
         }
         await refreshNotifications();

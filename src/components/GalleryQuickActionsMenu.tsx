@@ -156,6 +156,7 @@ export default function GalleryQuickActionsMenu({
         photographerName={photographerName}
         photographerEmail={photographerEmail}
         expiryDays={item.expiryDays}
+        clientLang={item.clientLang}
         onClose={onClose}
       />
     );

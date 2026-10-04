@@ -10,7 +10,7 @@ import GalleryQuickActionsMenu from "@/components/GalleryQuickActionsMenu";
 import { readAlbumRotateResume } from "@/lib/albumRotateResume";
 import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
-import { dateLocale } from "@/i18n/config";
+import { dateLocale, type Lang } from "@/i18n/config";
 
 export type GalleryListItem = {
   id: string;
@@ -27,6 +27,8 @@ export type GalleryListItem = {
   accessToken: string;
   expiryDays: 7 | 14 | 30 | 90 | 180 | 365 | null;
   restoredOnce: boolean;
+  // The client's language for the share message (UI languages phase 3); server-computed.
+  clientLang?: Lang;
 };
 
 type SortKey = "event_date" | "name" | "expires";

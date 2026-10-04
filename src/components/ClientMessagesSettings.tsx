@@ -4,23 +4,28 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   CLIENT_MESSAGE_INSERT_OPTIONS,
+  CLIENT_MESSAGE_INSERT_TEXT_I18N,
   CLIENT_MESSAGE_EMOJI_OPTIONS as EMOJI_OPTIONS,
+  CLIENT_MESSAGE_LINK_MARKER,
   CUSTOMIZABLE_MESSAGE_STAGES,
-  RECOMMENDED_CLIENT_MESSAGE_TEMPLATES,
-  DEFAULT_CLIENT_MESSAGE_TEMPLATE,
   STAGE_LABELS,
-  type StageKey,
+  builtInClientMessageTemplate,
 } from "@/lib/stages";
 import type { ClientMessageTemplateRow, CustomPackageStageRow } from "@/lib/types";
 import { useT } from "@/i18n/client";
+import { LANGS, LANG_LABELS, type Lang } from "@/i18n/config";
+import { clientTemplateKey } from "@/lib/clientMessage";
 
-function recommendedFor(key: StageKey): string {
-  return RECOMMENDED_CLIENT_MESSAGE_TEMPLATES[key] ?? DEFAULT_CLIENT_MESSAGE_TEMPLATE;
+// Hebrew: the recommended text (or the generic default); English/Russian: its built-in translation.
+// Also what an unsaved custom stage gets in English/Russian (the generic default).
+function recommendedFor(key: string, lang: Lang = "he"): string {
+  return builtInClientMessageTemplate(key, lang);
 }
 
 export default function ClientMessagesSettings({
   initialTemplates,
   customStages = [],
+  clientLangTemplates = false,
 }: {
   initialTemplates: ClientMessageTemplateRow[];
   // Custom package stages with their own saved template (written from the package builder's
@@ -28,6 +33,9 @@ export default function ClientMessagesSettings({
   // has actually been saved for them (see customEntries below), and only ones still marked
   // client-facing, matching how the package builder decides whether to show that editor at all.
   customStages?: CustomPackageStageRow[];
+  // The English/Русский switch for the versions sent to English/Russian clients (admin only for
+  // now, canChooseClientLang). Those are saved as "<stage>@en" / "<stage>@ru" rows.
+  clientLangTemplates?: boolean;
 }) {
   const t = useT();
   const supabase = createClient();
@@ -39,14 +47,18 @@ export default function ClientMessagesSettings({
     ...CUSTOMIZABLE_MESSAGE_STAGES.map((key) => ({ key, label: STAGE_LABELS[key], isCustom: false })),
     ...customEntries.map((e) => ({ ...e, isCustom: true })),
   ];
+  // Which language's version is being edited. Hebrew is the plain stage key, exactly as before.
+  const [editLang, setEditLang] = useState<Lang>("he");
+  const editLangs: Lang[] = clientLangTemplates ? [...LANGS] : ["he"];
+  // Keyed by the stored stage_key (clientTemplateKey): "gallery_upload", "gallery_upload@en", …
   const [bodies, setBodies] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
-    for (const key of CUSTOMIZABLE_MESSAGE_STAGES) map[key] = recommendedFor(key);
-    for (const entry of customEntries) map[entry.key] = "";
+    for (const lang of editLangs) {
+      for (const key of CUSTOMIZABLE_MESSAGE_STAGES) map[clientTemplateKey(key, lang)] = recommendedFor(key, lang);
+      for (const entry of customEntries) map[clientTemplateKey(entry.key, lang)] = lang === "he" ? "" : recommendedFor(entry.key, lang);
+    }
     for (const row of initialTemplates) {
-      if (CUSTOMIZABLE_MESSAGE_STAGES.includes(row.stage_key as StageKey) || customEntries.some((e) => e.key === row.stage_key)) {
-        map[row.stage_key] = row.body;
-      }
+      if (row.stage_key in map) map[row.stage_key] = row.body;
     }
     return map;
   });
@@ -76,9 +88,12 @@ export default function ClientMessagesSettings({
       let changed = false;
       const next = { ...prev };
       for (const entry of customEntries) {
-        if (!(entry.key in next)) {
-          next[entry.key] = initialTemplates.find((t) => t.stage_key === entry.key)?.body ?? "";
-          changed = true;
+        for (const lang of editLangs) {
+          const sk = clientTemplateKey(entry.key, lang);
+          if (!(sk in next)) {
+            next[sk] = initialTemplates.find((t) => t.stage_key === sk)?.body ?? (lang === "he" ? "" : recommendedFor(entry.key, lang));
+            changed = true;
+          }
         }
       }
       return changed ? next : prev;
@@ -164,7 +179,7 @@ export default function ClientMessagesSettings({
     setTimeout(() => setSavedKey((cur) => (cur === key ? null : cur)), 2000);
   };
 
-  const resetToDefault = (key: StageKey) => {
+  const resetToDefault = (key: string) => {
     if (confirmResetTimeoutRef.current) clearTimeout(confirmResetTimeoutRef.current);
     if (confirmResetKey !== key) {
       // First tap: arm the confirmation instead of resetting immediately, and disarm it again
@@ -174,7 +189,7 @@ export default function ClientMessagesSettings({
       return;
     }
     setConfirmResetKey(null);
-    setBodies((prev) => ({ ...prev, [key]: recommendedFor(key) }));
+    setBodies((prev) => ({ ...prev, [key]: recommendedFor(key.replace(/@(en|ru)$/, ""), editLang) }));
   };
 
   return (
@@ -184,22 +199,47 @@ export default function ClientMessagesSettings({
         <p>{t("כאן אפשר לערוך את נוסח ההודעה שנשלחת ללקוח/ה דרך כפתור \"שליחת עדכון ללקוח בוואטסאפ\" בכל שלב, הנוסח שנשמר הוא בדיוק מה שיישלח בפועל.")}</p>
         <p><span className="font-data">{"{{שם}}"}</span>, {t("מוסיף את שם הלקוח מתוך כרטיס האירוע.")}</p>
         <p><span className="font-data">{"{{שלב}}"}</span>, {t("מוסיף את שם השלב מתוך החבילה.")}</p>
-        <p><span className="font-data">קישור:</span>, {t("יוסיף מיד אחריו את הקישור הרלוונטי.")}</p>
+        <p><span className="font-data">{CLIENT_MESSAGE_LINK_MARKER[editLang]}</span>, {t("יוסיף מיד אחריו את הקישור הרלוונטי.")}</p>
       </div>
       <p className="text-xs text-ink-soft leading-relaxed mb-3.5">
         {t("אם שמרתם חתימה אישית בלשונית \"פרופיל\", היא תתווסף אוטומטית בשורה האחרונה של כל הודעה, עם שורה ריקה מפרידה. אין צורך לכתוב אותה כאן בעצמכם.")}
       </p>
 
+      {editLangs.length > 1 && (
+        <div className="mb-3.5">
+          <div className="text-xs font-semibold mb-1.5">{t("שפת ההודעה")}</div>
+          <div className="inline-flex rounded-full bg-chip p-0.5">
+            {editLangs.map((lang) => (
+              <button
+                key={lang}
+                type="button"
+                onClick={() => setEditLang(lang)}
+                className={`rounded-full px-3 py-1 text-[11px] font-semibold ${editLang === lang ? "bg-ink text-white" : "text-ink-soft"}`}
+              >
+                {LANG_LABELS[lang]}
+              </button>
+            ))}
+          </div>
+          {editLang !== "he" && (
+            <p className="text-xs text-ink-soft leading-relaxed mt-1.5">
+              {t("הנוסח הזה נשלח ללקוחות שהשפה שלהם באירוע היא {lang}. ללקוחות בעברית נשלח הנוסח בעברית.", { lang: LANG_LABELS[editLang] })}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="space-y-3">
-        {allKeys.map(({ key, label, isCustom }) => {
-          const isDefault = !isCustom && bodies[key] === recommendedFor(key as StageKey);
+        {allKeys.map(({ key: stageKey, label, isCustom }) => {
+          // Every piece of per-card state is keyed by the stored key, so each language keeps its own.
+          const key = clientTemplateKey(stageKey, editLang);
+          const isDefault = !isCustom && bodies[key] === recommendedFor(stageKey, editLang);
           return (
-            <div key={key} className="rounded-xl p-3 bg-chip relative">
+            <div key={stageKey} className="rounded-xl p-3 bg-chip relative">
               <div className="flex items-center justify-between gap-2 mb-2">
                 <span className="text-sm font-semibold">{t(label)}</span>
                 {!isCustom && !isDefault && (
                   <button
-                    onClick={() => resetToDefault(key as StageKey)}
+                    onClick={() => resetToDefault(key)}
                     className="text-[11px] whitespace-nowrap shrink-0 font-semibold"
                     style={{ color: confirmResetKey === key ? "var(--color-rose)" : "var(--color-ink-soft)" }}
                   >
@@ -211,7 +251,8 @@ export default function ClientMessagesSettings({
                 ref={(el) => {
                   textareaRefs.current[key] = el;
                 }}
-                value={bodies[key]}
+                value={bodies[key] ?? ""}
+                dir={editLang === "he" ? undefined : "ltr"}
                 onChange={(e) => {
                   setBodies((prev) => ({ ...prev, [key]: e.target.value }));
                   setEmptyErrorKey((cur) => (cur === key ? null : cur));
@@ -226,7 +267,7 @@ export default function ClientMessagesSettings({
                     const token = e.target.value;
                     if (!token) return;
                     const opt = CLIENT_MESSAGE_INSERT_OPTIONS.find((o) => o.token === token);
-                    if (opt) insertToken(key, opt.insertText);
+                    if (opt) insertToken(key, editLang === "he" ? opt.insertText : (CLIENT_MESSAGE_INSERT_TEXT_I18N[editLang][opt.token] ?? opt.insertText));
                   }}
                   className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white border border-line text-ink-soft"
                 >
@@ -246,6 +287,8 @@ export default function ClientMessagesSettings({
                 >
                   😀 {t("אימוג׳י")}
                 </button>
+                {/* The rewrite route writes Hebrew, so it's offered on the Hebrew version only. */}
+                {editLang === "he" && (
                 <button
                   type="button"
                   onClick={() => askAi(key, label)}
@@ -254,6 +297,7 @@ export default function ClientMessagesSettings({
                 >
                   {aiLoadingKey === key ? t("מנסח...") : t("עזרה בניסוח")}
                 </button>
+                )}
               </div>
               {emojiOpenKey === key && (
                 <div className="mt-2 rounded-xl p-2.5 bg-white border border-line grid grid-cols-8 gap-1">

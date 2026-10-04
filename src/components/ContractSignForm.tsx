@@ -59,7 +59,17 @@ export default function ContractSignForm({ contract: initialContract, onSigned }
 
   return (
     <div>
-      <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card text-sm leading-relaxed">
+      {/* UI languages phase 3: in English/Russian, a short note that the terms below are the
+          photographer's own Hebrew text. Hebrew: no note. */}
+      {lang !== "he" && (
+        <p className="rounded-xl px-3.5 py-3 mb-3 text-xs leading-relaxed bg-card border border-line text-ink-soft">
+          {t("נוסח ההסכם כתוב בעברית, כפי שהצלם ניסח אותו. לשאלות על התנאים אפשר לפנות ישירות לצלם.")}
+        </p>
+      )}
+      <div
+        dir={lang === "he" ? undefined : "rtl"}
+        className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card text-sm leading-relaxed"
+      >
         <div className="whitespace-pre-wrap">{main}</div>
         {details && (
           <details className="mt-3">

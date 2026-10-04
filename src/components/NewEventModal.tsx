@@ -6,7 +6,8 @@ import { PACKAGE_LABELS, FREELANCE_VIDEO_EDIT_VARIANTS, packageLabel, type Packa
 import { openWhatsApp } from "@/lib/waLink";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import { createClient } from "@/lib/supabase/client";
-import { buildClientMessageText } from "@/lib/clientMessage";
+import { buildClientMessageText, clientTemplateKey } from "@/lib/clientMessage";
+import { isLang, type Lang } from "@/i18n/config";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import type { ContractTemplateRow, CustomPackageRow, EventContractRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
 import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
@@ -113,7 +114,12 @@ export default function NewEventModal({
   // Booking-confirmation message: the photographer's own saved "event_closing" template (Settings
   // → הודעות ללקוח/ה) instead of a hardcoded, non-customizable message. Fetched once on open, same
   // as the rest of this modal's one-shot data loads.
-  const [eventClosingTemplate, setEventClosingTemplate] = useState<string | undefined>(undefined);
+  // Keyed by stage_key: the Hebrew "event_closing" row and, for an English/Russian client, its
+  // "event_closing@en" / "@ru" row (clientTemplateKey).
+  const [eventClosingTemplates, setEventClosingTemplates] = useState<Record<string, string>>({});
+  // The new event's client language: copied from the lead it was converted from (server-side, in
+  // PATCH /api/leads/[id], admin only — lib/clientLang.ts), read back after creation. Else Hebrew.
+  const [clientMessageLang, setClientMessageLang] = useState<Lang>("he");
   const [whatsappSignature, setWhatsappSignature] = useState<string | null>(null);
 
   // Contract-selection step inserted between "event saved" and the existing success/WhatsApp
@@ -149,14 +155,19 @@ export default function NewEventModal({
         data: { user },
       } = await supabase.auth.getUser();
       if (!user || cancelled) return;
-      const [{ data: photographer }, { data: templateRow }, { data: templates }] = await Promise.all([
+      const [{ data: photographer }, { data: templateRows }, { data: templates }] = await Promise.all([
         supabase.from("photographers").select("whatsapp_signature").eq("id", user.id).maybeSingle<{ whatsapp_signature: string | null }>(),
-        supabase.from("client_message_templates").select("body").eq("photographer_id", user.id).eq("stage_key", "event_closing").maybeSingle<{ body: string }>(),
+        supabase
+          .from("client_message_templates")
+          .select("stage_key, body")
+          .eq("photographer_id", user.id)
+          .in("stage_key", ["event_closing", "event_closing@en", "event_closing@ru"])
+          .returns<{ stage_key: string; body: string }[]>(),
         supabase.from("contract_templates").select("*").eq("photographer_id", user.id).order("created_at", { ascending: true }).returns<ContractTemplateRow[]>(),
       ]);
       if (cancelled) return;
       setWhatsappSignature(photographer?.whatsapp_signature ?? null);
-      setEventClosingTemplate(templateRow?.body);
+      setEventClosingTemplates(Object.fromEntries((templateRows ?? []).map((r) => [r.stage_key, r.body])));
       setContractTemplates(templates ?? []);
     })();
     return () => {
@@ -275,6 +286,13 @@ export default function NewEventModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "won", converted_event_id: data.id }),
       });
+      // Only ever set through the admin-gated server routes, so a stored value is already allowed.
+      const { data: langRow } = await supabase
+        .from("events")
+        .select("client_lang")
+        .eq("id", data.id)
+        .maybeSingle<{ client_lang: string | null }>();
+      if (isLang(langRow?.client_lang)) setClientMessageLang(langRow.client_lang);
     }
     if (waitlistId) {
       await fetch(`/api/waitlist/${waitlistId}`, { method: "DELETE" });
@@ -301,7 +319,7 @@ export default function NewEventModal({
     const message = buildClientMessageText({
       stageKey: "event_closing",
       stageLabel: "סגירת האירוע",
-      savedTemplate: eventClosingTemplate,
+      savedTemplate: eventClosingTemplates[clientTemplateKey("event_closing", clientMessageLang)],
       clientName,
       eventDateIso: eventDate,
       eventLocation: eventLocation || null,
@@ -315,6 +333,7 @@ export default function NewEventModal({
       balanceAmount: Number(balance) || 0,
       linkUrl: portalLink,
       whatsappSignature,
+      lang: clientMessageLang,
     });
     openWhatsApp(clientPhone, message);
     fetch(`/api/events/${createdEvent.id}/log-notification`, {

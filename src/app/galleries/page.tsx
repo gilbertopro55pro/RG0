@@ -4,6 +4,7 @@ import type { EventRow, GalleryPhotoRow, GalleryRow, Photographer } from "@/lib/
 import GalleriesListView, { type GalleryListItem } from "@/components/GalleriesListView";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { hasAppAccess } from "@/lib/subscription";
+import { clientLangFor } from "@/lib/clientLang";
 
 export default async function GalleriesPage() {
   const supabase = await createClient();
@@ -16,13 +17,13 @@ export default async function GalleriesPage() {
     // Photos embedded directly instead of a second query keyed by gallery ids afterward.
     supabase
       .from("galleries")
-      .select("*, events(client_name, event_date), gallery_photos!gallery_photos_gallery_id_fkey(id, gallery_id, storage_path, sort_order)")
+      .select("*, events(client_name, event_date, client_lang), gallery_photos!gallery_photos_gallery_id_fkey(id, gallery_id, storage_path, sort_order)")
       .eq("is_portfolio_only", false)
       .eq("activated", true)
       .order("created_at", { ascending: false })
       .returns<
         (GalleryRow & {
-          events: Pick<EventRow, "client_name" | "event_date"> | null;
+          events: Pick<EventRow, "client_name" | "event_date" | "client_lang"> | null;
           gallery_photos: Pick<GalleryPhotoRow, "id" | "gallery_id" | "storage_path" | "sort_order">[];
         })[]
       >(),
@@ -59,6 +60,7 @@ export default async function GalleriesPage() {
         accessToken: gallery.access_token,
         expiryDays: gallery.expiry_days,
         restoredOnce: gallery.restored_once,
+        clientLang: clientLangFor(photographer.email, gallery.events?.client_lang),
       };
     })
   );
