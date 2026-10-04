@@ -13,6 +13,7 @@ import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
 import AssistantLeadPopup from "@/components/AssistantLeadPopup";
 import { I18nProvider } from "@/i18n/client";
+import LangScope from "@/i18n/LangScope";
 import { getLang } from "@/i18n/server";
 import { dirOf } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
@@ -273,7 +274,9 @@ export default async function RootLayout({
           <BodyScrollLock />
           <GlobalLoadingBar />
           <TopNav />
-          <PageTransition>{children}</PageTransition>
+          <PageTransition>
+            <LangScope>{children}</LangScope>
+          </PageTransition>
           <InstallPrompt />
           <ChangelogModal />
           <AssistantLeadPopup />

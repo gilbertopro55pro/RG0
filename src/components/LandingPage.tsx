@@ -89,7 +89,7 @@ export default function LandingPage() {
   return (
     // min-h-screen + the opaque wrapper paint over the app body's fixed glow gradients (and the
     // body:has(.landing-2026) rule in globals.css turns that fixed layer off on this page).
-    <div className="w-full min-h-screen landing-2026 font-sans">
+    <div dir="rtl" lang="he" className="w-full min-h-screen landing-2026 font-sans">
       {/* HERO (navy) */}
       <section className="bg-[var(--l-navy)] text-[var(--l-on-navy)]">
         <div className={CONTAINER}>
