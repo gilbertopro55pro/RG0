@@ -315,7 +315,7 @@ function leadNotes(d: IntakeDetails): string {
 
 // Creates or updates the conversation's lead as soon as there is a phone number, so a client who
 // leaves mid-way is never lost. needs_details stays true until complete_intake.
-async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, complete: boolean, notePrefix?: string): Promise<string | null> {
+async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, p: IntakePhotographer, complete: boolean, notePrefix?: string): Promise<string | null> {
   const d = conv.collected;
   if (!d.phone?.trim()) return conv.lead_id;
   const notes = [notePrefix, leadNotes(d)].filter(Boolean).join(" · ");
@@ -370,9 +370,10 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
   // A new lead the moment there's a phone number: the phone notification goes out now (lib/push.ts),
   // the email once the conversation is handed off.
   if (data?.id) {
+    const { t, lang } = photographerT(p);
     await sendPushToPhotographer(conv.photographer_id, {
-      title: `פנייה חדשה מהעוזר: ${row.name}`,
-      body: [d.eventType, d.eventDate ? hebrewDate(d.eventDate) : null].filter(Boolean).join(" · ") || "לחצו לפתיחת הלידים",
+      title: t("פנייה חדשה מהעוזר: {name}", { name: d.clientName?.trim() || t("פנייה מהעוזר") }),
+      body: [d.eventType, d.eventDate ? localDate(d.eventDate, lang) : null].filter(Boolean).join(" · ") || t("לחצו לפתיחת הלידים"),
       url: "/leads",
       tag: "new-lead",
     });
@@ -381,34 +382,37 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
 }
 
 // The lead's details as [label, value] pairs for the conversation PDF.
-function detailPairs(d: IntakeDetails): [string, string][] {
+function detailPairs(d: IntakeDetails, t: TFn, lang: Lang): [string, string][] {
   const pairs: [string, string | null | undefined][] = [
-    ["שם", d.clientName],
-    ["טלפון", d.phone],
-    ["סוג האירוע", d.eventType],
-    ["תאריך", dateText(d)],
-    ["מקום", d.location],
-    ["אורחים", d.guests],
-    ["חלק ביום", d.eventSlot ? SLOT_LABELS[d.eventSlot] : null],
-    ["מה ייכלל בצילום", d.coverage],
-    ["צלם וידאו נוסף", d.videoCrew],
-    ["שעות", d.startTime || d.endTime ? `${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null],
-    ["חשוב להם", d.wishes],
+    [t("שם"), d.clientName],
+    [t("טלפון"), d.phone],
+    [t("סוג האירוע"), d.eventType],
+    [t("תאריך"), dateText(d, t, lang)],
+    [t("מקום"), d.location],
+    [t("אורחים"), d.guests],
+    [t("חלק ביום"), d.eventSlot ? t(SLOT_LABELS[d.eventSlot]) : null],
+    [t("מה ייכלל בצילום"), d.coverage],
+    [t("צלם וידאו נוסף"), d.videoCrew],
+    [t("שעות"), d.startTime || d.endTime ? `${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null],
+    [t("חשוב להם"), d.wishes],
   ];
   return pairs.filter((x): x is [string, string] => !!x[1]?.toString().trim()).map(([l, v]) => [l, String(v)]);
 }
 
 // The conversation as the designed PDF (lib/intakeTranscriptPdf.ts), for the handoff email and the
-// lead's "send the summary on WhatsApp" button. Null when there is nothing to show.
+// lead's "send the summary on WhatsApp" button. Null when there is nothing to show. Its labels
+// follow the photographer's language (p.ui_lang); the conversation itself stays as it was written.
 export async function conversationPdf(p: IntakePhotographer, d: IntakeDetails, messages: Anthropic.MessageParam[]): Promise<Uint8Array | null> {
   const transcript = transcriptOf(messages);
   if (!transcript.length) return null;
-  return buildIntakeTranscriptPdf({ studio: studioName(p), clientName: d.clientName ?? "", details: detailPairs(d), transcript, createdAt: new Date() });
+  const { t, lang } = photographerT(p);
+  return buildIntakeTranscriptPdf({ studio: studioName(p), clientName: d.clientName ?? "", details: detailPairs(d, t, lang), transcript, createdAt: new Date(), lang });
 }
 
-export function conversationPdfName(d: IntakeDetails): string {
+export function conversationPdfName(d: IntakeDetails, p?: Pick<IntakePhotographer, "ui_lang">): string {
   const who = (d.clientName ?? "").replace(/[\\/:*?"<>|]+/g, " ").trim();
-  return `סיכום-השיחה${who ? `-${who}` : ""}.pdf`;
+  const { t } = photographerT(p ?? {});
+  return `${t("סיכום-השיחה")}${who ? `-${who}` : ""}.pdf`;
 }
 
 async function notifyPhotographer(p: IntakePhotographer, subject: string, d: IntakeDetails, siteUrl: string, intro: string, messages?: Anthropic.MessageParam[]) {
@@ -471,7 +475,7 @@ async function flushNotices(conv: IntakeConversation, p: IntakePhotographer, sit
 async function completeIntake(supabase: ServiceClient, conv: IntakeConversation, p: IntakePhotographer, siteUrl: string) {
   conv.state = "completed";
   conv.completed_at = new Date().toISOString();
-  conv.lead_id = await upsertLead(supabase, conv, true);
+  conv.lead_id = await upsertLead(supabase, conv, p, true);
   const d = conv.collected;
   void siteUrl;
   queueNotice(conv, {
@@ -537,7 +541,7 @@ async function runTool(
     // Only set in a multilingual conversation (turnLangs has an entry); never anything but he/en/ru.
     if (turnLangs.has(conv) && isLang(input.client_language)) turnLangs.set(conv, { lang: input.client_language, explicit: true });
     conv.collected = { ...conv.collected, ...patch };
-    conv.lead_id = await upsertLead(supabase, conv, !!conv.completed_at);
+    conv.lead_id = await upsertLead(supabase, conv, p, !!conv.completed_at);
     const missing = missingDetails(conv.collected);
     const d = conv.collected;
     const dateReady = d.eventDate ? d.dateAvailable === true : !!d.dateUndecided;
@@ -572,7 +576,7 @@ async function runTool(
     if (!d.eventDate || !d.clientName || !d.phone) return JSON.stringify({ error: "צריך תאריך, שם וטלפון לפני רשימת ההמתנה" });
     if (conv.state === "waitlisted") return JSON.stringify({ ok: true, alreadyDone: true });
     // Nothing more to collect for a taken date — not a "missing details" lead.
-    conv.lead_id = await upsertLead(supabase, conv, true, "ברשימת ההמתנה (התאריך תפוס)");
+    conv.lead_id = await upsertLead(supabase, conv, p, true, "ברשימת ההמתנה (התאריך תפוס)");
     await supabase.from("waitlist").insert({
       photographer_id: conv.photographer_id,
       requested_date: d.eventDate,
