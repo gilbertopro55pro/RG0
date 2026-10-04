@@ -10,6 +10,8 @@ import { STAGE_LABELS } from "@/lib/stages";
 import { designToolsAllowed } from "@/lib/designTools";
 import { hasAppAccess, isInTrial, trialDaysLeft, TRIAL_BANNER_DAYS_LEFT } from "@/lib/subscription";
 import TrialBanner from "@/components/TrialBanner";
+import { getLang, getT } from "@/i18n/server";
+import { dateLocale } from "@/i18n/config";
 import type {
   CustomPackageRow,
   EventPaymentRow,
@@ -53,6 +55,9 @@ export default async function DashboardPage() {
   // Logged-out visitors get the marketing landing page instead of a bare redirect to /login —
   // this is now the page prospective photographers actually land on from ads/social links.
   if (!user) return <LandingPage />;
+
+  const t = await getT();
+  const lang = await getLang();
 
   // Every one of these is independent of the others' *values* — they only depend on user.id,
   // which we already have — so they're fired as a single parallel batch instead of five-plus
@@ -308,7 +313,7 @@ export default async function DashboardPage() {
     });
 
     heroData = {
-      monthLabel: HEBREW_MONTHS[now.getMonth()],
+      monthLabel: lang === "he" ? HEBREW_MONTHS[now.getMonth()] : now.toLocaleDateString(dateLocale(lang), { month: "long" }),
       monthTotal,
       monthForecast: monthTotal + monthForecastExtra,
     };
@@ -323,14 +328,14 @@ export default async function DashboardPage() {
         .map((s) => ({
           type: "payment" as const,
           id: s.id,
-          clientName: s.events?.client_name ?? "לקוח",
+          clientName: s.events?.client_name ?? t("לקוח"),
           balanceAmount: (s.event_id ? balanceByEvent.get(s.event_id) : undefined) ?? 0,
         }))
     : [];
   const pendingReviewRequests: PendingReviewRequest[] = photographer
     ? (scheduledReminders ?? [])
         .filter((s) => s.kind === "review_request")
-        .map((s) => ({ type: "review" as const, id: s.id, clientName: s.events?.client_name ?? "לקוח" }))
+        .map((s) => ({ type: "review" as const, id: s.id, clientName: s.events?.client_name ?? t("לקוח") }))
     : [];
   const pendingLeadFollowUps: PendingLeadFollowUp[] = photographer
     ? (scheduledReminders ?? [])
@@ -338,7 +343,7 @@ export default async function DashboardPage() {
         .map((s) => ({
           type: "lead_followup" as const,
           id: s.id,
-          leadName: s.leads?.name ?? "ליד",
+          leadName: s.leads?.name ?? t("ליד"),
           quotedAmount: s.leads?.quoted_amount ?? 0,
         }))
     : [];
@@ -349,12 +354,12 @@ export default async function DashboardPage() {
         <div className="min-w-0">
           <div className="text-[13px] text-ink-soft flex items-center gap-2">
             <span className="truncate">
-              {timeOfDayGreeting()}, {displayName}
+              {t(timeOfDayGreeting())}, {displayName}
             </span>
             <LogoutButton />
           </div>
           <h1 className="text-[28px] leading-tight font-bold font-display mt-0.5">
-            {isPhotographer ? "האירועים שלי" : "האירועים שהוקצו לי"}
+            {isPhotographer ? t("האירועים שלי") : t("האירועים שהוקצו לי")}
           </h1>
         </div>
         {isPhotographer && (
@@ -390,7 +395,7 @@ export default async function DashboardPage() {
           suppliers={photographer.pricing_suppliers}
           priceQuotes={priceQuotes ?? []}
           templates={priceQuoteTemplates ?? []}
-          eventTypes={(eventTypes ?? []).map((t) => ({ id: t.id, name: t.name }))}
+          eventTypes={(eventTypes ?? []).map((et) => ({ id: et.id, name: et.name }))}
           initialCustomEventTypes={photographer.quote_event_type_suggestions}
           defaultTaxStatus={photographer.business_tax_status}
           quoteExtras={quoteExtrasFor(photographer.email)}
@@ -411,11 +416,11 @@ export default async function DashboardPage() {
               <IconMagnetFrame className="h-5 w-5" />
             </span>
               <div className="min-w-0">
-                <div className="text-sm font-semibold leading-snug">עיצוב מסגרת מגנט</div>
-                <div className="text-xs text-ink-soft leading-snug mt-0.5">בסיס לבן, טקסט ואלמנטים חופשי</div>
+                <div className="text-sm font-semibold leading-snug">{t("עיצוב מסגרת מגנט")}</div>
+                <div className="text-xs text-ink-soft leading-snug mt-0.5">{t("בסיס לבן, טקסט ואלמנטים חופשי")}</div>
               </div>
             </div>
-            <span className="hidden sm:inline text-ink-soft shrink-0">←</span>
+            <span className="hidden sm:inline-block ltr:rotate-180 text-ink-soft shrink-0">←</span>
           </a>
           <AlbumQuickAccessButton galleries={albumQuickGalleries} />
         </div>

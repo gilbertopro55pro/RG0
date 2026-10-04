@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { IconSettings } from "@/components/icons/NavIcons";
 import { CURRENT_VERSION } from "@/lib/changelog";
+import { useT } from "@/i18n/client";
 
 // Moved out of the quick-actions grid to sit right next to the "האירועים שלי" heading instead —
 // same unseen-changelog dot it always had, just relocated.
 export default function SettingsGearLink() {
+  const t = useT();
   const [hasUnseenUpdate, setHasUnseenUpdate] = useState(false);
 
   useEffect(() => {
@@ -22,9 +24,9 @@ export default function SettingsGearLink() {
   }, []);
 
   return (
-    <Link href="/settings" className="relative shrink-0 h-10 w-10 rounded-xl flex items-center justify-center bg-card text-ink" aria-label="הגדרות">
+    <Link href="/settings" className="relative shrink-0 h-10 w-10 rounded-xl flex items-center justify-center bg-card text-ink" aria-label={t("הגדרות")}>
       {hasUnseenUpdate && (
-        <span className="absolute top-2 left-2 h-2 w-2 rounded-full" style={{ background: "var(--color-brass)" }} />
+        <span className="absolute top-2 start-2 h-2 w-2 rounded-full" style={{ background: "var(--color-brass)" }} />
       )}
       <IconSettings className="h-[19px] w-[19px]" />
     </Link>

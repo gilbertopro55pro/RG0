@@ -4,6 +4,8 @@ import { useState } from "react";
 import type { EventContractRow } from "@/lib/types";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useLang, useT } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 export default function ContractSection({
   eventId,
@@ -12,6 +14,8 @@ export default function ContractSection({
   eventId: string;
   initialContract: EventContractRow | null;
 }) {
+  const t = useT();
+  const lang = useLang();
   const [contract, setContract] = useState(initialContract);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -40,7 +44,7 @@ export default function ContractSection({
     const data = await res.json();
     setSaving(false);
     if (!res.ok) {
-      setError(data.error ?? "שגיאה בשמירת החוזה");
+      setError(data.error ? t(data.error) : t("שגיאה בשמירת החוזה"));
       return;
     }
     setContract(data.contract);
@@ -54,7 +58,7 @@ export default function ContractSection({
     const data = await res.json();
     setGenerating(false);
     if (!res.ok) {
-      setError(data.error ?? "שגיאה ביצירת החוזה");
+      setError(data.error ? t(data.error) : t("שגיאה ביצירת החוזה"));
       return;
     }
     setContract(data.contract);
@@ -71,7 +75,7 @@ export default function ContractSection({
   return (
     <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
       <div className="flex items-center gap-2 mb-3.5">
-        <span className="text-sm font-semibold">חוזה הזמנה</span>
+        <span className="text-sm font-semibold">{t("חוזה הזמנה")}</span>
       </div>
 
       {!contract && (
@@ -80,37 +84,37 @@ export default function ContractSection({
           disabled={generating}
           className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
         >
-          {generating ? "יוצר..." : "צור חוזה לחתימה"}
+          {generating ? t("יוצר...") : t("צור חוזה לחתימה")}
         </button>
       )}
 
       {contract && contract.status !== "signed" && (
         <div className="space-y-2.5">
           <div className="rounded-xl px-3.5 py-2.5 text-sm bg-chip-tint text-amber-deep font-medium">
-            ממתין לחתימת הלקוח/ה
+            {t("ממתין לחתימת הלקוח/ה")}
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setShowPreview(true)}
               className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
             >
-              תצוגה מקדימה
+              {t("תצוגה מקדימה")}
             </button>
             <button
               onClick={openEdit}
               className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
             >
-              עריכה
+              {t("עריכה")}
             </button>
           </div>
           <button
             onClick={copyLink}
             className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
           >
-            {copied ? "הקישור הועתק ✓" : "העתקת קישור לחתימה"}
+            {copied ? t("הקישור הועתק ✓") : t("העתקת קישור לחתימה")}
           </button>
           <button onClick={generate} disabled={generating} className="w-full text-xs text-ink-soft underline">
-            {generating ? "מרענן..." : "יצירת חוזה מעודכן (מחליף את הקיים)"}
+            {generating ? t("מרענן...") : t("יצירת חוזה מעודכן (מחליף את הקיים)")}
           </button>
         </div>
       )}
@@ -118,18 +122,18 @@ export default function ContractSection({
       {contract && contract.status === "signed" && (
         <div className="space-y-2.5">
           <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
-            נחתם על ידי {contract.signer_name}
-            {contract.signed_at && `, ${new Date(contract.signed_at).toLocaleDateString("he-IL")}`}
+            {t("נחתם על ידי {name}", { name: contract.signer_name ?? "" })}
+            {contract.signed_at && `, ${new Date(contract.signed_at).toLocaleDateString(dateLocale(lang))}`}
           </div>
           {contract.signature_data_url && (
             // eslint-disable-next-line @next/next/no-img-element -- a stored data URL, no benefit from next/image's remote optimization
-            <img src={contract.signature_data_url} alt="חתימת הלקוח" className="h-16 rounded-lg border border-line bg-white" />
+            <img src={contract.signature_data_url} alt={t("חתימת הלקוח")} className="h-16 rounded-lg border border-line bg-white" />
           )}
           <button
             onClick={() => setShowPreview(true)}
             className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
           >
-            תצוגה מקדימה
+            {t("תצוגה מקדימה")}
           </button>
         </div>
       )}
@@ -152,15 +156,16 @@ export default function ContractSection({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold font-display">תצוגה מקדימה: חוזה הזמנה</h2>
+              <h2 className="text-lg font-bold font-display">{t("תצוגה מקדימה: חוזה הזמנה")}</h2>
               <button
                 onClick={() => setShowPreview(false)}
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
+                aria-label={t("סגירה")}
               >
                 <IconClose className="h-4 w-4" />
               </button>
             </div>
-            <div className="text-sm whitespace-pre-wrap leading-relaxed rounded-xl p-3.5 bg-chip">
+            <div dir="rtl" className="text-sm whitespace-pre-wrap leading-relaxed rounded-xl p-3.5 bg-chip">
               {contract.contract_text}
             </div>
           </div>
@@ -178,15 +183,16 @@ export default function ContractSection({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold font-display">עריכת החוזה</h2>
+              <h2 className="text-lg font-bold font-display">{t("עריכת החוזה")}</h2>
               <button
                 onClick={() => setShowEdit(false)}
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
+                aria-label={t("סגירה")}
               >
                 <IconClose className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-xs text-ink-soft mb-2.5">שינויים כאן נשמרים ישירות על החוזה, ולא נוצרים מחדש מהפרטים של האירוע.</p>
+            <p className="text-xs text-ink-soft mb-2.5">{t("שינויים כאן נשמרים ישירות על החוזה, ולא נוצרים מחדש מהפרטים של האירוע.")}</p>
             <textarea
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
@@ -200,13 +206,13 @@ export default function ContractSection({
                 disabled={saving}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {saving ? "שומר..." : "שמירת שינויים"}
+                {saving ? t("שומר...") : t("שמירת שינויים")}
               </button>
               <button
                 onClick={() => setShowEdit(false)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>

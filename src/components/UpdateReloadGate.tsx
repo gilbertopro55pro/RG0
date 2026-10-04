@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useT } from "@/i18n/client";
 
 // Client-facing pages (galleries, contracts, quotes, portfolio…) and the auth pages never show
 // this — only the photographer's own app does.
@@ -19,6 +20,7 @@ const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID;
 // "What's new" for real releases is still ChangelogModal's job, after the reload.
 export default function UpdateReloadGate() {
   const pathname = usePathname();
+  const t = useT();
   const [show, setShow] = useState(false);
   const snoozedUntil = useRef(0);
 
@@ -76,15 +78,15 @@ export default function UpdateReloadGate() {
             </svg>
           </span>
         </div>
-        <h2 className="text-lg font-bold font-display mb-2">יש עדכון חדש למערכת</h2>
-        <p className="text-sm text-ink-soft mb-5">כדי שהשינויים ייכנסו לתוקף, צריך לטעון את המערכת מחדש. ההתחברות שלך נשמרת.</p>
+        <h2 className="text-lg font-bold font-display mb-2">{t("יש עדכון חדש למערכת")}</h2>
+        <p className="text-sm text-ink-soft mb-5">{t("כדי שהשינויים ייכנסו לתוקף, צריך לטעון את המערכת מחדש. ההתחברות שלך נשמרת.")}</p>
         <button onClick={() => window.location.reload()} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-          טעינה מחדש
+          {t("טעינה מחדש")}
         </button>
         {/* Reloading throws away anything typed but not yet saved (a half-filled new event, a
             contract being edited) — so there's a way to finish that first. It comes back. */}
         <button onClick={snooze} className="w-full mt-2 py-2 text-xs font-semibold text-ink-soft">
-          עוד 10 דקות
+          {t("עוד 10 דקות")}
         </button>
       </div>
     </div>

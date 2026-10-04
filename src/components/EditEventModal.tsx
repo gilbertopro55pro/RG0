@@ -10,6 +10,8 @@ import { useModalEntered } from "@/lib/useModalEntered";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import NativeDateTimeField from "@/components/NativeDateTimeField";
+import { useLang, useT } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 export type EditablePayments = { depositAmount: number; balanceAmount: number; depositPaid: boolean };
 
@@ -26,6 +28,8 @@ export default function EditEventModal({
   onSaved: (newPayments?: { depositAmount: number; balanceAmount: number }) => void;
 }) {
   const router = useRouter();
+  const t = useT();
+  const locale = dateLocale(useLang());
   const [clientName, setClientName] = useState(event.client_name);
   const [eventType, setEventType] = useState(event.event_type ?? "");
   // Same value convention as NewEventModal: a built-in PackageType key, or `custom:<id>`.
@@ -87,7 +91,7 @@ export default function EditEventModal({
   const submit = async (allowDoubleBooking = false) => {
     if (!clientName || !eventDate) return;
     if (payments && !amountsValid) {
-      setError("היתרה לא יכולה להיות גדולה מסכום האירוע, והסכומים לא יכולים להיות שליליים");
+      setError(t("היתרה לא יכולה להיות גדולה מסכום האירוע, והסכומים לא יכולים להיות שליליים"));
       return;
     }
     setSaving(true);
@@ -117,14 +121,14 @@ export default function EditEventModal({
     setSaving(false);
 
     if (!res.ok) {
-      setError(data.error ?? "שגיאה בעדכון האירוע");
+      setError(data.error ? t(data.error) : t("שגיאה בעדכון האירוע"));
       setDateConflict(!!data.conflict);
       return;
     }
     if (data.googleCalendarDisconnected) {
-      alert("הפרטים נשמרו, אבל החיבור ליומן Google פג תוקף. יש להתחבר מחדש בהגדרות כדי שהאירועים ימשיכו להסתנכרן.");
+      alert(t("הפרטים נשמרו, אבל החיבור ליומן Google פג תוקף. יש להתחבר מחדש בהגדרות כדי שהאירועים ימשיכו להסתנכרן."));
     } else if (data.googleCalendarError) {
-      alert(`הפרטים נשמרו, אבל לא ניתן היה לעדכן את האירוע ביומן Google (${data.googleCalendarError}).`);
+      alert(t("הפרטים נשמרו, אבל לא ניתן היה לעדכן את האירוע ביומן Google ({error}).", { error: String(data.googleCalendarError) }));
     }
 
     onSaved(amountsChanged ? { depositAmount: derivedDeposit, balanceAmount: parsedBalance } : undefined);
@@ -136,17 +140,17 @@ export default function EditEventModal({
     const res = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setError(data.error ?? "שגיאה במחיקת האירוע");
+      setError(data.error ? t(data.error) : t("שגיאה במחיקת האירוע"));
       setDeleting(false);
       return;
     }
     if (data.googleCalendarDisconnected) {
       alert(
-        "האירוע נמחק מהמערכת. שימו לב: החיבור ליומן Google פג תוקף, כך שהוא לא הוסר משם. יש להתחבר מחדש בהגדרות ולמחוק אותו ידנית מיומן Google."
+        t("האירוע נמחק מהמערכת. שימו לב: החיבור ליומן Google פג תוקף, כך שהוא לא הוסר משם. יש להתחבר מחדש בהגדרות ולמחוק אותו ידנית מיומן Google.")
       );
     } else if (data.googleCalendarError) {
       alert(
-        `האירוע נמחק מהמערכת, אבל לא ניתן היה למחוק אותו מיומן Google (${data.googleCalendarError}). יש למחוק אותו ידנית מיומן Google.`
+        t("האירוע נמחק מהמערכת, אבל לא ניתן היה למחוק אותו מיומן Google ({error}). יש למחוק אותו ידנית מיומן Google.", { error: String(data.googleCalendarError) })
       );
     }
     router.push("/");
@@ -165,10 +169,11 @@ export default function EditEventModal({
     >
       <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-bold font-display">עריכת פרטי האירוע</h2>
+          <h2 className="text-xl font-bold font-display">{t("עריכת פרטי האירוע")}</h2>
           <button
             onClick={onClose}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
+            aria-label={t("סגירה")}
           >
             <IconClose className="h-4 w-4" />
           </button>
@@ -176,7 +181,7 @@ export default function EditEventModal({
         <div className="space-y-3">
           <EventTypeField value={eventType} onChange={setEventType} />
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">חבילה</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("חבילה")}</label>
             <select
               value={pkgValue}
               onChange={(e) => setPkgValue(e.target.value)}
@@ -184,18 +189,18 @@ export default function EditEventModal({
             >
               {packageOptions.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.value === initialPkgValue ? `${o.label} (החבילה הנוכחית)` : o.label}
+                  {o.value === initialPkgValue ? t("{label} (החבילה הנוכחית)", { label: t(o.label) }) : t(o.label)}
                 </option>
               ))}
             </select>
             {packageChanged && (
               <p className="text-[11px] text-amber-deep mt-1.5 leading-relaxed">
-                שינוי החבילה יעדכן את שלבי העבודה באירוע, בפורטל הלקוח וביומן: שלבים של החבילה החדשה יתווספו, ושלבים שאינם שייכים לה יוסרו (גם אם כבר סומנו כהושלמו).
+                {t("שינוי החבילה יעדכן את שלבי העבודה באירוע, בפורטל הלקוח וביומן: שלבים של החבילה החדשה יתווספו, ושלבים שאינם שייכים לה יוסרו (גם אם כבר סומנו כהושלמו).")}
               </p>
             )}
           </div>
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">שם הלקוח</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("שם הלקוח")}</label>
             <input
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
@@ -203,7 +208,7 @@ export default function EditEventModal({
             />
           </div>
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("טלפון הלקוח")}</label>
             <input
               type="tel"
               value={clientPhone}
@@ -212,18 +217,18 @@ export default function EditEventModal({
             />
           </div>
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">תאריך האירוע</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("תאריך האירוע")}</label>
             <NativeDateTimeField
               type="date"
               value={eventDate}
               onChange={setEventDate}
-              display={eventDate ? formatDateDMYFromInput(eventDate) : <span className="text-ink-soft">בחר תאריך</span>}
+              display={eventDate ? formatDateDMYFromInput(eventDate) : <span className="text-ink-soft">{t("בחר תאריך")}</span>}
             />
           </div>
           <div className="flex gap-2">
             {/* min-w-0 keeps a flex item from growing past its half of the row. */}
             <div className="flex-1 min-w-0">
-              <label className="text-xs block mb-1 text-ink-soft">שעת התחלה</label>
+              <label className="text-xs block mb-1 text-ink-soft">{t("שעת התחלה")}</label>
               <NativeDateTimeField
                 type="time"
                 compact
@@ -233,7 +238,7 @@ export default function EditEventModal({
               />
             </div>
             <div className="flex-1 min-w-0">
-              <label className="text-xs block mb-1 text-ink-soft">שעת סיום</label>
+              <label className="text-xs block mb-1 text-ink-soft">{t("שעת סיום")}</label>
               <NativeDateTimeField
                 type="time"
                 compact
@@ -244,7 +249,7 @@ export default function EditEventModal({
             </div>
           </div>
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">מיקום האירוע</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("מיקום האירוע")}</label>
             <input
               value={eventLocation}
               onChange={(e) => setEventLocation(e.target.value)}
@@ -252,7 +257,7 @@ export default function EditEventModal({
             />
           </div>
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">שעת הגעה לצילומי משפחה</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("שעת הגעה לצילומי משפחה")}</label>
             <NativeDateTimeField
               type="time"
               value={arrivalTime}
@@ -264,7 +269,7 @@ export default function EditEventModal({
             <div>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <label className="text-xs block mb-1 text-ink-soft">סכום האירוע (₪)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("סכום האירוע (₪)")}</label>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -275,7 +280,7 @@ export default function EditEventModal({
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs block mb-1 text-ink-soft">יתרה (₪)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("יתרה (₪)")}</label>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -288,26 +293,26 @@ export default function EditEventModal({
               </div>
               {amountsValid ? (
                 <p className="text-xs text-ink-soft mt-1.5">
-                  מקדמה: <span className="font-data">₪{derivedDeposit.toLocaleString("he-IL")}</span> (סכום האירוע פחות היתרה)
+                  {t("מקדמה:")} <span className="font-data">₪{derivedDeposit.toLocaleString(locale)}</span> {t("(סכום האירוע פחות היתרה)")}
                 </p>
               ) : (
-                <p className="text-xs text-rose mt-1.5">היתרה לא יכולה להיות גדולה מסכום האירוע</p>
+                <p className="text-xs text-rose mt-1.5">{t("היתרה לא יכולה להיות גדולה מסכום האירוע")}</p>
               )}
               {payments.depositPaid && amountsValid && derivedDeposit !== payments.depositAmount && (
                 <p className="text-xs mt-1" style={{ color: "var(--color-amber-deep)" }}>
-                  שימו לב: המקדמה כבר סומנה כשולמה (₪{payments.depositAmount.toLocaleString("he-IL")}), והסכום החדש שונה ממנה.
+                  {t("שימו לב: המקדמה כבר סומנה כשולמה (₪{amount}), והסכום החדש שונה ממנה.", { amount: payments.depositAmount.toLocaleString(locale) })}
                 </p>
               )}
             </div>
           )}
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">הערות</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("הערות")}</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none"
-              placeholder="כל מידע נוסף שכדאי לזכור על האירוע"
+              placeholder={t("כל מידע נוסף שכדאי לזכור על האירוע")}
             />
           </div>
           {error && <p className="text-xs text-rose">{error}</p>}
@@ -318,13 +323,13 @@ export default function EditEventModal({
                 disabled={saving}
                 className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {saving ? "שומר..." : "שמירה בכל זאת (הזמנה כפולה)"}
+                {saving ? t("שומר...") : t("שמירה בכל זאת (הזמנה כפולה)")}
               </button>
               <button
                 onClick={() => setDateConflict(false)}
                 className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           ) : (
@@ -333,7 +338,7 @@ export default function EditEventModal({
               disabled={saving}
               className="w-full rounded-lg py-3 text-sm font-semibold mt-2 bg-ink text-white disabled:opacity-60"
             >
-              {saving ? "שומר..." : "שמירת שינויים"}
+              {saving ? t("שומר...") : t("שמירת שינויים")}
             </button>
           )}
 
@@ -341,7 +346,7 @@ export default function EditEventModal({
             {confirmingDelete ? (
               <div className="rounded-xl p-3 bg-chip">
                 <p className="text-xs mb-3 text-rose">
-                  למחוק את האירוע לצמיתות? כל התשלומים, השלבים וההתראות שלו יימחקו ולא ניתן יהיה לשחזר.
+                  {t("למחוק את האירוע לצמיתות? כל התשלומים, השלבים וההתראות שלו יימחקו ולא ניתן יהיה לשחזר.")}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -349,14 +354,14 @@ export default function EditEventModal({
                     disabled={deleting}
                     className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-rose text-white disabled:opacity-60"
                   >
-                    {deleting ? "מוחק..." : "כן, מחק לצמיתות"}
+                    {deleting ? t("מוחק...") : t("כן, מחק לצמיתות")}
                   </button>
                   <button
                     onClick={() => setConfirmingDelete(false)}
                     disabled={deleting}
                     className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft"
                   >
-                    ביטול
+                    {t("ביטול")}
                   </button>
                 </div>
               </div>
@@ -365,7 +370,7 @@ export default function EditEventModal({
                 onClick={() => setConfirmingDelete(true)}
                 className="w-full rounded-lg py-2.5 text-sm font-semibold text-rose"
               >
-                מחיקת האירוע
+                {t("מחיקת האירוע")}
               </button>
             )}
           </div>

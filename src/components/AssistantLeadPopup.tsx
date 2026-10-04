@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { HIDDEN_PREFIXES } from "@/components/TopNav";
+import { useLang, useT } from "@/i18n/client";
 
 // "פנייה חדשה מהעוזר" (owner, 2026-10-01): every lead the intake assistant opens pops up on
 // whatever screen of the app the photographer is on, until it's seen once (leads.assistant_seen_at,
@@ -30,6 +31,8 @@ function dateLabel(iso: string | null): string | null {
 
 export default function AssistantLeadPopup() {
   const pathname = usePathname();
+  const t = useT();
+  const lang = useLang();
   const router = useRouter();
   const [leads, setLeads] = useState<NewLead[]>([]);
   // Phone notifications not on for this device yet (components/PushNotificationsSettings.tsx):
@@ -68,7 +71,7 @@ export default function AssistantLeadPopup() {
   useEffect(() => {
     if (hidden) return;
     const first = setTimeout(() => void check(), 0);
-    const t = setInterval(() => {
+    const timer = setInterval(() => {
       if (document.visibilityState === "visible") void check();
     }, POLL_MS);
     const onVisible = () => {
@@ -77,7 +80,7 @@ export default function AssistantLeadPopup() {
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearTimeout(first);
-      clearInterval(t);
+      clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [hidden, check]);
@@ -97,34 +100,34 @@ export default function AssistantLeadPopup() {
   const facts = [lead.event_type_name, dateLabel(lead.event_date_interest)].filter(Boolean).join(" · ");
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.45)" }} role="dialog" aria-modal="true" aria-label="פנייה חדשה מהעוזר">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.45)" }} role="dialog" aria-modal="true" aria-label={t("פנייה חדשה מהעוזר")}>
       <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet">
         <div className="flex items-center gap-2 mb-3">
           <span className="h-2 w-2 rounded-full animate-pulse" style={{ background: "var(--color-amber-deep)" }} />
           <span className="text-xs font-semibold" style={{ color: "var(--color-amber-deep)" }}>
-            פנייה חדשה מהעוזר
+            {t("פנייה חדשה מהעוזר")}
           </span>
         </div>
         <h2 className="text-lg font-bold font-display leading-snug">{lead.name}</h2>
         {facts && <p className="text-sm text-ink mt-1">{facts}</p>}
         {lead.phone && (
-          <p className="text-sm text-ink-soft mt-0.5" dir="ltr" style={{ textAlign: "right" }}>
+          <p className="text-sm text-ink-soft mt-0.5" dir="ltr" style={{ textAlign: lang === "he" ? "right" : "left" }}>
             {lead.phone}
           </p>
         )}
-        {lead.needs_details && <p className="text-xs text-rose mt-2">השיחה עוד לא הסתיימה, חסרים חלק מהפרטים.</p>}
-        {more > 0 && <p className="text-xs text-ink-soft mt-2">ועוד {more === 1 ? "פנייה חדשה אחת" : `${more} פניות חדשות`}</p>}
+        {lead.needs_details && <p className="text-xs text-rose mt-2">{t("השיחה עוד לא הסתיימה, חסרים חלק מהפרטים.")}</p>}
+        {more > 0 && <p className="text-xs text-ink-soft mt-2">{more === 1 ? t("ועוד פנייה חדשה אחת") : t("ועוד {n} פניות חדשות", { n: more })}</p>}
         {pushOff && (
           <button type="button" onClick={() => markSeenAnd("/settings?tab=automation")} className="mt-3 text-xs font-semibold underline" style={{ color: "var(--color-amber-deep)" }}>
-            לקבל פניות כאלה גם כהתראה בטלפון
+            {t("לקבל פניות כאלה גם כהתראה בטלפון")}
           </button>
         )}
         <div className="flex gap-2 mt-5">
           <button type="button" onClick={() => markSeen(true)} className="flex-1 h-11 rounded-xl bg-ink text-white text-sm font-semibold">
-            לצפייה בליד
+            {t("לצפייה בליד")}
           </button>
           <button type="button" onClick={() => markSeen(false)} className="h-11 px-4 rounded-xl border border-line bg-white text-sm font-semibold text-ink">
-            אחר כך
+            {t("אחר כך")}
           </button>
         </div>
       </div>

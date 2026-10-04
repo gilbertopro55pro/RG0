@@ -2,6 +2,8 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useLang, useT } from "@/i18n/client";
+import { dirOf } from "@/i18n/config";
 
 export type RowMenuItem = {
   label: string;
@@ -20,6 +22,8 @@ const EDGE = 8;
 // and pushed the button to the other edge (found on the leads screen, 2026-09-26), and an animated
 // or overflow-hidden card around it could clip or shift it.
 export default function RowMenu({ items, label = "עוד פעולות" }: { items: RowMenuItem[]; label?: string }) {
+  const t = useT();
+  const lang = useLang();
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState<number | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -63,7 +67,7 @@ export default function RowMenu({ items, label = "עוד פעולות" }: { item
         ref={buttonRef}
         type="button"
         onClick={() => (open ? close() : setOpen(true))}
-        aria-label={label}
+        aria-label={t(label)}
         aria-expanded={open}
         className="h-9 w-9 rounded-lg border border-line flex items-center justify-center text-ink-soft"
         style={{ background: "var(--color-input-bg)" }}
@@ -80,7 +84,7 @@ export default function RowMenu({ items, label = "עוד פעולות" }: { item
             <div className="fixed inset-0 z-[130] gf-no-enter" onClick={close} />
             <div
               ref={panelRef}
-              dir="rtl"
+              dir={dirOf(lang)}
               className="fixed z-[131] min-w-44 max-w-[calc(100vw-16px)] rounded-2xl bg-paper shadow-sheet border border-line overflow-hidden text-sm"
               // Measured invisibly first, then shown at the clamped position.
               style={pos ? { top: pos.top, left: pos.left } : { top: 0, left: 0, visibility: "hidden" }}
@@ -100,7 +104,7 @@ export default function RowMenu({ items, label = "עוד פעולות" }: { item
                   }}
                   className={`w-full text-start px-4 py-3 ${i > 0 ? "border-t border-line" : ""} ${item.danger ? "text-rose font-semibold" : ""}`}
                 >
-                  {item.danger && confirming === i ? `בטוח? ${item.label}` : item.label}
+                  {item.danger && confirming === i ? t("בטוח? {label}", { label: t(item.label) }) : t(item.label)}
                 </button>
               ))}
             </div>

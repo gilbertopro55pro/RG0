@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan, type SubscriptionTier } from "@/lib/stages";
 import Spinner from "@/components/Spinner";
+import { useT } from "@/i18n/client";
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   basic: "פרו סטארט",
@@ -21,6 +22,7 @@ function plansForTier(tier: SubscriptionTier): SubscriptionPlan[] {
 }
 
 export default function BillingPlanSelector({ initialPlan }: { initialPlan: SubscriptionPlan }) {
+  const t = useT();
   const [plan, setPlan] = useState<SubscriptionPlan>(initialPlan);
   const [tier, setTier] = useState<SubscriptionTier>(SUBSCRIPTION_PLANS[initialPlan].tier);
   const [loading, setLoading] = useState(false);
@@ -36,7 +38,7 @@ export default function BillingPlanSelector({ initialPlan }: { initialPlan: Subs
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error ?? "שגיאה ביצירת קישור לתשלום");
+      setError(data.error ? t(data.error) : t("שגיאה ביצירת קישור לתשלום"));
       setLoading(false);
       return;
     }
@@ -48,24 +50,24 @@ export default function BillingPlanSelector({ initialPlan }: { initialPlan: Subs
   return (
     <div>
       <div className="flex gap-1 mb-3 p-1 rounded-full bg-chip">
-        {TIER_ORDER.map((t) => (
+        {TIER_ORDER.map((tierKey) => (
           <button
-            key={t}
+            key={tierKey}
             onClick={() => {
-              setTier(t);
-              setPlan(plansForTier(t)[0]);
+              setTier(tierKey);
+              setPlan(plansForTier(tierKey)[0]);
             }}
             className="flex-1 rounded-full py-1.5 text-xs font-semibold"
             style={{
-              background: tier === t ? "var(--color-amber-deep)" : "transparent",
-              color: tier === t ? "#fff" : "var(--color-ink-soft)",
+              background: tier === tierKey ? "var(--color-amber-deep)" : "transparent",
+              color: tier === tierKey ? "#fff" : "var(--color-ink-soft)",
             }}
           >
-            {TIER_LABEL[t]}
+            {t(TIER_LABEL[tierKey])}
           </button>
         ))}
       </div>
-      {TIER_NOTE[tier] && <p className="text-[11px] mb-3 text-ink-soft">{TIER_NOTE[tier]}</p>}
+      {TIER_NOTE[tier] && <p className="text-[11px] mb-3 text-ink-soft">{t(TIER_NOTE[tier])}</p>}
       <div className="flex gap-2 mb-4">
         {visiblePlans.map((key) => {
           const info = SUBSCRIPTION_PLANS[key];
@@ -73,31 +75,31 @@ export default function BillingPlanSelector({ initialPlan }: { initialPlan: Subs
             <button
               key={key}
               onClick={() => setPlan(key)}
-              className="flex-1 rounded-2xl p-3.5 relative text-right bg-white"
+              className="flex-1 rounded-2xl p-3.5 relative text-start bg-white"
               style={{ border: plan === key ? "1.5px solid var(--color-amber)" : "1px solid var(--color-line)" }}
             >
               {info.badge && (
-                <span className="absolute -top-2.5 right-3 text-[10px] px-2 py-0.5 rounded-full bg-amber text-white">
-                  {info.badge}
+                <span className="absolute -top-2.5 start-3 text-[10px] px-2 py-0.5 rounded-full bg-amber text-white">
+                  {t(info.badge)}
                 </span>
               )}
               <div className="flex items-baseline gap-1">
                 <span className="text-xl font-bold font-display">₪{info.pricePerMonth}</span>
-                <span className="text-[11px] text-ink-soft">/חודש</span>
+                <span className="text-[11px] text-ink-soft">{t("/חודש")}</span>
               </div>
-              <div className="text-[11px] mt-1 text-ink-soft">{info.label}</div>
+              <div className="text-[11px] mt-1 text-ink-soft">{t(info.label)}</div>
             </button>
           );
         })}
       </div>
-      <p className="text-[11px] mb-4 text-ink-soft">{SUBSCRIPTION_PLANS[plan].note}</p>
+      <p className="text-[11px] mb-4 text-ink-soft">{t(SUBSCRIPTION_PLANS[plan].note)}</p>
       <button
         onClick={startCheckout}
         disabled={loading}
         className="w-full rounded-xl py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60 flex items-center justify-center gap-2"
       >
         {loading && <Spinner light />}
-        {loading ? "מעביר לתשלום..." : "מעבר לתשלום מאובטח"}
+        {loading ? t("מעביר לתשלום...") : t("מעבר לתשלום מאובטח")}
       </button>
       {error && <p className="text-xs text-rose mt-2">{error}</p>}
     </div>

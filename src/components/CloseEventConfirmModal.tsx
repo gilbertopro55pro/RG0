@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { monthLabel, type ClosePreview } from "@/lib/closeEvent";
+import type { ClosePreview } from "@/lib/closeEvent";
+import { useLang, useT } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 // Centered flow shown before an event is closed — shared by the event card and the home-screen
 // events list. Closing never touches stages (open ones stay open) and can be undone from the event
@@ -18,6 +20,13 @@ export default function CloseEventConfirmModal({
   onClosed: (closedAt: string) => void | Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useT();
+  const locale = dateLocale(useLang());
+  // Same as lib/closeEvent monthLabel, in the UI language.
+  const monthLabel = (key: string) => {
+    const [year, month] = key.split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, 15)).toLocaleDateString(locale, { month: "long", year: "numeric", timeZone: "UTC" });
+  };
   const [preview, setPreview] = useState<ClosePreview | null>(null);
   const [step, setStep] = useState<"confirm" | "month">("confirm");
   const [choice, setChoice] = useState<"created" | "closing" | null>(null);
@@ -30,13 +39,13 @@ export default function CloseEventConfirmModal({
       const res = await fetch(`/api/events/${eventId}/close`);
       const data = await res.json().catch(() => null);
       if (cancelled) return;
-      if (!res.ok || !data) setError(data?.error ?? "שגיאה בטעינת פרטי הסגירה");
+      if (!res.ok || !data) setError(data?.error ? t(data.error) : t("שגיאה בטעינת פרטי הסגירה"));
       else setPreview(data);
     })();
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, t]);
 
   const close = async () => {
     setBusy(true);
@@ -49,7 +58,7 @@ export default function CloseEventConfirmModal({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? "שגיאה בסגירת האירוע");
+        setError(data.error ? t(data.error) : t("שגיאה בסגירת האירוע"));
         return;
       }
       await onClosed(data.closedAt);
@@ -58,7 +67,7 @@ export default function CloseEventConfirmModal({
     }
   };
 
-  const money = (n: number) => `₪${n.toLocaleString("he-IL")}`;
+  const money = (n: number) => `₪${n.toLocaleString(locale)}`;
 
   return (
     <div
@@ -69,49 +78,50 @@ export default function CloseEventConfirmModal({
       <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
         {step === "confirm" || !preview ? (
           <>
-            <h2 className="text-lg font-bold mb-2 font-display">לסגור את האירוע?</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("לסגור את האירוע?")}</h2>
             <p className="text-sm text-ink-soft mb-3 leading-relaxed">
-              סגירת האירוע מסמנת שהעבודה עליו הסתיימה. האירוע יעבור לרשימת ״הושלמו״ ולא יופיע יותר ברשימת האירועים הפעילים.
+              {t("סגירת האירוע מסמנת שהעבודה עליו הסתיימה. האירוע יעבור לרשימת ״הושלמו״ ולא יופיע יותר ברשימת האירועים הפעילים.")}
             </p>
             {preview && preview.openStagesCount > 0 && (
               <div className="rounded-xl px-3.5 py-2.5 mb-3 text-xs leading-relaxed bg-amber-bg text-amber-deep">
-                שימו לב: יש עדיין {preview.openStagesCount === 1 ? "שלב אחד פתוח" : `${preview.openStagesCount} שלבים פתוחים`} שלא סומנו כבוצעו. סגירת האירוע לא
-                תסמן אותם. הם יישארו פתוחים כפי שהם.
+                {preview.openStagesCount === 1
+                  ? t("שימו לב: יש עדיין שלב אחד פתוח שלא סומן כבוצע. סגירת האירוע לא תסמן אותו. הוא יישאר פתוח כפי שהוא.")
+                  : t("שימו לב: יש עדיין {n} שלבים פתוחים שלא סומנו כבוצעו. סגירת האירוע לא תסמן אותם. הם יישארו פתוחים כפי שהם.", { n: preview.openStagesCount })}
               </div>
             )}
             {preview && preview.remaining > 0 && (
               <div className="rounded-xl px-3.5 py-2.5 mb-3 text-xs leading-relaxed bg-chip text-ink">
                 {preview.hasPartialPayment
-                  ? `סומן תשלום חלקי על היתרה. החלק שנותר לתשלום (${money(preview.remaining)}) יתווסף לגרף ההכנסות של חודש סגירת האירוע, ${monthLabel(preview.closingMonth)}. התשלום החלקי נשאר בחודש שבו נרשם.`
+                  ? t("סומן תשלום חלקי על היתרה. החלק שנותר לתשלום ({amount}) יתווסף לגרף ההכנסות של חודש סגירת האירוע, {month}. התשלום החלקי נשאר בחודש שבו נרשם.", { amount: money(preview.remaining), month: monthLabel(preview.closingMonth) })
                   : preview.needsMonthChoice
-                    ? `היתרה (${money(preview.remaining)}) לא סומנה כשולמה. בשלב הבא תבחרו באיזה חודש להוסיף אותה לגרף ההכנסות.`
-                    : `היתרה שלא סומנה כשולמה (${money(preview.remaining)}) תתווסף לגרף ההכנסות של ${monthLabel(preview.closingMonth)}.`}
+                    ? t("היתרה ({amount}) לא סומנה כשולמה. בשלב הבא תבחרו באיזה חודש להוסיף אותה לגרף ההכנסות.", { amount: money(preview.remaining) })
+                    : t("היתרה שלא סומנה כשולמה ({amount}) תתווסף לגרף ההכנסות של {month}.", { amount: money(preview.remaining), month: monthLabel(preview.closingMonth) })}
               </div>
             )}
             <p className="text-xs text-ink-soft mb-5 leading-relaxed">
-              שום דבר לא נמחק. אפשר לשחזר את האירוע בכל עת: להיכנס לכרטיס האירוע וללחוץ על ״שחזור אירוע״.
+              {t("שום דבר לא נמחק. אפשר לשחזר את האירוע בכל עת: להיכנס לכרטיס האירוע וללחוץ על ״שחזור אירוע״.")}
             </p>
             {error && <p className="text-xs text-rose mb-3">{error}</p>}
             <div className="flex gap-2">
               {preview?.needsMonthChoice ? (
                 <button onClick={() => setStep("month")} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-                  המשך
+                  {t("המשך")}
                 </button>
               ) : (
                 <button onClick={close} disabled={busy || !preview} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-                  {busy ? "סוגר..." : preview ? "כן, לסגור את האירוע" : "טוען..."}
+                  {busy ? t("סוגר...") : preview ? t("כן, לסגור את האירוע") : t("טוען...")}
                 </button>
               )}
               <button onClick={onCancel} disabled={busy} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </>
         ) : (
           <>
-            <h2 className="text-lg font-bold mb-2 font-display">באיזה חודש להוסיף את היתרה?</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("באיזה חודש להוסיף את היתרה?")}</h2>
             <p className="text-sm text-ink-soft mb-3 leading-relaxed">
-              היתרה של {money(preview.remaining)} לא סומנה כשולמה. כל הסכום יתווסף לגרף ההכנסות של החודש שתבחרו:
+              {t("היתרה של {amount} לא סומנה כשולמה. כל הסכום יתווסף לגרף ההכנסות של החודש שתבחרו:", { amount: money(preview.remaining) })}
             </p>
             <div className="space-y-2 mb-4">
               {(
@@ -123,25 +133,25 @@ export default function CloseEventConfirmModal({
                 <button
                   key={value}
                   onClick={() => setChoice(value)}
-                  className="w-full flex items-center justify-between rounded-xl px-3.5 py-3 text-sm text-right border-2"
+                  className="w-full flex items-center justify-between rounded-xl px-3.5 py-3 text-sm text-start border-2"
                   style={{
                     borderColor: choice === value ? "var(--color-amber-deep)" : "var(--color-line)",
                     background: choice === value ? "var(--color-amber-bg)" : "var(--color-input-bg)",
                   }}
                 >
-                  <span className="font-semibold">{label}</span>
+                  <span className="font-semibold">{t(label)}</span>
                   <span className="text-ink-soft">{monthLabel(month)}</span>
                 </button>
               ))}
             </div>
-            <p className="text-xs text-ink-soft mb-4 leading-relaxed">רק אחרי האישור הסופי האירוע ייסגר במערכת.</p>
+            <p className="text-xs text-ink-soft mb-4 leading-relaxed">{t("רק אחרי האישור הסופי האירוע ייסגר במערכת.")}</p>
             {error && <p className="text-xs text-rose mb-3">{error}</p>}
             <div className="flex gap-2">
               <button onClick={close} disabled={busy || !choice} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-                {busy ? "סוגר..." : "אישור סופי וסגירת האירוע"}
+                {busy ? t("סוגר...") : t("אישור סופי וסגירת האירוע")}
               </button>
               <button onClick={() => setStep("confirm")} disabled={busy} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
-                חזרה
+                {t("חזרה")}
               </button>
             </div>
           </>

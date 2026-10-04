@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useT } from "@/i18n/client";
 
 export default function FeedbackButton() {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const entered = useModalEntered();
   const [message, setMessage] = useState("");
@@ -31,7 +33,7 @@ export default function FeedbackButton() {
     const data = await res.json();
     setSending(false);
     if (!res.ok) {
-      setError(data.error ?? "שליחת ההודעה נכשלה");
+      setError(data.error ? t(data.error) : t("שליחת ההודעה נכשלה"));
       return;
     }
     setSent(true);
@@ -41,9 +43,9 @@ export default function FeedbackButton() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 left-5 z-40 h-11 w-11 rounded-full flex items-center justify-center bg-ink text-white shadow-sheet"
-        aria-label="הצעות ורעיונות לשיפור"
-        title="הצעות ורעיונות לשיפור"
+        className="fixed bottom-5 end-5 z-40 h-11 w-11 rounded-full flex items-center justify-center bg-ink text-white shadow-sheet"
+        aria-label={t("הצעות ורעיונות לשיפור")}
+        title={t("הצעות ורעיונות לשיפור")}
       >
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M20 14.5a2 2 0 0 1-2 2H9l-4 3.5V6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2z" />
@@ -67,10 +69,11 @@ export default function FeedbackButton() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold font-display">הצעות ורעיונות לשיפור</h2>
+              <h2 className="text-lg font-bold font-display">{t("הצעות ורעיונות לשיפור")}</h2>
               <button
                 onClick={close}
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
+                aria-label={t("סגירה")}
               >
                 <IconClose className="h-4 w-4" />
               </button>
@@ -78,20 +81,19 @@ export default function FeedbackButton() {
 
             {sent ? (
               <div className="rounded-xl px-3.5 py-4 text-sm bg-sage-bg text-sage text-center">
-                תודה! ההודעה נשלחה אלינו
+                {t("תודה! ההודעה נשלחה אלינו")}
               </div>
             ) : (
               <>
                 <p className="text-xs mb-4 text-ink-soft">
-                  יש לך רעיון לפיצ&apos;ר חדש, בקשה לשיפור, או משהו שלא עבד כמו שציפית? נשמח לשמוע
-                  ההודעה תישלח ישירות לצוות הפיתוח.
+                  {t("יש לך רעיון לפיצ'ר חדש, בקשה לשיפור, או משהו שלא עבד כמו שציפית? נשמח לשמוע. ההודעה תישלח ישירות לצוות הפיתוח.")}
                 </p>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   rows={5}
                   className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none"
-                  placeholder="כתבו כאן את ההצעה או הבקשה שלכם..."
+                  placeholder={t("כתבו כאן את ההצעה או הבקשה שלכם...")}
                 />
                 {error && <p className="text-xs text-rose mt-2">{error}</p>}
                 <button
@@ -99,7 +101,7 @@ export default function FeedbackButton() {
                   disabled={sending}
                   className="w-full rounded-lg py-3 text-sm font-semibold mt-3 bg-ink text-white disabled:opacity-60"
                 >
-                  {sending ? "שולח..." : "שליחה"}
+                  {sending ? t("שולח...") : t("שליחה")}
                 </button>
               </>
             )}
