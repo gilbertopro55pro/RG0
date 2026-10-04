@@ -50,6 +50,7 @@ const dict: AreaDict = {
       "{n} photos selected. Your selection will be sent to your photographer, and you can always come back and update it later.",
     "כן, זו הבחירה הסופית": "Yes, this is my final selection",
     "שליחת הבחירה נכשלה. נסו שוב": "Sending your selection failed. Please try again",
+    "יש לסמן לפחות תמונה אחת לפני שליחת הבחירה": "Please mark at least one photo before sending your selection",
     // Download / share
     "להוריד את התמונות המסומנות?": "Download the marked photos?",
     "יורדו {n} תמונות כקובץ ZIP אחד.": "{n} photos will be downloaded as one ZIP file.",
@@ -137,6 +138,7 @@ const dict: AreaDict = {
       "Выбрано фото: {n}. Выбор будет отправлен фотографу, и вы всегда сможете вернуться и обновить его.",
     "כן, זו הבחירה הסופית": "Да, это окончательный выбор",
     "שליחת הבחירה נכשלה. נסו שוב": "Не удалось отправить выбор. Попробуйте ещё раз",
+    "יש לסמן לפחות תמונה אחת לפני שליחת הבחירה": "Отметьте хотя бы одну фотографию, прежде чем отправлять выбор",
     // Download / share
     "להוריד את התמונות המסומנות?": "Скачать отмеченные фото?",
     "יורדו {n} תמונות כקובץ ZIP אחד.": "Фото будут скачаны одним ZIP-файлом: {n}.",
