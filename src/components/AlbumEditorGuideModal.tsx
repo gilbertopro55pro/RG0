@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/i18n/client";
+
 type GuideSection = {
   title: string;
   items: string[];
@@ -92,6 +94,7 @@ const GUIDE_SECTIONS: GuideSection[] = [
 ];
 
 export default function AlbumEditorGuideModal({ onClose }: { onClose: () => void }) {
+  const t = useT();
   return (
     <div
       className="fixed inset-0 z-[95] flex items-center justify-center p-4"
@@ -103,10 +106,10 @@ export default function AlbumEditorGuideModal({ onClose }: { onClose: () => void
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 px-5 pt-5 pb-3 bg-paper flex items-center justify-between border-b border-line">
-          <h2 className="text-lg font-bold font-display">מדריך לכלי עיצוב האלבום</h2>
+          <h2 className="text-lg font-bold font-display">{t("מדריך לכלי עיצוב האלבום")}</h2>
           <button
             onClick={onClose}
-            aria-label="סגירה"
+            aria-label={t("סגירה")}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
           >
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -117,12 +120,12 @@ export default function AlbumEditorGuideModal({ onClose }: { onClose: () => void
         <div className="px-5 py-4 space-y-5">
           {GUIDE_SECTIONS.map((section) => (
             <div key={section.title}>
-              <h3 className="text-sm font-bold mb-1.5 text-amber-deep">{section.title}</h3>
+              <h3 className="text-sm font-bold mb-1.5 text-amber-deep">{t(section.title)}</h3>
               <ul className="space-y-1">
                 {section.items.map((item, i) => (
                   <li key={i} className="text-xs text-ink-soft leading-relaxed flex gap-1.5">
                     <span className="shrink-0">•</span>
-                    <span>{item}</span>
+                    <span>{t(item)}</span>
                   </li>
                 ))}
               </ul>

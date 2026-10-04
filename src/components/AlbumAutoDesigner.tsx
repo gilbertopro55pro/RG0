@@ -12,6 +12,7 @@ import { CELL_ORDER, cellLabel, countNames, detectEventKind, pickCellFaces, plan
 import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
 import { endAutoDesignSession, getAutoDesignSession, mountAutoDesigner, useSessionState, waitForAutoDesigner } from "@/lib/albumAuto/session";
 import type { AlbumElement } from "@/lib/types";
+import { useT } from "@/i18n/client";
 
 // Auto album design (admin only while it's being polished, 2026-09-29): the photographer picks the
 // album + cover size and a style, marks up to four family reference photos, and the whole book is
@@ -105,6 +106,7 @@ export default function AlbumAutoDesigner({
   onCreate: (result: AutoDesignResult) => Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useT();
   const supabase = createClient();
   // Everything the photographer filled in and a running design's progress live in the session
   // (lib/albumAuto/session.ts), so turning the phone doesn't wipe them.
@@ -127,7 +129,7 @@ export default function AlbumAutoDesigner({
       .select("*")
       .order("created_at", { ascending: false })
       .returns<AlbumBookTemplateRow[]>()
-      .then(({ data }) => setBookTemplates((data ?? []).filter((t) => Array.isArray(t.pages) && t.pages.some((pg) => pg.length > 0))));
+      .then(({ data }) => setBookTemplates((data ?? []).filter((tpl) => Array.isArray(tpl.pages) && tpl.pages.some((pg) => pg.length > 0))));
     supabase
       .from("album_templates")
       .select("*")
@@ -136,7 +138,7 @@ export default function AlbumAutoDesigner({
       .then(({ data }) => setPageTemplates(data ?? []));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on open
   }, []);
-  const chosenTemplate = choice.startsWith("tpl:") ? bookTemplates.find((t) => t.id === choice.slice(4)) ?? null : null;
+  const chosenTemplate = choice.startsWith("tpl:") ? bookTemplates.find((tpl) => tpl.id === choice.slice(4)) ?? null : null;
   const [spreadCount, setSpreadCount] = useSessionState(session, "spreadCount", "");
   const [cells, setCells] = useSessionState<Record<FamilyCellId, CellState>>(session, "cells", () => ({
     parents: emptyCell(),
@@ -168,7 +170,7 @@ export default function AlbumAutoDesigner({
 
   const singlePage = singlePageOf(size);
   const coverPresets = useMemo(() => {
-    const list = [{ label: `כמו עמוד (${fmt(singlePage.width)}×${fmt(singlePage.height)})`, width: singlePage.width, height: singlePage.height }];
+    const list = [{ label: t("כמו עמוד ({size})", { size: `${fmt(singlePage.width)}×${fmt(singlePage.height)}` }), width: singlePage.width, height: singlePage.height }];
     for (const [w, h] of [
       [30, 30],
       [25, 25],
@@ -178,7 +180,7 @@ export default function AlbumAutoDesigner({
       if (!list.some((p) => p.width === w && p.height === h)) list.push({ label: `${w}×${h}`, width: w, height: h });
     }
     return list;
-  }, [singlePage.width, singlePage.height]);
+  }, [singlePage.width, singlePage.height, t]);
 
   const setAlbumSize = (next: AlbumSize) => {
     setSize(next);
@@ -220,7 +222,7 @@ export default function AlbumAutoDesigner({
       // from an earlier run — are kept). A cell whose detection fails is left out of the design.
       const cellFaces = new Map<FamilyCellId, DetectedFace[]>();
       const toDetect = CELL_ORDER.filter((id) => cells[id].photoId);
-      setProgress("cells", 0, toDetect.length ? `0 מתוך ${toDetect.length} תאים` : "");
+      setProgress("cells", 0, toDetect.length ? t("{n} מתוך {total} תאים", { n: 0, total: toDetect.length }) : "");
       for (let i = 0; i < toDetect.length; i++) {
         checkCancel();
         const cellId = toDetect[i];
@@ -239,7 +241,7 @@ export default function AlbumAutoDesigner({
             );
           }
         }
-        setProgress("cells", (i + 1) / toDetect.length, `${i + 1} מתוך ${toDetect.length} תאים`);
+        setProgress("cells", (i + 1) / toDetect.length, t("{n} מתוך {total} תאים", { n: i + 1, total: toDetect.length }));
       }
       checkCancel();
 
@@ -259,7 +261,7 @@ export default function AlbumAutoDesigner({
         const data = (await res.json()) as { checked: number; withDate: number; remaining: number };
         checkedSoFar += data.checked;
         const total = checkedSoFar + data.remaining;
-        setProgress("times", total > 0 ? checkedSoFar / total : 1, `${checkedSoFar} מתוך ${total}`);
+        setProgress("times", total > 0 ? checkedSoFar / total : 1, t("{n} מתוך {total}", { n: checkedSoFar, total }));
         if (data.remaining <= 0 || data.checked <= 0) break;
       }
       const takenAt = new Map<string, number>();
@@ -272,8 +274,8 @@ export default function AlbumAutoDesigner({
           .returns<{ id: string; taken_at: string | null }[]>();
         if (error) throw new Error("times");
         for (const row of data ?? []) {
-          const t = row.taken_at ? Date.parse(row.taken_at) : NaN;
-          if (Number.isFinite(t)) takenAt.set(row.id, t);
+          const ts = row.taken_at ? Date.parse(row.taken_at) : NaN;
+          if (Number.isFinite(ts)) takenAt.set(row.id, ts);
         }
         if (!data || data.length < PAGE_SIZE) break;
       }
@@ -303,7 +305,7 @@ export default function AlbumAutoDesigner({
         boxesByPhoto.set(photoId, list);
       };
       if (cellPeople.length > 0) {
-        setProgress("faces", 0, "טוען זיהוי קודם");
+        setProgress("faces", 0, t("טוען זיהוי קודם"));
         const candidateIds = new Set(candidates.map((p) => p.id));
         const cachedIds = new Set<string>();
         for (let from = 0; ; from += PAGE_SIZE) {
@@ -329,7 +331,7 @@ export default function AlbumAutoDesigner({
         for (let i = 0; i < toDetect.length; i++) {
           checkCancel();
           if (skipFacesRef.current) break;
-          setProgress("faces", i / toDetect.length, `${i} מתוך ${toDetect.length} תמונות`);
+          setProgress("faces", i / toDetect.length, t("{n} מתוך {total} תמונות", { n: i, total: toDetect.length }));
           try {
             const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${toDetect[i].id}/image?size=${PHOTO_IMAGE_SIZE}`);
             if (faces.length > 0) facesByPhoto.set(toDetect[i].id, faces.map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })));
@@ -382,7 +384,7 @@ export default function AlbumAutoDesigner({
             maxSpreads: (Number.isFinite(target) && target > 0 ? Math.min(30, target) : 30) - (coverMode === "on" ? 1 : 0),
             widthCm: size.width,
             heightCm: size.height,
-            userTemplates: pageTemplates.map((t) => t.frames),
+            userTemplates: pageTemplates.map((tpl) => tpl.frames),
           }).map((elements) => ({ elements, bleedIds: bleedIdsOf(elements) }))
         : plan.spreads.map((s, i) => {
             const out = layoutSpread({
@@ -413,7 +415,7 @@ export default function AlbumAutoDesigner({
               })(),
             }
           : null;
-      setProgress("layout", 1, `${spreads.length + (cover ? 1 : 0)} עמודים`);
+      setProgress("layout", 1, t("{n} עמודים", { n: spreads.length + (cover ? 1 : 0) }));
       checkCancel();
 
       // (e) Save — the parent creates the album and opens it (this component unmounts then).
@@ -432,10 +434,10 @@ export default function AlbumAutoDesigner({
         const msg = e instanceof Error ? e.message : "";
         setRunError(
           msg === "times"
-            ? "לא הצלחנו לקרוא את שעות הצילום של התמונות."
+            ? t("לא הצלחנו לקרוא את שעות הצילום של התמונות.")
             : msg === "empty"
-              ? "לא נמצאו תמונות לעיצוב האלבום."
-              : "משהו השתבש בעיצוב האלבום."
+              ? t("לא נמצאו תמונות לעיצוב האלבום.")
+              : t("משהו השתבש בעיצוב האלבום.")
         );
       }
     } finally {
@@ -449,7 +451,7 @@ export default function AlbumAutoDesigner({
     <div className="space-y-4">
       <div className="rounded-xl border-2 border-amber bg-amber-bg p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-base font-bold text-amber-deep">עיצוב אוטומטי של כל האלבום</p>
+          <p className="text-base font-bold text-amber-deep">{t("עיצוב אוטומטי של כל האלבום")}</p>
         </div>
         <div className="flex items-center gap-1.5 mt-3" aria-hidden>
           {[1, 2, 3].map((n) => (
@@ -457,9 +459,9 @@ export default function AlbumAutoDesigner({
           ))}
         </div>
         <p className="text-xs text-ink mt-2">
-          {step === 1 && "שלב 1 מתוך 3: מידות וסגנון"}
-          {step === 2 && "שלב 2 מתוך 3: המשפחה"}
-          {step === 3 && "שלב 3 מתוך 3: עיצוב"}
+          {step === 1 && t("שלב 1 מתוך 3: מידות וסגנון")}
+          {step === 2 && t("שלב 2 מתוך 3: המשפחה")}
+          {step === 3 && t("שלב 3 מתוך 3: עיצוב")}
         </p>
       </div>
 
@@ -470,10 +472,10 @@ export default function AlbumAutoDesigner({
           <section className="rounded-lg border border-line bg-white p-3.5 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4">
             <div className="space-y-3 min-w-0">
-              <p className="text-sm font-semibold">מידות האלבום (ס״מ)</p>
+              <p className="text-sm font-semibold">{t("מידות האלבום (ס״מ)")}</p>
               <div className="space-y-2">
                 <label className="block min-w-0">
-                  <span className="block text-xs text-ink-soft mb-1.5">מידה נפוצה</span>
+                  <span className="block text-xs text-ink-soft mb-1.5">{t("מידה נפוצה")}</span>
                   <select
                     value={sizePresets.find((p) => p.width === size.width && p.height === size.height)?.label ?? ""}
                     onChange={(e) => {
@@ -482,7 +484,7 @@ export default function AlbumAutoDesigner({
                     }}
                     className="w-full min-w-0 rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
                   >
-                    <option value="">בחירה...</option>
+                    <option value="">{t("בחירה...")}</option>
                     {sizePresets.map((p) => (
                       <option key={p.label} value={p.label}>
                         {p.label}
@@ -491,18 +493,18 @@ export default function AlbumAutoDesigner({
                   </select>
                 </label>
                 <div className="grid grid-cols-3 gap-2">
-                  <NumberField label="רוחב" value={size.width} onChange={(v) => setAlbumSize({ ...size, width: v })} />
-                  <NumberField label="גובה" value={size.height} onChange={(v) => setAlbumSize({ ...size, height: v })} />
-                  <NumberField label="שוליים" value={size.margin} step={0.1} min={0} onChange={(v) => setSize({ ...size, margin: v })} />
+                  <NumberField label={t("רוחב")} value={size.width} onChange={(v) => setAlbumSize({ ...size, width: v })} />
+                  <NumberField label={t("גובה")} value={size.height} onChange={(v) => setAlbumSize({ ...size, height: v })} />
+                  <NumberField label={t("שוליים")} value={size.margin} step={0.1} min={0} onChange={(v) => setSize({ ...size, margin: v })} />
                 </div>
               </div>
             </div>
 
             <div className="space-y-3 min-w-0 border-t border-line pt-4 sm:border-t-0 sm:pt-0 sm:border-s sm:ps-3 lg:ps-4">
-              <p className="text-sm font-semibold">מידות הכריכה (ס״מ)</p>
+              <p className="text-sm font-semibold">{t("מידות הכריכה (ס״מ)")}</p>
               <div className="space-y-2">
                 <label className="block min-w-0">
-                  <span className="block text-xs text-ink-soft mb-1.5">מידה</span>
+                  <span className="block text-xs text-ink-soft mb-1.5">{t("מידה")}</span>
                   <select
                     value={
                       coverMode === "none"
@@ -521,19 +523,19 @@ export default function AlbumAutoDesigner({
                     }}
                     className="w-full min-w-0 rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
                   >
-                    <option value="">מידה אחרת</option>
+                    <option value="">{t("מידה אחרת")}</option>
                     {coverPresets.map((p) => (
                       <option key={p.label} value={p.label}>
                         {p.label}
                       </option>
                     ))}
-                    <option value="none">בלי כריכה</option>
+                    <option value="none">{t("בלי כריכה")}</option>
                   </select>
                 </label>
                 {coverMode === "on" && (
                   <div className="grid grid-cols-2 gap-2">
                     <NumberField
-                      label="רוחב"
+                      label={t("רוחב")}
                       value={coverSize.width}
                       onChange={(v) => {
                         setCoverTouched(true);
@@ -541,7 +543,7 @@ export default function AlbumAutoDesigner({
                       }}
                     />
                     <NumberField
-                      label="גובה"
+                      label={t("גובה")}
                       value={coverSize.height}
                       onChange={(v) => {
                         setCoverTouched(true);
@@ -554,26 +556,26 @@ export default function AlbumAutoDesigner({
             </div>
 
             <div className="space-y-3 min-w-0 border-t border-line pt-4 sm:border-t-0 sm:pt-0 sm:border-s sm:ps-3 lg:ps-4">
-              <p className="text-sm font-semibold">סגנון</p>
+              <p className="text-sm font-semibold">{t("סגנון")}</p>
               <label className="block min-w-0">
-                <span className="block text-xs text-ink-soft mb-1.5">סגנון או תבנית שמורה</span>
+                <span className="block text-xs text-ink-soft mb-1.5">{t("סגנון או תבנית שמורה")}</span>
                 <select
                   value={choice}
                   onChange={(e) => setChoice(e.target.value)}
                   className="w-full rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
                 >
-                  <optgroup label="סגנונות">
+                  <optgroup label={t("סגנונות")}>
                     {AUTO_STYLES.map((st) => (
                       <option key={st.id} value={`style:${st.id}`}>
-                        {st.name}
+                        {t(st.name)}
                       </option>
                     ))}
                   </optgroup>
                   {bookTemplates.length > 0 && (
-                    <optgroup label="התבניות השמורות שלי">
-                      {bookTemplates.map((t) => (
-                        <option key={t.id} value={`tpl:${t.id}`}>
-                          {t.name}
+                    <optgroup label={t("התבניות השמורות שלי")}>
+                      {bookTemplates.map((tpl) => (
+                        <option key={tpl.id} value={`tpl:${tpl.id}`}>
+                          {tpl.name}
                         </option>
                       ))}
                     </optgroup>
@@ -582,8 +584,8 @@ export default function AlbumAutoDesigner({
               </label>
               <p className="text-xs text-ink-soft leading-relaxed">
                 {chosenTemplate
-                  ? `התמונות ייכנסו לפי התבנית (${chosenTemplate.pages.filter((pg) => pg.length > 0).length} עמודים). עמודים עודפים יימחקו, והעמוד האחרון יותאם לתמונות שנשארו.`
-                  : AUTO_STYLES.find((st) => st.id === style)?.description}
+                  ? t("התמונות ייכנסו לפי התבנית ({n} עמודים). עמודים עודפים יימחקו, והעמוד האחרון יותאם לתמונות שנשארו.", { n: chosenTemplate.pages.filter((pg) => pg.length > 0).length })
+                  : t(AUTO_STYLES.find((st) => st.id === style)?.description ?? "")}
               </p>
             </div>
           </div>
@@ -599,17 +601,17 @@ export default function AlbumAutoDesigner({
                   const v = e.target.value.replace(/[^0-9]/g, "");
                   setSpreadCount(v && parseInt(v, 10) > 30 ? "30" : v);
                 }}
-                placeholder="אוטומטי"
+                placeholder={t("אוטומטי")}
                 className="w-24 rounded-lg border border-line px-2.5 py-2 text-sm text-center bg-white"
               />
-              <span className="text-xs text-ink-soft">מספר עמודים רצוי באלבום, כולל הכריכה (ריק: אוטומטי, עד 30)</span>
+              <span className="text-xs text-ink-soft">{t("מספר עמודים רצוי באלבום, כולל הכריכה (ריק: אוטומטי, עד 30)")}</span>
             </label>
           </section>
 
           <p className="text-xs text-ink-soft">
             {favorites.length > 0
-              ? `האלבום ייבנה מ־${favorites.length} התמונות שסומנו בלב.`
-              : `לא סומנו תמונות בלב, אז האלבום ייבנה מכל ${photos.length} התמונות בגלריה.`}
+              ? t("האלבום ייבנה מ־{n} התמונות שסומנו בלב.", { n: favorites.length })
+              : t("לא סומנו תמונות בלב, אז האלבום ייבנה מכל {n} התמונות בגלריה.", { n: photos.length })}
           </p>
 
           <div className="flex gap-2">
@@ -619,7 +621,7 @@ export default function AlbumAutoDesigner({
               disabled={!sizeValid || candidates.length === 0}
               className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
             >
-              המשך
+              {t("המשך")}
             </button>
             <button
               type="button"
@@ -628,7 +630,7 @@ export default function AlbumAutoDesigner({
                 onCancel();
               }}
               className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
-              חזרה
+              {t("חזרה")}
             </button>
           </div>
         </>
@@ -638,26 +640,26 @@ export default function AlbumAutoDesigner({
         <section className="rounded-lg border border-line bg-white p-3.5 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-semibold">
-              תמונה לתא {CELL_ORDER.indexOf(pickerFor) + 1}: {cellLabel(pickerFor, eventKind)}
+              {t("תמונה לתא {n}: {label}", { n: CELL_ORDER.indexOf(pickerFor) + 1, label: t(cellLabel(pickerFor, eventKind)) })}
             </p>
             <button type="button" onClick={() => setPickerFor(null)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-white border border-line text-ink-soft">
-              ביטול
+              {t("ביטול")}
             </button>
           </div>
-          <p className="text-xs text-ink-soft">בחרו תמונה שבה רואים את הפנים בבירור.</p>
+          <p className="text-xs text-ink-soft">{t("בחרו תמונה שבה רואים את הפנים בבירור.")}</p>
           {folders.length > 0 && (
             <div className="flex gap-1.5 overflow-x-auto pb-1">
-              {[{ id: "all", name: "הכל" }, ...folders, ...(hasUnfiled ? [{ id: "none", name: "ללא לשונית" }] : [])].map((t) => (
+              {[{ id: "all", name: t("הכל") }, ...folders, ...(hasUnfiled ? [{ id: "none", name: t("ללא לשונית") }] : [])].map((tab) => (
                 <button
-                  key={t.id}
+                  key={tab.id}
                   type="button"
                   onClick={() => {
-                    setPickerTab(t.id);
+                    setPickerTab(tab.id);
                     setPickerLimit(PICKER_PAGE);
                   }}
-                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold border ${pickerTab === t.id ? "bg-ink text-white border-ink" : "bg-white text-ink-soft border-line"}`}
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold border ${pickerTab === tab.id ? "bg-ink text-white border-ink" : "bg-white text-ink-soft border-line"}`}
                 >
-                  {t.name}
+                  {tab.name}
                 </button>
               ))}
             </div>
@@ -666,7 +668,7 @@ export default function AlbumAutoDesigner({
               squeezes its rows into thin strips instead of scrolling. */}
           <div className="max-h-[60vh] overflow-y-auto">
             <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-6 gap-1.5">
-            {pickerPhotos.length === 0 && <p className="col-span-full py-6 text-center text-xs text-ink-soft">אין תמונות בלשונית הזו.</p>}
+            {pickerPhotos.length === 0 && <p className="col-span-full py-6 text-center text-xs text-ink-soft">{t("אין תמונות בלשונית הזו.")}</p>}
             {pickerPhotos.slice(0, pickerLimit).map((p) => (
               <button
                 key={p.id}
@@ -691,7 +693,7 @@ export default function AlbumAutoDesigner({
               onClick={() => setPickerLimit((n) => n + PICKER_PAGE)}
               className="w-full rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
             >
-              הצגת עוד תמונות
+              {t("הצגת עוד תמונות")}
             </button>
           )}
         </section>
@@ -700,7 +702,7 @@ export default function AlbumAutoDesigner({
       {step === 2 && !pickerFor && (
         <>
           <p className="text-xs text-ink-soft leading-relaxed">
-            סמנו לכל תא תמונה אחת שבה רואים את האנשים, וכתבו מי בתמונה. כל התאים לא חובה, אבל ככל שתמלאו יותר תאים, סדר האלבום יהיה מדויק יותר.
+            {t("סמנו לכל תא תמונה אחת שבה רואים את האנשים, וכתבו מי בתמונה. כל התאים לא חובה, אבל ככל שתמלאו יותר תאים, סדר האלבום יהיה מדויק יותר.")}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {CELL_ORDER.map((id, i) => {
@@ -709,7 +711,7 @@ export default function AlbumAutoDesigner({
               return (
                 <div key={id} className="rounded-lg border border-line bg-white p-3 space-y-2.5">
                   <p className="text-sm font-semibold">
-                    {i + 1}. {cellLabel(id, eventKind)}
+                    {i + 1}. {t(cellLabel(id, eventKind))}
                   </p>
                   <div className="flex items-start gap-3">
                     <button
@@ -724,7 +726,7 @@ export default function AlbumAutoDesigner({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={thumbOf(photo)} alt="" className="h-full w-full object-cover" />
                       ) : (
-                        <span className="px-1 text-center leading-snug">בחירת תמונה</span>
+                        <span className="px-1 text-center leading-snug">{t("בחירת תמונה")}</span>
                       )}
                     </button>
                     <div className="flex-1 min-w-0 space-y-1.5">
@@ -732,7 +734,7 @@ export default function AlbumAutoDesigner({
                         rows={2}
                         value={cell.names}
                         onChange={(e) => updateCell(id, { names: e.target.value })}
-                        placeholder="מי בתמונה? (למשל: אמא רחל, אבא דוד)"
+                        placeholder={t("מי בתמונה? (למשל: אמא רחל, אבא דוד)")}
                         className="w-full resize-none rounded-lg border border-line px-2.5 py-2 text-sm leading-snug bg-white"
                       />
                       <FaceHint cell={cell} />
@@ -742,7 +744,7 @@ export default function AlbumAutoDesigner({
                           onClick={() => updateCell(id, emptyCell())}
                           className="text-[11px] text-ink-soft underline underline-offset-2"
                         >
-                          ניקוי התא
+                          {t("ניקוי התא")}
                         </button>
                       )}
                     </div>
@@ -753,7 +755,7 @@ export default function AlbumAutoDesigner({
           </div>
           {filledCells > 0 && (
             <p className="rounded-lg bg-chip p-3 text-xs text-ink-soft leading-relaxed">
-              הפרצופים בתאים מזוהים אוטומטית בשלב הראשון של העיצוב, תא אחרי תא.
+              {t("הפרצופים בתאים מזוהים אוטומטית בשלב הראשון של העיצוב, תא אחרי תא.")}
             </p>
           )}
           {runError && <p className="text-xs text-rose">{runError}</p>}
@@ -764,10 +766,10 @@ export default function AlbumAutoDesigner({
               disabled={running}
               className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
             >
-              {filledCells === 0 ? "התחלת עיצוב (בלי תאי משפחה)" : "התחלת עיצוב"}
+              {filledCells === 0 ? t("התחלת עיצוב (בלי תאי משפחה)") : t("התחלת עיצוב")}
             </button>
             <button type="button" onClick={() => setStep(1)} className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
-              חזרה
+              {t("חזרה")}
             </button>
           </div>
         </>
@@ -799,7 +801,7 @@ export default function AlbumAutoDesigner({
                   >
                     {state === "done" ? "✓" : state === "error" ? "!" : ""}
                   </span>
-                  <span className={state === "todo" ? "text-ink-soft" : "text-ink"}>{p.label}</span>
+                  <span className={state === "todo" ? "text-ink-soft" : "text-ink"}>{t(p.label)}</span>
                   {state === "active" && phaseDetail && <span className="text-xs text-ink-soft">({phaseDetail})</span>}
                 </li>
               );
@@ -810,7 +812,7 @@ export default function AlbumAutoDesigner({
               <p className="text-xs text-rose">{runError}</p>
               <div className="flex gap-2">
                 <button type="button" onClick={run} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
-                  לנסות שוב
+                  {t("לנסות שוב")}
                 </button>
                 <button
                   type="button"
@@ -820,7 +822,7 @@ export default function AlbumAutoDesigner({
                   }}
                   className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft"
                 >
-                  חזרה
+                  {t("חזרה")}
                 </button>
               </div>
             </>
@@ -834,7 +836,7 @@ export default function AlbumAutoDesigner({
                   }}
                   className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-white border border-line text-ink"
                 >
-                  דילוג: להמשיך עם מה שכבר זוהה
+                  {t("דילוג: להמשיך עם מה שכבר זוהה")}
                 </button>
               )}
               {running && phase !== "save" && (
@@ -845,7 +847,7 @@ export default function AlbumAutoDesigner({
                   }}
                   className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
                 >
-                  ביטול
+                  {t("ביטול")}
                 </button>
               )}
             </div>
@@ -857,19 +859,20 @@ export default function AlbumAutoDesigner({
 }
 
 function FaceHint({ cell }: { cell: CellState }) {
+  const t = useT();
   if (!cell.photoId) return null;
-  if (cell.detecting) return <p className="text-[11px] text-ink-soft">מזהה פרצופים...</p>;
-  if (cell.error) return <p className="text-[11px] text-rose">{cell.error}</p>;
-  if (!cell.faces) return <p className="text-[11px] text-ink-soft">הפרצופים יזוהו בתחילת העיצוב</p>;
+  if (cell.detecting) return <p className="text-[11px] text-ink-soft">{t("מזהה פרצופים...")}</p>;
+  if (cell.error) return <p className="text-[11px] text-rose">{t(cell.error)}</p>;
+  if (!cell.faces) return <p className="text-[11px] text-ink-soft">{t("הפרצופים יזוהו בתחילת העיצוב")}</p>;
   const found = cell.faces.length;
-  if (found === 0) return <p className="text-[11px] text-rose">לא זוהו פרצופים בתמונה הזו, כדאי לבחור תמונה אחרת</p>;
+  if (found === 0) return <p className="text-[11px] text-rose">{t("לא זוהו פרצופים בתמונה הזו, כדאי לבחור תמונה אחרת")}</p>;
   const names = countNames(cell.names);
   let extra = "";
-  if (names > 0 && names < found) extra = `, ישמשו ${names} הפרצופים הגדולים בתמונה`;
-  else if (names > found) extra = `, אבל כתבתם ${names} שמות`;
+  if (names > 0 && names < found) extra = t(", ישמשו {n} הפרצופים הגדולים בתמונה", { n: names });
+  else if (names > found) extra = t(", אבל כתבתם {n} שמות", { n: names });
   return (
     <p className="text-[11px] text-ink-soft">
-      {found === 1 ? "זוהה פרצוף אחד" : `זוהו ${found} פרצופים`}
+      {found === 1 ? t("זוהה פרצוף אחד") : t("זוהו {n} פרצופים", { n: found })}
       {extra}
     </p>
   );
