@@ -8,6 +8,7 @@ import type { GalleryRow } from "@/lib/types";
 import { GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useT } from "@/i18n/client";
 
 const CLOSE_ANIMATION_MS = 220;
 
@@ -32,6 +33,7 @@ export default function NewGalleryModal({
   existingGalleryId?: string;
   onCreated?: (gallery: GalleryRow) => void;
 }) {
+  const t = useT();
   const router = useRouter();
   const supabase = createClient();
   const [step, setStep] = useState<"form" | "success">("form");
@@ -114,7 +116,7 @@ export default function NewGalleryModal({
 
   const create = async () => {
     if (!title.trim()) {
-      setError("יש להזין שם לגלריה");
+      setError(t("יש להזין שם לגלריה"));
       setTab("details");
       return;
     }
@@ -124,7 +126,7 @@ export default function NewGalleryModal({
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      setError("יש להתחבר מחדש");
+      setError(t("יש להתחבר מחדש"));
       setCreating(false);
       return;
     }
@@ -148,7 +150,7 @@ export default function NewGalleryModal({
           .single<GalleryRow>();
     setCreating(false);
     if (saveError || !created) {
-      setError(saveError?.message ?? "שגיאה ביצירת הגלריה");
+      setError(saveError?.message ?? t("שגיאה ביצירת הגלריה"));
       return;
     }
     setCreatedGalleryId(created.id);
@@ -178,7 +180,7 @@ export default function NewGalleryModal({
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold font-display">
-            {step === "success" ? "הגלריה נוצרה" : eventId ? "פתיחת גלריה לאירוע" : "גלריה חדשה"}
+            {step === "success" ? t("הגלריה נוצרה") : eventId ? t("פתיחת גלריה לאירוע") : t("גלריה חדשה")}
           </h2>
           <button
             onClick={() => closeWithAnimation()}
@@ -191,20 +193,20 @@ export default function NewGalleryModal({
         {step === "success" && createdGalleryId ? (
           <div className="space-y-4">
             <p className="text-sm text-ink-soft">
-              {eventId ? "הגלריה נוצרה בהצלחה וקושרה לאירוע." : "הגלריה נוצרה בהצלחה."}
+              {eventId ? t("הגלריה נוצרה בהצלחה וקושרה לאירוע.") : t("הגלריה נוצרה בהצלחה.")}
             </p>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => closeWithAnimation(() => router.push(`/galleries/${createdGalleryId}`))}
                 className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
               >
-                מעבר לגלריה
+                {t("מעבר לגלריה")}
               </button>
               <button
                 onClick={() => closeWithAnimation(() => router.refresh())}
                 className="w-full rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink"
               >
-                המשך ללא מעבר לגלריה
+                {t("המשך ללא מעבר לגלריה")}
               </button>
             </div>
           </div>
@@ -212,7 +214,7 @@ export default function NewGalleryModal({
           <>
             {!eventId && (
               <p className="text-xs mb-4 text-ink-soft">
-                יוצרים גלריה עצמאית שלא משויכת לאירוע קיים במערכת, שימושי לצילומים שלא נסגרו כאירוע (למשל צילומי מוצר או פרויקט אישי).
+                {t("יוצרים גלריה עצמאית שלא משויכת לאירוע קיים במערכת, שימושי לצילומים שלא נסגרו כאירוע (למשל צילומי מוצר או פרויקט אישי).")}
               </p>
             )}
 
@@ -225,7 +227,7 @@ export default function NewGalleryModal({
                   color: tab === "details" ? "var(--color-paper)" : "var(--color-ink-soft)",
                 }}
               >
-                פרטים
+                {t("פרטים")}
               </button>
               <button
                 onClick={() => setTab("permissions")}
@@ -235,18 +237,18 @@ export default function NewGalleryModal({
                   color: tab === "permissions" ? "var(--color-paper)" : "var(--color-ink-soft)",
                 }}
               >
-                הרשאות ושמירה
+                {t("הרשאות ושמירה")}
               </button>
             </div>
 
             {tab === "details" ? (
               <div className="space-y-3.5">
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">שם הגלריה</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("שם הגלריה")}</label>
                   <input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="לדוגמה: משפחת כהן, צילומי משפחה"
+                    placeholder={t("לדוגמה: משפחת כהן, צילומי משפחה")}
                     className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
                   />
                 </div>
@@ -263,7 +265,7 @@ export default function NewGalleryModal({
                 <div className={`grid gap-2 ${eventId ? "grid-cols-1" : "grid-cols-2"}`}>
                   {!eventId && (
                     <div>
-                      <label className="text-xs block mb-1 text-ink-soft">תאריך הצילום</label>
+                      <label className="text-xs block mb-1 text-ink-soft">{t("תאריך הצילום")}</label>
                       <input
                         type="date"
                         value={shootDate}
@@ -273,7 +275,7 @@ export default function NewGalleryModal({
                     </div>
                   )}
                   <div>
-                    <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
+                    <label className="text-xs block mb-1 text-ink-soft">{t("משך שמירת הגלריה")}</label>
                     <select
                       value={expiryDays}
                       onChange={(e) => setExpiryDays(Number(e.target.value) as 7 | 14 | 30 | 90 | 180 | 365)}
@@ -281,7 +283,7 @@ export default function NewGalleryModal({
                     >
                       {expiryOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>
-                          {opt.label}
+                          {t(opt.label)}
                         </option>
                       ))}
                     </select>
@@ -289,7 +291,7 @@ export default function NewGalleryModal({
                 </div>
 
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("אימייל הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת)")}</label>
                   <input
                     type="email"
                     value={clientEmail}
@@ -300,7 +302,7 @@ export default function NewGalleryModal({
                 </div>
 
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("טלפון הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)")}</label>
                   <input
                     type="tel"
                     value={clientPhone}
@@ -314,8 +316,8 @@ export default function NewGalleryModal({
               <div className="space-y-3.5">
                 <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
                   <div>
-                    <div className="text-sm font-semibold">אפשרות הורדת קבצים מקוריים</div>
-                    <div className="text-xs text-ink-soft mt-0.5">כשמכובה, הלקוח/ה יוכלו רק לצפות בתמונות, לא להוריד</div>
+                    <div className="text-sm font-semibold">{t("אפשרות הורדת קבצים מקוריים")}</div>
+                    <div className="text-xs text-ink-soft mt-0.5">{t("כשמכובה, הלקוח/ה יוכלו רק לצפות בתמונות, לא להוריד")}</div>
                   </div>
                   <button
                     onClick={() => setAllowDownloads(!allowDownloads)}
@@ -332,8 +334,8 @@ export default function NewGalleryModal({
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
                   <div>
-                    <div className="text-sm font-semibold">אפשרות העלאת תמונות ע&quot;י הלקוח/ה</div>
-                    <div className="text-xs text-ink-soft mt-0.5">כשמופעל, הלקוח/ה יוכלו להעלות תמונות משלהם ישירות לגלריה</div>
+                    <div className="text-sm font-semibold">{t("אפשרות העלאת תמונות ע\"י הלקוח/ה")}</div>
+                    <div className="text-xs text-ink-soft mt-0.5">{t("כשמופעל, הלקוח/ה יוכלו להעלות תמונות משלהם ישירות לגלריה")}</div>
                   </div>
                   <button
                     onClick={() => setAllowClientUpload(!allowClientUpload)}
@@ -358,7 +360,7 @@ export default function NewGalleryModal({
               disabled={creating}
               className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60 mt-5"
             >
-              {creating ? "יוצר..." : "יצירת גלריה"}
+              {creating ? t("יוצר...") : t("יצירת גלריה")}
             </button>
           </>
         )}

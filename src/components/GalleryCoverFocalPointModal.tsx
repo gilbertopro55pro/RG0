@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import { coverAspectRatio } from "@/lib/galleryTheme";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useT } from "@/i18n/client";
 
 // Opens right when a photographer picks/changes the gallery's cover photo — lets them recenter
 // which part of the photo stays visible once it's cropped to the cover banner's fixed aspect ratio
@@ -35,6 +36,7 @@ export default function GalleryCoverFocalPointModal({
   onSave: (focalX: number, focalY: number) => void | Promise<void>;
   onClose: () => void;
 }) {
+  const t = useT();
   const [focalX, setFocalX] = useState(initialFocalX);
   const [focalY, setFocalY] = useState(initialFocalY);
   const [saving, setSaving] = useState(false);
@@ -55,12 +57,12 @@ export default function GalleryCoverFocalPointModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-sm font-bold">מרכוז תמונת השער</h2>
+          <h2 className="text-sm font-bold">{t("מרכוז תמונת השער")}</h2>
           <button onClick={onClose} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
             <IconClose className="h-4 w-4" />
           </button>
         </div>
-        <p className="text-xs text-ink-soft mb-3">לחצו או גררו על התמונה כדי לבחור מה יישאר במרכז כשהיא תיחתך למסגרת השער.</p>
+        <p className="text-xs text-ink-soft mb-3">{t("לחצו או גררו על התמונה כדי לבחור מה יישאר במרכז כשהיא תיחתך למסגרת השער.")}</p>
 
         <div
           ref={imgWrapRef}
@@ -101,10 +103,10 @@ export default function GalleryCoverFocalPointModal({
           />
         </div>
 
-        <p className="text-xs font-semibold text-ink-soft mt-4 mb-2">תצוגה מקדימה</p>
+        <p className="text-xs font-semibold text-ink-soft mt-4 mb-2">{t("תצוגה מקדימה")}</p>
         <div className="flex items-start gap-4 flex-wrap">
           <div>
-            <p className="text-[10px] text-ink-soft mb-1.5">נייד</p>
+            <p className="text-[10px] text-ink-soft mb-1.5">{t("נייד")}</p>
             <div className="w-[150px] rounded-xl overflow-hidden border border-line p-2" style={{ background: "var(--color-chip)" }}>
               <GalleryCoverBanner
                 photoUrl={photoUrl}
@@ -120,7 +122,7 @@ export default function GalleryCoverFocalPointModal({
             </div>
           </div>
           <div className="flex-1 min-w-[220px]">
-            <p className="text-[10px] text-ink-soft mb-1.5">מחשב</p>
+            <p className="text-[10px] text-ink-soft mb-1.5">{t("מחשב")}</p>
             <div className="rounded-xl overflow-hidden border border-line p-3" style={{ background: "var(--color-chip)" }}>
               <GalleryCoverBanner
                 photoUrl={photoUrl}
@@ -139,7 +141,7 @@ export default function GalleryCoverFocalPointModal({
 
         <div className="flex gap-2 mt-5">
           <button onClick={onClose} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
-            ביטול
+            {t("ביטול")}
           </button>
           <button
             onClick={async () => {
@@ -150,7 +152,7 @@ export default function GalleryCoverFocalPointModal({
             disabled={saving}
             className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
           >
-            {saving ? "שומר..." : "שמירה"}
+            {saving ? t("שומר...") : t("שמירה")}
           </button>
         </div>
       </div>

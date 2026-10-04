@@ -9,6 +9,8 @@ import PageGuide from "@/components/PageGuide";
 import GalleryQuickActionsMenu from "@/components/GalleryQuickActionsMenu";
 import { readAlbumRotateResume } from "@/lib/albumRotateResume";
 import BackLink from "@/components/BackLink";
+import { useT, useLang } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 export type GalleryListItem = {
   id: string;
@@ -43,6 +45,8 @@ export default function GalleriesListView({
   photographerName: string;
   photographerEmail: string;
 }) {
+  const t = useT();
+  const lang = useLang();
   const router = useRouter();
   // See src/lib/albumRotateResume.ts — a standalone-iOS-PWA-only workaround for the album tool
   // mistapping after rotation. This page is just the bounce point of that round trip: land here,
@@ -102,7 +106,7 @@ export default function GalleriesListView({
     return (
       <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-3" style={{ background: "var(--color-paper)" }}>
         <div className="h-8 w-8 rounded-full border-2 border-line border-t-ink animate-spin" />
-        <p className="text-sm text-ink-soft">טוען את הכלי...</p>
+        <p className="text-sm text-ink-soft">{t("טוען את הכלי...")}</p>
       </div>
     );
   }
@@ -141,19 +145,19 @@ export default function GalleriesListView({
 
   return (
     <div className="pb-8">
-      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
+      <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-5" />
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-[26px] font-bold font-display">גלריות</h1>
+        <h1 className="text-[26px] font-bold font-display">{t("גלריות")}</h1>
         <button
           onClick={() => setShowNewGallery(true)}
           className="rounded-full px-4 py-2 text-sm font-semibold bg-ink text-white"
         >
-          + גלריה חדשה
+          + {t("גלריה חדשה")}
         </button>
       </div>
       <PageGuide
         pageKey="galleries"
-        blurb="כאן מרוכזות כל גלריות התמונות שיצרת ללקוחות. אפשר ליצור גלריה חדשה, להעלות תמונות, ולשלוח ללקוח קישור לצפייה ובחירה."
+        blurb={t("כאן מרוכזות כל גלריות התמונות שיצרת ללקוחות. אפשר ליצור גלריה חדשה, להעלות תמונות, ולשלוח ללקוח קישור לצפייה ובחירה.")}
       />
 
       <div className="flex gap-1.5 mb-5">
@@ -165,7 +169,7 @@ export default function GalleriesListView({
             color: tab === "active" ? "var(--color-paper)" : "var(--color-ink-soft)",
           }}
         >
-          גלריות
+          {t("גלריות")}
         </button>
         <button
           onClick={() => setTab("expired")}
@@ -175,7 +179,7 @@ export default function GalleriesListView({
             color: tab === "expired" ? "var(--color-paper)" : "var(--color-ink-soft)",
           }}
         >
-          פג תוקף{expiredItems.length > 0 ? ` (${expiredItems.length})` : ""}
+          {t("פג תוקף")}{expiredItems.length > 0 ? ` (${expiredItems.length})` : ""}
         </button>
       </div>
 
@@ -185,7 +189,7 @@ export default function GalleriesListView({
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="חיפוש לפי שם לקוח..."
+              placeholder={t("חיפוש לפי שם לקוח...")}
               className="flex-1 rounded-lg px-3 py-2 text-sm border border-line bg-white"
             />
             <select
@@ -193,15 +197,15 @@ export default function GalleriesListView({
               onChange={(e) => setSortKey(e.target.value as SortKey)}
               className="rounded-lg px-2 py-2 text-sm border border-line bg-white"
             >
-              <option value="event_date">לפי תאריך אירוע</option>
-              <option value="name">לפי שם</option>
-              <option value="expires">לפי תוקף</option>
+              <option value="event_date">{t("לפי תאריך אירוע")}</option>
+              <option value="name">{t("לפי שם")}</option>
+              <option value="expires">{t("לפי תוקף")}</option>
             </select>
           </div>
 
           {filtered.length === 0 && (
             <div className="text-center py-16 text-sm text-ink-soft">
-              {activeItems.length === 0 ? "עדיין אין גלריות. אפשר ליצור גלריה חדשה כאן, או מתוך כרטיס האירוע" : "לא נמצאו תוצאות"}
+              {activeItems.length === 0 ? t("עדיין אין גלריות. אפשר ליצור גלריה חדשה כאן, או מתוך כרטיס האירוע") : t("לא נמצאו תוצאות")}
             </div>
           )}
 
@@ -211,7 +215,7 @@ export default function GalleriesListView({
                 key={item.id}
                 href={`/galleries/${item.id}`}
                 role="button"
-                title="לחיצה כפולה לפעולות מהירות (פורטפוליו, שיתוף, מחיקה)"
+                title={t("לחיצה כפולה לפעולות מהירות (פורטפוליו, שיתוף, מחיקה)")}
                 onClick={(e) => handleRowClick(e, item)}
                 onDoubleClick={(e) => handleRowDoubleClick(e, item)}
                 className="flex items-center gap-3 rounded-2xl p-3 bg-card border border-line shadow-card"
@@ -224,13 +228,13 @@ export default function GalleriesListView({
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{item.title}</div>
                   <div className="text-xs text-ink-soft font-data">
-                    {item.eventDate && new Date(item.eventDate).toLocaleDateString("he-IL")}, {item.photoCount} תמונות
+                    {item.eventDate && new Date(item.eventDate).toLocaleDateString(dateLocale(lang))}, {t("{n} תמונות", { n: item.photoCount })}
                   </div>
                   <div className="text-[11px] mt-1">
                     {item.published ? (
-                      <span className="text-sage">פורסמה</span>
+                      <span className="text-sage">{t("פורסמה")}</span>
                     ) : (
-                      <span className="text-ink-soft">טיוטה</span>
+                      <span className="text-ink-soft">{t("טיוטה")}</span>
                     )}
                   </div>
                 </div>
@@ -243,7 +247,7 @@ export default function GalleriesListView({
                       color: copiedId === item.id ? "var(--color-sage)" : "var(--color-ink-soft)",
                     }}
                   >
-                    {copiedId === item.id ? "הועתק ✓" : "העתקת קישור"}
+                    {copiedId === item.id ? t("הועתק ✓") : t("העתקת קישור")}
                   </button>
                 )}
               </Link>
@@ -254,7 +258,7 @@ export default function GalleriesListView({
         <>
           {expiredItems.length === 0 ? (
             <div className="text-center py-16 text-sm text-ink-soft">
-              אין כרגע גלריות שפג תוקפן או שנמחקו, כשגלריה פוקעת או נמחקת היא מופיעה כאן עד למחיקה הסופית
+              {t("אין כרגע גלריות שפג תוקפן או שנמחקו, כשגלריה פוקעת או נמחקת היא מופיעה כאן עד למחיקה הסופית")}
             </div>
           ) : (
             <div className="space-y-3">
@@ -273,12 +277,12 @@ export default function GalleriesListView({
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-sm truncate">{item.title}</div>
                     <div className="text-xs text-ink-soft font-data">
-                      {item.eventDate && new Date(item.eventDate).toLocaleDateString("he-IL")}, {item.photoCount} תמונות
+                      {item.eventDate && new Date(item.eventDate).toLocaleDateString(dateLocale(lang))}, {t("{n} תמונות", { n: item.photoCount })}
                     </div>
                     <div className="text-[11px] mt-1 text-rose">
-                      {item.archiveReason === "manual" ? "נמחקה ידנית" : "פג תוקף"}
+                      {item.archiveReason === "manual" ? t("נמחקה ידנית") : t("פג תוקף")}
                       {item.permanentDeleteAt &&
-                        `, מחיקה סופית ב-${new Date(item.permanentDeleteAt).toLocaleDateString("he-IL")}`}
+                        `, ${t("מחיקה סופית ב-{date}", { date: new Date(item.permanentDeleteAt).toLocaleDateString(dateLocale(lang)) })}`}
                     </div>
                   </div>
                 </Link>

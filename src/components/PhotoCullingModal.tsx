@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { BTN_PRESS } from "@/lib/viewTransition";
 import type { GalleryPhotoRow } from "@/lib/types";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useT } from "@/i18n/client";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
 type CullingStatus = GalleryPhotoRow["culling_status"];
@@ -24,6 +25,7 @@ export default function PhotoCullingModal({
   onUpdateStatus: (photoId: string, status: CullingStatus) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const [index, setIndex] = useState(startIndex);
   const [saving, setSaving] = useState(false);
 
@@ -59,16 +61,16 @@ export default function PhotoCullingModal({
   return (
     <div className="fixed inset-0 z-[70] bg-black flex flex-col" role="dialog" aria-modal="true">
       <div className="flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-3 text-white">
-        <button onClick={onClose} className={`h-9 w-9 rounded-full bg-white/10 flex items-center justify-center ${BTN_PRESS}`} aria-label="סגירה">
+        <button onClick={onClose} className={`h-9 w-9 rounded-full bg-white/10 flex items-center justify-center ${BTN_PRESS}`} aria-label={t("סגירה")}>
           <IconClose className="h-4 w-4" />
         </button>
         <div className="text-center">
           <div className="text-sm font-semibold font-data">
-            תמונה {index + 1} מתוך {photos.length}
+            {t("תמונה {n} מתוך {total}", { n: index + 1, total: photos.length })}
           </div>
           <div className="text-[11px] text-white/60 flex items-center gap-2 justify-center mt-0.5">
-            <span>✓ {keptCount} נשמרו</span>
-            <span>✗ {rejectedCount} נפסלו</span>
+            <span>✓ {t("{n} נשמרו", { n: keptCount })}</span>
+            <span>✗ {t("{n} נפסלו", { n: rejectedCount })}</span>
           </div>
         </div>
         <div className="h-9 w-9" />
@@ -78,19 +80,19 @@ export default function PhotoCullingModal({
         {index > 0 && (
           <button
             onClick={() => setIndex(index - 1)}
-            className={`absolute right-2 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center z-10 ${BTN_PRESS}`}
-            aria-label="הקודמת"
+            className={`absolute start-2 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center z-10 ${BTN_PRESS}`}
+            aria-label={t("הקודמת")}
           >
-            ›
+            <span className="inline-block ltr:rotate-180">›</span>
           </button>
         )}
         {index < photos.length - 1 && (
           <button
             onClick={() => setIndex(index + 1)}
-            className={`absolute left-2 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center z-10 ${BTN_PRESS}`}
-            aria-label="הבאה"
+            className={`absolute end-2 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center z-10 ${BTN_PRESS}`}
+            aria-label={t("הבאה")}
           >
-            ‹
+            <span className="inline-block ltr:rotate-180">‹</span>
           </button>
         )}
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -105,7 +107,7 @@ export default function PhotoCullingModal({
             className="absolute top-3 right-1/2 translate-x-1/2 text-xs font-semibold px-3 py-1 rounded-full text-white"
             style={{ background: photo.culling_status === "kept" ? "var(--color-sage)" : "var(--color-rose)" }}
           >
-            {photo.culling_status === "kept" ? "✓ נשמרה" : "✗ נפסלה"}
+            {photo.culling_status === "kept" ? `✓ ${t("נשמרה")}` : `✗ ${t("נפסלה")}`}
           </span>
         )}
       </div>
@@ -117,7 +119,7 @@ export default function PhotoCullingModal({
           className={`flex-1 rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-60 ${BTN_PRESS}`}
           style={{ background: "var(--color-rose)" }}
         >
-          ✗ פסילה
+          ✗ {t("פסילה")}
         </button>
         <button
           onClick={() => decide("kept")}
@@ -125,7 +127,7 @@ export default function PhotoCullingModal({
           className={`flex-1 rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-60 ${BTN_PRESS}`}
           style={{ background: "var(--color-sage)" }}
         >
-          ✓ שמירה
+          ✓ {t("שמירה")}
         </button>
       </div>
     </div>

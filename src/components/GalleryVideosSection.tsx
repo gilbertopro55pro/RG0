@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { BTN_PRESS } from "@/lib/viewTransition";
+import { useT } from "@/i18n/client";
 
 type GalleryVideoRow = {
   id: string;
@@ -23,8 +24,9 @@ function formatSize(bytes: number): string {
 // browser before anything is sent, so an oversized file never even starts uploading; the DB trigger
 // enforce_gallery_video_by_plan is the backstop behind it.
 export default function GalleryVideosSection({ galleryId, allowed = true, maxBytes }: { galleryId: string; allowed?: boolean; maxBytes: number }) {
+  const t = useT();
   const maxMb = Math.round(maxBytes / (1024 * 1024));
-  const upgradeHint = maxMb < 500 ? " (במסלול פרו+ אפשר להעלות עד 500MB)" : "";
+  const upgradeHint = maxMb < 500 ? ` ${t("(במסלול פרו+ אפשר להעלות עד 500MB)")}` : "";
   const supabase = createClient();
   const [videos, setVideos] = useState<GalleryVideoRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +61,13 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
     const all = Array.from(fileList);
     const tooBig = all.filter((f) => f.size > maxBytes);
     if (tooBig.length > 0) {
-      setError(`גודל וידאו מקסימלי במסלול שלך הוא ${maxMb}MB לקובץ${upgradeHint}. הקבצים הבאים לא הועלו: ${tooBig.map((f) => `${f.name} (${formatSize(f.size)})`).join(", ")}`);
+      setError(
+        t("גודל וידאו מקסימלי במסלול שלך הוא {mb}MB לקובץ{hint}. הקבצים הבאים לא הועלו: {files}", {
+          mb: maxMb,
+          hint: upgradeHint,
+          files: tooBig.map((f) => `${f.name} (${formatSize(f.size)})`).join(", "),
+        }),
+      );
     }
     for (const file of all.filter((f) => f.size <= maxBytes)) {
       setUploading(file.name);
@@ -71,10 +79,10 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
           body: JSON.stringify({ bucket: "galleries", path, contentType: file.type || "video/mp4" }),
         });
         const urlData = await urlRes.json();
-        if (!urlRes.ok || !urlData.url) throw new Error(urlData.error ?? "העלאת הווידאו נכשלה");
+        if (!urlRes.ok || !urlData.url) throw new Error(urlData.error ?? t("העלאת הווידאו נכשלה"));
 
         const putRes = await fetch(urlData.url, { method: "PUT", headers: { "Content-Type": file.type || "video/mp4" }, body: file });
-        if (!putRes.ok) throw new Error("העלאת הווידאו נכשלה");
+        if (!putRes.ok) throw new Error(t("העלאת הווידאו נכשלה"));
 
         const { data: video, error: insertError } = await supabase
           .from("gallery_videos")
@@ -97,13 +105,13 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
             body: JSON.stringify({ bucket: "galleries", paths: [path] }),
           }).catch(() => {});
           const msg = insertError?.message ?? "";
-          if (msg.includes("video_not_allowed_for_plan")) throw new Error("וידאו בגלריה זמין רק במסלולי פרו ופרו+");
-          if (msg.includes("video_too_large_for_plan")) throw new Error(`הווידאו גדול מהמותר במסלול שלך (עד ${maxMb}MB לקובץ)`);
-          throw new Error(msg || "שגיאה בשמירת הווידאו");
+          if (msg.includes("video_not_allowed_for_plan")) throw new Error(t("וידאו בגלריה זמין רק במסלולי פרו ופרו+"));
+          if (msg.includes("video_too_large_for_plan")) throw new Error(t("הווידאו גדול מהמותר במסלול שלך (עד {mb}MB לקובץ)", { mb: maxMb }));
+          throw new Error(msg || t("שגיאה בשמירת הווידאו"));
         }
         setVideos((prev) => [...prev, video]);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "שגיאה בהעלאת הווידאו");
+        setError(err instanceof Error ? err.message : t("שגיאה בהעלאת הווידאו"));
       }
     }
     setUploading(null);
@@ -127,7 +135,7 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
     const res = await fetch(`/api/galleries/${galleryId}/videos/${video.id}/url`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.url) {
-      setError("שגיאה בטעינת הווידאו");
+      setError(t("שגיאה בטעינת הווידאו"));
       return;
     }
     setPlayingId(video.id);
@@ -138,7 +146,7 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
 
   return (
     <div className="mt-5">
-      <div className="text-sm font-semibold mb-2">וידאו</div>
+      <div className="text-sm font-semibold mb-2">{t("וידאו")}</div>
 
       {videos.length > 0 && (
         <div className="space-y-2 mb-3">
@@ -151,10 +159,10 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button onClick={() => play(video)} className={`text-xs font-semibold text-ink-soft underline ${BTN_PRESS}`}>
-                    ▶ נגינה
+                    ▶ {t("נגינה")}
                   </button>
                   <button onClick={() => deleteVideo(video)} className={`text-xs font-semibold text-rose ${BTN_PRESS}`}>
-                    מחיקה
+                    {t("מחיקה")}
                   </button>
                 </div>
               </div>
@@ -182,14 +190,14 @@ export default function GalleryVideosSection({ galleryId, allowed = true, maxByt
             htmlFor={`gallery-video-upload-${galleryId}`}
             className={`w-full flex items-center justify-center rounded-lg py-2.5 text-xs font-semibold bg-white border border-line text-ink-soft cursor-pointer ${BTN_PRESS}`}
           >
-            {uploading ? `מעלה: ${uploading}...` : `+ העלאת וידאו (MP4, MOV, WebM, עד ${maxMb}MB לקובץ)`}
+            {uploading ? t("מעלה: {name}...", { name: uploading }) : `+ ${t("העלאת וידאו (MP4, MOV, WebM, עד {mb}MB לקובץ)", { mb: maxMb })}`}
           </label>
         </>
       ) : (
         // Not a retroactive lock — any video already on this gallery (uploaded before a downgrade,
         // or grandfathered) still plays above; this only blocks ADDING new ones on the entry tier.
         <p className="w-full text-center rounded-lg py-2.5 text-xs font-semibold bg-chip text-ink-soft">
-          וידאו בגלריה זמין במסלולי פרו (עד 300MB לקובץ) ופרו+ (עד 500MB לקובץ), שדרגו מסלול בהגדרות
+          {t("וידאו בגלריה זמין במסלולי פרו (עד 300MB לקובץ) ופרו+ (עד 500MB לקובץ), שדרגו מסלול בהגדרות")}
         </p>
       )}
       {error && <p className="text-xs text-rose mt-2">{error}</p>}

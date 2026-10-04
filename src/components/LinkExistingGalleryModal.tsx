@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import type { GalleryRow } from "@/lib/types";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useT } from "@/i18n/client";
 
 const CLOSE_ANIMATION_MS = 220;
 
@@ -28,6 +29,7 @@ export default function LinkExistingGalleryModal({
   onClose: () => void;
   onLinked: (gallery: GalleryRow) => void;
 }) {
+  const t = useT();
   const supabase = createClient();
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -97,7 +99,7 @@ export default function LinkExistingGalleryModal({
       .single<GalleryRow>();
     setLinking(false);
     if (updateError || !updated) {
-      setError(updateError?.message ?? "שגיאה בקישור הגלריה");
+      setError(updateError?.message ?? t("שגיאה בקישור הגלריה"));
       return;
     }
     closeWithAnimation(() => onLinked(updated));
@@ -124,7 +126,7 @@ export default function LinkExistingGalleryModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold font-display">קישור לגלריה קיימת</h2>
+          <h2 className="text-lg font-bold font-display">{t("קישור לגלריה קיימת")}</h2>
           <button
             onClick={() => closeWithAnimation()}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
@@ -136,18 +138,18 @@ export default function LinkExistingGalleryModal({
         {step === "pick" && (
           <>
             {options === null ? (
-              <p className="text-sm text-ink-soft">טוען גלריות...</p>
+              <p className="text-sm text-ink-soft">{t("טוען גלריות...")}</p>
             ) : options.length === 0 ? (
-              <p className="text-sm text-ink-soft">אין לך גלריות עצמאיות שעוד לא משויכות לאירוע.</p>
+              <p className="text-sm text-ink-soft">{t("אין לך גלריות עצמאיות שעוד לא משויכות לאירוע.")}</p>
             ) : (
               <>
-                <label className="text-xs block mb-1 text-ink-soft">בחירת גלריה</label>
+                <label className="text-xs block mb-1 text-ink-soft">{t("בחירת גלריה")}</label>
                 <select
                   value={selectedId}
                   onChange={(e) => setSelectedId(e.target.value)}
                   className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
                 >
-                  <option value="">בחירה...</option>
+                  <option value="">{t("בחירה...")}</option>
                   {options.map((g) => (
                     <option key={g.id} value={g.id}>
                       {g.title}
@@ -162,7 +164,7 @@ export default function LinkExistingGalleryModal({
               disabled={!selected}
               className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-40 mt-5"
             >
-              המשך
+              {t("המשך")}
             </button>
           </>
         )}
@@ -170,20 +172,22 @@ export default function LinkExistingGalleryModal({
         {step === "confirm1" && selected && (
           <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
             <p className="text-xs text-ink">
-              לקשר את הגלריה &quot;<span className="font-semibold">{selected.title}</span>&quot; לאירוע הזה?
+              {t("לקשר את הגלריה \"{title}\" לאירוע הזה?").split("{title}")[0]}
+              <span className="font-semibold">{selected.title}</span>
+              {t("לקשר את הגלריה \"{title}\" לאירוע הזה?").split("{title}")[1]}
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setStep("pick")}
                 className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
               <button
                 onClick={() => setStep("confirm2")}
                 className="flex-1 rounded-lg py-2 text-xs font-semibold bg-ink text-white"
               >
-                כן, המשך
+                {t("כן, המשך")}
               </button>
             </div>
           </div>
@@ -191,9 +195,9 @@ export default function LinkExistingGalleryModal({
 
         {step === "confirm2" && selected && (
           <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
-            <p className="text-xs font-semibold text-ink">אישור אחרון</p>
+            <p className="text-xs font-semibold text-ink">{t("אישור אחרון")}</p>
             <p className="text-xs text-ink-soft">
-              הגלריה &quot;{selected.title}&quot; תוצג מעכשיו בכרטיס האירוע הזה. אפשר תמיד לנתק אותה בחזרה מכרטיס האירוע.
+              {t("הגלריה \"{title}\" תוצג מעכשיו בכרטיס האירוע הזה. אפשר תמיד לנתק אותה בחזרה מכרטיס האירוע.", { title: selected.title })}
             </p>
             {error && <p className="text-xs text-rose">{error}</p>}
             <div className="flex gap-2">
@@ -202,14 +206,14 @@ export default function LinkExistingGalleryModal({
                 disabled={linking}
                 className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
               >
-                ביטול
+                {t("ביטול")}
               </button>
               <button
                 onClick={link}
                 disabled={linking}
                 className="flex-1 rounded-lg py-2 text-xs font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {linking ? "מקשר..." : "כן, לקשר"}
+                {linking ? t("מקשר...") : t("כן, לקשר")}
               </button>
             </div>
           </div>

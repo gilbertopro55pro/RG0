@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import GalleryShareModal from "@/components/GalleryShareModal";
 import type { GalleryListItem } from "@/components/GalleriesListView";
+import { useT } from "@/i18n/client";
 
 const NO_FOLDER_KEY = "none";
 type Step = "menu" | "portfolio" | "share" | "delete";
@@ -27,6 +28,7 @@ export default function GalleryQuickActionsMenu({
   onClose: () => void;
   onDeleted: (id: string) => void;
 }) {
+  const t = useT();
   const supabase = createClient();
   const router = useRouter();
   const [step, setStep] = useState<Step>("menu");
@@ -55,7 +57,7 @@ export default function GalleryQuickActionsMenu({
         supabase.from("gallery_photos").select("folder_id").eq("gallery_id", item.id),
       ]);
       if (foldersError || photosError) {
-        setError(foldersError?.message ?? photosError?.message ?? "שגיאה בטעינת הלשוניות");
+        setError(foldersError?.message ?? photosError?.message ?? t("שגיאה בטעינת הלשוניות"));
         return;
       }
       const fs = foldersData ?? [];
@@ -164,41 +166,41 @@ export default function GalleryQuickActionsMenu({
       {step === "menu" && (
         <>
           <h2 className="text-lg font-bold font-display mb-1">{item.title}</h2>
-          <p className="text-xs text-ink-soft mb-4">בחרו פעולה</p>
+          <p className="text-xs text-ink-soft mb-4">{t("בחרו פעולה")}</p>
           <div className="space-y-2.5">
-            <button onClick={openPortfolio} className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink text-right px-4">
-              הוספה לפורטפוליו
+            <button onClick={openPortfolio} className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink text-start px-4">
+              {t("הוספה לפורטפוליו")}
             </button>
-            <button onClick={openShare} className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink text-right px-4">
-              שיתוף הגלריה
+            <button onClick={openShare} className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink text-start px-4">
+              {t("שיתוף הגלריה")}
             </button>
-            <button onClick={() => setStep("delete")} className="w-full rounded-lg py-3 text-sm font-semibold bg-rose-bg text-rose text-right px-4">
-              מחיקה
+            <button onClick={() => setStep("delete")} className="w-full rounded-lg py-3 text-sm font-semibold bg-rose-bg text-rose text-start px-4">
+              {t("מחיקה")}
             </button>
           </div>
           <button onClick={onClose} className="w-full text-center mt-4 text-xs text-ink-soft">
-            ביטול
+            {t("ביטול")}
           </button>
         </>
       )}
 
       {step === "portfolio" && (
         <>
-          <h2 className="text-lg font-bold font-display mb-4">הוספה לפורטפוליו</h2>
+          <h2 className="text-lg font-bold font-display mb-4">{t("הוספה לפורטפוליו")}</h2>
           {loadingFolders ? (
             <LoadingRow />
           ) : portfolioDone ? (
             <>
-              <p className="text-sm text-sage mb-5">הגלריה נוספה לפורטפוליו הציבורי</p>
+              <p className="text-sm text-sage mb-5">{t("הגלריה נוספה לפורטפוליו הציבורי")}</p>
               <button onClick={onClose} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-                סגירה
+                {t("סגירה")}
               </button>
             </>
           ) : (
             <>
               {folders.length > 0 && (
                 <div className="mb-4">
-                  <p className="text-xs text-ink-soft mb-2.5">אילו לשוניות להוסיף לפורטפוליו?</p>
+                  <p className="text-xs text-ink-soft mb-2.5">{t("אילו לשוניות להוסיף לפורטפוליו?")}</p>
                   <div className="space-y-1.5">
                     {folders.map((f) => (
                       <label key={f.id} className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
@@ -209,19 +211,19 @@ export default function GalleryQuickActionsMenu({
                     {hasUnfoldered && (
                       <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
                         <input type="checkbox" checked={selectedFolderKeys.has(NO_FOLDER_KEY)} onChange={() => toggleFolderKey(NO_FOLDER_KEY)} />
-                        כללי (ללא לשונית)
+                        {t("כללי (ללא לשונית)")}
                       </label>
                     )}
                   </div>
                 </div>
               )}
               <div className="mb-5">
-                <p className="text-xs text-ink-soft mb-2">נושא בפורטפוליו (אופציונלי, לסינון לפי לשונית בעמוד הפורטפוליו)</p>
+                <p className="text-xs text-ink-soft mb-2">{t("נושא בפורטפוליו (אופציונלי, לסינון לפי לשונית בעמוד הפורטפוליו)")}</p>
                 <input
                   value={portfolioCategory}
                   onChange={(e) => setPortfolioCategory(e.target.value)}
                   list="quick-portfolio-category-suggestions"
-                  placeholder="לדוגמה: חתונות"
+                  placeholder={t("לדוגמה: חתונות")}
                   className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white"
                 />
                 <datalist id="quick-portfolio-category-suggestions">
@@ -237,10 +239,10 @@ export default function GalleryQuickActionsMenu({
                   disabled={selectedFolderKeys.size === 0 || savingPortfolio}
                   className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-50"
                 >
-                  {savingPortfolio ? "מוסיף..." : "הוספה לפורטפוליו"}
+                  {savingPortfolio ? t("מוסיף...") : t("הוספה לפורטפוליו")}
                 </button>
                 <button onClick={onClose} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
-                  ביטול
+                  {t("ביטול")}
                 </button>
               </div>
             </>
@@ -250,18 +252,17 @@ export default function GalleryQuickActionsMenu({
 
       {step === "delete" && (
         <>
-          <h2 className="text-lg font-bold font-display mb-2">מחיקת הגלריה</h2>
+          <h2 className="text-lg font-bold font-display mb-2">{t("מחיקת הגלריה")}</h2>
           <p className="text-sm text-ink-soft mb-5 leading-relaxed">
-            הלקוח/ה יאבד/תאבד גישה לקישור מיד. הגלריה תישמר בארכיון {item.restoredOnce ? 3 : 14} ימים ואז תימחק לצמיתות, כולל כל
-            התמונות. לא ניתן לבטל לאחר המחיקה הסופית.
+            {t("הלקוח/ה יאבד/תאבד גישה לקישור מיד. הגלריה תישמר בארכיון {n} ימים ואז תימחק לצמיתות, כולל כל התמונות. לא ניתן לבטל לאחר המחיקה הסופית.", { n: item.restoredOnce ? 3 : 14 })}
           </p>
           {error && <p className="text-xs text-rose mb-3">{error}</p>}
           <div className="flex gap-2">
             <button onClick={confirmDelete} disabled={deleting} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white disabled:opacity-50">
-              {deleting ? "מוחק..." : "כן, מחיקה"}
+              {deleting ? t("מוחק...") : t("כן, מחיקה")}
             </button>
             <button onClick={() => setStep("menu")} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
-              ביטול
+              {t("ביטול")}
             </button>
           </div>
         </>
