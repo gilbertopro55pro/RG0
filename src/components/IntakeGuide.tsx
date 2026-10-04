@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLang } from "@/i18n/client";
 
 type Lang = "he" | "en" | "ru";
 type Section = { title: string; intro?: string; items: string[]; ordered?: boolean };
@@ -276,7 +277,9 @@ const GUIDE: Record<Lang, Guide> = {
 const STORAGE_KEY = "intake-guide-lang";
 
 export default function IntakeGuide() {
-  const [lang, setLang] = useState<Lang>("he");
+  // Opens in the app's UI language; the in-guide buttons still switch (and remember) the language.
+  const uiLang: Lang = useLang();
+  const [lang, setLang] = useState<Lang>(uiLang);
 
   useEffect(() => {
     let saved: string | null = null;
@@ -303,7 +306,7 @@ export default function IntakeGuide() {
     <details className="rounded-2xl bg-card border border-line mb-5 group">
       <summary className="p-4 cursor-pointer list-none flex items-center justify-between gap-3">
         <span className="min-w-0">
-          <span className="text-sm font-semibold block">{GUIDE.he.heading}</span>
+          <span className="text-sm font-semibold block">{GUIDE[uiLang].heading}</span>
           <span className="text-xs text-ink-soft block">Guide / Руководство</span>
         </span>
         <span className="text-ink-soft text-lg shrink-0 transition-transform group-open:rotate-180" aria-hidden>

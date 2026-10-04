@@ -1,6 +1,7 @@
 "use client";
 
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useT } from "@/i18n/client";
 
 const STEPS = [
   {
@@ -41,6 +42,7 @@ const STEPS = [
 ];
 
 export default function AppleCalendarGuideModal({ onClose }: { onClose: () => void }) {
+  const t = useT();
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center p-4"
@@ -52,17 +54,17 @@ export default function AppleCalendarGuideModal({ onClose }: { onClose: () => vo
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-bold font-display">חיבור יומן Apple (iCloud)</h2>
-          <button onClick={onClose} className="text-ink-soft text-xl leading-none px-1">
+          <h2 className="text-lg font-bold font-display">{t("חיבור יומן Apple (iCloud)")}</h2>
+          <button onClick={onClose} className="text-ink-soft text-xl leading-none px-1" aria-label={t("סגירה")}>
             <IconClose className="h-5 w-5" />
           </button>
         </div>
         <p className="text-xs text-ink-soft mb-4">
-          מדריך מלא, שלב אחר שלב, ליצירת סיסמה ייעודית לחיבור וחיבור היומן שלכם. לא צריך ידע טכני. רק לעקוב אחרי השלבים בדיוק כפי שהם.
+          {t("מדריך מלא, שלב אחר שלב, ליצירת סיסמה ייעודית לחיבור וחיבור היומן שלכם. לא צריך ידע טכני. רק לעקוב אחרי השלבים בדיוק כפי שהם.")}
         </p>
 
         <div className="rounded-xl px-3.5 py-2.5 text-xs mb-4 bg-amber-bg text-amber-deep leading-relaxed">
-          לפני שמתחילים: חייב להיות אימות דו-שלבי (Two-Factor Authentication) פעיל בחשבון ה-Apple ID שלכם. ברוב המקרים זה כבר פעיל כברירת מחדל באייפון מודרני.
+          {t("לפני שמתחילים: חייב להיות אימות דו-שלבי (Two-Factor Authentication) פעיל בחשבון ה-Apple ID שלכם. ברוב המקרים זה כבר פעיל כברירת מחדל באייפון מודרני.")}
         </div>
 
         <div className="space-y-3.5 mb-4">
@@ -79,11 +81,11 @@ export default function AppleCalendarGuideModal({ onClose }: { onClose: () => vo
                 >
                   {i + 1}
                 </span>
-                <span className="text-sm font-semibold">{step.title}</span>
+                <span className="text-sm font-semibold">{t(step.title)}</span>
               </div>
               {step.body.map((p, j) => (
                 <p key={j} className={`text-xs leading-relaxed ${step.final ? "text-white/90" : "text-ink-soft"} ${j > 0 ? "mt-2" : ""}`}>
-                  {p}
+                  {t(p)}
                 </p>
               ))}
               {step.link && (
@@ -98,7 +100,7 @@ export default function AppleCalendarGuideModal({ onClose }: { onClose: () => vo
               )}
               {step.note && (
                 <div className="mt-2 text-[11px] leading-relaxed text-ink-soft rounded-lg px-2.5 py-2 border border-dashed border-line">
-                  {step.note}
+                  {t(step.note)}
                 </div>
               )}
             </div>
@@ -106,18 +108,18 @@ export default function AppleCalendarGuideModal({ onClose }: { onClose: () => vo
         </div>
 
         <div className="rounded-xl px-3.5 py-2.5 text-xs mb-4 bg-white border border-line text-rose leading-relaxed">
-          הסיסמה הייעודית משמשת רק לחיבור הזה, ואפשר לבטל אותה בכל רגע מתוך אותו מסך ב-Apple בלי להשפיע על שאר החשבון. לעולם אל תזינו כאן את הסיסמה הרגילה של ה-Apple ID.
+          {t("הסיסמה הייעודית משמשת רק לחיבור הזה, ואפשר לבטל אותה בכל רגע מתוך אותו מסך ב-Apple בלי להשפיע על שאר החשבון. לעולם אל תזינו כאן את הסיסמה הרגילה של ה-Apple ID.")}
         </div>
 
         <p className="text-[11px] text-ink-soft leading-relaxed mb-4">
-          שלבים 2–3 מוצגים רק אחרי התחברות אישית ולכן אין להם צילום מסך ציבורי. למקור הרשמי והמעודכן ביותר של Apple, כולל תמונות:{" "}
+          {t("שלבים 2–3 מוצגים רק אחרי התחברות אישית ולכן אין להם צילום מסך ציבורי. למקור הרשמי והמעודכן ביותר של Apple, כולל תמונות:")}{" "}
           <a href="https://support.apple.com/en-us/102654" target="_blank" rel="noopener noreferrer" className="underline">
             support.apple.com/en-us/102654
           </a>
         </p>
 
         <button onClick={onClose} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-          הבנתי, סגירה
+          {t("הבנתי, סגירה")}
         </button>
       </div>
     </div>
