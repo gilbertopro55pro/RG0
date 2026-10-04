@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { sendPushToPhotographer } from "@/lib/push";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type { LeadRow } from "@/lib/types";
+import { photographerLang } from "@/lib/clientLang";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 // Public, token-authenticated (the client has no login) — admin-gated for now, same staged-rollout
 // pattern as every other "עדכון אדמין" feature this app has shipped: the tool needs to be flawless
@@ -12,9 +15,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("*, photographers(email)")
+    .select("*, photographers(email, ui_lang)")
     .eq("quote_token", token)
-    .maybeSingle<LeadRow & { photographers: { email: string } | null }>();
+    .maybeSingle<LeadRow & { photographers: { email: string; ui_lang: string | null } | null }>();
 
   if (!lead || !lead.quoted_amount) {
     return NextResponse.json({ error: "הצעת המחיר לא נמצאה" }, { status: 404 });
@@ -28,9 +31,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // To the photographer, in their own language (photographers.ui_lang).
+  const t = makeT(messagesFor(photographerLang(lead.photographers?.ui_lang)));
   await sendPushToPhotographer(lead.photographer_id, {
-    title: `${lead.name} אישרו את הצעת המחיר`,
-    body: "לחצו לפתיחת הלידים",
+    title: t("{name} אישרו את הצעת המחיר", { name: lead.name }),
+    body: t("לחצו לפתיחת הלידים"),
     url: "/leads",
     tag: `quote-${lead.id}`,
   });

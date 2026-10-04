@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
+import { getT } from "@/i18n/server";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -18,11 +19,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "חסרים פרטים לשליחה" }, { status: 400 });
   }
 
+  // Sent from the photographer's analytics screen, in that screen's language.
+  const t = await getT();
   try {
     await sendEmail({
       to: email.trim(),
-      subject: `נתוני הכנסות | ${monthLabel} | גילברטו`,
-      text: `מצורף קובץ הנתונים עבור ${monthLabel}.\n\nנשלח ממערכת גילברטו, ניהול אירועים לצלמים.`,
+      subject: t("נתוני הכנסות | {month} | גילברטו", { month: monthLabel }),
+      text: t("מצורף קובץ הנתונים עבור {month}.\n\nנשלח ממערכת גילברטו, ניהול אירועים לצלמים.", { month: monthLabel }),
       attachments: [{ filename, content: Buffer.from(csv, "utf-8").toString("base64") }],
     });
     return NextResponse.json({ ok: true });
