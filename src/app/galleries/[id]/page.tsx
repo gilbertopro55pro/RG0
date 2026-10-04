@@ -74,7 +74,7 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
   }
 
   return (
-    <div className="max-w-2xl lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
+    <div className="max-w-2xl sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <GalleryManageView
         eventId={gallery.event_id}
         clientName={event?.client_name ?? ""}

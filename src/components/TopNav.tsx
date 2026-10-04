@@ -83,7 +83,7 @@ export default function TopNav() {
         borderColor: "var(--color-line)",
       }}
     >
-      <nav className="px-3 py-2 mx-auto w-full md:w-[90%] lg:w-[80%]">
+      <nav className="px-3 py-2 mx-auto w-full sm:w-[85%] lg:w-[80%]">
         <GlassTabStrip
           items={NAV_ITEMS.map((item) => {
             const Icon = item.icon;

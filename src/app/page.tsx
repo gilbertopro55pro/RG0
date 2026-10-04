@@ -350,7 +350,7 @@ export default async function DashboardPage() {
     : [];
 
   return (
-    <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-24 w-full">
+    <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-24 w-full">
       <div className="flex items-start justify-between gap-3 mb-5">
         <div className="min-w-0">
           <div className="text-[13px] text-ink-soft flex items-center gap-2">

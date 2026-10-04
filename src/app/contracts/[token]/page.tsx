@@ -40,7 +40,7 @@ export default async function ContractSignPage({ params }: { params: Promise<{ t
 
   return (
     <ClientLangScope lang={lang}>
-      <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
+      <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
         <h1 className="text-[22px] font-bold mb-1 font-display">{t("חוזה הזמנת צילום")}</h1>
         {event && (
           <p className="text-xs mb-5 text-ink-soft">

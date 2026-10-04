@@ -46,8 +46,8 @@ export default async function NextEventHero({ event }: { event: NextEventHeroDat
           <span className="text-xs text-ink-soft">{weekday}</span>
         </div>
         <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
-          <span className="text-[22px] leading-tight font-extrabold truncate">{event.clientName}</span>
-          {subtitle && <span className="text-sm text-ink-soft truncate">{subtitle}</span>}
+          <span className="text-[22px] leading-tight font-extrabold break-words [overflow-wrap:anywhere]">{event.clientName}</span>
+          {subtitle && <span className="text-sm text-ink-soft break-words [overflow-wrap:anywhere]">{subtitle}</span>}
           <span className="text-[13px] font-bold mt-0.5" style={{ color: "var(--color-amber-deep)" }}>
             {whenLabel(event.daysUntil, t)}
           </span>

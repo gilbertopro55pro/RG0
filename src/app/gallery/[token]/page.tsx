@@ -382,7 +382,7 @@ export default async function PublicGalleryPage({
   return (
     <ClientLangScope lang={lang}>
     <div
-      className={`${galleryFont.variable} max-w-2xl lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full min-h-screen`}
+      className={`${galleryFont.variable} max-w-2xl sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full min-h-screen`}
       style={{ background: theme.bg, ...galleryThemeVars(gallery.theme, styleOverrides), ...brandAccentVars }}
     >
       {isOwnerPreview && (
