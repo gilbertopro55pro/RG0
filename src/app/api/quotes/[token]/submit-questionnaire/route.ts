@@ -101,6 +101,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       .update({ converted_event_id: result.event.id, status: "won" })
       .eq("id", lead.id);
 
+    // UI languages phase 2: the event keeps the lead's client language, so the portal, the gallery
+    // and the contract page follow it later.
+    if (lead.client_lang) {
+      const { error: langError } = await supabase.from("events").update({ client_lang: lead.client_lang }).eq("id", result.event.id);
+      if (langError) console.error("[submit-questionnaire] client_lang copy failed", langError);
+    }
+
     // "With a contract": the questionnaire's last step is signing it (lib/quoteContract.ts).
     let contract: EventContractRow | null = null;
     if (lead.quote_details?.withContract) {

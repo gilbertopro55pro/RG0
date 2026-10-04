@@ -13,6 +13,8 @@ import GallerySlideshow from "@/components/GallerySlideshow";
 import GalleryAlbumProofing, { type ClientAlbumElement } from "@/components/GalleryAlbumProofing";
 import { ALLOWED_ACCEPT, isAllowedImageFile, convertHeicIfNeeded } from "@/lib/imageUpload";
 import { readDataTransferItems, folderNameFromPath, isHiddenFileName } from "@/lib/fileDrop";
+import { useLang, useT } from "@/i18n/client";
+import { dirOf } from "@/i18n/config";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
 
@@ -99,6 +101,9 @@ export default function PublicGalleryView({
   }[];
 }) {
   const theme = resolveGalleryTheme(themeId, { titleFontOverride, gridStyleOverride });
+  const t = useT();
+  // The client's language (ClientLangScope), not <html dir> (the photographer's own cookie).
+  const isRtl = dirOf(useLang()) === "rtl";
   const [photos, setPhotos] = useState(initialPhotos);
   const [folders, setFolders] = useState(initialFolders);
   const [uploadingCount, setUploadingCount] = useState(0);
@@ -512,7 +517,7 @@ export default function PublicGalleryView({
     try {
       if (isMobileDevice) {
         if (photoIds.length > MOBILE_SEQUENTIAL_DOWNLOAD_LIMIT) {
-          alert(`יש יותר מדי תמונות להורדה מהטלפון (${photoIds.length}). יש להוריד ממחשב`);
+          alert(t("יש יותר מדי תמונות להורדה מהטלפון ({n}). יש להוריד ממחשב", { n: photoIds.length }));
           return;
         }
         const byId = new Map(photos.map((p) => [p.id, p]));
@@ -763,14 +768,14 @@ export default function PublicGalleryView({
   // than gambling on a deep link that dead-ends if the app isn't installed or on desktop.
   const shareGalleryViaInstagram = async () => {
     await navigator.clipboard.writeText(galleryShareUrl());
-    setShareFeedback("הקישור הועתק: פתחו את אינסטגרם והדביקו אותו בסטורי או בהודעה");
+    setShareFeedback(t("הקישור הועתק: פתחו את אינסטגרם והדביקו אותו בסטורי או בהודעה"));
     setTimeout(() => setShareFeedback(null), 3000);
     setGalleryShareOpen(false);
   };
 
   const shareGalleryViaTiktok = async () => {
     await navigator.clipboard.writeText(galleryShareUrl());
-    setShareFeedback("הקישור הועתק: פתחו את טיקטוק והדביקו אותו");
+    setShareFeedback(t("הקישור הועתק: פתחו את טיקטוק והדביקו אותו"));
     setTimeout(() => setShareFeedback(null), 3000);
     setGalleryShareOpen(false);
   };
@@ -791,7 +796,7 @@ export default function PublicGalleryView({
       }
     } else {
       await navigator.clipboard.writeText(galleryShareMessage());
-      setShareFeedback("הקישור הועתק ✓");
+      setShareFeedback(t("הקישור הועתק ✓"));
       setTimeout(() => setShareFeedback(null), 2000);
     }
     setGalleryShareOpen(false);
@@ -841,18 +846,20 @@ export default function PublicGalleryView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightboxIndex, visiblePhotoIdsKey]);
 
-  // Arrow-key navigation while the lightbox is open — mapped for RTL reading direction, so the
-  // visual "forward" direction (left) advances to the next photo, matching how the prev/next arrow
-  // buttons are laid out on screen, not the raw left-to-right English-UI convention.
+  // Arrow-key navigation while the lightbox is open — follows the page's reading direction, so the
+  // visual "forward" direction (left in Hebrew, right in English/Russian) advances to the next
+  // photo, matching how the prev/next arrow buttons are laid out on screen.
   useEffect(() => {
     if (lightboxIndex === null) return;
+    const forwardKey = isRtl ? "ArrowLeft" : "ArrowRight";
+    const backKey = isRtl ? "ArrowRight" : "ArrowLeft";
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft" && lightboxIndex < visiblePhotos.length - 1) navigateLightbox(lightboxIndex + 1);
-      else if (e.key === "ArrowRight" && lightboxIndex > 0) navigateLightbox(lightboxIndex - 1);
+      if (e.key === forwardKey && lightboxIndex < visiblePhotos.length - 1) navigateLightbox(lightboxIndex + 1);
+      else if (e.key === backKey && lightboxIndex > 0) navigateLightbox(lightboxIndex - 1);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lightboxIndex, visiblePhotos.length]);
+  }, [lightboxIndex, visiblePhotos.length, isRtl]);
 
   const slideshowPhotos = slideshowPhotoIds
     .map((id) => photoById.get(id))
@@ -863,8 +870,8 @@ export default function PublicGalleryView({
       {showScrollTop && (
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          aria-label="חזרה לראש העמוד"
-          className={`fixed left-5 z-40 h-11 w-11 rounded-full flex items-center justify-center shadow-sheet ${BTN_PRESS} ${favoriteCount > 0 || selectionMode || usedLabels.length > 0 ? "bottom-28" : "bottom-5"}`}
+          aria-label={t("חזרה לראש העמוד")}
+          className={`fixed end-5 z-40 h-11 w-11 rounded-full flex items-center justify-center shadow-sheet ${BTN_PRESS} ${favoriteCount > 0 || selectionMode || usedLabels.length > 0 ? "bottom-28" : "bottom-5"}`}
           style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)" }}
         >
           <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -874,7 +881,7 @@ export default function PublicGalleryView({
       )}
       <button
         onClick={openGalleryShare}
-        className={`fixed right-5 md:translate-x-[5cm] z-40 h-11 px-4 rounded-full flex items-center gap-1.5 shadow-sheet text-sm font-semibold ${BTN_PRESS} ${favoriteCount > 0 || selectionMode || usedLabels.length > 0 ? "bottom-28" : "bottom-5"}`}
+        className={`fixed start-5 md:rtl:translate-x-[5cm] md:ltr:-translate-x-[5cm] z-40 h-11 px-4 rounded-full flex items-center gap-1.5 shadow-sheet text-sm font-semibold ${BTN_PRESS} ${favoriteCount > 0 || selectionMode || usedLabels.length > 0 ? "bottom-28" : "bottom-5"}`}
         style={{ background: "var(--gt-surface)", border: "1px solid var(--gt-border)", color: "var(--gt-ink)" }}
       >
         <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -883,7 +890,7 @@ export default function PublicGalleryView({
           <circle cx={18} cy={19} r={3} />
           <path d="M8.6 10.5l6.8-3.8M8.6 13.5l6.8 3.8" />
         </svg>
-        שיתוף
+        {t("שיתוף")}
       </button>
       {!hintDismissed && (
         <div
@@ -891,9 +898,9 @@ export default function PublicGalleryView({
           style={{ background: "var(--gt-surface-soft)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
         >
           <span className="flex-1">
-            לחיצה לתמונה בגודל מלא. לחיצה ארוכה לבחירה מרובה. לחיצה כפולה לשיתוף/הורדה (של כל התמונות המסומנות, אם יש כמה)
+            {t("לחיצה לתמונה בגודל מלא. לחיצה ארוכה לבחירה מרובה. לחיצה כפולה לשיתוף/הורדה (של כל התמונות המסומנות, אם יש כמה)")}
           </span>
-          <button onClick={dismissHint} className="shrink-0 font-bold leading-none" aria-label="סגירה">
+          <button onClick={dismissHint} className="shrink-0 font-bold leading-none" aria-label={t("סגירה")}>
             <IconClose className="h-3 w-3" />
           </button>
         </div>
@@ -904,7 +911,7 @@ export default function PublicGalleryView({
           className="px-3.5 py-2.5 mb-4 text-sm font-medium text-center"
           style={{ background: "var(--gt-surface-soft)", color: "var(--gt-accent)", borderRadius: "var(--gt-radius)" }}
         >
-          תודה! הבחירה שלכם ({favoriteCount} תמונות) נשלחה לצלם/ת. אפשר עדיין לשנות ולעדכן בכל שלב.
+          {t("תודה! הבחירה שלכם ({n} תמונות) נשלחה לצלם/ת. אפשר עדיין לשנות ולעדכן בכל שלב.", { n: favoriteCount })}
         </div>
       )}
 
@@ -918,7 +925,7 @@ export default function PublicGalleryView({
               color: activeFolderId === null ? "var(--gt-accent-ink)" : "var(--gt-ink-soft)",
             }}
           >
-            הכל
+            {t("הכל")}
           </button>
           {folders.map((folder) => (
             <button
@@ -983,10 +990,10 @@ export default function PublicGalleryView({
               style={{ color: "var(--gt-ink)" }}
             >
               {uploadTotal > 0
-                ? `מעלה... (${uploadingCount}/${uploadTotal})`
+                ? t("מעלה... ({done}/{total})", { done: uploadingCount, total: uploadTotal })
                 : isDragging
-                  ? "שחררו כאן להעלאה"
-                  : "העלאת תמונות, או גררו לכאן תמונות ותיקיות"}
+                  ? t("שחררו כאן להעלאה")
+                  : t("העלאת תמונות, או גררו לכאן תמונות ותיקיות")}
             </button>
           </div>
           <button
@@ -995,11 +1002,11 @@ export default function PublicGalleryView({
             className={`w-full flex items-center justify-center py-2 mt-1.5 text-xs font-semibold border disabled:opacity-60 ${BTN_PRESS}`}
             style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)", borderRadius: "var(--gt-radius)" }}
           >
-            העלאת תיקייה שלמה מהמחשב
+            {t("העלאת תיקייה שלמה מהמחשב")}
           </button>
           {uploadError && (
             <p className="text-xs text-center mt-2" style={{ color: "var(--gt-ink-soft)" }}>
-              {uploadError}
+              {t(uploadError)}
             </p>
           )}
         </div>
@@ -1050,9 +1057,9 @@ export default function PublicGalleryView({
               </svg>
             </div>
             <div>
-              <div className="text-sm font-semibold">מעלה תמונות ({uploadingCount}/{uploadTotal})</div>
+              <div className="text-sm font-semibold">{t("מעלה תמונות ({done}/{total})", { done: uploadingCount, total: uploadTotal })}</div>
               <div className="text-xs mt-1" style={{ color: "var(--gt-ink-soft)" }}>
-                החלון ייסגר אוטומטית בסיום ההעלאה
+                {t("החלון ייסגר אוטומטית בסיום ההעלאה")}
               </div>
             </div>
           </div>
@@ -1060,7 +1067,7 @@ export default function PublicGalleryView({
       )}
       {visiblePhotos.length === 0 ? (
         <p className="text-sm text-center py-16" style={{ color: "var(--gt-ink-soft)" }}>
-          {allowClientUpload ? "אין עדיין תמונות בגלריה. אפשר להעלות תמונות משלכם למעלה." : "אין עדיין תמונות בגלריה."}
+          {allowClientUpload ? t("אין עדיין תמונות בגלריה. אפשר להעלות תמונות משלכם למעלה.") : t("אין עדיין תמונות בגלריה.")}
         </p>
       ) : (
         <>
@@ -1075,7 +1082,7 @@ export default function PublicGalleryView({
               onChange={(e) => setCellSize(Number(e.target.value))}
               className="w-full"
               style={{ accentColor: "var(--gt-accent)" }}
-              aria-label="גודל תמונות בגלריה"
+              aria-label={t("גודל תמונות בגלריה")}
             />
             <IconGallery className="h-5 w-5 shrink-0 text-[var(--gt-ink-soft)]" />
           </div>
@@ -1085,7 +1092,7 @@ export default function PublicGalleryView({
               className={`w-full flex items-center justify-center gap-2 py-2.5 mb-3 text-sm font-semibold ${BTN_PRESS}`}
               style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
             >
-              ▶ מצגת תמונות
+              ▶ {t("מצגת תמונות")}
             </button>
           )}
           {album && albumSpreads.length > 0 && (
@@ -1096,10 +1103,10 @@ export default function PublicGalleryView({
             >
               📖{" "}
               {album.status === "approved"
-                ? "צפייה באלבום המאושר"
+                ? t("צפייה באלבום המאושר")
                 : album.status === "changes_requested"
-                  ? "עיצוב האלבום"
-                  : "אישור עיצוב האלבום"}
+                  ? t("עיצוב האלבום")
+                  : t("אישור עיצוב האלבום")}
             </button>
           )}
           {allowDownloads && (
@@ -1119,12 +1126,12 @@ export default function PublicGalleryView({
             >
               <DownloadIcon size={16} />
               {zipping
-                ? "מתחילים..."
+                ? t("מתחילים...")
                 : zipBatch
                   ? zipDone
-                    ? "ההורדה הושלמה"
-                    : `מכינים... ${zipProgressPercent}%`
-                  : `הורדת כל התמונות (${photos.length})`}
+                    ? t("ההורדה הושלמה")
+                    : t("מכינים... {pct}%", { pct: zipProgressPercent })
+                  : t("הורדת כל התמונות ({n})", { n: photos.length })}
             </button>
           )}
           <div className="relative">
@@ -1306,7 +1313,7 @@ export default function PublicGalleryView({
               className={`flex items-center gap-2 text-sm md:text-base font-bold ${BTN_PRESS}`}
             >
               <HeartIcon filled size={18} />
-              {favoriteCount} מועדפים
+              {t("{n} מועדפים", { n: favoriteCount })}
             </button>
             {!selectionMode && (
               <div className="flex items-center gap-3">
@@ -1316,7 +1323,7 @@ export default function PublicGalleryView({
                     className={`text-xs md:text-sm font-semibold whitespace-nowrap ${BTN_PRESS}`}
                     style={{ color: "var(--gt-ink-soft)" }}
                   >
-                    בחר הכל
+                    {t("בחר הכל")}
                   </button>
                 )}
                 {favoriteCount > 0 && (
@@ -1325,7 +1332,7 @@ export default function PublicGalleryView({
                     className={`text-xs md:text-sm font-semibold whitespace-nowrap ${BTN_PRESS}`}
                     style={{ color: "var(--gt-ink-soft)" }}
                   >
-                    ניקוי הכל
+                    {t("ניקוי הכל")}
                   </button>
                 )}
               </div>
@@ -1341,7 +1348,7 @@ export default function PublicGalleryView({
               className={`w-full py-2.5 text-sm md:text-base font-semibold ${BTN_PRESS}`}
               style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
             >
-              סיימת לבחור
+              {t("סיימת לבחור")}
             </button>
           )}
           {!selectionMode && submitted && hasUnsavedChanges && (
@@ -1351,11 +1358,11 @@ export default function PublicGalleryView({
               className={`w-full py-2.5 text-sm md:text-base font-semibold disabled:opacity-60 ${BTN_PRESS}`}
               style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
             >
-              {saving ? "שומר..." : "עדכון הבחירה"}
+              {saving ? t("שומר...") : t("עדכון הבחירה")}
             </button>
           )}
           {!selectionMode && submitted && !hasUnsavedChanges && (
-            <span className="text-xs md:text-sm font-semibold" style={{ color: "var(--gt-accent)" }}>נשמר ✓</span>
+            <span className="text-xs md:text-sm font-semibold" style={{ color: "var(--gt-accent)" }}>{t("נשמר ✓")}</span>
           )}
 
           {selectionMode && (
@@ -1364,7 +1371,7 @@ export default function PublicGalleryView({
               className={`w-full text-xs md:text-sm font-semibold ${BTN_PRESS}`}
               style={{ color: "var(--gt-ink-soft)" }}
             >
-              סיום בחירה מרובה
+              {t("סיום בחירה מרובה")}
             </button>
           )}
         </div>
@@ -1383,7 +1390,7 @@ export default function PublicGalleryView({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-bold font-display">התמונות שבחרתם ({favoriteCount})</h2>
+              <h2 className="text-lg font-bold font-display">{t("התמונות שבחרתם ({n})", { n: favoriteCount })}</h2>
               <button
                 onClick={() => setFavoritesPanelOpen(false)}
                 className={`h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
@@ -1400,7 +1407,7 @@ export default function PublicGalleryView({
                     className={`text-xs font-semibold ${BTN_PRESS}`}
                     style={{ color: "var(--gt-ink-soft)" }}
                   >
-                    בחר הכל
+                    {t("בחר הכל")}
                   </button>
                 )}
                 {favorites.length > 0 && (
@@ -1409,7 +1416,7 @@ export default function PublicGalleryView({
                     className={`text-xs font-semibold ${BTN_PRESS}`}
                     style={{ color: "var(--gt-ink-soft)" }}
                   >
-                    ניקוי הכל
+                    {t("ניקוי הכל")}
                   </button>
                 )}
               </div>
@@ -1425,7 +1432,7 @@ export default function PublicGalleryView({
                       : { background: "var(--gt-surface-soft)", color: "var(--gt-ink-soft)" }
                   }
                 >
-                  הכל
+                  {t("הכל")}
                 </button>
                 {usedLabels.map((label) => (
                   <button
@@ -1445,7 +1452,7 @@ export default function PublicGalleryView({
             )}
             {panelPhotos.length === 0 ? (
               <p className="text-sm text-center py-8" style={{ color: "var(--gt-ink-soft)" }}>
-                {activeLabelFilter ? "אין תמונות עם התווית הזו." : "עדיין לא נבחרו תמונות."}
+                {activeLabelFilter ? t("אין תמונות עם התווית הזו.") : t("עדיין לא נבחרו תמונות.")}
               </p>
             ) : (
               <div className="grid grid-cols-3 gap-1.5 mb-4">
@@ -1459,9 +1466,9 @@ export default function PublicGalleryView({
                         implied. */}
                     <button
                       onClick={() => toggleFavorite(photo)}
-                      aria-label={photo.is_favorite ? "הסרה מהמועדפים" : "הוספה למועדפים"}
-                      title={photo.is_favorite ? "הסרה מהמועדפים" : "הוספה למועדפים"}
-                      className={`absolute top-1.5 right-1.5 h-7 w-7 rounded-full flex items-center justify-center bg-black/30 backdrop-blur-md ${BTN_PRESS}`}
+                      aria-label={photo.is_favorite ? t("הסרה מהמועדפים") : t("הוספה למועדפים")}
+                      title={photo.is_favorite ? t("הסרה מהמועדפים") : t("הוספה למועדפים")}
+                      className={`absolute top-1.5 start-1.5 h-7 w-7 rounded-full flex items-center justify-center bg-black/30 backdrop-blur-md ${BTN_PRESS}`}
                     >
                       <HeartIcon filled={photo.is_favorite} size={14} />
                     </button>
@@ -1482,9 +1489,9 @@ export default function PublicGalleryView({
               <button
                 onClick={() => setDownloadSelectedConfirmOpen(true)}
                 disabled={zipping}
-                aria-label="הורדת כל התמונות המועדפות"
-                title="הורדת כל התמונות המועדפות"
-                className={`absolute bottom-24 left-5 h-12 w-12 rounded-full shadow-sheet flex items-center justify-center disabled:opacity-60 ${BTN_PRESS}`}
+                aria-label={t("הורדת כל התמונות המועדפות")}
+                title={t("הורדת כל התמונות המועדפות")}
+                className={`absolute bottom-24 end-5 h-12 w-12 rounded-full shadow-sheet flex items-center justify-center disabled:opacity-60 ${BTN_PRESS}`}
                 style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)" }}
               >
                 <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
@@ -1502,7 +1509,7 @@ export default function PublicGalleryView({
                 className={`w-full py-3 text-sm font-semibold ${BTN_PRESS}`}
                 style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
               >
-                סיימת לבחור
+                {t("סיימת לבחור")}
               </button>
             ) : hasUnsavedChanges ? (
               <button
@@ -1511,7 +1518,7 @@ export default function PublicGalleryView({
                 className={`w-full py-3 text-sm font-semibold disabled:opacity-60 ${BTN_PRESS}`}
                 style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
               >
-                {saving ? "שומר..." : "עדכון הבחירה"}
+                {saving ? t("שומר...") : t("עדכון הבחירה")}
               </button>
             ) : null}
           </div>
@@ -1542,13 +1549,13 @@ export default function PublicGalleryView({
             style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold mb-2 font-display">לאשר את הבחירה?</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("לאשר את הבחירה?")}</h2>
             <p className="text-sm mb-5" style={{ color: "var(--gt-ink-soft)" }}>
               {favoriteCount === 0
-                ? "עדיין לא סומנו תמונות. סמנו לפחות תמונה אחת כדי לשלוח את הבחירה לצלם/ת."
-                : `נבחרו ${favoriteCount} תמונות. הבחירה תישלח לצלם/ת, ותמיד אפשר לחזור ולעדכן אותה אחר כך.`}
+                ? t("עדיין לא סומנו תמונות. סמנו לפחות תמונה אחת כדי לשלוח את הבחירה לצלם/ת.")
+                : t("נבחרו {n} תמונות. הבחירה תישלח לצלם/ת, ותמיד אפשר לחזור ולעדכן אותה אחר כך.", { n: favoriteCount })}
             </p>
-            {confirmError && <p className="text-sm mb-3 text-rose">{confirmError}</p>}
+            {confirmError && <p className="text-sm mb-3 text-rose">{t(confirmError)}</p>}
             <div className="flex gap-2">
               <button
                 onClick={confirmSelection}
@@ -1556,14 +1563,14 @@ export default function PublicGalleryView({
                 className={`flex-1 py-3 text-sm font-semibold disabled:opacity-60 ${BTN_PRESS}`}
                 style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
               >
-                {submitting ? "שולח..." : "כן, זו הבחירה הסופית"}
+                {submitting ? t("שולח...") : t("כן, זו הבחירה הסופית")}
               </button>
               <button
                 onClick={() => setConfirmOpen(false)}
                 className={`flex-1 py-3 text-sm font-semibold border ${BTN_PRESS}`}
                 style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)", borderRadius: "var(--gt-radius)" }}
               >
-                חזרה
+                {t("חזרה")}
               </button>
             </div>
           </div>
@@ -1582,9 +1589,9 @@ export default function PublicGalleryView({
             style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold mb-2 font-display">להוריד את התמונות המסומנות?</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("להוריד את התמונות המסומנות?")}</h2>
             <p className="text-sm mb-5" style={{ color: "var(--gt-ink-soft)" }}>
-              יורדו {favoriteCount} תמונות כקובץ ZIP אחד.
+              {t("יורדו {n} תמונות כקובץ ZIP אחד.", { n: favoriteCount })}
             </p>
             <div className="flex gap-2">
               <button
@@ -1596,14 +1603,14 @@ export default function PublicGalleryView({
                 className={`flex-1 py-3 text-sm font-semibold disabled:opacity-60 ${BTN_PRESS}`}
                 style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
               >
-                {zipping ? "מכין הורדה..." : "כן, הורד"}
+                {zipping ? t("מכין הורדה...") : t("כן, הורד")}
               </button>
               <button
                 onClick={() => setDownloadSelectedConfirmOpen(false)}
                 className={`flex-1 py-3 text-sm font-semibold border ${BTN_PRESS}`}
                 style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)", borderRadius: "var(--gt-radius)" }}
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -1626,7 +1633,7 @@ export default function PublicGalleryView({
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold font-display">
-                {shareMenuPhotos.length > 1 ? `אפשרויות (${shareMenuPhotos.length} תמונות)` : "אפשרויות תמונה"}
+                {shareMenuPhotos.length > 1 ? t("אפשרויות ({n} תמונות)", { n: shareMenuPhotos.length }) : t("אפשרויות תמונה")}
               </h2>
               <button
                 onClick={() => setShareMenuPhotos(null)}
@@ -1646,7 +1653,7 @@ export default function PublicGalleryView({
                 style={{ background: "var(--gt-surface-soft)", borderColor: "var(--gt-border)" }}
               >
                 <ShareIcon />
-                <span className="text-sm font-semibold">שיתוף</span>
+                <span className="text-sm font-semibold">{t("שיתוף")}</span>
               </button>
               {allowDownloads && (
                 <button
@@ -1659,7 +1666,7 @@ export default function PublicGalleryView({
                   style={{ background: "var(--gt-surface-soft)", borderColor: "var(--gt-border)" }}
                 >
                   <DownloadIcon />
-                  <span className="text-sm font-semibold">הורדה</span>
+                  <span className="text-sm font-semibold">{t("הורדה")}</span>
                 </button>
               )}
             </div>
@@ -1686,14 +1693,14 @@ export default function PublicGalleryView({
                 <h2 className="text-lg font-bold font-display mb-4">
                   {galleryShareScope?.kind === "photos"
                     ? galleryShareScope.ids.length > 1
-                      ? `שיתוף ${galleryShareScope.ids.length} תמונות`
-                      : "שיתוף תמונה"
-                    : "שיתוף הגלריה"}
+                      ? t("שיתוף {n} תמונות", { n: galleryShareScope.ids.length })
+                      : t("שיתוף תמונה")
+                    : t("שיתוף הגלריה")}
                 </h2>
 
                 {showFolderPicker && (
                   <div className="mb-5">
-                    <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>אילו לשוניות לשתף?</p>
+                    <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>{t("אילו לשוניות לשתף?")}</p>
                     <div className="space-y-1.5">
                       {folders.map((folder) => (
                         <label
@@ -1711,18 +1718,18 @@ export default function PublicGalleryView({
                           style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
                         >
                           <input type="checkbox" checked={shareSelectedFolders.has(NO_FOLDER_KEY)} onChange={() => toggleShareFolder(NO_FOLDER_KEY)} />
-                          כללי (ללא לשונית)
+                          {t("כללי (ללא לשונית)")}
                         </label>
                       )}
                     </div>
-                    {shareDisabled && <p className="text-xs mt-2 font-semibold" style={{ color: "var(--gt-accent)" }}>יש לבחור לפחות לשונית אחת לשיתוף</p>}
+                    {shareDisabled && <p className="text-xs mt-2 font-semibold" style={{ color: "var(--gt-accent)" }}>{t("יש לבחור לפחות לשונית אחת לשיתוף")}</p>}
                   </div>
                 )}
 
                 <div className="mb-5">
-                  <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>באיזו איכות לשתף?</p>
+                  <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>{t("באיזו איכות לשתף?")}</p>
                   {restrictedQuality === "web" ? (
-                    <p className="text-xs" style={{ color: "var(--gt-ink-soft)" }}>הקישור הזה שותף באיכות מותאמת לרשת בלבד</p>
+                    <p className="text-xs" style={{ color: "var(--gt-ink-soft)" }}>{t("הקישור הזה שותף באיכות מותאמת לרשת בלבד")}</p>
                   ) : (
                     <div className="space-y-1.5">
                       <label
@@ -1730,14 +1737,14 @@ export default function PublicGalleryView({
                         style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
                       >
                         <input type="radio" name="share-quality" checked={shareQuality === "full"} onChange={() => setShareQuality("full")} />
-                        איכות מלאה (הקבצים המקוריים)
+                        {t("איכות מלאה (הקבצים המקוריים)")}
                       </label>
                       <label
                         className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
                         style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
                       >
                         <input type="radio" name="share-quality" checked={shareQuality === "web"} onChange={() => setShareQuality("web")} />
-                        איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)
+                        {t("איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)")}
                       </label>
                     </div>
                   )}
@@ -1745,41 +1752,41 @@ export default function PublicGalleryView({
 
                 <div className="space-y-2.5">
                   <button onClick={shareGalleryViaWhatsapp} disabled={shareDisabled} className={`w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface-soft)", color: "var(--gt-accent)" }}>
-                    וואטסאפ
+                    {t("וואטסאפ")}
                   </button>
                   <button onClick={shareGalleryViaInstagram} disabled={shareDisabled} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
-                    אינסטגרם
+                    {t("אינסטגרם")}
                   </button>
                   <button onClick={shareGalleryViaTiktok} disabled={shareDisabled} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
-                    טיקטוק
+                    {t("טיקטוק")}
                   </button>
                   <button onClick={shareGalleryViaQr} disabled={shareDisabled} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
-                    קוד QR
+                    {t("קוד QR")}
                   </button>
                   <button onClick={shareGalleryViaOther} disabled={shareDisabled} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
-                    אחר
+                    {t("אחר")}
                   </button>
                 </div>
                 {shareFeedback && (
                   <p className="text-xs text-center mt-3 font-medium" style={{ color: "var(--gt-accent)" }}>{shareFeedback}</p>
                 )}
                 <button onClick={() => setGalleryShareOpen(false)} className="w-full text-center mt-4 text-xs" style={{ color: "var(--gt-ink-soft)" }}>
-                  ביטול
+                  {t("ביטול")}
                 </button>
               </>
             ) : (
               <>
-                <h2 className="text-lg font-bold font-display mb-4">קוד QR לגלריה</h2>
+                <h2 className="text-lg font-bold font-display mb-4">{t("קוד QR לגלריה")}</h2>
                 {gQrDataUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={gQrDataUrl} alt="קוד QR לגלריה" className="w-full rounded-2xl mb-4" />
+                  <img src={gQrDataUrl} alt={t("קוד QR לגלריה")} className="w-full rounded-2xl mb-4" />
                 )}
                 <div className="flex gap-2">
                   <button onClick={() => setGalleryShareView("main")} className="flex-1 rounded-lg py-3 text-sm font-semibold border" style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)" }}>
-                    חזרה
+                    {t("חזרה")}
                   </button>
                   <button onClick={() => setGalleryShareOpen(false)} className="flex-1 rounded-lg py-3 text-sm font-semibold" style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)" }}>
-                    סגירה
+                    {t("סגירה")}
                   </button>
                 </div>
               </>
@@ -1801,11 +1808,11 @@ export default function PublicGalleryView({
             style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold mb-4 font-display">הורדת תמונות</h2>
+            <h2 className="text-lg font-bold mb-4 font-display">{t("הורדת תמונות")}</h2>
 
             {folders.length > 0 && (
               <div className="mb-5">
-                <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>אילו לשוניות להוריד?</p>
+                <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>{t("אילו לשוניות להוריד?")}</p>
                 <div className="space-y-1.5">
                   {folders.map((folder) => (
                     <label
@@ -1827,17 +1834,17 @@ export default function PublicGalleryView({
                         checked={downloadSelectedFolders.has(NO_FOLDER_KEY)}
                         onChange={() => toggleDownloadFolder(NO_FOLDER_KEY)}
                       />
-                      כללי (ללא לשונית)
+                      {t("כללי (ללא לשונית)")}
                     </label>
                   )}
                 </div>
               </div>
             )}
 
-            <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>באיזו איכות להוריד?</p>
+            <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>{t("באיזו איכות להוריד?")}</p>
             {restrictedQuality === "web" ? (
               <p className="text-xs mb-5" style={{ color: "var(--gt-ink-soft)" }}>
-                הקישור הזה שותף באיכות מותאמת לרשת בלבד
+                {t("הקישור הזה שותף באיכות מותאמת לרשת בלבד")}
               </p>
             ) : (
               <div className="space-y-1.5 mb-5">
@@ -1846,20 +1853,20 @@ export default function PublicGalleryView({
                   style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
                 >
                   <input type="radio" name="download-quality" checked={downloadQuality === "full"} onChange={() => setDownloadQuality("full")} />
-                  איכות מלאה (הקבצים המקוריים)
+                  {t("איכות מלאה (הקבצים המקוריים)")}
                 </label>
                 <label
                   className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
                   style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
                 >
                   <input type="radio" name="download-quality" checked={downloadQuality === "web"} onChange={() => setDownloadQuality("web")} />
-                  איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)
+                  {t("איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)")}
                 </label>
               </div>
             )}
 
             {downloadSelectedFolderPhotoIds.length === 0 && (
-              <p className="text-xs mb-3 font-semibold" style={{ color: "var(--gt-accent)" }}>יש לבחור לפחות לשונית אחת</p>
+              <p className="text-xs mb-3 font-semibold" style={{ color: "var(--gt-accent)" }}>{t("יש לבחור לפחות לשונית אחת")}</p>
             )}
             <button
               onClick={() => {
@@ -1870,7 +1877,7 @@ export default function PublicGalleryView({
               className={`w-full py-3 text-sm font-semibold disabled:opacity-40 ${BTN_PRESS}`}
               style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
             >
-              הורדת {downloadSelectedFolderPhotoIds.length} תמונות
+              {t("הורדת {n} תמונות", { n: downloadSelectedFolderPhotoIds.length })}
             </button>
           </div>
         </div>
@@ -1890,15 +1897,15 @@ export default function PublicGalleryView({
           >
             {zipDone ? (
               <>
-                <h2 className="text-lg font-bold mb-2 font-display">ההורדה הושלמה</h2>
+                <h2 className="text-lg font-bold mb-2 font-display">{t("ההורדה הושלמה")}</h2>
                 <p className="text-sm mb-5" style={{ color: "var(--gt-ink-soft)" }}>
                   {zipBatch.parts.length > 1
-                    ? `כל ${zipBatch.parts.length} הקבצים ירדו למכשיר שלך.`
-                    : "הקובץ ירד למכשיר שלך."}
+                    ? t("כל {n} הקבצים ירדו למכשיר שלך.", { n: zipBatch.parts.length })
+                    : t("הקובץ ירד למכשיר שלך.")}
                 </p>
                 {zipBatch.parts.some((p) => p.status === "failed") && (
                   <p className="text-xs mb-4" style={{ color: "var(--gt-rose, #c0392b)" }}>
-                    חלק מהתמונות לא נכללו בהורדה בגלל שגיאה. אפשר לנסות שוב.
+                    {t("חלק מהתמונות לא נכללו בהורדה בגלל שגיאה. אפשר לנסות שוב.")}
                   </p>
                 )}
                 <button
@@ -1909,16 +1916,16 @@ export default function PublicGalleryView({
                   className={`w-full py-3 text-sm font-semibold ${BTN_PRESS}`}
                   style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
                 >
-                  סגירה
+                  {t("סגירה")}
                 </button>
               </>
             ) : (
               <>
-                <h2 className="text-lg font-bold mb-2 font-display">מכינים את ההורדה</h2>
+                <h2 className="text-lg font-bold mb-2 font-display">{t("מכינים את ההורדה")}</h2>
                 <p className="text-sm mb-4" style={{ color: "var(--gt-ink-soft)" }}>
                   {zipBatch.parts.length > 1
-                    ? `הגלריה מחולקת ל-${zipBatch.parts.length} קבצי ZIP. כל חלק יורד אוטומטית ברגע שהוא מוכן.`
-                    : "קובץ ה-ZIP יורד אוטומטית ברגע שהוא מוכן."}
+                    ? t("הגלריה מחולקת ל-{n} קבצי ZIP. כל חלק יורד אוטומטית ברגע שהוא מוכן.", { n: zipBatch.parts.length })
+                    : t("קובץ ה-ZIP יורד אוטומטית ברגע שהוא מוכן.")}
                 </p>
                 <div className="space-y-2 mb-4">
                   {zipBatch.parts.map((part) => (
@@ -1927,28 +1934,28 @@ export default function PublicGalleryView({
                       className="flex items-center justify-between text-sm rounded-lg px-3 py-2.5 border"
                       style={{ borderColor: "var(--gt-border)" }}
                     >
-                      <span>{zipBatch.parts.length > 1 ? `חלק ${part.partIndex + 1} מתוך ${part.partCount}` : "הקובץ"}</span>
+                      <span>{zipBatch.parts.length > 1 ? t("חלק {n} מתוך {total}", { n: part.partIndex + 1, total: part.partCount }) : t("הקובץ")}</span>
                       {part.status === "ready" && part.downloadUrl ? (
                         <a href={part.downloadUrl} className="font-semibold" style={{ color: "var(--gt-accent)" }}>
-                          הורד שוב
+                          {t("הורד שוב")}
                         </a>
                       ) : part.status === "failed" ? (
-                        <span style={{ color: "var(--gt-rose, #c0392b)" }}>נכשל</span>
+                        <span style={{ color: "var(--gt-rose, #c0392b)" }}>{t("נכשל")}</span>
                       ) : (
                         <span style={{ color: "var(--gt-ink-soft)" }}>
-                          {part.totalCount > 0 ? `${Math.round((part.processedCount / part.totalCount) * 100)}%` : "מכינים..."}
+                          {part.totalCount > 0 ? `${Math.round((part.processedCount / part.totalCount) * 100)}%` : t("מכינים...")}
                         </span>
                       )}
                     </div>
                   ))}
                 </div>
-                <p className="text-xs mb-3" style={{ color: "var(--gt-ink-soft)" }}>אפשר לסגור את החלון, ההכנה וההורדה ימשיכו ברקע.</p>
+                <p className="text-xs mb-3" style={{ color: "var(--gt-ink-soft)" }}>{t("אפשר לסגור את החלון, ההכנה וההורדה ימשיכו ברקע.")}</p>
                 <button
                   onClick={() => setZipPanelOpen(false)}
                   className={`w-full py-3 text-sm font-semibold border ${BTN_PRESS}`}
                   style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)", borderRadius: "var(--gt-radius)" }}
                 >
-                  סגירה
+                  {t("סגירה")}
                 </button>
               </>
             )}
@@ -1975,7 +1982,8 @@ export default function PublicGalleryView({
               e.stopPropagation();
               closeLightbox();
             }}
-            className={`absolute top-4 left-4 h-9 w-9 rounded-full bg-white/10 text-white flex items-center justify-center ${BTN_PRESS}`}
+            aria-label={t("סגירה")}
+            className={`absolute top-4 end-4 h-9 w-9 rounded-full bg-white/10 text-white flex items-center justify-center ${BTN_PRESS}`}
           >
             <IconClose className="h-4 w-4" />
           </button>
@@ -1985,9 +1993,9 @@ export default function PublicGalleryView({
                 e.stopPropagation();
                 downloadPhoto(visiblePhotos[lightboxIndex]);
               }}
-              className={`absolute top-4 right-4 h-9 px-3 rounded-full bg-white/10 text-white flex items-center justify-center text-xs font-semibold ${BTN_PRESS}`}
+              className={`absolute top-4 start-4 h-9 px-3 rounded-full bg-white/10 text-white flex items-center justify-center text-xs font-semibold ${BTN_PRESS}`}
             >
-              הורדה
+              {t("הורדה")}
             </button>
           )}
           {lightboxIndex > 0 && (
@@ -1996,9 +2004,10 @@ export default function PublicGalleryView({
                 e.stopPropagation();
                 navigateLightbox(lightboxIndex - 1);
               }}
-              className={`absolute right-3 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg ${BTN_PRESS}`}
+              aria-label={t("התמונה הקודמת")}
+              className={`absolute start-3 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg ${BTN_PRESS}`}
             >
-              ›
+              {isRtl ? "›" : "‹"}
             </button>
           )}
           {lightboxIndex < visiblePhotos.length - 1 && (
@@ -2007,9 +2016,10 @@ export default function PublicGalleryView({
                 e.stopPropagation();
                 navigateLightbox(lightboxIndex + 1);
               }}
-              className={`absolute left-3 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg ${BTN_PRESS}`}
+              aria-label={t("התמונה הבאה")}
+              className={`absolute end-3 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg ${BTN_PRESS}`}
             >
-              ‹
+              {isRtl ? "‹" : "›"}
             </button>
           )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2081,6 +2091,7 @@ function PhotoTileOverlays({
   onDownload?: (photo: PhotoWithUrl) => void;
   inset?: number;
 }) {
+  const t = useT();
   const offset = 6 + inset;
   // The diamond (label) button sits at the very bottom-right corner; the download button stacks
   // directly above it in the same corner column, one button-height + gap further up.
@@ -2092,7 +2103,7 @@ function PhotoTileOverlays({
           className={`absolute h-7 w-7 rounded-full flex items-center justify-center border-2 backdrop-blur-md pointer-events-none ${
             isSelected ? "border-amber-deep" : "border-white/70"
           }`}
-          style={{ top: offset, left: offset, background: isSelected ? "var(--color-amber-deep)" : "rgba(255,255,255,0.25)" }}
+          style={{ top: offset, insetInlineEnd: offset, background: isSelected ? "var(--color-amber-deep)" : "rgba(255,255,255,0.25)" }}
         >
           {isSelected && <CheckIcon />}
         </div>
@@ -2105,8 +2116,8 @@ function PhotoTileOverlays({
         className={`absolute h-8 w-8 rounded-full flex items-center justify-center backdrop-blur-md ${
           photo.is_favorite ? "bg-black/30" : "bg-white/20"
         } ${BTN_PRESS}`}
-        style={{ top: offset, right: offset }}
-        aria-label="סמן כמועדף"
+        style={{ top: offset, insetInlineStart: offset }}
+        aria-label={t("סמן כמועדף")}
       >
         <HeartIcon filled={photo.is_favorite} />
       </button>
@@ -2117,9 +2128,9 @@ function PhotoTileOverlays({
             onDownload(photo);
           }}
           className={`absolute h-8 w-8 rounded-full flex items-center justify-center backdrop-blur-md bg-white/20 ${BTN_PRESS}`}
-          style={{ bottom: downloadOffset, right: offset }}
-          aria-label="הורדת התמונה"
-          title="הורדת התמונה"
+          style={{ bottom: downloadOffset, insetInlineStart: offset }}
+          aria-label={t("הורדת התמונה")}
+          title={t("הורדת התמונה")}
         >
           <DownloadIcon size={18} stroke="#fff" />
         </button>
@@ -2133,8 +2144,8 @@ function PhotoTileOverlays({
           className={`absolute h-8 w-8 rounded-full flex items-center justify-center backdrop-blur-md ${
             photo.custom_label ? "bg-black/30" : "bg-white/20"
           } ${BTN_PRESS}`}
-          style={{ bottom: offset, right: offset }}
-          aria-label={photo.custom_label ? `תגית: ${photo.custom_label}` : "הוספת תגית לתמונה"}
+          style={{ bottom: offset, insetInlineStart: offset }}
+          aria-label={photo.custom_label ? t("תגית: {label}", { label: photo.custom_label }) : t("הוספת תגית לתמונה")}
           title={photo.custom_label ?? undefined}
         >
           <DiamondIcon filled={!!photo.custom_label} />
@@ -2178,6 +2189,7 @@ function LabelEditModal({
   onClose: () => void;
 }) {
   const [value, setValue] = useState(photo.custom_label ?? "");
+  const t = useT();
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.5)" }} onClick={onClose}>
       <div
@@ -2185,16 +2197,16 @@ function LabelEditModal({
         style={{ background: "var(--gt-surface)", color: "var(--gt-ink)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-sm font-bold mb-1">תגית לתמונה</h2>
+        <h2 className="text-sm font-bold mb-1">{t("תגית לתמונה")}</h2>
         <p className="text-xs mb-3" style={{ color: "var(--gt-ink-soft)" }}>
-          למשל: קנבס, בלוק זכוכית, כדי לספר לצלם/ת מה תרצו לעשות עם התמונה הזו.
+          {t("למשל: קנבס, בלוק זכוכית, כדי לספר לצלם/ת מה תרצו לעשות עם התמונה הזו.")}
         </p>
         <input
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           autoFocus
-          placeholder="קנבס"
+          placeholder={t("קנבס")}
           className="w-full rounded-lg border px-3 py-2.5 text-sm mb-4"
           style={{ borderColor: "var(--gt-border)", background: "var(--gt-surface)", color: "var(--gt-ink)" }}
         />
@@ -2205,14 +2217,14 @@ function LabelEditModal({
             className="flex-1 rounded-lg py-2.5 text-sm font-semibold disabled:opacity-60"
             style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)" }}
           >
-            {saving ? "שומר..." : "שמירה"}
+            {saving ? t("שומר...") : t("שמירה")}
           </button>
           <button
             onClick={onClose}
             className="flex-1 rounded-lg py-2.5 text-sm font-semibold border"
             style={{ borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)" }}
           >
-            ביטול
+            {t("ביטול")}
           </button>
         </div>
       </div>

@@ -35,6 +35,7 @@ export default function QuickActionsGrid({
   initialCustomEventTypes,
   defaultTaxStatus,
   quoteExtras,
+  clientLangPicker,
 }: {
   hourlyRate: number;
   suppliers: PricingSupplier[];
@@ -44,6 +45,7 @@ export default function QuickActionsGrid({
   initialCustomEventTypes: string[];
   defaultTaxStatus: "exempt" | "licensed";
   quoteExtras?: boolean;
+  clientLangPicker?: boolean;
 }) {
   const t = useT();
   const [calculatorOpen, setCalculatorOpen] = useState(false);
@@ -83,6 +85,7 @@ export default function QuickActionsGrid({
           initialCustomEventTypes={initialCustomEventTypes}
           defaultTaxStatus={defaultTaxStatus}
           quoteExtras={quoteExtras}
+          clientLangPicker={clientLangPicker}
           onClose={() => setCalculatorOpen(false)}
         />
       )}

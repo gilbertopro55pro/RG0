@@ -18,6 +18,7 @@ import type {
 import EventDetailView from "@/components/EventDetailView";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { hasAppAccess } from "@/lib/subscription";
+import { canChooseClientLang } from "@/lib/clientLang";
 
 export default async function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -154,6 +155,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
         customPackageName={customPackageName}
         messageTemplates={messageTemplateMap}
         whatsappSignature={whatsappSignature}
+        canChooseClientLang={isOwner && canChooseClientLang(user!.email)}
       />
     </div>
   );

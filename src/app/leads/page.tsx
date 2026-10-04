@@ -5,6 +5,7 @@ import { ADMIN_EMAIL } from "@/lib/admin";
 import type { CustomPackageRow, EventTypeRow, LeadRow, PackagePriceRow, Photographer, PriceQuoteRow, PriceQuoteTemplateRow } from "@/lib/types";
 import LeadsView from "@/components/LeadsView";
 import { hasAppAccess } from "@/lib/subscription";
+import { canChooseClientLang } from "@/lib/clientLang";
 
 export default async function LeadsPage() {
   const supabase = await createClient();
@@ -67,6 +68,7 @@ export default async function LeadsPage() {
           customEventTypes: photographer.quote_event_type_suggestions ?? [],
           defaultTaxStatus: photographer.business_tax_status,
           quoteExtras: quoteExtrasFor(photographer.email),
+          clientLangPicker: canChooseClientLang(photographer.email),
         }}
       />
     </div>

@@ -6,6 +6,8 @@ import { resolveChatPhotographer } from "@/lib/intakeChatAccess";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { cleanSource } from "@/lib/leadSource";
+import { canChooseClientLang } from "@/lib/clientLang";
+import { isLang } from "@/i18n/config";
 
 export const runtime = "nodejs";
 
@@ -16,7 +18,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { allowed } = await checkRateLimit(`intake-form:${clientIpFrom(request)}`, { maxRequests: 30, windowSeconds: 3600 });
   if (!allowed) return NextResponse.json({ error: "יותר מדי פניות. נסו שוב מאוחר יותר" }, { status: 429 });
 
-  const body: { name?: string; phone?: string; date?: string; eventType?: string; notes?: string; src?: string } = await request.json().catch(() => ({}));
+  const body: { name?: string; phone?: string; date?: string; eventType?: string; notes?: string; src?: string; lang?: string } = await request.json().catch(() => ({}));
   const name = (body.name ?? "").trim().slice(0, 100);
   const phone = (body.phone ?? "").trim().slice(0, 30);
   if (!name || !phone) return NextResponse.json({ error: "צריך שם וטלפון" }, { status: 400 });
@@ -39,6 +41,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     referral_source: cleanSource(body.src),
     details: { clientName: name, phone, eventDate: date ?? undefined, eventType: eventType ?? undefined, wishes: notes ?? undefined },
     needs_details: true,
+    // The chat page's language (UI languages phase 2): admin only, for now; otherwise left null.
+    ...(canChooseClientLang(p.email) && isLang(body.lang) ? { client_lang: body.lang } : {}),
   });
   if (error) return NextResponse.json({ error: "שגיאה בשליחת הפנייה" }, { status: 500 });
   await sendPushToPhotographer(p.id, { title: `פנייה חדשה: ${name}`, body: [eventType, date].filter(Boolean).join(" · ") || "מטופס הפנייה", url: "/leads", tag: "new-lead" });

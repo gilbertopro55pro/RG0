@@ -10,6 +10,10 @@ import { SLOT_LABELS, blocksSlot, shabbatClosure, type DaySlot } from "@/lib/day
 import { googleBusyOnDate } from "@/lib/calendarBusy";
 import { SUBSCRIPTION_PLANS, type SubscriptionTier } from "@/lib/stages";
 import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
+import { canChooseClientLang } from "@/lib/clientLang";
+import { isLang, type Lang } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 // Intake assistant (עוזר פניות), phase 1 = web chat (owner's decisions, 2026-09-25):
 // - never talks about prices, packages or discounts; the photographer sends the quote
@@ -95,7 +99,35 @@ function hebrewDate(iso: string): string {
 
 // Where the conversation happens. WhatsApp (phase 2) starts from the ad's opening message, always
 // answers in Hebrew, and already knows the client's phone number.
-export type IntakeChannel = { kind: "web" } | { kind: "whatsapp"; clientPhone: string; adContext?: string | null };
+// lang (web, admin account only for now — UI languages phase 2, 2026-10-04): the chat page's
+// language. With it, the assistant answers in the language the client writes in (Hebrew, English
+// or Russian) and records it on the lead. Without it (every other photographer), nothing changes.
+export type IntakeChannel = { kind: "web"; lang?: Lang } | { kind: "whatsapp"; clientPhone: string; adContext?: string | null };
+
+// The page language when this conversation is multilingual (web + admin), else null.
+function multilingual(p: IntakePhotographer, channel: IntakeChannel): Lang | null {
+  return channel.kind === "web" && channel.lang && canChooseClientLang(p.email) ? channel.lang : null;
+}
+
+const LANG_NAMES_HE: Record<Lang, string> = { he: "עברית", en: "אנגלית", ru: "רוסית" };
+
+// Replaces the "Hebrew only" rule in a multilingual conversation. Every other rule stays as is.
+function languageRule(lang: Lang): string {
+  return `- עונים בשפה שהלקוח כותב בה: עברית, אנגלית או רוסית. בהודעה הראשונה, או כשלא ברור באיזו שפה הלקוח כותב, עונים ב${LANG_NAMES_HE[lang]}. לקוח שכותב בשפה אחרת מקבל תשובה ב${LANG_NAMES_HE[lang]}. אם הלקוח עובר שפה, עוברים איתו.
+- כל הכללים כאן חלים בכל שפה (בלי מחירים, קצר וחם, שאלה אחת בכל פעם, בלי רשימות). בעברית: רק אותיות עבריות, גם בביטויים כמו "מזל טוב". ברוסית פונים ב-"вы". באנגלית וברוסית כותבים תאריכים במילים, כמו שאנשים מדברים.
+- בכל קריאה ל-save_details שולחים גם client_language: השפה שהלקוח כותב בה (he, en או ru).`;
+}
+
+// The turn's client language for the lead (leads.client_lang): set per turn in a multilingual
+// conversation, from the page language, and by save_details' client_language once the model
+// reports it. `explicit` = the model said it this turn (only then may an existing lead change).
+const turnLangs = new WeakMap<IntakeConversation, { lang: Lang; explicit: boolean }>();
+
+function leadLangPatch(conv: IntakeConversation, isNew: boolean): { client_lang?: Lang } {
+  const l = turnLangs.get(conv);
+  if (!l || (!isNew && !l.explicit)) return {};
+  return { client_lang: l.lang };
+}
 
 function channelRules(name: string, channel: IntakeChannel): string {
   if (channel.kind === "web") return "";
@@ -111,6 +143,7 @@ function channelRules(name: string, channel: IntakeChannel): string {
 function buildSystem(p: IntakePhotographer, channel: IntakeChannel): string {
   const name = studioName(p);
   const faq = (p.intake_bot_faq ?? []).filter((f) => f.q?.trim() && f.a?.trim());
+  const lang = multilingual(p, channel);
   const faqText = faq.length ? faq.map((f: IntakeFaqItem) => `ש: ${f.q.trim()}\nת: ${f.a.trim()}`).join("\n\n") : "(אין)";
   return `זהו העוזר האוטומטי של ${name}, צלם אירועים. לקוחות פונים אליו דרך ${channel.kind === "whatsapp" ? "וואטסאפ" : "צ'אט באתר"}.
 
@@ -137,7 +170,7 @@ function buildSystem(p: IntakePhotographer, channel: IntakeChannel): string {
 - כשיש שני דברים נפרדים לומר (תשובה ואז שאלה), מפרידים ביניהם בשורה ריקה. הם יוצגו כשתי הודעות קצרות.
 - פונים ללקוח בלשון רבים (אתם, לכם, תקבלו). אף פעם לא כותבים צורות עם לוכסן כמו "את/ה" או "יכול/ה", וגם העוזר מדבר על עצמו בלי לוכסן ("אשמח", "אין לי אפשרות").
 - אם הלקוח שאל על מחיר, עונים על זה במפורש כבר בתשובה הראשונה (לפי כלל 1), ולא מתעלמים מהשאלה.
-- רק עברית ובאותיות עבריות, גם בביטויים כמו "מזל טוב".
+${lang ? languageRule(lang) : `- רק עברית ובאותיות עבריות, גם בביטויים כמו "מזל טוב".`}
 - כנות: העוזר לא מתחזה ל${name} ולא כותב "אני ${name}". אם שואלים אם זה בוט או אדם, עונים בפשטות שזה העוזר של ${name}, ושהוא עצמו חוזר אליהם עם ההצעה.
 - פרטי חובה: ${REQUIRED.map((r) => r.label).join(", ")}. פרטים נוספים שכדאי לשאול: שעות האירוע, ומה חשוב ללקוח במיוחד.${p.intake_bot_extra_question?.trim() ? `\n- שאלה נוספת ש${name} ביקש לשאול: "${p.intake_bot_extra_question.trim()}"` : ""}
 - כששואלים על התאריך, לא שואלים "איזה תאריך אתם חושבים עליו?". שואלים בנוסח כמו "כבר חשבתם על תאריך לאירוע? אשמח לבדוק אם הוא פנוי", כך שגם מי שעוד לא סגר תאריך ירגיש בנוח (בעל העסק ביקש, 2026-09-28).
@@ -210,6 +243,26 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
+// Multilingual conversations (admin) also report the client's language in save_details. Every other
+// photographer gets TOOLS exactly as before.
+function toolsFor(multi: boolean): Anthropic.Tool[] {
+  if (!multi) return TOOLS;
+  return TOOLS.map((t) =>
+    t.name !== "save_details"
+      ? t
+      : {
+          ...t,
+          input_schema: {
+            ...t.input_schema,
+            properties: {
+              ...(t.input_schema.properties as Record<string, unknown>),
+              client_language: { type: "string", enum: ["he", "en", "ru"], description: "השפה שהלקוח כותב בה: he עברית, en אנגלית, ru רוסית" },
+            },
+          },
+        }
+  );
+}
+
 function leadNotes(d: IntakeDetails): string {
   const lines = [
     !d.eventDate && d.dateUndecided ? `תאריך: ${dateText(d)}` : null,
@@ -245,7 +298,7 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
     referral_source: conv.referral_source ?? null,
   };
   if (conv.lead_id) {
-    await supabase.from("leads").update(row).eq("id", conv.lead_id);
+    await supabase.from("leads").update({ ...row, ...leadLangPatch(conv, false) }).eq("id", conv.lead_id);
     return conv.lead_id;
   }
   // A returning client (same phone) with an open lead from the last 180 days, for the same event
@@ -272,11 +325,12 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
         ...(complete ? { needs_details: false } : {}),
         // A returning client's archived lead comes back to the active list (lib/leadRetention.ts).
         archived_at: null,
+        ...leadLangPatch(conv, false),
       })
       .eq("id", existing.id);
     return existing.id;
   }
-  const { data } = await supabase.from("leads").insert(row).select("id").single<{ id: string }>();
+  const { data } = await supabase.from("leads").insert({ ...row, ...leadLangPatch(conv, true) }).select("id").single<{ id: string }>();
   // A new lead the moment there's a phone number: the phone notification goes out now (lib/push.ts),
   // the email once the conversation is handed off.
   if (data?.id) {
@@ -439,6 +493,8 @@ async function runTool(
     if (patch.eventDate && patch.eventDate !== conv.collected.eventDate) delete conv.collected.dateAvailable;
     if (input.eventSlot === "morning" || input.eventSlot === "evening") patch.eventSlot = input.eventSlot;
     if (input.nothingElse === true) patch.nothingElse = true;
+    // Only set in a multilingual conversation (turnLangs has an entry); never anything but he/en/ru.
+    if (turnLangs.has(conv) && isLang(input.client_language)) turnLangs.set(conv, { lang: input.client_language, explicit: true });
     conv.collected = { ...conv.collected, ...patch };
     conv.lead_id = await upsertLead(supabase, conv, !!conv.completed_at);
     const missing = missingDetails(conv.collected);
@@ -524,9 +580,14 @@ export async function runIntakeTurn(
   channel: IntakeChannel = { kind: "web" }
 ): Promise<string> {
   const client = new Anthropic();
+  const lang = multilingual(p, channel);
+  if (lang) turnLangs.set(conv, { lang, explicit: false });
+  else turnLangs.delete(conv);
+  const t = makeT(messagesFor(lang ?? "he"));
+  const tools = toolsFor(!!lang);
   const system: Anthropic.TextBlockParam[] = [{ type: "text", text: buildSystem(p, channel), cache_control: { type: "ephemeral" } }];
   const messages: Anthropic.MessageParam[] = [...conv.messages, { role: "user", content: clientText }];
-  const fallback = `סליחה, משהו השתבש אצלי. אפשר לנסות שוב, או להשאיר שם וטלפון ו${studioName(p)} יחזור אליכם.`;
+  const fallback = t("סליחה, משהו השתבש אצלי. אפשר לנסות שוב, או להשאיר שם וטלפון ו{studio} יחזור אליכם.", { studio: studioName(p) });
   // Text from every round, not just the last: the model often answers the client's question, then
   // calls a tool, then asks the next question. Keeping only the last round dropped the answer
   // (price and "bot or human" questions went unanswered in a live test, 2026-09-26).
@@ -541,7 +602,7 @@ export async function runIntakeTurn(
         max_tokens: 2048,
         output_config: { effort: "low" },
         system,
-        tools: TOOLS,
+        tools,
         messages,
       });
     } catch (e) {
@@ -558,7 +619,8 @@ export async function runIntakeTurn(
     add("cache_read", u.cache_read_input_tokens);
     add("cache_write", u.cache_creation_input_tokens);
     add("calls", 1);
-    for (const b of response.content) if (b.type === "text") b.text = hebrewGreetings(b.text);
+    // In a multilingual conversation only Hebrew replies are touched ("Mazel tov" in English stays).
+    for (const b of response.content) if (b.type === "text" && (!lang || /[\u0590-\u05FF]/.test(b.text))) b.text = hebrewGreetings(b.text);
     messages.push({ role: "assistant", content: response.content });
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -588,7 +650,8 @@ export async function runIntakeTurn(
   conv.messages = messages;
   // `messages` now ends with the assistant's closing reply: send any queued handoff email with it.
   await flushNotices(conv, p, siteUrl, messages);
-  if (refused) return `את זה ${studioName(p)} יענה לכם ישירות. נמשיך עם פרטי האירוע?`;
+  turnLangs.delete(conv);
+  if (refused) return t("את זה {studio} יענה לכם ישירות. נמשיך עם פרטי האירוע?", { studio: studioName(p) });
   return texts.join("\n\n") || fallback;
 }
 

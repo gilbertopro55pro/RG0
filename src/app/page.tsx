@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { quoteExtrasFor } from "@/lib/quoteDefaults";
+import { canChooseClientLang } from "@/lib/clientLang";
 import { IconMagnetFrame } from "@/components/icons/NavIcons";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
@@ -399,6 +400,7 @@ export default async function DashboardPage() {
           initialCustomEventTypes={photographer.quote_event_type_suggestions}
           defaultTaxStatus={photographer.business_tax_status}
           quoteExtras={quoteExtrasFor(photographer.email)}
+          clientLangPicker={canChooseClientLang(photographer.email)}
         />
       )}
 

@@ -12,6 +12,8 @@ import { reconcileEventStages } from "@/lib/reconcileEventStages";
 import { calendarEventTitle } from "@/lib/eventDisplayName";
 import type { CustomPackageRow, CustomPackageStageRow, EventRow } from "@/lib/types";
 import { eventsConflict } from "@/lib/eventTime";
+import { canChooseClientLang } from "@/lib/clientLang";
+import { isLang } from "@/i18n/config";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
@@ -38,6 +40,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     customPackageId,
     allowDoubleBooking,
     payments,
+    clientLang,
   }: {
     clientName: string;
     eventType?: string | null;
@@ -54,6 +57,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     allowDoubleBooking?: boolean;
     // Sent only when the photographer changed the price (סכום האירוע / יתרה) in the edit form.
     payments?: { depositAmount: number; balanceAmount: number };
+    // The client's language (UI languages phase 2): their portal, contract and gallery show in it.
+    // Admin only for now; ignored for other accounts. undefined = not sent, leave it alone.
+    clientLang?: string;
   } = body;
 
   if (payments) {
@@ -138,6 +144,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       event_location: eventLocation || null,
       arrival_time: arrivalTime || null,
       notes: notes || null,
+      ...(isLang(clientLang) && canChooseClientLang(user.email) ? { client_lang: clientLang } : {}),
       // Any saved edit — regardless of which fields actually changed — is what "reviewing" a
       // bulk-imported event means; clears the calendar-scan quick-add highlight for good.
       needs_review: false,

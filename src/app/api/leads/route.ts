@@ -5,6 +5,8 @@ import { findLeadsByPhone } from "@/lib/leadDuplicates";
 import type { PackageType } from "@/lib/stages";
 import type { LeadQuoteDetails } from "@/lib/leadQuote";
 import { scheduleLeadQuoteFollowUp } from "@/lib/leadFollowUp";
+import { canChooseClientLang } from "@/lib/clientLang";
+import { isLang } from "@/i18n/config";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -34,6 +36,9 @@ export async function POST(request: Request) {
     // attached in the same request (the page may be backgrounded by WhatsApp right after).
     quoteToken?: string;
     quote?: { amount: number; note?: string; details?: LeadQuoteDetails };
+    // The client's language (UI languages phase 2, admin only for now): their quote page, contract,
+    // portal and gallery show in it. Ignored for other accounts.
+    clientLang?: string;
   } = await request.json();
 
   if (!body.name?.trim()) {
@@ -64,6 +69,7 @@ export async function POST(request: Request) {
       package_interest: body.packageInterest || null,
       event_type_name: body.eventType?.trim() || null,
       notes: body.notes || null,
+      ...(isLang(body.clientLang) && canChooseClientLang(user.email) ? { client_lang: body.clientLang } : {}),
       ...(body.quoteToken && UUID_RE.test(body.quoteToken) ? { quote_token: body.quoteToken } : {}),
       ...(quote
         ? {

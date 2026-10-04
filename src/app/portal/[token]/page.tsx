@@ -1,9 +1,14 @@
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { PACKAGE_FLOWS, STAGE_LABELS, STAGE_TYPE, currentStageIndex, packageLabel } from "@/lib/stages";
+import { PACKAGE_FLOWS, PACKAGE_LABELS, STAGE_LABELS, STAGE_TYPE, currentStageIndex } from "@/lib/stages";
 import { normalizeIsraeliPhone } from "@/lib/whatsapp";
 import type { CustomPackageStageRow, EventPaymentRow, EventRow, EventStageRow, GalleryRow } from "@/lib/types";
 import PortalStageActions from "@/components/PortalStageActions";
 import { getSignedDownloadUrl } from "@/lib/storage";
+import { clientLangFor } from "@/lib/clientLang";
+import ClientLangScope from "@/i18n/ClientLangScope";
+import { dateLocale } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 export default async function ClientPortalPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -16,12 +21,21 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
     .maybeSingle<EventRow & { photographers: { name: string; phone: string; email: string } | null }>();
 
   if (!event) {
+    // No event → no photographer to read a client language from: Hebrew, as before.
     return (
-      <div className="max-w-md mx-auto px-4 pt-16 pb-10 w-full text-center">
-        <p className="text-sm text-ink-soft">הקישור שגוי או שפג תוקפו.</p>
-      </div>
+      <ClientLangScope lang="he">
+        <div className="max-w-md mx-auto px-4 pt-16 pb-10 w-full text-center">
+          <p className="text-sm text-ink-soft">הקישור שגוי או שפג תוקפו.</p>
+        </div>
+      </ClientLangScope>
     );
   }
+
+  // UI languages phase 2: the client's language from the event (admin account only for now; every
+  // other photographer's clients always get Hebrew). WhatsApp bodies the client sends stay Hebrew.
+  const lang = clientLangFor(event.photographers?.email, event.client_lang);
+  const t = makeT(messagesFor(lang));
+  const locale = dateLocale(lang);
 
   const [{ data: stages }, { data: payments }, { data: customStagesData }, { data: customPackageData }, { data: gallery }] =
     await Promise.all([
@@ -71,21 +85,23 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
   // about checkpoints that involve them or mark real progress.
   const clientStages = event.custom_package_id
     ? (customStagesData ?? [])
-        .map((cs, i) => ({ key: `custom:${cs.id}`, label: cs.name, stage: byKey.get(`custom:${cs.id}`)!, index: i, notify: cs.notify_client }))
+        .map((cs, i) => ({ key: `custom:${cs.id}`, label: cs.name /* typed by the photographer: as is */, stage: byKey.get(`custom:${cs.id}`)!, index: i, notify: cs.notify_client }))
         .filter((s) => s.notify)
     : PACKAGE_FLOWS[event.package!]
-        .map((key, i) => ({ key, label: STAGE_LABELS[key], stage: byKey.get(key)!, index: i }))
+        .map((key, i) => ({ key, label: t(STAGE_LABELS[key]), stage: byKey.get(key)!, index: i }))
         .filter(({ key }) => STAGE_TYPE[key] === "checkpoint");
 
   return (
+    <ClientLangScope lang={lang}>
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <h1 className="text-[22px] font-bold mb-1 font-display">{event.client_name}</h1>
       <p className="text-xs mb-5 text-ink-soft">
-        {new Date(event.event_date).toLocaleDateString("he-IL")}, {packageLabel(event.package, customPackageData?.name)}
+        {new Date(event.event_date).toLocaleDateString(locale)},{" "}
+        {event.package ? t(PACKAGE_LABELS[event.package]) : (customPackageData?.name ?? t("חבילה מותאמת אישית"))}
       </p>
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold mb-3.5">סטטוס האירוע</div>
+        <div className="text-sm font-semibold mb-3.5">{t("סטטוס האירוע")}</div>
         <PortalStageActions
           eventToken={token}
           stages={clientStages.map(({ key, label, stage, index }) => ({
@@ -104,22 +120,22 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           real events have — showing this section there would just be confusing/irrelevant. */}
       {payments && !event.package?.startsWith("freelance_") && (
         <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-          <div className="text-sm font-semibold mb-3.5">תשלומים</div>
+          <div className="text-sm font-semibold mb-3.5">{t("תשלומים")}</div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 bg-chip">
-              <span>מקדמה: ₪{Number(payments.deposit_amount).toLocaleString("he-IL")}</span>
+              <span>{t("מקדמה: ₪{amount}", { amount: Number(payments.deposit_amount).toLocaleString(locale) })}</span>
               <span style={{ color: payments.deposit_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
-                {payments.deposit_paid ? "שולם ✓" : "ממתין"}
+                {payments.deposit_paid ? t("שולם ✓") : t("ממתין")}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 bg-chip">
-              <span>יתרה: ₪{Number(payments.balance_amount).toLocaleString("he-IL")}</span>
+              <span>{t("יתרה: ₪{amount}", { amount: Number(payments.balance_amount).toLocaleString(locale) })}</span>
               <span style={{ color: payments.balance_paid ? "var(--color-sage)" : "var(--color-ink-soft)", fontWeight: 600 }}>
                 {payments.balance_paid
-                  ? "שולם ✓"
+                  ? t("שולם ✓")
                   : payments.balance_due_date
-                    ? `עד ${new Date(payments.balance_due_date).toLocaleDateString("he-IL")}`
-                    : "ממתין"}
+                    ? t("עד {date}", { date: new Date(payments.balance_due_date).toLocaleDateString(locale) })
+                    : t("ממתין")}
               </span>
             </div>
           </div>
@@ -133,9 +149,10 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 rounded-2xl p-3.5 mt-5 text-sm font-semibold bg-sage-bg text-sage"
         >
-          יש שאלה? שליחת הודעה ל{event.photographers.name} בוואטסאפ
+          {t("יש שאלה? שליחת הודעה ל{name} בוואטסאפ", { name: event.photographers.name })}
         </a>
       )}
     </div>
+    </ClientLangScope>
   );
 }

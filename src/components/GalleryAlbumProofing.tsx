@@ -9,6 +9,8 @@ import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsFilterId, adjustmentsSvgFilter, type PhotoAdjustments } from "@/lib/albumAdjustments";
 import { sharpenFilterId, sharpenSvgFilter } from "@/lib/albumSharpen";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useLang, useT } from "@/i18n/client";
+import { dirOf } from "@/i18n/config";
 
 type SpreadPhoto = { id: string; url: string };
 type SpreadLayout = "split" | "feature" | "stack" | "custom";
@@ -160,8 +162,11 @@ function BackgroundLayer({ background }: { background: SpreadBackground }) {
 }
 
 function TextOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "text" }> }) {
+  // Album geometry is physical and authored in the (RTL) builder: pinned to rtl so a client page
+  // in English/Russian lays the text out exactly as the photographer designed it.
   return (
     <div
+      dir="rtl"
       className="absolute px-1 font-bold flex items-center"
       style={{
         left: `${el.xPct}%`,
@@ -293,6 +298,8 @@ export default function GalleryAlbumProofing({
   const [approving, setApproving] = useState(false);
   const [approved, setApproved] = useState(status === "approved");
   const [confirmApproveOpen, setConfirmApproveOpen] = useState(false);
+  const t = useT();
+  const isRtl = dirOf(useLang()) === "rtl";
 
   if (spreads.length === 0) return null;
   const onCover = index === -1;
@@ -329,17 +336,17 @@ export default function GalleryAlbumProofing({
   return (
     <div className={`fixed inset-0 z-[80] bg-black flex flex-col select-none ${ALBUM_FONT_CLASS_NAMES}`}>
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
-        <button onClick={onClose} aria-label="סגירה" className="h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg">
+        <button onClick={onClose} aria-label={t("סגירה")} className="h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg">
           <IconClose className="h-5 w-5" />
         </button>
         <span dir="ltr" className="text-xs font-semibold text-white/70 font-data">
-          {onCover ? "שער" : `${index + 1} / ${spreads.length}`}
+          {onCover ? t("שער") : `${index + 1} / ${spreads.length}`}
         </span>
       </div>
 
       {approved && (
         <div className="mx-4 mb-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-center bg-sage-bg text-sage">
-          ✓ האלבום אושר
+          ✓ {t("האלבום אושר")}
         </div>
       )}
 
@@ -495,16 +502,18 @@ export default function GalleryAlbumProofing({
         <button
           onClick={() => goTo(index - 1)}
           disabled={index === (hasCover ? -1 : 0)}
+          aria-label={t("העמוד הקודם")}
           className="h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center text-xl disabled:opacity-30"
         >
-          ›
+          {isRtl ? "›" : "‹"}
         </button>
         <button
           onClick={() => goTo(index + 1)}
           disabled={index === spreads.length - 1}
+          aria-label={t("העמוד הבא")}
           className="h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center text-xl disabled:opacity-30"
         >
-          ‹
+          {isRtl ? "‹" : "›"}
         </button>
       </div>
 
@@ -525,7 +534,7 @@ export default function GalleryAlbumProofing({
                 <input
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
-                  placeholder="הערה על העמוד הזה..."
+                  placeholder={t("הערה על העמוד הזה...")}
                   className="flex-1 rounded-lg px-3 py-2.5 text-sm border border-line bg-white"
                 />
                 <button
@@ -533,7 +542,7 @@ export default function GalleryAlbumProofing({
                   disabled={submittingComment || !commentText.trim()}
                   className="shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                 >
-                  שליחה
+                  {t("שליחה")}
                 </button>
               </div>
             )}
@@ -541,7 +550,7 @@ export default function GalleryAlbumProofing({
               onClick={() => setConfirmApproveOpen(true)}
               className="w-full rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white"
             >
-              אישור העיצוב הסופי
+              {t("אישור העיצוב הסופי")}
             </button>
           </>
         )}
@@ -554,21 +563,21 @@ export default function GalleryAlbumProofing({
           onClick={() => setConfirmApproveOpen(false)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-white" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">לאשר את עיצוב האלבום?</h2>
-            <p className="text-sm text-ink-soft mb-5">לאחר האישור העיצוב יעבור להדפסה. עדיין אפשר לכתוב הערות, אך לא לבטל את האישור.</p>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("לאשר את עיצוב האלבום?")}</h2>
+            <p className="text-sm text-ink-soft mb-5">{t("לאחר האישור העיצוב יעבור להדפסה. עדיין אפשר לכתוב הערות, אך לא לבטל את האישור.")}</p>
             <div className="flex gap-2">
               <button
                 onClick={approve}
                 disabled={approving}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
               >
-                {approving ? "שולח..." : "כן, מאשר/ת"}
+                {approving ? t("שולח...") : t("כן, מאשר/ת")}
               </button>
               <button
                 onClick={() => setConfirmApproveOpen(false)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
               >
-                חזרה
+                {t("חזרה")}
               </button>
             </div>
           </div>

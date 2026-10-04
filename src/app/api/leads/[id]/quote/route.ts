@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import type { LeadQuoteDetails } from "@/lib/leadQuote";
 import { createClient } from "@/lib/supabase/server";
 import { scheduleLeadQuoteFollowUp } from "@/lib/leadFollowUp";
+import { canChooseClientLang } from "@/lib/clientLang";
+import { isLang } from "@/i18n/config";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: leadId } = await params;
@@ -13,7 +15,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
   }
 
-  const { amount, note, details }: { amount: number; note?: string; details?: LeadQuoteDetails } = await request.json();
+  // clientLang: the client's language picked on the builder's preview (admin only for now).
+  const { amount, note, details, clientLang }: { amount: number; note?: string; details?: LeadQuoteDetails; clientLang?: string } = await request.json();
   if (!amount || amount <= 0) {
     return NextResponse.json({ error: "יש להזין סכום תקין" }, { status: 400 });
   }
@@ -27,6 +30,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ...(details && Array.isArray(details.items) && JSON.stringify(details).length < 20000 ? { quote_details: details } : {}),
       quote_sent_at: new Date().toISOString(),
       status: "quoted",
+      ...(isLang(clientLang) && canChooseClientLang(user.email) ? { client_lang: clientLang } : {}),
     })
     .eq("id", leadId)
     .select()

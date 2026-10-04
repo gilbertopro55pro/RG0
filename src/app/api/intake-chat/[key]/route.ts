@@ -3,6 +3,10 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { resolveChatPhotographer, assistantUnavailableReason, claimConversationSlot } from "@/lib/intakeChatAccess";
 import { cleanSource } from "@/lib/leadSource";
+import { canChooseClientLang, clientLangFor } from "@/lib/clientLang";
+import { isLang } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 import { runIntakeTurn, transcriptOf, MAX_CLIENT_TURNS, MAX_MESSAGE_CHARS, studioName, type IntakeConversation } from "@/lib/intakeAssistant";
 
 export const runtime = "nodejs";
@@ -47,7 +51,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { allowed } = await checkRateLimit(`intake-msg:${ip}`, { maxRequests: 200, windowSeconds: 600 });
   if (!allowed) return NextResponse.json({ error: "יותר מדי הודעות. נסו שוב בעוד כמה דקות" }, { status: 429 });
 
-  const body: { session?: string; message?: string; src?: string } = await request.json().catch(() => ({}));
+  // lang: the chat page's language (UI languages phase 2). Only the admin's chat uses it; error
+  // strings stay Hebrew here and the page translates them.
+  const body: { session?: string; message?: string; src?: string; lang?: string } = await request.json().catch(() => ({}));
   const text = (body.message ?? "").trim();
   if (!text) return NextResponse.json({ error: "הודעה ריקה" }, { status: 400 });
   if (text.length > MAX_MESSAGE_CHARS) return NextResponse.json({ error: "ההודעה ארוכה מדי" }, { status: 400 });
@@ -74,13 +80,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (error || !created) return NextResponse.json({ error: "שגיאה בפתיחת השיחה" }, { status: 500 });
     conv = created;
   }
+  // Multilingual (admin only, for now): the page language, validated; everyone else: none, as before.
+  const lang = canChooseClientLang(p.email) ? clientLangFor(p.email, isLang(body.lang) ? body.lang : "he") : undefined;
   if (conv.client_turns >= MAX_CLIENT_TURNS) {
-    return NextResponse.json({ session: conv.session_token, reply: `קיבלתי את כל מה שכתבתם, ו${studioName(p)} יחזור אליכם בהקדם.`, state: conv.state });
+    const t = makeT(messagesFor(lang ?? "he"));
+    return NextResponse.json({ session: conv.session_token, reply: t("קיבלתי את כל מה שכתבתם, ו{studio} יחזור אליכם בהקדם.", { studio: studioName(p) }), state: conv.state });
   }
 
   const origin = new URL(request.url).origin;
   const hadLead = !!conv.lead_id;
-  const reply = await runIntakeTurn(supabase, conv, p, text, origin);
+  const reply = await runIntakeTurn(supabase, conv, p, text, origin, lang ? { kind: "web", lang } : undefined);
   const { error: saveError } = await supabase
     .from("bot_conversations")
     .update({

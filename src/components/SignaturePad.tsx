@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useT } from "@/i18n/client";
 
 // A hand-drawn signature captured on an HTML canvas via pointer events (unifies mouse/touch/pen).
 // The canvas backing store is sized in real device pixels (via devicePixelRatio) so strokes stay
@@ -10,6 +11,7 @@ export default function SignaturePad({ onChange }: { onChange: (dataUrl: string 
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const hasDrawnRef = useRef(false);
+  const t = useT();
   const [hasDrawn, setHasDrawn] = useState(false);
 
   const markDrawn = (v: boolean) => {
@@ -104,13 +106,13 @@ export default function SignaturePad({ onChange }: { onChange: (dataUrl: string 
         />
         {!hasDrawn && (
           <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-ink-soft">
-            חתמו כאן עם האצבע או העכבר
+            {t("חתמו כאן עם האצבע או העכבר")}
           </p>
         )}
       </div>
       {hasDrawn && (
         <button type="button" onClick={clear} className="mt-1.5 text-xs text-ink-soft underline">
-          נקה וחתום מחדש
+          {t("נקה וחתום מחדש")}
         </button>
       )}
     </div>

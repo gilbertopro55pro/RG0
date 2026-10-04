@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type { LeadStatus } from "@/lib/types";
 import { cancelLeadFollowUps } from "@/lib/leadFollowUp";
+import { canChooseClientLang } from "@/lib/clientLang";
+import { isLang } from "@/i18n/config";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: leadId } = await params;
@@ -20,6 +22,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     quoted_amount?: number;
     quote_note?: string;
     converted_event_id?: string;
+    // The client's language (admin only for now; other accounts' value is ignored).
+    client_lang?: string;
+    clientLang?: string;
   } = await request.json();
 
   const update: Record<string, unknown> = {};
@@ -27,6 +32,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.notes !== undefined) update.notes = body.notes;
   if (body.quoted_amount !== undefined) update.quoted_amount = body.quoted_amount;
   if (body.quote_note !== undefined) update.quote_note = body.quote_note;
+  const clientLang = body.client_lang ?? body.clientLang;
+  if (isLang(clientLang) && canChooseClientLang(user.email)) update.client_lang = clientLang;
   if (body.converted_event_id !== undefined) {
     // RLS scopes the lead ROW being updated to this photographer's own, but converted_event_id is
     // a foreign key that only requires SOME event to exist — with no check here, a caller could
@@ -48,6 +55,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (error || !lead) {
     return NextResponse.json({ error: error?.message ?? "שגיאה בעדכון הליד" }, { status: 500 });
+  }
+
+  // Converted to an event: the event's client pages keep the language chosen for the lead.
+  if (body.converted_event_id !== undefined && isLang(lead.client_lang) && canChooseClientLang(user.email)) {
+    await supabase.from("events").update({ client_lang: lead.client_lang }).eq("id", body.converted_event_id).eq("photographer_id", user.id);
   }
 
   // A won/lost lead is done deciding — stop nudging it.
