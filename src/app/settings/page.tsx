@@ -99,7 +99,7 @@ export default async function SettingsPage({
     : null;
 
   return (
-    <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
+    <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-5" />
       <h1 className="text-[22px] font-bold mb-5 font-display">{t("הגדרות")}</h1>
       <SettingsTabs

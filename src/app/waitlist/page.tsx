@@ -19,7 +19,7 @@ export default async function WaitlistPage() {
   if (!hasAppAccess(photographer)) redirect("/billing");
 
   return (
-    <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
+    <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <WaitlistView initialEntries={entries ?? []} customPackages={customPackages ?? []} />
     </div>
   );

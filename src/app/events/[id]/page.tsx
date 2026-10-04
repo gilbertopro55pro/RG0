@@ -141,7 +141,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   for (const row of messageTemplates ?? []) messageTemplateMap[row.stage_key] = row.body;
 
   return (
-    <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
+    <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <EventDetailView
         event={event}
         initialStages={stages ?? []}

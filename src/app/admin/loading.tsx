@@ -2,7 +2,7 @@ import { SkeletonBlock, SkeletonCard } from "@/components/Skeleton";
 
 export default function Loading() {
   return (
-    <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
+    <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <SkeletonBlock className="h-7 w-32 mb-5" />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         {Array.from({ length: 4 }).map((_, i) => (

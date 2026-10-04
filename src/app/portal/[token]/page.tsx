@@ -93,7 +93,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
 
   return (
     <ClientLangScope lang={lang}>
-    <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
+    <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <h1 className="text-[22px] font-bold mb-1 font-display">{event.client_name}</h1>
       <p className="text-xs mb-5 text-ink-soft">
         {new Date(event.event_date).toLocaleDateString(locale)},{" "}
