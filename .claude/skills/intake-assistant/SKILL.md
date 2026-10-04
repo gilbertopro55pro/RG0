@@ -61,13 +61,13 @@ below, so don't change them without asking.
   - **90% notification:** the conversation that brings the month to 90% of the cap pushes "נוצלו 90%
     מהמכסה" once a month (`claimConversationSlot`, `intake_cap_alerted_month`).
 
-## Languages (2026-10-04, owner's decision, admin account only)
+## Languages (2026-10-04, owner's decision; every account since the same day's release)
 
 - The web chat always OPENS in Hebrew (not by browser language). `?lang=en|ru` in the link opens it in another language (for ads abroad later; abroad the chat will open in English).
 - Each client message's script decides the language (`detectTextLang`, src/i18n/detect.ts; Latin needs 6+ letters to leave Hebrew, so "ok" doesn't switch). The page chrome switches, and the prompt states the language of the client's latest message, re-detected server-side.
 - **Never announce or ask about switching languages.** A client having to ask "answer me in Hebrew" gives away that it's a bot (owner, 2026-10-04). Verified live 2026-10-04: English message → English reply; next Hebrew message → Hebrew reply, no comment.
 - `save_details.client_language` → `leads.client_lang`, so the quote page, portal and gallery follow.
-- Every other photographer: the old "Hebrew only" rule, unchanged.
+- Released to every account on 2026-10-04 ("תשחרר"): every photographer's chat follows the client's language now (gate: `canChooseClientLang` in lib/clientLang.ts).
 
 ## How it works
 
