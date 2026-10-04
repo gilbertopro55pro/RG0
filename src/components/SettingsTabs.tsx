@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { CURRENT_VERSION } from "@/lib/changelog";
 
 export default function SettingsTabs({
   tabs,
@@ -11,6 +12,16 @@ export default function SettingsTabs({
   initialTab?: string;
 }) {
   const [active, setActive] = useState(tabs.some((t) => t.id === initialTab) ? initialTab : tabs[0]?.id);
+
+  // Opening "עדכונים" counts as seeing the latest version, like closing the "מה חדש" popup: clears
+  // the dot on the settings icons (TopNav, SettingsGearLink).
+  useEffect(() => {
+    if (active !== "updates") return;
+    try {
+      localStorage.setItem("changelog-seen-version", CURRENT_VERSION);
+    } catch {}
+    window.dispatchEvent(new Event("changelog-seen-change"));
+  }, [active]);
 
   return (
     <div>

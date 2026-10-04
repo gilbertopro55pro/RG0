@@ -33,41 +33,38 @@ export const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "
 export default function TopNav() {
   const pathname = usePathname();
   const t = useT();
-  const [settingsBadgeCount, setSettingsBadgeCount] = useState(0);
+  const [hasUnseenUpdate, setHasUnseenUpdate] = useState(false);
+  const [unreadEvents, setUnreadEvents] = useState(0);
 
-  // Combines two unrelated "you have something to look at" signals into one number on the
-  // settings tile: unread client-initiated event activity (same data as the per-event badges
-  // on the dashboard, just summed instead of shown per card) plus 1 if there's an app update
-  // the user hasn't opened the "מה חדש" popup/tab for yet.
+  // Two separate signals (split 2026-10-04: summed on the settings tile, the client-activity part
+  // never cleared from settings and looked like a stuck "updates" counter):
+  // - settings tile: 1 while there's an app update the user hasn't seen ("מה חדש" popup, or
+  //   Settings › עדכונים — SettingsTabs marks it seen when that tab opens);
+  // - home tile: unread client-initiated event activity (the same per-event badges as on the
+  //   dashboard), cleared by opening the event.
   useEffect(() => {
     let cancelled = false;
-    let unreadEvents = 0;
-
-    const recomputeBadge = () => {
-      let hasUnseenUpdate = false;
+    const recomputeSeen = () => {
       try {
-        hasUnseenUpdate = localStorage.getItem("changelog-seen-version") !== CURRENT_VERSION;
+        setHasUnseenUpdate(localStorage.getItem("changelog-seen-version") !== CURRENT_VERSION);
       } catch {}
-      setSettingsBadgeCount(unreadEvents + (hasUnseenUpdate ? 1 : 0));
     };
+    recomputeSeen();
 
     fetch("/api/notifications/summary")
       .then((res) => res.json())
       .then((data: { unreadEvents: number }) => {
-        if (cancelled) return;
-        unreadEvents = data.unreadEvents ?? 0;
-        recomputeBadge();
+        if (!cancelled) setUnreadEvents(data.unreadEvents ?? 0);
       })
       .catch(() => {});
 
-    // Fired by ChangelogModal on dismiss — without this the badge only clears on the next full
-    // page load, since the count above is otherwise only computed once on mount.
-    window.addEventListener("changelog-seen-change", recomputeBadge);
+    // Fired by ChangelogModal and by SettingsTabs (updates tab) when the update is marked seen.
+    window.addEventListener("changelog-seen-change", recomputeSeen);
     return () => {
       cancelled = true;
-      window.removeEventListener("changelog-seen-change", recomputeBadge);
+      window.removeEventListener("changelog-seen-change", recomputeSeen);
     };
-  }, []);
+  }, [pathname]);
 
   const isHidden =
     pathname === "/" || HIDDEN_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -92,7 +89,7 @@ export default function TopNav() {
               label: t(item.label),
               href: item.href,
               active: pathname === item.href || pathname.startsWith(`${item.href}/`),
-              badge: item.href === "/settings" ? settingsBadgeCount : undefined,
+              badge: item.href === "/settings" ? (hasUnseenUpdate ? 1 : 0) : item.href === "/" ? unreadEvents : undefined,
               icon: <Icon className="h-[19px] w-[19px]" />,
               hideLabel: true,
             };
