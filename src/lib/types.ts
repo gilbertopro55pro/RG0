@@ -125,6 +125,8 @@ export type EventRow = {
   id: string;
   photographer_id: string;
   client_name: string;
+  // Language of the client's pages (portal, contract, gallery). Null = Hebrew. Migration 0150.
+  client_lang?: string | null;
   // Free-text occasion (e.g. "עלייה לתורה") — display-only prefix on the event card via
   // eventDisplayName(); client_name itself stays the plain client name for messages/contracts.
   event_type: string | null;
@@ -367,6 +369,8 @@ export type LeadRow = {
   id: string;
   photographer_id: string;
   name: string;
+  // Language of the client's quote page (and the event it becomes). Null = Hebrew. Migration 0150.
+  client_lang?: string | null;
   phone: string | null;
   email: string | null;
   event_date_interest: string | null;
