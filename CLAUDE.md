@@ -341,7 +341,8 @@
 - **שחרור לכולם:** להראות את הבחירה לכל החשבונות (`canChooseLanguage`) ולהסיר את בדיקת האדמין ב-`/api/ui-language`.
 
 **שלב 2 — מה שהלקוח רואה (2026-10-04, אדמין בלבד):**
-- השפה של דפי הלקוח נקבעת לפי הלקוח, לא לפי ה-cookie של הצלם: `leads.client_lang` / `events.client_lang` (migration 0150, null = עברית). בצ'אט, שבו עוד אין ליד, לפי שפת הדפדפן (`langFromAcceptLanguage`).
+- השפה של דפי הלקוח נקבעת לפי הלקוח, לא לפי ה-cookie של הצלם: `leads.client_lang` / `events.client_lang` (migration 0150, null = עברית).
+- **הצ'אט (החלטת המשתמש 2026-10-04):** תמיד נפתח בעברית, לא לפי שפת הדפדפן. ברגע שהלקוח כותב באנגלית או ברוסית, הדף והעוזר עוברים לשפה שלו מייד, בלי שהלקוח יבקש ובלי שהעוזר יזכיר מעבר שפה (בקשה כזו חושפת שזה בוט). זיהוי לפי סוג האותיות של כל הודעה (`detectTextLang` ב-`src/i18n/detect.ts`; אותיות לטיניות צריכות 6+ כדי לעזוב עברית, כך ש-"ok" לא מעביר). `?lang=` בקישור פותח בשפה אחרת. **בשלב חו״ל: הצ'אט יתחיל ישירות באנגלית.**
 - `clientLangFor(email, stored)` ב-`src/lib/clientLang.ts` מחזיר עברית לכל חשבון שאינו האדמין. הבחירה (`ClientLangSelect`) מוצגת רק כש-`canChooseClientLang`.
 - כל דף לקוח עטוף ב-`ClientLangScope` (provider וכיוון משלו). קומפוננטות שרת בדפים האלה מתרגמות עם `makeT(messagesFor(lang))`, לא עם `getT()`.
 - מילונים: `clientChat`, `clientQuote`, `clientPortal`, `clientGallery`.
