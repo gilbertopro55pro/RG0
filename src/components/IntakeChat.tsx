@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { sourceFromSearch } from "@/lib/leadSource";
-import { useLang, useT } from "@/i18n/client";
-import { dirOf } from "@/i18n/config";
+import { I18nProvider, useLang, useT } from "@/i18n/client";
+import { dirOf, type Lang } from "@/i18n/config";
+import { detectTextLang } from "@/i18n/detect";
 
 type Fbq = ((...args: unknown[]) => void) & { callMethod?: (...a: unknown[]) => void; queue?: unknown[][]; loaded?: boolean; version?: string; push?: unknown };
 
@@ -47,14 +48,7 @@ type Line = { role: "client" | "assistant"; text: string };
 // it (owner's decision, 2026-09-26; localStorage used to bring back the last conversation). When the
 // assistant isn't available (off, plan, or the month's cap), the page shows the plain inquiry form
 // instead — a client is never turned away.
-export default function IntakeChat({
-  chatKey,
-  studio,
-  title,
-  logoUrl,
-  replyHours,
-  pixelId,
-}: {
+type ChatProps = {
   chatKey: string;
   studio: string;
   // The page heading (photographers.intake_chat_title, else the name).
@@ -62,13 +56,50 @@ export default function IntakeChat({
   logoUrl: string | null;
   replyHours: number;
   pixelId: string | null;
-}) {
+};
+
+// Languages (admin account only for now, UI languages phase 2): the chat opens in the page language
+// (Hebrew unless ?lang=) and follows the language the client writes in: the moment they write in
+// English or Russian, the page and the assistant answer in it, without the client asking (owner's
+// decision, 2026-10-04: asking "can you answer in Hebrew?" gives away that it's a bot).
+// switchMessages: the chat's strings per language; null = no switching (every other photographer).
+export default function IntakeChat({ switchMessages, ...props }: ChatProps & { switchMessages: Partial<Record<Lang, Record<string, string>>> | null }) {
   const t = useT();
-  // The page language (ClientLangScope; Hebrew for every account but the admin's, for now). Sent with
-  // each message so the assistant starts in it (lib/intakeAssistant.ts).
+  const pageLang = useLang();
+  const [lang, setLang] = useState<Lang>(pageLang);
+  // The opening line stays in the page language even after the conversation switches.
+  const greeting = t("היי 👋 כאן העוזר של {studio}. מה חוגגים, ומתי?", { studio: props.studio });
+  const follow = (text: string): Lang => {
+    if (!switchMessages) return pageLang;
+    const next = detectTextLang(text, lang) ?? lang;
+    if (next !== lang) setLang(next);
+    return next;
+  };
+  const view = <ChatView {...props} greeting={greeting} follow={follow} />;
+  if (!switchMessages) return view;
+  return (
+    <I18nProvider lang={lang} messages={switchMessages[lang] ?? {}}>
+      {view}
+    </I18nProvider>
+  );
+}
+
+function ChatView({
+  chatKey,
+  studio,
+  title,
+  logoUrl,
+  replyHours,
+  pixelId,
+  greeting: greetingText,
+  follow,
+}: ChatProps & { greeting: string; follow: (clientText: string) => Lang }) {
+  const t = useT();
+  // The conversation's current language (see IntakeChat). Sent with each message: the assistant
+  // answers in it and records it on the lead (lib/intakeAssistant.ts; admin only, server-gated).
   const lang = useLang();
   const storageKey = `intake-session:${chatKey}`;
-  const greeting: Line = { role: "assistant", text: t("היי 👋 כאן העוזר של {studio}. מה חוגגים, ומתי?", { studio }) };
+  const greeting: Line = { role: "assistant", text: greetingText };
   const [lines, setLines] = useState<Line[]>([greeting]);
   const [session, setSession] = useState<string | null>(null);
   const [state, setState] = useState<string | null>(null);
@@ -93,6 +124,8 @@ export default function IntakeChat({
         if (saved && data.transcript && data.transcript.length > 0) {
           setSession(saved);
           setLines([greeting, ...data.transcript.flatMap((l) => (l.role === "assistant" ? bubbles(l.text).map((text) => ({ role: l.role, text })) : [l]))]);
+          const lastClient = [...data.transcript].reverse().find((l) => l.role === "client");
+          if (lastClient) follow(lastClient.text);
           setState(data.state ?? null);
           setAvailable(true);
         } else {
@@ -113,13 +146,14 @@ export default function IntakeChat({
     setDraft("");
     setError(null);
     setLines((l) => [...l, { role: "client", text }]);
+    const msgLang = follow(text);
     setSending(true);
     try {
       const res = await fetch(`/api/intake-chat/${encodeURIComponent(chatKey)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // src: which link the client came from (?src=, utm_source, fbclid); used when the conversation starts.
-        body: JSON.stringify({ session, message: text, src: sourceFromSearch(window.location.search), lang }),
+        body: JSON.stringify({ session, message: text, src: sourceFromSearch(window.location.search), lang: msgLang }),
       });
       const data: { session?: string; reply?: string; state?: string; error?: string; unavailable?: string; newLead?: boolean } = await res
         .json()
@@ -185,6 +219,7 @@ export default function IntakeChat({
             {lines.map((line, i) => (
               <div
                 key={i}
+                dir="auto"
                 className={`max-w-[86%] px-3 py-2 rounded-2xl text-[14px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${
                   line.role === "client" ? "self-end bg-ink text-paper rounded-se-md" : "self-start bg-card border border-line rounded-ss-md"
                 }`}

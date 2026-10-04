@@ -1,23 +1,35 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { resolveChatPhotographer } from "@/lib/intakeChatAccess";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import IntakeChat from "@/components/IntakeChat";
 import ClientLangScope from "@/i18n/ClientLangScope";
-import { clientLangFor, langFromAcceptLanguage } from "@/lib/clientLang";
+import { canChooseClientLang, clientLangFor } from "@/lib/clientLang";
+import clientChat from "@/i18n/dict/clientChat";
 import { isLang, type Lang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-// No lead yet, so the page language comes from the browser, or from ?lang=he|en|ru (an ad in a
-// specific language). Admin account only for now (clientLangFor): everyone else gets Hebrew.
+// The chat always opens in Hebrew (owner's decision, 2026-10-04: not by the browser's language), and
+// switches to the client's language as soon as they write in English or Russian (IntakeChat). ?lang=
+// opens it in another language (for ads abroad later). Admin account only for now (clientLangFor).
 async function chatLang(email: string | null | undefined, searchParams: SearchParams): Promise<Lang> {
   const q = (await searchParams).lang;
-  const fromUrl = typeof q === "string" && isLang(q) ? q : null;
-  return clientLangFor(email, fromUrl ?? langFromAcceptLanguage((await headers()).get("accept-language")));
+  return clientLangFor(email, typeof q === "string" && isLang(q) ? q : "he");
+}
+
+// The chat's own strings in every language, so the page can switch when the client writes in
+// English/Russian without loading the whole dictionary. Only for photographers who have languages.
+const CHAT_SHARED_KEYS = ["שם", "טלפון", "סוג האירוע", "שליחה", "תאריך"];
+function chatMessages(): Partial<Record<Lang, Record<string, string>>> {
+  const keys = [...Object.keys(clientChat.en), ...CHAT_SHARED_KEYS];
+  const pick = (l: Lang) => {
+    const all = messagesFor(l);
+    return Object.fromEntries(keys.filter((k) => k in all).map((k) => [k, all[k]]));
+  };
+  return { he: {}, en: pick("en"), ru: pick("ru") };
 }
 
 export const dynamic = "force-dynamic";
@@ -59,7 +71,9 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
   const logoUrl = p.logo_storage_path ? await getSignedDownloadUrl("logos", p.logo_storage_path, 60 * 60 * 24) : null;
   return (
     <ClientLangScope lang={lang}>
-      <IntakeChat chatKey={key} studio={p.name} title={p.intake_chat_title?.trim() || p.name} logoUrl={logoUrl} replyHours={p.intake_bot_reply_hours} pixelId={p.meta_pixel_id ?? null} />
+      <IntakeChat
+        switchMessages={canChooseClientLang(p.email) ? chatMessages() : null}
+        chatKey={key} studio={p.name} title={p.intake_chat_title?.trim() || p.name} logoUrl={logoUrl} replyHours={p.intake_bot_reply_hours} pixelId={p.meta_pixel_id ?? null} />
     </ClientLangScope>
   );
 }
