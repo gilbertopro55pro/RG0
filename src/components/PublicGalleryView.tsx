@@ -1897,7 +1897,7 @@ export default function PublicGalleryView({
           >
             {zipDone ? (
               <>
-                <h2 className="text-lg font-bold mb-2 font-display">ההורדה הושלמה</h2>
+                <h2 className="text-lg font-bold mb-2 font-display">{t("ההורדה הושלמה")}</h2>
                 <p className="text-sm mb-5" style={{ color: "var(--gt-ink-soft)" }}>
                   {zipBatch.parts.length > 1
                     ? t("כל {n} הקבצים ירדו למכשיר שלך.", { n: zipBatch.parts.length })
