@@ -46,8 +46,8 @@ export default function PhotoCullingModal({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowLeft" && index < photos.length - 1) setIndex(index + 1);
-      else if (e.key === "ArrowRight" && index > 0) setIndex(index - 1);
+      else if (e.key === (document.documentElement.dir !== "ltr" ? "ArrowLeft" : "ArrowRight") && index < photos.length - 1) setIndex(index + 1);
+      else if (e.key === (document.documentElement.dir !== "ltr" ? "ArrowRight" : "ArrowLeft") && index > 0) setIndex(index - 1);
       else if (e.key === "k" || e.key === "K" || e.key === "Enter") decide("kept");
       else if (e.key === "x" || e.key === "X" || e.key === "Backspace" || e.key === "Delete") decide("rejected");
     };

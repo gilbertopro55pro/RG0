@@ -3009,8 +3009,12 @@ export default function GalleryManageView({
   useEffect(() => {
     if (lightboxIndex === null) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft" && lightboxIndex < visiblePhotos.length - 1) navLightbox(lightboxIndex + 1);
-      else if (e.key === "ArrowRight" && lightboxIndex > 0) navLightbox(lightboxIndex - 1);
+      // The page direction follows the UI language (src/i18n): "forward" is left in RTL, right in LTR.
+      const rtl = document.documentElement.dir !== "ltr";
+      const next = rtl ? "ArrowLeft" : "ArrowRight";
+      const prev = rtl ? "ArrowRight" : "ArrowLeft";
+      if (e.key === next && lightboxIndex < visiblePhotos.length - 1) navLightbox(lightboxIndex + 1);
+      else if (e.key === prev && lightboxIndex > 0) navLightbox(lightboxIndex - 1);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

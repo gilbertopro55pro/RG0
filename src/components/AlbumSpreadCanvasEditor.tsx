@@ -4142,8 +4142,9 @@ export default function AlbumSpreadCanvasEditor({
           .gf-album-selection-info {
             position: absolute;
             top: 40px;
-            left: 400px;
-            right: 0;
+            /* Logical sides (src/i18n): in RTL the sidebar column is on the left, in LTR on the right. */
+            inset-inline-start: 0;
+            inset-inline-end: 400px;
             z-index: 30;
             background: var(--color-paper);
             border-radius: 16px;
