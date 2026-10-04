@@ -43,7 +43,7 @@ const WHITE = rgb(1, 1, 1);
 // those become plain spaces.
 function currency(n: number, lang: Lang = "he", t?: TFn): string {
   if (lang === "he" || !t) return `${n.toLocaleString("he-IL", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ש״ח`;
-  const amount = n.toLocaleString(dateLocale(lang), { minimumFractionDigits: 0, maximumFractionDigits: 2 }).replace(/[\u202f\u00a0]/g, " ");
+  const amount = n.toLocaleString(dateLocale(lang), { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 }).replace(/[\u202f\u00a0]/g, " ");
   return t("{amount} ש״ח", { amount });
 }
 
