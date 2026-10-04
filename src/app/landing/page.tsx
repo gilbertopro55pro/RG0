@@ -1,5 +1,4 @@
-import type { Metadata } from "next";
-import LandingPage from "@/components/LandingPage";
+import LandingPage, { landingMetadata } from "@/components/LandingPage";
 
 // No dynamic APIs (cookies/headers) are used anywhere in this tree, so Next.js prerenders
 // this route to static HTML at build time. Anonymous hits to "/" are rewritten here by the
@@ -8,11 +7,10 @@ import LandingPage from "@/components/LandingPage";
 //
 // A rewrite keeps the browser's URL bar at "/", but a search engine that somehow requests
 // this path directly should still treat "/" as the one canonical URL for this content —
-// otherwise the exact same page indexed under two paths dilutes both.
-export const metadata: Metadata = {
-  alternates: { canonical: "/" },
-};
+// otherwise the exact same page indexed under two paths dilutes both. The English (/en) and
+// Russian (/ru) versions are listed as its language alternates.
+export const metadata = landingMetadata("he");
 
 export default function LandingRoute() {
-  return <LandingPage />;
+  return <LandingPage lang="he" />;
 }

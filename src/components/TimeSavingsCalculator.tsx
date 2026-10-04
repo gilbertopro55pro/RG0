@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useLang, useT } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 // Rough, defensible per-event admin-time estimates for a photographer working without a single
 // system — quote, WhatsApp back-and-forth, contract, gallery + chasing photo selection, payment
@@ -14,6 +16,8 @@ const DEFAULT_HOURLY_VALUE = 150;
 export default function TimeSavingsCalculator() {
   const [eventsPerMonth, setEventsPerMonth] = useState(6);
   const [hourlyValue, setHourlyValue] = useState(DEFAULT_HOURLY_VALUE);
+  const t = useT();
+  const locale = dateLocale(useLang());
 
   // hoursWithout is still computed (kept for parity with the original math) but no longer shown.
   const { hoursSaved, moneySaved } = useMemo(() => {
@@ -30,10 +34,10 @@ export default function TimeSavingsCalculator() {
       <div className="max-w-[1344px] mx-auto px-5 sm:px-8 lg:px-12 py-16 lg:py-28 flex flex-col lg:flex-row lg:items-center gap-6 lg:gap-[72px]">
         <div className="lg:w-[440px] lg:shrink-0 flex flex-col gap-3 lg:gap-5">
           <h2 className="font-display font-bold text-[30px] leading-[1.15] lg:text-5xl lg:leading-[1.1] tracking-[-0.025em] m-0">
-            כמה זמן אתם מבזבזים על ניהול?
+            {t("כמה זמן אתם מבזבזים על ניהול?")}
           </h2>
           <p className="m-0 text-base lg:text-[19px] leading-[1.6] text-[var(--l-ink-soft)]">
-            הזיזו את הסמנים לפי העסק שלכם. החישוב: כ-115 דקות ניהול לאירוע בלי מערכת, כ-20 דקות עם גילברטו.
+            {t("הזיזו את הסמנים לפי העסק שלכם. החישוב: כ-115 דקות ניהול לאירוע בלי מערכת, כ-20 דקות עם גילברטו.")}
           </p>
         </div>
 
@@ -42,7 +46,7 @@ export default function TimeSavingsCalculator() {
             <div className="flex flex-col gap-2.5 lg:gap-3.5">
               <div className="flex items-center justify-between gap-4 text-base lg:text-lg">
                 <label htmlFor="tsc-events" className="font-semibold">
-                  כמה אירועים אתם מצלמים בחודש?
+                  {t("כמה אירועים אתם מצלמים בחודש?")}
                 </label>
                 <span className="font-display font-data font-bold">{eventsPerMonth}</span>
               </div>
@@ -61,9 +65,9 @@ export default function TimeSavingsCalculator() {
             <div className="flex flex-col gap-2.5 lg:gap-3.5">
               <div className="flex items-center justify-between gap-4 text-base lg:text-lg">
                 <label htmlFor="tsc-hourly" className="font-semibold">
-                  כמה שווה לכם שעת עבודה?
+                  {t("כמה שווה לכם שעת עבודה?")}
                 </label>
-                <span className="font-display font-data font-bold">₪{Number(hourlyValue).toLocaleString("he-IL")}</span>
+                <span className="font-display font-data font-bold">₪{Number(hourlyValue).toLocaleString(locale)}</span>
               </div>
               <input
                 id="tsc-hourly"
@@ -80,21 +84,21 @@ export default function TimeSavingsCalculator() {
 
             <div className="grid grid-cols-2 gap-2.5 lg:gap-4" aria-live="polite">
               <div className="rounded-[1px] bg-[var(--l-navy)] text-[var(--l-on-navy)] p-4 lg:p-6 flex flex-col gap-1 lg:gap-1.5 min-w-0">
-                <div className="text-[13px] lg:text-[15px] text-[var(--l-on-navy-soft)]">שעות שחוזרות אליכם בחודש</div>
+                <div className="text-[13px] lg:text-[15px] text-[var(--l-on-navy-soft)]">{t("שעות שחוזרות אליכם בחודש")}</div>
                 <div className="font-display font-data font-bold text-[clamp(22px,7vw,36px)] sm:text-4xl lg:text-[52px] leading-none tracking-[-0.03em]">
                   {hoursSaved}
                 </div>
               </div>
               <div className="rounded-[1px] bg-[var(--l-accent)] text-[var(--l-on-accent)] p-4 lg:p-6 flex flex-col gap-1 lg:gap-1.5 min-w-0">
-                <div className="text-[13px] lg:text-[15px] font-semibold">שווי הזמן הזה בחודש</div>
+                <div className="text-[13px] lg:text-[15px] font-semibold">{t("שווי הזמן הזה בחודש")}</div>
                 <div className="font-display font-data font-bold text-[clamp(22px,7vw,36px)] sm:text-4xl lg:text-[52px] leading-none tracking-[-0.03em] break-words">
-                  ₪{moneySaved.toLocaleString("he-IL")}
+                  ₪{moneySaved.toLocaleString(locale)}
                 </div>
               </div>
             </div>
           </div>
           <p className="m-0 text-[11px] leading-relaxed text-[var(--l-ink-soft)]">
-            מבוסס על הזמן הממוצע שצלמים מדווחים שהם משקיעים בהצעות מחיר, תיאום בוואטסאפ, חוזים, שיתוף גלריות ותזכורות תשלום, לעומת אותם שלבים כשהכל מרוכז במקום אחד, עם תבניות והודעות מוכנות מראש. זו הערכה, לא התחייבות.
+            {t("מבוסס על הזמן הממוצע שצלמים מדווחים שהם משקיעים בהצעות מחיר, תיאום בוואטסאפ, חוזים, שיתוף גלריות ותזכורות תשלום, לעומת אותם שלבים כשהכל מרוכז במקום אחד, עם תבניות והודעות מוכנות מראש. זו הערכה, לא התחייבות.")}
           </p>
         </div>
       </div>

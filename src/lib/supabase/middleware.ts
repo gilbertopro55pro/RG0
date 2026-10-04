@@ -4,6 +4,9 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_PATHS = [
   "/",
   "/landing",
+  // The landing page in English and Russian (for ads), static and public like "/landing".
+  "/en",
+  "/ru",
   "/login",
   "/signup",
   "/reset-password",
@@ -51,6 +54,9 @@ const PUBLIC_PATHS = [
 
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  // The path for the root layout's <html lang/dir> (the landing at /en and /ru is English/Russian
+  // whatever the visitor's ui_lang cookie says). Forwarded with every NextResponse.next({ request }).
+  request.headers.set("x-ui-path", pathname);
 
   // "/" is always a public path, so the getClaims() result below never actually changes the
   // outcome for it — but every hit still paid the full JWT-verification round trip. Anonymous

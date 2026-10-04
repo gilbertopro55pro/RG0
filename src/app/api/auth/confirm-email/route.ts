@@ -15,6 +15,9 @@ export async function GET(request: NextRequest) {
   const sig = searchParams.get("sig") ?? "";
 
   const loginUrl = new URL("/login", request.url);
+  // Signups from the English/Russian page carry their language so /login opens in it (2026-10-04).
+  const lang = searchParams.get("lang");
+  if (lang === "en" || lang === "ru") loginUrl.searchParams.set("lang", lang);
 
   if (!verifyEmailConfirmToken(uid, ts, sig)) {
     loginUrl.searchParams.set("confirm_error", "1");

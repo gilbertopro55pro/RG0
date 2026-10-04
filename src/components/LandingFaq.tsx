@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useT } from "@/i18n/client";
 
 const FAQ_ITEMS = [
   {
@@ -44,6 +45,7 @@ const FAQ_ITEMS = [
 export default function LandingFaq() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
   const baseId = useId();
+  const t = useT();
 
   return (
     <div className="flex flex-col border-t border-[var(--l-line)]">
@@ -55,11 +57,11 @@ export default function LandingFaq() {
             <button
               type="button"
               onClick={() => setOpenIndex(isOpen ? null : i)}
-              className="flex min-h-16 w-full cursor-pointer items-center justify-between gap-4 bg-transparent py-3 text-right text-[var(--l-ink)] md:min-h-[72px] md:gap-6"
+              className="flex min-h-16 w-full cursor-pointer items-center justify-between gap-4 bg-transparent py-3 text-start text-[var(--l-ink)] md:min-h-[72px] md:gap-6"
               aria-expanded={isOpen}
               aria-controls={answerId}
             >
-              <span className="font-display text-[17px] font-semibold leading-snug md:text-[21px]">{item.q}</span>
+              <span className="font-display text-[17px] font-semibold leading-snug md:text-[21px]">{t(item.q)}</span>
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -77,7 +79,7 @@ export default function LandingFaq() {
               hidden={!isOpen}
               className="max-w-[720px] pb-[18px] text-base leading-[1.65] text-[var(--l-ink-soft)] md:pb-6 md:text-[18px]"
             >
-              {item.a}
+              {t(item.a)}
             </div>
           </div>
         );

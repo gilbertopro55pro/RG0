@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
+import { useLang, useT } from "@/i18n/client";
 
 // Every card shows a per-month figure at all times — switching the toggle swaps which cycle's
 // pricePerMonth is shown (and, for annual, the flat billed-total note), rather than switching
@@ -35,6 +36,9 @@ function CheckIcon({ color }: { color: string }) {
 export default function PricingToggle() {
   const [cycle, setCycle] = useState<"monthly" | "annual">("annual");
   const annual = cycle === "annual";
+  const t = useT();
+  const lang = useLang();
+  const signupHref = lang === "he" ? "/signup" : `/signup?lang=${lang}`;
 
   const cards: Card[] = [
     {
@@ -81,15 +85,15 @@ export default function PricingToggle() {
     <div className="flex flex-col items-stretch sm:items-center gap-6 sm:gap-10">
       <div
         role="group"
-        aria-label="מחזור חיוב"
+        aria-label={t("מחזור חיוב")}
         className="flex gap-1 p-1 rounded-[12px] bg-[var(--l-line)] sm:self-center"
       >
         <button type="button" aria-pressed={!annual} onClick={() => setCycle("monthly")} className={segment(!annual)}>
-          חודשי
+          {t("חודשי")}
         </button>
         <button type="button" aria-pressed={annual} onClick={() => setCycle("annual")} className={segment(annual)}>
-          <span className="sm:hidden">שנתי, חוסכים</span>
-          <span className="hidden sm:inline">שנתי, חוסכים עד 3 חודשים</span>
+          <span className="sm:hidden">{t("שנתי, חוסכים")}</span>
+          <span className="hidden sm:inline">{t("שנתי, חוסכים עד 3 חודשים")}</span>
         </button>
       </div>
 
@@ -106,10 +110,10 @@ export default function PricingToggle() {
               }`}
             >
               <div className="flex items-center justify-between gap-3">
-                <div className="font-display text-[22px] sm:text-2xl font-bold">{plan.tierName}</div>
+                <div className="font-display text-[22px] sm:text-2xl font-bold">{t(plan.tierName)}</div>
                 {featured && (
                   <span className="rounded-[1px] bg-[var(--l-accent)] text-[var(--l-on-accent)] text-xs sm:text-[13px] font-bold px-[9px] py-1 sm:px-2.5 sm:py-[5px]">
-                    הכי משתלם
+                    {t("הכי משתלם")}
                   </span>
                 )}
               </div>
@@ -118,13 +122,13 @@ export default function PricingToggle() {
                 <span className="font-display text-5xl sm:text-[64px] leading-none font-bold tracking-[-0.04em]">
                   ₪{plan.pricePerMonth}
                 </span>
-                <span className="text-[15px] sm:text-[17px] opacity-70">לחודש</span>
+                <span className="text-[15px] sm:text-[17px] opacity-70">{t("לחודש")}</span>
                 {plan.regularPricePerMonth != null && (
                   <span className="text-[15px] sm:text-[17px] opacity-50 line-through">₪{plan.regularPricePerMonth}</span>
                 )}
               </div>
 
-              <div className="text-sm sm:text-[15px] opacity-75">{plan.note}</div>
+              <div className="text-sm sm:text-[15px] opacity-75">{t(plan.note)}</div>
 
               <div className={`h-px ${featured ? "bg-[var(--l-navy-line)]" : "bg-[var(--l-line)]"}`} />
 
@@ -132,27 +136,27 @@ export default function PricingToggle() {
                 {features.map((f) => (
                   <li key={f} className="flex gap-2 sm:gap-2.5 text-[15px] sm:text-base leading-[1.45]">
                     <CheckIcon color={featured ? "var(--l-accent)" : "var(--l-ink)"} />
-                    <span>{f}</span>
+                    <span>{t(f)}</span>
                   </li>
                 ))}
               </ul>
 
               <Link
-                href="/signup"
+                href={signupHref}
                 className={`mt-auto h-[50px] sm:h-[52px] flex items-center justify-center rounded-[1px] text-base sm:text-[17px] font-bold transition-opacity hover:opacity-90 ${
                   featured
                     ? "bg-[var(--l-accent)] text-[var(--l-on-accent)]"
                     : "bg-[var(--l-navy)] text-[var(--l-on-navy)]"
                 }`}
               >
-                להתחיל ניסיון חינם
+                {t("להתחיל ניסיון חינם")}
               </Link>
             </div>
           );
         })}
       </div>
 
-      <p className="text-center text-sm text-[var(--l-ink-soft)] -mt-2 sm:-mt-4">ביטול בכל עת, בלי התחייבות</p>
+      <p className="text-center text-sm text-[var(--l-ink-soft)] -mt-2 sm:-mt-4">{t("ביטול בכל עת, בלי התחייבות")}</p>
     </div>
   );
 }

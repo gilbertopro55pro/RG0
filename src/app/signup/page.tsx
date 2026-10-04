@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import Spinner from "@/components/Spinner";
+import ClientLangScope from "@/i18n/ClientLangScope";
+import { useT } from "@/i18n/client";
+import type { Lang } from "@/i18n/config";
+import AuthLangSwitcher, { authLangFrom, withLang } from "@/components/AuthLangSwitcher";
 
-const selectArrowStyle = {
+// The select's arrow sits at the inline end: left in Hebrew, right in English/Russian.
+const selectArrowStyle = (lang: Lang) => ({
   background:
-    "#ffffff url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238f6f2f' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E\") left 0.9rem center/10px 6px no-repeat",
-};
+    `#ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238f6f2f' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E") ${lang === "he" ? "left" : "right"} 0.9rem center/10px 6px no-repeat`,
+});
 
 // Signup is the bridge between the landing page and the app (design 2026-09-28): mostly the
 // landing/login look (.landing-2026 tokens, navy brand side, brass button), leaning a little toward
@@ -21,49 +26,61 @@ const primaryButtonClass =
 const cardClass =
   "w-full max-w-[440px] rounded-[14px] bg-white border border-[var(--l-line)] p-6 sm:p-8 shadow-[0_1px_2px_rgba(11,18,32,0.04),0_12px_32px_rgba(11,18,32,0.07)]";
 
-function SignupShell({ children }: { children: React.ReactNode }) {
+function SignupShell({ lang, children }: { lang: Lang; children: React.ReactNode }) {
+  const t = useT();
   return (
     <div className="landing-2026 min-h-screen flex flex-col lg:flex-row">
       <aside className="bg-[var(--l-navy)] text-[var(--l-on-navy)] px-5 sm:px-8 lg:px-12 py-6 lg:py-14 lg:w-[38%] flex flex-col justify-between gap-6">
-        <Link href="/" className="flex items-center gap-2.5 text-[var(--l-on-navy)] w-fit">
+        <Link href={lang === "he" ? "/" : `/${lang}`} className="flex items-center gap-2.5 text-[var(--l-on-navy)] w-fit">
           <span className="w-9 h-9 rounded-[8px] bg-[var(--l-accent)] text-[var(--l-on-accent)] flex items-center justify-center">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
               <circle cx="12" cy="13" r="3.5" />
             </svg>
           </span>
-          <span className="font-display text-[21px] font-bold tracking-tight">גילברטו</span>
+          <span className="font-display text-[21px] font-bold tracking-tight">{t("גילברטו")}</span>
         </Link>
         <div className="hidden lg:flex flex-col gap-6">
           <div className="flex items-center gap-2.5 text-[15px] text-[var(--l-on-navy-soft)]">
             <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
-            מערכת ניהול לצלמי אירועים
+            {t("מערכת ניהול לצלמי אירועים")}
           </div>
           <p className="font-display m-0 text-[56px] leading-[1] font-bold tracking-[-0.035em] text-white">
-            פחות ניהול.
+            {t("פחות ניהול.")}
             <br />
-            יותר צילום.
+            {t("יותר צילום.")}
           </p>
           <p className="m-0 text-lg leading-relaxed text-[var(--l-on-navy-soft)] max-w-[380px]">
-            14 יום ניסיון חינם, בלי כרטיס אשראי. כל האפשרויות של פרו+ פתוחות.
+            {t("14 יום ניסיון חינם, בלי כרטיס אשראי. כל האפשרויות של פרו+ פתוחות.")}
           </p>
         </div>
         <p className="hidden lg:block m-0 text-sm text-[var(--l-on-navy-mute)]">
-          © {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט, צילום אירועים
+          © {new Date().getFullYear()} {t("כל הזכויות שמורות לרועי גלברט, צילום אירועים")}
         </p>
       </aside>
 
       <main className="flex-1 bg-[var(--l-bg-alt)] flex flex-col items-center justify-start lg:justify-center px-4 sm:px-8 py-8 lg:py-14">
+        <AuthLangSwitcher path="/signup" lang={lang} className="w-full max-w-[440px] justify-end mb-4 text-[var(--l-ink-soft)]" />
         {children}
         <p className="lg:hidden text-center text-xs text-[var(--l-ink-soft)] mt-8">
-          © {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט, צילום אירועים
+          © {new Date().getFullYear()} {t("כל הזכויות שמורות לרועי גלברט, צילום אירועים")}
         </p>
       </main>
     </div>
   );
 }
 
-export default function SignupPage() {
+export default function SignupPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const lang = authLangFrom(use(searchParams).lang);
+  return (
+    <ClientLangScope lang={lang}>
+      <SignupForm lang={lang} />
+    </ClientLangScope>
+  );
+}
+
+function SignupForm({ lang }: { lang: Lang }) {
+  const t = useT();
   const [step, setStep] = useState<"plan" | "details">("plan");
   const [plan, setPlan] = useState<SubscriptionPlan>("annual");
   const [name, setName] = useState("");
@@ -88,12 +105,12 @@ export default function SignupPage() {
     const res = await fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, phone, email, password, plan }),
+      body: JSON.stringify({ name, phone, email, password, plan, lang }),
     });
     const data = await res.json().catch(() => ({}));
     setLoading(false);
     if (!res.ok) {
-      setError(data.error ?? "ההרשמה נכשלה");
+      setError(data.error ?? t("ההרשמה נכשלה"));
       return;
     }
     setAwaitingConfirmation(true);
@@ -101,17 +118,17 @@ export default function SignupPage() {
 
   if (awaitingConfirmation) {
     return (
-      <SignupShell>
+      <SignupShell lang={lang}>
         <div className={`${cardClass} text-center`}>
           <h1 className="font-display m-0 mb-3 text-[26px] lg:text-[30px] leading-[1.1] font-bold tracking-[-0.02em]">
-            כמעט סיימנו: נדרש אימות מייל
+            {t("כמעט סיימנו: נדרש אימות מייל")}
           </h1>
           <p className="m-0 mb-4 text-base leading-relaxed text-[var(--l-ink-soft)]">
-            שלחנו מייל אימות לכתובת <span className="font-semibold text-[var(--l-ink)]">{email}</span>. יש ללחוץ על
-            הקישור שבתוך המייל כדי לאמת את הכתובת. רק לאחר האימות ניתן יהיה להתחבר למערכת.
+            {t("שלחנו מייל אימות לכתובת")} <span dir="ltr" className="font-semibold text-[var(--l-ink)]">{email}</span>.{" "}
+            {t("יש ללחוץ על הקישור שבתוך המייל כדי לאמת את הכתובת. רק לאחר האימות ניתן יהיה להתחבר למערכת.")}
           </p>
           <p className="m-0 text-sm text-[var(--l-ink-soft)]">
-            לא רואים את המייל תוך דקה-שתיים? בדקו גם בתיקיית הספאם / קידומי מכירות.
+            {t("לא רואים את המייל תוך דקה-שתיים? בדקו גם בתיקיית הספאם / קידומי מכירות.")}
           </p>
         </div>
       </SignupShell>
@@ -119,56 +136,56 @@ export default function SignupPage() {
   }
 
   return (
-    <SignupShell>
+    <SignupShell lang={lang}>
       <div className={cardClass}>
         <h1 className="font-display m-0 mb-6 text-[30px] lg:text-[36px] leading-[1.05] font-bold tracking-[-0.03em]">
-          {step === "plan" ? "הרשמה למערכת" : "פרטי הצלם"}
+          {step === "plan" ? t("הרשמה למערכת") : t("פרטי הצלם")}
         </h1>
 
         {step === "plan" && (
           <>
-            <div className="rounded-[6px] px-4 py-3 mb-5 bg-[var(--l-bg-alt)] border-r-[3px] border-[var(--l-accent)]">
+            <div className="rounded-[6px] px-4 py-3 mb-5 bg-[var(--l-bg-alt)] border-s-[3px] border-[var(--l-accent)]">
               <div className="text-[15px] font-bold text-[var(--l-accent)]">
-                14 הימים הראשונים בחינם, בלי כרטיס אשראי
+                {t("14 הימים הראשונים בחינם, בלי כרטיס אשראי")}
               </div>
               <div className="text-sm mt-1 leading-relaxed text-[var(--l-ink-soft)]">
-                בזמן הניסיון כל האפשרויות של מסלול פרו+ פתוחות. לפני הסוף נזכיר לכם לבחור מסלול.
+                {t("בזמן הניסיון כל האפשרויות של מסלול פרו+ פתוחות. לפני הסוף נזכיר לכם לבחור מסלול.")}
               </div>
             </div>
             <div className="mb-5">
               <label htmlFor="signup-plan" className={labelClass}>
-                המסלול שתרצו אחרי הניסיון (אפשר לשנות בהמשך)
+                {t("המסלול שתרצו אחרי הניסיון (אפשר לשנות בהמשך)")}
               </label>
               <select
                 id="signup-plan"
                 value={plan}
                 onChange={(e) => setPlan(e.target.value as SubscriptionPlan)}
                 className={`${inputClass} appearance-none font-medium`}
-                style={selectArrowStyle}
+                style={selectArrowStyle(lang)}
               >
                 {Object.entries(SUBSCRIPTION_PLANS).map(([key, p]) => (
                   <option key={key} value={key}>
-                    מנוי {p.label}: ₪{p.pricePerMonth}/חודש
+                    {t("מנוי {plan}: ₪{price}/חודש", { plan: t(p.label), price: p.pricePerMonth })}
                   </option>
                 ))}
               </select>
             </div>
             <div className="rounded-[10px] p-4 relative mb-6 bg-white border-[1.5px] border-[var(--l-accent)]">
               {SUBSCRIPTION_PLANS[plan].badge && (
-                <span className="absolute -top-2.5 left-4 text-[11px] font-semibold px-2 py-0.5 rounded-[4px] bg-[var(--l-accent)] text-[var(--l-on-accent)]">
-                  {SUBSCRIPTION_PLANS[plan].badge}
+                <span className="absolute -top-2.5 end-4 text-[11px] font-semibold px-2 py-0.5 rounded-[4px] bg-[var(--l-accent)] text-[var(--l-on-accent)]">
+                  {t(SUBSCRIPTION_PLANS[plan].badge ?? "")}
                 </span>
               )}
               <div className="flex items-baseline gap-1">
                 <span className="font-display text-[28px] font-bold tracking-tight">
                   ₪{SUBSCRIPTION_PLANS[plan].pricePerMonth}
                 </span>
-                <span className="text-sm text-[var(--l-ink-soft)]">/ לחודש</span>
+                <span className="text-sm text-[var(--l-ink-soft)]">{t("/ לחודש")}</span>
               </div>
-              <div className="text-xs mt-1 text-[var(--l-ink-soft)]">{SUBSCRIPTION_PLANS[plan].note}</div>
+              <div className="text-xs mt-1 text-[var(--l-ink-soft)]">{t(SUBSCRIPTION_PLANS[plan].note)}</div>
             </div>
             <button onClick={() => setStep("details")} className={primaryButtonClass}>
-              התחלת תקופת הניסיון
+              {t("התחלת תקופת הניסיון")}
             </button>
           </>
         )}
@@ -177,19 +194,19 @@ export default function SignupPage() {
           <>
             <div className="rounded-[6px] px-4 py-3 mb-5 text-sm flex items-center justify-between gap-3 bg-[var(--l-bg-alt)] text-[var(--l-ink-soft)]">
               <span>
-                אחרי הניסיון: {SUBSCRIPTION_PLANS[plan].label}, ₪{SUBSCRIPTION_PLANS[plan].pricePerMonth}/חודש
+                {t("אחרי הניסיון: {plan}, ₪{price}/חודש", { plan: t(SUBSCRIPTION_PLANS[plan].label), price: SUBSCRIPTION_PLANS[plan].pricePerMonth })}
               </span>
               <button
                 onClick={() => setStep("plan")}
                 className="shrink-0 font-semibold text-[var(--l-accent)] underline underline-offset-4"
               >
-                שינוי
+                {t("שינוי")}
               </button>
             </div>
             <div className="flex flex-col gap-4">
               <div>
                 <label htmlFor="signup-name" className={labelClass}>
-                  שם מלא
+                  {t("שם מלא")}
                 </label>
                 <input
                   id="signup-name"
@@ -201,7 +218,7 @@ export default function SignupPage() {
               </div>
               <div>
                 <label htmlFor="signup-phone" className={labelClass}>
-                  טלפון (ממנו יישלחו העדכונים ללקוחות)
+                  {t("טלפון (ממנו יישלחו העדכונים ללקוחות)")}
                 </label>
                 <input
                   id="signup-phone"
@@ -215,7 +232,7 @@ export default function SignupPage() {
               </div>
               <div>
                 <label htmlFor="signup-email" className={labelClass}>
-                  אימייל
+                  {t("אימייל")}
                 </label>
                 <input
                   id="signup-email"
@@ -228,7 +245,7 @@ export default function SignupPage() {
               </div>
               <div>
                 <label htmlFor="signup-password" className={labelClass}>
-                  סיסמה
+                  {t("סיסמה")}
                 </label>
                 <input
                   id="signup-password"
@@ -242,16 +259,16 @@ export default function SignupPage() {
               {error && <p className="m-0 text-sm text-rose">{error}</p>}
               <button onClick={submit} disabled={loading} className={`${primaryButtonClass} mt-2`}>
                 {loading && <Spinner light />}
-                {loading ? "יוצר חשבון..." : "יצירת חשבון"}
+                {loading ? t("יוצר חשבון...") : t("יצירת חשבון")}
               </button>
             </div>
           </>
         )}
 
         <p className="m-0 mt-6 text-center text-base text-[var(--l-ink-soft)]">
-          כבר יש לך חשבון?{" "}
-          <Link href="/login" className="font-semibold text-[var(--l-accent)] underline underline-offset-4">
-            התחברות
+          {t("כבר יש לך חשבון?")}{" "}
+          <Link href={withLang("/login", lang)} className="font-semibold text-[var(--l-accent)] underline underline-offset-4">
+            {t("התחברות")}
           </Link>
         </p>
       </div>
