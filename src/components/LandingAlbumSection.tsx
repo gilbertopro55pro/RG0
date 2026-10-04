@@ -1,4 +1,7 @@
 import { LANDING_CONTAINER } from "@/components/LandingChrome";
+import { type Lang } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 // Landing section for the automatic album designer (owner, 2026-09-30: market it to new visitors).
 // Text only — the owner dropped the drawn style illustration. Plan: Pro and up, same gate as the
@@ -12,7 +15,8 @@ function Check() {
   );
 }
 
-export default function LandingAlbumSection() {
+export default function LandingAlbumSection({ lang = "he" }: { lang?: Lang }) {
+  const t = makeT(messagesFor(lang));
   return (
     <section id="album" className="bg-[var(--l-bg)] scroll-mt-4">
       <div className={`${LANDING_CONTAINER} py-16 lg:py-28 flex flex-col gap-10 lg:gap-16`}>
@@ -20,15 +24,14 @@ export default function LandingAlbumSection() {
           <div className="flex flex-col gap-4 lg:max-w-[640px]">
             <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-ink-soft)]">
               <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
-              עיצוב אלבום אוטומטי
+              {t("עיצוב אלבום אוטומטי")}
             </div>
             <h2 className="font-display m-0 text-4xl lg:text-[56px] leading-[1.05] font-bold tracking-[-0.03em] text-balance">
-              האלבום כולו מעוצב, בזמן שאתם שותים קפה.
+              {t("האלבום כולו מעוצב, בזמן שאתם שותים קפה.")}
             </h2>
           </div>
           <p className="m-0 text-[17px] lg:text-[19px] leading-relaxed text-[var(--l-ink-soft)] lg:max-w-[520px]">
-            בוחרים מידות, כריכה וסגנון, ומסמנים תמונה אחת של בעלי השמחה, ההורים, האחים והסבים. גילברטו מזהה את הפרצופים, מסדרת את
-            התמונות שהלקוח בחר לפי המשפחה ולפי סדר האירוע, ומעצבת את כל העמודים.
+            {t("בוחרים מידות, כריכה וסגנון, ומסמנים תמונה אחת של בעלי השמחה, ההורים, האחים והסבים. גילברטו מזהה את הפרצופים, מסדרת את התמונות שהלקוח בחר לפי המשפחה ולפי סדר האירוע, ומעצבת את כל העמודים.")}
           </p>
         </div>
 
@@ -45,11 +48,11 @@ export default function LandingAlbumSection() {
               <span className="mt-0.5 shrink-0 text-[var(--l-accent)]">
                 <Check />
               </span>
-              {text}
+              {t(text)}
             </p>
           ))}
         </div>
-        <p className="m-0 text-sm text-[var(--l-ink-soft)]">במסלולי פרו ופרו+. בזמן הניסיון החינמי זה פתוח לכם.</p>
+        <p className="m-0 text-sm text-[var(--l-ink-soft)]">{t("במסלולי פרו ופרו+. בזמן הניסיון החינמי זה פתוח לכם.")}</p>
       </div>
     </section>
   );

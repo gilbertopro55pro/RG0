@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import LandingFaq from "@/components/LandingFaq";
 import LandingAlbumSection from "@/components/LandingAlbumSection";
@@ -6,17 +7,27 @@ import LandingMagnetSection from "@/components/LandingMagnetSection";
 import TimeSavingsCalculator from "@/components/TimeSavingsCalculator";
 import PricingToggle from "@/components/PricingToggle";
 import PlanComparison from "@/components/PlanComparison";
-import { LandingFooter, LANDING_CONTAINER } from "@/components/LandingChrome";
+import { LandingFooter, LandingLangSwitch, LANDING_CONTAINER, authHref, landingHome } from "@/components/LandingChrome";
+import ClientLangScope from "@/i18n/ClientLangScope";
+import { dirOf, type Lang } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT, type TFn } from "@/i18n/translate";
 
 // Landing page, design 2026-09-28 (canvas "דף נחיתה Gilberto 2026", approved by the owner): white
 // and cool grey with deep-navy bands and the app's deep brass as the one accent (tokens:
 // .landing-2026 in globals.css). Owner's rules for this page: square corners (no pills), no italic
 // emphasis, no numbered 01/02 labels, no monospace, no cream background. The hero still plays the
 // real product tour (captions burned in, so it reads without sound).
+//
+// Languages (2026-10-04): Hebrew at "/" (and /landing), English at /en and Russian at /ru, for ads.
+// Every visible string goes through t() with the page's own lang (src/i18n/dict/landing.ts); the
+// Hebrew text is the key, so the Hebrew page renders exactly as before. Server components here
+// translate with makeT(messagesFor(lang)); the client sections (FAQ, pricing, calculator) read the
+// same lang from the ClientLangScope this page wraps itself in, never from the ui_lang cookie.
 
 // A typical road an event takes. Every line is something the product actually does today, worded
 // as what it does: reminders are prepared and the photographer sends them, nothing goes out on its own.
-const JOURNEY = [
+const JOURNEY: { title: string; tkey?: string; icon: string; text: string }[] = [
   {
     title: "פנייה",
     icon: "M4 5h16v11H8l-4 4z",
@@ -24,6 +35,8 @@ const JOURNEY = [
   },
   {
     title: "סגירה",
+    // "סגירה" alone is "Close" (a button) in the shared dictionary; here it's the booking step.
+    tkey: "סגירה (שלב בדרך האירוע)",
     icon: "M6 3h9l3 3v15H6zM9 13l2 2 4-4",
     text: "הלקוח ממלא שאלון קצר וחותם על החוזה באותו קישור. האירוע נפתח לבד ונכנס ליומן Google או Apple.",
   },
@@ -71,56 +84,90 @@ function Icon({ d, size = 24, className = "", strokeWidth = 1.9 }: { d: string; 
   );
 }
 
-function PrimaryCta({ className = "" }: { className?: string }) {
+function PrimaryCta({ lang, t, className = "" }: { lang: Lang; t: TFn; className?: string }) {
   return (
     <Link
-      href="/signup"
+      href={authHref("/signup", lang)}
       className={`h-14 px-7 rounded-[1px] inline-flex items-center justify-center gap-2.5 text-lg font-bold bg-[var(--l-accent)] text-[var(--l-on-accent)] ${className}`}
     >
-      להתחיל 14 יום חינם
-      <Icon d="M19 12H5M11 6l-6 6 6 6" size={18} strokeWidth={2.2} />
+      {t("להתחיל 14 יום חינם")}
+      <Icon d="M19 12H5M11 6l-6 6 6 6" size={18} strokeWidth={2.2} className="ltr:rotate-180" />
     </Link>
   );
 }
 
 const CONTAINER = LANDING_CONTAINER;
 
-export default function LandingPage() {
+// Metadata for each language's landing URL: the Hebrew page keeps its canonical "/", and all three
+// point at each other (hreflang) so search engines show the right one. openGraph/twitter are set in
+// full because a child's openGraph replaces the root layout's rather than merging into it.
+export function landingMetadata(lang: Lang): Metadata {
+  const t = makeT(messagesFor(lang));
+  const title = t("גילברטו | ניהול תהליך צילום אירועים");
+  const description = t("מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה");
+  const languages = { he: "/", en: "/en", ru: "/ru" };
+  const alternates = { canonical: landingHome(lang), languages };
+  // The Hebrew page's title/description stay the root layout's, exactly as before.
+  if (lang === "he") return { alternates };
+  return {
+    title,
+    description,
+    alternates,
+    openGraph: {
+      title,
+      description,
+      siteName: t("גילברטו"),
+      locale: lang === "ru" ? "ru_RU" : "en_US",
+      url: landingHome(lang),
+      images: [{ url: "/icons/icon-512.png", width: 512, height: 512 }],
+    },
+    twitter: { card: "summary", title, description, images: ["/icons/icon-512.png"] },
+  };
+}
+
+export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
+  const t = makeT(messagesFor(lang));
   return (
     // min-h-screen + the opaque wrapper paint over the app body's fixed glow gradients (and the
     // body:has(.landing-2026) rule in globals.css turns that fixed layer off on this page).
-    <div dir="rtl" lang="he" className="w-full min-h-screen landing-2026 font-sans">
+    <ClientLangScope lang={lang}>
+    <div dir={dirOf(lang)} lang={lang} className="w-full min-h-screen landing-2026 font-sans">
       {/* HERO (navy) */}
       <section className="bg-[var(--l-navy)] text-[var(--l-on-navy)]">
         <div className={CONTAINER}>
+          {/* Language switcher: its own thin row above the header, so the Hebrew header keeps its
+              layout on a 390px phone. */}
+          <div className="h-9 flex items-center justify-end">
+            <LandingLangSwitch lang={lang} />
+          </div>
           <header className="h-16 lg:h-[88px] flex items-center justify-between border-b border-[var(--l-navy-line)]">
-            <Link href="/" className="flex items-center gap-2.5 text-[var(--l-on-navy)]">
+            <Link href={landingHome(lang)} className="flex items-center gap-2.5 text-[var(--l-on-navy)]">
               <span className="w-8 h-8 lg:w-9 lg:h-9 rounded-[8px] bg-[var(--l-accent)] text-[var(--l-on-accent)] flex items-center justify-center">
                 <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
                   <circle cx="12" cy="13" r="3.5" />
                 </svg>
               </span>
-              <span className="font-display text-[19px] lg:text-[21px] font-bold tracking-tight">גילברטו</span>
+              <span className="font-display text-[19px] lg:text-[21px] font-bold tracking-tight">{t("גילברטו")}</span>
             </Link>
             <nav className="flex items-center gap-4 lg:gap-8 text-[15px] lg:text-base">
               <a href="#features" className="hidden lg:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
-                איך זה עובד
+                {t("איך זה עובד")}
               </a>
               <a href="#album" className="hidden lg:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
-                עיצוב אלבום
+                {t("עיצוב אלבום")}
               </a>
               <a href="#pricing" className="hidden sm:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
-                מחירים
+                {t("מחירים")}
               </a>
               <a href="#faq" className="hidden lg:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
-                שאלות
+                {t("שאלות")}
               </a>
-              <Link href="/login" className="text-[var(--l-on-navy)]">
-                התחברות
+              <Link href={authHref("/login", lang)} className="text-[var(--l-on-navy)]">
+                {t("התחברות")}
               </Link>
-              <Link href="/signup" className="h-11 px-4 lg:px-5 rounded-[10px] inline-flex items-center font-bold bg-[var(--l-on-navy)] text-[var(--l-navy)]">
-                הרשמה
+              <Link href={authHref("/signup", lang)} className="h-11 px-4 lg:px-5 rounded-[10px] inline-flex items-center font-bold bg-[var(--l-on-navy)] text-[var(--l-navy)]">
+                {t("הרשמה")}
               </Link>
             </nav>
           </header>
@@ -129,35 +176,34 @@ export default function LandingPage() {
             <div className="flex flex-col gap-6 lg:gap-8 lg:max-w-[720px]">
               <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-on-navy-soft)]">
                 <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
-                מערכת לצלמי אירועים, שנבנתה ע״י צלם אירועים
+                {t("מערכת לצלמי אירועים, שנבנתה ע״י צלם אירועים")}
               </div>
               <h1 className="font-display m-0 text-[54px] sm:text-7xl lg:text-[112px] leading-[0.98] font-bold tracking-[-0.035em] text-white text-balance">
-                פחות ניהול.
+                {t("פחות ניהול.")}
                 <br />
-                יותר צילום.
+                {t("יותר צילום.")}
               </h1>
               <p className="m-0 text-lg lg:text-[22px] leading-[1.55] text-[var(--l-on-navy-soft)] lg:max-w-[600px]">
-                לידים, חוזים, תשלומים, גלריות ואלבומים במקום אחד. גילברטו מראה לכם בכל אירוע מה הצעד הבא, ומכינה את ההודעות
-                ללקוח לפי שיטת העבודה שלכם.
+                {t("לידים, חוזים, תשלומים, גלריות ואלבומים במקום אחד. גילברטו מראה לכם בכל אירוע מה הצעד הבא, ומכינה את ההודעות ללקוח לפי שיטת העבודה שלכם.")}
               </p>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3">
-                <PrimaryCta />
+                <PrimaryCta lang={lang} t={t} />
                 <a
                   href="#pricing"
                   className="h-[52px] sm:h-14 px-6 rounded-[1px] inline-flex items-center justify-center border border-[var(--l-navy-border)] text-[var(--l-on-navy)] text-[17px] sm:text-lg font-semibold"
                 >
-                  כמה זה עולה
+                  {t("כמה זה עולה")}
                 </a>
               </div>
-              <p className="m-0 text-sm lg:text-[15px] text-[var(--l-on-navy-mute)] text-center sm:text-right">
-                בלי כרטיס אשראי. בזמן הניסיון כל האפשרויות של פרו+ פתוחות.
+              <p className="m-0 text-sm lg:text-[15px] text-[var(--l-on-navy-mute)] text-center sm:text-start">
+                {t("בלי כרטיס אשראי. בזמן הניסיון כל האפשרויות של פרו+ פתוחות.")}
               </p>
             </div>
 
             {/* The product itself: the real tour, playing in a phone frame. */}
             <div className="relative self-center shrink-0 w-[260px] sm:w-[300px] lg:w-[440px] lg:h-[620px]">
-              <div className="hidden lg:block absolute inset-[40px_20px_0_60px] rounded-[28px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)]" />
-              <div className="relative lg:absolute lg:left-[100px] lg:top-0 w-full lg:w-[300px] rounded-[44px] p-3 bg-[#060a14] border border-[#2a3650] shadow-[0_40px_90px_rgba(0,0,0,0.5)]">
+              <div className="hidden lg:block absolute top-[40px] bottom-0 start-[20px] end-[60px] rounded-[28px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)]" />
+              <div className="relative lg:absolute lg:end-[100px] lg:top-0 w-full lg:w-[300px] rounded-[44px] p-3 bg-[#060a14] border border-[#2a3650] shadow-[0_40px_90px_rgba(0,0,0,0.5)]">
                 <video
                   src="/guides/overview.mp4"
                   autoPlay
@@ -165,13 +211,13 @@ export default function LandingPage() {
                   loop
                   playsInline
                   preload="metadata"
-                  aria-label="סיור במערכת גילברטו"
+                  aria-label={t("סיור במערכת גילברטו")}
                   className="block w-full aspect-[480/768] object-cover object-top rounded-[34px] bg-[var(--l-bg-alt)]"
                 />
               </div>
-              <div className="hidden lg:flex absolute right-0 bottom-16 w-[210px] flex-col gap-1 rounded-[14px] bg-white text-[var(--l-ink)] px-4 py-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
-                <span className="text-xs text-[var(--l-ink-soft)]">עכשיו</span>
-                <span className="text-sm font-bold leading-snug">הלקוחה אישרה את עיצוב האלבום</span>
+              <div className="hidden lg:flex absolute start-0 bottom-16 w-[210px] flex-col gap-1 rounded-[14px] bg-white text-[var(--l-ink)] px-4 py-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+                <span className="text-xs text-[var(--l-ink-soft)]">{t("עכשיו")}</span>
+                <span className="text-sm font-bold leading-snug">{t("הלקוחה אישרה את עיצוב האלבום")}</span>
               </div>
             </div>
           </div>
@@ -189,20 +235,19 @@ export default function LandingPage() {
               <path d="M10 7H6a2 2 0 0 0-2 2v4h4v4h2V7zM20 7h-4a2 2 0 0 0-2 2v4h4v4h2V7z" />
             </svg>
             <blockquote className="font-display m-0 text-2xl lg:text-[38px] leading-[1.35] font-semibold tracking-[-0.015em] text-white">
-              בניתי את גילברטו כי אחרי כל צילום אירוע חיכו לי עוד שעות של וואטסאפים, קבצים ותזכורות. היום כל זה מסודר ומוכן מראש,
-              ואני חוזר לצלם.
+              {t("בניתי את גילברטו כי אחרי כל צילום אירוע חיכו לי עוד שעות של וואטסאפים, קבצים ותזכורות. היום כל זה מסודר ומוכן מראש, ואני חוזר לצלם.")}
             </blockquote>
             <figcaption className="flex items-center gap-3.5 text-base lg:text-lg text-[var(--l-on-navy-soft)]">
               {/* Phones: the whole photo, small, next to the name (owner: not just the face). Desktop shows the large one beside the quote. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/landing/founder.jpg" alt="" className="lg:hidden w-[62px] h-[72px] object-cover rounded-[2px] border border-[var(--l-navy-border)]" />
-              <span>רועי גלברט, צלם אירועים ומייסד גילברטו</span>
+              <span>{t("רועי גלברט, צלם אירועים ומייסד גילברטו")}</span>
             </figcaption>
           </figure>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/landing/founder.jpg"
-            alt="רועי גלברט, צלם אירועים ומייסד גילברטו"
+            alt={t("רועי גלברט, צלם אירועים ומייסד גילברטו")}
             loading="lazy"
             className="hidden lg:block w-[340px] aspect-[635/744] object-cover shrink-0 rounded-[2px] border border-[var(--l-navy-border)] shadow-[0_30px_70px_rgba(0,0,0,0.45)]"
           />
@@ -214,30 +259,31 @@ export default function LandingPage() {
         <div className={`${CONTAINER} py-16 lg:py-32 flex flex-col gap-8 lg:gap-16`}>
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3.5 lg:gap-16">
             <h2 className="font-display m-0 text-4xl lg:text-6xl leading-[1.05] font-bold tracking-[-0.03em] lg:max-w-[620px] text-balance">
-              מהפנייה הראשונה ועד המסירה.
+              {t("מהפנייה הראשונה ועד המסירה.")}
             </h2>
             <p className="m-0 text-[17px] lg:text-[19px] leading-relaxed text-[var(--l-ink-soft)] lg:max-w-[520px]">
-              כל צלם עובד אחרת. אתם מגדירים את החבילות, השלבים וההודעות ללקוח, וגילברטו מסדרת את העבודה סביבם. ככה נראית דרך
-              טיפוסית של אירוע:
+              {t("כל צלם עובד אחרת. אתם מגדירים את החבילות, השלבים וההודעות ללקוח, וגילברטו מסדרת את העבודה סביבם. ככה נראית דרך טיפוסית של אירוע:")}
             </p>
           </div>
           <ol className="relative m-0 p-0 list-none grid grid-cols-1 lg:grid-cols-6 gap-7">
-            <span aria-hidden="true" className="absolute bg-[var(--l-line)] right-[23px] top-6 bottom-6 w-0.5 lg:right-7 lg:left-7 lg:top-[27px] lg:bottom-auto lg:w-auto lg:h-0.5" />
+            <span aria-hidden="true" className="absolute bg-[var(--l-line)] start-[23px] top-6 bottom-6 w-0.5 lg:start-7 lg:end-7 lg:top-[27px] lg:bottom-auto lg:w-auto lg:h-0.5" />
             {JOURNEY.map((step) => (
               <li key={step.title} className="relative flex lg:flex-col gap-4">
                 <span className="w-12 h-12 lg:w-14 lg:h-14 shrink-0 rounded-[12px] lg:rounded-[14px] bg-[var(--l-navy)] text-[var(--l-accent)] flex items-center justify-center shadow-[0_0_0_6px_#fff] lg:shadow-[0_0_0_8px_#fff]">
                   <Icon d={step.icon} size={22} />
                 </span>
                 <span className="flex flex-col gap-1.5 lg:gap-4 pt-1 lg:pt-0">
-                  <span className="font-display text-xl lg:text-[22px] font-bold tracking-tight">{step.title}</span>
-                  <span className="text-base leading-relaxed text-[var(--l-ink-soft)]">{step.text}</span>
+                  <span className="font-display text-xl lg:text-[22px] font-bold tracking-tight">
+                    {lang === "he" || !step.tkey ? t(step.title) : t(step.tkey)}
+                  </span>
+                  <span className="text-base leading-relaxed text-[var(--l-ink-soft)]">{t(step.text)}</span>
                 </span>
               </li>
             ))}
           </ol>
           <p className="m-0 flex items-start gap-3.5 rounded-[14px] bg-[var(--l-bg-alt)] px-5 py-4 lg:px-6 lg:py-5 text-base lg:text-[17px] text-[#3a4560]">
             <Icon d="M4 6h16M4 12h10M4 18h6" size={22} className="shrink-0 mt-0.5 text-[var(--l-ink)]" />
-            השלבים כאן הם דוגמה. בכל חבילה בונים מסלול משלכם, ואפשר לסמן שלב כבוצע בכל סדר, כי לא כל לקוח מתקדם באותו קצב.
+            {t("השלבים כאן הם דוגמה. בכל חבילה בונים מסלול משלכם, ואפשר לסמן שלב כבוצע בכל סדר, כי לא כל לקוח מתקדם באותו קצב.")}
           </p>
         </div>
       </section>
@@ -245,14 +291,14 @@ export default function LandingPage() {
       {/* MORE */}
       <section className="bg-[var(--l-bg-alt)]">
         <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col gap-6 lg:gap-12`}>
-          <h2 className="font-display m-0 text-3xl lg:text-5xl leading-[1.1] font-bold tracking-[-0.025em]">ועוד דברים שתשתמשו בהם כל שבוע</h2>
+          <h2 className="font-display m-0 text-3xl lg:text-5xl leading-[1.1] font-bold tracking-[-0.025em]">{t("ועוד דברים שתשתמשו בהם כל שבוע")}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 lg:gap-4">
             {MORE.map((item) => (
               <div key={item.title} className="flex lg:flex-col gap-3.5 rounded-[16px] lg:rounded-[18px] bg-white border border-[var(--l-line)] p-5 lg:p-8 lg:min-h-[180px]">
                 <Icon d={item.icon} size={28} className="shrink-0 text-[var(--l-accent)] w-6 h-6 lg:w-7 lg:h-7" />
                 <span className="flex flex-col gap-1 lg:gap-3.5">
-                  <span className="font-display text-lg lg:text-[22px] font-bold tracking-tight">{item.title}</span>
-                  <span className="text-[15px] lg:text-[17px] leading-relaxed text-[var(--l-ink-soft)]">{item.text}</span>
+                  <span className="font-display text-lg lg:text-[22px] font-bold tracking-tight">{t(item.title)}</span>
+                  <span className="text-[15px] lg:text-[17px] leading-relaxed text-[var(--l-ink-soft)]">{t(item.text)}</span>
                 </span>
               </div>
             ))}
@@ -261,13 +307,13 @@ export default function LandingPage() {
       </section>
 
       {/* The quote flow: link → approval → questionnaire → contract → event (owner, 2026-10-01). */}
-      <LandingQuoteSection />
+      <LandingQuoteSection lang={lang} />
 
       {/* The automatic album designer (owner, 2026-09-30). */}
-      <LandingAlbumSection />
+      <LandingAlbumSection lang={lang} />
 
       {/* The magnet frame designer, its own section (owner, 2026-09-30). */}
-      <LandingMagnetSection />
+      <LandingMagnetSection lang={lang} />
 
       {/* The intake assistant: a real recorded conversation with the test account's assistant
           (public/guides/intake-demo.mp4, recorded with the guide-video skill), and the FAQ it
@@ -277,14 +323,13 @@ export default function LandingPage() {
           <div className="flex flex-col gap-6 lg:gap-7 lg:max-w-[640px]">
             <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-on-navy-soft)]">
               <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
-              עוזר פניות חכם
+              {t("עוזר פניות חכם")}
             </div>
             <h2 className="font-display m-0 text-4xl lg:text-[56px] leading-[1.05] font-bold tracking-[-0.03em] text-white text-balance">
-              לקוח כותב בשתיים בלילה. מישהו כבר עונה לו.
+              {t("לקוח כותב בשתיים בלילה. מישהו כבר עונה לו.")}
             </h2>
             <p className="m-0 text-[17px] lg:text-[19px] leading-relaxed text-[var(--l-on-navy-soft)]">
-              עוזר הפניות מדבר עם לקוחות חדשים כמו בן אדם, מהקישור בוואטסאפ או באתר שלכם. הוא בודק ביומן אם התאריך פנוי, שואל את
-              השאלות הנכונות, ומעביר לכם ליד מסודר עם כל פרטי האירוע, במייל ובאופן אוטומטי במערכת.
+              {t("עוזר הפניות מדבר עם לקוחות חדשים כמו בן אדם, מהקישור בוואטסאפ או באתר שלכם. הוא בודק ביומן אם התאריך פנוי, שואל את השאלות הנכונות, ומעביר לכם ליד מסודר עם כל פרטי האירוע, במייל ובאופן אוטומטי במערכת.")}
             </p>
             <ul className="m-0 p-0 list-none flex flex-col gap-3.5">
               {[
@@ -296,7 +341,7 @@ export default function LandingPage() {
                   <span className="w-10 h-10 shrink-0 rounded-[10px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] text-[var(--l-accent)] flex items-center justify-center">
                     <Icon d={f.icon} size={20} />
                   </span>
-                  {f.text}
+                  {t(f.text)}
                 </li>
               ))}
             </ul>
@@ -304,24 +349,24 @@ export default function LandingPage() {
             {/* Behind the scenes: what the photographer writes in settings › אוטומציה. */}
             <div className="rounded-[14px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-5 lg:p-6 flex flex-col gap-3.5">
               <div className="flex items-center justify-between gap-3">
-                <span className="font-display text-lg font-bold text-white">מאחורי הקלעים: שאלות ותשובות משלכם</span>
-                <span className="text-xs text-[var(--l-on-navy-mute)] whitespace-nowrap">הגדרות › אוטומציה</span>
+                <span className="font-display text-lg font-bold text-white">{t("מאחורי הקלעים: שאלות ותשובות משלכם")}</span>
+                <span className="text-xs text-[var(--l-on-navy-mute)] whitespace-nowrap">{t("הגדרות › אוטומציה")}</span>
               </div>
               <p className="m-0 text-[15px] leading-relaxed text-[var(--l-on-navy-soft)]">
-                כותבים לעוזר את התשובות שלכם, והוא עונה לפיהן במקום להמציא. אפשר גם להוסיף שאלה משלכם שהוא ישאל כל לקוח.
+                {t("כותבים לעוזר את התשובות שלכם, והוא עונה לפיהן במקום להמציא. אפשר גם להוסיף שאלה משלכם שהוא ישאל כל לקוח.")}
               </p>
               {[
                 { q: "מתי מקבלים את התמונות?", a: "גלריה ראשונה תוך שבוע, וכל התמונות תוך 45 יום." },
                 { q: "מגיעים גם לצפון?", a: "כן, לכל הארץ. פרטי הנסיעה יופיעו בהצעת המחיר." },
               ].map((item) => (
                 <div key={item.q} className="rounded-[10px] bg-[var(--l-navy)] border border-[var(--l-navy-line)] px-4 py-3 flex flex-col gap-1">
-                  <span className="text-[15px] font-semibold text-white">{item.q}</span>
-                  <span className="text-sm text-[var(--l-on-navy-soft)]">{item.a}</span>
+                  <span className="text-[15px] font-semibold text-white">{t(item.q)}</span>
+                  <span className="text-sm text-[var(--l-on-navy-soft)]">{t(item.a)}</span>
                 </div>
               ))}
-              <span className="text-sm font-semibold text-[var(--l-accent)]">+ שאלה חדשה</span>
+              <span className="text-sm font-semibold text-[var(--l-accent)]">{t("+ שאלה חדשה")}</span>
             </div>
-            <p className="m-0 text-sm text-[var(--l-on-navy-mute)]">בכל המסלולים: פרו סטארט עד 100 שיחות בחודש, פרו עד 150, ופרו+ עד 200. צריכים יותר? מוסיפים חבילת שיחות, בלי להחליף מסלול.</p>
+            <p className="m-0 text-sm text-[var(--l-on-navy-mute)]">{t("בכל המסלולים: פרו סטארט עד 100 שיחות בחודש, פרו עד 150, ופרו+ עד 200. צריכים יותר? מוסיפים חבילת שיחות, בלי להחליף מסלול.")}</p>
           </div>
 
           {/* A real conversation with the assistant, recorded from the live site. */}
@@ -334,11 +379,11 @@ export default function LandingPage() {
                 loop
                 playsInline
                 preload="metadata"
-                aria-label="הדגמה: שיחה של לקוח עם עוזר הפניות"
+                aria-label={t("הדגמה: שיחה של לקוח עם עוזר הפניות")}
                 className="block w-full aspect-[480/768] object-cover object-top rounded-[34px] bg-[var(--l-bg-alt)]"
               />
             </div>
-            <p className="m-0 mt-3 text-center text-xs text-[var(--l-on-navy-mute)]">שיחה אמיתית עם העוזר, מחשבון הדגמה</p>
+            <p className="m-0 mt-3 text-center text-xs text-[var(--l-on-navy-mute)]">{t("שיחה אמיתית עם העוזר, מחשבון הדגמה")}</p>
           </div>
         </div>
       </section>
@@ -349,18 +394,18 @@ export default function LandingPage() {
       <section id="pricing" className="bg-[var(--l-bg-alt)] scroll-mt-4">
         <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col gap-6 lg:gap-10`}>
           <div className="flex flex-col gap-2.5 lg:gap-3.5 lg:items-center lg:text-center">
-            <h2 className="font-display m-0 text-[34px] lg:text-[56px] leading-[1.05] font-bold tracking-[-0.03em]">מחיר קבוע, בלי הפתעות</h2>
-            <p className="m-0 text-base lg:text-[19px] text-[var(--l-ink-soft)]">14 יום ניסיון חינם, בלי כרטיס אשראי. בלי עמלות נסתרות, וביטול בכל עת.</p>
+            <h2 className="font-display m-0 text-[34px] lg:text-[56px] leading-[1.05] font-bold tracking-[-0.03em]">{t("מחיר קבוע, בלי הפתעות")}</h2>
+            <p className="m-0 text-base lg:text-[19px] text-[var(--l-ink-soft)]">{t("14 יום ניסיון חינם, בלי כרטיס אשראי. בלי עמלות נסתרות, וביטול בכל עת.")}</p>
           </div>
           <PricingToggle />
-          <PlanComparison />
+          <PlanComparison lang={lang} />
         </div>
       </section>
 
       <section id="faq" className="bg-[var(--l-bg)] scroll-mt-4">
         <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col lg:flex-row gap-5 lg:gap-24`}>
           <div className="lg:w-[380px] shrink-0">
-            <h2 className="font-display m-0 text-3xl lg:text-5xl leading-[1.1] font-bold tracking-[-0.025em]">שאלות נפוצות</h2>
+            <h2 className="font-display m-0 text-3xl lg:text-5xl leading-[1.1] font-bold tracking-[-0.025em]">{t("שאלות נפוצות")}</h2>
           </div>
           <div className="flex-1 min-w-0">
             <LandingFaq />
@@ -368,7 +413,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <LandingFooter />
+      <LandingFooter lang={lang} />
     </div>
+    </ClientLangScope>
   );
 }

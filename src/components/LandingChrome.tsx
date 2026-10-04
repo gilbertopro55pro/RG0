@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { LANGS, LANG_LABELS, type Lang } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 // Shared chrome for the landing page and the public pages linked from its footer (terms, privacy,
 // cookies, cancellation policy, accessibility, business info), so they read as one site in the
@@ -16,6 +19,46 @@ export const FOOTER_LINKS = [
   { href: "/business-info", label: "פרטי העסק" },
 ];
 
+// The landing page's home URL in each language: Hebrew stays at "/", English and Russian have their
+// own static pages for ads (/en, /ru).
+export function landingHome(lang: Lang): string {
+  return lang === "he" ? "/" : `/${lang}`;
+}
+
+// Sign-in / sign-up links carry the visitor's language, so the next page opens in it too. Hebrew
+// links stay exactly as they were.
+export function authHref(path: "/login" | "/signup", lang: Lang): string {
+  return lang === "he" ? path : `${path}?lang=${lang}`;
+}
+
+// "עברית · English · Русский" in the landing header, the current one highlighted. Each label is in
+// its own language (and direction), so it reads the same on all three versions of the page.
+export function LandingLangSwitch({ lang }: { lang: Lang }) {
+  return (
+    <nav aria-label="Language" className="flex items-center gap-2 text-[13px] lg:text-sm">
+      {LANGS.map((l, i) => (
+        <span key={l} className="flex items-center gap-2">
+          {i > 0 && <span aria-hidden="true" className="text-[var(--l-on-navy-mute)]">·</span>}
+          <Link
+            href={landingHome(l)}
+            hrefLang={l}
+            lang={l}
+            dir={l === "he" ? "rtl" : "ltr"}
+            aria-current={l === lang ? "page" : undefined}
+            className={
+              l === lang
+                ? "font-bold text-[var(--l-on-navy)]"
+                : "text-[var(--l-on-navy-mute)] hover:text-[var(--l-on-navy)]"
+            }
+          >
+            {LANG_LABELS[l]}
+          </Link>
+        </span>
+      ))}
+    </nav>
+  );
+}
+
 export function LandingLogo() {
   return (
     <Link href="/" className="flex items-center gap-2.5 text-[var(--l-on-navy)] w-fit">
@@ -30,18 +73,27 @@ export function LandingLogo() {
   );
 }
 
-export function LandingFooter() {
+// The legal pages linked here stay Hebrew in every language (the owner's call), so only the labels
+// and the sign-in link change.
+export function LandingFooter({ lang = "he" }: { lang?: Lang }) {
+  const t = makeT(messagesFor(lang));
   return (
     <footer className="border-t border-[var(--l-line)] bg-[var(--l-bg)]">
       <div className={`${LANDING_CONTAINER} pt-7 pb-10 lg:pt-10 lg:pb-14 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5`}>
         <div className="flex flex-col lg:flex-row lg:items-center gap-1.5 lg:gap-3">
-          <span className="font-display text-[17px] lg:text-lg font-bold">גילברטו</span>
-          <span className="text-[13px] lg:text-sm text-[var(--l-ink-soft)]">© {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט, צילום אירועים</span>
+          <span className="font-display text-[17px] lg:text-lg font-bold">{t("גילברטו")}</span>
+          <span className="text-[13px] lg:text-sm text-[var(--l-ink-soft)]">
+            © {new Date().getFullYear()} {t("כל הזכויות שמורות לרועי גלברט, צילום אירועים")}
+          </span>
         </div>
         <nav className="flex flex-wrap gap-x-5 gap-y-2.5">
           {FOOTER_LINKS.map((l) => (
-            <Link key={l.href} href={l.href} className="text-sm text-[var(--l-ink-soft)] hover:text-[var(--l-ink)]">
-              {l.label}
+            <Link
+              key={l.href}
+              href={l.href === "/login" ? authHref("/login", lang) : l.href}
+              className="text-sm text-[var(--l-ink-soft)] hover:text-[var(--l-ink)]"
+            >
+              {t(l.label)}
             </Link>
           ))}
         </nav>

@@ -6,6 +6,9 @@ import { createEmailConfirmToken } from "@/lib/emailConfirmToken";
 import { sendEmail } from "@/lib/resend";
 import { stripPhoneFormatting } from "@/lib/phone";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
+import { LANG_COOKIE, isLang, type Lang } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT, type TFn } from "@/i18n/translate";
 
 export const runtime = "nodejs";
 
@@ -23,14 +26,19 @@ export async function POST(request: NextRequest) {
   // Auth's own baseline rate limiting — via admin.createUser instead (see this file's own
   // top comment). Without a check here, this was the one open door for creating accounts (and
   // burning through Resend's send quota, two emails per call) with no limit at all.
+  const { name, phone, email, password, plan, lang: rawLang } = await request.json().catch(() => ({}));
+  // The signup page's language (?lang=en|ru, 2026-10-04): the errors shown on the form and the
+  // emails to the new photographer follow it. Hebrew (the default) is exactly as before.
+  const lang: Lang = isLang(rawLang) ? rawLang : "he";
+  const t = makeT(messagesFor(lang));
+
   const { allowed } = await checkRateLimit(`signup:${clientIpFrom(request)}`, { maxRequests: 5, windowSeconds: 60 * 60 });
   if (!allowed) {
-    return NextResponse.json({ error: "יותר מדי ניסיונות הרשמה. נסו שוב מאוחר יותר" }, { status: 429 });
+    return NextResponse.json({ error: t("יותר מדי ניסיונות הרשמה. נסו שוב מאוחר יותר") }, { status: 429 });
   }
 
-  const { name, phone, email, password, plan } = await request.json().catch(() => ({}));
   if (!name || !phone || !email || !password || !plan) {
-    return NextResponse.json({ error: "חסרים פרטים" }, { status: 400 });
+    return NextResponse.json({ error: t("חסרים פרטים") }, { status: 400 });
   }
   const cleanPhone = stripPhoneFormatting(phone);
   // The plan the person expects after the trial; unknown values fall back to the default choice.
@@ -42,7 +50,7 @@ export async function POST(request: NextRequest) {
   const { data: phoneTaken } = await supabase.rpc("phone_already_registered", { p: cleanPhone });
   if (phoneTaken) {
     return NextResponse.json(
-      { error: "מספר הטלפון הזה כבר רשום במערכת. נסו להתחבר, או פנו אלינו אם זה חשבון חדש לעסק אחר." },
+      { error: t("מספר הטלפון הזה כבר רשום במערכת. נסו להתחבר, או פנו אלינו אם זה חשבון חדש לעסק אחר.") },
       { status: 409 }
     );
   }
@@ -56,12 +64,12 @@ export async function POST(request: NextRequest) {
   if (error) {
     const message =
       error.code === "email_exists"
-        ? "כתובת המייל הזו כבר רשומה במערכת. נסו להתחבר."
+        ? t("כתובת המייל הזו כבר רשומה במערכת. נסו להתחבר.")
         : error.code === "weak_password" || /password/i.test(error.message)
-          ? "הסיסמה חלשה מדי. בחרו סיסמה של 6 תווים לפחות."
+          ? t("הסיסמה חלשה מדי. בחרו סיסמה של 6 תווים לפחות.")
           : error.code === "email_address_invalid" || /email/i.test(error.message)
-            ? "כתובת המייל לא תקינה."
-            : "ההרשמה נכשלה. נסו שוב.";
+            ? t("כתובת המייל לא תקינה.")
+            : t("ההרשמה נכשלה. נסו שוב.");
     return NextResponse.json({ error: message }, { status: error.status ?? 400 });
   }
 
@@ -77,44 +85,68 @@ export async function POST(request: NextRequest) {
     .eq("id", uid);
   if (trialError) console.error("Trial setup failed:", trialError);
   const { ts, sig } = createEmailConfirmToken(uid);
-  const confirmUrl = `${request.nextUrl.origin}/api/auth/confirm-email?uid=${uid}&ts=${ts}&sig=${sig}`;
+  // lang rides along so the confirm link lands on /login in the same language (the signature
+  // covers uid+ts only, so the extra param doesn't affect verification).
+  const confirmUrl =
+    `${request.nextUrl.origin}/api/auth/confirm-email?uid=${uid}&ts=${ts}&sig=${sig}` + (lang === "he" ? "" : `&lang=${lang}`);
+  const mail = signupEmails(t, { name, email, confirmUrl });
 
   try {
-    await sendEmail({
-      to: email,
-      subject: "תודה שהצטרפת למערכת גילברטו",
-      text:
-        `שלום ${name},\n\n` +
-        `תודה שנרשמת למערכת גילברטו לניהול צילום אירועים! ניהול אירועים, גלריות ללקוחות, חוזים דיגיטליים ` +
-        `ותשלומים, הכל במקום אחד.\n\n` +
-        `${TRIAL_DAYS} הימים הראשונים בחינם, עם כל האפשרויות של מסלול פרו+, בלי כרטיס אשראי. ` +
-        `לקראת סוף תקופת הניסיון נזכיר לכם לבחור מסלול.\n\n` +
-        `בהצלחה,\nצוות גילברטו`,
-    });
+    await sendEmail({ to: email, subject: mail.welcome.subject, text: mail.welcome.text });
   } catch (e) {
     console.error("Welcome email failed:", e);
   }
 
   try {
-    await sendEmail({
-      to: email,
-      subject: "פרטי ההתחברות למערכת גילברטו - ניהול צילום אירועים",
-      text:
-        `שלום ${name},\n\n` +
-        `החשבון שלך במערכת מוכן לשימוש. פרטי ההתחברות:\n\n` +
-        `שם משתמש (אימייל): ${email}\n` +
-        `סיסמה: הסיסמה שבחרת בעת ההרשמה\n\n` +
-        `כניסה למערכת: ${confirmUrl}\n\n` +
-        `הקישור הזה גם מאשר את כתובת המייל שלך. לחיצה עליו תפנה אתכם ישר להתחברות.\n\n` +
-        `מסיבות אבטחה איננו שולחים סיסמאות בטקסט גלוי במייל. אם שכחת אותה אפשר לאפס אותה דרך ` +
-        `"שכחתי סיסמה" במסך ההתחברות.`,
-    });
+    await sendEmail({ to: email, subject: mail.login.subject, text: mail.login.text });
   } catch (e) {
     console.error("Login-details email failed:", e);
     // Only this one carries the confirmation link — if it genuinely couldn't be sent, say so
     // instead of leaving the person stuck on "check your email" for a mail that never arrived.
-    return NextResponse.json({ error: "החשבון נוצר אך שליחת מייל האימות נכשלה. נסו שוב או צרו קשר" }, { status: 502 });
+    return withLangCookie(
+      NextResponse.json({ error: t("החשבון נוצר אך שליחת מייל האימות נכשלה. נסו שוב או צרו קשר") }, { status: 502 }),
+      lang
+    );
   }
 
-  return NextResponse.json({ ok: true });
+  return withLangCookie(NextResponse.json({ ok: true }), lang);
+}
+
+// The account exists: a signup in English/Russian opens the app in that language on this device
+// (same cookie as Settings › תצוגה). Hebrew leaves any existing cookie alone.
+function withLangCookie(res: NextResponse, lang: Lang): NextResponse {
+  if (lang !== "he") res.cookies.set(LANG_COOKIE, lang, { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax" });
+  return res;
+}
+
+// The two emails to the new photographer (plain text). The Hebrew text is the key (and, in Hebrew,
+// exactly the original wording); English/Russian come from src/i18n/dict/auth.ts.
+const WELCOME_TEXT =
+  "שלום {name},\n\n" +
+  "תודה שנרשמת למערכת גילברטו לניהול צילום אירועים! ניהול אירועים, גלריות ללקוחות, חוזים דיגיטליים " +
+  "ותשלומים, הכל במקום אחד.\n\n" +
+  "{days} הימים הראשונים בחינם, עם כל האפשרויות של מסלול פרו+, בלי כרטיס אשראי. " +
+  "לקראת סוף תקופת הניסיון נזכיר לכם לבחור מסלול.\n\n" +
+  "בהצלחה,\nצוות גילברטו";
+const LOGIN_TEXT =
+  "שלום {name},\n\n" +
+  "החשבון שלך במערכת מוכן לשימוש. פרטי ההתחברות:\n\n" +
+  "שם משתמש (אימייל): {email}\n" +
+  "סיסמה: הסיסמה שבחרת בעת ההרשמה\n\n" +
+  "כניסה למערכת: {url}\n\n" +
+  "הקישור הזה גם מאשר את כתובת המייל שלך. לחיצה עליו תפנה אתכם ישר להתחברות.\n\n" +
+  "מסיבות אבטחה איננו שולחים סיסמאות בטקסט גלוי במייל. אם שכחת אותה אפשר לאפס אותה דרך " +
+  "\"שכחתי סיסמה\" במסך ההתחברות.";
+
+function signupEmails(t: TFn, v: { name: string; email: string; confirmUrl: string }) {
+  return {
+    welcome: {
+      subject: t("תודה שהצטרפת למערכת גילברטו"),
+      text: t(WELCOME_TEXT, { name: v.name, days: TRIAL_DAYS }),
+    },
+    login: {
+      subject: t("פרטי ההתחברות למערכת גילברטו - ניהול צילום אירועים"),
+      text: t(LOGIN_TEXT, { name: v.name, email: v.email, url: v.confirmUrl }),
+    },
+  };
 }

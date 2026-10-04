@@ -183,7 +183,7 @@ export default async function SettingsPage({
           {
             id: "appearance",
             label: t("מראה"),
-            content: <AppearanceSettings canChooseLanguage={photographer.email === ADMIN_EMAIL} />,
+            content: <AppearanceSettings canChooseLanguage />,
           },
           {
             id: "account",

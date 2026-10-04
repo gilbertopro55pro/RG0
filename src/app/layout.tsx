@@ -15,6 +15,7 @@ import AssistantLeadPopup from "@/components/AssistantLeadPopup";
 import { I18nProvider } from "@/i18n/client";
 import LangScope from "@/i18n/LangScope";
 import { getLang } from "@/i18n/server";
+import { headers } from "next/headers";
 import { dirOf } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 
@@ -93,7 +94,10 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   // UI language (src/i18n): a per-device cookie, Hebrew by default. Sets the page direction too.
-  const lang = await getLang();
+  const cookieLang = await getLang();
+  // /en and /ru (the landing page in English/Russian) are in their own language for every visitor.
+  const path = (await headers()).get("x-ui-path") ?? "";
+  const lang = path === "/en" ? "en" : path === "/ru" ? "ru" : cookieLang;
   return (
     <html
       lang={lang}
