@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
   const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 86_400_000).toISOString();
   const { error: trialError } = await supabase
     .from("photographers")
-    .update({ subscription_status: "trialing", trial_ends_at: trialEndsAt, signup_plan: chosenPlan, plan: TRIAL_PLAN })
+    .update({ subscription_status: "trialing", trial_ends_at: trialEndsAt, signup_plan: chosenPlan, plan: TRIAL_PLAN, ui_lang: lang === "he" ? null : lang })
     .eq("id", uid);
   if (trialError) console.error("Trial setup failed:", trialError);
   const { ts, sig } = createEmailConfirmToken(uid);

@@ -48,6 +48,8 @@ export type Photographer = {
   cancel_at_period_end: boolean;
   renewal_reminder_sent_at: string | null;
   trial_ends_at: string | null;
+  // The photographer's own UI language for emails/push to them (migration 0151). Null = Hebrew.
+  ui_lang?: string | null;
   signup_plan: string | null;
   trial_reminder_sent_at: string | null;
   // Trial data retention (migration 0128) — see lib/accountDeletion.ts.

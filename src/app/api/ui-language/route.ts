@@ -13,6 +13,10 @@ export async function POST(request: Request) {
   const { lang }: { lang?: string } = await request.json().catch(() => ({}));
   if (!isLang(lang)) return NextResponse.json({ error: "שפה לא תקינה" }, { status: 400 });
 
+  // Also on the account, so emails and phone notifications to the photographer use it (null = Hebrew).
+  const { error } = await supabase.from("photographers").update({ ui_lang: lang === "he" ? null : lang }).eq("id", user.id);
+  if (error) console.error("ui_lang save failed:", error.message);
+
   const res = NextResponse.json({ ok: true });
   res.cookies.set(LANG_COOKIE, lang, { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax" });
   return res;
