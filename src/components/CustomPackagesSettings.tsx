@@ -14,6 +14,8 @@ import {
   CLIENT_MESSAGE_EMOJI_OPTIONS,
   PACKAGE_FLOWS,
 } from "@/lib/stages";
+import { useT, useLang } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 // The stage-name suggestions dropdown offers every stage in the "חבילה מלאה" (full package) flow
 // — not just the 5 CUSTOMIZABLE_MESSAGE_STAGES, which is a narrower list (only the stages with a
@@ -76,6 +78,8 @@ export default function CustomPackagesSettings({
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const supabase = createClient();
+  const t = useT();
+  const lang = useLang();
 
   // SettingsTabs keeps every tab mounted at once (display:none, never unmounted — see its own
   // comment) so this component's useState-from-props only ever runs its lazy initializer on the
@@ -129,10 +133,9 @@ export default function CustomPackagesSettings({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold mb-1">חבילות מותאמות אישית</div>
+      <div className="text-sm font-semibold mb-1">{t("חבילות מותאמות אישית")}</div>
       <p className="text-xs mb-3.5 text-ink-soft">
-        הגדירו חבילת אירוע משלכם, שם, עלות, ורשימת שלבי תהליך משלכם (במקום 5 החבילות הקבועות של
-        המערכת). כל שלב שתסמנו ל&quot;שליחת הודעה ללקוח&quot; ישלח עדכון אוטומטי בוואטסאפ בסיום השלב.
+        {t("הגדירו חבילת אירוע משלכם, שם, עלות, ורשימת שלבי תהליך משלכם (במקום 5 החבילות הקבועות של המערכת). כל שלב שתסמנו ל\"שליחת הודעה ללקוח\" ישלח עדכון אוטומטי בוואטסאפ בסיום השלב.")}
       </p>
 
       {packages.length > 0 && (
@@ -141,8 +144,7 @@ export default function CustomPackagesSettings({
             confirmingDeleteId === pkg.id ? (
               <div key={pkg.id} className="rounded-xl p-3 bg-chip">
                 <p className="text-xs mb-2.5 text-rose">
-                  למחוק את החבילה &quot;{pkg.name}&quot;? אירועים קיימים שמשתמשים בה ימשיכו להציג את השלבים
-                  שלהם, אבל לא יהיה ניתן ליצור איתה אירועים חדשים.
+                  {t("למחוק את החבילה \"{name}\"? אירועים קיימים שמשתמשים בה ימשיכו להציג את השלבים שלהם, אבל לא יהיה ניתן ליצור איתה אירועים חדשים.", { name: pkg.name })}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -150,14 +152,14 @@ export default function CustomPackagesSettings({
                     disabled={deletingId === pkg.id}
                     className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white disabled:opacity-60"
                   >
-                    {deletingId === pkg.id ? "מוחק..." : "כן, מחק"}
+                    {deletingId === pkg.id ? t("מוחק...") : t("כן, מחק")}
                   </button>
                   <button
                     onClick={() => setConfirmingDeleteId(null)}
                     disabled={deletingId === pkg.id}
                     className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
                   >
-                    ביטול
+                    {t("ביטול")}
                   </button>
                 </div>
               </div>
@@ -166,15 +168,15 @@ export default function CustomPackagesSettings({
                 key={pkg.id}
                 className="rounded-xl p-3 flex items-center justify-between gap-2 bg-chip"
               >
-                <button onClick={() => setEditing(pkg)} className="text-right flex-1 min-w-0">
+                <button onClick={() => setEditing(pkg)} className="text-start flex-1 min-w-0">
                   <div className="text-sm font-semibold truncate">{pkg.name}</div>
                   <div className="text-xs text-ink-soft font-data">
-                    {pkg.price != null ? `₪${Number(pkg.price).toLocaleString("he-IL")}, ` : ""}
-                    {(stagesByPackage.get(pkg.id) ?? []).length} שלבים
+                    {pkg.price != null ? `₪${Number(pkg.price).toLocaleString(dateLocale(lang))}, ` : ""}
+                    {t("{n} שלבים", { n: (stagesByPackage.get(pkg.id) ?? []).length })}
                   </div>
                 </button>
                 <button onClick={() => setConfirmingDeleteId(pkg.id)} className="text-xs text-rose shrink-0">
-                  מחיקה
+                  {t("מחיקה")}
                 </button>
               </div>
             )
@@ -186,7 +188,7 @@ export default function CustomPackagesSettings({
         onClick={() => setEditing("new")}
         className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
       >
-        + חבילה מותאמת אישית חדשה
+        {t("+ חבילה מותאמת אישית חדשה")}
       </button>
 
       {editing && (
@@ -234,6 +236,7 @@ export function CustomPackageBuilder({
   onEventTypeDeleted: (eventTypeId: string) => void;
 }) {
   const supabase = createClient();
+  const t = useT();
   const entered = useModalEntered();
   // Rendered via a portal straight to document.body (see the return statement below) instead of
   // inline where this component sits in the tree — nested many levels deep inside SettingsTabs'
@@ -351,7 +354,7 @@ export function CustomPackageBuilder({
         body: JSON.stringify({ stageLabel: stageName, currentText: stageMessageDrafts[clientId] ?? "" }),
       });
       const data = await res.json();
-      if (!res.ok || !data.text) throw new Error(data.error ?? "שגיאה");
+      if (!res.ok || !data.text) throw new Error(data.error ?? t("שגיאה"));
       setStageMessageDrafts((prev) => ({ ...prev, [clientId]: data.text }));
     } catch {
       setStageMessageAiErrorId(clientId);
@@ -451,7 +454,7 @@ export function CustomPackageBuilder({
     // list, not a blocked state).
     const validStages = stages.filter((s) => s.name.trim());
     if (!trimmedName) {
-      setError("יש להזין שם לחבילה");
+      setError(t("יש להזין שם לחבילה"));
       return;
     }
     setSaving(true);
@@ -461,7 +464,7 @@ export function CustomPackageBuilder({
     } = await supabase.auth.getUser();
     if (!user) {
       setSaving(false);
-      setError("יש להתחבר מחדש");
+      setError(t("יש להתחבר מחדש"));
       return;
     }
 
@@ -484,7 +487,7 @@ export function CustomPackageBuilder({
 
     if (pkgError || !savedPkg) {
       setSaving(false);
-      setError(pkgError?.message ?? "שגיאה בשמירת החבילה");
+      setError(pkgError?.message ?? t("שגיאה בשמירת החבילה"));
       return;
     }
 
@@ -530,7 +533,7 @@ export function CustomPackageBuilder({
         .eq("id", s.clientId)
         .select()
         .single<CustomPackageStageRow>();
-      if (error || !data) stagesError = error?.message ?? "שגיאה בעדכון שלב";
+      if (error || !data) stagesError = error?.message ?? t("שגיאה בעדכון שלב");
       else results.push(data);
     }
 
@@ -540,7 +543,7 @@ export function CustomPackageBuilder({
         .insert(inserts.map(({ s, i }) => rowFor(s, i)))
         .select()
         .returns<CustomPackageStageRow[]>();
-      if (error || !data) stagesError = error?.message ?? "שגיאה בהוספת שלבים";
+      if (error || !data) stagesError = error?.message ?? t("שגיאה בהוספת שלבים");
       else results.push(...data);
     }
 
@@ -557,17 +560,17 @@ export function CustomPackageBuilder({
     const updatedPrices = prices.filter((p) => p.custom_package_id !== savedPkg.id);
     let topicsError: string | null = null;
 
-    for (const t of topics) {
-      if (!t.name.trim()) continue;
-      let eventTypeId = t.clientId;
-      if (!t.isPersisted) {
+    for (const topic of topics) {
+      if (!topic.name.trim()) continue;
+      let eventTypeId = topic.clientId;
+      if (!topic.isPersisted) {
         const { data: createdType, error: etError } = await supabase
           .from("event_types")
-          .insert({ photographer_id: user.id, name: t.name.trim(), sort_order: updatedEventTypes.length })
+          .insert({ photographer_id: user.id, name: topic.name.trim(), sort_order: updatedEventTypes.length })
           .select()
           .single<EventTypeRow>();
         if (etError || !createdType) {
-          topicsError = etError?.message ?? "שגיאה בהוספת נושא";
+          topicsError = etError?.message ?? t("שגיאה בהוספת נושא");
           continue;
         }
         eventTypeId = createdType.id;
@@ -580,13 +583,13 @@ export function CustomPackageBuilder({
             photographer_id: user.id,
             event_type_id: eventTypeId,
             custom_package_id: savedPkg.id,
-            price: t.price.trim() === "" ? null : Number(t.price),
+            price: topic.price.trim() === "" ? null : Number(topic.price),
           },
           { onConflict: "event_type_id,custom_package_id" }
         )
         .select()
         .single<PackagePriceRow>();
-      if (priceError || !priceRow) topicsError = priceError?.message ?? "שגיאה בשמירת תמחור";
+      if (priceError || !priceRow) topicsError = priceError?.message ?? t("שגיאה בשמירת תמחור");
       else updatedPrices.push(priceRow);
     }
 
@@ -618,9 +621,10 @@ export function CustomPackageBuilder({
         style={{ height: "85vh" }}
       >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-bold font-display">{pkg ? "עריכת חבילה" : "חבילה מותאמת אישית חדשה"}</h2>
+          <h2 className="text-xl font-bold font-display">{pkg ? t("עריכת חבילה") : t("חבילה מותאמת אישית חדשה")}</h2>
           <button
             onClick={onClose}
+            aria-label={t("סגירה")}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
           >
             <IconClose className="h-4 w-4" />
@@ -629,16 +633,16 @@ export function CustomPackageBuilder({
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">שם החבילה</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("שם החבילה")}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="לדוגמה: צילומי חוץ בלבד"
+              placeholder={t("לדוגמה: צילומי חוץ בלבד")}
               className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
             />
           </div>
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">עלות (₪, אופציונלי)</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("עלות (₪, אופציונלי)")}</label>
             <input
               type="number"
               value={price}
@@ -649,7 +653,7 @@ export function CustomPackageBuilder({
 
           <div className="pt-1">
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs text-ink-soft">שלבי התהליך (לפי סדר)</label>
+              <label className="text-xs text-ink-soft">{t("שלבי התהליך (לפי סדר)")}</label>
               <span className="text-[11px] text-ink-soft font-data">{stages.length}/{MAX_STAGES}</span>
             </div>
 
@@ -661,22 +665,22 @@ export function CustomPackageBuilder({
                     checked={selectedIds.size === stages.length}
                     onChange={toggleSelectAll}
                   />
-                  בחירת הכל
+                  {t("בחירת הכל")}
                 </label>
                 {selectedIds.size > 0 &&
                   (confirmingRemove ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-rose">למחוק {selectedIds.size} שלבים?</span>
+                      <span className="text-xs text-rose">{t("למחוק {n} שלבים?", { n: selectedIds.size })}</span>
                       <button onClick={removeSelected} className="text-xs font-semibold text-rose">
-                        כן, מחק
+                        {t("כן, מחק")}
                       </button>
                       <button onClick={() => setConfirmingRemove(false)} className="text-xs text-ink-soft">
-                        ביטול
+                        {t("ביטול")}
                       </button>
                     </div>
                   ) : (
                     <button onClick={() => setConfirmingRemove(true)} className="text-xs font-semibold text-rose">
-                      מחיקת {selectedIds.size} שלבים שנבחרו
+                      {t("מחיקת {n} שלבים שנבחרו", { n: selectedIds.size })}
                     </button>
                   ))}
               </div>
@@ -691,7 +695,7 @@ export function CustomPackageBuilder({
                       className="shrink-0"
                       checked={selectedIds.has(stage.clientId)}
                       onChange={() => toggleSelect(stage.clientId)}
-                      aria-label="בחירת שלב למחיקה"
+                      aria-label={t("בחירת שלב למחיקה")}
                     />
                     <span className="text-xs shrink-0 w-5 text-center text-ink-soft font-data">{i + 1}</span>
                     <div className="relative flex-1 min-w-0">
@@ -705,7 +709,7 @@ export function CustomPackageBuilder({
                             120
                           )
                         }
-                        placeholder="שם השלב"
+                        placeholder={t("שם השלב")}
                         className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
                       />
                       {stageNameDropdownOpenId === stage.clientId && (
@@ -719,7 +723,7 @@ export function CustomPackageBuilder({
                                 updateStage(stage.clientId, { name: STAGE_LABELS[k] });
                                 setStageNameDropdownOpenId(null);
                               }}
-                              className="block w-full text-right px-3 py-2 text-sm hover:bg-chip"
+                              className="block w-full text-start px-3 py-2 text-sm hover:bg-chip"
                             >
                               {STAGE_LABELS[k]}
                             </button>
@@ -747,7 +751,7 @@ export function CustomPackageBuilder({
                   <div className="mb-1.5">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <span className="text-xs font-semibold">
-                          {stage.notifyClient ? "שלב מול הלקוח/ה" : "שלב פנימי"}
+                          {stage.notifyClient ? t("שלב מול הלקוח/ה") : t("שלב פנימי")}
                         </span>
                         <button
                           onClick={() => updateStage(stage.clientId, { notifyClient: !stage.notifyClient })}
@@ -764,12 +768,12 @@ export function CustomPackageBuilder({
                       </div>
                       <p className="text-[11px] text-ink-soft">
                         {stage.notifyClient
-                          ? "שלב מול הלקוח/ה: כשמסמנים אותו כבוצע, נשלחת ללקוח/ה אוטומטית הודעת עדכון בוואטסאפ."
-                          : "שלב פנימי: רק אתם רואים ומסמנים אותו (כמו עריכה או גיבוי). הלקוח/ה לא מקבלים עליו שום הודעה."}
+                          ? t("שלב מול הלקוח/ה: כשמסמנים אותו כבוצע, נשלחת ללקוח/ה אוטומטית הודעת עדכון בוואטסאפ.")
+                          : t("שלב פנימי: רק אתם רואים ומסמנים אותו (כמו עריכה או גיבוי). הלקוח/ה לא מקבלים עליו שום הודעה.")}
                       </p>
                       {stage.notifyClient && isCustomStageName(stage.name) && (
                         <div className="mt-2 rounded-xl p-3 bg-white border border-line">
-                          <div className="text-xs font-semibold mb-2">תבנית ההודעה שתישלח ללקוח/ה בסיום השלב</div>
+                          <div className="text-xs font-semibold mb-2">{t("תבנית ההודעה שתישלח ללקוח/ה בסיום השלב")}</div>
                           <textarea
                             ref={(el) => {
                               stageTextareaRefs.current[stage.clientId] = el;
@@ -781,7 +785,7 @@ export function CustomPackageBuilder({
                               setStageMessageEmptyErrorId((cur) => (cur === stage.clientId ? null : cur));
                             }}
                             rows={4}
-                            placeholder={`לדוגמה: שלום {{שם}}, השלב "${stage.name || "..."}" הושלם! קישור: `}
+                            placeholder={t('לדוגמה: שלום {{שם}}, השלב "{stage}" הושלם! קישור: ', { stage: stage.name || "..." })}
                             className="w-full rounded-lg px-2.5 py-2 text-sm border border-line bg-white leading-relaxed"
                           />
                           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
@@ -796,11 +800,11 @@ export function CustomPackageBuilder({
                               className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white border border-line text-ink-soft"
                             >
                               <option value="" disabled>
-                                + הוספת פרט
+                                {t("+ הוספת פרט")}
                               </option>
                               {CLIENT_MESSAGE_INSERT_OPTIONS.map((opt) => (
                                 <option key={opt.token} value={opt.token}>
-                                  {opt.label}
+                                  {t(opt.label)}
                                 </option>
                               ))}
                             </select>
@@ -809,7 +813,7 @@ export function CustomPackageBuilder({
                               onClick={() => setStageMessageEmojiOpenId((cur) => (cur === stage.clientId ? null : stage.clientId))}
                               className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white border border-line text-ink-soft"
                             >
-                              😀 אימוג׳י
+                              {t("😀 אימוג׳י")}
                             </button>
                             <button
                               type="button"
@@ -817,7 +821,7 @@ export function CustomPackageBuilder({
                               disabled={stageMessageAiLoadingId === stage.clientId}
                               className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-amber-bg text-amber-deep disabled:opacity-60"
                             >
-                              {stageMessageAiLoadingId === stage.clientId ? "מנסח..." : "עזרה בניסוח"}
+                              {stageMessageAiLoadingId === stage.clientId ? t("מנסח...") : t("עזרה בניסוח")}
                             </button>
                           </div>
                           {stageMessageEmojiOpenId === stage.clientId && (
@@ -838,12 +842,12 @@ export function CustomPackageBuilder({
                             </div>
                           )}
                           {stageMessageAiErrorId === stage.clientId && (
-                            <p className="text-xs text-rose mt-1.5">שגיאה בפנייה ל-AI, נסו שוב</p>
+                            <p className="text-xs text-rose mt-1.5">{t("שגיאה בפנייה ל-AI, נסו שוב")}</p>
                           )}
                           {stageMessageEmptyErrorId === stage.clientId && (
-                            <p className="text-xs text-rose mt-1.5">ההודעה ריקה. יש להזין טקסט לפני שמירה</p>
+                            <p className="text-xs text-rose mt-1.5">{t("ההודעה ריקה. יש להזין טקסט לפני שמירה")}</p>
                           )}
-                          {stageMessageErrorId === stage.clientId && <p className="text-xs text-rose mt-1.5">שגיאה בשמירה, נסו שוב</p>}
+                          {stageMessageErrorId === stage.clientId && <p className="text-xs text-rose mt-1.5">{t("שגיאה בשמירה, נסו שוב")}</p>}
                           <div className="flex justify-end mt-2">
                             <button
                               onClick={() => saveStageMessage(stage.clientId)}
@@ -851,10 +855,10 @@ export function CustomPackageBuilder({
                               className="rounded-lg px-4 py-1.5 text-xs font-semibold bg-ink text-white disabled:opacity-60"
                             >
                               {stageMessageSavingId === stage.clientId
-                                ? "שומר..."
+                                ? t("שומר...")
                                 : stageMessageSavedId === stage.clientId
-                                  ? "נשמר ✓"
-                                  : "שמירת התבנית"}
+                                  ? t("נשמר ✓")
+                                  : t("שמירת התבנית")}
                             </button>
                           </div>
                         </div>
@@ -864,7 +868,7 @@ export function CustomPackageBuilder({
                     <input
                       value={stage.notifyText}
                       onChange={(e) => updateStage(stage.clientId, { notifyText: e.target.value })}
-                      placeholder="טקסט חופשי ליומן ההתראות (אופציונלי)"
+                      placeholder={t("טקסט חופשי ליומן ההתראות (אופציונלי)")}
                       className="w-full rounded-lg px-2.5 py-1.5 text-xs border border-line bg-white mb-1.5"
                     />
                   )}
@@ -874,12 +878,12 @@ export function CustomPackageBuilder({
                       checked={stage.requiresAlbumPdf}
                       onChange={(e) => updateStage(stage.clientId, { requiresAlbumPdf: e.target.checked })}
                     />
-                    שלב זה כולל העלאת קובץ PDF (עיצוב אלבום) שיישלח ללקוח/ה
+                    {t("שלב זה כולל העלאת קובץ PDF (עיצוב אלבום) שיישלח ללקוח/ה")}
                   </label>
                 </div>
               ))}
               {stages.length === 0 && (
-                <div className="text-center py-6 text-xs text-ink-soft">אין שלבים. הוסיפו שלב ראשון</div>
+                <div className="text-center py-6 text-xs text-ink-soft">{t("אין שלבים. הוסיפו שלב ראשון")}</div>
               )}
             </div>
             <button
@@ -887,22 +891,21 @@ export function CustomPackageBuilder({
               disabled={stages.length >= MAX_STAGES}
               className="w-full rounded-lg py-2 text-xs font-semibold mt-2 bg-white border border-line text-ink disabled:opacity-40"
             >
-              + הוספת שלב
+              {t("+ הוספת שלב")}
             </button>
           </div>
 
           <div className="pt-1">
-            <label className="text-xs block mb-1.5 text-ink-soft">תמחור לפי סוג אירוע (נושא)</label>
+            <label className="text-xs block mb-1.5 text-ink-soft">{t("תמחור לפי סוג אירוע (נושא)")}</label>
             <p className="text-[11px] text-ink-soft mb-2">
-              השאירו מחיר ריק אם החבילה לא מוצעת לנושא הזה. נושאים משותפים לכל החבילות, כולל
-              המחירון הרגיל בהגדרות.
+              {t("השאירו מחיר ריק אם החבילה לא מוצעת לנושא הזה. נושאים משותפים לכל החבילות, כולל המחירון הרגיל בהגדרות.")}
             </p>
             <div className="space-y-2">
               {topics.map((topic) =>
                 confirmingRemoveTopicId === topic.clientId ? (
                   <div key={topic.clientId} className="rounded-xl p-2.5 bg-chip">
                     <p className="text-[11px] mb-2 text-rose">
-                      למחוק את הנושא &quot;{topic.name}&quot;? המחיר שלו יימחק מכל החבילות, כולל המחירון הרגיל.
+                      {t("למחוק את הנושא \"{name}\"? המחיר שלו יימחק מכל החבילות, כולל המחירון הרגיל.", { name: topic.name })}
                     </p>
                     <div className="flex gap-2">
                       <button
@@ -910,13 +913,13 @@ export function CustomPackageBuilder({
                         disabled={removingTopicId === topic.clientId}
                         className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold bg-rose text-white disabled:opacity-60"
                       >
-                        {removingTopicId === topic.clientId ? "מוחק..." : "כן, מחק"}
+                        {removingTopicId === topic.clientId ? t("מוחק...") : t("כן, מחק")}
                       </button>
                       <button
                         onClick={() => setConfirmingRemoveTopicId(null)}
                         className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold bg-white border border-line text-ink-soft"
                       >
-                        ביטול
+                        {t("ביטול")}
                       </button>
                     </div>
                   </div>
@@ -925,7 +928,7 @@ export function CustomPackageBuilder({
                     <input
                       value={topic.name}
                       onChange={(e) => updateTopic(topic.clientId, { name: e.target.value })}
-                      placeholder="שם הנושא"
+                      placeholder={t("שם הנושא")}
                       disabled={topic.isPersisted}
                       className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white disabled:bg-chip"
                     />
@@ -940,20 +943,20 @@ export function CustomPackageBuilder({
                       onClick={() => setConfirmingRemoveTopicId(topic.clientId)}
                       className="text-xs text-rose shrink-0"
                     >
-                      מחיקה
+                      {t("מחיקה")}
                     </button>
                   </div>
                 )
               )}
               {topics.length === 0 && (
-                <div className="text-center py-4 text-xs text-ink-soft">אין נושאים עדיין</div>
+                <div className="text-center py-4 text-xs text-ink-soft">{t("אין נושאים עדיין")}</div>
               )}
             </div>
             <button
               onClick={addTopic}
               className="w-full rounded-lg py-2 text-xs font-semibold mt-2 bg-white border border-line text-ink"
             >
-              + הוספת נושא
+              {t("+ הוספת נושא")}
             </button>
           </div>
 
@@ -964,7 +967,7 @@ export function CustomPackageBuilder({
             disabled={saving}
             className="w-full rounded-xl py-3 text-sm font-semibold mt-2 bg-ink text-white disabled:opacity-60"
           >
-            {saving ? "שומר..." : "שמירת החבילה"}
+            {saving ? t("שומר...") : t("שמירת החבילה")}
           </button>
         </div>
       </div>

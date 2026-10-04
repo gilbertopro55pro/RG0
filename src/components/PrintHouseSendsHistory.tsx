@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PrintSend } from "@/app/api/galleries/[id]/album/print-sends/route";
 import { formatPrintDate, formatPrintDay } from "@/lib/printHouseLinks";
+import { useT } from "@/i18n/client";
 
 // Previous print-house sends for one gallery, with whether the print house downloaded the files
 // (tracked through /print/<token>, migration 0140). Renews an expired link while the file still
 // exists, or sends the album again once the file was deleted.
 export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { galleryId: string; refreshKey?: number }) {
+  const t = useT();
   const [sends, setSends] = useState<PrintSend[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -50,10 +52,10 @@ export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { 
     const data = res ? await res.json().catch(() => null) : null;
     setBusyId(null);
     if (!res?.ok) {
-      setMessage(data?.error ?? "חידוש הקישור נכשל");
+      setMessage(data?.error ?? t("חידוש הקישור נכשל"));
       return;
     }
-    setMessage(`הקישור חודש עד ${formatPrintDay(data.linkExpiresAt)}. אותו קישור מהמייל עובד שוב.`);
+    setMessage(t("הקישור חודש עד {date}. אותו קישור מהמייל עובד שוב.", { date: formatPrintDay(data.linkExpiresAt) }));
     load();
   };
 
@@ -68,10 +70,10 @@ export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { 
     const data = res ? await res.json().catch(() => null) : null;
     setBusyId(null);
     if (!res?.ok) {
-      setMessage(data?.error ?? "השליחה נכשלה");
+      setMessage(data?.error ?? t("השליחה נכשלה"));
       return;
     }
-    setMessage("הקבצים מוכנים מחדש ויישלחו במייל לבית הדפוס בעוד כמה דקות.");
+    setMessage(t("הקבצים מוכנים מחדש ויישלחו במייל לבית הדפוס בעוד כמה דקות."));
     load();
   };
 
@@ -79,7 +81,7 @@ export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { 
     if (!s.linkUrl) return;
     try {
       await navigator.clipboard.writeText(`${window.location.origin}${s.linkUrl}`);
-      setMessage("הקישור הועתק");
+      setMessage(t("הקישור הועתק"));
     } catch {
       setMessage(`${window.location.origin}${s.linkUrl}`);
     }
@@ -87,7 +89,7 @@ export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { 
 
   return (
     <div className="mt-4">
-      <div className="text-xs font-semibold text-ink-soft mb-2">שליחות קודמות</div>
+      <div className="text-xs font-semibold text-ink-soft mb-2">{t("שליחות קודמות")}</div>
       <div className="space-y-2">
         {sends.map((s) => {
           const expired = !!s.linkExpiresAt && new Date(s.linkExpiresAt).getTime() < loadedAt;
@@ -95,14 +97,16 @@ export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { 
           const failed = s.status === "failed" || s.status === "cancelled";
           let status: string;
           let tone = "text-ink-soft";
-          if (preparing) status = "הקבצים בהכנה, המייל יישלח בסיום";
+          if (preparing) status = t("הקבצים בהכנה, המייל יישלח בסיום");
           else if (failed) {
-            status = "השליחה נכשלה";
+            status = t("השליחה נכשלה");
             tone = "text-rose";
           } else if (s.downloadCount > 0) {
-            status = `✓ בית הדפוס הוריד את הקבצים ב-${formatPrintDate(s.firstDownloadedAt!)}${s.downloadCount > 1 ? ` (${s.downloadCount} הורדות)` : ""}`;
+            status =
+              t("✓ בית הדפוס הוריד את הקבצים ב-{date}", { date: formatPrintDate(s.firstDownloadedAt!) }) +
+              (s.downloadCount > 1 ? t(" ({n} הורדות)", { n: s.downloadCount }) : "");
             tone = "text-sage font-semibold";
-          } else status = s.linkUrl ? "נשלח, עוד לא הורד" : "נשלח (שליחה ישנה, בלי מעקב הורדה)";
+          } else status = s.linkUrl ? t("נשלח, עוד לא הורד") : t("נשלח (שליחה ישנה, בלי מעקב הורדה)");
 
           return (
             <div key={s.id} className="rounded-lg border border-line bg-white p-2.5">
@@ -115,8 +119,10 @@ export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { 
               <div className={`text-xs mt-1 ${tone}`}>{status}</div>
               {!preparing && !failed && s.linkExpiresAt && (
                 <div className="text-[11px] text-ink-soft mt-0.5">
-                  {expired ? `הקישור פג תוקף ב-${formatPrintDay(s.linkExpiresAt)}` : `הקישור בתוקף עד ${formatPrintDay(s.linkExpiresAt)}`}
-                  {!s.fileAvailable && " · הקבצים כבר נמחקו מהשרת"}
+                  {expired
+                    ? t("הקישור פג תוקף ב-{date}", { date: formatPrintDay(s.linkExpiresAt) })
+                    : t("הקישור בתוקף עד {date}", { date: formatPrintDay(s.linkExpiresAt) })}
+                  {!s.fileAvailable && t(" · הקבצים כבר נמחקו מהשרת")}
                 </div>
               )}
               <div className="flex flex-wrap gap-1.5 mt-2">
@@ -128,11 +134,11 @@ export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { 
                       onClick={() => renew(s)}
                       className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-line bg-chip disabled:opacity-50"
                     >
-                      {expired ? "חידוש הקישור לשבוע" : "הארכת הקישור בשבוע"}
+                      {expired ? t("חידוש הקישור לשבוע") : t("הארכת הקישור בשבוע")}
                     </button>
                     {!expired && (
                       <button type="button" onClick={() => copy(s)} className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-line bg-chip">
-                        העתקת הקישור
+                        {t("העתקת הקישור")}
                       </button>
                     )}
                   </>
@@ -144,7 +150,7 @@ export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { 
                     onClick={() => resend(s)}
                     className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-line bg-chip disabled:opacity-50"
                   >
-                    שליחה מחדש
+                    {t("שליחה מחדש")}
                   </button>
                 )}
               </div>
