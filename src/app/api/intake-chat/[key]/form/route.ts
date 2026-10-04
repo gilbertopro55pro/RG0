@@ -6,8 +6,10 @@ import { resolveChatPhotographer } from "@/lib/intakeChatAccess";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { cleanSource } from "@/lib/leadSource";
-import { canChooseClientLang } from "@/lib/clientLang";
+import { canChooseClientLang, photographerLang } from "@/lib/clientLang";
 import { isLang } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 export const runtime = "nodejs";
 
@@ -45,13 +47,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     ...(canChooseClientLang(p.email) && isLang(body.lang) ? { client_lang: body.lang } : {}),
   });
   if (error) return NextResponse.json({ error: "שגיאה בשליחת הפנייה" }, { status: 500 });
-  await sendPushToPhotographer(p.id, { title: `פנייה חדשה: ${name}`, body: [eventType, date].filter(Boolean).join(" · ") || "מטופס הפנייה", url: "/leads", tag: "new-lead" });
+  // The photographer's push and email follow their own language (photographers.ui_lang).
+  const t = makeT(messagesFor(photographerLang(p.ui_lang)));
+  await sendPushToPhotographer(p.id, { title: t("פנייה חדשה: {name}", { name }), body: [eventType, date].filter(Boolean).join(" · ") || t("מטופס הפנייה"), url: "/leads", tag: "new-lead" });
 
   const origin = new URL(request.url).origin;
   await sendEmail({
     to: notificationEmailFor(p.email),
-    subject: `פנייה חדשה מהטופס: ${name}`,
-    text: `שלום ${p.name},\n\nהתקבלה פנייה חדשה בטופס הפנייה שלך.\n\nשם: ${name}\nטלפון: ${phone}${eventType ? `\nאירוע: ${eventType}` : ""}${date ? `\nתאריך: ${date}` : ""}${notes ? `\nהערות: ${notes}` : ""}\n\nלכל הלידים: ${origin}/leads`,
+    subject: t("פנייה חדשה מהטופס: {name}", { name }),
+    text:
+      `${t("שלום {name},", { name: p.name })}\n\n${t("התקבלה פנייה חדשה בטופס הפנייה שלך.")}\n\n${t("שם: {v}", { v: name })}\n${t("טלפון: {v}", { v: phone })}` +
+      `${eventType ? `\n${t("אירוע: {v}", { v: eventType })}` : ""}${date ? `\n${t("תאריך: {v}", { v: date })}` : ""}${notes ? `\n${t("הערות: {v}", { v: notes })}` : ""}` +
+      `\n\n${t("לכל הלידים: {url}", { url: `${origin}/leads` })}`,
   }).catch((e) => console.error("Form lead email failed:", p.id, e));
   return NextResponse.json({ ok: true });
 }

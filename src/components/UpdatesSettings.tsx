@@ -1,8 +1,9 @@
-import { CHANGELOG } from "@/lib/changelog";
-import { getT } from "@/i18n/server";
+import { CHANGELOG, changesFor } from "@/lib/changelog";
+import { getLang, getT } from "@/i18n/server";
 
 export default async function UpdatesSettings() {
   const t = await getT();
+  const lang = await getLang();
   return (
     <div className="space-y-3">
       {CHANGELOG.map((entry) => (
@@ -12,7 +13,7 @@ export default async function UpdatesSettings() {
             <span className="text-xs font-data text-ink-soft">{entry.date}</span>
           </div>
           <ul className="space-y-2">
-            {entry.changes.map((change, i) => (
+            {changesFor(entry, lang).map((change, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
                 <span className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0" style={{ background: "var(--color-amber-deep)" }} />
                 <span>{change}</span>

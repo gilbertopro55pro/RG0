@@ -2,10 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
-import { createPayplusCheckoutLink, deletePayplusRecurring, PAYPLUS_BILLING } from "@/lib/payplus";
+import { createPayplusCheckoutLink, deletePayplusRecurring, PAYPLUS_BILLING, payplusLanguageFor } from "@/lib/payplus";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { Photographer } from "@/lib/types";
 import { ADMIN_EMAIL } from "@/lib/admin";
+import { photographerLang } from "@/lib/clientLang";
+import { planSwitchEmail, renewalReminderEmail, trialDeletionFinalWarningEmail, trialDeletionWarningEmail, trialEndingEmail } from "@/lib/billingEmails";
 import { deleteExpiredTrialAccount, isTrialDeletionCandidate, trialDeletionDate, TRIAL_RETENTION_DAYS, WARN_DAYS_BEFORE } from "@/lib/accountDeletion";
 
 const ANNUAL_REMINDER_DAYS_BEFORE = 30;
@@ -64,18 +66,17 @@ export async function GET(request: NextRequest) {
     const reminderCutoff = new Date(now.getTime() + reminderDays * 24 * 60 * 60 * 1000);
     if (new Date(photographer.current_period_end!) > reminderCutoff) continue;
 
-    const renewalDateHe = new Date(photographer.current_period_end!).toLocaleDateString("he-IL");
     const planInfo = SUBSCRIPTION_PLANS[photographer.plan];
     const amount = PAYPLUS_BILLING[photographer.plan].amount;
     try {
       await sendEmail({
         to: notificationEmailFor(photographer.email),
-        subject: `המנוי שלך יחודש בקרוב | ${renewalDateHe}`,
-        text:
-          `שלום ${photographer.name},\n\n` +
-          `המנוי ${planInfo.label} שלך במערכת גילברטו יחודש אוטומטית בתאריך ${renewalDateHe} בסך ₪${amount}.\n` +
-          `אם ברצונך לכבות את החידוש האוטומטי, ניתן לעשות זאת בכל עת מתוך הגדרות > מנוי.\n\n` +
-          `תודה שאת/ה חלק מהמערכת!`,
+        ...renewalReminderEmail(photographerLang(photographer.ui_lang), {
+          name: photographer.name,
+          planLabel: planInfo.label,
+          periodEnd: photographer.current_period_end!,
+          amount,
+        }),
       });
     } catch (e) {
       console.error("Renewal reminder email failed:", e);
@@ -126,19 +127,22 @@ export async function GET(request: NextRequest) {
         customerEmail: notificationEmailFor(photographer.email),
         customerPhone: photographer.phone,
         baseUrl,
+        language: payplusLanguageFor(photographer.ui_lang),
       });
 
       const targetInfo = SUBSCRIPTION_PLANS[targetPlan];
       const targetAmount = PAYPLUS_BILLING[targetPlan].amount;
       const wasOnLongCycle = PAYPLUS_BILLING[photographer.plan].recurringRangeMonths > 1;
-      const reasonText = wasOnLongCycle
-        ? `זהו החיוב עבור החודשים ה-11 וה-12 של תקופת המנוי הקודמת שלך, בעקבות המעבר למסלול ${targetInfo.label} שביקשת, במקום שיהיו חינמיים כמו במסלול הקודם. החל מהמחזור שאחרי כן תחויב/י ₪${targetInfo.pricePerMonth} מדי חודש כמסלול ${targetInfo.label} רגיל.`
-          : `כפי שביקשת, המנוי שלך עובר למסלול ${targetInfo.label} (₪${targetAmount}) החל מהמחזור הבא.`;
-
       await sendEmail({
         to: notificationEmailFor(photographer.email),
-        subject: "המעבר למסלול החדש שלך | נדרשת השלמת תשלום",
-        text: `שלום ${photographer.name},\n\n${reasonText}\n\nלהשלמת התשלום: ${paymentPageLink}\n\nתודה!`,
+        ...planSwitchEmail(photographerLang(photographer.ui_lang), {
+          name: photographer.name,
+          targetLabel: targetInfo.label,
+          targetAmount,
+          targetPricePerMonth: targetInfo.pricePerMonth,
+          wasOnLongCycle,
+          paymentLink: paymentPageLink,
+        }),
       });
 
       await supabase
@@ -157,13 +161,13 @@ export async function GET(request: NextRequest) {
   const trialCutoff = new Date(now.getTime() + 36 * 60 * 60 * 1000);
   const { data: trialsEnding } = await supabase
     .from("photographers")
-    .select("id, name, email, trial_ends_at")
+    .select("id, name, email, trial_ends_at, ui_lang")
     .eq("subscription_status", "trialing")
     .is("trial_reminder_sent_at", null)
     .not("trial_ends_at", "is", null)
     .gt("trial_ends_at", now.toISOString())
     .lte("trial_ends_at", trialCutoff.toISOString())
-    .returns<Pick<Photographer, "id" | "name" | "email" | "trial_ends_at">[]>();
+    .returns<Pick<Photographer, "id" | "name" | "email" | "trial_ends_at" | "ui_lang">[]>();
 
   let trialRemindedCount = 0;
   const siteUrl = new URL(request.url).origin;
@@ -171,13 +175,7 @@ export async function GET(request: NextRequest) {
     try {
       await sendEmail({
         to: notificationEmailFor(photographer.email),
-        subject: "תקופת הניסיון בגילברטו מסתיימת מחר",
-        text:
-          `שלום ${photographer.name},\n\n` +
-          `תקופת הניסיון שלך במערכת גילברטו מסתיימת מחר. כדי להמשיך לעבוד בלי הפסקה, בוחרים מסלול כאן:\n` +
-          `${siteUrl}/billing\n\n` +
-          `כל האירועים, הגלריות והלקוחות שהכנסת נשמרים 30 יום אחרי סוף הניסיון, ואחרי התשלום ממשיכים בדיוק מאיפה שעצרת. בלי תשלום עד אז, החשבון והנתונים נמחקים.\n\n` +
-          `צוות גילברטו`,
+        ...trialEndingEmail(photographerLang(photographer.ui_lang), { name: photographer.name, siteUrl }),
       });
       await supabase.from("photographers").update({ trial_reminder_sent_at: now.toISOString() }).eq("id", photographer.id);
       trialRemindedCount++;
@@ -191,10 +189,10 @@ export async function GET(request: NextRequest) {
   // previous one to have actually been sent, so nobody is ever deleted without both warnings, even
   // if the cron skipped days (the first warning always comes at least 7 days before deletion).
   const DAY_MS = 86_400_000;
-  const retentionFields = "id, name, email, subscription_status, trial_ends_at, payplus_recurring_uid, keep_account, trial_deletion_warned_at, trial_deletion_final_warned_at";
+  const retentionFields = "id, name, email, subscription_status, trial_ends_at, payplus_recurring_uid, keep_account, trial_deletion_warned_at, trial_deletion_final_warned_at, ui_lang";
   type RetentionRow = Pick<
     Photographer,
-    "id" | "name" | "email" | "subscription_status" | "trial_ends_at" | "payplus_recurring_uid" | "keep_account" | "trial_deletion_warned_at" | "trial_deletion_final_warned_at"
+    "id" | "name" | "email" | "subscription_status" | "trial_ends_at" | "payplus_recurring_uid" | "keep_account" | "trial_deletion_warned_at" | "trial_deletion_final_warned_at" | "ui_lang"
   >;
   const { data: endedTrials } = await supabase
     .from("photographers")
@@ -212,20 +210,13 @@ export async function GET(request: NextRequest) {
     if (!isTrialDeletionCandidate(p, now) || !p.trial_ends_at) continue;
     const deleteAt = trialDeletionDate(p.trial_ends_at);
     const msLeft = deleteAt.getTime() - now.getTime();
-    const deleteAtHe = deleteAt.toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" });
+    const lang = photographerLang(p.ui_lang);
     try {
       if (!p.trial_deletion_warned_at) {
         if (msLeft > WARN_DAYS_BEFORE * DAY_MS) continue;
         await sendEmail({
           to: notificationEmailFor(p.email),
-          subject: `החשבון שלך בגילברטו יימחק ב-${deleteAtHe}`,
-          text:
-            `שלום ${p.name},\n\n` +
-            `תקופת הניסיון שלך בגילברטו הסתיימה, ועדיין לא נבחר מסלול. כפי שמופיע בתנאי השימוש, הנתונים נשמרים ` +
-            `${TRIAL_RETENTION_DAYS} יום מסוף הניסיון, ולכן ב-${deleteAtHe} החשבון וכל מה שבו יימחקו לצמיתות: ` +
-            `האירועים, הלקוחות, הגלריות והתמונות.\n\n` +
-            `כדי לשמור הכל ולהמשיך בדיוק מאיפה שעצרת, בוחרים מסלול כאן:\n${siteUrl}/billing\n\n` +
-            `צוות גילברטו`,
+          ...trialDeletionWarningEmail(lang, { name: p.name, deleteAt, retentionDays: TRIAL_RETENTION_DAYS, siteUrl }),
         });
         await supabase.from("photographers").update({ trial_deletion_warned_at: now.toISOString() }).eq("id", p.id);
         retentionWarned++;
@@ -236,13 +227,7 @@ export async function GET(request: NextRequest) {
         if (msLeft > DAY_MS || firstWarnAgeMs < (WARN_DAYS_BEFORE - 1) * DAY_MS) continue;
         await sendEmail({
           to: notificationEmailFor(p.email),
-          subject: "תזכורת אחרונה: החשבון שלך בגילברטו יימחק מחר",
-          text:
-            `שלום ${p.name},\n\n` +
-            `מחר החשבון שלך בגילברטו וכל הנתונים שבו יימחקו לצמיתות, כי תקופת הניסיון הסתיימה ולא נבחר מסלול. ` +
-            `אחרי המחיקה אי אפשר לשחזר אותם.\n\n` +
-            `כדי לשמור הכל, בוחרים מסלול היום:\n${siteUrl}/billing\n\n` +
-            `צוות גילברטו`,
+          ...trialDeletionFinalWarningEmail(lang, { name: p.name, siteUrl }),
         });
         await supabase.from("photographers").update({ trial_deletion_final_warned_at: now.toISOString() }).eq("id", p.id);
         retentionFinalWarned++;

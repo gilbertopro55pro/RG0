@@ -7,13 +7,13 @@ import { GENERIC_STAGE_UPDATE_TEMPLATE } from "@/lib/stages";
 import { removeObjects, removePreviewObjects } from "@/lib/storage";
 import type { GalleryRow } from "@/lib/types";
 import { runLeadRetention } from "@/lib/leadRetention";
-import { clientLangFor } from "@/lib/clientLang";
+import { clientLangFor, photographerLang } from "@/lib/clientLang";
 import { dateLocale } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 
 type GalleryWithRelations = GalleryRow & {
-  photographers: { name: string; email: string } | null;
+  photographers: { name: string; email: string; ui_lang?: string | null } | null;
   events: { client_name: string } | null;
 };
 
@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
   // 1. Archive galleries whose validity period has ended.
   const { data: toArchive } = await supabase
     .from("galleries")
-    .select("*, photographers(name, email), events(client_name)")
+    .select("*, photographers(name, email, ui_lang), events(client_name)")
     .eq("published", true)
     .is("archived_at", null)
     .not("expires_at", "is", null)
@@ -174,15 +174,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (gallery.photographers?.email) {
+      // To the photographer, in their own language (photographers.ui_lang); Hebrew when unset.
+      const lang = photographerLang(gallery.photographers.ui_lang);
+      const t = makeT(messagesFor(lang));
+      const deleteDate = permanentDeleteAt.toLocaleDateString(dateLocale(lang));
       try {
         await sendEmail({
           to: gallery.photographers.email,
-          subject: `הגלריה של ${gallery.events?.client_name ?? "האירוע"} עברה לארכיון`,
+          subject: t("הגלריה של {name} עברה לארכיון", { name: gallery.events?.client_name ?? t("האירוע") }),
           text:
-            `שלום ${gallery.photographers.name},\n\n` +
-            `תוקף הגלריה "${gallery.title}" (${gallery.events?.client_name ?? ""}) הסתיים והיא עברה לארכיון.\n` +
-            `הגלריה תימחק סופית מהאחסון בתאריך ${deleteDateHe}, כולל כל התמונות שבה.\n\n` +
-            `אם תרצה/י לחדש את תוקף הגלריה לפני המחיקה, אפשר לעשות זאת מתוך כרטיס האירוע במערכת.`,
+            `${t("שלום {name},", { name: gallery.photographers.name })}\n\n` +
+            `${t("תוקף הגלריה \"{title}\" ({client}) הסתיים והיא עברה לארכיון.", { title: gallery.title, client: gallery.events?.client_name ?? "" })}\n` +
+            `${t("הגלריה תימחק סופית מהאחסון בתאריך {date}, כולל כל התמונות שבה.", { date: deleteDate })}\n\n` +
+            t("אם תרצה/י לחדש את תוקף הגלריה לפני המחיקה, אפשר לעשות זאת מתוך כרטיס האירוע במערכת."),
         });
       } catch (e) {
         console.error("Gallery archive email failed:", e);

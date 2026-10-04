@@ -7,6 +7,9 @@ import { INTAKE_ALERT_RATIO, monthKeyIsrael } from "@/lib/intakeCredits";
 import { sendPushToPhotographer } from "@/lib/push";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
+import { photographerLang } from "@/lib/clientLang";
+import { messagesFor } from "@/i18n/dict";
+import { makeT, type TFn } from "@/i18n/translate";
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>;
 
@@ -22,7 +25,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // (readable to share), otherwise their private intake_chat_token.
 export async function resolveChatPhotographer(supabase: ServiceClient, key: string): Promise<ChatPhotographer | null> {
   const fields =
-    "id, name, email, plan, subscription_status, trial_ends_at, portfolio_slug, logo_storage_path, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, google_calendar_import_color_id, google_calendar_color_id, meta_pixel_id, intake_chat_title, intake_extra_conversations";
+    "id, name, email, plan, ui_lang, subscription_status, trial_ends_at, portfolio_slug, logo_storage_path, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, google_calendar_import_color_id, google_calendar_color_id, meta_pixel_id, intake_chat_title, intake_extra_conversations";
   const bySlug = await supabase.from("photographers").select(fields).eq("portfolio_slug", key).maybeSingle<ChatPhotographer>();
   if (bySlug.data) return bySlug.data;
   if (!UUID_RE.test(key)) return null;
@@ -84,26 +87,34 @@ async function alertCapFull(supabase: ServiceClient, p: ChatPhotographer, cap: n
     .select("id");
   if (!data?.length) return;
   const extra = p.intake_extra_conversations ?? 0;
+  const t = photographerT(p);
   const body =
     extra > 0
-      ? `נוצלו כל ${cap} השיחות של החודש. העוזר ממשיך עם ${extra} השיחות שרכשת.`
-      : `נוצלו כל ${cap} השיחות של החודש. מעכשיו לקוחות חדשים מקבלים טופס פנייה רגיל עד תחילת החודש הבא. אפשר לרכוש שיחות נוספות בהגדרות.`;
-  await notifyUsage(p, "עוזר הפניות: המכסה החודשית נוצלה", body);
+      ? t("נוצלו כל {cap} השיחות של החודש. העוזר ממשיך עם {extra} השיחות שרכשת.", { cap, extra })
+      : t("נוצלו כל {cap} השיחות של החודש. מעכשיו לקוחות חדשים מקבלים טופס פנייה רגיל עד תחילת החודש הבא. אפשר לרכוש שיחות נוספות בהגדרות.", { cap });
+  await notifyUsage(p, t, t("עוזר הפניות: המכסה החודשית נוצלה"), body);
 }
 
 async function alertExtrasGone(p: ChatPhotographer, cap: number) {
+  const t = photographerT(p);
   await notifyUsage(
     p,
-    "עוזר הפניות: השיחות שרכשת נגמרו",
-    `השתמשת בשיחה האחרונה שרכשת, ומכסת ${cap} השיחות של החודש כבר נוצלה. מעכשיו לקוחות חדשים מקבלים טופס פנייה רגיל עד תחילת החודש הבא, או עד שתרכוש שיחות נוספות בהגדרות.`
+    t,
+    t("עוזר הפניות: השיחות שרכשת נגמרו"),
+    t("השתמשת בשיחה האחרונה שרכשת, ומכסת {cap} השיחות של החודש כבר נוצלה. מעכשיו לקוחות חדשים מקבלים טופס פנייה רגיל עד תחילת החודש הבא, או עד שתרכוש שיחות נוספות בהגדרות.", { cap })
   );
 }
 
+// These alerts go to the photographer, in their own language (photographers.ui_lang, 2026-10-04).
+function photographerT(p: ChatPhotographer): TFn {
+  return makeT(messagesFor(photographerLang(p.ui_lang)));
+}
+
 // Phone and email: the email reaches a photographer who never turned notifications on.
-async function notifyUsage(p: ChatPhotographer, title: string, body: string) {
+async function notifyUsage(p: ChatPhotographer, t: TFn, title: string, body: string) {
   await sendPushToPhotographer(p.id, { title, body, url: "/settings?tab=automation", tag: "intake-cap" });
   const link = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://myframeflow.com"}/settings?tab=automation`;
-  await sendEmail({ to: notificationEmailFor(p.email), subject: title, text: `שלום ${p.name},\n\n${body}\n\nהגדרות העוזר:\n${link}` }).catch((e) =>
+  await sendEmail({ to: notificationEmailFor(p.email), subject: title, text: `${t("שלום {name},", { name: p.name })}\n\n${body}\n\n${t("הגדרות העוזר:")}\n${link}` }).catch((e) =>
     console.error("Intake usage email failed:", p.id, e)
   );
 }
@@ -120,11 +131,13 @@ async function alertNearCap(supabase: ServiceClient, p: ChatPhotographer, used: 
   if (!data?.length) return;
   const left = Math.max(cap - used, 0);
   const extra = p.intake_extra_conversations ?? 0;
+  const t = photographerT(p);
   await sendPushToPhotographer(p.id, {
-    title: "עוזר הפניות: נוצלו 90% מהמכסה",
+    title: t("עוזר הפניות: נוצלו 90% מהמכסה"),
     body:
-      `${used} מתוך ${cap} שיחות החודש. נשארו ${left}` +
-      (extra > 0 ? `, ועוד ${extra} שיחות שרכשת.` : ". אחרי המכסה הלקוחות יקבלו טופס פנייה רגיל. אפשר לרכוש שיחות נוספות בהגדרות."),
+      extra > 0
+        ? t("{used} מתוך {cap} שיחות החודש. נשארו {left}, ועוד {extra} שיחות שרכשת.", { used, cap, left, extra })
+        : t("{used} מתוך {cap} שיחות החודש. נשארו {left}. אחרי המכסה הלקוחות יקבלו טופס פנייה רגיל. אפשר לרכוש שיחות נוספות בהגדרות.", { used, cap, left }),
     url: "/settings?tab=automation",
     tag: "intake-cap",
   });

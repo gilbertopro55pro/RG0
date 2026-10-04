@@ -14,3 +14,9 @@ export function clientLangFor(_photographerEmail: string | null | undefined, sto
 export function canChooseClientLang(_photographerEmail: string | null | undefined): boolean {
   return true;
 }
+
+// The photographer's own language for server-sent emails and push notifications to them
+// (photographers.ui_lang, migration 0151; set from Settings › תצוגה and at signup). Null = Hebrew.
+export function photographerLang(stored: unknown): Lang {
+  return isLang(stored) ? stored : "he";
+}

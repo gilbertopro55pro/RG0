@@ -10,12 +10,12 @@ import { SLOT_LABELS, blocksSlot, shabbatClosure, type DaySlot } from "@/lib/day
 import { googleBusyOnDate } from "@/lib/calendarBusy";
 import { SUBSCRIPTION_PLANS, type SubscriptionTier } from "@/lib/stages";
 import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
-import { canChooseClientLang } from "@/lib/clientLang";
+import { canChooseClientLang, photographerLang } from "@/lib/clientLang";
 import { detectTextLang } from "@/i18n/detect";
 import { lookupPlace } from "@/lib/placeLookup";
-import { isLang, type Lang } from "@/i18n/config";
+import { dateLocale, isLang, type Lang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
-import { makeT } from "@/i18n/translate";
+import { makeT, type TFn } from "@/i18n/translate";
 
 // Intake assistant (עוזר פניות), phase 1 = web chat (owner's decisions, 2026-09-25):
 // - never talks about prices, packages or discounts; the photographer sends the quote
@@ -45,7 +45,7 @@ const isMitzvah = (d: IntakeDetails) => /(בר|בת)[\s-]*מצו/.test(d.eventTy
 
 export type IntakePhotographer = Pick<
   Photographer,
-  "id" | "name" | "email" | "plan" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day" | "intake_shabbat_closed" | "google_calendar_import_color_id" | "google_calendar_color_id"
+  "id" | "name" | "email" | "plan" | "ui_lang" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day" | "intake_shabbat_closed" | "google_calendar_import_color_id" | "google_calendar_color_id"
 >;
 
 export type IntakeConversation = {
@@ -80,10 +80,25 @@ export function missingDetails(d: IntakeDetails): string[] {
   return missing;
 }
 
-function dateText(d: IntakeDetails): string | null {
-  if (d.eventDate) return `${hebrewDate(d.eventDate)}${d.eventSlot ? `, ${SLOT_LABELS[d.eventSlot]}` : ""}${d.dateAvailable === false ? " (תפוס)" : ""}`;
-  if (d.dateUndecided) return `טרם נקבע${d.approxDate ? ` (בערך ${d.approxDate})` : ""}`;
+// Hebrew (the stored lead notes) by default; the photographer's language for what's sent to them.
+const HE_T: TFn = makeT({});
+function dateText(d: IntakeDetails, t: TFn = HE_T, lang: Lang = "he"): string | null {
+  if (d.eventDate) return `${localDate(d.eventDate, lang)}${d.eventSlot ? `, ${t(SLOT_LABELS[d.eventSlot])}` : ""}${d.dateAvailable === false ? ` ${t("(תפוס)")}` : ""}`;
+  if (d.dateUndecided) return d.approxDate ? t("טרם נקבע (בערך {approx})", { approx: d.approxDate }) : t("טרם נקבע");
   return null;
+}
+
+// What goes to the PHOTOGRAPHER (emails, push, the conversation PDF) follows their own language
+// (photographers.ui_lang, 2026-10-04); Hebrew when unset. The client-facing chat is unaffected.
+function photographerT(p: Pick<IntakePhotographer, "ui_lang">): { t: TFn; lang: Lang } {
+  const lang = photographerLang(p.ui_lang);
+  return { t: makeT(messagesFor(lang)), lang };
+}
+
+function localDate(iso: string, lang: Lang): string {
+  if (lang === "he") return hebrewDate(iso);
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(dateLocale(lang), { timeZone: "UTC", weekday: "long", day: "numeric", month: "numeric", year: "numeric" });
 }
 
 export function studioName(p: IntakePhotographer): string {
@@ -300,7 +315,7 @@ function leadNotes(d: IntakeDetails): string {
 
 // Creates or updates the conversation's lead as soon as there is a phone number, so a client who
 // leaves mid-way is never lost. needs_details stays true until complete_intake.
-async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, complete: boolean, notePrefix?: string): Promise<string | null> {
+async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, p: IntakePhotographer, complete: boolean, notePrefix?: string): Promise<string | null> {
   const d = conv.collected;
   if (!d.phone?.trim()) return conv.lead_id;
   const notes = [notePrefix, leadNotes(d)].filter(Boolean).join(" · ");
@@ -355,9 +370,10 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
   // A new lead the moment there's a phone number: the phone notification goes out now (lib/push.ts),
   // the email once the conversation is handed off.
   if (data?.id) {
+    const { t, lang } = photographerT(p);
     await sendPushToPhotographer(conv.photographer_id, {
-      title: `פנייה חדשה מהעוזר: ${row.name}`,
-      body: [d.eventType, d.eventDate ? hebrewDate(d.eventDate) : null].filter(Boolean).join(" · ") || "לחצו לפתיחת הלידים",
+      title: t("פנייה חדשה מהעוזר: {name}", { name: d.clientName?.trim() || t("פנייה מהעוזר") }),
+      body: [d.eventType, d.eventDate ? localDate(d.eventDate, lang) : null].filter(Boolean).join(" · ") || t("לחצו לפתיחת הלידים"),
       url: "/leads",
       tag: "new-lead",
     });
@@ -366,49 +382,66 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, com
 }
 
 // The lead's details as [label, value] pairs for the conversation PDF.
-function detailPairs(d: IntakeDetails): [string, string][] {
+function detailPairs(d: IntakeDetails, t: TFn, lang: Lang): [string, string][] {
   const pairs: [string, string | null | undefined][] = [
-    ["שם", d.clientName],
-    ["טלפון", d.phone],
-    ["סוג האירוע", d.eventType],
-    ["תאריך", dateText(d)],
-    ["מקום", d.location],
-    ["אורחים", d.guests],
-    ["חלק ביום", d.eventSlot ? SLOT_LABELS[d.eventSlot] : null],
-    ["מה ייכלל בצילום", d.coverage],
-    ["צלם וידאו נוסף", d.videoCrew],
-    ["שעות", d.startTime || d.endTime ? `${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null],
-    ["חשוב להם", d.wishes],
+    [t("שם"), d.clientName],
+    [t("טלפון"), d.phone],
+    [t("סוג האירוע"), d.eventType],
+    [t("תאריך"), dateText(d, t, lang)],
+    [t("מקום"), d.location],
+    [t("אורחים"), d.guests],
+    [t("חלק ביום"), d.eventSlot ? t(SLOT_LABELS[d.eventSlot]) : null],
+    [t("מה ייכלל בצילום"), d.coverage],
+    [t("צלם וידאו נוסף"), d.videoCrew],
+    [t("שעות"), d.startTime || d.endTime ? `${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null],
+    [t("חשוב להם"), d.wishes],
   ];
   return pairs.filter((x): x is [string, string] => !!x[1]?.toString().trim()).map(([l, v]) => [l, String(v)]);
 }
 
 // The conversation as the designed PDF (lib/intakeTranscriptPdf.ts), for the handoff email and the
-// lead's "send the summary on WhatsApp" button. Null when there is nothing to show.
+// lead's "send the summary on WhatsApp" button. Null when there is nothing to show. Its labels
+// follow the photographer's language (p.ui_lang); the conversation itself stays as it was written.
 export async function conversationPdf(p: IntakePhotographer, d: IntakeDetails, messages: Anthropic.MessageParam[]): Promise<Uint8Array | null> {
   const transcript = transcriptOf(messages);
   if (!transcript.length) return null;
-  return buildIntakeTranscriptPdf({ studio: studioName(p), clientName: d.clientName ?? "", details: detailPairs(d), transcript, createdAt: new Date() });
+  const { t, lang } = photographerT(p);
+  return buildIntakeTranscriptPdf({ studio: studioName(p), clientName: d.clientName ?? "", details: detailPairs(d, t, lang), transcript, createdAt: new Date(), lang });
 }
 
-export function conversationPdfName(d: IntakeDetails): string {
+export function conversationPdfName(d: IntakeDetails, p?: Pick<IntakePhotographer, "ui_lang">): string {
   const who = (d.clientName ?? "").replace(/[\\/:*?"<>|]+/g, " ").trim();
-  return `סיכום-השיחה${who ? `-${who}` : ""}.pdf`;
+  const { t } = photographerT(p ?? {});
+  return `${t("סיכום-השיחה")}${who ? `-${who}` : ""}.pdf`;
 }
 
-async function notifyPhotographer(p: IntakePhotographer, subject: string, d: IntakeDetails, siteUrl: string, intro: string, messages?: Anthropic.MessageParam[]) {
+// The email's subject and opening line, in the photographer's language.
+type NoticeText = (t: TFn, lang: Lang) => { subject: string; intro: string };
+
+function newLeadSubject(d: IntakeDetails, t: TFn, lang: Lang): string {
+  return t("פנייה חדשה מהעוזר: {name}, {type} {date}", {
+    name: d.clientName ?? "",
+    type: d.eventType ?? "",
+    date: d.eventDate ? localDate(d.eventDate, lang) : t("(תאריך טרם נקבע)"),
+  }).trim();
+}
+
+async function notifyPhotographer(p: IntakePhotographer, notice: NoticeText, d: IntakeDetails, siteUrl: string, messages?: Anthropic.MessageParam[]) {
+  const { t, lang } = photographerT(p);
+  const { subject, intro } = notice(t, lang);
+  const date = dateText(d, t, lang);
   const lines = [
-    d.clientName ? `שם: ${d.clientName}` : null,
-    d.phone ? `טלפון: ${d.phone}` : null,
-    d.eventType ? `אירוע: ${d.eventType}` : null,
-    dateText(d) ? `תאריך: ${dateText(d)}` : null,
-    d.location ? `מקום: ${d.location}` : null,
-    d.guests ? `אורחים: ${d.guests}` : null,
-    d.eventSlot ? `חלק ביום: ${SLOT_LABELS[d.eventSlot]}` : null,
-    d.coverage ? `לכלול: ${d.coverage}` : null,
-    d.videoCrew ? `צלם וידאו נוסף: ${d.videoCrew}` : null,
-    d.startTime || d.endTime ? `שעות: ${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null,
-    d.wishes ? `חשוב להם: ${d.wishes}` : null,
+    d.clientName ? t("שם: {v}", { v: d.clientName }) : null,
+    d.phone ? t("טלפון: {v}", { v: d.phone }) : null,
+    d.eventType ? t("אירוע: {v}", { v: d.eventType }) : null,
+    date ? t("תאריך: {v}", { v: date }) : null,
+    d.location ? t("מקום: {v}", { v: d.location }) : null,
+    d.guests ? t("אורחים: {v}", { v: d.guests }) : null,
+    d.eventSlot ? t("חלק ביום: {v}", { v: t(SLOT_LABELS[d.eventSlot]) }) : null,
+    d.coverage ? t("לכלול: {v}", { v: d.coverage }) : null,
+    d.videoCrew ? t("צלם וידאו נוסף: {v}", { v: d.videoCrew }) : null,
+    d.startTime || d.endTime ? t("שעות: {v}", { v: `${d.startTime ?? "?"}–${d.endTime ?? "?"}` }) : null,
+    d.wishes ? t("חשוב להם: {v}", { v: d.wishes }) : null,
   ].filter(Boolean);
   // The whole conversation as a designed PDF the photographer can forward to the client on
   // WhatsApp (owner's request, 2026-09-28). Best-effort: the email goes out without it on failure.
@@ -416,7 +449,7 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
   if (messages) {
     try {
       const pdf = await conversationPdf(p, d, messages);
-      if (pdf) attachments = [{ filename: conversationPdfName(d), content: Buffer.from(pdf).toString("base64") }];
+      if (pdf) attachments = [{ filename: conversationPdfName(d, p), content: Buffer.from(pdf).toString("base64") }];
     } catch (e) {
       console.error("Intake transcript PDF failed:", p.id, e);
     }
@@ -426,8 +459,8 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
       to: notificationEmailFor(p.email),
       subject,
       text:
-        `שלום ${p.name},\n\n${intro}\n\n${lines.join("\n")}\n\nלכל הלידים: ${siteUrl}/leads` +
-        (attachments ? `\n\nמצורף סיכום השיחה כקובץ PDF. אפשר להעביר אותו ללקוח בוואטסאפ.` : ""),
+        `${t("שלום {name},", { name: p.name })}\n\n${intro}\n\n${lines.join("\n")}\n\n${t("לכל הלידים: {url}", { url: `${siteUrl}/leads` })}` +
+        (attachments ? `\n\n${t("מצורף סיכום השיחה כקובץ PDF. אפשר להעביר אותו ללקוח בוואטסאפ.")}` : ""),
       attachments,
     });
   } catch (e) {
@@ -438,7 +471,7 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
 // Handoff emails are queued during a turn and sent once the turn ends, so the attached
 // conversation includes the assistant's closing reply (the handoff itself happens mid-turn, from a
 // tool call, before that reply is written).
-type PendingNotice = { subject: string; intro: string };
+type PendingNotice = NoticeText;
 const pendingNotices = new WeakMap<IntakeConversation, PendingNotice[]>();
 function queueNotice(conv: IntakeConversation, n: PendingNotice) {
   pendingNotices.set(conv, [...(pendingNotices.get(conv) ?? []), n]);
@@ -446,7 +479,7 @@ function queueNotice(conv: IntakeConversation, n: PendingNotice) {
 async function flushNotices(conv: IntakeConversation, p: IntakePhotographer, siteUrl: string, messages: Anthropic.MessageParam[]) {
   const list = pendingNotices.get(conv) ?? [];
   pendingNotices.delete(conv);
-  for (const n of list) await notifyPhotographer(p, n.subject, conv.collected, siteUrl, n.intro, messages);
+  for (const n of list) await notifyPhotographer(p, n, conv.collected, siteUrl, messages);
 }
 
 // Marks the conversation done, turns its lead into a full one and emails the photographer. Runs
@@ -456,13 +489,13 @@ async function flushNotices(conv: IntakeConversation, p: IntakePhotographer, sit
 async function completeIntake(supabase: ServiceClient, conv: IntakeConversation, p: IntakePhotographer, siteUrl: string) {
   conv.state = "completed";
   conv.completed_at = new Date().toISOString();
-  conv.lead_id = await upsertLead(supabase, conv, true);
+  conv.lead_id = await upsertLead(supabase, conv, p, true);
   const d = conv.collected;
   void siteUrl;
-  queueNotice(conv, {
-    subject: `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : "(תאריך טרם נקבע)"}`.trim(),
-    intro: "העוזר אסף את כל פרטי האירוע. הליד מחכה להצעת מחיר ממך.",
-  });
+  queueNotice(conv, (t, lang) => ({
+    subject: newLeadSubject(d, t, lang),
+    intro: t("העוזר אסף את כל פרטי האירוע. הליד מחכה להצעת מחיר ממך."),
+  }));
 }
 
 async function runTool(
@@ -522,7 +555,7 @@ async function runTool(
     // Only set in a multilingual conversation (turnLangs has an entry); never anything but he/en/ru.
     if (turnLangs.has(conv) && isLang(input.client_language)) turnLangs.set(conv, { lang: input.client_language, explicit: true });
     conv.collected = { ...conv.collected, ...patch };
-    conv.lead_id = await upsertLead(supabase, conv, !!conv.completed_at);
+    conv.lead_id = await upsertLead(supabase, conv, p, !!conv.completed_at);
     const missing = missingDetails(conv.collected);
     const d = conv.collected;
     const dateReady = d.eventDate ? d.dateAvailable === true : !!d.dateUndecided;
@@ -557,7 +590,7 @@ async function runTool(
     if (!d.eventDate || !d.clientName || !d.phone) return JSON.stringify({ error: "צריך תאריך, שם וטלפון לפני רשימת ההמתנה" });
     if (conv.state === "waitlisted") return JSON.stringify({ ok: true, alreadyDone: true });
     // Nothing more to collect for a taken date — not a "missing details" lead.
-    conv.lead_id = await upsertLead(supabase, conv, true, "ברשימת ההמתנה (התאריך תפוס)");
+    conv.lead_id = await upsertLead(supabase, conv, p, true, "ברשימת ההמתנה (התאריך תפוס)");
     await supabase.from("waitlist").insert({
       photographer_id: conv.photographer_id,
       requested_date: d.eventDate,
@@ -568,7 +601,10 @@ async function runTool(
     });
     conv.state = "waitlisted";
     conv.completed_at = new Date().toISOString();
-    queueNotice(conv, { subject: `פנייה לתאריך תפוס נכנסה לרשימת ההמתנה: ${d.clientName}`, intro: "לקוח/ה פנה/תה לתאריך שכבר תפוס אצלך, ונכנס/ה לרשימת ההמתנה." });
+    queueNotice(conv, (t) => ({
+      subject: t("פנייה לתאריך תפוס נכנסה לרשימת ההמתנה: {name}", { name: d.clientName ?? "" }),
+      intro: t("לקוח/ה פנה/תה לתאריך שכבר תפוס אצלך, ונכנס/ה לרשימת ההמתנה."),
+    }));
     return JSON.stringify({ ok: true });
   }
 
@@ -722,7 +758,7 @@ export function transcriptOf(messages: Anthropic.MessageParam[]): { role: "clien
 export const IDLE_MINUTES = 20;
 
 const PHOTOGRAPHER_FIELDS =
-  "id, name, email, plan, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, google_calendar_import_color_id, google_calendar_color_id";
+  "id, name, email, plan, ui_lang, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, google_calendar_import_color_id, google_calendar_color_id";
 
 export async function finalizeIdleConversations(supabase: ServiceClient, siteUrl: string): Promise<{ completed: number; partial: number }> {
   const now = Date.now();
@@ -752,10 +788,12 @@ export async function finalizeIdleConversations(supabase: ServiceClient, siteUrl
       pendingNotices.delete(conv);
       await notifyPhotographer(
         p,
-        `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : "(תאריך טרם נקבע)"}`.trim(),
+        (t, lang) => ({
+          subject: newLeadSubject(d, t, lang),
+          intro: t("העוזר אסף את כל פרטי האירוע. הלקוח/ה לא ענה/תה על השאלה האחרונה, אז הפנייה מועברת אליך עכשיו. הליד מחכה להצעת מחיר ממך."),
+        }),
         d,
         siteUrl,
-        "העוזר אסף את כל פרטי האירוע. הלקוח/ה לא ענה/תה על השאלה האחרונה, אז הפנייה מועברת אליך עכשיו. הליד מחכה להצעת מחיר ממך.",
         conv.messages
       );
       const { error } = await supabase
@@ -769,10 +807,14 @@ export async function finalizeIdleConversations(supabase: ServiceClient, siteUrl
       conv.collected = { ...d, idleNotified: true };
       await notifyPhotographer(
         p,
-        `פנייה חלקית מהעוזר: ${d.clientName || d.phone}`,
+        (t) => ({
+          subject: t("פנייה חלקית מהעוזר: {name}", { name: d.clientName || d.phone || "" }),
+          intro: t("לקוח/ה התחיל/ה שיחה עם העוזר והשאיר/ה טלפון, אבל לא סיים/ה. חסר: {missing}. כדאי ליצור קשר.", {
+            missing: missingDetails(d).map((m) => t(m)).join(", ") || t("בדיקת התאריך"),
+          }),
+        }),
         d,
         siteUrl,
-        `לקוח/ה התחיל/ה שיחה עם העוזר והשאיר/ה טלפון, אבל לא סיים/ה. חסר: ${missingDetails(d).join(", ") || "בדיקת התאריך"}. כדאי ליצור קשר.`,
         conv.messages
       );
       const { error } = await supabase.from("bot_conversations").update({ collected: conv.collected }).eq("id", conv.id);

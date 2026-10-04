@@ -1410,7 +1410,7 @@ function PaymentLegRow({
             </a>
           ) : (
             <button onClick={onIssueDocument} disabled={issuingDocument} className="font-semibold text-amber-deep disabled:opacity-60">
-              {issuingDocument ? t("מפיק מסמך...") : t("הפקת מסמך")}
+              {issuingDocument ? t("מפיק מסמך...") : t("קבלה ללקוח")}
             </button>
           ))}
         {!notesOpen && (

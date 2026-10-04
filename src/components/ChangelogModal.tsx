@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { CHANGELOG, CURRENT_VERSION } from "@/lib/changelog";
-import { useT } from "@/i18n/client";
+import { CHANGELOG, CURRENT_VERSION, changesFor } from "@/lib/changelog";
+import { useLang, useT } from "@/i18n/client";
 
 const SEEN_KEY = "changelog-seen-version";
 const CLOSE_ANIMATION_MS = 220;
@@ -11,6 +11,7 @@ const CLOSE_ANIMATION_MS = 220;
 export default function ChangelogModal() {
   const pathname = usePathname();
   const t = useT();
+  const lang = useLang();
   const [visible, setVisible] = useState(false);
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -72,7 +73,7 @@ export default function ChangelogModal() {
         <p className="text-xs text-ink-soft mb-4">{t("העדכונים האחרונים במערכת")}</p>
 
         <ul className="space-y-2.5 mb-5">
-          {latest.changes.map((change, i) => (
+          {changesFor(latest, lang).map((change, i) => (
             <li key={i} className="flex items-start gap-2 text-sm">
               <span className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0" style={{ background: "var(--color-amber-deep)" }} />
               <span>{change}</span>
