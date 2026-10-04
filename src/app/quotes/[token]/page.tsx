@@ -7,6 +7,10 @@ import { getSignedDownloadUrl } from "@/lib/storage";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { slotFor, type LeadQuoteDetails } from "@/lib/leadQuote";
 import { latestContract } from "@/lib/quoteContract";
+import { clientLangFor } from "@/lib/clientLang";
+import ClientLangScope from "@/i18n/ClientLangScope";
+import { makeT } from "@/i18n/translate";
+import { messagesFor } from "@/i18n/dict";
 
 export default async function QuotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -31,11 +35,18 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
       }
     >();
 
+  // UI languages phase 2: the client's language (leads.client_lang, admin account only for now).
+  // Not found: the photographer is unknown, so Hebrew.
+  const lang = clientLangFor(lead?.photographers?.email, lead?.client_lang);
+  const t = makeT(messagesFor(lang));
+
   if (!lead || !lead.quoted_amount) {
     return (
-      <div className="max-w-md mx-auto px-4 pt-16 pb-10 w-full text-center">
-        <p className="text-sm text-ink-soft">הצעת המחיר לא נמצאה.</p>
-      </div>
+      <ClientLangScope lang={lang}>
+        <div className="max-w-md mx-auto px-4 pt-16 pb-10 w-full text-center">
+          <p className="text-sm text-ink-soft">{t("הצעת המחיר לא נמצאה.")}</p>
+        </div>
+      </ClientLangScope>
     );
   }
 
@@ -44,7 +55,9 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     .select("*")
     .eq("photographer_id", lead.photographer_id)
     .returns<CustomPackageRow[]>();
-  const packageLabelText = resolveLeadPackageLabel(lead.package_interest, customPackages ?? []);
+  // Standard package names are in the dictionary; a custom package's name stays as typed.
+  const rawPackageLabel = resolveLeadPackageLabel(lead.package_interest, customPackages ?? []);
+  const packageLabelText = rawPackageLabel ? t(rawPackageLabel) : rawPackageLabel;
 
   // The owner's own hours rules (default hours, family photos, the extra-hours notice) are for their
   // clients only; every photographer's client gets the page, the approval and the questionnaire.
@@ -67,6 +80,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
   const logoUrl = ph.logo_storage_path ? await getSignedDownloadUrl("logos", ph.logo_storage_path, 60 * 60 * 24) : null;
   const conv = (lead.details ?? null) as { eventSlot?: string; location?: string } | null;
   return (
+    <ClientLangScope lang={lang}>
     <QuoteApprovalFlow
       token={token}
       clientName={lead.name}
@@ -94,5 +108,6 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
       businessRules={isAdminLead}
       packageLabel={packageLabelText || null}
     />
+    </ClientLangScope>
   );
 }

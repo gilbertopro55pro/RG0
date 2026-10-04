@@ -17,7 +17,7 @@ import { sourceLabel } from "@/lib/leadSource";
 import { daysUntilPurge } from "@/lib/leadRetention";
 import { createClient } from "@/lib/supabase/client";
 import { useT, useLang } from "@/i18n/client";
-import { dateLocale, type Lang } from "@/i18n/config";
+import { dateLocale, isLang, LANG_LABELS, LANGS, type Lang } from "@/i18n/config";
 import type { TFn } from "@/i18n/translate";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
@@ -34,6 +34,8 @@ export type LeadsQuoteBuilderData = {
   customEventTypes: string[];
   defaultTaxStatus: "exempt" | "licensed";
   quoteExtras?: boolean;
+  // The client-language picker (UI languages phase 2): canChooseClientLang, admin only for now.
+  clientLangPicker?: boolean;
 };
 
 // "נוצר ב-29.9.2026, 15:55", Israel time.
@@ -145,6 +147,17 @@ export default function LeadsView({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
+    });
+  };
+
+  // The language of this client's pages (quote, contract, portal, gallery). Admin only for now.
+  const setClientLang = async (id: string, clientLang: string) => {
+    if (!isLang(clientLang)) return;
+    updateLead(id, { client_lang: clientLang });
+    await fetch(`/api/leads/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_lang: clientLang }),
     });
   };
 
@@ -308,6 +321,21 @@ export default function LeadsView({
               {lead.quoted_amount && <CopyQuoteLinkButton token={lead.quote_token} />}
               {lead.quote_details?.items?.length ? <QuotePdfButton lead={lead} /> : null}
               <span className="flex-1" />
+              {quoteBuilder.clientLangPicker && (
+                <select
+                  value={isLang(lead.client_lang) ? lead.client_lang : "he"}
+                  onChange={(e) => setClientLang(lead.id, e.target.value)}
+                  aria-label={t("שפת הלקוח/ה")}
+                  title={t("שפת הלקוח/ה")}
+                  className="text-[11px] h-7 px-1.5 rounded-full font-medium border-none bg-chip text-ink-soft"
+                >
+                  {LANGS.map((l) => (
+                    <option key={l} value={l}>
+                      {LANG_LABELS[l]}
+                    </option>
+                  ))}
+                </select>
+              )}
               <RowMenu items={[{ label: t("מחיקת הליד"), onClick: () => deleteLead(lead.id), danger: true }]} />
             </div>
 
@@ -452,6 +480,8 @@ export default function LeadsView({
           initialCustomEventTypes={quoteBuilder.customEventTypes}
           defaultTaxStatus={quoteBuilder.defaultTaxStatus}
           quoteExtras={quoteBuilder.quoteExtras}
+          clientLangPicker={quoteBuilder.clientLangPicker}
+          initialClientLang={builderLead.client_lang}
           prefill={buildLeadQuotePrefill({
             details: builderLead.details,
             leadName: builderLead.name,

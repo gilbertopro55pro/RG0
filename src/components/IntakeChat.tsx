@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { sourceFromSearch } from "@/lib/leadSource";
+import { useLang, useT } from "@/i18n/client";
+import { dirOf } from "@/i18n/config";
 
 type Fbq = ((...args: unknown[]) => void) & { callMethod?: (...a: unknown[]) => void; queue?: unknown[][]; loaded?: boolean; version?: string; push?: unknown };
 
@@ -61,8 +63,12 @@ export default function IntakeChat({
   replyHours: number;
   pixelId: string | null;
 }) {
+  const t = useT();
+  // The page language (ClientLangScope; Hebrew for every account but the admin's, for now). Sent with
+  // each message so the assistant starts in it (lib/intakeAssistant.ts).
+  const lang = useLang();
   const storageKey = `intake-session:${chatKey}`;
-  const greeting: Line = { role: "assistant", text: `היי 👋 כאן העוזר של ${studio}. מה חוגגים, ומתי?` };
+  const greeting: Line = { role: "assistant", text: t("היי 👋 כאן העוזר של {studio}. מה חוגגים, ומתי?", { studio }) };
   const [lines, setLines] = useState<Line[]>([greeting]);
   const [session, setSession] = useState<string | null>(null);
   const [state, setState] = useState<string | null>(null);
@@ -113,7 +119,7 @@ export default function IntakeChat({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // src: which link the client came from (?src=, utm_source, fbclid); used when the conversation starts.
-        body: JSON.stringify({ session, message: text, src: sourceFromSearch(window.location.search) }),
+        body: JSON.stringify({ session, message: text, src: sourceFromSearch(window.location.search), lang }),
       });
       const data: { session?: string; reply?: string; state?: string; error?: string; unavailable?: string; newLead?: boolean } = await res
         .json()
@@ -123,7 +129,8 @@ export default function IntakeChat({
         return;
       }
       if (!res.ok || !data.reply) {
-        setError(data.error ?? "ההודעה לא נשלחה. נסו שוב");
+        // The API's errors are Hebrew; known ones have a translation in the chat dictionary.
+        setError(t(data.error ?? "ההודעה לא נשלחה. נסו שוב"));
         setLines((l) => l.slice(0, -1));
         setDraft(text);
         return;
@@ -143,7 +150,7 @@ export default function IntakeChat({
         setLines((l) => [...l, { role: "assistant", text: parts[i] }]);
       }
     } catch {
-      setError("אין חיבור. נסו שוב");
+      setError(t("אין חיבור. נסו שוב"));
       setLines((l) => l.slice(0, -1));
       setDraft(text);
     } finally {
@@ -154,7 +161,7 @@ export default function IntakeChat({
   const handedOff = state === "completed" || state === "waitlisted";
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-paper text-ink" dir="rtl">
+    <div className="min-h-[100dvh] flex flex-col bg-paper text-ink" dir={dirOf(lang)}>
       <header className="flex items-center gap-3 px-4 py-3 border-b border-line bg-card sticky top-0 z-10">
         {logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -166,7 +173,7 @@ export default function IntakeChat({
         )}
         <div className="min-w-0">
           <div className="font-bold truncate">{title}</div>
-          <div className="text-xs text-ink-soft">{available === false ? "טופס פנייה" : "עונה מיד"}</div>
+          <div className="text-xs text-ink-soft">{available === false ? t("טופס פנייה") : t("עונה מיד")}</div>
         </div>
       </header>
 
@@ -179,14 +186,14 @@ export default function IntakeChat({
               <div
                 key={i}
                 className={`max-w-[86%] px-3 py-2 rounded-2xl text-[14px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${
-                  line.role === "client" ? "self-end bg-ink text-paper rounded-tl-md" : "self-start bg-card border border-line rounded-tr-md"
+                  line.role === "client" ? "self-end bg-ink text-paper rounded-se-md" : "self-start bg-card border border-line rounded-ss-md"
                 }`}
               >
                 {line.text}
               </div>
             ))}
             {sending && (
-              <div className="self-start bg-card border border-line rounded-2xl rounded-tr-md px-3.5 py-3 flex gap-1" aria-live="polite" aria-label="מקליד">
+              <div className="self-start bg-card border border-line rounded-2xl rounded-ss-md px-3.5 py-3 flex gap-1" aria-live="polite" aria-label={t("מקליד")}>
                 {[0, 1, 2].map((d) => (
                   <span key={d} className="h-1.5 w-1.5 rounded-full bg-ink-soft animate-bounce" style={{ animationDelay: `${d * 150}ms` }} />
                 ))}
@@ -194,7 +201,7 @@ export default function IntakeChat({
             )}
             {handedOff && (
               <div className="self-stretch text-center text-[12.5px] font-semibold rounded-xl px-3 py-2 bg-amber-bg text-amber-deep">
-                הפרטים הועברו ל{studio}, תשובה תוך {replyHours} שעות
+                {t("הפרטים הועברו ל{studio}, תשובה תוך {hours} שעות", { studio, hours: replyHours })}
               </div>
             )}
             <div ref={endRef} />
@@ -209,14 +216,14 @@ export default function IntakeChat({
               }}
             >
               <label htmlFor="intake-msg" className="sr-only">
-                הודעה
+                {t("הודעה")}
               </label>
               <input
                 id="intake-msg"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 maxLength={1000}
-                placeholder="כתבו הודעה…"
+                placeholder={t("כתבו הודעה…")}
                 autoComplete="off"
                 disabled={available === null}
                 className="flex-1 min-w-0 rounded-full border border-line px-4 py-2.5 text-[15px]"
@@ -225,10 +232,10 @@ export default function IntakeChat({
               <button
                 type="submit"
                 disabled={!draft.trim() || sending}
-                aria-label="שליחה"
+                aria-label={t("שליחה")}
                 className="h-11 w-11 shrink-0 rounded-full bg-ink text-paper flex items-center justify-center disabled:opacity-40"
               >
-                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={lang === "he" ? undefined : "rotate-180"}>
                   <path d="M19 12H5M11 5l-7 7 7 7" />
                 </svg>
               </button>
@@ -241,6 +248,8 @@ export default function IntakeChat({
 }
 
 function InquiryForm({ chatKey, studio }: { chatKey: string; studio: string }) {
+  const t = useT();
+  const lang = useLang();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [eventType, setEventType] = useState("");
@@ -254,8 +263,8 @@ function InquiryForm({ chatKey, studio }: { chatKey: string; studio: string }) {
     return (
       <div className="flex-1 flex items-center justify-center px-6 text-center">
         <div>
-          <p className="text-lg font-bold mb-1">הפנייה נשלחה</p>
-          <p className="text-sm text-ink-soft">{studio} יחזור אליך בהקדם.</p>
+          <p className="text-lg font-bold mb-1">{t("הפנייה נשלחה")}</p>
+          <p className="text-sm text-ink-soft">{t("{studio} יחזור אליך בהקדם.", { studio })}</p>
         </div>
       </div>
     );
@@ -272,30 +281,30 @@ function InquiryForm({ chatKey, studio }: { chatKey: string; studio: string }) {
         const res = await fetch(`/api/intake-chat/${encodeURIComponent(chatKey)}/form`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, phone, eventType, date, notes, src: sourceFromSearch(window.location.search) }),
+          body: JSON.stringify({ name, phone, eventType, date, notes, src: sourceFromSearch(window.location.search), lang }),
         }).catch(() => null);
         setSending(false);
         if (res?.ok) {
           trackLead();
           setDone(true);
         }
-        else setError((await res?.json().catch(() => null))?.error ?? "השליחה נכשלה. נסו שוב");
+        else setError(t((await res?.json().catch(() => null))?.error ?? "השליחה נכשלה. נסו שוב"));
       }}
     >
-      <p className="text-sm text-ink-soft">השאירו פרטים ו{studio} יחזור אליכם עם כל המידע.</p>
-      <label className="text-xs text-ink-soft" htmlFor="f-name">שם</label>
+      <p className="text-sm text-ink-soft">{t("השאירו פרטים ו{studio} יחזור אליכם עם כל המידע.", { studio })}</p>
+      <label className="text-xs text-ink-soft" htmlFor="f-name">{t("שם")}</label>
       <input id="f-name" required value={name} onChange={(e) => setName(e.target.value)} className={field} style={{ background: "var(--color-input-bg)" }} />
-      <label className="text-xs text-ink-soft" htmlFor="f-phone">טלפון</label>
-      <input id="f-phone" required type="tel" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} className={`${field} text-right`} style={{ background: "var(--color-input-bg)" }} />
-      <label className="text-xs text-ink-soft" htmlFor="f-type">סוג האירוע</label>
-      <input id="f-type" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder="חתונה, בר מצווה…" className={field} style={{ background: "var(--color-input-bg)" }} />
-      <label className="text-xs text-ink-soft" htmlFor="f-date">תאריך</label>
+      <label className="text-xs text-ink-soft" htmlFor="f-phone">{t("טלפון")}</label>
+      <input id="f-phone" required type="tel" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} className={`${field} ${lang === "he" ? "text-right" : "text-left"}`} style={{ background: "var(--color-input-bg)" }} />
+      <label className="text-xs text-ink-soft" htmlFor="f-type">{t("סוג האירוע")}</label>
+      <input id="f-type" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder={t("חתונה, בר מצווה…")} className={field} style={{ background: "var(--color-input-bg)" }} />
+      <label className="text-xs text-ink-soft" htmlFor="f-date">{t("תאריך")}</label>
       <input id="f-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={field} style={{ background: "var(--color-input-bg)" }} />
-      <label className="text-xs text-ink-soft" htmlFor="f-notes">עוד פרטים</label>
+      <label className="text-xs text-ink-soft" htmlFor="f-notes">{t("עוד פרטים")}</label>
       <textarea id="f-notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} className={`${field} resize-none`} style={{ background: "var(--color-input-bg)" }} />
       {error && <p className="text-xs text-rose">{error}</p>}
       <button type="submit" disabled={sending} className="mt-1 rounded-xl py-3 font-bold bg-ink text-paper disabled:opacity-60">
-        {sending ? "שולח…" : "שליחת פנייה"}
+        {sending ? t("שולח…") : t("שליחת פנייה")}
       </button>
     </form>
   );
