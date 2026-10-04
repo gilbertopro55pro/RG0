@@ -11,6 +11,7 @@ import { googleBusyOnDate } from "@/lib/calendarBusy";
 import { SUBSCRIPTION_PLANS, type SubscriptionTier } from "@/lib/stages";
 import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
 import { canChooseClientLang } from "@/lib/clientLang";
+import { detectTextLang } from "@/i18n/detect";
 import { isLang, type Lang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
@@ -99,21 +100,25 @@ function hebrewDate(iso: string): string {
 
 // Where the conversation happens. WhatsApp (phase 2) starts from the ad's opening message, always
 // answers in Hebrew, and already knows the client's phone number.
-// lang (web, admin account only for now — UI languages phase 2, 2026-10-04): the chat page's
-// language. With it, the assistant answers in the language the client writes in (Hebrew, English
-// or Russian) and records it on the lead. Without it (every other photographer), nothing changes.
+// lang (web, admin account only for now — UI languages phase 2, 2026-10-04): the language of the
+// client's latest message (the page detects it, and the server re-checks the text itself). The chat
+// opens in Hebrew and the assistant answers in that language, without commenting on it. Without it
+// (every other photographer), nothing changes.
 export type IntakeChannel = { kind: "web"; lang?: Lang } | { kind: "whatsapp"; clientPhone: string; adContext?: string | null };
 
-// The page language when this conversation is multilingual (web + admin), else null.
-function multilingual(p: IntakePhotographer, channel: IntakeChannel): Lang | null {
-  return channel.kind === "web" && channel.lang && canChooseClientLang(p.email) ? channel.lang : null;
+// The language to answer this turn in when the conversation is multilingual (web + admin), else
+// null: what the client's message is written in, else what the page says (the conversation's
+// current language).
+function multilingual(p: IntakePhotographer, channel: IntakeChannel, clientText: string): Lang | null {
+  if (channel.kind !== "web" || !channel.lang || !canChooseClientLang(p.email)) return null;
+  return detectTextLang(clientText, channel.lang) ?? channel.lang;
 }
 
 const LANG_NAMES_HE: Record<Lang, string> = { he: "עברית", en: "אנגלית", ru: "רוסית" };
 
 // Replaces the "Hebrew only" rule in a multilingual conversation. Every other rule stays as is.
 function languageRule(lang: Lang): string {
-  return `- עונים בשפה שהלקוח כותב בה: עברית, אנגלית או רוסית. בהודעה הראשונה, או כשלא ברור באיזו שפה הלקוח כותב, עונים ב${LANG_NAMES_HE[lang]}. לקוח שכותב בשפה אחרת מקבל תשובה ב${LANG_NAMES_HE[lang]}. אם הלקוח עובר שפה, עוברים איתו.
+  return `- ההודעה האחרונה של הלקוח כתובה ב${LANG_NAMES_HE[lang]}: עונים ב${LANG_NAMES_HE[lang]} בלבד, כאילו זו השפה שהשיחה התנהלה בה מההתחלה. לא מזכירים את השפה, לא אומרים שעוברים שפה, ולא שואלים באיזו שפה לדבר.
 - כל הכללים כאן חלים בכל שפה (בלי מחירים, קצר וחם, שאלה אחת בכל פעם, בלי רשימות). בעברית: רק אותיות עבריות, גם בביטויים כמו "מזל טוב". ברוסית פונים ב-"вы". באנגלית וברוסית כותבים תאריכים במילים, כמו שאנשים מדברים.
 - בכל קריאה ל-save_details שולחים גם client_language: השפה שהלקוח כותב בה (he, en או ru).`;
 }
@@ -140,10 +145,9 @@ function channelRules(name: string, channel: IntakeChannel): string {
 - טקסט רגיל בלבד, בלי כוכביות ובלי עיצוב.`;
 }
 
-function buildSystem(p: IntakePhotographer, channel: IntakeChannel): string {
+function buildSystem(p: IntakePhotographer, channel: IntakeChannel, lang: Lang | null): string {
   const name = studioName(p);
   const faq = (p.intake_bot_faq ?? []).filter((f) => f.q?.trim() && f.a?.trim());
-  const lang = multilingual(p, channel);
   const faqText = faq.length ? faq.map((f: IntakeFaqItem) => `ש: ${f.q.trim()}\nת: ${f.a.trim()}`).join("\n\n") : "(אין)";
   return `זהו העוזר האוטומטי של ${name}, צלם אירועים. לקוחות פונים אליו דרך ${channel.kind === "whatsapp" ? "וואטסאפ" : "צ'אט באתר"}.
 
@@ -580,12 +584,12 @@ export async function runIntakeTurn(
   channel: IntakeChannel = { kind: "web" }
 ): Promise<string> {
   const client = new Anthropic();
-  const lang = multilingual(p, channel);
+  const lang = multilingual(p, channel, clientText);
   if (lang) turnLangs.set(conv, { lang, explicit: false });
   else turnLangs.delete(conv);
   const t = makeT(messagesFor(lang ?? "he"));
   const tools = toolsFor(!!lang);
-  const system: Anthropic.TextBlockParam[] = [{ type: "text", text: buildSystem(p, channel), cache_control: { type: "ephemeral" } }];
+  const system: Anthropic.TextBlockParam[] = [{ type: "text", text: buildSystem(p, channel, lang), cache_control: { type: "ephemeral" } }];
   const messages: Anthropic.MessageParam[] = [...conv.messages, { role: "user", content: clientText }];
   const fallback = t("סליחה, משהו השתבש אצלי. אפשר לנסות שוב, או להשאיר שם וטלפון ו{studio} יחזור אליכם.", { studio: studioName(p) });
   // Text from every round, not just the last: the model often answers the client's question, then

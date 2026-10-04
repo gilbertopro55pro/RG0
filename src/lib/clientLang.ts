@@ -15,22 +15,3 @@ export function clientLangFor(photographerEmail: string | null | undefined, stor
 export function canChooseClientLang(photographerEmail: string | null | undefined): boolean {
   return photographerEmail === ADMIN_EMAIL;
 }
-
-// First supported language in an Accept-Language header ("ru-RU,ru;q=0.9,en;q=0.8" → "ru"), for
-// the chat, where there is no lead yet. Hebrew when none matches.
-export function langFromAcceptLanguage(header: string | null | undefined): Lang {
-  if (!header) return "he";
-  const tags = header
-    .split(",")
-    .map((part) => {
-      const [tag, ...params] = part.trim().split(";");
-      const q = params.find((p) => p.trim().startsWith("q="));
-      return { base: tag.trim().toLowerCase().split("-")[0], q: q ? Number(q.trim().slice(2)) || 0 : 1 };
-    })
-    .sort((a, b) => b.q - a.q);
-  for (const { base } of tags) {
-    if (base === "iw") return "he";
-    if (isLang(base)) return base;
-  }
-  return "he";
-}
