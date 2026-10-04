@@ -80,6 +80,15 @@ right after checkout, so the script reads the link at the network level (`CHECKO
 - PayPlus/Finbot keys are Vercel "sensitive" env vars, so they can't be read and neither API can
   be called from here. The PayPlus docs site is blocked too.
 
+## Payment page language (2026-10-04)
+
+`generateLink` in `lib/payplus.ts` sends `language_code` from the photographer's `photographers.ui_lang`
+(`payplusLanguageFor`: en/ru → "en", else "he"), for the subscription checkout and the intake packs.
+PayPlus's docs were unreachable from the cloud environment, so "en" isn't verified and "ru" isn't
+used. If PayPlus rejects a non-Hebrew request, the link is generated again in Hebrew (logged as
+`PayPlus link in en failed, retrying in Hebrew`), so a language problem never blocks a payment.
+Not yet tested with a real checkout.
+
 ## Testing
 
 `signup-billing-test.js` (this folder) runs steps 1–4 on a NEW account and stops before card entry:

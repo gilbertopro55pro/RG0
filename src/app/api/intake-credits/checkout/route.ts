@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { createPayplusOneTimeLink } from "@/lib/payplus";
+import { createPayplusOneTimeLink, payplusLanguageFor } from "@/lib/payplus";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { hasAppAccess } from "@/lib/subscription";
 import { INTAKE_PACK_TAG, canBuyIntakePacks, intakePack } from "@/lib/intakeCredits";
@@ -18,9 +18,9 @@ export async function POST(request: Request) {
 
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("id, name, email, phone, subscription_status, trial_ends_at")
+    .select("id, name, email, phone, subscription_status, trial_ends_at, ui_lang")
     .eq("id", user.id)
-    .maybeSingle<Pick<Photographer, "id" | "name" | "email" | "phone" | "subscription_status" | "trial_ends_at">>();
+    .maybeSingle<Pick<Photographer, "id" | "name" | "email" | "phone" | "subscription_status" | "trial_ends_at" | "ui_lang">>();
   if (!photographer) return NextResponse.json({ error: "החשבון לא נמצא" }, { status: 403 });
   if (!canBuyIntakePacks(photographer.email)) return NextResponse.json({ error: "הרכישה עדיין לא זמינה בחשבון הזה" }, { status: 403 });
   if (!hasAppAccess(photographer)) return NextResponse.json({ error: "צריך מנוי פעיל כדי לרכוש שיחות" }, { status: 403 });
@@ -48,6 +48,7 @@ export async function POST(request: Request) {
       customerPhone: photographer.phone,
       successUrl: `${baseUrl}/billing/intake-success?purchase=${purchase.id}`,
       failureUrl: `${baseUrl}/settings?tab=automation&intakePurchase=failed`,
+      language: payplusLanguageFor(photographer.ui_lang),
       baseUrl,
     });
     return NextResponse.json({ url: paymentPageLink });

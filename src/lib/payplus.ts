@@ -17,6 +17,33 @@ function authHeaders() {
   };
 }
 
+// Language of the hosted payment page (2026-10-04): English for photographers who use the app in
+// English or Russian (PayPlus has no confirmed Russian page), Hebrew otherwise. If PayPlus rejects a
+// non-Hebrew request, the same link is generated again in Hebrew, so a language problem never
+// blocks a payment.
+export type PayplusLanguage = "he" | "en";
+
+export function payplusLanguageFor(uiLang: unknown): PayplusLanguage {
+  return uiLang === "en" || uiLang === "ru" ? "en" : "he";
+}
+
+async function generateLink(body: Record<string, unknown>, language: PayplusLanguage = "he"): Promise<{ paymentPageLink: string }> {
+  const res = await fetch(`${API_BASE}/PaymentPages/generateLink`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ ...body, language_code: language }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || data?.results?.status !== "success" || !data?.data?.payment_page_link) {
+    if (language !== "he") {
+      console.error("PayPlus link in", language, "failed, retrying in Hebrew:", data?.results?.description);
+      return generateLink(body, "he");
+    }
+    throw new Error(data?.results?.description ?? "יצירת קישור לתשלום נכשלה");
+  }
+  return { paymentPageLink: data.data.payment_page_link };
+}
+
 // Charged amount per billing cycle and the recurring cadence for each plan, derived from
 // SUBSCRIPTION_PLANS (the single source of truth for cycle length and pricing) rather than
 // duplicating those numbers here. A cycle's flat charge is its annualAmount when the cycle spans
@@ -38,20 +65,18 @@ export async function createPayplusCheckoutLink(params: {
   customerEmail: string;
   customerPhone: string;
   baseUrl: string;
+  language?: PayplusLanguage;
 }): Promise<{ paymentPageLink: string }> {
   const { amount, recurringRangeMonths } = PAYPLUS_BILLING[params.plan];
 
-  const res = await fetch(`${API_BASE}/PaymentPages/generateLink`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({
+  return generateLink(
+    {
       payment_page_uid: requireEnv("PAYPLUS_PAYMENT_PAGE_UID"),
       amount,
       currency_code: "ILS",
       charge_method: 3, // recurring
       sendEmailApproval: true,
       sendEmailFailure: true,
-      language_code: "he",
       customer: {
         customer_name: params.customerName,
         email: params.customerEmail,
@@ -69,14 +94,9 @@ export async function createPayplusCheckoutLink(params: {
       refURL_success: `${params.baseUrl}/billing/success`,
       refURL_failure: `${params.baseUrl}/billing?error=1`,
       refURL_callback: `${params.baseUrl}/api/payplus/webhook`,
-    }),
-  });
-
-  const data = await res.json();
-  if (!res.ok || data?.results?.status !== "success" || !data?.data?.payment_page_link) {
-    throw new Error(data?.results?.description ?? "יצירת קישור לתשלום נכשלה");
-  }
-  return { paymentPageLink: data.data.payment_page_link };
+    },
+    params.language
+  );
 }
 
 // A one-time charge on the same payment page (extra assistant conversations, lib/intakeCredits.ts).
@@ -93,18 +113,16 @@ export async function createPayplusOneTimeLink(params: {
   successUrl: string;
   failureUrl: string;
   baseUrl: string;
+  language?: PayplusLanguage;
 }): Promise<{ paymentPageLink: string }> {
-  const res = await fetch(`${API_BASE}/PaymentPages/generateLink`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({
+  return generateLink(
+    {
       payment_page_uid: requireEnv("PAYPLUS_PAYMENT_PAGE_UID"),
       amount: params.amount,
       currency_code: "ILS",
       charge_method: 1, // a regular one-time charge
       sendEmailApproval: true,
       sendEmailFailure: true,
-      language_code: "he",
       customer: {
         customer_name: params.customerName,
         email: params.customerEmail,
@@ -115,14 +133,9 @@ export async function createPayplusOneTimeLink(params: {
       refURL_success: params.successUrl,
       refURL_failure: params.failureUrl,
       refURL_callback: `${params.baseUrl}/api/payplus/webhook`,
-    }),
-  });
-
-  const data = await res.json();
-  if (!res.ok || data?.results?.status !== "success" || !data?.data?.payment_page_link) {
-    throw new Error(data?.results?.description ?? "יצירת קישור לתשלום נכשלה");
-  }
-  return { paymentPageLink: data.data.payment_page_link };
+    },
+    params.language
+  );
 }
 
 // Verifies the `hash` header PayPlus signs every webhook/callback request with, per their docs:

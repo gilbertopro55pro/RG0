@@ -10,12 +10,12 @@ import { SLOT_LABELS, blocksSlot, shabbatClosure, type DaySlot } from "@/lib/day
 import { googleBusyOnDate } from "@/lib/calendarBusy";
 import { SUBSCRIPTION_PLANS, type SubscriptionTier } from "@/lib/stages";
 import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
-import { canChooseClientLang } from "@/lib/clientLang";
+import { canChooseClientLang, photographerLang } from "@/lib/clientLang";
 import { detectTextLang } from "@/i18n/detect";
 import { lookupPlace } from "@/lib/placeLookup";
-import { isLang, type Lang } from "@/i18n/config";
+import { dateLocale, isLang, type Lang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
-import { makeT } from "@/i18n/translate";
+import { makeT, type TFn } from "@/i18n/translate";
 
 // Intake assistant (עוזר פניות), phase 1 = web chat (owner's decisions, 2026-09-25):
 // - never talks about prices, packages or discounts; the photographer sends the quote
@@ -45,7 +45,7 @@ const isMitzvah = (d: IntakeDetails) => /(בר|בת)[\s-]*מצו/.test(d.eventTy
 
 export type IntakePhotographer = Pick<
   Photographer,
-  "id" | "name" | "email" | "plan" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day" | "intake_shabbat_closed" | "google_calendar_import_color_id" | "google_calendar_color_id"
+  "id" | "name" | "email" | "plan" | "ui_lang" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day" | "intake_shabbat_closed" | "google_calendar_import_color_id" | "google_calendar_color_id"
 >;
 
 export type IntakeConversation = {
@@ -80,10 +80,25 @@ export function missingDetails(d: IntakeDetails): string[] {
   return missing;
 }
 
-function dateText(d: IntakeDetails): string | null {
-  if (d.eventDate) return `${hebrewDate(d.eventDate)}${d.eventSlot ? `, ${SLOT_LABELS[d.eventSlot]}` : ""}${d.dateAvailable === false ? " (תפוס)" : ""}`;
-  if (d.dateUndecided) return `טרם נקבע${d.approxDate ? ` (בערך ${d.approxDate})` : ""}`;
+// Hebrew (the stored lead notes) by default; the photographer's language for what's sent to them.
+const HE_T: TFn = makeT({});
+function dateText(d: IntakeDetails, t: TFn = HE_T, lang: Lang = "he"): string | null {
+  if (d.eventDate) return `${localDate(d.eventDate, lang)}${d.eventSlot ? `, ${t(SLOT_LABELS[d.eventSlot])}` : ""}${d.dateAvailable === false ? ` ${t("(תפוס)")}` : ""}`;
+  if (d.dateUndecided) return d.approxDate ? t("טרם נקבע (בערך {approx})", { approx: d.approxDate }) : t("טרם נקבע");
   return null;
+}
+
+// What goes to the PHOTOGRAPHER (emails, push, the conversation PDF) follows their own language
+// (photographers.ui_lang, 2026-10-04); Hebrew when unset. The client-facing chat is unaffected.
+function photographerT(p: Pick<IntakePhotographer, "ui_lang">): { t: TFn; lang: Lang } {
+  const lang = photographerLang(p.ui_lang);
+  return { t: makeT(messagesFor(lang)), lang };
+}
+
+function localDate(iso: string, lang: Lang): string {
+  if (lang === "he") return hebrewDate(iso);
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(dateLocale(lang), { timeZone: "UTC", weekday: "long", day: "numeric", month: "numeric", year: "numeric" });
 }
 
 export function studioName(p: IntakePhotographer): string {

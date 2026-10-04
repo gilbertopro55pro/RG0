@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createPayplusCheckoutLink } from "@/lib/payplus";
+import { createPayplusCheckoutLink, payplusLanguageFor } from "@/lib/payplus";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { Photographer } from "@/lib/types";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
@@ -45,6 +45,7 @@ export async function POST(request: Request) {
       customerEmail: notificationEmailFor(photographer.email),
       customerPhone: photographer.phone,
       baseUrl,
+      language: payplusLanguageFor(photographer.ui_lang),
     });
     return NextResponse.json({ url: paymentPageLink });
   } catch (e) {
