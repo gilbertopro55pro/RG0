@@ -415,19 +415,33 @@ export function conversationPdfName(d: IntakeDetails, p?: Pick<IntakePhotographe
   return `${t("סיכום-השיחה")}${who ? `-${who}` : ""}.pdf`;
 }
 
-async function notifyPhotographer(p: IntakePhotographer, subject: string, d: IntakeDetails, siteUrl: string, intro: string, messages?: Anthropic.MessageParam[]) {
+// The email's subject and opening line, in the photographer's language.
+type NoticeText = (t: TFn, lang: Lang) => { subject: string; intro: string };
+
+function newLeadSubject(d: IntakeDetails, t: TFn, lang: Lang): string {
+  return t("פנייה חדשה מהעוזר: {name}, {type} {date}", {
+    name: d.clientName ?? "",
+    type: d.eventType ?? "",
+    date: d.eventDate ? localDate(d.eventDate, lang) : t("(תאריך טרם נקבע)"),
+  }).trim();
+}
+
+async function notifyPhotographer(p: IntakePhotographer, notice: NoticeText, d: IntakeDetails, siteUrl: string, messages?: Anthropic.MessageParam[]) {
+  const { t, lang } = photographerT(p);
+  const { subject, intro } = notice(t, lang);
+  const date = dateText(d, t, lang);
   const lines = [
-    d.clientName ? `שם: ${d.clientName}` : null,
-    d.phone ? `טלפון: ${d.phone}` : null,
-    d.eventType ? `אירוע: ${d.eventType}` : null,
-    dateText(d) ? `תאריך: ${dateText(d)}` : null,
-    d.location ? `מקום: ${d.location}` : null,
-    d.guests ? `אורחים: ${d.guests}` : null,
-    d.eventSlot ? `חלק ביום: ${SLOT_LABELS[d.eventSlot]}` : null,
-    d.coverage ? `לכלול: ${d.coverage}` : null,
-    d.videoCrew ? `צלם וידאו נוסף: ${d.videoCrew}` : null,
-    d.startTime || d.endTime ? `שעות: ${d.startTime ?? "?"}–${d.endTime ?? "?"}` : null,
-    d.wishes ? `חשוב להם: ${d.wishes}` : null,
+    d.clientName ? t("שם: {v}", { v: d.clientName }) : null,
+    d.phone ? t("טלפון: {v}", { v: d.phone }) : null,
+    d.eventType ? t("אירוע: {v}", { v: d.eventType }) : null,
+    date ? t("תאריך: {v}", { v: date }) : null,
+    d.location ? t("מקום: {v}", { v: d.location }) : null,
+    d.guests ? t("אורחים: {v}", { v: d.guests }) : null,
+    d.eventSlot ? t("חלק ביום: {v}", { v: t(SLOT_LABELS[d.eventSlot]) }) : null,
+    d.coverage ? t("לכלול: {v}", { v: d.coverage }) : null,
+    d.videoCrew ? t("צלם וידאו נוסף: {v}", { v: d.videoCrew }) : null,
+    d.startTime || d.endTime ? t("שעות: {v}", { v: `${d.startTime ?? "?"}–${d.endTime ?? "?"}` }) : null,
+    d.wishes ? t("חשוב להם: {v}", { v: d.wishes }) : null,
   ].filter(Boolean);
   // The whole conversation as a designed PDF the photographer can forward to the client on
   // WhatsApp (owner's request, 2026-09-28). Best-effort: the email goes out without it on failure.
@@ -435,7 +449,7 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
   if (messages) {
     try {
       const pdf = await conversationPdf(p, d, messages);
-      if (pdf) attachments = [{ filename: conversationPdfName(d), content: Buffer.from(pdf).toString("base64") }];
+      if (pdf) attachments = [{ filename: conversationPdfName(d, p), content: Buffer.from(pdf).toString("base64") }];
     } catch (e) {
       console.error("Intake transcript PDF failed:", p.id, e);
     }
@@ -445,8 +459,8 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
       to: notificationEmailFor(p.email),
       subject,
       text:
-        `שלום ${p.name},\n\n${intro}\n\n${lines.join("\n")}\n\nלכל הלידים: ${siteUrl}/leads` +
-        (attachments ? `\n\nמצורף סיכום השיחה כקובץ PDF. אפשר להעביר אותו ללקוח בוואטסאפ.` : ""),
+        `${t("שלום {name},", { name: p.name })}\n\n${intro}\n\n${lines.join("\n")}\n\n${t("לכל הלידים: {url}", { url: `${siteUrl}/leads` })}` +
+        (attachments ? `\n\n${t("מצורף סיכום השיחה כקובץ PDF. אפשר להעביר אותו ללקוח בוואטסאפ.")}` : ""),
       attachments,
     });
   } catch (e) {
@@ -457,7 +471,7 @@ async function notifyPhotographer(p: IntakePhotographer, subject: string, d: Int
 // Handoff emails are queued during a turn and sent once the turn ends, so the attached
 // conversation includes the assistant's closing reply (the handoff itself happens mid-turn, from a
 // tool call, before that reply is written).
-type PendingNotice = { subject: string; intro: string };
+type PendingNotice = NoticeText;
 const pendingNotices = new WeakMap<IntakeConversation, PendingNotice[]>();
 function queueNotice(conv: IntakeConversation, n: PendingNotice) {
   pendingNotices.set(conv, [...(pendingNotices.get(conv) ?? []), n]);
@@ -465,7 +479,7 @@ function queueNotice(conv: IntakeConversation, n: PendingNotice) {
 async function flushNotices(conv: IntakeConversation, p: IntakePhotographer, siteUrl: string, messages: Anthropic.MessageParam[]) {
   const list = pendingNotices.get(conv) ?? [];
   pendingNotices.delete(conv);
-  for (const n of list) await notifyPhotographer(p, n.subject, conv.collected, siteUrl, n.intro, messages);
+  for (const n of list) await notifyPhotographer(p, n, conv.collected, siteUrl, messages);
 }
 
 // Marks the conversation done, turns its lead into a full one and emails the photographer. Runs
@@ -478,10 +492,10 @@ async function completeIntake(supabase: ServiceClient, conv: IntakeConversation,
   conv.lead_id = await upsertLead(supabase, conv, p, true);
   const d = conv.collected;
   void siteUrl;
-  queueNotice(conv, {
-    subject: `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : "(תאריך טרם נקבע)"}`.trim(),
-    intro: "העוזר אסף את כל פרטי האירוע. הליד מחכה להצעת מחיר ממך.",
-  });
+  queueNotice(conv, (t, lang) => ({
+    subject: newLeadSubject(d, t, lang),
+    intro: t("העוזר אסף את כל פרטי האירוע. הליד מחכה להצעת מחיר ממך."),
+  }));
 }
 
 async function runTool(
@@ -587,7 +601,10 @@ async function runTool(
     });
     conv.state = "waitlisted";
     conv.completed_at = new Date().toISOString();
-    queueNotice(conv, { subject: `פנייה לתאריך תפוס נכנסה לרשימת ההמתנה: ${d.clientName}`, intro: "לקוח/ה פנה/תה לתאריך שכבר תפוס אצלך, ונכנס/ה לרשימת ההמתנה." });
+    queueNotice(conv, (t) => ({
+      subject: t("פנייה לתאריך תפוס נכנסה לרשימת ההמתנה: {name}", { name: d.clientName ?? "" }),
+      intro: t("לקוח/ה פנה/תה לתאריך שכבר תפוס אצלך, ונכנס/ה לרשימת ההמתנה."),
+    }));
     return JSON.stringify({ ok: true });
   }
 
@@ -741,7 +758,7 @@ export function transcriptOf(messages: Anthropic.MessageParam[]): { role: "clien
 export const IDLE_MINUTES = 20;
 
 const PHOTOGRAPHER_FIELDS =
-  "id, name, email, plan, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, google_calendar_import_color_id, google_calendar_color_id";
+  "id, name, email, plan, ui_lang, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, google_calendar_import_color_id, google_calendar_color_id";
 
 export async function finalizeIdleConversations(supabase: ServiceClient, siteUrl: string): Promise<{ completed: number; partial: number }> {
   const now = Date.now();
@@ -771,10 +788,12 @@ export async function finalizeIdleConversations(supabase: ServiceClient, siteUrl
       pendingNotices.delete(conv);
       await notifyPhotographer(
         p,
-        `פנייה חדשה מהעוזר: ${d.clientName}, ${d.eventType} ${d.eventDate ? hebrewDate(d.eventDate) : "(תאריך טרם נקבע)"}`.trim(),
+        (t, lang) => ({
+          subject: newLeadSubject(d, t, lang),
+          intro: t("העוזר אסף את כל פרטי האירוע. הלקוח/ה לא ענה/תה על השאלה האחרונה, אז הפנייה מועברת אליך עכשיו. הליד מחכה להצעת מחיר ממך."),
+        }),
         d,
         siteUrl,
-        "העוזר אסף את כל פרטי האירוע. הלקוח/ה לא ענה/תה על השאלה האחרונה, אז הפנייה מועברת אליך עכשיו. הליד מחכה להצעת מחיר ממך.",
         conv.messages
       );
       const { error } = await supabase
@@ -788,10 +807,14 @@ export async function finalizeIdleConversations(supabase: ServiceClient, siteUrl
       conv.collected = { ...d, idleNotified: true };
       await notifyPhotographer(
         p,
-        `פנייה חלקית מהעוזר: ${d.clientName || d.phone}`,
+        (t) => ({
+          subject: t("פנייה חלקית מהעוזר: {name}", { name: d.clientName || d.phone || "" }),
+          intro: t("לקוח/ה התחיל/ה שיחה עם העוזר והשאיר/ה טלפון, אבל לא סיים/ה. חסר: {missing}. כדאי ליצור קשר.", {
+            missing: missingDetails(d).map((m) => t(m)).join(", ") || t("בדיקת התאריך"),
+          }),
+        }),
         d,
         siteUrl,
-        `לקוח/ה התחיל/ה שיחה עם העוזר והשאיר/ה טלפון, אבל לא סיים/ה. חסר: ${missingDetails(d).join(", ") || "בדיקת התאריך"}. כדאי ליצור קשר.`,
         conv.messages
       );
       const { error } = await supabase.from("bot_conversations").update({ collected: conv.collected }).eq("id", conv.id);

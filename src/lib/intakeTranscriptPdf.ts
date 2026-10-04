@@ -3,6 +3,9 @@ import path from "node:path";
 import { PDFDocument, PDFFont, PDFPage, rgb, type RGB } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { drawAlignedBidiText } from "@/lib/pdfText";
+import { dateLocale, type Lang } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 // The intake assistant's conversation as a designed PDF (owner's request, 2026-09-28): attached to
 // the photographer's "new lead" email so they can forward it to the client on WhatsApp. Same look
@@ -40,8 +43,13 @@ export async function buildIntakeTranscriptPdf(params: {
   details: [string, string][];
   transcript: TranscriptLine[];
   createdAt: Date;
+  // The photographer's language for the PDF's own labels (2026-10-04); Hebrew when omitted. The
+  // conversation and the details' values stay as they were written.
+  lang?: Lang;
 }): Promise<Uint8Array> {
   const { studio, clientName, details, transcript, createdAt } = params;
+  const lang = params.lang ?? "he";
+  const t = makeT(messagesFor(lang));
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
   const fontsDir = path.join(process.cwd(), "src/assets/fonts");
@@ -86,10 +94,10 @@ export async function buildIntakeTranscriptPdf(params: {
   const bandH = 112;
   page.drawRectangle({ x: 0, y: PAGE_HEIGHT - bandH, width: PAGE_WIDTH, height: bandH, color: NAVY });
   page.drawRectangle({ x: 0, y: PAGE_HEIGHT - bandH - 3, width: PAGE_WIDTH, height: 3, color: BRASS });
-  const d = createdAt.toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit", year: "numeric" });
-  text("סיכום השיחה", { x: MARGIN, width: CONTENT_W, y: PAGE_HEIGHT - 44, size: 11, font: bold, color: BRASS_LIGHT });
+  const d = createdAt.toLocaleDateString(dateLocale(lang), { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit", year: "numeric" });
+  text(t("סיכום השיחה"), { x: MARGIN, width: CONTENT_W, y: PAGE_HEIGHT - 44, size: 11, font: bold, color: BRASS_LIGHT });
   text(clean(studio), { x: MARGIN, width: CONTENT_W, y: PAGE_HEIGHT - 72, size: 20, font: bold, color: WHITE });
-  text(clientName ? `השיחה עם ${clean(clientName)}` : "השיחה עם הלקוח", { x: MARGIN + CONTENT_W * 0.3, width: CONTENT_W * 0.7, y: PAGE_HEIGHT - 92, size: 10, font: regular, color: ON_NAVY_SOFT });
+  text(clientName ? t("השיחה עם {name}", { name: clean(clientName) }) : t("השיחה עם הלקוח"), { x: MARGIN + CONTENT_W * 0.3, width: CONTENT_W * 0.7, y: PAGE_HEIGHT - 92, size: 10, font: regular, color: ON_NAVY_SOFT });
   text(d, { x: MARGIN, width: CONTENT_W * 0.3, y: PAGE_HEIGHT - 44, size: 10, font: regular, color: ON_NAVY_SOFT, align: "left" });
 
   let y = PAGE_HEIGHT - bandH - 28;
@@ -116,7 +124,7 @@ export async function buildIntakeTranscriptPdf(params: {
   }
 
   // ── The conversation.
-  text("השיחה", { x: MARGIN, width: CONTENT_W, y: y - 12, size: 12, font: bold, color: BRASS_DEEP });
+  text(t("השיחה"), { x: MARGIN, width: CONTENT_W, y: y - 12, size: 12, font: bold, color: BRASS_DEEP });
   page.drawRectangle({ x: PAGE_WIDTH - MARGIN - 28, y: y - 20, width: 28, height: 2, color: BRASS });
   y -= 40;
 
@@ -130,7 +138,7 @@ export async function buildIntakeTranscriptPdf(params: {
     page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 6, width: PAGE_WIDTH, height: 6, color: NAVY });
     y = PAGE_HEIGHT - 40;
   };
-  const who = { client: clientName ? clean(clientName) : "הלקוח", assistant: `העוזר של ${clean(studio)}` };
+  const who = { client: clientName ? clean(clientName) : t("הלקוח"), assistant: t("העוזר של {studio}", { studio: clean(studio) }) };
 
   let prev: TranscriptLine["role"] | null = null;
   for (const line of transcript) {
@@ -172,7 +180,7 @@ export async function buildIntakeTranscriptPdf(params: {
   // ── Footer on the last page.
   if (y < MARGIN + 30) newPage();
   page.drawLine({ start: { x: MARGIN, y: MARGIN + 14 }, end: { x: PAGE_WIDTH - MARGIN, y: MARGIN + 14 }, thickness: 0.8, color: LINE });
-  text(`השיחה נשמרה אוטומטית ע״י העוזר של ${clean(studio)}`, { x: MARGIN, width: CONTENT_W, y: MARGIN, size: 8, font: regular, color: INK_SOFT });
+  text(t("השיחה נשמרה אוטומטית ע״י העוזר של {studio}", { studio: clean(studio) }), { x: MARGIN, width: CONTENT_W, y: MARGIN, size: 8, font: regular, color: INK_SOFT });
 
   return pdfDoc.save();
 }
