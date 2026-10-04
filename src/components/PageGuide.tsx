@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { PAGE_GUIDES, GUIDE_LANG_LABELS, type GuideLang, type PageGuideKey } from "@/lib/pageGuides";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useLang, useT } from "@/i18n/client";
 
 // Sits right under a page's <h1>: a short two-line Hebrew explanation of what the screen is for,
 // ending in a link that opens the full multi-language guide (video + written sections, with real
@@ -14,8 +15,11 @@ import { IconClose } from "@/components/icons/AlbumIcons";
 const AUTOPLAY_SEEN_PREFIX = "guide-video-autoplay-";
 
 export default function PageGuide({ pageKey, blurb }: { pageKey: PageGuideKey; blurb: string }) {
+  const t = useT();
+  // The guide opens in the UI language; the tabs inside still switch it.
+  const uiLang = useLang();
   const [open, setOpen] = useState(false);
-  const [lang, setLang] = useState<GuideLang>("he");
+  const [lang, setLang] = useState<GuideLang>(uiLang);
   const guide = PAGE_GUIDES[pageKey][lang];
   const videoSrc = `/guides/${pageKey}.mp4`;
 
@@ -35,9 +39,9 @@ export default function PageGuide({ pageKey, blurb }: { pageKey: PageGuideKey; b
   return (
     <>
       <p className="text-xs mb-5 text-ink-soft leading-relaxed">
-        {blurb}{" "}
+        {t(blurb)}{" "}
         <button onClick={() => setOpen(true)} className="font-semibold underline" style={{ color: "var(--color-amber-deep)" }}>
-          מדריך למשתמש המלא
+          {t("מדריך למשתמש המלא")}
         </button>
       </p>
 

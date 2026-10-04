@@ -6,6 +6,8 @@ import type { PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSuppl
 import { openWhatsApp } from "@/lib/waLink";
 import { formatDateDMY } from "@/lib/priceQuoteFormat";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useT, useLang } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 const VAT_RATE = 0.18;
 
@@ -42,8 +44,8 @@ function computeTotals(items: PriceQuoteItem[]) {
   return { subtotal, vatAmount, total };
 }
 
-function currency(n: number): string {
-  return `${n.toLocaleString("he-IL", { maximumFractionDigits: 2 })} ₪`;
+function currency(n: number, locale = "he-IL"): string {
+  return `${n.toLocaleString(locale, { maximumFractionDigits: 2 })} ₪`;
 }
 
 function sortQuotes(quotes: PriceQuoteRow[]): PriceQuoteRow[] {
@@ -156,6 +158,9 @@ export default function PriceQuotesSettings({
   initialBusinessId: string | null;
 }) {
   const supabase = createClient();
+  const t = useT();
+  const lang = useLang();
+  const loc = dateLocale(lang);
   const [quotes, setQuotes] = useState(() => sortQuotes(initialQuotes));
   const [templates, setTemplates] = useState(() => sortTemplates(initialTemplates));
   // The same supplier list the quote builder's vendor rows draw from (photographers.pricing_
@@ -253,18 +258,18 @@ export default function PriceQuotesSettings({
     } = await supabase.auth.getUser();
     if (!user) {
       setTemplateSaving(false);
-      setTemplateFormError("יש להתחבר מחדש");
+      setTemplateFormError(t("יש להתחבר מחדש"));
       return;
     }
     if (!templateDraft.name.trim()) {
       setTemplateSaving(false);
-      setTemplateFormError("יש לתת שם לתבנית");
+      setTemplateFormError(t("יש לתת שם לתבנית"));
       return;
     }
     const items = resolveTemplateItems(templateDraft.items, supplierList);
     if (items.length === 0) {
       setTemplateSaving(false);
-      setTemplateFormError("יש להוסיף לפחות פריט אחד");
+      setTemplateFormError(t("יש להוסיף לפחות פריט אחד"));
       return;
     }
 
@@ -299,10 +304,10 @@ export default function PriceQuotesSettings({
         .single<PriceQuoteTemplateRow>();
       setTemplateSaving(false);
       if (error || !data) {
-        setTemplateFormError(error?.message ?? "שגיאה בשמירה");
+        setTemplateFormError(error?.message ?? t("שגיאה בשמירה"));
         return;
       }
-      setTemplates((prev) => sortTemplates(prev.map((t) => (t.id === data.id ? data : t))));
+      setTemplates((prev) => sortTemplates(prev.map((tpl) => (tpl.id === data.id ? data : tpl))));
       setTemplateFormOpen(null);
       return;
     }
@@ -314,7 +319,7 @@ export default function PriceQuotesSettings({
       .single<PriceQuoteTemplateRow>();
     setTemplateSaving(false);
     if (error || !data) {
-      setTemplateFormError(error?.message ?? "שגיאה בשמירה");
+      setTemplateFormError(error?.message ?? t("שגיאה בשמירה"));
       return;
     }
     setTemplates((prev) => sortTemplates([...prev, data]));
@@ -324,7 +329,7 @@ export default function PriceQuotesSettings({
   const removeTemplate = async (id: string) => {
     setDeletingTemplateId(id);
     await supabase.from("price_quote_templates").delete().eq("id", id);
-    setTemplates((prev) => prev.filter((t) => t.id !== id));
+    setTemplates((prev) => prev.filter((tpl) => tpl.id !== id));
     setConfirmingDeleteTemplateId(null);
     setDeletingTemplateId(null);
     if (templateFormOpen === id) cancelTemplateForm();
@@ -387,14 +392,14 @@ export default function PriceQuotesSettings({
           },
         }),
       });
-      if (!res.ok) throw new Error("יצירת התצוגה המקדימה נכשלה");
+      if (!res.ok) throw new Error(t("יצירת התצוגה המקדימה נכשלה"));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       if (previewWindow && !previewWindow.closed) previewWindow.location.href = url;
       else setPreviewUrl(url);
     } catch (err) {
       previewWindow?.close();
-      setFormError(err instanceof Error ? err.message : "יצירת התצוגה המקדימה נכשלה");
+      setFormError(err instanceof Error ? err.message : t("יצירת התצוגה המקדימה נכשלה"));
     } finally {
       setPreviewing(false);
     }
@@ -408,14 +413,14 @@ export default function PriceQuotesSettings({
     } = await supabase.auth.getUser();
     if (!user) {
       setSaving(false);
-      setFormError("יש להתחבר מחדש");
+      setFormError(t("יש להתחבר מחדש"));
       return null;
     }
 
     const items = cleanItems(draft.items);
     if (items.length === 0) {
       setSaving(false);
-      setFormError("יש להוסיף לפחות פריט אחד");
+      setFormError(t("יש להוסיף לפחות פריט אחד"));
       return null;
     }
     const { subtotal, vatAmount, total } = computeTotals(items);
@@ -443,7 +448,7 @@ export default function PriceQuotesSettings({
         .single<PriceQuoteRow>();
       setSaving(false);
       if (error || !data) {
-        setFormError(error?.message ?? "שגיאה בשמירה");
+        setFormError(error?.message ?? t("שגיאה בשמירה"));
         return null;
       }
       setQuotes((prev) => sortQuotes(prev.map((q) => (q.id === data.id ? data : q))));
@@ -457,7 +462,7 @@ export default function PriceQuotesSettings({
       .single<PriceQuoteRow>();
     setSaving(false);
     if (error || !data) {
-      setFormError(error?.message ?? "שגיאה בשמירה");
+      setFormError(error?.message ?? t("שגיאה בשמירה"));
       return null;
     }
     setQuotes((prev) => sortQuotes([...prev, data]));
@@ -484,11 +489,11 @@ export default function PriceQuotesSettings({
   const doSend = async () => {
     setSendError(null);
     if (sendMethod === "whatsapp" && !sendRecipient.trim()) {
-      setSendError("יש להזין מספר טלפון");
+      setSendError(t("יש להזין מספר טלפון"));
       return;
     }
     if (sendMethod === "email" && !sendRecipient.trim()) {
-      setSendError("יש להזין כתובת מייל");
+      setSendError(t("יש להזין כתובת מייל"));
       return;
     }
     setSending(true);
@@ -516,14 +521,14 @@ export default function PriceQuotesSettings({
         whatsapp?: { clientPhone: string; message: string } | null;
         error?: string;
       } = await res.json();
-      if (!res.ok || !data.quote) throw new Error(data.error ?? "השליחה נכשלה");
+      if (!res.ok || !data.quote) throw new Error(data.error ?? t("השליחה נכשלה"));
       setQuotes((prev) => sortQuotes(prev.map((q) => (q.id === data.quote!.id ? data.quote! : q))));
       if (data.whatsapp) {
         openWhatsApp(data.whatsapp.clientPhone, data.whatsapp.message);
       }
       setSendOpenFor(null);
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : "השליחה נכשלה");
+      setSendError(err instanceof Error ? err.message : t("השליחה נכשלה"));
     } finally {
       setSending(false);
     }
@@ -547,9 +552,9 @@ export default function PriceQuotesSettings({
         body: JSON.stringify({ bucket: "logos", path, contentType: file.type || "image/png" }),
       });
       const urlData = await urlRes.json();
-      if (!urlRes.ok || !urlData.url) throw new Error(urlData.error ?? "העלאת הלוגו נכשלה");
+      if (!urlRes.ok || !urlData.url) throw new Error(urlData.error ?? t("העלאת הלוגו נכשלה"));
       const putRes = await fetch(urlData.url, { method: "PUT", headers: { "Content-Type": file.type || "image/png" }, body: file });
-      if (!putRes.ok) throw new Error("העלאת הלוגו נכשלה");
+      if (!putRes.ok) throw new Error(t("העלאת הלוגו נכשלה"));
       await supabase.from("photographers").update({ logo_storage_path: path }).eq("id", user.id);
       setLogoPath(path);
       setLogoPreviewUrl(URL.createObjectURL(file));
@@ -572,34 +577,34 @@ export default function PriceQuotesSettings({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold mb-1">הצעות מחיר</div>
+      <div className="text-sm font-semibold mb-1">{t("הצעות מחיר")}</div>
       <p className="text-xs mb-3.5 text-ink-soft">
-        בניית הצעת מחיר עצמאית ללקוח כלשהו, נשמרת ברשימה, ואפשר לשלוח אותה במייל או בוואטסאפ כקובץ PDF עם לוגו העסק.
+        {t("בניית הצעת מחיר עצמאית ללקוח כלשהו, נשמרת ברשימה, ואפשר לשלוח אותה במייל או בוואטסאפ כקובץ PDF עם לוגו העסק.")}
       </p>
 
       <div className="rounded-xl p-3 bg-chip flex items-center gap-3 mb-4">
         <div className="w-14 h-14 rounded-lg bg-white border border-line shrink-0 flex items-center justify-center overflow-hidden">
           {logoPreviewUrl || logoPath ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoPreviewUrl ?? undefined} alt="לוגו" className="w-full h-full object-contain" />
+            <img src={logoPreviewUrl ?? undefined} alt={t("לוגו")} className="w-full h-full object-contain" />
           ) : (
-            <span className="text-[10px] text-ink-soft">אין לוגו</span>
+            <span className="text-[10px] text-ink-soft">{t("אין לוגו")}</span>
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-semibold mb-1">לוגו העסק</div>
-          <p className="text-[11px] text-ink-soft mb-1.5">יופיע בפינה הימנית העליונה של כל הצעת מחיר.</p>
+          <div className="text-xs font-semibold mb-1">{t("לוגו העסק")}</div>
+          <p className="text-[11px] text-ink-soft mb-1.5">{t("יופיע בפינה הימנית העליונה של כל הצעת מחיר.")}</p>
           <div className="flex gap-2">
             <button
               onClick={() => logoInputRef.current?.click()}
               disabled={uploadingLogo}
               className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-ink text-white disabled:opacity-60"
             >
-              {uploadingLogo ? "מעלה..." : logoPath ? "החלפת לוגו" : "העלאת לוגו"}
+              {uploadingLogo ? t("מעלה...") : logoPath ? t("החלפת לוגו") : t("העלאת לוגו")}
             </button>
             {logoPath && (
               <button onClick={removeLogo} className="text-xs text-rose">
-                הסרה
+                {t("הסרה")}
               </button>
             )}
           </div>
@@ -618,12 +623,12 @@ export default function PriceQuotesSettings({
       </div>
 
       <div className="mb-4">
-        <label className="text-xs font-semibold mb-1 block">מספר ח.פ / עוסק</label>
+        <label className="text-xs font-semibold mb-1 block">{t("מספר ח.פ / עוסק")}</label>
         <div className="flex gap-2">
           <input
             value={businessId}
             onChange={(e) => setBusinessId(e.target.value)}
-            placeholder="לדוגמה: 039119243"
+            placeholder={t("לדוגמה: 039119243")}
             dir="ltr"
             className="flex-1 rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white font-data text-left"
           />
@@ -632,56 +637,55 @@ export default function PriceQuotesSettings({
             disabled={savingBusinessId}
             className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-ink text-white disabled:opacity-60"
           >
-            {savingBusinessId ? "שומר..." : "שמירה"}
+            {savingBusinessId ? t("שומר...") : t("שמירה")}
           </button>
         </div>
-        <p className="text-[11px] text-ink-soft mt-1">יוצג בהצעת המחיר ליד שם העסק.</p>
+        <p className="text-[11px] text-ink-soft mt-1">{t("יוצג בהצעת המחיר ליד שם העסק.")}</p>
       </div>
 
       <div className="mb-4">
-        <div className="text-sm font-semibold mb-1">תבניות הצעות מחיר</div>
+        <div className="text-sm font-semibold mb-1">{t("תבניות הצעות מחיר")}</div>
         <p className="text-xs mb-2.5 text-ink-soft">
-          תבנית שמורה של פריטים קבועים (למשל &quot;חבילת חתונה בסיסית&quot;), תופיע ברשימה נפתחת בבונה הצעות המחיר, ומהווה בסיס להצעה
-          חדשה שאליה אפשר להוסיף שורות ספקים והערות.
+          {t("תבנית שמורה של פריטים קבועים (למשל \"חבילת חתונה בסיסית\"), תופיע ברשימה נפתחת בבונה הצעות המחיר, ומהווה בסיס להצעה חדשה שאליה אפשר להוסיף שורות ספקים והערות.")}
         </p>
 
         {templates.length > 0 && (
           <div className="space-y-2 mb-2.5">
-            {templates.map((t) =>
-              confirmingDeleteTemplateId === t.id ? (
-                <div key={t.id} className="rounded-xl p-3 bg-chip">
-                  <p className="text-xs mb-2.5 text-rose">למחוק את התבנית &quot;{t.name}&quot;?</p>
+            {templates.map((tpl) =>
+              confirmingDeleteTemplateId === tpl.id ? (
+                <div key={tpl.id} className="rounded-xl p-3 bg-chip">
+                  <p className="text-xs mb-2.5 text-rose">{t("למחוק את התבנית \"{name}\"?", { name: tpl.name })}</p>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => removeTemplate(t.id)}
-                      disabled={deletingTemplateId === t.id}
+                      onClick={() => removeTemplate(tpl.id)}
+                      disabled={deletingTemplateId === tpl.id}
                       className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white disabled:opacity-60"
                     >
-                      {deletingTemplateId === t.id ? "מוחק..." : "כן, מחק"}
+                      {deletingTemplateId === tpl.id ? t("מוחק...") : t("כן, מחק")}
                     </button>
                     <button
                       onClick={() => setConfirmingDeleteTemplateId(null)}
-                      disabled={deletingTemplateId === t.id}
+                      disabled={deletingTemplateId === tpl.id}
                       className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
                     >
-                      ביטול
+                      {t("ביטול")}
                     </button>
                   </div>
                 </div>
               ) : (
-                <div key={t.id} className="rounded-xl p-3 bg-chip flex items-start justify-between gap-2">
-                  <button onClick={() => startEditTemplate(t)} className="text-right flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate">{t.name}</div>
+                <div key={tpl.id} className="rounded-xl p-3 bg-chip flex items-start justify-between gap-2">
+                  <button onClick={() => startEditTemplate(tpl)} className="text-start flex-1 min-w-0">
+                    <div className="text-sm font-semibold truncate">{tpl.name}</div>
                     <div className="text-xs text-ink-soft font-data">
-                      {t.items.length} פריטים, {currency(computeTotals(t.items).subtotal)}
+                      {t("{n} פריטים, {total}", { n: tpl.items.length, total: currency(computeTotals(tpl.items).subtotal, loc) })}
                     </div>
                   </button>
                   <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => startEditTemplate(t)} className="text-xs text-ink-soft">
-                      עריכה
+                    <button onClick={() => startEditTemplate(tpl)} className="text-xs text-ink-soft">
+                      {t("עריכה")}
                     </button>
-                    <button onClick={() => setConfirmingDeleteTemplateId(t.id)} className="text-xs text-rose">
-                      מחיקה
+                    <button onClick={() => setConfirmingDeleteTemplateId(tpl.id)} className="text-xs text-rose">
+                      {t("מחיקה")}
                     </button>
                   </div>
                 </div>
@@ -695,7 +699,7 @@ export default function PriceQuotesSettings({
             <input
               value={templateDraft.name}
               onChange={(e) => setTemplateDraft((d) => ({ ...d, name: e.target.value }))}
-              placeholder="שם התבנית (לדוגמה: חבילת חתונה בסיסית)"
+              placeholder={t("שם התבנית (לדוגמה: חבילת חתונה בסיסית)")}
               className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
             />
 
@@ -709,20 +713,20 @@ export default function PriceQuotesSettings({
                       className="flex-1 min-w-0 text-xs bg-transparent outline-none"
                     >
                       <option value="" disabled>
-                        בחירת פריט
+                        {t("בחירת פריט")}
                       </option>
                       {supplierList.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}
                         </option>
                       ))}
-                      <option value="__custom__">טקסט חופשי...</option>
+                      <option value="__custom__">{t("טקסט חופשי...")}</option>
                     </select>
                     {row.supplierId === "__custom__" && (
                       <input
                         value={row.customName}
                         onChange={(e) => updateTemplateItem(i, { customName: e.target.value })}
-                        placeholder="שם הפריט"
+                        placeholder={t("שם הפריט")}
                         className="flex-1 min-w-0 text-xs bg-transparent outline-none"
                       />
                     )}
@@ -733,8 +737,8 @@ export default function PriceQuotesSettings({
                         this label never locks the template to that supplier's price. */}
                     <span className="text-[11px] text-ink-soft shrink-0">
                       {row.supplierId && row.supplierId !== "__custom__"
-                        ? currency(supplierList.find((s) => s.id === row.supplierId)?.price ?? 0)
-                        : "מחיר"}
+                        ? currency(supplierList.find((s) => s.id === row.supplierId)?.price ?? 0, loc)
+                        : t("מחיר")}
                     </span>
                     <input
                       value={row.price || ""}
@@ -742,13 +746,13 @@ export default function PriceQuotesSettings({
                       type="number"
                       min={0}
                       placeholder="0"
-                      className="w-16 shrink-0 text-xs font-data bg-transparent outline-none text-left"
+                      className="w-16 shrink-0 text-xs font-data bg-transparent outline-none text-end"
                     />
                     <button
                       onClick={() => removeTemplateItemRow(i)}
                       disabled={templateDraft.items.length <= 1}
                       className="text-ink-soft text-xs shrink-0 disabled:opacity-30"
-                      aria-label="הסרת פריט"
+                      aria-label={t("הסרת פריט")}
                     >
                       <IconClose className="h-3 w-3" />
                     </button>
@@ -756,13 +760,13 @@ export default function PriceQuotesSettings({
                   <input
                     value={row.details}
                     onChange={(e) => updateTemplateItem(i, { details: e.target.value })}
-                    placeholder="פרטים (אופציונלי)"
+                    placeholder={t("פרטים (אופציונלי)")}
                     className="w-full text-xs bg-transparent outline-none"
                   />
                 </div>
               ))}
               <button onClick={addTemplateItemRow} className="text-xs text-ink-soft font-semibold">
-                + הוספת פריט
+                {t("+ הוספת פריט")}
               </button>
             </div>
 
@@ -774,61 +778,61 @@ export default function PriceQuotesSettings({
                 disabled={templateSaving}
                 className="flex-1 rounded-lg py-2 text-xs font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {templateSaving ? "שומר..." : "שמירה"}
+                {templateSaving ? t("שומר...") : t("שמירה")}
               </button>
               <button onClick={cancelTemplateForm} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft">
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
         ) : (
           <button onClick={startNewTemplate} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
-            + תבנית חדשה
+            {t("+ תבנית חדשה")}
           </button>
         )}
       </div>
 
-      <div className="text-sm font-semibold mb-1">הצעות מחיר שמורות</div>
+      <div className="text-sm font-semibold mb-1">{t("הצעות מחיר שמורות")}</div>
 
       {quotes.length > 0 && (
         <div className="space-y-2 mb-3">
           {quotes.map((q) =>
             confirmingDeleteId === q.id ? (
               <div key={q.id} className="rounded-xl p-3 bg-chip">
-                <p className="text-xs mb-2.5 text-rose">למחוק את הצעת המחיר עבור &quot;{q.client_name || "לקוח/ה"}&quot;?</p>
+                <p className="text-xs mb-2.5 text-rose">{t("למחוק את הצעת המחיר עבור \"{name}\"?", { name: q.client_name || t("לקוח/ה") })}</p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => remove(q.id)}
                     disabled={deletingId === q.id}
                     className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white disabled:opacity-60"
                   >
-                    {deletingId === q.id ? "מוחק..." : "כן, מחק"}
+                    {deletingId === q.id ? t("מוחק...") : t("כן, מחק")}
                   </button>
                   <button
                     onClick={() => setConfirmingDeleteId(null)}
                     disabled={deletingId === q.id}
                     className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
                   >
-                    ביטול
+                    {t("ביטול")}
                   </button>
                 </div>
               </div>
             ) : (
               <div key={q.id} className="rounded-xl p-3 bg-chip">
                 <div className="flex items-start justify-between gap-2">
-                  <button onClick={() => startEdit(q)} className="text-right flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate">{q.quote_name || q.client_name || "לקוח/ה ללא שם"}</div>
+                  <button onClick={() => startEdit(q)} className="text-start flex-1 min-w-0">
+                    <div className="text-sm font-semibold truncate">{q.quote_name || q.client_name || t("לקוח/ה ללא שם")}</div>
                     <div className="text-xs text-ink-soft font-data">
-                      {currency(q.total)}, {new Date(q.created_at).toLocaleDateString("he-IL")}
-                      {q.sent_at && <span>, נשלח ב{q.sent_via === "whatsapp" ? "וואטסאפ" : "מייל"}</span>}
+                      {currency(q.total, loc)}, {new Date(q.created_at).toLocaleDateString(loc)}
+                      {q.sent_at && <span>{q.sent_via === "whatsapp" ? t(", נשלח בוואטסאפ") : t(", נשלח במייל")}</span>}
                     </div>
                   </button>
                   <div className="flex items-center gap-2 shrink-0">
                     <button onClick={() => startEdit(q)} className="text-xs text-ink-soft">
-                      עריכה
+                      {t("עריכה")}
                     </button>
                     <button onClick={() => setConfirmingDeleteId(q.id)} className="text-xs text-rose">
-                      מחיקה
+                      {t("מחיקה")}
                     </button>
                   </div>
                 </div>
@@ -849,7 +853,7 @@ export default function PriceQuotesSettings({
                       onClick={() => openSend(q.id, q)}
                       className="flex-1 rounded-lg py-1.5 text-xs font-semibold bg-white border border-line text-ink"
                     >
-                      שליחה
+                      {t("שליחה")}
                     </button>
                   </div>
                 )}
@@ -864,7 +868,7 @@ export default function PriceQuotesSettings({
           <input
             value={draft.clientName}
             onChange={(e) => setDraft((d) => ({ ...d, clientName: e.target.value }))}
-            placeholder="שם הלקוח/ה"
+            placeholder={t("שם הלקוח/ה")}
             className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
           />
           <div className="flex gap-2">
@@ -878,7 +882,7 @@ export default function PriceQuotesSettings({
             <input
               value={draft.clientEmail}
               onChange={(e) => setDraft((d) => ({ ...d, clientEmail: e.target.value }))}
-              placeholder="מייל (אופציונלי)"
+              placeholder={t("מייל (אופציונלי)")}
               dir="ltr"
               className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white text-left"
             />
@@ -891,7 +895,7 @@ export default function PriceQuotesSettings({
             <input
               value={draft.eventType}
               onChange={(e) => setDraft((d) => ({ ...d, eventType: e.target.value }))}
-              placeholder="סוג האירוע"
+              placeholder={t("סוג האירוע")}
               className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
             />
             <input
@@ -904,11 +908,11 @@ export default function PriceQuotesSettings({
           <input
             value={draft.eventLocation}
             onChange={(e) => setDraft((d) => ({ ...d, eventLocation: e.target.value }))}
-            placeholder="מיקום האירוע"
+            placeholder={t("מיקום האירוע")}
             className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
           />
           <div className="flex items-center gap-2">
-            <span className="text-xs text-ink-soft shrink-0">שעות עבודה</span>
+            <span className="text-xs text-ink-soft shrink-0">{t("שעות עבודה")}</span>
             <input
               value={draft.workStartTime}
               onChange={(e) => setDraft((d) => ({ ...d, workStartTime: e.target.value }))}
@@ -932,9 +936,9 @@ export default function PriceQuotesSettings({
 
           <div className="space-y-1.5">
             <div className="grid grid-cols-[1fr_1.3fr_74px_20px] gap-1.5 px-0.5">
-              <span className="text-[10px] font-semibold text-ink-soft">פריט</span>
-              <span className="text-[10px] font-semibold text-ink-soft">פרטים</span>
-              <span className="text-[10px] font-semibold text-ink-soft">מחיר</span>
+              <span className="text-[10px] font-semibold text-ink-soft">{t("פריט")}</span>
+              <span className="text-[10px] font-semibold text-ink-soft">{t("פרטים")}</span>
+              <span className="text-[10px] font-semibold text-ink-soft">{t("מחיר")}</span>
               <span />
             </div>
             {draft.items.map((row, i) => (
@@ -943,13 +947,13 @@ export default function PriceQuotesSettings({
                   value={row.item}
                   onChange={(e) => updateItem(i, { item: e.target.value })}
                   list="price-quote-item-suggestions"
-                  placeholder="בחירה או הקלדה"
+                  placeholder={t("בחירה או הקלדה")}
                   className="rounded-lg px-2 py-1.5 text-xs border border-line bg-white min-w-0"
                 />
                 <input
                   value={row.details}
                   onChange={(e) => updateItem(i, { details: e.target.value })}
-                  placeholder="פרטים"
+                  placeholder={t("פרטים")}
                   className="rounded-lg px-2 py-1.5 text-xs border border-line bg-white min-w-0"
                 />
                 <input
@@ -964,14 +968,14 @@ export default function PriceQuotesSettings({
                   onClick={() => removeItemRow(i)}
                   disabled={draft.items.length <= 1}
                   className="text-ink-soft text-sm disabled:opacity-30"
-                  aria-label="הסרת פריט"
+                  aria-label={t("הסרת פריט")}
                 >
                   <IconClose className="h-3.5 w-3.5" />
                 </button>
               </div>
             ))}
             <button onClick={addItemRow} className="text-xs text-ink-soft font-semibold">
-              + הוספת פריט
+              {t("+ הוספת פריט")}
             </button>
           </div>
 
@@ -980,7 +984,7 @@ export default function PriceQuotesSettings({
           {formError && <p className="text-xs text-rose">{formError}</p>}
           {previewUrl && (
             <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="block text-center text-xs font-semibold text-amber-deep underline">
-              התצוגה המקדימה מוכנה, לחצו לפתיחה
+              {t("התצוגה המקדימה מוכנה, לחצו לפתיחה")}
             </a>
           )}
 
@@ -990,13 +994,13 @@ export default function PriceQuotesSettings({
               disabled={previewing}
               className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink disabled:opacity-60"
             >
-              {previewing ? "פותח..." : "תצוגה מקדימה"}
+              {previewing ? t("פותח...") : t("תצוגה מקדימה")}
             </button>
             <button onClick={save} disabled={saving} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-ink text-white disabled:opacity-60">
-              {saving ? "שומר..." : "שמירה"}
+              {saving ? t("שומר...") : t("שמירה")}
             </button>
             <button onClick={cancelForm} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft">
-              ביטול
+              {t("ביטול")}
             </button>
           </div>
 
@@ -1013,13 +1017,13 @@ export default function PriceQuotesSettings({
             />
           ) : (
             <button onClick={() => openSend("draft")} className="w-full rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink">
-              שליחה ללקוח
+              {t("שליחה ללקוח")}
             </button>
           )}
         </div>
       ) : (
         <button onClick={startNew} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
-          + הצעת מחיר חדשה
+          {t("+ הצעת מחיר חדשה")}
         </button>
       )}
     </div>
@@ -1027,20 +1031,22 @@ export default function PriceQuotesSettings({
 }
 
 function CostSummary({ items }: { items: PriceQuoteItem[] }) {
+  const t = useT();
+  const loc = dateLocale(useLang());
   const { subtotal, vatAmount, total } = computeTotals(items);
   return (
     <div className="max-w-[240px] rounded-lg border border-line bg-white p-2.5 space-y-1">
       <div className="flex items-center justify-between text-xs text-ink-soft">
-        <span>סה&quot;כ לא כולל מע&quot;מ</span>
-        <span className="font-data">{currency(subtotal)}</span>
+        <span>{t("סה\"כ לא כולל מע\"מ")}</span>
+        <span className="font-data">{currency(subtotal, loc)}</span>
       </div>
       <div className="flex items-center justify-between text-xs text-ink-soft">
-        <span>מע&quot;מ (18%)</span>
-        <span className="font-data">{currency(vatAmount)}</span>
+        <span>{t("מע\"מ (18%)")}</span>
+        <span className="font-data">{currency(vatAmount, loc)}</span>
       </div>
       <div className="flex items-center justify-between text-sm font-semibold pt-1 border-t border-line">
-        <span>סה&quot;כ כולל מע&quot;מ</span>
-        <span className="font-data text-amber-deep">{currency(total)}</span>
+        <span>{t("סה\"כ כולל מע\"מ")}</span>
+        <span className="font-data text-amber-deep">{currency(total, loc)}</span>
       </div>
     </div>
   );
@@ -1065,6 +1071,7 @@ function SendPanel({
   sending: boolean;
   error: string | null;
 }) {
+  const t = useT();
   return (
     <div className="rounded-lg border border-line bg-white p-2.5 mt-2 space-y-2">
       <div className="flex gap-2">
@@ -1072,13 +1079,13 @@ function SendPanel({
           onClick={() => setMethod("whatsapp")}
           className={`flex-1 rounded-lg py-1.5 text-xs font-semibold ${method === "whatsapp" ? "bg-ink text-white" : "bg-chip text-ink-soft"}`}
         >
-          וואטסאפ
+          {t("וואטסאפ")}
         </button>
         <button
           onClick={() => setMethod("email")}
           className={`flex-1 rounded-lg py-1.5 text-xs font-semibold ${method === "email" ? "bg-ink text-white" : "bg-chip text-ink-soft"}`}
         >
-          מייל
+          {t("מייל")}
         </button>
       </div>
       <input
@@ -1091,10 +1098,10 @@ function SendPanel({
       {error && <p className="text-xs text-rose">{error}</p>}
       <div className="flex gap-2">
         <button onClick={onSend} disabled={sending} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-ink text-white disabled:opacity-60">
-          {sending ? "שולח..." : "שליחה"}
+          {sending ? t("שולח...") : t("שליחה")}
         </button>
         <button onClick={onCancel} disabled={sending} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-chip text-ink-soft">
-          ביטול
+          {t("ביטול")}
         </button>
       </div>
     </div>

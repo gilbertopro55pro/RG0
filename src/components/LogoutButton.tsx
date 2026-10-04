@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { useT } from "@/i18n/client";
 import { ACTIVE_UPLOAD_STORAGE_KEY } from "@/lib/activeUploadLock";
 
 // Browser storage that holds account data (a gallery's title, which gallery was open). Device
@@ -8,6 +9,7 @@ import { ACTIVE_UPLOAD_STORAGE_KEY } from "@/lib/activeUploadLock";
 const ACCOUNT_STORAGE_KEYS = [ACTIVE_UPLOAD_STORAGE_KEY, "gf_album_rotate_resume"];
 
 export default function LogoutButton() {
+  const t = useT();
   const logout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -26,7 +28,7 @@ export default function LogoutButton() {
 
   return (
     <button onClick={logout} className="text-xs text-ink-soft underline">
-      התנתקות
+      {t("התנתקות")}
     </button>
   );
 }

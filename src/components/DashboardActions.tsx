@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { CustomPackageRow, EventTypeRow, PackagePriceRow } from "@/lib/types";
 import { IconCalendar } from "@/components/icons/NavIcons";
+import { useT } from "@/i18n/client";
 
 function IconPlus({ className }: { className?: string }) {
   return (
@@ -25,6 +26,7 @@ export default function NewEventButton({
   eventTypes?: EventTypeRow[];
   prices?: PackagePriceRow[];
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   return (
@@ -34,7 +36,7 @@ export default function NewEventButton({
         className="w-full h-12 mb-4 rounded-xl flex items-center justify-center gap-2 bg-ink text-white text-[15px] font-semibold"
       >
         <IconPlus className="h-[18px] w-[18px]" />
-        אירוע חדש
+        {t("אירוע חדש")}
       </button>
       {open && (
         <NewEventModal
@@ -51,11 +53,12 @@ export default function NewEventButton({
 // Square glass icon button used in the home header (calendar, settings). Same size/shape as
 // SettingsGearLink so the pair reads as one set.
 export function CalendarLink() {
+  const t = useT();
   return (
     <Link
       href="/calendar"
-      aria-label="יומן Google"
-      title="יומן Google"
+      aria-label={t("יומן Google")}
+      title={t("יומן Google")}
       className="h-10 w-10 rounded-xl flex items-center justify-center bg-card text-ink"
     >
       <IconCalendar className="h-[19px] w-[19px]" />

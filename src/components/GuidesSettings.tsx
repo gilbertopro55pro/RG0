@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useT } from "@/i18n/client";
 
 // Settings → "מדריכים": every recorded guide video in one place. The per-page videos are the same
 // files PageGuide.tsx opens on each screen (/guides/<key>.mp4); overview/portfolio/settings exist
@@ -19,13 +20,14 @@ const GUIDES: { key: string; title: string; description: string; duration: strin
 ];
 
 export default function GuidesSettings() {
+  const t = useT();
   const [open, setOpen] = useState<(typeof GUIDES)[number] | null>(null);
 
   return (
     <div className="rounded-2xl bg-card border border-line shadow-card overflow-hidden">
       <div className="p-4 pb-3">
-        <div className="text-sm font-semibold mb-1">סרטוני הדרכה</div>
-        <p className="text-xs text-ink-soft">סרטונים קצרים על כל חלקי המערכת. לחיצה על סרטון פותחת אותו.</p>
+        <div className="text-sm font-semibold mb-1">{t("סרטוני הדרכה")}</div>
+        <p className="text-xs text-ink-soft">{t("סרטונים קצרים על כל חלקי המערכת. לחיצה על סרטון פותחת אותו.")}</p>
       </div>
       <ul>
         {GUIDES.map((g) => (
@@ -33,7 +35,7 @@ export default function GuidesSettings() {
             <button
               data-press="tint"
               onClick={() => setOpen(g)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-right"
+              className="w-full flex items-center gap-3 px-4 py-3 text-start"
             >
               <span
                 className="h-9 w-9 rounded-full flex items-center justify-center shrink-0"
@@ -45,8 +47,8 @@ export default function GuidesSettings() {
                 </svg>
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block text-sm font-semibold">{g.title}</span>
-                <span className="block text-xs text-ink-soft truncate">{g.description}</span>
+                <span className="block text-sm font-semibold">{t(g.title)}</span>
+                <span className="block text-xs text-ink-soft truncate">{t(g.description)}</span>
               </span>
               <span className="text-xs font-data text-ink-soft shrink-0">{g.duration}</span>
             </button>
@@ -65,12 +67,12 @@ export default function GuidesSettings() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between p-4 pb-3 shrink-0">
-              <h2 className="text-base font-bold font-display">{open.title}</h2>
+              <h2 className="text-base font-bold font-display">{t(open.title)}</h2>
               <button
                 onClick={() => setOpen(null)}
                 className="h-8 w-8 rounded-full flex items-center justify-center border border-line shrink-0"
                 style={{ background: "var(--color-input-bg)" }}
-                aria-label="סגירה"
+                aria-label={t("סגירה")}
               >
                 <IconClose className="h-4 w-4" />
               </button>

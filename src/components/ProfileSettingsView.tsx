@@ -13,6 +13,8 @@ import { IndeterminateProgressCard } from "@/components/IndeterminateProgressCar
 import ScanCandidateCard, { type ScanCandidate, type ScanCandidateTextField } from "@/components/ScanCandidateCard";
 import { PACKAGE_LABELS, type PackageType } from "@/lib/stages";
 import { stripPhoneFormatting } from "@/lib/phone";
+import { useT, useLang } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 const SCAN_MONTH_OPTIONS: { months: number; label: string }[] = [
   { months: 1, label: "חודש" },
@@ -30,6 +32,8 @@ export default function ProfileSettingsView({
   googleConnectedNotice: boolean;
   googleErrorNotice: boolean;
 }) {
+  const t = useT();
+  const lang = useLang();
   const supabase = createClient();
   const [name, setName] = useState(photographer.name);
   const [phone, setPhone] = useState(photographer.phone);
@@ -113,7 +117,7 @@ export default function ProfileSettingsView({
     const data = await res.json();
     setAppleDiscovering(false);
     if (!res.ok) {
-      setAppleError(data.error ?? "החיבור ל-iCloud נכשל");
+      setAppleError(data.error ?? t("החיבור ל-iCloud נכשל"));
       return;
     }
     setAppleCalendars(data.calendars);
@@ -130,7 +134,7 @@ export default function ProfileSettingsView({
     const data = await res.json();
     setAppleSelecting(false);
     if (!res.ok) {
-      setAppleError(data.error ?? "החיבור נכשל");
+      setAppleError(data.error ?? t("החיבור נכשל"));
       return;
     }
     setAppleConnected(true);
@@ -275,13 +279,13 @@ export default function ProfileSettingsView({
     try {
       const res = await fetch(`/api/calendar/scan-import?months=${months}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "הסריקה נכשלה");
+      if (!res.ok) throw new Error(data.error ?? t("הסריקה נכשלה"));
       const candidates: ScanCandidate[] = data.candidates ?? [];
       setScanCandidates(candidates);
       // Events already in the system start unselected: syncing them again is the photographer's call.
       setSelectedCalendarEventIds(new Set(candidates.filter((c) => !c.existingEventId).map((c) => c.calendarEventId)));
     } catch (e) {
-      setScanError(e instanceof Error ? e.message : "הסריקה נכשלה");
+      setScanError(e instanceof Error ? e.message : t("הסריקה נכשלה"));
     } finally {
       setScanStep("results");
       setScanning(false);
@@ -332,8 +336,8 @@ export default function ProfileSettingsView({
 
   const scanPackageLabel = (pkg: string) =>
     pkg.startsWith("custom:")
-      ? (scanCustomPackages.find((cp) => cp.id === pkg.slice(7))?.name ?? "חבילה מותאמת אישית")
-      : PACKAGE_LABELS[pkg as PackageType];
+      ? (scanCustomPackages.find((cp) => cp.id === pkg.slice(7))?.name ?? t("חבילה מותאמת אישית"))
+      : t(PACKAGE_LABELS[pkg as PackageType]);
 
   const selectedCandidates = (scanCandidates ?? []).filter((c) => selectedCalendarEventIds.has(c.calendarEventId));
 
@@ -346,10 +350,10 @@ export default function ProfileSettingsView({
         body: JSON.stringify({ candidates: selectedCandidates }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "ההוספה נכשלה");
+      if (!res.ok) throw new Error(data.error ?? t("ההוספה נכשלה"));
       setBulkResult({ created: data.created ?? 0, updated: data.updated ?? [], failed: data.failed ?? [] });
     } catch (e) {
-      setBulkResult({ created: 0, updated: [], failed: selectedCandidates.map((c) => ({ summary: c.summary || "אירוע ללא כותרת", error: e instanceof Error ? e.message : "ההוספה נכשלה" })) });
+      setBulkResult({ created: 0, updated: [], failed: selectedCandidates.map((c) => ({ summary: c.summary || t("אירוע ללא כותרת"), error: e instanceof Error ? e.message : t("ההוספה נכשלה") })) });
     } finally {
       setBulkCreating(false);
       setScanStep("done");
@@ -360,20 +364,20 @@ export default function ProfileSettingsView({
     <div>
       {googleConnectedNotice && (
         <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-sage-bg text-sage">
-          יומן Google חובר בהצלחה
+          {t("יומן Google חובר בהצלחה")}
         </div>
       )}
       {googleErrorNotice && (
         <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-white border border-rose text-rose">
-          החיבור ליומן Google נכשל, נסה/י שוב
+          {t("החיבור ליומן Google נכשל, נסה/י שוב")}
         </div>
       )}
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold mb-3.5">פרופיל הצלם</div>
+        <div className="text-sm font-semibold mb-3.5">{t("פרופיל הצלם")}</div>
         <div className="space-y-3">
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">שם הצלם</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("שם הצלם")}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -382,7 +386,7 @@ export default function ProfileSettingsView({
           </div>
           <div>
             <label className="text-xs block mb-1 text-ink-soft">
-              מספר הטלפון שלך (ממנו יישלחו העדכונים ללקוחות)
+              {t("מספר הטלפון שלך (ממנו יישלחו העדכונים ללקוחות)")}
             </label>
             <input
               type="tel"
@@ -393,12 +397,12 @@ export default function ProfileSettingsView({
           </div>
           <div>
             <label className="text-xs block mb-1 text-ink-soft">
-              חתימה אישית (מופיעה בסוף חוזים, הצעות מחיר, ובעתיד גם בהודעות וואטסאפ)
+              {t("חתימה אישית (מופיעה בסוף חוזים, הצעות מחיר, ובעתיד גם בהודעות וואטסאפ)")}
             </label>
             <input
               value={signature}
               onChange={(e) => setSignature(e.target.value)}
-              placeholder="לדוגמה: בברכה, רועי גלברט, סטודיו רועי גלברט"
+              placeholder={t("לדוגמה: בברכה, רועי גלברט, סטודיו רועי גלברט")}
               className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
             />
           </div>
@@ -407,24 +411,24 @@ export default function ProfileSettingsView({
             disabled={saving}
             className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
           >
-            {saving ? "שומר..." : saved ? "נשמר ✓" : "שמירה"}
+            {saving ? t("שומר...") : saved ? t("נשמר ✓") : t("שמירה")}
           </button>
         </div>
       </div>
 
       <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
         <div className="flex items-center gap-2 mb-3.5">
-          <span className="text-sm font-semibold">יומן Google</span>
+          <span className="text-sm font-semibold">{t("יומן Google")}</span>
           <CompactGuideModal pageKey="calendar-scan" />
         </div>
         {connected ? (
           <div className="space-y-3">
             <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
-              היומן מחובר ✓
+              {t("היומן מחובר ✓")}
             </div>
 
             <div>
-              <label className="text-xs mb-1.5 block text-ink-soft">צבע האירועים ביומן</label>
+              <label className="text-xs mb-1.5 block text-ink-soft">{t("צבע האירועים ביומן")}</label>
               <div className="flex items-center gap-2">
                 <span
                   className="h-8 w-8 rounded-full shrink-0 border border-line"
@@ -437,11 +441,11 @@ export default function ProfileSettingsView({
                   className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm border border-line bg-white disabled:opacity-60"
                 >
                   <option value="" disabled>
-                    בחירת צבע
+                    {t("בחירת צבע")}
                   </option>
                   {GOOGLE_EVENT_COLORS.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {t(c.name)}
                     </option>
                   ))}
                 </select>
@@ -449,7 +453,7 @@ export default function ProfileSettingsView({
             </div>
 
               <div>
-                <label className="text-xs mb-1.5 block text-ink-soft">צבע לזיהוי אירועים לייבוא (סריקת יומן)</label>
+                <label className="text-xs mb-1.5 block text-ink-soft">{t("צבע לזיהוי אירועים לייבוא (סריקת יומן)")}</label>
                 <div className="flex items-center gap-2">
                   <span
                     className="h-8 w-8 rounded-full shrink-0 border border-line"
@@ -462,24 +466,24 @@ export default function ProfileSettingsView({
                     className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm border border-line bg-white disabled:opacity-60"
                   >
                     <option value="" disabled>
-                      בחירת צבע
+                      {t("בחירת צבע")}
                     </option>
                     {GOOGLE_EVENT_COLORS.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name}
+                        {t(c.name)}
                       </option>
                     ))}
                   </select>
                 </div>
                 <p className="text-[11px] mt-1.5 text-ink-soft">
-                  צבעו כך ביומן אירועי לקוחות חדשים שעדיין לא הוזנו למערכת, סריקת היומן תאתר אותם ותציע לפתוח להם כרטיס אירוע.
+                  {t("צבעו כך ביומן אירועי לקוחות חדשים שעדיין לא הוזנו למערכת, סריקת היומן תאתר אותם ותציע לפתוח להם כרטיס אירוע.")}
                 </p>
                 <button
                   onClick={openScan}
                   disabled={!importColorId}
                   className="w-full mt-2.5 rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-40"
                 >
-                  סריקת יומן לאירועים חדשים
+                  {t("סריקת יומן לאירועים חדשים")}
                 </button>
               </div>
 
@@ -488,7 +492,7 @@ export default function ProfileSettingsView({
               disabled={disconnecting}
               className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-rose disabled:opacity-60"
             >
-              {disconnecting ? "מתנתק..." : "ניתוק היומן"}
+              {disconnecting ? t("מתנתק...") : t("ניתוק היומן")}
             </button>
           </div>
         ) : (
@@ -496,13 +500,13 @@ export default function ProfileSettingsView({
             href="/api/google/connect"
             className="w-full flex items-center justify-center rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white"
           >
-            התחברות ליומן Google
+            {t("התחברות ליומן Google")}
           </a>
         )}
       </div>
 
-      {scanOpen && scanning && <IndeterminateProgressCard label="סורק את היומן..." />}
-      {scanOpen && bulkCreating && <IndeterminateProgressCard label="מוסיף אירועים..." />}
+      {scanOpen && scanning && <IndeterminateProgressCard label={t("סורק את היומן...")} />}
+      {scanOpen && bulkCreating && <IndeterminateProgressCard label={t("מוסיף אירועים...")} />}
 
       {scanOpen && !scanning && !bulkCreating && (
         <div
@@ -517,28 +521,28 @@ export default function ProfileSettingsView({
             <div className="flex items-center justify-between mb-3.5">
               <h2 className="text-lg font-bold font-display">
                 {scanStep === "pickMonths"
-                  ? "סריקת יומן לאירועים חדשים"
+                  ? t("סריקת יומן לאירועים חדשים")
                   : scanStep === "results"
-                    ? "אירועים חדשים ביומן"
+                    ? t("אירועים חדשים ביומן")
                     : scanStep === "confirm"
-                      ? "אישור הוספה"
-                      : "הוספת אירועים"}
+                      ? t("אישור הוספה")
+                      : t("הוספת אירועים")}
               </h2>
-              <button onClick={() => setScanOpen(false)} className="text-ink-soft text-sm" aria-label="סגירה">
+              <button onClick={() => setScanOpen(false)} className="text-ink-soft text-sm" aria-label={t("סגירה")}>
                 <IconClose className="h-3.5 w-3.5" />
               </button>
             </div>
 
             {scanStep === "pickMonths" && (
               <div className="space-y-2">
-                <p className="text-xs text-ink-soft mb-1">כמה קדימה בזמן לסרוק?</p>
+                <p className="text-xs text-ink-soft mb-1">{t("כמה קדימה בזמן לסרוק?")}</p>
                 {SCAN_MONTH_OPTIONS.map((o) => (
                   <button
                     key={o.months}
                     onClick={() => runScan(o.months)}
-                    className="w-full text-right rounded-xl p-3 bg-chip text-sm font-semibold"
+                    className="w-full text-start rounded-xl p-3 bg-chip text-sm font-semibold"
                   >
-                    {o.label}
+                    {t(o.label)}
                   </button>
                 ))}
               </div>
@@ -548,7 +552,7 @@ export default function ProfileSettingsView({
               (scanError ? (
                 <p className="text-sm text-rose">{scanError}</p>
               ) : scanCandidates && scanCandidates.length === 0 ? (
-                <p className="text-sm text-ink-soft">לא נמצאו ביומן אירועים בצבע שהוגדר או אירועים שמקושרים למערכת בטווח הזה.</p>
+                <p className="text-sm text-ink-soft">{t("לא נמצאו ביומן אירועים בצבע שהוגדר או אירועים שמקושרים למערכת בטווח הזה.")}</p>
               ) : (
                 <div>
                   <label className="flex items-center gap-1.5 text-xs text-ink-soft mb-2.5">
@@ -557,14 +561,14 @@ export default function ProfileSettingsView({
                       checked={!!scanCandidates && selectedCalendarEventIds.size === scanCandidates.length}
                       onChange={toggleSelectAll}
                     />
-                    בחירת הכל ({scanCandidates?.length ?? 0})
+                    {t("בחירת הכל ({n})", { n: scanCandidates?.length ?? 0 })}
                   </label>
                   {(() => {
                     const existingCount = (scanCandidates ?? []).filter((c) => c.existingEventId).length;
                     const newCount = (scanCandidates?.length ?? 0) - existingCount;
                     return existingCount > 0 ? (
                       <p className="text-xs text-ink-soft mb-2.5">
-                        {newCount} חדשים · {existingCount} כבר קיימים במערכת (לא מסומנים, אפשר לסמן כדי לסנכרן שוב)
+                        {t("{newCount} חדשים · {existingCount} כבר קיימים במערכת (לא מסומנים, אפשר לסמן כדי לסנכרן שוב)", { newCount, existingCount })}
                       </p>
                     ) : null;
                   })()}
@@ -587,7 +591,7 @@ export default function ProfileSettingsView({
                     disabled={selectedCalendarEventIds.size === 0}
                     className="w-full rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-40"
                   >
-                    המשך עם {selectedCalendarEventIds.size} אירועים נבחרים
+                    {t("המשך עם {n} אירועים נבחרים", { n: selectedCalendarEventIds.size })}
                   </button>
                 </div>
               ))}
@@ -598,20 +602,22 @@ export default function ProfileSettingsView({
                   {(() => {
                     const toUpdate = selectedCandidates.filter((c) => c.existingEventId).length;
                     const toCreate = selectedCandidates.length - toUpdate;
-                    const parts = [
-                      toCreate > 0 ? `להוסיף ${toCreate} אירועים חדשים לדף האירועים` : null,
-                      toUpdate > 0 ? `לעדכן ${toUpdate} אירועים שכבר קיימים במערכת` : null,
-                    ].filter(Boolean);
-                    return `${parts.join(" ו")}? אין צורך בשאלות נוספות, ואפשר להשלים ולתקן פרטים בכל אירוע לאחר מכן.`;
+                    const question =
+                      toCreate > 0 && toUpdate > 0
+                        ? t("להוסיף {c} אירועים חדשים לדף האירועים ולעדכן {u} אירועים שכבר קיימים במערכת?", { c: toCreate, u: toUpdate })
+                        : toCreate > 0
+                          ? t("להוסיף {n} אירועים חדשים לדף האירועים?", { n: toCreate })
+                          : t("לעדכן {n} אירועים שכבר קיימים במערכת?", { n: toUpdate });
+                    return `${question} ${t("אין צורך בשאלות נוספות, ואפשר להשלים ולתקן פרטים בכל אירוע לאחר מכן.")}`;
                   })()}
                 </p>
                 <div className="space-y-1.5 mb-3.5 max-h-48 overflow-y-auto">
                   {selectedCandidates.map((c) => (
                     <div key={c.calendarEventId} className="text-xs rounded-lg px-2.5 py-1.5 bg-chip">
-                      <span className="font-semibold">{c.summary || "אירוע ללא כותרת"}</span>
-                      {c.existingEventId && <span className="text-sage font-semibold"> (קיים, יעודכן)</span>}
-                      <span className="text-ink-soft font-data">, {new Date(c.eventDate).toLocaleDateString("he-IL")}</span>
-                      <span className="text-ink-soft">, {c.existingEventId ? "החבילה הקיימת" : scanPackageLabel(c.pkg)}</span>
+                      <span className="font-semibold">{c.summary || t("אירוע ללא כותרת")}</span>
+                      {c.existingEventId && <span className="text-sage font-semibold"> {t("(קיים, יעודכן)")}</span>}
+                      <span className="text-ink-soft font-data">, {new Date(c.eventDate).toLocaleDateString(dateLocale(lang))}</span>
+                      <span className="text-ink-soft">, {c.existingEventId ? t("החבילה הקיימת") : scanPackageLabel(c.pkg)}</span>
                       {c.eventStartTime && (
                         <span className="text-ink-soft font-data">
                           {", "}
@@ -624,9 +630,9 @@ export default function ProfileSettingsView({
                       {(c.deposit || c.balance) && (
                         <span className="text-ink-soft font-data">
                           {", "}
-                          {c.deposit ? `מקדמה ₪${Number(c.deposit).toLocaleString("he-IL")}` : ""}
+                          {c.deposit ? t("מקדמה ₪{amount}", { amount: Number(c.deposit).toLocaleString(dateLocale(lang)) }) : ""}
                           {c.deposit && c.balance ? " / " : ""}
-                          {c.balance ? `יתרה ₪${Number(c.balance).toLocaleString("he-IL")}` : ""}
+                          {c.balance ? t("יתרה ₪{amount}", { amount: Number(c.balance).toLocaleString(dateLocale(lang)) }) : ""}
                         </span>
                       )}
                     </div>
@@ -634,13 +640,13 @@ export default function ProfileSettingsView({
                 </div>
                 <div className="flex gap-2">
                   <button onClick={confirmBulkAdd} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white">
-                    אישור, הוספה
+                    {t("אישור, הוספה")}
                   </button>
                   <button
                     onClick={() => setScanStep("results")}
                     className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft"
                   >
-                    חזרה
+                    {t("חזרה")}
                   </button>
                 </div>
               </div>
@@ -649,18 +655,18 @@ export default function ProfileSettingsView({
             {scanStep === "done" && bulkResult && (
               <div>
                 {bulkResult.created > 0 && (
-                  <p className="text-sm text-sage font-semibold mb-2">נוספו {bulkResult.created} אירועים לדף האירועים</p>
+                  <p className="text-sm text-sage font-semibold mb-2">{t("נוספו {n} אירועים לדף האירועים", { n: bulkResult.created })}</p>
                 )}
                 {bulkResult.updated.length > 0 && (
                   <div className="mb-3">
                     <p className="text-sm text-sage font-semibold mb-1.5">
-                      {bulkResult.updated.length === 1 ? "אירוע אחד כבר היה קיים במערכת, והפרטים שלו עודכנו:" : `${bulkResult.updated.length} אירועים כבר היו קיימים במערכת, והפרטים שלהם עודכנו:`}
+                      {bulkResult.updated.length === 1 ? t("אירוע אחד כבר היה קיים במערכת, והפרטים שלו עודכנו:") : t("{n} אירועים כבר היו קיימים במערכת, והפרטים שלהם עודכנו:", { n: bulkResult.updated.length })}
                     </p>
                     <div className="space-y-1">
                       {bulkResult.updated.map((name, i) => (
                         <div key={i} className="text-xs rounded-lg px-2.5 py-1.5 bg-chip">
                           <span className="font-semibold">{name}</span>
-                          <span className="text-ink-soft"> — היה קיים במערכת, הנתונים התעדכנו לפי היומן</span>
+                          <span className="text-ink-soft"> — {t("היה קיים במערכת, הנתונים התעדכנו לפי היומן")}</span>
                         </div>
                       ))}
                     </div>
@@ -668,7 +674,7 @@ export default function ProfileSettingsView({
                 )}
                 {bulkResult.failed.length > 0 && (
                   <div className="mb-3">
-                    <p className="text-sm text-rose font-semibold mb-1.5">{bulkResult.failed.length} אירועים לא נוספו:</p>
+                    <p className="text-sm text-rose font-semibold mb-1.5">{t("{n} אירועים לא נוספו:", { n: bulkResult.failed.length })}</p>
                     <div className="space-y-1">
                       {bulkResult.failed.map((f, i) => (
                         <div key={i} className="text-xs rounded-lg px-2.5 py-1.5 bg-chip">
@@ -680,7 +686,7 @@ export default function ProfileSettingsView({
                   </div>
                 )}
                 <button onClick={() => setScanOpen(false)} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
-                  סגירה
+                  {t("סגירה")}
                 </button>
               </div>
             )}
@@ -689,29 +695,29 @@ export default function ProfileSettingsView({
       )}
 
       <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold mb-3.5">יומן Apple (iCloud)</div>
+        <div className="text-sm font-semibold mb-3.5">{t("יומן Apple (iCloud)")}</div>
         {appleConnected ? (
           <div className="space-y-3">
             <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
-              מחובר ליומן &quot;{appleDisplayName}&quot; ✓
+              {t("מחובר ליומן \"{name}\" ✓", { name: appleDisplayName ?? "" })}
             </div>
             <button
               onClick={disconnectApple}
               disabled={appleDisconnecting}
               className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-rose disabled:opacity-60"
             >
-              {appleDisconnecting ? "מתנתק..." : "ניתוק היומן"}
+              {appleDisconnecting ? t("מתנתק...") : t("ניתוק היומן")}
             </button>
           </div>
         ) : appleCalendars ? (
           <div className="space-y-2">
-            <p className="text-xs text-ink-soft mb-1">באיזה יומן ב-iCloud לשמור את האירועים?</p>
+            <p className="text-xs text-ink-soft mb-1">{t("באיזה יומן ב-iCloud לשמור את האירועים?")}</p>
             {appleCalendars.map((cal) => (
               <button
                 key={cal.url}
                 onClick={() => selectAppleCalendar(cal)}
                 disabled={appleSelecting}
-                className="w-full text-right rounded-lg px-3.5 py-2.5 text-sm border border-line bg-white disabled:opacity-60"
+                className="w-full text-start rounded-lg px-3.5 py-2.5 text-sm border border-line bg-white disabled:opacity-60"
               >
                 {cal.displayName}
               </button>
@@ -722,19 +728,18 @@ export default function ProfileSettingsView({
           <div className="space-y-3">
             <div className="rounded-lg px-3 py-2.5 bg-white border border-line">
               <p className="text-xs text-ink-soft mb-2">
-                נדרשת סיסמה ייעודית לאפליקציה (App-Specific Password) מ-Apple. לא הסיסמה הרגילה של Apple ID.
-                לוקח כדקה ליצור, ויש מדריך מלא עם כל שלב בנפרד.
+                {t("נדרשת סיסמה ייעודית לאפליקציה (App-Specific Password) מ-Apple. לא הסיסמה הרגילה של Apple ID. לוקח כדקה ליצור, ויש מדריך מלא עם כל שלב בנפרד.")}
               </p>
               <button
                 type="button"
                 onClick={() => setShowAppleGuide(true)}
                 className="inline-block text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-bg text-amber-deep"
               >
-                מדריך מלא לחיבור יומן Apple ←
+                {t("מדריך מלא לחיבור יומן Apple")} <span className="inline-block ltr:rotate-180">←</span>
               </button>
             </div>
             <div>
-              <label className="text-xs block mb-1 text-ink-soft">Apple ID (כתובת מייל)</label>
+              <label className="text-xs block mb-1 text-ink-soft">{t("Apple ID (כתובת מייל)")}</label>
               <input
                 type="email"
                 value={appleEmail}
@@ -758,7 +763,7 @@ export default function ProfileSettingsView({
               disabled={appleDiscovering || !appleEmail || !applePassword}
               className="w-full rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
             >
-              {appleDiscovering ? "מתחבר..." : "גילוי יומנים"}
+              {appleDiscovering ? t("מתחבר...") : t("גילוי יומנים")}
             </button>
           </div>
         )}
@@ -767,14 +772,14 @@ export default function ProfileSettingsView({
       <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold">רטט במגע (בטלפון בלבד)</div>
-            <div className="text-xs text-ink-soft mt-0.5">רטט קצר בכל לחיצה על כפתור</div>
+            <div className="text-sm font-semibold">{t("רטט במגע (בטלפון בלבד)")}</div>
+            <div className="text-xs text-ink-soft mt-0.5">{t("רטט קצר בכל לחיצה על כפתור")}</div>
           </div>
           <button
             onClick={toggleHaptics}
             role="switch"
             aria-checked={hapticsOn}
-            aria-label="הפעלת רטט במגע"
+            aria-label={t("הפעלת רטט במגע")}
             className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5"
             style={{
               background: hapticsOn ? "var(--color-amber-deep)" : "var(--color-line)",
@@ -787,27 +792,26 @@ export default function ProfileSettingsView({
       </div>
 
       <div className="rounded-2xl p-4 mt-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold mb-1">חשבוניות ללקוחות</div>
+        <div className="text-sm font-semibold mb-1">{t("חשבוניות ללקוחות")}</div>
         <p className="text-xs text-ink-soft mb-3.5">
-          כדי להפיק ללקוחות שלך קבלות/חשבוניות אמיתיות (לא של המערכת אלא של העסק שלך), יש לבחור
-          ספק ולחבר את החשבון שלך אצלו. המסמך יוצא תחת הפרטים העסקיים שרשומים באותו חשבון.
+          {t("כדי להפיק ללקוחות שלך קבלות/חשבוניות אמיתיות (לא של המערכת אלא של העסק שלך), יש לבחור ספק ולחבר את החשבון שלך אצלו. המסמך יוצא תחת הפרטים העסקיים שרשומים באותו חשבון.")}
         </p>
 
         <div className="mb-3.5">
-          <label className="text-xs block mb-1 text-ink-soft">ספק חשבוניות</label>
+          <label className="text-xs block mb-1 text-ink-soft">{t("ספק חשבוניות")}</label>
           <select
             value={invoiceProvider}
             onChange={(e) => chooseInvoiceProvider(e.target.value as typeof invoiceProvider)}
             className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
           >
             <option value="finbot">Finbot</option>
-            <option value="green_invoice">חשבונית ירוקה (מורנינג)</option>
+            <option value="green_invoice">{t("חשבונית ירוקה (מורנינג)")}</option>
           </select>
         </div>
 
         <div>
           <p className="text-xs mb-2 text-ink-soft">
-            סטטוס עוסק: קובע אם מונפקת קבלה או חשבונית מס (כשמחוברים לספק חשבוניות), וגם ברירת המחדל בבונה הצעות המחיר
+            {t("סטטוס עוסק: קובע אם מונפקת קבלה או חשבונית מס (כשמחוברים לספק חשבוניות), וגם ברירת המחדל בבונה הצעות המחיר")}
           </p>
           <div className="flex gap-1.5 mb-3.5">
             <button
@@ -819,7 +823,7 @@ export default function ProfileSettingsView({
                 color: taxStatus === "exempt" ? "#fff" : "var(--color-ink-soft)",
               }}
             >
-              עוסק פטור
+              {t("עוסק פטור")}
             </button>
             <button
               onClick={() => saveTaxStatus("licensed")}
@@ -830,7 +834,7 @@ export default function ProfileSettingsView({
                 color: taxStatus === "licensed" ? "#fff" : "var(--color-ink-soft)",
               }}
             >
-              עוסק מורשה
+              {t("עוסק מורשה")}
             </button>
           </div>
         </div>
@@ -839,20 +843,20 @@ export default function ProfileSettingsView({
           finbotConnected ? (
             <div className="space-y-3">
               <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
-                חשבון Finbot מחובר ✓
+                {t("חשבון Finbot מחובר ✓")}
               </div>
               <button
                 onClick={disconnectFinbot}
                 disabled={disconnectingFinbot}
                 className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-rose disabled:opacity-60"
               >
-                {disconnectingFinbot ? "מנתק..." : "ניתוק חשבון Finbot"}
+                {disconnectingFinbot ? t("מנתק...") : t("ניתוק חשבון Finbot")}
               </button>
             </div>
           ) : (
             <div className="space-y-3">
               <div>
-                <label className="text-xs block mb-1 text-ink-soft">מפתח API של Finbot</label>
+                <label className="text-xs block mb-1 text-ink-soft">{t("מפתח API של Finbot")}</label>
                 <input
                   type="password"
                   value={finbotApiKey}
@@ -866,28 +870,27 @@ export default function ProfileSettingsView({
                 disabled={savingInvoicing || !finbotApiKey.trim()}
                 className="w-full rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
               >
-                {savingInvoicing ? "מחבר..." : "חיבור חשבון"}
+                {savingInvoicing ? t("מחבר...") : t("חיבור חשבון")}
               </button>
             </div>
           )
         ) : greenInvoiceConnected ? (
           <div className="space-y-3">
             <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
-              חשבון חשבונית ירוקה מחובר ✓
+              {t("חשבון חשבונית ירוקה מחובר ✓")}
             </div>
             <button
               onClick={disconnectGreenInvoice}
               disabled={disconnectingGreenInvoice}
               className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-rose disabled:opacity-60"
             >
-              {disconnectingGreenInvoice ? "מנתק..." : "ניתוק חשבון חשבונית ירוקה"}
+              {disconnectingGreenInvoice ? t("מנתק...") : t("ניתוק חשבון חשבונית ירוקה")}
             </button>
           </div>
         ) : (
           <div className="space-y-3">
             <p className="text-xs text-ink-soft">
-              את ה-Client ID וה-Secret מוציאים מ: הגדרות ← כלי פיתוח ← מפתחות API, בחשבון חשבונית
-              ירוקה שלך.
+              {t("את ה-Client ID וה-Secret מוציאים מ: הגדרות ← כלי פיתוח ← מפתחות API, בחשבון חשבונית ירוקה שלך.")}
             </p>
             <div>
               <label className="text-xs block mb-1 text-ink-soft">Client ID</label>
@@ -912,7 +915,7 @@ export default function ProfileSettingsView({
               disabled={savingInvoicing || !greenInvoiceApiId.trim() || !greenInvoiceApiSecret.trim()}
               className="w-full rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
             >
-              {savingInvoicing ? "מחבר..." : "חיבור חשבון"}
+              {savingInvoicing ? t("מחבר...") : t("חיבור חשבון")}
             </button>
           </div>
         )}
@@ -924,20 +927,19 @@ export default function ProfileSettingsView({
           Bring the toggle back (photographers.lead_follow_up_enabled) once Meta approves. */}
       <div className="rounded-2xl p-4 mt-5 bg-card">
         <div className="flex items-center justify-between gap-3 mb-1">
-          <span className="text-sm font-semibold">מעקב אוטומטי אחר לידים בוואטסאפ</span>
+          <span className="text-sm font-semibold">{t("מעקב אוטומטי אחר לידים בוואטסאפ")}</span>
           <span
             className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
             style={{ background: "var(--color-chip)", color: "var(--color-ink-soft)" }}
           >
-            בקרוב
+            {t("בקרוב")}
           </span>
         </div>
         <p className="text-xs text-ink-soft mb-2">
-          כשליד לא חוזר אליכם, יישלחו אליו אוטומטית עד 3 הודעות מעקב בוואטסאפ (אחרי יומיים, 5 ימים ו-10 ימים). התכונה ממתינה
-          לאישור של מטא לתבניות ההודעות, ותופעל ברגע שהאישור יתקבל.
+          {t("כשליד לא חוזר אליכם, יישלחו אליו אוטומטית עד 3 הודעות מעקב בוואטסאפ (אחרי יומיים, 5 ימים ו-10 ימים). התכונה ממתינה לאישור של מטא לתבניות ההודעות, ותופעל ברגע שהאישור יתקבל.")}
         </p>
         <p className="text-xs text-ink-soft">
-          בינתיים: יומיים אחרי ששולחים ללקוח הצעת מחיר, מופיעה במסך הבית תזכורת עם הודעת מעקב מוכנה לשליחה.
+          {t("בינתיים: יומיים אחרי ששולחים ללקוח הצעת מחיר, מופיעה במסך הבית תזכורת עם הודעת מעקב מוכנה לשליחה.")}
         </p>
       </div>
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics, IconCalculator } from "@/components/icons/NavIcons";
+import { useT } from "@/i18n/client";
 import type { PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
 
 const EventPricingCalculator = dynamic(() => import("@/components/EventPricingCalculator"), { ssr: false });
@@ -44,12 +45,13 @@ export default function QuickActionsGrid({
   defaultTaxStatus: "exempt" | "licensed";
   quoteExtras?: boolean;
 }) {
+  const t = useT();
   const [calculatorOpen, setCalculatorOpen] = useState(false);
 
   return (
     <>
       <nav
-        aria-label="כלים"
+        aria-label={t("כלים")}
         className="grid grid-cols-3 lg:grid-cols-6 gap-px mb-6 rounded-2xl overflow-hidden border border-line"
         style={{ background: "var(--color-line)" }}
       >
@@ -57,7 +59,7 @@ export default function QuickActionsGrid({
           <span style={{ color: "var(--color-brass)" }}>
             <IconCalculator className="h-5 w-5" />
           </span>
-          <span className="text-[13px] font-medium leading-tight">הצעות מחיר</span>
+          <span className="text-[13px] font-medium leading-tight">{t("הצעות מחיר")}</span>
         </button>
         {ACTIONS.map((item) => {
           const Icon = item.icon;
@@ -66,7 +68,7 @@ export default function QuickActionsGrid({
               <span style={{ color: "var(--color-brass)" }}>
                 <Icon className="h-5 w-5" />
               </span>
-              <span className="text-[13px] font-medium leading-tight">{item.label}</span>
+              <span className="text-[13px] font-medium leading-tight">{t(item.label)}</span>
             </Link>
           );
         })}

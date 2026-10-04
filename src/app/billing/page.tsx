@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Photographer } from "@/lib/types";
 import BillingPlanSelector from "@/components/BillingPlanSelector";
 import LogoutButton from "@/components/LogoutButton";
+import { getT } from "@/i18n/server";
 
 export default async function BillingPage({
   searchParams,
@@ -13,6 +14,7 @@ export default async function BillingPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+  const t = await getT();
   const supabase = await createClient();
   const {
     data: { user },
@@ -49,28 +51,28 @@ export default async function BillingPage({
       <div className="w-full max-w-sm rounded-2xl p-5 bg-card border border-line shadow-card">
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-bold font-display">
-            {isPastDue ? "התשלום לא עבר" : isCanceled ? "המנוי בוטל" : ended ? "תקופת הניסיון הסתיימה" : inTrial ? "בחירת מסלול" : "השלמת ההרשמה"}
+            {isPastDue ? t("התשלום לא עבר") : isCanceled ? t("המנוי בוטל") : ended ? t("תקופת הניסיון הסתיימה") : inTrial ? t("בחירת מסלול") : t("השלמת ההרשמה")}
           </h1>
           <LogoutButton />
         </div>
         <p className="text-sm mb-4 text-ink-soft">
           {isPastDue
-            ? "החיוב האחרון נכשל. יש לעדכן אמצעי תשלום כדי להמשיך להשתמש במערכת."
+            ? t("החיוב האחרון נכשל. יש לעדכן אמצעי תשלום כדי להמשיך להשתמש במערכת.")
             : isCanceled
-              ? "המנוי שלך בוטל. ניתן להפעיל אותו מחדש בכל עת."
+              ? t("המנוי שלך בוטל. ניתן להפעיל אותו מחדש בכל עת.")
               : ended
-                ? "תודה שניסיתם את גילברטו. כל האירועים, הגלריות והלקוחות שהכנסתם שמורים 30 יום מסוף הניסיון, ואחר כך נמחקים. בוחרים מסלול, ומשם ממשיכים בדיוק מאיפה שעצרתם."
+                ? t("תודה שניסיתם את גילברטו. כל האירועים, הגלריות והלקוחות שהכנסתם שמורים 30 יום מסוף הניסיון, ואחר כך נמחקים. בוחרים מסלול, ומשם ממשיכים בדיוק מאיפה שעצרתם.")
                 : inTrial
-                  ? `נשארו ${daysLeft} ימים לתקופת הניסיון. אפשר לבחור מסלול כבר עכשיו. החיוב הראשון מתבצע ביום התשלום.`
-                  : "כדי להתחיל להשתמש במערכת יש להשלים את התשלום עבור המנוי שנבחר."}
+                  ? t("נשארו {n} ימים לתקופת הניסיון. אפשר לבחור מסלול כבר עכשיו. החיוב הראשון מתבצע ביום התשלום.", { n: daysLeft })
+                  : t("כדי להתחיל להשתמש במערכת יש להשלים את התשלום עבור המנוי שנבחר.")}
         </p>
         {error === "1" && (
-          <p className="text-xs text-rose mb-4">התשלום לא הושלם או נכשל. ניתן לנסות שוב.</p>
+          <p className="text-xs text-rose mb-4">{t("התשלום לא הושלם או נכשל. ניתן לנסות שוב.")}</p>
         )}
         <BillingPlanSelector initialPlan={initialPlan} />
         {inTrial && (
           <Link href="/" className="block text-center text-sm text-ink-soft underline underline-offset-2 mt-4">
-            חזרה למערכת
+            {t("חזרה למערכת")}
           </Link>
         )}
       </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { openWhatsApp } from "@/lib/waLink";
+import { useT } from "@/i18n/client";
 
 export default function PortalLinkSection({
   token,
@@ -16,6 +17,7 @@ export default function PortalLinkSection({
   clientPhone: string | null;
   onSent?: () => void;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -46,18 +48,18 @@ export default function PortalLinkSection({
   return (
     <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
       <div className="flex items-center gap-2 mb-3.5">
-        <span className="text-sm font-semibold">פורטל ללקוח</span>
+        <span className="text-sm font-semibold">{t("פורטל ללקוח")}</span>
       </div>
       <p className="text-xs mb-3 text-ink-soft">
-        קישור אישי שהלקוח/ה יכולים לפתוח כדי לראות את סטטוס האירוע והתשלומים, בלי צורך להתחבר.
-        {clientPhone && " נשלח אוטומטית בוואטסאפ כשהאירוע נסגר. אפשר גם לשלוח שוב בכל שלב."}
+        {t("קישור אישי שהלקוח/ה יכולים לפתוח כדי לראות את סטטוס האירוע והתשלומים, בלי צורך להתחבר.")}
+        {clientPhone && ` ${t("נשלח אוטומטית בוואטסאפ כשהאירוע נסגר. אפשר גם לשלוח שוב בכל שלב.")}`}
       </p>
       <div className="flex gap-2">
         <button
           onClick={copyLink}
           className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
         >
-          {copied ? "הקישור הועתק ✓" : "העתקת קישור"}
+          {copied ? t("הקישור הועתק ✓") : t("העתקת קישור")}
         </button>
         {clientPhone && (
           <button
@@ -65,7 +67,7 @@ export default function PortalLinkSection({
             disabled={sending}
             className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-sage-bg text-sage disabled:opacity-60"
           >
-            {sending ? "פותח..." : sent ? "נשלח ✓" : "שליחה בוואטסאפ"}
+            {sending ? t("פותח...") : sent ? t("נשלח ✓") : t("שליחה בוואטסאפ")}
           </button>
         )}
       </div>

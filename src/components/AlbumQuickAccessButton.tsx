@@ -1,6 +1,7 @@
 "use client";
 
 import { IconAlbum } from "@/components/icons/NavIcons";
+import { useT } from "@/i18n/client";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { downloadBlob } from "@/lib/downloadBlob";
@@ -36,6 +37,7 @@ const FORMAT_FILENAME: Record<ExportFormat, string> = { pdf: "album.pdf", jpg: "
 // export flow. The modal stays open and blocking until the export finishes or is cancelled.
 export default function AlbumQuickAccessButton({ galleries }: { galleries: GalleryOption[] }) {
   const router = useRouter();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(galleries[0]?.id ?? "");
   const [navigating, setNavigating] = useState(false);
@@ -82,7 +84,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       } catch {
         consecutiveFailures++;
         if (consecutiveFailures >= 5) {
-          setExportError("שגיאה בבדיקת התקדמות הייצוא. נסו לרענן את העמוד");
+          setExportError(t("שגיאה בבדיקת התקדמות הייצוא. נסו לרענן את העמוד"));
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -91,7 +93,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       if (!res.ok) {
         consecutiveFailures++;
         if (consecutiveFailures >= 5) {
-          setExportError("שגיאה בבדיקת התקדמות הייצוא. נסו לרענן את העמוד");
+          setExportError(t("שגיאה בבדיקת התקדמות הייצוא. נסו לרענן את העמוד"));
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -120,7 +122,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
         break;
       }
       if (data.status === "failed" || data.status === "cancelled") {
-        if (data.status === "failed") setExportError(data.errorMessage ?? "שגיאה בייצוא הקבצים");
+        if (data.status === "failed") setExportError(data.errorMessage ?? t("שגיאה בייצוא הקבצים"));
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -177,14 +179,14 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       });
       const createData: { jobId?: string; alreadyActive?: boolean; format?: ExportFormat; error?: string } = await createRes.json().catch(() => ({}));
       if (!createRes.ok || !createData.jobId) {
-        setExportError(createData.error ?? "שגיאה בייצוא הקבצים");
+        setExportError(createData.error ?? t("שגיאה בייצוא הקבצים"));
         return;
       }
       const actualFormat = createData.format ?? format;
       setCurrentJob({ id: createData.jobId, format: actualFormat, alreadyActive: !!createData.alreadyActive });
       await pollAndDownload(createData.jobId, actualFormat);
     } catch {
-      setExportError("שגיאה בייצוא הקבצים");
+      setExportError(t("שגיאה בייצוא הקבצים"));
     } finally {
       setCurrentJob(null);
     }
@@ -223,7 +225,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       });
       const createData: { jobId?: string; error?: string } = await createRes.json().catch(() => ({}));
       if (!createRes.ok || !createData.jobId) {
-        setExportError(createData.error ?? "שליחה לבית הדפוס נכשלה");
+        setExportError(createData.error ?? t("שליחה לבית הדפוס נכשלה"));
         return;
       }
       setCurrentJob({ id: createData.jobId, format: "jpg", alreadyActive: false });
@@ -232,7 +234,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
         const res = await fetch(`/api/galleries/${selectedId}/album/export-jobs/${createData.jobId}`).catch(() => null);
         if (!res || !res.ok) {
           if (++failures >= 5) {
-            setExportError("שגיאה בבדיקת התקדמות השליחה. נסו לרענן את העמוד");
+            setExportError(t("שגיאה בבדיקת התקדמות השליחה. נסו לרענן את העמוד"));
             return;
           }
           await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -242,19 +244,19 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
         const data: { status: string; processedCount: number; totalCount: number; errorMessage: string | null } = await res.json();
         setProgressPct(data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0);
         if (data.status === "ready") {
-          setPrintHouseSent(`נשלח בהצלחה ל-${target.label || target.email}`);
+          setPrintHouseSent(t("נשלח בהצלחה ל-{to}", { to: target.label || target.email }));
           setPrintHouseNotes("");
           setPrintHouseOpen(false);
           return;
         }
         if (data.status === "failed" || data.status === "cancelled") {
-          if (data.status === "failed") setExportError(data.errorMessage ?? "שליחה לבית הדפוס נכשלה");
+          if (data.status === "failed") setExportError(data.errorMessage ?? t("שליחה לבית הדפוס נכשלה"));
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     } catch {
-      setExportError("שליחה לבית הדפוס נכשלה");
+      setExportError(t("שליחה לבית הדפוס נכשלה"));
     } finally {
       setCurrentJob(null);
     }
@@ -278,23 +280,23 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex-1 min-w-0 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl p-3 sm:p-4 bg-card border border-line shadow-card text-right"
+        className="flex-1 min-w-0 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl p-3 sm:p-4 bg-card border border-line shadow-card text-start"
       >
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <span className="flex w-6 shrink-0 items-center justify-center" style={{ color: "var(--color-brass)" }}>
               <IconAlbum className="h-5 w-5" />
             </span>
           <div className="min-w-0">
-            <div className="text-sm font-semibold leading-snug">עיצוב אלבום</div>
-            <div className="text-xs text-ink-soft leading-snug mt-0.5">גישה מהירה לפי גלריה</div>
+            <div className="text-sm font-semibold leading-snug">{t("עיצוב אלבום")}</div>
+            <div className="text-xs text-ink-soft leading-snug mt-0.5">{t("גישה מהירה לפי גלריה")}</div>
           </div>
         </div>
-        <span className="hidden sm:inline text-ink-soft shrink-0">←</span>
+        <span className="hidden sm:inline text-ink-soft shrink-0 ltr:rotate-180">←</span>
       </button>
 
       {currentJob && (
         <ProgressModal
-          label={printHouseOpen ? "שליחה לבית דפוס" : `ייצוא ${FORMAT_LABEL[currentJob.format]}${currentJob.alreadyActive ? " (כבר פעיל)" : ""}`}
+          label={printHouseOpen ? t("שליחה לבית דפוס") : currentJob.alreadyActive ? t("ייצוא {format} (כבר פעיל)", { format: FORMAT_LABEL[currentJob.format] }) : t("ייצוא {format}", { format: FORMAT_LABEL[currentJob.format] })}
           pct={progressPct}
           onCancel={cancelCurrentJob}
         />
@@ -307,11 +309,11 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
           onClick={() => !navigating && setOpen(false)}
         >
           <div className="w-full max-w-sm rounded-3xl bg-paper shadow-sheet p-5" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold font-display mb-1">עיצוב אלבום</h2>
-            <p className="text-xs text-ink-soft mb-4">באיזו גלריה תרצו לעבוד?</p>
+            <h2 className="text-lg font-bold font-display mb-1">{t("עיצוב אלבום")}</h2>
+            <p className="text-xs text-ink-soft mb-4">{t("באיזו גלריה תרצו לעבוד?")}</p>
 
             {galleries.length === 0 ? (
-              <p className="text-sm text-ink-soft mb-4">אין גלריות של אירועים שבחבילה שלהם יש שלב עיצוב אלבום.</p>
+              <p className="text-sm text-ink-soft mb-4">{t("אין גלריות של אירועים שבחבילה שלהם יש שלב עיצוב אלבום.")}</p>
             ) : (
               <select
                 value={selectedId}
@@ -326,7 +328,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                 {galleries.map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.title}
-                    {!g.published ? " (טיוטה)" : ""}
+                    {!g.published ? ` (${t("טיוטה")})` : ""}
                   </option>
                 ))}
               </select>
@@ -334,7 +336,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
 
             {galleries.find((g) => g.id === selectedId)?.hasActiveAlbum && (
               <div className="mb-4">
-                <p className="text-xs font-semibold text-ink-soft mb-2">יש עיצוב אלבום פעיל בגלריה זו. אפשר לייצא ישירות:</p>
+                <p className="text-xs font-semibold text-ink-soft mb-2">{t("יש עיצוב אלבום פעיל בגלריה זו. אפשר לייצא ישירות:")}</p>
                 <div className="flex items-center gap-2">
                   {(["pdf", "jpg", "psd"] as const).map((format) => (
                     <button
@@ -343,7 +345,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                       onClick={() => quickExport(format)}
                       className="flex-1 h-10 rounded-xl border border-line bg-white text-xs font-semibold"
                     >
-                      {`ייצוא ${FORMAT_LABEL[format]}`}
+                      {t("ייצוא {format}", { format: FORMAT_LABEL[format] })}
                     </button>
                   ))}
                 </div>
@@ -352,11 +354,11 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                   onClick={() => (printHouseOpen ? setPrintHouseOpen(false) : openPrintHouse())}
                   className="mt-2 w-full h-10 rounded-xl border border-line bg-white text-xs font-semibold"
                 >
-                  שליחה לבית דפוס
+                  {t("שליחה לבית דפוס")}
                 </button>
                 {printHouseOpen && printHouseEmails && (
                   <div className="mt-3 rounded-xl border border-line bg-white p-3 max-h-[50vh] overflow-y-auto">
-                    <p className="text-xs text-ink-soft mb-2">קובצי ה-JPG של כל עמודי האלבום יישלחו כקישור להורדה, לכתובת שתבחרו.</p>
+                    <p className="text-xs text-ink-soft mb-2">{t("קובצי ה-JPG של כל עמודי האלבום יישלחו כקישור להורדה, לכתובת שתבחרו.")}</p>
                     <PrintHouseEmailsSettings
                       initialEmails={printHouseEmails}
                       selectable
@@ -366,13 +368,13 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                       compact
                     />
                     <label className="block mt-3">
-                      <span className="text-xs font-semibold text-ink-soft">הנחיות והערות לבית הדפוס (אופציונלי)</span>
+                      <span className="text-xs font-semibold text-ink-soft">{t("הנחיות והערות לבית הדפוס (אופציונלי)")}</span>
                       <textarea
                         value={printHouseNotes}
                         onChange={(e) => setPrintHouseNotes(e.target.value)}
                         rows={3}
                         maxLength={2000}
-                        placeholder="למשל: נייר מט, כריכה קשה, 2 עותקים"
+                        placeholder={t("למשל: נייר מט, כריכה קשה, 2 עותקים")}
                         className="mt-1.5 w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none"
                       />
                     </label>
@@ -383,8 +385,8 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                       className="mt-3 w-full h-10 rounded-xl bg-ink text-white text-sm font-semibold disabled:opacity-40"
                     >
                       {(() => {
-                        const t = printHouseEmails.find((e) => e.id === printHouseSelectedId);
-                        return t ? `שליחה ל-${t.label || t.email}` : "בחרו כתובת לשליחה";
+                        const target = printHouseEmails.find((e) => e.id === printHouseSelectedId);
+                        return target ? t("שליחה ל-{to}", { to: target.label || target.email }) : t("בחרו כתובת לשליחה");
                       })()}
                     </button>
                     {selectedId && <PrintHouseSendsHistory galleryId={selectedId} />}
@@ -394,14 +396,14 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                 {exportError && <p className="text-xs text-rose mt-2">{exportError}</p>}
                 {readyLink && (
                   <div className="mt-3 rounded-xl border border-line bg-white p-3">
-                    <p className="text-xs text-ink-soft mb-2">הקובץ מוכן. ההורדה האוטומטית לא עבדה במכשיר הזה, אפשר להוריד מכאן:</p>
+                    <p className="text-xs text-ink-soft mb-2">{t("הקובץ מוכן. ההורדה האוטומטית לא עבדה במכשיר הזה, אפשר להוריד מכאן:")}</p>
                     <a
                       href={readyLink}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-10 items-center justify-center rounded-xl bg-ink text-white text-sm font-semibold"
                     >
-                      הורדת הקובץ
+                      {t("הורדת הקובץ")}
                     </a>
                   </div>
                 )}
@@ -415,7 +417,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                 disabled={navigating}
                 className="flex-1 h-11 rounded-xl border border-line text-sm font-semibold disabled:opacity-50"
               >
-                ביטול
+                {t("ביטול")}
               </button>
               <button
                 type="button"
@@ -423,7 +425,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                 disabled={!selectedId || navigating}
                 className="flex-1 h-11 rounded-xl bg-ink text-white text-sm font-semibold disabled:opacity-50"
               >
-                {navigating ? "טוען..." : "כניסה לכלי העיצוב"}
+                {navigating ? t("טוען...") : t("כניסה לכלי העיצוב")}
               </button>
             </div>
           </div>

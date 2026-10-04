@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useT } from "@/i18n/client";
 import { BTN_PRESS } from "@/lib/viewTransition";
 import { CAMERA_BRANDS, CAMERA_GUIDES, fillGuideStep, type CameraBrand } from "@/lib/cameraFtpGuides";
 
@@ -15,6 +16,7 @@ export default function CameraSetupGuide({
   password: string;
   onClose: () => void;
 }) {
+  const t = useT();
   const [brand, setBrand] = useState<CameraBrand | null>(null);
 
   const guide = brand ? CAMERA_GUIDES[brand] : null;
@@ -24,8 +26,8 @@ export default function CameraSetupGuide({
       <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {!brand ? (
           <>
-            <h2 className="text-base font-bold mb-1 font-display">איזו מצלמה יש לכם?</h2>
-            <p className="text-xs text-ink-soft mb-4">נציג מדריך שלב-אחר-שלב עם הפרטים שלכם כבר ממולאים</p>
+            <h2 className="text-base font-bold mb-1 font-display">{t("איזו מצלמה יש לכם?")}</h2>
+            <p className="text-xs text-ink-soft mb-4">{t("נציג מדריך שלב-אחר-שלב עם הפרטים שלכם כבר ממולאים")}</p>
             <div className="grid grid-cols-2 gap-2">
               {CAMERA_BRANDS.map((b) => (
                 <button
@@ -38,16 +40,16 @@ export default function CameraSetupGuide({
               ))}
             </div>
             <button onClick={onClose} className="w-full text-center mt-4 text-xs text-ink-soft">
-              סגירה
+              {t("סגירה")}
             </button>
           </>
         ) : (
           <>
             <button onClick={() => setBrand(null)} className="text-xs font-semibold text-ink-soft mb-2">
-              ← בחירת מותג אחר
+              <span className="inline-block rtl:rotate-180">←</span> {t("בחירת מותג אחר")}
             </button>
             <h2 className="text-base font-bold mb-1 font-display">
-              חיבור מצלמת {CAMERA_BRANDS.find((b) => b.id === brand)?.label}
+              {t("חיבור מצלמת {brand}", { brand: CAMERA_BRANDS.find((b) => b.id === brand)?.label ?? "" })}
             </h2>
             <p className="text-xs text-ink-soft mb-3">{guide!.models}</p>
             {guide!.note && (
@@ -74,7 +76,7 @@ export default function CameraSetupGuide({
               })}
             </ol>
             <button onClick={onClose} className={`w-full text-center rounded-lg py-3 mt-5 text-sm font-semibold bg-ink text-white ${BTN_PRESS}`}>
-              סגירה
+              {t("סגירה")}
             </button>
           </>
         )}

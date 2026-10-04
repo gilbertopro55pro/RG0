@@ -7,6 +7,8 @@ import CloseEventConfirmModal from "@/components/CloseEventConfirmModal";
 import type { EventRow } from "@/lib/types";
 import { googleColorRgba } from "@/lib/googleColors";
 import { eventDisplayName } from "@/lib/eventDisplayName";
+import { useLang, useT } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
 type StatusFilter = "upcoming" | "completed" | "all" | "duplicates";
@@ -59,6 +61,7 @@ export default function EventsListView({
   // associates with that flow, instead of a fixed color unrelated to their own choice.
   needsReviewColorId?: string | null;
 }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("upcoming");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
@@ -101,13 +104,13 @@ export default function EventsListView({
   return (
     <div>
       <div className="flex items-baseline justify-between mb-2.5 px-0.5">
-        <h2 className="text-[17px] font-bold">אירועים</h2>
+        <h2 className="text-[17px] font-bold">{t("אירועים")}</h2>
         <span className="text-[13px] text-ink-soft font-data">
           {filtered.length !== events.length
-            ? `${filtered.length} מתוך ${events.length}`
+            ? t("{n} מתוך {total}", { n: filtered.length, total: events.length })
             : events.length === 1
-              ? "אירוע אחד"
-              : `${events.length} אירועים`}
+              ? t("אירוע אחד")
+              : t("{n} אירועים", { n: events.length })}
         </span>
       </div>
 
@@ -119,13 +122,13 @@ export default function EventsListView({
               setStatusFilter(e.target.value as StatusFilter);
               setVisibleCount(PAGE_SIZE);
             }}
-            aria-label="סינון לפי סטטוס"
+            aria-label={t("סינון לפי סטטוס")}
             className="order-2 min-w-0 h-10 rounded-xl px-2.5 text-sm bg-card"
           >
-            <option value="upcoming">פעילים</option>
-            <option value="completed">הושלמו</option>
-            <option value="all">הכל</option>
-            <option value="duplicates">כפילויות / פרילנס</option>
+            <option value="upcoming">{t("פעילים")}</option>
+            <option value="completed">{t("הושלמו")}</option>
+            <option value="all">{t("הכל")}</option>
+            <option value="duplicates">{t("כפילויות / פרילנס")}</option>
           </select>
           <label className="order-1 col-span-2 h-10 rounded-xl px-3 flex items-center gap-2 bg-card">
             <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-ink-soft" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
@@ -138,8 +141,8 @@ export default function EventsListView({
                 setQuery(e.target.value);
                 setVisibleCount(PAGE_SIZE);
               }}
-              placeholder="חיפוש לקוח או טלפון"
-              aria-label="חיפוש אירוע"
+              placeholder={t("חיפוש לקוח או טלפון")}
+              aria-label={t("חיפוש אירוע")}
               className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-ink-soft"
             />
           </label>
@@ -149,12 +152,12 @@ export default function EventsListView({
               setSortOrder(e.target.value as SortOrder);
               setVisibleCount(PAGE_SIZE);
             }}
-            aria-label="מיון"
+            aria-label={t("מיון")}
             className="order-3 min-w-0 h-10 rounded-xl px-2.5 text-sm bg-card"
           >
-            <option value="asc">הקרוב ביותר</option>
-            <option value="desc">הרחוק ביותר</option>
-            <option value="month">חודש מסוים</option>
+            <option value="asc">{t("הקרוב ביותר")}</option>
+            <option value="desc">{t("הרחוק ביותר")}</option>
+            <option value="month">{t("חודש מסוים")}</option>
           </select>
           {sortOrder === "month" && (
             <input
@@ -180,13 +183,13 @@ export default function EventsListView({
                 className="h-2.5 w-2.5 rounded-full shrink-0"
                 style={{ background: googleColorRgba(needsReviewColorId ?? null, 0.9) ?? "var(--color-amber-deep)" }}
               />
-              יובא מהיומן. יש להשלים פרטים
+              {t("יובא מהיומן. יש להשלים פרטים")}
             </span>
           )}
           {events.some(isFreelanceEvent) && (
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: FREELANCE_SWATCH }} />
-              אירוע פרילנס
+              {t("אירוע פרילנס")}
             </span>
           )}
           {events.some((e) => !e.needs_review && !isFreelanceEvent(e)) && (
@@ -196,7 +199,7 @@ export default function EventsListView({
                   legibility from sitting on the page's own gradient plus a border, which a floating
                   swatch doesn't have for free. */}
               <span className="h-2.5 w-2.5 rounded-full shrink-0 border border-line" style={{ background: "var(--color-card)" }} />
-              אירוע רגיל: נשמר ידנית
+              {t("אירוע רגיל: נשמר ידנית")}
             </span>
           )}
         </div>
@@ -223,7 +226,7 @@ export default function EventsListView({
               onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
               className="w-full rounded-xl py-2.5 mb-3.5 text-sm font-semibold bg-card border border-line text-ink-soft"
             >
-              טען עוד ({filtered.length - visible.length} נוספים)
+              {t("טען עוד ({n} נוספים)", { n: filtered.length - visible.length })}
             </button>
           )}
         </>
@@ -231,9 +234,9 @@ export default function EventsListView({
         <div className="text-center py-16 text-sm text-ink-soft">
           {events.length === 0
             ? isPhotographer
-              ? "עדיין אין אירועים. לחצו על + כדי לסגור אירוע ראשון"
-              : "עדיין לא הוקצו לך אירועים"
-            : "לא נמצאו אירועים תואמים"}
+              ? t("עדיין אין אירועים. לחצו על + כדי לסגור אירוע ראשון")
+              : t("עדיין לא הוקצו לך אירועים")
+            : t("לא נמצאו אירועים תואמים")}
         </div>
       )}
     </div>
@@ -259,6 +262,8 @@ function EventCard({
   first: boolean;
 }) {
   const router = useRouter();
+  const t = useT();
+  const lang = useLang();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const done = !!event.closed_at;
   const isFreelance = isFreelanceEvent(event);
@@ -287,7 +292,7 @@ function EventCard({
       <div className="w-11 shrink-0 text-center border-e border-line pe-3 box-content">
         <div className="text-xl leading-none font-bold font-data">{d}</div>
         <div className="text-[11px] text-ink-soft mt-1">
-          {HE_MONTHS_SHORT[m - 1]}
+          {lang === "he" ? HE_MONTHS_SHORT[m - 1] : new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(dateLocale(lang), { month: "short", timeZone: "UTC" })}
           {showYear && <span className="font-data"> {String(y).slice(2)}</span>}
         </div>
       </div>
@@ -299,7 +304,7 @@ function EventCard({
             <span
               className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-bold flex items-center justify-center leading-none font-data"
               style={{ background: "var(--color-rose)" }}
-              title="עדכונים חדשים מהלקוח"
+              title={t("עדכונים חדשים מהלקוח")}
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
@@ -310,32 +315,32 @@ function EventCard({
           <div className="flex flex-wrap gap-1.5 mt-1.5">
             {attention?.openBalance ? (
               <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-peach)" }}>
-                יתרה פתוחה <span className="font-data">₪{attention.openBalance.toLocaleString("he-IL")}</span>
+                {t("יתרה פתוחה")} <span className="font-data">₪{attention.openBalance.toLocaleString(dateLocale(lang))}</span>
               </span>
             ) : null}
             {attention?.depositDue ? (
               <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-peach)" }}>
-                מקדמה טרם שולמה
+                {t("מקדמה טרם שולמה")}
               </span>
             ) : null}
             {attention?.contractPending && (
               <span className={`${tag} bg-amber-bg`} style={{ color: "var(--color-amber-deep)" }}>
-                חוזה ממתין לחתימה
+                {t("חוזה ממתין לחתימה")}
               </span>
             )}
             {event.needs_review && (
               <span className={tag} style={{ background: badgeTint, color: "var(--color-ink)" }}>
-                יובא מהיומן. יש להשלים פרטים
+                {t("יובא מהיומן. יש להשלים פרטים")}
               </span>
             )}
             {isFreelance && (
               <span className={tag} style={{ background: FREELANCE_BADGE_TINT, color: "var(--color-ink)" }}>
-                אירוע פרילנס
+                {t("אירוע פרילנס")}
               </span>
             )}
             {event.resolution_note && (
               <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-coral-deep)" }}>
-                כפילות: {event.resolution_note}
+                {t("כפילות: {note}", { note: event.resolution_note })}
               </span>
             )}
           </div>
@@ -345,11 +350,11 @@ function EventCard({
       <div className="shrink-0 self-start mt-0.5 flex flex-col items-end gap-1.5 max-w-[104px]">
         {done ? (
           <span className="text-xs font-semibold" style={{ color: "var(--color-sage)" }}>
-            נסגר
+            {t("נסגר")}
           </span>
         ) : nextStage ? (
-          <span className="text-xs text-ink-soft text-end leading-snug" title="השלב הבא">
-            {nextStage}
+          <span className="text-xs text-ink-soft text-end leading-snug" title={t("השלב הבא")}>
+            {t(nextStage)}
           </span>
         ) : canClose ? (
           // Every stage is done: closing is the next step. Lives inside the row's <Link>, so the
@@ -363,7 +368,7 @@ function EventCard({
             className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-bg"
             style={{ color: "var(--color-amber-deep)" }}
           >
-            לסגירה
+            {t("לסגירה")}
           </button>
         ) : null}
       </div>

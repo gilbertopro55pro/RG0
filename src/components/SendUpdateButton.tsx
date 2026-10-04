@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useT } from "@/i18n/client";
 
 // Shared across every "an update to the client is due" spot — event stage checkpoints, a new
 // booking's confirmation screen, a gallery publish/upload confirmation. `onSend` does the actual
@@ -14,6 +15,7 @@ export default function SendUpdateButton({
   pending: boolean;
   label?: string;
 }) {
+  const t = useT();
   const [sent, setSent] = useState(false);
   return (
     <button
@@ -29,7 +31,7 @@ export default function SendUpdateButton({
       className={`whatsapp-update-btn w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2.5 disabled:opacity-60${sent ? " whatsapp-update-btn--sent" : ""}`}
       style={{ background: sent ? "var(--color-sage)" : "var(--color-input-bg)", color: sent ? "#fff" : "var(--color-sage)" }}
     >
-      {pending ? "שולח..." : sent ? "העדכון נשלח ✓" : label}
+      {pending ? t("שולח...") : sent ? t("העדכון נשלח ✓") : t(label)}
     </button>
   );
 }

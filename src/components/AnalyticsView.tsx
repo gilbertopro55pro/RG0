@@ -8,6 +8,8 @@ import type { AnalyticsEvent } from "@/app/analytics/page";
 import PageGuide from "@/components/PageGuide";
 import { closingRecognitions } from "@/lib/closeEvent";
 import BackLink from "@/components/BackLink";
+import { useT, useLang } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 const HEBREW_MONTHS = [
   "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
@@ -21,8 +23,8 @@ function monthKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
-function currency(n: number): string {
-  return `₪${n.toLocaleString("he-IL")}`;
+function currency(n: number, locale = "he-IL"): string {
+  return `₪${n.toLocaleString(locale)}`;
 }
 
 export default function AnalyticsView({
@@ -36,6 +38,9 @@ export default function AnalyticsView({
   initialYear: number;
   initialMonth: number;
 }) {
+  const t = useT();
+  const lang = useLang();
+  const money = (n: number) => currency(n, dateLocale(lang));
   const currentYear = initialYear;
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);
@@ -110,7 +115,7 @@ export default function AnalyticsView({
   }, [revenueByMonth, selectedYear]);
 
   const periodActualRevenue = scope === "year" ? yearRevenue : selectedRevenue;
-  const periodLabel = scope === "year" ? `${selectedYear}` : `${HEBREW_MONTHS[selectedMonth - 1]} ${selectedYear}`;
+  const periodLabel = scope === "year" ? `${selectedYear}` : `${t(HEBREW_MONTHS[selectedMonth - 1])} ${selectedYear}`;
 
   // Forecast = revenue already received in the period, plus whatever's still unpaid but due
   // (balance_due_date) within that same period — the only due-date field the data model has
@@ -161,6 +166,8 @@ export default function AnalyticsView({
   }, [payments, eventById, selectedKey, recognitions]);
 
   const monthLabel = `${HEBREW_MONTHS[selectedMonth - 1]} ${selectedYear}`;
+  // monthLabel stays Hebrew: it goes into the exported CSV / email / share text.
+  const uiMonthLabel = `${t(HEBREW_MONTHS[selectedMonth - 1])} ${selectedYear}`;
 
   const buildCsv = () => {
     const header = ["תאריך", "שם לקוח", "סוג תשלום", "חבילה", 'סכום (₪)'];
@@ -229,7 +236,7 @@ export default function AnalyticsView({
     setEmailSending(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setEmailError(data.error ?? "שליחת המייל נכשלה");
+      setEmailError(data.error ?? t("שליחת המייל נכשלה"));
       return;
     }
     setEmailSent(true);
@@ -290,11 +297,11 @@ export default function AnalyticsView({
 
   return (
     <div className="pb-8">
-      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
-      <h1 className="text-[26px] font-bold mb-1.5 font-display">ניתוח עסקי</h1>
+      <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-5" />
+      <h1 className="text-[26px] font-bold mb-1.5 font-display">{t("ניתוח עסקי")}</h1>
       <PageGuide
         pageKey="analytics"
-        blurb="כאן רואים תמונה עסקית מלאה, הכנסות לפי חודש, תשלומים שממתינים, והתפלגות לפי סוגי חבילות."
+        blurb={t("כאן רואים תמונה עסקית מלאה, הכנסות לפי חודש, תשלומים שממתינים, והתפלגות לפי סוגי חבילות.")}
       />
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -307,7 +314,7 @@ export default function AnalyticsView({
               color: scope === "month" ? "#fff" : "var(--color-ink-soft)",
             }}
           >
-            חודש
+            {t("חודש")}
           </button>
           <button
             onClick={() => setScope("year")}
@@ -317,7 +324,7 @@ export default function AnalyticsView({
               color: scope === "year" ? "#fff" : "var(--color-ink-soft)",
             }}
           >
-            שנה
+            {t("שנה")}
           </button>
         </div>
         <select
@@ -328,7 +335,7 @@ export default function AnalyticsView({
         >
           {HEBREW_MONTHS.map((label, i) => (
             <option key={i} value={i + 1}>
-              {label}
+              {t(label)}
             </option>
           ))}
         </select>
@@ -346,26 +353,26 @@ export default function AnalyticsView({
         <button
           onClick={() => setShareOpen(true)}
           disabled={monthTransactions.length === 0}
-          title="ייצוא לרואה חשבון (CSV)"
+          title={t("ייצוא לרואה חשבון (CSV)")}
           className="shrink-0 rounded-lg px-2.5 py-2 text-xs sm:text-sm font-semibold bg-card border border-line text-ink-soft disabled:opacity-40"
         >
-          ייצוא ל-CSV
+          {t("ייצוא ל-CSV")}
         </button>
       </div>
 
       {/* Design stage 5: one leading figure (what came in, against what was expected) instead of
           three equal tiles that repeated the same number; what's still owed follows as a flat row. */}
-      <section aria-label="הכנסות" className="surface-hero p-[18px] mb-4">
+      <section aria-label={t("הכנסות")} className="surface-hero p-[18px] mb-4">
         <div className="flex items-baseline justify-between gap-3 mb-1.5">
-          <span className="text-sm text-ink-soft">התקבל: {periodLabel}</span>
+          <span className="text-sm text-ink-soft">{t("התקבל: {period}", { period: periodLabel })}</span>
           {scope !== "year" && delta !== null && (
             <span className="text-[13px] font-bold" style={{ color: delta >= 0 ? "var(--color-sage)" : "var(--color-rose)" }}>
-              {delta >= 0 ? "↑" : "↓"} {Math.abs(Math.round(delta))}% מהחודש הקודם
+              {delta >= 0 ? "↑" : "↓"} {t("{n}% מהחודש הקודם", { n: Math.abs(Math.round(delta)) })}
             </span>
           )}
-          {scope !== "year" && delta === null && selectedRevenue > 0 && <span className="text-[13px] text-ink-soft">חודש ראשון עם הכנסה</span>}
+          {scope !== "year" && delta === null && selectedRevenue > 0 && <span className="text-[13px] text-ink-soft">{t("חודש ראשון עם הכנסה")}</span>}
         </div>
-        <div className="text-[40px] leading-none font-extrabold font-data">{currency(periodActualRevenue)}</div>
+        <div className="text-[40px] leading-none font-extrabold font-data">{money(periodActualRevenue)}</div>
         <div className="h-1 rounded-full overflow-hidden mt-3.5 mb-2" style={{ background: "var(--color-chip)" }}>
           <div
             className="gf-grow h-full rounded-full"
@@ -378,29 +385,29 @@ export default function AnalyticsView({
         <div className="text-[13px] text-ink-soft">
           {periodForecastExtra > 0 ? (
             <>
-              מתוך צפי של {currency(periodForecast)}, עוד {currency(periodForecastExtra)} צפוי להתקבל
+              {t("מתוך צפי של {forecast}, עוד {extra} צפוי להתקבל", { forecast: money(periodForecast), extra: money(periodForecastExtra) })}
             </>
           ) : periodForecast > 0 ? (
-            "כל הצפי לתקופה התקבל"
+            t("כל הצפי לתקופה התקבל")
           ) : (
-            "אין תשלומים צפויים לתקופה"
+            t("אין תשלומים צפויים לתקופה")
           )}
         </div>
       </section>
 
       <div className="rounded-2xl p-4 mb-5 bg-card flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[13px] text-ink-soft">ממתין לתשלום, בכל התאריכים</div>
-          <div className="text-xs text-ink-soft">{upcoming.length} תשלומים פתוחים</div>
+          <div className="text-[13px] text-ink-soft">{t("ממתין לתשלום, בכל התאריכים")}</div>
+          <div className="text-xs text-ink-soft">{t("{n} תשלומים פתוחים", { n: upcoming.length })}</div>
         </div>
-        <div className="text-[22px] font-extrabold font-data">{currency(upcomingTotal)}</div>
+        <div className="text-[22px] font-extrabold font-data">{money(upcomingTotal)}</div>
       </div>
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold mb-3.5">הכנסות: 12 חודשים אחרונים</div>
+        <div className="text-sm font-semibold mb-3.5">{t("הכנסות: 12 חודשים אחרונים")}</div>
         {!hasAnyRevenue && (
           <p className="text-xs text-ink-soft mb-3">
-            עוד אין תשלומים מסומנים כ&quot;שולם&quot;, הגרף יתמלא ברגע שתסמנו תשלום ראשון באירוע.
+            {t("עוד אין תשלומים מסומנים כ\"שולם\", הגרף יתמלא ברגע שתסמנו תשלום ראשון באירוע.")}
           </p>
         )}
         <svg viewBox={`0 0 ${chartWidth} ${chartHeight + 24}`} width="100%" height={chartHeight + 24}>
@@ -411,7 +418,7 @@ export default function AnalyticsView({
             const isSelected = m.key === selectedKey;
             return (
               <g key={m.key}>
-                <title>{`${m.label} ${m.year}: ${currency(m.amount)}`}</title>
+                <title>{`${t(m.label)} ${m.year}: ${money(m.amount)}`}</title>
                 <rect
                   x={x}
                   y={y}
@@ -439,7 +446,7 @@ export default function AnalyticsView({
                   fontSize="8"
                   fill="var(--color-ink-soft)"
                 >
-                  {m.label}
+                  {t(m.label)}
                 </text>
               </g>
             );
@@ -449,12 +456,12 @@ export default function AnalyticsView({
 
       {packageCounts.length > 0 && (
         <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-          <div className="text-sm font-semibold mb-3.5">חבילות פופולריות</div>
+          <div className="text-sm font-semibold mb-3.5">{t("חבילות פופולריות")}</div>
           <div className="space-y-2.5">
             {packageCounts.map(({ pkg, count }) => (
               <div key={pkg}>
                 <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-ink">{PACKAGE_LABELS[pkg as keyof typeof PACKAGE_LABELS]}</span>
+                  <span className="text-ink">{t(PACKAGE_LABELS[pkg as keyof typeof PACKAGE_LABELS] ?? pkg)}</span>
                   <span className="text-ink-soft font-data">{count}</span>
                 </div>
                 <div className="h-[6px] rounded-full bg-line">
@@ -471,18 +478,18 @@ export default function AnalyticsView({
 
       {upcoming.length > 0 && (
         <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-          <div className="text-sm font-semibold mb-3.5">תשלומים צפויים</div>
+          <div className="text-sm font-semibold mb-3.5">{t("תשלומים צפויים")}</div>
           <div className="space-y-2">
             {upcoming.slice(0, 8).map((r, i) => (
               <div key={i} className="flex items-center justify-between text-sm rounded-xl px-3.5 py-2.5 bg-chip">
                 <div>
                   <span className="text-ink">{r.clientName}</span>
-                  <span className="text-ink-soft">, {r.label}</span>
+                  <span className="text-ink-soft">, {t(r.label)}</span>
                 </div>
-                <div className="text-left">
-                  <div className="font-data text-ink">{currency(r.amount)}</div>
+                <div className="text-end">
+                  <div className="font-data text-ink">{money(r.amount)}</div>
                   {r.dueDate && (
-                    <div className="text-[10px] text-ink-soft">עד {new Date(r.dueDate).toLocaleDateString("he-IL")}</div>
+                    <div className="text-[10px] text-ink-soft">{t("עד {date}", { date: new Date(r.dueDate).toLocaleDateString(dateLocale(lang)) })}</div>
                   )}
                 </div>
               </div>
@@ -500,43 +507,43 @@ export default function AnalyticsView({
           <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             {shareStep === "options" && (
               <>
-                <h2 className="text-lg font-bold font-display mb-1">שליחת נתוני {monthLabel}</h2>
-                <p className="text-xs text-ink-soft mb-4">{monthTransactions.length} תשלומים, איך לשלוח?</p>
+                <h2 className="text-lg font-bold font-display mb-1">{t("שליחת נתוני {month}", { month: uiMonthLabel })}</h2>
+                <p className="text-xs text-ink-soft mb-4">{t("{n} תשלומים, איך לשלוח?", { n: monthTransactions.length })}</p>
                 <div className="space-y-2.5">
                   <button
                     onClick={() => setShareStep("email")}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
                   >
-                    מייל
+                    {t("מייל")}
                   </button>
                   <button
                     onClick={shareViaWhatsapp}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-sage-bg text-sage"
                   >
-                    וואטסאפ
+                    {t("וואטסאפ")}
                   </button>
                   <button
                     onClick={shareViaOther}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink"
                   >
-                    אחר
+                    {t("אחר")}
                   </button>
                 </div>
                 <button onClick={closeShare} className="w-full text-center mt-4 text-xs text-ink-soft">
-                  ביטול
+                  {t("ביטול")}
                 </button>
               </>
             )}
 
             {shareStep === "email" && !emailSent && (
               <>
-                <h2 className="text-lg font-bold font-display mb-1">שליחה במייל</h2>
-                <p className="text-xs text-ink-soft mb-4">נתוני {monthLabel} יישלחו כקובץ מצורף</p>
+                <h2 className="text-lg font-bold font-display mb-1">{t("שליחה במייל")}</h2>
+                <p className="text-xs text-ink-soft mb-4">{t("נתוני {month} יישלחו כקובץ מצורף", { month: uiMonthLabel })}</p>
                 <input
                   type="email"
                   value={emailValue}
                   onChange={(e) => setEmailValue(e.target.value)}
-                  placeholder="כתובת מייל"
+                  placeholder={t("כתובת מייל")}
                   autoFocus
                   className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-2"
                 />
@@ -547,13 +554,13 @@ export default function AnalyticsView({
                     disabled={emailSending || !emailValue.trim()}
                     className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-50"
                   >
-                    {emailSending ? "שולח..." : "שלח נתונים"}
+                    {emailSending ? t("שולח...") : t("שלח נתונים")}
                   </button>
                   <button
                     onClick={closeShare}
                     className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
                   >
-                    ביטול
+                    {t("ביטול")}
                   </button>
                 </div>
               </>
@@ -562,10 +569,10 @@ export default function AnalyticsView({
             {shareStep === "email" && emailSent && (
               <>
                 <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium mb-4">
-                  הנתונים נשלחו ל-{emailValue.trim()}
+                  {t("הנתונים נשלחו ל-{email}", { email: emailValue.trim() })}
                 </div>
                 <button onClick={closeShare} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-                  סגירה
+                  {t("סגירה")}
                 </button>
               </>
             )}

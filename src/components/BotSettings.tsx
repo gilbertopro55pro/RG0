@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { IntakeFaqItem, Photographer } from "@/lib/types";
 import { GREETING_MAX_CHARS, chatLinkFor, defaultWhatsAppGreeting } from "@/lib/intakeGreeting";
 import { SOURCE_LINKS } from "@/lib/leadSource";
+import { useT } from "@/i18n/client";
 
 const MAX_FAQ = 15;
 
@@ -28,6 +29,7 @@ export default function BotSettings({
   canBuyPacks?: boolean;
   chatPath: string;
 }) {
+  const t = useT();
   const [enabled, setEnabled] = useState(photographer.intake_bot_enabled);
   const [faq, setFaq] = useState<IntakeFaqItem[]>(photographer.intake_bot_faq?.length ? photographer.intake_bot_faq : []);
   const [replyHours, setReplyHours] = useState(photographer.intake_bot_reply_hours || 24);
@@ -51,17 +53,17 @@ export default function BotSettings({
   useEffect(() => {
     // Back from a PayPlus page that didn't go through (failureUrl in api/intake-credits/checkout).
     if (new URLSearchParams(window.location.search).get("intakePurchase") === "failed") {
-      const t = setTimeout(() => setPackError("התשלום לא עבר, ולא חויבת. אפשר לנסות שוב."), 0);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => setPackError("התשלום לא עבר, ולא חויבת. אפשר לנסות שוב."), 0);
+      return () => clearTimeout(timer);
     }
   }, []);
 
   if (cap <= 0) {
     return (
       <div className="rounded-2xl p-4 bg-card border border-line">
-        <div className="text-sm font-semibold mb-1">עוזר פניות</div>
+        <div className="text-sm font-semibold mb-1">{t("עוזר פניות")}</div>
         <p className="text-xs text-ink-soft">
-          עוזר שעונה ללקוחות חדשים מיד, בודק שהתאריך פנוי ואוסף את פרטי האירוע, ומעביר לך ליד מוכן להצעת מחיר. העוזר לא זמין בחשבון הזה כרגע.
+          {t("עוזר שעונה ללקוחות חדשים מיד, בודק שהתאריך פנוי ואוסף את פרטי האירוע, ומעביר לך ליד מוכן להצעת מחיר. העוזר לא זמין בחשבון הזה כרגע.")}
         </p>
       </div>
     );
@@ -134,16 +136,16 @@ export default function BotSettings({
     <div className="rounded-2xl bg-card border border-line overflow-hidden">
       <div className="p-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-semibold mb-1">עוזר פניות</div>
+          <div className="text-sm font-semibold mb-1">{t("עוזר פניות")}</div>
           <p className="text-xs text-ink-soft">
-            עונה ללקוחות חדשים מיד, בודק שהתאריך פנוי ואוסף את פרטי האירוע. על מחירים הוא לא מדבר: הלקוח מקבל ממך הצעה אישית, וכל פנייה נכנסת ללידים.
+            {t("עונה ללקוחות חדשים מיד, בודק שהתאריך פנוי ואוסף את פרטי האירוע. על מחירים הוא לא מדבר: הלקוח מקבל ממך הצעה אישית, וכל פנייה נכנסת ללידים.")}
           </p>
         </div>
         <button
           type="button"
           role="switch"
           aria-checked={enabled}
-          aria-label="העוזר פעיל"
+          aria-label={t("העוזר פעיל")}
           disabled={saving}
           onClick={() => {
             const next = !enabled;
@@ -158,7 +160,7 @@ export default function BotSettings({
       </div>
 
       <div className="px-4 py-3 border-t border-line">
-        <div className="text-xs text-ink-soft mb-1.5">הקישור לשיחה (לשים באינסטגרם, בוואטסאפ ובאתר)</div>
+        <div className="text-xs text-ink-soft mb-1.5">{t("הקישור לשיחה (לשים באינסטגרם, בוואטסאפ ובאתר)")}</div>
         <div className="flex items-center gap-2">
           <span className="flex-1 min-w-0 truncate text-sm font-data" dir="ltr">
             {fullLink}
@@ -175,10 +177,10 @@ export default function BotSettings({
             className="text-xs font-semibold rounded-lg px-3 py-1.5 border border-line shrink-0"
             style={{ background: "var(--color-input-bg)" }}
           >
-            {copied ? "הועתק" : "העתקה"}
+            {copied ? t("הועתק") : t("העתקה")}
           </button>
           <a href={chatPath} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold underline underline-offset-2 shrink-0" style={{ color: "var(--color-amber-deep)" }}>
-            לנסות
+            {t("לנסות")}
           </a>
         </div>
       </div>
@@ -210,9 +212,9 @@ export default function BotSettings({
       />
 
       <details className="group px-4 py-3 border-t border-line">
-        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2 mb-1"><span>קישורים לפי מקור</span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
+        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2 mb-1"><span>{t("קישורים לפי מקור")}</span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
         <p className="text-xs text-ink-soft mb-2">
-          אותו עוזר, קישור אחר לכל ערוץ. כך בעמוד הלידים רואים מאיפה הגיעה כל פנייה (הודעת הפתיחה לוואטסאפ והכפתור בפורטפוליו כבר מסומנים).
+          {t("אותו עוזר, קישור אחר לכל ערוץ. כך בעמוד הלידים רואים מאיפה הגיעה כל פנייה (הודעת הפתיחה לוואטסאפ והכפתור בפורטפוליו כבר מסומנים).")}
         </p>
         <div className="grid gap-1.5">
           {SOURCE_LINKS.map(({ src, label }) => {
@@ -220,7 +222,7 @@ export default function BotSettings({
             return (
               <div key={src} className="flex items-center gap-2">
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold">{label}</div>
+                  <div className="text-xs font-semibold">{t(label)}</div>
                   <div className="text-xs text-ink-soft font-data truncate" dir="ltr">
                     {url}
                   </div>
@@ -237,7 +239,7 @@ export default function BotSettings({
                   className="text-xs font-semibold rounded-lg px-3 py-1.5 border border-line shrink-0"
                   style={{ background: "var(--color-input-bg)" }}
                 >
-                  {copiedSource === src ? "הועתק" : "העתקה"}
+                  {copiedSource === src ? t("הועתק") : t("העתקה")}
                 </button>
               </div>
             );
@@ -246,12 +248,12 @@ export default function BotSettings({
       </details>
 
       <details className="group px-4 py-3 border-t border-line">
-        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2 mb-1"><span>הודעת פתיחה לוואטסאפ העסקי</span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
+        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2 mb-1"><span>{t("הודעת פתיחה לוואטסאפ העסקי")}</span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
         <p className="text-xs text-ink-soft mb-2">
-          כל לקוח חדש שכותב לך בוואטסאפ יקבל אוטומטית את ההודעה הזו, עם הקישור לעוזר. באפליקציית WhatsApp Business: הגדרות › כלים לעסקים › הודעת פתיחה › להדליק ולהדביק.
+          {t("כל לקוח חדש שכותב לך בוואטסאפ יקבל אוטומטית את ההודעה הזו, עם הקישור לעוזר. באפליקציית WhatsApp Business: הגדרות › כלים לעסקים › הודעת פתיחה › להדליק ולהדביק.")}
         </p>
         <textarea
-          aria-label="הודעת הפתיחה"
+          aria-label={t("הודעת הפתיחה")}
           value={greeting}
           onChange={(e) => setGreeting(e.target.value)}
           rows={7}
@@ -266,7 +268,7 @@ export default function BotSettings({
             disabled={greetingBusy !== null || greeting.trim() === savedGreeting}
             className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-ink text-white disabled:opacity-50"
           >
-            {greetingBusy === "save" ? "שומר…" : "שמירה"}
+            {greetingBusy === "save" ? t("שומר…") : t("שמירה")}
           </button>
           <button
             type="button"
@@ -275,7 +277,7 @@ export default function BotSettings({
             className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-line disabled:opacity-50"
             style={{ background: "var(--color-input-bg)", color: "var(--color-amber-deep)" }}
           >
-            {greetingBusy === "ai" ? "מנסח…" : "✦ ניסוח עם AI"}
+            {greetingBusy === "ai" ? t("מנסח…") : t("✦ ניסוח עם AI")}
           </button>
           <button
             type="button"
@@ -289,23 +291,23 @@ export default function BotSettings({
             className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-line"
             style={{ background: "var(--color-input-bg)" }}
           >
-            {greetingCopied ? "הועתק" : "העתקה"}
+            {greetingCopied ? t("הועתק") : t("העתקה")}
           </button>
           {greeting.trim() !== defaultGreeting && (
             <button type="button" onClick={() => setGreeting(defaultGreeting)} className="text-xs text-ink-soft underline underline-offset-2">
-              חזרה לנוסח המקורי
+              {t("חזרה לנוסח המקורי")}
             </button>
           )}
         </div>
-        {greetingStatus && <p className={`mt-1.5 text-xs ${greetingStatus === "נשמר" || greetingStatus.startsWith("נוסח") ? "text-sage" : "text-rose"}`}>{greetingStatus}</p>}
+        {greetingStatus && <p className={`mt-1.5 text-xs ${greetingStatus === "נשמר" || greetingStatus.startsWith("נוסח") ? "text-sage" : "text-rose"}`}>{t(greetingStatus)}</p>}
       </details>
 
       <details className="group px-4 py-3 border-t border-line">
-        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2"><span>כותרת בדף הצ&apos;אט והגדרות השיחה</span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
+        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2"><span>{t("כותרת בדף הצ'אט והגדרות השיחה")}</span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
         <div className="grid gap-3 mt-3">
         <div>
           <label htmlFor="intake-title" className="text-xs text-ink-soft block mb-1">
-            כותרת בדף הצ&apos;אט
+            {t("כותרת בדף הצ'אט")}
           </label>
           <input
             id="intake-title"
@@ -316,30 +318,30 @@ export default function BotSettings({
             className={field}
             style={{ background: "var(--color-input-bg)" }}
           />
-          <p className="text-xs text-ink-soft mt-1">מה הלקוח רואה בראש הצ&apos;אט, למשל &quot;{photographer.name} - צילום אירועים&quot;. ריק = השם שלך.</p>
+          <p className="text-xs text-ink-soft mt-1">{t("מה הלקוח רואה בראש הצ'אט, למשל \"{name} - צילום אירועים\". ריק = השם שלך.", { name: photographer.name })}</p>
         </div>
         <div>
           <label htmlFor="intake-hours" className="text-xs text-ink-soft block mb-1">
-            תוך כמה זמן אני חוזר/ת עם הצעה (מופיע ללקוח)
+            {t("תוך כמה זמן אני חוזר/ת עם הצעה (מופיע ללקוח)")}
           </label>
           <select id="intake-hours" value={replyHours} onChange={(e) => setReplyHours(Number(e.target.value))} className={field} style={{ background: "var(--color-input-bg)" }}>
             {[6, 12, 24, 48].map((h) => (
               <option key={h} value={h}>
-                {h} שעות
+                {t("{n} שעות", { n: h })}
               </option>
             ))}
           </select>
         </div>
         <div>
           <label htmlFor="intake-extra" className="text-xs text-ink-soft block mb-1">
-            שאלה נוספת שהעוזר ישאל (לא חובה)
+            {t("שאלה נוספת שהעוזר ישאל (לא חובה)")}
           </label>
           <input
             id="intake-extra"
             value={extraQuestion}
             onChange={(e) => setExtraQuestion(e.target.value)}
             maxLength={200}
-            placeholder="למשל: רוצים גם מגנטים או אלבום?"
+            placeholder={t("למשל: רוצים גם מגנטים או אלבום?")}
             className={field}
             style={{ background: "var(--color-input-bg)" }}
           />
@@ -347,25 +349,25 @@ export default function BotSettings({
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={splitDay} onChange={(e) => setSplitDay(e.target.checked)} className="mt-1" />
           <span>
-            אירוע בוקר ואירוע ערב באותו יום
+            {t("אירוע בוקר ואירוע ערב באותו יום")}
             <span className="block text-xs text-ink-soft">
-              אירוע בוקר (07:30 עד 15:00, למשל עלייה לתורה) ואירוע ערב (18:00 עד 00:00) לא חוסמים זה את זה בבדיקת התאריך. אירוע בלי שעות, או אירוע שנמשך כל היום, חוסם את כל היום.
+              {t("אירוע בוקר (07:30 עד 15:00, למשל עלייה לתורה) ואירוע ערב (18:00 עד 00:00) לא חוסמים זה את זה בבדיקת התאריך. אירוע בלי שעות, או אירוע שנמשך כל היום, חוסם את כל היום.")}
             </span>
           </span>
         </label>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={shabbatClosed} onChange={(e) => setShabbatClosed(e.target.checked)} className="mt-1" />
           <span>
-            לא מצלם בשבת
-            <span className="block text-xs text-ink-soft">ביום שישי רק אירוע בוקר (עד 16:00). שישי בערב ושבת במשך היום לא זמינים, מוצאי שבת זמין.</span>
+            {t("לא מצלם בשבת")}
+            <span className="block text-xs text-ink-soft">{t("ביום שישי רק אירוע בוקר (עד 16:00). שישי בערב ושבת במשך היום לא זמינים, מוצאי שבת זמין.")}</span>
           </span>
         </label>
         <details className="rounded-xl border border-line" style={{ background: "var(--color-input-bg)" }}>
-          <summary className="px-3 py-2.5 text-sm font-semibold cursor-pointer">חיבור למטא (פיקסל)</summary>
+          <summary className="px-3 py-2.5 text-sm font-semibold cursor-pointer">{t("חיבור למטא (פיקסל)")}</summary>
           <div className="px-3 pb-3">
             <div>
               <label htmlFor="intake-pixel" className="text-xs text-ink-soft block mb-1">
-                מזהה Meta Pixel (לא חובה)
+                {t("מזהה Meta Pixel (לא חובה)")}
               </label>
               <input
                 id="intake-pixel"
@@ -373,64 +375,64 @@ export default function BotSettings({
                 onChange={(e) => setPixelId(e.target.value.replace(/\D/g, "").slice(0, 20))}
                 inputMode="numeric"
                 dir="ltr"
-                placeholder="למשל 1234567890123456"
+                placeholder={t("למשל 1234567890123456")}
                 className={`${field} font-data`}
                 style={{ background: "var(--color-input-bg)" }}
               />
-              <p className="text-xs text-ink-soft mt-1">מדווח למטא על כל ליד שהעוזר יוצר, כדי שהמודעות ילמדו למצוא לקוחות שמשאירים פרטים. המספר נמצא במנהל האירועים של מטא.</p>
+              <p className="text-xs text-ink-soft mt-1">{t("מדווח למטא על כל ליד שהעוזר יוצר, כדי שהמודעות ילמדו למצוא לקוחות שמשאירים פרטים. המספר נמצא במנהל האירועים של מטא.")}</p>
             </div>
           </div>
         </details>
           <div className="flex items-center gap-3 pt-1">
             <button type="button" onClick={() => save()} disabled={saving} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-              {saving ? "שומר…" : "שמירה"}
+              {saving ? t("שומר…") : t("שמירה")}
             </button>
-            {status && <span className={`text-xs ${status === "נשמר" ? "text-sage" : "text-rose"}`}>{status}</span>}
+            {status && <span className={`text-xs ${status === "נשמר" ? "text-sage" : "text-rose"}`}>{t(status)}</span>}
           </div>
         </div>
       </details>
 
       <details className="group px-4 py-3 border-t border-line space-y-2">
-        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2"><span>שאלות נפוצות <span className="font-data text-ink-soft font-normal">({faq.length})</span></span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
-        <p className="text-xs text-ink-soft">העוזר עונה על שאלות כלליות רק מתוך מה שכתוב כאן. בלי מחירים.</p>
+        <summary className="text-sm font-semibold cursor-pointer list-none flex items-center justify-between gap-2"><span>{t("שאלות נפוצות")} <span className="font-data text-ink-soft font-normal">({faq.length})</span></span><span className="text-ink-soft transition-transform group-open:rotate-180" aria-hidden>⌄</span></summary>
+        <p className="text-xs text-ink-soft">{t("העוזר עונה על שאלות כלליות רק מתוך מה שכתוב כאן. בלי מחירים.")}</p>
         {faq.map((item, i) => (
           <div key={i} className="rounded-xl border border-line p-3 grid gap-2" style={{ background: "var(--color-input-bg)" }}>
             <input
-              aria-label={`שאלה ${i + 1}`}
+              aria-label={t("שאלה {n}", { n: i + 1 })}
               value={item.q}
               onChange={(e) => setFaq((f) => f.map((x, j) => (j === i ? { ...x, q: e.target.value } : x)))}
-              placeholder="השאלה, למשל: מתי מקבלים את התמונות?"
+              placeholder={t("השאלה, למשל: מתי מקבלים את התמונות?")}
               maxLength={200}
               className="w-full text-sm font-semibold bg-transparent border-b border-line pb-1.5"
             />
             <textarea
-              aria-label={`תשובה ${i + 1}`}
+              aria-label={t("תשובה {n}", { n: i + 1 })}
               value={item.a}
               onChange={(e) => setFaq((f) => f.map((x, j) => (j === i ? { ...x, a: e.target.value } : x)))}
-              placeholder="התשובה שלך"
+              placeholder={t("התשובה שלך")}
               rows={2}
               maxLength={800}
               className="w-full text-sm bg-transparent resize-none"
             />
             <button type="button" onClick={() => setFaq((f) => f.filter((_, j) => j !== i))} className="text-xs text-rose justify-self-start">
-              הסרה
+              {t("הסרה")}
             </button>
           </div>
         ))}
         {faq.length < MAX_FAQ && (
           <button type="button" onClick={() => setFaq((f) => [...f, { q: "", a: "" }])} className="text-sm font-semibold justify-self-start" style={{ color: "var(--color-amber-deep)" }}>
-            + שאלה חדשה
+            {t("+ שאלה חדשה")}
           </button>
         )}
         <div className="flex items-center gap-3 pt-1">
           <button type="button" onClick={() => save()} disabled={saving} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-            {saving ? "שומר…" : "שמירה"}
+            {saving ? t("שומר…") : t("שמירה")}
           </button>
-          {status && <span className={`text-xs ${status === "נשמר" ? "text-sage" : "text-rose"}`}>{status}</span>}
+          {status && <span className={`text-xs ${status === "נשמר" ? "text-sage" : "text-rose"}`}>{t(status)}</span>}
         </div>
       </details>
 
-      <p className="px-4 pb-4 text-xs text-ink-soft">בקרוב: אותו עוזר גם בוואטסאפ העסקי.</p>
+      <p className="px-4 pb-4 text-xs text-ink-soft">{t("בקרוב: אותו עוזר גם בוואטסאפ העסקי.")}</p>
     </div>
   );
 }
@@ -453,6 +455,7 @@ function IntakeUsageMeter({
   error: string | null;
   onBuy: (conversations: number) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
   const near = pct >= 90;
@@ -460,10 +463,10 @@ function IntakeUsageMeter({
   return (
     <div className="px-4 py-3 border-t border-line">
       <div className="flex items-baseline justify-between gap-2 mb-1.5">
-        <span className="text-sm font-semibold">שיחות החודש</span>
+        <span className="text-sm font-semibold">{t("שיחות החודש")}</span>
         <span className="text-sm">
           <span className="font-data font-semibold">{used}</span>
-          <span className="text-ink-soft"> מתוך </span>
+          <span className="text-ink-soft"> {t("מתוך")} </span>
           <span className="font-data">{cap}</span>
         </span>
       </div>
@@ -473,12 +476,12 @@ function IntakeUsageMeter({
       <p className="text-xs text-ink-soft mt-2">
         {extra > 0 ? (
           <>
-            ועוד <span className="font-data font-semibold text-ink">{extra}</span> שיחות שרכשת. הן נכנסות לפעולה אחרי המכסה החודשית, ולא פגות.
+            {t("ועוד {n} שיחות שרכשת. הן נכנסות לפעולה אחרי המכסה החודשית, ולא פגות.", { n: extra })}
           </>
         ) : full ? (
-          "המכסה החודשית נוצלה. לקוחות חדשים מקבלים עכשיו טופס פנייה רגיל, ושום פנייה לא הולכת לאיבוד."
+          t("המכסה החודשית נוצלה. לקוחות חדשים מקבלים עכשיו טופס פנייה רגיל, ושום פנייה לא הולכת לאיבוד.")
         ) : (
-          "המכסה מתחדשת בתחילת כל חודש. תקבלו התראה ב-90%, וגם כשהמכסה או השיחות שרכשתם נגמרות. אחרי המכסה הלקוחות מקבלים טופס פנייה רגיל."
+          t("המכסה מתחדשת בתחילת כל חודש. תקבלו התראה ב-90%, וגם כשהמכסה או השיחות שרכשתם נגמרות. אחרי המכסה הלקוחות מקבלים טופס פנייה רגיל.")
         )}
       </p>
       {canBuy && (
@@ -489,7 +492,7 @@ function IntakeUsageMeter({
             className="mt-2.5 text-xs font-semibold rounded-lg px-3 py-1.5 border border-line"
             style={{ background: "var(--color-input-bg)" }}
           >
-            {open ? "סגירה" : "רכישת שיחות נוספות"}
+            {open ? t("סגירה") : t("רכישת שיחות נוספות")}
           </button>
           {open && (
             <div className="mt-2.5">
@@ -503,18 +506,18 @@ function IntakeUsageMeter({
                     className="rounded-xl border border-line bg-white px-2 py-2.5 text-center disabled:opacity-60"
                   >
                     <div className="text-sm font-semibold">
-                      <span className="font-data">{p.conversations}</span> שיחות
+                      {t("{n} שיחות", { n: p.conversations })}
                     </div>
-                    <div className="text-xs text-ink-soft mt-0.5">{buying === p.conversations ? "פותח תשלום..." : <span className="font-data">₪{p.price}</span>}</div>
+                    <div className="text-xs text-ink-soft mt-0.5">{buying === p.conversations ? t("פותח תשלום...") : <span className="font-data">₪{p.price}</span>}</div>
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-ink-soft mt-2">תשלום חד-פעמי, בנפרד מהמנוי. המחירים כוללים מע״מ, והקבלה נשלחת למייל.</p>
+              <p className="text-xs text-ink-soft mt-2">{t("תשלום חד-פעמי, בנפרד מהמנוי. המחירים כוללים מע״מ, והקבלה נשלחת למייל.")}</p>
             </div>
           )}
         </>
       )}
-      {error && <p className="text-xs text-rose mt-2">{error}</p>}
+      {error && <p className="text-xs text-rose mt-2">{t(error)}</p>}
     </div>
   );
 }

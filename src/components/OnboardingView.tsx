@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { GOOGLE_EVENT_COLORS } from "@/lib/googleColors";
 import type { Photographer } from "@/lib/types";
+import { useT } from "@/i18n/client";
 
 export default function OnboardingView({
   photographer,
@@ -16,6 +17,7 @@ export default function OnboardingView({
   googleErrorNotice: boolean;
 }) {
   const router = useRouter();
+  const t = useT();
   const supabase = createClient();
 
   const [connected, setConnected] = useState(photographer.google_calendar_connected);
@@ -83,26 +85,26 @@ export default function OnboardingView({
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm rounded-2xl p-5 bg-card border border-line shadow-card">
-        <h1 className="text-xl font-bold mb-1 font-display">ברוך הבא</h1>
-        <p className="text-sm text-ink-soft mb-5">כמה דברים קצרים שכדאי להגדיר עכשיו. אפשר גם לדלג ולהגדיר מאוחר יותר בהגדרות.</p>
+        <h1 className="text-xl font-bold mb-1 font-display">{t("ברוך הבא")}</h1>
+        <p className="text-sm text-ink-soft mb-5">{t("כמה דברים קצרים שכדאי להגדיר עכשיו. אפשר גם לדלג ולהגדיר מאוחר יותר בהגדרות.")}</p>
 
         {googleConnectedNotice && (
-          <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-sage-bg text-sage">יומן Google חובר בהצלחה</div>
+          <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-sage-bg text-sage">{t("יומן Google חובר בהצלחה")}</div>
         )}
         {googleErrorNotice && (
           <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-white border border-rose text-rose">
-            החיבור ליומן Google נכשל, נסה/י שוב
+            {t("החיבור ליומן Google נכשל, נסה/י שוב")}
           </div>
         )}
 
         <div className="rounded-2xl p-4 mb-4 bg-white border border-line">
-          <div className="text-sm font-semibold mb-3">יומן Google</div>
+          <div className="text-sm font-semibold mb-3">{t("יומן Google")}</div>
           {connected ? (
             <div className="space-y-3">
-              <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">היומן מחובר ✓</div>
+              <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">{t("היומן מחובר ✓")}</div>
               <div>
                 <div className="text-xs mb-2 text-ink-soft">
-                  {colorId ? "צבע האירועים ביומן" : "באיזה צבע לשמור את האירועים ביומן?"}
+                  {colorId ? t("צבע האירועים ביומן") : t("באיזה צבע לשמור את האירועים ביומן?")}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {GOOGLE_EVENT_COLORS.map((c) => (
@@ -110,7 +112,7 @@ export default function OnboardingView({
                       key={c.id}
                       onClick={() => chooseColor(c.id)}
                       disabled={savingColor !== null}
-                      title={c.name}
+                      title={t(c.name)}
                       className="h-9 w-9 rounded-full flex items-center justify-center disabled:opacity-60"
                       style={{
                         background: c.hex,
@@ -128,18 +130,18 @@ export default function OnboardingView({
               href="/api/google/connect?redirect=/onboarding"
               className="w-full flex items-center justify-center rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white"
             >
-              התחברות ליומן Google
+              {t("התחברות ליומן Google")}
             </a>
           )}
         </div>
 
         <div className="rounded-2xl p-4 mb-4 bg-white border border-line">
-          <div className="text-sm font-semibold mb-3">מספר ח.פ / עוסק</div>
+          <div className="text-sm font-semibold mb-3">{t("מספר ח.פ / עוסק")}</div>
           <div className="flex gap-2">
             <input
               value={businessId}
               onChange={(e) => setBusinessId(e.target.value)}
-              placeholder="לדוגמה: 039119243"
+              placeholder={t("לדוגמה: 039119243")}
               dir="ltr"
               className="flex-1 rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white font-data text-left"
             />
@@ -148,31 +150,31 @@ export default function OnboardingView({
               disabled={savingBusinessId}
               className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-ink text-white disabled:opacity-60"
             >
-              {savingBusinessId ? "שומר..." : businessIdSaved ? "נשמר ✓" : "שמירה"}
+              {savingBusinessId ? t("שומר...") : businessIdSaved ? t("נשמר ✓") : t("שמירה")}
             </button>
           </div>
-          <p className="text-[11px] text-ink-soft mt-1.5">יוצג בהצעות מחיר ליד שם העסק.</p>
+          <p className="text-[11px] text-ink-soft mt-1.5">{t("יוצג בהצעות מחיר ליד שם העסק.")}</p>
         </div>
 
         <div className="rounded-2xl p-4 mb-5 bg-white border border-line">
-          <div className="text-sm font-semibold mb-3">לוגו העסק</div>
+          <div className="text-sm font-semibold mb-3">{t("לוגו העסק")}</div>
           <div className="flex items-center gap-3">
             <div className="w-14 h-14 rounded-lg bg-chip border border-line shrink-0 flex items-center justify-center overflow-hidden">
               {logoPreviewUrl || logoPath ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoPreviewUrl ?? undefined} alt="לוגו" className="w-full h-full object-contain" />
+                <img src={logoPreviewUrl ?? undefined} alt={t("לוגו")} className="w-full h-full object-contain" />
               ) : (
-                <span className="text-[10px] text-ink-soft">אין לוגו</span>
+                <span className="text-[10px] text-ink-soft">{t("אין לוגו")}</span>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-ink-soft mb-1.5">יופיע בהצעות מחיר ובמסמכים שיוצאים ללקוחות.</p>
+              <p className="text-[11px] text-ink-soft mb-1.5">{t("יופיע בהצעות מחיר ובמסמכים שיוצאים ללקוחות.")}</p>
               <button
                 onClick={() => logoInputRef.current?.click()}
                 disabled={uploadingLogo}
                 className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {uploadingLogo ? "מעלה..." : logoPath ? "החלפת לוגו" : "העלאת לוגו"}
+                {uploadingLogo ? t("מעלה...") : logoPath ? t("החלפת לוגו") : t("העלאת לוגו")}
               </button>
               <input
                 ref={logoInputRef}
@@ -194,7 +196,7 @@ export default function OnboardingView({
           disabled={finishing}
           className="w-full rounded-xl py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
         >
-          {finishing ? "שומר..." : "סיום, המשך למערכת"}
+          {finishing ? t("שומר...") : t("סיום, המשך למערכת")}
         </button>
       </div>
     </div>

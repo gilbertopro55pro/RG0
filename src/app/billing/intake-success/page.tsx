@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Spinner from "@/components/Spinner";
+import { useT } from "@/i18n/client";
 
 const POLL_INTERVAL_MS = 1500;
 const MAX_ATTEMPTS = 20;
@@ -11,6 +12,7 @@ const MAX_ATTEMPTS = 20;
 // Back from PayPlus after buying extra assistant conversations. The conversations are added by the
 // webhook, which can trail the redirect by a few seconds, so this polls until the purchase is paid.
 function IntakeSuccess() {
+  const t = useT();
   const purchase = useSearchParams().get("purchase") ?? "";
   const [state, setState] = useState<{ status: "waiting" | "paid" | "failed" | "slow"; conversations?: number; balance?: number; receiptLink?: string | null }>({ status: "waiting" });
 
@@ -42,8 +44,8 @@ function IntakeSuccess() {
     <div className="w-full max-w-sm rounded-2xl p-6 text-center bg-card border border-line shadow-card">
       {state.status === "waiting" && (
         <>
-          <h1 className="text-xl font-bold mb-2 font-display">התשלום התקבל</h1>
-          <p className="text-sm text-ink-soft mb-5">טוען את השיחות לחשבון...</p>
+          <h1 className="text-xl font-bold mb-2 font-display">{t("התשלום התקבל")}</h1>
+          <p className="text-sm text-ink-soft mb-5">{t("טוען את השיחות לחשבון...")}</p>
           <div className="flex justify-center">
             <Spinner />
           </div>
@@ -51,33 +53,33 @@ function IntakeSuccess() {
       )}
       {state.status === "paid" && (
         <>
-          <h1 className="text-xl font-bold mb-2 font-display">השיחות נטענו</h1>
+          <h1 className="text-xl font-bold mb-2 font-display">{t("השיחות נטענו")}</h1>
           <p className="text-sm text-ink-soft mb-1">
-            נוספו <span className="font-data font-semibold text-ink">{state.conversations}</span> שיחות לעוזר הפניות.
+            {t("נוספו {n} שיחות לעוזר הפניות.", { n: state.conversations ?? 0 })}
           </p>
           <p className="text-sm text-ink-soft mb-5">
-            יש לך עכשיו <span className="font-data font-semibold text-ink">{state.balance}</span> שיחות נוספות, מעבר למכסה החודשית. הקבלה נשלחת למייל.
+            {t("יש לך עכשיו {n} שיחות נוספות, מעבר למכסה החודשית. הקבלה נשלחת למייל.", { n: state.balance ?? 0 })}
           </p>
           <Link href="/settings?tab=automation" className="block w-full rounded-xl py-3 text-sm font-semibold bg-ink text-white">
-            חזרה להגדרות העוזר
+            {t("חזרה להגדרות העוזר")}
           </Link>
         </>
       )}
       {state.status === "failed" && (
         <>
-          <h1 className="text-xl font-bold mb-2 font-display">התשלום לא עבר</h1>
-          <p className="text-sm text-ink-soft mb-5">לא חויבת, ולא נטענו שיחות. אפשר לנסות שוב מההגדרות.</p>
+          <h1 className="text-xl font-bold mb-2 font-display">{t("התשלום לא עבר")}</h1>
+          <p className="text-sm text-ink-soft mb-5">{t("לא חויבת, ולא נטענו שיחות. אפשר לנסות שוב מההגדרות.")}</p>
           <Link href="/settings?tab=automation" className="block w-full rounded-xl py-3 text-sm font-semibold bg-ink text-white">
-            חזרה להגדרות העוזר
+            {t("חזרה להגדרות העוזר")}
           </Link>
         </>
       )}
       {state.status === "slow" && (
         <>
-          <h1 className="text-xl font-bold mb-2 font-display">התשלום התקבל</h1>
-          <p className="text-sm text-ink-soft mb-5">הטעינה לוקחת קצת יותר זמן מהרגיל. השיחות יופיעו בהגדרות העוזר בדקות הקרובות.</p>
+          <h1 className="text-xl font-bold mb-2 font-display">{t("התשלום התקבל")}</h1>
+          <p className="text-sm text-ink-soft mb-5">{t("הטעינה לוקחת קצת יותר זמן מהרגיל. השיחות יופיעו בהגדרות העוזר בדקות הקרובות.")}</p>
           <Link href="/settings?tab=automation" className="block w-full rounded-xl py-3 text-sm font-semibold bg-ink text-white">
-            להגדרות העוזר
+            {t("להגדרות העוזר")}
           </Link>
         </>
       )}

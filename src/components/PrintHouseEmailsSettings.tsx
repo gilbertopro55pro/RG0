@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { PrintHouseEmailRow } from "@/lib/types";
+import { useT } from "@/i18n/client";
 
 function sortEmails(emails: PrintHouseEmailRow[]): PrintHouseEmailRow[] {
   return [...emails].sort((a, b) => {
@@ -33,6 +34,7 @@ export default function PrintHouseEmailsSettings({
   compact?: boolean;
 }) {
   const supabase = createClient();
+  const t = useT();
   const [emails, setEmails] = useState(() => sortEmails(initialEmails));
   const [formOpen, setFormOpen] = useState<"new" | string | null>(null);
   const [draftEmail, setDraftEmail] = useState("");
@@ -77,7 +79,7 @@ export default function PrintHouseEmailsSettings({
   const save = async () => {
     const email = draftEmail.trim();
     if (!EMAIL_RE.test(email)) {
-      setError("כתובת מייל לא תקינה");
+      setError(t("כתובת מייל לא תקינה"));
       return;
     }
     setSaving(true);
@@ -87,7 +89,7 @@ export default function PrintHouseEmailsSettings({
     } = await supabase.auth.getUser();
     if (!user) {
       setSaving(false);
-      setError("יש להתחבר מחדש");
+      setError(t("יש להתחבר מחדש"));
       return;
     }
 
@@ -100,7 +102,7 @@ export default function PrintHouseEmailsSettings({
         .single<PrintHouseEmailRow>();
       if (error || !data) {
         setSaving(false);
-        setError(error?.message ?? "שגיאה בשמירה");
+        setError(error?.message ?? t("שגיאה בשמירה"));
         return;
       }
       applyChange(emails.map((e) => (e.id === data.id ? data : e)));
@@ -113,7 +115,7 @@ export default function PrintHouseEmailsSettings({
         .single<PrintHouseEmailRow>();
       if (error || !data) {
         setSaving(false);
-        setError(error?.message ?? "שגיאה בהוספה");
+        setError(error?.message ?? t("שגיאה בהוספה"));
         return;
       }
       applyChange([...emails, data]);
@@ -153,10 +155,9 @@ export default function PrintHouseEmailsSettings({
     <div className={compact ? "" : "rounded-2xl p-4 bg-card border border-line shadow-card"}>
       {!compact && (
         <>
-          <div className="text-sm font-semibold mb-1">מיילים לבית דפוס</div>
+          <div className="text-sm font-semibold mb-1">{t("מיילים לבית דפוס")}</div>
           <p className="text-xs mb-3.5 text-ink-soft">
-            כתובות שאליהן אפשר לשלוח את קובצי ה-JPG של האלבום ישירות לבית הדפוס, ישר מתוך העורך.
-            הכתובת המסומנת כברירת מחדל מופיעה ראשונה ונבחרת אוטומטית בזמן שליחה.
+            {t("כתובות שאליהן אפשר לשלוח את קובצי ה-JPG של האלבום ישירות לבית הדפוס, ישר מתוך העורך. הכתובת המסומנת כברירת מחדל מופיעה ראשונה ונבחרת אוטומטית בזמן שליחה.")}
           </p>
         </>
       )}
@@ -167,7 +168,7 @@ export default function PrintHouseEmailsSettings({
             confirmingDeleteId === row.id ? (
               <div key={row.id} className="rounded-xl p-3 bg-chip">
                 <p className="text-xs mb-2.5 text-rose">
-                  למחוק את הכתובת &quot;{row.label || row.email}&quot;?
+                  {t("למחוק את הכתובת \"{name}\"?", { name: row.label || row.email })}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -175,14 +176,14 @@ export default function PrintHouseEmailsSettings({
                     disabled={deletingId === row.id}
                     className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white disabled:opacity-60"
                   >
-                    {deletingId === row.id ? "מוחק..." : "כן, מחק"}
+                    {deletingId === row.id ? t("מוחק...") : t("כן, מחק")}
                   </button>
                   <button
                     onClick={() => setConfirmingDeleteId(null)}
                     disabled={deletingId === row.id}
                     className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
                   >
-                    ביטול
+                    {t("ביטול")}
                   </button>
                 </div>
               </div>
@@ -198,16 +199,16 @@ export default function PrintHouseEmailsSettings({
                 <input
                   value={draftLabel}
                   onChange={(e) => setDraftLabel(e.target.value)}
-                  placeholder="תיאור (לדוגמה: פוקוס דפוס)"
+                  placeholder={t("תיאור (לדוגמה: פוקוס דפוס)")}
                   className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
                 />
                 {error && <p className="text-xs text-rose">{error}</p>}
                 <div className="flex gap-2">
                   <button onClick={save} disabled={saving} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-ink text-white disabled:opacity-60">
-                    {saving ? "שומר..." : "שמירה"}
+                    {saving ? t("שומר...") : t("שמירה")}
                   </button>
                   <button onClick={cancelForm} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft">
-                    ביטול
+                    {t("ביטול")}
                   </button>
                 </div>
               </div>
@@ -223,18 +224,18 @@ export default function PrintHouseEmailsSettings({
                     checked={selectedId === row.id}
                     onChange={() => onSelect?.(row.id)}
                     className="shrink-0"
-                    aria-label={`בחירת ${row.label || row.email}`}
+                    aria-label={t("בחירת {name}", { name: row.label || row.email })}
                   />
                 )}
                 <button
                   onClick={() => (selectable ? onSelect?.(row.id) : startEdit(row))}
-                  className="text-right flex-1 min-w-0"
+                  className="text-start flex-1 min-w-0"
                 >
                   <div className="text-sm font-semibold truncate flex items-center gap-1.5">
                     <span className="truncate">{row.label || row.email}</span>
                     {row.is_default && (
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white text-ink-soft shrink-0">
-                        ברירת מחדל
+                        {t("ברירת מחדל")}
                       </span>
                     )}
                   </div>
@@ -247,14 +248,14 @@ export default function PrintHouseEmailsSettings({
                 <div className="flex items-center gap-2 shrink-0">
                   {!row.is_default && (
                     <button onClick={() => setDefault(row.id)} className="text-[11px] text-ink-soft whitespace-nowrap">
-                      הגדרה כברירת מחדל
+                      {t("הגדרה כברירת מחדל")}
                     </button>
                   )}
                   <button onClick={() => startEdit(row)} className="text-xs text-ink-soft">
-                    עריכה
+                    {t("עריכה")}
                   </button>
                   <button onClick={() => setConfirmingDeleteId(row.id)} className="text-xs text-rose">
-                    מחיקה
+                    {t("מחיקה")}
                   </button>
                 </div>
               </div>
@@ -275,22 +276,22 @@ export default function PrintHouseEmailsSettings({
           <input
             value={draftLabel}
             onChange={(e) => setDraftLabel(e.target.value)}
-            placeholder="תיאור (לדוגמה: פוקוס דפוס)"
+            placeholder={t("תיאור (לדוגמה: פוקוס דפוס)")}
             className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
           />
           {error && <p className="text-xs text-rose">{error}</p>}
           <div className="flex gap-2">
             <button onClick={save} disabled={saving} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-ink text-white disabled:opacity-60">
-              {saving ? "שומר..." : "הוספה"}
+              {saving ? t("שומר...") : t("הוספה")}
             </button>
             <button onClick={cancelForm} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft">
-              ביטול
+              {t("ביטול")}
             </button>
           </div>
         </div>
       ) : (
         <button onClick={startAdd} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
-          + הוספת מייל לבית דפוס
+          {t("+ הוספת מייל לבית דפוס")}
         </button>
       )}
     </div>

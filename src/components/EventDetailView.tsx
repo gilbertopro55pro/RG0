@@ -33,6 +33,9 @@ import { useModalEntered } from "@/lib/useModalEntered";
 import { buildClientMessageText } from "@/lib/clientMessage";
 import CompactGuideModal from "@/components/CompactGuideModal";
 import CloseEventConfirmModal from "@/components/CloseEventConfirmModal";
+import { useLang, useT } from "@/i18n/client";
+import { dateLocale, type Lang } from "@/i18n/config";
+import type { TFn } from "@/i18n/translate";
 
 const EditEventModal = dynamic(() => import("@/components/EditEventModal"), { ssr: false });
 
@@ -60,20 +63,21 @@ function InfoIcon({ d }: { d: string }) {
 }
 
 // "חמישי, 15.10.2026"
-function hebrewDateLine(iso: string) {
+function hebrewDateLine(iso: string, lang: Lang) {
   const [y, m, d] = iso.split("-").map(Number);
-  const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const weekday = lang === "he" ? WEEKDAYS[date.getUTCDay()] : date.toLocaleDateString(dateLocale(lang), { weekday: "long", timeZone: "UTC" });
   return `${weekday}, ${d}.${m}.${y}`;
 }
 
 // Only for upcoming dates — a past event's date speaks for itself.
-function daysUntilLabel(iso: string): string | null {
+function daysUntilLabel(iso: string, t: TFn): string | null {
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
   const days = Math.round((Date.parse(iso) - Date.parse(today)) / 86_400_000);
   if (days < 0) return null;
-  if (days === 0) return "היום";
-  if (days === 1) return "מחר";
-  return `בעוד ${days} ימים`;
+  if (days === 0) return t("היום");
+  if (days === 1) return t("מחר");
+  return t("בעוד {n} ימים", { n: days });
 }
 
 // The event page's leading element (design stage 5): where the event stands in its process,
@@ -93,6 +97,7 @@ function ProcessHero({
   pending: Set<string>;
   onDone: (key: string) => void;
 }) {
+  const t = useT();
   const total = descriptors.length;
   const allDone = curIdx >= total;
   const current = allDone ? null : descriptors[curIdx];
@@ -107,12 +112,12 @@ function ProcessHero({
     !pending.has(current.key);
 
   return (
-    <section aria-label="מצב האירוע" className="surface-hero p-[18px] mb-5">
+    <section aria-label={t("מצב האירוע")} className="surface-hero p-[18px] mb-5">
       <div className="flex items-baseline justify-between gap-3 mb-3">
-        <span className="text-[21px] font-extrabold leading-tight">{allDone ? "כל השלבים הושלמו" : current!.label}</span>
+        <span className="text-[21px] font-extrabold leading-tight">{allDone ? t("כל השלבים הושלמו") : t(current!.label)}</span>
         {!allDone && (
           <span className="text-[13px] text-ink-soft font-data shrink-0">
-            שלב {curIdx + 1} מתוך {total}
+            {t("שלב {n} מתוך {total}", { n: curIdx + 1, total })}
           </span>
         )}
       </div>
@@ -134,17 +139,17 @@ function ProcessHero({
       </div>
       <p className="text-[13px] text-ink-soft mb-3.5">
         {allDone
-          ? "אפשר לסגור את האירוע בתחתית העמוד."
+          ? t("אפשר לסגור את האירוע בתחתית העמוד.")
           : current!.key === "event_closing"
-            ? "השלב הזה מסתיים כששולחים ללקוח את הודעת הפתיחה."
+            ? t("השלב הזה מסתיים כששולחים ללקוח את הודעת הפתיחה.")
             : next
-              ? `הבא אחריו: ${next.label}`
-              : "זה השלב האחרון."}
+              ? t("הבא אחריו: {label}", { label: t(next.label) })
+              : t("זה השלב האחרון.")}
       </p>
       <div className="flex gap-2">
         {canMark && (
           <button onClick={() => onDone(current!.key)} className="flex-1 h-11 rounded-xl text-sm font-bold bg-ink text-white">
-            סימון כבוצע
+            {t("סימון כבוצע")}
           </button>
         )}
         <a
@@ -152,7 +157,7 @@ function ProcessHero({
           className={`${canMark ? "" : "flex-1 "}h-11 px-4 rounded-xl border border-line text-sm font-semibold flex items-center justify-center`}
           style={{ background: "var(--color-input-bg)" }}
         >
-          כל השלבים
+          {t("כל השלבים")}
         </a>
       </div>
     </section>
@@ -233,6 +238,9 @@ export default function EventDetailView({
   whatsappSignature: string | null;
 }) {
   const router = useRouter();
+  const t = useT();
+  const lang = useLang();
+  const locale = dateLocale(lang);
   const searchParams = useSearchParams();
   const supabase = createClient();
   // Landed here right after reconnecting Google Calendar from the "אירוע חדש" success screen's
@@ -334,9 +342,9 @@ export default function EventDetailView({
       }),
     });
     const data = await res.json();
-    if (!res.ok) return { ok: false, error: data.error ?? "שגיאה בשמירת האירוע ביומן" };
+    if (!res.ok) return { ok: false, error: data.error ? t(data.error) : t("שגיאה בשמירת האירוע ביומן") };
     if (data.googleCalendarDisconnected || data.googleCalendarError) {
-      return { ok: false, error: data.googleCalendarError ?? "החיבור ליומן עדיין לא תקין. נסו להתחבר מחדש שוב" };
+      return { ok: false, error: data.googleCalendarError ?? t("החיבור ליומן עדיין לא תקין. נסו להתחבר מחדש שוב") };
     }
     await refreshNotifications();
     return { ok: true };
@@ -348,12 +356,12 @@ export default function EventDetailView({
     try {
       const result = await syncEventCalendarNow();
       if (!result.ok) {
-        setCalendarRetryError(result.error ?? "שגיאה בשמירת האירוע ביומן");
+        setCalendarRetryError(result.error ?? t("שגיאה בשמירת האירוע ביומן"));
         return;
       }
       setCalendarRetryDone(true);
     } catch {
-      setCalendarRetryError("שגיאה בשמירת האירוע ביומן");
+      setCalendarRetryError(t("שגיאה בשמירת האירוע ביומן"));
     } finally {
       setCalendarRetrySaving(false);
     }
@@ -371,9 +379,9 @@ export default function EventDetailView({
     setError(null);
     try {
       const result = await syncEventCalendarNow();
-      if (!result.ok) setError(result.error ?? "שגיאה בסנכרון היומן");
+      if (!result.ok) setError(result.error ?? t("שגיאה בסנכרון היומן"));
     } catch {
-      setError("שגיאה בסנכרון היומן");
+      setError(t("שגיאה בסנכרון היומן"));
     } finally {
       setCalendarSyncing(false);
     }
@@ -462,7 +470,7 @@ export default function EventDetailView({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "שגיאה בעדכון השלב");
+        setError(data.error ? t(data.error) : t("שגיאה בעדכון השלב"));
         return;
       }
       setStages((prev) =>
@@ -499,7 +507,7 @@ export default function EventDetailView({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "שגיאה בשחזור האירוע");
+        setError(data.error ? t(data.error) : t("שגיאה בשחזור האירוע"));
         return;
       }
       setClosedAt(data.closedAt);
@@ -533,7 +541,7 @@ export default function EventDetailView({
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (!session) throw new Error("יש להתחבר מחדש");
+      if (!session) throw new Error(t("יש להתחבר מחדש"));
       const path = `${session.user.id}/${event.id}/${crypto.randomUUID()}-${file.name}`;
       await uploadFileWithProgress("album-designs", path, file, setAlbumUploadProgress);
 
@@ -547,7 +555,7 @@ export default function EventDetailView({
           body: JSON.stringify({ albumDesignPdfPath: path, albumDesignPdfFilename: file.name }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירת קובץ העיצוב");
+        if (!res.ok) throw new Error(data.error ? t(data.error) : t("שגיאה בשמירת קובץ העיצוב"));
         setAlbumDesignFilename(file.name);
         if (data.notify) {
           await notifyClientByWhatsApp(
@@ -562,7 +570,7 @@ export default function EventDetailView({
         setAlbumDesignFilename(file.name);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "שגיאה בהעלאת קובץ עיצוב האלבום");
+      setError(e instanceof Error ? t(e.message) : t("שגיאה בהעלאת קובץ עיצוב האלבום"));
     } finally {
       setUploadingAlbumDesign(false);
       setAlbumUploadProgress(null);
@@ -574,7 +582,7 @@ export default function EventDetailView({
     const res = await fetch(`/api/events/${event.id}/schedule-review-request`, { method: "POST" });
     if (!res.ok) {
       const data = await res.json();
-      setError(data.error ?? "שגיאה בתזמון תזכורת הביקורת");
+      setError(data.error ? t(data.error) : t("שגיאה בתזמון תזכורת הביקורת"));
     }
     await refreshNotifications();
   };
@@ -583,7 +591,7 @@ export default function EventDetailView({
     const guardKey = `notify:${key}`;
     if (pendingKeysRef.current.has(guardKey)) return;
     if (!event.client_phone) {
-      setError("לא הוזן טלפון לקוח לאירוע זה");
+      setError(t("לא הוזן טלפון לקוח לאירוע זה"));
       return;
     }
     pendingKeysRef.current.add(guardKey);
@@ -655,7 +663,7 @@ export default function EventDetailView({
   const confirmPartialPayment = (field: "deposit" | "balance", amount: number) => {
     if (!payments) return;
     if (!(amount > 0)) {
-      setPaymentFieldError(field, "יש להזין סכום גדול מ-0");
+      setPaymentFieldError(field, t("יש להזין סכום גדול מ-0"));
       return;
     }
     const owed = field === "deposit" ? Number(payments.deposit_amount) : Number(payments.balance_amount);
@@ -704,7 +712,7 @@ export default function EventDetailView({
     const data = await res.json();
     setIssuingDocument(null);
     if (!res.ok) {
-      setError(data.error ?? "הפקת המסמך נכשלה");
+      setError(data.error ? t(data.error) : t("הפקת המסמך נכשלה"));
       return;
     }
     if (clientEmailOverride) setClientEmail(clientEmailOverride);
@@ -742,16 +750,17 @@ export default function EventDetailView({
       {/* Design stage 5: a round back button and one "more" menu instead of three underlined
           text links across the top. */}
       <div className="flex items-center justify-between mb-5">
-        <Link href="/" aria-label="חזרה לאירועים" className={ROUND_BTN} style={ROUND_BTN_STYLE}>
+        <Link href="/" aria-label={t("חזרה לאירועים")} className={ROUND_BTN} style={ROUND_BTN_STYLE}>
           <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M9 6l6 6-6 6" />
+            <path d="M9 6l6 6-6 6" className="ltr:hidden" />
+            <path d="M15 6l-6 6 6 6" className="rtl:hidden" />
           </svg>
         </Link>
         {isOwner && (
           <div className="relative">
             <button
               onClick={() => setMoreOpen((v) => !v)}
-              aria-label="עוד פעולות"
+              aria-label={t("עוד פעולות")}
               aria-expanded={moreOpen}
               className={ROUND_BTN}
               style={ROUND_BTN_STYLE}
@@ -778,7 +787,7 @@ export default function EventDetailView({
                     data-press="tint"
                     className="w-full text-start px-4 py-3"
                   >
-                    עריכת פרטי האירוע
+                    {t("עריכת פרטי האירוע")}
                   </button>
                   <button
                     onClick={() => {
@@ -789,8 +798,8 @@ export default function EventDetailView({
                     data-press="tint"
                     className="w-full text-start px-4 py-3 border-t border-line disabled:opacity-60"
                   >
-                    סנכרון מחדש ליומן
-                    <span className="block text-xs text-ink-soft">אם האירוע לא נשמר ביומן</span>
+                    {t("סנכרון מחדש ליומן")}
+                    <span className="block text-xs text-ink-soft">{t("אם האירוע לא נשמר ביומן")}</span>
                   </button>
                 </div>
               </>
@@ -828,22 +837,22 @@ export default function EventDetailView({
           }}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet">
-            <h2 className="text-lg font-bold mb-2 font-display">האירוע נמסר</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("האירוע נמסר")}</h2>
             <p className="text-sm text-ink-soft mb-5">
-              לשלוח ללקוח תזכורת לכתוב לנו ביקורת, בעוד {REVIEW_REQUEST_DELAY_DAYS} ימים מהיום?
+              {t("לשלוח ללקוח תזכורת לכתוב לנו ביקורת, בעוד {n} ימים מהיום?", { n: REVIEW_REQUEST_DELAY_DAYS })}
             </p>
             <div className="flex gap-2">
               <button
                 onClick={scheduleReviewRequest}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white"
               >
-                כן, תזמן תזכורת
+                {t("כן, תזמן תזכורת")}
               </button>
               <button
                 onClick={() => setShowReviewPrompt(false)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                לא תודה
+                {t("לא תודה")}
               </button>
             </div>
           </div>
@@ -864,33 +873,33 @@ export default function EventDetailView({
                   >
                     ✓
                   </span>
-                  <div className="text-base font-bold font-display">האירוע נשמר ביומן Google בהצלחה</div>
+                  <div className="text-base font-bold font-display">{t("האירוע נשמר ביומן Google בהצלחה")}</div>
                 </div>
                 <button onClick={dismissCalendarRetry} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-                  המשך לכרטיס האירוע
+                  {t("המשך לכרטיס האירוע")}
                 </button>
               </>
             ) : (
               <>
-                <h2 className="text-lg font-bold mb-2 font-display">שמירת האירוע ביומן Google</h2>
+                <h2 className="text-lg font-bold mb-2 font-display">{t("שמירת האירוע ביומן Google")}</h2>
                 <p className="text-sm text-ink-soft mb-5">
-                  החיבור ליומן חודש בהצלחה. האירוע &quot;{event.client_name}&quot; עדיין לא נשמר ביומן, ללחוץ כדי לשמור אותו עכשיו.
+                  {t("החיבור ליומן חודש בהצלחה. האירוע \"{name}\" עדיין לא נשמר ביומן, ללחוץ כדי לשמור אותו עכשיו.", { name: event.client_name })}
                 </p>
-                {calendarRetryError && <p className="text-xs text-rose mb-3">{calendarRetryError}</p>}
+                {calendarRetryError && <p className="text-xs text-rose mb-3">{t(calendarRetryError)}</p>}
                 <div className="flex gap-2">
                   <button
                     onClick={retryGoogleCalendarSync}
                     disabled={calendarRetrySaving}
                     className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                   >
-                    {calendarRetrySaving ? "שומר..." : "שמירת האירוע ביומן"}
+                    {calendarRetrySaving ? t("שומר...") : t("שמירת האירוע ביומן")}
                   </button>
                   <button
                     onClick={dismissCalendarRetry}
                     disabled={calendarRetrySaving}
                     className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
                   >
-                    לא עכשיו
+                    {t("לא עכשיו")}
                   </button>
                 </div>
               </>
@@ -905,12 +914,12 @@ export default function EventDetailView({
         </div>
       </div>
       <div className="text-[15px] text-ink-soft mb-4">
-        {[event.event_type?.trim(), packageLabel(event.package, customPackageName)].filter(Boolean).join(", ")}
+        {[event.event_type?.trim() ? t(event.event_type.trim()) : null, t(packageLabel(event.package, customPackageName))].filter(Boolean).join(", ")}
       </div>
       {closedAt && isOwner && (
         <div className="flex items-center gap-2 flex-wrap mb-4">
           <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
-            האירוע סגור
+            {t("האירוע סגור")}
           </span>
           <button
             onClick={() => restoreEvent()}
@@ -918,7 +927,7 @@ export default function EventDetailView({
             className="text-xs font-semibold rounded-full px-3 py-1 border border-line text-ink disabled:opacity-60"
             style={{ background: "var(--color-input-bg)" }}
           >
-            {closingEvent ? "משחזר..." : "שחזור אירוע"}
+            {closingEvent ? t("משחזר...") : t("שחזור אירוע")}
           </button>
         </div>
       )}
@@ -928,10 +937,10 @@ export default function EventDetailView({
       <div className="flex flex-col gap-2.5 mb-5 text-[15px]">
         <div className="flex items-center gap-2.5">
           <InfoIcon d="M3.5 7.5a2.5 2.5 0 0 1 2.5-2.5h12a2.5 2.5 0 0 1 2.5 2.5v10.5a2.5 2.5 0 0 1-2.5 2.5H6a2.5 2.5 0 0 1-2.5-2.5zM3.5 10h17M8 3v4M16 3v4" />
-          <span className="font-data">{hebrewDateLine(event.event_date)}</span>
-          {daysUntilLabel(event.event_date) && (
+          <span className="font-data">{hebrewDateLine(event.event_date, lang)}</span>
+          {daysUntilLabel(event.event_date, t) && (
             <span className="text-[13px] font-bold" style={{ color: "var(--color-amber-deep)" }}>
-              {daysUntilLabel(event.event_date)}
+              {daysUntilLabel(event.event_date, t)}
             </span>
           )}
         </div>
@@ -945,7 +954,7 @@ export default function EventDetailView({
           <div className="flex items-center gap-2.5">
             <InfoIcon d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2" />
             <span>
-              הגעה לצילומי משפחה: <span className="font-data">{event.arrival_time.slice(0, 5)}</span>
+              {t("הגעה לצילומי משפחה:")} <span className="font-data">{event.arrival_time.slice(0, 5)}</span>
             </span>
           </div>
         )}
@@ -980,7 +989,7 @@ export default function EventDetailView({
         </div>
       )}
 
-      {error && <p className="text-xs text-rose mb-3">{error}</p>}
+      {error && <p className="text-xs text-rose mb-3">{t(error)}</p>}
 
       {/* Admin-only for now (see sendEventClosingUpdate's doc comment): shown whenever
           event_closing isn't done yet, regardless of contract status — this is the ONLY way to
@@ -993,18 +1002,17 @@ export default function EventDetailView({
       {isOwner && !stages.find((s) => s.stage_key === "event_closing")?.done && (
           <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
             <div className="flex items-center gap-2 mb-3.5">
-              <span className="text-sm font-semibold">שליחת הודעת פתיחה ללקוח/ה</span>
+              <span className="text-sm font-semibold">{t("שליחת הודעת פתיחה ללקוח/ה")}</span>
             </div>
             {event.client_phone ? (
               <>
                 <p className="text-xs text-ink-soft mb-2.5">
-                  לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה, פרטי האירוע, המקדמה והיתרה, וקישור
-                  לפורטל האישי שלהם למעקב אחר האירוע והתשלומים. תישאר/י לבדוק ולשלוח בעצמך.
+                  {t("לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה, פרטי האירוע, המקדמה והיתרה, וקישור לפורטל האישי שלהם למעקב אחר האירוע והתשלומים. תישאר/י לבדוק ולשלוח בעצמך.")}
                 </p>
-                <SendUpdateButton onSend={sendEventClosingUpdate} pending={pendingStageKeys.has("event_closing")} label="שליחת עדכון ללקוח בוואטסאפ" />
+                <SendUpdateButton onSend={sendEventClosingUpdate} pending={pendingStageKeys.has("event_closing")} label={t("שליחת עדכון ללקוח בוואטסאפ")} />
               </>
             ) : (
-              <p className="text-xs text-ink-soft">לא הוזן טלפון לקוח. לא ניתן לשלוח עדכון.</p>
+              <p className="text-xs text-ink-soft">{t("לא הוזן טלפון לקוח. לא ניתן לשלוח עדכון.")}</p>
             )}
           </div>
         )}
@@ -1012,16 +1020,16 @@ export default function EventDetailView({
       {isOwner && payments && (
         <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm font-semibold">תשלומים</span>
+            <span className="text-sm font-semibold">{t("תשלומים")}</span>
           </div>
           {payments.deposit_amount === 0 && payments.balance_amount === 0 && (
             <div className="rounded-xl px-3.5 py-2.5 mb-2 text-xs bg-amber-bg text-amber-deep">
-              טרם הוגדר מחיר לאירוע. בתפריט העוד (שלוש הנקודות למעלה) בוחרים &quot;עריכת פרטי האירוע&quot; ומזינים את סכום האירוע והיתרה.
+              {t("טרם הוגדר מחיר לאירוע. בתפריט העוד (שלוש הנקודות למעלה) בוחרים \"עריכת פרטי האירוע\" ומזינים את סכום האירוע והיתרה.")}
             </div>
           )}
           <div className="-mx-4 -mb-4 border-t border-line divide-y divide-[var(--color-line)]">
             <PaymentLegRow
-              label="מקדמה"
+              label={t("מקדמה")}
               amount={payments.deposit_amount}
               paid={payments.deposit_paid}
               paidAmount={payments.deposit_paid_amount}
@@ -1057,11 +1065,11 @@ export default function EventDetailView({
               issuingDocument={issuingDocument === "deposit"}
             />
             <PaymentLegRow
-              label="יתרה"
+              label={t("יתרה")}
               amount={payments.balance_amount}
               paid={payments.balance_paid}
               paidAmount={payments.balance_paid_amount}
-              dueDateText={payments.balance_due_date ? `עד ${new Date(payments.balance_due_date).toLocaleDateString("he-IL")}` : null}
+              dueDateText={payments.balance_due_date ? t("עד {date}", { date: new Date(payments.balance_due_date).toLocaleDateString(locale) }) : null}
               documentUrl={payments.balance_document_url}
               actionOpen={balanceActionOpen}
               onToggleAction={() => {
@@ -1104,8 +1112,8 @@ export default function EventDetailView({
           onClick={() => setDocumentEmailPrompt(null)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">אימייל הלקוח/ה</h2>
-            <p className="text-sm text-ink-soft mb-3.5">נדרש אימייל כדי לשלוח את המסמך.</p>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("אימייל הלקוח/ה")}</h2>
+            <p className="text-sm text-ink-soft mb-3.5">{t("נדרש אימייל כדי לשלוח את המסמך.")}</p>
             <input
               type="email"
               value={documentEmailInput}
@@ -1120,13 +1128,13 @@ export default function EventDetailView({
                 disabled={!documentEmailInput.trim() || issuingDocument !== null}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {issuingDocument ? "מפיק..." : "הפקת מסמך"}
+                {issuingDocument ? t("מפיק...") : t("הפקת מסמך")}
               </button>
               <button
                 onClick={() => setDocumentEmailPrompt(null)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -1160,7 +1168,7 @@ export default function EventDetailView({
       {isOwner && teamMembers.length > 0 && (
         <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
           <div className="flex items-center gap-2 mb-3.5">
-            <span className="text-sm font-semibold">צוות משוייך לאירוע</span>
+            <span className="text-sm font-semibold">{t("צוות משוייך לאירוע")}</span>
           </div>
           <div className="space-y-2">
             {teamMembers.map((m) => {
@@ -1174,7 +1182,7 @@ export default function EventDetailView({
                 >
                   <span>{m.name}</span>
                   <span style={{ color: assigned ? "var(--color-amber-deep)" : "var(--color-ink-soft)", fontWeight: 600 }}>
-                    {assigned ? "משוייך ✓" : "לא משוייך"}
+                    {assigned ? t("משוייך ✓") : t("לא משוייך")}
                   </span>
                 </button>
               );
@@ -1183,7 +1191,7 @@ export default function EventDetailView({
         </div>
       )}
 
-      <div id="stages" className="mb-2.5 text-sm font-semibold scroll-mt-4">מסלול התהליך</div>
+      <div id="stages" className="mb-2.5 text-sm font-semibold scroll-mt-4">{t("מסלול התהליך")}</div>
       <FilmStrip
         stageDescriptors={stageDescriptors}
         stages={stages}
@@ -1206,15 +1214,15 @@ export default function EventDetailView({
               disabled={closingEvent}
               className="w-full rounded-xl py-3 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-60"
             >
-              {closingEvent ? "משחזר..." : "שחזור אירוע"}
+              {closingEvent ? t("משחזר...") : t("שחזור אירוע")}
             </button>
           ) : (
             <button onClick={() => setCloseConfirmOpen(true)} className="w-full rounded-xl py-3 text-sm font-semibold bg-ink text-white">
-              סגירת אירוע
+              {t("סגירת אירוע")}
             </button>
           )}
           <p className="text-[11px] text-ink-soft text-center mt-1.5">
-            {closedAt ? "האירוע סגור: שחזור יחזיר אותו לרשימת האירועים הפעילים." : "סימון כל השלבים לא סוגר את האירוע. רק לחיצה כאן ואישור."}
+            {closedAt ? t("האירוע סגור: שחזור יחזיר אותו לרשימת האירועים הפעילים.") : t("סימון כל השלבים לא סוגר את האירוע. רק לחיצה כאן ואישור.")}
           </p>
         </div>
       )}
@@ -1222,16 +1230,16 @@ export default function EventDetailView({
 
       <div className="mt-7">
         <div className="flex items-center gap-2 mb-3.5">
-          <span className="text-sm font-semibold">יומן התראות</span>
+          <span className="text-sm font-semibold">{t("יומן התראות")}</span>
         </div>
         <div className="space-y-2">
           {notifications.map((n) => (
             <div key={n.id} className="text-xs rounded-xl px-3.5 py-2.5 bg-chip text-ink-soft flex items-start justify-between gap-3 overflow-hidden">
               {/* min-w-0 + overflow-wrap:anywhere — any long unbroken text still wraps instead of
                   pushing the row wider than the screen; URLs render as short links (below). */}
-              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{renderNotificationText(n.text)}</span>
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{renderNotificationText(n.text, t)}</span>
               <span className="font-data shrink-0">
-                {new Date(n.created_at).toLocaleString("he-IL", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
+                {new Date(n.created_at).toLocaleString(locale, { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
               </span>
             </div>
           ))}
@@ -1306,29 +1314,31 @@ function PaymentLegRow({
   onIssueDocument: () => void;
   issuingDocument: boolean;
 }) {
+  const t = useT();
+  const locale = dateLocale(useLang());
   const isPartial = !paid && paidAmount != null && paidAmount > 0;
   const remaining = isPartial ? Math.max(0, Number(amount) - Number(paidAmount)) : null;
   // Notes stay collapsed behind a link until there's something in them (design stage 5: no empty
   // textarea under every payment).
   const [notesOpen, setNotesOpen] = useState(!!notesDraft);
-  const ils = (n: number) => `₪${Number(n).toLocaleString("he-IL")}`;
+  const ils = (n: number) => `₪${Number(n).toLocaleString(locale)}`;
   return (
     <div className="px-4 py-3">
       <button onClick={onToggleAction} className="w-full flex items-center gap-2.5 text-start">
         <span className="flex-1 min-w-0">
           <span className="block text-[15px] font-bold">{label}</span>
           <span className="block text-xs text-ink-soft font-data">
-            {paid ? "התקבל" : isPartial ? `שולם חלקית, נשאר ${ils(remaining ?? 0)}` : dueDateText ?? "ממתין לתשלום"}
+            {paid ? t("התקבל") : isPartial ? t("שולם חלקית, נשאר {amount}", { amount: ils(remaining ?? 0) }) : dueDateText ?? t("ממתין לתשלום")}
           </span>
         </span>
         <span className="text-base font-extrabold font-data">{ils(amount)}</span>
         {paid ? (
           <span className="text-xs font-bold rounded-full px-2.5 py-1" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
-            שולם
+            {t("שולם")}
           </span>
         ) : (
           <span className="text-xs font-bold rounded-lg px-2.5 py-1.5 border border-line" style={{ background: "var(--color-input-bg)" }}>
-            סימון תשלום
+            {t("סימון תשלום")}
           </span>
         )}
       </button>
@@ -1346,30 +1356,30 @@ function PaymentLegRow({
                   }}
                   type="number"
                   min={0}
-                  placeholder="כמה שולם עד כה?"
+                  placeholder={t("כמה שולם עד כה?")}
                   autoFocus
                   className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-xs border border-line bg-white font-data"
                 />
                 <button onClick={onConfirmPartial} className="text-xs font-semibold text-amber-deep shrink-0">
-                  אישור
+                  {t("אישור")}
                 </button>
                 <button onClick={onCancelPartial} className="text-xs text-ink-soft shrink-0">
-                  ביטול
+                  {t("ביטול")}
                 </button>
               </div>
-              {partialError && <p className="text-xs text-rose mt-1.5">{partialError}</p>}
+              {partialError && <p className="text-xs text-rose mt-1.5">{t(partialError)}</p>}
             </div>
           ) : (
             <div className="flex items-center gap-2 flex-wrap">
               <button onClick={onMarkFull} className="text-xs font-semibold rounded-lg px-2.5 py-1.5" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
-                תשלום מלא
+                {t("תשלום מלא")}
               </button>
               <button onClick={onOpenPartial} className="text-xs font-semibold rounded-lg px-2.5 py-1.5" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
-                תשלום חלקי
+                {t("תשלום חלקי")}
               </button>
               {isPartial && (
                 <button onClick={onMarkUnpaid} className="text-xs text-ink-soft underline">
-                  איפוס לממתין
+                  {t("איפוס לממתין")}
                 </button>
               )}
             </div>
@@ -1381,21 +1391,21 @@ function PaymentLegRow({
         {paid &&
           (documentUrl ? (
             <a href={documentUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-deep">
-              צפייה במסמך
+              {t("צפייה במסמך")}
             </a>
           ) : (
             <button onClick={onIssueDocument} disabled={issuingDocument} className="font-semibold text-amber-deep disabled:opacity-60">
-              {issuingDocument ? "מפיק מסמך..." : "הפקת מסמך"}
+              {issuingDocument ? t("מפיק מסמך...") : t("הפקת מסמך")}
             </button>
           ))}
         {!notesOpen && (
           <button onClick={() => setNotesOpen(true)} className="font-semibold text-amber-deep">
-            + הערה
+            {t("+ הערה")}
           </button>
         )}
         {paid && (
           <button onClick={onMarkUnpaid} className="text-ink-soft ms-auto">
-            ביטול סימון
+            {t("ביטול סימון")}
           </button>
         )}
       </div>
@@ -1408,10 +1418,10 @@ function PaymentLegRow({
             onBlur={onNotesBlur}
             rows={2}
             autoFocus={!notesDraft}
-            placeholder={`הערה ל${label} (רק לך, הלקוח לא רואה)`}
+            placeholder={t("הערה ל{label} (רק לך, הלקוח לא רואה)", { label })}
             className="w-full mt-2 text-xs rounded-lg px-2.5 py-1.5 border border-line bg-white outline-none resize-none"
           />
-          {savingNotes && <p className="text-[10px] text-ink-soft mt-0.5">שומר...</p>}
+          {savingNotes && <p className="text-[10px] text-ink-soft mt-0.5">{t("שומר...")}</p>}
         </>
       )}
     </div>
@@ -1443,6 +1453,8 @@ function FilmStrip({
   onUploadAlbumDesign: (key: string, file: File) => void;
   pendingStageKeys: Set<string>;
 }) {
+  const t = useT();
+  const locale = dateLocale(useLang());
   const byKey = new Map(stages.map((s) => [s.stage_key ?? `custom:${s.custom_stage_id}`, s]));
 
   return (
@@ -1479,7 +1491,7 @@ function FilmStrip({
             <button
               disabled={disabled}
               onClick={() => onToggle(d.key)}
-              className="w-full flex items-center gap-3 px-3.5 py-3 text-right disabled:cursor-not-allowed"
+              className="w-full flex items-center gap-3 px-3.5 py-3 text-start disabled:cursor-not-allowed"
               style={{
                 background: st.done ? "var(--color-sage-bg)" : isCurrent ? "var(--color-chip-tint)" : "var(--color-chip)",
               }}
@@ -1495,16 +1507,16 @@ function FilmStrip({
                 {st.done ? "✓" : i + 1}
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium truncate">{d.label}</span>
+                <span className="block text-sm font-medium truncate">{t(d.label)}</span>
                 <span className="block text-[11px] text-ink-soft font-data">
-                  {d.isCheckpoint ? "מול הלקוח" : "שלב פנימי"}
-                  {st.done_at ? `, ${new Date(st.done_at).toLocaleDateString("he-IL")}` : ""}
+                  {d.isCheckpoint ? t("מול הלקוח") : t("שלב פנימי")}
+                  {st.done_at ? `, ${new Date(st.done_at).toLocaleDateString(locale)}` : ""}
                   {requiresAlbumPdf && st.done && albumDesignFilename ? `, ${albumDesignFilename}` : ""}
                 </span>
               </span>
               {isCurrent && !st.done && !requiresAlbumPdf && (
                 <span className="text-[10px] px-2.5 py-1 rounded-full shrink-0 bg-amber text-white">
-                  לסמן בוצע
+                  {t("לסמן בוצע")}
                 </span>
               )}
             </button>
@@ -1512,7 +1524,7 @@ function FilmStrip({
               <div className="border-t border-line px-3.5 py-3 bg-white album-upload-panel">
                 {albumPdfAttached && !uploadingAlbumDesign && (
                   <p className="text-[11px] mb-1.5 text-center" style={{ color: "var(--color-sage)" }}>
-                    {albumDesignFilename}, נשלח, ממתין לאישור הלקוח
+                    {t("{file}, נשלח, ממתין לאישור הלקוח", { file: albumDesignFilename ?? "" })}
                   </p>
                 )}
                 <label
@@ -1524,10 +1536,10 @@ function FilmStrip({
                   }}
                 >
                   {uploadingAlbumDesign
-                    ? `מעלה... ${albumUploadProgress ?? 0}%`
+                    ? t("מעלה... {pct}%", { pct: albumUploadProgress ?? 0 })
                     : albumPdfAttached
-                      ? "החלפת קובץ PDF"
-                      : "העלאת קובץ PDF עם עיצוב האלבום"}
+                      ? t("החלפת קובץ PDF")
+                      : t("העלאת קובץ PDF עם עיצוב האלבום")}
                   <input
                     type="file"
                     accept="application/pdf"
@@ -1550,8 +1562,8 @@ function FilmStrip({
                 )}
                 <p className="text-[11px] text-ink-soft mt-1.5 text-center">
                   {d.key === "album_approval"
-                    ? "לאחר ההעלאה הקובץ יישלח ללקוח בוואטסאפ, והלקוח יוכל לאשר את העיצוב דרך הפורטל שלו (או שאפשר לסמן כבוצע ידנית כאן)"
-                    : "לאחר ההעלאה הקובץ יישלח אוטומטית ללקוח בוואטסאפ והשלב יסומן כבוצע"}
+                    ? t("לאחר ההעלאה הקובץ יישלח ללקוח בוואטסאפ, והלקוח יוכל לאשר את העיצוב דרך הפורטל שלו (או שאפשר לסמן כבוצע ידנית כאן)")
+                    : t("לאחר ההעלאה הקובץ יישלח אוטומטית ללקוח בוואטסאפ והשלב יסומן כבוצע")}
                 </p>
               </div>
             )}
@@ -1564,9 +1576,9 @@ function FilmStrip({
                   <button
                     onClick={() => onUndo(d.key)}
                     disabled={isTogglePending}
-                    className="flex items-center justify-center gap-1.5 text-xs font-medium px-3.5 shrink-0 bg-white text-rose border-r border-line disabled:opacity-50"
+                    className="flex items-center justify-center gap-1.5 text-xs font-medium px-3.5 shrink-0 bg-white text-rose border-s border-line disabled:opacity-50"
                   >
-                    ↺ ביטול סימון
+                    {t("↺ ביטול סימון")}
                   </button>
                 )}
               </div>
@@ -1579,6 +1591,7 @@ function FilmStrip({
 }
 
 function NavAppSheet({ location, onClose }: { location: string; onClose: () => void }) {
+  const t = useT();
   const encoded = encodeURIComponent(location);
   const entered = useModalEntered();
   const apps = [
@@ -1601,10 +1614,11 @@ function NavAppSheet({ location, onClose }: { location: string; onClose: () => v
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold font-display">ניווט אל האירוע</h2>
+          <h2 className="text-lg font-bold font-display">{t("ניווט אל האירוע")}</h2>
           <button
             onClick={onClose}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
+            aria-label={t("סגירה")}
           >
             <IconClose className="h-4 w-4" />
           </button>
@@ -1620,7 +1634,7 @@ function NavAppSheet({ location, onClose }: { location: string; onClose: () => v
               onClick={onClose}
               className="w-full flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium bg-white border border-line"
             >
-              {a.label} ←
+              {a.label} <span className="inline-block ltr:rotate-180">←</span>
             </a>
           ))}
         </div>
@@ -1631,12 +1645,12 @@ function NavAppSheet({ location, onClose }: { location: string; onClose: () => v
 
 // Notification texts are stored as plain strings, some ending in a raw URL (the Google Calendar
 // event link). Show those as a short labeled link instead of a line of URL gibberish.
-function renderNotificationText(text: string) {
+function renderNotificationText(text: string, t: TFn) {
   const parts = text.split(/(https?:\/\/\S+)/g);
   if (parts.length === 1) return text;
   return parts.map((part, i) => {
     if (!/^https?:\/\//.test(part)) return part.replace(/:\s*$/, "");
-    const label = /google\.com\/calendar/.test(part) ? "פתיחה ביומן Google" : "פתיחת הקישור";
+    const label = /google\.com\/calendar/.test(part) ? t("פתיחה ביומן Google") : t("פתיחת הקישור");
     return (
       <a
         key={i}

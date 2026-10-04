@@ -12,6 +12,7 @@ import {
   type StageKey,
 } from "@/lib/stages";
 import type { ClientMessageTemplateRow, CustomPackageStageRow } from "@/lib/types";
+import { useT } from "@/i18n/client";
 
 function recommendedFor(key: StageKey): string {
   return RECOMMENDED_CLIENT_MESSAGE_TEMPLATES[key] ?? DEFAULT_CLIENT_MESSAGE_TEMPLATE;
@@ -28,6 +29,7 @@ export default function ClientMessagesSettings({
   // client-facing, matching how the package builder decides whether to show that editor at all.
   customStages?: CustomPackageStageRow[];
 }) {
+  const t = useT();
   const supabase = createClient();
   const customEntries = customStages
     .filter((s) => s.notify_client)
@@ -177,15 +179,15 @@ export default function ClientMessagesSettings({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold mb-1">הודעות ללקוח/ה</div>
+      <div className="text-sm font-semibold mb-1">{t("הודעות ללקוח/ה")}</div>
       <div className="text-xs text-ink-soft leading-relaxed mb-3.5 space-y-1">
-        <p>כאן אפשר לערוך את נוסח ההודעה שנשלחת ללקוח/ה דרך כפתור &quot;שליחת עדכון ללקוח בוואטסאפ&quot; בכל שלב, הנוסח שנשמר הוא בדיוק מה שיישלח בפועל.</p>
-        <p><span className="font-data">{"{{שם}}"}</span>, מוסיף את שם הלקוח מתוך כרטיס האירוע.</p>
-        <p><span className="font-data">{"{{שלב}}"}</span>, מוסיף את שם השלב מתוך החבילה.</p>
-        <p><span className="font-data">קישור:</span>, יוסיף מיד אחריו את הקישור הרלוונטי.</p>
+        <p>{t("כאן אפשר לערוך את נוסח ההודעה שנשלחת ללקוח/ה דרך כפתור \"שליחת עדכון ללקוח בוואטסאפ\" בכל שלב, הנוסח שנשמר הוא בדיוק מה שיישלח בפועל.")}</p>
+        <p><span className="font-data">{"{{שם}}"}</span>, {t("מוסיף את שם הלקוח מתוך כרטיס האירוע.")}</p>
+        <p><span className="font-data">{"{{שלב}}"}</span>, {t("מוסיף את שם השלב מתוך החבילה.")}</p>
+        <p><span className="font-data">קישור:</span>, {t("יוסיף מיד אחריו את הקישור הרלוונטי.")}</p>
       </div>
       <p className="text-xs text-ink-soft leading-relaxed mb-3.5">
-        אם שמרתם חתימה אישית בלשונית &quot;פרופיל&quot;, היא תתווסף אוטומטית בשורה האחרונה של כל הודעה, עם שורה ריקה מפרידה. אין צורך לכתוב אותה כאן בעצמכם.
+        {t("אם שמרתם חתימה אישית בלשונית \"פרופיל\", היא תתווסף אוטומטית בשורה האחרונה של כל הודעה, עם שורה ריקה מפרידה. אין צורך לכתוב אותה כאן בעצמכם.")}
       </p>
 
       <div className="space-y-3">
@@ -194,14 +196,14 @@ export default function ClientMessagesSettings({
           return (
             <div key={key} className="rounded-xl p-3 bg-chip relative">
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-sm font-semibold">{label}</span>
+                <span className="text-sm font-semibold">{t(label)}</span>
                 {!isCustom && !isDefault && (
                   <button
                     onClick={() => resetToDefault(key as StageKey)}
                     className="text-[11px] whitespace-nowrap shrink-0 font-semibold"
                     style={{ color: confirmResetKey === key ? "var(--color-rose)" : "var(--color-ink-soft)" }}
                   >
-                    {confirmResetKey === key ? "לאשר איפוס? (לחיצה נוספת)" : "איפוס לנוסח המומלץ"}
+                    {confirmResetKey === key ? t("לאשר איפוס? (לחיצה נוספת)") : t("איפוס לנוסח המומלץ")}
                   </button>
                 )}
               </div>
@@ -229,11 +231,11 @@ export default function ClientMessagesSettings({
                   className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white border border-line text-ink-soft"
                 >
                   <option value="" disabled>
-                    + הוספת פרט
+                    {t("+ הוספת פרט")}
                   </option>
                   {CLIENT_MESSAGE_INSERT_OPTIONS.map((opt) => (
                     <option key={opt.token} value={opt.token}>
-                      {opt.label}
+                      {t(opt.label)}
                     </option>
                   ))}
                 </select>
@@ -242,7 +244,7 @@ export default function ClientMessagesSettings({
                   onClick={() => setEmojiOpenKey((cur) => (cur === key ? null : key))}
                   className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white border border-line text-ink-soft"
                 >
-                  😀 אימוג׳י
+                  😀 {t("אימוג׳י")}
                 </button>
                 <button
                   type="button"
@@ -250,7 +252,7 @@ export default function ClientMessagesSettings({
                   disabled={aiLoadingKey === key}
                   className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-amber-bg text-amber-deep disabled:opacity-60"
                 >
-                  {aiLoadingKey === key ? "מנסח..." : "עזרה בניסוח"}
+                  {aiLoadingKey === key ? t("מנסח...") : t("עזרה בניסוח")}
                 </button>
               </div>
               {emojiOpenKey === key && (
@@ -270,16 +272,16 @@ export default function ClientMessagesSettings({
                   ))}
                 </div>
               )}
-              {aiErrorKey === key && <p className="text-xs text-rose mt-1.5">שגיאה בפנייה ל-AI, נסו שוב</p>}
-              {emptyErrorKey === key && <p className="text-xs text-rose mt-1.5">ההודעה ריקה. יש להזין טקסט לפני שמירה</p>}
-              {errorKey === key && <p className="text-xs text-rose mt-1.5">שגיאה בשמירה, נסו שוב</p>}
+              {aiErrorKey === key && <p className="text-xs text-rose mt-1.5">{t("שגיאה בפנייה ל-AI, נסו שוב")}</p>}
+              {emptyErrorKey === key && <p className="text-xs text-rose mt-1.5">{t("ההודעה ריקה. יש להזין טקסט לפני שמירה")}</p>}
+              {errorKey === key && <p className="text-xs text-rose mt-1.5">{t("שגיאה בשמירה, נסו שוב")}</p>}
               <div className="flex justify-end mt-2">
                 <button
                   onClick={() => save(key)}
                   disabled={savingKey === key}
                   className="rounded-lg px-4 py-1.5 text-xs font-semibold bg-ink text-white disabled:opacity-60"
                 >
-                  {savingKey === key ? "שומר..." : savedKey === key ? "נשמר ✓" : "שמירה"}
+                  {savingKey === key ? t("שומר...") : savedKey === key ? t("נשמר ✓") : t("שמירה")}
                 </button>
               </div>
             </div>

@@ -34,6 +34,7 @@ import { hasAppAccess, isInTrial, TRIAL_STORAGE_CAP_BYTES } from "@/lib/subscrip
 import { intakeMonthlyCap } from "@/lib/intakeAssistant";
 import { monthStartIsrael } from "@/lib/intakeChatAccess";
 import { canBuyIntakePacks } from "@/lib/intakeCredits";
+import { getT } from "@/i18n/server";
 
 export default async function SettingsPage({
   searchParams,
@@ -90,20 +91,22 @@ export default async function SettingsPage({
     .gt("client_turns", 0)
     .gte("created_at", monthStartIsrael().toISOString());
 
+  const t = await getT();
+
   const logoUrl = photographer.logo_storage_path
     ? await getSignedDownloadUrl("logos", photographer.logo_storage_path, 3600)
     : null;
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
-      <h1 className="text-[22px] font-bold mb-5 font-display">הגדרות</h1>
+      <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-5" />
+      <h1 className="text-[22px] font-bold mb-5 font-display">{t("הגדרות")}</h1>
       <SettingsTabs
         initialTab={tab}
         tabs={[
           {
             id: "profile",
-            label: "פרופיל",
+            label: t("פרופיל"),
             content: (
               <ProfileSettingsView
                 photographer={photographer}
@@ -114,7 +117,7 @@ export default async function SettingsPage({
           },
           {
             id: "pricing",
-            label: "תמחור וחבילות צילום",
+            label: t("תמחור וחבילות צילום"),
             content: (
               <>
                 <PricingSettings initialEventTypes={eventTypes ?? []} initialPrices={prices ?? []} />
@@ -137,7 +140,7 @@ export default async function SettingsPage({
           },
           {
             id: "quotes",
-            label: "הצעות מחיר",
+            label: t("הצעות מחיר"),
             content: (
               <PriceQuotesSettings
                 initialQuotes={priceQuotes ?? []}
@@ -151,7 +154,7 @@ export default async function SettingsPage({
           },
           {
             id: "automation",
-            label: "אוטומציה",
+            label: t("אוטומציה"),
             content: (
               <>
               <PushNotificationsSettings />
@@ -167,7 +170,7 @@ export default async function SettingsPage({
               {/* Meta connection details stay folded; only what the photographer edits is always visible. */}
               {user?.email === ADMIN_EMAIL && (
                 <details className="mt-5 rounded-2xl bg-card border border-line">
-                  <summary className="p-4 text-sm font-semibold cursor-pointer">חיבור וואטסאפ (מטא)</summary>
+                  <summary className="p-4 text-sm font-semibold cursor-pointer">{t("חיבור וואטסאפ (מטא)")}</summary>
                   <div className="px-4 pb-4">
                     <WhatsAppBotAdmin connectedId={photographer.whatsapp_bot_phone_number_id} />
                   </div>
@@ -178,12 +181,12 @@ export default async function SettingsPage({
           },
           {
             id: "appearance",
-            label: "מראה",
-            content: <AppearanceSettings />,
+            label: t("מראה"),
+            content: <AppearanceSettings canChooseLanguage={photographer.email === ADMIN_EMAIL} />,
           },
           {
             id: "account",
-            label: "מנוי וצוות",
+            label: t("מנוי וצוות"),
             content: (
               <>
                 <BillingSettings photographer={photographer} />
@@ -207,13 +210,13 @@ export default async function SettingsPage({
                 </div>
                 {user?.email === ADMIN_EMAIL && (
                   <div className="mt-5 rounded-2xl p-4 bg-card border border-line shadow-card">
-                    <div className="text-sm font-semibold mb-1">ניהול מערכת</div>
-                    <p className="text-xs text-ink-soft mb-3">מוצג רק לחשבון המנהל.</p>
+                    <div className="text-sm font-semibold mb-1">{t("ניהול מערכת")}</div>
+                    <p className="text-xs text-ink-soft mb-3">{t("מוצג רק לחשבון המנהל.")}</p>
                     <Link
                       href="/admin"
                       className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white"
                     >
-                      לוח בקרה למנהל
+                      {t("לוח בקרה למנהל")}
                     </Link>
                   </div>
                 )}
@@ -222,14 +225,14 @@ export default async function SettingsPage({
           },
           {
             id: "client_messages",
-            label: "הודעות ללקוח/ה",
+            label: t("הודעות ללקוח/ה"),
             content: (
               <ClientMessagesSettings initialTemplates={messageTemplates ?? []} customStages={customStages ?? []} />
             ),
           },
           {
             id: "contract_template",
-            label: "תבנית חוזה",
+            label: t("תבנית חוזה"),
             content: (
               <>
                 <ContractTemplateSettings photographer={photographer} />
@@ -241,29 +244,29 @@ export default async function SettingsPage({
           },
           {
             id: "portfolio",
-            label: "פורטפוליו",
+            label: t("פורטפוליו"),
             content: <PortfolioSettings photographer={photographer} />,
           },
           {
             id: "guides",
-            label: "מדריכים",
+            label: t("מדריכים"),
             content: <GuidesSettings />,
           },
           {
             id: "updates",
-            label: "עדכונים",
+            label: t("עדכונים"),
             content: <UpdatesSettings />,
           },
           {
             id: "terms",
-            label: "תקנון שימוש",
+            label: t("תקנון שימוש"),
             content: <TermsOfUseSettings />,
           },
         ]}
       />
-      <p className="text-center text-xs font-data text-ink-soft mt-8">גרסה {CURRENT_VERSION}</p>
+      <p className="text-center text-xs font-data text-ink-soft mt-8">{t("גרסה {v}", { v: CURRENT_VERSION })}</p>
       <p className="text-center text-[11px] text-ink-soft mt-1.5">
-        © {new Date().getFullYear()} כל הזכויות שמורות לרועי גלברט, צילום אירועים
+        © {new Date().getFullYear()} {t("כל הזכויות שמורות לרועי גלברט, צילום אירועים")}
       </p>
     </div>
   );

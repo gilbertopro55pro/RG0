@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { CURRENT_VERSION } from "@/lib/changelog";
 import GlassTabStrip from "@/components/GlassTabStrip";
+import { useT } from "@/i18n/client";
 import { IconHome, IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics, IconSettings } from "@/components/icons/NavIcons";
 
 // Single-color line icons (the gradient badges were retired with the pastel palette, 2026-09-23);
@@ -31,6 +32,7 @@ export const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "
 
 export default function TopNav() {
   const pathname = usePathname();
+  const t = useT();
   const [settingsBadgeCount, setSettingsBadgeCount] = useState(0);
 
   // Combines two unrelated "you have something to look at" signals into one number on the
@@ -87,7 +89,7 @@ export default function TopNav() {
             const Icon = item.icon;
             return {
               key: item.href,
-              label: item.label,
+              label: t(item.label),
               href: item.href,
               active: pathname === item.href || pathname.startsWith(`${item.href}/`),
               badge: item.href === "/settings" ? settingsBadgeCount : undefined,

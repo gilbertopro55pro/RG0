@@ -4,22 +4,26 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { PAGE_GUIDES, GUIDE_LANG_LABELS, type GuideLang, type PageGuideKey } from "@/lib/pageGuides";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useLang, useT } from "@/i18n/client";
 
 // A small "?" trigger next to a modal/dialog's own title, opening the same written multi-language
 // guide content as PageGuide.tsx — but without its video (no recording exists for a modal tool like
 // this) and without auto-opening on first visit (this sits inside a component that's already a
 // modal; popping a second one open on its own would be intrusive rather than helpful).
 export default function CompactGuideModal({ pageKey }: { pageKey: PageGuideKey }) {
+  const t = useT();
+  // The guide opens in the UI language; the tabs inside still switch it.
+  const uiLang = useLang();
   const [open, setOpen] = useState(false);
-  const [lang, setLang] = useState<GuideLang>("he");
+  const [lang, setLang] = useState<GuideLang>(uiLang);
   const guide = PAGE_GUIDES[pageKey][lang];
 
   return (
     <>
       <button
         onClick={() => setOpen(true)}
-        aria-label="מדריך למשתמש"
-        title="מדריך למשתמש"
+        aria-label={t("מדריך למשתמש")}
+        title={t("מדריך למשתמש")}
         className="h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
         style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}
       >

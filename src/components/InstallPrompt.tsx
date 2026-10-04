@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useT } from "@/i18n/client";
 
 // Client-facing token pages never need "install the app" nudges — only the photographer's own
 // working screens do. "/p" is the public portfolio page (/p/[slug]) — shown to potential clients.
@@ -16,6 +17,7 @@ type BeforeInstallPromptEvent = Event & {
 
 export default function InstallPrompt() {
   const pathname = usePathname();
+  const t = useT();
   const [visible, setVisible] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
@@ -55,29 +57,29 @@ export default function InstallPrompt() {
   };
 
   return (
-    <div className="fixed bottom-3 inset-x-3 md:inset-x-auto md:right-3 md:left-auto md:max-w-sm z-40 rounded-2xl p-4 bg-white shadow-sheet border border-line">
+    <div className="fixed bottom-3 inset-x-3 md:inset-x-auto md:start-3 md:end-auto md:max-w-sm z-40 rounded-2xl p-4 bg-white shadow-sheet border border-line">
       <div className="flex items-start gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/icons/icon-192.png" className="h-11 w-11 rounded-xl shrink-0" alt="" />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold mb-1">התקינו את האפליקציה למסך הבית</div>
+          <div className="text-sm font-bold mb-1">{t("התקינו את האפליקציה למסך הבית")}</div>
           <p className="text-xs text-ink-soft mb-2.5 leading-relaxed">
             {isIOS
-              ? 'לחצו על כפתור השיתוף ⬆️ בסרגל הכלים למטה, ואז "הוספה למסך הבית".'
-              : "גישה מהירה מהמסך הראשי, בלי לפתוח דפדפן, בדיוק כמו אפליקציה רגילה."}
+              ? t('לחצו על כפתור השיתוף ⬆️ בסרגל הכלים למטה, ואז "הוספה למסך הבית".')
+              : t("גישה מהירה מהמסך הראשי, בלי לפתוח דפדפן, בדיוק כמו אפליקציה רגילה.")}
           </p>
           <div className="flex items-center gap-3">
             {installEvent && (
               <button onClick={install} className="text-xs font-semibold text-amber-deep">
-                התקנה
+                {t("התקנה")}
               </button>
             )}
             <button onClick={dismiss} className="text-xs font-semibold text-ink-soft">
-              לא עכשיו
+              {t("לא עכשיו")}
             </button>
           </div>
         </div>
-        <button onClick={dismiss} className="shrink-0 text-ink-soft leading-none" aria-label="סגירה">
+        <button onClick={dismiss} className="shrink-0 text-ink-soft leading-none" aria-label={t("סגירה")}>
           <IconClose className="h-3.5 w-3.5" />
         </button>
       </div>

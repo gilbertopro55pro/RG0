@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminPhotographerRow } from "@/app/admin/page";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
+import { useT, useLang } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 // Admin dashboard › accounts whose payment didn't come through, and a search over every account,
 // with a lock / unlock button (owner's decision, 2026-09-29: locking is manual). Locked = past_due:
@@ -19,6 +21,8 @@ function isOverdue(p: AdminPhotographerRow, now: number) {
 }
 
 function Row({ p, now, onToggle, busy }: { p: AdminPhotographerRow; now: number; onToggle: (p: AdminPhotographerRow) => void; busy: boolean }) {
+  const t = useT();
+  const lang = useLang();
   const locked = p.subscription_status === "past_due";
   const canToggle = locked || p.subscription_status === "active";
   const end = p.current_period_end ? new Date(p.current_period_end) : null;
@@ -28,21 +32,22 @@ function Row({ p, now, onToggle, busy }: { p: AdminPhotographerRow; now: number;
       <div className="min-w-0">
         <div className="text-sm font-semibold">
           {p.name}
-          {locked && <span className="text-xs font-semibold text-rose mr-2">נעול</span>}
+          {locked && <span className="text-xs font-semibold text-rose ms-2">{t("נעול")}</span>}
         </div>
         <div className="text-xs text-ink-soft break-all">{p.email}</div>
         <div className="text-xs text-ink-soft mt-0.5">
-          מסלול {SUBSCRIPTION_PLANS[p.plan].label}
+          {t("מסלול {plan}", { plan: t(SUBSCRIPTION_PLANS[p.plan].label) })}
           {end && (
             <>
-              {" · "}שולם עד <span className="font-data">{end.toLocaleDateString("he-IL")}</span>
-              {daysLate > 0 && <span className="text-rose"> (לפני {daysLate} ימים)</span>}
+              {" · "}
+              {t("שולם עד")} <span className="font-data">{end.toLocaleDateString(dateLocale(lang))}</span>
+              {daysLate > 0 && <span className="text-rose">{t(" (לפני {n} ימים)", { n: daysLate })}</span>}
             </>
           )}
-          {!p.has_recurring && p.subscription_status === "active" && " · אין הוראת קבע"}
+          {!p.has_recurring && p.subscription_status === "active" && t(" · אין הוראת קבע")}
         </div>
       </div>
-      {!canToggle && <span className="text-xs text-ink-soft shrink-0">{OTHER_STATUS[p.subscription_status] ?? p.subscription_status}</span>}
+      {!canToggle && <span className="text-xs text-ink-soft shrink-0">{OTHER_STATUS[p.subscription_status] ? t(OTHER_STATUS[p.subscription_status]) : p.subscription_status}</span>}
       {canToggle && (
         <button
           type="button"
@@ -50,7 +55,7 @@ function Row({ p, now, onToggle, busy }: { p: AdminPhotographerRow; now: number;
           onClick={() => onToggle(p)}
           className={`text-[13px] font-bold h-9 px-3 rounded-lg shrink-0 disabled:opacity-60 ${locked ? "border border-line bg-white" : "bg-ink text-white"}`}
         >
-          {locked ? "הסרת נעילה" : "נעילה"}
+          {locked ? t("הסרת נעילה") : t("נעילה")}
         </button>
       )}
     </div>
@@ -59,6 +64,7 @@ function Row({ p, now, onToggle, busy }: { p: AdminPhotographerRow; now: number;
 
 export default function AdminPaymentLocks({ photographers }: { photographers: AdminPhotographerRow[] }) {
   const router = useRouter();
+  const t = useT();
   const [now] = useState(() => Date.now());
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -72,8 +78,8 @@ export default function AdminPaymentLocks({ photographers }: { photographers: Ad
     const lock = p.subscription_status !== "past_due";
     const ok = window.confirm(
       lock
-        ? `לנעול את החשבון של ${p.name}? המערכת תיחסם עבורו ויופיע לו מסך "עדכון אמצעי תשלום". תשלום שם יפתח את החשבון מחדש.`
-        : `להסיר את הנעילה מהחשבון של ${p.name}? החשבון ייפתח לשימוש בלי תשלום.`
+        ? t("לנעול את החשבון של {name}? המערכת תיחסם עבורו ויופיע לו מסך \"עדכון אמצעי תשלום\". תשלום שם יפתח את החשבון מחדש.", { name: p.name })
+        : t("להסיר את הנעילה מהחשבון של {name}? החשבון ייפתח לשימוש בלי תשלום.", { name: p.name })
     );
     if (!ok) return;
     setBusyId(p.id);
@@ -85,10 +91,10 @@ export default function AdminPaymentLocks({ photographers }: { photographers: Ad
         body: JSON.stringify({ photographerId: p.id, locked: lock }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) setError(data.error ?? "הפעולה נכשלה");
+      if (!res.ok) setError(data.error ?? t("הפעולה נכשלה"));
       else router.refresh();
     } catch {
-      setError("הפעולה נכשלה, נסו שוב");
+      setError(t("הפעולה נכשלה, נסו שוב"));
     } finally {
       setBusyId(null);
     }
@@ -96,12 +102,12 @@ export default function AdminPaymentLocks({ photographers }: { photographers: Ad
 
   return (
     <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold mb-1">חשבונות שלא העבירו תשלום ({attention.length})</div>
+      <div className="text-sm font-semibold mb-1">{t("חשבונות שלא העבירו תשלום ({n})", { n: attention.length })}</div>
       <p className="text-xs text-ink-soft mb-3">
-        מנוי פעיל שהתקופה ששולמה שלו הסתיימה בלי חיוב שנקלט, וחשבונות נעולים. נעילה מפנה את הלקוח למסך עדכון אמצעי תשלום, ותשלום שם פותח את החשבון מחדש.
+        {t("מנוי פעיל שהתקופה ששולמה שלו הסתיימה בלי חיוב שנקלט, וחשבונות נעולים. נעילה מפנה את הלקוח למסך עדכון אמצעי תשלום, ותשלום שם פותח את החשבון מחדש.")}
       </p>
       {attention.length === 0 ? (
-        <p className="py-3 text-center text-sm text-ink-soft">כל החשבונות שילמו.</p>
+        <p className="py-3 text-center text-sm text-ink-soft">{t("כל החשבונות שילמו.")}</p>
       ) : (
         <div className="space-y-2">
           {attention.map((p) => (
@@ -110,17 +116,17 @@ export default function AdminPaymentLocks({ photographers }: { photographers: Ad
         </div>
       )}
 
-      <div className="text-sm font-semibold mt-5 mb-2">חיפוש משתמש</div>
+      <div className="text-sm font-semibold mt-5 mb-2">{t("חיפוש משתמש")}</div>
       <input
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="שם או אימייל"
+        placeholder={t("שם או אימייל")}
         className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
       />
       {q.length >= 2 && (
         <div className="space-y-2 mt-2">
-          {results.length === 0 && <p className="py-2 text-center text-sm text-ink-soft">לא נמצאו משתמשים.</p>}
+          {results.length === 0 && <p className="py-2 text-center text-sm text-ink-soft">{t("לא נמצאו משתמשים.")}</p>}
           {results.map((p) => (
             <Row key={p.id} p={p} now={now} onToggle={toggle} busy={busyId === p.id} />
           ))}

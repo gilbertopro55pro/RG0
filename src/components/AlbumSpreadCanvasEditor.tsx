@@ -12,6 +12,8 @@ import { sharpenSvgFilter } from "@/lib/albumSharpen";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import AlbumEditorGuideModal from "@/components/AlbumEditorGuideModal";
 import AlbumSpreadThumbnail from "@/components/AlbumSpreadThumbnail";
+import { useT } from "@/i18n/client";
+import type { TFn } from "@/i18n/translate";
 import { ALBUM_BLUR_MAX_PX, computePhotoFraming, cssFilterFor, boxShadowFor, textShadowFor, type PhotoWithUrl } from "@/lib/albumRender";
 import { textHeightPctForFontSize, MAX_TEXT_HEIGHT_OVERSIZE_RATIO } from "@/lib/albumTextSizing";
 
@@ -31,6 +33,11 @@ const CIRCLE_MENU_GAP_PX = 2;
 // the field is focused/being typed in, `draft` holds the raw text (so a half-typed "-" or "" doesn't
 // get clobbered); every valid number typed is applied live (clamped to min..max), blur/Enter commits
 // and re-syncs to the clamped value, an invalid/empty entry reverts, ArrowUp/Down step by `step`.
+// "סרט" (ribbon) is also a shared key meaning a video film, so the mask gets its own key.
+function maskLabel(t: TFn, label: string) {
+  return label === "סרט" ? t("סרט (מסכה)").replace(" (מסכה)", "") : t(label);
+}
+
 function SliderValueInput({
   value,
   min,
@@ -57,9 +64,9 @@ function SliderValueInput({
     return decimals ? Number(c.toFixed(decimals)) : Math.round(c);
   };
   const parse = (raw: string): number | null => {
-    const t = raw.trim().replace(",", ".");
-    if (t === "" || t === "-" || t === ".") return null;
-    const n = Number(t);
+    const s = raw.trim().replace(",", ".");
+    if (s === "" || s === "-" || s === ".") return null;
+    const n = Number(s);
     return Number.isFinite(n) ? n : null;
   };
   const commit = () => {
@@ -115,7 +122,7 @@ function SliderValueInput({
             if (next !== value) onChange(next);
           }
         }}
-        className="bg-transparent outline-none border-0 p-0 text-right text-ink"
+        className="bg-transparent outline-none border-0 p-0 text-start text-ink"
         style={{ width: `${Math.max(2, String(max).length, text.length) + 0.5}ch`, font: "inherit" }}
       />
       {unit && <span className="text-ink-soft">{unit}</span>}
@@ -624,10 +631,11 @@ function useDraggablePanelOffset(
 // conveys the panel can be moved) — a previous, more understated version read as pure decoration
 // rather than an obviously-interactive control.
 function PanelDragGrip({ handlers }: { handlers: ReturnType<typeof useDraggablePanelOffset>["gripHandlers"] }) {
+  const t = useT();
   return (
     <div
       {...handlers}
-      title="גררו כדי להזיז את הפאנל"
+      title={t("גררו כדי להזיז את הפאנל")}
       className="flex items-center justify-center gap-1 h-5 -mt-0.5 -mx-0.5 mb-0.5 rounded-t-lg cursor-grab active:cursor-grabbing touch-none"
       style={{ background: "var(--color-amber-deep)", userSelect: "none", WebkitUserSelect: "none" }}
     >
@@ -639,7 +647,7 @@ function PanelDragGrip({ handlers }: { handlers: ReturnType<typeof useDraggableP
         <line x1="2" y1="12" x2="22" y2="12" />
         <line x1="12" y1="2" x2="12" y2="22" />
       </svg>
-      <span className="text-[8px] font-bold text-white">גררו להזזה</span>
+      <span className="text-[8px] font-bold text-white">{t("גררו להזזה")}</span>
     </div>
   );
 }
@@ -688,10 +696,11 @@ function useResizablePanelSize(defaultWidthPx: number, defaultHeightPx: number) 
 // top-left anchor (its `top`/`left` position is fixed, see the caller) so growing the box always
 // extends AWAY from the anchor (rightward + downward), never fighting the fixed position.
 function PanelResizeHandle({ handlers }: { handlers: ReturnType<typeof useResizablePanelSize>["resizeHandlers"] }) {
+  const t = useT();
   return (
     <div
       {...handlers}
-      title="גררו כדי לשנות את גודל הפאנל"
+      title={t("גררו כדי לשנות את גודל הפאנל")}
       className="absolute -bottom-1 -right-1 h-4 w-4 flex items-end justify-end cursor-nwse-resize touch-none"
     >
       <svg width="12" height="12" viewBox="0 0 24 24">
@@ -761,6 +770,7 @@ function PhotoFloatingMenu({
   photoAdjustPanelOpen: boolean;
   onTogglePhotoAdjustPanel: () => void;
 }) {
+  const t = useT();
   const [openPanel, setOpenPanel] = useState<null | "opacity" | "blur" | "rotation">(null);
   // Always pinned to the photo's own right edge (screen-right — el.xPct/widthPct are plain
   // left-to-right canvas percentages regardless of the app's RTL text direction) and following it
@@ -782,27 +792,27 @@ function PhotoFloatingMenu({
       onPointerDown={(e) => e.stopPropagation()}
     >
       <PanelDragGrip handlers={dragGripHandlers} />
-      <CircleButton scale={buttonScale} label="עריכת תמונה: חשיפה, ניגודיות, איזון לבן ועוד" active={photoAdjustPanelOpen} onClick={onTogglePhotoAdjustPanel}>
+      <CircleButton scale={buttonScale} label={t("עריכת תמונה: חשיפה, ניגודיות, איזון לבן ועוד")} active={photoAdjustPanelOpen} onClick={onTogglePhotoAdjustPanel}>
         <IconAdjust />
       </CircleButton>
-      <CircleButton scale={buttonScale} label="שחור-לבן" active={el.filter === "bw"} onClick={() => onUpdate({ filter: el.filter === "bw" ? "none" : "bw" })}>
+      <CircleButton scale={buttonScale} label={t("שחור-לבן")} active={el.filter === "bw"} onClick={() => onUpdate({ filter: el.filter === "bw" ? "none" : "bw" })}>
         <IconBW />
       </CircleButton>
-      <CircleButton scale={buttonScale} label="גווני ספיה" active={el.filter === "sepia"} onClick={() => onUpdate({ filter: el.filter === "sepia" ? "none" : "sepia" })}>
+      <CircleButton scale={buttonScale} label={t("גווני ספיה")} active={el.filter === "sepia"} onClick={() => onUpdate({ filter: el.filter === "sepia" ? "none" : "sepia" })}>
         <IconSepia />
       </CircleButton>
       {/* The old flyout here had one button, "מרכז תמונה" (center the photo) — dropped per explicit
           request: a double-click on the photo now centers it directly (see the canvas's own
           onDoubleClick), so this button was pure redundancy. The circle's own active state (below)
           is enough of a marker that pan mode is on — no extra label/panel needed. */}
-      <CircleButton scale={buttonScale} label="מיקום התמונה במסגרת, גררו את התמונה כדי למקם אותה, או לחצו פעמיים על התמונה כדי למרכז" active={panning} onClick={onTogglePan}>
+      <CircleButton scale={buttonScale} label={t("מיקום התמונה במסגרת, גררו את התמונה כדי למקם אותה, או לחצו פעמיים על התמונה כדי למרכז")} active={panning} onClick={onTogglePan}>
         <IconFocal />
       </CircleButton>
-      <CircleButton scale={buttonScale} label="הצגה בגודל נכון, מתאים את המסגרת ליחס הרוחב/גובה האמיתי של התמונה" onClick={onTrueSize}>
+      <CircleButton scale={buttonScale} label={t("הצגה בגודל נכון, מתאים את המסגרת ליחס הרוחב/גובה האמיתי של התמונה")} onClick={onTrueSize}>
         <IconTrueSize />
       </CircleButton>
       <CircleButton scale={buttonScale}
-        label="שמירת יחס גובה-רוחב בשינוי גודל מהפינות"
+        label={t("שמירת יחס גובה-רוחב בשינוי גודל מהפינות")}
         active={!!el.lockAspect}
         onClick={() => onUpdate({ lockAspect: !el.lockAspect })}
       >
@@ -810,52 +820,52 @@ function PhotoFloatingMenu({
       </CircleButton>
       <CircleButton
         scale={buttonScale}
-        label={el.locked ? "נעולה. לחצו לשחרור המיקום והגודל" : "נעילת מיקום וגודל"}
+        label={el.locked ? t("נעולה. לחצו לשחרור המיקום והגודל") : t("נעילת מיקום וגודל")}
         active={!!el.locked}
         onClick={() => onUpdate({ locked: !el.locked })}
       >
         <IconLock />
       </CircleButton>
       <div className="relative">
-        <CircleButton scale={buttonScale} label="שקיפות" active={openPanel === "opacity" || (el.opacity ?? 100) < 100} onClick={() => toggle("opacity")}>
+        <CircleButton scale={buttonScale} label={t("שקיפות")} active={openPanel === "opacity" || (el.opacity ?? 100) < 100} onClick={() => toggle("opacity")}>
           <IconOpacity />
         </CircleButton>
         {openPanel === "opacity" && (
           <FlyoutPanel side={side}>
-            <MiniSlider label="שקיפות" value={el.opacity ?? 100} min={0} max={100} unit="%" onChange={(v) => onUpdate({ opacity: v })} />
+            <MiniSlider label={t("שקיפות")} value={el.opacity ?? 100} min={0} max={100} unit="%" onChange={(v) => onUpdate({ opacity: v })} />
           </FlyoutPanel>
         )}
       </div>
       <div className="relative">
-        <CircleButton scale={buttonScale} label="טשטוש" active={openPanel === "blur" || !!el.blur} onClick={() => toggle("blur")}>
+        <CircleButton scale={buttonScale} label={t("טשטוש")} active={openPanel === "blur" || !!el.blur} onClick={() => toggle("blur")}>
           <IconBlur />
         </CircleButton>
         {openPanel === "blur" && (
           <FlyoutPanel side={side}>
-            <MiniSlider label="טשטוש (Blur)" value={el.blur ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ blur: v })} />
+            <MiniSlider label={t("טשטוש (Blur)")} value={el.blur ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ blur: v })} />
           </FlyoutPanel>
         )}
       </div>
       <div className="relative">
-        <CircleButton scale={buttonScale} label="סיבוב" active={openPanel === "rotation" || !!el.rotation} onClick={() => toggle("rotation")}>
+        <CircleButton scale={buttonScale} label={t("סיבוב")} active={openPanel === "rotation" || !!el.rotation} onClick={() => toggle("rotation")}>
           <IconRotate />
         </CircleButton>
         {openPanel === "rotation" && (
           <FlyoutPanel side={side}>
-            <MiniSlider label="סיבוב" value={rotationDeg} min={0} max={360} unit="°" onChange={(deg) => onUpdate({ rotation: deg })} />
+            <MiniSlider label={t("סיבוב")} value={rotationDeg} min={0} max={360} unit="°" onChange={(deg) => onUpdate({ rotation: deg })} />
           </FlyoutPanel>
         )}
       </div>
-      <CircleButton scale={buttonScale} label="צל וקו מתאר" active={shadowPanelOpen || !!el.shadow || !!el.borderWidth} onClick={onToggleShadowPanel}>
+      <CircleButton scale={buttonScale} label={t("צל וקו מתאר")} active={shadowPanelOpen || !!el.shadow || !!el.borderWidth} onClick={onToggleShadowPanel}>
         <IconShadow />
       </CircleButton>
-      <CircleButton scale={buttonScale} label="העברה לשכבה העליונה" onClick={onBringToFront}>
+      <CircleButton scale={buttonScale} label={t("העברה לשכבה העליונה")} onClick={onBringToFront}>
         <IconToFront />
       </CircleButton>
-      <CircleButton scale={buttonScale} label="העברה לשכבה התחתונה" onClick={onSendToBack}>
+      <CircleButton scale={buttonScale} label={t("העברה לשכבה התחתונה")} onClick={onSendToBack}>
         <IconToBack />
       </CircleButton>
-      <CircleButton scale={buttonScale} label="מחיקת התמונה/ות שנבחרו" danger onClick={onDeleteSelected}>
+      <CircleButton scale={buttonScale} label={t("מחיקת התמונה/ות שנבחרו")} danger onClick={onDeleteSelected}>
         <IconX />
       </CircleButton>
     </div>
@@ -884,11 +894,12 @@ function PhotoShadowOverlayPanel({
   onApplyBorderToAllPages?: () => Promise<void>;
   widthPx: number;
 }) {
+  const t = useT();
   const [borderAllStatus, setBorderAllStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
   useEffect(() => {
     if (borderAllStatus !== "done" && borderAllStatus !== "error") return;
-    const t = setTimeout(() => setBorderAllStatus("idle"), 3500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setBorderAllStatus("idle"), 3500);
+    return () => clearTimeout(timer);
   }, [borderAllStatus]);
   // The מרחק/טשטוש (distance/blur) sliders' displayed value falls back to `el.shadow` (the עוצמה
   // slider) while unset — needed so an existing shadow that predates these two fields still shows
@@ -917,12 +928,12 @@ function PhotoShadowOverlayPanel({
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <p className="text-xs font-bold">צל וקו מתאר</p>
-      <MiniSlider label="עוצמת צל" value={el.shadow ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ shadow: v })} />
+      <p className="text-xs font-bold">{t("צל וקו מתאר")}</p>
+      <MiniSlider label={t("עוצמת צל")} value={el.shadow ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ shadow: v })} />
       {!!el.shadow && (
         <>
           <MiniSlider
-            label="מרחק צל"
+            label={t("מרחק צל")}
             value={el.shadowDistance ?? el.shadow ?? 0}
             min={0}
             max={100}
@@ -930,7 +941,7 @@ function PhotoShadowOverlayPanel({
             onChange={(v) => onUpdate({ shadowDistance: v })}
           />
           <MiniSlider
-            label="טשטוש צל"
+            label={t("טשטוש צל")}
             value={el.shadowBlur ?? el.shadow ?? 0}
             min={0}
             max={100}
@@ -938,7 +949,7 @@ function PhotoShadowOverlayPanel({
             onChange={(v) => onUpdate({ shadowBlur: v })}
           />
           <MiniSlider
-            label="זווית צל"
+            label={t("זווית צל")}
             value={el.shadowAngle ?? 45}
             min={0}
             max={360}
@@ -947,7 +958,7 @@ function PhotoShadowOverlayPanel({
           />
         </>
       )}
-      <MiniSlider label="קו מתאר" value={el.borderWidth ?? 0} min={0} max={50} unit="px" onChange={(v) => onUpdate({ borderWidth: v })} />
+      <MiniSlider label={t("קו מתאר")} value={el.borderWidth ?? 0} min={0} max={50} unit="px" onChange={(v) => onUpdate({ borderWidth: v })} />
       {!!el.borderWidth && (
         <div className="flex items-center gap-1.5">
           {BORDER_COLORS.map((c) => (
@@ -961,7 +972,7 @@ function PhotoShadowOverlayPanel({
         </div>
       )}
       <button onClick={onApplyShadowToAll} className="w-full rounded-lg py-1.5 text-[10px] font-semibold bg-chip text-ink-soft">
-        החל על כל התמונות בדף
+        {t("החל על כל התמונות בדף")}
       </button>
       {onApplyBorderToAllPages && (
         <>
@@ -982,10 +993,10 @@ function PhotoShadowOverlayPanel({
             className="w-full rounded-lg py-1.5 text-[10px] font-semibold bg-white border border-line disabled:opacity-60"
             style={{ color: "var(--color-amber-deep)" }}
           >
-            {borderAllStatus === "busy" ? "מחיל על כל הדפים..." : "החלה על כל דפי האלבום"}
+            {borderAllStatus === "busy" ? t("מחיל על כל הדפים...") : t("החלה על כל דפי האלבום")}
           </button>
-          {borderAllStatus === "done" && <p className="text-[10px] font-semibold text-center text-sage">קו המתאר הוחל על כל דפי האלבום</p>}
-          {borderAllStatus === "error" && <p className="text-[10px] font-semibold text-center text-rose">לא הצלחנו להחיל על כל הדפים, נסו שוב</p>}
+          {borderAllStatus === "done" && <p className="text-[10px] font-semibold text-center text-sage">{t("קו המתאר הוחל על כל דפי האלבום")}</p>}
+          {borderAllStatus === "error" && <p className="text-[10px] font-semibold text-center text-rose">{t("לא הצלחנו להחיל על כל הדפים, נסו שוב")}</p>}
         </>
       )}
     </div>
@@ -1008,6 +1019,7 @@ function OrnamentFloatingMenu({
   onBringToFront: () => void;
   onSendToBack: () => void;
 }) {
+  const t = useT();
   const rotationDeg = Math.round((((el.rotation ?? 0) % 360) + 360) % 360);
   return (
     <div
@@ -1019,7 +1031,7 @@ function OrnamentFloatingMenu({
         {el.customOrnamentId && (
           <button
             onClick={() => onUpdate({ color: undefined })}
-            title="צבע מקורי"
+            title={t("צבע מקורי")}
             className="h-6 w-6 rounded-full bg-[linear-gradient(45deg,#ddd_25%,transparent_25%,transparent_75%,#ddd_75%),linear-gradient(45deg,#ddd_25%,transparent_25%,transparent_75%,#ddd_75%)] bg-white"
             style={{
               backgroundSize: "6px 6px",
@@ -1041,16 +1053,16 @@ function OrnamentFloatingMenu({
           />
         ))}
       </div>
-      <MiniSlider label="שקיפות" value={el.opacity ?? 100} min={0} max={100} unit="%" onChange={(v) => onUpdate({ opacity: v })} />
+      <MiniSlider label={t("שקיפות")} value={el.opacity ?? 100} min={0} max={100} unit="%" onChange={(v) => onUpdate({ opacity: v })} />
       {/* el.shadow already flows all the way through every renderer (live canvas, thumbnail, JPG/
           PSD/PDF raster) exactly like a photo's/shape's shadow does — these sliders were simply
           missing, so there was no way to actually set it from the UI despite full render support
           existing. */}
-      <MiniSlider label="עוצמת צל" value={el.shadow ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ shadow: v })} />
+      <MiniSlider label={t("עוצמת צל")} value={el.shadow ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ shadow: v })} />
       {!!el.shadow && (
-        <MiniSlider label="זווית צל" value={el.shadowAngle ?? 45} min={0} max={360} unit="°" onChange={(v) => onUpdate({ shadowAngle: v })} />
+        <MiniSlider label={t("זווית צל")} value={el.shadowAngle ?? 45} min={0} max={360} unit="°" onChange={(v) => onUpdate({ shadowAngle: v })} />
       )}
-      <MiniSlider label="קו מתאר" value={el.borderWidth ?? 0} min={0} max={50} unit="px" onChange={(v) => onUpdate({ borderWidth: v })} />
+      <MiniSlider label={t("קו מתאר")} value={el.borderWidth ?? 0} min={0} max={50} unit="px" onChange={(v) => onUpdate({ borderWidth: v })} />
       {!!el.borderWidth && (
         <div className="flex items-center gap-1.5">
           {BORDER_COLORS.map((c) => (
@@ -1064,21 +1076,21 @@ function OrnamentFloatingMenu({
         </div>
       )}
       <div className="flex items-center gap-1">
-        <button onClick={onBringToFront} title="העברה לשכבה העליונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onBringToFront} title={t("העברה לשכבה העליונה")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToFront />
         </button>
-        <button onClick={onSendToBack} title="העברה לשכבה התחתונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onSendToBack} title={t("העברה לשכבה התחתונה")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToBack />
         </button>
         <button
           onClick={() => onUpdate({ locked: !el.locked })}
-          title={el.locked ? "נעול. לחצו לשחרור" : "נעילת מיקום וגודל"}
+          title={el.locked ? t("נעול. לחצו לשחרור") : t("נעילת מיקום וגודל")}
           className="flex-1 h-7 rounded-lg flex items-center justify-center"
           style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
         >
           <IconLock />
         </button>
-        <button onClick={onDeleteSelected} title="מחיקה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-rose">
+        <button onClick={onDeleteSelected} title={t("מחיקה")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-rose">
           <IconTrash />
         </button>
       </div>
@@ -1109,6 +1121,7 @@ function ShapeFloatingMenu({
   onBringToFront: () => void;
   onSendToBack: () => void;
 }) {
+  const t = useT();
   const isLine = el.shapeStyle === "line";
   const linePx = Math.max(1, Math.min(100, Math.round((el.heightPct / 100) * albumHeightCm * PX_PER_CM)));
   return (
@@ -1136,7 +1149,7 @@ function ShapeFloatingMenu({
           redundant second entry point into the identical panel. */}
       {isLine && (
         <MiniSlider
-          label="עובי הקו"
+          label={t("עובי הקו")}
           value={linePx}
           min={1}
           max={100}
@@ -1151,15 +1164,15 @@ function ShapeFloatingMenu({
           }}
         />
       )}
-      <MiniSlider label="שקיפות" value={el.opacity ?? 100} min={0} max={100} unit="%" onChange={(v) => onUpdate({ opacity: v })} />
+      <MiniSlider label={t("שקיפות")} value={el.opacity ?? 100} min={0} max={100} unit="%" onChange={(v) => onUpdate({ opacity: v })} />
       {/* el.shadow already flows all the way through every renderer (live canvas, thumbnail, JPG/
           PSD/PDF raster) exactly like a photo's shadow does — this slider was simply missing, so
           there was no way to actually set it from the UI despite full render support existing. */}
-      <MiniSlider label="עוצמת צל" value={el.shadow ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ shadow: v })} />
+      <MiniSlider label={t("עוצמת צל")} value={el.shadow ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ shadow: v })} />
       {!!el.shadow && (
-        <MiniSlider label="זווית צל" value={el.shadowAngle ?? 45} min={0} max={360} unit="°" onChange={(v) => onUpdate({ shadowAngle: v })} />
+        <MiniSlider label={t("זווית צל")} value={el.shadowAngle ?? 45} min={0} max={360} unit="°" onChange={(v) => onUpdate({ shadowAngle: v })} />
       )}
-      <MiniSlider label="קו מתאר" value={el.borderWidth ?? 0} min={0} max={50} unit="px" onChange={(v) => onUpdate({ borderWidth: v })} />
+      <MiniSlider label={t("קו מתאר")} value={el.borderWidth ?? 0} min={0} max={50} unit="px" onChange={(v) => onUpdate({ borderWidth: v })} />
       {!!el.borderWidth && (
         <div className="flex items-center gap-1.5">
           {BORDER_COLORS.map((c) => (
@@ -1173,21 +1186,21 @@ function ShapeFloatingMenu({
         </div>
       )}
       <div className="flex items-center gap-1">
-        <button onClick={onBringToFront} title="העברה לשכבה העליונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onBringToFront} title={t("העברה לשכבה העליונה")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToFront />
         </button>
-        <button onClick={onSendToBack} title="העברה לשכבה התחתונה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onSendToBack} title={t("העברה לשכבה התחתונה")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToBack />
         </button>
         <button
           onClick={() => onUpdate({ locked: !el.locked })}
-          title={el.locked ? "נעול. לחצו לשחרור" : "נעילת מיקום וגודל"}
+          title={el.locked ? t("נעול. לחצו לשחרור") : t("נעילת מיקום וגודל")}
           className="flex-1 h-7 rounded-lg flex items-center justify-center"
           style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
         >
           <IconLock />
         </button>
-        <button onClick={onDeleteSelected} title="מחיקה" className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-rose">
+        <button onClick={onDeleteSelected} title={t("מחיקה")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-rose">
           <IconTrash />
         </button>
       </div>
@@ -1221,6 +1234,7 @@ function TextFloatingMenu({
   onUpdate: (patch: Partial<AlbumTextElement>) => void;
   onDeleteSelected: () => void;
 }) {
+  const t = useT();
   return (
     <div
       className="w-[150px] rounded-xl border border-line bg-white p-2.5 shadow-sheet space-y-2"
@@ -1252,7 +1266,7 @@ function TextFloatingMenu({
               color: el.align === a ? "#fff" : "var(--color-ink-soft)",
             }}
           >
-            {a === "right" ? "ימין" : a === "center" ? "מרכז" : "שמאל"}
+            {a === "right" ? t("ימין") : a === "center" ? t("מרכז") : t("שמאל")}
           </button>
         ))}
       </div>
@@ -1262,14 +1276,14 @@ function TextFloatingMenu({
         className="w-full rounded-lg px-2 py-1.5 text-[10px] font-semibold bg-white border border-line"
         style={{ fontFamily: albumFontFamilyCss(el.fontFamily) }}
       >
-        <optgroup label="פונטים בעברית">
+        <optgroup label={t("פונטים בעברית")}>
           {ALBUM_FONTS.filter((f) => f.category === "hebrew").map((f) => (
             <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
               {f.label}
             </option>
           ))}
         </optgroup>
-        <optgroup label="פונטים באנגלית">
+        <optgroup label={t("פונטים באנגלית")}>
           {ALBUM_FONTS.filter((f) => f.category === "latin").map((f) => (
             <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
               {f.label}
@@ -1278,7 +1292,7 @@ function TextFloatingMenu({
         </optgroup>
       </select>
       <MiniSlider
-        label="גודל טקסט"
+        label={t("גודל טקסט")}
         value={el.fontSize}
         min={2}
         max={250}
@@ -1305,10 +1319,10 @@ function TextFloatingMenu({
           className="flex-1 h-7 rounded-lg text-[10px] font-semibold"
           style={{ background: el.locked ? "var(--color-amber-deep)" : "var(--color-chip)", color: el.locked ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
         >
-          {el.locked ? "נעול" : "נעילה"}
+          {el.locked ? t("נעול") : t("נעילה")}
         </button>
         <button onClick={onDeleteSelected} className="flex-1 h-7 rounded-lg bg-chip text-rose text-[10px] font-semibold">
-          מחיקה
+          {t("מחיקה")}
         </button>
       </div>
     </div>
@@ -1353,6 +1367,7 @@ function PhotoAdjustFloatingMenu({
   // size always matches the photo it's editing.
   widthPx?: number;
 }) {
+  const t = useT();
   const hasAny = hasAdjustments(el);
   return (
     <div
@@ -1365,7 +1380,7 @@ function PhotoAdjustFloatingMenu({
       onPointerDown={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between">
-        <p className={compact ? "text-[9px] font-bold" : "text-xs font-bold"}>עריכת תמונה</p>
+        <p className={compact ? "text-[9px] font-bold" : "text-xs font-bold"}>{t("עריכת תמונה")}</p>
         {hasAny && (
           <button
             onClick={() =>
@@ -1385,25 +1400,25 @@ function PhotoAdjustFloatingMenu({
             }
             className={`font-semibold text-ink-soft underline ${compact ? "text-[8px]" : "text-[10px]"}`}
           >
-            איפוס
+            {t("איפוס")}
           </button>
         )}
       </div>
-      <AdjustSectionLabel compact={compact}>איזון לבן</AdjustSectionLabel>
-      <MiniSlider compact={compact} label="חום" value={el.temp ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ temp: v })} />
-      <MiniSlider compact={compact} label="גוון" value={el.tint ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ tint: v })} />
-      <AdjustSectionLabel compact={compact}>גוונים</AdjustSectionLabel>
-      <MiniSlider compact={compact} label="חשיפה" value={el.exposure ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ exposure: v })} />
-      <MiniSlider compact={compact} label="ניגודיות" value={el.contrast ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ contrast: v })} />
-      <MiniSlider compact={compact} label="אורות גבוהים" value={el.highlights ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ highlights: v })} />
-      <MiniSlider compact={compact} label="צללים" value={el.shadows2 ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ shadows2: v })} />
-      <MiniSlider compact={compact} label="לבנים" value={el.whites ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ whites: v })} />
-      <MiniSlider compact={compact} label="שחורים" value={el.blacks ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ blacks: v })} />
-      <AdjustSectionLabel compact={compact}>עוצמת צבע</AdjustSectionLabel>
-      <MiniSlider compact={compact} label="עוצמה" value={el.vibrance ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ vibrance: v })} />
-      <MiniSlider compact={compact} label="רוויה" value={el.saturation2 ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ saturation2: v })} />
-      <AdjustSectionLabel compact={compact}>פירוט</AdjustSectionLabel>
-      <MiniSlider compact={compact} label="חידוד" value={el.sharpness ?? 0} min={0} max={100} onChange={(v) => onUpdate({ sharpness: v })} />
+      <AdjustSectionLabel compact={compact}>{t("איזון לבן")}</AdjustSectionLabel>
+      <MiniSlider compact={compact} label={t("חום")} value={el.temp ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ temp: v })} />
+      <MiniSlider compact={compact} label={t("גוון")} value={el.tint ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ tint: v })} />
+      <AdjustSectionLabel compact={compact}>{t("גוונים")}</AdjustSectionLabel>
+      <MiniSlider compact={compact} label={t("חשיפה")} value={el.exposure ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ exposure: v })} />
+      <MiniSlider compact={compact} label={t("ניגודיות")} value={el.contrast ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ contrast: v })} />
+      <MiniSlider compact={compact} label={t("אורות גבוהים")} value={el.highlights ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ highlights: v })} />
+      <MiniSlider compact={compact} label={t("צללים")} value={el.shadows2 ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ shadows2: v })} />
+      <MiniSlider compact={compact} label={t("לבנים")} value={el.whites ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ whites: v })} />
+      <MiniSlider compact={compact} label={t("שחורים")} value={el.blacks ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ blacks: v })} />
+      <AdjustSectionLabel compact={compact}>{t("עוצמת צבע")}</AdjustSectionLabel>
+      <MiniSlider compact={compact} label={t("עוצמה")} value={el.vibrance ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ vibrance: v })} />
+      <MiniSlider compact={compact} label={t("רוויה")} value={el.saturation2 ?? 0} min={-100} max={100} onChange={(v) => onUpdate({ saturation2: v })} />
+      <AdjustSectionLabel compact={compact}>{t("פירוט")}</AdjustSectionLabel>
+      <MiniSlider compact={compact} label={t("חידוד")} value={el.sharpness ?? 0} min={0} max={100} onChange={(v) => onUpdate({ sharpness: v })} />
     </div>
   );
 }
@@ -2072,6 +2087,7 @@ export default function AlbumSpreadCanvasEditor({
   sidePanelOffset: { x: number; y: number };
   onSidePanelOffsetChange: (offset: { x: number; y: number }) => void;
 }) {
+  const t = useT();
   // This editor's whole layout below (two columns, canvas sizing, sidebar, page switcher) is the
   // SAME desktop design on a phone/tablet, not a second maintained-separately layout — same tool,
   // same features, just resized for the real screen. Real desktop (≥1024px) is untouched.
@@ -2147,8 +2163,8 @@ export default function AlbumSpreadCanvasEditor({
   }, []);
   useEffect(() => {
     if (phase !== "settling") return;
-    const t = setTimeout(() => setPhase("ready"), 500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setPhase("ready"), 500);
+    return () => clearTimeout(timer);
   }, [phase]);
   const needsRotate = phase === "portrait";
 
@@ -2576,10 +2592,10 @@ export default function AlbumSpreadCanvasEditor({
   // relative delta, so it works the same in this RTL layout without any scrollLeft-sign quirks.
   useEffect(() => {
     const c = pageStripScrollRef.current;
-    const t = c?.querySelector<HTMLElement>('[data-current="1"]');
-    if (!c || !t) return;
+    const cur = c?.querySelector<HTMLElement>('[data-current="1"]');
+    if (!c || !cur) return;
     const cr = c.getBoundingClientRect();
-    const tr = t.getBoundingClientRect();
+    const tr = cur.getBoundingClientRect();
     c.scrollLeft += tr.left + tr.width / 2 - (cr.left + cr.width / 2);
   }, [showPageStrip, spread.id]);
   const pageStripReservePx = showPageStrip && pageStripHeightPx > 0 ? pageStripHeightPx + Math.max(0, canvasWrapPadYPx - 24) : 0;
@@ -2638,7 +2654,7 @@ export default function AlbumSpreadCanvasEditor({
     folders && folders.length > 0
       ? [
           ...folders.map((f) => ({ id: f.id, name: f.name, items: dragPanelPool.filter((p) => p.folder_id === f.id) })),
-          { id: "__none__", name: "ללא לשונית", items: dragPanelPool.filter((p) => !p.folder_id) },
+          { id: "__none__", name: t("ללא לשונית"), items: dragPanelPool.filter((p) => !p.folder_id) },
         ].filter((g) => g.items.length > 0)
       : dragPanelPool.length > 0
       ? [{ id: "__all__", name: null, items: dragPanelPool }]
@@ -3820,11 +3836,11 @@ export default function AlbumSpreadCanvasEditor({
           <IconRotateDevice size={28} />
         </div>
         <div className="text-white">
-          <p className="text-lg font-bold font-display mb-1">סובבו את המכשיר למצב אופקי</p>
-          <p className="text-sm opacity-80">כלי עיצוב האלבום פועל רק במצב אופקי, סובבו את הטלפון כדי להמשיך</p>
+          <p className="text-lg font-bold font-display mb-1">{t("סובבו את המכשיר למצב אופקי")}</p>
+          <p className="text-sm opacity-80">{t("כלי עיצוב האלבום פועל רק במצב אופקי, סובבו את הטלפון כדי להמשיך")}</p>
         </div>
         <button onClick={handleCloseAttempt} className="mt-1 h-9 px-4 rounded-full bg-white text-ink text-sm font-semibold">
-          סגירה
+          {t("סגירה")}
         </button>
       </div>
     );
@@ -3840,7 +3856,7 @@ export default function AlbumSpreadCanvasEditor({
         style={{ background: "rgba(28, 27, 25, 0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
       >
         <div className="h-8 w-8 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-        <p className="text-sm text-white opacity-80">טוען את הכלי...</p>
+        <p className="text-sm text-white opacity-80">{t("טוען את הכלי...")}</p>
       </div>
     );
   }
@@ -4126,8 +4142,9 @@ export default function AlbumSpreadCanvasEditor({
           .gf-album-selection-info {
             position: absolute;
             top: 40px;
-            left: 400px;
-            right: 0;
+            /* Logical sides (src/i18n): in RTL the sidebar column is on the left, in LTR on the right. */
+            inset-inline-start: 0;
+            inset-inline-end: 400px;
             z-index: 30;
             background: var(--color-paper);
             border-radius: 16px;
@@ -4203,16 +4220,16 @@ export default function AlbumSpreadCanvasEditor({
         <div className="gf-album-editor-main flex-1 flex flex-col min-w-0 min-h-0">
         <div className="gf-album-header flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold font-display">{mode === "custom" ? "עיצוב חופשי" : "הוספת טקסט לעמוד"}</h2>
+            <h2 className="text-base font-bold font-display">{mode === "custom" ? t("עיצוב חופשי") : t("הוספת טקסט לעמוד")}</h2>
           </div>
           <div className="flex items-center gap-2">
             {mode === "custom" && onAddPage && (
               <button
                 onClick={() => requestLeave(() => onAddPage())}
-                className="h-8 pr-3 pl-2.5 rounded-full flex items-center gap-1 bg-white border border-line text-xs font-bold whitespace-nowrap text-ink"
+                className="h-8 ps-3 pe-2.5 rounded-full flex items-center gap-1 bg-white border border-line text-xs font-bold whitespace-nowrap text-ink"
               >
                 <IconPlusSmall size={13} />
-                עמוד חדש
+                {t("עמוד חדש")}
               </button>
             )}
             {mode === "custom" && (
@@ -4221,11 +4238,11 @@ export default function AlbumSpreadCanvasEditor({
                 // Was a flat bg-chip pill, same as static text elsewhere on this bar — nothing
                 // signaled it was actually clickable. A visible border + accent color + icon reads
                 // as an actual button instead of a label.
-                className="h-8 pr-3 pl-2.5 rounded-full flex items-center gap-1 bg-white border border-line text-xs font-bold whitespace-nowrap"
+                className="h-8 ps-3 pe-2.5 rounded-full flex items-center gap-1 bg-white border border-line text-xs font-bold whitespace-nowrap"
                 style={{ color: "var(--color-amber-deep)" }}
               >
                 <IconInfo size={13} />
-                מדריך למשתמש
+                {t("מדריך למשתמש")}
               </button>
             )}
             <button onClick={handleCloseAttempt} className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center bg-white border border-line">
@@ -4244,9 +4261,9 @@ export default function AlbumSpreadCanvasEditor({
             }}
           >
             <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-base font-bold font-display mb-2">השינויים בעמוד לא נשמרו</h2>
+              <h2 className="text-base font-bold font-display mb-2">{t("השינויים בעמוד לא נשמרו")}</h2>
               <p className="text-sm text-ink-soft leading-relaxed mb-4">
-                {leaveKind === "switch" ? "לשמור אותם לפני המעבר לעמוד שבחרתם, או לעבור בלי לשמור?" : "לשמור אותם עכשיו, או לצאת בלי לשמור?"}
+                {leaveKind === "switch" ? t("לשמור אותם לפני המעבר לעמוד שבחרתם, או לעבור בלי לשמור?") : t("לשמור אותם עכשיו, או לצאת בלי לשמור?")}
               </p>
 
               <div className="flex flex-col gap-2">
@@ -4272,7 +4289,7 @@ export default function AlbumSpreadCanvasEditor({
                   }}
                   className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white"
                 >
-                  {leaveKind === "switch" ? "שמירה ומעבר לעמוד" : "שמירה ויציאה"}
+                  {leaveKind === "switch" ? t("שמירה ומעבר לעמוד") : t("שמירה ויציאה")}
                 </button>
                 <button
                   onClick={() => {
@@ -4282,7 +4299,7 @@ export default function AlbumSpreadCanvasEditor({
                   }}
                   className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-rose"
                 >
-                  {leaveKind === "switch" ? "מעבר בלי שמירה" : "יציאה בלי שמירה"}
+                  {leaveKind === "switch" ? t("מעבר בלי שמירה") : t("יציאה בלי שמירה")}
                 </button>
                 <button
                   onClick={() => {
@@ -4291,7 +4308,7 @@ export default function AlbumSpreadCanvasEditor({
                   }}
                   className="w-full rounded-lg py-2 text-xs font-semibold text-ink-soft"
                 >
-                  ביטול, המשך לעריכה
+                  {t("ביטול, המשך לעריכה")}
                 </button>
               </div>
             </div>
@@ -4306,8 +4323,8 @@ export default function AlbumSpreadCanvasEditor({
           // panels, like "צל וקו מתאר") could never be dismissed. Only the empty grey itself counts,
           // never a panel, menu or the page strip inside it.
           onClick={(e) => {
-            const t = e.target as HTMLElement;
-            if (t === e.currentTarget || t.dataset.deselectZone === "1") setSelectedIds(new Set());
+            const target = e.target as HTMLElement;
+            if (target === e.currentTarget || target.dataset.deselectZone === "1") setSelectedIds(new Set());
           }}
         >
         {/* Not overflow-hidden (unlike the canvas below) so the floating photo menu — and the
@@ -5009,8 +5026,8 @@ export default function AlbumSpreadCanvasEditor({
                 if (r) setBackgroundPanelRect({ top: Math.max(8, r.top - (onApplyBackgroundToAll ? 270 : 210)), left: r.left, width: 220 });
                 setBackgroundPanelOpen((v) => !v);
               }}
-              title="שקיפות וטשטוש רקע"
-              aria-label="שקיפות וטשטוש רקע"
+              title={t("שקיפות וטשטוש רקע")}
+              aria-label={t("שקיפות וטשטוש רקע")}
               className="absolute bottom-2 left-2 z-10 h-8 w-8 rounded-full flex items-center justify-center shadow"
               style={{
                 background: backgroundPanelOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
@@ -5073,7 +5090,7 @@ export default function AlbumSpreadCanvasEditor({
             circle buttons. */}
         {selectedText && canvasRestRect && (
           <div className="fixed z-20" style={{ top: canvasRestRect.top + 8, right: "8px" }}>
-            <CircleButton label="עריכת טקסט: גופן, צבע, יישור ועוד" active={textPanelOpen} onClick={() => setTextPanelOpen((v) => !v)}>
+            <CircleButton label={t("עריכת טקסט: גופן, צבע, יישור ועוד")} active={textPanelOpen} onClick={() => setTextPanelOpen((v) => !v)}>
               <span className="font-display font-bold" style={{ fontSize: 15 }}>T</span>
             </CircleButton>
           </div>
@@ -5218,11 +5235,11 @@ export default function AlbumSpreadCanvasEditor({
           >
             {!isPhone && (
               <div className="flex items-center justify-between gap-2 mb-1 text-[11px] font-bold" style={{ color: "rgba(46, 49, 66, 0.75)" }}>
-                <span className="gf-album-pageswitcher-label">עמודי האלבום</span>
+                <span className="gf-album-pageswitcher-label">{t("עמודי האלבום")}</span>
                 {switchingToSpreadId ? (
-                  <span className="gf-album-pageswitcher-label font-semibold">שומר את העמוד ועובר...</span>
+                  <span className="gf-album-pageswitcher-label font-semibold">{t("שומר את העמוד ועובר...")}</span>
                 ) : pageSwitchError ? (
-                  <span className="font-semibold text-rose">השמירה נכשלה, נסו שוב</span>
+                  <span className="font-semibold text-rose">{t("השמירה נכשלה, נסו שוב")}</span>
                 ) : null}
               </div>
             )}
@@ -5235,7 +5252,7 @@ export default function AlbumSpreadCanvasEditor({
                   <div
                     key={s.id}
                     data-current={isCurrent ? "1" : undefined}
-                    title={isCurrent ? `עמוד ${i + 1} (העמוד הנוכחי)` : `מעבר לעמוד ${i + 1}`}
+                    title={isCurrent ? t("עמוד {n} (העמוד הנוכחי)", { n: i + 1 }) : t("מעבר לעמוד {n}", { n: i + 1 })}
                     className="relative shrink-0 rounded-md overflow-hidden bg-white"
                     style={{
                       width: Math.round(thumbH * canvasRatio),
@@ -5282,7 +5299,7 @@ export default function AlbumSpreadCanvasEditor({
                 fixed 380px now too (previously it had the full main-content width to work with),
                 so the label + toggle + buttons need the same wrapping room there. */}
             <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
-              <p className={`font-bold text-ink-soft ${isPhone ? "text-[9px]" : "text-[11px]"}`}>גררו תמונה מועדפת אל המסגרת הרצויה</p>
+              <p className={`font-bold text-ink-soft ${isPhone ? "text-[9px]" : "text-[11px]"}`}>{t("גררו תמונה מועדפת אל המסגרת הרצויה")}</p>
               <div className="flex items-center gap-2 shrink-0">
                 {/* The switch itself has no visible label text (just a bare pill), so its native
                     title tooltip is easy to miss entirely — this adds an always-discoverable (?)
@@ -5302,17 +5319,17 @@ export default function AlbumSpreadCanvasEditor({
                 </span>
                 {hoverZoomTooltipPos && (
                   <div
-                    className="pointer-events-none fixed w-40 rounded-lg bg-ink text-white text-[10px] leading-snug p-2 z-[95] text-right"
+                    className="pointer-events-none fixed w-40 rounded-lg bg-ink text-white text-[10px] leading-snug p-2 z-[95] text-start"
                     style={{ top: hoverZoomTooltipPos.top, right: hoverZoomTooltipPos.right, transform: "translateY(calc(-100% - 6px))" }}
                   >
-                    כשהמתג פעיל, ריחוף עם העכבר מעל תמונה בפאנל מציג תצוגה מקדימה מוגדלת שלה
+                    {t("כשהמתג פעיל, ריחוף עם העכבר מעל תמונה בפאנל מציג תצוגה מקדימה מוגדלת שלה")}
                   </div>
                 )}
                 <button
                   onClick={() => setDragPanelHoverZoomEnabled((v) => !v)}
                   role="switch"
                   aria-checked={dragPanelHoverZoomEnabled}
-                  title="תצוגה מוגדלת בריחוף עכבר"
+                  title={t("תצוגה מוגדלת בריחוף עכבר")}
                   className={`relative shrink-0 rounded-full flex items-center px-0.5 ${isPhone ? "h-3.5 w-6" : "h-4.5 w-8"}`}
                   style={{
                     background: dragPanelHoverZoomEnabled ? "var(--color-amber-deep)" : "var(--color-line)",
@@ -5327,7 +5344,7 @@ export default function AlbumSpreadCanvasEditor({
                     className={`font-semibold shrink-0 ${isPhone ? "text-[9px]" : "text-[11px]"}`}
                     style={{ color: "var(--color-amber-deep)" }}
                   >
-                    {dragPanelSelectedIds.size} נבחרו · ניקוי
+                    {t("{n} נבחרו · ניקוי", { n: dragPanelSelectedIds.size })}
                   </button>
                 )}
                 {favoritePhotos.length > 0 && (
@@ -5335,26 +5352,26 @@ export default function AlbumSpreadCanvasEditor({
                     onClick={() => setShowAllDragPanel((v) => !v)}
                     className={`font-semibold text-ink-soft underline shrink-0 ${isPhone ? "text-[9px]" : "text-[11px]"}`}
                   >
-                    {showAllDragPanel ? "רק זמינות" : "הצג הכל"}
+                    {showAllDragPanel ? t("רק זמינות") : t("הצג הכל")}
                   </button>
                 )}
                 {favoritePhotos.length > 1 && (
                   <select
                     value={dragPanelSort}
                     onChange={(e) => setDragPanelSort(e.target.value as "default" | "name" | "date")}
-                    title="סדר הצגת התמונות ברשימה"
+                    title={t("סדר הצגת התמונות ברשימה")}
                     className={`font-semibold text-ink-soft bg-transparent underline shrink-0 ${isPhone ? "text-[9px]" : "text-[11px]"}`}
                   >
-                    <option value="default">מיון: ברירת מחדל</option>
-                    <option value="name">מיון: שם</option>
-                    <option value="date">מיון: תאריך</option>
+                    <option value="default">{t("מיון: ברירת מחדל")}</option>
+                    <option value="name">{t("מיון: שם")}</option>
+                    <option value="date">{t("מיון: תאריך")}</option>
                   </select>
                 )}
               </div>
             </div>
             {dragPanelGroups.length > 0 && !isPhone && (
               <p className="text-[10px] text-ink-soft mb-1.5">
-                לחיצה בוחרת כמה תמונות יחד, גוררים כל אחת מהן כדי לשבץ את כולן בעמוד, לפי הכיוון של כל תמונה
+                {t("לחיצה בוחרת כמה תמונות יחד, גוררים כל אחת מהן כדי לשבץ את כולן בעמוד, לפי הכיוון של כל תמונה")}
               </p>
             )}
             {/* Folder tabs — same pattern as ORNAMENT_TABS/TEMPLATE_TABS above. "הכל" (the default)
@@ -5364,7 +5381,7 @@ export default function AlbumSpreadCanvasEditor({
                 switch between. */}
             {dragPanelGroups.length > 1 && (
               <div className={`flex gap-1.5 overflow-x-auto pb-1 ${isPhone ? "mb-1" : "mb-1.5"}`}>
-                {[{ id: "__all__", name: "הכל" }, ...dragPanelGroups].map((tab) => (
+                {[{ id: "__all__", name: t("הכל") }, ...dragPanelGroups].map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setDragPanelTab(tab.id)}
@@ -5374,7 +5391,7 @@ export default function AlbumSpreadCanvasEditor({
                       color: dragPanelTab === tab.id ? "#fff" : "var(--color-ink-soft)",
                     }}
                   >
-                    {tab.name ?? "ללא לשונית"}
+                    {tab.name ?? t("ללא לשונית")}
                   </button>
                 ))}
               </div>
@@ -5387,14 +5404,14 @@ export default function AlbumSpreadCanvasEditor({
               const visibleGroups = effectiveTab === "__all__" ? dragPanelGroups : dragPanelGroups.filter((g) => g.id === effectiveTab);
               return dragPanelGroups.length === 0 ? (
               <p className="text-[11px] text-ink-soft text-center py-3">
-                {favoritePhotos.length === 0 ? "אין תמונות מועדפות בגלריה הזו עדיין." : "כל התמונות המועדפות כבר שובצו בעמוד."}
+                {favoritePhotos.length === 0 ? t("אין תמונות מועדפות בגלריה הזו עדיין.") : t("כל התמונות המועדפות כבר שובצו בעמוד.")}
               </p>
             ) : (
               // Own inner scroll dropped below — .gf-album-dragpanel (the actual outer scroller
               // now, on both phone and desktop) already scrolls the whole panel, so a second
               // nested scroll region here just meant two scrollbars fighting over the same
               // content.
-              <div className="space-y-2.5 pr-0.5" onMouseLeave={() => { hoverPreviewTokenRef.current++; setDragPanelHoverPreview(null); }}>
+              <div className="space-y-2.5 ps-0.5" onMouseLeave={() => { hoverPreviewTokenRef.current++; setDragPanelHoverPreview(null); }}>
                 {visibleGroups.map((group) => (
                   <div key={group.id}>
                     {group.name && <p className="text-[10px] font-semibold text-ink-soft mb-1">{group.name}</p>}
@@ -5479,7 +5496,7 @@ export default function AlbumSpreadCanvasEditor({
                               <span
                                 className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full flex items-center justify-center"
                                 style={{ background: "var(--color-sage)", color: "#fff" }}
-                                title="כבר שובצה בעמוד הזה"
+                                title={t("כבר שובצה בעמוד הזה")}
                               >
                                 <IconCheck size={9} />
                               </span>
@@ -5504,7 +5521,7 @@ export default function AlbumSpreadCanvasEditor({
             never forces the canvas itself to scroll out of view. Narrower on landscape-mobile than
             on real desktop (240px vs 380px) — a phone in landscape is only ~700-900px wide total,
             and the full 380px desktop sidebar would leave too little room for the canvas itself. */}
-        <div className="gf-album-editor-sidebar w-[240px] lg:w-[380px] shrink-0 overflow-y-auto overscroll-contain pr-1 min-h-0">
+        <div className="gf-album-editor-sidebar w-[240px] lg:w-[380px] shrink-0 overflow-y-auto overscroll-contain ps-1 min-h-0">
         {/* Phone: this whole block moved OUT of the button-bar sidebar entirely — element controls
             now live in the same side-floating panel (ornament/shape/text/photo-adjust all share
             it), and photo/ornament/shape/text's hint text + delete button are dropped outright
@@ -5521,25 +5538,25 @@ export default function AlbumSpreadCanvasEditor({
             {selectedPhotos.length === 1 && anchorPhoto && (
               <p className="text-[11px] text-ink-soft text-center flex items-center justify-center gap-1">
                 <IconInfo size={13} />
-                לחצו על התמונה כדי לפתוח את תפריט העיצוב הצף (שחור-לבן, ספיה, שקיפות, טשטוש, סיבוב, צל וקו מתאר)
+                {t("לחצו על התמונה כדי לפתוח את תפריט העיצוב הצף (שחור-לבן, ספיה, שקיפות, טשטוש, סיבוב, צל וקו מתאר)")}
               </p>
             )}
             {selectedOrnament && (
               <p className="text-[11px] text-ink-soft text-center flex items-center justify-center gap-1">
                 <IconInfo size={13} />
-                צבע, שקיפות, סיבוב, סדר שכבות ומחיקה נמצאים בתפריט הצף ליד העיטור
+                {t("צבע, שקיפות, סיבוב, סדר שכבות ומחיקה נמצאים בתפריט הצף ליד העיטור")}
               </p>
             )}
             {selectedShape && (
               <p className="text-[11px] text-ink-soft text-center flex items-center justify-center gap-1">
                 <IconInfo size={13} />
-                צבע, מסכה, שקיפות, סדר שכבות ומחיקה נמצאים בתפריט הצף ליד הצורה
+                {t("צבע, מסכה, שקיפות, סדר שכבות ומחיקה נמצאים בתפריט הצף ליד הצורה")}
               </p>
             )}
             {selectedPhotos.length > 1 && (
               <p className="text-[11px] text-ink-soft text-center flex items-center justify-center gap-1">
                 <IconInfo size={13} />
-                נבחרו {selectedPhotos.length} תמונות, גרירה, שינוי גודל ופעולות מהתפריט הצף יחולו על כולן
+                {t("נבחרו {n} תמונות, גרירה, שינוי גודל ופעולות מהתפריט הצף יחולו על כולן", { n: selectedPhotos.length })}
               </p>
             )}
           </div>
@@ -5567,7 +5584,7 @@ export default function AlbumSpreadCanvasEditor({
                 }}
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
               >
-                + תמונה
+                {t("+ תמונה")}
               </button>
             )}
             {mode === "custom" && (
@@ -5589,12 +5606,12 @@ export default function AlbumSpreadCanvasEditor({
                   borderColor: "var(--color-line)",
                 }}
               >
-                תמונת רקע
+                {t("תמונת רקע")}
               </button>
             )}
             {mode === "custom" && (
               <button onClick={addFrame} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink">
-                + מסגרת
+                {t("+ מסגרת")}
               </button>
             )}
             {mode === "custom" && (
@@ -5611,7 +5628,7 @@ export default function AlbumSpreadCanvasEditor({
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink flex items-center justify-center gap-1.5"
               >
                 <IconGrid size={15} />
-                תבניות
+                {t("תבניות")}
               </button>
             )}
             <button
@@ -5624,13 +5641,13 @@ export default function AlbumSpreadCanvasEditor({
                 }
                 setTextDraftOpen(true);
               }}
-              title="הוספת טקסט"
+              title={t("הוספת טקסט")}
               className="flex-1 rounded-full py-2.5 text-sm font-semibold bg-white border border-line text-ink flex items-center justify-center gap-1.5"
             >
               <span className="flex items-center justify-center h-5 w-5 rounded-full font-display font-bold text-[11px]" style={{ background: "var(--color-chip)" }}>
                 T
               </span>
-              הוספת טקסט
+              {t("הוספת טקסט")}
             </button>
           </div>
           {mode === "custom" && (
@@ -5648,7 +5665,7 @@ export default function AlbumSpreadCanvasEditor({
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink flex items-center justify-center gap-1.5"
               >
                 <IconMask size={15} />
-                מסכות
+                {t("מסכות")}
               </button>
               <button
                 ref={ornamentsButtonRef}
@@ -5663,7 +5680,7 @@ export default function AlbumSpreadCanvasEditor({
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink flex items-center justify-center gap-1.5"
               >
                 <IconOrnament size={15} />
-                עיטורים
+                {t("עיטורים")}
               </button>
               <button
                 ref={shapesButtonRef}
@@ -5678,7 +5695,7 @@ export default function AlbumSpreadCanvasEditor({
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink flex items-center justify-center gap-1.5"
               >
                 <IconShape size={15} />
-                צורות
+                {t("צורות")}
               </button>
               <button
                 onClick={() => setSaveTemplateOpen(true)}
@@ -5686,13 +5703,13 @@ export default function AlbumSpreadCanvasEditor({
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 <IconSave size={15} />
-                שמירה כתבנית
+                {t("שמירה כתבנית")}
               </button>
               <button
                 onClick={() => onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom })}
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white border-2 border-[var(--color-sage)]"
               >
-                שמירה
+                {t("שמירה")}
               </button>
             </div>
           )}
@@ -5701,7 +5718,7 @@ export default function AlbumSpreadCanvasEditor({
               onClick={() => onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom })}
               className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white border-2 border-[var(--color-sage)]"
             >
-              שמירה
+              {t("שמירה")}
             </button>
           )}
         </div>
@@ -5727,7 +5744,7 @@ export default function AlbumSpreadCanvasEditor({
                   }}
                   className="flex-1 min-w-0 rounded-lg py-1 text-[9px] font-semibold bg-white border border-line text-ink truncate"
                 >
-                  תמונה
+                  {t("תמונה")}
                 </button>
               )}
               {mode === "custom" && (
@@ -5740,7 +5757,7 @@ export default function AlbumSpreadCanvasEditor({
                     borderColor: "var(--color-line)",
                   }}
                 >
-                  תמונת רקע
+                  {t("תמונת רקע")}
                 </button>
               )}
               {mode === "custom" && (
@@ -5762,7 +5779,7 @@ export default function AlbumSpreadCanvasEditor({
                   }}
                   className="flex-1 min-w-0 rounded-lg py-1 text-[9px] font-semibold bg-white border border-line text-ink truncate"
                 >
-                  תבניות
+                  {t("תבניות")}
                 </button>
               )}
               <button
@@ -5778,13 +5795,13 @@ export default function AlbumSpreadCanvasEditor({
                   }
                   setTextDraftOpen(true);
                 }}
-                title="הוספת טקסט"
+                title={t("הוספת טקסט")}
                 className="flex-1 min-w-0 rounded-full py-1 text-[9px] font-semibold bg-white border border-line text-ink truncate flex items-center justify-center gap-1"
               >
                 <span className="flex items-center justify-center h-4 w-4 rounded-full font-display font-bold text-[8px]" style={{ background: "var(--color-chip)" }}>
                   T
                 </span>
-                טקסט
+                {t("טקסט")}
               </button>
             </div>
             {mode === "custom" && (
@@ -5803,7 +5820,7 @@ export default function AlbumSpreadCanvasEditor({
                   }}
                   className="flex-1 min-w-0 rounded-lg py-1 text-[9px] font-semibold bg-white border border-line text-ink truncate"
                 >
-                  מסכות
+                  {t("מסכות")}
                 </button>
                 <button
                   ref={ornamentsButtonRef}
@@ -5817,7 +5834,7 @@ export default function AlbumSpreadCanvasEditor({
                   }}
                   className="flex-1 min-w-0 rounded-lg py-1 text-[9px] font-semibold bg-white border border-line text-ink truncate"
                 >
-                  עיטורים
+                  {t("עיטורים")}
                 </button>
                 <button
                   ref={shapesButtonRef}
@@ -5833,20 +5850,20 @@ export default function AlbumSpreadCanvasEditor({
                   }}
                   className="flex-1 min-w-0 rounded-lg py-1 text-[9px] font-semibold bg-white border border-line text-ink truncate"
                 >
-                  צורות
+                  {t("צורות")}
                 </button>
                 <button
                   onClick={() => setSaveTemplateOpen(true)}
                   disabled={!elements.some((e) => e.type === "photo")}
                   className="flex-1 min-w-0 rounded-lg py-1 text-[9px] font-semibold bg-white border border-line text-ink disabled:opacity-50 truncate"
                 >
-                  שמירה כתבנית
+                  {t("שמירה כתבנית")}
                 </button>
                 <button
                   onClick={() => onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom })}
                   className="flex-1 min-w-0 rounded-lg py-1 text-[9px] font-semibold bg-ink text-white border-2 border-[var(--color-sage)] truncate"
                 >
-                  שמירה
+                  {t("שמירה")}
                 </button>
               </div>
             )}
@@ -5855,7 +5872,7 @@ export default function AlbumSpreadCanvasEditor({
                 onClick={() => onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom })}
                 className="w-full rounded-lg py-1.5 text-[10px] font-semibold bg-ink text-white border-2 border-[var(--color-sage)]"
               >
-                שמירה
+                {t("שמירה")}
               </button>
             )}
           </div>
@@ -5884,14 +5901,14 @@ export default function AlbumSpreadCanvasEditor({
           <div className="w-full max-w-sm lg:max-w-2xl rounded-3xl p-4 lg:p-6 bg-paper max-h-[70vh] overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3 gap-2">
               <h3 className="text-sm font-bold">
-                {pickingBackground ? "בחירת תמונת רקע " : ""}
-                {addingMultiplePhotos ? "בחירת תמונות להוספה " : ""}
-                {showAllInPicker || favoritePhotos.length === 0 ? "כל התמונות" : "תמונות מועדפות"}
+                {pickingBackground ? `${t("בחירת תמונת רקע")} ` : ""}
+                {addingMultiplePhotos ? `${t("בחירת תמונות להוספה")} ` : ""}
+                {showAllInPicker || favoritePhotos.length === 0 ? t("כל התמונות") : t("תמונות מועדפות")}
               </h3>
               <div className="flex items-center gap-2 shrink-0">
                 {favoritePhotos.length > 0 && (
                   <button onClick={() => setShowAllInPicker((v) => !v)} className="text-xs font-semibold text-ink-soft underline">
-                    {showAllInPicker ? "רק מועדפות" : "כל התמונות"}
+                    {showAllInPicker ? t("רק מועדפות") : t("כל התמונות")}
                   </button>
                 )}
                 <button onClick={() => setPhotoPickerOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
@@ -5901,11 +5918,11 @@ export default function AlbumSpreadCanvasEditor({
             </div>
             {addingMultiplePhotos && (
               <p className="text-[11px] text-ink-soft mb-2.5">
-                אפשר לבחור כמה תמונות שרוצים. המערכת תסדר אותן בעמוד בפריסה אוטומטית, כשתמונות לאורך מקבלות מסגרת לאורך ותמונות לרוחב מקבלות מסגרת לרוחב.
+                {t("אפשר לבחור כמה תמונות שרוצים. המערכת תסדר אותן בעמוד בפריסה אוטומטית, כשתמונות לאורך מקבלות מסגרת לאורך ותמונות לרוחב מקבלות מסגרת לרוחב.")}
               </p>
             )}
             {pickerPhotos.length === 0 ? (
-              <p className="text-xs text-ink-soft text-center py-6">אין תמונות מועדפות בגלריה הזו עדיין.</p>
+              <p className="text-xs text-ink-soft text-center py-6">{t("אין תמונות מועדפות בגלריה הזו עדיין.")}</p>
             ) : (
               <div className="grid grid-cols-4 lg:grid-cols-7 gap-2 mb-2.5">
                 {pickerPhotos.map((p) => {
@@ -5938,7 +5955,7 @@ export default function AlbumSpreadCanvasEditor({
                 disabled={multiPhotoIds.size === 0 || loadingMultiLayout}
                 className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {loadingMultiLayout ? "בונה פריסה..." : `הוספת ${multiPhotoIds.size || ""} תמונות`}
+                {loadingMultiLayout ? t("בונה פריסה...") : multiPhotoIds.size ? t("הוספת {n} תמונות", { n: multiPhotoIds.size }) : t("הוספת תמונות")}
               </button>
             )}
           </div>
@@ -5962,7 +5979,7 @@ export default function AlbumSpreadCanvasEditor({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className={`font-bold ${isPhone ? "text-[10px]" : "text-sm"}`}>טקסט חדש (עברית או אנגלית)</p>
+              <p className={`font-bold ${isPhone ? "text-[10px]" : "text-sm"}`}>{t("טקסט חדש (עברית או אנגלית)")}</p>
               <button onClick={closeTextPanel} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
@@ -5993,14 +6010,14 @@ export default function AlbumSpreadCanvasEditor({
               className={`w-full rounded-lg font-semibold bg-white border border-line mb-3 ${isPhone ? "px-1.5 py-1 text-[9px]" : "px-2.5 py-2 text-xs"}`}
               style={{ fontFamily: albumFontFamilyCss(textDraftFontFamily) }}
             >
-              <optgroup label="פונטים בעברית">
+              <optgroup label={t("פונטים בעברית")}>
                 {ALBUM_FONTS.filter((f) => f.category === "hebrew").map((f) => (
                   <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
                     {f.label}
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="פונטים באנגלית">
+              <optgroup label={t("פונטים באנגלית")}>
                 {ALBUM_FONTS.filter((f) => f.category === "latin").map((f) => (
                   <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
                     {f.label}
@@ -6009,14 +6026,14 @@ export default function AlbumSpreadCanvasEditor({
               </optgroup>
             </select>
             <div className="mb-3">
-              <SliderControl label="גודל טקסט" value={textDraftFontSize} min={8} max={250} unit="pt" onChange={setTextDraftFontSize} />
+              <SliderControl label={t("גודל טקסט")} value={textDraftFontSize} min={8} max={250} unit="pt" onChange={setTextDraftFontSize} />
             </div>
             <button
               onClick={addText}
               disabled={!textDraft.trim()}
               className={`w-full rounded-lg font-semibold bg-amber-deep text-white disabled:opacity-60 ${isPhone ? "py-2 text-[11px]" : "py-3 text-sm"}`}
             >
-              הוספה
+              {t("הוספה")}
             </button>
           </div>
         </>
@@ -6049,9 +6066,9 @@ export default function AlbumSpreadCanvasEditor({
                 <IconClose size={13} />
               </button>
             </div>
-            <SliderControl label="שקיפות רקע" value={backgroundOpacity} min={0} max={100} unit="%" onChange={setBackgroundOpacity} />
-            <SliderControl label="טשטוש רקע (Blur)" value={backgroundBlur} min={0} max={100} unit="%" onChange={setBackgroundBlur} />
-            <SliderControl label="זום רקע" value={backgroundZoom} min={100} max={400} unit="%" onChange={setBackgroundZoom} />
+            <SliderControl label={t("שקיפות רקע")} value={backgroundOpacity} min={0} max={100} unit="%" onChange={setBackgroundOpacity} />
+            <SliderControl label={t("טשטוש רקע (Blur)")} value={backgroundBlur} min={0} max={100} unit="%" onChange={setBackgroundBlur} />
+            <SliderControl label={t("זום רקע")} value={backgroundZoom} min={100} max={400} unit="%" onChange={setBackgroundZoom} />
             {onApplyBackgroundToAll && backgroundPhotoId && (
               <>
                 <button
@@ -6068,10 +6085,10 @@ export default function AlbumSpreadCanvasEditor({
                   disabled={backgroundAllStatus === "busy"}
                   className="w-full rounded-lg py-2 text-[11px] font-semibold bg-white border border-line text-amber-deep disabled:opacity-60"
                 >
-                  {backgroundAllStatus === "busy" ? "מחיל על כל הדפים..." : "החלה על כל דפי האלבום"}
+                  {backgroundAllStatus === "busy" ? t("מחיל על כל הדפים...") : t("החלה על כל דפי האלבום")}
                 </button>
-                {backgroundAllStatus === "done" && <p className="text-[10px] text-ink-soft text-center">הרקע הוחל על כל דפי האלבום</p>}
-                {backgroundAllStatus === "error" && <p className="text-[10px] text-rose text-center">לא הצלחנו להחיל על כל הדפים, נסו שוב</p>}
+                {backgroundAllStatus === "done" && <p className="text-[10px] text-ink-soft text-center">{t("הרקע הוחל על כל דפי האלבום")}</p>}
+                {backgroundAllStatus === "error" && <p className="text-[10px] text-rose text-center">{t("לא הצלחנו להחיל על כל הדפים, נסו שוב")}</p>}
               </>
             )}
           </div>
@@ -6097,9 +6114,9 @@ export default function AlbumSpreadCanvasEditor({
                 setBackgroundPhotoId(photoContextMenu.photoId);
                 setPhotoContextMenu(null);
               }}
-              className="w-full text-right rounded-lg px-3 py-2 text-xs font-semibold hover:bg-chip"
+              className="w-full text-start rounded-lg px-3 py-2 text-xs font-semibold hover:bg-chip"
             >
-              קביעה כרקע
+              {t("קביעה כרקע")}
             </button>
             {backgroundPhotoId === photoContextMenu.photoId && (
               <button
@@ -6107,9 +6124,9 @@ export default function AlbumSpreadCanvasEditor({
                   removeBackground();
                   setPhotoContextMenu(null);
                 }}
-                className="w-full text-right rounded-lg px-3 py-2 text-xs font-semibold text-rose hover:bg-chip"
+                className="w-full text-start rounded-lg px-3 py-2 text-xs font-semibold text-rose hover:bg-chip"
               >
-                הסרה
+                {t("הסרה")}
               </button>
             )}
           </div>
@@ -6133,7 +6150,7 @@ export default function AlbumSpreadCanvasEditor({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>תבניות מובנות</p>
+              <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>{t("תבניות מובנות")}</p>
               <button onClick={closeTemplatePanel} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
@@ -6149,38 +6166,38 @@ export default function AlbumSpreadCanvasEditor({
                     color: templateTab === tab.key ? "#fff" : "var(--color-ink-soft)",
                   }}
                 >
-                  {tab.label}
+                  {t(tab.label)}
                 </button>
               ))}
             </div>
             {/* The photographer's own saved templates live in the tab matching their frame count,
                 above that tab's built-in templates. */}
-            {templates.some((t) => templateTabFor(t.frames.length) === templateTab) && (
+            {templates.some((tpl) => templateTabFor(tpl.frames.length) === templateTab) && (
               <>
-                <p className={`font-bold mb-3 ${isPhone ? "text-[11px]" : "text-sm"}`}>התבניות שלי</p>
+                <p className={`font-bold mb-3 ${isPhone ? "text-[11px]" : "text-sm"}`}>{t("התבניות שלי")}</p>
                 <div className={`grid mb-4 ${isPhone ? "grid-cols-2 gap-1.5" : "grid-cols-3 gap-2.5"}`}>
-                  {templates.filter((t) => templateTabFor(t.frames.length) === templateTab).map((t) => (
-                    <button key={t.id} onClick={() => applyTemplate(t.frames)} className={`rounded-xl border border-line text-center ${isPhone ? "p-1" : "p-2"}`}>
+                  {templates.filter((tpl) => templateTabFor(tpl.frames.length) === templateTab).map((tpl) => (
+                    <button key={tpl.id} onClick={() => applyTemplate(tpl.frames)} className={`rounded-xl border border-line text-center ${isPhone ? "p-1" : "p-2"}`}>
                       <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
-                        {t.frames.map((f) => (
+                        {tpl.frames.map((f) => (
                           <div key={f.id} className="absolute rounded-sm bg-white border border-line" style={{ left: `${f.xPct}%`, top: `${f.yPct}%`, width: `${f.widthPct}%`, height: `${f.heightPct}%` }} />
                         ))}
                       </div>
-                      <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[11px]"}`}>{t.name}</span>
+                      <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[11px]"}`}>{tpl.name}</span>
                     </button>
                   ))}
                 </div>
               </>
             )}
             <div className={`grid mb-4 ${isPhone ? "grid-cols-2 gap-1.5" : "grid-cols-3 gap-2.5"}`}>
-              {TEMPLATE_BANK[templateTab].map((t) => (
-                <button key={t.name} onClick={() => applyTemplate(t.frames)} className={`rounded-xl border border-line text-center ${isPhone ? "p-1" : "p-2"}`}>
+              {TEMPLATE_BANK[templateTab].map((tpl) => (
+                <button key={tpl.name} onClick={() => applyTemplate(tpl.frames)} className={`rounded-xl border border-line text-center ${isPhone ? "p-1" : "p-2"}`}>
                   <div className="relative aspect-[16/10] rounded-md bg-chip mb-1.5">
-                    {t.frames.map((f) => (
+                    {tpl.frames.map((f) => (
                       <div key={f.id} className="absolute rounded-sm bg-white border border-line" style={{ left: `${f.xPct}%`, top: `${f.yPct}%`, width: `${f.widthPct}%`, height: `${f.heightPct}%` }} />
                     ))}
                   </div>
-                  <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[11px]"}`}>{t.name}</span>
+                  <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[11px]"}`}>{tpl.name}</span>
                 </button>
               ))}
             </div>
@@ -6208,7 +6225,7 @@ export default function AlbumSpreadCanvasEditor({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className={`font-bold ${isPhone ? "text-[10px]" : "text-sm"}`}>מסכות: גררו מסכה אל תמונה/צורה, או לחצו כשתמונה/צורה נבחרת</p>
+              <p className={`font-bold ${isPhone ? "text-[10px]" : "text-sm"}`}>{t("מסכות: גררו מסכה אל תמונה/צורה, או לחצו כשתמונה/צורה נבחרת")}</p>
               <button onClick={closeMasksPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
@@ -6223,9 +6240,9 @@ export default function AlbumSpreadCanvasEditor({
                 className={`rounded-xl border border-line text-center cursor-grab active:cursor-grabbing ${isPhone ? "p-1" : "p-2"}`}
               >
                 <div className="aspect-square rounded-md bg-chip mb-1.5 flex items-center justify-center text-ink-soft text-[10px] font-semibold">
-                  ללא
+                  {t("ללא")}
                 </div>
-                <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>הסרת מסכה</span>
+                <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{t("הסרת מסכה")}</span>
               </button>
               {ALBUM_MASKS.map((mask) => (
                 <div
@@ -6250,7 +6267,7 @@ export default function AlbumSpreadCanvasEditor({
                       maskRepeat: "no-repeat",
                     }}
                   />
-                  <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{mask.label}</span>
+                  <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{maskLabel(t, mask.label)}</span>
                 </div>
               ))}
             </div>
@@ -6275,7 +6292,7 @@ export default function AlbumSpreadCanvasEditor({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>עיטורים. לחצו כדי להוסיף לעמוד</p>
+              <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>{t("עיטורים. לחצו כדי להוסיף לעמוד")}</p>
               <button onClick={closeOrnamentsPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
@@ -6291,7 +6308,7 @@ export default function AlbumSpreadCanvasEditor({
                     color: ornamentTab === tab.key ? "#fff" : "var(--color-ink-soft)",
                   }}
                 >
-                  {tab.label}
+                  {t(tab.label)}
                 </button>
               ))}
               {(customOrnamentTabs ?? []).map((tab) => (
@@ -6310,14 +6327,14 @@ export default function AlbumSpreadCanvasEditor({
               {onCreateCustomOrnamentTab && (
                 <button
                   onClick={() => setCustomTabModalOpen(true)}
-                  title="לשונית עיטורים חדשה"
+                  title={t("לשונית עיטורים חדשה")}
                   className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center bg-chip text-ink-soft"
                 >
                   <IconPlusSmall />
                 </button>
               )}
             </div>
-            {ORNAMENT_TABS.some((t) => t.key === ornamentTab) ? (
+            {ORNAMENT_TABS.some((tab) => tab.key === ornamentTab) ? (
               <div className={`grid ${isPhone ? "grid-cols-2 gap-1.5" : "grid-cols-3 gap-2.5"}`}>
                 {ALBUM_ORNAMENTS.filter((o) => o.category === ornamentTab).map((ornament) => (
                   <button
@@ -6387,7 +6404,7 @@ export default function AlbumSpreadCanvasEditor({
                         }}
                       />
                       <IconPlusSmall />
-                      <span className="text-[10px] font-semibold mt-1 text-ink-soft">{uploadingOrnament ? "מעלה..." : "העלאה"}</span>
+                      <span className="text-[10px] font-semibold mt-1 text-ink-soft">{uploadingOrnament ? t("מעלה...") : t("העלאה")}</span>
                     </label>
                   )}
                   {(customOrnaments ?? [])
@@ -6411,7 +6428,7 @@ export default function AlbumSpreadCanvasEditor({
                               e.stopPropagation();
                               onDeleteCustomOrnament(o.id);
                             }}
-                            title="מחיקת העיטור"
+                            title={t("מחיקת העיטור")}
                             className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full flex items-center justify-center bg-white text-rose"
                             style={{ boxShadow: "0 0 0 1px var(--color-line)" }}
                           >
@@ -6422,7 +6439,7 @@ export default function AlbumSpreadCanvasEditor({
                     ))}
                 </div>
                 {(customOrnaments ?? []).filter((o) => o.tab_id === ornamentTab).length === 0 && (
-                  <p className="text-[11px] text-ink-soft text-center py-4">גררו קבצי תמונה לכאן, או השתמשו בכפתור ההעלאה</p>
+                  <p className="text-[11px] text-ink-soft text-center py-4">{t("גררו קבצי תמונה לכאן, או השתמשו בכפתור ההעלאה")}</p>
                 )}
               </div>
             )}
@@ -6447,7 +6464,7 @@ export default function AlbumSpreadCanvasEditor({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>צורות. לחצו כדי להוסיף לעמוד</p>
+              <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>{t("צורות. לחצו כדי להוסיף לעמוד")}</p>
               <button onClick={closeShapesPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
@@ -6460,7 +6477,7 @@ export default function AlbumSpreadCanvasEditor({
                 className={`rounded-xl border border-line text-center bg-white cursor-grab active:cursor-grabbing ${isPhone ? "p-1" : "p-2"}`}
               >
                 <div className="aspect-square rounded-md mb-1.5" style={{ background: "linear-gradient(135deg, var(--color-amber-deep), var(--color-sage))" }} />
-                <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>מלבן</span>
+                <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{t("מלבן")}</span>
               </button>
               {ALBUM_MASKS.filter((mask) => mask.id.startsWith("shape-")).map((mask) => (
                 <button
@@ -6482,11 +6499,11 @@ export default function AlbumSpreadCanvasEditor({
                       maskRepeat: "no-repeat",
                     }}
                   />
-                  <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{mask.label}</span>
+                  <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{maskLabel(t, mask.label)}</span>
                 </button>
               ))}
             </div>
-            <p className={`font-semibold text-ink-soft mt-3 mb-2 ${isPhone ? "text-[9px]" : "text-[10px]"}`}>קו מתאר בלבד, ללא רקע</p>
+            <p className={`font-semibold text-ink-soft mt-3 mb-2 ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{t("קו מתאר בלבד, ללא רקע")}</p>
             <div className={`grid ${isPhone ? "grid-cols-2 gap-1.5" : "grid-cols-3 gap-2.5"}`}>
               {(
                 [
@@ -6513,7 +6530,7 @@ export default function AlbumSpreadCanvasEditor({
                       />
                     )}
                   </div>
-                  <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{label}</span>
+                  <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{t(label)}</span>
                 </button>
               ))}
             </div>
@@ -6544,9 +6561,9 @@ export default function AlbumSpreadCanvasEditor({
                   setPhotoSizePickerOpen(false);
                   openPickerForNewPhoto();
                 }}
-                className="w-full text-right rounded-lg px-3 py-2 text-sm font-semibold text-ink hover:bg-chip"
+                className="w-full text-start rounded-lg px-3 py-2 text-sm font-semibold text-ink hover:bg-chip"
               >
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
@@ -6557,7 +6574,7 @@ export default function AlbumSpreadCanvasEditor({
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }} onClick={() => setCustomTabModalOpen(false)}>
           <div className="w-full max-w-xs rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-bold">לשונית עיטורים חדשה</p>
+              <p className="text-sm font-bold">{t("לשונית עיטורים חדשה")}</p>
               <button onClick={() => setCustomTabModalOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
@@ -6565,7 +6582,7 @@ export default function AlbumSpreadCanvasEditor({
             <input
               value={customTabNameDraft}
               onChange={(e) => setCustomTabNameDraft(e.target.value)}
-              placeholder="שם הלשונית"
+              placeholder={t("שם הלשונית")}
               autoFocus
               className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-3"
             />
@@ -6584,7 +6601,7 @@ export default function AlbumSpreadCanvasEditor({
               disabled={!customTabNameDraft.trim() || creatingCustomTab}
               className="w-full rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
             >
-              {creatingCustomTab ? "יוצר..." : "אישור"}
+              {creatingCustomTab ? t("יוצר...") : t("אישור")}
             </button>
           </div>
         </div>
@@ -6594,7 +6611,7 @@ export default function AlbumSpreadCanvasEditor({
         <div className="fixed inset-0 z-[85] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.6)" }} onClick={() => setSaveTemplateOpen(false)}>
           <div className="w-full max-w-sm rounded-t-3xl p-5 bg-paper" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2.5">
-              <p className="text-sm font-semibold">שם התבנית</p>
+              <p className="text-sm font-semibold">{t("שם התבנית")}</p>
               <button onClick={() => setSaveTemplateOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
@@ -6610,7 +6627,7 @@ export default function AlbumSpreadCanvasEditor({
               disabled={!templateNameDraft.trim() || savingTemplate}
               className="w-full rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
             >
-              {savingTemplate ? "שומר..." : "שמירה בספריית התבניות"}
+              {savingTemplate ? t("שומר...") : t("שמירה בספריית התבניות")}
             </button>
           </div>
         </div>

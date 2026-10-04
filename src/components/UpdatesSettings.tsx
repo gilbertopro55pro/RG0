@@ -1,12 +1,14 @@
 import { CHANGELOG } from "@/lib/changelog";
+import { getT } from "@/i18n/server";
 
-export default function UpdatesSettings() {
+export default async function UpdatesSettings() {
+  const t = await getT();
   return (
     <div className="space-y-3">
       {CHANGELOG.map((entry) => (
         <div key={entry.version} className="rounded-2xl p-4 bg-card border border-line shadow-card">
           <div className="flex items-center justify-between mb-2.5">
-            <span className="text-sm font-semibold">גרסה {entry.version}</span>
+            <span className="text-sm font-semibold">{t("גרסה {v}", { v: entry.version })}</span>
             <span className="text-xs font-data text-ink-soft">{entry.date}</span>
           </div>
           <ul className="space-y-2">

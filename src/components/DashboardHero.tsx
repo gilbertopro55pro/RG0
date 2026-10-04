@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { getLang, getT } from "@/i18n/server";
+import { dateLocale } from "@/i18n/config";
 
-export default function DashboardHero({
+export default async function DashboardHero({
   monthLabel,
   monthTotal,
   monthForecast,
@@ -21,6 +23,8 @@ export default function DashboardHero({
 }) {
   // No forecast at all (nothing received, nothing due) used to draw a FULL bar next to ₪0 —
   // an empty month now reads as an empty bar.
+  const t = await getT();
+  const loc = dateLocale(await getLang());
   const forecastRatio = monthForecast > 0 ? Math.min(1, monthTotal / monthForecast) : 0;
   const stillDue = Math.max(0, monthForecast - monthTotal);
 
@@ -29,14 +33,14 @@ export default function DashboardHero({
   return (
     <div className="mb-5 px-1">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-sm text-ink-soft">הכנסות ב{monthLabel}</span>
+        <span className="text-sm text-ink-soft">{t("הכנסות ב{month}", { month: monthLabel })}</span>
         <div className="flex items-baseline gap-3">
           {registeredUsersCount != null && (
-            <Link href="/admin" className="text-xs text-ink-soft underline underline-offset-2" title="מעבר ללוח הבקרה">
-              <span className="font-data">{registeredUsersCount.toLocaleString("he-IL")}</span> משתמשים
+            <Link href="/admin" className="text-xs text-ink-soft underline underline-offset-2" title={t("מעבר ללוח הבקרה")}>
+              <span className="font-data">{registeredUsersCount.toLocaleString(loc)}</span> {t("משתמשים")}
             </Link>
           )}
-          <span className="text-lg font-extrabold font-data">₪{monthTotal.toLocaleString("he-IL")}</span>
+          <span className="text-lg font-extrabold font-data">₪{monthTotal.toLocaleString(loc)}</span>
         </div>
       </div>
       <div className="h-1 rounded-full overflow-hidden mt-2 mb-1.5" style={{ background: "var(--color-chip)" }}>
@@ -45,12 +49,15 @@ export default function DashboardHero({
       <div className="text-xs text-ink-soft">
         {stillDue > 0 ? (
           <>
-            עוד <span className="font-data">₪{stillDue.toLocaleString("he-IL")}</span> צפויים החודש
+            {/* {amount} is left in by t() and replaced with the styled figure. */}
+            {t("עוד {amount} צפויים החודש").split("{amount}")[0]}
+            <span className="font-data">₪{stillDue.toLocaleString(loc)}</span>
+            {t("עוד {amount} צפויים החודש").split("{amount}")[1]}
           </>
         ) : monthForecast > 0 ? (
-          "כל הצפי לחודש התקבל"
+          t("כל הצפי לחודש התקבל")
         ) : (
-          "אין עדיין תשלומים צפויים החודש"
+          t("אין עדיין תשלומים צפויים החודש")
         )}
       </div>
     </div>

@@ -6,22 +6,25 @@ import { packageLabel } from "@/lib/stages";
 import type { EventRow } from "@/lib/types";
 import PageGuide from "@/components/PageGuide";
 import BackLink from "@/components/BackLink";
+import { useLang, useT } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 const HE_MONTHS_SHORT = ["ינו׳", "פבר׳", "מרץ", "אפר׳", "מאי", "יוני", "יולי", "אוג׳", "ספט׳", "אוק׳", "נוב׳", "דצמ׳"];
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
 
 export default function ClientPortalsView({ events }: { events: EventWithCustomPackage[] }) {
+  const t = useT();
   return (
     <div className="pb-8">
-      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
-      <h1 className="text-[26px] font-bold mb-1.5 font-display">פורטל לקוח</h1>
+      <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-5" />
+      <h1 className="text-[26px] font-bold mb-1.5 font-display">{t("פורטל לקוח")}</h1>
       <PageGuide
         pageKey="client-portals"
-        blurb="לכל אירוע יש קישור אישי שהלקוח/ה יכולים לפתוח כדי לראות סטטוס ותשלומים, בלי להתחבר."
+        blurb={t("לכל אירוע יש קישור אישי שהלקוח/ה יכולים לפתוח כדי לראות סטטוס ותשלומים, בלי להתחבר.")}
       />
 
-      {events.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">עדיין אין אירועים</div>}
+      {events.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">{t("עדיין אין אירועים")}</div>}
 
       {/* Design stage 5: one list with a date column (same as the home screen's events list),
           not a card per event. */}
@@ -37,6 +40,8 @@ export default function ClientPortalsView({ events }: { events: EventWithCustomP
 }
 
 function PortalRow({ event }: { event: EventWithCustomPackage }) {
+  const t = useT();
+  const lang = useLang();
   const [copied, setCopied] = useState(false);
 
   const copyLink = async () => {
@@ -54,19 +59,19 @@ function PortalRow({ event }: { event: EventWithCustomPackage }) {
       <div className="w-11 shrink-0 text-center border-e border-line pe-3 box-content">
         <div className="text-xl leading-none font-bold font-data">{d}</div>
         <div className="text-[11px] text-ink-soft mt-1">
-          {HE_MONTHS_SHORT[m - 1]}
+          {lang === "he" ? HE_MONTHS_SHORT[m - 1] : new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(dateLocale(lang), { month: "short", timeZone: "UTC" })}
           {showYear && <span className="font-data"> {String(y).slice(2)}</span>}
         </div>
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-bold text-[15px] truncate">{event.client_name}</div>
-        <div className="text-[13px] text-ink-soft truncate">{packageLabel(event.package, event.custom_packages?.name)}</div>
+        <div className="text-[13px] text-ink-soft truncate">{t(packageLabel(event.package, event.custom_packages?.name))}</div>
       </div>
       <button
         onClick={copyLink}
         className="shrink-0 text-[13px] font-bold h-9 px-3 rounded-lg bg-white border border-line text-ink"
       >
-        {copied ? "הועתק" : "העתקת קישור"}
+        {copied ? t("הועתק") : t("העתקת קישור")}
       </button>
     </div>
   );

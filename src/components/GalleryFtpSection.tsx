@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BTN_PRESS } from "@/lib/viewTransition";
 import CameraSetupGuide from "@/components/CameraSetupGuide";
+import { useT } from "@/i18n/client";
 
 // Set once the FTP server is actually deployed (see photographer-flow-ftp) — either its Fly.io
 // app hostname directly (e.g. gilberto-ftp.fly.dev) or a custom "ftp.myframeflow.com" DNS record
@@ -19,6 +20,7 @@ const FTP_HOST = process.env.NEXT_PUBLIC_FTP_SERVER_HOST || "(עדיין לא ה
 // end); the actual enforcement is server-side, in the ftp-credentials route itself, since a
 // client-side-only gate is never a real security boundary.
 export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: string; allowed: boolean }) {
+  const t = useT();
   const [creds, setCreds] = useState<{ username: string; password: string } | null | undefined>(undefined);
   const [generating, setGenerating] = useState(false);
   const [revealed, setRevealed] = useState(false);
@@ -52,12 +54,12 @@ export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: s
   if (!allowed) {
     return (
       <div className="mt-5 rounded-2xl p-4 bg-card border border-line shadow-card">
-        <div className="text-sm font-semibold mb-1">FTP Live: העלאה חיה מהמצלמה</div>
+        <div className="text-sm font-semibold mb-1">FTP Live: {t("העלאה חיה מהמצלמה")}</div>
         <p className="text-xs text-ink-soft">
-          חיברו את המצלמה ישירות לגלריה בזמן האירוע, זמין במסלול פרו+.
+          {t("חיברו את המצלמה ישירות לגלריה בזמן האירוע, זמין במסלול פרו+.")}
         </p>
         <a href="/settings?tab=account" className="inline-block mt-3 text-xs font-semibold text-amber-deep underline">
-          שדרוג לפרו+
+          {t("שדרוג לפרו+")}
         </a>
       </div>
     );
@@ -67,10 +69,9 @@ export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: s
 
   return (
     <div className="mt-5 rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold mb-1">FTP Live: העלאה חיה מהמצלמה</div>
+      <div className="text-sm font-semibold mb-1">FTP Live: {t("העלאה חיה מהמצלמה")}</div>
       <p className="text-xs mb-3.5 text-ink-soft">
-        חיברו את המצלמה (או תוכנת שידור) עם הפרטים האלה, וכל תמונה שתצולם תופיע בגלריה הזו תוך שניות. בלי לגעת
-        במחשב באמצע האירוע.
+        {t("חיברו את המצלמה (או תוכנת שידור) עם הפרטים האלה, וכל תמונה שתצולם תופיע בגלריה הזו תוך שניות. בלי לגעת במחשב באמצע האירוע.")}
       </p>
 
       {!creds ? (
@@ -79,30 +80,30 @@ export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: s
           disabled={generating}
           className={`rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60 ${BTN_PRESS}`}
         >
-          {generating ? "יוצר..." : "יצירת פרטי חיבור"}
+          {generating ? t("יוצר...") : t("יצירת פרטי חיבור")}
         </button>
       ) : (
         <div className="space-y-2">
-          <FtpField label="כתובת שרת (Host)" value={FTP_HOST} onCopy={() => copy("host", FTP_HOST)} copied={copied === "host"} />
-          <FtpField label="שם משתמש" value={creds.username} onCopy={() => copy("user", creds.username)} copied={copied === "user"} dir="ltr" />
+          <FtpField label={t("כתובת שרת (Host)")} value={t(FTP_HOST)} onCopy={() => copy("host", FTP_HOST)} copied={copied === "host"} />
+          <FtpField label={t("שם משתמש")} value={creds.username} onCopy={() => copy("user", creds.username)} copied={copied === "user"} dir="ltr" />
           <FtpField
-            label="סיסמה"
+            label={t("סיסמה")}
             value={revealed ? creds.password : "••••••••••••"}
             onCopy={() => copy("pass", creds.password)}
             copied={copied === "pass"}
             dir="ltr"
             action={
               <button onClick={() => setRevealed((v) => !v)} className="text-xs font-semibold text-ink-soft shrink-0">
-                {revealed ? "הסתרה" : "הצגה"}
+                {revealed ? t("הסתרה") : t("הצגה")}
               </button>
             }
           />
           <div className="flex items-center justify-between mt-1">
             <button onClick={() => setGuideOpen(true)} className={`text-xs font-semibold text-ink-soft underline ${BTN_PRESS}`}>
-              מדריך חיבור לפי דגם המצלמה
+              {t("מדריך חיבור לפי דגם המצלמה")}
             </button>
             <button onClick={generate} disabled={generating} className="text-xs font-semibold text-rose disabled:opacity-60">
-              {generating ? "יוצר..." : "יצירת פרטים חדשים"}
+              {generating ? t("יוצר...") : t("יצירת פרטים חדשים")}
             </button>
           </div>
         </div>
@@ -130,6 +131,7 @@ function FtpField({
   dir?: "ltr" | "rtl";
   action?: React.ReactNode;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 bg-chip">
       <div className="min-w-0">
@@ -141,7 +143,7 @@ function FtpField({
       <div className="flex items-center gap-2 shrink-0">
         {action}
         <button onClick={onCopy} className={`text-xs font-semibold text-ink-soft ${BTN_PRESS}`}>
-          {copied ? "הועתק ✓" : "העתקה"}
+          {copied ? t("הועתק ✓") : t("העתקה")}
         </button>
       </div>
     </div>

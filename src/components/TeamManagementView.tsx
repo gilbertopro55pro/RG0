@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { TeamMember } from "@/lib/types";
+import { useT } from "@/i18n/client";
 
 export default function TeamManagementView({
   initialTeamMembers,
@@ -10,6 +11,7 @@ export default function TeamManagementView({
   initialTeamMembers: TeamMember[];
   limit: number;
 }) {
+  const t = useT();
   const [teamMembers, setTeamMembers] = useState(initialTeamMembers);
 
   // SettingsTabs keeps every tab mounted at once (display:none, never unmounted), so this
@@ -38,7 +40,7 @@ export default function TeamManagementView({
     setSaving(false);
 
     if (!res.ok) {
-      setError(data.error ?? "שגיאה בהוספת חבר צוות");
+      setError(data.error ?? t("שגיאה בהוספת חבר צוות"));
       return;
     }
 
@@ -53,7 +55,7 @@ export default function TeamManagementView({
     const res = await fetch(`/api/team-members/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const data = await res.json();
-      setError(data.error ?? "שגיאה בהסרת חבר צוות");
+      setError(data.error ?? t("שגיאה בהסרת חבר צוות"));
       return;
     }
     setTeamMembers((prev) => prev.filter((m) => m.id !== id));
@@ -61,7 +63,7 @@ export default function TeamManagementView({
 
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold mb-3.5">צוות (עורכים/עוזרים)</div>
+      <div className="text-sm font-semibold mb-3.5">{t("צוות (עורכים/עוזרים)")}</div>
 
       {teamMembers.length > 0 && (
         <div className="space-y-2 mb-4">
@@ -72,7 +74,7 @@ export default function TeamManagementView({
                 <div className="text-xs text-ink-soft font-data">{m.email}</div>
               </div>
               <button onClick={() => removeTeamMember(m.id)} className="text-xs text-rose">
-                הסרה
+                {t("הסרה")}
               </button>
             </div>
           ))}
@@ -81,22 +83,22 @@ export default function TeamManagementView({
 
       {createdCredentials && (
         <div className="rounded-xl px-3.5 py-2.5 mb-4 text-xs bg-sage-bg text-sage space-y-1">
-          <div>חבר הצוות נוצר. שתפו אליו את פרטי ההתחברות (מוצג פעם אחת בלבד):</div>
-          <div className="font-data">אימייל: {createdCredentials.email}</div>
-          <div className="font-mono">סיסמה: {createdCredentials.password}</div>
+          <div>{t("חבר הצוות נוצר. שתפו אליו את פרטי ההתחברות (מוצג פעם אחת בלבד):")}</div>
+          <div className="font-data">{t("אימייל:")} {createdCredentials.email}</div>
+          <div className="font-mono">{t("סיסמה:")} {createdCredentials.password}</div>
         </div>
       )}
 
       {teamMembers.length >= limit ? (
         <p className="text-xs text-ink-soft">
           {limit === 1
-            ? "ניתן להוסיף עוזר אחד בלבד לכל חשבון. כדי להוסיף עוזר אחר, יש להסיר קודם את הקיים."
-            : `הגעתם למכסת ${limit} חברי הצוות של מסלול פרו+. כדי להוסיף חבר צוות אחר, יש להסיר קודם אחד מהקיימים.`}
+            ? t("ניתן להוסיף עוזר אחד בלבד לכל חשבון. כדי להוסיף עוזר אחר, יש להסיר קודם את הקיים.")
+            : t("הגעתם למכסת {n} חברי הצוות של מסלול פרו+. כדי להוסיף חבר צוות אחר, יש להסיר קודם אחד מהקיימים.", { n: limit })}
         </p>
       ) : (
         <div className="space-y-3">
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">שם</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("שם")}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -104,7 +106,7 @@ export default function TeamManagementView({
             />
           </div>
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">אימייל</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("אימייל")}</label>
             <input
               type="email"
               value={email}
@@ -118,7 +120,7 @@ export default function TeamManagementView({
             disabled={saving}
             className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
           >
-            {saving ? "מוסיף..." : "הוספת חבר צוות"}
+            {saving ? t("מוסיף...") : t("הוספת חבר צוות")}
           </button>
         </div>
       )}

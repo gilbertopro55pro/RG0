@@ -14,6 +14,7 @@ import SendUpdateButton from "@/components/SendUpdateButton";
 import NativeDateTimeField from "@/components/NativeDateTimeField";
 import EventTypeField from "@/components/EventTypeField";
 import CompactGuideModal from "@/components/CompactGuideModal";
+import { useLang, useT } from "@/i18n/client";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 // The 4 video-editing sub-choices collapse to this one representative value in the top-level
@@ -21,10 +22,10 @@ const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 const VIDEO_EDIT_GROUP_VALUE: PackageType = "freelance_video_film";
 const isVideoEditVariant = (v: string) => FREELANCE_VIDEO_EDIT_VARIANTS.some((o) => o.value === v);
 
-const selectArrowStyle = {
-  background:
-    "var(--color-amber-bg) url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239C7A3C' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E\") left 0.9rem center/10px 6px no-repeat",
-};
+// The arrow sits on the end side: left in Hebrew (RTL), right in English/Russian.
+const selectArrowStyleFor = (side: "left" | "right") => ({
+  background: `var(--color-amber-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239C7A3C' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E") ${side} 0.9rem center/10px 6px no-repeat`,
+});
 
 const CLOSE_ANIMATION_MS = 220;
 
@@ -74,6 +75,9 @@ export default function NewEventModal({
   prices?: PackagePriceRow[];
 }) {
   const router = useRouter();
+  const t = useT();
+  const lang = useLang();
+  const selectArrowStyle = selectArrowStyleFor(lang === "he" ? "left" : "right");
   const supabase = createClient();
   const [clientName, setClientName] = useState(initial?.clientName ?? "");
   const [eventType, setEventType] = useState(initial?.eventType ?? "");
@@ -259,7 +263,7 @@ export default function NewEventModal({
     const data = await res.json();
 
     if (!res.ok) {
-      setError(data.error ?? "שגיאה ביצירת האירוע");
+      setError(data.error ? t(data.error) : t("שגיאה ביצירת האירוע"));
       setDateConflict(!!data.conflict);
       setSaving(false);
       return;
@@ -330,8 +334,8 @@ export default function NewEventModal({
 
   const onTemplateSelect = (id: string) => {
     setSelectedTemplateId(id);
-    const t = contractTemplates.find((ct) => ct.id === id);
-    setContractTermsDraft(t?.terms ?? "");
+    const template = contractTemplates.find((ct) => ct.id === id);
+    setContractTermsDraft(template?.terms ?? "");
   };
 
   const saveAsNewTemplate = async () => {
@@ -369,7 +373,7 @@ export default function NewEventModal({
     const data = await res.json();
     setCreatingContract(false);
     if (!res.ok) {
-      setContractError(data.error ?? "שגיאה ביצירת החוזה");
+      setContractError(data.error ? t(data.error) : t("שגיאה ביצירת החוזה"));
       return;
     }
     setContract(data.contract);
@@ -423,12 +427,13 @@ export default function NewEventModal({
       >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold font-display">אירוע חדש</h2>
+            <h2 className="text-xl font-bold font-display">{t("אירוע חדש")}</h2>
             <CompactGuideModal pageKey="new-event" />
           </div>
           <button
             onClick={() => (step === "success" || step === "contract" ? finishAndGoToEvent() : closeWithAnimation())}
             className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
+            aria-label={t("סגירה")}
           >
             <IconClose className="h-4 w-4" />
           </button>
@@ -450,21 +455,21 @@ export default function NewEventModal({
           {step === 1 && (
             <div className="space-y-3">
               <div>
-                <div className="text-xs font-semibold text-ink-soft">פרטי הלקוח/ה</div>
-                <p className="text-xs text-ink-soft mt-0.5">מי הלקוח/ה ואיך ליצור איתם קשר בהמשך התהליך</p>
+                <div className="text-xs font-semibold text-ink-soft">{t("פרטי הלקוח/ה")}</div>
+                <p className="text-xs text-ink-soft mt-0.5">{t("מי הלקוח/ה ואיך ליצור איתם קשר בהמשך התהליך")}</p>
               </div>
               <EventTypeField value={eventType} onChange={setEventType} />
               <div>
-                <label className="text-xs block mb-1 text-ink-soft">שם הלקוח</label>
+                <label className="text-xs block mb-1 text-ink-soft">{t("שם הלקוח")}</label>
                 <input
                   value={clientName}
                   onChange={(e) => setClientName(e.target.value)}
                   className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-                  placeholder="לדוגמה: משפחת לוי"
+                  placeholder={t("לדוגמה: משפחת לוי")}
                 />
               </div>
               <div>
-                <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח (לתזכורות בוואטסאפ)</label>
+                <label className="text-xs block mb-1 text-ink-soft">{t("טלפון הלקוח (לתזכורות בוואטסאפ)")}</label>
                 <input
                   type="tel"
                   value={clientPhone}
@@ -474,8 +479,8 @@ export default function NewEventModal({
                 />
               </div>
               <div className="rounded-xl p-3 bg-white border-2" style={{ borderColor: "var(--color-amber-deep)" }}>
-                <label className="text-sm font-bold block text-ink">חבילה</label>
-                <p className="text-[11px] text-ink-soft mt-0.5 mb-2">החבילה קובעת אילו שלבי עבודה יופיעו באירוע. כדאי לבחור אותה בכוונה</p>
+                <label className="text-sm font-bold block text-ink">{t("חבילה")}</label>
+                <p className="text-[11px] text-ink-soft mt-0.5 mb-2">{t("החבילה קובעת אילו שלבי עבודה יופיעו באירוע. כדאי לבחור אותה בכוונה")}</p>
                 <select
                   value={isVideoEditVariant(pkgValue) ? VIDEO_EDIT_GROUP_VALUE : pkgValue}
                   onChange={(e) => {
@@ -499,14 +504,14 @@ export default function NewEventModal({
                     .filter((cp) => cp.name === DEFAULT_PACKAGE_NAME)
                     .map((cp) => (
                       <option key={cp.id} value={`custom:${cp.id}`}>
-                        {cp.name}
+                        {t(cp.name)}
                       </option>
                     ))}
                   {Object.keys(PACKAGE_LABELS)
                     .filter((p) => !isVideoEditVariant(p) || p === VIDEO_EDIT_GROUP_VALUE)
                     .map((p) => (
                       <option key={p} value={p}>
-                        {p === VIDEO_EDIT_GROUP_VALUE ? "פרילנס וידאו כולל עריכה" : PACKAGE_LABELS[p as PackageType]}
+                        {p === VIDEO_EDIT_GROUP_VALUE ? t("פרילנס וידאו כולל עריכה") : t(PACKAGE_LABELS[p as PackageType])}
                       </option>
                     ))}
                   {customPackages
@@ -516,13 +521,13 @@ export default function NewEventModal({
                         {cp.name}
                       </option>
                     ))}
-                  <option value={CREATE_CUSTOM_PACKAGE_VALUE}>+ חבילה מותאמת אישית חדשה</option>
+                  <option value={CREATE_CUSTOM_PACKAGE_VALUE}>{t("+ חבילה מותאמת אישית חדשה")}</option>
                 </select>
               </div>
 
               {isVideoEditVariant(pkgValue) && (
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">מה כולל העריכה</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("מה כולל העריכה")}</label>
                   <select
                     value={pkgValue}
                     onChange={(e) => setPkgValue(e.target.value)}
@@ -531,7 +536,7 @@ export default function NewEventModal({
                   >
                     {FREELANCE_VIDEO_EDIT_VARIANTS.map((o) => (
                       <option key={o.value} value={o.value}>
-                        {o.label}
+                        {t(o.label)}
                       </option>
                     ))}
                   </select>
@@ -543,7 +548,7 @@ export default function NewEventModal({
                 disabled={!clientName}
                 className="w-full rounded-lg py-3 text-sm font-semibold mt-2 bg-ink text-white disabled:opacity-60"
               >
-                המשך
+                {t("המשך")}
               </button>
             </div>
           )}
@@ -551,16 +556,16 @@ export default function NewEventModal({
           {step === 2 && (
             <div className="space-y-3">
               <div>
-                <div className="text-xs font-semibold text-ink-soft">מתי ואיפה</div>
-                <p className="text-xs text-ink-soft mt-0.5">תאריך, שעות ומיקום, ישמשו גם לסנכרון עם יומן Google ולאיתור כפילויות</p>
+                <div className="text-xs font-semibold text-ink-soft">{t("מתי ואיפה")}</div>
+                <p className="text-xs text-ink-soft mt-0.5">{t("תאריך, שעות ומיקום, ישמשו גם לסנכרון עם יומן Google ולאיתור כפילויות")}</p>
               </div>
               <div>
-                <label className="text-xs block mb-1 text-ink-soft">תאריך האירוע</label>
+                <label className="text-xs block mb-1 text-ink-soft">{t("תאריך האירוע")}</label>
                 <NativeDateTimeField
                   type="date"
                   value={eventDate}
                   onChange={setEventDate}
-                  display={eventDate ? formatDateDMYFromInput(eventDate) : <span className="text-ink-soft">בחר תאריך</span>}
+                  display={eventDate ? formatDateDMYFromInput(eventDate) : <span className="text-ink-soft">{t("בחר תאריך")}</span>}
                 />
               </div>
               <div className="flex gap-2">
@@ -568,7 +573,7 @@ export default function NewEventModal({
                     time input's intrinsic width push past its half of the row instead of
                     shrinking, so the two fields overlapped instead of sitting side by side. */}
                 <div className="flex-1 min-w-0">
-                  <label className="text-xs block mb-1 text-ink-soft">שעת התחלה</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("שעת התחלה")}</label>
                   <NativeDateTimeField
                     type="time"
                     compact
@@ -578,7 +583,7 @@ export default function NewEventModal({
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <label className="text-xs block mb-1 text-ink-soft">שעת סיום</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("שעת סיום")}</label>
                   <NativeDateTimeField
                     type="time"
                     compact
@@ -589,16 +594,16 @@ export default function NewEventModal({
                 </div>
               </div>
               <div>
-                <label className="text-xs block mb-1 text-ink-soft">מיקום האירוע</label>
+                <label className="text-xs block mb-1 text-ink-soft">{t("מיקום האירוע")}</label>
                 <input
                   value={eventLocation}
                   onChange={(e) => setEventLocation(e.target.value)}
                   className="w-full rounded-lg px-3 py-2 text-sm text-center border border-line bg-white"
-                  placeholder="לדוגמה: אולמי הגן, ראשון לציון"
+                  placeholder={t("לדוגמה: אולמי הגן, ראשון לציון")}
                 />
               </div>
               <div>
-                <label className="text-xs block mb-1 text-ink-soft">שעת הגעה לצילומי משפחה</label>
+                <label className="text-xs block mb-1 text-ink-soft">{t("שעת הגעה לצילומי משפחה")}</label>
                 <NativeDateTimeField
                   type="time"
                   value={arrivalTime}
@@ -607,13 +612,13 @@ export default function NewEventModal({
                 />
               </div>
               <div>
-                <label className="text-xs block mb-1 text-ink-soft">הערות</label>
+                <label className="text-xs block mb-1 text-ink-soft">{t("הערות")}</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
                   className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none"
-                  placeholder="כל מידע נוסף שכדאי לזכור על האירוע"
+                  placeholder={t("כל מידע נוסף שכדאי לזכור על האירוע")}
                 />
               </div>
 
@@ -622,14 +627,14 @@ export default function NewEventModal({
                   onClick={goBack}
                   className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
                 >
-                  חזרה
+                  {t("חזרה")}
                 </button>
                 <button
                   onClick={goNext}
                   disabled={!eventDate}
                   className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                 >
-                  המשך
+                  {t("המשך")}
                 </button>
               </div>
             </div>
@@ -638,12 +643,12 @@ export default function NewEventModal({
           {step === 3 && (
             <div className="space-y-3">
               <div>
-                <div className="text-xs font-semibold text-ink-soft">תשלום</div>
-                <p className="text-xs text-ink-soft mt-0.5">סכומי המקדמה והיתרה, ואפשרות לתזכורת תשלום אוטומטית ללקוח</p>
+                <div className="text-xs font-semibold text-ink-soft">{t("תשלום")}</div>
+                <p className="text-xs text-ink-soft mt-0.5">{t("סכומי המקדמה והיתרה, ואפשרות לתזכורת תשלום אוטומטית ללקוח")}</p>
               </div>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <label className="text-xs block mb-1 text-ink-soft">מקדמה (₪)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("מקדמה (₪)")}</label>
                   <input
                     type="number"
                     value={deposit}
@@ -652,7 +657,7 @@ export default function NewEventModal({
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs block mb-1 text-ink-soft">יתרה (₪)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("יתרה (₪)")}</label>
                   <input
                     type="number"
                     value={balance}
@@ -676,7 +681,7 @@ export default function NewEventModal({
                       }
                     }}
                   />
-                  תזכורת תשלום אוטומטית ליתרה
+                  {t("תזכורת תשלום אוטומטית ליתרה")}
                 </label>
                 {wantsPaymentReminder && (
                   <input
@@ -695,14 +700,14 @@ export default function NewEventModal({
                   onClick={goBack}
                   className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
                 >
-                  חזרה
+                  {t("חזרה")}
                 </button>
                 <button
                   onClick={() => setConfirmSaveOpen(true)}
                   disabled={saving}
                   className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                 >
-                  {saving ? "שומר..." : "שמירת האירוע"}
+                  {saving ? t("שומר...") : t("שמירת האירוע")}
                 </button>
               </div>
             </div>
@@ -718,35 +723,35 @@ export default function NewEventModal({
                   ✓
                 </span>
                 <div>
-                  <div className="text-base font-bold font-display">האירוע נשמר בהצלחה</div>
-                  <p className="text-xs text-ink-soft mt-1">רוצים לשלוח ללקוח/ה חוזה לחתימה דיגיטלית לפני הודעת הפתיחה?</p>
+                  <div className="text-base font-bold font-display">{t("האירוע נשמר בהצלחה")}</div>
+                  <p className="text-xs text-ink-soft mt-1">{t("רוצים לשלוח ללקוח/ה חוזה לחתימה דיגיטלית לפני הודעת הפתיחה?")}</p>
                 </div>
               </div>
 
               {!contract ? (
                 <>
                   <div>
-                    <label className="text-xs block mb-1 text-ink-soft">תבנית חוזה</label>
+                    <label className="text-xs block mb-1 text-ink-soft">{t("תבנית חוזה")}</label>
                     <select
                       value={selectedTemplateId}
                       onChange={(e) => onTemplateSelect(e.target.value)}
                       className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
                     >
-                      <option value="">ברירת המחדל שלי</option>
-                      {contractTemplates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
+                      <option value="">{t("ברירת המחדל שלי")}</option>
+                      {contractTemplates.map((ct) => (
+                        <option key={ct.id} value={ct.id}>
+                          {ct.name}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs block mb-1 text-ink-soft">תנאים כלליים (אפשר לערוך רק עבור החוזה הזה)</label>
+                    <label className="text-xs block mb-1 text-ink-soft">{t("תנאים כלליים (אפשר לערוך רק עבור החוזה הזה)")}</label>
                     <textarea
                       value={contractTermsDraft}
                       onChange={(e) => setContractTermsDraft(e.target.value)}
                       rows={6}
-                      placeholder="השאירו ריק כדי להשתמש בברירת המחדל שלכם"
+                      placeholder={t("השאירו ריק כדי להשתמש בברירת המחדל שלכם")}
                       className="w-full rounded-lg px-2.5 py-2 text-sm border border-line bg-white leading-relaxed"
                     />
                   </div>
@@ -755,7 +760,7 @@ export default function NewEventModal({
                       <input
                         value={newTemplateName}
                         onChange={(e) => setNewTemplateName(e.target.value)}
-                        placeholder="שם לשמירה כתבנית חדשה"
+                        placeholder={t("שם לשמירה כתבנית חדשה")}
                         className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-xs border border-line bg-white"
                       />
                       <button
@@ -763,7 +768,7 @@ export default function NewEventModal({
                         disabled={savingNewTemplate || !newTemplateName.trim()}
                         className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold bg-white border border-line text-ink disabled:opacity-50"
                       >
-                        {savingNewTemplate ? "שומר..." : "שמירה כתבנית חדשה"}
+                        {savingNewTemplate ? t("שומר...") : t("שמירה כתבנית חדשה")}
                       </button>
                     </div>
                   )}
@@ -773,28 +778,28 @@ export default function NewEventModal({
                     disabled={creatingContract}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                   >
-                    {creatingContract ? "יוצר..." : "יצירת חוזה לחתימה"}
+                    {creatingContract ? t("יוצר...") : t("יצירת חוזה לחתימה")}
                   </button>
                   <button
                     onClick={() => setSkipConfirmOpen(true)}
                     className="w-full text-xs text-ink-soft underline"
                   >
-                    דילוג. לא לעבוד עם חוזה באירוע הזה
+                    {t("דילוג. לא לעבוד עם חוזה באירוע הזה")}
                   </button>
                 </>
               ) : (
                 <div className="space-y-2.5">
                   <div className="rounded-xl px-3.5 py-2.5 text-sm bg-chip-tint text-amber-deep font-medium text-center">
-                    החוזה נוצר: ממתין לשליחה וחתימת הלקוח/ה
+                    {t("החוזה נוצר: ממתין לשליחה וחתימת הלקוח/ה")}
                   </div>
                   <button
                     onClick={copyContractLink}
                     className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
                   >
-                    {copiedContractLink ? "הקישור הועתק ✓" : "העתקת קישור לחתימה"}
+                    {copiedContractLink ? t("הקישור הועתק ✓") : t("העתקת קישור לחתימה")}
                   </button>
                   <p className="text-xs text-ink-soft text-center">
-                    שלחו את הקישור ללקוח/ה (בוואטסאפ למשל). כשיחתמו, תקבלו מייל ותוכלו לשלוח את הודעת הפתיחה מעמוד האירוע.
+                    {t("שלחו את הקישור ללקוח/ה (בוואטסאפ למשל). כשיחתמו, תקבלו מייל ותוכלו לשלוח את הודעת הפתיחה מעמוד האירוע.")}
                   </p>
                   <button
                     onClick={() => {
@@ -803,7 +808,7 @@ export default function NewEventModal({
                     }}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
                   >
-                    המשך
+                    {t("המשך")}
                   </button>
                 </div>
               )}
@@ -817,21 +822,21 @@ export default function NewEventModal({
               onClick={() => setSkipConfirmOpen(false)}
             >
               <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-2 font-display">לדלג על שלב החוזה?</h2>
-                <p className="text-sm text-ink-soft mb-5">האירוע ימשיך בלי חוזה. אפשר תמיד ליצור אחד מאוחר יותר מעמוד האירוע.</p>
+                <h2 className="text-lg font-bold mb-2 font-display">{t("לדלג על שלב החוזה?")}</h2>
+                <p className="text-sm text-ink-soft mb-5">{t("האירוע ימשיך בלי חוזה. אפשר תמיד ליצור אחד מאוחר יותר מעמוד האירוע.")}</p>
                 <div className="flex gap-2">
                   <button
                     onClick={skipContract}
                     disabled={skippingContract}
                     className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                   >
-                    {skippingContract ? "מדלג..." : "כן, דילוג"}
+                    {skippingContract ? t("מדלג...") : t("כן, דילוג")}
                   </button>
                   <button
                     onClick={() => setSkipConfirmOpen(false)}
                     className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
                   >
-                    ביטול
+                    {t("ביטול")}
                   </button>
                 </div>
               </div>
@@ -848,41 +853,40 @@ export default function NewEventModal({
                   ✓
                 </span>
                 <div>
-                  <div className="text-base font-bold font-display">האירוע נשמר בהצלחה</div>
+                  <div className="text-base font-bold font-display">{t("האירוע נשמר בהצלחה")}</div>
                   <p className="text-xs text-ink-soft mt-1">
-                    {createdEvent?.googleCalendarSynced ? "האירוע נוסף למערכת וליומן שלך." : "האירוע נוסף למערכת."}
+                    {createdEvent?.googleCalendarSynced ? t("האירוע נוסף למערכת וליומן שלך.") : t("האירוע נוסף למערכת.")}
                   </p>
                 </div>
               </div>
               {createdEvent && !createdEvent.googleCalendarSynced && (
                 <div className="rounded-xl p-3 space-y-2" style={{ background: "var(--color-amber-bg)" }}>
                   <p className="text-xs text-amber-deep">
-                    האירוע לא נוסף ליומן Google, החיבור פג תוקף. יש להתחבר מחדש כדי להוסיף אותו.
+                    {t("האירוע לא נוסף ליומן Google, החיבור פג תוקף. יש להתחבר מחדש כדי להוסיף אותו.")}
                   </p>
                   <a
                     href={`/api/google/connect?redirect=${encodeURIComponent(`/events/${createdEvent.id}?calendarRetry=1`)}`}
                     className="block w-full text-center rounded-lg py-2.5 text-xs font-semibold bg-amber-deep text-white"
                   >
-                    חיבור מחדש ליומן Google
+                    {t("חיבור מחדש ליומן Google")}
                   </a>
                 </div>
               )}
               {clientPhone ? (
                 <>
                   <p className="text-xs text-ink-soft text-center mb-1">
-                    לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה, פרטי האירוע, המקדמה והיתרה, וקישור
-                    לפורטל האישי שלהם למעקב אחר האירוע והתשלומים. תישאר/י לבדוק ולשלוח בעצמך.
+                    {t("לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה, פרטי האירוע, המקדמה והיתרה, וקישור לפורטל האישי שלהם למעקב אחר האירוע והתשלומים. תישאר/י לבדוק ולשלוח בעצמך.")}
                   </p>
-                  <SendUpdateButton onSend={sendBookingUpdate} pending={sendingUpdate} label="שליחת עדכון ללקוח בוואטסאפ" />
+                  <SendUpdateButton onSend={sendBookingUpdate} pending={sendingUpdate} label={t("שליחת עדכון ללקוח בוואטסאפ")} />
                 </>
               ) : (
-                <p className="text-xs text-ink-soft text-center">לא הוזן טלפון לקוח. לא ניתן לשלוח עדכון.</p>
+                <p className="text-xs text-ink-soft text-center">{t("לא הוזן טלפון לקוח. לא ניתן לשלוח עדכון.")}</p>
               )}
               <button
                 onClick={finishAndGoToEvent}
                 className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
               >
-                מעבר לעמוד האירוע
+                {t("מעבר לעמוד האירוע")}
               </button>
             </div>
           )}
@@ -899,8 +903,8 @@ export default function NewEventModal({
             className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold mb-2 font-display">לשמור את האירוע?</h2>
-            <p className="text-sm text-ink-soft mb-5">האירוע ייסגר במערכת ויתווסף ליומן שלך.</p>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("לשמור את האירוע?")}</h2>
+            <p className="text-sm text-ink-soft mb-5">{t("האירוע ייסגר במערכת ויתווסף ליומן שלך.")}</p>
             <div className="flex gap-2">
               <button
                 onClick={() => {
@@ -910,13 +914,13 @@ export default function NewEventModal({
                 disabled={saving}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {saving ? "שומר..." : "כן, שמירה"}
+                {saving ? t("שומר...") : t("כן, שמירה")}
               </button>
               <button
                 onClick={() => setConfirmSaveOpen(false)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -933,9 +937,9 @@ export default function NewEventModal({
             className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold mb-2 font-display">קיים אירוע נוסף בתאריך זה</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("קיים אירוע נוסף בתאריך זה")}</h2>
             {error && <p className="text-sm text-rose mb-2">{error}</p>}
-            <p className="text-sm text-ink-soft mb-5">האם להכניס את האירוע לרשימת המתנה?</p>
+            <p className="text-sm text-ink-soft mb-5">{t("האם להכניס את האירוע לרשימת המתנה?")}</p>
             <div className="flex gap-2">
               <button
                 onClick={async () => {
@@ -951,14 +955,14 @@ export default function NewEventModal({
                 disabled={addingToWaitlist}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {addingToWaitlist ? "מוסיף..." : "אישור"}
+                {addingToWaitlist ? t("מוסיף...") : t("אישור")}
               </button>
               <button
                 onClick={() => setDateConflict(false)}
                 disabled={addingToWaitlist}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>

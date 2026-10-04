@@ -12,6 +12,10 @@ import GlobalLoadingBar from "@/components/GlobalLoadingBar";
 import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
 import AssistantLeadPopup from "@/components/AssistantLeadPopup";
+import { I18nProvider } from "@/i18n/client";
+import { getLang } from "@/i18n/server";
+import { dirOf } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
 
 // One family: Rubik, a print sans with slightly rounded corners (design round 3, 2026-09-28,
 // the owner's pick: "כתב דפוס אבל מעוגל מעט"; replaces Heebo, same face as the landing page). No
@@ -19,7 +23,7 @@ import AssistantLeadPopup from "@/components/AssistantLeadPopup";
 // (globals.css); real codes/credentials still use the system monospace via font-mono.
 const rubik = Rubik({
   variable: "--font-rubik",
-  subsets: ["latin", "hebrew"],
+  subsets: ["latin", "hebrew", "cyrillic"],
   weight: ["400", "500", "600", "700", "800", "900"],
 });
 
@@ -82,15 +86,17 @@ export const viewport: Viewport = {
   themeColor: "#f2efe9",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // UI language (src/i18n): a per-device cookie, Hebrew by default. Sets the page direction too.
+  const lang = await getLang();
   return (
     <html
-      lang="he"
-      dir="rtl"
+      lang={lang}
+      dir={dirOf(lang)}
       className={`${rubik.variable} h-full antialiased`}
       suppressHydrationWarning
     >
@@ -260,16 +266,18 @@ export default function RootLayout({
           `}
         </Script>
 
-        <PWARegister />
-        <UpdateReloadGate />
-        <GlobalButtonEffects />
-        <BodyScrollLock />
-        <GlobalLoadingBar />
-        <TopNav />
-        <PageTransition>{children}</PageTransition>
-        <InstallPrompt />
-        <ChangelogModal />
-        <AssistantLeadPopup />
+        <I18nProvider lang={lang} messages={messagesFor(lang)}>
+          <PWARegister />
+          <UpdateReloadGate />
+          <GlobalButtonEffects />
+          <BodyScrollLock />
+          <GlobalLoadingBar />
+          <TopNav />
+          <PageTransition>{children}</PageTransition>
+          <InstallPrompt />
+          <ChangelogModal />
+          <AssistantLeadPopup />
+        </I18nProvider>
       </body>
     </html>
   );

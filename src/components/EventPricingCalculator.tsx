@@ -10,6 +10,8 @@ import type { LeadQuotePrefill } from "@/lib/leadQuotePrefill";
 import CompactGuideModal from "@/components/CompactGuideModal";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { IconArrowRight } from "@/components/icons/NavIcons";
+import { useT, useLang } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 const VAT_RATE = 0.18;
 const HOURS_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1);
@@ -35,21 +37,22 @@ function makeId(): string {
   return Math.random().toString(36).slice(2);
 }
 
-function currency(n: number): string {
-  return `${Math.round(n).toLocaleString("he-IL")} ₪`;
+function currency(n: number, locale = "he-IL"): string {
+  return `${Math.round(n).toLocaleString(locale)} ₪`;
 }
 
 // Back points right: in an RTL interface "back" is toward the start of the line, the same
 // direction as every "→ חזרה" link in the app.
 function BackButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
   return (
     <button
       onClick={onClick}
-      aria-label="חזרה"
-      title="חזרה"
+      aria-label={t("חזרה")}
+      title={t("חזרה")}
       className="h-7 w-7 rounded-full flex items-center justify-center shrink-0 border border-line bg-white text-ink-soft"
     >
-      <IconArrowRight className="h-3.5 w-3.5" />
+      <IconArrowRight className="h-3.5 w-3.5 ltr:rotate-180" />
     </button>
   );
 }
@@ -109,6 +112,9 @@ export default function EventPricingCalculator({
   onClose: () => void;
 }) {
   const supabase = createClient();
+  const t = useT();
+  const lang = useLang();
+  const money = (n: number) => currency(n, dateLocale(lang));
 
   const [step, setStep] = useState<Step>("calculator");
   const [mode, setMode] = useState<Mode>("event");
@@ -245,10 +251,10 @@ export default function EventPricingCalculator({
   // leaving hours/rate/tax-status exactly as the photographer already has them set.
   const selectTemplate = (id: string) => {
     setSelectedTemplateId(id);
-    const t = templates.find((tpl) => tpl.id === id);
-    if (!t) return;
+    const tmpl = templates.find((tpl) => tpl.id === id);
+    if (!tmpl) return;
     setQuoteVendorRows(
-      t.items
+      tmpl.items
         .filter((it) => it.item !== "צילום אירוע")
         .map((it) => {
           const matched = supplierList.find((s) => s.name === it.item);
@@ -385,12 +391,12 @@ export default function EventPricingCalculator({
   const applyPriceRounding = () => {
     const desiredTotal = Number(roundingTarget);
     if (!roundingTarget.trim() || !Number.isFinite(desiredTotal) || desiredTotal <= 0) {
-      setRoundingError("יש להזין מחיר תקין");
+      setRoundingError(t("יש להזין מחיר תקין"));
       return;
     }
     const eligibleRows = quoteVendorRows.filter((r) => vendorRowPrice(r) > 200);
     if (eligibleRows.length === 0) {
-      setRoundingError("אין ספק עם מחיר מעל 200 ₪ להתאמה");
+      setRoundingError(t("אין ספק עם מחיר מעל 200 ₪ להתאמה"));
       return;
     }
     const target = eligibleRows.reduce((max, r) => (vendorRowPrice(r) > vendorRowPrice(max) ? r : max));
@@ -398,7 +404,7 @@ export default function EventPricingCalculator({
       hours * rate + quoteVendorRows.filter((r) => r.id !== target.id).reduce((sum, r) => sum + vendorRowPrice(r), 0);
     const newPrice = Math.round((desiredTotal / (1 + VAT_RATE) - everythingElse) * 100) / 100;
     if (newPrice < 0) {
-      setRoundingError("המחיר המבוקש נמוך מדי להתאמה");
+      setRoundingError(t("המחיר המבוקש נמוך מדי להתאמה"));
       return;
     }
     updateVendorRow(target.id, { price: newPrice });
@@ -448,17 +454,17 @@ export default function EventPricingCalculator({
 
   const goToPreview = () => {
     if (!quoteClientName.trim() || !quoteClientPhone.trim() || !quoteEventType.trim() || !quoteEventDate || !quoteEventLocation.trim()) {
-      setQuoteFormError("יש למלא את כל השדות");
+      setQuoteFormError(t("יש למלא את כל השדות"));
       return;
     }
     if (mode !== "freelance") {
       if (!quoteStartTime || !quoteEndTime) {
-        setQuoteFormError("יש למלא את כל השדות");
+        setQuoteFormError(t("יש למלא את כל השדות"));
         return;
       }
       const h = hoursBetween(quoteStartTime, quoteEndTime);
       if (h == null) {
-        setQuoteFormError("שעת הסיום צריכה להיות אחרי שעת ההתחלה");
+        setQuoteFormError(t("שעת הסיום צריכה להיות אחרי שעת ההתחלה"));
         return;
       }
       setHours(h);
@@ -500,11 +506,11 @@ export default function EventPricingCalculator({
           notes: notesValue.trim() || undefined,
         }),
       });
-      if (!res.ok) throw new Error("יצירת הקובץ נכשלה");
+      if (!res.ok) throw new Error(t("יצירת הקובץ נכשלה"));
       const blob = await res.blob();
       setQuoteFile(new File([blob], "הצעת-מחיר.pdf", { type: "application/pdf" }));
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : "הכנת הקובץ נכשלה");
+      setSendError(err instanceof Error ? err.message : t("הכנת הקובץ נכשלה"));
     } finally {
       setSendingQuote(false);
     }
@@ -626,10 +632,10 @@ export default function EventPricingCalculator({
       if (id) {
         const { data } = await supabase.from("leads").select("quote_token").eq("id", id).maybeSingle<{ quote_token: string }>();
         if (data?.quote_token) setExistingTarget({ id, token: data.quote_token });
-        else if (leadId) setSendError("לא נמצא הליד של ההצעה");
+        else if (leadId) setSendError(t("לא נמצא הליד של ההצעה"));
       }
     } catch {
-      setSendError("הכנת הקישור נכשלה, נסו שוב");
+      setSendError(t("הכנת הקישור נכשלה, נסו שוב"));
     } finally {
       setLinkPreparing(false);
     }
@@ -694,7 +700,7 @@ export default function EventPricingCalculator({
         setLinkSaved(true);
         if (leadId && data.lead.id === leadId) onLeadQuoted?.(data.lead);
       })
-      .catch(() => setLinkSaveError("ההצעה לא נשמרה על הליד, ולכן הקישור ששלחתם עוד לא פעיל."));
+      .catch(() => setLinkSaveError(t("ההצעה לא נשמרה על הליד, ולכן הקישור ששלחתם עוד לא פעיל.")));
   };
 
   // Opened from a lead: attach the sent quote to it (status "נשלחה הצעת מחיר" + the follow-up
@@ -737,20 +743,20 @@ export default function EventPricingCalculator({
           <>
             <div className="flex items-center justify-between mb-3.5">
               <div className="flex items-center gap-2">
-                <span className="text-base font-bold font-display">בונה הצעות מחיר</span>
+                <span className="text-base font-bold font-display">{t("בונה הצעות מחיר")}</span>
                 <CompactGuideModal pageKey="quote-builder" />
               </div>
-              <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
+              <button onClick={onClose} className="text-ink-soft text-sm" aria-label={t("סגירה")}>
                 <IconClose className="h-3.5 w-3.5" />
               </button>
             </div>
 
             {prefill && (
               <div className="rounded-lg p-2.5 mb-3 text-xs leading-relaxed" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
-                <div className="font-semibold mb-0.5">מולא מהשיחה עם העוזר. כדאי לעבור ולאשר לפני השליחה.</div>
+                <div className="font-semibold mb-0.5">{t("מולא מהשיחה עם העוזר. כדאי לעבור ולאשר לפני השליחה.")}</div>
                 {prefill.hints.length > 0 && <div className="[overflow-wrap:anywhere]">{prefill.hints.join(" · ")}</div>}
                 {prefill.vendorRows.some((r) => r.supplierId === "__custom__" && !r.price) && (
-                  <div className="mt-0.5">לשורות בלי מחיר צריך להזין מחיר.</div>
+                  <div className="mt-0.5">{t("לשורות בלי מחיר צריך להזין מחיר.")}</div>
                 )}
               </div>
             )}
@@ -767,7 +773,7 @@ export default function EventPricingCalculator({
                   className="flex-1 rounded-full py-1.5 text-xs font-semibold"
                   style={{ background: mode === m ? "var(--color-ink)" : "var(--color-chip)", color: mode === m ? "var(--color-paper)" : "var(--color-ink-soft)", border: mode === m ? "none" : "1px solid var(--color-line)" }}
                 >
-                  {label}
+                  {t(label)}
                 </button>
               ))}
             </div>
@@ -775,17 +781,17 @@ export default function EventPricingCalculator({
             {mode === "event" && (
               <div className="rounded-lg border border-line bg-white p-2.5 mb-3">
                 {priceQuotes.length === 0 ? (
-                  <p className="text-xs text-ink-soft">אין עדיין הצעות מחיר שמורות</p>
+                  <p className="text-xs text-ink-soft">{t("אין עדיין הצעות מחיר שמורות")}</p>
                 ) : (
                   <select
                     value={selectedQuoteId}
                     onChange={(e) => selectQuote(e.target.value)}
                     className="w-full text-xs bg-transparent outline-none"
                   >
-                    <option value="">הצעה חדשה (ללא טעינה מהצעה קודמת)</option>
+                    <option value="">{t("הצעה חדשה (ללא טעינה מהצעה קודמת)")}</option>
                     {priceQuotes.map((q) => (
                       <option key={q.id} value={q.id}>
-                        {q.quote_name || q.client_name || "הצעה ללא שם"}: {new Date(q.created_at).toLocaleDateString("he-IL")}
+                        {q.quote_name || q.client_name || t("הצעה ללא שם")}: {new Date(q.created_at).toLocaleDateString(dateLocale(lang))}
                       </option>
                     ))}
                   </select>
@@ -800,10 +806,10 @@ export default function EventPricingCalculator({
                   onChange={(e) => selectTemplate(e.target.value)}
                   className="w-full text-xs bg-transparent outline-none"
                 >
-                  <option value="">טעינה מתבנית (ללא)</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
+                  <option value="">{t("טעינה מתבנית (ללא)")}</option>
+                  {templates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name}
                     </option>
                   ))}
                 </select>
@@ -816,21 +822,21 @@ export default function EventPricingCalculator({
                 className="flex-1 rounded-full py-1.5 text-xs font-semibold"
                 style={{ background: isExempt ? "var(--color-ink)" : "var(--color-chip)", color: isExempt ? "var(--color-paper)" : "var(--color-ink-soft)", border: isExempt ? "none" : "1px solid var(--color-line)" }}
               >
-                עוסק פטור
+                {t("עוסק פטור")}
               </button>
               <button
                 onClick={() => setTaxStatus("licensed")}
                 className="flex-1 rounded-full py-1.5 text-xs font-semibold"
                 style={{ background: !isExempt ? "var(--color-ink)" : "var(--color-chip)", color: !isExempt ? "var(--color-paper)" : "var(--color-ink-soft)", border: !isExempt ? "none" : "1px solid var(--color-line)" }}
               >
-                עוסק מורשה
+                {t("עוסק מורשה")}
               </button>
             </div>
 
             {mode === "freelance" && (
               <div className="flex gap-2 mb-3.5">
                 <div className="flex-1 rounded-lg border border-line bg-white p-2.5">
-                  <div className="text-[10px] text-ink-soft mb-1">שעות</div>
+                  <div className="text-[10px] text-ink-soft mb-1">{t("שעות")}</div>
                   <input
                     value={hours || ""}
                     onChange={(e) => setHours(Number(e.target.value) || 0)}
@@ -849,7 +855,7 @@ export default function EventPricingCalculator({
                   </datalist>
                 </div>
                 <div className="flex-1 rounded-lg border border-line bg-white p-2.5">
-                  <div className="text-[10px] text-ink-soft mb-1">מחיר שעת צילום</div>
+                  <div className="text-[10px] text-ink-soft mb-1">{t("מחיר שעת צילום")}</div>
                   <input
                     value={rate || ""}
                     onChange={(e) => setRate(Number(e.target.value) || 0)}
@@ -872,13 +878,13 @@ export default function EventPricingCalculator({
             {mode !== "freelance" && (
               <>
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-semibold text-ink-soft">ספקים לאירוע זה</span>
+                  <span className="text-xs font-semibold text-ink-soft">{t("ספקים לאירוע זה")}</span>
                   {quoteVendorRows.length > 0 && (
                     <button
                       onClick={() => (managingSuppliers ? finishManagingSuppliers() : setManagingSuppliers(true))}
                       className="text-[11px] font-semibold text-ink-soft"
                     >
-                      {managingSuppliers ? "סיום" : "עריכת ספקים"}
+                      {managingSuppliers ? t("סיום") : t("עריכת ספקים")}
                     </button>
                   )}
                 </div>
@@ -891,21 +897,21 @@ export default function EventPricingCalculator({
                         checked={deleteSelectedIds.size === quoteVendorRows.length && quoteVendorRows.length > 0}
                         onChange={toggleSelectAllForDelete}
                       />
-                      בחר הכל
+                      {t("בחר הכל")}
                     </label>
                     <button
                       onClick={deleteSelectedVendorRows}
                       disabled={deleteSelectedIds.size === 0}
                       className="text-[11px] font-semibold text-rose disabled:opacity-40"
                     >
-                      מחיקת הנבחרים ({deleteSelectedIds.size})
+                      {t("מחיקת הנבחרים ({n})", { n: deleteSelectedIds.size })}
                     </button>
                   </div>
                 )}
 
                 <div className="space-y-1.5 mb-1.5">
                   {quoteVendorRows.length === 0 ? (
-                    <p className="text-xs text-ink-soft">אין עדיין ספקים בהצעה זו</p>
+                    <p className="text-xs text-ink-soft">{t("אין עדיין ספקים בהצעה זו")}</p>
                   ) : (
                     quoteVendorRows.map((row) => (
                       <div key={row.id} className="flex items-center gap-1.5 rounded-lg border border-line bg-white px-2 py-1.5">
@@ -918,20 +924,20 @@ export default function EventPricingCalculator({
                           className="flex-1 min-w-0 text-xs bg-transparent outline-none"
                         >
                           <option value="" disabled>
-                            בחירת ספק
+                            {t("בחירת ספק")}
                           </option>
                           {supplierList.map((s) => (
                             <option key={s.id} value={s.id}>
                               {s.name}
                             </option>
                           ))}
-                          <option value="__custom__">טקסט חופשי...</option>
+                          <option value="__custom__">{t("טקסט חופשי...")}</option>
                         </select>
                         {row.supplierId === "__custom__" && (
                           <input
                             value={row.customName}
                             onChange={(e) => updateVendorRow(row.id, { customName: e.target.value })}
-                            placeholder="שם הספק"
+                            placeholder={t("שם הספק")}
                             className="flex-1 min-w-0 text-xs bg-transparent outline-none"
                           />
                         )}
@@ -944,10 +950,10 @@ export default function EventPricingCalculator({
                           type="number"
                           min={0}
                           placeholder="0"
-                          className="w-20 shrink-0 text-xs font-data bg-transparent outline-none text-left"
+                          className="w-20 shrink-0 text-xs font-data bg-transparent outline-none text-end"
                         />
                         {!managingSuppliers && (
-                          <button onClick={() => removeVendorRow(row.id)} className="text-ink-soft text-xs shrink-0" aria-label="הסרת ספק">
+                          <button onClick={() => removeVendorRow(row.id)} className="text-ink-soft text-xs shrink-0" aria-label={t("הסרת ספק")}>
                             <IconClose className="h-3 w-3" />
                           </button>
                         )}
@@ -961,7 +967,7 @@ export default function EventPricingCalculator({
                     className="w-full flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold mb-3.5 border-2 border-dashed transition hover:opacity-80"
                     style={{ borderColor: "var(--color-amber-deep)", color: "var(--color-amber-deep)", background: "var(--color-amber-bg)" }}
                   >
-                    <span className="text-sm leading-none">+</span> הוספת ספק
+                    <span className="text-sm leading-none">+</span> {t("הוספת ספק")}
                   </button>
                 )}
               </>
@@ -970,26 +976,26 @@ export default function EventPricingCalculator({
             <div className="rounded-lg border border-line bg-white p-2.5 space-y-1">
               {isExempt ? (
                 <div className="flex items-center justify-between text-sm font-semibold">
-                  <span>סה&quot;כ לתשלום</span>
-                  <span className="font-data text-amber-deep">{currency(total)}</span>
+                  <span>{t("סה\"כ לתשלום")}</span>
+                  <span className="font-data text-amber-deep">{money(total)}</span>
                 </div>
               ) : (
                 <>
                   <div className="flex items-center justify-between text-xs text-ink-soft">
-                    <span>סה&quot;כ לא כולל מע&quot;מ</span>
-                    <span className="font-data">{currency(subtotal)}</span>
+                    <span>{t("סה\"כ לא כולל מע\"מ")}</span>
+                    <span className="font-data">{money(subtotal)}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-ink-soft">
-                    <span>מע&quot;מ (18%)</span>
-                    <span className="font-data">{currency(vatAmount)}</span>
+                    <span>{t("מע\"מ (18%)")}</span>
+                    <span className="font-data">{money(vatAmount)}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm font-semibold pt-1 border-t border-line">
-                    <span>סה&quot;כ כולל מע&quot;מ</span>
-                    <span className="font-data text-amber-deep">{currency(total)}</span>
+                    <span>{t("סה\"כ כולל מע\"מ")}</span>
+                    <span className="font-data text-amber-deep">{money(total)}</span>
                   </div>
                   {canRoundPrice && !roundingOpen && (
                     <button onClick={openRounding} className="w-full text-[11px] font-semibold text-ink-soft pt-1 text-center">
-                      עיגול מחיר
+                      {t("עיגול מחיר")}
                     </button>
                   )}
                   {canRoundPrice && roundingOpen && (
@@ -1000,14 +1006,14 @@ export default function EventPricingCalculator({
                           onChange={(e) => setRoundingTarget(e.target.value)}
                           type="number"
                           min={0}
-                          placeholder="מחיר עגול רצוי"
+                          placeholder={t("מחיר עגול רצוי")}
                           className="flex-1 min-w-0 rounded-lg px-2 py-1 text-xs border border-line bg-white font-data"
                         />
                         <button onClick={applyPriceRounding} className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold bg-ink text-white">
-                          עדכון
+                          {t("עדכון")}
                         </button>
                         <button onClick={cancelRounding} className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold border border-line text-ink-soft">
-                          ביטול
+                          {t("ביטול")}
                         </button>
                       </div>
                       {roundingError && <p className="text-[11px] text-rose">{roundingError}</p>}
@@ -1018,7 +1024,7 @@ export default function EventPricingCalculator({
             </div>
 
             <button onClick={openQuoteForm} className="w-full mt-3 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
-              יצירת הצעת מחיר ללקוח
+              {t("יצירת הצעת מחיר ללקוח")}
             </button>
           </>
         )}
@@ -1026,10 +1032,10 @@ export default function EventPricingCalculator({
         {step === "quoteForm" && (
           <>
             <div className="flex items-center justify-between mb-3.5">
-              <span className="text-base font-bold font-display">פרטי הלקוח/ה והאירוע</span>
+              <span className="text-base font-bold font-display">{t("פרטי הלקוח/ה והאירוע")}</span>
               <div className="flex items-center gap-2">
                 <BackButton onClick={() => setStep("calculator")} />
-                <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
+                <button onClick={onClose} className="text-ink-soft text-sm" aria-label={t("סגירה")}>
                   <IconClose className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -1038,7 +1044,7 @@ export default function EventPricingCalculator({
               <input
                 value={quoteClientName}
                 onChange={(e) => setQuoteClientName(e.target.value)}
-                placeholder="שם מלא"
+                placeholder={t("שם מלא")}
                 autoComplete="off"
                 className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white"
               />
@@ -1059,8 +1065,8 @@ export default function EventPricingCalculator({
                   <button
                     type="button"
                     onClick={pickContact}
-                    aria-label="בחירה מאנשי הקשר"
-                    title="בחירה מאנשי הקשר"
+                    aria-label={t("בחירה מאנשי הקשר")}
+                    title={t("בחירה מאנשי הקשר")}
                     className="absolute left-1.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-md text-ink-soft"
                   >
                     <ContactIcon />
@@ -1076,7 +1082,7 @@ export default function EventPricingCalculator({
                     rememberEventType(quoteEventType);
                     setTimeout(() => setEventTypeFocused(false), 150);
                   }}
-                  placeholder="סוג האירוע (חתונה, חינה, עלייה לתורה...)"
+                  placeholder={t("סוג האירוע (חתונה, חינה, עלייה לתורה...)")}
                   className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white text-ink"
                 />
                 {/* Custom suggestion list instead of a native <datalist> — a native datalist
@@ -1095,7 +1101,7 @@ export default function EventPricingCalculator({
                               setQuoteEventType(name);
                               setEventTypeFocused(false);
                             }}
-                            className="flex-1 min-w-0 text-right px-2.5 py-1.5 text-sm text-ink hover:bg-chip truncate"
+                            className="flex-1 min-w-0 text-start px-2.5 py-1.5 text-sm text-ink hover:bg-chip truncate"
                           >
                             {name}
                           </button>
@@ -1104,7 +1110,7 @@ export default function EventPricingCalculator({
                               type="button"
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => removeCustomEventType(name)}
-                              aria-label={`הסרת ${name} מהרשימה`}
+                              aria-label={t("הסרת {name} מהרשימה", { name })}
                               className="shrink-0 px-2 text-ink-soft text-xs"
                             >
                               <IconClose className="h-3 w-3" />
@@ -1118,9 +1124,9 @@ export default function EventPricingCalculator({
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={clearCustomEventTypes}
-                        className="w-full text-right px-2.5 py-1.5 text-xs font-semibold text-rose border-t border-line"
+                        className="w-full text-start px-2.5 py-1.5 text-xs font-semibold text-rose border-t border-line"
                       >
-                        ניקוי האפשרויות שהוספתי
+                        {t("ניקוי האפשרויות שהוספתי")}
                       </button>
                     )}
                   </div>
@@ -1132,7 +1138,7 @@ export default function EventPricingCalculator({
                   inputs did. */}
               <div className="flex gap-2">
                 <div className="flex-1 min-w-0 rounded-lg border border-line bg-white p-2.5 cursor-pointer">
-                  <div className="text-[10px] text-ink-soft mb-1">תאריך האירוע</div>
+                  <div className="text-[10px] text-ink-soft mb-1">{t("תאריך האירוע")}</div>
                   <div className="relative">
                     <input
                       value={quoteEventDate}
@@ -1164,11 +1170,11 @@ export default function EventPricingCalculator({
                   </div>
                 </div>
                 <div className="flex-1 min-w-0 rounded-lg border border-line bg-white p-2.5">
-                  <div className="text-[10px] text-ink-soft mb-1">מיקום האירוע</div>
+                  <div className="text-[10px] text-ink-soft mb-1">{t("מיקום האירוע")}</div>
                   <input
                     value={quoteEventLocation}
                     onChange={(e) => setQuoteEventLocation(e.target.value)}
-                    placeholder="לדוגמה: אולם וגן אירועים"
+                    placeholder={t("לדוגמה: אולם וגן אירועים")}
                     className="w-full text-sm font-semibold bg-transparent outline-none"
                   />
                 </div>
@@ -1176,7 +1182,7 @@ export default function EventPricingCalculator({
               {mode !== "freelance" && (
                 <div className="flex gap-2">
                   <div className="flex-1 min-w-0 rounded-lg border border-line bg-white p-2.5 cursor-pointer">
-                    <div className="text-[10px] text-ink-soft mb-1">שעת התחלה</div>
+                    <div className="text-[10px] text-ink-soft mb-1">{t("שעת התחלה")}</div>
                     <input
                       value={quoteStartTime}
                       onChange={(e) => setQuoteStartTime(e.target.value)}
@@ -1195,7 +1201,7 @@ export default function EventPricingCalculator({
                     />
                   </div>
                   <div className="flex-1 min-w-0 rounded-lg border border-line bg-white p-2.5 cursor-pointer">
-                    <div className="text-[10px] text-ink-soft mb-1">שעת סיום</div>
+                    <div className="text-[10px] text-ink-soft mb-1">{t("שעת סיום")}</div>
                     <input
                       value={quoteEndTime}
                       onChange={(e) => setQuoteEndTime(e.target.value)}
@@ -1216,7 +1222,7 @@ export default function EventPricingCalculator({
                 </div>
               )}
               <div className="rounded-lg border border-line bg-white p-2.5">
-                <div className="text-[10px] text-ink-soft mb-1">הערות (אופציונלי)</div>
+                <div className="text-[10px] text-ink-soft mb-1">{t("הערות (אופציונלי)")}</div>
                 <textarea
                   value={notesValue}
                   onChange={(e) => {
@@ -1224,7 +1230,7 @@ export default function EventPricingCalculator({
                     setQuoteNotes(e.target.value);
                   }}
                   rows={4}
-                  placeholder="הערות חופשיות שיופיעו בהצעת המחיר..."
+                  placeholder={t("הערות חופשיות שיופיעו בהצעת המחיר...")}
                   className="w-full text-sm bg-transparent outline-none resize-none"
                 />
               </div>
@@ -1232,10 +1238,10 @@ export default function EventPricingCalculator({
             {quoteFormError && <p className="text-xs text-rose mt-2">{quoteFormError}</p>}
             <div className="flex gap-2 mt-4">
               <button onClick={goToPreview} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
-                המשך לתצוגה מקדימה
+                {t("המשך לתצוגה מקדימה")}
               </button>
               <button onClick={() => setStep("calculator")} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft">
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </>
@@ -1244,10 +1250,10 @@ export default function EventPricingCalculator({
         {step === "preview" && (
           <>
             <div className="flex items-center justify-between mb-3.5">
-              <span className="text-base font-bold font-display">תצוגה מקדימה</span>
+              <span className="text-base font-bold font-display">{t("תצוגה מקדימה")}</span>
               <div className="flex items-center gap-2">
                 <BackButton onClick={() => setStep("quoteForm")} />
-                <button onClick={onClose} className="text-ink-soft text-sm" aria-label="סגירה">
+                <button onClick={onClose} className="text-ink-soft text-sm" aria-label={t("סגירה")}>
                   <IconClose className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -1256,25 +1262,25 @@ export default function EventPricingCalculator({
               <div className="text-sm font-semibold mb-2">{quoteClientName}</div>
               <div className="space-y-1 text-xs mb-2">
                 <div>
-                  <span className="text-ink-soft">סוג האירוע: </span>
+                  <span className="text-ink-soft">{t("סוג האירוע:")} </span>
                   <span>{quoteEventType}</span>
                 </div>
                 <div>
-                  <span className="text-ink-soft">מקום: </span>
+                  <span className="text-ink-soft">{t("מקום:")} </span>
                   <span>{quoteEventLocation}</span>
                 </div>
                 <div>
-                  <span className="text-ink-soft">תאריך: </span>
+                  <span className="text-ink-soft">{t("תאריך:")} </span>
                   <span className="font-data">{formatDateDMY(quoteEventDate)}</span>
                 </div>
                 <div>
-                  <span className="text-ink-soft">שעות: </span>
+                  <span className="text-ink-soft">{t("שעות:")} </span>
                   <span className="font-data" dir="ltr">
-                    {mode === "freelance" ? `${hours} שעות` : `${quoteStartTime} - ${quoteEndTime}`}
+                    {mode === "freelance" ? t("{n} שעות", { n: hours }) : `${quoteStartTime} - ${quoteEndTime}`}
                   </span>
                 </div>
                 <div>
-                  <span className="text-ink-soft">איש קשר: </span>
+                  <span className="text-ink-soft">{t("איש קשר:")} </span>
                   <span className="font-data" dir="ltr">
                     {quoteClientPhone}
                   </span>
@@ -1287,7 +1293,7 @@ export default function EventPricingCalculator({
                       {it.item}
                       {it.details ? ` (${it.details})` : ""}
                     </span>
-                    <span className="font-data font-semibold shrink-0">{currency(it.price)}</span>
+                    <span className="font-data font-semibold shrink-0">{money(it.price)}</span>
                   </div>
                 ))}
               </div>
@@ -1295,22 +1301,22 @@ export default function EventPricingCalculator({
             <div className="rounded-lg border border-line bg-white p-2.5 space-y-1 mb-3">
               {isExempt ? (
                 <div className="flex items-center justify-between text-sm font-semibold">
-                  <span>סה&quot;כ לתשלום</span>
-                  <span className="font-data text-amber-deep">{currency(total)}</span>
+                  <span>{t("סה\"כ לתשלום")}</span>
+                  <span className="font-data text-amber-deep">{money(total)}</span>
                 </div>
               ) : (
                 <>
                   <div className="flex items-center justify-between text-xs text-ink-soft">
-                    <span>סה&quot;כ לא כולל מע&quot;מ</span>
-                    <span className="font-data">{currency(subtotal)}</span>
+                    <span>{t("סה\"כ לא כולל מע\"מ")}</span>
+                    <span className="font-data">{money(subtotal)}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-ink-soft">
-                    <span>מע&quot;מ (18%)</span>
-                    <span className="font-data">{currency(vatAmount)}</span>
+                    <span>{t("מע\"מ (18%)")}</span>
+                    <span className="font-data">{money(vatAmount)}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm font-semibold pt-1 border-t border-line">
-                    <span>סה&quot;כ כולל מע&quot;מ</span>
-                    <span className="font-data text-amber-deep">{currency(total)}</span>
+                    <span>{t("סה\"כ כולל מע\"מ")}</span>
+                    <span className="font-data text-amber-deep">{money(total)}</span>
                   </div>
                 </>
               )}
@@ -1318,12 +1324,12 @@ export default function EventPricingCalculator({
             {sendError && <p className="text-xs text-rose mb-2">{sendError}</p>}
             {!leadId && duplicateLead && existingTarget && (
               <div className="rounded-xl border border-line bg-card p-3 mb-2 text-sm">
-                <div className="font-semibold mb-1">ל{duplicateLead.name} כבר יש ליד</div>
+                <div className="font-semibold mb-1">{t("ל{name} כבר יש ליד", { name: duplicateLead.name })}</div>
                 <div className="text-xs text-ink-soft mb-2">
                   {[
                     duplicateLead.event_type_name,
-                    duplicateLead.event_date_interest ? new Date(duplicateLead.event_date_interest).toLocaleDateString("he-IL") : null,
-                    `נוסף ב-${new Date(duplicateLead.created_at).toLocaleDateString("he-IL")}`,
+                    duplicateLead.event_date_interest ? new Date(duplicateLead.event_date_interest).toLocaleDateString(dateLocale(lang)) : null,
+                    t("נוסף ב-{date}", { date: new Date(duplicateLead.created_at).toLocaleDateString(dateLocale(lang)) }),
                   ]
                     .filter(Boolean)
                     .join(", ")}
@@ -1333,13 +1339,13 @@ export default function EventPricingCalculator({
                     onClick={() => setUseExistingLead(true)}
                     className={`flex-1 rounded-lg py-2 text-xs font-semibold border ${useExistingLead ? "bg-ink text-white border-ink" : "bg-white border-line text-ink"}`}
                   >
-                    לצרף לליד הקיים
+                    {t("לצרף לליד הקיים")}
                   </button>
                   <button
                     onClick={() => setUseExistingLead(false)}
                     className={`flex-1 rounded-lg py-2 text-xs font-semibold border ${!useExistingLead ? "bg-ink text-white border-ink" : "bg-white border-line text-ink"}`}
                   >
-                    אירוע אחר, ליד חדש
+                    {t("אירוע אחר, ליד חדש")}
                   </button>
                 </div>
               </div>
@@ -1353,17 +1359,17 @@ export default function EventPricingCalculator({
                 rel="noopener noreferrer"
                 className="flex w-full items-center justify-center rounded-lg py-2.5 mb-2 text-sm font-semibold bg-white border border-line text-ink"
               >
-                צפייה בהצעה כפי שהלקוח יקבל
+                {t("צפייה בהצעה כפי שהלקוח יקבל")}
               </a>
             ) : (
               <div className="flex w-full items-center justify-center rounded-lg py-2.5 mb-2 text-sm font-semibold bg-white border border-line text-ink-soft opacity-60">
-                {sendingQuote ? "מכין את הקובץ..." : "הקובץ לא מוכן"}
+                {sendingQuote ? t("מכין את הקובץ...") : t("הקובץ לא מוכן")}
               </div>
             )}
             <div className="flex gap-2">
               {linkTarget ? (
                 <button onClick={() => setAskContract(true)} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
-                  שליחה ללקוח/ה
+                  {t("שליחה ללקוח/ה")}
                 </button>
               ) : (
                 <button
@@ -1371,7 +1377,7 @@ export default function EventPricingCalculator({
                   disabled={linkPreparing}
                   className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                 >
-                  {linkPreparing ? "מכין קישור..." : "נסו שוב"}
+                  {linkPreparing ? t("מכין קישור...") : t("נסו שוב")}
                 </button>
               )}
               <button
@@ -1379,7 +1385,7 @@ export default function EventPricingCalculator({
                 disabled={sendingQuote || addingLead}
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </>
@@ -1388,9 +1394,9 @@ export default function EventPricingCalculator({
         {step === "preview" && askContract && linkTarget && (
           <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.35)" }} onClick={() => setAskContract(false)}>
             <div className="w-full max-w-sm rounded-2xl bg-paper p-5 shadow-sheet" onClick={(e) => e.stopPropagation()}>
-              <div className="text-base font-bold font-display mb-1">לשלוח גם חוזה לחתימה?</div>
+              <div className="text-base font-bold font-display mb-1">{t("לשלוח גם חוזה לחתימה?")}</div>
               <p className="text-xs text-ink-soft mb-4">
-                עם חוזה: אחרי שהלקוח/ה מאשרים את ההצעה וממלאים את פרטי האירוע, הם חותמים על החוזה באותו קישור. כשהחוזה נחתם, שלב סגירת האירוע מסומן כבוצע ותקבלו עדכון.
+                {t("עם חוזה: אחרי שהלקוח/ה מאשרים את ההצעה וממלאים את פרטי האירוע, הם חותמים על החוזה באותו קישור. כשהחוזה נחתם, שלב סגירת האירוע מסומן כבוצע ותקבלו עדכון.")}
               </p>
               {/* Plain links: the tap opens WhatsApp directly, with nothing async a browser could block. */}
               <div className="grid gap-2">
@@ -1401,7 +1407,7 @@ export default function EventPricingCalculator({
                   onClick={() => saveLinkedQuote(true)}
                   className="flex items-center justify-center rounded-lg py-2.5 text-sm font-semibold bg-ink text-white"
                 >
-                  כן, עם חוזה
+                  {t("כן, עם חוזה")}
                 </a>
                 <a
                   href={buildWaMeLink(quoteClientPhone, messageFor(false))}
@@ -1410,10 +1416,10 @@ export default function EventPricingCalculator({
                   onClick={() => saveLinkedQuote(false)}
                   className="flex items-center justify-center rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
                 >
-                  לא, רק הצעת המחיר
+                  {t("לא, רק הצעת המחיר")}
                 </a>
                 <button onClick={() => setAskContract(false)} className="rounded-lg py-2 text-sm text-ink-soft">
-                  ביטול
+                  {t("ביטול")}
                 </button>
               </div>
             </div>
@@ -1423,7 +1429,7 @@ export default function EventPricingCalculator({
         {step === "savePrompt" && (
           <>
             <div className="mb-3.5">
-              <span className="text-base font-bold font-display">נשלח בהצלחה</span>
+              <span className="text-base font-bold font-display">{t("נשלח בהצלחה")}</span>
             </div>
             {linkMode && (
               <>
@@ -1431,12 +1437,12 @@ export default function EventPricingCalculator({
                   <div className="rounded-xl border border-rose bg-rose-bg p-3 mb-3.5 text-sm text-rose">
                     {linkSaveError}
                     <button onClick={() => saveLinkedQuote(sentWithContract)} className="block mt-2 font-semibold underline">
-                      לשמור שוב
+                      {t("לשמור שוב")}
                     </button>
                   </div>
                 ) : (
                   <p className="text-xs text-ink-soft mb-2">
-                    {linkSaved ? "ההצעה נשמרה על הליד. קובץ ה-PDF זמין להורדה בעמוד הלידים." : "שומר את ההצעה על הליד..."}
+                    {linkSaved ? t("ההצעה נשמרה על הליד. קובץ ה-PDF זמין להורדה בעמוד הלידים.") : t("שומר את ההצעה על הליד...")}
                   </p>
                 )}
                 <button
@@ -1448,18 +1454,18 @@ export default function EventPricingCalculator({
                   }}
                   className="w-full rounded-lg py-2 mb-3.5 text-xs font-semibold bg-white border border-line text-ink"
                 >
-                  {linkCopied ? "ההודעה הועתקה ✓" : "וואטסאפ לא נפתח? העתקת ההודעה"}
+                  {linkCopied ? t("ההודעה הועתקה ✓") : t("וואטסאפ לא נפתח? העתקת ההודעה")}
                 </button>
               </>
             )}
-            <p className="text-sm text-ink-soft mb-3.5">לשמור את ההצעה גם ברשימת הצעות המחיר?</p>
+            <p className="text-sm text-ink-soft mb-3.5">{t("לשמור את ההצעה גם ברשימת הצעות המחיר?")}</p>
             {savePromptStep === "ask" ? (
               <div className="flex gap-2">
                 <button onClick={() => setSavePromptStep("name")} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
-                  כן, לשמור
+                  {t("כן, לשמור")}
                 </button>
                 <button onClick={() => (linkMode ? onClose() : setStep("leadFollowUp"))} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft">
-                  לא
+                  {t("לא")}
                 </button>
               </div>
             ) : (
@@ -1467,15 +1473,15 @@ export default function EventPricingCalculator({
                 <input
                   value={saveQuoteName}
                   onChange={(e) => setSaveQuoteName(e.target.value)}
-                  placeholder="שם להצעת המחיר"
+                  placeholder={t("שם להצעת המחיר")}
                   className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white mb-3"
                 />
                 <div className="flex gap-2">
                   <button onClick={confirmSaveQuote} disabled={savingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-                    {savingQuote ? "שומר..." : "שמירה"}
+                    {savingQuote ? t("שומר...") : t("שמירה")}
                   </button>
                   <button onClick={() => (linkMode ? onClose() : setStep("leadFollowUp"))} disabled={savingQuote} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
-                    ביטול
+                    {t("ביטול")}
                   </button>
                 </div>
               </>
@@ -1486,17 +1492,17 @@ export default function EventPricingCalculator({
         {step === "leadFollowUp" && leadId && (
           <>
             <div className="mb-3.5">
-              <span className="text-base font-bold font-display">מעקב אחרי ההצעה</span>
+              <span className="text-base font-bold font-display">{t("מעקב אחרי ההצעה")}</span>
             </div>
             <p className="text-sm text-ink-soft mb-3.5">
-              לעדכן את הליד של {quoteClientName || "הלקוח/ה"} שנשלחה הצעת מחיר? תקבלו תזכורת מעקב אם לא תחזרו אליה תוך יומיים.
+              {t("לעדכן את הליד של {name} שנשלחה הצעת מחיר? תקבלו תזכורת מעקב אם לא תחזרו אליה תוך יומיים.", { name: quoteClientName || t("הלקוח/ה") })}
             </p>
             <div className="flex gap-2">
               <button onClick={attachToSourceLead} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-                {addingLead ? "מעדכן..." : "כן, לעדכן"}
+                {addingLead ? t("מעדכן...") : t("כן, לעדכן")}
               </button>
               <button onClick={onClose} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
-                לא
+                {t("לא")}
               </button>
             </div>
           </>
@@ -1504,15 +1510,15 @@ export default function EventPricingCalculator({
         {step === "leadFollowUp" && !leadId && (
           <>
             <div className="mb-3.5">
-              <span className="text-base font-bold font-display">מעקב אחרי ההצעה</span>
+              <span className="text-base font-bold font-display">{t("מעקב אחרי ההצעה")}</span>
             </div>
-            <p className="text-sm text-ink-soft mb-3.5">להוסיף את {quoteClientName || "הלקוח/ה"} לרשימת הלידים כדי לקבל תזכורת מעקב אם לא תחזרו אליה תוך יומיים?</p>
+            <p className="text-sm text-ink-soft mb-3.5">{t("להוסיף את {name} לרשימת הלידים כדי לקבל תזכורת מעקב אם לא תחזרו אליה תוך יומיים?", { name: quoteClientName || t("הלקוח/ה") })}</p>
             <div className="flex gap-2">
               <button onClick={() => addLeadForFollowUp()} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-                {addingLead ? "מוסיף..." : "כן, להוסיף"}
+                {addingLead ? t("מוסיף...") : t("כן, להוסיף")}
               </button>
               <button onClick={onClose} disabled={addingLead} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60">
-                לא
+                {t("לא")}
               </button>
             </div>
           </>
@@ -1520,7 +1526,7 @@ export default function EventPricingCalculator({
         {step === "leadDuplicate" && duplicateLead && (
           <>
             <div className="mb-3.5">
-              <span className="text-base font-bold font-display">הלקוח כבר ברשימת הלידים</span>
+              <span className="text-base font-bold font-display">{t("הלקוח כבר ברשימת הלידים")}</span>
             </div>
             <div className="rounded-xl border border-line p-3 mb-3.5 text-sm bg-card">
               <div className="font-semibold">{duplicateLead.name}</div>
@@ -1528,24 +1534,24 @@ export default function EventPricingCalculator({
                 {[
                   duplicateLead.phone,
                   duplicateLead.event_type_name,
-                  duplicateLead.event_date_interest ? new Date(duplicateLead.event_date_interest).toLocaleDateString("he-IL") : null,
-                  duplicateLead.source === "assistant" ? "מהעוזר" : null,
-                  `נוסף ב-${new Date(duplicateLead.created_at).toLocaleDateString("he-IL")}`,
+                  duplicateLead.event_date_interest ? new Date(duplicateLead.event_date_interest).toLocaleDateString(dateLocale(lang)) : null,
+                  duplicateLead.source === "assistant" ? t("מהעוזר") : null,
+                  t("נוסף ב-{date}", { date: new Date(duplicateLead.created_at).toLocaleDateString(dateLocale(lang)) }),
                 ]
                   .filter(Boolean)
                   .join(", ")}
               </div>
             </div>
-            <p className="text-sm text-ink-soft mb-3.5">כדי לא לפתוח ליד כפול, אפשר לצרף את ההצעה לליד הקיים. התזכורת למעקב תתוזמן עליו.</p>
+            <p className="text-sm text-ink-soft mb-3.5">{t("כדי לא לפתוח ליד כפול, אפשר לצרף את ההצעה לליד הקיים. התזכורת למעקב תתוזמן עליו.")}</p>
             <div className="grid gap-2">
               <button onClick={attachToExistingLead} disabled={addingLead} className="rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-                {addingLead ? "מצרף..." : "לצרף לליד הקיים"}
+                {addingLead ? t("מצרף...") : t("לצרף לליד הקיים")}
               </button>
               <button onClick={() => addLeadForFollowUp(true)} disabled={addingLead} className="rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-60">
-                זה אירוע אחר, ליד חדש
+                {t("זה אירוע אחר, ליד חדש")}
               </button>
               <button onClick={onClose} disabled={addingLead} className="rounded-lg py-2 text-sm text-ink-soft disabled:opacity-60">
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </>

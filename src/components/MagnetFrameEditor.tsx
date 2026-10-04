@@ -9,6 +9,7 @@ import { MAGNET_DIGIT_STYLES, magnetDigitId, magnetDigitUrl } from "@/lib/magnet
 import { MAGNET_FRAME_DIMENSIONS, DEFAULT_MAGNET_FRAME_SETTINGS, getMatInsetPct, getCutoutRadiusPx } from "@/lib/magnetFrameShared";
 import type { MagnetFrameElement, MagnetFrameTextElement, MagnetFrameDesignRow, MagnetFrameSettings, MagnetFrameCustomTextureRow, MagnetFrameCustomElementRow } from "@/lib/types";
 import { IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight } from "@/components/icons/NavIcons";
+import { useT } from "@/i18n/client";
 
 const COLOR_SWATCHES = [
   { label: "שחור", value: "#111111" },
@@ -41,6 +42,14 @@ function Dim({ children }: { children: string }) {
       {children}
     </span>
   );
+}
+
+// Renders a translated string whose {name} placeholders are sizes, each isolated in a <Dim>.
+function withDims(text: string, dims: Record<string, string>) {
+  return text.split(/(\{\w+\})/).map((part, i) => {
+    const m = /^\{(\w+)\}$/.exec(part);
+    return m && dims[m[1]] ? <Dim key={i}>{dims[m[1]]}</Dim> : part;
+  });
 }
 
 // The "ספרות" tab: 0–10 in four styles. Each one is added as a text element in the style's font, so
@@ -125,8 +134,9 @@ function transparentCheckerStyle(): React.CSSProperties {
 // A free (native) color picker alongside the fixed swatches — the swatches stay for one-click
 // common choices, this covers everything else.
 function FreeColorPicker({ value, onChange }: { value: string; onChange: (hex: string) => void }) {
+  const t = useT();
   return (
-    <label className="h-6 w-6 rounded-full border-2 border-line shrink-0 cursor-pointer relative overflow-hidden" style={{ background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)" }} title="צבע חופשי">
+    <label className="h-6 w-6 rounded-full border-2 border-line shrink-0 cursor-pointer relative overflow-hidden" style={{ background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)" }} title={t("צבע חופשי")}>
       <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
     </label>
   );
@@ -141,19 +151,20 @@ function FreeColorPicker({ value, onChange }: { value: string; onChange: (hex: s
 // from what pressing them actually does to the element's position), so they always point at their
 // real canvas direction without needing any mirroring behavior to reason about.
 function NudgeButtons({ onNudge }: { onNudge: (dx: -1 | 0 | 1, dy: -1 | 0 | 1) => void }) {
+  const t = useT();
   const btn = "h-7 w-7 rounded-full border border-line bg-card text-ink-soft flex items-center justify-center hover:bg-chip active:scale-95 transition";
   return (
     <div className="flex items-center gap-1.5" dir="ltr">
-      <button type="button" onClick={() => onNudge(0, -1)} className={btn} title="הזזה למעלה">
+      <button type="button" onClick={() => onNudge(0, -1)} className={btn} title={t("הזזה למעלה")}>
         <IconArrowUp className="h-3.5 w-3.5" />
       </button>
-      <button type="button" onClick={() => onNudge(0, 1)} className={btn} title="הזזה למטה">
+      <button type="button" onClick={() => onNudge(0, 1)} className={btn} title={t("הזזה למטה")}>
         <IconArrowDown className="h-3.5 w-3.5" />
       </button>
-      <button type="button" onClick={() => onNudge(-1, 0)} className={btn} title="הזזה שמאלה">
+      <button type="button" onClick={() => onNudge(-1, 0)} className={btn} title={t("הזזה שמאלה")}>
         <IconArrowLeft className="h-3.5 w-3.5" />
       </button>
-      <button type="button" onClick={() => onNudge(1, 0)} className={btn} title="הזזה ימינה">
+      <button type="button" onClick={() => onNudge(1, 0)} className={btn} title={t("הזזה ימינה")}>
         <IconArrowRight className="h-3.5 w-3.5" />
       </button>
     </div>
@@ -164,6 +175,7 @@ function NudgeButtons({ onNudge }: { onNudge: (dx: -1 | 0 | 1, dy: -1 | 0 | 1) =
 // "length" companion automatically (see the POST handler in api/magnet-frames/route.ts), since
 // xPct/yPct/sizePct already carry over as-is between the two aspect ratios.
 export default function MagnetFrameEditor() {
+  const t = useT();
   const [loaded, setLoaded] = useState(false);
   const [designId, setDesignId] = useState<string | null>(null);
   const [elements, setElements] = useState<MagnetFrameElement[]>([]);
@@ -242,7 +254,7 @@ export default function MagnetFrameEditor() {
   // one clears the other" rule the settings themselves follow. The cutout div's own overflow, plus
   // the checker placeholder painted on top of it in the DOM, keeps this texture layer contained to
   // the mat without any extra clipping here — see the comment above matCardStyle.
-  const activeCustomTexture = frameSettings.customTextureAssetId ? customTextures.find((t) => t.id === frameSettings.customTextureAssetId) : null;
+  const activeCustomTexture = frameSettings.customTextureAssetId ? customTextures.find((tex) => tex.id === frameSettings.customTextureAssetId) : null;
   const activeBuiltinTexture = !frameSettings.customTextureAssetId ? findMagnetFrameTexture(frameSettings.textureId ?? undefined) : undefined;
   // CSS's unquoted url(...) closes at the FIRST unescaped ")" — and encodeURIComponent (used by
   // textureDataUrl) deliberately leaves "(" and ")" unescaped (they're in its unreserved set), so
@@ -350,7 +362,7 @@ export default function MagnetFrameEditor() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "שגיאה בהעלאת הטקסטורה");
+        setError(data.error ?? t("שגיאה בהעלאת הטקסטורה"));
         return;
       }
       setCustomTextures((prev) => [data.texture, ...prev]);
@@ -388,7 +400,7 @@ export default function MagnetFrameEditor() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "שגיאה בהעלאת האלמנט");
+        setError(data.error ?? t("שגיאה בהעלאת האלמנט"));
         return;
       }
       setCustomElements((prev) => [data.element, ...prev]);
@@ -431,14 +443,14 @@ export default function MagnetFrameEditor() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "שגיאה בשמירה");
+        setError(data.error ?? t("שגיאה בשמירה"));
         return null;
       }
       setDesignId(data.design.id);
       setSavedOnce(true);
       return data.design.id as string;
     } catch {
-      setError("שגיאה בשמירה");
+      setError(t("שגיאה בשמירה"));
       return null;
     } finally {
       setSaving(false);
@@ -466,7 +478,7 @@ export default function MagnetFrameEditor() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      setError("שגיאה בהורדת הקובץ");
+      setError(t("שגיאה בהורדת הקובץ"));
     } finally {
       setExportBusy(null);
     }
@@ -479,9 +491,12 @@ export default function MagnetFrameEditor() {
   return (
     <div className={`rounded-2xl p-4 bg-card border border-line shadow-card space-y-4 ${ALBUM_FONT_CLASS_NAMES}`}>
       <div>
-        <div className="text-sm font-semibold mb-1">עיצוב מסגרת מגנט</div>
+        <div className="text-sm font-semibold mb-1">{t("עיצוב מסגרת מגנט")}</div>
         <p className="text-xs leading-relaxed text-ink-soft">
-          בסיס לבן פשוט במידה <Dim>20×15</Dim> ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך (<Dim>15×20</Dim>) עם אותו הטקסט והאלמנטים.
+          {withDims(
+            t("בסיס לבן פשוט במידה {landscape} ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך ({portrait}) עם אותו הטקסט והאלמנטים."),
+            { landscape: "20×15", portrait: "15×20" }
+          )}
         </p>
       </div>
 
@@ -559,7 +574,7 @@ export default function MagnetFrameEditor() {
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                {el.text || "טקסט ריק"}
+                {el.text || t("טקסט ריק")}
               </div>
             );
           }
@@ -605,7 +620,7 @@ export default function MagnetFrameEditor() {
             onChange={(e) => updateElement(selected.id, { text: e.target.value })}
             rows={2}
             className="w-full rounded-lg px-3 py-2 text-sm bg-card border border-line text-ink resize-none"
-            placeholder="לדוגמה: רותם & דניאל · 12.6.2026"
+            placeholder={t("לדוגמה: רותם & דניאל · 12.6.2026")}
           />
           <div className="grid grid-cols-2 gap-2">
             <select
@@ -613,14 +628,14 @@ export default function MagnetFrameEditor() {
               onChange={(e) => updateElement(selected.id, { fontKey: e.target.value })}
               className="rounded-lg px-2.5 py-2 text-xs bg-card border border-line text-ink"
             >
-              <optgroup label="עברית">
+              <optgroup label={t("עברית")}>
                 {ALBUM_FONTS.filter((f) => f.category === "hebrew").map((f) => (
                   <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
                     {f.label}
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="אנגלית">
+              <optgroup label={t("אנגלית")}>
                 {ALBUM_FONTS.filter((f) => f.category === "latin").map((f) => (
                   <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
                     {f.label}
@@ -629,7 +644,7 @@ export default function MagnetFrameEditor() {
               </optgroup>
             </select>
             <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-              <span className="text-[10px] text-ink-soft whitespace-nowrap">גודל</span>
+              <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
               <input
                 type="range"
                 min={20}
@@ -645,7 +660,7 @@ export default function MagnetFrameEditor() {
               <button
                 key={c.value}
                 type="button"
-                title={c.label}
+                title={t(c.label)}
                 onClick={() => updateElement(selected.id, { color: c.value })}
                 className="h-6 w-6 rounded-full border-2"
                 style={{ background: c.value, borderColor: selected.color === c.value ? "var(--color-sage)" : "var(--color-line)" }}
@@ -657,7 +672,7 @@ export default function MagnetFrameEditor() {
             <button
               type="button"
               onClick={() => updateElement(selected.id, { bold: !selected.bold })}
-              title="מודגש"
+              title={t("מודגש")}
               className="h-8 w-8 rounded-lg border font-bold text-sm"
               style={{
                 borderColor: selected.bold ? "var(--color-sage)" : "var(--color-line)",
@@ -670,7 +685,7 @@ export default function MagnetFrameEditor() {
             <button
               type="button"
               onClick={() => updateElement(selected.id, { italic: !selected.italic })}
-              title="נטוי"
+              title={t("נטוי")}
               className="h-8 w-8 rounded-lg border italic text-sm"
               style={{
                 borderColor: selected.italic ? "var(--color-sage)" : "var(--color-line)",
@@ -683,7 +698,7 @@ export default function MagnetFrameEditor() {
             <button
               type="button"
               onClick={() => updateElement(selected.id, { underline: !selected.underline })}
-              title="קו תחתון"
+              title={t("קו תחתון")}
               className="h-8 w-8 rounded-lg border underline text-sm"
               style={{
                 borderColor: selected.underline ? "var(--color-sage)" : "var(--color-line)",
@@ -696,12 +711,12 @@ export default function MagnetFrameEditor() {
           </div>
           <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
             <input type="checkbox" checked={selected.shadowEnabled} onChange={(e) => updateElement(selected.id, { shadowEnabled: e.target.checked })} />
-            צל לטקסט
+            {t("צל לטקסט")}
           </label>
           {selected.shadowEnabled && (
             <div className="grid grid-cols-2 gap-2">
               <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap">טשטוש</span>
+                <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("טשטוש")}</span>
                 <input
                   type="range"
                   min={0}
@@ -712,7 +727,7 @@ export default function MagnetFrameEditor() {
                 />
               </div>
               <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap">מרחק</span>
+                <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("מרחק")}</span>
                 <input
                   type="range"
                   min={0}
@@ -726,7 +741,7 @@ export default function MagnetFrameEditor() {
           )}
           <div className="flex items-center justify-between gap-2">
             <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
-              מחיקת הטקסט
+              {t("מחיקת הטקסט")}
             </button>
             <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
           </div>
@@ -736,7 +751,7 @@ export default function MagnetFrameEditor() {
       {selected && selected.type === "decoration" && (
         <div className="rounded-xl p-3 bg-chip space-y-2.5" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-            <span className="text-[10px] text-ink-soft whitespace-nowrap">גודל</span>
+            <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
             <input
               type="range"
               min={5}
@@ -761,7 +776,7 @@ export default function MagnetFrameEditor() {
           )}
           <div className="flex items-center justify-between gap-2">
             <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
-              מחיקת האלמנט
+              {t("מחיקת האלמנט")}
             </button>
             <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
           </div>
@@ -770,28 +785,28 @@ export default function MagnetFrameEditor() {
 
       <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-0.5 px-0.5">
         <button onClick={addText} className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold bg-ink text-white">
-          + הוספת טקסט
+          {t("+ הוספת טקסט")}
         </button>
         <button
           onClick={() => toggleTab("elements")}
           className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
           style={{ background: activeTab === "elements" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "elements" ? "var(--color-on-accent)" : "var(--color-ink)" }}
         >
-          אלמנטים
+          {t("אלמנטים")}
         </button>
         <button
           onClick={() => toggleTab("texture")}
           className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
           style={{ background: activeTab === "texture" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "texture" ? "var(--color-on-accent)" : "var(--color-ink)" }}
         >
-          טקסטורה
+          {t("טקסטורה")}
         </button>
         <button
           onClick={() => toggleTab("settings")}
           className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
           style={{ background: activeTab === "settings" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "settings" ? "var(--color-on-accent)" : "var(--color-ink)" }}
         >
-          הגדרות מסגרת
+          {t("הגדרות מסגרת")}
         </button>
       </div>
 
@@ -800,7 +815,7 @@ export default function MagnetFrameEditor() {
           {activeTab === "settings" && (
             <div className="space-y-2.5">
               <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">עובי מסגרת</span>
+                <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("עובי מסגרת")}</span>
                 <input
                   type="range"
                   min={4}
@@ -811,7 +826,7 @@ export default function MagnetFrameEditor() {
                 />
               </div>
               <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">עובי צלע תחתונה</span>
+                <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("עובי צלע תחתונה")}</span>
                 <input
                   type="range"
                   min={4}
@@ -822,7 +837,7 @@ export default function MagnetFrameEditor() {
                 />
               </div>
               <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">עיגול פינות</span>
+                <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("עיגול פינות")}</span>
                 <input
                   type="range"
                   min={0}
@@ -834,12 +849,12 @@ export default function MagnetFrameEditor() {
               </div>
 
               <div className="pt-1.5 border-t border-line space-y-1.5">
-                <span className="text-xs font-semibold">צבע המסגרת</span>
+                <span className="text-xs font-semibold">{t("צבע המסגרת")}</span>
                 <div className="flex items-center gap-1.5">
                   {COLOR_SWATCHES.map((c) => (
                     <button
                       key={c.value}
-                      title={c.label}
+                      title={t(c.label)}
                       onClick={() => setFrameSettings((prev) => ({ ...prev, frameColor: c.value }))}
                       className="h-6 w-6 rounded-full border-2"
                       style={{ background: c.value, borderColor: frameSettings.frameColor === c.value ? "var(--color-sage)" : "var(--color-line)" }}
@@ -848,7 +863,7 @@ export default function MagnetFrameEditor() {
                   <FreeColorPicker value={frameSettings.frameColor} onChange={(hex) => setFrameSettings((prev) => ({ ...prev, frameColor: hex }))} />
                 </div>
                 <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                  <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">שקיפות הצבע</span>
+                  <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("שקיפות הצבע")}</span>
                   <input
                     type="range"
                     min={0}
@@ -866,12 +881,12 @@ export default function MagnetFrameEditor() {
                   checked={frameSettings.shadowEnabled}
                   onChange={(e) => setFrameSettings((prev) => ({ ...prev, shadowEnabled: e.target.checked }))}
                 />
-                הצללה בחלק הפנימי של המסגרת
+                {t("הצללה בחלק הפנימי של המסגרת")}
               </label>
               {frameSettings.shadowEnabled && (
                 <>
                   <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                    <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">עוצמה</span>
+                    <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("עוצמה")}</span>
                     <input
                       type="range"
                       min={0}
@@ -882,7 +897,7 @@ export default function MagnetFrameEditor() {
                     />
                   </div>
                   <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                    <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">טשטוש</span>
+                    <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("טשטוש")}</span>
                     <input
                       type="range"
                       min={0}
@@ -893,7 +908,7 @@ export default function MagnetFrameEditor() {
                     />
                   </div>
                   <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                    <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">מרחק</span>
+                    <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("מרחק")}</span>
                     <input
                       type="range"
                       min={0}
@@ -917,7 +932,7 @@ export default function MagnetFrameEditor() {
                     className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
                     style={{ background: textureTab === "builtin" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "builtin" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
                   >
-                    40 טקסטורות
+                    {t("40 טקסטורות")}
                   </button>
                   <button
                     onClick={() => {
@@ -927,18 +942,18 @@ export default function MagnetFrameEditor() {
                     className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
                     style={{ background: textureTab === "custom" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "custom" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
                   >
-                    הטקסטורות שלי
+                    {t("הטקסטורות שלי")}
                   </button>
                 </div>
                 {(frameSettings.textureId || frameSettings.customTextureAssetId) && (
                   <button onClick={clearTexture} className="text-[11px] text-ink-soft underline shrink-0">
-                    ללא טקסטורה
+                    {t("ללא טקסטורה")}
                   </button>
                 )}
               </div>
               {(frameSettings.textureId || frameSettings.customTextureAssetId) && (
                 <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 bg-card border border-line">
-                  <span className="text-xs text-ink-soft whitespace-nowrap">שקיפות</span>
+                  <span className="text-xs text-ink-soft whitespace-nowrap">{t("שקיפות")}</span>
                   <input
                     type="range"
                     min={5}
@@ -951,16 +966,16 @@ export default function MagnetFrameEditor() {
               )}
               {textureTab === "builtin" ? (
                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                  {MAGNET_FRAME_TEXTURES.map((t) => (
+                  {MAGNET_FRAME_TEXTURES.map((tex) => (
                     <button
-                      key={t.id}
-                      onClick={() => selectBuiltinTexture(t.id)}
-                      title={t.label}
+                      key={tex.id}
+                      onClick={() => selectBuiltinTexture(tex.id)}
+                      title={tex.label}
                       className="rounded-lg border-2 aspect-square overflow-hidden bg-white"
-                      style={{ borderColor: frameSettings.textureId === t.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
+                      style={{ borderColor: frameSettings.textureId === tex.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={textureDataUrl(t)} alt={t.label} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
+                      <img src={textureDataUrl(tex)} alt={tex.label} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
                     </button>
                   ))}
                 </div>
@@ -978,22 +993,22 @@ export default function MagnetFrameEditor() {
                         if (file) uploadTextureFile(file);
                       }}
                     />
-                    <span className="text-xs font-semibold text-ink-soft">{uploadingTexture ? "מעלה..." : "+ העלאת טקסטורה משלי"}</span>
+                    <span className="text-xs font-semibold text-ink-soft">{uploadingTexture ? t("מעלה...") : t("+ העלאת טקסטורה משלי")}</span>
                   </label>
                   {customTextures.length > 0 && (
                     <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                       {customTextures.map(
-                        (t) =>
-                          t.url && (
+                        (tex) =>
+                          tex.url && (
                             <button
-                              key={t.id}
-                              onClick={() => selectCustomTexture(t.id)}
-                              title={t.original_filename}
+                              key={tex.id}
+                              onClick={() => selectCustomTexture(tex.id)}
+                              title={tex.original_filename}
                               className="rounded-lg border-2 aspect-square overflow-hidden bg-white"
-                              style={{ borderColor: frameSettings.customTextureAssetId === t.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
+                              style={{ borderColor: frameSettings.customTextureAssetId === tex.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={t.url} alt={t.original_filename} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
+                              <img src={tex.url} alt={tex.original_filename} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
                             </button>
                           )
                       )}
@@ -1017,13 +1032,13 @@ export default function MagnetFrameEditor() {
                       color: elementTab === tab.key ? "#fff" : "var(--color-ink-soft)",
                     }}
                   >
-                    {tab.label}
+                    {t(tab.label)}
                   </button>
                 ))}
               </div>
               {elementTab !== "watercolor" && elementTab !== "custom" && (
                 <div className="flex items-center gap-1.5 mb-2">
-                  <span className="text-[10px] text-ink-soft">צבע</span>
+                  <span className="text-[10px] text-ink-soft">{t("צבע")}</span>
                   {["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((c) => (
                     <button
                       key={c}
@@ -1042,15 +1057,15 @@ export default function MagnetFrameEditor() {
                     return (
                       <div key={style.key}>
                         <div className="flex items-center gap-2 mb-1">
-                          <div className="text-[10px] font-semibold text-ink-soft">{style.label}</div>
+                          <div className="text-[10px] font-semibold text-ink-soft">{t(style.label)}</div>
                           {style.colors && (
                             <div className="flex items-center gap-1">
                               {style.colors.map((c) => (
                                 <button
                                   key={c.key}
                                   onClick={() => setDigitColors((prev) => ({ ...prev, [style.key]: c.key }))}
-                                  title={c.label}
-                                  aria-label={c.label}
+                                  title={t(c.label)}
+                                  aria-label={t(c.label)}
                                   className="w-4 h-4 rounded-full border-2"
                                   style={{ background: c.swatch, borderColor: color?.key === c.key ? "var(--color-amber-deep)" : "transparent" }}
                                 />
@@ -1063,7 +1078,7 @@ export default function MagnetFrameEditor() {
                             <button
                               key={n}
                               onClick={() => addFloral(magnetDigitId(style.key, n, color?.key), 22)}
-                              title={[style.label, color?.label, n].filter(Boolean).join(" ")}
+                              title={[t(style.label), color ? t(color.label) : "", n].filter(Boolean).join(" ")}
                               className="rounded-lg border border-line p-0.5 bg-chip aspect-square flex items-center justify-center"
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1076,13 +1091,13 @@ export default function MagnetFrameEditor() {
                   })}
                   {DIGIT_STYLES.map((style) => (
                     <div key={style.key}>
-                      <div className="text-[10px] font-semibold text-ink-soft mb-1">{style.label}</div>
+                      <div className="text-[10px] font-semibold text-ink-soft mb-1">{t(style.label)}</div>
                       <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5" dir="ltr">
                         {DIGITS.map((digit) => (
                           <button
                             key={digit}
                             onClick={() => addDigit(digit, style)}
-                            title={`${style.label} ${digit}`}
+                            title={`${t(style.label)} ${digit}`}
                             className="rounded-lg border border-line bg-chip aspect-square flex items-center justify-center text-xl leading-none"
                             style={{
                               fontFamily: albumFontFamilyCss(style.fontKey),
@@ -1112,9 +1127,9 @@ export default function MagnetFrameEditor() {
                         if (file) uploadElementFile(file);
                       }}
                     />
-                    <span className="text-xs font-semibold text-ink-soft">{uploadingElement ? "מעלה..." : "+ העלאת אלמנט משלי"}</span>
+                    <span className="text-xs font-semibold text-ink-soft">{uploadingElement ? t("מעלה...") : t("+ העלאת אלמנט משלי")}</span>
                   </label>
-                  <p className="text-[10px] text-ink-soft">האלמנטים שמעלים כאן נשמרים ונשארים זמינים גם בעיצובים הבאים.</p>
+                  <p className="text-[10px] text-ink-soft">{t("האלמנטים שמעלים כאן נשמרים ונשארים זמינים גם בעיצובים הבאים.")}</p>
                   {customElements.length > 0 && (
                     <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 max-h-[40vh] overflow-y-auto">
                       {customElements.map(
@@ -1172,17 +1187,17 @@ export default function MagnetFrameEditor() {
 
       <div className="flex items-center gap-2.5 flex-wrap">
         <button onClick={() => void save()} disabled={saving || !!exportBusy} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-          {saving && !exportBusy ? "שומר..." : "שמירה"}
+          {saving && !exportBusy ? t("שומר...") : t("שמירה")}
         </button>
         {/* Always shown now: a download saves the design first, so there's no need to save before. */}
         <button onClick={() => download("landscape")} disabled={!!exportBusy || saving} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink disabled:opacity-60">
-          {exportBusy === "landscape" ? (saving ? "שומר..." : "מוריד...") : <>הורדת מסגרת רוחב (<Dim>20×15</Dim>)</>}
+          {exportBusy === "landscape" ? (saving ? t("שומר...") : t("מוריד...")) : withDims(t("הורדת מסגרת רוחב ({size})"), { size: "20×15" })}
         </button>
         <button onClick={() => download("portrait")} disabled={!!exportBusy || saving} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink disabled:opacity-60">
-          {exportBusy === "portrait" ? (saving ? "שומר..." : "מוריד...") : <>הורדת מסגרת אורך (<Dim>15×20</Dim>)</>}
+          {exportBusy === "portrait" ? (saving ? t("שומר...") : t("מוריד...")) : withDims(t("הורדת מסגרת אורך ({size})"), { size: "15×20" })}
         </button>
       </div>
-      {savedOnce && !designId && <p className="text-[11px] text-ink-soft">השמירה נכשלה. נסו שוב.</p>}
+      {savedOnce && !designId && <p className="text-[11px] text-ink-soft">{t("השמירה נכשלה. נסו שוב.")}</p>}
     </div>
   );
 }

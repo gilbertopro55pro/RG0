@@ -8,6 +8,7 @@ import type { GalleryRow } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import NewGalleryModal from "@/components/NewGalleryModal";
 import LinkExistingGalleryModal from "@/components/LinkExistingGalleryModal";
+import { useT } from "@/i18n/client";
 
 export default function GallerySection({
   eventId,
@@ -26,6 +27,7 @@ export default function GallerySection({
   clientPhone: string;
   eventDate: string;
 }) {
+  const t = useT();
   const router = useRouter();
   const supabase = createClient();
   const [gallery, setGallery] = useState(initialGallery);
@@ -55,8 +57,8 @@ export default function GallerySection({
   return (
     <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
       <div className="flex items-center justify-between mb-3.5">
-        <span className="text-sm font-semibold">גלריית תמונות</span>
-        {isActivated && <span className="text-xs text-ink-soft font-data">{photoCount} תמונות</span>}
+        <span className="text-sm font-semibold">{t("גלריית תמונות")}</span>
+        {isActivated && <span className="text-xs text-ink-soft font-data">{t("{n} תמונות", { n: photoCount })}</span>}
       </div>
 
       {isActivated && gallery ? (
@@ -68,56 +70,56 @@ export default function GallerySection({
             <div className="flex-1">
               <div className="text-sm font-medium">
                 {isArchived ? (
-                  <span className="text-rose">בארכיון</span>
+                  <span className="text-rose">{t("בארכיון")}</span>
                 ) : gallery.published ? (
-                  <span className="text-sage">פורסמה ✓</span>
+                  <span className="text-sage">{t("פורסמה ✓")}</span>
                 ) : (
-                  <span className="text-ink-soft">טיוטה. עדיין לא פורסמה</span>
+                  <span className="text-ink-soft">{t("טיוטה. עדיין לא פורסמה")}</span>
                 )}
               </div>
-              <div className="text-xs text-amber-deep underline mt-0.5">ניהול גלריה ←</div>
+              <div className="text-xs text-amber-deep underline mt-0.5">{t("ניהול גלריה")} <span className="inline-block ltr:rotate-180">←</span></div>
             </div>
           </Link>
 
           {unlinkStep === "idle" && (
             <button onClick={() => setUnlinkStep("confirm1")} className="text-xs text-ink-soft underline mt-3">
-              ניתוק גלריה מהאירוע
+              {t("ניתוק גלריה מהאירוע")}
             </button>
           )}
           {unlinkStep === "confirm1" && (
             <div className="rounded-xl p-3.5 space-y-2.5 mt-3" style={{ background: "var(--color-chip)" }}>
-              <p className="text-xs text-ink">לנתק את הגלריה מהאירוע הזה? הגלריה עצמה לא תימחק, רק הקישור אליו.</p>
+              <p className="text-xs text-ink">{t("לנתק את הגלריה מהאירוע הזה? הגלריה עצמה לא תימחק, רק הקישור אליו.")}</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setUnlinkStep("idle")}
                   className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
                 >
-                  ביטול
+                  {t("ביטול")}
                 </button>
                 <button onClick={() => setUnlinkStep("confirm2")} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white">
-                  כן, המשך
+                  {t("כן, המשך")}
                 </button>
               </div>
             </div>
           )}
           {unlinkStep === "confirm2" && (
             <div className="rounded-xl p-3.5 space-y-2.5 mt-3" style={{ background: "var(--color-chip)" }}>
-              <p className="text-xs font-semibold text-rose">אישור אחרון</p>
-              <p className="text-xs text-ink">כרטיס האירוע יחזור להציג &quot;פתיחת גלריה לאירוע&quot;. אפשר לקשר את הגלריה בחזרה בכל שלב.</p>
+              <p className="text-xs font-semibold text-rose">{t("אישור אחרון")}</p>
+              <p className="text-xs text-ink">{t("כרטיס האירוע יחזור להציג \"פתיחת גלריה לאירוע\". אפשר לקשר את הגלריה בחזרה בכל שלב.")}</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setUnlinkStep("idle")}
                   disabled={unlinking}
                   className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
                 >
-                  ביטול
+                  {t("ביטול")}
                 </button>
                 <button
                   onClick={unlink}
                   disabled={unlinking}
                   className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white disabled:opacity-60"
                 >
-                  {unlinking ? "מנתק..." : "כן, לנתק"}
+                  {unlinking ? t("מנתק...") : t("כן, לנתק")}
                 </button>
               </div>
             </div>
@@ -129,10 +131,10 @@ export default function GallerySection({
             onClick={() => setPicker("new")}
             className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white"
           >
-            פתיחת גלריה לאירוע
+            {t("פתיחת גלריה לאירוע")}
           </button>
           <button onClick={() => setPicker("link")} className="w-full text-xs text-ink-soft underline mt-2.5">
-            קישור לגלריה קיימת
+            {t("קישור לגלריה קיימת")}
           </button>
         </>
       )}

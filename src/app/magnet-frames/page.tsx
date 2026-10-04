@@ -7,11 +7,13 @@ import { hasAppAccess } from "@/lib/subscription";
 import type { Photographer } from "@/lib/types";
 import MagnetFrameEditor from "@/components/MagnetFrameEditor";
 import BackLink from "@/components/BackLink";
+import { getT } from "@/i18n/server";
 
 // פרו / פרו+ (designToolsAllowed, same rule as the album designer). Replaces the old AI-generated
 // /frame-designer tool (removed): this one is a plain white mat the photographer designs by hand.
 export default async function MagnetFramesPage() {
   const supabase = await createClient();
+  const t = await getT();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -23,8 +25,8 @@ export default async function MagnetFramesPage() {
 
   return (
     <div className="max-w-md lg:max-w-none lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <BackLink href="/" label="חזרה לדף הבית" className="mb-5" />
-      <h1 className="text-[26px] font-bold font-display mb-5">עיצוב מסגרת מגנט</h1>
+      <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-5" />
+      <h1 className="text-[26px] font-bold font-display mb-5">{t("עיצוב מסגרת מגנט")}</h1>
       <MagnetFrameEditor />
     </div>
   );

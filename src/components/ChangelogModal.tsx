@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { CHANGELOG, CURRENT_VERSION } from "@/lib/changelog";
+import { useT } from "@/i18n/client";
 
 const SEEN_KEY = "changelog-seen-version";
 const CLOSE_ANIMATION_MS = 220;
 
 export default function ChangelogModal() {
   const pathname = usePathname();
+  const t = useT();
   const [visible, setVisible] = useState(false);
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -64,10 +66,10 @@ export default function ChangelogModal() {
         className={`w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto ${closing ? "changelog-closing" : ""}`}
       >
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-bold font-display">מה חדש</h2>
-          <span className="text-xs font-data text-ink-soft">גרסה {latest.version}</span>
+          <h2 className="text-lg font-bold font-display">{t("מה חדש")}</h2>
+          <span className="text-xs font-data text-ink-soft">{t("גרסה {version}", { version: latest.version })}</span>
         </div>
-        <p className="text-xs text-ink-soft mb-4">העדכונים האחרונים במערכת</p>
+        <p className="text-xs text-ink-soft mb-4">{t("העדכונים האחרונים במערכת")}</p>
 
         <ul className="space-y-2.5 mb-5">
           {latest.changes.map((change, i) => (
@@ -79,7 +81,7 @@ export default function ChangelogModal() {
         </ul>
 
         <button onClick={dismiss} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-          אישור
+          {t("אישור")}
         </button>
       </div>
     </div>

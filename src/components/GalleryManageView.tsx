@@ -88,6 +88,8 @@ import {
   type ActiveUploadLock,
 } from "@/lib/activeUploadLock";
 import BackLink from "@/components/BackLink";
+import { useT, useLang } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
 
@@ -190,6 +192,8 @@ export default function GalleryManageView({
   photographerEmail: string;
   photographerPlan: SubscriptionPlan;
 }) {
+  const t = useT();
+  const lang = useLang();
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -764,7 +768,7 @@ export default function GalleryManageView({
       setFaceClusters(buildClusterSummaries(rows));
       setFaceFilterClusterId(null);
     } catch {
-      setFaceError("שגיאה בזיהוי הפרצופים");
+      setFaceError(t("שגיאה בזיהוי הפרצופים"));
       succeeded = false;
     } finally {
       // Same "hold the full green fill for a beat so completion actually registers" pattern as the
@@ -815,7 +819,7 @@ export default function GalleryManageView({
       });
       const data: { batchId?: string; partCount?: number; error?: string } = await res.json().catch(() => ({}));
       if (!res.ok || !data.batchId || !data.partCount) {
-        setError(data.error ?? "שגיאה בהכנת ההורדה");
+        setError(data.error ?? t("שגיאה בהכנת ההורדה"));
         return;
       }
       downloadedZipPartsRef.current = new Set();
@@ -982,7 +986,7 @@ export default function GalleryManageView({
       .select()
       .single<GalleryAlbumRow>();
     if (albumErr || !newAlbum) {
-      setError(albumErr?.message ?? "שגיאה ביצירת האלבום");
+      setError(albumErr?.message ?? t("שגיאה ביצירת האלבום"));
       setSavingAlbum(false);
       return;
     }
@@ -1068,7 +1072,7 @@ export default function GalleryManageView({
       .select()
       .single<GalleryAlbumRow>();
     if (albumErr || !newAlbum) {
-      setError(albumErr?.message ?? "שגיאה ביצירת האלבום");
+      setError(albumErr?.message ?? t("שגיאה ביצירת האלבום"));
       setBuildingAlbumBook(false);
       return;
     }
@@ -1107,7 +1111,7 @@ export default function GalleryManageView({
       .select()
       .single<GalleryAlbumRow>();
     if (albumErr || !newAlbum) {
-      setError(albumErr?.message ?? "שגיאה ביצירת האלבום");
+      setError(albumErr?.message ?? t("שגיאה ביצירת האלבום"));
       setBuildingAlbumBook(false);
       return;
     }
@@ -1134,7 +1138,7 @@ export default function GalleryManageView({
       .select()
       .single<GalleryAlbumRow>();
     if (albumErr || !newAlbum) {
-      setError(albumErr?.message ?? "שגיאה ביצירת האלבום");
+      setError(albumErr?.message ?? t("שגיאה ביצירת האלבום"));
       setBuildingAlbumBook(false);
       return;
     }
@@ -1370,7 +1374,7 @@ export default function GalleryManageView({
       if (results.some((r) => r.error)) {
         // Put the pages back as they were, so the screen never shows a swap that didn't save.
         setAlbumSpreads((prev) => prev.map((sp) => targets.find((t) => t.id === sp.id) ?? sp));
-        alert("ההחלפה לא נשמרה, נסו שוב");
+        alert(t("ההחלפה לא נשמרה, נסו שוב"));
         return;
       }
       for (const id of patches.keys()) fetch(`/api/album-spreads/${id}/render-preview`, { method: "POST" }).catch(() => {});
@@ -1767,7 +1771,7 @@ export default function GalleryManageView({
           if (controller.signal.aborted) throw new DOMException("aborted", "AbortError");
           continue;
         }
-        setError(createData?.error ?? "שגיאה בייצוא הקבצים");
+        setError(createData?.error ?? t("שגיאה בייצוא הקבצים"));
         return;
       }
       setPreparingPdfServer(false);
@@ -1783,7 +1787,7 @@ export default function GalleryManageView({
         if (controller.signal.aborted) return;
         const res = await fetch(`/api/galleries/${gallery.id}/album/export-jobs/${jobId}`, { signal: controller.signal });
         if (!res.ok) {
-          setError("שגיאה בייצוא הקבצים");
+          setError(t("שגיאה בייצוא הקבצים"));
           return;
         }
         const data: {
@@ -1809,14 +1813,14 @@ export default function GalleryManageView({
           break;
         }
         if (data.status === "failed") {
-          setError(data.errorMessage ?? "שגיאה בייצוא הקבצים");
+          setError(data.errorMessage ?? t("שגיאה בייצוא הקבצים"));
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1200));
       }
 
       if (!downloadUrl) {
-        setError("שגיאה בייצוא הקבצים");
+        setError(t("שגיאה בייצוא הקבצים"));
         return;
       }
       setProgress(100);
@@ -1843,7 +1847,7 @@ export default function GalleryManageView({
       // A user-initiated cancel aborts the same fetch a real network failure would throw from —
       // quietly stop for the former, surface the latter like any other export error.
       if (!(e instanceof DOMException && e.name === "AbortError")) {
-        setError("שגיאה בייצוא הקבצים");
+        setError(t("שגיאה בייצוא הקבצים"));
       }
     } finally {
       setBusy(false);
@@ -1934,7 +1938,7 @@ export default function GalleryManageView({
       });
       const createData = await createRes.json().catch(() => null);
       if (!createRes.ok || !createData?.jobId) {
-        setPrintHouseToast(createData?.error ?? "שליחה לבית הדפוס נכשלה");
+        setPrintHouseToast(createData?.error ?? t("שליחה לבית הדפוס נכשלה"));
         return;
       }
       const jobId: string = createData.jobId;
@@ -1946,14 +1950,14 @@ export default function GalleryManageView({
         if (controller.signal.aborted) return;
         const res = await fetch(`/api/galleries/${gallery.id}/album/export-jobs/${jobId}`, { signal: controller.signal });
         if (!res.ok) {
-          setPrintHouseToast("שליחה לבית הדפוס נכשלה");
+          setPrintHouseToast(t("שליחה לבית הדפוס נכשלה"));
           return;
         }
         const data: { status: string; processedCount: number; totalCount: number; errorMessage: string | null } = await res.json();
         setPrintHouseSendProgress(data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0);
         if (data.status === "ready") break;
         if (data.status === "failed") {
-          setPrintHouseToast(data.errorMessage ?? "שליחה לבית הדפוס נכשלה");
+          setPrintHouseToast(data.errorMessage ?? t("שליחה לבית הדפוס נכשלה"));
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -1961,10 +1965,10 @@ export default function GalleryManageView({
 
       setPrintHouseSendProgress(100);
       await new Promise((resolve) => setTimeout(resolve, 400));
-      setPrintHouseToast(`נשלח בהצלחה ל-${target.label || target.email}`);
+      setPrintHouseToast(t("נשלח בהצלחה ל-{target}", { target: target.label || target.email }));
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
-        setPrintHouseToast("שליחה לבית הדפוס נכשלה");
+        setPrintHouseToast(t("שליחה לבית הדפוס נכשלה"));
       }
     } finally {
       setSendingToPrintHouse(false);
@@ -2081,8 +2085,13 @@ export default function GalleryManageView({
     if (photos.length + items.length > MAX_GALLERY_PHOTOS) {
       setError(
         photos.length >= MAX_GALLERY_PHOTOS
-          ? `הגלריה כבר מכילה ${photos.length} תמונות, הגעתם למגבלה של ${MAX_GALLERY_PHOTOS} תמונות לגלריה.`
-          : `בגלריה יש כבר ${photos.length} תמונות, ונבחרו עוד ${items.length}, יחד זה חורג מהמגבלה של ${MAX_GALLERY_PHOTOS} תמונות לגלריה. אפשר להעלות עד ${MAX_GALLERY_PHOTOS - photos.length} תמונות נוספות בסבב הזה.`
+          ? t("הגלריה כבר מכילה {count} תמונות, הגעתם למגבלה של {max} תמונות לגלריה.", { count: photos.length, max: MAX_GALLERY_PHOTOS })
+          : t("בגלריה יש כבר {count} תמונות, ונבחרו עוד {added}, יחד זה חורג מהמגבלה של {max} תמונות לגלריה. אפשר להעלות עד {left} תמונות נוספות בסבב הזה.", {
+              count: photos.length,
+              added: items.length,
+              max: MAX_GALLERY_PHOTOS,
+              left: MAX_GALLERY_PHOTOS - photos.length,
+            })
       );
       return;
     }
@@ -2171,11 +2180,11 @@ export default function GalleryManageView({
         let file = items[i].file;
         try {
           if (isHeicFile(file)) {
-            setUploading(`ממיר תמונות... (${doneCount}/${items.length})`);
+            setUploading(`${t("ממיר תמונות...")} (${doneCount}/${items.length})`);
             try {
               file = await convertHeicIfNeeded(file);
             } catch {
-              failedFiles.push(`${file.name} (המרה נכשלה)`);
+              failedFiles.push(`${file.name} (${t("המרה נכשלה")})`);
               hadError = true;
               fileProgress[i] = 1;
               doneCount++;
@@ -2184,7 +2193,7 @@ export default function GalleryManageView({
               continue;
             }
           }
-          setUploading(`מעלה תמונות... (${doneCount}/${items.length})`);
+          setUploading(`${t("מעלה תמונות...")} (${doneCount}/${items.length})`);
           const path = `${user.id}/${gallery.id}/${crypto.randomUUID()}-${file.name}`;
 
           // A large batch (hundreds of files) takes long enough that a single transient network
@@ -2192,12 +2201,12 @@ export default function GalleryManageView({
           // giving up on that file turns "one bad wifi moment" into a non-event instead of forcing
           // a manual re-upload of just that photo afterward.
           let uploaded = false;
-          let lastFailureReason = "שגיאה לא ידועה";
+          let lastFailureReason = t("שגיאה לא ידועה");
           for (let attempt = 0; attempt < 3 && !uploaded; attempt++) {
             if (!navigator.onLine) {
               offlineAbortedRef.current = true;
               cancelRequestedRef.current = true;
-              lastFailureReason = "אין חיבור לאינטרנט";
+              lastFailureReason = t("אין חיבור לאינטרנט");
               break;
             }
             if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
@@ -2209,7 +2218,7 @@ export default function GalleryManageView({
               });
               const urlData = await urlRes.json();
               if (!urlRes.ok || !urlData.url) {
-                lastFailureReason = urlData.error ?? "שגיאה לא ידועה";
+                lastFailureReason = urlData.error ?? t("שגיאה לא ידועה");
                 continue;
               }
               await putFileWithProgress(urlData.url, file, file.type || "application/octet-stream", (fraction) => {
@@ -2221,7 +2230,7 @@ export default function GalleryManageView({
               // A network-level failure (dropped connection, DNS hiccup) throws instead of
               // resolving — caught here so the retry loop above can try again instead of the whole
               // file (or the whole batch) silently giving up.
-              lastFailureReason = e instanceof Error ? e.message : "שגיאת רשת";
+              lastFailureReason = e instanceof Error ? e.message : t("שגיאת רשת");
             }
           }
           fileProgress[i] = 1;
@@ -2250,7 +2259,7 @@ export default function GalleryManageView({
             .select()
             .single<GalleryPhotoRow>();
           if (insertError || !photoRow) {
-            failedFiles.push(`${file.name} (${insertError?.message ?? "שגיאה בשמירה"})`);
+            failedFiles.push(`${file.name} (${insertError?.message ?? t("שגיאה בשמירה")})`);
             hadError = true;
             continue;
           }
@@ -2268,7 +2277,7 @@ export default function GalleryManageView({
           // Catch-all for anything outside the retry loop above (e.g. a bug in this code itself) —
           // without this the loop would abort silently and leave "מעלה..." on screen forever with
           // no indication anything went wrong.
-          failedFiles.push(`${file.name} (${e instanceof Error ? e.message : "שגיאה לא צפויה"})`);
+          failedFiles.push(`${file.name} (${e instanceof Error ? e.message : t("שגיאה לא צפויה")})`);
           hadError = true;
           fileProgress[i] = 1;
           doneCount++;
@@ -2288,14 +2297,18 @@ export default function GalleryManageView({
       if (offlineAbortedRef.current) {
         setError(
           succeededCount > 0
-            ? `אין חיבור לאינטרנט, ההעלאה הופסקה. ${succeededCount} מתוך ${items.length} תמונות הספיקו לעלות לפני שהחיבור ירד. יש לבדוק את החיבור לרשת ולהעלות את השאר שוב.`
-            : "אין חיבור לאינטרנט, ההעלאה לא התחילה. יש לבדוק את החיבור לרשת ולנסות שוב."
+            ? t("אין חיבור לאינטרנט, ההעלאה הופסקה. {done} מתוך {total} תמונות הספיקו לעלות לפני שהחיבור ירד. יש לבדוק את החיבור לרשת ולהעלות את השאר שוב.", { done: succeededCount, total: items.length })
+            : t("אין חיבור לאינטרנט, ההעלאה לא התחילה. יש לבדוק את החיבור לרשת ולנסות שוב.")
         );
       } else if (failedFiles.length > 0) {
         const shown = failedFiles.slice(0, 8);
         const more = failedFiles.length - shown.length;
         setError(
-          `${failedFiles.length} קבצים לא הועלו: ${shown.join(", ")}${more > 0 ? ` ועוד ${more} נוספים` : ""}. שאר התמונות הועלו בהצלחה. אפשר להעלות את אלה שנכשלו שוב בנפרד.`
+          t("{n} קבצים לא הועלו: {files}{more}. שאר התמונות הועלו בהצלחה. אפשר להעלות את אלה שנכשלו שוב בנפרד.", {
+            n: failedFiles.length,
+            files: shown.join(", "),
+            more: more > 0 ? ` ${t("ועוד {n} נוספים", { n: more })}` : "",
+          })
         );
       }
       // Snap to 100% and hold there briefly instead of jumping straight back to the idle state —
@@ -2338,9 +2351,9 @@ export default function GalleryManageView({
 
   const reportRejectedFormats = (rejected: File[]) => {
     if (rejected.length === 0) return;
-    const note = `הגלריה תומכת רק בקבצי JPG, JPEG, PNG, GIF ו-BMP. הקבצים הבאים לא הועלו: ${rejected
-      .map((f) => f.name)
-      .join(", ")}`;
+    const note = t("הגלריה תומכת רק בקבצי JPG, JPEG, PNG, GIF ו-BMP. הקבצים הבאים לא הועלו: {files}", {
+      files: rejected.map((f) => f.name).join(", "),
+    });
     setError((prev) => (prev ? `${prev}\n${note}` : note));
   };
 
@@ -2460,7 +2473,7 @@ export default function GalleryManageView({
       .select()
       .single<GalleryFolderRow>();
     if (insertError || !folderRow) {
-      setError(insertError?.code === "23505" ? "כבר קיימת לשונית בשם הזה" : insertError?.message ?? "שגיאה ביצירת התיקייה");
+      setError(insertError?.code === "23505" ? t("כבר קיימת לשונית בשם הזה") : insertError?.message ?? t("שגיאה ביצירת התיקייה"));
       return;
     }
     setFolders((prev) => [...prev, folderRow]);
@@ -2478,7 +2491,7 @@ export default function GalleryManageView({
     if (!name || !current || name === current.name) return;
     const { error: updateError } = await supabase.from("gallery_folders").update({ name }).eq("id", folderId);
     if (updateError) {
-      setError(updateError.code === "23505" ? "כבר קיימת לשונית בשם הזה" : updateError.message ?? "שגיאה בשינוי שם התיקייה");
+      setError(updateError.code === "23505" ? t("כבר קיימת לשונית בשם הזה") : updateError.message ?? t("שגיאה בשינוי שם התיקייה"));
       return;
     }
     setFolders((prev) => prev.map((f) => (f.id === folderId ? { ...f, name } : f)));
@@ -2495,7 +2508,7 @@ export default function GalleryManageView({
     setDeletingFolder(false);
     setDeleteFolderConfirm(null);
     if (deleteError) {
-      setError(deleteError.message ?? "שגיאה במחיקת התיקייה");
+      setError(deleteError.message ?? t("שגיאה במחיקת התיקייה"));
       return;
     }
     setFolders((prev) => prev.filter((f) => f.id !== folder.id));
@@ -2534,10 +2547,10 @@ export default function GalleryManageView({
       });
       if (!removeRes.ok) {
         const data = await removeRes.json().catch(() => null);
-        throw new Error(data?.error ?? "שגיאה במחיקת התמונה מהאחסון. נסו שוב");
+        throw new Error(data?.error ?? t("שגיאה במחיקת התמונה מהאחסון. נסו שוב"));
       }
       const { error: dbError } = await supabase.from("gallery_photos").delete().eq("id", photo.id);
-      if (dbError) throw new Error("שגיאה במחיקת התמונה. נסו שוב");
+      if (dbError) throw new Error(t("שגיאה במחיקת התמונה. נסו שוב"));
       setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
       if (gallery.cover_photo_id === photo.id) {
         await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
@@ -2546,7 +2559,7 @@ export default function GalleryManageView({
     } catch (e) {
       // Was previously left to the shared `error` state, which renders nowhere near this action —
       // a failure here now surfaces immediately, in the same overlay the progress spinner just was.
-      setDeletePhotosError(e instanceof Error ? e.message : "שגיאה במחיקת התמונה. נסו שוב");
+      setDeletePhotosError(e instanceof Error ? e.message : t("שגיאה במחיקת התמונה. נסו שוב"));
     } finally {
       setDeletingPhotos(false);
     }
@@ -2574,7 +2587,7 @@ export default function GalleryManageView({
       });
       if (!removeRes.ok) {
         const data = await removeRes.json().catch(() => null);
-        throw new Error(data?.error ?? "שגיאה במחיקת התמונות מהאחסון. נסו שוב");
+        throw new Error(data?.error ?? t("שגיאה במחיקת התמונות מהאחסון. נסו שוב"));
       }
       // PostgREST encodes an .in() filter straight into the request URL's query string — a few
       // hundred UUIDs is already tens of KB, and the underlying infrastructure rejects the request
@@ -2585,7 +2598,7 @@ export default function GalleryManageView({
       for (let i = 0; i < ids.length; i += DELETE_ID_BATCH_SIZE) {
         const batch = ids.slice(i, i + DELETE_ID_BATCH_SIZE);
         const { error: dbError } = await supabase.from("gallery_photos").delete().in("id", batch);
-        if (dbError) throw new Error("שגיאה במחיקת התמונות. נסו שוב");
+        if (dbError) throw new Error(t("שגיאה במחיקת התמונות. נסו שוב"));
       }
       setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
       clearSelection();
@@ -2594,7 +2607,7 @@ export default function GalleryManageView({
         setGallery((g) => ({ ...g, cover_photo_id: null }));
       }
     } catch (e) {
-      setDeletePhotosError(e instanceof Error ? e.message : "שגיאה במחיקת התמונות. נסו שוב");
+      setDeletePhotosError(e instanceof Error ? e.message : t("שגיאה במחיקת התמונות. נסו שוב"));
     } finally {
       setDeletingPhotos(false);
     }
@@ -2665,7 +2678,7 @@ export default function GalleryManageView({
       }
     }
     await navigator.clipboard.writeText(photo.url);
-    setShareStatus("הקישור הועתק ✓");
+    setShareStatus(t("הקישור הועתק ✓"));
     setTimeout(() => setShareStatus(null), 2000);
   };
 
@@ -2866,7 +2879,7 @@ export default function GalleryManageView({
       }
     } else {
       await navigator.clipboard.writeText(text);
-      setShareStatus("הקישור הועתק ✓");
+      setShareStatus(t("הקישור הועתק ✓"));
       setTimeout(() => setShareStatus(null), 2000);
     }
     setShareOpen(false);
@@ -2996,8 +3009,12 @@ export default function GalleryManageView({
   useEffect(() => {
     if (lightboxIndex === null) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft" && lightboxIndex < visiblePhotos.length - 1) navLightbox(lightboxIndex + 1);
-      else if (e.key === "ArrowRight" && lightboxIndex > 0) navLightbox(lightboxIndex - 1);
+      // The page direction follows the UI language (src/i18n): "forward" is left in RTL, right in LTR.
+      const rtl = document.documentElement.dir !== "ltr";
+      const next = rtl ? "ArrowLeft" : "ArrowRight";
+      const prev = rtl ? "ArrowRight" : "ArrowLeft";
+      if (e.key === next && lightboxIndex < visiblePhotos.length - 1) navLightbox(lightboxIndex + 1);
+      else if (e.key === prev && lightboxIndex > 0) navLightbox(lightboxIndex - 1);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -3012,17 +3029,17 @@ export default function GalleryManageView({
   const uploadOpActive = uploading != null;
   const activeOp: { label: string; pct: number } | null =
     uploadOpActive
-      ? { label: "העלאת תמונות", pct: uploadProgressPct ?? 0 }
+      ? { label: t("העלאת תמונות"), pct: uploadProgressPct ?? 0 }
       : detectingFaces
-        ? { label: "זיהוי פרצופים", pct: faceProgress && faceProgress.total > 0 ? (faceProgress.done / faceProgress.total) * 100 : 0 }
+        ? { label: t("זיהוי פרצופים"), pct: faceProgress && faceProgress.total > 0 ? (faceProgress.done / faceProgress.total) * 100 : 0 }
         : exportingAlbumPdf
-          ? { label: preparingPdfServer ? "מכינים את השרת" : "ייצוא PDF", pct: exportProgressPdf ?? 0 }
+          ? { label: preparingPdfServer ? t("מכינים את השרת") : t("ייצוא PDF"), pct: exportProgressPdf ?? 0 }
           : exportingAlbumJpg
-            ? { label: "ייצוא JPG", pct: exportProgressJpg ?? 0 }
+            ? { label: t("ייצוא JPG"), pct: exportProgressJpg ?? 0 }
             : exportingAlbumPsd
-              ? { label: "ייצוא PSD", pct: exportProgressPsd ?? 0 }
+              ? { label: t("ייצוא PSD"), pct: exportProgressPsd ?? 0 }
               : sendingToPrintHouse && printHouseProgressVisible
-                ? { label: "שליחה לבית דפוס", pct: printHouseSendProgress ?? 0 }
+                ? { label: t("שליחה לבית דפוס"), pct: printHouseSendProgress ?? 0 }
                 : null;
   const printHouseOpActive = sendingToPrintHouse && printHouseProgressVisible;
 
@@ -3038,7 +3055,7 @@ export default function GalleryManageView({
     return (
       <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center gap-3" style={{ background: "var(--color-paper)" }}>
         <div className="h-8 w-8 rounded-full border-2 border-line border-t-ink animate-spin" />
-        <p className="text-sm text-ink-soft">טוען את הכלי...</p>
+        <p className="text-sm text-ink-soft">{t("טוען את הכלי...")}</p>
       </div>
     );
   }
@@ -3075,24 +3092,28 @@ export default function GalleryManageView({
             <div className="flex flex-col items-center gap-4 text-white text-center">
               <div className="h-8 w-8 rounded-full border-2 border-white/25 border-t-white animate-spin" />
               <div>
-                <div className="text-sm font-semibold">כבר יש העלאה פעילה</div>
+                <div className="text-sm font-semibold">{t("כבר יש העלאה פעילה")}</div>
                 <div className="text-xs opacity-70 mt-1">
-                  מעלה תמונות בגלריה &quot;{blockedByOtherUpload.galleryTitle}&quot;, {blockedByOtherUpload.doneCount} מתוך {blockedByOtherUpload.totalCount}
+                  {t("מעלה תמונות בגלריה \"{title}\", {done} מתוך {total}", {
+                    title: blockedByOtherUpload.galleryTitle,
+                    done: blockedByOtherUpload.doneCount,
+                    total: blockedByOtherUpload.totalCount,
+                  })}
                 </div>
-                <div className="text-xs opacity-70 mt-1">יש לבטל אותה כדי להתחיל העלאה כאן</div>
+                <div className="text-xs opacity-70 mt-1">{t("יש לבטל אותה כדי להתחיל העלאה כאן")}</div>
               </div>
               <div className="flex gap-2 w-full mt-2">
                 <button
                   onClick={() => setBlockedByOtherUpload(null)}
                   className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white/10"
                 >
-                  סגירה
+                  {t("סגירה")}
                 </button>
                 <button
                   onClick={() => requestActiveUploadCancel()}
                   className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-rose text-white"
                 >
-                  ביטול ההעלאה האחרת
+                  {t("ביטול ההעלאה האחרת")}
                 </button>
               </div>
             </div>
@@ -3109,17 +3130,17 @@ export default function GalleryManageView({
                 </svg>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold">{completedExportToast.label} הושלם</p>
+                <p className="text-sm font-semibold">{t("{label} הושלם", { label: t(completedExportToast.label) })}</p>
                 <p className="text-xs opacity-70 truncate">{completedExportToast.filename}</p>
               </div>
-              <button onClick={() => setCompletedExportToast(null)} aria-label="סגירה" className="shrink-0 text-white/60">
+              <button onClick={() => setCompletedExportToast(null)} aria-label={t("סגירה")} className="shrink-0 text-white/60">
                 <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   <path d="M6 6l12 12M18 6L6 18" />
                 </svg>
               </button>
             </div>
             {completedExportToast.linkOnly && (
-              <p className="text-xs opacity-70 mt-2">ההורדה האוטומטית לא עבדה במכשיר הזה, אפשר להוריד בכפתור.</p>
+              <p className="text-xs opacity-70 mt-2">{t("ההורדה האוטומטית לא עבדה במכשיר הזה, אפשר להוריד בכפתור.")}</p>
             )}
             <div className="flex items-center gap-2 mt-3">
               {completedExportToast.linkOnly ? (
@@ -3129,7 +3150,7 @@ export default function GalleryManageView({
                   rel="noopener noreferrer"
                   className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold bg-white text-ink text-center"
                 >
-                  הורדה
+                  {t("הורדה")}
                 </a>
               ) : (
               <button
@@ -3148,7 +3169,7 @@ export default function GalleryManageView({
                 disabled={downloadingCompletedToast}
                 className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold bg-white text-ink disabled:opacity-60"
               >
-                {downloadingCompletedToast ? "מוריד..." : "הורדה"}
+                {downloadingCompletedToast ? t("מוריד...") : t("הורדה")}
               </button>
               )}
               {/* Straight to the client's own WhatsApp chat, matching the exact "send update"
@@ -3166,7 +3187,7 @@ export default function GalleryManageView({
                   className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold text-white"
                   style={{ background: "#25D366" }}
                 >
-                  שיתוף בוואטסאפ
+                  {t("שיתוף בוואטסאפ")}
                 </button>
               )}
             </div>
@@ -3182,16 +3203,16 @@ export default function GalleryManageView({
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold">העלאת התמונות הושלמה</p>
+              <p className="text-sm font-semibold">{t("העלאת התמונות הושלמה")}</p>
               <p className="text-xs opacity-70">
-                {completedUploadToast.succeededCount} מתוך {completedUploadToast.totalCount} תמונות הועלו בהצלחה
+                {t("{done} מתוך {total} תמונות הועלו בהצלחה", { done: completedUploadToast.succeededCount, total: completedUploadToast.totalCount })}
               </p>
             </div>
             <button
               onClick={() => setCompletedUploadToast(null)}
               className="shrink-0 rounded-lg px-3.5 py-2 text-xs font-semibold bg-white text-ink"
             >
-              אישור
+              {t("אישור")}
             </button>
           </div>
         </div>
@@ -3199,8 +3220,8 @@ export default function GalleryManageView({
       {showScrollTop && (
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          aria-label="חזרה לראש העמוד"
-          className={`fixed bottom-5 left-5 z-40 h-11 w-11 rounded-full flex items-center justify-center bg-ink text-white shadow-sheet ${BTN_PRESS}`}
+          aria-label={t("חזרה לראש העמוד")}
+          className={`fixed bottom-5 end-5 z-40 h-11 w-11 rounded-full flex items-center justify-center bg-ink text-white shadow-sheet ${BTN_PRESS}`}
         >
           <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 19V5M5 12l7-7 7 7" />
@@ -3208,7 +3229,7 @@ export default function GalleryManageView({
         </button>
       )}
       <div className="flex items-center justify-between mb-2">
-        <BackLink href="/galleries" label="כל הגלריות" />
+        <BackLink href="/galleries" label={t("כל הגלריות")} />
       </div>
 
       {/* Share, slideshow, face-detection and preview moved to icon-only buttons on the
@@ -3218,12 +3239,12 @@ export default function GalleryManageView({
         className="mb-4"
         items={[
           ...(!gallery.published
-            ? [{ key: "publish", label: publishing ? "מפרסם..." : "פרסום הגלריה ללקוח", active: true, onClick: publish, disabled: publishing }]
+            ? [{ key: "publish", label: publishing ? t("מפרסם...") : t("פרסום הגלריה ללקוח"), active: true, onClick: publish, disabled: publishing }]
             : []),
           // Copy-link lives once, at the bottom with "שיתוף" (design stage 5: no duplicate up here).
           {
             key: "settings",
-            label: "הגדרות גלריה",
+            label: t("הגדרות גלריה"),
             active: settingsOpen,
             onClick: () => {
               setEditTitle(gallery.title);
@@ -3243,7 +3264,7 @@ export default function GalleryManageView({
           },
           // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
           ...(photos.length > 0 && nonBasicTierAllowed
-            ? [{ key: "album", label: "עיצוב אלבום", active: albumManageOpen, onClick: openAlbumManage }]
+            ? [{ key: "album", label: t("עיצוב אלבום"), active: albumManageOpen, onClick: openAlbumManage }]
             : []),
         ]}
       />
@@ -3252,10 +3273,10 @@ export default function GalleryManageView({
           there's no need to prioritize clientName over it the way this used to. */}
       <h1 className="text-[22px] font-bold mb-1 font-display">{gallery.title}</h1>
       {eventDate ? (
-        <p className="text-xs mb-1 text-ink-soft">{new Date(eventDate).toLocaleDateString("he-IL")}</p>
+        <p className="text-xs mb-1 text-ink-soft">{new Date(eventDate).toLocaleDateString(dateLocale(lang))}</p>
       ) : (
         gallery.shoot_date && (
-          <p className="text-xs mb-1 text-ink-soft">{new Date(gallery.shoot_date).toLocaleDateString("he-IL")}</p>
+          <p className="text-xs mb-1 text-ink-soft">{new Date(gallery.shoot_date).toLocaleDateString(dateLocale(lang))}</p>
         )
       )}
 
@@ -3283,12 +3304,12 @@ export default function GalleryManageView({
 
       {isArchived && (
         <div className="rounded-xl px-3.5 py-2.5 mb-3.5 text-xs bg-rose-bg text-rose">
-          הגלריה בארכיון ותימחק סופית בתאריך{" "}
-          {gallery.permanent_delete_at && new Date(gallery.permanent_delete_at).toLocaleDateString("he-IL")}. הקישור
-          ללקוח אינו פעיל יותר.{" "}
+          {t("הגלריה בארכיון ותימחק סופית בתאריך {date}. הקישור ללקוח אינו פעיל יותר.", {
+            date: gallery.permanent_delete_at ? new Date(gallery.permanent_delete_at).toLocaleDateString(dateLocale(lang)) : "",
+          })}{" "}
           {gallery.restored_once
-            ? "לא ניתן לשחזר אותה יותר."
-            : "אפשר לשחזר אותה מתוך הגדרות הגלריה."}
+            ? t("לא ניתן לשחזר אותה יותר.")
+            : t("אפשר לשחזר אותה מתוך הגדרות הגלריה.")}
         </div>
       )}
 
@@ -3301,9 +3322,9 @@ export default function GalleryManageView({
             }}
             className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold bg-ink text-white ${BTN_PRESS}`}
           >
-            מיון תמונות
+            {t("מיון תמונות")}
             {photos.some((p) => p.culling_status === "pending") &&
-              ` (${photos.filter((p) => p.culling_status === "pending").length} ממתינות)`}
+              ` (${t("{n} ממתינות", { n: photos.filter((p) => p.culling_status === "pending").length })})`}
           </button>
           {photos.some((p) => p.culling_status === "rejected") && (
             <button
@@ -3314,7 +3335,7 @@ export default function GalleryManageView({
                 color: showRejectedOnly ? "#fff" : "var(--color-ink-soft)",
               }}
             >
-              ✗ נפסלו ({photos.filter((p) => p.culling_status === "rejected").length})
+              ✗ {t("נפסלו")} ({photos.filter((p) => p.culling_status === "rejected").length})
             </button>
           )}
         </div>
@@ -3342,14 +3363,14 @@ export default function GalleryManageView({
                     color: showFavoritesOnly ? "var(--color-on-accent)" : "var(--color-ink-soft)",
                   }}
                 >
-                  מועדפים ({favoriteCount})
+                  {t("מועדפים")} ({favoriteCount})
                 </button>
                 {showFavoritesOnly && (
                   <button
                     onClick={downloadFavoritesZip}
                     disabled={zippingFavorites}
-                    aria-label="הורדת כל התמונות המועדפות"
-                    title="הורדת כל התמונות המועדפות, מאורגנות לפי לשוניות"
+                    aria-label={t("הורדת כל התמונות המועדפות")}
+                    title={t("הורדת כל התמונות המועדפות, מאורגנות לפי לשוניות")}
                     className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
                   >
                     <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -3364,8 +3385,8 @@ export default function GalleryManageView({
               <button
                 onClick={refreshFavoritesAndLabels}
                 disabled={refreshingFavorites}
-                aria-label="רענון מועדפים ותגיות"
-                title="רענון מועדפים ותגיות, לראות עדכונים מהלקוח/ה בלי לצאת ולחזור לגלריה"
+                aria-label={t("רענון מועדפים ותגיות")}
+                title={t("רענון מועדפים ותגיות, לראות עדכונים מהלקוח/ה בלי לצאת ולחזור לגלריה")}
                 className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
               >
                 <svg
@@ -3390,8 +3411,8 @@ export default function GalleryManageView({
               {gallery.published && !isArchived && (
                 <button
                   onClick={openShare}
-                  aria-label="שיתוף"
-                  title="שיתוף"
+                  aria-label={t("שיתוף")}
+                  title={t("שיתוף")}
                   className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
                   style={{
                     background: shareOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
@@ -3416,8 +3437,8 @@ export default function GalleryManageView({
                   setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
                   setSlideshowManageOpen(true);
                 }}
-                aria-label="מצגת תמונות"
-                title="מצגת תמונות"
+                aria-label={t("מצגת תמונות")}
+                title={t("מצגת תמונות")}
                 className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
                 style={{
                   background: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
@@ -3435,8 +3456,8 @@ export default function GalleryManageView({
               <button
                 onClick={runFaceDetection}
                 disabled={detectingFaces}
-                aria-label={detectingFaces ? "מזהה פרצופים..." : faceClusters.length > 0 ? "רענון זיהוי פרצופים" : "זיהוי פרצופים"}
-                title={detectingFaces ? "מזהה פרצופים..." : faceClusters.length > 0 ? "רענון זיהוי פרצופים" : "זיהוי פרצופים"}
+                aria-label={detectingFaces ? t("מזהה פרצופים...") : faceClusters.length > 0 ? t("רענון זיהוי פרצופים") : t("זיהוי פרצופים")}
+                title={detectingFaces ? t("מזהה פרצופים...") : faceClusters.length > 0 ? t("רענון זיהוי פרצופים") : t("זיהוי פרצופים")}
                 className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border bg-white border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
               >
                 {detectingFaces ? (
@@ -3453,8 +3474,8 @@ export default function GalleryManageView({
                 href={`/gallery/${gallery.access_token}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="תצוגה מקדימה"
-                title={gallery.published ? "תצוגה מקדימה של הגלריה" : "תצוגה מקדימה. כך הגלריה תיראה ללקוח/ה לאחר הפרסום"}
+                aria-label={t("תצוגה מקדימה")}
+                title={gallery.published ? t("תצוגה מקדימה של הגלריה") : t("תצוגה מקדימה. כך הגלריה תיראה ללקוח/ה לאחר הפרסום")}
                 className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft ${BTN_PRESS}`}
               >
                 <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -3477,7 +3498,7 @@ export default function GalleryManageView({
               color: !activeLabelFilter ? "var(--color-paper)" : "var(--color-ink-soft)",
             }}
           >
-            הכל
+            {t("הכל")}
           </button>
           {usedLabels.map((label) => (
             <button
@@ -3529,27 +3550,27 @@ export default function GalleryManageView({
               htmlFor={`gallery-upload-${gallery.id}`}
               className={`w-full flex items-center justify-center px-6 text-base font-semibold cursor-pointer text-ink text-center ${BTN_PRESS}`}
             >
-              {uploading ?? (isDragging ? "שחררו כאן להעלאה" : "העלאת תמונות, או גררו לכאן תמונות ותיקיות")}
+              {uploading ?? (isDragging ? t("שחררו כאן להעלאה") : t("העלאת תמונות, או גררו לכאן תמונות ותיקיות"))}
             </label>
           </div>
           <label
             htmlFor={`gallery-upload-dir-${gallery.id}`}
             className={`w-full flex items-center justify-center rounded-lg py-2 mb-1.5 text-xs font-semibold bg-white border border-line text-ink-soft cursor-pointer ${BTN_PRESS}`}
           >
-            העלאת תיקייה שלמה מהמחשב
+            {t("העלאת תיקייה שלמה מהמחשב")}
           </label>
-          <p className="text-[11px] text-ink-soft mb-4 text-center">פורמטים נתמכים בלבד: JPG, JPEG, PNG, GIF, BMP</p>
+          <p className="text-[11px] text-ink-soft mb-4 text-center">{t("פורמטים נתמכים בלבד: JPG, JPEG, PNG, GIF, BMP")}</p>
         </>
       ) : (
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mb-3 text-[11px] text-ink-soft text-center">
           <label htmlFor={`gallery-upload-${gallery.id}`} className="cursor-pointer font-semibold text-ink underline underline-offset-2">
-            {uploading ?? "העלאת תמונות"}
+            {uploading ?? t("העלאת תמונות")}
           </label>
           {!uploading && (
             <>
-              <span>· אפשר גם לגרור תמונות ותיקיות לכל מקום בעמוד</span>
+              <span>· {t("אפשר גם לגרור תמונות ותיקיות לכל מקום בעמוד")}</span>
               <label htmlFor={`gallery-upload-dir-${gallery.id}`} className="cursor-pointer font-semibold underline underline-offset-2">
-                העלאת תיקייה שלמה
+                {t("העלאת תיקייה שלמה")}
               </label>
               <span>· JPG, JPEG, PNG, GIF, BMP</span>
             </>
@@ -3562,7 +3583,7 @@ export default function GalleryManageView({
           style={{ background: "rgba(201,119,46,0.14)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)" }}
         >
           <div className="w-full h-full rounded-3xl border-4 border-dashed flex items-center justify-center text-xl font-bold text-amber-deep" style={{ borderColor: "var(--color-amber-deep)" }}>
-            שחררו כאן להעלאה לגלריה
+            {t("שחררו כאן להעלאה לגלריה")}
           </div>
         </div>
       )}
@@ -3577,7 +3598,7 @@ export default function GalleryManageView({
               color: activeFolderId === null ? "#fff" : "var(--color-ink-soft)",
             }}
           >
-            הכל
+            {t("הכל")}
           </button>
           {folders.map((folder) =>
             editingFolderId === folder.id ? (
@@ -3600,8 +3621,8 @@ export default function GalleryManageView({
                 <button
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setDeleteFolderConfirm(folder)}
-                  aria-label="מחיקת התיקייה"
-                  title="מחיקת התיקייה"
+                  aria-label={t("מחיקת התיקייה")}
+                  title={t("מחיקת התיקייה")}
                   className={`shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-rose border border-line bg-white ${BTN_PRESS}`}
                 >
                   <IconTrash className="h-3.5 w-3.5" />
@@ -3615,7 +3636,7 @@ export default function GalleryManageView({
                   setEditingFolderId(folder.id);
                   setEditFolderName(folder.name);
                 }}
-                title="לחיצה כפולה לשינוי שם או מחיקה"
+                title={t("לחיצה כפולה לשינוי שם או מחיקה")}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
                 style={{
                   background: activeFolderId === folder.id ? "var(--color-amber-deep)" : "var(--color-chip)",
@@ -3639,7 +3660,7 @@ export default function GalleryManageView({
                     setNewFolderName("");
                   }
                 }}
-                placeholder="שם התיקייה"
+                placeholder={t("שם התיקייה")}
                 className="w-24 rounded-full px-3 py-1.5 text-xs border border-line"
               />
               <button onClick={createFolder} className={`shrink-0 h-7 w-7 rounded-full bg-ink text-white text-xs ${BTN_PRESS}`}>
@@ -3649,8 +3670,8 @@ export default function GalleryManageView({
           ) : (
             <button
               onClick={() => setAddingFolder(true)}
-              aria-label="הוספת תיקייה חדשה"
-              title="הוספת תיקייה חדשה"
+              aria-label={t("הוספת תיקייה חדשה")}
+              title={t("הוספת תיקייה חדשה")}
               className={`shrink-0 h-7 w-7 rounded-full border border-dashed border-line text-ink-soft text-xs flex items-center justify-center ${BTN_PRESS}`}
             >
               +
@@ -3659,17 +3680,17 @@ export default function GalleryManageView({
         </div>
         <button
           onClick={() => fileInputRef.current?.click()}
-          title="העלאת תמונות נוספות לגלריה"
+          title={t("העלאת תמונות נוספות לגלריה")}
           className={`shrink-0 sm:ms-auto flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold bg-white border border-line text-ink ${BTN_PRESS}`}
         >
-          <span className="text-sm leading-none">+</span> העלאת תמונות
+          <span className="text-sm leading-none">+</span> {t("העלאת תמונות")}
         </button>
       </div>
 
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs text-ink-soft font-data">{visiblePhotos.length} תמונות</span>
+        <span className="text-xs text-ink-soft font-data">{t("{n} תמונות", { n: visiblePhotos.length })}</span>
         <span className="text-[11px] text-ink-soft">
-          פריסה: {GRID_STYLE_OPTIONS.find((g) => g.id === resolvedGridStyle)?.label}, משתנה ב״הגדרות גלריה״
+          {t("פריסה: {layout}, משתנה ב״הגדרות גלריה״", { layout: t(GRID_STYLE_OPTIONS.find((g) => g.id === resolvedGridStyle)?.label ?? "") })}
         </span>
       </div>
 
@@ -3684,7 +3705,7 @@ export default function GalleryManageView({
             value={cellSize}
             onChange={(e) => setCellSize(Number(e.target.value))}
             className="w-full accent-[var(--color-amber-deep)]"
-            aria-label="גודל תמונות בגלריה"
+            aria-label={t("גודל תמונות בגלריה")}
           />
           <IconGallery className="h-5 w-5 shrink-0 text-ink-soft" />
         </div>
@@ -3822,16 +3843,18 @@ export default function GalleryManageView({
       <div className="mt-3 space-y-2">
         {!gallery.published && (
           <p className="text-[11px] text-ink-soft text-center">
-            משך שמירת הגלריה: {expiryDays ? GALLERY_EXPIRY_OPTIONS.find((o) => o.value === expiryDays)?.label : "ללא הגבלת זמן (מדיניות ישנה)"}. ניתן לשנות בהגדרות הגלריה
+            {t("משך שמירת הגלריה: {period}. ניתן לשנות בהגדרות הגלריה", {
+              period: expiryDays ? t(GALLERY_EXPIRY_OPTIONS.find((o) => o.value === expiryDays)?.label ?? "") : t("ללא הגבלת זמן (מדיניות ישנה)"),
+            })}
           </p>
         )}
 
         {gallery.published && !isArchived && (
           <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium text-center">
-            הגלריה פורסמה
+            {t("הגלריה פורסמה")}
             {gallery.expires_at && (
               <span className="block text-[11px] mt-0.5 font-normal">
-                בתוקף עד {new Date(gallery.expires_at).toLocaleDateString("he-IL")}
+                {t("בתוקף עד {date}", { date: new Date(gallery.expires_at).toLocaleDateString(dateLocale(lang)) })}
               </span>
             )}
           </div>
@@ -3843,7 +3866,7 @@ export default function GalleryManageView({
             disabled={publishing}
             className={`w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60 ${BTN_PRESS}`}
           >
-            {publishing ? "מפרסם..." : "פרסום הגלריה ללקוח"}
+            {publishing ? t("מפרסם...") : t("פרסום הגלריה ללקוח")}
           </button>
         )}
 
@@ -3852,7 +3875,7 @@ export default function GalleryManageView({
             onClick={copyLink}
             className={`w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white ${BTN_PRESS}`}
           >
-            {copied ? "✓ הועתק" : "העתקת קישור"}
+            {copied ? t("✓ הועתק") : t("העתקת קישור")}
           </button>
         )}
 
@@ -3863,7 +3886,7 @@ export default function GalleryManageView({
             onClick={openShare}
             className={`w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink ${BTN_PRESS}`}
           >
-            שיתוף
+            {t("שיתוף")}
           </button>
         )}
       </div>
@@ -3879,7 +3902,7 @@ export default function GalleryManageView({
               e.stopPropagation();
               closeLightbox();
             }}
-            className={`absolute top-4 left-4 h-9 w-9 rounded-full bg-white/10 text-white flex items-center justify-center ${BTN_PRESS}`}
+            className={`absolute top-4 end-4 h-9 w-9 rounded-full bg-white/10 text-white flex items-center justify-center ${BTN_PRESS}`}
           >
             <IconAlbumClose className="h-4 w-4" />
           </button>
@@ -3888,15 +3911,15 @@ export default function GalleryManageView({
               e.stopPropagation();
               setCoverPhoto(visiblePhotos[lightboxIndex]);
             }}
-            title="קביעה כשער לגלריה"
-            aria-label="קביעה כשער לגלריה"
-            className={`absolute top-4 right-4 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs font-semibold ${BTN_PRESS}`}
+            title={t("קביעה כשער לגלריה")}
+            aria-label={t("קביעה כשער לגלריה")}
+            className={`absolute top-4 start-4 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs font-semibold ${BTN_PRESS}`}
             style={{
               background: gallery.cover_photo_id === visiblePhotos[lightboxIndex].id ? "var(--color-amber-deep)" : "rgba(255,255,255,0.1)",
               color: "#fff",
             }}
           >
-            {gallery.cover_photo_id === visiblePhotos[lightboxIndex].id ? "שער הגלריה" : "קביעה כשער"}
+            {gallery.cover_photo_id === visiblePhotos[lightboxIndex].id ? t("שער הגלריה") : t("קביעה כשער")}
           </button>
           {lightboxIndex > 0 && (
             <button
@@ -3904,9 +3927,9 @@ export default function GalleryManageView({
                 e.stopPropagation();
                 navLightbox(lightboxIndex - 1);
               }}
-              className={`absolute right-3 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg ${BTN_PRESS}`}
+              className={`absolute start-3 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg ${BTN_PRESS}`}
             >
-              ›
+              <span className="inline-block ltr:rotate-180">›</span>
             </button>
           )}
           {lightboxIndex < visiblePhotos.length - 1 && (
@@ -3915,9 +3938,9 @@ export default function GalleryManageView({
                 e.stopPropagation();
                 navLightbox(lightboxIndex + 1);
               }}
-              className={`absolute left-3 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg ${BTN_PRESS}`}
+              className={`absolute end-3 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg ${BTN_PRESS}`}
             >
-              ‹
+              <span className="inline-block ltr:rotate-180">‹</span>
             </button>
           )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -3945,42 +3968,42 @@ export default function GalleryManageView({
             <div className="space-y-2">
               <button
                 onClick={() => downloadPhoto(actionSheetPhoto)}
-                className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
+                className="w-full text-start rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
               >
-                הורדה
+                {t("הורדה")}
               </button>
               <button
                 onClick={() => sharePhoto(actionSheetPhoto)}
-                className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
+                className="w-full text-start rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
               >
-                שיתוף
+                {t("שיתוף")}
               </button>
               <button
                 onClick={() => setCoverPhoto(actionSheetPhoto)}
-                className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
+                className="w-full text-start rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
               >
-                קביעה כשער לגלריה
+                {t("קביעה כשער לגלריה")}
               </button>
               <button
                 onClick={() => togglePortfolio(actionSheetPhoto)}
-                className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
+                className="w-full text-start rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
               >
-                {actionSheetPhoto.in_portfolio ? "הסרה מהפורטפוליו הציבורי" : "הוספה לפורטפוליו הציבורי"}
+                {actionSheetPhoto.in_portfolio ? t("הסרה מהפורטפוליו הציבורי") : t("הוספה לפורטפוליו הציבורי")}
               </button>
               <button
                 onClick={() => {
                   setDeleteConfirmPhoto(actionSheetPhoto);
                   setActionSheetPhoto(null);
                 }}
-                className="w-full text-right rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line text-rose"
+                className="w-full text-start rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line text-rose"
               >
-                מחיקה
+                {t("מחיקה")}
               </button>
               <button
                 onClick={() => setActionSheetPhoto(null)}
                 className="w-full text-center rounded-lg py-3 text-sm font-semibold text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -3998,20 +4021,20 @@ export default function GalleryManageView({
             className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold mb-2 font-display">למחוק את התמונה?</h2>
-            <p className="text-sm text-ink-soft mb-5">הפעולה תמחק את התמונה לצמיתות מהגלריה ולא ניתן יהיה לשחזר אותה.</p>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("למחוק את התמונה?")}</h2>
+            <p className="text-sm text-ink-soft mb-5">{t("הפעולה תמחק את התמונה לצמיתות מהגלריה ולא ניתן יהיה לשחזר אותה.")}</p>
             <div className="flex gap-2">
               <button
                 onClick={confirmDeletePhoto}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white"
               >
-                כן, מחק לצמיתות
+                {t("כן, מחק לצמיתות")}
               </button>
               <button
                 onClick={() => setDeleteConfirmPhoto(null)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -4034,20 +4057,20 @@ export default function GalleryManageView({
             style={{ opacity: deleteSelectedConfirmClosing ? 0 : 1, transition: `opacity ${CLOSE_ANIMATION_MS}ms ease` }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold mb-2 font-display">למחוק {selectedIds.size} תמונות?</h2>
-            <p className="text-sm text-ink-soft mb-5">הפעולה תמחק את התמונות שנבחרו לצמיתות מהגלריה ולא ניתן יהיה לשחזר אותן.</p>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("למחוק {n} תמונות?", { n: selectedIds.size })}</h2>
+            <p className="text-sm text-ink-soft mb-5">{t("הפעולה תמחק את התמונות שנבחרו לצמיתות מהגלריה ולא ניתן יהיה לשחזר אותן.")}</p>
             <div className="flex gap-2">
               <button
                 onClick={confirmDeleteSelectedPhotos}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white"
               >
-                כן, מחק לצמיתות
+                {t("כן, מחק לצמיתות")}
               </button>
               <button
                 onClick={cancelDeleteSelected}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -4066,18 +4089,18 @@ export default function GalleryManageView({
           for (const p of pending) countByKey.set(p.folder_id ?? ZIP_NO_FOLDER_KEY, (countByKey.get(p.folder_id ?? ZIP_NO_FOLDER_KEY) ?? 0) + 1);
           const tabRows = [
             ...folders.filter((f) => countByKey.has(f.id)).map((f) => ({ key: f.id, name: f.name, count: countByKey.get(f.id) ?? 0 })),
-            ...(countByKey.has(ZIP_NO_FOLDER_KEY) ? [{ key: ZIP_NO_FOLDER_KEY, name: "כללי (ללא לשונית)", count: countByKey.get(ZIP_NO_FOLDER_KEY) ?? 0 }] : []),
+            ...(countByKey.has(ZIP_NO_FOLDER_KEY) ? [{ key: ZIP_NO_FOLDER_KEY, name: t("כללי (ללא לשונית)"), count: countByKey.get(ZIP_NO_FOLDER_KEY) ?? 0 }] : []),
           ];
           const selectedPhotoIds = pending.filter((p) => downloadSelectedFolders.has(p.folder_id ?? ZIP_NO_FOLDER_KEY)).map((p) => p.id);
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setDownloadOptions(null)}>
               <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-lg font-bold mb-1 font-display">הורדת תמונות</h2>
-                <p className="text-xs text-ink-soft mb-4">{pending.length} תמונות נבחרו להורדה</p>
+                <h2 className="text-lg font-bold mb-1 font-display">{t("הורדת תמונות")}</h2>
+                <p className="text-xs text-ink-soft mb-4">{t("{n} תמונות נבחרו להורדה", { n: pending.length })}</p>
 
                 {folders.length > 0 && tabRows.length > 0 && (
                   <div className="mb-5">
-                    <p className="text-xs text-ink-soft mb-2.5">אילו לשוניות להוריד?</p>
+                    <p className="text-xs text-ink-soft mb-2.5">{t("אילו לשוניות להוריד?")}</p>
                     <div className="space-y-1.5">
                       {tabRows.map((row) => (
                         <label key={row.key} className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-line bg-white text-sm">
@@ -4090,19 +4113,19 @@ export default function GalleryManageView({
                   </div>
                 )}
 
-                <p className="text-xs text-ink-soft mb-2.5">באיזו איכות להוריד?</p>
+                <p className="text-xs text-ink-soft mb-2.5">{t("באיזו איכות להוריד?")}</p>
                 <div className="space-y-1.5 mb-5">
                   <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-line bg-white text-sm">
                     <input type="radio" name="manage-download-quality" checked={downloadQuality === "full"} onChange={() => setDownloadQuality("full")} />
-                    איכות מלאה (הקבצים המקוריים)
+                    {t("איכות מלאה (הקבצים המקוריים)")}
                   </label>
                   <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-line bg-white text-sm">
                     <input type="radio" name="manage-download-quality" checked={downloadQuality === "web"} onChange={() => setDownloadQuality("web")} />
-                    איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)
+                    {t("איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)")}
                   </label>
                 </div>
 
-                {selectedPhotoIds.length === 0 && <p className="text-xs mb-3 font-semibold text-rose">יש לבחור לפחות לשונית אחת</p>}
+                {selectedPhotoIds.length === 0 && <p className="text-xs mb-3 font-semibold text-rose">{t("יש לבחור לפחות לשונית אחת")}</p>}
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
@@ -4112,10 +4135,10 @@ export default function GalleryManageView({
                     disabled={selectedPhotoIds.length === 0}
                     className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-40"
                   >
-                    הורדת {selectedPhotoIds.length} תמונות
+                    {t("הורדת {n} תמונות", { n: selectedPhotoIds.length })}
                   </button>
                   <button onClick={() => setDownloadOptions(null)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
-                    ביטול
+                    {t("ביטול")}
                   </button>
                 </div>
               </div>
@@ -4133,20 +4156,20 @@ export default function GalleryManageView({
               <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet">
                 {zipDone ? (
                   <>
-                    <h2 className="text-lg font-bold mb-2 font-display">{zipBatch.parts.every((p) => p.status === "failed") ? "ההורדה נכשלה" : "ההורדה הושלמה"}</h2>
+                    <h2 className="text-lg font-bold mb-2 font-display">{zipBatch.parts.every((p) => p.status === "failed") ? t("ההורדה נכשלה") : t("ההורדה הושלמה")}</h2>
                     <p className="text-sm text-ink-soft mb-4">
                       {zipBatch.parts.every((p) => p.status === "failed")
-                        ? "לא הצלחנו להכין את הקובץ. אפשר לנסות שוב."
+                        ? t("לא הצלחנו להכין את הקובץ. אפשר לנסות שוב.")
                         : zipBatch.parts.length > 1
-                          ? `כל ${zipBatch.parts.length} הקבצים ירדו למחשב שלך.`
-                          : "הקובץ ירד למחשב שלך."}
+                          ? t("כל {n} הקבצים ירדו למחשב שלך.", { n: zipBatch.parts.length })
+                          : t("הקובץ ירד למחשב שלך.")}
                     </p>
                     {zipBatch.parts.some((p) => p.status === "failed") && !zipBatch.parts.every((p) => p.status === "failed") && (
-                      <p className="text-xs text-rose mb-4">חלק מהתמונות לא נכללו בהורדה בגלל שגיאה. אפשר לנסות שוב.</p>
+                      <p className="text-xs text-rose mb-4">{t("חלק מהתמונות לא נכללו בהורדה בגלל שגיאה. אפשר לנסות שוב.")}</p>
                     )}
                     {zipBatch.parts.filter((p) => p.status === "ready" && p.downloadUrl).map((part) => (
                       <a key={part.partIndex} href={part.downloadUrl!} className="block text-sm font-semibold text-amber-deep underline mb-2">
-                        {zipBatch.parts.length > 1 ? `הורדת חלק ${part.partIndex + 1} שוב` : "הורדת הקובץ שוב"}
+                        {zipBatch.parts.length > 1 ? t("הורדת חלק {n} שוב", { n: part.partIndex + 1 }) : t("הורדת הקובץ שוב")}
                       </a>
                     ))}
                     <button
@@ -4156,32 +4179,32 @@ export default function GalleryManageView({
                       }}
                       className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white mt-2"
                     >
-                      סגירה
+                      {t("סגירה")}
                     </button>
                   </>
                 ) : (
                   <>
-                    <h2 className="text-lg font-bold mb-2 font-display">מכינים את ההורדה</h2>
+                    <h2 className="text-lg font-bold mb-2 font-display">{t("מכינים את ההורדה")}</h2>
                     <p className="text-sm text-ink-soft mb-4">
-                      {zipBatch.parts.length > 1 ? `ההורדה מחולקת ל-${zipBatch.parts.length} קבצי ZIP. כל חלק יורד אוטומטית ברגע שהוא מוכן.` : "קובץ ה-ZIP יורד אוטומטית ברגע שהוא מוכן."}
+                      {zipBatch.parts.length > 1 ? t("ההורדה מחולקת ל-{n} קבצי ZIP. כל חלק יורד אוטומטית ברגע שהוא מוכן.", { n: zipBatch.parts.length }) : t("קובץ ה-ZIP יורד אוטומטית ברגע שהוא מוכן.")}
                     </p>
                     <div className="space-y-2 mb-4">
                       {zipBatch.parts.map((part) => (
                         <div key={part.partIndex} className="flex items-center justify-between text-sm rounded-lg px-3 py-2.5 border border-line bg-white">
-                          <span>{zipBatch.parts.length > 1 ? `חלק ${part.partIndex + 1} מתוך ${part.partCount}` : "הקובץ"}</span>
+                          <span>{zipBatch.parts.length > 1 ? t("חלק {n} מתוך {total}", { n: part.partIndex + 1, total: part.partCount }) : t("הקובץ")}</span>
                           {part.status === "ready" ? (
-                            <span className="text-sage font-semibold">מוכן ✓</span>
+                            <span className="text-sage font-semibold">{t("מוכן ✓")}</span>
                           ) : part.status === "failed" ? (
-                            <span className="text-rose">נכשל</span>
+                            <span className="text-rose">{t("נכשל")}</span>
                           ) : (
-                            <span className="text-ink-soft font-data">{part.totalCount > 0 ? `${Math.round((part.processedCount / part.totalCount) * 100)}%` : "מכינים..."}</span>
+                            <span className="text-ink-soft font-data">{part.totalCount > 0 ? `${Math.round((part.processedCount / part.totalCount) * 100)}%` : t("מכינים...")}</span>
                           )}
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-ink-soft mb-3">אפשר לסגור את החלון, ההכנה וההורדה ימשיכו ברקע.</p>
+                    <p className="text-xs text-ink-soft mb-3">{t("אפשר לסגור את החלון, ההכנה וההורדה ימשיכו ברקע.")}</p>
                     <button onClick={() => setZipPanelOpen(false)} className="w-full rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
-                      סגירה
+                      {t("סגירה")}
                     </button>
                   </>
                 )}
@@ -4190,7 +4213,7 @@ export default function GalleryManageView({
           );
         })()}
 
-      {deletingPhotos && <IndeterminateProgressCard label="מוחק תמונות..." />}
+      {deletingPhotos && <IndeterminateProgressCard label={t("מוחק תמונות...")} />}
 
       {/* A delete failure used to only reach the shared `error` state, rendered nowhere near this
           action — this surfaces it right where the confirm dialog and progress spinner just were,
@@ -4202,13 +4225,13 @@ export default function GalleryManageView({
           onClick={() => setDeletePhotosError(null)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display text-rose">מחיקת התמונות נכשלה</h2>
+            <h2 className="text-lg font-bold mb-2 font-display text-rose">{t("מחיקת התמונות נכשלה")}</h2>
             <p className="text-sm text-ink-soft mb-5">{deletePhotosError}</p>
             <button
               onClick={() => setDeletePhotosError(null)}
               className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white"
             >
-              סגירה
+              {t("סגירה")}
             </button>
           </div>
         </div>
@@ -4222,12 +4245,12 @@ export default function GalleryManageView({
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-2 font-display">
-              {exportRangeFormat === "pdf" ? "ייצוא PDF" : exportRangeFormat === "jpg" ? "ייצוא JPG" : "ייצוא PSD"}, טווח עמודים
+              {exportRangeFormat === "pdf" ? t("ייצוא PDF") : exportRangeFormat === "jpg" ? t("ייצוא JPG") : t("ייצוא PSD")}, {t("טווח עמודים")}
             </h2>
-            <p className="text-sm text-ink-soft mb-4">בחר/י מאיזה עמוד עד איזה עמוד לייצא (מתוך {albumTotalPages} עמודים).</p>
+            <p className="text-sm text-ink-soft mb-4">{t("בחר/י מאיזה עמוד עד איזה עמוד לייצא (מתוך {n} עמודים).", { n: albumTotalPages })}</p>
             <div className="flex items-center gap-3 mb-5">
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-ink-soft mb-1">מעמוד</label>
+                <label className="block text-xs font-semibold text-ink-soft mb-1">{t("מעמוד")}</label>
                 <input
                   type="number"
                   min={1}
@@ -4237,9 +4260,9 @@ export default function GalleryManageView({
                   className="w-full rounded-lg border border-line px-3 py-2 text-sm bg-white text-ink"
                 />
               </div>
-              <span className="text-ink-soft mt-5">עד</span>
+              <span className="text-ink-soft mt-5">{t("עד")}</span>
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-ink-soft mb-1">עד עמוד</label>
+                <label className="block text-xs font-semibold text-ink-soft mb-1">{t("עד עמוד")}</label>
                 <input
                   type="number"
                   min={1}
@@ -4254,17 +4277,17 @@ export default function GalleryManageView({
                 — a PDF export never needs original-resolution images, so there's no longer a
                 choice to make here at all; the page-range picker above is untouched. */}
             {(exportRangeFormat === "jpg" || exportRangeFormat === "psd") && (
-              <p className="text-xs text-ink-soft mb-4">קובץ ה-ZIP יירד אוטומטית לתיקיית ההורדות במחשב שלך.</p>
+              <p className="text-xs text-ink-soft mb-4">{t("קובץ ה-ZIP יירד אוטומטית לתיקיית ההורדות במחשב שלך.")}</p>
             )}
             <div className="flex gap-2">
               <button onClick={confirmExportRange} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-                הורדה
+                {t("הורדה")}
               </button>
               <button
                 onClick={() => setExportRangeFormat(null)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -4279,7 +4302,7 @@ export default function GalleryManageView({
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-bold font-display">שליחה לבית דפוס</h2>
+              <h2 className="text-lg font-bold font-display">{t("שליחה לבית דפוס")}</h2>
               <button
                 onClick={() => setPrintHouseModalOpen(false)}
                 className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
@@ -4288,7 +4311,7 @@ export default function GalleryManageView({
               </button>
             </div>
             <p className="text-sm text-ink-soft mb-4">
-              קובצי ה-JPG של כל עמודי האלבום יישלחו כקישור להורדה, לכתובת שתבחר/י.
+              {t("קובצי ה-JPG של כל עמודי האלבום יישלחו כקישור להורדה, לכתובת שתבחר/י.")}
             </p>
             <PrintHouseEmailsSettings
               initialEmails={printHouseEmails}
@@ -4299,13 +4322,13 @@ export default function GalleryManageView({
               compact
             />
             <label className="block mt-4">
-              <span className="text-xs font-semibold text-ink-soft">הנחיות והערות לבית הדפוס (אופציונלי)</span>
+              <span className="text-xs font-semibold text-ink-soft">{t("הנחיות והערות לבית הדפוס (אופציונלי)")}</span>
               <textarea
                 value={printHouseNotes}
                 onChange={(e) => setPrintHouseNotes(e.target.value)}
                 rows={3}
                 maxLength={2000}
-                placeholder="למשל: נייר מט, כריכה קשה, 2 עותקים"
+                placeholder={t("למשל: נייר מט, כריכה קשה, 2 עותקים")}
                 className="mt-1.5 w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none"
               />
             </label>
@@ -4314,7 +4337,7 @@ export default function GalleryManageView({
               disabled={!printHouseSelectedId}
               className="w-full rounded-lg py-3 text-sm font-semibold mt-4 bg-ink text-white disabled:opacity-40"
             >
-              שליחה
+              {t("שליחה")}
             </button>
             <PrintHouseSendsHistory galleryId={gallery.id} />
           </div>
@@ -4324,7 +4347,7 @@ export default function GalleryManageView({
       {printHouseConfirmOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }}>
           <div className="w-full max-w-xs rounded-2xl p-5 bg-paper shadow-sheet text-center">
-            <p className="text-sm font-semibold mb-1">לשלוח את קובצי ה-JPG לבית הדפוס?</p>
+            <p className="text-sm font-semibold mb-1">{t("לשלוח את קובצי ה-JPG לבית הדפוס?")}</p>
             <p className="text-xs text-ink-soft mb-4" dir="ltr">
               {(() => {
                 const target = printHouseEmails.find((e) => e.id === printHouseSelectedId);
@@ -4333,13 +4356,13 @@ export default function GalleryManageView({
             </p>
             <div className="flex gap-2">
               <button onClick={sendToPrintHouseConfirmed} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
-                כן, שליחה
+                {t("כן, שליחה")}
               </button>
               <button
                 onClick={() => setPrintHouseConfirmOpen(false)}
                 className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -4359,15 +4382,15 @@ export default function GalleryManageView({
           onClick={() => setSaveBookTemplateOpen(false)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">שמירת תבנית אלבום</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("שמירת תבנית אלבום")}</h2>
             <p className="text-sm text-ink-soft mb-4">
-              מבנה העמודים הנוכחי ({albumSpreads.length} עמודים) יישמר בתור תבנית לשימוש חוזר, בפעם הבאה אפשר יהיה לבנות ממנה אלבום חדש בלחיצה אחת.
+              {t("מבנה העמודים הנוכחי ({n} עמודים) יישמר בתור תבנית לשימוש חוזר, בפעם הבאה אפשר יהיה לבנות ממנה אלבום חדש בלחיצה אחת.", { n: albumSpreads.length })}
             </p>
             <input
               autoFocus
               value={bookTemplateNameDraft}
               onChange={(e) => setBookTemplateNameDraft(e.target.value)}
-              placeholder="שם התבנית"
+              placeholder={t("שם התבנית")}
               className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-4"
             />
             <div className="flex gap-2">
@@ -4376,13 +4399,13 @@ export default function GalleryManageView({
                 disabled={!bookTemplateNameDraft.trim() || savingBookTemplate}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {savingBookTemplate ? "שומר..." : "שמירה"}
+                {savingBookTemplate ? t("שומר...") : t("שמירה")}
               </button>
               <button
                 onClick={() => setSaveBookTemplateOpen(false)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -4396,19 +4419,19 @@ export default function GalleryManageView({
           onClick={() => setConfirmNewAlbumOpen(false)}
         >
           <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">להתחיל אלבום חדש?</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("להתחיל אלבום חדש?")}</h2>
             <p className="text-sm text-ink-soft mb-5">
-              האלבום הנוכחי ({albumSpreads.length} עמודים) יימחק לצמיתות, כולל כל התמונות שסודרו וההערות של הלקוח/ה. הפעולה לא ניתנת לביטול.
+              {t("האלבום הנוכחי ({n} עמודים) יימחק לצמיתות, כולל כל התמונות שסודרו וההערות של הלקוח/ה. הפעולה לא ניתנת לביטול.", { n: albumSpreads.length })}
             </p>
             <div className="flex gap-2">
               <button onClick={startNewAlbum} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white">
-                כן, התחל מחדש
+                {t("כן, התחל מחדש")}
               </button>
               <button
                 onClick={() => setConfirmNewAlbumOpen(false)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -4422,9 +4445,9 @@ export default function GalleryManageView({
           onClick={() => !deletingFolder && setDeleteFolderConfirm(null)}
         >
           <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">למחוק את הלשונית &quot;{deleteFolderConfirm.name}&quot;?</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("למחוק את הלשונית \"{name}\"?", { name: deleteFolderConfirm.name })}</h2>
             <p className="text-sm text-ink-soft mb-5">
-              התמונות שבתוכה לא יימחקו, הן פשוט יעברו ל&quot;הכל&quot;. הלשונית עצמה תימחק לצמיתות ולא ניתן לשחזר אותה.
+              {t("התמונות שבתוכה לא יימחקו, הן פשוט יעברו ל\"הכל\". הלשונית עצמה תימחק לצמיתות ולא ניתן לשחזר אותה.")}
             </p>
             <div className="flex gap-2">
               <button
@@ -4432,14 +4455,14 @@ export default function GalleryManageView({
                 disabled={deletingFolder}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white disabled:opacity-60"
               >
-                {deletingFolder ? "מוחק..." : "כן, מחק את הלשונית"}
+                {deletingFolder ? t("מוחק...") : t("כן, מחק את הלשונית")}
               </button>
               <button
                 onClick={() => setDeleteFolderConfirm(null)}
                 disabled={deletingFolder}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -4468,22 +4491,22 @@ export default function GalleryManageView({
             onClick={downloadSelectedPhotos}
             className={`flex items-center gap-1 text-sm font-semibold whitespace-nowrap ${BTN_PRESS}`}
           >
-            הורדה
+            {t("הורדה")}
           </button>
           <button
             onClick={() => setDeleteSelectedConfirmOpen(true)}
             className={`flex items-center gap-1 text-sm font-semibold whitespace-nowrap text-rose ${BTN_PRESS}`}
           >
-            מחיקה
+            {t("מחיקה")}
           </button>
           <button onClick={selectAllVisible} className={`text-sm font-semibold whitespace-nowrap ${BTN_PRESS}`}>
-            בחירת הכל
+            {t("בחירת הכל")}
           </button>
-          <span className="text-sm font-data font-semibold whitespace-nowrap">{selectedIds.size} נבחרו</span>
+          <span className="text-sm font-data font-semibold whitespace-nowrap">{t("{n} נבחרו", { n: selectedIds.size })}</span>
           <button
             onClick={clearSelection}
-            aria-label="ביטול בחירה"
-            title="ביטול בחירה"
+            aria-label={t("ביטול בחירה")}
+            title={t("ביטול בחירה")}
             className={`shrink-0 h-6 w-6 rounded-full bg-white/15 flex items-center justify-center text-xs ${BTN_PRESS}`}
           >
             <IconAlbumClose className="h-3 w-3" />
@@ -4586,18 +4609,18 @@ export default function GalleryManageView({
             className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold font-display mb-4">מצגת תמונות</h2>
+            <h2 className="text-lg font-bold font-display mb-4">{t("מצגת תמונות")}</h2>
             <p className="text-xs text-ink-soft mb-3.5">
-              בוחרים אילו תמונות ייכנסו למצגת ללקוח, היא תוצג במסך מלא עם אפקטים רנדומליים.
+              {t("בוחרים אילו תמונות ייכנסו למצגת ללקוח, היא תוצג במסך מלא עם אפקטים רנדומליים.")}
             </p>
 
             <div className="flex items-center justify-between mb-2.5">
-              <p className="text-xs text-ink-soft">בחירת תמונות</p>
+              <p className="text-xs text-ink-soft">{t("בחירת תמונות")}</p>
               {slideshowPhotoIds.size > 0 && (
                 <button
                   onClick={() => setSlideshowPreviewOpen(true)}
-                  aria-label="תצוגה מקדימה של המצגת"
-                  title="תצוגה מקדימה"
+                  aria-label={t("תצוגה מקדימה של המצגת")}
+                  title={t("תצוגה מקדימה")}
                   className={`h-8 w-8 rounded-full flex items-center justify-center bg-amber-deep text-white ${BTN_PRESS}`}
                 >
                   <PlayIcon />
@@ -4632,7 +4655,7 @@ export default function GalleryManageView({
                 );
               })}
             </div>
-            <p className="text-[11px] text-ink-soft mb-5">{slideshowPhotoIds.size} תמונות נבחרו</p>
+            <p className="text-[11px] text-ink-soft mb-5">{t("{n} תמונות נבחרו", { n: slideshowPhotoIds.size })}</p>
 
             {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
             <div className="flex gap-2">
@@ -4641,13 +4664,13 @@ export default function GalleryManageView({
                 disabled={savingSlideshow}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {savingSlideshow ? "שומר..." : "שמירה"}
+                {savingSlideshow ? t("שומר...") : t("שמירה")}
               </button>
               <button
                 onClick={() => setSlideshowManageOpen(false)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -4688,11 +4711,11 @@ export default function GalleryManageView({
                 <IconRotateDevice size={28} />
               </div>
               <div className="text-white">
-                <p className="text-lg font-bold font-display mb-1">סובבו את המכשיר למצב אופקי</p>
-                <p className="text-sm opacity-80">כלי עיצוב האלבום פועל רק במצב אופקי, סובבו את הטלפון כדי להמשיך</p>
+                <p className="text-lg font-bold font-display mb-1">{t("סובבו את המכשיר למצב אופקי")}</p>
+                <p className="text-sm opacity-80">{t("כלי עיצוב האלבום פועל רק במצב אופקי, סובבו את הטלפון כדי להמשיך")}</p>
               </div>
               <button onClick={() => setAlbumManageOpen(false)} className="mt-1 h-9 px-4 rounded-full bg-white text-ink text-sm font-semibold">
-                סגירה
+                {t("סגירה")}
               </button>
             </div>
           ) : (
@@ -4725,7 +4748,7 @@ export default function GalleryManageView({
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            <ErrorBoundary label="עיצוב אלבום">
+            <ErrorBoundary label={t("עיצוב אלבום")}>
             {/* A `position: sticky` header used to sit inside the same scrolling container as the
                 body below it — real iOS Safari/WKWebView has a long-documented bug where a sticky
                 (or fixed) element's PAINTED position updates correctly on scroll but its touch
@@ -4739,11 +4762,11 @@ export default function GalleryManageView({
                 bug to attach to. */}
             <div className="shrink-0 px-5 lg:px-7 pt-5 lg:pt-7 pb-4 mb-2 bg-paper flex items-center justify-between flex-wrap gap-2 border-b border-line">
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold font-display">עיצוב אלבום</h2>
+                <h2 className="text-lg font-bold font-display">{t("עיצוב אלבום")}</h2>
                 <button
                   onClick={() => setAlbumGuideOpen(true)}
-                  aria-label="מדריך לכלי עיצוב האלבום"
-                  title="מדריך לכלי עיצוב האלבום"
+                  aria-label={t("מדריך לכלי עיצוב האלבום")}
+                  title={t("מדריך לכלי עיצוב האלבום")}
                   className={`h-6 w-6 rounded-full flex items-center justify-center bg-chip text-ink-soft text-[11px] font-bold ${BTN_PRESS}`}
                 >
                   ?
@@ -4753,7 +4776,7 @@ export default function GalleryManageView({
                     onClick={() => setConfirmNewAlbumOpen(true)}
                     className={`${isAlbumPhone ? "text-[13px] font-semibold px-3.5 py-2" : "text-xs font-semibold px-3 py-1.5"} rounded-full bg-white border border-line text-ink`}
                   >
-                    + אלבום חדש
+                    + {t("אלבום חדש")}
                   </button>
                 )}
               </div>
@@ -4764,7 +4787,7 @@ export default function GalleryManageView({
                     disabled={creatingSpread}
                     className={`${isAlbumPhone ? "text-[13px] font-semibold px-3.5 py-2" : "text-xs font-semibold px-3 py-1.5"} rounded-full bg-white border border-line text-ink disabled:opacity-60`}
                   >
-                    {creatingSpread ? "יוצר..." : "+ עמוד חדש"}
+                    {creatingSpread ? t("יוצר...") : t("+ עמוד חדש")}
                   </button>
                 )}
                 {album && albumSpreads.length > 0 && (
@@ -4773,7 +4796,7 @@ export default function GalleryManageView({
                     className={`${isAlbumPhone ? "text-[13px] font-semibold px-3.5 py-2" : "text-xs font-semibold px-3 py-1.5"} rounded-full bg-white border border-line text-ink flex items-center gap-1`}
                   >
                     <IconAlbumSave size={12} />
-                    שמירת מבנה האלבום כתבנית
+                    {t("שמירת מבנה האלבום כתבנית")}
                   </button>
                 )}
                 {album && (
@@ -4787,7 +4810,7 @@ export default function GalleryManageView({
                     )}
                     <span className="relative z-10 flex items-center gap-1">
                       <IconPdf size={12} />
-                      {exportingAlbumPdf ? "מייצא..." : "ייצוא PDF"}
+                      {exportingAlbumPdf ? t("מייצא...") : t("ייצוא PDF")}
                     </span>
                   </button>
                 )}
@@ -4802,7 +4825,7 @@ export default function GalleryManageView({
                     )}
                     <span className="relative z-10 flex items-center gap-1">
                       <IconImage size={12} />
-                      {exportingAlbumJpg ? "מייצא..." : "ייצוא JPG (כל העמודים)"}
+                      {exportingAlbumJpg ? t("מייצא...") : t("ייצוא JPG (כל העמודים)")}
                     </span>
                   </button>
                 )}
@@ -4813,7 +4836,7 @@ export default function GalleryManageView({
                     className={`relative overflow-hidden ${isAlbumPhone ? "text-[13px] font-semibold px-3.5 py-2" : "text-xs font-semibold px-3 py-1.5"} rounded-full bg-white border border-line text-ink disabled:opacity-60 flex items-center gap-1`}
                   >
                     <IconImage size={12} />
-                    {printHouseOpActive ? "שולח..." : "שליחה לבית דפוס"}
+                    {printHouseOpActive ? t("שולח...") : t("שליחה לבית דפוס")}
                   </button>
                 )}
                 {album && (
@@ -4827,7 +4850,7 @@ export default function GalleryManageView({
                     )}
                     <span className="relative z-10 flex items-center gap-1">
                       <IconPalette size={12} />
-                      {exportingAlbumPsd ? "מייצא..." : "ייצוא PSD (פוטושופ)"}
+                      {exportingAlbumPsd ? t("מייצא...") : t("ייצוא PSD (פוטושופ)")}
                     </span>
                   </button>
                 )}
@@ -4837,13 +4860,13 @@ export default function GalleryManageView({
                     disabled={savingAlbum || albumSpreads.length === 0}
                     className={`${isAlbumPhone ? "text-[13px] font-semibold px-3.5 py-2" : "text-xs font-semibold px-3 py-1.5"} rounded-full bg-amber-deep text-white disabled:opacity-60`}
                   >
-                    {savingAlbum ? "שולח..." : album.status === "draft" ? "שליחה לאישור הלקוח/ה" : "שליחה מחדש לאישור"}
+                    {savingAlbum ? t("שולח...") : album.status === "draft" ? t("שליחה לאישור הלקוח/ה") : t("שליחה מחדש לאישור")}
                   </button>
                 )}
                 <button
                   onClick={() => setAlbumManageFullscreen((v) => !v)}
-                  aria-label={albumManageFullscreen ? "הקטנת החלון" : "הגדלה למסך מלא"}
-                  title={albumManageFullscreen ? "הקטנת החלון" : "הגדלה למסך מלא"}
+                  aria-label={albumManageFullscreen ? t("הקטנת החלון") : t("הגדלה למסך מלא")}
+                  title={albumManageFullscreen ? t("הקטנת החלון") : t("הגדלה למסך מלא")}
                   className="hidden lg:flex h-8 w-8 rounded-full items-center justify-center bg-white border border-line text-ink-soft"
                 >
                   <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -4864,7 +4887,7 @@ export default function GalleryManageView({
             {albumLoading ? (
               <div className="flex flex-col items-center justify-center gap-3 py-10">
                 <div className="h-8 w-8 rounded-full border-2 border-line border-t-ink animate-spin" />
-                <p className="text-sm text-ink-soft">טוען...</p>
+                <p className="text-sm text-ink-soft">{t("טוען...")}</p>
               </div>
             ) : !album ? (
               // Album creation (all three paths below: blank page, starter template, saved
@@ -4874,7 +4897,7 @@ export default function GalleryManageView({
               !nonBasicTierAllowed ? (
                 <div className="rounded-xl p-5 text-center bg-chip">
                   <p className="text-sm text-ink-soft leading-relaxed">
-                    עורך האלבומים זמין ממסלול פרו ומעלה, שדרגו מסלול בהגדרות כדי להתחיל לעצב אלבום לגלריה זו.
+                    {t("עורך האלבומים זמין ממסלול פרו ומעלה, שדרגו מסלול בהגדרות כדי להתחיל לעצב אלבום לגלריה זו.")}
                   </p>
                 </div>
               ) : autoDesignOpen ? (
@@ -4896,20 +4919,20 @@ export default function GalleryManageView({
                 <button
                   type="button"
                   onClick={openAutoDesign}
-                  className="w-full text-right rounded-lg border border-ink bg-white p-3.5 mb-4 flex items-center justify-between gap-3"
+                  className="w-full text-start rounded-lg border border-ink bg-white p-3.5 mb-4 flex items-center justify-between gap-3"
                 >
                   <span>
-                    <span className="block text-sm font-semibold">עיצוב אוטומטי של כל האלבום</span>
-                    <span className="block text-xs text-ink-soft mt-0.5">בוחרים מידות, סגנון ומשפחה, והאלבום כולו מעוצב לבד</span>
+                    <span className="block text-sm font-semibold">{t("עיצוב אוטומטי של כל האלבום")}</span>
+                    <span className="block text-xs text-ink-soft mt-0.5">{t("בוחרים מידות, סגנון ומשפחה, והאלבום כולו מעוצב לבד")}</span>
                   </span>
-                  <span className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold bg-ink text-white">התחלה</span>
+                  <span className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold bg-ink text-white">{t("התחלה")}</span>
                 </button>
                 <p className="text-xs text-ink-soft mb-3.5">
-                  קודם כל, מה מידות האלבום להדפסה? תתחילו מעמוד ריק אחד, ומשם תוכלו לבחור תבנית מוכנה או לעצב בעצמכם, ולהוסיף עוד עמודים בהמשך.
+                  {t("קודם כל, מה מידות האלבום להדפסה? תתחילו מעמוד ריק אחד, ומשם תוכלו לבחור תבנית מוכנה או לעצב בעצמכם, ולהוסיף עוד עמודים בהמשך.")}
                 </p>
                 <div className="flex items-end gap-2 flex-wrap mb-3.5">
                   <div>
-                    <p className="text-xs text-ink-soft mb-2">מידה נפוצה: בחירה ממלאת את השדות למטה, ואפשר גם לשנות אותם ידנית</p>
+                    <p className="text-xs text-ink-soft mb-2">{t("מידה נפוצה: בחירה ממלאת את השדות למטה, ואפשר גם לשנות אותם ידנית")}</p>
                     <select
                       value={ALBUM_SIZE_PRESETS.find((p) => p.width === albumSizeDraft.width && p.height === albumSizeDraft.height)?.label ?? ""}
                       onChange={(e) => {
@@ -4919,7 +4942,7 @@ export default function GalleryManageView({
                       style={{ width: "15vw", minWidth: 110 }}
                       className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
                     >
-                      <option value="">בחירה...</option>
+                      <option value="">{t("בחירה...")}</option>
                       {ALBUM_SIZE_PRESETS.map((preset) => (
                         <option key={preset.label} value={preset.label}>
                           {preset.label}
@@ -4928,7 +4951,7 @@ export default function GalleryManageView({
                     </select>
                   </div>
                   <div>
-                    <p className="text-xs text-ink-soft mb-2">תבנית מוכנה (לא חובה, אפשר גם עמוד ריק ולעצב בעצמכם)</p>
+                    <p className="text-xs text-ink-soft mb-2">{t("תבנית מוכנה (לא חובה, אפשר גם עמוד ריק ולעצב בעצמכם)")}</p>
                     <select
                       value={selectedStarterId ? `starter:${selectedStarterId}` : selectedSavedTemplateId ? `saved:${selectedSavedTemplateId}` : ""}
                       onChange={(e) => {
@@ -4947,16 +4970,16 @@ export default function GalleryManageView({
                       style={{ width: "15vw", minWidth: 150 }}
                       className="rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
                     >
-                      <option value="">בלי תבנית: עמוד ריק</option>
-                      <optgroup label="תבניות מוכנות בסגנון אלבום">
-                        {STARTER_BOOK_TEMPLATES.map((t) => (
-                          <option key={t.id} value={`starter:${t.id}`}>
-                            {t.name}
+                      <option value="">{t("בלי תבנית: עמוד ריק")}</option>
+                      <optgroup label={t("תבניות מוכנות בסגנון אלבום")}>
+                        {STARTER_BOOK_TEMPLATES.map((tpl) => (
+                          <option key={tpl.id} value={`starter:${tpl.id}`}>
+                            {t(tpl.name)}
                           </option>
                         ))}
                       </optgroup>
                       {albumBookTemplates.length > 0 && (
-                        <optgroup label="התבניות השמורות שלי">
+                        <optgroup label={t("התבניות השמורות שלי")}>
                           {albumBookTemplates.map((t) => (
                             <option key={t.id} value={`saved:${t.id}`}>
                               {t.name}
@@ -4978,7 +5001,7 @@ export default function GalleryManageView({
                         onChange={(e) => setStarterPageCount(Math.max(1, Number(e.target.value) || 1))}
                         className="w-16 rounded-lg border border-line px-2 py-1.5 text-sm text-center bg-white"
                       />
-                      <span className="text-xs text-ink-soft">מספר עמודים</span>
+                      <span className="text-xs text-ink-soft">{t("מספר עמודים")}</span>
                       <input
                         type="number"
                         min={1}
@@ -4986,14 +5009,14 @@ export default function GalleryManageView({
                         onChange={(e) => setStarterPhotoCount(Math.max(1, Number(e.target.value) || 1))}
                         className="w-16 rounded-lg border border-line px-2 py-1.5 text-sm text-center bg-white"
                       />
-                      <span className="text-xs text-ink-soft">סה״כ תמונות</span>
+                      <span className="text-xs text-ink-soft">{t("סה״כ תמונות")}</span>
                     </div>
                     <button
                       onClick={() => buildAlbumFromStarterTemplate(selectedStarterId, starterPageCount, starterPhotoCount)}
                       disabled={buildingAlbumBook}
                       className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                     >
-                      {buildingAlbumBook ? "יוצר את האלבום..." : "יצירת האלבום מהתבנית"}
+                      {buildingAlbumBook ? t("יוצר את האלבום...") : t("יצירת האלבום מהתבנית")}
                     </button>
                   </div>
                 )}
@@ -5005,20 +5028,20 @@ export default function GalleryManageView({
                     return (
                       <div className="rounded-lg p-2.5 bg-chip space-y-2.5 mb-3.5">
                         <p className="text-xs text-ink-soft">
-                          {savedTemplate.pages.length} עמודים, {ALBUM_STYLE_OPTIONS.find((s) => s.id === savedTemplate.style)?.label ?? savedTemplate.style}
+                          {t("{n} עמודים", { n: savedTemplate.pages.length })}, {t(ALBUM_STYLE_OPTIONS.find((s) => s.id === savedTemplate.style)?.label ?? savedTemplate.style)}
                         </p>
                         <button
                           onClick={() => buildAlbumFromBookTemplate(savedTemplate)}
                           disabled={buildingAlbumBook}
                           className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
                         >
-                          {buildingAlbumBook ? "יוצר את האלבום..." : "יצירת האלבום מהתבנית"}
+                          {buildingAlbumBook ? t("יוצר את האלבום...") : t("יצירת האלבום מהתבנית")}
                         </button>
                       </div>
                     );
                   })()}
 
-                <p className="text-xs text-ink-soft mb-2">מידות האלבום (ס״מ)</p>
+                <p className="text-xs text-ink-soft mb-2">{t("מידות האלבום (ס״מ)")}</p>
                 <div className="flex items-center gap-2 mb-2.5">
                   <input
                     type="number"
@@ -5027,7 +5050,7 @@ export default function GalleryManageView({
                     onChange={(e) => setAlbumSizeDraft((prev) => ({ ...prev, width: Number(e.target.value) || prev.width }))}
                     className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
                   />
-                  <span className="text-xs text-ink-soft">רוחב</span>
+                  <span className="text-xs text-ink-soft">{t("רוחב")}</span>
                   <span className="text-ink-soft">×</span>
                   <input
                     type="number"
@@ -5036,7 +5059,7 @@ export default function GalleryManageView({
                     onChange={(e) => setAlbumSizeDraft((prev) => ({ ...prev, height: Number(e.target.value) || prev.height }))}
                     className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
                   />
-                  <span className="text-xs text-ink-soft">גובה</span>
+                  <span className="text-xs text-ink-soft">{t("גובה")}</span>
                 </div>
                 <div className="flex items-center gap-2 mb-5">
                   <input
@@ -5047,12 +5070,12 @@ export default function GalleryManageView({
                     onChange={(e) => setAlbumSizeDraft((prev) => ({ ...prev, margin: Number(e.target.value) || 0 }))}
                     className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
                   />
-                  <span className="text-xs text-ink-soft">מרחק המסגרת הירוקה מהקצה (ס״מ)</span>
+                  <span className="text-xs text-ink-soft">{t("מרחק המסגרת הירוקה מהקצה (ס״מ)")}</span>
                 </div>
 
                 <div className="space-y-4">
                   {error && <p className="text-xs text-rose">{error}</p>}
-                  {buildingAlbumBook && <p className="text-xs text-ink-soft text-center">בונה את האלבום...</p>}
+                  {buildingAlbumBook && <p className="text-xs text-ink-soft text-center">{t("בונה את האלבום...")}</p>}
 
                   <div className="flex gap-2">
                     <button
@@ -5060,14 +5083,14 @@ export default function GalleryManageView({
                       disabled={buildingAlbumBook}
                       className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-60"
                     >
-                      עיצוב אישי: התחלה מדף ריק
+                      {t("עיצוב אישי: התחלה מדף ריק")}
                     </button>
                     <button
                       onClick={() => setAlbumManageOpen(false)}
                       disabled={buildingAlbumBook}
                       className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
                     >
-                      חזרה
+                      {t("חזרה")}
                     </button>
                   </div>
                 </div>
@@ -5088,17 +5111,17 @@ export default function GalleryManageView({
                       color: album.status === "approved" ? "var(--color-sage)" : album.status === "changes_requested" ? "var(--color-rose)" : "var(--color-ink-soft)",
                     }}
                   >
-                    {album.status === "draft" && "טיוטה. עדיין לא נשלח ללקוח/ה"}
-                    {album.status === "sent" && "נשלח ללקוח/ה: ממתין לאישור"}
+                    {album.status === "draft" && t("טיוטה. עדיין לא נשלח ללקוח/ה")}
+                    {album.status === "sent" && t("נשלח ללקוח/ה: ממתין לאישור")}
                     {album.status === "approved" && (
                       <span className="inline-flex items-center gap-1">
                         <IconAlbumCheck size={12} />
-                        האלבום אושר ע&quot;י הלקוח/ה
+                        {t("האלבום אושר ע\"י הלקוח/ה")}
                       </span>
                     )}
-                    {album.status === "changes_requested" && "הלקוח/ה ביקש/ה שינויים, ראו הערות למטה"}
+                    {album.status === "changes_requested" && t("הלקוח/ה ביקש/ה שינויים, ראו הערות למטה")}
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap" title="גודל האלבום להדפסה (ס״מ), לצורך ייצוא JPG / PSD">
+                  <div className="flex items-center gap-2 flex-wrap" title={t("גודל האלבום להדפסה (ס״מ), לצורך ייצוא JPG / PSD")}>
                     <input
                       type="number"
                       min={1}
@@ -5106,7 +5129,7 @@ export default function GalleryManageView({
                       onChange={(e) => updateAlbumSize(Number(e.target.value) || album.width_cm, album.height_cm)}
                       className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
                     />
-                    <span className="text-xs text-ink-soft">רוחב</span>
+                    <span className="text-xs text-ink-soft">{t("רוחב")}</span>
                     <span className="text-ink-soft">×</span>
                     <input
                       type="number"
@@ -5115,7 +5138,7 @@ export default function GalleryManageView({
                       onChange={(e) => updateAlbumSize(album.width_cm, Number(e.target.value) || album.height_cm)}
                       className="w-20 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
                     />
-                    <span className="text-xs text-ink-soft">גובה</span>
+                    <span className="text-xs text-ink-soft">{t("גובה")}</span>
                     <span className="w-px self-stretch bg-line mx-1" />
                     <input
                       type="number"
@@ -5125,14 +5148,14 @@ export default function GalleryManageView({
                       onChange={(e) => updateAlbumMargin(Number(e.target.value) || 0)}
                       className="w-16 rounded-lg border border-line px-2.5 py-2 text-sm text-center"
                     />
-                    <span className="text-xs text-ink-soft">מרחק המסגרת הירוקה מהקצה (ס״מ)</span>
-                    {savingAlbumSize && <span className="text-[11px] text-ink-soft">שומר...</span>}
+                    <span className="text-xs text-ink-soft">{t("מרחק המסגרת הירוקה מהקצה (ס״מ)")}</span>
+                    {savingAlbumSize && <span className="text-[11px] text-ink-soft">{t("שומר...")}</span>}
                   </div>
                 </div>
 
                 <div className="flex items-start gap-4 mb-4 flex-wrap">
                   <div className="relative shrink-0" style={{ width: "18cm" }}>
-                    <p className="text-xs text-ink-soft mb-2">כריכה</p>
+                    <p className="text-xs text-ink-soft mb-2">{t("כריכה")}</p>
                     <button
                       ref={coverButtonRef}
                       onClick={() => {
@@ -5143,7 +5166,7 @@ export default function GalleryManageView({
                       disabled={creatingSpread}
                       className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink disabled:opacity-50"
                     >
-                      יצירת כריכה
+                      {t("יצירת כריכה")}
                     </button>
                   </div>
                   {(coverPanelOpen || coverPanelClosing) && coverPanelRect && (
@@ -5167,7 +5190,7 @@ export default function GalleryManageView({
                               disabled={creatingSpread}
                               className="w-full rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink disabled:opacity-50"
                             >
-                              לפי מידות האלבום
+                              {t("לפי מידות האלבום")}
                             </button>
                             <button
                               onClick={() => {
@@ -5178,7 +5201,7 @@ export default function GalleryManageView({
                               }}
                               className="w-full rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink"
                             >
-                              מידה מותאמת
+                              {t("מידה מותאמת")}
                             </button>
                           </div>
                         ) : (
@@ -5207,7 +5230,7 @@ export default function GalleryManageView({
                                 }}
                                 className="w-16 rounded-lg border border-line px-2 py-1.5 text-xs text-center"
                               />
-                              <span className="text-[11px] text-ink-soft">ס״מ</span>
+                              <span className="text-[11px] text-ink-soft">{t("ס״מ")}</span>
                             </div>
                             <label className="flex items-center gap-1.5 text-[11px] text-ink-soft cursor-pointer">
                               <input
@@ -5224,14 +5247,14 @@ export default function GalleryManageView({
                                 }}
                                 className="h-3.5 w-3.5"
                               />
-                              ריבוע (רוחב וגובה זהים)
+                              {t("ריבוע (רוחב וגובה זהים)")}
                             </label>
                             <button
                               onClick={() => createCoverSpread(coverCustomWidth, coverSquareLock ? coverCustomWidth : coverCustomHeight)}
                               disabled={creatingSpread}
                               className="w-full rounded-lg py-2 text-xs font-semibold bg-ink text-white disabled:opacity-50"
                             >
-                              {creatingSpread ? "יוצר..." : "יצירת כריכה"}
+                              {creatingSpread ? t("יוצר...") : t("יצירת כריכה")}
                             </button>
                           </div>
                         )}
@@ -5241,12 +5264,12 @@ export default function GalleryManageView({
                 </div>
 
                 {albumSpreads.length === 0 && (
-                  <p className="text-sm text-ink-soft text-center py-4 mb-2">אין עדיין עמודים באלבום.</p>
+                  <p className="text-sm text-ink-soft text-center py-4 mb-2">{t("אין עדיין עמודים באלבום.")}</p>
                 )}
                 {albumSpreads.length > 0 && (
                   <>
                     <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                      <p className="text-xs font-bold text-ink-soft">תצוגה מקדימה</p>
+                      <p className="text-xs font-bold text-ink-soft">{t("תצוגה מקדימה")}</p>
                       <button
                         type="button"
                         onClick={() => {
@@ -5255,16 +5278,16 @@ export default function GalleryManageView({
                         }}
                         className={`rounded-full px-3 py-1.5 text-xs font-semibold border ${photoSwapMode ? "bg-amber-deep text-white border-amber-deep" : "bg-white text-ink border-line"}`}
                       >
-                        {photoSwapMode ? "סיום החלפת תמונות" : "⇄ החלפת תמונות בין עמודים"}
+                        {photoSwapMode ? t("סיום החלפת תמונות") : t("⇄ החלפת תמונות בין עמודים")}
                       </button>
                     </div>
                     {photoSwapMode && (
                       <p className="text-xs text-ink mb-2 rounded-lg bg-amber-bg px-3 py-2">
                         {photoSwapping
-                          ? "שומר את ההחלפה..."
+                          ? t("שומר את ההחלפה...")
                           : photoSwapPick
-                            ? "עכשיו לחצו על התמונה שאיתה להחליף, בכל עמוד. לחיצה שוב על אותה תמונה מבטלת."
-                            : "לחצו על תמונה באחד העמודים, ואז על התמונה שאיתה להחליף."}
+                            ? t("עכשיו לחצו על התמונה שאיתה להחליף, בכל עמוד. לחיצה שוב על אותה תמונה מבטלת.")
+                            : t("לחצו על תמונה באחד העמודים, ואז על התמונה שאיתה להחליף.")}
                       </p>
                     )}
                     <div className="grid grid-cols-5 gap-1.5 mb-4">
@@ -5310,7 +5333,7 @@ export default function GalleryManageView({
                                       key={el.id}
                                       type="button"
                                       disabled={photoSwapping}
-                                      aria-label={picked ? "התמונה שנבחרה להחלפה" : "בחירת תמונה להחלפה"}
+                                      aria-label={picked ? t("התמונה שנבחרה להחלפה") : t("בחירת תמונה להחלפה")}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (picked) return setPhotoSwapPick(null);
@@ -5333,7 +5356,7 @@ export default function GalleryManageView({
                           <button
                             onClick={() => removeSpread(spread.id)}
                             className="absolute top-1 left-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center"
-                            title="מחיקת עמוד"
+                            title={t("מחיקת עמוד")}
                           >
                             <IconAlbumClose size={9} />
                           </button>
@@ -5342,10 +5365,10 @@ export default function GalleryManageView({
                               onClick={() => redesignSpread(spread)}
                               disabled={redesigning !== null}
                               className="w-full flex items-center justify-center gap-1 py-1.5 text-[11px] font-bold text-white bg-amber-deep hover:opacity-90 disabled:opacity-60"
-                              title="עיצוב מחדש של העמוד עם אותן התמונות: כל לחיצה פריסה אחרת, בלי לחזור על פריסות שכבר הוצגו"
+                              title={t("עיצוב מחדש של העמוד עם אותן התמונות: כל לחיצה פריסה אחרת, בלי לחזור על פריסות שכבר הוצגו")}
                             >
                               <span className={redesigning === spread.id ? "inline-block animate-spin" : "inline-block"}>↻</span>
-                              עיצוב מחדש
+                              {t("עיצוב מחדש")}
                             </button>
                           )}
                           {commentCount > 0 && (
@@ -5364,7 +5387,7 @@ export default function GalleryManageView({
                 {albumSpreads.length % 2 !== 0 && (
                   <p className="text-[11px] text-amber-deep mb-2.5 flex items-start gap-1.5">
                     <IconWarning size={13} />
-                    <span>מספר אי-זוגי של עמודים ({albumSpreads.length}), חלק ממעבדות הדפוס דורשות מספר זוגי. מומלץ להוסיף או להסיר עמוד אחד.</span>
+                    <span>{t("מספר אי-זוגי של עמודים ({n}), חלק ממעבדות הדפוס דורשות מספר זוגי. מומלץ להוסיף או להסיר עמוד אחד.", { n: albumSpreads.length })}</span>
                   </p>
                 )}
 
@@ -5392,7 +5415,7 @@ export default function GalleryManageView({
       {isAlbumPhone && canvasEditorTarget && customOrnamentsLoading && (
         <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center gap-3" style={{ background: "var(--color-paper)" }}>
           <div className="h-8 w-8 rounded-full border-2 border-line border-t-ink animate-spin" />
-          <p className="text-sm text-ink-soft">טוען את הכלי...</p>
+          <p className="text-sm text-ink-soft">{t("טוען את הכלי...")}</p>
         </div>
       )}
       {canvasEditorTarget &&
@@ -5466,11 +5489,11 @@ export default function GalleryManageView({
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {shareView === "main" ? (
               <>
-                <h2 className="text-lg font-bold font-display mb-4">שיתוף הגלריה</h2>
+                <h2 className="text-lg font-bold font-display mb-4">{t("שיתוף הגלריה")}</h2>
 
                 {showFolderPicker && (
                   <div className="mb-5">
-                    <p className="text-xs text-ink-soft mb-2.5">אילו לשוניות לשתף?</p>
+                    <p className="text-xs text-ink-soft mb-2.5">{t("אילו לשוניות לשתף?")}</p>
                     <div className="space-y-1.5">
                       {folders.map((folder) => (
                         <label
@@ -5492,24 +5515,24 @@ export default function GalleryManageView({
                             checked={shareSelectedFolders.has(NO_FOLDER_KEY)}
                             onChange={() => toggleShareFolder(NO_FOLDER_KEY)}
                           />
-                          כללי (ללא לשונית)
+                          {t("כללי (ללא לשונית)")}
                         </label>
                       )}
                     </div>
-                    {shareDisabled && <p className="text-xs text-rose mt-2">יש לבחור לפחות לשונית אחת לשיתוף</p>}
+                    {shareDisabled && <p className="text-xs text-rose mt-2">{t("יש לבחור לפחות לשונית אחת לשיתוף")}</p>}
                   </div>
                 )}
 
                 <div className="mb-5">
-                  <p className="text-xs text-ink-soft mb-2.5">באיזו איכות לשתף?</p>
+                  <p className="text-xs text-ink-soft mb-2.5">{t("באיזו איכות לשתף?")}</p>
                   <div className="space-y-1.5">
                     <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
                       <input type="radio" name="manage-share-quality" checked={shareQuality === "full"} onChange={() => setShareQuality("full")} />
-                      איכות מלאה (הקבצים המקוריים)
+                      {t("איכות מלאה (הקבצים המקוריים)")}
                     </label>
                     <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
                       <input type="radio" name="manage-share-quality" checked={shareQuality === "web"} onChange={() => setShareQuality("web")} />
-                      איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)
+                      {t("איכות מותאמת לרשת, קובץ קטן יותר (עד כ-3MB לתמונה)")}
                     </label>
                   </div>
                 </div>
@@ -5520,46 +5543,46 @@ export default function GalleryManageView({
                     disabled={shareDisabled}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-sage-bg text-sage disabled:opacity-40"
                   >
-                    וואטסאפ
+                    {t("וואטסאפ")}
                   </button>
                   <button
                     onClick={shareViaQr}
                     disabled={shareDisabled}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink disabled:opacity-40"
                   >
-                    קוד QR
+                    {t("קוד QR")}
                   </button>
                   <button
                     onClick={shareViaOther}
                     disabled={shareDisabled}
                     className="w-full rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink disabled:opacity-40"
                   >
-                    אחר
+                    {t("אחר")}
                   </button>
                 </div>
                 <button onClick={() => setShareOpen(false)} className="w-full text-center mt-4 text-xs text-ink-soft">
-                  ביטול
+                  {t("ביטול")}
                 </button>
               </>
             ) : (
               <>
-                <h2 className="text-lg font-bold font-display mb-4">קוד QR לגלריה</h2>
+                <h2 className="text-lg font-bold font-display mb-4">{t("קוד QR לגלריה")}</h2>
                 {qrDataUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qrDataUrl} alt="קוד QR לגלריה" className="w-full rounded-2xl mb-4" />
+                  <img src={qrDataUrl} alt={t("קוד QR לגלריה")} className="w-full rounded-2xl mb-4" />
                 )}
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShareView("main")}
                     className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
                   >
-                    חזרה
+                    {t("חזרה")}
                   </button>
                   <button
                     onClick={() => setShareOpen(false)}
                     className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white"
                   >
-                    סגירה
+                    {t("סגירה")}
                   </button>
                 </div>
               </>
@@ -5583,25 +5606,25 @@ export default function GalleryManageView({
                 ✓
               </span>
               <div>
-                <div className="text-base font-bold font-display">הגלריה פורסמה בהצלחה</div>
-                <p className="text-xs text-ink-soft mt-1">הגלריה זמינה ללקוח/ה לצפייה ובחירת תמונות.</p>
+                <div className="text-base font-bold font-display">{t("הגלריה פורסמה בהצלחה")}</div>
+                <p className="text-xs text-ink-soft mt-1">{t("הגלריה זמינה ללקוח/ה לצפייה ובחירת תמונות.")}</p>
               </div>
             </div>
             {gallery.client_phone ? (
               <>
                 <p className="text-xs text-ink-soft text-center mb-2">
-                  לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה וקישור לגלריה, תישאר/י לבדוק ולשלוח בעצמך.
+                  {t("לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה וקישור לגלריה, תישאר/י לבדוק ולשלוח בעצמך.")}
                 </p>
                 <SendUpdateButton onSend={sendGalleryPublishedUpdate} pending={sendingGalleryUpdate} />
               </>
             ) : (
-              <p className="text-xs text-ink-soft text-center mb-2">לא הוזן טלפון לקוח לגלריה. לא ניתן לשלוח עדכון.</p>
+              <p className="text-xs text-ink-soft text-center mb-2">{t("לא הוזן טלפון לקוח לגלריה. לא ניתן לשלוח עדכון.")}</p>
             )}
             <button
               onClick={() => setJustPublished(false)}
               className="w-full text-center mt-3 text-xs text-ink-soft"
             >
-              סגירה
+              {t("סגירה")}
             </button>
           </div>
         </div>
@@ -5622,15 +5645,14 @@ export default function GalleryManageView({
                 ✓
               </span>
               <div>
-                <div className="text-base font-bold font-display">{uploadJustFinished} תמונות הועלו בהצלחה</div>
-                <p className="text-xs text-ink-soft mt-1">התמונות זמינות עכשיו בגלריה.</p>
+                <div className="text-base font-bold font-display">{t("{n} תמונות הועלו בהצלחה", { n: uploadJustFinished })}</div>
+                <p className="text-xs text-ink-soft mt-1">{t("התמונות זמינות עכשיו בגלריה.")}</p>
               </div>
             </div>
             {gallery.client_phone ? (
               <>
                 <p className="text-xs text-ink-soft text-center mb-2">
-                  לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה שיש תמונות חדשות בגלריה, תישאר/י לבדוק
-                  ולשלוח בעצמך.
+                  {t("לחיצה תפתח את הוואטסאפ שלך עם הודעה מוכנה ללקוח/ה שיש תמונות חדשות בגלריה, תישאר/י לבדוק ולשלוח בעצמך.")}
                 </p>
                 <SendUpdateButton
                   onSend={() => sendPhotosUploadedUpdate(uploadJustFinished)}
@@ -5638,13 +5660,13 @@ export default function GalleryManageView({
                 />
               </>
             ) : (
-              <p className="text-xs text-ink-soft text-center mb-2">לא הוזן טלפון לקוח לגלריה. לא ניתן לשלוח עדכון.</p>
+              <p className="text-xs text-ink-soft text-center mb-2">{t("לא הוזן טלפון לקוח לגלריה. לא ניתן לשלוח עדכון.")}</p>
             )}
             <button
               onClick={() => setUploadJustFinished(null)}
               className="w-full text-center mt-3 text-xs text-ink-soft"
             >
-              סגירה
+              {t("סגירה")}
             </button>
           </div>
         </div>
@@ -5656,16 +5678,15 @@ export default function GalleryManageView({
           onClick={() => setPortfolioCategoryPhoto(null)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-base font-bold mb-1 font-display">הוספה לפורטפוליו הציבורי</h2>
+            <h2 className="text-base font-bold mb-1 font-display">{t("הוספה לפורטפוליו הציבורי")}</h2>
             <p className="text-xs text-ink-soft mb-3">
-              אפשר לתייג את התמונה בנושא (למשל &quot;חתונות&quot;, &quot;בר/בת מצווה&quot;) כדי לאפשר סינון לפי נושא בעמוד
-              הפורטפוליו. זה אופציונלי.
+              {t("אפשר לתייג את התמונה בנושא (למשל \"חתונות\", \"בר/בת מצווה\") כדי לאפשר סינון לפי נושא בעמוד הפורטפוליו. זה אופציונלי.")}
             </p>
             <input
               value={portfolioCategoryInput}
               onChange={(e) => setPortfolioCategoryInput(e.target.value)}
               list="portfolio-category-suggestions"
-              placeholder="לדוגמה: חתונות"
+              placeholder={t("לדוגמה: חתונות")}
               className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-4"
               autoFocus
             />
@@ -5679,13 +5700,13 @@ export default function GalleryManageView({
                 onClick={savePortfolioCategory}
                 className={`flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white ${BTN_PRESS}`}
               >
-                הוספה לפורטפוליו
+                {t("הוספה לפורטפוליו")}
               </button>
               <button
                 onClick={() => setPortfolioCategoryPhoto(null)}
                 className={`flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft ${BTN_PRESS}`}
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -5698,20 +5719,20 @@ export default function GalleryManageView({
           onClick={() => setRemoveFromPortfolioPhoto(null)}
         >
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-base font-bold mb-1 font-display">הסרה מהפורטפוליו הציבורי</h2>
-            <p className="text-xs text-ink-soft mb-4">התמונה תוסר מעמוד הפורטפוליו הציבורי. אפשר להוסיף אותה שוב בכל שלב.</p>
+            <h2 className="text-base font-bold mb-1 font-display">{t("הסרה מהפורטפוליו הציבורי")}</h2>
+            <p className="text-xs text-ink-soft mb-4">{t("התמונה תוסר מעמוד הפורטפוליו הציבורי. אפשר להוסיף אותה שוב בכל שלב.")}</p>
             <div className="flex gap-2">
               <button
                 onClick={confirmRemoveFromPortfolio}
                 className={`flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white ${BTN_PRESS}`}
               >
-                כן, הסרה
+                {t("כן, הסרה")}
               </button>
               <button
                 onClick={() => setRemoveFromPortfolioPhoto(null)}
                 className={`flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft ${BTN_PRESS}`}
               >
-                ביטול
+                {t("ביטול")}
               </button>
             </div>
           </div>
@@ -5746,6 +5767,7 @@ function MgrPhotoOverlays({
   onSetCover?: (photo: PhotoWithUrl) => void;
   offset?: number;
 }) {
+  const t = useT();
   // The parent thumbnail is itself a <button> (opens the lightbox on click), so these can't be
   // real <button> elements — nested buttons are invalid HTML and browsers silently mangle the
   // DOM. role="button" spans + stopPropagation get the same click/keyboard behavior without that.
@@ -5762,8 +5784,8 @@ function MgrPhotoOverlays({
           }}
           className={iconBtnClass}
           style={{ top: offset, right: offset, background: isCover ? "var(--color-amber-deep)" : "rgba(0,0,0,0.5)" }}
-          aria-label={isCover ? "שער הגלריה הנוכחי" : "קביעה כשער הגלריה"}
-          title={isCover ? "שער הגלריה הנוכחי" : "קביעה כשער הגלריה"}
+          aria-label={isCover ? t("שער הגלריה הנוכחי") : t("קביעה כשער הגלריה")}
+          title={isCover ? t("שער הגלריה הנוכחי") : t("קביעה כשער הגלריה")}
         >
           ★
         </span>
@@ -5778,8 +5800,8 @@ function MgrPhotoOverlays({
           }}
           className={iconBtnClass}
           style={{ top: offset + 30, right: offset }}
-          aria-label="הורדת התמונה"
-          title="הורדת התמונה"
+          aria-label={t("הורדת התמונה")}
+          title={t("הורדת התמונה")}
         >
           <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
@@ -5814,7 +5836,7 @@ function MgrPhotoOverlays({
           className="absolute text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold"
           style={{ bottom: offset, right: offset, background: "var(--color-rose)" }}
         >
-          ✗ נפסל
+          ✗ {t("נפסל")}
         </span>
       )}
       {photo.custom_label && (
@@ -5829,8 +5851,8 @@ function MgrPhotoOverlays({
         <span
           className="absolute h-5 w-5 rounded-full bg-black/50 text-white flex items-center justify-center"
           style={{ bottom: offset, left: offset }}
-          title="בפורטפוליו"
-          aria-label="בפורטפוליו"
+          title={t("בפורטפוליו")}
+          aria-label={t("בפורטפוליו")}
         >
           <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="9" />
@@ -5933,6 +5955,8 @@ function GallerySettingsModal({
   onRestoreGallery: () => void;
   restoringGallery: boolean;
 }) {
+  const t = useT();
+  const lang = useLang();
   const [topTab, setTopTab] = useState<"details" | "style">("details");
   const [detailsTab, setDetailsTab] = useState<"details" | "permissions">("details");
   // Two separate confirmation steps, deliberately — this is more consequential than the plain
@@ -5978,7 +6002,7 @@ function GallerySettingsModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold font-display">הגדרות גלריה</h2>
+          <h2 className="text-lg font-bold font-display">{t("הגדרות גלריה")}</h2>
           <button onClick={closeWithAnimation} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
             <IconAlbumClose className="h-4 w-4" />
           </button>
@@ -5995,7 +6019,7 @@ function GallerySettingsModal({
               color: topTab === "details" ? "#fff" : "var(--color-ink-soft)",
             }}
           >
-            פרטי הגלריה
+            {t("פרטי הגלריה")}
           </button>
           <button
             onClick={() => setTopTab("style")}
@@ -6005,7 +6029,7 @@ function GallerySettingsModal({
               color: topTab === "style" ? "#fff" : "var(--color-ink-soft)",
             }}
           >
-            עיצוב הגלריה
+            {t("עיצוב הגלריה")}
           </button>
         </div>
 
@@ -6020,7 +6044,7 @@ function GallerySettingsModal({
                   color: detailsTab === "details" ? "var(--color-paper)" : "var(--color-ink-soft)",
                 }}
               >
-                פרטים
+                {t("פרטים")}
               </button>
               <button
                 onClick={() => setDetailsTab("permissions")}
@@ -6030,21 +6054,21 @@ function GallerySettingsModal({
                   color: detailsTab === "permissions" ? "var(--color-paper)" : "var(--color-ink-soft)",
                 }}
               >
-                הרשאות ושמירה
+                {t("הרשאות ושמירה")}
               </button>
             </div>
 
             {detailsTab === "details" ? (
               <div className="space-y-3.5">
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">שם הגלריה</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("שם הגלריה")}</label>
                   <input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
                   />
                   <p className="text-[11px] text-ink-soft mt-1">
-                    השאירו ריק כדי שהשם יעודכן אוטומטית משם הלקוח/ה בעמוד האירוע, הקלדת שם כאן קובעת אותו סופית, גם אם שם האירוע ישתנה בהמשך.
+                    {t("השאירו ריק כדי שהשם יעודכן אוטומטית משם הלקוח/ה בעמוד האירוע, הקלדת שם כאן קובעת אותו סופית, גם אם שם האירוע ישתנה בהמשך.")}
                   </p>
                 </div>
 
@@ -6060,10 +6084,10 @@ function GallerySettingsModal({
                       overflow gets clipped instead of pushing this field wider than its sibling. */}
                   {isStandalone && (
                     <div className="flex-1 min-w-0">
-                      <label className="text-xs block mb-1 text-ink-soft">תאריך הצילום</label>
+                      <label className="text-xs block mb-1 text-ink-soft">{t("תאריך הצילום")}</label>
                       <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
                         <div className="pointer-events-none flex items-center justify-center px-3 py-2 text-sm" dir="ltr">
-                          {shootDate ? formatDateDMYFromInput(shootDate) : <span className="text-ink-soft">בחר תאריך</span>}
+                          {shootDate ? formatDateDMYFromInput(shootDate) : <span className="text-ink-soft">{t("בחר תאריך")}</span>}
                         </div>
                         <input
                           type="date"
@@ -6085,7 +6109,7 @@ function GallerySettingsModal({
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <label className="text-xs block mb-1 text-ink-soft">משך שמירת הגלריה</label>
+                    <label className="text-xs block mb-1 text-ink-soft">{t("משך שמירת הגלריה")}</label>
                     <select
                       value={expiryDays ?? expiryOptions[expiryOptions.length - 1].value}
                       onChange={(e) => setExpiryDays(Number(e.target.value) as 7 | 14 | 30 | 90 | 180 | 365)}
@@ -6093,20 +6117,20 @@ function GallerySettingsModal({
                     >
                       {expiryOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>
-                          {opt.label}
+                          {t(opt.label)}
                         </option>
                       ))}
                     </select>
                     {expiryDays === null && (
                       <p className="text-[11px] mt-1 text-ink-soft">
-                        כרגע ללא הגבלת זמן (מדיניות ישנה), בחירת טווח כאן תחיל עליה את המדיניות החדשה
+                        {t("כרגע ללא הגבלת זמן (מדיניות ישנה), בחירת טווח כאן תחיל עליה את המדיניות החדשה")}
                       </p>
                     )}
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">אימייל הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("אימייל הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת)")}</label>
                   <input
                     type="email"
                     value={clientEmail}
@@ -6117,7 +6141,7 @@ function GallerySettingsModal({
                 </div>
 
                 <div>
-                  <label className="text-xs block mb-1 text-ink-soft">טלפון הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)</label>
+                  <label className="text-xs block mb-1 text-ink-soft">{t("טלפון הלקוח/ה (לא חובה, לתזכורת שבוע לפני שהגלריה נמחקת בוואטסאפ)")}</label>
                   <input
                     type="tel"
                     value={clientPhone}
@@ -6131,8 +6155,8 @@ function GallerySettingsModal({
               <div className="space-y-3.5">
                 <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
                   <div>
-                    <div className="text-sm font-semibold">אפשרות הורדת קבצים מקוריים</div>
-                    <div className="text-xs text-ink-soft mt-0.5">כשמכובה, הלקוח/ה יוכלו רק לצפות בתמונות, לא להוריד</div>
+                    <div className="text-sm font-semibold">{t("אפשרות הורדת קבצים מקוריים")}</div>
+                    <div className="text-xs text-ink-soft mt-0.5">{t("כשמכובה, הלקוח/ה יוכלו רק לצפות בתמונות, לא להוריד")}</div>
                   </div>
                   <button
                     onClick={() => setAllowDownloads(!allowDownloads)}
@@ -6149,8 +6173,8 @@ function GallerySettingsModal({
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 bg-chip">
                   <div>
-                    <div className="text-sm font-semibold">אפשרות העלאת תמונות ע&quot;י הלקוח/ה</div>
-                    <div className="text-xs text-ink-soft mt-0.5">כשמופעל, הלקוח/ה יוכלו להעלות תמונות משלהם ישירות לגלריה</div>
+                    <div className="text-sm font-semibold">{t("אפשרות העלאת תמונות ע\"י הלקוח/ה")}</div>
+                    <div className="text-xs text-ink-soft mt-0.5">{t("כשמופעל, הלקוח/ה יוכלו להעלות תמונות משלהם ישירות לגלריה")}</div>
                   </div>
                   <button
                     onClick={() => setAllowClientUpload(!allowClientUpload)}
@@ -6201,7 +6225,7 @@ function GallerySettingsModal({
 
             {photos.length > 0 && (
               <>
-                <p className="text-xs text-ink-soft mb-2.5">תמונת שער</p>
+                <p className="text-xs text-ink-soft mb-2.5">{t("תמונת שער")}</p>
                 <div className="flex gap-2 mb-5 overflow-x-auto">
                   {photos.map((p) => (
                     <button
@@ -6223,7 +6247,7 @@ function GallerySettingsModal({
               </>
             )}
 
-            <p className="text-xs text-ink-soft mb-2.5">מיקום הכיתוב</p>
+            <p className="text-xs text-ink-soft mb-2.5">{t("מיקום הכיתוב")}</p>
             <div className="grid grid-cols-4 gap-2 mb-5">
               {COVER_TEXT_POSITIONS.map((p) => {
                 const active = coverTextPosition === p.id;
@@ -6231,8 +6255,8 @@ function GallerySettingsModal({
                   <button
                     key={p.id}
                     onClick={() => setCoverTextPosition(p.id)}
-                    title={p.label}
-                    aria-label={p.label}
+                    title={t(p.label)}
+                    aria-label={t(p.label)}
                     className={`aspect-square rounded-2xl flex items-center justify-center border ${BTN_PRESS}`}
                     style={{
                       borderColor: active ? "var(--color-amber-deep)" : "var(--color-line)",
@@ -6247,7 +6271,7 @@ function GallerySettingsModal({
               })}
             </div>
 
-            <p className="text-xs text-ink-soft mb-2.5">צורת התמונה</p>
+            <p className="text-xs text-ink-soft mb-2.5">{t("צורת התמונה")}</p>
             <div className="grid grid-cols-4 gap-2 mb-5">
               {COVER_SHAPES.map((s) => {
                 const active = coverShape === s.id;
@@ -6255,8 +6279,8 @@ function GallerySettingsModal({
                   <button
                     key={s.id}
                     onClick={() => setCoverShape(s.id)}
-                    title={s.label}
-                    aria-label={s.label}
+                    title={t(s.label)}
+                    aria-label={t(s.label)}
                     className={`aspect-square rounded-2xl flex items-center justify-center border ${BTN_PRESS}`}
                     style={{
                       borderColor: active ? "var(--color-amber-deep)" : "var(--color-line)",
@@ -6271,15 +6295,15 @@ function GallerySettingsModal({
               })}
             </div>
 
-            <p className="text-xs text-ink-soft mb-2.5">ערכת נושא</p>
+            <p className="text-xs text-ink-soft mb-2.5">{t("ערכת נושא")}</p>
             <div className="grid grid-cols-5 gap-1.5 mb-5">
-              {GALLERY_THEMES.map((t) => {
-                const active = theme === t.id;
+              {GALLERY_THEMES.map((th) => {
+                const active = theme === th.id;
                 return (
                   <button
-                    key={t.id}
+                    key={th.id}
                     onClick={() => {
-                      setTheme(t.id);
+                      setTheme(th.id);
                       setTitleFontOverride(null);
                       setGridStyleOverride(null);
                     }}
@@ -6288,14 +6312,14 @@ function GallerySettingsModal({
                     <span
                       className="relative h-12 w-12 rounded-2xl overflow-hidden grid grid-cols-2"
                       style={{
-                        background: t.bg,
+                        background: th.bg,
                         boxShadow: active
                           ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
                           : "0 0 0 1px var(--color-line)",
                       }}
                     >
-                      <span style={{ background: t.surface }} />
-                      <span style={{ background: t.accent }} />
+                      <span style={{ background: th.surface }} />
+                      <span style={{ background: th.accent }} />
                       {active && (
                         <span
                           className="absolute -top-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
@@ -6307,16 +6331,16 @@ function GallerySettingsModal({
                     </span>
                     <span
                       className="text-[11px] font-semibold text-center leading-tight"
-                      style={{ ...galleryTitleStyle(t.id), color: active ? "var(--color-amber-deep)" : "var(--color-ink)" }}
+                      style={{ ...galleryTitleStyle(th.id), color: active ? "var(--color-amber-deep)" : "var(--color-ink)" }}
                     >
-                      {t.label}
+                      {t(th.label)}
                     </span>
                   </button>
                 );
               })}
             </div>
 
-            <p className="text-xs text-ink-soft mb-2.5">סוג פונט</p>
+            <p className="text-xs text-ink-soft mb-2.5">{t("סוג פונט")}</p>
             <div className="grid grid-cols-2 gap-2 mb-5">
               {FONT_OPTIONS.map((f) => {
                 const active = (titleFontOverride ?? galleryThemeById(theme).titleFont) === f.id;
@@ -6333,13 +6357,13 @@ function GallerySettingsModal({
                       fontFamily: f.id === "serif" ? "var(--font-gallery-serif)" : "var(--font-sans)",
                     }}
                   >
-                    {f.label}
+                    {t(f.label)}
                   </button>
                 );
               })}
             </div>
 
-            <p className="text-xs text-ink-soft mb-2.5">פריסת תמונות</p>
+            <p className="text-xs text-ink-soft mb-2.5">{t("פריסת תמונות")}</p>
             <div className="grid grid-cols-4 gap-2 mb-5">
               {GRID_STYLE_OPTIONS.map((g) => {
                 const active = resolvedGridStyle === g.id;
@@ -6347,8 +6371,8 @@ function GallerySettingsModal({
                   <button
                     key={g.id}
                     onClick={() => setGridStyleOverride(g.id)}
-                    title={g.label}
-                    aria-label={g.label}
+                    title={t(g.label)}
+                    aria-label={t(g.label)}
                     className={`aspect-square rounded-2xl flex items-center justify-center border ${BTN_PRESS}`}
                     style={{
                       borderColor: active ? "var(--color-amber-deep)" : "var(--color-line)",
@@ -6370,15 +6394,15 @@ function GallerySettingsModal({
           disabled={saving}
           className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60 mt-5"
         >
-          {saving ? "שומר..." : "שמירת שינויים"}
+          {saving ? t("שומר...") : t("שמירת שינויים")}
         </button>
 
         <div className="mt-6 pt-5 border-t border-line">
           {isArchived ? (
             restoredOnce ? (
               <p className="text-xs text-center text-ink-soft">
-                הגלריה כבר נוצלה לשחזור חד-פעמי ולא ניתן לשחזר אותה שוב.
-                {permanentDeleteAt && ` תימחק סופית ב-${new Date(permanentDeleteAt).toLocaleDateString("he-IL")}.`}
+                {t("הגלריה כבר נוצלה לשחזור חד-פעמי ולא ניתן לשחזר אותה שוב.")}
+                {permanentDeleteAt && ` ${t("תימחק סופית ב-{date}.", { date: new Date(permanentDeleteAt).toLocaleDateString(dateLocale(lang)) })}`}
               </p>
             ) : (
               <>
@@ -6387,34 +6411,33 @@ function GallerySettingsModal({
                     onClick={() => setRestoreStep("confirm1")}
                     className="w-full rounded-lg py-2.5 text-sm font-semibold text-sage"
                   >
-                    שחזור גלריה
+                    {t("שחזור גלריה")}
                   </button>
                 )}
                 {restoreStep === "confirm1" && (
                   <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
-                    <p className="text-xs text-ink">לשחזר את הגלריה? היא תחזור להיות פעילה עם תוקף לחודש.</p>
+                    <p className="text-xs text-ink">{t("לשחזר את הגלריה? היא תחזור להיות פעילה עם תוקף לחודש.")}</p>
                     <div className="flex gap-2">
                       <button
                         onClick={() => setRestoreStep("idle")}
                         className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
                       >
-                        ביטול
+                        {t("ביטול")}
                       </button>
                       <button
                         onClick={() => setRestoreStep("confirm2")}
                         className="flex-1 rounded-lg py-2 text-xs font-semibold bg-sage text-white"
                       >
-                        כן, המשך
+                        {t("כן, המשך")}
                       </button>
                     </div>
                   </div>
                 )}
                 {restoreStep === "confirm2" && (
                   <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
-                    <p className="text-xs font-semibold text-sage">אישור אחרון</p>
+                    <p className="text-xs font-semibold text-sage">{t("אישור אחרון")}</p>
                     <p className="text-xs text-ink">
-                      זהו שחזור חד-פעמי. לא ניתן יהיה לשחזר את הגלריה שוב בעתיד. בפעם הבאה שתפוג או תימחק, היא
-                      תימחק סופית תוך 3 ימים בלבד.
+                      {t("זהו שחזור חד-פעמי. לא ניתן יהיה לשחזר את הגלריה שוב בעתיד. בפעם הבאה שתפוג או תימחק, היא תימחק סופית תוך 3 ימים בלבד.")}
                     </p>
                     <div className="flex gap-2">
                       <button
@@ -6422,14 +6445,14 @@ function GallerySettingsModal({
                         disabled={restoringGallery}
                         className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
                       >
-                        ביטול
+                        {t("ביטול")}
                       </button>
                       <button
                         onClick={onRestoreGallery}
                         disabled={restoringGallery}
                         className="flex-1 rounded-lg py-2 text-xs font-semibold bg-sage text-white disabled:opacity-60"
                       >
-                        {restoringGallery ? "משחזר..." : "כן, לשחזר"}
+                        {restoringGallery ? t("משחזר...") : t("כן, לשחזר")}
                       </button>
                     </div>
                   </div>
@@ -6443,36 +6466,35 @@ function GallerySettingsModal({
                   onClick={() => setDeleteStep("confirm1")}
                   className="w-full rounded-lg py-2.5 text-sm font-semibold text-rose"
                 >
-                  מחיקת הגלריה
+                  {t("מחיקת הגלריה")}
                 </button>
               )}
               {deleteStep === "confirm1" && (
                 <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
                   <p className="text-xs text-ink">
-                    בטוח שברצונך למחוק את הגלריה? הלקוח יאבד גישה לקישור מיד.
+                    {t("בטוח שברצונך למחוק את הגלריה? הלקוח יאבד גישה לקישור מיד.")}
                   </p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => setDeleteStep("idle")}
                       className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft"
                     >
-                      ביטול
+                      {t("ביטול")}
                     </button>
                     <button
                       onClick={() => setDeleteStep("confirm2")}
                       className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white"
                     >
-                      כן, המשך
+                      {t("כן, המשך")}
                     </button>
                   </div>
                 </div>
               )}
               {deleteStep === "confirm2" && (
                 <div className="rounded-xl p-3.5 space-y-2.5" style={{ background: "var(--color-chip)" }}>
-                  <p className="text-xs font-semibold text-rose">אישור אחרון</p>
+                  <p className="text-xs font-semibold text-rose">{t("אישור אחרון")}</p>
                   <p className="text-xs text-ink">
-                    הגלריה תישמר בארכיון {restoredOnce ? 3 : 14} ימים ואז תימחק סופית לצמיתות, כולל כל התמונות. לא
-                    ניתן לבטל לאחר המחיקה הסופית.
+                    {t("הגלריה תישמר בארכיון {n} ימים ואז תימחק סופית לצמיתות, כולל כל התמונות. לא ניתן לבטל לאחר המחיקה הסופית.", { n: restoredOnce ? 3 : 14 })}
                   </p>
                   <div className="flex gap-2">
                     <button
@@ -6480,14 +6502,14 @@ function GallerySettingsModal({
                       disabled={deletingGallery}
                       className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
                     >
-                      ביטול
+                      {t("ביטול")}
                     </button>
                     <button
                       onClick={onDeleteGallery}
                       disabled={deletingGallery}
                       className="flex-1 rounded-lg py-2 text-xs font-semibold bg-rose text-white disabled:opacity-60"
                     >
-                      {deletingGallery ? "מוחק..." : "כן, למחוק את הגלריה"}
+                      {deletingGallery ? t("מוחק...") : t("כן, למחוק את הגלריה")}
                     </button>
                   </div>
                 </div>

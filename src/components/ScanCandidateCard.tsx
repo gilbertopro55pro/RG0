@@ -2,6 +2,8 @@
 
 import NativeDateTimeField from "@/components/NativeDateTimeField";
 import { PACKAGE_LABELS } from "@/lib/stages";
+import { useLang, useT } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 export type ScanCandidate = {
   calendarEventId: string;
@@ -70,12 +72,14 @@ export default function ScanCandidateCard({
   onToggleFreelance: () => void;
   customPackages: { id: string; name: string }[];
 }) {
+  const t = useT();
+  const lang = useLang();
   return (
     <label className="flex items-start gap-2 rounded-xl p-3 bg-chip cursor-pointer">
       <input type="checkbox" checked={selected} onChange={onToggle} className="mt-1 shrink-0" />
       <div className="min-w-0 flex-1 space-y-1.5">
         <div>
-          <label className="text-[10px] text-ink-soft block mb-0.5">כותרת האירוע</label>
+          <label className="text-[10px] text-ink-soft block mb-0.5">{t("כותרת האירוע")}</label>
           {/* A single-line <input> never wraps — a long calendar title (common: venue + area
               tacked onto the event name) just scrolled invisibly past the field's own edge, with
               nothing to show it was cut off. A textarea wraps onto as many lines as it needs, so
@@ -83,21 +87,21 @@ export default function ScanCandidateCard({
           <textarea
             value={candidate.summary}
             onChange={(e) => onUpdateField("summary", e.target.value)}
-            placeholder="אירוע ללא כותרת"
+            placeholder={t("אירוע ללא כותרת")}
             rows={2}
             className="w-full rounded-lg px-2 py-1.5 text-sm font-semibold border border-line bg-white resize-none"
           />
           {candidate.existingEventId && (
             <p className="text-[11px] leading-relaxed mt-1 rounded-lg px-2 py-1.5 bg-sage-bg text-sage">
-              האירוע כבר קיים במערכת. אפשר לסמן אותו כדי לסנכרן שוב: הפרטים שלו יתעדכנו לפי היומן, בלי ליצור כפילות (החבילה והתשלומים לא משתנים).
+              {t("האירוע כבר קיים במערכת. אפשר לסמן אותו כדי לסנכרן שוב: הפרטים שלו יתעדכנו לפי היומן, בלי ליצור כפילות (החבילה והתשלומים לא משתנים).")}
             </p>
           )}
         </div>
-        <div className="text-xs text-ink-soft font-data">{new Date(candidate.eventDate).toLocaleDateString("he-IL")}</div>
+        <div className="text-xs text-ink-soft font-data">{new Date(candidate.eventDate).toLocaleDateString(dateLocale(lang))}</div>
         {/* An existing event keeps its package (it drives the event's stages), so there's nothing to pick. */}
         {!candidate.existingEventId && (
         <div>
-          <label className="text-[10px] text-ink-soft block mb-0.5">חבילה</label>
+          <label className="text-[10px] text-ink-soft block mb-0.5">{t("חבילה")}</label>
           <select
             value={candidate.pkg}
             onChange={(e) => onUpdateField("pkg", e.target.value)}
@@ -105,7 +109,7 @@ export default function ScanCandidateCard({
           >
             {Object.keys(PACKAGE_LABELS).map((p) => (
               <option key={p} value={p}>
-                {PACKAGE_LABELS[p as keyof typeof PACKAGE_LABELS]}
+                {t(PACKAGE_LABELS[p as keyof typeof PACKAGE_LABELS])}
               </option>
             ))}
             {customPackages.map((cp) => (
@@ -117,7 +121,7 @@ export default function ScanCandidateCard({
         </div>
         )}
         <div>
-          <label className="text-[10px] text-ink-soft block mb-0.5">טלפון הלקוח</label>
+          <label className="text-[10px] text-ink-soft block mb-0.5">{t("טלפון הלקוח")}</label>
           <input
             type="tel"
             value={candidate.clientPhone ?? ""}
@@ -127,17 +131,17 @@ export default function ScanCandidateCard({
           />
         </div>
         <div>
-          <label className="text-[10px] text-ink-soft block mb-0.5">מיקום האירוע</label>
+          <label className="text-[10px] text-ink-soft block mb-0.5">{t("מיקום האירוע")}</label>
           <input
             value={candidate.location}
             onChange={(e) => onUpdateField("location", e.target.value)}
-            placeholder="לדוגמה: אולמי הגן, ראשון לציון"
+            placeholder={t("לדוגמה: אולמי הגן, ראשון לציון")}
             className="w-full rounded-lg px-2 py-1.5 text-xs border border-line bg-white"
           />
         </div>
         <div className="flex items-center gap-2">
           <div className="flex-1 min-w-0">
-            <label className="text-[10px] text-ink-soft block mb-0.5">שעת התחלה</label>
+            <label className="text-[10px] text-ink-soft block mb-0.5">{t("שעת התחלה")}</label>
             <NativeDateTimeField
               type="time"
               compact
@@ -147,7 +151,7 @@ export default function ScanCandidateCard({
             />
           </div>
           <div className="flex-1 min-w-0">
-            <label className="text-[10px] text-ink-soft block mb-0.5">שעת סיום</label>
+            <label className="text-[10px] text-ink-soft block mb-0.5">{t("שעת סיום")}</label>
             <NativeDateTimeField
               type="time"
               compact
@@ -163,15 +167,15 @@ export default function ScanCandidateCard({
             style={{ background: "var(--color-chip-tint)", color: "var(--color-coral-deep)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-1">יש כבר אירוע אחר באותו תאריך ואותן שעות. לא בהכרח כפילות, יכול להיות שנשלח צלם אחר.</div>
+            <div className="mb-1">{t("יש כבר אירוע אחר באותו תאריך ואותן שעות. לא בהכרח כפילות, יכול להיות שנשלח צלם אחר.")}</div>
             <label className="flex items-center gap-1.5 cursor-pointer font-medium">
               <input type="checkbox" checked={candidate.isFreelance} onChange={onToggleFreelance} />
-              פרילנס-נשלח צלם/צוות
+              {t("פרילנס-נשלח צלם/צוות")}
             </label>
           </div>
         )}
         <div>
-          <label className="text-[10px] text-ink-soft block mb-0.5">שעת הגעה לצילומי משפחה</label>
+          <label className="text-[10px] text-ink-soft block mb-0.5">{t("שעת הגעה לצילומי משפחה")}</label>
           <NativeDateTimeField
             type="time"
             value={candidate.arrivalTime}
@@ -180,18 +184,18 @@ export default function ScanCandidateCard({
           />
         </div>
         <div>
-          <label className="text-[10px] text-ink-soft block mb-0.5">הערות</label>
+          <label className="text-[10px] text-ink-soft block mb-0.5">{t("הערות")}</label>
           <textarea
             value={candidate.description}
             onChange={(e) => onUpdateField("description", e.target.value)}
             rows={2}
             className="w-full rounded-lg px-2 py-1.5 text-xs border border-line bg-white resize-none"
-            placeholder="כל מידע נוסף שכדאי לזכור על האירוע"
+            placeholder={t("כל מידע נוסף שכדאי לזכור על האירוע")}
           />
         </div>
         <div className="flex items-center gap-2">
           <div className="flex-1">
-            <label className="text-[10px] text-ink-soft block mb-0.5">מקדמה (₪)</label>
+            <label className="text-[10px] text-ink-soft block mb-0.5">{t("מקדמה (₪)")}</label>
             <input
               type="number"
               inputMode="decimal"
@@ -202,7 +206,7 @@ export default function ScanCandidateCard({
             />
           </div>
           <div className="flex-1">
-            <label className="text-[10px] text-ink-soft block mb-0.5">יתרה (₪)</label>
+            <label className="text-[10px] text-ink-soft block mb-0.5">{t("יתרה (₪)")}</label>
             <input
               type="number"
               inputMode="decimal"

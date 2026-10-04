@@ -1,3 +1,5 @@
+import { getT } from "@/i18n/server";
+
 const SECTIONS: { title: string; body: string[] }[] = [
   {
     title: "1. כללי",
@@ -49,11 +51,12 @@ const SECTIONS: { title: string; body: string[] }[] = [
   },
 ];
 
-export default function TermsOfUseSettings() {
+export default async function TermsOfUseSettings() {
+  const t = await getT();
   return (
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
-      <div className="text-sm font-semibold mb-1">תקנון שימוש</div>
-      <p className="text-xs text-ink-soft mb-4">עודכן לאחרונה: אוגוסט 2026</p>
+      <div className="text-sm font-semibold mb-1">{t("תקנון שימוש")}</div>
+      <p className="text-xs text-ink-soft mb-4">{t("עודכן לאחרונה: אוגוסט 2026")}</p>
       <div className="space-y-4">
         {SECTIONS.map((section) => (
           <div key={section.title}>

@@ -3,6 +3,20 @@
 import { useState } from "react";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { openWhatsApp } from "@/lib/waLink";
+import { useT } from "@/i18n/client";
+
+// A translated sentence with the client/lead name in bold: the {name} placeholder is left in by
+// t() (it isn't in vars) and swapped for the bold span here.
+function withBoldName(text: string, name: string) {
+  const [before, after = ""] = text.split("{name}");
+  return (
+    <>
+      {before}
+      <span className="font-semibold text-ink">{name}</span>
+      {after}
+    </>
+  );
+}
 
 export type PendingPaymentReminder = {
   type: "payment";
@@ -40,6 +54,7 @@ export default function PendingClientMessagePrompts({
   reviewRequests: PendingReviewRequest[];
   leadFollowUps: PendingLeadFollowUp[];
 }) {
+  const t = useT();
   const [queue, setQueue] = useState<PendingItem[]>([...paymentReminders, ...reviewRequests, ...leadFollowUps]);
   const [busy, setBusy] = useState(false);
   const entered = useModalEntered();
@@ -84,10 +99,9 @@ export default function PendingClientMessagePrompts({
       <div className="w-full max-w-md rounded-3xl p-5 bg-paper shadow-sheet">
         {current.type === "payment" ? (
           <>
-            <h2 className="text-lg font-bold mb-2 font-display">תזכורת תשלום</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("תזכורת תשלום")}</h2>
             <p className="text-sm text-ink-soft mb-5">
-              היתרה של <span className="font-semibold text-ink">{current.clientName}</span> (₪
-              {current.balanceAmount}) שולמה?
+              {withBoldName(t("היתרה של {name} (₪{amount}) שולמה?", { amount: current.balanceAmount }), current.clientName)}
             </p>
             <div className="flex gap-2">
               <button
@@ -95,22 +109,22 @@ export default function PendingClientMessagePrompts({
                 disabled={busy}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
               >
-                כן, שולם
+                {t("כן, שולם")}
               </button>
               <button
                 onClick={() => respond(false)}
                 disabled={busy}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                לא, שלח תזכורת
+                {t("לא, שלח תזכורת")}
               </button>
             </div>
           </>
         ) : current.type === "review" ? (
           <>
-            <h2 className="text-lg font-bold mb-2 font-display">בקשת ביקורת</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("בקשת ביקורת")}</h2>
             <p className="text-sm text-ink-soft mb-5">
-              לשלוח ל<span className="font-semibold text-ink">{current.clientName}</span> בקשה להשאיר ביקורת?
+              {withBoldName(t("לשלוח ל{name} בקשה להשאיר ביקורת?"), current.clientName)}
             </p>
             <div className="flex gap-2">
               <button
@@ -118,23 +132,22 @@ export default function PendingClientMessagePrompts({
                 disabled={busy}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                דלג הפעם
+                {t("דלג הפעם")}
               </button>
               <button
                 onClick={() => respond(true)}
                 disabled={busy}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
               >
-                כן, שלח
+                {t("כן, שלח")}
               </button>
             </div>
           </>
         ) : (
           <>
-            <h2 className="text-lg font-bold mb-2 font-display">מעקב אחרי הצעת מחיר</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("מעקב אחרי הצעת מחיר")}</h2>
             <p className="text-sm text-ink-soft mb-5">
-              עברו יומיים מאז ששלחת ל<span className="font-semibold text-ink">{current.leadName}</span> הצעת מחיר של ₪
-              {current.quotedAmount}. לשלוח תזכורת מעקב בוואטסאפ?
+              {withBoldName(t("עברו יומיים מאז ששלחת ל{name} הצעת מחיר של ₪{amount}. לשלוח תזכורת מעקב בוואטסאפ?", { amount: current.quotedAmount }), current.leadName)}
             </p>
             <div className="flex gap-2">
               <button
@@ -142,14 +155,14 @@ export default function PendingClientMessagePrompts({
                 disabled={busy}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                דלג הפעם
+                {t("דלג הפעם")}
               </button>
               <button
                 onClick={() => respond(true)}
                 disabled={busy}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
               >
-                שליחה בוואטסאפ
+                {t("שליחה בוואטסאפ")}
               </button>
             </div>
           </>
