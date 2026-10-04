@@ -6,6 +6,7 @@ import GalleryManageView from "@/components/GalleryManageView";
 import { getSignedDownloadUrls, getPublicPreviewUrl } from "@/lib/storage";
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import { hasAppAccess } from "@/lib/subscription";
+import { clientLangFor } from "@/lib/clientLang";
 
 export default async function GalleryManagePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,11 +20,11 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
   const [{ data: gallery }, photosRaw] = await Promise.all([
     supabase
       .from("galleries")
-      .select("*, events(client_name, event_date), gallery_folders(*)")
+      .select("*, events(client_name, event_date, client_lang), gallery_folders(*)")
       .eq("id", id)
       .maybeSingle<
         GalleryRow & {
-          events: Pick<EventRow, "client_name" | "event_date"> | null;
+          events: Pick<EventRow, "client_name" | "event_date" | "client_lang"> | null;
           gallery_folders: GalleryFolderRow[];
         }
       >(),
@@ -84,6 +85,7 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
         photographerName={photographer?.name ?? ""}
         photographerEmail={photographer?.email ?? ""}
         photographerPlan={photographer?.plan ?? "monthly"}
+        clientLang={clientLangFor(photographer?.email, event?.client_lang)}
       />
     </div>
   );

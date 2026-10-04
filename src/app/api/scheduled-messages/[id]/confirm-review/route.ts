@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { clientLangFor } from "@/lib/clientLang";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -35,9 +38,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const { data: event } = await supabase
     .from("events")
-    .select("client_name, client_phone")
+    .select("client_name, client_phone, client_lang")
     .eq("id", message.event_id)
-    .single<{ client_name: string; client_phone: string | null }>();
+    .single<{ client_name: string; client_phone: string | null; client_lang: string | null }>();
 
   if (!event?.client_phone) {
     await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", message.id);
@@ -47,8 +50,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // The actual send happens client-side (wa.me deep link — see ReviewRequestPrompts.tsx); this
   // just builds the message and marks the request handled.
   const reviewLink = process.env.GOOGLE_REVIEW_LINK || "";
-  const message_text =
-    `שלום ${event.client_name},\nתודה שבחרתם בנו! נשמח מאוד אם תוכלו להשאיר לנו כמה מילים וביקורת 🙏\n\n${reviewLink}`;
+  // In the client's language (UI languages phase 3); "he" for every non-admin account.
+  const message_text = makeT(messagesFor(clientLangFor(user.email, event.client_lang)))(
+    "שלום {name},\nתודה שבחרתם בנו! נשמח מאוד אם תוכלו להשאיר לנו כמה מילים וביקורת 🙏\n\n{link}",
+    { name: event.client_name, link: reviewLink }
+  );
 
   await supabase
     .from("scheduled_messages")

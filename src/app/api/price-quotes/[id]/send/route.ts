@@ -6,6 +6,10 @@ import { formatWorkHours, quoteEventDetails } from "@/lib/priceQuoteFormat";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { Photographer, PriceQuoteRow } from "@/lib/types";
+import { clientLangFor } from "@/lib/clientLang";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
+import { quoteShareCaption } from "@/lib/quoteDefaults";
 
 export const runtime = "nodejs";
 
@@ -21,7 +25,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
   }
 
-  const { method, email, phone }: { method: "email" | "whatsapp"; email?: string; phone?: string } = await request.json();
+  // clientLang (optional): the client's language for the PDF, the email and the WhatsApp text (UI
+  // languages phase 3). clientLangFor keeps Hebrew for every non-admin account.
+  const { method, email, phone, clientLang }: { method: "email" | "whatsapp"; email?: string; phone?: string; clientLang?: string } = await request.json();
 
   const { data: quote } = await supabase.from("price_quotes").select("*").eq("id", quoteId).single<PriceQuoteRow>();
   if (!quote || quote.photographer_id !== user.id) {
@@ -49,6 +55,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     : null;
 
   const eventDetails = quoteEventDetails(quote);
+  const lang = clientLangFor(photographer.email, clientLang);
+  const t = makeT(messagesFor(lang));
+  const fileName = t("הצעת-מחיר.pdf");
 
   const pdfBytes = await buildPriceQuotePdf({
     photographer,
@@ -61,6 +70,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     createdAt: new Date(quote.created_at),
     eventDetails,
     notes: quote.notes ?? undefined,
+    lang,
   });
 
   let whatsapp: { clientPhone: string; message: string } | null = null;
@@ -70,10 +80,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       await sendEmail({
         to: email!.trim(),
         fromName: photographer.name,
-        subject: `הצעת מחיר מ${photographer.name}`,
-        text: `שלום,\n\nמצורפת הצעת מחיר מ${photographer.name}.\n\nבברכה,\n${photographer.name}`,
+        subject: t("הצעת מחיר מ{name}", { name: photographer.name }),
+        text: t("שלום,\n\nמצורפת הצעת מחיר מ{name}.\n\nבברכה,\n{name}", { name: photographer.name }),
         replyTo: notificationEmailFor(photographer.email),
-        attachments: [{ filename: "הצעת-מחיר.pdf", content: Buffer.from(pdfBytes).toString("base64") }],
+        attachments: [{ filename: fileName, content: Buffer.from(pdfBytes).toString("base64") }],
       });
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : "שליחת המייל נכשלה" }, { status: 500 });
@@ -85,14 +95,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // pattern as the other client-facing links in the app (portal/gallery).
     const path = `${user.id}/${quote.id}-${Date.now()}.pdf`;
     await uploadObject("price-quotes", path, Buffer.from(pdfBytes), "application/pdf");
-    const url = await getSignedDownloadUrl("price-quotes", path, 60 * 60 * 24 * 7, "הצעת-מחיר.pdf");
+    const url = await getSignedDownloadUrl("price-quotes", path, 60 * 60 * 24 * 7, fileName);
     const intro =
-      eventDetails.type && eventDetails.date
-        ? `הצעת מחיר ל${eventDetails.type} בתאריך ${eventDetails.date}`
-        : "הצעת מחיר";
+      lang !== "he"
+        ? quoteShareCaption("", eventDetails.type ?? "", eventDetails.date ?? "", lang, quote.event_date?.slice(0, 10))
+        : eventDetails.type && eventDetails.date
+          ? `הצעת מחיר ל${eventDetails.type} בתאריך ${eventDetails.date}`
+          : "הצעת מחיר";
     whatsapp = {
       clientPhone: phone!.trim(),
-      message: `${intro}\nלכבוד: ${quote.client_name}\n\n${url}`,
+      message: `${intro}\n${t("לכבוד: {name}", { name: quote.client_name })}\n\n${url}`,
     };
   }
 

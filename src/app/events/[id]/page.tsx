@@ -18,7 +18,7 @@ import type {
 import EventDetailView from "@/components/EventDetailView";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { hasAppAccess } from "@/lib/subscription";
-import { canChooseClientLang } from "@/lib/clientLang";
+import { canChooseClientLang, clientLangFor } from "@/lib/clientLang";
 
 export default async function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -54,10 +54,13 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   const serviceRole = createServiceRoleClient();
   const { data: photographerSignatureRow } = await serviceRole
     .from("photographers")
-    .select("whatsapp_signature, subscription_status, trial_ends_at")
+    .select("email, whatsapp_signature, subscription_status, trial_ends_at")
     .eq("id", event.photographer_id)
-    .maybeSingle<{ whatsapp_signature: string | null } & Pick<Photographer, "subscription_status" | "trial_ends_at">>();
+    .maybeSingle<{ email: string | null; whatsapp_signature: string | null } & Pick<Photographer, "subscription_status" | "trial_ends_at">>();
   const whatsappSignature = photographerSignatureRow?.whatsapp_signature ?? null;
+  // The language of the client update messages (UI languages phase 3): the event owner's account
+  // decides, so a team member sends the same language the owner would.
+  const clientMessageLang = clientLangFor(photographerSignatureRow?.email, event.client_lang);
   // Owner or team member alike: no access once the owning account's subscription/trial lapsed.
   if (photographerSignatureRow && !hasAppAccess(photographerSignatureRow)) redirect("/billing");
 
@@ -155,6 +158,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
         customPackageName={customPackageName}
         messageTemplates={messageTemplateMap}
         whatsappSignature={whatsappSignature}
+        clientMessageLang={clientMessageLang}
         canChooseClientLang={isOwner && canChooseClientLang(user!.email)}
       />
     </div>

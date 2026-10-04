@@ -1,5 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { clientLangFor } from "@/lib/clientLang";
+import { dateLocale } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -39,9 +43,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const { data: event } = await supabase
     .from("events")
-    .select("client_name, client_phone, client_access_token")
+    .select("client_name, client_phone, client_access_token, client_lang")
     .eq("id", message.event_id)
-    .single<{ client_name: string; client_phone: string | null; client_access_token: string }>();
+    .single<{ client_name: string; client_phone: string | null; client_access_token: string; client_lang: string | null }>();
   const { data: payment } = await supabase
     .from("event_payments")
     .select("balance_amount")
@@ -58,9 +62,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // reminder handled; there's no server callback to confirm the tap actually happened, same
   // as the other interactive wa.me flows.
   const portalLink = `${new URL(request.url).origin}/portal/${event.client_access_token}`;
-  const message_text =
-    `שלום ${event.client_name},\nתזכורת ידידותית, נשארה יתרה של ₪${payment?.balance_amount ?? 0} לתשלום עבור האירוע שלכם.\n\n` +
-    `לצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n${portalLink}`;
+  // In the client's language (UI languages phase 3); "he" for every non-admin account, where the
+  // amount stays unformatted exactly as before.
+  const lang = clientLangFor(user.email, event.client_lang);
+  const balance = payment?.balance_amount ?? 0;
+  const message_text = makeT(messagesFor(lang))(
+    "שלום {name},\nתזכורת ידידותית, נשארה יתרה של ₪{amount} לתשלום עבור האירוע שלכם.\n\nלצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n{link}",
+    { name: event.client_name, amount: lang === "he" ? balance : Number(balance).toLocaleString(dateLocale(lang)), link: portalLink }
+  );
 
   await supabase
     .from("scheduled_messages")

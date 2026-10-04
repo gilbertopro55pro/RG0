@@ -1,5 +1,8 @@
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { classifyName } from "@/lib/leadQuotePrefill";
+import { dateLocale, type Lang } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 // Admin-only quote extras for now (owner, 2026-10-01, "עדכון אדמין"):
 // - the notes field starts with the delivery times, and its lines follow what the quote holds: the
@@ -39,23 +42,41 @@ export function withoutStaleDeliveryLines(notes: string, items: { item: string; 
 }
 
 // "הילה שפירו הצעת מחיר לבר מצווה בתאריך 22.10.2026" — the parts that are missing are left out.
-export function quoteShareCaption(clientName: string, eventType: string, dateDMY: string): string {
+// UI languages phase 3: in the client's language (the builder's picker; Hebrew unless chosen). A
+// standard event type reads in that language, one the photographer typed stays as typed; the date
+// is written out in the client's locale (isoDate, "2026-10-22"), else dateDMY as given.
+export function quoteShareCaption(clientName: string, eventType: string, dateDMY: string, lang: Lang = "he", isoDate?: string): string {
   const name = clientName.trim();
   const type = eventType.trim();
   const date = dateDMY.trim();
-  return [name, "הצעת מחיר", type ? `ל${type}` : null, date ? `בתאריך ${date}` : null].filter(Boolean).join(" ");
+  if (lang === "he") {
+    return [name, "הצעת מחיר", type ? `ל${type}` : null, date ? `בתאריך ${date}` : null].filter(Boolean).join(" ");
+  }
+  // "Price quote for Hila Shapiro – Bar Mitzvah, 22 October 2026".
+  const t = makeT(messagesFor(lang));
+  const head = name ? t("הצעת מחיר עבור {name}", { name }) : t("הצעת מחיר");
+  const tail = [type ? t(type) : null, isoDate ? localDate(isoDate, lang) ?? date : date].filter(Boolean).join(", ");
+  return tail ? `${head} – ${tail}` : head;
+}
+
+function localDate(isoDate: string, lang: Lang): string | null {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 // The WhatsApp message that sends the client the quote link (admin only, owner 2026-10-01): the
 // caption, the /quotes/<token> link, and the photographer's signature from Settings when set.
 // withContract: the quote page ends with signing the contract, so the message says so.
-export function quoteLinkMessage(caption: string, url: string, signature: string | null | undefined, withContract = false): string {
+// lang: the client's language (UI languages phase 3); the signature stays as the photographer wrote it.
+export function quoteLinkMessage(caption: string, url: string, signature: string | null | undefined, withContract = false, lang: Lang = "he"): string {
+  const t = makeT(messagesFor(lang));
   return [
     caption,
     "",
-    `קישור להצעת המחיר: ${url}`,
-    "יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר.",
-    withContract ? "אחרי האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור." : null,
+    t("קישור להצעת המחיר: {url}", { url }),
+    t("יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר."),
+    withContract ? t("אחרי האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור.") : null,
     signature?.trim() || null,
   ]
     .filter((l) => l !== null)

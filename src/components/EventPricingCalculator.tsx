@@ -12,7 +12,7 @@ import { IconClose } from "@/components/icons/AlbumIcons";
 import { IconArrowRight } from "@/components/icons/NavIcons";
 import ClientLangSelect from "@/components/ClientLangSelect";
 import { useT, useLang } from "@/i18n/client";
-import { dateLocale } from "@/i18n/config";
+import { dateLocale, isLang, type Lang } from "@/i18n/config";
 
 const VAT_RATE = 0.18;
 const HOURS_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1);
@@ -213,6 +213,7 @@ export default function EventPricingCalculator({
   // Follows a same-phone lead found on the preview until the photographer picks one.
   const [clientLang, setClientLang] = useState<string>(initialClientLang ?? "he");
   const clientLangTouched = useRef(false);
+  const quoteFileReq = useRef(0);
   const clientLangField = clientLangPicker ? { clientLang } : {};
   useEffect(() => {
     let alive = true;
@@ -495,7 +496,10 @@ export default function EventPricingCalculator({
   // used to eat that window by the time the PDF came back, and Safari rejected the share with a
   // generic "not allowed" error even though the person really did just tap Send. Preparing the file
   // ahead of time means the click handler below has nothing left to await before sharing.
-  const prepareQuoteFile = async () => {
+  // langOverride: the client language just picked on the preview (state isn't updated yet).
+  const prepareQuoteFile = async (langOverride?: string) => {
+    // A later call (the client language changed) wins over one still in flight.
+    const req = ++quoteFileReq.current;
     setSendingQuote(true);
     setSendError(null);
     try {
@@ -516,15 +520,18 @@ export default function EventPricingCalculator({
             workHours: mode !== "freelance" && quoteStartTime && quoteEndTime ? `${quoteStartTime}-${quoteEndTime}` : undefined,
           },
           notes: notesValue.trim() || undefined,
+          ...(clientLangPicker ? { clientLang: langOverride ?? clientLang } : {}),
         }),
       });
       if (!res.ok) throw new Error(t("יצירת הקובץ נכשלה"));
       const blob = await res.blob();
+      if (req !== quoteFileReq.current) return;
       setQuoteFile(new File([blob], "הצעת-מחיר.pdf", { type: "application/pdf" }));
     } catch (err) {
+      if (req !== quoteFileReq.current) return;
       setSendError(err instanceof Error ? err.message : t("הכנת הקובץ נכשלה"));
     } finally {
-      setSendingQuote(false);
+      if (req === quoteFileReq.current) setSendingQuote(false);
     }
   };
 
@@ -645,8 +652,13 @@ export default function EventPricingCalculator({
       if (id) {
         const { data } = await supabase.from("leads").select("quote_token, client_lang").eq("id", id).maybeSingle<{ quote_token: string; client_lang: string | null }>();
         if (data?.quote_token) setExistingTarget({ id, token: data.quote_token });
-        if (data && !clientLangTouched.current) setClientLang(data.client_lang ?? "he");
         else if (leadId) setSendError(t("לא נמצא הליד של ההצעה"));
+        if (data && !clientLangTouched.current) {
+          const stored = data.client_lang ?? "he";
+          setClientLang(stored);
+          // The PDF was started before the lead's stored language was known.
+          if (clientLangPicker && stored !== clientLang) void prepareQuoteFile(stored);
+        }
       }
     } catch {
       setSendError(t("הכנת הקישור נכשלה, נסו שוב"));
@@ -663,13 +675,16 @@ export default function EventPricingCalculator({
       : newLeadToken && !linkPreparing
         ? { kind: "new", token: newLeadToken }
         : null;
+  // The message goes out in the client's language picked on the preview (admin only; Hebrew otherwise).
+  const messageLang: Lang = clientLangPicker && isLang(clientLang) ? clientLang : "he";
   const messageFor = (withContract: boolean) =>
     linkTarget
       ? quoteLinkMessage(
-          quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate)),
+          quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate), messageLang, quoteEventDate),
           `${typeof window === "undefined" ? "" : window.location.origin}/quotes/${linkTarget.token}`,
           signature,
-          withContract
+          withContract,
+          messageLang
         )
       : "";
   const linkMessage = messageFor(sentWithContract);
@@ -1282,6 +1297,9 @@ export default function EventPricingCalculator({
                   onChange={(l) => {
                     clientLangTouched.current = true;
                     setClientLang(l);
+                    // The PDF follows the client's language too.
+                    setQuoteFile(null);
+                    void prepareQuoteFile(l);
                   }}
                   showHint={false}
                   className="mb-2"

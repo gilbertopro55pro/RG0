@@ -7,6 +7,10 @@ import { GENERIC_STAGE_UPDATE_TEMPLATE } from "@/lib/stages";
 import { removeObjects, removePreviewObjects } from "@/lib/storage";
 import type { GalleryRow } from "@/lib/types";
 import { runLeadRetention } from "@/lib/leadRetention";
+import { clientLangFor } from "@/lib/clientLang";
+import { dateLocale } from "@/i18n/config";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 type GalleryWithRelations = GalleryRow & {
   photographers: { name: string; email: string } | null;
@@ -66,7 +70,7 @@ export async function GET(request: NextRequest) {
   const reminderCutoff = new Date(now.getTime() + REMINDER_DAYS_BEFORE_EXPIRY * 24 * 60 * 60 * 1000);
   const { data: toRemind } = await supabase
     .from("galleries")
-    .select("*, events(client_name), photographers(name, email)")
+    .select("*, events(client_name, client_lang), photographers(name, email)")
     .eq("published", true)
     .is("archived_at", null)
     .is("reminder_sent_at", null)
@@ -74,22 +78,26 @@ export async function GET(request: NextRequest) {
     .not("expires_at", "is", null)
     .gt("expires_at", now.toISOString())
     .lte("expires_at", reminderCutoff.toISOString())
-    .returns<(GalleryRow & { events: { client_name: string } | null; photographers: { name: string | null; email: string | null } | null })[]>();
+    .returns<(GalleryRow & { events: { client_name: string; client_lang: string | null } | null; photographers: { name: string | null; email: string | null } | null })[]>();
 
   let remindedCount = 0;
   for (const gallery of toRemind ?? []) {
     const clientLabel = gallery.events?.client_name ?? gallery.title;
-    const expiryDateHe = new Date(gallery.expires_at!).toLocaleDateString("he-IL");
+    // The client's language (UI languages phase 3): "he" for every non-admin account, so their
+    // email is unchanged. A standalone gallery (no event) has no stored language → Hebrew.
+    const lang = clientLangFor(gallery.photographers?.email, gallery.events?.client_lang);
+    const t = makeT(messagesFor(lang));
+    const expiryDate = new Date(gallery.expires_at!).toLocaleDateString(dateLocale(lang));
     try {
       await sendEmail({
         to: gallery.client_email!,
         fromName: gallery.photographers?.name ?? undefined,
         replyTo: gallery.photographers?.email ? notificationEmailFor(gallery.photographers.email) : undefined,
-        subject: `תזכורת: הגלריה "${gallery.title}" תפוג בקרוב`,
-        text:
-          `שלום,\n\n` +
-          `הגלריה "${gallery.title}"${clientLabel !== gallery.title ? ` (${clientLabel})` : ""} תהיה זמינה לצפייה והורדה עד ${expiryDateHe}.\n` +
-          `לאחר מכן היא תוסר ולא תהיה נגישה יותר. מומלץ להוריד את התמונות שרציתם לפני כן.`,
+        subject: t('תזכורת: הגלריה "{title}" תפוג בקרוב', { title: gallery.title }),
+        text: t(
+          'שלום,\n\nהגלריה "{title}"{label} תהיה זמינה לצפייה והורדה עד {date}.\nלאחר מכן היא תוסר ולא תהיה נגישה יותר. מומלץ להוריד את התמונות שרציתם לפני כן.',
+          { title: gallery.title, label: clientLabel !== gallery.title ? ` (${clientLabel})` : "", date: expiryDate }
+        ),
       });
     } catch (e) {
       console.error("Gallery expiry reminder email failed:", e);

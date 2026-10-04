@@ -28,6 +28,7 @@ import GuidesSettings from "@/components/GuidesSettings";
 import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
 import { CURRENT_VERSION } from "@/lib/changelog";
+import { canChooseClientLang } from "@/lib/clientLang";
 import { SUBSCRIPTION_PLANS, TEAM_MEMBER_LIMIT_BY_TIER, STORAGE_CAP_BYTES_BY_TIER } from "@/lib/stages";
 import BackLink from "@/components/BackLink";
 import { hasAppAccess, isInTrial, TRIAL_STORAGE_CAP_BYTES } from "@/lib/subscription";
@@ -227,7 +228,11 @@ export default async function SettingsPage({
             id: "client_messages",
             label: t("הודעות ללקוח/ה"),
             content: (
-              <ClientMessagesSettings initialTemplates={messageTemplates ?? []} customStages={customStages ?? []} />
+              <ClientMessagesSettings
+                initialTemplates={messageTemplates ?? []}
+                customStages={customStages ?? []}
+                clientLangTemplates={canChooseClientLang(photographer.email)}
+              />
             ),
           },
           {

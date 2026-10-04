@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { leadQuoteFollowUpMessage } from "@/lib/leadFollowUp";
+import { clientLangFor } from "@/lib/clientLang";
+import { messagesFor } from "@/i18n/dict";
+import { makeT } from "@/i18n/translate";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -36,9 +39,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("name, phone")
+    .select("name, phone, client_lang")
     .eq("id", message.lead_id)
-    .single<{ name: string; phone: string | null }>();
+    .single<{ name: string; phone: string | null; client_lang: string | null }>();
 
   if (!lead?.phone) {
     await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", message.id);
@@ -50,10 +53,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // callback confirms the tap actually happened, just that the prompt was resolved.
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("whatsapp_signature")
+    .select("whatsapp_signature, email")
     .eq("id", user.id)
-    .maybeSingle<{ whatsapp_signature: string | null }>();
-  const message_text = leadQuoteFollowUpMessage(lead.name, photographer?.whatsapp_signature);
+    .maybeSingle<{ whatsapp_signature: string | null; email: string | null }>();
+  // In the lead's language (UI languages phase 3): Hebrew (every non-admin account) is the shared
+  // lib text unchanged; en/ru translate the same greeting + line, and the photographer's own
+  // signature is appended as written, exactly like leadQuoteFollowUpMessage does.
+  const lang = clientLangFor(photographer?.email, lead.client_lang);
+  let message_text = leadQuoteFollowUpMessage(lead.name, photographer?.whatsapp_signature);
+  if (lang !== "he") {
+    const body = makeT(messagesFor(lang))(
+      "שלום {name},\nשלחתי אלייך הצעת מחיר ואשמח לשמוע אם יש שאלות או שתרצו לתאם את תאריך האירוע.",
+      { name: lead.name }
+    );
+    const signature = photographer?.whatsapp_signature?.trim();
+    message_text = signature ? `${body}\n\n${signature}` : body;
+  }
 
   await supabase
     .from("scheduled_messages")

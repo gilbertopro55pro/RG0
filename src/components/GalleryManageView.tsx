@@ -89,7 +89,8 @@ import {
 } from "@/lib/activeUploadLock";
 import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
-import { dateLocale } from "@/i18n/config";
+import { dateLocale, type Lang } from "@/i18n/config";
+import { buildGalleryShareMessage, buildGalleryPhotosUploadedMessage, buildExportReadyMessage, galleryShareTitle } from "@/components/GalleryShareModal";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
 
@@ -181,6 +182,7 @@ export default function GalleryManageView({
   photographerName,
   photographerEmail,
   photographerPlan,
+  clientLang = "he",
 }: {
   eventId: string | null;
   clientName: string;
@@ -191,6 +193,9 @@ export default function GalleryManageView({
   photographerName: string;
   photographerEmail: string;
   photographerPlan: SubscriptionPlan;
+  // The client's language for the text sent to them (UI languages phase 3), computed on the server
+  // with clientLangFor — "he" for every non-admin account.
+  clientLang?: Lang;
 }) {
   const t = useT();
   const lang = useLang();
@@ -2799,23 +2804,10 @@ export default function GalleryManageView({
     return qs ? `${base}?${qs}` : base;
   };
 
-  // One specific account's own wording, requested verbatim — every other photographer gets a
-  // generic message instead, signed with their own name rather than a hardcoded one.
-  const OWNER_ACCOUNT_EMAIL = "gilbertopro_admin@gmail.com";
-
-  const buildShareMessage = (url: string) => {
-    // The full option list, not the tier-filtered one — a gallery can carry a value from a plan
-    // the photographer no longer has (e.g. downgraded from פרו+ after picking 6 months), and it
-    // should still label correctly rather than silently show nothing.
-    const expiryLabel = expiryDays ? GALLERY_EXPIRY_OPTIONS.find((o) => o.value === expiryDays)?.label : null;
-    const expiryClause = expiryLabel ? `הקישור בתוקף ל-${expiryLabel}, ` : "";
-    if (photographerEmail === OWNER_ACCOUNT_EMAIL) {
-      return `היי,\nהיה אירוע מעולה, תודה על הזכות לצלם לכם, שנפגש רק בשמחות 🙏🏼😊\nקישור לגלריית התמונות: ${url}\n\n${expiryClause}ניתן להוריד את התמונות, לשתף ולא לשכוח לתייג 😁\n${photographerName || "רועי גלברט"} - צילום אירועים`;
-    }
-    const namePrefix = clientName ? `${clientName}, ` : "";
-    const signOff = photographerName ? `\n\n${photographerName} - צילום אירועים` : "";
-    return `${namePrefix}הגלריה מהאירוע שלכם מוכנה לצפייה ובחירת תמונות 📸\nקישור לגלריית התמונות: ${url}\n\n${expiryClause}אפשר להוריד ולשתף את התמונות בכל שלב.${signOff}`;
-  };
+  // The text itself lives in GalleryShareModal (shared with the galleries list's quick share): one
+  // specific account's own wording, a generic one for everyone else, in the client's language.
+  const buildShareMessage = (url: string) =>
+    buildGalleryShareMessage({ url, clientName, photographerName, photographerEmail, expiryDays, lang: clientLang });
 
   const shareViaWhatsapp = () => {
     const text = buildShareMessage(buildShareUrl());
@@ -2848,8 +2840,7 @@ export default function GalleryManageView({
     if (!gallery.client_phone) return;
     setSendingUploadUpdate(true);
     const url = buildShareUrl();
-    const namePrefix = clientName ? `${clientName}, ` : "";
-    const text = `${namePrefix}עודכנו ${count} תמונות חדשות בגלריה שלכם 📸\n${url}`;
+    const text = buildGalleryPhotosUploadedMessage({ url, clientName, count, lang: clientLang });
     openWhatsApp(gallery.client_phone, text);
     if (eventId) {
       fetch(`/api/events/${eventId}/notify`, {
@@ -2873,7 +2864,7 @@ export default function GalleryManageView({
     const text = buildShareMessage(url);
     if (navigator.share) {
       try {
-        await navigator.share({ title: "גלריה מהאירוע", text, url });
+        await navigator.share({ title: galleryShareTitle(clientLang), text, url });
       } catch {
         // user canceled the native share sheet — nothing to do
       }
@@ -3181,7 +3172,7 @@ export default function GalleryManageView({
               {gallery.client_phone && (
                 <button
                   onClick={() => {
-                    openWhatsApp(gallery.client_phone!, `${completedExportToast.label} מוכן להורדה:\n${completedExportToast.downloadUrl}`);
+                    openWhatsApp(gallery.client_phone!, buildExportReadyMessage({ label: completedExportToast.label, url: completedExportToast.downloadUrl, lang: clientLang }));
                     setCompletedExportToast(null);
                   }}
                   className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold text-white"
