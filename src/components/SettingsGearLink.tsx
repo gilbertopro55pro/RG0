@@ -26,7 +26,7 @@ export default function SettingsGearLink() {
   return (
     <Link href="/settings" className="relative shrink-0 h-10 w-10 rounded-xl flex items-center justify-center bg-card text-ink" aria-label={t("הגדרות")}>
       {hasUnseenUpdate && (
-        <span className="absolute top-2 start-2 h-2 w-2 rounded-full" style={{ background: "var(--color-brass)" }} />
+        <span className="absolute top-2 end-2 h-2 w-2 rounded-full" style={{ background: "var(--color-brass)" }} />
       )}
       <IconSettings className="h-[19px] w-[19px]" />
     </Link>
