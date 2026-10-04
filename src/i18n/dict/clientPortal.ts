@@ -4,6 +4,7 @@ import type { AreaDict } from "@/i18n/types";
 // Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "שלחו לנו בוואטסאפ שיר אחד או שניים לקליפ, שיר שקט ושיר קצבי (שם השיר או קישור). אחרי ששלחתם, לחצו כאן כדי לסמן שסיימתם.": "Send us one or two songs for the clip on WhatsApp, a calm one and an upbeat one (the song name or a link). Once you've sent them, tap here to mark it done.",
     "סטטוס האירוע": "Event status",
     "מקדמה: ₪{amount}": "Deposit: ₪{amount}",
     "יתרה: ₪{amount}": "Balance: ₪{amount}",
@@ -28,6 +29,7 @@ const dict: AreaDict = {
     "אישרתי, סימון כבוצע": "Approved, mark as done",
   },
   ru: {
+    "שלחו לנו בוואטסאפ שיר אחד או שניים לקליפ, שיר שקט ושיר קצבי (שם השיר או קישור). אחרי ששלחתם, לחצו כאן כדי לסמן שסיימתם.": "Пришлите нам в WhatsApp одну-две песни для клипа — спокойную и ритмичную (название или ссылку). После отправки нажмите здесь, чтобы отметить, что всё готово.",
     "סטטוס האירוע": "Статус мероприятия",
     "מקדמה: ₪{amount}": "Предоплата: ₪{amount}",
     "יתרה: ₪{amount}": "Остаток: ₪{amount}",

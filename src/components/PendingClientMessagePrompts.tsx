@@ -38,7 +38,19 @@ export type PendingLeadFollowUp = {
   quotedAmount: number;
 };
 
-type PendingItem = PendingPaymentReminder | PendingReviewRequest | PendingLeadFollowUp;
+// 3 days after the album-design-ready / full-film-ready message, when the client still hasn't
+// approved the album / picked the clip songs (lib/clientReminders.ts).
+export type PendingClientReminder = {
+  type: "album_reminder" | "song_reminder";
+  id: string;
+  clientName: string;
+};
+
+type PendingItem = PendingPaymentReminder | PendingReviewRequest | PendingLeadFollowUp | PendingClientReminder;
+
+function isClientReminder(item: PendingItem): item is PendingClientReminder {
+  return item.type === "album_reminder" || item.type === "song_reminder";
+}
 
 // All three kinds are cron-flagged "awaiting_confirmation" rows the photographer must tap
 // through — there's no live browser session at cron time to open a wa.me link, so this surfaces
@@ -49,13 +61,15 @@ export default function PendingClientMessagePrompts({
   paymentReminders,
   reviewRequests,
   leadFollowUps,
+  clientReminders = [],
 }: {
   paymentReminders: PendingPaymentReminder[];
   reviewRequests: PendingReviewRequest[];
   leadFollowUps: PendingLeadFollowUp[];
+  clientReminders?: PendingClientReminder[];
 }) {
   const t = useT();
-  const [queue, setQueue] = useState<PendingItem[]>([...paymentReminders, ...reviewRequests, ...leadFollowUps]);
+  const [queue, setQueue] = useState<PendingItem[]>([...paymentReminders, ...reviewRequests, ...leadFollowUps, ...clientReminders]);
   const [busy, setBusy] = useState(false);
   const entered = useModalEntered();
 
@@ -69,7 +83,9 @@ export default function PendingClientMessagePrompts({
         ? `/api/scheduled-messages/${current.id}/confirm`
         : current.type === "review"
           ? `/api/scheduled-messages/${current.id}/confirm-review`
-          : `/api/scheduled-messages/${current.id}/confirm-lead-followup`;
+          : isClientReminder(current)
+            ? `/api/scheduled-messages/${current.id}/confirm-client-reminder`
+            : `/api/scheduled-messages/${current.id}/confirm-lead-followup`;
     const body = current.type === "payment" ? { paid: paidOrSend } : { send: paidOrSend };
     const res = await fetch(url, {
       method: "POST",
@@ -140,6 +156,33 @@ export default function PendingClientMessagePrompts({
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
               >
                 {t("כן, שלח")}
+              </button>
+            </div>
+          </>
+        ) : isClientReminder(current) ? (
+          <>
+            <h2 className="text-lg font-bold mb-2 font-display">
+              {current.type === "album_reminder" ? t("תזכורת לאישור עיצוב האלבום") : t("תזכורת לבחירת שירים לקליפ")}
+            </h2>
+            <p className="text-sm text-ink-soft mb-5">
+              {current.type === "album_reminder"
+                ? withBoldName(t("עברו 3 ימים מאז ששלחת ל{name} את עיצוב האלבום, והוא עוד לא אושר בפורטל. לשלוח תזכורת בוואטסאפ?"), current.clientName)
+                : withBoldName(t("עברו 3 ימים מאז ששלחת ל{name} שהסרט המלא מוכן, ועוד לא נבחרו שירים לקליפ. לשלוח תזכורת להוריד את הסרט ולבחור שיר שקט ושיר קצבי?"), current.clientName)}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => respond(false)}
+                disabled={busy}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+              >
+                {t("דלג הפעם")}
+              </button>
+              <button
+                onClick={() => respond(true)}
+                disabled={busy}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
+              >
+                {t("שליחה בוואטסאפ")}
               </button>
             </div>
           </>

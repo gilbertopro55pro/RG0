@@ -6,6 +6,9 @@ import { useT } from "@/i18n/client";
 
 type ClientStage = {
   key: string;
+  // What the stage is (album approval / video approval / song selection), also for custom-package
+  // stages named like them (lib/clientReminders.ts stageRole). Falls back to the key.
+  role?: string | null;
   label: string;
   done: boolean;
   isCurrent: boolean;
@@ -13,7 +16,7 @@ type ClientStage = {
 
 const EXPLANATIONS: Partial<Record<StageKey, string>> = {
   client_photo_selection: "היכנסו לגלריה שלכם, סמנו לב ❤️ על כל תמונה שתרצו לכלול, ולחצו על \"סיום בחירה\" בתחתית העמוד. השלב יסומן כבוצע אוטומטית ברגע שתאשרו.",
-  client_song_selection: "שלחו לנו בוואטסאפ את שם השיר או קישור אליו. זה השיר שילווה את הקליפ שלכם. אחרי ששלחתם, לחצו כאן כדי לסמן שסיימתם.",
+  client_song_selection: "שלחו לנו בוואטסאפ שיר אחד או שניים לקליפ, שיר שקט ושיר קצבי (שם השיר או קישור). אחרי ששלחתם, לחצו כאן כדי לסמן שסיימתם.",
   video_approval: "צפו בסרטון שנשלח אליכם. אם הכול נראה מעולה, לחצו לאישור ונמשיך משם לשלב הבא.",
   album_approval: "צפו בעיצוב האלבום ווודאו שהכול נראה בדיוק כמו שרציתם. אם הכול מאושר, לחצו לאישור העיצוב.",
 };
@@ -56,12 +59,13 @@ export default function PortalStageActions({
 
   return (
     <div className="space-y-1.5">
-      {stages.map(({ key, label, isCurrent }) => {
+      {stages.map(({ key, role, label, isCurrent }) => {
         const done = localDone.has(key);
-        const explanationHe = EXPLANATIONS[key as StageKey];
+        const r = role ?? key;
+        const explanationHe = EXPLANATIONS[r as StageKey];
         const explanation = explanationHe ? t(explanationHe) : undefined;
-        const isClientCompletable = key === "client_song_selection" || key === "video_approval" || key === "album_approval";
-        const isPhotoSelection = key === "client_photo_selection";
+        const isClientCompletable = r === "client_song_selection" || r === "video_approval" || r === "album_approval";
+        const isPhotoSelection = r === "client_photo_selection";
 
         return (
           <div
@@ -100,7 +104,7 @@ export default function PortalStageActions({
                   )
                 )}
 
-                {key === "client_song_selection" && whatsappLink && (
+                {r === "client_song_selection" && whatsappLink && (
                   <a
                     href={whatsappLink}
                     target="_blank"
@@ -111,7 +115,7 @@ export default function PortalStageActions({
                   </a>
                 )}
 
-                {key === "album_approval" && albumDesignUrl && (
+                {r === "album_approval" && albumDesignUrl && (
                   <a
                     href={albumDesignUrl}
                     target="_blank"
@@ -122,7 +126,7 @@ export default function PortalStageActions({
                   </a>
                 )}
 
-                {key === "album_approval" && !albumDesignUrl && (
+                {r === "album_approval" && !albumDesignUrl && (
                   <p className="text-xs text-ink-soft">
                     {t("עדיין לא הועלה כאן קובץ עיצוב. אם קיבלתם אותו בדרך אחרת (וואטסאפ, מייל וכו') אפשר לאשר גם ככה.")}
                   </p>

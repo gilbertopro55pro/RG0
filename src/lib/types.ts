@@ -129,6 +129,10 @@ export type EventRow = {
   client_name: string;
   // Language of the client's pages (portal, contract, gallery). Null = Hebrew. Migration 0150.
   client_lang?: string | null;
+  // When the client approved the album design / picked the clip songs (portal or gallery), for the
+  // 3-day reminders (lib/clientReminders.ts, migration 0152).
+  album_approved_at?: string | null;
+  songs_chosen_at?: string | null;
   // Free-text occasion (e.g. "עלייה לתורה") — display-only prefix on the event card via
   // eventDisplayName(); client_name itself stays the plain client name for messages/contracts.
   event_type: string | null;

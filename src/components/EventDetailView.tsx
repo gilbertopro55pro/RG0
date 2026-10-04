@@ -455,13 +455,13 @@ export default function EventDetailView({
   // Opens the photographer's own WhatsApp with the client's chat pre-filled (see waLink.ts) and
   // logs that it happened — the same no-Business-API-template approach used for the initial
   // booking confirmation, now shared by every "stage complete" client update too.
-  const notifyClientByWhatsApp = async (label: string, text: string) => {
+  const notifyClientByWhatsApp = async (label: string, text: string, stageKey?: string) => {
     if (!event.client_phone) return;
     openWhatsApp(event.client_phone, text);
     await fetch(`/api/events/${event.id}/notify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label, clientPhone: event.client_phone }),
+      body: JSON.stringify({ label, clientPhone: event.client_phone, stageKey }),
     }).catch(() => {});
   };
 
@@ -494,7 +494,7 @@ export default function EventDetailView({
         // manual "שליחת עדכון" button sends, instead of the old short hardcoded
         // STAGE_NOTIFY_CLIENT string.
         const text = buildClientUpdateMessage(key, label) + (data.notify.downloadUrl ? `\n${data.notify.downloadUrl}` : "");
-        await notifyClientByWhatsApp(label, text);
+        await notifyClientByWhatsApp(label, text, key);
       }
       await refreshNotifications();
       if (done && key === "final_delivery" && isOwner) setShowReviewPrompt(true);
@@ -574,7 +574,8 @@ export default function EventDetailView({
               clientName: event.client_name,
               url: data.notify.downloadUrl,
               lang: clientMessageLang,
-            })
+            }),
+            "album_approval"
           );
         }
         await refreshNotifications();
@@ -617,7 +618,7 @@ export default function EventDetailView({
       await fetch(`/api/events/${event.id}/notify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label, clientPhone: event.client_phone }),
+        body: JSON.stringify({ label, clientPhone: event.client_phone, stageKey: key }),
       }).catch(() => {});
       await refreshNotifications();
     } finally {

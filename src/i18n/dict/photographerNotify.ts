@@ -7,6 +7,9 @@ import type { AreaDict } from "@/i18n/types";
 // (the Fly worker's render graph), so keep this file free of imports beyond the type.
 const dict: AreaDict = {
   en: {
+    "{name} עוד לא אישרו את עיצוב האלבום": "{name} hasn't approved the album design yet",
+    "{name} עוד לא בחרו שירים לקליפ": "{name} hasn't picked songs for the clip yet",
+    "עברו 3 ימים מאז ההודעה. לחצו לשליחת תזכורת בוואטסאפ": "It's been 3 days since your message. Tap to send a WhatsApp reminder",
     // Shared lines
     "שלום {name},": "Hi {name},",
     "שלום,": "Hi,",
@@ -157,6 +160,9 @@ const dict: AreaDict = {
     "אפשר לבצע את הפולואפ ישירות מהאפליקציה, בעמוד הלידים.": "You can follow up right from the app, on the Leads page.",
   },
   ru: {
+    "{name} עוד לא אישרו את עיצוב האלבום": "{name}: дизайн альбома ещё не утверждён",
+    "{name} עוד לא בחרו שירים לקליפ": "{name}: песни для клипа ещё не выбраны",
+    "עברו 3 ימים מאז ההודעה. לחצו לשליחת תזכורת בוואטסאפ": "Прошло 3 дня с вашего сообщения. Нажмите, чтобы отправить напоминание в WhatsApp",
     // Shared lines
     "שלום {name},": "Здравствуйте, {name}!",
     "שלום,": "Здравствуйте!",

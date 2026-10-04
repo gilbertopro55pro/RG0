@@ -3,6 +3,10 @@ import type { AreaDict } from "@/i18n/types";
 // Area "home" (see src/i18n/dict/index.ts). Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "תזכורת לאישור עיצוב האלבום": "Album design approval reminder",
+    "תזכורת לבחירת שירים לקליפ": "Clip song selection reminder",
+    "עברו 3 ימים מאז ששלחת ל{name} את עיצוב האלבום, והוא עוד לא אושר בפורטל. לשלוח תזכורת בוואטסאפ?": "It's been 3 days since you sent {name} the album design, and it hasn't been approved in the portal yet. Send a reminder on WhatsApp?",
+    "עברו 3 ימים מאז ששלחת ל{name} שהסרט המלא מוכן, ועוד לא נבחרו שירים לקליפ. לשלוח תזכורת להוריד את הסרט ולבחור שיר שקט ושיר קצבי?": "It's been 3 days since you told {name} the full film is ready, and no songs have been picked for the clip yet. Send a reminder to download the film and pick a calm song and an upbeat one?",
     "תקופת הניסיון מסתיימת היום": "Your free trial ends today",
     "תקופת הניסיון מסתיימת מחר": "Your free trial ends tomorrow",
     "תקופת הניסיון מסתיימת בעוד {n} ימים": "Your free trial ends in {n} days",
@@ -414,6 +418,10 @@ const dict: AreaDict = {
     "פתיחת הקישור": "Open link",
   },
   ru: {
+    "תזכורת לאישור עיצוב האלבום": "Напоминание об утверждении дизайна альбома",
+    "תזכורת לבחירת שירים לקליפ": "Напоминание о выборе песен для клипа",
+    "עברו 3 ימים מאז ששלחת ל{name} את עיצוב האלבום, והוא עוד לא אושר בפורטל. לשלוח תזכורת בוואטסאפ?": "Прошло 3 дня с тех пор, как вы отправили {name} дизайн альбома, а в портале его ещё не утвердили. Отправить напоминание в WhatsApp?",
+    "עברו 3 ימים מאז ששלחת ל{name} שהסרט המלא מוכן, ועוד לא נבחרו שירים לקליפ. לשלוח תזכורת להוריד את הסרט ולבחור שיר שקט ושיר קצבי?": "Прошло 3 дня с тех пор, как вы сообщили {name}, что полный фильм готов, а песни для клипа ещё не выбраны. Отправить напоминание скачать фильм и выбрать спокойную и ритмичную песню?",
     "תקופת הניסיון מסתיימת היום": "Пробный период заканчивается сегодня",
     "תקופת הניסיון מסתיימת מחר": "Пробный период заканчивается завтра",
     "תקופת הניסיון מסתיימת בעוד {n} ימים": "Пробный период заканчивается через {n} дн.",
