@@ -16,13 +16,15 @@ import clientQuoteSend from "@/i18n/dict/clientQuoteSend";
 import clientEmails from "@/i18n/dict/clientEmails";
 import landing from "@/i18n/dict/landing";
 import auth from "@/i18n/dict/auth";
+import photographerNotify from "@/i18n/dict/photographerNotify";
+import whatsNew from "@/i18n/dict/whatsNew";
 
 // One dictionary per area of the app, merged here (common first, so an area can override).
 const AREAS: AreaDict[] = [
   common, home, galleries, album, leads, settings, settingsAdmin,
   clientChat, clientQuote, clientPortal, clientGallery,
   clientMessages, clientQuoteSend, clientEmails,
-  landing, auth,
+  landing, auth, photographerNotify, whatsNew,
 ];
 
 const cache: Partial<Record<Lang, Messages>> = {};
