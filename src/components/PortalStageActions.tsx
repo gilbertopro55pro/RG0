@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { StageKey } from "@/lib/stages";
+import { useT } from "@/i18n/client";
 
 type ClientStage = {
   key: string;
@@ -33,6 +34,7 @@ export default function PortalStageActions({
   const [localDone, setLocalDone] = useState<Set<string>>(
     new Set(stages.filter((s) => s.done).map((s) => s.key))
   );
+  const t = useT();
   const [submitting, setSubmitting] = useState<string | null>(null);
 
   const markDone = async (stageKey: string) => {
@@ -56,7 +58,8 @@ export default function PortalStageActions({
     <div className="space-y-1.5">
       {stages.map(({ key, label, isCurrent }) => {
         const done = localDone.has(key);
-        const explanation = EXPLANATIONS[key as StageKey];
+        const explanationHe = EXPLANATIONS[key as StageKey];
+        const explanation = explanationHe ? t(explanationHe) : undefined;
         const isClientCompletable = key === "client_song_selection" || key === "video_approval" || key === "album_approval";
         const isPhotoSelection = key === "client_photo_selection";
 
@@ -81,7 +84,7 @@ export default function PortalStageActions({
             </div>
 
             {!done && explanation && (
-              <div className="mt-2 mr-9 space-y-2">
+              <div className="mt-2 ms-9 space-y-2">
                 <p className="text-xs leading-relaxed text-ink-soft">{explanation}</p>
 
                 {isPhotoSelection && (
@@ -90,10 +93,10 @@ export default function PortalStageActions({
                       href={galleryLink}
                       className="inline-block rounded-lg px-3.5 py-2 text-xs font-semibold bg-ink text-white"
                     >
-                      מעבר לגלריה ובחירת תמונות
+                      {t("מעבר לגלריה ובחירת תמונות")}
                     </a>
                   ) : (
-                    <p className="text-xs text-ink-soft">הגלריה עדיין בהכנה. נשלח לכם הודעה כשהיא תהיה מוכנה</p>
+                    <p className="text-xs text-ink-soft">{t("הגלריה עדיין בהכנה. נשלח לכם הודעה כשהיא תהיה מוכנה")}</p>
                   )
                 )}
 
@@ -104,7 +107,7 @@ export default function PortalStageActions({
                     rel="noopener noreferrer"
                     className="block w-fit rounded-lg px-3.5 py-2 text-xs font-semibold bg-sage-bg text-sage"
                   >
-                    שליחת שם השיר בוואטסאפ
+                    {t("שליחת שם השיר בוואטסאפ")}
                   </a>
                 )}
 
@@ -115,13 +118,13 @@ export default function PortalStageActions({
                     rel="noopener noreferrer"
                     className="block w-fit rounded-lg px-3.5 py-2 text-xs font-semibold bg-sage-bg text-sage"
                   >
-                    צפייה בעיצוב האלבום
+                    {t("צפייה בעיצוב האלבום")}
                   </a>
                 )}
 
                 {key === "album_approval" && !albumDesignUrl && (
                   <p className="text-xs text-ink-soft">
-                    עדיין לא הועלה כאן קובץ עיצוב. אם קיבלתם אותו בדרך אחרת (וואטסאפ, מייל וכו') אפשר לאשר גם ככה.
+                    {t("עדיין לא הועלה כאן קובץ עיצוב. אם קיבלתם אותו בדרך אחרת (וואטסאפ, מייל וכו') אפשר לאשר גם ככה.")}
                   </p>
                 )}
 
@@ -131,7 +134,7 @@ export default function PortalStageActions({
                     disabled={submitting === key}
                     className="block rounded-lg px-3.5 py-2 text-xs font-semibold bg-ink text-white disabled:opacity-60"
                   >
-                    {submitting === key ? "מסמן..." : "אישרתי, סימון כבוצע"}
+                    {submitting === key ? t("מסמן...") : t("אישרתי, סימון כבוצע")}
                   </button>
                 )}
               </div>

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import { useLang, useT } from "@/i18n/client";
+import { dirOf } from "@/i18n/config";
 
 type SlidePhoto = { id: string; url: string };
 
@@ -54,6 +56,9 @@ export default function GallerySlideshow({
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
   const effects = useMemo(() => randomEffects(photos.length), [photos.length]);
+  const t = useT();
+  // Arrows follow the page's own direction (the client's language), not <html dir>.
+  const isRtl = dirOf(useLang()) === "rtl";
 
   const next = () => setIndex((i) => (i + 1) % photos.length);
   const prev = () => setIndex((i) => (i - 1 + photos.length) % photos.length);
@@ -68,8 +73,8 @@ export default function GallerySlideshow({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      if (e.key === "ArrowRight") prev();
-      if (e.key === "ArrowLeft") next();
+      if (e.key === "ArrowRight") (isRtl ? prev : next)();
+      if (e.key === "ArrowLeft") (isRtl ? next : prev)();
       if (e.key === " ") {
         e.preventDefault();
         setPlaying((p) => !p);
@@ -78,7 +83,7 @@ export default function GallerySlideshow({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photos.length]);
+  }, [photos.length, isRtl]);
 
   if (photos.length === 0) return null;
   const photo = photos[index];
@@ -107,10 +112,10 @@ export default function GallerySlideshow({
         style={{ animation: ANIMATIONS[effect] }}
       />
 
-      <div className="absolute top-4 left-4 flex items-center gap-2">
+      <div className="absolute top-4 end-4 flex items-center gap-2">
         <button
           onClick={onClose}
-          aria-label="סגירת מצגת"
+          aria-label={t("סגירת מצגת")}
           className="h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-lg"
         >
           <IconClose className="h-5 w-5" />
@@ -119,8 +124,8 @@ export default function GallerySlideshow({
           <button
             onClick={onDownload}
             disabled={downloading}
-            aria-label="הורדת כל תמונות המצגת"
-            title="הורדת כל תמונות המצגת"
+            aria-label={t("הורדת כל תמונות המצגת")}
+            title={t("הורדת כל תמונות המצגת")}
             className="h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center disabled:opacity-50"
           >
             <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -133,8 +138,8 @@ export default function GallerySlideshow({
 
       <button
         onClick={() => setPlaying((p) => !p)}
-        aria-label={playing ? "השהיה" : "המשך"}
-        className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-sm font-semibold"
+        aria-label={playing ? t("השהיה") : t("המשך")}
+        className="absolute top-4 start-4 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center text-sm font-semibold"
       >
         {playing ? "⏸" : "▶"}
       </button>
@@ -143,17 +148,17 @@ export default function GallerySlideshow({
         <>
           <button
             onClick={prev}
-            aria-label="התמונה הבאה"
-            className="absolute right-3 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center text-xl"
+            aria-label={t("התמונה הקודמת")}
+            className="absolute start-3 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center text-xl"
           >
-            ›
+            {isRtl ? "›" : "‹"}
           </button>
           <button
             onClick={next}
-            aria-label="התמונה הקודמת"
-            className="absolute left-3 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center text-xl"
+            aria-label={t("התמונה הבאה")}
+            className="absolute end-3 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center text-xl"
           >
-            ‹
+            {isRtl ? "‹" : "›"}
           </button>
         </>
       )}

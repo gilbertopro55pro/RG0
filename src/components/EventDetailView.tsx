@@ -220,6 +220,7 @@ export default function EventDetailView({
   customPackageName,
   messageTemplates,
   whatsappSignature,
+  canChooseClientLang = false,
 }: {
   event: EventRow;
   initialStages: EventStageRow[];
@@ -236,6 +237,8 @@ export default function EventDetailView({
   customPackageName: string | null;
   messageTemplates: Record<string, string>;
   whatsappSignature: string | null;
+  // The client-language picker in the edit form (admin only for now, lib/clientLang.ts).
+  canChooseClientLang?: boolean;
 }) {
   const router = useRouter();
   const t = useT();
@@ -810,6 +813,7 @@ export default function EventDetailView({
       {showEdit && (
         <EditEventModal
           event={event}
+          canChooseClientLang={canChooseClientLang}
           payments={
             payments
               ? { depositAmount: Number(payments.deposit_amount), balanceAmount: Number(payments.balance_amount), depositPaid: payments.deposit_paid }

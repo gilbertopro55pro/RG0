@@ -12,18 +12,22 @@ import { IconClose } from "@/components/icons/AlbumIcons";
 import NativeDateTimeField from "@/components/NativeDateTimeField";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
+import ClientLangSelect from "@/components/ClientLangSelect";
 
 export type EditablePayments = { depositAmount: number; balanceAmount: number; depositPaid: boolean };
 
 export default function EditEventModal({
   event,
   payments,
+  canChooseClientLang = false,
   onClose,
   onSaved,
 }: {
   event: EventRow;
   // Owner only (event_payments is owner-only by RLS) — null hides the price fields.
   payments?: EditablePayments | null;
+  // Shows the client-language picker (admin only for now, lib/clientLang.ts).
+  canChooseClientLang?: boolean;
   onClose: () => void;
   onSaved: (newPayments?: { depositAmount: number; balanceAmount: number }) => void;
 }) {
@@ -43,6 +47,7 @@ export default function EditEventModal({
   const [eventLocation, setEventLocation] = useState(event.event_location ?? "");
   const [arrivalTime, setArrivalTime] = useState(event.arrival_time ?? "");
   const [notes, setNotes] = useState(event.notes ?? "");
+  const [clientLang, setClientLang] = useState<string>(event.client_lang ?? "he");
   // The price is edited as "סכום האירוע" + "יתרה"; the deposit is whatever's left (total − balance),
   // since that's how event_payments stores it (deposit_amount + balance_amount).
   const initialTotal = payments ? payments.depositAmount + payments.balanceAmount : 0;
@@ -114,6 +119,7 @@ export default function EditEventModal({
         arrivalTime,
         notes,
         allowDoubleBooking,
+        ...(canChooseClientLang ? { clientLang } : {}),
         ...(amountsChanged ? { payments: { depositAmount: derivedDeposit, balanceAmount: parsedBalance } } : {}),
       }),
     });
@@ -315,6 +321,7 @@ export default function EditEventModal({
               placeholder={t("כל מידע נוסף שכדאי לזכור על האירוע")}
             />
           </div>
+          {canChooseClientLang && <ClientLangSelect value={clientLang} onChange={setClientLang} />}
           {error && <p className="text-xs text-rose">{error}</p>}
           {dateConflict ? (
             <div className="space-y-2 mt-2">

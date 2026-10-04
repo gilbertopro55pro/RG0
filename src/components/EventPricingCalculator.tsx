@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { deliveryNotes, quoteLinkMessage, quoteShareCaption, withoutStaleDeliveryLines } from "@/lib/quoteDefaults";
 import { buildWaMeLink } from "@/lib/waLink";
 import { createClient } from "@/lib/supabase/client";
@@ -10,6 +10,7 @@ import type { LeadQuotePrefill } from "@/lib/leadQuotePrefill";
 import CompactGuideModal from "@/components/CompactGuideModal";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { IconArrowRight } from "@/components/icons/NavIcons";
+import ClientLangSelect from "@/components/ClientLangSelect";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
 
@@ -89,6 +90,8 @@ export default function EventPricingCalculator({
   leadId,
   onLeadQuoted,
   quoteExtras,
+  clientLangPicker = false,
+  initialClientLang,
   onClose,
 }: {
   hourlyRate: number;
@@ -109,6 +112,10 @@ export default function EventPricingCalculator({
   // The owner's own delivery-time notes (lib/quoteDefaults.ts), admin account only. Everything else
   // here (the caption, the one-tap link, the contract question) is for every photographer.
   quoteExtras?: boolean;
+  // The client-language picker on the preview (UI languages phase 2, admin only for now — the page
+  // computes canChooseClientLang). initialClientLang: the source lead's client_lang.
+  clientLangPicker?: boolean;
+  initialClientLang?: string | null;
   onClose: () => void;
 }) {
   const supabase = createClient();
@@ -202,6 +209,11 @@ export default function EventPricingCalculator({
   const [askContract, setAskContract] = useState(false);
   const [sentWithContract, setSentWithContract] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
+  // The language of the client's pages (quote page, contract, portal, gallery), sent with the save.
+  // Follows a same-phone lead found on the preview until the photographer picks one.
+  const [clientLang, setClientLang] = useState<string>(initialClientLang ?? "he");
+  const clientLangTouched = useRef(false);
+  const clientLangField = clientLangPicker ? { clientLang } : {};
   useEffect(() => {
     let alive = true;
     const sb = createClient();
@@ -575,7 +587,7 @@ export default function EventPricingCalculator({
     fetch(`/api/leads/${leadId}/quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(quotePayload()),
+      body: JSON.stringify({ ...quotePayload(), ...clientLangField }),
     });
 
   // allowDuplicate: the photographer saw that a lead with this phone exists and still wants a new one.
@@ -592,6 +604,7 @@ export default function EventPricingCalculator({
           eventDateInterest: quoteEventDate || undefined,
           eventType: quoteEventType.trim() || undefined,
           allowDuplicate,
+          ...clientLangField,
         }),
       });
       const leadData = await leadRes.json().catch(() => ({}));
@@ -630,8 +643,9 @@ export default function EventPricingCalculator({
         }
       }
       if (id) {
-        const { data } = await supabase.from("leads").select("quote_token").eq("id", id).maybeSingle<{ quote_token: string }>();
+        const { data } = await supabase.from("leads").select("quote_token, client_lang").eq("id", id).maybeSingle<{ quote_token: string; client_lang: string | null }>();
         if (data?.quote_token) setExistingTarget({ id, token: data.quote_token });
+        if (data && !clientLangTouched.current) setClientLang(data.client_lang ?? "he");
         else if (leadId) setSendError(t("לא נמצא הליד של ההצעה"));
       }
     } catch {
@@ -676,9 +690,10 @@ export default function EventPricingCalculator({
     setStep("savePrompt");
     const base = quotePayload();
     const payload = { ...base, details: { ...base.details, withContract: withContract || undefined } };
+    // The picked client language rides on the same request (still nothing async before WhatsApp opens).
     const req =
       linkTarget.kind === "existing"
-        ? fetch(`/api/leads/${linkTarget.id}/quote`, { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+        ? fetch(`/api/leads/${linkTarget.id}/quote`, { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, ...clientLangField }) })
         : fetch("/api/leads", {
             method: "POST",
             keepalive: true,
@@ -691,6 +706,7 @@ export default function EventPricingCalculator({
               allowDuplicate: true,
               quoteToken: linkTarget.token,
               quote: payload,
+              ...clientLangField,
             }),
           });
     void req
@@ -1260,6 +1276,17 @@ export default function EventPricingCalculator({
             </div>
             <div className="rounded-lg border border-line bg-white p-3 mb-3">
               <div className="text-sm font-semibold mb-2">{quoteClientName}</div>
+              {clientLangPicker && (
+                <ClientLangSelect
+                  value={clientLang}
+                  onChange={(l) => {
+                    clientLangTouched.current = true;
+                    setClientLang(l);
+                  }}
+                  showHint={false}
+                  className="mb-2"
+                />
+              )}
               <div className="space-y-1 text-xs mb-2">
                 <div>
                   <span className="text-ink-soft">{t("סוג האירוע:")} </span>

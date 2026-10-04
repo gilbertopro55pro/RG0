@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { EventContractRow } from "@/lib/types";
 import SignaturePad from "@/components/SignaturePad";
+import { useLang, useT } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 // The full contract text is one signed string (so nothing is hidden from what's actually agreed
 // to), but the long itemized clauses (ד–טז) are only useful to read on demand — this splits the
@@ -25,6 +27,9 @@ function splitContractText(text: string): { main: string; details: string; rest:
 
 // onSigned: the quote page's questionnaire moves on once the contract is signed (QuoteApprovalFlow).
 export default function ContractSignForm({ contract: initialContract, onSigned }: { contract: EventContractRow; onSigned?: (contract: EventContractRow) => void }) {
+  // UI chrome in the client's language (ClientLangScope); the contract text itself stays as written.
+  const t = useT();
+  const lang = useLang();
   const [contract, setContract] = useState(initialContract);
   const [signerName, setSignerName] = useState("");
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
@@ -45,7 +50,7 @@ export default function ContractSignForm({ contract: initialContract, onSigned }
     const data = await res.json();
     setSigning(false);
     if (!res.ok) {
-      setError(data.error ?? "שגיאה בחתימת החוזה");
+      setError(t(data.error ?? "שגיאה בחתימת החוזה"));
       return;
     }
     setContract(data.contract);
@@ -59,7 +64,7 @@ export default function ContractSignForm({ contract: initialContract, onSigned }
         {details && (
           <details className="mt-3">
             <summary className="cursor-pointer text-sm font-semibold text-amber-deep select-none">
-              לפירוט המלא
+              {t("לפירוט המלא")}
             </summary>
             <div className="whitespace-pre-wrap mt-2 pt-2 border-t border-line">{details}</div>
           </details>
@@ -70,18 +75,20 @@ export default function ContractSignForm({ contract: initialContract, onSigned }
       {contract.status === "signed" ? (
         <div className="rounded-xl px-3.5 py-4 text-sm bg-sage-bg text-sage text-center space-y-3">
           <div>
-            החוזה נחתם על ידי {contract.signer_name} בתאריך{" "}
-            {contract.signed_at && new Date(contract.signed_at).toLocaleDateString("he-IL")}
+            {t("החוזה נחתם על ידי {name} בתאריך {date}", {
+              name: contract.signer_name ?? "",
+              date: contract.signed_at ? new Date(contract.signed_at).toLocaleDateString(dateLocale(lang)) : "",
+            })}
           </div>
           {contract.signature_data_url && (
             // eslint-disable-next-line @next/next/no-img-element -- a locally-drawn data URL, no benefit from next/image's remote optimization
-            <img src={contract.signature_data_url} alt="חתימה" className="mx-auto h-20 rounded-lg border border-line bg-white" />
+            <img src={contract.signature_data_url} alt={t("חתימה")} className="mx-auto h-20 rounded-lg border border-line bg-white" />
           )}
         </div>
       ) : (
         <div className="rounded-2xl p-4 bg-card border border-line shadow-card space-y-3">
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">שם מלא</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("שם מלא")}</label>
             <input
               value={signerName}
               onChange={(e) => setSignerName(e.target.value)}
@@ -89,12 +96,12 @@ export default function ContractSignForm({ contract: initialContract, onSigned }
             />
           </div>
           <div>
-            <label className="text-xs block mb-1 text-ink-soft">חתימה (חתמו עם האצבע או העכבר)</label>
+            <label className="text-xs block mb-1 text-ink-soft">{t("חתימה (חתמו עם האצבע או העכבר)")}</label>
             <SignaturePad onChange={setSignatureDataUrl} />
           </div>
           <label className="flex items-center gap-2 text-xs text-ink-soft">
             <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-            קראתי את תנאי ההסכם ואני מסכים/ה לתוכנו
+            {t("קראתי את תנאי ההסכם ואני מסכים/ה לתוכנו")}
           </label>
           {error && <p className="text-xs text-rose">{error}</p>}
           <button
@@ -102,7 +109,7 @@ export default function ContractSignForm({ contract: initialContract, onSigned }
             disabled={!signerName.trim() || !agreed || !signatureDataUrl || signing}
             className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
           >
-            {signing ? "חותם..." : "חתימה על החוזה"}
+            {signing ? t("חותם...") : t("חתימה על החוזה")}
           </button>
         </div>
       )}
