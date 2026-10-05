@@ -119,6 +119,18 @@ export async function uploadObject(
   );
 }
 
+// A percent-encoded name inside plain filename="..." isn't decoded by browsers: Chrome saved a
+// Hebrew-named file as "download", with no extension (found 2026-10-05 with the magnet PSD). The
+// UTF-8 name goes in filename* (RFC 6266/5987), with an ASCII-only filename as the fallback.
+function attachmentDisposition(name: string): string {
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 ? name.slice(dot).replace(/[^A-Za-z0-9.]/g, "") : "";
+  const base = (dot > 0 ? name.slice(0, dot) : name).replace(/[^\x20-\x7E]/g, "").replace(/["\\]/g, "").trim();
+  const ascii = `${/[A-Za-z0-9]/.test(base) ? base : "file"}${ext}`;
+  const encoded = encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
 export async function getSignedDownloadUrl(
   bucket: string,
   path: string,
@@ -128,9 +140,7 @@ export async function getSignedDownloadUrl(
   const command = new GetObjectCommand({
     Bucket: requireEnv("R2_BUCKET_NAME"),
     Key: keyFor(bucket, path),
-    ...(downloadFilename
-      ? { ResponseContentDisposition: `attachment; filename="${encodeURIComponent(downloadFilename)}"` }
-      : {}),
+    ...(downloadFilename ? { ResponseContentDisposition: attachmentDisposition(downloadFilename) } : {}),
   });
   return getSignedUrl(client(), command, { expiresIn: expiresInSeconds });
 }
