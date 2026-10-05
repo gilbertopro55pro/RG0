@@ -9,6 +9,7 @@ import { MAGNET_DIGIT_STYLES, magnetDigitId, magnetDigitUrl } from "@/lib/magnet
 import { MAGNET_FRAME_DIMENSIONS, DEFAULT_MAGNET_FRAME_SETTINGS, getMatInsetPct, getCutoutRadiusPx } from "@/lib/magnetFrameShared";
 import type { MagnetFrameElement, MagnetFrameTextElement, MagnetFrameDesignRow, MagnetFrameSettings, MagnetFrameCustomTextureRow, MagnetFrameCustomElementRow } from "@/lib/types";
 import { IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight } from "@/components/icons/NavIcons";
+import { IconRotateDevice } from "@/components/icons/AlbumIcons";
 import { useT } from "@/i18n/client";
 
 const COLOR_SWATCHES = [
@@ -1282,7 +1283,18 @@ export default function MagnetFrameEditor() {
   // Two sides (owner's design, 2026-10-05): the panels on the right (65%), and on the left (35%)
   // both frames as they will be exported, so a misplaced element shows up before downloading.
   return (
-    <div className={`grid gap-5 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)] items-start ${ALBUM_FONT_CLASS_NAMES}`}>
+    <>
+    {/* A phone held upright gets this instead of the editor: the two sides need the width of a
+        phone held sideways (owner, 2026-10-05). The editor stays mounted underneath, so turning
+        the phone back and forth keeps everything as it was. */}
+    <div className="hidden [@media(pointer:coarse)_and_(orientation:portrait)_and_(max-width:767px)]:flex flex-col items-center gap-4 rounded-2xl p-8 text-center bg-card border border-line shadow-card">
+      <div className="w-16 h-16 rounded-full bg-chip flex items-center justify-center" style={{ color: "var(--color-amber-deep)" }}>
+        <IconRotateDevice size={28} />
+      </div>
+      <p className="text-lg font-bold font-display">{t("סובבו את המכשיר למצב אופקי")}</p>
+      <p className="text-sm text-ink-soft">{t("כלי עיצוב המגנטים עובד במצב אופקי: המסגרות מצד אחד והפאנלים מהצד השני. סובבו את הטלפון כדי להמשיך.")}</p>
+    </div>
+    <div className={`grid gap-4 sm:gap-5 sm:grid-cols-[minmax(0,65fr)_minmax(0,35fr)] items-start [@media(pointer:coarse)_and_(orientation:portrait)_and_(max-width:767px)]:hidden ${ALBUM_FONT_CLASS_NAMES}`}>
       <section className="rounded-2xl bg-card border border-line shadow-card overflow-hidden">
         <div className="p-4 border-b border-line flex flex-wrap items-start gap-3">
           <p className="flex-1 min-w-[220px] text-xs leading-relaxed text-ink-soft">
@@ -1316,11 +1328,12 @@ export default function MagnetFrameEditor() {
         })}
       </section>
 
-      <aside className="order-first lg:order-none lg:sticky lg:top-[92px]">
-        <div className="mx-auto w-full" style={{ maxWidth: "min(100%, calc((100svh - 330px) / 1.6))" }}>
-          <div className="grid grid-cols-[16fr_9fr] items-start gap-3 lg:grid-cols-1 lg:gap-4">
+      {/* Side by side when the screen is short (a phone held sideways), stacked on a tall one. */}
+      <aside className="order-first sm:order-none sm:sticky sm:top-[80px]">
+        <div className="mx-auto w-full [@media(min-width:1024px)_and_(min-height:700px)]:max-w-[min(100%,calc((100svh_-_330px)/1.6))]">
+          <div className="grid grid-cols-[16fr_9fr] items-start gap-2 sm:gap-3 [@media(min-width:1024px)_and_(min-height:700px)]:grid-cols-1 [@media(min-width:1024px)_and_(min-height:700px)]:gap-4">
             {(["landscape", "portrait"] as const).map((o) => (
-              <div key={o} className={o === "portrait" ? "lg:w-[60%] lg:mx-auto w-full" : "w-full"}>
+              <div key={o} className={o === "portrait" ? "[@media(min-width:1024px)_and_(min-height:700px)]:w-[60%] [@media(min-width:1024px)_and_(min-height:700px)]:mx-auto w-full" : "w-full"}>
                 <div className="mb-1.5 text-[11px] font-semibold text-ink-soft text-center">
                   {withDims(o === "landscape" ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: o === "landscape" ? "20×15" : "15×20" })}
                 </div>
@@ -1357,5 +1370,6 @@ export default function MagnetFrameEditor() {
         </div>
       </aside>
     </div>
+    </>
   );
 }
