@@ -24,6 +24,14 @@ scenario file in `scenarios/<key>.js`; the engine is `record.js`; `convert.py` c
 ## Leads video re-recorded locally (2026-10-01)
 - `public/guides/leads.mp4` (0:40) was re-recorded the same local way as `quote-flow` (real `LeadsView`, demo leads, own overlay), because the live recorder is blocked. Captions match the new buttons: "שליחת הצעת מחיר", "עדכון הצעת מחיר", "הורדת PDF", and a lead that leaves the list after approval and signing. `scenarios/leads.js` was updated to the same captions for a future live re-shoot.
 
+## Galleries video and teaser re-recorded locally (2026-10-05)
+After the gallery redesign (new default "פרימיום" theme: full-bleed cover, sticky bar, a chapter per folder, justified rows, black lightbox), both were recorded the local way (the live recorder is still blocked by the proxy's TLS):
+- **Harness**: esbuild bundle of the real `GalleriesListView`, `GalleryManageView` and `GalleryPremiumCover` + `PublicGalleryView`, served by a small Python server on `http://127.0.0.1` (paths `/galleries`, `/galleries/<id>`, `/gallery/<token>` all serve the same page; the entry picks the view by path). Stubs: `next/navigation`, `next/link`, `next/image`, `next/font/*`, `@/lib/supabase/client` (every query resolves empty), a `process` shim; `fetch` to `/api/*` is mocked. CSS = the app's compiled Tailwind (`globals.css`, all of `src` scanned). The recorder is `record.js` with the base URL swapped, no proxy/session, `GF_TOUCH=1` for the client part (hearts show on every photo only with touch) and `GF_NOEND=1` for the first part. `convert.py` per part, then the two parts are joined and sped up ×1.3 with ffmpeg.
+- **Photos**: real stock wedding photos under the Pexels license (free, commercial use, no attribution needed), resized to 1600px with sharp. Demo gallery "יעל ואיתי, חתונה", סטודיו אור, folders הכנות / טקס / צילומי זוג / מסיבה (28 photos), cover = Pexels 1801263. The same photos are in the live demo gallery.
+- `public/guides/galleries.mp4` (0:46): galleries list → gallery → upload and folders → settings › עיצוב הגלריה → choose "פרימיום" and the live preview → share sheet → the client's gallery: cover, chapters, a heart, the lightbox, the bar (favorites, download all, share). Captions are in `scenarios/galleries.js` (updated for a live re-shoot; the client part needs `GF_GALLERY_TOKEN`).
+- `galleries-1.png` (the guide text's image of the "גלריה חדשה" form) was not changed: that form didn't change.
+- Teaser: `scenarios/teaser-galleries.js` clip (cover settles, chapters, a heart, the lightbox), `teasers.json` galleries speed 1.3 and two new feature lines. Output in `teasers-out/` (git-ignored), sent to the owner.
+
 ## Coming-soon teasers (סרטוני "בקרוב", 2026-09-29)
 Vertical 1080x1920, 13s (owner: 10–15s), no audio (music is added on Instagram/TikTok), for social media, not the
 site. Five exist: home, galleries, leads, quotes, assistant. Owner asked: every video ends on the

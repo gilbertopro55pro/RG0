@@ -43,3 +43,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 supabase/.temp/
+
+# Coming-soon teaser renders, delivered to the owner as files (not part of the site)
+/teasers-out/
