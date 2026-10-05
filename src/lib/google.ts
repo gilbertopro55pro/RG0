@@ -135,6 +135,17 @@ function buildEventTiming({ date, startTime, endTime }: CalendarEventTiming) {
   return { start, end };
 }
 
+// PATCH merges nested objects: sending start {dateTime} to an ALL-DAY calendar event kept its old
+// start.date next to the new dateTime, and Google rejected the pair with "Invalid start time"
+// (owner's report 2026-10-05, an event imported from an all-day calendar entry and then given
+// hours). Explicit nulls clear whichever form isn't being set, both ways.
+type Timing = ReturnType<typeof buildEventTiming>;
+function patchTiming({ start, end }: Timing) {
+  const clear = (t: Timing["start"]) =>
+    "dateTime" in t ? { date: null, ...t } : { dateTime: null, timeZone: null, ...t };
+  return { start: clear(start), end: clear(end) };
+}
+
 export async function createCalendarEvent(
   accessToken: string,
   {
@@ -196,7 +207,7 @@ export async function updateCalendarEvent(
     body: JSON.stringify({
       summary,
       description,
-      ...buildEventTiming({ date, startTime, endTime }),
+      ...patchTiming(buildEventTiming({ date, startTime, endTime })),
       ...(colorId ? { colorId } : {}),
     }),
   });
