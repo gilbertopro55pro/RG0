@@ -53,6 +53,26 @@ API returns 403.
 | לרוחב (20×15) | 2362×1772 RGBA PNG, 300 DPI = 20.0×15.0 cm, transparent photo window, opaque mat (verified 2026-09-25) |
 | לאורך (15×20) | 1772×2362, same checks |
 
+### PSD download (since 2026-10-05)
+
+- "הורדת PSD" under each preview: saves first, then `GET /api/magnet-frames/<id>/psd?orientation=…`
+  builds the file (`renderMagnetFramePsd` in `src/lib/magnetFramePsd.ts`), uploads it to R2
+  (`magnet-frame-exports/<userId>/<designId>-<orientation>.psd`, overwritten each time) and returns
+  `{ url }`, a signed link that downloads it. Not streamed back: a PSD with a rich texture can pass
+  Vercel's 4.5MB response limit.
+- Layers, bottom to top: "מקום לתמונה" (hidden, the window's shape, to clip a photo to), "מסגרת"
+  (inner shadow = live Drop Shadow, distance 0), "טקסטורה" (clipping), then one layer per text /
+  element (named by its text; a text's shadow = live Drop Shadow, angle 135). Plus the flattened
+  composite. 300 DPI. The effects use the same descriptor and `lrFX` removal that albumPsd.ts verified
+  in real Photoshop. Text is pixels, not editable type (a Hebrew type layer can't be checked from
+  here).
+- Verified live 2026-10-05: both files download (~2MB, ~10s each), 2362×1772 / 1772×2362, 300 DPI,
+  all layers present, effects on the mat and texts. Not yet opened in real Photoshop by the owner.
+- Time is mostly the texture render (~8.5s at 300 DPI); the PSD renders it once and reuses it for the
+  composite. The PNG download pays the same cost.
+- Hebrew download names: `getSignedDownloadUrl` writes `filename*=UTF-8''…` (RFC 6266). A plain
+  `filename="%D7…"` made Chrome save the file as "download" with no extension.
+
 ### Know before you answer a user
 
 - **Two coordinate systems.** Designs are stored and edited in design units: `MAGNET_FRAME_DIMENSIONS`,
