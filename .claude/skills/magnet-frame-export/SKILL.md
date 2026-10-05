@@ -23,6 +23,17 @@ API returns 403.
 
 ## How it works
 
+- **Layout (since 2026-10-05, the owner's design):** two sides. Right (65% on desktop): accordion
+  panels, one open at a time (טקסט, אלמנטים, ספרות, טקסטורה, הגדרות מסגרת). Opening one closes the
+  other, but its sub-tab, choices and scroll position are kept. "שמירה" sits at the top. Left
+  (35%, sticky): both frames rendered as exported (`renderFrame("landscape" | "portrait")`, same
+  elements, each orientation's own mat insets and scale). Both are draggable (they share xPct/yPct),
+  and each has its download button under it. Picking an element on a preview opens its panel.
+  Mobile: the two previews side by side on top, the panels below. Verified live 2026-10-05: panels,
+  kept state, save 200, both downloads (2362×1772 / 1772×2362, 300 DPI), no sideways scroll at 390px.
+- The portrait preview is the point of the layout: a text centered on the landscape bottom mat can
+  sit partly over the photo window in portrait (the portrait mat is a smaller share of the height).
+
 - One design per photographer: `magnet_frame_designs` (the latest row). "שמירה" POSTs
   `/api/magnet-frames` with the landscape elements; the portrait layout is a deep copy (positions
   are percentages, so they carry over).
@@ -78,7 +89,9 @@ API returns 403.
 
 Run tests on the test account only: saving overwrites the account's design.
 1. `GF_STATE=<scratchpad>/qa-state.json` (same session file as the guide-video and album-export
-   skills). `NODE_PATH` must contain `playwright-core`.
+   skills). `NODE_PATH` must contain `playwright-core`. In the cloud environment, don't use the
+   script's `ignoreHTTPSErrors`: route requests through Node's fetch (`ctx.route`) instead, which
+   keeps TLS verification on.
 2. `GF_STATE=… node export-test.js <outDir>`: closes the "install the app" card (it covers the
    editor buttons), adds a text and the first element, saves, then downloads both orientations.
    Pass = `save: 200` and two `download:` lines.
