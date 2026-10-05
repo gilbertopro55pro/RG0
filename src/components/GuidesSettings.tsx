@@ -11,7 +11,7 @@ const GUIDES: { key: string; title: string; description: string; duration: strin
   { key: "overview", title: "סיור במערכת", description: "מסך הבית, כרטיס אירוע, והמעבר בין כל המסכים", duration: "1:34" },
   { key: "portfolio", title: "פורטפוליו", description: "העלאת תמונות, הוספת גלריות ותמונות, ושיתוף ללקוחות", duration: "1:26" },
   { key: "settings", title: "הגדרות", description: "מה יש בכל אחד מנושאי ההגדרות", duration: "1:25" },
-  { key: "galleries", title: "גלריות", description: "יצירת גלריה, העלאת תמונות ושליחה ללקוח", duration: "0:39" },
+  { key: "galleries", title: "גלריות", description: "יצירת גלריה, העלאת תמונות, עיצוב פרימיום ושליחה ללקוח", duration: "0:46" },
   { key: "client-portals", title: "פורטל לקוח", description: "הקישור האישי ומה הלקוח רואה בו", duration: "0:30" },
   { key: "leads", title: "לידים ופניות", description: "מעקב פניות, שליחת הצעת מחיר בקישור, וליד שהופך לאירוע", duration: "0:40" },
   { key: "quote-flow", title: "שליחת הצעת מחיר", description: "מהליד לוואטסאפ, אישור הלקוח, שאלון וחתימה על החוזה", duration: "0:24" },
