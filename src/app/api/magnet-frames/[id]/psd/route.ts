@@ -28,7 +28,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const psd = await renderMagnetFramePsd(orientation, design);
   const path = `${userId}/${id}-${orientation}.psd`;
   await uploadObject("magnet-frame-exports", path, psd, "image/vnd.adobe.photoshop");
-  const filename = `מגנט-${orientation === "landscape" ? "לרוחב" : "לאורך"}.psd`;
+  // An ASCII name: a Hebrew filename* was dropped by Chromium in testing (saved as "download", no
+  // extension), and the name has to survive every browser for the file to open in Photoshop.
+  const filename = `magnet-frame-${orientation === "landscape" ? "20x15" : "15x20"}.psd`;
   const url = await getSignedDownloadUrl("magnet-frame-exports", path, 600, filename);
   return NextResponse.json({ url });
 }
