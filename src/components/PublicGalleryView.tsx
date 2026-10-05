@@ -113,6 +113,16 @@ export default function PublicGalleryView({
   const theme = resolveGalleryTheme(themeId, { titleFontOverride, gridStyleOverride });
   // The premium theme's layout: sticky action bar, chapter titles, footer, black lightbox.
   const premium = !!theme.stickyBar;
+  // Premium: the floating favorites bar waits until the client scrolls past the full-screen cover,
+  // so a returning client (favorites already saved) sees the cover clean (owner, 2026-10-05).
+  const [pastCover, setPastCover] = useState(!premium);
+  useEffect(() => {
+    if (!premium) return;
+    const onScroll = () => setPastCover(window.scrollY > window.innerHeight * 0.6);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [premium]);
   const t = useT();
   // The client's language (ClientLangScope), not <html dir> (the photographer's own cookie).
   const isRtl = dirOf(useLang()) === "rtl";
@@ -1685,7 +1695,7 @@ export default function PublicGalleryView({
           is active, tapping a photo favorites it directly, so this always shows one unified
           favorites count instead of a separate "selected" count. Sized up with bigger text on
           both mobile and desktop so it can't be missed. */}
-      {(favoriteCount > 0 || selectionMode || usedLabels.length > 0) && (
+      {(favoriteCount > 0 || selectionMode || usedLabels.length > 0) && (pastCover || selectionMode) && (
         <div
           className={`fixed bottom-3 right-3 left-3 md:right-auto md:left-1/2 md:-translate-x-1/2 z-40 flex flex-col gap-2 ${premium ? "rounded-[4px]" : "rounded-2xl"} px-4 py-3 md:py-3.5 md:min-w-[240px] shadow-sheet border`}
           style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)" }}
