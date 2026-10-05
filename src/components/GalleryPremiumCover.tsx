@@ -4,15 +4,15 @@ import { optimizedImageUrl } from "@/lib/imageOptimize";
 // with the title and date set low over a soft scrim. It is the only bold moment of the page and
 // its only unprompted motion: the photo settles from a slight zoom once, on load.
 // variant "preview" is the same composition shrunk into a box, for the design settings' preview.
-// variant "manage" is a shorter banner at the top of the photographer's own gallery screen, so the
-// screen they work in carries the same look the client gets.
+// variant "manage" is the same cover at the top of the photographer's own gallery screen, a little
+// shorter so the gallery's bar shows below it on the first screen.
 const COVER_WIDTHS = [828, 1200, 1920, 2048];
 
 export default function GalleryPremiumCover({
   photoUrl,
   title,
   dateLabel,
-  studioName,
+  logoUrl,
   focalX = 50,
   focalY = 50,
   scrollLabel,
@@ -21,7 +21,9 @@ export default function GalleryPremiumCover({
   photoUrl: string | null;
   title: string;
   dateLabel: string | null;
-  studioName?: string | null;
+  // The photographer's own logo (Studio Pro branding). Nothing is shown when there is none: the
+  // photographer's personal name is not a brand, so it never stands in for one.
+  logoUrl?: string | null;
   focalX?: number;
   focalY?: number;
   // aria-label of the scroll cue (page variant only).
@@ -38,7 +40,7 @@ export default function GalleryPremiumCover({
   return (
     <header
       className={`gt-premium-cover relative overflow-hidden ${
-        isPage ? "h-[92svh] sm:h-[100svh] min-h-[420px]" : isManage ? "h-[clamp(240px,48svh,480px)]" : "aspect-[4/3]"
+        isPage ? "h-[92svh] sm:h-[100svh] min-h-[420px]" : isManage ? "h-[64svh] sm:h-[calc(100svh-150px)] min-h-[320px]" : "aspect-[4/3]"
       }`}
       style={{ background: "#2b2c2f" }}
     >
@@ -67,17 +69,20 @@ export default function GalleryPremiumCover({
         className="absolute inset-0"
         style={{ background: "linear-gradient(to top, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.22) 32%, rgba(0,0,0,0) 58%)" }}
       />
-      {studioName && (
-        <div
-          className={`absolute inset-x-0 top-0 text-center text-white/90 ${isPage || isManage ? "pt-5 sm:pt-7 text-[13px] sm:text-sm" : "pt-2.5 text-[9px]"}`}
-          style={{ textShadow: "0 1px 8px rgba(0,0,0,0.35)", letterSpacing: "0.04em" }}
-        >
-          {studioName}
+      {logoUrl && (
+        <div className={`absolute inset-x-0 top-0 flex justify-center ${isPage || isManage ? "pt-5 sm:pt-7" : "pt-2.5"}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={logoUrl}
+            alt=""
+            className={`w-auto object-contain ${isPage || isManage ? "h-10 sm:h-12 max-w-[180px]" : "h-5 max-w-[80px]"}`}
+            style={{ filter: "drop-shadow(0 1px 8px rgba(0,0,0,0.35))" }}
+          />
         </div>
       )}
       <div
         className={`absolute inset-x-0 bottom-0 text-white ${
-          isPage ? "px-6 pb-[clamp(56px,11svh,112px)] sm:px-12 lg:px-20" : isManage ? "px-5 pb-6 sm:px-10 sm:pb-9" : "px-4 pb-4"
+          isPage ? "px-6 pb-[clamp(56px,11svh,112px)] sm:px-12 lg:px-20" : isManage ? "px-6 pb-12 sm:px-12 sm:pb-16 lg:px-20" : "px-4 pb-4"
         }`}
       >
         <h1
@@ -85,7 +90,7 @@ export default function GalleryPremiumCover({
           style={{
             fontFamily: "var(--font-gallery-serif), serif",
             fontWeight: 300,
-            fontSize: isPage ? "clamp(40px, 7.4vw, 76px)" : isManage ? "clamp(32px, 5.2vw, 58px)" : "26px",
+            fontSize: isPage ? "clamp(40px, 7.4vw, 76px)" : isManage ? "clamp(40px, 7.4vw, 76px)" : "26px",
             lineHeight: 1.04,
             letterSpacing: "-0.01em",
             textWrap: "balance",

@@ -20,7 +20,7 @@ import { getSignedDownloadUrl, getSignedDownloadUrls, getPublicPreviewUrl } from
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import { galleryThemeById, galleryThemeVars, galleryFont } from "@/lib/galleryTheme";
 import type { GalleryStyleOverrides } from "@/lib/galleryTheme";
-import { SUBSCRIPTION_PLANS } from "@/lib/stages";
+import { galleryBrandingAllowed } from "@/lib/galleryBranding";
 import { isLightTextColor } from "@/lib/textColor";
 import { clientLangFor } from "@/lib/clientLang";
 import ClientLangScope from "@/i18n/ClientLangScope";
@@ -165,9 +165,9 @@ export default async function PublicGalleryPage({
     // Studio Pro's "full branding" perk — see BrandingSettings.tsx and the render below.
     supabase
       .from("photographers")
-      .select("plan, brand_color, logo_storage_path, name, phone")
+      .select("plan, email, brand_color, logo_storage_path, name, phone")
       .eq("id", gallery.photographer_id)
-      .maybeSingle<Pick<Photographer, "plan" | "brand_color" | "logo_storage_path" | "name" | "phone">>(),
+      .maybeSingle<Pick<Photographer, "plan" | "email" | "brand_color" | "logo_storage_path" | "name" | "phone">>(),
     supabase
       .from("gallery_videos")
       .select("id, original_filename, storage_path")
@@ -363,7 +363,7 @@ export default async function PublicGalleryPage({
   // color and logo carry across every gallery theme instead of each theme's built-in accent, but
   // only for photographers actually on that tier (a downgrade silently reverts to the theme
   // default rather than leaving a stale color behind).
-  const isBrandingPro = brandingPhotographer ? SUBSCRIPTION_PLANS[brandingPhotographer.plan].tier === "studio_pro" : false;
+  const isBrandingPro = brandingPhotographer ? galleryBrandingAllowed(brandingPhotographer) : false;
   const brandColor = isBrandingPro ? brandingPhotographer?.brand_color ?? null : null;
   const brandAccentVars = brandColor
     ? { "--gt-accent": brandColor, "--gt-accent-ink": isLightTextColor(brandColor) ? "#000000" : "#ffffff" }
@@ -447,7 +447,7 @@ export default async function PublicGalleryPage({
                 ? new Date(premiumDate).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "long", year: "numeric" })
                 : null
             }
-            studioName={brandingPhotographer?.name ?? null}
+            logoUrl={brandLogoUrl}
             focalX={gallery.cover_focal_x}
             focalY={gallery.cover_focal_y}
             scrollLabel={t("גלילה לתמונות")}

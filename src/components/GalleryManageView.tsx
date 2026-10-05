@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { readAlbumRotateResume, writeAlbumRotateResume, clearAlbumRotateResume } from "@/lib/albumRotateResume";
 import GlassTabStrip from "@/components/GlassTabStrip";
@@ -184,6 +185,7 @@ export default function GalleryManageView({
   photographerEmail,
   photographerPlan,
   clientLang = "he",
+  brandLogoUrl = null,
 }: {
   eventId: string | null;
   clientName: string;
@@ -197,6 +199,8 @@ export default function GalleryManageView({
   // The client's language for the text sent to them (UI languages phase 3), computed on the server
   // with clientLangFor — "he" for every non-admin account.
   clientLang?: Lang;
+  // The photographer's logo when gallery branding applies (see galleryBrandingAllowed), else null.
+  brandLogoUrl?: string | null;
 }) {
   const t = useT();
   const lang = useLang();
@@ -2952,16 +2956,27 @@ export default function GalleryManageView({
     new Set(photos.filter((p) => p.is_favorite && p.custom_label).map((p) => p.custom_label as string))
   ).sort((a, b) => a.localeCompare(b, "he"));
   const activeFaceCluster = faceFilterClusterId ? faceClusters.find((c) => c.clusterId === faceFilterClusterId) : null;
-  const visiblePhotos = photos
+  const premiumTheme = galleryThemeById(gallery.theme).coverStyle === "fullbleed";
+  const filteredPhotos = photos
     .filter((p) => (showFavoritesOnly ? p.is_favorite : true))
     .filter((p) => (showFavoritesOnly && activeLabelFilter ? p.custom_label === activeLabelFilter : true))
     .filter((p) => (showRejectedOnly ? p.culling_status === "rejected" : true))
     .filter((p) => (activeFolderId ? p.folder_id === activeFolderId : true))
     .filter((p) => (activeFaceCluster ? activeFaceCluster.photoIds.has(p.id) : true));
+  // Premium: like the client's page, "הכל" shows the photos chapter by chapter (photos outside any
+  // folder first, then each folder under its own heading), and the lightbox follows that order.
+  const chapters: { key: string; name: string | null; photos: PhotoWithUrl[] }[] | null =
+    premiumTheme && folders.length > 0 && !activeFolderId
+      ? [
+          { key: "none", name: null, photos: filteredPhotos.filter((p) => !p.folder_id || !folders.some((f) => f.id === p.folder_id)) },
+          ...folders.map((f) => ({ key: f.id, name: f.name, photos: filteredPhotos.filter((p) => p.folder_id === f.id) })),
+        ].filter((c) => c.photos.length > 0)
+      : null;
+  const visiblePhotos = chapters ? chapters.flatMap((c) => c.photos) : filteredPhotos;
+  const visibleIndex = new Map(visiblePhotos.map((p, i) => [p.id, i]));
   // The photographer's own management grid mirrors the same resolved style the client actually
   // sees — no separate local toggle, so there's only ever one layout control to reason about.
   const resolvedGridStyle = gallery.grid_style_override ?? galleryThemeById(gallery.theme).gridStyle;
-  const premiumTheme = galleryThemeById(gallery.theme).coverStyle === "fullbleed";
   const managerCoverPhoto = photos.find((p) => p.id === gallery.cover_photo_id) ?? photos[0];
   // Premium tiles are square-cornered like the client page; the per-photo action icons wait for
   // hover on a mouse so the grid reads as photos, and stay visible on touch screens.
@@ -3048,6 +3063,399 @@ export default function GalleryManageView({
   // separate top-level modal, not nested inside this one, so without a higher z-index here the
   // editor's own now-stale content would keep sitting on top of this spinner for the moment before
   // the route actually changes, which is exactly the "no spinner visible" gap this exists to close.
+  const managerTabItems = [
+    ...(!gallery.published
+      ? [{ key: "publish", label: publishing ? t("מפרסם...") : t("פרסום הגלריה ללקוח"), active: true, onClick: publish, disabled: publishing }]
+      : []),
+    // Copy-link lives once, at the bottom with "שיתוף" (design stage 5: no duplicate up here).
+    {
+      key: "settings",
+      label: t("הגדרות גלריה"),
+      active: settingsOpen,
+      onClick: () => {
+        setEditTitle(gallery.title);
+        setEditShootDate(gallery.shoot_date ?? "");
+        setEditClientEmail(gallery.client_email ?? "");
+        setEditClientPhone(gallery.client_phone ?? "");
+        setEditAllowDownloads(gallery.allow_downloads);
+        setEditAllowClientUpload(gallery.allow_client_upload);
+        setTheme(gallery.theme);
+        setCoverTextPosition(gallery.cover_text_position);
+        setCoverShape(gallery.cover_shape);
+        setCoverPhotoId(gallery.cover_photo_id);
+        setTitleFontOverride(gallery.title_font_override);
+        setGridStyleOverride(gallery.grid_style_override);
+        setSettingsOpen(true);
+      },
+    },
+    // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
+    ...(photos.length > 0 && nonBasicTierAllowed
+      ? [{ key: "album", label: t("עיצוב אלבום"), active: albumManageOpen, onClick: openAlbumManage }]
+      : []),
+  ];
+
+  const renderManagerIcons = (bar: boolean) => (
+    <div
+      className={
+        bar
+          ? "flex items-center [&>*]:!h-10 [&>*]:!w-10 [&>*]:!rounded-[2px] [&>*]:!border-transparent [&>*]:!bg-transparent [&>*]:!text-[var(--gt-ink)] [&>*:hover]:!bg-black/[0.045]"
+          : "flex items-center gap-1.5"
+      }
+    >
+      {gallery.published && !isArchived && (
+        <button
+          onClick={openShare}
+          aria-label={t("שיתוף")}
+          title={t("שיתוף")}
+          className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
+          style={{
+            background: shareOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
+            borderColor: shareOpen ? "var(--color-amber-deep)" : "var(--color-line)",
+            // Fixed color, not the theme-flipped token — the unset state's background
+            // stays literal white in both themes, so the icon must too or it goes near-
+            // invisible once --color-ink-soft flips light for dark mode.
+            color: shareOpen ? "var(--color-on-accent)" : "var(--color-ink-soft)",
+          }}
+        >
+          <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            <circle cx={18} cy={5} r={3} />
+            <circle cx={6} cy={12} r={3} />
+            <circle cx={18} cy={19} r={3} />
+            <line x1={8.6} y1={13.5} x2={15.4} y2={17.5} />
+            <line x1={15.4} y1={6.5} x2={8.6} y2={10.5} />
+          </svg>
+        </button>
+      )}
+      <button
+        onClick={() => {
+          setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
+          setSlideshowManageOpen(true);
+        }}
+        aria-label={t("מצגת תמונות")}
+        title={t("מצגת תמונות")}
+        className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
+        style={{
+          background: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
+          borderColor: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-line)",
+          color: slideshowManageOpen ? "var(--color-on-accent)" : "var(--color-ink-soft)",
+        }}
+      >
+        <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+          <rect x={3} y={3} width={18} height={18} rx={3} />
+          <path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
+      {/* Runs entirely in the browser (see src/lib/faceRecognition.ts) — no photo ever
+          leaves the photographer's device for this except the already-cached results. */}
+      <button
+        onClick={runFaceDetection}
+        disabled={detectingFaces}
+        aria-label={detectingFaces ? t("מזהה פרצופים...") : faceClusters.length > 0 ? t("רענון זיהוי פרצופים") : t("זיהוי פרצופים")}
+        title={detectingFaces ? t("מזהה פרצופים...") : faceClusters.length > 0 ? t("רענון זיהוי פרצופים") : t("זיהוי פרצופים")}
+        className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border bg-white border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
+      >
+        {detectingFaces ? (
+          <span className="h-3.5 w-3.5 rounded-full border-2 border-line border-t-ink-soft animate-spin" />
+        ) : (
+          <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 8V6a2 2 0 0 1 2-2h2M4 16v2a2 2 0 0 0 2 2h2M20 8V6a2 2 0 0 0-2-2h-2M20 16v2a2 2 0 0 1-2 2h-2" />
+            <circle cx={12} cy={11} r={2.2} />
+            <path d="M8.5 16c1-1.3 2.2-1.8 3.5-1.8s2.5.5 3.5 1.8" />
+          </svg>
+        )}
+      </button>
+      <a
+        href={`/gallery/${gallery.access_token}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={t("תצוגה מקדימה")}
+        title={gallery.published ? t("תצוגה מקדימה של הגלריה") : t("תצוגה מקדימה. כך הגלריה תיראה ללקוח/ה לאחר הפרסום")}
+        className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft ${BTN_PRESS}`}
+      >
+        <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z" />
+          <circle cx={12} cy={12} r={3} />
+        </svg>
+      </a>
+    </div>
+  );
+
+  const renderPhotoGrid = (list: PhotoWithUrl[]) =>
+    resolvedGridStyle === "grid" ? (
+      <div
+        className="grid gap-1.5"
+        style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cellSize}px, 1fr))` }}
+      >
+        {list.map((photo) => {
+          const i = visibleIndex.get(photo.id) ?? 0;
+          return (
+          <button
+            key={photo.id}
+            onPointerDown={() => startPress(photo)}
+            onPointerUp={cancelPress}
+            onPointerLeave={cancelPress}
+            onClick={() => handlePhotoClick(photo, i)}
+            className={`group relative aspect-square ${tileRound} overflow-hidden bg-line`}
+            style={photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+          >
+            {/* Plain img (not next/image) to match the justified/masonry grid styles below —
+                next/image's own onLoad-driven fade-in was replaying on every remount (e.g.
+                switching folder tabs away and back unmounts/remounts these nodes), reading as
+                a full reload even though the browser already had the bytes cached. A blurred
+                LQIP sits on the button's own background (always visible, zero network cost —
+                it's inlined as a data URI) so there's real content behind the sharp image
+                instead of blank space while thumbsReady is still false. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+              alt={photo.original_filename}
+              className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+              style={{ opacity: thumbsReady ? 1 : 0, ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined) }}
+              onLoad={() => markThumbLoaded(photo.id)}
+              onError={() => markThumbLoaded(photo.id)}
+            />
+            <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} />
+          </button>
+          );
+        })}
+      </div>
+    ) : resolvedGridStyle === "justified" ? (
+      // Each tile grows in proportion to its own shape (flex-grow = aspect ratio) and keeps
+      // that shape through the padding sizer, so a row scales as one and nothing is cropped;
+      // the filler at the end stops the last, shorter row from blowing up.
+      <div className="flex flex-wrap gap-1.5">
+        {list.map((photo) => {
+          const i = visibleIndex.get(photo.id) ?? 0;
+          const ratio = mgrAspectRatios[photo.id] ?? (photo.preview_aspect_ratio && photo.preview_aspect_ratio > 0 ? photo.preview_aspect_ratio : 1.5);
+          return (
+            <button
+              key={photo.id}
+              onPointerDown={() => startPress(photo)}
+              onPointerUp={cancelPress}
+              onPointerLeave={cancelPress}
+              onClick={() => handlePhotoClick(photo, i)}
+              className={`group relative ${tileRound} overflow-hidden bg-line`}
+              style={{
+                flexGrow: ratio,
+                flexBasis: ratio * cellSize,
+                ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
+              }}
+            >
+              <span aria-hidden="true" className="block" style={{ paddingBottom: `${100 / ratio}%` }} />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                alt={photo.original_filename}
+                className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+                style={{ opacity: thumbsReady ? 1 : 0, ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined) }}
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  const r = img.naturalWidth / img.naturalHeight;
+                  setMgrAspectRatios((prev) => (prev[photo.id] ? prev : { ...prev, [photo.id]: r }));
+                  markThumbLoaded(photo.id);
+                }}
+                onError={() => markThumbLoaded(photo.id)}
+              />
+              <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} />
+            </button>
+          );
+        })}
+        <div aria-hidden="true" style={{ flexGrow: 1e6, flexBasis: 0 }} />
+      </div>
+    ) : (
+      <div className="gap-1.5" style={{ columnWidth: `${cellSize}px` }}>
+        {list.map((photo) => {
+          const i = visibleIndex.get(photo.id) ?? 0;
+          const framed = resolvedGridStyle === "framed";
+          // The masonry column layout needs the tile's shape to size it — with a known
+          // preview_aspect_ratio (server-computed at preview-generation time, see
+          // galleryPhotoPreview.ts) the tile gets its size from CSS immediately, so a blurred
+          // background + a fading real <img> works the same as the other two grid styles.
+          // Older photos processed before that column existed fall back to the previous
+          // behavior: natural intrinsic sizing, image shows as soon as it's simply loaded.
+          const knownShape = photo.preview_aspect_ratio != null;
+          return (
+            <button
+              key={photo.id}
+              onPointerDown={() => startPress(photo)}
+              onPointerUp={cancelPress}
+              onPointerLeave={cancelPress}
+              onClick={() => handlePhotoClick(photo, i)}
+              className={`group relative w-full mb-1.5 ${tileRound} overflow-hidden bg-line block break-inside-avoid`}
+              style={{
+                ...(framed ? { padding: 4, border: "1px solid var(--color-line)" } : {}),
+                ...(knownShape ? { aspectRatio: `${photo.preview_aspect_ratio}` } : {}),
+                ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                alt={photo.original_filename}
+                onLoad={() => markThumbLoaded(photo.id)}
+                onError={() => markThumbLoaded(photo.id)}
+                className={knownShape ? "absolute inset-0 w-full h-full object-cover transition-opacity duration-300" : "w-full h-auto block"}
+                style={{
+                  opacity: knownShape ? (thumbsReady ? 1 : 0) : 1,
+                  ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : {}),
+                }}
+              />
+              <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} offset={framed ? 8 : 4} quiet={premiumTheme} />
+            </button>
+          );
+        })}
+      </div>
+    );
+
+  const barBtn =
+    "h-10 min-w-10 px-2 lg:px-3 flex shrink-0 items-center justify-center gap-2 text-sm rounded-[2px] transition-colors hover:bg-black/[0.045] focus-visible:outline-2 focus-visible:outline-[var(--gt-ink)] disabled:opacity-50";
+  const chapterTab = (active: boolean) => ({
+    color: active ? "var(--gt-ink)" : "var(--gt-ink-soft)",
+    boxShadow: active ? "inset 0 -1px 0 var(--gt-ink)" : undefined,
+  });
+  const chapterTabClass = "shrink-0 whitespace-nowrap py-1.5 text-[13px] sm:text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gt-ink)]";
+
+  // Premium: the folders read as the client's chapter tabs. Double-click still renames or deletes a
+  // folder and "+" still adds one, as on the regular folder chips.
+  const renderChapterTabs = (className: string) => (
+    <nav aria-label={t("פרקים בגלריה")} className={`${className} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+      <button onClick={() => setActiveFolderId(null)} className={chapterTabClass} style={chapterTab(activeFolderId === null)}>
+        {t("הכל")}
+      </button>
+      {folders.map((folder) =>
+        editingFolderId === folder.id ? (
+          <div key={folder.id} className="shrink-0 flex items-center gap-1">
+            <input
+              autoFocus
+              value={editFolderName}
+              onChange={(e) => setEditFolderName(e.target.value)}
+              onBlur={renameFolder}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") renameFolder();
+                if (e.key === "Escape") setEditingFolderId(null);
+              }}
+              className="w-28 rounded-[2px] px-2 py-1 text-[13px] border border-line bg-white text-ink"
+            />
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setDeleteFolderConfirm(folder)}
+              aria-label={t("מחיקת התיקייה")}
+              title={t("מחיקת התיקייה")}
+              className="shrink-0 h-7 w-7 flex items-center justify-center text-rose"
+            >
+              <IconTrash className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            key={folder.id}
+            onClick={() => setActiveFolderId(folder.id)}
+            onDoubleClick={() => {
+              setEditingFolderId(folder.id);
+              setEditFolderName(folder.name);
+            }}
+            title={t("לחיצה כפולה לשינוי שם או מחיקה")}
+            className={chapterTabClass}
+            style={chapterTab(activeFolderId === folder.id)}
+          >
+            {folder.name}
+          </button>
+        )
+      )}
+      {addingFolder ? (
+        <div className="shrink-0 flex items-center gap-1">
+          <input
+            autoFocus
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") createFolder();
+              if (e.key === "Escape") {
+                setAddingFolder(false);
+                setNewFolderName("");
+              }
+            }}
+            placeholder={t("שם התיקייה")}
+            className="w-28 rounded-[2px] px-2 py-1 text-[13px] border border-line bg-white text-ink"
+          />
+          <button onClick={createFolder} className="shrink-0 h-7 w-7 bg-ink text-white text-xs">
+            ✓
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAddingFolder(true)}
+          aria-label={t("הוספת תיקייה חדשה")}
+          title={t("הוספת תיקייה חדשה")}
+          className={`${chapterTabClass} px-1`}
+          style={{ color: "var(--gt-ink-soft)" }}
+        >
+          +
+        </button>
+      )}
+    </nav>
+  );
+
+  // Premium: the screen opens the way the client's page does: the full cover, then the gallery's
+  // bar (logo, chapters, actions). The management tools stay in the column below.
+  const renderPremiumHeader = () => {
+    const coverDate = eventDate || gallery.shoot_date;
+    return (
+      <div className={galleryFont.variable} style={{ ...galleryThemeVars(gallery.theme), color: "var(--gt-ink)" }}>
+        <div className="relative">
+          <GalleryPremiumCover
+            variant="manage"
+            photoUrl={managerCoverPhoto?.url ?? null}
+            title={gallery.title}
+            dateLabel={coverDate ? new Date(coverDate).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "long", year: "numeric" }) : null}
+            logoUrl={brandLogoUrl}
+            focalX={gallery.cover_focal_x}
+            focalY={gallery.cover_focal_y}
+          />
+          <Link
+            href="/galleries"
+            aria-label={t("כל הגלריות")}
+            title={t("כל הגלריות")}
+            className="absolute top-3 start-3 sm:top-5 sm:start-5 z-10 h-10 w-10 rounded-full flex items-center justify-center text-white"
+            style={{ background: "rgba(0,0,0,0.32)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="ltr:rotate-180">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </Link>
+        </div>
+        <div style={{ background: "var(--gt-bg)", borderBottom: "1px solid var(--gt-border)" }}>
+          <div className="mx-auto max-w-[1600px] min-h-14 px-3 sm:px-6 lg:px-10 flex items-center gap-6">
+            {brandLogoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brandLogoUrl} alt="" className="h-7 w-auto max-w-[140px] shrink-0 object-contain" />
+            )}
+            {renderChapterTabs("hidden md:flex min-w-0 flex-1 items-center gap-6 overflow-x-auto")}
+            <div className="ms-auto flex shrink-0 items-center gap-0.5 lg:gap-1">
+              {managerTabItems.map((item) => (
+                <button
+                  key={item.key}
+                  onClick={item.onClick}
+                  disabled={"disabled" in item ? item.disabled : false}
+                  className={barBtn}
+                  style={item.key === "publish" ? { background: "var(--gt-accent)", color: "var(--gt-accent-ink)" } : undefined}
+                >
+                  {item.label}
+                </button>
+              ))}
+              <button onClick={() => fileInputRef.current?.click()} className={barBtn} title={t("העלאת תמונות נוספות לגלריה")} aria-label={t("העלאת תמונות")}>
+                <span className="text-lg leading-none">+</span>
+                <span className="hidden lg:inline">{t("העלאת תמונות")}</span>
+              </button>
+              {photos.length > 0 && renderManagerIcons(true)}
+            </div>
+          </div>
+          {renderChapterTabs("md:hidden flex h-11 items-center gap-5 overflow-x-auto px-4 border-t border-[var(--gt-border)]")}
+        </div>
+      </div>
+    );
+  };
+
   if (resumingAfterRotate || albumPhase === "settling") {
     return (
       <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center gap-3" style={{ background: "var(--color-paper)" }}>
@@ -3059,6 +3467,8 @@ export default function GalleryManageView({
 
   return (
     <div className="pb-8">
+      {premiumTheme && renderPremiumHeader()}
+      <div className={`max-w-2xl sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 ${premiumTheme ? "pt-6" : "pt-7"} pb-10 w-full`}>
       {activeOp && (
         <ProgressModal
           label={activeOp.label}
@@ -3225,69 +3635,20 @@ export default function GalleryManageView({
           </svg>
         </button>
       )}
+      {!premiumTheme && (
       <div className="flex items-center justify-between mb-2">
         <BackLink href="/galleries" label={t("כל הגלריות")} />
       </div>
+      )}
 
       {/* Share, slideshow, face-detection and preview moved to icon-only buttons on the
           favorites row below — this strip keeps only the three actions that read better as
           named text tabs. */}
-      <GlassTabStrip
-        className="mb-4"
-        items={[
-          ...(!gallery.published
-            ? [{ key: "publish", label: publishing ? t("מפרסם...") : t("פרסום הגלריה ללקוח"), active: true, onClick: publish, disabled: publishing }]
-            : []),
-          // Copy-link lives once, at the bottom with "שיתוף" (design stage 5: no duplicate up here).
-          {
-            key: "settings",
-            label: t("הגדרות גלריה"),
-            active: settingsOpen,
-            onClick: () => {
-              setEditTitle(gallery.title);
-              setEditShootDate(gallery.shoot_date ?? "");
-              setEditClientEmail(gallery.client_email ?? "");
-              setEditClientPhone(gallery.client_phone ?? "");
-              setEditAllowDownloads(gallery.allow_downloads);
-              setEditAllowClientUpload(gallery.allow_client_upload);
-              setTheme(gallery.theme);
-              setCoverTextPosition(gallery.cover_text_position);
-              setCoverShape(gallery.cover_shape);
-              setCoverPhotoId(gallery.cover_photo_id);
-              setTitleFontOverride(gallery.title_font_override);
-              setGridStyleOverride(gallery.grid_style_override);
-              setSettingsOpen(true);
-            },
-          },
-          // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
-          ...(photos.length > 0 && nonBasicTierAllowed
-            ? [{ key: "album", label: t("עיצוב אלבום"), active: albumManageOpen, onClick: openAlbumManage }]
-            : []),
-        ]}
-      />
+      {!premiumTheme && <GlassTabStrip className="mb-4" items={managerTabItems} />}
       {/* gallery.title is always accurate now — it's either the photographer's own customization,
           or kept synced to the event's client_name (see saveSettings/EditEventModal.tsx), so
           there's no need to prioritize clientName over it the way this used to. */}
-      {premiumTheme ? (
-        // Premium theme: the screen opens on the same cover the client gets (a shorter banner), so
-        // the photographer works inside the look they chose instead of a plain admin list.
-        <div className={`${galleryFont.variable} mb-4 overflow-hidden rounded-2xl`}>
-          <GalleryPremiumCover
-            variant="manage"
-            photoUrl={managerCoverPhoto?.url ?? null}
-            title={gallery.title}
-            dateLabel={
-              eventDate || gallery.shoot_date
-                ? new Date((eventDate || gallery.shoot_date) as string).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "long", year: "numeric" })
-                : null
-            }
-            focalX={gallery.cover_focal_x}
-            focalY={gallery.cover_focal_y}
-          />
-        </div>
-      ) : (
-        <h1 className="text-[22px] font-bold mb-1 font-display">{gallery.title}</h1>
-      )}
+      {!premiumTheme && <h1 className="text-[22px] font-bold mb-1 font-display">{gallery.title}</h1>}
       {premiumTheme ? null : eventDate ? (
         <p className="text-xs mb-1 text-ink-soft">{new Date(eventDate).toLocaleDateString(dateLocale(lang))}</p>
       ) : (
@@ -3422,85 +3783,7 @@ export default function GalleryManageView({
               </button>
             )}
           </div>
-          {photos.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              {gallery.published && !isArchived && (
-                <button
-                  onClick={openShare}
-                  aria-label={t("שיתוף")}
-                  title={t("שיתוף")}
-                  className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
-                  style={{
-                    background: shareOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
-                    borderColor: shareOpen ? "var(--color-amber-deep)" : "var(--color-line)",
-                    // Fixed color, not the theme-flipped token — the unset state's background
-                    // stays literal white in both themes, so the icon must too or it goes near-
-                    // invisible once --color-ink-soft flips light for dark mode.
-                    color: shareOpen ? "var(--color-on-accent)" : "var(--color-ink-soft)",
-                  }}
-                >
-                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx={18} cy={5} r={3} />
-                    <circle cx={6} cy={12} r={3} />
-                    <circle cx={18} cy={19} r={3} />
-                    <line x1={8.6} y1={13.5} x2={15.4} y2={17.5} />
-                    <line x1={15.4} y1={6.5} x2={8.6} y2={10.5} />
-                  </svg>
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
-                  setSlideshowManageOpen(true);
-                }}
-                aria-label={t("מצגת תמונות")}
-                title={t("מצגת תמונות")}
-                className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
-                style={{
-                  background: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
-                  borderColor: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-line)",
-                  color: slideshowManageOpen ? "var(--color-on-accent)" : "var(--color-ink-soft)",
-                }}
-              >
-                <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                  <rect x={3} y={3} width={18} height={18} rx={3} />
-                  <path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none" />
-                </svg>
-              </button>
-              {/* Runs entirely in the browser (see src/lib/faceRecognition.ts) — no photo ever
-                  leaves the photographer's device for this except the already-cached results. */}
-              <button
-                onClick={runFaceDetection}
-                disabled={detectingFaces}
-                aria-label={detectingFaces ? t("מזהה פרצופים...") : faceClusters.length > 0 ? t("רענון זיהוי פרצופים") : t("זיהוי פרצופים")}
-                title={detectingFaces ? t("מזהה פרצופים...") : faceClusters.length > 0 ? t("רענון זיהוי פרצופים") : t("זיהוי פרצופים")}
-                className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border bg-white border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
-              >
-                {detectingFaces ? (
-                  <span className="h-3.5 w-3.5 rounded-full border-2 border-line border-t-ink-soft animate-spin" />
-                ) : (
-                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 8V6a2 2 0 0 1 2-2h2M4 16v2a2 2 0 0 0 2 2h2M20 8V6a2 2 0 0 0-2-2h-2M20 16v2a2 2 0 0 1-2 2h-2" />
-                    <circle cx={12} cy={11} r={2.2} />
-                    <path d="M8.5 16c1-1.3 2.2-1.8 3.5-1.8s2.5.5 3.5 1.8" />
-                  </svg>
-                )}
-              </button>
-              <a
-                href={`/gallery/${gallery.access_token}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={t("תצוגה מקדימה")}
-                title={gallery.published ? t("תצוגה מקדימה של הגלריה") : t("תצוגה מקדימה. כך הגלריה תיראה ללקוח/ה לאחר הפרסום")}
-                className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line text-ink-soft ${BTN_PRESS}`}
-              >
-                <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z" />
-                  <circle cx={12} cy={12} r={3} />
-                </svg>
-              </a>
-            </div>
-          )}
+          {!premiumTheme && photos.length > 0 && renderManagerIcons(false)}
         </div>
       )}
 
@@ -3604,6 +3887,7 @@ export default function GalleryManageView({
         </div>
       )}
 
+      {!premiumTheme && (
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1.5 mb-3">
         <div className="flex items-center gap-1.5 overflow-x-auto sm:flex-1 sm:min-w-0">
           <button
@@ -3703,6 +3987,8 @@ export default function GalleryManageView({
         </button>
       </div>
 
+      )}
+
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs text-ink-soft font-data">{t("{n} תמונות", { n: visiblePhotos.length })}</span>
         <span className="text-[11px] text-ink-soft">
@@ -3729,126 +4015,27 @@ export default function GalleryManageView({
 
       {visiblePhotos.length > 0 && (
         <div ref={pinchContainerRef} className="relative mb-4" style={{ touchAction: "pan-y" }}>
-          {resolvedGridStyle === "grid" ? (
-            <div
-              className="grid gap-1.5"
-              style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cellSize}px, 1fr))` }}
-            >
-              {visiblePhotos.map((photo, i) => (
-                <button
-                  key={photo.id}
-                  onPointerDown={() => startPress(photo)}
-                  onPointerUp={cancelPress}
-                  onPointerLeave={cancelPress}
-                  onClick={() => handlePhotoClick(photo, i)}
-                  className={`group relative aspect-square ${tileRound} overflow-hidden bg-line`}
-                  style={photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
-                >
-                  {/* Plain img (not next/image) to match the justified/masonry grid styles below —
-                      next/image's own onLoad-driven fade-in was replaying on every remount (e.g.
-                      switching folder tabs away and back unmounts/remounts these nodes), reading as
-                      a full reload even though the browser already had the bytes cached. A blurred
-                      LQIP sits on the button's own background (always visible, zero network cost —
-                      it's inlined as a data URI) so there's real content behind the sharp image
-                      instead of blank space while thumbsReady is still false. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
-                    alt={photo.original_filename}
-                    className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
-                    style={{ opacity: thumbsReady ? 1 : 0, ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined) }}
-                    onLoad={() => markThumbLoaded(photo.id)}
-                    onError={() => markThumbLoaded(photo.id)}
-                  />
-                  <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} />
-                </button>
-              ))}
-            </div>
-          ) : resolvedGridStyle === "justified" ? (
-            // Each tile grows in proportion to its own shape (flex-grow = aspect ratio) and keeps
-            // that shape through the padding sizer, so a row scales as one and nothing is cropped;
-            // the filler at the end stops the last, shorter row from blowing up.
-            <div className="flex flex-wrap gap-1.5">
-              {visiblePhotos.map((photo, i) => {
-                const ratio = mgrAspectRatios[photo.id] ?? (photo.preview_aspect_ratio && photo.preview_aspect_ratio > 0 ? photo.preview_aspect_ratio : 1.5);
-                return (
-                  <button
-                    key={photo.id}
-                    onPointerDown={() => startPress(photo)}
-                    onPointerUp={cancelPress}
-                    onPointerLeave={cancelPress}
-                    onClick={() => handlePhotoClick(photo, i)}
-                    className={`group relative ${tileRound} overflow-hidden bg-line`}
-                    style={{
-                      flexGrow: ratio,
-                      flexBasis: ratio * cellSize,
-                      ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
-                    }}
-                  >
-                    <span aria-hidden="true" className="block" style={{ paddingBottom: `${100 / ratio}%` }} />
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
-                      alt={photo.original_filename}
-                      className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
-                      style={{ opacity: thumbsReady ? 1 : 0, ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined) }}
-                      onLoad={(e) => {
-                        const img = e.currentTarget;
-                        const r = img.naturalWidth / img.naturalHeight;
-                        setMgrAspectRatios((prev) => (prev[photo.id] ? prev : { ...prev, [photo.id]: r }));
-                        markThumbLoaded(photo.id);
-                      }}
-                      onError={() => markThumbLoaded(photo.id)}
-                    />
-                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} />
-                  </button>
-                );
-              })}
-              <div aria-hidden="true" style={{ flexGrow: 1e6, flexBasis: 0 }} />
-            </div>
-          ) : (
-            <div className="gap-1.5" style={{ columnWidth: `${cellSize}px` }}>
-              {visiblePhotos.map((photo, i) => {
-                const framed = resolvedGridStyle === "framed";
-                // The masonry column layout needs the tile's shape to size it — with a known
-                // preview_aspect_ratio (server-computed at preview-generation time, see
-                // galleryPhotoPreview.ts) the tile gets its size from CSS immediately, so a blurred
-                // background + a fading real <img> works the same as the other two grid styles.
-                // Older photos processed before that column existed fall back to the previous
-                // behavior: natural intrinsic sizing, image shows as soon as it's simply loaded.
-                const knownShape = photo.preview_aspect_ratio != null;
-                return (
-                  <button
-                    key={photo.id}
-                    onPointerDown={() => startPress(photo)}
-                    onPointerUp={cancelPress}
-                    onPointerLeave={cancelPress}
-                    onClick={() => handlePhotoClick(photo, i)}
-                    className={`group relative w-full mb-1.5 ${tileRound} overflow-hidden bg-line block break-inside-avoid`}
-                    style={{
-                      ...(framed ? { padding: 4, border: "1px solid var(--color-line)" } : {}),
-                      ...(knownShape ? { aspectRatio: `${photo.preview_aspect_ratio}` } : {}),
-                      ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
-                    }}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
-                      alt={photo.original_filename}
-                      onLoad={() => markThumbLoaded(photo.id)}
-                      onError={() => markThumbLoaded(photo.id)}
-                      className={knownShape ? "absolute inset-0 w-full h-full object-cover transition-opacity duration-300" : "w-full h-auto block"}
-                      style={{
-                        opacity: knownShape ? (thumbsReady ? 1 : 0) : 1,
-                        ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : {}),
-                      }}
-                    />
-                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} offset={framed ? 8 : 4} quiet={premiumTheme} />
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {chapters
+            ? chapters.map((c, ci) => (
+                <section key={c.key} aria-labelledby={c.name ? `mgr-chapter-${c.key}` : undefined}>
+                  {c.name && (
+                    <div className={`flex flex-wrap items-baseline gap-x-4 gap-y-1 pb-4 sm:pb-6 ${ci === 0 ? "pt-2" : "pt-12 sm:pt-20"}`}>
+                      <h2
+                        id={`mgr-chapter-${c.key}`}
+                        className={galleryFont.variable}
+                        style={{ fontFamily: "var(--font-gallery-serif), serif", fontWeight: 300, fontSize: "clamp(30px, 4.4vw, 52px)", lineHeight: 1.05, letterSpacing: "-0.01em" }}
+                      >
+                        {c.name}
+                      </h2>
+                      <span className="text-sm tabular-nums text-ink-soft">
+                        {c.photos.length === 1 ? t("תמונה אחת") : t("{n} תמונות", { n: c.photos.length })}
+                      </span>
+                    </div>
+                  )}
+                  {renderPhotoGrid(c.photos)}
+                </section>
+              ))
+            : renderPhotoGrid(visiblePhotos)}
         </div>
       )}
 
@@ -5768,6 +5955,7 @@ export default function GalleryManageView({
           onClose={() => setCullingIndex(null)}
         />
       )}
+      </div>
     </div>
   );
 }

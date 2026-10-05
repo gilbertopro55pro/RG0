@@ -103,7 +103,7 @@ export default function PublicGalleryView({
     background: { url: string; blur: number; opacity: number } | null;
     comments: { id: string; text: string }[];
   }[];
-  // Used by the premium theme's sticky bar and footer only (see GalleryThemeTokens.stickyBar).
+  // Alt text for the logo in the premium theme's sticky bar and footer. Without a logo nothing shows there.
   studioName?: string | null;
   brandLogoUrl?: string | null;
   contactUrl?: string | null;
@@ -970,10 +970,6 @@ export default function PublicGalleryView({
             {brandLogoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={brandLogoUrl} alt={studioName ?? ""} className="h-7 w-auto max-w-[140px] object-contain" />
-            ) : studioName ? (
-              <span className="block truncate text-[17px] sm:text-lg" style={{ fontFamily: "var(--font-gallery-serif), serif", fontWeight: 400 }}>
-                {studioName}
-              </span>
             ) : null}
           </div>
           {renderChapterNav("hidden md:flex min-w-0 flex-1 items-center gap-6 overflow-x-auto")}
@@ -1156,10 +1152,9 @@ export default function PublicGalleryView({
   const renderFooter = () => (
     <footer className="mt-20 sm:mt-32 border-t" style={{ borderColor: "var(--gt-border)", color: "var(--gt-ink)" }}>
       <div className={`mx-auto max-w-[1600px] px-6 pt-10 text-center ${bottomBarVisible ? "pb-40" : "pb-14"}`}>
-        {studioName && (
-          <p className="text-xl" style={{ fontFamily: "var(--font-gallery-serif), serif", fontWeight: 400 }}>
-            {studioName}
-          </p>
+        {brandLogoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={brandLogoUrl} alt={studioName ?? ""} className="mx-auto h-10 w-auto max-w-[180px] object-contain" />
         )}
         {contactUrl && (
           <a
