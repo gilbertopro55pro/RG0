@@ -404,6 +404,9 @@ const dict: AreaDict = {
     "בחרו טקסט על המסגרת כדי לערוך אותו, או הוסיפו טקסט חדש.": "Pick a text on the frame to edit it, or add a new one.",
     "הטקסטים במסגרת": "Texts on the frame",
     "האלמנט שנבחר": "Selected element",
+    "הורדת PSD": "Download PSD",
+    "מכין PSD...": "Preparing PSD...",
+    "קובץ פוטושופ עם שכבות: המסגרת, הטקסטורה, כל טקסט ואלמנט בשכבה משלו, והצללות כ-Layer Style": "Layered Photoshop file: the frame, the texture, each text and element on its own layer, and shadows as Layer Styles",
   },
   ru: {
     "מזהה פרצופים בתאים": "Распознаём лица в ячейках",
@@ -807,6 +810,9 @@ const dict: AreaDict = {
     "בחרו טקסט על המסגרת כדי לערוך אותו, או הוסיפו טקסט חדש.": "Выберите текст на рамке, чтобы изменить его, или добавьте новый.",
     "הטקסטים במסגרת": "Тексты на рамке",
     "האלמנט שנבחר": "Выбранный элемент",
+    "הורדת PSD": "Скачать PSD",
+    "מכין PSD...": "Готовим PSD...",
+    "קובץ פוטושופ עם שכבות: המסגרת, הטקסטורה, כל טקסט ואלמנט בשכבה משלו, והצללות כ-Layer Style": "Многослойный файл Photoshop: рамка, текстура, каждый текст и элемент на отдельном слое, тени как Layer Style",
   },
 };
 export default dict;

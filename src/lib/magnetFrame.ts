@@ -130,15 +130,37 @@ async function renderCustomTextureLayer(customImage: Buffer, widthPx: number, he
 // so base's alpha channel is identical to the plain card's. customImage, when given, always wins
 // over settings.textureId — matching the editor's "picking one clears the other" rule.
 export async function composeMagnetFrameTexture(base: Buffer, settings: MagnetFrameSettings, orientation: FrameOrientation, customImage: Buffer | null): Promise<Buffer> {
+  const masked = await renderMagnetFrameTextureLayer(base, settings, orientation, customImage);
+  if (!masked) return base;
+  return sharp(base).composite([{ input: masked, left: 0, top: 0 }]).png().toBuffer();
+}
+
+// The texture alone, already cut to the mat's shape (`matMask`'s alpha), or null when the design
+// has no texture. The PSD export keeps it as its own layer above the mat.
+export async function renderMagnetFrameTextureLayer(matMask: Buffer, settings: MagnetFrameSettings, orientation: FrameOrientation, customImage: Buffer | null): Promise<Buffer | null> {
   const { widthPx, heightPx } = magnetExportDimensions(orientation);
   const textureLayer = customImage
     ? await renderCustomTextureLayer(customImage, widthPx, heightPx, settings.textureOpacity)
     : settings.textureId
       ? await renderBuiltinTextureLayer(settings.textureId, widthPx, heightPx, settings.textureOpacity)
       : null;
-  if (!textureLayer) return base;
-  const masked = await sharp(textureLayer).composite([{ input: base, blend: "dest-in" }]).png().toBuffer();
-  return sharp(base).composite([{ input: masked, left: 0, top: 0 }]).png().toBuffer();
+  if (!textureLayer) return null;
+  return sharp(textureLayer).composite([{ input: matMask, blend: "dest-in" }]).png().toBuffer();
+}
+
+// The photo window's own shape, filled flat gray: the PSD's hidden "מקום לתמונה" layer, which a
+// photo placed above it can be clipped to in Photoshop.
+export async function renderMagnetFrameWindow(orientation: FrameOrientation, settings: MagnetFrameSettings): Promise<Buffer> {
+  const { widthPx, heightPx } = magnetExportDimensions(orientation);
+  const shorterSide = Math.min(widthPx, heightPx);
+  const border = Math.round((settings.borderRatioPct / 100) * shorterSide);
+  const bottomBorder = Math.round((settings.bottomBorderRatioPct / 100) * shorterSide);
+  const cutoutW = widthPx - border * 2;
+  const cutoutH = heightPx - border - bottomBorder;
+  const maxRadius = Math.min(cutoutW, cutoutH) / 2;
+  const radius = Math.min(maxRadius, (settings.cornerRadiusPct / 100) * maxRadius);
+  const svg = `<svg width="${widthPx}" height="${heightPx}" xmlns="http://www.w3.org/2000/svg"><path d="${roundedRectPath(border, border, cutoutW, cutoutH, radius)}" fill="#d9d9d9" /></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
 // Renders one text element as glyph-outline paths (same layoutTextAsSvgPaths machinery
