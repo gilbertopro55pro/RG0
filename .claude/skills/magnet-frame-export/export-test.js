@@ -57,7 +57,7 @@ if (!process.env.GF_STATE) {
   await page.getByRole("button", { name: "שמירה", exact: true }).click();
   console.log("save:", (await saved).status());
 
-  for (const [label, name] of [["מסגרת לרוחב (20×15)", "landscape"], ["מסגרת לאורך (15×20)", "portrait"]]) {
+  for (const [label, name] of [["הורדת מסגרת רוחב (20×15)", "landscape"], ["הורדת מסגרת אורך (15×20)", "portrait"]]) {
     const btn = page.getByRole("button", { name: label });
     await btn.waitFor({ timeout: 30000 });
     const [d] = await Promise.all([page.waitForEvent("download", { timeout: 120000 }).catch(() => null), btn.click()]);

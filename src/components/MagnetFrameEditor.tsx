@@ -32,7 +32,9 @@ const ELEMENT_TABS: { key: ElementTabKey; label: string }[] = [
   { key: "custom", label: "האלמנטים שלי" },
 ];
 
-type TabKey = "elements" | "texture" | "settings";
+// The panels on the editor's side, one open at a time (the owner's "solo" request, 2026-10-05).
+type PanelKey = "text" | "elements" | "digits" | "texture" | "settings";
+type FrameOrientation = "landscape" | "portrait";
 
 // A size like "20×15" inside Hebrew text is laid out right-to-left and reads "15×20" (the owner saw
 // the landscape button as "(15X20)"). Isolating it left-to-right keeps width × height in order.
@@ -182,9 +184,13 @@ export default function MagnetFrameEditor() {
   // Chosen color per illustrated-digit style that has color variants (the 3D digits).
   const [digitColors, setDigitColors] = useState<Record<string, string>>({});
   const [frameSettings, setFrameSettings] = useState<MagnetFrameSettings>(DEFAULT_MAGNET_FRAME_SETTINGS);
-  const [activeTab, setActiveTab] = useState<TabKey | null>(null);
+  const [openPanel, setOpenPanel] = useState<PanelKey | null>("text");
+  // Each panel's last scroll position, so reopening a panel returns to where it was left.
+  const panelScroll = useRef<Partial<Record<PanelKey, number>>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // Which of the two previews the drag started on: both edit the same xPct/yPct.
+  const [dragFrame, setDragFrame] = useState<FrameOrientation>("landscape");
   const [snapGuide, setSnapGuide] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
   const [elementTab, setElementTab] = useState<ElementTabKey>("symbols");
   const [decorationColor, setDecorationColor] = useState("#2e3142");
@@ -192,8 +198,9 @@ export default function MagnetFrameEditor() {
   const [error, setError] = useState<string | null>(null);
   const [savedOnce, setSavedOnce] = useState(false);
   const [exportBusy, setExportBusy] = useState<"landscape" | "portrait" | null>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const [canvasWidthPx, setCanvasWidthPx] = useState(0);
+  const landscapeRef = useRef<HTMLDivElement>(null);
+  const portraitRef = useRef<HTMLDivElement>(null);
+  const [canvasWidths, setCanvasWidths] = useState<Record<FrameOrientation, number>>({ landscape: 0, portrait: 0 });
   const [textureTab, setTextureTab] = useState<"builtin" | "custom">("builtin");
   const [customTextures, setCustomTextures] = useState<(MagnetFrameCustomTextureRow & { url: string | null })[]>([]);
   const [customTexturesLoaded, setCustomTexturesLoaded] = useState(false);
@@ -229,26 +236,24 @@ export default function MagnetFrameEditor() {
     })();
   }, []);
 
-  // Depends on `loaded`, not just []: the canvas div (and canvasRef) doesn't exist in the DOM
+  // Depends on `loaded`, not just []: the two canvas divs (landscapeRef / portraitRef) don't exist in the DOM
   // until the "!loaded return null" gate above lifts, which happens on a LATER render than this
-  // component's first commit — a plain mount-only effect would fire once while canvasRef.current
-  // is still null, bail out immediately, and (with an empty dep array) never get a second chance.
+  // component's first commit — a plain mount-only effect would fire once while the refs are still null,
+  // bail out immediately, and (with an empty dep array) never get a second chance.
   useEffect(() => {
-    if (!canvasRef.current) return;
-    const el = canvasRef.current;
-    const update = () => setCanvasWidthPx(el.clientWidth);
+    const l = landscapeRef.current;
+    const p = portraitRef.current;
+    if (!l || !p) return;
+    const update = () => setCanvasWidths({ landscape: l.clientWidth, portrait: p.clientWidth });
     update();
     const ro = new ResizeObserver(update);
-    ro.observe(el);
+    ro.observe(l);
+    ro.observe(p);
     return () => ro.disconnect();
   }, [loaded]);
 
   const dims = MAGNET_FRAME_DIMENSIONS.landscape;
-  const scale = canvasWidthPx > 0 ? canvasWidthPx / dims.widthPx : 0;
-  const canvasHeightPx = canvasWidthPx * (dims.heightPx / dims.widthPx);
-  const shorterDisplaySide = Math.min(canvasWidthPx || 1, canvasHeightPx || 1);
   const matInset = getMatInsetPct("landscape", frameSettings.borderRatioPct, frameSettings.bottomBorderRatioPct);
-  const cutoutRadiusPx = getCutoutRadiusPx("landscape", frameSettings, canvasWidthPx);
 
   // The custom upload (when picked) always wins over a built-in id — same "one active, selecting
   // one clears the other" rule the settings themselves follow. The cutout div's own overflow, plus
@@ -419,8 +424,9 @@ export default function MagnetFrameEditor() {
   // pulls the element to precisely 50 once inside it, same idea as most design tools' object snap.
   const SNAP_THRESHOLD_PCT = 2;
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!draggingId || !canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
+    const frameEl = (dragFrame === "portrait" ? portraitRef : landscapeRef).current;
+    if (!draggingId || !frameEl) return;
+    const rect = frameEl.getBoundingClientRect();
     const rawX = clamp(((e.clientX - rect.left) / rect.width) * 100);
     const rawY = clamp(((e.clientY - rect.top) / rect.height) * 100);
     const snapX = Math.abs(rawX - 50) <= SNAP_THRESHOLD_PCT;
@@ -484,335 +490,669 @@ export default function MagnetFrameEditor() {
     }
   };
 
-  const toggleTab = (tab: TabKey) => setActiveTab((prev) => (prev === tab ? null : tab));
+  // Opening a panel closes the one that was open; its sub-tab, choices and scroll stay as they were.
+  const togglePanel = (key: PanelKey) => setOpenPanel((prev) => (prev === key ? null : key));
 
-  if (!loaded) return null;
+  // Picking an element on a preview opens the panel that edits it.
+  const selectOnCanvas = (el: MagnetFrameElement) => {
+    setSelectedId(el.id);
+    if (el.type === "text") setOpenPanel("text");
+    else setOpenPanel((prev) => (prev === "digits" && el.floralId?.startsWith("digit-") ? "digits" : "elements"));
+  };
 
-  return (
-    <div className={`rounded-2xl p-4 bg-card border border-line shadow-card space-y-4 ${ALBUM_FONT_CLASS_NAMES}`}>
-      <div>
-        <div className="text-sm font-semibold mb-1">{t("עיצוב מסגרת מגנט")}</div>
-        <p className="text-xs leading-relaxed text-ink-soft">
-          {withDims(
-            t("בסיס לבן פשוט במידה {landscape} ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך ({portrait}) עם אותו הטקסט והאלמנטים."),
-            { landscape: "20×15", portrait: "15×20" }
-          )}
-        </p>
-      </div>
-
-      {/* Canvas sits ABOVE the tabs/panels on purpose — whatever tab is open, its own bounded
-          scroll area (below) never pushes the actual design out of view. */}
+  const renderFrame = (orientation: FrameOrientation) => {
+    const fd = MAGNET_FRAME_DIMENSIONS[orientation];
+    const widthPx = canvasWidths[orientation];
+    const scale = widthPx > 0 ? widthPx / fd.widthPx : 0;
+    const shorterDisplaySide = Math.min(widthPx || 1, widthPx * (fd.heightPx / fd.widthPx) || 1);
+    const inset = getMatInsetPct(orientation, frameSettings.borderRatioPct, frameSettings.bottomBorderRatioPct);
+    const cutoutRadiusPx = getCutoutRadiusPx(orientation, frameSettings, widthPx);
+    return (
+    <div
+      ref={orientation === "portrait" ? portraitRef : landscapeRef}
+      className="relative w-full overflow-hidden touch-none select-none shadow-card"
+      style={{ aspectRatio: `${fd.widthPx} / ${fd.heightPx}`, ...matCardStyle(frameSettings) }}
+      onPointerMove={handlePointerMove}
+      onPointerUp={() => {
+        setDraggingId(null);
+        setSnapGuide({ x: false, y: false });
+      }}
+      onPointerLeave={() => {
+        setDraggingId(null);
+        setSnapGuide({ x: false, y: false });
+      }}
+      onClick={() => setSelectedId(null)}
+    >
+      {textureStyle && <div className="absolute inset-0" style={textureStyle} />}
+      {draggingId && dragFrame === orientation && snapGuide.x && (
+        <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: "50%", width: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
+      )}
+      {draggingId && dragFrame === orientation && snapGuide.y && (
+        <div className="absolute left-0 right-0 pointer-events-none" style={{ top: "50%", height: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
+      )}
       <div
-        ref={canvasRef}
-        className="relative w-full overflow-hidden touch-none select-none"
-        style={{ aspectRatio: `${dims.widthPx} / ${dims.heightPx}`, ...matCardStyle(frameSettings) }}
-        onPointerMove={handlePointerMove}
-        onPointerUp={() => {
-          setDraggingId(null);
-          setSnapGuide({ x: false, y: false });
+        className="absolute overflow-hidden"
+        style={{
+          left: `${inset.xPct}%`,
+          top: `${inset.topPct}%`,
+          right: `${inset.xPct}%`,
+          bottom: `${inset.bottomPct}%`,
+          borderRadius: cutoutRadiusPx,
+          transition: "border-radius 0.2s ease",
+          ...cutoutShadowStyle(frameSettings, scale),
+          ...transparentCheckerStyle(),
         }}
-        onPointerLeave={() => {
-          setDraggingId(null);
-          setSnapGuide({ x: false, y: false });
-        }}
-        onClick={() => setSelectedId(null)}
-      >
-        {textureStyle && <div className="absolute inset-0" style={textureStyle} />}
-        {draggingId && snapGuide.x && (
-          <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: "50%", width: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
-        )}
-        {draggingId && snapGuide.y && (
-          <div className="absolute left-0 right-0 pointer-events-none" style={{ top: "50%", height: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
-        )}
-        <div
-          className="absolute overflow-hidden"
-          style={{
-            left: `${matInset.xPct}%`,
-            top: `${matInset.topPct}%`,
-            right: `${matInset.xPct}%`,
-            bottom: `${matInset.bottomPct}%`,
-            borderRadius: cutoutRadiusPx,
-            transition: "border-radius 0.2s ease",
-            ...cutoutShadowStyle(frameSettings, scale),
-            ...transparentCheckerStyle(),
-          }}
-        />
-        {elements.map((el) => {
-          if (el.type === "text") {
-            const fontSizeDisp = el.fontSizePx * scale;
-            const shadow = el.shadowEnabled ? `${el.shadowDistancePx * scale}px ${el.shadowDistancePx * scale}px ${el.shadowBlurPx * scale}px rgba(0,0,0,0.55)` : undefined;
-            // Every LAYER of text (each its own independent element, with its own font/color/
-            // shadow) gets a smooth animated transition when a property changes or it settles into
-            // a new dropped position — except while it's actively being dragged, where a transition
-            // would lag the pointer instead of tracking it 1:1.
-            const smooth = draggingId !== el.id;
-            return (
-              <div
-                key={el.id}
-                className="absolute whitespace-nowrap cursor-grab"
-                style={{
-                  left: `${el.xPct}%`,
-                  top: `${el.yPct}%`,
-                  transform: "translate(-50%, -50%)",
-                  fontSize: fontSizeDisp,
-                  color: el.color,
-                  fontFamily: albumFontFamilyCss(el.fontKey),
-                  fontWeight: el.bold ? 700 : 400,
-                  fontStyle: el.italic ? "italic" : "normal",
-                  textDecoration: el.underline ? "underline" : "none",
-                  textShadow: shadow,
-                  outline: selectedId === el.id ? "2px dashed var(--color-amber-deep)" : "none",
-                  outlineOffset: 4,
-                  padding: 2,
-                  transition: smooth ? "left 0.18s ease, top 0.18s ease, font-size 0.18s ease, color 0.18s ease, text-shadow 0.18s ease" : "none",
-                }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                  setDraggingId(el.id);
-                  setSelectedId(el.id);
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {el.text || t("טקסט ריק")}
-              </div>
-            );
-          }
-          const ornament = el.ornamentId ? findOrnament(el.ornamentId) : undefined;
-          const customUrl = el.customElementAssetId ? customElements.find((c) => c.id === el.customElementAssetId)?.url ?? undefined : undefined;
-          const floral = el.floralId ? findMagnetFrameFloral(el.floralId) : undefined;
-          if (!ornament && !customUrl && !floral) return null;
-          const sizePx = (el.sizePct / 100) * shorterDisplaySide;
-          const smoothDeco = draggingId !== el.id;
+      />
+      {elements.map((el) => {
+        if (el.type === "text") {
+          const fontSizeDisp = el.fontSizePx * scale;
+          const shadow = el.shadowEnabled ? `${el.shadowDistancePx * scale}px ${el.shadowDistancePx * scale}px ${el.shadowBlurPx * scale}px rgba(0,0,0,0.55)` : undefined;
+          // Every LAYER of text (each its own independent element, with its own font/color/
+          // shadow) gets a smooth animated transition when a property changes or it settles into
+          // a new dropped position — except while it's actively being dragged, where a transition
+          // would lag the pointer instead of tracking it 1:1.
+          const smooth = draggingId !== el.id;
           return (
             <div
               key={el.id}
-              className="absolute"
+              className="absolute whitespace-nowrap cursor-grab"
               style={{
                 left: `${el.xPct}%`,
                 top: `${el.yPct}%`,
-                width: sizePx,
-                height: sizePx,
                 transform: "translate(-50%, -50%)",
+                fontSize: fontSizeDisp,
+                color: el.color,
+                fontFamily: albumFontFamilyCss(el.fontKey),
+                fontWeight: el.bold ? 700 : 400,
+                fontStyle: el.italic ? "italic" : "normal",
+                textDecoration: el.underline ? "underline" : "none",
+                textShadow: shadow,
                 outline: selectedId === el.id ? "2px dashed var(--color-amber-deep)" : "none",
-                outlineOffset: 3,
-                transition: smoothDeco ? "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease" : "none",
+                outlineOffset: 4,
+                padding: 2,
+                transition: smooth ? "left 0.18s ease, top 0.18s ease, font-size 0.18s ease, color 0.18s ease, text-shadow 0.18s ease" : "none",
               }}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                setDragFrame(orientation);
                 setDraggingId(el.id);
-                setSelectedId(el.id);
+                selectOnCanvas(el);
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={ornament ? ornamentDataUrl(ornament, el.color) : floral ? floral.url : customUrl} className="w-full h-full" style={{ objectFit: "contain", cursor: "grab" }} draggable={false} alt="" />
+              {el.text || t("טקסט ריק")}
             </div>
           );
-        })}
-      </div>
+        }
+        const ornament = el.ornamentId ? findOrnament(el.ornamentId) : undefined;
+        const customUrl = el.customElementAssetId ? customElements.find((c) => c.id === el.customElementAssetId)?.url ?? undefined : undefined;
+        const floral = el.floralId ? findMagnetFrameFloral(el.floralId) : undefined;
+        if (!ornament && !customUrl && !floral) return null;
+        const sizePx = (el.sizePct / 100) * shorterDisplaySide;
+        const smoothDeco = draggingId !== el.id;
+        return (
+          <div
+            key={el.id}
+            className="absolute"
+            style={{
+              left: `${el.xPct}%`,
+              top: `${el.yPct}%`,
+              width: sizePx,
+              height: sizePx,
+              transform: "translate(-50%, -50%)",
+              outline: selectedId === el.id ? "2px dashed var(--color-amber-deep)" : "none",
+              outlineOffset: 3,
+              transition: smoothDeco ? "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease" : "none",
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              (e.target as HTMLElement).setPointerCapture(e.pointerId);
+              setDragFrame(orientation);
+              setDraggingId(el.id);
+              selectOnCanvas(el);
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={ornament ? ornamentDataUrl(ornament, el.color) : floral ? floral.url : customUrl} className="w-full h-full" style={{ objectFit: "contain", cursor: "grab" }} draggable={false} alt="" />
+          </div>
+        );
+      })}
+    </div>
+    );
+  };
 
-      {selected && selected.type === "text" && (
-        <div className="rounded-xl p-3 bg-chip space-y-2.5" onClick={(e) => e.stopPropagation()}>
-          <textarea
-            value={selected.text}
-            onChange={(e) => updateElement(selected.id, { text: e.target.value })}
-            rows={2}
-            className="w-full rounded-lg px-3 py-2 text-sm bg-card border border-line text-ink resize-none"
-            placeholder={t("לדוגמה: רותם & דניאל · 12.6.2026")}
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <select
-              value={selected.fontKey}
-              onChange={(e) => updateElement(selected.id, { fontKey: e.target.value })}
-              className="rounded-lg px-2.5 py-2 text-xs bg-card border border-line text-ink"
-            >
-              <optgroup label={t("עברית")}>
-                {ALBUM_FONTS.filter((f) => f.category === "hebrew").map((f) => (
-                  <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
-                    {f.label}
-                  </option>
+  const panelBody = (key: PanelKey, children: React.ReactNode) => (
+    <div
+      ref={(el) => {
+        if (el && el.dataset.restored !== "1") {
+          el.scrollTop = panelScroll.current[key] ?? 0;
+          el.dataset.restored = "1";
+        }
+      }}
+      onScroll={(e) => {
+        panelScroll.current[key] = e.currentTarget.scrollTop;
+      }}
+      className="px-3 pb-3 pt-1 max-h-[62svh] overflow-y-auto"
+    >
+      {children}
+    </div>
+  );
+
+  const PANELS: { key: PanelKey; label: string }[] = [
+    { key: "text", label: "טקסט" },
+    { key: "elements", label: "אלמנטים" },
+    { key: "digits", label: "ספרות" },
+    { key: "texture", label: "טקסטורה" },
+    { key: "settings", label: "הגדרות מסגרת" },
+  ];
+
+  const renderPanelContent = (key: PanelKey) => {
+    if (key === "text") {
+      const texts = elements.filter((el): el is MagnetFrameTextElement => el.type === "text");
+      return (
+        <div className="space-y-3">
+          <button onClick={addText} className="w-full whitespace-nowrap rounded-lg px-3.5 py-2.5 text-sm font-semibold bg-ink text-white">
+            {t("+ הוספת טקסט")}
+          </button>
+          {texts.length > 0 && (
+            <div>
+              <div className="text-[11px] font-semibold text-ink-soft mb-1.5">{t("הטקסטים במסגרת")}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {texts.map((el) => (
+                  <button
+                    key={el.id}
+                    onClick={() => setSelectedId(el.id)}
+                    className="max-w-[220px] truncate rounded-full px-3 py-1 text-xs border"
+                    style={{
+                      borderColor: selectedId === el.id ? "var(--color-amber-deep)" : "var(--color-line)",
+                      background: selectedId === el.id ? "var(--color-amber-bg)" : "var(--color-card)",
+                      color: "var(--color-ink)",
+                    }}
+                  >
+                    {el.text || t("טקסט ריק")}
+                  </button>
                 ))}
-              </optgroup>
-              <optgroup label={t("אנגלית")}>
-                {ALBUM_FONTS.filter((f) => f.category === "latin").map((f) => (
-                  <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
-                    {f.label}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-            <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-              <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
-              <input
-                type="range"
-                min={20}
-                max={200}
-                value={selected.fontSizePx}
-                onChange={(e) => updateElement(selected.id, { fontSizePx: Number(e.target.value) })}
-                className="w-full"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {COLOR_SWATCHES.map((c) => (
-              <button
-                key={c.value}
-                type="button"
-                title={t(c.label)}
-                onClick={() => updateElement(selected.id, { color: c.value })}
-                className="h-6 w-6 rounded-full border-2"
-                style={{ background: c.value, borderColor: selected.color === c.value ? "var(--color-sage)" : "var(--color-line)" }}
-              />
-            ))}
-            <FreeColorPicker value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => updateElement(selected.id, { bold: !selected.bold })}
-              title={t("מודגש")}
-              className="h-8 w-8 rounded-lg border font-bold text-sm"
-              style={{
-                borderColor: selected.bold ? "var(--color-sage)" : "var(--color-line)",
-                background: selected.bold ? "var(--color-sage-bg)" : "var(--color-card)",
-                color: "var(--color-ink)",
-              }}
-            >
-              B
-            </button>
-            <button
-              type="button"
-              onClick={() => updateElement(selected.id, { italic: !selected.italic })}
-              title={t("נטוי")}
-              className="h-8 w-8 rounded-lg border italic text-sm"
-              style={{
-                borderColor: selected.italic ? "var(--color-sage)" : "var(--color-line)",
-                background: selected.italic ? "var(--color-sage-bg)" : "var(--color-card)",
-                color: "var(--color-ink)",
-              }}
-            >
-              I
-            </button>
-            <button
-              type="button"
-              onClick={() => updateElement(selected.id, { underline: !selected.underline })}
-              title={t("קו תחתון")}
-              className="h-8 w-8 rounded-lg border underline text-sm"
-              style={{
-                borderColor: selected.underline ? "var(--color-sage)" : "var(--color-line)",
-                background: selected.underline ? "var(--color-sage-bg)" : "var(--color-card)",
-                color: "var(--color-ink)",
-              }}
-            >
-              U
-            </button>
-          </div>
-          <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
-            <input type="checkbox" checked={selected.shadowEnabled} onChange={(e) => updateElement(selected.id, { shadowEnabled: e.target.checked })} />
-            {t("צל לטקסט")}
-          </label>
-          {selected.shadowEnabled && (
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("טשטוש")}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={20}
-                  value={selected.shadowBlurPx}
-                  onChange={(e) => updateElement(selected.id, { shadowBlurPx: Number(e.target.value) })}
-                  className="w-full"
-                />
-              </div>
-              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("מרחק")}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={15}
-                  value={selected.shadowDistancePx}
-                  onChange={(e) => updateElement(selected.id, { shadowDistancePx: Number(e.target.value) })}
-                  className="w-full"
-                />
               </div>
             </div>
           )}
-          <div className="flex items-center justify-between gap-2">
-            <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
-              {t("מחיקת הטקסט")}
-            </button>
-            <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
-          </div>
-        </div>
-      )}
-
-      {selected && selected.type === "decoration" && (
-        <div className="rounded-xl p-3 bg-chip space-y-2.5" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-            <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
-            <input
-              type="range"
-              min={5}
-              max={45}
-              value={selected.sizePct}
-              onChange={(e) => updateElement(selected.id, { sizePct: Number(e.target.value) })}
-              className="w-full"
-            />
-          </div>
-          {!selected.customElementAssetId && !selected.floralId && (
-            <div className="flex items-center gap-1.5">
-              {["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((c) => (
+          {selected && selected.type === "text" && (
+            <div className="rounded-xl p-3 bg-chip space-y-2.5" onClick={(e) => e.stopPropagation()}>
+              <textarea
+                value={selected.text}
+                onChange={(e) => updateElement(selected.id, { text: e.target.value })}
+                rows={2}
+                className="w-full rounded-lg px-3 py-2 text-sm bg-card border border-line text-ink resize-none"
+                placeholder={t("לדוגמה: רותם & דניאל · 12.6.2026")}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={selected.fontKey}
+                  onChange={(e) => updateElement(selected.id, { fontKey: e.target.value })}
+                  className="rounded-lg px-2.5 py-2 text-xs bg-card border border-line text-ink"
+                >
+                  <optgroup label={t("עברית")}>
+                    {ALBUM_FONTS.filter((f) => f.category === "hebrew").map((f) => (
+                      <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label={t("אנגלית")}>
+                    {ALBUM_FONTS.filter((f) => f.category === "latin").map((f) => (
+                      <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+                <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
+                  <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
+                  <input
+                    type="range"
+                    min={20}
+                    max={200}
+                    value={selected.fontSizePx}
+                    onChange={(e) => updateElement(selected.id, { fontSizePx: Number(e.target.value) })}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {COLOR_SWATCHES.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    title={t(c.label)}
+                    onClick={() => updateElement(selected.id, { color: c.value })}
+                    className="h-6 w-6 rounded-full border-2"
+                    style={{ background: c.value, borderColor: selected.color === c.value ? "var(--color-sage)" : "var(--color-line)" }}
+                  />
+                ))}
+                <FreeColorPicker value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
+              </div>
+              <div className="flex items-center gap-1.5">
                 <button
-                  key={c}
-                  onClick={() => updateElement(selected.id, { color: c })}
-                  className="h-6 w-6 rounded-full border-2"
-                  style={{ background: c, borderColor: selected.color === c ? "var(--color-sage)" : "var(--color-line)" }}
-                />
-              ))}
-              <FreeColorPicker value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
+                  type="button"
+                  onClick={() => updateElement(selected.id, { bold: !selected.bold })}
+                  title={t("מודגש")}
+                  className="h-8 w-8 rounded-lg border font-bold text-sm"
+                  style={{
+                    borderColor: selected.bold ? "var(--color-sage)" : "var(--color-line)",
+                    background: selected.bold ? "var(--color-sage-bg)" : "var(--color-card)",
+                    color: "var(--color-ink)",
+                  }}
+                >
+                  B
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateElement(selected.id, { italic: !selected.italic })}
+                  title={t("נטוי")}
+                  className="h-8 w-8 rounded-lg border italic text-sm"
+                  style={{
+                    borderColor: selected.italic ? "var(--color-sage)" : "var(--color-line)",
+                    background: selected.italic ? "var(--color-sage-bg)" : "var(--color-card)",
+                    color: "var(--color-ink)",
+                  }}
+                >
+                  I
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateElement(selected.id, { underline: !selected.underline })}
+                  title={t("קו תחתון")}
+                  className="h-8 w-8 rounded-lg border underline text-sm"
+                  style={{
+                    borderColor: selected.underline ? "var(--color-sage)" : "var(--color-line)",
+                    background: selected.underline ? "var(--color-sage-bg)" : "var(--color-card)",
+                    color: "var(--color-ink)",
+                  }}
+                >
+                  U
+                </button>
+              </div>
+              <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
+                <input type="checkbox" checked={selected.shadowEnabled} onChange={(e) => updateElement(selected.id, { shadowEnabled: e.target.checked })} />
+                {t("צל לטקסט")}
+              </label>
+              {selected.shadowEnabled && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
+                    <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("טשטוש")}</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={20}
+                      value={selected.shadowBlurPx}
+                      onChange={(e) => updateElement(selected.id, { shadowBlurPx: Number(e.target.value) })}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
+                    <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("מרחק")}</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={15}
+                      value={selected.shadowDistancePx}
+                      onChange={(e) => updateElement(selected.id, { shadowDistancePx: Number(e.target.value) })}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
+                  {t("מחיקת הטקסט")}
+                </button>
+                <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
+              </div>
             </div>
           )}
-          <div className="flex items-center justify-between gap-2">
-            <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
-              {t("מחיקת האלמנט")}
-            </button>
-            <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
-          </div>
+          {!(selected && selected.type === "text") && (
+            <p className="text-xs text-ink-soft">{t("בחרו טקסט על המסגרת כדי לערוך אותו, או הוסיפו טקסט חדש.")}</p>
+          )}
         </div>
-      )}
-
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-0.5 px-0.5">
-        <button onClick={addText} className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold bg-ink text-white">
-          {t("+ הוספת טקסט")}
-        </button>
-        <button
-          onClick={() => toggleTab("elements")}
-          className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
-          style={{ background: activeTab === "elements" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "elements" ? "var(--color-on-accent)" : "var(--color-ink)" }}
-        >
-          {t("אלמנטים")}
-        </button>
-        <button
-          onClick={() => toggleTab("texture")}
-          className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
-          style={{ background: activeTab === "texture" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "texture" ? "var(--color-on-accent)" : "var(--color-ink)" }}
-        >
-          {t("טקסטורה")}
-        </button>
-        <button
-          onClick={() => toggleTab("settings")}
-          className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold"
-          style={{ background: activeTab === "settings" ? "var(--color-amber-deep)" : "var(--color-chip)", color: activeTab === "settings" ? "var(--color-on-accent)" : "var(--color-ink)" }}
-        >
-          {t("הגדרות מסגרת")}
-        </button>
-      </div>
-
-      {activeTab && (
-        <div className="rounded-xl border border-line bg-paper p-3 max-h-[45vh] overflow-y-auto">
-          {activeTab === "settings" && (
+      );
+    }
+    if (key === "elements") {
+      return (
+        <>
+          {selected && selected.type === "decoration" && (
+            <div className="rounded-xl p-3 bg-chip space-y-2.5 mb-3" onClick={(e) => e.stopPropagation()}>
+              <div className="text-[11px] font-semibold text-ink-soft">{t("האלמנט שנבחר")}</div>
+              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
+                <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
+                <input
+                  type="range"
+                  min={5}
+                  max={45}
+                  value={selected.sizePct}
+                  onChange={(e) => updateElement(selected.id, { sizePct: Number(e.target.value) })}
+                  className="w-full"
+                />
+              </div>
+              {!selected.customElementAssetId && !selected.floralId && (
+                <div className="flex items-center gap-1.5">
+                  {["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => updateElement(selected.id, { color: c })}
+                      className="h-6 w-6 rounded-full border-2"
+                      style={{ background: c, borderColor: selected.color === c ? "var(--color-sage)" : "var(--color-line)" }}
+                    />
+                  ))}
+                  <FreeColorPicker value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
+                  {t("מחיקת האלמנט")}
+                </button>
+                <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
+              </div>
+            </div>
+          )}
+            <div>
+              <div className="flex flex-wrap gap-1 mb-2">
+                {ELEMENT_TABS.filter((tab) => tab.key !== "digits").map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => selectElementTab(tab.key)}
+                    className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
+                    style={{
+                      background: elementTab === tab.key ? "var(--color-amber-deep)" : "var(--color-chip)",
+                      color: elementTab === tab.key ? "#fff" : "var(--color-ink-soft)",
+                    }}
+                  >
+                    {t(tab.label)}
+                  </button>
+                ))}
+              </div>
+              {elementTab !== "watercolor" && elementTab !== "custom" && (
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="text-[10px] text-ink-soft">{t("צבע")}</span>
+                  {["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setDecorationColor(c)}
+                      className="h-5 w-5 rounded-full border"
+                      style={{ background: c, borderColor: decorationColor === c ? "var(--color-amber-deep)" : "var(--color-line)" }}
+                    />
+                  ))}
+                  <FreeColorPicker value={decorationColor} onChange={setDecorationColor} />
+                </div>
+              )}
+              {elementTab === "custom" ? (
+                <div className="space-y-2">
+                  <label className="flex items-center justify-center rounded-lg border border-dashed border-line p-3 text-center bg-card cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadingElement}
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) uploadElementFile(file);
+                      }}
+                    />
+                    <span className="text-xs font-semibold text-ink-soft">{uploadingElement ? t("מעלה...") : t("+ העלאת אלמנט משלי")}</span>
+                  </label>
+                  <p className="text-[10px] text-ink-soft">{t("האלמנטים שמעלים כאן נשמרים ונשארים זמינים גם בעיצובים הבאים.")}</p>
+                  {customElements.length > 0 && (
+                    <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
+                      {customElements.map(
+                        (ce) =>
+                          ce.url && (
+                            <button
+                              key={ce.id}
+                              onClick={() => addCustomElement(ce.id)}
+                              title={ce.original_filename}
+                              className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={ce.url} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
+                            </button>
+                          )
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : elementTab === "watercolor" ? (
+                <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
+                  {MAGNET_FRAME_FLORALS.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => addFloral(f.id)}
+                      title={f.label}
+                      className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={f.url} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
+                  {ALBUM_ORNAMENTS.filter((o) => o.category === elementTab).map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() => addDecoration(o.id)}
+                      title={o.label}
+                      className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={ornamentDataUrl(o, decorationColor)} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+        </>
+      );
+    }
+    if (key === "digits") {
+      return (
+        <>
+          {selected && selected.type === "decoration" && (
+            <div className="rounded-xl p-3 bg-chip space-y-2.5 mb-3" onClick={(e) => e.stopPropagation()}>
+              <div className="text-[11px] font-semibold text-ink-soft">{t("האלמנט שנבחר")}</div>
+              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
+                <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
+                <input
+                  type="range"
+                  min={5}
+                  max={45}
+                  value={selected.sizePct}
+                  onChange={(e) => updateElement(selected.id, { sizePct: Number(e.target.value) })}
+                  className="w-full"
+                />
+              </div>
+              {!selected.customElementAssetId && !selected.floralId && (
+                <div className="flex items-center gap-1.5">
+                  {["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => updateElement(selected.id, { color: c })}
+                      className="h-6 w-6 rounded-full border-2"
+                      style={{ background: c, borderColor: selected.color === c ? "var(--color-sage)" : "var(--color-line)" }}
+                    />
+                  ))}
+                  <FreeColorPicker value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
+                  {t("מחיקת האלמנט")}
+                </button>
+                <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
+              </div>
+            </div>
+          )}
+                <div className="space-y-2.5">
+                  {MAGNET_DIGIT_STYLES.map((style) => {
+                    const color = style.colors ? (style.colors.find((c) => c.key === digitColors[style.key]) ?? style.colors[0]) : undefined;
+                    return (
+                      <div key={style.key}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="text-[10px] font-semibold text-ink-soft">{t(style.label)}</div>
+                          {style.colors && (
+                            <div className="flex items-center gap-1">
+                              {style.colors.map((c) => (
+                                <button
+                                  key={c.key}
+                                  onClick={() => setDigitColors((prev) => ({ ...prev, [style.key]: c.key }))}
+                                  title={t(c.label)}
+                                  aria-label={t(c.label)}
+                                  className="w-4 h-4 rounded-full border-2"
+                                  style={{ background: c.swatch, borderColor: color?.key === c.key ? "var(--color-amber-deep)" : "transparent" }}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-7 sm:grid-cols-13 gap-1.5" dir="ltr">
+                          {style.numbers.map((n) => (
+                            <button
+                              key={n}
+                              onClick={() => addFloral(magnetDigitId(style.key, n, color?.key), 22)}
+                              title={[t(style.label), color ? t(color.label) : "", n].filter(Boolean).join(" ")}
+                              className="rounded-lg border border-line p-0.5 bg-chip aspect-square flex items-center justify-center"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={magnetDigitUrl(style.key, n, color?.key)} loading="lazy" className="w-full h-full" style={{ objectFit: "contain" }} alt={n} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {DIGIT_STYLES.map((style) => (
+                    <div key={style.key}>
+                      <div className="text-[10px] font-semibold text-ink-soft mb-1">{t(style.label)}</div>
+                      <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5" dir="ltr">
+                        {DIGITS.map((digit) => (
+                          <button
+                            key={digit}
+                            onClick={() => addDigit(digit, style)}
+                            title={`${t(style.label)} ${digit}`}
+                            className="rounded-lg border border-line bg-chip aspect-square flex items-center justify-center text-xl leading-none"
+                            style={{
+                              fontFamily: albumFontFamilyCss(style.fontKey),
+                              fontWeight: style.bold ? 700 : 400,
+                              fontStyle: style.italic ? "italic" : "normal",
+                              color: decorationColor === "#ffffff" ? "var(--color-ink)" : decorationColor,
+                            }}
+                          >
+                            {digit}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+        </>
+      );
+    }
+    if (key === "texture") return (
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setTextureTab("builtin")}
+                    className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                    style={{ background: textureTab === "builtin" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "builtin" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
+                  >
+                    {t("40 טקסטורות")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTextureTab("custom");
+                      loadCustomTextures();
+                    }}
+                    className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                    style={{ background: textureTab === "custom" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "custom" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
+                  >
+                    {t("הטקסטורות שלי")}
+                  </button>
+                </div>
+                {(frameSettings.textureId || frameSettings.customTextureAssetId) && (
+                  <button onClick={clearTexture} className="text-[11px] text-ink-soft underline shrink-0">
+                    {t("ללא טקסטורה")}
+                  </button>
+                )}
+              </div>
+              {(frameSettings.textureId || frameSettings.customTextureAssetId) && (
+                <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 bg-card border border-line">
+                  <span className="text-xs text-ink-soft whitespace-nowrap">{t("שקיפות")}</span>
+                  <input
+                    type="range"
+                    min={5}
+                    max={100}
+                    value={frameSettings.textureOpacity}
+                    onChange={(e) => setFrameSettings((prev) => ({ ...prev, textureOpacity: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                </div>
+              )}
+              {textureTab === "builtin" ? (
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                  {MAGNET_FRAME_TEXTURES.map((tex) => (
+                    <button
+                      key={tex.id}
+                      onClick={() => selectBuiltinTexture(tex.id)}
+                      title={tex.label}
+                      className="rounded-lg border-2 aspect-square overflow-hidden bg-white"
+                      style={{ borderColor: frameSettings.textureId === tex.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={textureDataUrl(tex)} alt={tex.label} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className="flex items-center justify-center rounded-lg border border-dashed border-line p-3 text-center bg-card cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadingTexture}
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) uploadTextureFile(file);
+                      }}
+                    />
+                    <span className="text-xs font-semibold text-ink-soft">{uploadingTexture ? t("מעלה...") : t("+ העלאת טקסטורה משלי")}</span>
+                  </label>
+                  {customTextures.length > 0 && (
+                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                      {customTextures.map(
+                        (tex) =>
+                          tex.url && (
+                            <button
+                              key={tex.id}
+                              onClick={() => selectCustomTexture(tex.id)}
+                              title={tex.original_filename}
+                              className="rounded-lg border-2 aspect-square overflow-hidden bg-white"
+                              style={{ borderColor: frameSettings.customTextureAssetId === tex.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={tex.url} alt={tex.original_filename} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
+                            </button>
+                          )
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+    );
+    return (
             <div className="space-y-2.5">
               <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
                 <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("עובי מסגרת")}</span>
@@ -921,283 +1261,78 @@ export default function MagnetFrameEditor() {
                 </>
               )}
             </div>
-          )}
+    );
+  };
 
-          {activeTab === "texture" && (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setTextureTab("builtin")}
-                    className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                    style={{ background: textureTab === "builtin" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "builtin" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
-                  >
-                    {t("40 טקסטורות")}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTextureTab("custom");
-                      loadCustomTextures();
-                    }}
-                    className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                    style={{ background: textureTab === "custom" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "custom" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
-                  >
-                    {t("הטקסטורות שלי")}
-                  </button>
-                </div>
-                {(frameSettings.textureId || frameSettings.customTextureAssetId) && (
-                  <button onClick={clearTexture} className="text-[11px] text-ink-soft underline shrink-0">
-                    {t("ללא טקסטורה")}
-                  </button>
-                )}
-              </div>
-              {(frameSettings.textureId || frameSettings.customTextureAssetId) && (
-                <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 bg-card border border-line">
-                  <span className="text-xs text-ink-soft whitespace-nowrap">{t("שקיפות")}</span>
-                  <input
-                    type="range"
-                    min={5}
-                    max={100}
-                    value={frameSettings.textureOpacity}
-                    onChange={(e) => setFrameSettings((prev) => ({ ...prev, textureOpacity: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                </div>
-              )}
-              {textureTab === "builtin" ? (
-                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                  {MAGNET_FRAME_TEXTURES.map((tex) => (
-                    <button
-                      key={tex.id}
-                      onClick={() => selectBuiltinTexture(tex.id)}
-                      title={tex.label}
-                      className="rounded-lg border-2 aspect-square overflow-hidden bg-white"
-                      style={{ borderColor: frameSettings.textureId === tex.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={textureDataUrl(tex)} alt={tex.label} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <label className="flex items-center justify-center rounded-lg border border-dashed border-line p-3 text-center bg-card cursor-pointer">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      disabled={uploadingTexture}
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = "";
-                        if (file) uploadTextureFile(file);
-                      }}
-                    />
-                    <span className="text-xs font-semibold text-ink-soft">{uploadingTexture ? t("מעלה...") : t("+ העלאת טקסטורה משלי")}</span>
-                  </label>
-                  {customTextures.length > 0 && (
-                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                      {customTextures.map(
-                        (tex) =>
-                          tex.url && (
-                            <button
-                              key={tex.id}
-                              onClick={() => selectCustomTexture(tex.id)}
-                              title={tex.original_filename}
-                              className="rounded-lg border-2 aspect-square overflow-hidden bg-white"
-                              style={{ borderColor: frameSettings.customTextureAssetId === tex.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={tex.url} alt={tex.original_filename} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
-                            </button>
-                          )
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+  if (!loaded) return null;
 
-          {activeTab === "elements" && (
-            <div>
-              <div className="flex flex-wrap gap-1 mb-2">
-                {ELEMENT_TABS.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => selectElementTab(tab.key)}
-                    className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                    style={{
-                      background: elementTab === tab.key ? "var(--color-amber-deep)" : "var(--color-chip)",
-                      color: elementTab === tab.key ? "#fff" : "var(--color-ink-soft)",
-                    }}
-                  >
-                    {t(tab.label)}
-                  </button>
-                ))}
-              </div>
-              {elementTab !== "watercolor" && elementTab !== "custom" && (
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="text-[10px] text-ink-soft">{t("צבע")}</span>
-                  {["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setDecorationColor(c)}
-                      className="h-5 w-5 rounded-full border"
-                      style={{ background: c, borderColor: decorationColor === c ? "var(--color-amber-deep)" : "var(--color-line)" }}
-                    />
-                  ))}
-                  <FreeColorPicker value={decorationColor} onChange={setDecorationColor} />
-                </div>
-              )}
-              {elementTab === "digits" ? (
-                <div className="space-y-2.5 max-h-[40vh] overflow-y-auto">
-                  {MAGNET_DIGIT_STYLES.map((style) => {
-                    const color = style.colors ? (style.colors.find((c) => c.key === digitColors[style.key]) ?? style.colors[0]) : undefined;
-                    return (
-                      <div key={style.key}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="text-[10px] font-semibold text-ink-soft">{t(style.label)}</div>
-                          {style.colors && (
-                            <div className="flex items-center gap-1">
-                              {style.colors.map((c) => (
-                                <button
-                                  key={c.key}
-                                  onClick={() => setDigitColors((prev) => ({ ...prev, [style.key]: c.key }))}
-                                  title={t(c.label)}
-                                  aria-label={t(c.label)}
-                                  className="w-4 h-4 rounded-full border-2"
-                                  style={{ background: c.swatch, borderColor: color?.key === c.key ? "var(--color-amber-deep)" : "transparent" }}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-7 sm:grid-cols-13 gap-1.5" dir="ltr">
-                          {style.numbers.map((n) => (
-                            <button
-                              key={n}
-                              onClick={() => addFloral(magnetDigitId(style.key, n, color?.key), 22)}
-                              title={[t(style.label), color ? t(color.label) : "", n].filter(Boolean).join(" ")}
-                              className="rounded-lg border border-line p-0.5 bg-chip aspect-square flex items-center justify-center"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={magnetDigitUrl(style.key, n, color?.key)} loading="lazy" className="w-full h-full" style={{ objectFit: "contain" }} alt={n} />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {DIGIT_STYLES.map((style) => (
-                    <div key={style.key}>
-                      <div className="text-[10px] font-semibold text-ink-soft mb-1">{t(style.label)}</div>
-                      <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5" dir="ltr">
-                        {DIGITS.map((digit) => (
-                          <button
-                            key={digit}
-                            onClick={() => addDigit(digit, style)}
-                            title={`${t(style.label)} ${digit}`}
-                            className="rounded-lg border border-line bg-chip aspect-square flex items-center justify-center text-xl leading-none"
-                            style={{
-                              fontFamily: albumFontFamilyCss(style.fontKey),
-                              fontWeight: style.bold ? 700 : 400,
-                              fontStyle: style.italic ? "italic" : "normal",
-                              color: decorationColor === "#ffffff" ? "var(--color-ink)" : decorationColor,
-                            }}
-                          >
-                            {digit}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : elementTab === "custom" ? (
-                <div className="space-y-2">
-                  <label className="flex items-center justify-center rounded-lg border border-dashed border-line p-3 text-center bg-card cursor-pointer">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      disabled={uploadingElement}
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = "";
-                        if (file) uploadElementFile(file);
-                      }}
-                    />
-                    <span className="text-xs font-semibold text-ink-soft">{uploadingElement ? t("מעלה...") : t("+ העלאת אלמנט משלי")}</span>
-                  </label>
-                  <p className="text-[10px] text-ink-soft">{t("האלמנטים שמעלים כאן נשמרים ונשארים זמינים גם בעיצובים הבאים.")}</p>
-                  {customElements.length > 0 && (
-                    <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 max-h-[40vh] overflow-y-auto">
-                      {customElements.map(
-                        (ce) =>
-                          ce.url && (
-                            <button
-                              key={ce.id}
-                              onClick={() => addCustomElement(ce.id)}
-                              title={ce.original_filename}
-                              className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={ce.url} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
-                            </button>
-                          )
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : elementTab === "watercolor" ? (
-                <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 max-h-[40vh] overflow-y-auto">
-                  {MAGNET_FRAME_FLORALS.map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => addFloral(f.id)}
-                      title={f.label}
-                      className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={f.url} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 max-h-[40vh] overflow-y-auto">
-                  {ALBUM_ORNAMENTS.filter((o) => o.category === elementTab).map((o) => (
-                    <button
-                      key={o.id}
-                      onClick={() => addDecoration(o.id)}
-                      title={o.label}
-                      className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={ornamentDataUrl(o, decorationColor)} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+  // Two sides (owner's design, 2026-10-05): the panels on the right (65%), and on the left (35%)
+  // both frames as they will be exported, so a misplaced element shows up before downloading.
+  return (
+    <div className={`grid gap-5 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)] items-start ${ALBUM_FONT_CLASS_NAMES}`}>
+      <section className="rounded-2xl bg-card border border-line shadow-card overflow-hidden">
+        <div className="p-4 border-b border-line flex flex-wrap items-start gap-3">
+          <p className="flex-1 min-w-[220px] text-xs leading-relaxed text-ink-soft">
+            {withDims(
+              t("בסיס לבן פשוט במידה {landscape} ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך ({portrait}) עם אותו הטקסט והאלמנטים."),
+              { landscape: "20×15", portrait: "15×20" }
+            )}
+          </p>
+          <button onClick={() => void save()} disabled={saving || !!exportBusy} className="shrink-0 rounded-lg px-5 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+            {saving && !exportBusy ? t("שומר...") : t("שמירה")}
+          </button>
         </div>
-      )}
+        {PANELS.map((panel) => {
+          const open = openPanel === panel.key;
+          return (
+            <div key={panel.key} className="border-b border-line last:border-b-0">
+              <button
+                onClick={() => togglePanel(panel.key)}
+                aria-expanded={open}
+                className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-sm font-semibold text-start transition-colors"
+                style={{ background: open ? "var(--color-chip)" : undefined, color: "var(--color-ink)" }}
+              >
+                {t(panel.label)}
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-ink-soft transition-transform" style={{ transform: open ? "rotate(180deg)" : undefined }}>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              {open && panelBody(panel.key, renderPanelContent(panel.key))}
+            </div>
+          );
+        })}
+      </section>
 
-      {error && <p className="text-xs text-rose">{error}</p>}
-
-      <div className="flex items-center gap-2.5 flex-wrap">
-        <button onClick={() => void save()} disabled={saving || !!exportBusy} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-          {saving && !exportBusy ? t("שומר...") : t("שמירה")}
-        </button>
-        {/* Always shown now: a download saves the design first, so there's no need to save before. */}
-        <button onClick={() => download("landscape")} disabled={!!exportBusy || saving} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink disabled:opacity-60">
-          {exportBusy === "landscape" ? (saving ? t("שומר...") : t("מוריד...")) : withDims(t("הורדת מסגרת רוחב ({size})"), { size: "20×15" })}
-        </button>
-        <button onClick={() => download("portrait")} disabled={!!exportBusy || saving} className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-chip text-ink disabled:opacity-60">
-          {exportBusy === "portrait" ? (saving ? t("שומר...") : t("מוריד...")) : withDims(t("הורדת מסגרת אורך ({size})"), { size: "15×20" })}
-        </button>
-      </div>
-      {savedOnce && !designId && <p className="text-[11px] text-ink-soft">{t("השמירה נכשלה. נסו שוב.")}</p>}
+      <aside className="order-first lg:order-none lg:sticky lg:top-[92px]">
+        <div className="mx-auto w-full" style={{ maxWidth: "min(100%, calc((100svh - 300px) / 1.55))" }}>
+          <div className="grid grid-cols-[16fr_9fr] items-start gap-3 lg:grid-cols-1 lg:gap-4">
+            {(["landscape", "portrait"] as const).map((o) => (
+              <div key={o} className={o === "portrait" ? "lg:w-[60%] lg:mx-auto w-full" : "w-full"}>
+                <div className="mb-1.5 text-[11px] font-semibold text-ink-soft text-center">
+                  {withDims(o === "landscape" ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: o === "landscape" ? "20×15" : "15×20" })}
+                </div>
+                {renderFrame(o)}
+                <button
+                  onClick={() => download(o)}
+                  disabled={!!exportBusy || saving}
+                  className="mt-2 w-full rounded-lg px-2 py-2 text-[11px] sm:text-xs font-semibold bg-chip text-ink disabled:opacity-60"
+                >
+                  {exportBusy === o
+                    ? saving
+                      ? t("שומר...")
+                      : t("מוריד...")
+                    : o === "landscape"
+                      ? withDims(t("הורדת מסגרת רוחב ({size})"), { size: "20×15" })
+                      : withDims(t("הורדת מסגרת אורך ({size})"), { size: "15×20" })}
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-ink-soft text-center">{t("שתי המסגרות מתעדכנות יחד. אפשר לגרור אלמנטים בכל אחת מהן.")}</p>
+          {error && <p className="mt-2 text-xs text-rose text-center">{error}</p>}
+          {savedOnce && !designId && <p className="mt-1 text-[11px] text-ink-soft text-center">{t("השמירה נכשלה. נסו שוב.")}</p>}
+        </div>
+      </aside>
     </div>
   );
 }
