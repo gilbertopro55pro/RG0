@@ -66,6 +66,7 @@ import { IndeterminateProgressCard } from "@/components/IndeterminateProgressCar
 import { pdfBandedPct } from "@/lib/pdfBandedPct";
 import SendUpdateButton from "@/components/SendUpdateButton";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
+import GalleryPremiumCover from "@/components/GalleryPremiumCover";
 import GalleryCoverFocalPointModal from "@/components/GalleryCoverFocalPointModal";
 import GallerySlideshow from "@/components/GallerySlideshow";
 import { TextPositionIcon, ShapeIcon, GridStyleIcon, PlayIcon } from "@/components/GalleryStyleIcons";
@@ -2960,6 +2961,11 @@ export default function GalleryManageView({
   // The photographer's own management grid mirrors the same resolved style the client actually
   // sees — no separate local toggle, so there's only ever one layout control to reason about.
   const resolvedGridStyle = gallery.grid_style_override ?? galleryThemeById(gallery.theme).gridStyle;
+  const premiumTheme = galleryThemeById(gallery.theme).coverStyle === "fullbleed";
+  const managerCoverPhoto = photos.find((p) => p.id === gallery.cover_photo_id) ?? photos[0];
+  // Premium tiles are square-cornered like the client page; the per-photo action icons wait for
+  // hover on a mouse so the grid reads as photos, and stay visible on touch screens.
+  const tileRound = premiumTheme ? "" : "rounded-lg";
 
   // Resets the "all thumbnails in, reveal together" gate whenever the visible photo SET changes
   // (folder switch, favorites filter, etc) — for a set that's already browser-cached this settles
@@ -3262,8 +3268,27 @@ export default function GalleryManageView({
       {/* gallery.title is always accurate now — it's either the photographer's own customization,
           or kept synced to the event's client_name (see saveSettings/EditEventModal.tsx), so
           there's no need to prioritize clientName over it the way this used to. */}
-      <h1 className="text-[22px] font-bold mb-1 font-display">{gallery.title}</h1>
-      {eventDate ? (
+      {premiumTheme ? (
+        // Premium theme: the screen opens on the same cover the client gets (a shorter banner), so
+        // the photographer works inside the look they chose instead of a plain admin list.
+        <div className={`${galleryFont.variable} mb-4 overflow-hidden rounded-2xl`}>
+          <GalleryPremiumCover
+            variant="manage"
+            photoUrl={managerCoverPhoto?.url ?? null}
+            title={gallery.title}
+            dateLabel={
+              eventDate || gallery.shoot_date
+                ? new Date((eventDate || gallery.shoot_date) as string).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "long", year: "numeric" })
+                : null
+            }
+            focalX={gallery.cover_focal_x}
+            focalY={gallery.cover_focal_y}
+          />
+        </div>
+      ) : (
+        <h1 className="text-[22px] font-bold mb-1 font-display">{gallery.title}</h1>
+      )}
+      {premiumTheme ? null : eventDate ? (
         <p className="text-xs mb-1 text-ink-soft">{new Date(eventDate).toLocaleDateString(dateLocale(lang))}</p>
       ) : (
         gallery.shoot_date && (
@@ -3716,7 +3741,7 @@ export default function GalleryManageView({
                   onPointerUp={cancelPress}
                   onPointerLeave={cancelPress}
                   onClick={() => handlePhotoClick(photo, i)}
-                  className="relative aspect-square rounded-lg overflow-hidden bg-line"
+                  className={`group relative aspect-square ${tileRound} overflow-hidden bg-line`}
                   style={photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
                 >
                   {/* Plain img (not next/image) to match the justified/masonry grid styles below —
@@ -3735,7 +3760,7 @@ export default function GalleryManageView({
                     onLoad={() => markThumbLoaded(photo.id)}
                     onError={() => markThumbLoaded(photo.id)}
                   />
-                  <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} />
+                  <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} />
                 </button>
               ))}
             </div>
@@ -3750,7 +3775,7 @@ export default function GalleryManageView({
                     onPointerUp={cancelPress}
                     onPointerLeave={cancelPress}
                     onClick={() => handlePhotoClick(photo, i)}
-                    className="relative rounded-lg overflow-hidden bg-line"
+                    className={`group relative ${tileRound} overflow-hidden bg-line`}
                     style={{
                       height: cellSize,
                       width: ratio * cellSize,
@@ -3772,7 +3797,7 @@ export default function GalleryManageView({
                       }}
                       onError={() => markThumbLoaded(photo.id)}
                     />
-                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} />
+                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} />
                   </button>
                 );
               })}
@@ -3795,7 +3820,7 @@ export default function GalleryManageView({
                     onPointerUp={cancelPress}
                     onPointerLeave={cancelPress}
                     onClick={() => handlePhotoClick(photo, i)}
-                    className="relative w-full mb-1.5 rounded-lg overflow-hidden bg-line block break-inside-avoid"
+                    className={`group relative w-full mb-1.5 ${tileRound} overflow-hidden bg-line block break-inside-avoid`}
                     style={{
                       ...(framed ? { padding: 4, border: "1px solid var(--color-line)" } : {}),
                       ...(knownShape ? { aspectRatio: `${photo.preview_aspect_ratio}` } : {}),
@@ -3814,7 +3839,7 @@ export default function GalleryManageView({
                         ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : {}),
                       }}
                     />
-                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} offset={framed ? 8 : 4} />
+                    <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} offset={framed ? 8 : 4} quiet={premiumTheme} />
                   </button>
                 );
               })}
@@ -5750,6 +5775,7 @@ function MgrPhotoOverlays({
   onDownload,
   onSetCover,
   offset = 4,
+  quiet = false,
 }: {
   photo: PhotoWithUrl;
   isCover: boolean;
@@ -5757,8 +5783,11 @@ function MgrPhotoOverlays({
   onDownload?: (photo: PhotoWithUrl) => void;
   onSetCover?: (photo: PhotoWithUrl) => void;
   offset?: number;
+  // Hide the action icons until hover on mouse devices (the tile carries the "group" class).
+  quiet?: boolean;
 }) {
   const t = useT();
+  const hoverOnly = quiet ? " transition-opacity [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : "";
   // The parent thumbnail is itself a <button> (opens the lightbox on click), so these can't be
   // real <button> elements — nested buttons are invalid HTML and browsers silently mangle the
   // DOM. role="button" spans + stopPropagation get the same click/keyboard behavior without that.
@@ -5773,7 +5802,7 @@ function MgrPhotoOverlays({
             e.stopPropagation();
             onSetCover(photo);
           }}
-          className={iconBtnClass}
+          className={iconBtnClass + (isCover ? "" : hoverOnly)}
           style={{ top: offset, right: offset, background: isCover ? "var(--color-amber-deep)" : "rgba(0,0,0,0.5)" }}
           aria-label={isCover ? t("שער הגלריה הנוכחי") : t("קביעה כשער הגלריה")}
           title={isCover ? t("שער הגלריה הנוכחי") : t("קביעה כשער הגלריה")}
@@ -5789,7 +5818,7 @@ function MgrPhotoOverlays({
             e.stopPropagation();
             onDownload(photo);
           }}
-          className={iconBtnClass}
+          className={iconBtnClass + hoverOnly}
           style={{ top: offset + 30, right: offset }}
           aria-label={t("הורדת התמונה")}
           title={t("הורדת התמונה")}

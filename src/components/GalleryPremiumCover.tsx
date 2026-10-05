@@ -4,6 +4,8 @@ import { optimizedImageUrl } from "@/lib/imageOptimize";
 // with the title and date set low over a soft scrim. It is the only bold moment of the page and
 // its only unprompted motion: the photo settles from a slight zoom once, on load.
 // variant "preview" is the same composition shrunk into a box, for the design settings' preview.
+// variant "manage" is a shorter banner at the top of the photographer's own gallery screen, so the
+// screen they work in carries the same look the client gets.
 const COVER_WIDTHS = [828, 1200, 1920, 2048];
 
 export default function GalleryPremiumCover({
@@ -24,17 +26,20 @@ export default function GalleryPremiumCover({
   focalY?: number;
   // aria-label of the scroll cue (page variant only).
   scrollLabel?: string;
-  variant?: "page" | "preview";
+  variant?: "page" | "preview" | "manage";
 }) {
   const isPage = variant === "page";
+  const isManage = variant === "manage";
   const srcSet =
-    photoUrl && isPage && !photoUrl.startsWith("blob:") && !photoUrl.startsWith("data:")
+    photoUrl && (isPage || isManage) && !photoUrl.startsWith("blob:") && !photoUrl.startsWith("data:")
       ? COVER_WIDTHS.map((w) => `${optimizedImageUrl(photoUrl, w)} ${w}w`).join(", ")
       : undefined;
 
   return (
     <header
-      className={`gt-premium-cover relative overflow-hidden ${isPage ? "h-[92svh] sm:h-[100svh] min-h-[420px]" : "aspect-[4/3]"}`}
+      className={`gt-premium-cover relative overflow-hidden ${
+        isPage ? "h-[92svh] sm:h-[100svh] min-h-[420px]" : isManage ? "h-[clamp(240px,48svh,480px)]" : "aspect-[4/3]"
+      }`}
       style={{ background: "#2b2c2f" }}
     >
       {isPage && (
@@ -64,7 +69,7 @@ export default function GalleryPremiumCover({
       />
       {studioName && (
         <div
-          className={`absolute inset-x-0 top-0 text-center text-white/90 ${isPage ? "pt-5 sm:pt-7 text-[13px] sm:text-sm" : "pt-2.5 text-[9px]"}`}
+          className={`absolute inset-x-0 top-0 text-center text-white/90 ${isPage || isManage ? "pt-5 sm:pt-7 text-[13px] sm:text-sm" : "pt-2.5 text-[9px]"}`}
           style={{ textShadow: "0 1px 8px rgba(0,0,0,0.35)", letterSpacing: "0.04em" }}
         >
           {studioName}
@@ -72,7 +77,7 @@ export default function GalleryPremiumCover({
       )}
       <div
         className={`absolute inset-x-0 bottom-0 text-white ${
-          isPage ? "px-6 pb-[clamp(56px,11svh,112px)] sm:px-12 lg:px-20" : "px-4 pb-4"
+          isPage ? "px-6 pb-[clamp(56px,11svh,112px)] sm:px-12 lg:px-20" : isManage ? "px-5 pb-6 sm:px-10 sm:pb-9" : "px-4 pb-4"
         }`}
       >
         <h1
@@ -80,7 +85,7 @@ export default function GalleryPremiumCover({
           style={{
             fontFamily: "var(--font-gallery-serif), serif",
             fontWeight: 300,
-            fontSize: isPage ? "clamp(40px, 7.4vw, 76px)" : "26px",
+            fontSize: isPage ? "clamp(40px, 7.4vw, 76px)" : isManage ? "clamp(32px, 5.2vw, 58px)" : "26px",
             lineHeight: 1.04,
             letterSpacing: "-0.01em",
             textWrap: "balance",
@@ -90,7 +95,7 @@ export default function GalleryPremiumCover({
           {title}
         </h1>
         {dateLabel && (
-          <p className={`text-white/85 ${isPage ? "mt-3 sm:mt-4 text-sm sm:text-base" : "mt-1.5 text-[10px]"}`}>{dateLabel}</p>
+          <p className={`text-white/85 ${isPage || isManage ? "mt-3 sm:mt-4 text-sm sm:text-base" : "mt-1.5 text-[10px]"}`}>{dateLabel}</p>
         )}
       </div>
       {isPage && (
