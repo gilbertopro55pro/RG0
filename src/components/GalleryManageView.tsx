@@ -6238,6 +6238,10 @@ function GallerySettingsModal({
               </>
             )}
 
+            {/* The premium theme's cover is always a full-screen photo with the title low on it, so
+                text position and shape don't apply there. */}
+            {galleryThemeById(theme).coverStyle !== "fullbleed" && (
+            <>
             <p className="text-xs text-ink-soft mb-2.5">{t("מיקום הכיתוב")}</p>
             <div className="grid grid-cols-4 gap-2 mb-5">
               {COVER_TEXT_POSITIONS.map((p) => {
@@ -6285,9 +6289,11 @@ function GallerySettingsModal({
                 );
               })}
             </div>
+            </>
+            )}
 
             <p className="text-xs text-ink-soft mb-2.5">{t("ערכת נושא")}</p>
-            <div className="grid grid-cols-5 gap-1.5 mb-5">
+            <div className="grid grid-cols-6 gap-1.5 mb-5">
               {GALLERY_THEMES.map((th) => {
                 const active = theme === th.id;
                 return (

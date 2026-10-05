@@ -8,6 +8,12 @@ const dict: AreaDict = {
   en: {
     // Page + metadata
     "צפו וסמנו את התמונות הנבחרות שלכם מתוך הגלריה": "View the gallery and mark your favorite photos",
+    // Premium theme: cover, sticky bar, chapters, footer
+    "גלילה לתמונות": "Scroll to the photos",
+    "פרקים בגלריה": "Gallery chapters",
+    "מצגת": "Slideshow",
+    "תמונה אחת": "1 photo",
+    "יצירת קשר": "Contact",
     "גילברטו": "Gilberto",
     "הגלריה לא נמצאה, או שעדיין לא פורסמה.": "This gallery wasn't found, or hasn't been published yet.",
     "הגלריה כבר לא זמינה. פנו לצלם/ת שלכם לפרטים נוספים.": "This gallery is no longer available. Please contact your photographer for details.",
@@ -96,6 +102,12 @@ const dict: AreaDict = {
   ru: {
     // Page + metadata
     "צפו וסמנו את התמונות הנבחרות שלכם מתוך הגלריה": "Смотрите галерею и отмечайте понравившиеся фото",
+    // Premium theme: cover, sticky bar, chapters, footer
+    "גלילה לתמונות": "Перейти к фотографиям",
+    "פרקים בגלריה": "Разделы галереи",
+    "מצגת": "Слайд-шоу",
+    "תמונה אחת": "1 фото",
+    "יצירת קשר": "Связаться",
     "גילברטו": "Гилберто",
     "הגלריה לא נמצאה, או שעדיין לא פורסמה.": "Галерея не найдена или ещё не опубликована.",
     "הגלריה כבר לא זמינה. פנו לצלם/ת שלכם לפרטים נוספים.": "Галерея больше недоступна. За подробностями обратитесь к вашему фотографу.",
