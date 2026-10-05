@@ -244,11 +244,21 @@ export default async function DashboardPage() {
   }
 
   // The next shoot — the first open event from today on. Leads the home screen: when, where, how
-  // much is still to collect and what the next step is.
+  // much is still to collect and what the next step is. A shoot that already happened today doesn't
+  // count (owner's report, 2026-10-05: a morning event stayed "הצילום הבא, היום" all day): its
+  // "יום הצילום" stage is marked, or its end time has passed.
   let nextEvent: NextEventHeroData | null = null;
   if (photographer) {
     const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
-    const upcoming = (events ?? []).find((e) => !e.closed_at && e.event_date >= todayIso);
+    const nowTime = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Jerusalem", hour12: false });
+    const shootDone = (e: NonNullable<typeof events>[number]) =>
+      e.event_stages.some((s) => s.stage_key === "shoot_day" && s.done) ||
+      (e.event_date === todayIso &&
+        !!e.event_end_time &&
+        // An evening event ending at 00:00 (or later) ends tomorrow, not before its start.
+        (!e.event_start_time || e.event_end_time > e.event_start_time) &&
+        e.event_end_time.slice(0, 5) <= nowTime.slice(0, 5));
+    const upcoming = (events ?? []).find((e) => !e.closed_at && e.event_date >= todayIso && !shootDone(e));
     if (upcoming) {
       const p = (payments ?? []).find((x) => x.event_id === upcoming.id);
       const due = p
