@@ -103,11 +103,12 @@ function ProcessHero({
   const current = allDone ? null : descriptors[curIdx];
   const next = descriptors[curIdx + 1] ?? null;
   const doneByKey = new Map(stages.map((st) => [st.stage_key ?? `custom:${st.custom_stage_id}`, st.done]));
-  // Same rules as the row toggle in FilmStrip: event_closing completes only via the opening
-  // message, and an album-approval stage needs its PDF first.
+  // Same rules as the row toggle in FilmStrip: an album-approval stage needs its PDF first.
+  // event_closing can be marked by hand too (owner, 2026-10-05): an event that came from the
+  // calendar or was closed with the client outside the app had no way past this stage, so every
+  // later stage stayed hidden behind it.
   const canMark =
     !!current &&
-    current.key !== "event_closing" &&
     !(current.requiresAlbumPdf && !(current.key === "album_approval" && albumDesignFilename)) &&
     !pending.has(current.key);
 
@@ -141,7 +142,7 @@ function ProcessHero({
         {allDone
           ? t("אפשר לסגור את האירוע בתחתית העמוד.")
           : current!.key === "event_closing"
-            ? t("השלב הזה מסתיים כששולחים ללקוח את הודעת הפתיחה.")
+            ? t("שולחים ללקוח את הודעת הפתיחה, או מסמנים כבוצע אם האירוע כבר נסגר איתו.")
             : next
               ? t("הבא אחריו: {label}", { label: t(next.label) })
               : t("זה השלב האחרון.")}
@@ -1491,9 +1492,9 @@ function FilmStrip({
         // PDF exists — for the standard "אישור עיצוב אלבום" checkpoint specifically, uploading no
         // longer auto-completes it (the client confirms via their portal), so once a file has been
         // attached the toggle opens up for a manual override too.
-        const canUndo = st.done && d.key !== "event_closing";
+        const canUndo = st.done;
         const albumPdfAttached = d.key === "album_approval" && !!albumDesignFilename;
-        const disabled = d.key === "event_closing" || (requiresAlbumPdf && !st.done && !albumPdfAttached) || isTogglePending;
+        const disabled = (requiresAlbumPdf && !st.done && !albumPdfAttached) || isTogglePending;
 
         return (
           <div
