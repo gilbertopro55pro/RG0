@@ -1304,7 +1304,7 @@ export default function MagnetFrameEditor() {
       </section>
 
       <aside className="order-first lg:order-none lg:sticky lg:top-[92px]">
-        <div className="mx-auto w-full" style={{ maxWidth: "min(100%, calc((100svh - 300px) / 1.55))" }}>
+        <div className="mx-auto w-full" style={{ maxWidth: "min(100%, calc((100svh - 330px) / 1.6))" }}>
           <div className="grid grid-cols-[16fr_9fr] items-start gap-3 lg:grid-cols-1 lg:gap-4">
             {(["landscape", "portrait"] as const).map((o) => (
               <div key={o} className={o === "portrait" ? "lg:w-[60%] lg:mx-auto w-full" : "w-full"}>
