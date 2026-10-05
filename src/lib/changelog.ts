@@ -25,6 +25,25 @@ export function changesFor(entry: ChangelogEntry, lang: Lang): string[] {
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.2",
+    date: "2026-10-05",
+    changes: [
+      "עיצוב חדש לגלריות: כריכה על כל המסך עם הכותרת עליה, פס עליון עם הפרקים, כותרת לכל פרק ותמונות בשורות. כל הגלריות הקיימות עברו אליו",
+      "כשנכנסים לגלריה במערכת היא נראית כמו אצל הלקוח: אותה כריכה, אותם פרקים ואותן שורות. כלי הניהול (העלאה, מיון, הגדרות, אלבום) נמצאים בפס העליון ומתחתיו",
+      "הלוגו שלכם מופיע בגלריה (בכריכה, בפס העליון ובתחתית). בלי לוגו לא מוצג שם",
+    ],
+    en: [
+      "A new look for galleries: a full-screen cover with the title on it, a top bar with the chapters, a heading for each chapter and photos in rows. All existing galleries have moved to it",
+      "When you open a gallery in the app it looks the way the client sees it: the same cover, chapters and rows. The management tools (upload, sorting, settings, album) are in the top bar and below it",
+      "Your logo appears in the gallery (on the cover, in the top bar and at the bottom). Without a logo, no name is shown",
+    ],
+    ru: [
+      "Новый дизайн галерей: обложка на весь экран с заголовком, верхняя панель с главами, заголовок у каждой главы и фотографии рядами. Все существующие галереи перешли на него",
+      "Когда вы открываете галерею в системе, она выглядит так же, как у клиента: та же обложка, главы и ряды. Инструменты управления (загрузка, сортировка, настройки, альбом) находятся в верхней панели и под ней",
+      "Ваш логотип отображается в галерее (на обложке, в верхней панели и внизу). Без логотипа имя не показывается",
+    ],
+  },
+  {
     version: "2.12.1",
     date: "2026-10-04",
     changes: [

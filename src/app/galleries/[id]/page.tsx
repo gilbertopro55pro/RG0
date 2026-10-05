@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow, Photographer } from "@/lib/types";
 import GalleryManageView from "@/components/GalleryManageView";
-import { getSignedDownloadUrls, getPublicPreviewUrl } from "@/lib/storage";
+import { getSignedDownloadUrl, getSignedDownloadUrls, getPublicPreviewUrl } from "@/lib/storage";
+import { galleryBrandingAllowed } from "@/lib/galleryBranding";
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import { hasAppAccess } from "@/lib/subscription";
 import { clientLangFor } from "@/lib/clientLang";
@@ -39,9 +40,9 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
   // with their own name.
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("name, email, plan, subscription_status, trial_ends_at")
+    .select("name, email, plan, subscription_status, trial_ends_at, logo_storage_path")
     .eq("id", gallery.photographer_id)
-    .maybeSingle<Pick<Photographer, "name" | "email" | "plan" | "subscription_status" | "trial_ends_at">>();
+    .maybeSingle<Pick<Photographer, "name" | "email" | "plan" | "subscription_status" | "trial_ends_at" | "logo_storage_path">>();
   if (photographer && !hasAppAccess(photographer)) redirect("/billing");
 
   const event = gallery.events;
@@ -73,9 +74,18 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
     }));
   }
 
+  // Same logo the client sees on the gallery (see gallery/[token]/page.tsx).
+  const brandLogoUrl =
+    photographer?.logo_storage_path && galleryBrandingAllowed(photographer)
+      ? await getSignedDownloadUrl("logos", photographer.logo_storage_path, 3600)
+      : null;
+
+  // Full width: GalleryManageView lays out its own column, so the premium theme's cover and bar can
+  // run edge to edge above it like on the client's page.
   return (
-    <div className="max-w-2xl sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
+    <div className="w-full">
       <GalleryManageView
+        brandLogoUrl={brandLogoUrl}
         eventId={gallery.event_id}
         clientName={event?.client_name ?? ""}
         eventDate={event?.event_date ?? null}
