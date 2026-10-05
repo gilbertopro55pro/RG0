@@ -14,6 +14,8 @@ import type {
 import type { ClientAlbumElement } from "@/components/GalleryAlbumProofing";
 import PublicGalleryView from "@/components/PublicGalleryView";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
+import GalleryPremiumCover from "@/components/GalleryPremiumCover";
+import { normalizeIsraeliPhone } from "@/lib/whatsapp";
 import { getSignedDownloadUrl, getSignedDownloadUrls, getPublicPreviewUrl } from "@/lib/storage";
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import { galleryThemeById, galleryThemeVars, galleryFont } from "@/lib/galleryTheme";
@@ -163,9 +165,9 @@ export default async function PublicGalleryPage({
     // Studio Pro's "full branding" perk — see BrandingSettings.tsx and the render below.
     supabase
       .from("photographers")
-      .select("plan, brand_color, logo_storage_path")
+      .select("plan, brand_color, logo_storage_path, name, phone")
       .eq("id", gallery.photographer_id)
-      .maybeSingle<Pick<Photographer, "plan" | "brand_color" | "logo_storage_path">>(),
+      .maybeSingle<Pick<Photographer, "plan" | "brand_color" | "logo_storage_path" | "name" | "phone">>(),
     supabase
       .from("gallery_videos")
       .select("id, original_filename, storage_path")
@@ -379,6 +381,83 @@ export default async function PublicGalleryPage({
       ? new Date(gallery.shoot_date).toLocaleDateString(dateLocale(lang))
       : null;
 
+  const videosBlock =
+    videosWithUrls.length > 0 ? (
+      <div className="mb-6 space-y-3">
+        {videosWithUrls.map((v) => (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <video
+            key={v.id}
+            src={v.url}
+            controls
+            playsInline
+            className={`w-full block ${theme.coverStyle === "fullbleed" ? "" : "rounded-2xl"}`}
+            style={{ background: "#000" }}
+          />
+        ))}
+      </div>
+    ) : null;
+
+  const galleryView = (
+    <PublicGalleryView
+      token={token}
+      initialPhotos={photosWithUrls}
+      initialFolders={folders ?? []}
+      initiallyConfirmed={!!gallery.selection_confirmed_at}
+      allowDownloads={gallery.allow_downloads}
+      allowClientUpload={gallery.allow_client_upload}
+      themeId={gallery.theme}
+      titleFontOverride={gallery.title_font_override}
+      gridStyleOverride={gallery.grid_style_override}
+      slideshowPhotoIds={gallery.slideshow_photo_ids}
+      album={
+        album && album.status !== "draft"
+          ? { status: album.status as "sent" | "approved" | "changes_requested", title: album.title, coverUrl: albumCoverUrl }
+          : null
+      }
+      albumSpreads={albumSpreadsForClient}
+      restrictedQuality={restrictedQuality}
+      studioName={brandingPhotographer?.name ?? null}
+      brandLogoUrl={brandLogoUrl}
+      contactUrl={brandingPhotographer?.phone ? `https://wa.me/${normalizeIsraeliPhone(brandingPhotographer.phone)}` : null}
+      leadContent={theme.coverStyle === "fullbleed" ? videosBlock : null}
+    />
+  );
+
+  // Premium (coverStyle "fullbleed"): edge-to-edge page — a full-screen cover, then the gallery
+  // view with its own sticky bar and margins. Every other theme keeps the original centered column.
+  if (theme.coverStyle === "fullbleed") {
+    const premiumDate = event?.event_date ?? gallery.shoot_date;
+    return (
+      <ClientLangScope lang={lang}>
+        <div
+          className={`${galleryFont.variable} w-full min-h-screen`}
+          style={{ background: theme.bg, color: theme.ink, ...galleryThemeVars(gallery.theme, styleOverrides), ...brandAccentVars }}
+        >
+          {isOwnerPreview && (
+            <div className="px-4 py-2 text-center text-xs font-semibold text-white" style={{ background: "var(--color-amber-deep)" }}>
+              {t("תצוגה מקדימה. כך הלקוח/ה יראו את הגלריה לאחר הפרסום. הגלריה עצמה עדיין לא פורסמה.")}
+            </div>
+          )}
+          <GalleryPremiumCover
+            photoUrl={coverPhoto?.url ?? null}
+            title={gallery.title || t("גלריית תמונות")}
+            dateLabel={
+              premiumDate
+                ? new Date(premiumDate).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "long", year: "numeric" })
+                : null
+            }
+            studioName={brandingPhotographer?.name ?? null}
+            focalX={gallery.cover_focal_x}
+            focalY={gallery.cover_focal_y}
+            scrollLabel={t("גלילה לתמונות")}
+          />
+          {galleryView}
+        </div>
+      </ClientLangScope>
+    );
+  }
+
   return (
     <ClientLangScope lang={lang}>
     <div
@@ -408,34 +487,9 @@ export default async function PublicGalleryPage({
         focalY={gallery.cover_focal_y}
       />
 
-      {videosWithUrls.length > 0 && (
-        <div className="mb-6 space-y-3">
-          {videosWithUrls.map((v) => (
-            // eslint-disable-next-line jsx-a11y/media-has-caption
-            <video key={v.id} src={v.url} controls playsInline className="w-full rounded-2xl block" style={{ background: "#000" }} />
-          ))}
-        </div>
-      )}
+      {videosBlock}
 
-      <PublicGalleryView
-        token={token}
-        initialPhotos={photosWithUrls}
-        initialFolders={folders ?? []}
-        initiallyConfirmed={!!gallery.selection_confirmed_at}
-        allowDownloads={gallery.allow_downloads}
-        allowClientUpload={gallery.allow_client_upload}
-        themeId={gallery.theme}
-        titleFontOverride={gallery.title_font_override}
-        gridStyleOverride={gallery.grid_style_override}
-        slideshowPhotoIds={gallery.slideshow_photo_ids}
-        album={
-          album && album.status !== "draft"
-            ? { status: album.status as "sent" | "approved" | "changes_requested", title: album.title, coverUrl: albumCoverUrl }
-            : null
-        }
-        albumSpreads={albumSpreadsForClient}
-        restrictedQuality={restrictedQuality}
-      />
+      {galleryView}
     </div>
     </ClientLangScope>
   );

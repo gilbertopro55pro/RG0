@@ -2,9 +2,11 @@ import { Frank_Ruhl_Libre } from "next/font/google";
 
 // Scoped to gallery pages only (not the main app) — a serif display face reserved for the
 // client-facing gallery experience, where a more editorial/premium feel is worth the extra font.
+// Variable font (300-900), so every weight is available. The "hebrew" subset matters: without it
+// only the Latin face is preloaded and a Hebrew gallery title fell back to the sans.
 export const galleryFont = Frank_Ruhl_Libre({
-  subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
+  subsets: ["latin", "hebrew"],
+  weight: "variable",
   variable: "--font-gallery-serif",
 });
 
@@ -35,11 +37,48 @@ export type GalleryThemeTokens = {
   bannerDivider: boolean;
   bannerFramed: boolean;
   bannerFullBleed: boolean;
+  // Flagship ("premium") layout pieces. Absent on the older themes, which keep their original
+  // layout exactly: a full-screen cover photo instead of the banner, a slim sticky action bar
+  // instead of the stacked buttons, and a serif chapter title above each folder's photos.
+  coverStyle?: "banner" | "fullbleed";
+  stickyBar?: boolean;
+  chapterHeaders?: boolean;
+  // Heart color for favorites (default: the app's coral).
+  heart?: string;
 };
 
 // Five complete, self-contained looks — each bundles its own palette, typography treatment and
 // corner radius so choosing one theme is choosing a whole finished style, not assembling parts.
 export const GALLERY_THEMES: GalleryThemeTokens[] = [
+  // The flagship look and the default for new galleries (migration 0153). The photos carry all
+  // the color: a cool gallery-white wall, ink for every action, no accent hue.
+  {
+    id: "premium",
+    label: "פרימיום",
+    bg: "#F3F3F1",
+    surface: "#FFFFFF",
+    surfaceSoft: "#E9E9E6",
+    ink: "#232427",
+    inkSoft: "#75767A",
+    accent: "#232427",
+    accentInk: "#FFFFFF",
+    border: "#DCDBD7",
+    radius: "2px",
+    titleFont: "serif",
+    titleWeight: 300,
+    titleTracking: "-0.01em",
+    gridStyle: "justified",
+    gap: 4,
+    photoRadius: "0px",
+    photoBorder: false,
+    bannerDivider: false,
+    bannerFramed: false,
+    bannerFullBleed: true,
+    coverStyle: "fullbleed",
+    stickyBar: true,
+    chapterHeaders: true,
+    heart: "#232427",
+  },
   {
     id: "classic",
     label: "קלאסי",
@@ -159,7 +198,9 @@ export const GALLERY_THEMES: GalleryThemeTokens[] = [
 ];
 
 export function galleryThemeById(id: string): GalleryThemeTokens {
-  return GALLERY_THEMES.find((t) => t.id === id) ?? GALLERY_THEMES[0];
+  // An unknown id falls back to "classic" (what every gallery used before themes had a choice),
+  // not to the first entry, so the order of the picker never changes how an old gallery looks.
+  return GALLERY_THEMES.find((t) => t.id === id) ?? GALLERY_THEMES.find((t) => t.id === "classic")!;
 }
 
 // A theme is just a starting point — the photographer can deviate from its default font and
@@ -196,6 +237,7 @@ export function galleryThemeVars(id: string, overrides?: GalleryStyleOverrides):
     "--gt-radius": t.radius,
     "--gt-gap": `${t.gap}px`,
     "--gt-photo-radius": t.photoRadius,
+    ...(t.heart ? { "--gt-heart": t.heart } : {}),
   };
 }
 

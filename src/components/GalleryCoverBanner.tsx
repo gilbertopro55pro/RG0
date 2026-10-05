@@ -1,3 +1,4 @@
+import GalleryPremiumCover from "@/components/GalleryPremiumCover";
 import { coverAspectRatio, galleryTitleStyle, resolveGalleryTheme, isOverlayPosition } from "@/lib/galleryTheme";
 
 export default function GalleryCoverBanner({
@@ -24,6 +25,16 @@ export default function GalleryCoverBanner({
   focalY?: number;
 }) {
   const theme = resolveGalleryTheme(themeId, { titleFontOverride });
+  // The premium theme's cover is a full-screen photo (rendered directly by the gallery page); this
+  // component only shows it here for the design settings' live preview. Text position and shape
+  // don't apply to it.
+  if (theme.coverStyle === "fullbleed") {
+    return (
+      <div className="mb-4">
+        <GalleryPremiumCover photoUrl={photoUrl} title={title} dateLabel={dateLabel} focalX={focalX} focalY={focalY} variant="preview" />
+      </div>
+    );
+  }
   const overlay = isOverlayPosition(textPosition);
   const isCircle = shape === "circle";
   const align = textPosition === "center-right" ? "flex-end" : "flex-start";

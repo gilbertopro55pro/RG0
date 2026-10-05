@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import Image from "next/image";
 import type { GalleryFolderRow, GalleryPhotoRow } from "@/lib/types";
 import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
@@ -71,6 +71,10 @@ export default function PublicGalleryView({
   album = null,
   albumSpreads = [],
   restrictedQuality = null,
+  studioName = null,
+  brandLogoUrl = null,
+  contactUrl = null,
+  leadContent = null,
 }: {
   token: string;
   initialPhotos: PhotoWithUrl[];
@@ -99,8 +103,16 @@ export default function PublicGalleryView({
     background: { url: string; blur: number; opacity: number } | null;
     comments: { id: string; text: string }[];
   }[];
+  // Used by the premium theme's sticky bar and footer only (see GalleryThemeTokens.stickyBar).
+  studioName?: string | null;
+  brandLogoUrl?: string | null;
+  contactUrl?: string | null;
+  // Shown above the photos inside the premium layout (the gallery's videos).
+  leadContent?: ReactNode;
 }) {
   const theme = resolveGalleryTheme(themeId, { titleFontOverride, gridStyleOverride });
+  // The premium theme's layout: sticky action bar, chapter titles, footer, black lightbox.
+  const premium = !!theme.stickyBar;
   const t = useT();
   // The client's language (ClientLangScope), not <html dir> (the photographer's own cookie).
   const isRtl = dirOf(useLang()) === "rtl";
@@ -807,7 +819,22 @@ export default function PublicGalleryView({
   // before); filtering by a diamond-icon label switches to every photo carrying that label,
   // favorited or not — a label is its own tag, not just a sub-filter of the favorites set.
   const panelPhotos = activeLabelFilter ? photos.filter((p) => p.custom_label === activeLabelFilter) : favorites;
-  const visiblePhotos = activeFolderId ? photos.filter((p) => p.folder_id === activeFolderId) : photos;
+  const folderPhotos = activeFolderId ? photos.filter((p) => p.folder_id === activeFolderId) : photos;
+  // Premium shows each folder as a chapter with its own title, so the photos are ordered folder by
+  // folder (photos outside any folder first, untitled) — and the lightbox steps through them in
+  // that same order. Other themes keep the plain sort order.
+  const chapters: { key: string; name: string | null; photos: PhotoWithUrl[] }[] =
+    theme.chapterHeaders && folders.length > 0
+      ? [
+          ...(activeFolderId
+            ? []
+            : [{ key: NO_FOLDER_KEY, name: null, photos: photos.filter((p) => !p.folder_id || !folders.some((f) => f.id === p.folder_id)) }]),
+          ...folders
+            .filter((f) => !activeFolderId || f.id === activeFolderId)
+            .map((f) => ({ key: f.id, name: f.name, photos: photos.filter((p) => p.folder_id === f.id) })),
+        ].filter((c) => c.photos.length > 0)
+      : [{ key: "all", name: null, photos: folderPhotos }];
+  const visiblePhotos = theme.chapterHeaders && folders.length > 0 ? chapters.flatMap((c) => c.photos) : folderPhotos;
   const photoById = new Map(photos.map((p) => [p.id, p]));
 
   const visiblePhotoIdsKey = visiblePhotos.map((p) => p.id).join(",");
@@ -865,6 +892,516 @@ export default function PublicGalleryView({
     .map((id) => photoById.get(id))
     .filter((p): p is PhotoWithUrl => !!p);
 
+  const openDownloadAll = () => {
+    if (zipBatch) {
+      setZipPanelOpen(true);
+      return;
+    }
+    setDownloadSelectedFolders(new Set(allShareFolderKeys));
+    setDownloadQuality(restrictedQuality ?? "full");
+    setDownloadOptionsOpen(true);
+  };
+
+  const bottomBarVisible = favoriteCount > 0 || selectionMode || usedLabels.length > 0;
+
+  // Premium: picking a chapter shows just that folder (like the tabs of the other themes) and
+  // brings the reader back to the top of the photos if they had scrolled past it.
+  const selectChapter = (folderId: string | null) => {
+    setActiveFolderId(folderId);
+    const anchor = document.getElementById("gallery-content");
+    if (anchor) {
+      const top = anchor.getBoundingClientRect().top + window.scrollY;
+      if (window.scrollY > top) window.scrollTo({ top });
+    }
+  };
+
+  const renderChapterNav = (className: string) =>
+    folders.length > 0 ? (
+      <nav aria-label={t("פרקים בגלריה")} className={`${className} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+        {[{ id: null as string | null, name: t("הכל") }, ...folders.map((f) => ({ id: f.id as string | null, name: f.name }))].map((f) => {
+          const active = activeFolderId === f.id;
+          return (
+            <button
+              key={f.id ?? "all"}
+              onClick={() => selectChapter(f.id)}
+              aria-current={active ? "true" : undefined}
+              className="shrink-0 whitespace-nowrap py-1.5 text-[13px] sm:text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gt-ink)]"
+              style={{
+                color: active ? "var(--gt-ink)" : "var(--gt-ink-soft)",
+                boxShadow: active ? "inset 0 -1px 0 var(--gt-ink)" : undefined,
+              }}
+            >
+              {f.name}
+            </button>
+          );
+        })}
+      </nav>
+    ) : null;
+
+  const barBtn =
+    "h-10 min-w-10 px-2 lg:px-3 flex items-center justify-center gap-2 text-sm rounded-[2px] transition-colors hover:bg-black/[0.045] focus-visible:outline-2 focus-visible:outline-[var(--gt-ink)] disabled:opacity-50";
+
+  const renderStickyBar = () => (
+    <>
+      {/* Anchor for the cover's scroll cue and for returning to the top of the photos. */}
+      <div id="gallery-content" aria-hidden="true" />
+      <div
+        className="sticky top-0 z-30"
+        style={{
+          background: "color-mix(in srgb, var(--gt-bg) 97%, transparent)",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
+          borderBottom: "1px solid var(--gt-border)",
+          color: "var(--gt-ink)",
+        }}
+      >
+        <div className="mx-auto max-w-[1600px] h-14 px-3 sm:px-6 lg:px-10 flex items-center gap-6">
+          <div className="min-w-0 shrink">
+            {brandLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brandLogoUrl} alt={studioName ?? ""} className="h-7 w-auto max-w-[140px] object-contain" />
+            ) : studioName ? (
+              <span className="block truncate text-[17px] sm:text-lg" style={{ fontFamily: "var(--font-gallery-serif), serif", fontWeight: 400 }}>
+                {studioName}
+              </span>
+            ) : null}
+          </div>
+          {renderChapterNav("hidden md:flex min-w-0 flex-1 items-center gap-6 overflow-x-auto")}
+          <div className="ms-auto flex shrink-0 items-center gap-0.5 lg:gap-1">
+            <button onClick={() => setFavoritesPanelOpen(true)} className={barBtn} aria-label={t("{n} מועדפים", { n: favoriteCount })}>
+              <HeartIcon filled={favoriteCount > 0} size={19} color="var(--gt-ink)" />
+              <span className="hidden lg:inline">{t("מועדפים")}</span>
+              {favoriteCount > 0 && <span className="tabular-nums">{favoriteCount}</span>}
+            </button>
+            {allowDownloads && photos.length > 0 && (
+              <button onClick={openDownloadAll} disabled={zipping} className={barBtn} aria-label={t("הורדת כל התמונות ({n})", { n: photos.length })}>
+                <DownloadIcon size={19} stroke="currentColor" />
+                {zipping || zipBatch ? (
+                  <span className="text-[13px] tabular-nums">
+                    {zipping ? t("מתחילים...") : zipDone ? t("ההורדה הושלמה") : t("מכינים... {pct}%", { pct: zipProgressPercent })}
+                  </span>
+                ) : (
+                  <span className="hidden lg:inline">{t("הורדה")}</span>
+                )}
+              </button>
+            )}
+            <button onClick={openGalleryShare} className={barBtn} aria-label={t("שיתוף הגלריה")}>
+              <ShareIcon size={19} stroke="currentColor" />
+              <span className="hidden lg:inline">{t("שיתוף")}</span>
+            </button>
+            {slideshowPhotos.length > 0 && (
+              <button onClick={() => setSlideshowOpen(true)} className={barBtn} aria-label={t("מצגת תמונות")}>
+                <PlayIcon size={19} />
+                <span className="hidden lg:inline">{t("מצגת")}</span>
+              </button>
+            )}
+          </div>
+        </div>
+        {renderChapterNav("md:hidden flex h-11 items-center gap-5 overflow-x-auto px-4 border-t border-[var(--gt-border)]")}
+      </div>
+    </>
+  );
+
+  // Premium lightbox: pure black, the photo as large as the screen allows, and only the controls
+  // that matter — close, position, favorite, download. Same swipe/keyboard/tap-to-close behavior.
+  const lbBtn =
+    "h-11 min-w-11 px-2 flex items-center justify-center gap-2 text-white/85 hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white";
+  const renderPremiumLightbox = (index: number) => {
+    const photo = visiblePhotos[index];
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={photo.original_filename}
+        className="gf-no-enter fixed inset-0 z-50 flex items-center justify-center"
+        style={{ background: "#000" }}
+        onClick={() => {
+          if (lightboxSwiped.current) {
+            lightboxSwiped.current = false;
+            return;
+          }
+          closeLightbox();
+        }}
+        onTouchStart={handleLightboxTouchStart}
+        onTouchEnd={handleLightboxTouchEnd}
+      >
+        <div className="absolute inset-x-0 top-0 z-10 flex h-14 items-center justify-between px-2 sm:px-4" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center">
+            <button
+              onClick={() => toggleFavorite(photo)}
+              className={lbBtn}
+              aria-label={photo.is_favorite ? t("הסרה מהמועדפים") : t("הוספה למועדפים")}
+              aria-pressed={photo.is_favorite}
+            >
+              <HeartIcon filled={photo.is_favorite} size={21} color="#fff" />
+            </button>
+            {allowDownloads && (
+              <button onClick={() => downloadPhoto(photo)} className={lbBtn} aria-label={t("הורדת התמונה")}>
+                <DownloadIcon size={21} stroke="currentColor" />
+                <span className="hidden sm:inline text-sm">{t("הורדה")}</span>
+              </button>
+            )}
+          </div>
+          <span dir="ltr" className="absolute left-1/2 -translate-x-1/2 text-[13px] tabular-nums text-white/60">
+            {index + 1} / {visiblePhotos.length}
+          </span>
+          <button onClick={closeLightbox} aria-label={t("סגירה")} className={lbBtn}>
+            <IconClose className="h-[18px] w-[18px]" />
+          </button>
+        </div>
+        {index > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigateLightbox(index - 1);
+            }}
+            aria-label={t("התמונה הקודמת")}
+            className={`absolute start-0 z-10 h-24 w-12 sm:w-16 ${lbBtn}`}
+          >
+            <ChevronIcon direction={isRtl ? "right" : "left"} />
+          </button>
+        )}
+        {index < visiblePhotos.length - 1 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigateLightbox(index + 1);
+            }}
+            aria-label={t("התמונה הבאה")}
+            className={`absolute end-0 z-10 h-24 w-12 sm:w-16 ${lbBtn}`}
+          >
+            <ChevronIcon direction={isRtl ? "left" : "right"} />
+          </button>
+        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={photo.previewUrl ?? `/api/gallery/${token}/photos/${photo.id}/preview`}
+          alt={photo.original_filename}
+          className="max-w-full max-h-[calc(100svh-112px)] sm:max-w-[calc(100vw-144px)] sm:max-h-[calc(100svh-120px)] object-contain"
+          style={{ viewTransitionName: `photo-${photo.id}` }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    );
+  };
+
+  const chapterStarts = chapters.map((_, i) => chapters.slice(0, i).reduce((sum, c) => sum + c.photos.length, 0));
+
+  const renderPremiumBody = () => (
+    <>
+      {album && albumSpreads.length > 0 && (
+        <div
+          className="mx-3 sm:mx-0 mb-8 sm:mb-12 flex flex-wrap items-center gap-x-5 gap-y-3 border p-3 sm:p-4"
+          style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
+        >
+          {album.coverUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={optimizedImageUrl(album.coverUrl, 384)} alt="" className="h-14 w-20 sm:h-16 sm:w-24 shrink-0 object-cover" />
+          )}
+          <p className="min-w-0 flex-1 text-xl sm:text-2xl leading-tight" style={{ fontFamily: "var(--font-gallery-serif), serif", fontWeight: 400 }}>
+            {album.title || t("עיצוב האלבום")}
+          </p>
+          <button
+            onClick={() => setAlbumOpen(true)}
+            className={`h-11 px-5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gt-ink)] ${BTN_PRESS}`}
+            style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
+          >
+            {album.status === "approved"
+              ? t("צפייה באלבום המאושר")
+              : album.status === "changes_requested"
+                ? t("עיצוב האלבום")
+                : t("אישור עיצוב האלבום")}
+          </button>
+        </div>
+      )}
+      <div ref={pinchContainerRef} className="md:[--gt-gap:8px]">
+        {chapters.map((c, ci) => (
+          <section key={c.key} aria-labelledby={c.name ? `chapter-${c.key}` : undefined}>
+            {c.name && (
+              <div className={`px-3 sm:px-0 flex flex-wrap items-baseline gap-x-4 gap-y-1 pb-4 sm:pb-7 ${ci === 0 ? "pt-6 sm:pt-6" : "pt-16 sm:pt-28"}`}>
+                <h2
+                  id={`chapter-${c.key}`}
+                  style={{
+                    fontFamily: "var(--font-gallery-serif), serif",
+                    fontWeight: 300,
+                    fontSize: "clamp(30px, 4.4vw, 52px)",
+                    lineHeight: 1.05,
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  {c.name}
+                </h2>
+                <span className="text-sm tabular-nums" style={{ color: "var(--gt-ink-soft)" }}>
+                  {c.photos.length === 1 ? t("תמונה אחת") : t("{n} תמונות", { n: c.photos.length })}
+                </span>
+              </div>
+            )}
+            {renderGrid(c.photos, chapterStarts[ci], false)}
+          </section>
+        ))}
+      </div>
+    </>
+  );
+
+  const renderFooter = () => (
+    <footer className="mt-20 sm:mt-32 border-t" style={{ borderColor: "var(--gt-border)", color: "var(--gt-ink)" }}>
+      <div className={`mx-auto max-w-[1600px] px-6 pt-10 text-center ${bottomBarVisible ? "pb-40" : "pb-14"}`}>
+        {studioName && (
+          <p className="text-xl" style={{ fontFamily: "var(--font-gallery-serif), serif", fontWeight: 400 }}>
+            {studioName}
+          </p>
+        )}
+        {contactUrl && (
+          <a
+            href={contactUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-block text-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gt-ink)]"
+            style={{ color: "var(--gt-ink-soft)" }}
+          >
+            {t("יצירת קשר")}
+          </a>
+        )}
+      </div>
+    </footer>
+  );
+
+  // Premium's justified rows: every photo keeps its full shape (no cropping) and a row's photos
+  // share one height — each tile grows in proportion to its aspect ratio, and the filler at the end
+  // only partly fills the last row, so a lone last photo isn't blown up to full width. Each photo fades in on its
+  // own as it arrives, instead of the whole grid waiting for every thumbnail.
+  const renderPremiumRows = (list: PhotoWithUrl[], offset: number, attachRef: boolean) => (
+    <div ref={attachRef ? pinchContainerRef : undefined} className="flex flex-wrap" style={{ touchAction: "pan-y", gap: "var(--gt-gap)" }}>
+      {list.map((photo, i) => {
+        const isSelected = photo.is_favorite;
+        const ratio = aspectRatios[photo.id] ?? photo.preview_aspect_ratio ?? 1.5;
+        return (
+          <div
+            key={photo.id}
+            className="group relative min-w-0 overflow-hidden"
+            style={{
+              flexGrow: ratio,
+              flexBasis: ratio * cellSize,
+              aspectRatio: `${ratio}`,
+              background: "var(--gt-surface-soft)",
+              ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
+            }}
+          >
+            <button
+              onPointerDown={() => handlePointerDown(photo)}
+              onPointerUp={clearLongPressTimer}
+              onPointerLeave={clearLongPressTimer}
+              onContextMenu={(e) => e.preventDefault()}
+              onClick={() => handleTileClick(photo, offset + i)}
+              className="relative block w-full h-full select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--gt-ink)]"
+              style={{ WebkitTouchCallout: "none" }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                ref={(el) => {
+                  if (el?.complete && el.naturalWidth > 0) el.style.opacity = "1";
+                }}
+                src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                alt={photo.original_filename}
+                loading={offset + i < 12 ? "eager" : "lazy"}
+                decoding="async"
+                className="absolute inset-0 w-full h-full object-cover block transition-opacity duration-500 motion-reduce:transition-none"
+                style={{ opacity: 0, ...(photo.id === transitionPhotoId && lightboxIndex !== offset + i ? { viewTransitionName: `photo-${photo.id}` } : undefined) }}
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  img.style.opacity = "1";
+                  const r = img.naturalWidth / img.naturalHeight;
+                  setAspectRatios((prev) => (prev[photo.id] ? prev : { ...prev, [photo.id]: r }));
+                  markThumbLoaded(photo.id);
+                }}
+                onError={(e) => {
+                  e.currentTarget.style.opacity = "1";
+                  markThumbLoaded(photo.id);
+                }}
+              />
+              {selectionMode && (
+                <div className="absolute inset-0" style={{ background: isSelected ? "rgba(35,36,39,0.28)" : "transparent" }} />
+              )}
+            </button>
+            <PhotoTileOverlays
+              photo={photo}
+              selectionMode={selectionMode}
+              isSelected={isSelected}
+              toggleFavorite={toggleFavorite}
+              onOpenLabel={setLabelEditPhoto}
+              onDownload={allowDownloads ? downloadPhoto : undefined}
+              premium
+            />
+          </div>
+        );
+      })}
+      <div aria-hidden="true" style={{ flexGrow: 3, flexBasis: 0, height: 0 }} />
+    </div>
+  );
+
+  // One block of photos in the theme's grid style. offset = index of list[0] within visiblePhotos
+  // (the lightbox's list), so chapters rendered as separate blocks still open the right photo.
+  const renderGrid = (list: PhotoWithUrl[], offset: number, attachRef: boolean) =>
+    premium && theme.gridStyle === "justified" ? (
+      renderPremiumRows(list, offset, attachRef)
+    ) : theme.gridStyle === "grid" ? (
+      <div
+        ref={attachRef ? pinchContainerRef : undefined}
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(auto-fill, minmax(${cellSize}px, 1fr))`,
+          gap: "var(--gt-gap)",
+          touchAction: "pan-y",
+        }}
+      >
+        {list.map((photo, i) => {
+          const isSelected = photo.is_favorite;
+          return (
+            <div
+              key={photo.id}
+              className="relative aspect-square overflow-hidden"
+              style={{
+                background: "var(--gt-surface-soft)",
+                borderRadius: "var(--gt-photo-radius)",
+                ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
+              }}
+            >
+              <button
+                onPointerDown={() => handlePointerDown(photo)}
+                onPointerUp={clearLongPressTimer}
+                onPointerLeave={clearLongPressTimer}
+                onContextMenu={(e) => e.preventDefault()}
+                onClick={() => handleTileClick(photo, offset + i)}
+                className="relative block w-full h-full select-none"
+                style={{ WebkitTouchCallout: "none" }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                  alt={photo.original_filename}
+                  className="absolute inset-0 w-full h-full object-cover block transition-opacity duration-300"
+                  style={{ opacity: thumbsReady ? 1 : 0, ...(photo.id === transitionPhotoId && lightboxIndex !== offset + i ? { viewTransitionName: `photo-${photo.id}` } : undefined) }}
+                  onLoad={() => markThumbLoaded(photo.id)}
+                  onError={() => markThumbLoaded(photo.id)}
+                />
+                {selectionMode && (
+                  <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent" }} />
+                )}
+              </button>
+              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} premium={premium} />
+            </div>
+          );
+        })}
+      </div>
+    ) : theme.gridStyle === "justified" ? (
+      <div
+        ref={attachRef ? pinchContainerRef : undefined}
+        style={{ touchAction: "pan-y", display: "flex", flexWrap: "wrap", gap: "var(--gt-gap)" }}
+      >
+        {list.map((photo, i) => {
+          const isSelected = photo.is_favorite;
+          const ratio = aspectRatios[photo.id] ?? photo.preview_aspect_ratio ?? 1.5;
+          return (
+            <div
+              key={photo.id}
+              className="relative overflow-hidden"
+              style={{
+                height: cellSize,
+                width: ratio * cellSize,
+                flexGrow: 1,
+                flexShrink: 1,
+                background: "var(--gt-surface-soft)",
+                borderRadius: "var(--gt-photo-radius)",
+                ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
+              }}
+            >
+              <button
+                onPointerDown={() => handlePointerDown(photo)}
+                onPointerUp={clearLongPressTimer}
+                onPointerLeave={clearLongPressTimer}
+                onContextMenu={(e) => e.preventDefault()}
+                onClick={() => handleTileClick(photo, offset + i)}
+                className="relative block w-full h-full select-none"
+                style={{ WebkitTouchCallout: "none" }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                  alt={photo.original_filename}
+                  className="absolute inset-0 w-full h-full object-cover block transition-opacity duration-300"
+                  style={{ opacity: thumbsReady ? 1 : 0, ...(photo.id === transitionPhotoId && lightboxIndex !== offset + i ? { viewTransitionName: `photo-${photo.id}` } : undefined) }}
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    const r = img.naturalWidth / img.naturalHeight;
+                    setAspectRatios((prev) => (prev[photo.id] ? prev : { ...prev, [photo.id]: r }));
+                    markThumbLoaded(photo.id);
+                  }}
+                  onError={() => markThumbLoaded(photo.id)}
+                />
+                {selectionMode && (
+                  <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent" }} />
+                )}
+              </button>
+              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} premium={premium} />
+            </div>
+          );
+        })}
+      </div>
+    ) : (
+      <div
+        ref={attachRef ? pinchContainerRef : undefined}
+        style={{ touchAction: "pan-y", columnWidth: `${cellSize}px`, columnGap: "var(--gt-gap)" }}
+      >
+        {list.map((photo, i) => {
+          const isSelected = photo.is_favorite;
+          const framed = theme.gridStyle === "framed";
+          const knownShape = photo.preview_aspect_ratio != null;
+          return (
+            <div
+              key={photo.id}
+              className="relative block break-inside-avoid overflow-hidden"
+              style={{
+                marginBottom: "var(--gt-gap)",
+                background: "var(--gt-surface-soft)",
+                borderRadius: "var(--gt-photo-radius)",
+                ...(framed ? { padding: "8px", border: "1px solid var(--gt-border)" } : {}),
+                ...(knownShape ? { aspectRatio: `${photo.preview_aspect_ratio}` } : {}),
+                ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
+              }}
+            >
+              <button
+                onPointerDown={() => handlePointerDown(photo)}
+                onPointerUp={clearLongPressTimer}
+                onPointerLeave={clearLongPressTimer}
+                onContextMenu={(e) => e.preventDefault()}
+                onClick={() => handleTileClick(photo, offset + i)}
+                className="relative block w-full h-full select-none"
+                style={{ WebkitTouchCallout: "none" }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                  alt={photo.original_filename}
+                  className={knownShape ? "absolute inset-0 w-full h-full object-cover transition-opacity duration-300" : "w-full h-auto block"}
+                  style={{
+                    opacity: knownShape ? (thumbsReady ? 1 : 0) : 1,
+                    borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined,
+                    ...(photo.id === transitionPhotoId && lightboxIndex !== offset + i ? { viewTransitionName: `photo-${photo.id}` } : undefined),
+                  }}
+                  onLoad={() => markThumbLoaded(photo.id)}
+                  onError={() => markThumbLoaded(photo.id)}
+                />
+                {selectionMode && (
+                  <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent", borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined }} />
+                )}
+              </button>
+              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} inset={framed ? 8 : 0} premium={premium} />
+            </div>
+          );
+        })}
+      </div>
+    );
+
   return (
     <>
       {showScrollTop && (
@@ -879,6 +1416,7 @@ export default function PublicGalleryView({
           </svg>
         </button>
       )}
+      {!premium && (
       <button
         onClick={openGalleryShare}
         className={`fixed start-5 md:rtl:translate-x-[5cm] md:ltr:-translate-x-[5cm] z-40 h-11 px-4 rounded-full flex items-center gap-1.5 shadow-sheet text-sm font-semibold ${BTN_PRESS} ${favoriteCount > 0 || selectionMode || usedLabels.length > 0 ? "bottom-28" : "bottom-5"}`}
@@ -892,9 +1430,13 @@ export default function PublicGalleryView({
         </svg>
         {t("שיתוף")}
       </button>
+      )}
+      {premium && renderStickyBar()}
+      <ContentFrame premium={premium}>
+      {premium && leadContent && <div className="mx-3 sm:mx-0">{leadContent}</div>}
       {!hintDismissed && (
         <div
-          className="flex items-start gap-2 px-3.5 py-2.5 mb-4 text-xs"
+          className={`flex items-start gap-2 px-3.5 py-2.5 mb-4 text-xs ${premium ? "mx-3 sm:mx-0" : ""}`}
           style={{ background: "var(--gt-surface-soft)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
         >
           <span className="flex-1">
@@ -908,14 +1450,14 @@ export default function PublicGalleryView({
 
       {submitted && (
         <div
-          className="px-3.5 py-2.5 mb-4 text-sm font-medium text-center"
+          className={`px-3.5 py-2.5 mb-4 text-sm font-medium text-center ${premium ? "mx-3 sm:mx-0" : ""}`}
           style={{ background: "var(--gt-surface-soft)", color: "var(--gt-accent)", borderRadius: "var(--gt-radius)" }}
         >
           {t("תודה! הבחירה שלכם ({n} תמונות) נשלחה לצלם/ת. אפשר עדיין לשנות ולעדכן בכל שלב.", { n: favoriteCount })}
         </div>
       )}
 
-      {folders.length > 0 && (
+      {!premium && folders.length > 0 && (
         <div className="flex items-center gap-1.5 mb-4 overflow-x-auto">
           <button
             onClick={() => setActiveFolderId(null)}
@@ -967,7 +1509,7 @@ export default function PublicGalleryView({
         {...({ webkitdirectory: "true", directory: "true" } as unknown as Record<string, string>)}
       />
       {allowClientUpload && (
-        <div className="mb-4">
+        <div className={premium ? "mb-4 mx-3 sm:mx-0" : "mb-4"}>
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -1069,6 +1611,8 @@ export default function PublicGalleryView({
         <p className="text-sm text-center py-16" style={{ color: "var(--gt-ink-soft)" }}>
           {allowClientUpload ? t("אין עדיין תמונות בגלריה. אפשר להעלות תמונות משלכם למעלה.") : t("אין עדיין תמונות בגלריה.")}
         </p>
+      ) : premium ? (
+        renderPremiumBody()
       ) : (
         <>
           <div className="flex items-center gap-2 mb-3">
@@ -1111,15 +1655,7 @@ export default function PublicGalleryView({
           )}
           {allowDownloads && (
             <button
-              onClick={() => {
-                if (zipBatch) {
-                  setZipPanelOpen(true);
-                  return;
-                }
-                setDownloadSelectedFolders(new Set(allShareFolderKeys));
-                setDownloadQuality(restrictedQuality ?? "full");
-                setDownloadOptionsOpen(true);
-              }}
+              onClick={openDownloadAll}
               disabled={zipping}
               className={`w-full flex items-center justify-center gap-2 py-2.5 mb-4 text-sm font-semibold border disabled:opacity-60 ${BTN_PRESS}`}
               style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
@@ -1135,166 +1671,13 @@ export default function PublicGalleryView({
             </button>
           )}
           <div className="relative">
-          {theme.gridStyle === "grid" ? (
-            <div
-              ref={pinchContainerRef}
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(auto-fill, minmax(${cellSize}px, 1fr))`,
-                gap: "var(--gt-gap)",
-                touchAction: "pan-y",
-              }}
-            >
-              {visiblePhotos.map((photo, i) => {
-                const isSelected = photo.is_favorite;
-                return (
-                  <div
-                    key={photo.id}
-                    className="relative aspect-square overflow-hidden"
-                    style={{
-                      background: "var(--gt-surface-soft)",
-                      borderRadius: "var(--gt-photo-radius)",
-                      ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
-                    }}
-                  >
-                    <button
-                      onPointerDown={() => handlePointerDown(photo)}
-                      onPointerUp={clearLongPressTimer}
-                      onPointerLeave={clearLongPressTimer}
-                      onContextMenu={(e) => e.preventDefault()}
-                      onClick={() => handleTileClick(photo, i)}
-                      className="relative block w-full h-full select-none"
-                      style={{ WebkitTouchCallout: "none" }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
-                        alt={photo.original_filename}
-                        className="absolute inset-0 w-full h-full object-cover block transition-opacity duration-300"
-                        style={{ opacity: thumbsReady ? 1 : 0, ...(photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `photo-${photo.id}` } : undefined) }}
-                        onLoad={() => markThumbLoaded(photo.id)}
-                        onError={() => markThumbLoaded(photo.id)}
-                      />
-                      {selectionMode && (
-                        <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent" }} />
-                      )}
-                    </button>
-                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={downloadPhoto} />
-                  </div>
-                );
-              })}
-            </div>
-          ) : theme.gridStyle === "justified" ? (
-            <div
-              ref={pinchContainerRef}
-              style={{ touchAction: "pan-y", display: "flex", flexWrap: "wrap", gap: "var(--gt-gap)" }}
-            >
-              {visiblePhotos.map((photo, i) => {
-                const isSelected = photo.is_favorite;
-                const ratio = aspectRatios[photo.id] ?? photo.preview_aspect_ratio ?? 1.5;
-                return (
-                  <div
-                    key={photo.id}
-                    className="relative overflow-hidden"
-                    style={{
-                      height: cellSize,
-                      width: ratio * cellSize,
-                      flexGrow: 1,
-                      flexShrink: 1,
-                      background: "var(--gt-surface-soft)",
-                      borderRadius: "var(--gt-photo-radius)",
-                      ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
-                    }}
-                  >
-                    <button
-                      onPointerDown={() => handlePointerDown(photo)}
-                      onPointerUp={clearLongPressTimer}
-                      onPointerLeave={clearLongPressTimer}
-                      onContextMenu={(e) => e.preventDefault()}
-                      onClick={() => handleTileClick(photo, i)}
-                      className="relative block w-full h-full select-none"
-                      style={{ WebkitTouchCallout: "none" }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
-                        alt={photo.original_filename}
-                        className="absolute inset-0 w-full h-full object-cover block transition-opacity duration-300"
-                        style={{ opacity: thumbsReady ? 1 : 0, ...(photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `photo-${photo.id}` } : undefined) }}
-                        onLoad={(e) => {
-                          const img = e.currentTarget;
-                          const r = img.naturalWidth / img.naturalHeight;
-                          setAspectRatios((prev) => (prev[photo.id] ? prev : { ...prev, [photo.id]: r }));
-                          markThumbLoaded(photo.id);
-                        }}
-                        onError={() => markThumbLoaded(photo.id)}
-                      />
-                      {selectionMode && (
-                        <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent" }} />
-                      )}
-                    </button>
-                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={downloadPhoto} />
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div
-              ref={pinchContainerRef}
-              style={{ touchAction: "pan-y", columnWidth: `${cellSize}px`, columnGap: "var(--gt-gap)" }}
-            >
-              {visiblePhotos.map((photo, i) => {
-                const isSelected = photo.is_favorite;
-                const framed = theme.gridStyle === "framed";
-                const knownShape = photo.preview_aspect_ratio != null;
-                return (
-                  <div
-                    key={photo.id}
-                    className="relative block break-inside-avoid overflow-hidden"
-                    style={{
-                      marginBottom: "var(--gt-gap)",
-                      background: "var(--gt-surface-soft)",
-                      borderRadius: "var(--gt-photo-radius)",
-                      ...(framed ? { padding: "8px", border: "1px solid var(--gt-border)" } : {}),
-                      ...(knownShape ? { aspectRatio: `${photo.preview_aspect_ratio}` } : {}),
-                      ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
-                    }}
-                  >
-                    <button
-                      onPointerDown={() => handlePointerDown(photo)}
-                      onPointerUp={clearLongPressTimer}
-                      onPointerLeave={clearLongPressTimer}
-                      onContextMenu={(e) => e.preventDefault()}
-                      onClick={() => handleTileClick(photo, i)}
-                      className="relative block w-full h-full select-none"
-                      style={{ WebkitTouchCallout: "none" }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
-                        alt={photo.original_filename}
-                        className={knownShape ? "absolute inset-0 w-full h-full object-cover transition-opacity duration-300" : "w-full h-auto block"}
-                        style={{
-                          opacity: knownShape ? (thumbsReady ? 1 : 0) : 1,
-                          borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined,
-                          ...(photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `photo-${photo.id}` } : undefined),
-                        }}
-                        onLoad={() => markThumbLoaded(photo.id)}
-                        onError={() => markThumbLoaded(photo.id)}
-                      />
-                      {selectionMode && (
-                        <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent", borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined }} />
-                      )}
-                    </button>
-                    <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={downloadPhoto} inset={framed ? 8 : 0} />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {renderGrid(visiblePhotos, 0, true)}
           </div>
         </>
       )}
+
+      </ContentFrame>
+      {premium && renderFooter()}
 
       {/* Floating favorites/selection bar — anchored to the bottom of the screen so it doesn't
           cover the gallery header, and stays available even after the client has already
@@ -1304,7 +1687,7 @@ export default function PublicGalleryView({
           both mobile and desktop so it can't be missed. */}
       {(favoriteCount > 0 || selectionMode || usedLabels.length > 0) && (
         <div
-          className="fixed bottom-3 right-3 left-3 md:right-auto md:left-1/2 md:-translate-x-1/2 z-40 flex flex-col gap-2 rounded-2xl px-4 py-3 md:py-3.5 md:min-w-[240px] shadow-sheet border"
+          className={`fixed bottom-3 right-3 left-3 md:right-auto md:left-1/2 md:-translate-x-1/2 z-40 flex flex-col gap-2 ${premium ? "rounded-[4px]" : "rounded-2xl"} px-4 py-3 md:py-3.5 md:min-w-[240px] shadow-sheet border`}
           style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)" }}
         >
           <div className="flex items-center justify-between gap-2">
@@ -1964,7 +2347,8 @@ export default function PublicGalleryView({
       )}
 
       {/* Lightbox */}
-      {lightboxIndex !== null && visiblePhotos[lightboxIndex] && (
+      {lightboxIndex !== null && visiblePhotos[lightboxIndex] && premium && renderPremiumLightbox(lightboxIndex)}
+      {lightboxIndex !== null && visiblePhotos[lightboxIndex] && !premium && (
         <div
           className="gf-no-enter fixed inset-0 z-50 flex items-center justify-center bg-black/90"
           onClick={() => {
@@ -2056,9 +2440,31 @@ export default function PublicGalleryView({
   );
 }
 
-function ShareIcon({ size = 22 }: { size?: number }) {
+// The premium layout's content column; other themes render their content exactly as before.
+function ContentFrame({ premium, children }: { premium: boolean; children: ReactNode }) {
+  if (!premium) return <>{children}</>;
+  return <div className="mx-auto max-w-[1600px] px-1 sm:px-6 lg:px-10 pt-4 sm:pt-8">{children}</div>;
+}
+
+function ChevronIcon({ direction }: { direction: "left" | "right" }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--gt-ink)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={direction === "left" ? "M14.5 5.5L8 12l6.5 6.5" : "M9.5 5.5L16 12l-6.5 6.5"} />
+    </svg>
+  );
+}
+
+function PlayIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 5.5v13l10.5-6.5L8 5.5z" />
+    </svg>
+  );
+}
+
+function ShareIcon({ size = 22, stroke = "var(--gt-ink)" }: { size?: number; stroke?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 15V3m0 0l-4 4m4-4l4 4" />
       <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
     </svg>
@@ -2082,6 +2488,7 @@ function PhotoTileOverlays({
   onOpenLabel,
   onDownload,
   inset = 0,
+  premium = false,
 }: {
   photo: PhotoWithUrl;
   selectionMode: boolean;
@@ -2090,8 +2497,22 @@ function PhotoTileOverlays({
   onOpenLabel?: (photo: PhotoWithUrl) => void;
   onDownload?: (photo: PhotoWithUrl) => void;
   inset?: number;
+  premium?: boolean;
 }) {
   const t = useT();
+  if (premium) {
+    return (
+      <PremiumTileOverlays
+        photo={photo}
+        selectionMode={selectionMode}
+        isSelected={isSelected}
+        toggleFavorite={toggleFavorite}
+        onOpenLabel={onOpenLabel}
+        onDownload={onDownload}
+        inset={inset}
+      />
+    );
+  }
   const offset = 6 + inset;
   // The diamond (label) button sits at the very bottom-right corner; the download button stacks
   // directly above it in the same corner column, one button-height + gap further up.
@@ -2155,6 +2576,94 @@ function PhotoTileOverlays({
   );
 }
 
+// Premium tiles: bare white glyphs in one corner instead of three frosted circles. On a device with
+// a mouse they appear on hover (or keyboard focus); a set heart or label always stays visible. On a
+// touch screen the heart and label are always there (no hover), and download stays in the lightbox,
+// the double-tap menu and the favorites panel, to keep every tile from carrying three icons.
+const PREMIUM_GLYPH_SHADOW = "drop-shadow(0 1px 3px rgba(0,0,0,0.45))";
+const HOVER_REVEAL = "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100";
+
+function PremiumTileOverlays({
+  photo,
+  selectionMode,
+  isSelected,
+  toggleFavorite,
+  onOpenLabel,
+  onDownload,
+  inset = 0,
+}: {
+  photo: PhotoWithUrl;
+  selectionMode: boolean;
+  isSelected: boolean;
+  toggleFavorite: (photo: PhotoWithUrl) => void;
+  onOpenLabel?: (photo: PhotoWithUrl) => void;
+  onDownload?: (photo: PhotoWithUrl) => void;
+  inset?: number;
+}) {
+  const t = useT();
+  const offset = 2 + inset;
+  const glyphBtn = "h-9 w-9 flex items-center justify-center text-white transition-opacity duration-200 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white";
+  return (
+    <>
+      {selectionMode && (
+        <div
+          className="absolute h-6 w-6 rounded-full flex items-center justify-center pointer-events-none"
+          style={{
+            top: offset + 6,
+            insetInlineEnd: offset + 6,
+            background: isSelected ? "#232427" : "rgba(255,255,255,0.2)",
+            boxShadow: isSelected ? "0 0 0 1.5px #fff" : "inset 0 0 0 1.5px rgba(255,255,255,0.9)",
+          }}
+        >
+          {isSelected && <CheckIcon />}
+        </div>
+      )}
+      <div className="absolute flex items-center" style={{ bottom: offset, insetInlineEnd: offset }}>
+        {onOpenLabel && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenLabel(photo);
+            }}
+            className={`${glyphBtn} ${photo.custom_label ? "" : HOVER_REVEAL}`}
+            style={{ filter: PREMIUM_GLYPH_SHADOW }}
+            aria-label={photo.custom_label ? t("תגית: {label}", { label: photo.custom_label }) : t("הוספת תגית לתמונה")}
+            title={photo.custom_label ?? undefined}
+          >
+            <DiamondIcon filled={!!photo.custom_label} size={16} color="#fff" />
+          </button>
+        )}
+        {onDownload && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDownload(photo);
+            }}
+            className={`${glyphBtn} ${HOVER_REVEAL} [@media(hover:none)]:hidden`}
+            style={{ filter: PREMIUM_GLYPH_SHADOW }}
+            aria-label={t("הורדת התמונה")}
+            title={t("הורדת התמונה")}
+          >
+            <DownloadIcon size={18} stroke="#fff" />
+          </button>
+        )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleFavorite(photo);
+          }}
+          className={`${glyphBtn} ${photo.is_favorite ? "" : HOVER_REVEAL}`}
+          style={{ filter: PREMIUM_GLYPH_SHADOW }}
+          aria-label={photo.is_favorite ? t("הסרה מהמועדפים") : t("הוספה למועדפים")}
+          aria-pressed={photo.is_favorite}
+        >
+          <HeartIcon filled={photo.is_favorite} size={19} color="#fff" />
+        </button>
+      </div>
+    </>
+  );
+}
+
 function CheckIcon() {
   return (
     <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
@@ -2163,13 +2672,14 @@ function CheckIcon() {
   );
 }
 
-function HeartIcon({ filled, size = 20 }: { filled: boolean; size?: number }) {
+// --gt-heart is set only by themes that define `heart` (premium: ink); every other theme keeps coral.
+function HeartIcon({ filled, size = 20, color = "var(--gt-heart, var(--color-coral))" }: { filled: boolean; size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M12 20.5s-7.5-4.6-10-9.2C0.4 8.1 1.7 4.5 5 3.4c2.1-0.7 4.3 0.1 5.6 1.9l1.4 1.9 1.4-1.9c1.3-1.8 3.5-2.6 5.6-1.9 3.3 1.1 4.6 4.7 3 7.9-2.5 4.6-10 9.2-10 9.2z"
-        fill={filled ? "var(--color-coral)" : "none"}
-        stroke="var(--color-coral)"
+        fill={filled ? color : "none"}
+        stroke={color}
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
@@ -2232,13 +2742,13 @@ function LabelEditModal({
   );
 }
 
-function DiamondIcon({ filled, size = 18 }: { filled: boolean; size?: number }) {
+function DiamondIcon({ filled, size = 18, color = "var(--color-amber-deep)" }: { filled: boolean; size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <path
         d="M12 2.5 21 9.5 12 21.5 3 9.5 12 2.5Z"
-        fill={filled ? "var(--color-amber-deep)" : "none"}
-        stroke="var(--color-amber-deep)"
+        fill={filled ? color : "none"}
+        stroke={color}
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
