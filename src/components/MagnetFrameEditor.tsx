@@ -197,7 +197,7 @@ export default function MagnetFrameEditor() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedOnce, setSavedOnce] = useState(false);
-  const [exportBusy, setExportBusy] = useState<"landscape" | "portrait" | null>(null);
+  const [exportBusy, setExportBusy] = useState<`${FrameOrientation}-${"png" | "psd"}` | null>(null);
   const landscapeRef = useRef<HTMLDivElement>(null);
   const portraitRef = useRef<HTMLDivElement>(null);
   const [canvasWidths, setCanvasWidths] = useState<Record<FrameOrientation, number>>({ landscape: 0, portrait: 0 });
@@ -465,13 +465,26 @@ export default function MagnetFrameEditor() {
 
   // Saves first (owner's request, 2026-09-28): the export renders the design stored on the server,
   // so an edit made after the last save used to be missing from the downloaded file.
-  const download = async (orientation: "landscape" | "portrait") => {
+  // format "psd": the layered Photoshop file (see magnetFramePsd.ts), same save-first flow.
+  const download = async (orientation: FrameOrientation, format: "png" | "psd" = "png") => {
     if (exportBusy || saving) return;
-    setExportBusy(orientation);
+    setExportBusy(`${orientation}-${format}`);
     setError(null);
     try {
       const id = await save();
       if (!id) return;
+      if (format === "psd") {
+        // The server stores the file and answers with a signed link that downloads it.
+        const res = await fetch(`/api/magnet-frames/${id}/psd?orientation=${orientation}`);
+        if (!res.ok) throw new Error();
+        const { url } = (await res.json()) as { url: string };
+        const a = document.createElement("a");
+        a.href = url;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        return;
+      }
       const res = await fetch(`/api/magnet-frames/${id}/export?orientation=${orientation}`);
       if (!res.ok) throw new Error();
       const blob = await res.blob();
@@ -1312,19 +1325,29 @@ export default function MagnetFrameEditor() {
                   {withDims(o === "landscape" ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: o === "landscape" ? "20×15" : "15×20" })}
                 </div>
                 {renderFrame(o)}
-                <button
-                  onClick={() => download(o)}
-                  disabled={!!exportBusy || saving}
-                  className="mt-2 w-full rounded-lg px-2 py-2 text-[11px] sm:text-xs font-semibold bg-chip text-ink disabled:opacity-60"
-                >
-                  {exportBusy === o
-                    ? saving
-                      ? t("שומר...")
-                      : t("מוריד...")
-                    : o === "landscape"
-                      ? withDims(t("הורדת מסגרת רוחב ({size})"), { size: "20×15" })
-                      : withDims(t("הורדת מסגרת אורך ({size})"), { size: "15×20" })}
-                </button>
+                <div className="mt-2 flex flex-col gap-1.5 xl:flex-row">
+                  <button
+                    onClick={() => download(o)}
+                    disabled={!!exportBusy || saving}
+                    className="flex-1 rounded-lg px-2 py-2 text-[11px] sm:text-xs font-semibold bg-chip text-ink disabled:opacity-60"
+                  >
+                    {exportBusy === `${o}-png`
+                      ? saving
+                        ? t("שומר...")
+                        : t("מוריד...")
+                      : o === "landscape"
+                        ? withDims(t("הורדת מסגרת רוחב ({size})"), { size: "20×15" })
+                        : withDims(t("הורדת מסגרת אורך ({size})"), { size: "15×20" })}
+                  </button>
+                  <button
+                    onClick={() => download(o, "psd")}
+                    disabled={!!exportBusy || saving}
+                    title={t("קובץ פוטושופ עם שכבות: המסגרת, הטקסטורה, כל טקסט ואלמנט בשכבה משלו, והצללות כ-Layer Style")}
+                    className="xl:flex-none rounded-lg px-3 py-2 text-[11px] sm:text-xs font-semibold border border-line bg-card text-ink disabled:opacity-60"
+                  >
+                    {exportBusy === `${o}-psd` ? (saving ? t("שומר...") : t("מכין PSD...")) : t("הורדת PSD")}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
