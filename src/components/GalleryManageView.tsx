@@ -3098,7 +3098,7 @@ export default function GalleryManageView({
     <div
       className={
         bar
-          ? "flex items-center [&>*]:!h-10 [&>*]:!w-10 [&>*]:!rounded-[2px] [&>*]:!border-transparent [&>*]:!bg-transparent [&>*]:!text-[var(--gt-ink)] [&>*:hover]:!bg-black/[0.045]"
+          ? "flex shrink-0 items-center [&>*]:!h-10 [&>*]:!w-10 [&>*]:!rounded-[2px] [&>*]:!border-transparent [&>*]:!bg-transparent [&>*]:!text-[var(--gt-ink)] [&>*:hover]:!bg-black/[0.045]"
           : "flex items-center gap-1.5"
       }
     >
@@ -3308,7 +3308,7 @@ export default function GalleryManageView({
     );
 
   const barBtn =
-    "h-10 min-w-10 px-2 lg:px-3 flex shrink-0 items-center justify-center gap-2 text-sm rounded-[2px] transition-colors hover:bg-black/[0.045] focus-visible:outline-2 focus-visible:outline-[var(--gt-ink)] disabled:opacity-50";
+    "h-10 min-w-10 px-2 lg:px-3 flex shrink-0 whitespace-nowrap items-center justify-center gap-2 text-sm rounded-[2px] transition-colors hover:bg-black/[0.045] focus-visible:outline-2 focus-visible:outline-[var(--gt-ink)] disabled:opacity-50";
   const chapterTab = (active: boolean) => ({
     color: active ? "var(--gt-ink)" : "var(--gt-ink-soft)",
     boxShadow: active ? "inset 0 -1px 0 var(--gt-ink)" : undefined,
@@ -3401,7 +3401,7 @@ export default function GalleryManageView({
   const renderPremiumHeader = () => {
     const coverDate = eventDate || gallery.shoot_date;
     return (
-      <div className={galleryFont.variable} style={{ ...galleryThemeVars(gallery.theme), color: "var(--gt-ink)" }}>
+      <div className={`${galleryFont.variable} overflow-x-clip`} style={{ ...galleryThemeVars(gallery.theme), color: "var(--gt-ink)" }}>
         <div className="relative">
           <GalleryPremiumCover
             variant="manage"
@@ -3425,13 +3425,14 @@ export default function GalleryManageView({
           </Link>
         </div>
         <div style={{ background: "var(--gt-bg)", borderBottom: "1px solid var(--gt-border)" }}>
-          <div className="mx-auto max-w-[1600px] min-h-14 px-3 sm:px-6 lg:px-10 flex items-center gap-6">
+          <div className="mx-auto max-w-[1600px] min-h-14 px-3 sm:px-6 lg:px-10 flex items-center gap-6 min-w-0">
             {brandLogoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={brandLogoUrl} alt="" className="h-7 w-auto max-w-[140px] shrink-0 object-contain" />
             )}
             {renderChapterTabs("hidden md:flex min-w-0 flex-1 items-center gap-6 overflow-x-auto")}
-            <div className="ms-auto flex shrink-0 items-center gap-0.5 lg:gap-1">
+            {/* On a phone the actions scroll sideways inside the bar instead of widening the page. */}
+            <div className="ms-auto flex min-w-0 items-center gap-0.5 lg:gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {managerTabItems.map((item) => (
                 <button
                   key={item.key}
