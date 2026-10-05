@@ -210,6 +210,12 @@ body {
   background-color: var(--color-input-bg) !important;
 }
 
+/* The login/signup pages (.landing-2026) keep their light-theme ink tokens, so once the rule above
+   turns their fields and the reset-password sheet dark, the typed text was dark on dark. */
+:root[data-theme="dark"] .landing-2026 .bg-white {
+  color: #ffffff !important;
+}
+
 /* Frosted-glass treatment layered onto every element using Tailwind's bg-card utility — one
    rule, applies app-wide, since bg-card is already the shared "surface" class for cards, sheets
    and panels throughout the app. A true bevel needs light on the top edge AND a whisper of shadow
