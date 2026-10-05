@@ -3765,9 +3765,12 @@ export default function GalleryManageView({
               ))}
             </div>
           ) : resolvedGridStyle === "justified" ? (
+            // Each tile grows in proportion to its own shape (flex-grow = aspect ratio) and keeps
+            // that shape through the padding sizer, so a row scales as one and nothing is cropped;
+            // the filler at the end stops the last, shorter row from blowing up.
             <div className="flex flex-wrap gap-1.5">
               {visiblePhotos.map((photo, i) => {
-                const ratio = mgrAspectRatios[photo.id] ?? 1.5;
+                const ratio = mgrAspectRatios[photo.id] ?? (photo.preview_aspect_ratio && photo.preview_aspect_ratio > 0 ? photo.preview_aspect_ratio : 1.5);
                 return (
                   <button
                     key={photo.id}
@@ -3777,12 +3780,12 @@ export default function GalleryManageView({
                     onClick={() => handlePhotoClick(photo, i)}
                     className={`group relative ${tileRound} overflow-hidden bg-line`}
                     style={{
-                      height: cellSize,
-                      width: ratio * cellSize,
-                      flexGrow: 1,
+                      flexGrow: ratio,
+                      flexBasis: ratio * cellSize,
                       ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
                     }}
                   >
+                    <span aria-hidden="true" className="block" style={{ paddingBottom: `${100 / ratio}%` }} />
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
@@ -3801,6 +3804,7 @@ export default function GalleryManageView({
                   </button>
                 );
               })}
+              <div aria-hidden="true" style={{ flexGrow: 1e6, flexBasis: 0 }} />
             </div>
           ) : (
             <div className="gap-1.5" style={{ columnWidth: `${cellSize}px` }}>
