@@ -228,7 +228,10 @@ export default function GalleryManageView({
   // appears, which is what was actually asked for ("all photos at once, not a waterfall").
   const [thumbsReady, setThumbsReady] = useState(false);
   const loadedThumbIdsRef = useRef<Set<string>>(new Set());
-  const fullImagePrefetchedKeyRef = useRef<string | null>(null);
+  const fullImagePrefetchedIdsRef = useRef<Set<string>>(new Set());
+  // Only the photo being opened/closed carries a view-transition-name: naming every thumbnail made
+  // the browser snapshot all of them on each open, which froze or crashed big galleries on phones.
+  const [transitionPhotoId, setTransitionPhotoId] = useState<string | null>(null);
 
   // Shared across upload/face-detection/export — only one of those can be running at a time (the
   // ProgressModal itself blocks starting a second), so one flag + one AbortController is enough.
@@ -2040,11 +2043,19 @@ export default function GalleryManageView({
     tapTimer.current = setTimeout(() => {
       tapTimer.current = null;
       lastTapPhotoId.current = null;
-      withViewTransition(() => setLightboxIndex(index));
+      withViewTransition(() => {
+        setTransitionPhotoId(photo.id);
+        setLightboxIndex(index);
+      });
     }, DOUBLE_TAP_MS);
   };
   const closeLightbox = () => withViewTransition(() => setLightboxIndex(null));
-  const navLightbox = (index: number) => withViewTransition(() => setLightboxIndex(index));
+  // Stepping between photos is a plain update (no transition), and the photo shown becomes the one
+  // that animates back into the grid on close.
+  const navLightbox = (index: number) => {
+    setTransitionPhotoId(visiblePhotos[index]?.id ?? null);
+    setLightboxIndex(index);
+  };
 
   const ensureFolderId = async (folderName: string, cache: Map<string, string>): Promise<string | null> => {
     const existing = cache.get(folderName);
@@ -2999,21 +3010,24 @@ export default function GalleryManageView({
     if (loadedThumbIdsRef.current.size >= visiblePhotos.length) setThumbsReady(true);
   };
 
-  // Opening any one photo full-size is treated as "the client is now browsing this gallery" —
-  // quietly warms the browser cache for every OTHER photo's full-size view in the background, so
-  // navigating to the next/previous photo (or reopening one later) is instant instead of waiting
-  // on a fresh fetch each time. Runs once per visible-photo-set, not on every lightbox nav.
+  // Opening a photo warms the cache for a few photos on each side only, so the next/previous one
+  // is instant. This used to load EVERY visible photo's full-size preview at once (thousands in a
+  // big gallery), which ran a phone out of memory: the tab crashed and reloaded on the app's
+  // loading screen (owner's report, 2026-10-05). Same fix as PublicGalleryView.
   useEffect(() => {
     if (lightboxIndex === null) return;
-    if (fullImagePrefetchedKeyRef.current === visiblePhotoIdsKey) return;
-    fullImagePrefetchedKeyRef.current = visiblePhotoIdsKey;
-    visiblePhotos.forEach((photo) => {
-      const src = photo.previewUrl ?? `/api/galleries/${gallery.id}/photos/${photo.id}/preview`;
+    const PREFETCH_WINDOW = 3;
+    const start = Math.max(0, lightboxIndex - PREFETCH_WINDOW);
+    const end = Math.min(visiblePhotos.length - 1, lightboxIndex + PREFETCH_WINDOW);
+    for (let i = start; i <= end; i++) {
+      const photo = visiblePhotos[i];
+      if (!photo || fullImagePrefetchedIdsRef.current.has(photo.id)) continue;
+      fullImagePrefetchedIdsRef.current.add(photo.id);
       const img = new window.Image();
-      img.src = src;
-    });
+      img.src = photo.previewUrl ?? `/api/galleries/${gallery.id}/photos/${photo.id}/preview`;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lightboxIndex !== null, visiblePhotoIdsKey]);
+  }, [lightboxIndex, visiblePhotoIdsKey]);
 
   // Arrow-key navigation while the lightbox is open — mapped for RTL reading direction, so the
   // visual "forward" direction (left) advances to the next photo, matching how the prev/next arrow
@@ -3210,7 +3224,7 @@ export default function GalleryManageView({
               src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
               alt={photo.original_filename}
               className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
-              style={{ opacity: thumbsReady ? 1 : 0, ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined) }}
+              style={{ opacity: thumbsReady ? 1 : 0, ...(photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined) }}
               onLoad={() => markThumbLoaded(photo.id)}
               onError={() => markThumbLoaded(photo.id)}
             />
@@ -3247,7 +3261,7 @@ export default function GalleryManageView({
                 src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
                 alt={photo.original_filename}
                 className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
-                style={{ opacity: thumbsReady ? 1 : 0, ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined) }}
+                style={{ opacity: thumbsReady ? 1 : 0, ...(photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined) }}
                 onLoad={(e) => {
                   const img = e.currentTarget;
                   const r = img.naturalWidth / img.naturalHeight;
@@ -3297,7 +3311,7 @@ export default function GalleryManageView({
                 className={knownShape ? "absolute inset-0 w-full h-full object-cover transition-opacity duration-300" : "w-full h-auto block"}
                 style={{
                   opacity: knownShape ? (thumbsReady ? 1 : 0) : 1,
-                  ...(lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : {}),
+                  ...(photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : {}),
                 }}
               />
               <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} offset={framed ? 8 : 4} quiet={premiumTheme} />
