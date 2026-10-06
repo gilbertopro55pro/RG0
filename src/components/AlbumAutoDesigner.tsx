@@ -1,5 +1,6 @@
 "use client";
 
+import { useBusy } from "@/lib/updateResume";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
@@ -153,6 +154,8 @@ export default function AlbumAutoDesigner({
 
   const [running, setRunning] = useSessionState(session, "running", false);
   const [phase, setPhase] = useSessionState<Phase>(session, "phase", "times");
+  // A design in progress can't survive the update's reload: the update waits for it.
+  useBusy("album-auto-design", running ? t("העיצוב האוטומטי של האלבום") : null);
   const [phaseDetail, setPhaseDetail] = useSessionState(session, "phaseDetail", "");
   const [pct, setPct] = useSessionState(session, "pct", 0);
   const [runError, setRunError] = useSessionState<string | null>(session, "runError", null);

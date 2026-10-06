@@ -12,6 +12,7 @@ import type { MagnetFrameElement, MagnetFrameTextElement, MagnetFrameDesignRow, 
 import { IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight } from "@/components/icons/NavIcons";
 import { IconRotateDevice } from "@/components/icons/AlbumIcons";
 import { useT } from "@/i18n/client";
+import { takeResumeState, useBusy, useResumeState } from "@/lib/updateResume";
 
 const COLOR_SWATCHES = [
   { label: "שחור", value: "#111111" },
@@ -211,6 +212,18 @@ function RotationControl({ value, onChange }: { value: number; onChange: (deg: n
   );
 }
 
+// What the editor keeps across an update's reload (see lib/updateResume.ts).
+type MagnetResumeState = {
+  designId: string | null;
+  elements: MagnetFrameElement[];
+  frameSettings: MagnetFrameSettings;
+  portraitOverrides: Record<string, PortraitPlacement>;
+  step: 1 | 2;
+  openPanel: PanelKey | null;
+  elementTab: ElementTabKey;
+  digitColors: Record<string, string>;
+};
+
 // Where an element sits in the portrait frame when the photographer has moved it there in step 2.
 type PortraitPlacement = { xPct: number; yPct: number; rotation?: number; sizePct?: number; fontSizePx?: number };
 
@@ -307,6 +320,18 @@ export default function MagnetFrameEditor() {
             setPortraitOverrides(overrides);
             setSavedOnce(true);
           }
+        }
+        // Unsaved work from before an update's reload wins over the saved design (lib/updateResume).
+        const resumed = takeResumeState<MagnetResumeState>("magnet-editor");
+        if (resumed) {
+          if (resumed.designId) setDesignId(resumed.designId);
+          setElements(resumed.elements);
+          setFrameSettings(resumed.frameSettings);
+          setPortraitOverrides(resumed.portraitOverrides ?? {});
+          setStep(resumed.step ?? 1);
+          if (resumed.openPanel) setOpenPanel(resumed.openPanel);
+          if (resumed.elementTab) setElementTab(resumed.elementTab);
+          if (resumed.digitColors) setDigitColors(resumed.digitColors);
         }
       } finally {
         setLoaded(true);
@@ -411,6 +436,11 @@ export default function MagnetFrameEditor() {
     setSelectedId(null);
     setStep(n);
   };
+
+  useResumeState("magnet-editor", (): MagnetResumeState | null =>
+    loaded ? { designId, elements, frameSettings, portraitOverrides, step, openPanel, elementTab, digitColors } : null
+  );
+  useBusy("magnet-export", saving || exportBusy ? t("הורדת המסגרת") : null);
 
   const selected = elements.find((e) => e.id === selectedId) ?? null;
 
