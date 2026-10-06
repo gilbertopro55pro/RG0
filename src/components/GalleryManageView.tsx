@@ -32,7 +32,8 @@ import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery, IconTrash } from "@/components/icons/NavIcons";
 import { IconClose as IconAlbumClose, IconPalette, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck, IconRotateDevice } from "@/components/icons/AlbumIcons";
-import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor } from "@/components/AlbumSpreadCanvasEditor";
+import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor, type AlbumCanvasDraft } from "@/components/AlbumSpreadCanvasEditor";
+import { takeResumeState, useBusy, useResumeState } from "@/lib/updateResume";
 import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAutoDesigner";
 import { hasAutoDesignSession } from "@/lib/albumAuto/session";
 import { swapPhotoPatches, type SwapPick } from "@/lib/albumAuto/swapPhotos";
@@ -606,6 +607,22 @@ export default function GalleryManageView({
   // page instance, which is exactly the "opened directly into landscape" case that's always worked.
   const [resumingAfterRotate, setResumingAfterRotate] = useState(false);
   const pendingCanvasResumeRef = useRef<{ spreadId: string; mode: "overlay" | "custom" } | null>(null);
+  // After an update's reload (lib/updateResume): reopen the album panel, and the page that was being
+  // designed with its unsaved draft — through the same "resume" path the rotate round trip uses.
+  const canvasDraftRef = useRef<AlbumCanvasDraft | null>(null);
+  useResumeState("album-panel", () => (albumManageOpen ? { open: true } : null));
+  useEffect(() => {
+    const draft = takeResumeState<AlbumCanvasDraft>("album-canvas");
+    const panel = takeResumeState<{ open: boolean }>("album-panel");
+    if (!draft && !panel?.open) return;
+    setResumingAfterRotate(true);
+    if (draft) {
+      canvasDraftRef.current = draft;
+      pendingCanvasResumeRef.current = { spreadId: draft.spreadId, mode: draft.mode };
+    }
+    openAlbumManage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
+  }, []);
   useEffect(() => {
     const intent = readAlbumRotateResume();
     if (!intent || intent.galleryId !== gallery.id) return;
@@ -3068,6 +3085,8 @@ export default function GalleryManageView({
                 ? { label: t("שליחה לבית דפוס"), pct: printHouseSendProgress ?? 0 }
                 : null;
   const printHouseOpActive = sendingToPrintHouse && printHouseProgressVisible;
+  // Uploads, exports and sends can't survive the update's reload: it waits for them (lib/updateResume).
+  useBusy("gallery-operation", activeOp ? activeOp.label : uploading ? t("העלאת תמונות") : null);
 
   // Covers the whole standalone-iOS-PWA rotate round trip (see albumRotateResume.ts) with one
   // continuous spinner — this page's own normal content never has a chance to flash in between the
@@ -5685,19 +5704,26 @@ export default function GalleryManageView({
               usedElsewhere={usedElsewhere}
               onSave={saveSpreadElements}
               onSaveTemplate={saveAlbumTemplate}
-              onClose={() => setCanvasEditorTarget(null)}
+              onClose={() => {
+                canvasDraftRef.current = null;
+                setCanvasEditorTarget(null);
+              }}
               customOrnamentTabs={customOrnamentTabs}
               customOrnaments={customOrnaments}
               onCreateCustomOrnamentTab={handleCreateCustomOrnamentTab}
               onUploadCustomOrnament={handleUploadCustomOrnament}
               onDeleteCustomOrnament={handleDeleteCustomOrnament}
               spreads={albumSpreads}
-              onSwitchSpread={(id) => setCanvasEditorTarget({ spreadId: id, mode: "custom" })}
+              onSwitchSpread={(id) => {
+                canvasDraftRef.current = null;
+                setCanvasEditorTarget({ spreadId: id, mode: "custom" });
+              }}
               onApplyBorderToAll={(border) => applyBorderToAllSpreads(border, spread.id)}
               onApplyBackgroundToAll={(bg) => applyBackgroundToAllSpreads(bg, spread.id)}
               onAddPage={createBlankSpread}
               sidePanelOffset={albumSidePanelOffset}
               onSidePanelOffsetChange={setAlbumSidePanelOffset}
+              draft={canvasDraftRef.current?.spreadId === spread.id ? canvasDraftRef.current : null}
             />
           );
         })()}

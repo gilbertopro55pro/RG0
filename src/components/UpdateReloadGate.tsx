@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useT } from "@/i18n/client";
+import { saveResumeSnapshot, takeResumeScroll, useBusyLabels } from "@/lib/updateResume";
 
 // Client-facing pages (galleries, contracts, quotes, portfolio…) and the auth pages never show
 // this — only the photographer's own app does.
@@ -22,7 +23,28 @@ export default function UpdateReloadGate() {
   const pathname = usePathname();
   const t = useT();
   const [show, setShow] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const busyLabels = useBusyLabels();
   const snoozedUntil = useRef(0);
+
+  // Back to where the page was scrolled before the update's reload (see lib/updateResume.ts). Tried
+  // twice: the page's own content can still be loading on the first try.
+  useEffect(() => {
+    const y = takeResumeScroll();
+    if (y === null || y <= 0) return;
+    const timers = [400, 1500].map((ms) => setTimeout(() => window.scrollTo({ top: y }), ms));
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  // Saves the photographer's place (open screen, unsaved design, scroll), then reloads.
+  const reloadKeepingPlace = () => {
+    saveResumeSnapshot();
+    window.location.reload();
+  };
+  // An upload, export or automatic design can't survive a reload: wait for it, then reload alone.
+  useEffect(() => {
+    if (waiting && busyLabels.length === 0) reloadKeepingPlace();
+  }, [waiting, busyLabels.length]);
 
   useEffect(() => {
     if (!BUILD_ID) return;
@@ -79,9 +101,19 @@ export default function UpdateReloadGate() {
           </span>
         </div>
         <h2 className="text-lg font-bold font-display mb-2">{t("יש עדכון חדש למערכת")}</h2>
-        <p className="text-sm text-ink-soft mb-5">{t("כדי שהשינויים ייכנסו לתוקף, צריך לטעון את המערכת מחדש. ההתחברות שלך נשמרת.")}</p>
-        <button onClick={() => window.location.reload()} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-          {t("טעינה מחדש")}
+        {waiting ? (
+          <p className="text-sm text-ink-soft mb-5">
+            {t("ממתינים לסיום: {work}. המערכת תיטען מחדש לבד מיד כשזה יסתיים, ותחזרו לאותה נקודה.", { work: busyLabels.join(", ") })}
+          </p>
+        ) : (
+          <p className="text-sm text-ink-soft mb-5">{t("כדי שהשינויים ייכנסו לתוקף, צריך לטעון את המערכת מחדש. אחרי הטעינה תחזרו בדיוק לאותה נקודה, כולל מה שעוד לא נשמר.")}</p>
+        )}
+        <button
+          onClick={() => (busyLabels.length > 0 ? setWaiting(true) : reloadKeepingPlace())}
+          disabled={waiting}
+          className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+        >
+          {waiting ? t("ממתין...") : t("טעינה מחדש")}
         </button>
         {/* Reloading throws away anything typed but not yet saved (a half-filled new event, a
             contract being edited) — so there's a way to finish that first. It comes back. */}

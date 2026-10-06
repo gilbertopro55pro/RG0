@@ -1,5 +1,6 @@
 "use client";
 
+import { useResumeState } from "@/lib/updateResume";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AlbumElement, AlbumFrame, AlbumOrnamentElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement, AlbumTemplateRow, GalleryAlbumSpreadRow } from "@/lib/types";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
@@ -2014,6 +2015,14 @@ function seedElementsFromPreset(spread: GalleryAlbumSpreadRow): AlbumElement[] {
 //   works on every spread this way, not just custom-layout ones.
 // - "custom" mode: nothing is fixed — photo and text elements live in the same array and are all
 //   draggable/resizable, giving a genuinely free-form page instead of the three presets.
+// One page's editor state as kept across an update's reload.
+export type AlbumCanvasDraft = {
+  spreadId: string;
+  mode: "overlay" | "custom";
+  elements: AlbumElement[];
+  background: { photoId: string | null; blur: number; opacity: number; zoom: number };
+};
+
 export default function AlbumSpreadCanvasEditor({
   spread,
   album,
@@ -2039,6 +2048,7 @@ export default function AlbumSpreadCanvasEditor({
   onAddPage,
   sidePanelOffset,
   onSidePanelOffsetChange,
+  draft,
 }: {
   spread: GalleryAlbumSpreadRow;
   // Physical print dimensions plus the album's own configured safe-margin (cm) — used to size the
@@ -2086,6 +2096,8 @@ export default function AlbumSpreadCanvasEditor({
   // for why that remount would otherwise reset a locally-owned offset back to (0,0) every time.
   sidePanelOffset: { x: number; y: number };
   onSidePanelOffsetChange: (offset: { x: number; y: number }) => void;
+  // Unsaved work on this page from before an update's reload (see AlbumCanvasDraft).
+  draft?: AlbumCanvasDraft | null;
 }) {
   const t = useT();
   // This editor's whole layout below (two columns, canvas sizing, sidebar, page switcher) is the
@@ -2168,7 +2180,7 @@ export default function AlbumSpreadCanvasEditor({
   }, [phase]);
   const needsRotate = phase === "portrait";
 
-  const [elements, setElementsRaw] = useState<AlbumElement[]>(() => (mode === "custom" ? seedElementsFromPreset(spread) : spread.elements));
+  const [elements, setElementsRaw] = useState<AlbumElement[]>(() => draft?.elements ?? (mode === "custom" ? seedElementsFromPreset(spread) : spread.elements));
   // Multiple photo elements can be selected at once (shift-click or a rubber-band marquee drag)
   // so circular-menu actions and resize can apply to the whole group; text elements stay
   // single-select only (a Set of size 1 for those).
@@ -2190,10 +2202,18 @@ export default function AlbumSpreadCanvasEditor({
   // renders as a plain centered fill for one frame before its real ratio is known.
   const [photoAspects, setPhotoAspects] = useState<Record<string, number>>({});
   const [pickingBackground, setPickingBackground] = useState(false);
-  const [backgroundPhotoId, setBackgroundPhotoId] = useState(spread.background_photo_id);
-  const [backgroundBlur, setBackgroundBlur] = useState(spread.background_blur);
-  const [backgroundOpacity, setBackgroundOpacity] = useState(spread.background_opacity);
-  const [backgroundZoom, setBackgroundZoom] = useState(spread.background_zoom ?? 100);
+  const [backgroundPhotoId, setBackgroundPhotoId] = useState(draft ? draft.background.photoId : spread.background_photo_id);
+  const [backgroundBlur, setBackgroundBlur] = useState(draft ? draft.background.blur : spread.background_blur);
+  const [backgroundOpacity, setBackgroundOpacity] = useState(draft ? draft.background.opacity : spread.background_opacity);
+  const [backgroundZoom, setBackgroundZoom] = useState(draft ? draft.background.zoom : (spread.background_zoom ?? 100));
+  // The page being designed survives an update's reload, unsaved changes included (lib/updateResume;
+  // GalleryManageView reopens this editor on the same page with the draft).
+  useResumeState("album-canvas", (): AlbumCanvasDraft => ({
+    spreadId: spread.id,
+    mode,
+    elements,
+    background: { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom },
+  }));
   // Snapshot of the page's saved state, captured once from the actual initial state values (not
   // recomputed from spread/seedElementsFromPreset separately, which could disagree on seeded
   // element ids and falsely read as "dirty" from the very first render). Used only to detect
