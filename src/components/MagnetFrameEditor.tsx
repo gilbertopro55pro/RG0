@@ -1407,7 +1407,8 @@ export default function MagnetFrameEditor() {
                     {withDims(o === "landscape" ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: o === "landscape" ? "20×15" : "15×20" })}
                   </div>
                   {renderFrame(o)}
-                  <div className="mt-2 flex gap-1.5">
+                  {/* Wraps to two rows in a narrow column (the portrait frame on a phone held sideways). */}
+                  <div className="mt-2 flex flex-wrap gap-1.5 [&>button]:basis-[56px]">
                     <button
                       onClick={() => download(o)}
                       disabled={!!exportBusy || saving}
