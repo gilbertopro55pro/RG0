@@ -115,10 +115,12 @@ type Bounds = { min: number; max: number };
 type SectionGroup = "owners" | "family" | "event";
 
 const STYLE_BOUNDS: Record<AutoStyleId, Record<SectionGroup, Bounds>> = {
-  clean: { owners: { min: 2, max: 3 }, family: { min: 2, max: 4 }, event: { min: 3, max: 5 } },
+  // Clean and modern: as many photos a page as the photographer's own albums (2026-10-06) — 3-5 on
+  // the opening pages, 8-15 later (the page caps below still hold).
+  clean: { owners: { min: 3, max: 5 }, family: { min: 4, max: 8 }, event: { min: 7, max: 13 } },
   catalog: { owners: { min: 2, max: 4 }, family: { min: 3, max: 6 }, event: { min: 4, max: 8 } },
   scribble: { owners: { min: 2, max: 3 }, family: { min: 3, max: 5 }, event: { min: 3, max: 6 } },
-  modern: { owners: { min: 2, max: 3 }, family: { min: 2, max: 4 }, event: { min: 3, max: 5 } },
+  modern: { owners: { min: 3, max: 5 }, family: { min: 4, max: 8 }, event: { min: 7, max: 13 } },
 };
 // Owner's rules (2026-09-29): never a spread with a single photo (every minimum above is ≥ 2, and
 // mergeSingles() catches the rest), and a HARD limit of 30 pages ("דפים") counting the cover — with

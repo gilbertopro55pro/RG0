@@ -1228,8 +1228,9 @@ export default function GalleryManageView({
         photo_id_1: firstPhotoId(elements),
         width_cm: cover.widthCm,
         height_cm: cover.heightCm,
-        background_photo_id: null,
-        background_blur: 0,
+        background_photo_id: cover.background?.photoId ?? null,
+        background_blur: cover.background?.blur ?? 0,
+        background_opacity: cover.background?.opacity ?? 100,
       });
     }
     const bookInset = marginInsetPctFor(newAlbum);
@@ -1244,6 +1245,7 @@ export default function GalleryManageView({
         // Set on every row (a batch insert sends the union of the columns; a missing one would be null).
         background_photo_id: spread.background?.photoId ?? null,
         background_blur: spread.background?.blur ?? 0,
+        background_opacity: spread.background?.opacity ?? 100,
       });
     }
     const { error: spreadsErr } = await supabase.from("gallery_album_spreads").insert(rows);

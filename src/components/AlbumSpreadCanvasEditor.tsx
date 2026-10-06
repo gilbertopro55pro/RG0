@@ -860,10 +860,10 @@ function PhotoFloatingMenu({
       <CircleButton scale={buttonScale} label={t("צל וקו מתאר")} active={shadowPanelOpen || !!el.shadow || !!el.borderWidth} onClick={onToggleShadowPanel}>
         <IconShadow />
       </CircleButton>
-      <CircleButton scale={buttonScale} label={t("העברה לשכבה העליונה")} onClick={onBringToFront}>
+      <CircleButton scale={buttonScale} label={t("העלאת שכבה אחת")} onClick={onBringToFront}>
         <IconToFront />
       </CircleButton>
-      <CircleButton scale={buttonScale} label={t("העברה לשכבה התחתונה")} onClick={onSendToBack}>
+      <CircleButton scale={buttonScale} label={t("הורדת שכבה אחת")} onClick={onSendToBack}>
         <IconToBack />
       </CircleButton>
       <CircleButton scale={buttonScale} label={t("מחיקת התמונה/ות שנבחרו")} danger onClick={onDeleteSelected}>
@@ -1077,10 +1077,10 @@ function OrnamentFloatingMenu({
         </div>
       )}
       <div className="flex items-center gap-1">
-        <button onClick={onBringToFront} title={t("העברה לשכבה העליונה")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onBringToFront} title={t("העלאת שכבה אחת")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToFront />
         </button>
-        <button onClick={onSendToBack} title={t("העברה לשכבה התחתונה")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onSendToBack} title={t("הורדת שכבה אחת")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToBack />
         </button>
         <button
@@ -1187,10 +1187,10 @@ function ShapeFloatingMenu({
         </div>
       )}
       <div className="flex items-center gap-1">
-        <button onClick={onBringToFront} title={t("העברה לשכבה העליונה")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onBringToFront} title={t("העלאת שכבה אחת")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToFront />
         </button>
-        <button onClick={onSendToBack} title={t("העברה לשכבה התחתונה")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
+        <button onClick={onSendToBack} title={t("הורדת שכבה אחת")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToBack />
         </button>
         <button
@@ -2457,7 +2457,9 @@ export default function AlbumSpreadCanvasEditor({
 
   const selectedElements = elements.filter((e) => selectedIds.has(e.id));
   const selectedPhotos = selectedElements.filter((e): e is AlbumPhotoElement => e.type === "photo");
-  const selectedText = selectedElements.length === 1 && selectedElements[0].type === "text" ? selectedElements[0] : null;
+  // Several text layers can be selected together (owner, 2026-10-06): the text panel then styles
+  // all of them at once (see applyToSelectedTexts).
+  const selectedText = selectedElements.length >= 1 && selectedElements.every((e) => e.type === "text") ? (selectedElements[0] as AlbumTextElement) : null;
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const lastTextTapRef = useRef<{ id: string; at: number } | null>(null);
   const startEditingText = (el: AlbumTextElement) => {
@@ -2848,8 +2850,8 @@ export default function AlbumSpreadCanvasEditor({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedIds]);
 
-  // Cmd/Ctrl+Z undoes the last action; Cmd/Ctrl+A selects every photo/ornament/shape on the page
-  // (text stays single-select only, see selectedText's own comment); a bare T opens the add-text
+  // Cmd/Ctrl+Z undoes the last action; Cmd/Ctrl+A selects every layer on the page (photos, text,
+  // ornaments and shapes alike); a bare T opens the add-text
   // panel via the same button the sidebar's own "+ טקסט" click already uses, so both paths stay in
   // sync with zero duplicated positioning logic. All skipped while focus is inside a form field.
   useEffect(() => {
@@ -2865,7 +2867,7 @@ export default function AlbumSpreadCanvasEditor({
       }
       if (meta && e.key.toLowerCase() === "a") {
         e.preventDefault();
-        setSelectedIds(new Set(elements.filter((el) => el.type === "photo" || el.type === "ornament" || el.type === "shape").map((el) => el.id)));
+        setSelectedIds(new Set(elements.map((el) => el.id)));
         return;
       }
       if (!meta && !e.altKey && e.key.toLowerCase() === "t") {
@@ -2880,23 +2882,68 @@ export default function AlbumSpreadCanvasEditor({
   const updateElement = (id: string, patch: Partial<AlbumElement>) => {
     setElements((prev) => prev.map((e) => (e.id === id ? ({ ...e, ...patch } as AlbumElement) : e)));
   };
+  // The text panel's change applied to every selected text layer; the words themselves and the
+  // geometry stay each layer's own.
+  const applyToSelectedTexts = (anchorId: string, patch: Partial<AlbumTextElement>) => {
+    const own = new Set(["text", "xPct", "yPct", "widthPct", "heightPct"]);
+    const shared = Object.fromEntries(Object.entries(patch).filter(([k]) => !own.has(k))) as Partial<AlbumTextElement>;
+    setElements((prev) =>
+      prev.map((e) => {
+        if (e.id === anchorId) return { ...e, ...patch } as AlbumElement;
+        if (e.type === "text" && selectedIds.has(e.id) && !e.locked) return { ...e, ...shared };
+        return e;
+      })
+    );
+  };
+  // A press on any layer: Shift toggles it in/out of the selection (any mix of photos, text,
+  // ornaments and shapes — owner, 2026-10-06); a plain press on a layer that's part of a
+  // multi-selection drags the whole group, otherwise it selects just that layer and drags it.
+  const pressLayer = (e: React.PointerEvent, el: AlbumElement) => {
+    if (e.shiftKey) {
+      e.stopPropagation();
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(el.id)) next.delete(el.id);
+        else next.add(el.id);
+        return next;
+      });
+      return;
+    }
+    const group = selectedIds.has(el.id) && selectedIds.size > 1 ? Array.from(selectedIds) : [el.id];
+    setSelectedIds(new Set(group));
+    startDrag(e, el, "move", undefined, group);
+  };
 
-  // Moves one element to the very end/start of the elements array — later elements paint on top
-  // in a plain DOM z-order, so "front" is push-to-end and "back" is push-to-start.
-  const bringToFront = (id: string) => {
+  // One layer up/down per click (owner, 2026-10-06 — not straight to the top/bottom). Later
+  // elements paint on top, so "up" moves the element just past the next element above it that it
+  // actually overlaps (a swap with a non-overlapping neighbour would show no change); with none
+  // overlapping it moves one place.
+  const moveLayer = (id: string, dir: 1 | -1) => {
     setElements((prev) => {
-      const el = prev.find((e) => e.id === id);
-      if (!el) return prev;
-      return [...prev.filter((e) => e.id !== id), el];
+      const i = prev.findIndex((e) => e.id === id);
+      if (i < 0) return prev;
+      const box = elementBox(prev[i]);
+      const overlaps = (o: AlbumElement) => {
+        const b = elementBox(o);
+        return b.left < box.right && b.right > box.left && b.top < box.bottom && b.bottom > box.top;
+      };
+      let j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      for (let k = j; k >= 0 && k < prev.length; k += dir) {
+        if (overlaps(prev[k])) {
+          j = k;
+          break;
+        }
+      }
+      const next = prev.filter((e) => e.id !== id);
+      // Up: prev[j] slid to j-1 once i was removed, so index j is just above it. Down: prev[j]
+      // stays at j, so index j is just below it.
+      next.splice(j, 0, prev[i]);
+      return next;
     });
   };
-  const sendToBack = (id: string) => {
-    setElements((prev) => {
-      const el = prev.find((e) => e.id === id);
-      if (!el) return prev;
-      return [el, ...prev.filter((e) => e.id !== id)];
-    });
-  };
+  const bringToFront = (id: string) => moveLayer(id, 1);
+  const sendToBack = (id: string) => moveLayer(id, -1);
 
   // Applies the same patch to every currently-selected PHOTO element — an empty toggle-value
   // (bw/sepia/lockAspect) is decided by the caller from the anchor photo's own current state
@@ -3552,7 +3599,7 @@ export default function AlbumSpreadCanvasEditor({
       setMarqueeBox({ x, y, w, h });
       const marquee = { left: x, top: y, right: x + w, bottom: y + h };
       const hitIds = elements
-        .filter((el) => (el.type === "photo" || el.type === "shape") && boxesIntersect(elementBox(el), marquee))
+        .filter((el) => boxesIntersect(elementBox(el), marquee))
         .map((el) => el.id);
       setSelectedIds(new Set([...base, ...hitIds]));
       return;
@@ -3768,10 +3815,7 @@ export default function AlbumSpreadCanvasEditor({
     return (
       <div
         key={el.id}
-        onPointerDown={(e) => {
-          setSelectedIds(new Set([el.id]));
-          startDrag(e, el, "move");
-        }}
+        onPointerDown={(e) => pressLayer(e, el)}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -4719,26 +4763,9 @@ export default function AlbumSpreadCanvasEditor({
                         setAltSwapSourceId(el.id);
                         return;
                       }
-                      if (e.shiftKey) {
-                        // Shift-click toggles this frame in/out of the selection instead of
-                        // starting a drag — mixing in a text element (which isn't part of this
-                        // multi-select model) just drops it and starts a fresh photo-only set.
-                        e.stopPropagation();
-                        setSelectedIds((prev) => {
-                          const photoOnly = [...prev].every((id) => elements.find((x) => x.id === id)?.type === "photo");
-                          const next = new Set(photoOnly ? prev : []);
-                          if (next.has(el.id)) next.delete(el.id);
-                          else next.add(el.id);
-                          return next;
-                        });
-                        return;
-                      }
-                      // A plain click on a frame already part of a multi-selection keeps the whole
-                      // group selected (so the drag that follows moves all of them); otherwise it
-                      // collapses selection down to just this one, matching every other design tool.
-                      const group = selectedIds.has(el.id) && selectedIds.size > 1 ? Array.from(selectedIds) : [el.id];
-                      setSelectedIds(new Set(group));
-                      startDrag(e, el, "move", undefined, group);
+                      // Shift toggles the frame in/out of a selection of any layers; a plain press
+                      // drags the frame, or the whole group when it's part of one.
+                      pressLayer(e, el);
                     }}
                     onDoubleClick={(e) => {
                       // A double-click centers the photo within its frame directly (no extra click
@@ -4891,10 +4918,7 @@ export default function AlbumSpreadCanvasEditor({
                 return (
                   <div
                     key={el.id}
-                    onPointerDown={(e) => {
-                      setSelectedIds(new Set([el.id]));
-                      startDrag(e, el, "move");
-                    }}
+                    onPointerDown={(e) => pressLayer(e, el)}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -4957,8 +4981,7 @@ export default function AlbumSpreadCanvasEditor({
                       e.stopPropagation();
                       return;
                     }
-                    setSelectedIds(new Set([el.id]));
-                    startDrag(e, el, "move");
+                    pressLayer(e, el);
                   }}
                   onPointerUp={(e) => {
                     // A double tap on a touch screen (no dblclick there) opens the same editing.
@@ -5337,7 +5360,7 @@ export default function AlbumSpreadCanvasEditor({
                 onSendToBack={() => sendToBack(lastSideSelection.el.id)}
               />
             ) : lastSideSelection.type === "text" ? (
-              <TextFloatingMenu el={lastSideSelection.el} album={album} onUpdate={(patch) => updateElement(lastSideSelection.el.id, patch)} onDeleteSelected={removeSelected} />
+              <TextFloatingMenu el={lastSideSelection.el} album={album} onUpdate={(patch) => applyToSelectedTexts(lastSideSelection.el.id, patch)} onDeleteSelected={removeSelected} />
             ) : (
               <PhotoAdjustFloatingMenu
                 el={lastSideSelection.el}
