@@ -3649,12 +3649,21 @@ export default function AlbumSpreadCanvasEditor({
       const groupCandidateY = Math.max(0, Math.min(100 - primaryStart.heightPct, primaryStart.yPct + dyPct));
       const groupOthers = elements.filter((x) => !drag.groupStart[x.id]);
       const groupCandidateBox = { xPct: groupCandidateX, yPct: groupCandidateY, widthPct: primaryStart.widthPct, heightPct: primaryStart.heightPct };
-      const { guides: gAlignGuides, snapXPct: gaSnapX, snapYPct: gaSnapY } = computeAlignment(groupCandidateBox, groupOthers);
+      // Alignment (page center included) is checked for the WHOLE selection's bounding box, so a
+      // group centers on the page as one block (owner, 2026-10-06: selecting several photos showed
+      // no center snap — it used to test only the photo under the cursor).
+      const groupMembers = Object.values(drag.groupStart);
+      const gLeft = Math.min(...groupMembers.map((g) => g.xPct)) + (groupCandidateX - primaryStart.xPct);
+      const gTop = Math.min(...groupMembers.map((g) => g.yPct)) + (groupCandidateY - primaryStart.yPct);
+      const gRight = Math.max(...groupMembers.map((g) => g.xPct + g.widthPct)) + (groupCandidateX - primaryStart.xPct);
+      const gBottom = Math.max(...groupMembers.map((g) => g.yPct + g.heightPct)) + (groupCandidateY - primaryStart.yPct);
+      const groupBox = { xPct: gLeft, yPct: gTop, widthPct: gRight - gLeft, heightPct: gBottom - gTop };
+      const { guides: gAlignGuides, snapXPct: gaSnapX, snapYPct: gaSnapY } = computeAlignment(groupBox, groupOthers);
       const { guides: gSpacingGuides, snapXPct: gsSnapX, snapYPct: gsSnapY } = computeSpacingGuides(groupCandidateBox, groupOthers);
       setGuides(gAlignGuides);
-      setSpacingGuides(gSpacingGuides);
-      const correctionX = (gaSnapX ?? gsSnapX ?? groupCandidateX) - groupCandidateX;
-      const correctionY = (gaSnapY ?? gsSnapY ?? groupCandidateY) - groupCandidateY;
+      setSpacingGuides(gaSnapX !== undefined || gaSnapY !== undefined ? [] : gSpacingGuides);
+      const correctionX = gaSnapX !== undefined ? gaSnapX - gLeft : (gsSnapX ?? groupCandidateX) - groupCandidateX;
+      const correctionY = gaSnapY !== undefined ? gaSnapY - gTop : (gsSnapY ?? groupCandidateY) - groupCandidateY;
       setElements((prev) =>
         prev.map((e2) => {
           const gs = drag.groupStart[e2.id];
