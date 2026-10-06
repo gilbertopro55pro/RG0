@@ -18,6 +18,8 @@ data needs a short confirmation from the user first (CLAUDE.md).
    - One trial per phone: `phone_already_registered` RPC (service role), which returns 409.
    - Sends 2 emails: a welcome email, and login details with the confirmation link
      (`/api/auth/confirm-email?uid&ts&sig`, HMAC).
+   - Every signup alerts the owner (2026-10-06): an email to ADMIN_EMAIL and a push to the admin
+     account (`notifyAdminOfSignup`), best-effort, never failing the signup.
 2. **Confirm email.** The link sets `email_confirm: true`, and until then login shows
    "כתובת המייל עדיין לא אומתה". First login goes to `/onboarding`.
 3. **Trial.**

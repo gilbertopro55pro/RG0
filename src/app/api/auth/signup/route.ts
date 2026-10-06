@@ -4,6 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { createEmailConfirmToken } from "@/lib/emailConfirmToken";
 import { sendEmail } from "@/lib/resend";
+import { sendPushToPhotographer } from "@/lib/push";
+import { ADMIN_EMAIL } from "@/lib/admin";
 import { stripPhoneFormatting } from "@/lib/phone";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { LANG_COOKIE, isLang, type Lang } from "@/i18n/config";
@@ -84,6 +86,7 @@ export async function POST(request: NextRequest) {
     .update({ subscription_status: "trialing", trial_ends_at: trialEndsAt, signup_plan: chosenPlan, plan: TRIAL_PLAN, ui_lang: lang === "he" ? null : lang })
     .eq("id", uid);
   if (trialError) console.error("Trial setup failed:", trialError);
+  await notifyAdminOfSignup(supabase, { name, phone: cleanPhone, email, plan: chosenPlan, lang });
   const { ts, sig } = createEmailConfirmToken(uid);
   // lang rides along so the confirm link lands on /login in the same language (the signature
   // covers uid+ts only, so the extra param doesn't affect verification).
@@ -110,6 +113,32 @@ export async function POST(request: NextRequest) {
   }
 
   return withLangCookie(NextResponse.json({ ok: true }), lang);
+}
+
+// The owner hears about every new signup (owner, 2026-10-06, the day the system went public): an
+// email to the admin address (sendEmail routes it to the owner's real inbox) and a push to the
+// admin account's phones. Best-effort: a failed alert never fails the signup itself.
+async function notifyAdminOfSignup(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  p: { name: string; phone: string; email: string; plan: string; lang: Lang }
+): Promise<void> {
+  const planLabel = SUBSCRIPTION_PLANS[p.plan as keyof typeof SUBSCRIPTION_PLANS]?.label ?? p.plan;
+  const langLabel = p.lang === "en" ? "אנגלית" : p.lang === "ru" ? "רוסית" : "עברית";
+  const when = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem", dateStyle: "short", timeStyle: "short" });
+  const tasks: Promise<unknown>[] = [
+    sendEmail({
+      to: ADMIN_EMAIL,
+      subject: `נרשם משתמש חדש: ${p.name}`,
+      text:
+        `נרשם משתמש חדש לגילברטו.\n\n` +
+        `שם: ${p.name}\nטלפון: ${p.phone}\nמייל: ${p.email}\nמסלול שנבחר: ${planLabel}\nשפה: ${langLabel}\nמועד: ${when}\n\n` +
+        `תקופת הניסיון (14 יום) התחילה.`,
+    }),
+  ];
+  const { data: admin } = await supabase.from("photographers").select("id").eq("email", ADMIN_EMAIL).maybeSingle<{ id: string }>();
+  if (admin) tasks.push(sendPushToPhotographer(admin.id, { title: "נרשם משתמש חדש", body: `${p.name} · ${p.phone}`, url: "/admin", tag: "new-signup" }));
+  const results = await Promise.allSettled(tasks);
+  for (const r of results) if (r.status === "rejected") console.error("Admin signup alert failed:", r.reason);
 }
 
 // The account exists: a signup in English/Russian opens the app in that language on this device
