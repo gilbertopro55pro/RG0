@@ -130,7 +130,11 @@ async function renderCustomTextureLayer(customImage: Buffer, widthPx: number, he
 // so base's alpha channel is identical to the plain card's. customImage, when given, always wins
 // over settings.textureId — matching the editor's "picking one clears the other" rule.
 export async function composeMagnetFrameTexture(base: Buffer, settings: MagnetFrameSettings, orientation: FrameOrientation, customImage: Buffer | null): Promise<Buffer> {
-  const masked = await renderMagnetFrameTextureLayer(base, settings, orientation, customImage);
+  // Masked by the plain mat, not `base`: with the inner shadow on, base also has semi-transparent
+  // pixels INSIDE the photo window, and the texture showed there along the shadow band (owner,
+  // 2026-10-06: the texture belongs on the white frame only).
+  const mask = settings.shadowEnabled ? await renderMagnetFrameBase(orientation, { ...settings, shadowEnabled: false }) : base;
+  const masked = await renderMagnetFrameTextureLayer(mask, settings, orientation, customImage);
   if (!masked) return base;
   return sharp(base).composite([{ input: masked, left: 0, top: 0 }]).png().toBuffer();
 }
@@ -161,6 +165,33 @@ export async function renderMagnetFrameWindow(orientation: FrameOrientation, set
   const radius = Math.min(maxRadius, (settings.cornerRadiusPct / 100) * maxRadius);
   const svg = `<svg width="${widthPx}" height="${heightPx}" xmlns="http://www.w3.org/2000/svg"><path d="${roundedRectPath(border, border, cutoutW, cutoutH, radius)}" fill="#d9d9d9" /></svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+// Rotates whatever a full-canvas layer holds around its own visible center (the element's center),
+// by `degrees` clockwise. sharp rotates around the image's middle and grows it, so the layer is cut
+// down to its visible pixels, rotated, and put back centered where it was.
+async function rotateLayerAroundContent(layer: Buffer, degrees: number, widthPx: number, heightPx: number): Promise<Buffer> {
+  if (!degrees || Math.abs(degrees % 360) < 0.01) return layer;
+  const trimmed = await sharp(layer).trim({ threshold: 0 }).png().toBuffer({ resolveWithObject: true });
+  const cx = -(trimmed.info.trimOffsetLeft ?? 0) + trimmed.info.width / 2;
+  const cy = -(trimmed.info.trimOffsetTop ?? 0) + trimmed.info.height / 2;
+  const rotated = await sharp(trimmed.data).rotate(degrees, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer({ resolveWithObject: true });
+  return placeCentered(rotated.data, rotated.info.width, rotated.info.height, cx, cy, widthPx, heightPx);
+}
+
+// An image on a transparent widthPx×heightPx canvas, centered at (cx, cy); whatever falls off the
+// edges is cropped (sharp's composite rejects an overlay that doesn't fit inside the base).
+async function placeCentered(img: Buffer, w: number, h: number, cx: number, cy: number, widthPx: number, heightPx: number): Promise<Buffer> {
+  const left = Math.round(cx - w / 2);
+  const top = Math.round(cy - h / 2);
+  const cropLeft = Math.max(0, -left);
+  const cropTop = Math.max(0, -top);
+  const cropW = Math.min(w - cropLeft, widthPx - Math.max(0, left));
+  const cropH = Math.min(h - cropTop, heightPx - Math.max(0, top));
+  const canvas = sharp({ create: { width: widthPx, height: heightPx, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } });
+  if (cropW <= 0 || cropH <= 0) return canvas.png().toBuffer();
+  const piece = await sharp(img).extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH }).png().toBuffer();
+  return canvas.composite([{ input: piece, left: Math.max(0, left), top: Math.max(0, top) }]).png().toBuffer();
 }
 
 // Renders one text element as glyph-outline paths (same layoutTextAsSvgPaths machinery
@@ -214,7 +245,14 @@ async function composeTextElement(base: Buffer, el: Extract<MagnetFrameElement, 
   });
   composites.push({ input: mainLayer, left: 0, top: 0 });
 
-  return sharp(base).composite(composites).png().toBuffer();
+  if (!el.rotation) return sharp(base).composite(composites).png().toBuffer();
+  // Text and its shadow turn together, like the editor's CSS rotate (the shadow offset turns too).
+  const own = await sharp({ create: { width: widthPx, height: heightPx, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite(composites)
+    .png()
+    .toBuffer();
+  const turned = await rotateLayerAroundContent(own, el.rotation, widthPx, heightPx);
+  return sharp(base).composite([{ input: turned, left: 0, top: 0 }]).png().toBuffer();
 }
 
 // customElementBuffers resolves customElementAssetId -> the photographer's own uploaded bytes (the
@@ -227,36 +265,31 @@ async function composeDecorationElement(base: Buffer, el: Extract<MagnetFrameEle
   const centerX = (el.xPct / 100) * widthPx;
   const centerY = (el.yPct / 100) * heightPx;
 
+  // The element's own sizePx×sizePx image (transparent around it), from whichever source it uses.
+  let image: Buffer | null = null;
   if (el.customElementAssetId) {
     const customImage = customElementBuffers.get(el.customElementAssetId);
     if (!customImage) return base;
-    const resized = await sharp(customImage).resize(sizePx, sizePx, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    return sharp(base)
-      .composite([{ input: resized.data, raw: { width: resized.info.width, height: resized.info.height, channels: 4 }, left: Math.round(centerX - resized.info.width / 2), top: Math.round(centerY - resized.info.height / 2) }])
-      .png()
-      .toBuffer();
-  }
-
-  if (el.floralId) {
+    image = await sharp(customImage).resize(sizePx, sizePx, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).ensureAlpha().png().toBuffer();
+  } else if (el.floralId) {
     const floral = findMagnetFrameFloral(el.floralId);
     if (!floral) return base;
     const floralBuffer = await fs.readFile(path.join(process.cwd(), "public", floral.url));
-    const resized = await sharp(floralBuffer).resize(sizePx, sizePx, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    return sharp(base)
-      .composite([{ input: resized.data, raw: { width: resized.info.width, height: resized.info.height, channels: 4 }, left: Math.round(centerX - resized.info.width / 2), top: Math.round(centerY - resized.info.height / 2) }])
-      .png()
-      .toBuffer();
+    image = await sharp(floralBuffer).resize(sizePx, sizePx, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).ensureAlpha().png().toBuffer();
+  } else {
+    const ornament = findOrnament(el.ornamentId);
+    if (!ornament) return base;
+    const source = Buffer.from(ornament.svg.replace("<svg ", `<svg style="color:${el.color}" `));
+    const rendered = await ornamentLayerRaw(source, sizePx, sizePx, undefined, undefined);
+    if (!rendered) return base;
+    image = await sharp(rendered.data, { raw: { width: rendered.width, height: rendered.height, channels: 4 } }).png().toBuffer();
   }
 
-  const ornament = findOrnament(el.ornamentId);
-  if (!ornament) return base;
-  const source = Buffer.from(ornament.svg.replace("<svg ", `<svg style="color:${el.color}" `));
-  const rendered = await ornamentLayerRaw(source, sizePx, sizePx, undefined, undefined);
-  if (!rendered) return base;
-  return sharp(base)
-    .composite([{ input: rendered.data, raw: { width: rendered.width, height: rendered.height, channels: 4 }, left: Math.round(centerX - rendered.width / 2), top: Math.round(centerY - rendered.height / 2) }])
-    .png()
-    .toBuffer();
+  // Turned around its own center (clockwise, like the editor's CSS rotate).
+  const turned = el.rotation ? await sharp(image).rotate(el.rotation, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer({ resolveWithObject: true }) : null;
+  const meta = turned ? turned.info : await sharp(image).metadata();
+  const layer = await placeCentered(turned ? turned.data : image, meta.width!, meta.height!, centerX, centerY, widthPx, heightPx);
+  return sharp(base).composite([{ input: layer, left: 0, top: 0 }]).png().toBuffer();
 }
 
 // Paints every element (text and decorations, IN ORDER, so later elements land on top of earlier

@@ -135,8 +135,11 @@ function cutoutShadowStyle(settings: MagnetFrameSettings, scale: number): React.
   };
 }
 
+// White under the squares: without it the texture layer (painted over the whole card) showed
+// through the clear squares inside the photo window.
 function transparentCheckerStyle(): React.CSSProperties {
   return {
+    backgroundColor: "#ffffff",
     backgroundImage:
       "linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%)",
     backgroundSize: "14px 14px",
@@ -184,6 +187,48 @@ function NudgeButtons({ onNudge }: { onNudge: (dx: -1 | 0 | 1, dy: -1 | 0 | 1) =
   );
 }
 
+// Rotation in degrees (clockwise, -180..180), as a slider and a typed value, with a reset to 0.
+function RotationControl({ value, onChange }: { value: number; onChange: (deg: number) => void }) {
+  const t = useT();
+  const clampDeg = (n: number) => Math.max(-180, Math.min(180, Math.round(n)));
+  return (
+    <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
+      <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("סיבוב")}</span>
+      <input type="range" min={-180} max={180} value={value} onChange={(e) => onChange(clampDeg(Number(e.target.value)))} className="w-full" />
+      <input
+        type="number"
+        min={-180}
+        max={180}
+        value={value}
+        onChange={(e) => onChange(clampDeg(Number(e.target.value) || 0))}
+        className="w-14 shrink-0 rounded-md px-1.5 py-0.5 text-xs text-center border border-line bg-white text-ink"
+        aria-label={t("סיבוב")}
+      />
+      <button type="button" onClick={() => onChange(0)} className="shrink-0 text-[10px] text-ink-soft underline" title={t("איפוס")}>
+        {t("איפוס")}
+      </button>
+    </div>
+  );
+}
+
+// Where an element sits in the portrait frame when the photographer has moved it there in step 2.
+type PortraitPlacement = { xPct: number; yPct: number; rotation?: number; sizePct?: number; fontSizePx?: number };
+
+function placementOf(el: MagnetFrameElement): PortraitPlacement {
+  return el.type === "text"
+    ? { xPct: el.xPct, yPct: el.yPct, rotation: el.rotation, fontSizePx: el.fontSizePx }
+    : { xPct: el.xPct, yPct: el.yPct, rotation: el.rotation, sizePct: el.sizePct };
+}
+
+// Maps a percentage along one axis from the landscape frame to the portrait one, region by region:
+// the mat before the window, the window, the mat after it. Text centered on the bottom mat stays
+// centered on the bottom mat, even though that mat is a smaller share of the portrait's height.
+function mapAxis(v: number, a0: number, a1: number, b0: number, b1: number): number {
+  if (v <= a0) return a0 > 0 ? (v / a0) * b0 : b0;
+  if (v >= a1) return a1 < 100 ? b1 + ((v - a1) / (100 - a1)) * (100 - b1) : b1;
+  return b0 + ((v - a0) / (a1 - a0)) * (b1 - b0);
+}
+
 // The photographer edits ONE canvas (the 20x15cm "width" frame) — saving derives the 15x20cm
 // "length" companion automatically (see the POST handler in api/magnet-frames/route.ts), since
 // xPct/yPct/sizePct already carry over as-is between the two aspect ratios.
@@ -196,6 +241,14 @@ export default function MagnetFrameEditor() {
   const [digitColors, setDigitColors] = useState<Record<string, string>>({});
   const [frameSettings, setFrameSettings] = useState<MagnetFrameSettings>(DEFAULT_MAGNET_FRAME_SETTINGS);
   const [openPanel, setOpenPanel] = useState<PanelKey | null>("text");
+  // Two steps (owner, 2026-10-06): 1 = design the landscape frame; 2 = the portrait frame, already
+  // filled with everything from step 1, where only positions get adjusted.
+  const [step, setStep] = useState<1 | 2>(1);
+  const [portraitOverrides, setPortraitOverrides] = useState<Record<string, PortraitPlacement>>({});
+  // Each landscape text's width in design pixels, measured from the preview, so step 2 can shrink a
+  // text that's too wide for the narrower portrait frame.
+  const [textWidths, setTextWidths] = useState<Record<string, number>>({});
+  const textNodes = useRef<Map<string, HTMLDivElement>>(new Map());
   // Each panel's last scroll position, so reopening a panel returns to where it was left.
   const panelScroll = useRef<Partial<Record<PanelKey, number>>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -238,6 +291,20 @@ export default function MagnetFrameEditor() {
               )
             );
             setFrameSettings({ ...DEFAULT_MAGNET_FRAME_SETTINGS, ...data.design.frame_settings });
+            // Portrait positions that differ from the landscape ones were set by hand in step 2.
+            // Designs saved before the two steps have an identical copy, so step 2 fits them anew.
+            const landscapeById = new Map((data.design.landscape_elements ?? []).map((el) => [el.id, el]));
+            const overrides: Record<string, PortraitPlacement> = {};
+            for (const p of data.design.portrait_elements ?? []) {
+              const l = landscapeById.get(p.id);
+              if (!l) continue;
+              const a = placementOf(l);
+              const b = placementOf(p);
+              if (a.xPct !== b.xPct || a.yPct !== b.yPct || (a.rotation ?? 0) !== (b.rotation ?? 0) || a.sizePct !== b.sizePct || a.fontSizePx !== b.fontSizePx) {
+                overrides[p.id] = b;
+              }
+            }
+            setPortraitOverrides(overrides);
             setSavedOnce(true);
           }
         }
@@ -289,6 +356,61 @@ export default function MagnetFrameEditor() {
             opacity: frameSettings.textureOpacity / 100,
           }
         : null;
+
+  // Step 2's starting point: each element mapped region by region into the portrait frame (see
+  // mapAxis), a text too wide for it scaled down, then whatever the photographer adjusted there.
+  const portraitInset = getMatInsetPct("portrait", frameSettings.borderRatioPct, frameSettings.bottomBorderRatioPct);
+  const PORTRAIT_TEXT_MAX_W = MAGNET_FRAME_DIMENSIONS.portrait.widthPx * 0.9;
+  const portraitElements: MagnetFrameElement[] = elements.map((el) => {
+    const fitted = {
+      ...el,
+      xPct: mapAxis(el.xPct, matInset.xPct, 100 - matInset.xPct, portraitInset.xPct, 100 - portraitInset.xPct),
+      yPct: mapAxis(el.yPct, matInset.topPct, 100 - matInset.bottomPct, portraitInset.topPct, 100 - portraitInset.bottomPct),
+    } as MagnetFrameElement;
+    if (fitted.type === "text") {
+      const w = textWidths[el.id];
+      if (w && w > PORTRAIT_TEXT_MAX_W) fitted.fontSizePx = Math.max(10, Math.round((fitted.fontSizePx * PORTRAIT_TEXT_MAX_W) / w));
+    }
+    const override = portraitOverrides[el.id];
+    return (override ? { ...fitted, ...Object.fromEntries(Object.entries(override).filter(([, v]) => v !== undefined)) } : fitted) as MagnetFrameElement;
+  });
+
+  useLayoutEffect(() => {
+    const scaleL = canvasWidths.landscape / MAGNET_FRAME_DIMENSIONS.landscape.widthPx;
+    if (!scaleL) return;
+    const next: Record<string, number> = {};
+    textNodes.current.forEach((node, id) => {
+      next[id] = Math.round((node.offsetWidth - 4) / scaleL);
+    });
+    const same = Object.keys(next).length === Object.keys(textWidths).length && Object.entries(next).every(([id, w]) => textWidths[id] === w);
+    // A measurement of the rendered preview, so it can only happen after render; it settles after
+    // one extra pass (the widths stop changing).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!same) setTextWidths(next);
+  });
+
+  const setPortraitPlacement = (id: string, patch: Partial<PortraitPlacement>) => {
+    const current = portraitElements.find((e) => e.id === id);
+    setPortraitOverrides((prev) => ({ ...prev, [id]: { ...(prev[id] ?? (current ? placementOf(current) : { xPct: 50, yPct: 50 })), ...patch } }));
+  };
+  const resetPortraitPlacement = (id: string) =>
+    setPortraitOverrides((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  const PORTRAIT_NUDGE_X = (14 / MAGNET_FRAME_DIMENSIONS.portrait.widthPx) * 100;
+  const PORTRAIT_NUDGE_Y = (14 / MAGNET_FRAME_DIMENSIONS.portrait.heightPx) * 100;
+  const nudgePortrait = (id: string, dx: -1 | 0 | 1, dy: -1 | 0 | 1) => {
+    const el = portraitElements.find((e) => e.id === id);
+    if (!el) return;
+    setPortraitPlacement(id, { xPct: clamp(el.xPct + dx * PORTRAIT_NUDGE_X), yPct: clamp(el.yPct + dy * PORTRAIT_NUDGE_Y) });
+  };
+
+  const goToStep = (n: 1 | 2) => {
+    setSelectedId(null);
+    setStep(n);
+  };
 
   const selected = elements.find((e) => e.id === selectedId) ?? null;
 
@@ -351,6 +473,11 @@ export default function MagnetFrameEditor() {
 
   const removeElement = (id: string) => {
     setElements((prev) => prev.filter((el) => el.id !== id));
+    setPortraitOverrides((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     if (selectedId === id) setSelectedId(null);
   };
 
@@ -443,7 +570,9 @@ export default function MagnetFrameEditor() {
     const snapX = Math.abs(rawX - 50) <= SNAP_THRESHOLD_PCT;
     const snapY = Math.abs(rawY - 50) <= SNAP_THRESHOLD_PCT;
     setSnapGuide({ x: snapX, y: snapY });
-    updateElement(draggingId, { xPct: snapX ? 50 : rawX, yPct: snapY ? 50 : rawY });
+    const pos = { xPct: snapX ? 50 : rawX, yPct: snapY ? 50 : rawY };
+    if (dragFrame === "portrait") setPortraitPlacement(draggingId, pos);
+    else updateElement(draggingId, pos);
   };
 
   // Returns the saved design's id (null on failure), so a download can save first and then export
@@ -456,7 +585,7 @@ export default function MagnetFrameEditor() {
       const res = await fetch("/api/magnet-frames", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: designId, elements, frameSettings }),
+        body: JSON.stringify({ id: designId, elements, portraitElements, frameSettings }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -529,6 +658,7 @@ export default function MagnetFrameEditor() {
   // Picking an element on a preview opens the panel that edits it.
   const selectOnCanvas = (el: MagnetFrameElement) => {
     setSelectedId(el.id);
+    if (step === 2) return;
     if (el.type === "text") selectPanel("text");
     else selectPanel(openPanel === "digits" && el.floralId?.startsWith("digit-") ? "digits" : "elements");
   };
@@ -540,10 +670,13 @@ export default function MagnetFrameEditor() {
     const shorterDisplaySide = Math.min(widthPx || 1, widthPx * (fd.heightPx / fd.widthPx) || 1);
     const inset = getMatInsetPct(orientation, frameSettings.borderRatioPct, frameSettings.bottomBorderRatioPct);
     const cutoutRadiusPx = getCutoutRadiusPx(orientation, frameSettings, widthPx);
+    // Only the step's own frame is edited; the other one is a live preview.
+    const interactive = (step === 1) === (orientation === "landscape");
+    const list = orientation === "portrait" ? portraitElements : elements;
     return (
     <div
       ref={orientation === "portrait" ? portraitRef : landscapeRef}
-      className="relative w-full overflow-hidden touch-none select-none shadow-card"
+      className={`relative w-full overflow-hidden touch-none select-none shadow-card ${interactive ? "" : "pointer-events-none"}`}
       style={{ aspectRatio: `${fd.widthPx} / ${fd.heightPx}`, ...matCardStyle(frameSettings) }}
       onPointerMove={handlePointerMove}
       onPointerUp={() => {
@@ -576,7 +709,8 @@ export default function MagnetFrameEditor() {
           ...transparentCheckerStyle(),
         }}
       />
-      {elements.map((el) => {
+      {list.map((el) => {
+        const isSelected = interactive && selectedId === el.id;
         if (el.type === "text") {
           const fontSizeDisp = el.fontSizePx * scale;
           const shadow = el.shadowEnabled ? `${el.shadowDistancePx * scale}px ${el.shadowDistancePx * scale}px ${el.shadowBlurPx * scale}px rgba(0,0,0,0.55)` : undefined;
@@ -588,11 +722,16 @@ export default function MagnetFrameEditor() {
           return (
             <div
               key={el.id}
+              ref={(node) => {
+                if (orientation !== "landscape") return;
+                if (node) textNodes.current.set(el.id, node);
+                else textNodes.current.delete(el.id);
+              }}
               className="absolute whitespace-nowrap cursor-grab"
               style={{
                 left: `${el.xPct}%`,
                 top: `${el.yPct}%`,
-                transform: "translate(-50%, -50%)",
+                transform: `translate(-50%, -50%) rotate(${el.rotation ?? 0}deg)`,
                 fontSize: fontSizeDisp,
                 color: el.color,
                 fontFamily: albumFontFamilyCss(el.fontKey),
@@ -600,7 +739,7 @@ export default function MagnetFrameEditor() {
                 fontStyle: el.italic ? "italic" : "normal",
                 textDecoration: el.underline ? "underline" : "none",
                 textShadow: shadow,
-                outline: selectedId === el.id ? "2px dashed var(--color-amber-deep)" : "none",
+                outline: isSelected ? "2px dashed var(--color-amber-deep)" : "none",
                 outlineOffset: 4,
                 padding: 2,
                 transition: smooth ? "left 0.18s ease, top 0.18s ease, font-size 0.18s ease, color 0.18s ease, text-shadow 0.18s ease" : "none",
@@ -633,8 +772,8 @@ export default function MagnetFrameEditor() {
               top: `${el.yPct}%`,
               width: sizePx,
               height: sizePx,
-              transform: "translate(-50%, -50%)",
-              outline: selectedId === el.id ? "2px dashed var(--color-amber-deep)" : "none",
+              transform: `translate(-50%, -50%) rotate(${el.rotation ?? 0}deg)`,
+              outline: isSelected ? "2px dashed var(--color-amber-deep)" : "none",
               outlineOffset: 3,
               transition: smoothDeco ? "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease" : "none",
             }}
@@ -653,6 +792,67 @@ export default function MagnetFrameEditor() {
         );
       })}
     </div>
+    );
+  };
+
+  const elementLabel = (el: MagnetFrameElement, i: number) =>
+    el.type === "text" ? el.text.trim() || t("טקסט ריק") : el.floralId?.startsWith("digit-") ? `${t("ספרה")} ${i + 1}` : `${t("אלמנט")} ${i + 1}`;
+
+  // Step 2: only placement — pick an item (on the frame or from the list) and nudge, resize, turn it,
+  // or send it back to its automatic place.
+  const renderPortraitPanel = () => {
+    const sel = portraitElements.find((e) => e.id === selectedId) ?? null;
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-ink">{t("המסגרת לאורך כבר מוכנה עם כל מה שהוספתם במסגרת לרוחב. נשאר רק לכוון מיקומים: גוררים במסגרת, או בוחרים פריט ומכוונים כאן.")}</p>
+        <div className="flex flex-wrap gap-1.5">
+          {portraitElements.map((el, i) => (
+            <button
+              key={el.id}
+              onClick={() => setSelectedId(el.id)}
+              className="max-w-[200px] truncate rounded-full px-3 py-1 text-xs border"
+              style={{
+                borderColor: selectedId === el.id ? "var(--color-amber-deep)" : "var(--color-line)",
+                background: selectedId === el.id ? "var(--color-amber-bg)" : "var(--color-card)",
+                color: "var(--color-ink)",
+              }}
+            >
+              {elementLabel(el, i)}
+              {portraitOverrides[el.id] ? " ·" : ""}
+            </button>
+          ))}
+        </div>
+        {sel ? (
+          <div className="rounded-xl p-3 bg-chip space-y-2.5">
+            <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
+              <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
+              {sel.type === "text" ? (
+                <input type="range" min={10} max={200} value={sel.fontSizePx} onChange={(e) => setPortraitPlacement(sel.id, { fontSizePx: Number(e.target.value) })} className="w-full" />
+              ) : (
+                <input type="range" min={5} max={45} value={sel.sizePct} onChange={(e) => setPortraitPlacement(sel.id, { sizePct: Number(e.target.value) })} className="w-full" />
+              )}
+            </div>
+            <RotationControl value={sel.rotation ?? 0} onChange={(deg) => setPortraitPlacement(sel.id, { rotation: deg })} />
+            <div className="flex items-center justify-between gap-2">
+              <button
+                onClick={() => resetPortraitPlacement(sel.id)}
+                disabled={!portraitOverrides[sel.id]}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-card border border-line text-ink disabled:opacity-50"
+              >
+                {t("החזרה למיקום האוטומטי")}
+              </button>
+              <NudgeButtons onNudge={(dx, dy) => nudgePortrait(sel.id, dx, dy)} />
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-ink-soft">{t("לחצו על טקסט או אלמנט במסגרת לאורך כדי לכוון אותו.")}</p>
+        )}
+        {Object.keys(portraitOverrides).length > 0 && (
+          <button onClick={() => setPortraitOverrides({})} className="text-xs text-ink-soft underline">
+            {t("החזרת כל המיקומים לאוטומטי")}
+          </button>
+        )}
+      </div>
     );
   };
 
@@ -819,6 +1019,7 @@ export default function MagnetFrameEditor() {
                   </div>
                 </div>
               )}
+              <RotationControl value={selected.rotation ?? 0} onChange={(deg) => updateElement(selected.id, { rotation: deg })} />
               <div className="flex items-center justify-between gap-2">
                 <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
                   {t("מחיקת הטקסט")}
@@ -863,6 +1064,7 @@ export default function MagnetFrameEditor() {
                   <FreeColorPicker value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
                 </div>
               )}
+              <RotationControl value={selected.rotation ?? 0} onChange={(deg) => updateElement(selected.id, { rotation: deg })} />
               <div className="flex items-center justify-between gap-2">
                 <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
                   {t("מחיקת האלמנט")}
@@ -1000,6 +1202,7 @@ export default function MagnetFrameEditor() {
                   <FreeColorPicker value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
                 </div>
               )}
+              <RotationControl value={selected.rotation ?? 0} onChange={(deg) => updateElement(selected.id, { rotation: deg })} />
               <div className="flex items-center justify-between gap-2">
                 <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
                   {t("מחיקת האלמנט")}
@@ -1372,6 +1575,33 @@ export default function MagnetFrameEditor() {
         style={fitHeight ? { height: fitHeight } : undefined}
       >
         <section className="rounded-2xl bg-card border border-line shadow-card overflow-hidden flex flex-col sm:h-full">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-3 py-2.5 [@media(max-height:500px)]:py-1.5">
+            {([1, 2] as const).map((n) => (
+              <button
+                key={n}
+                onClick={() => goToStep(n)}
+                aria-current={step === n ? "step" : undefined}
+                className="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors"
+                style={{ background: step === n ? "var(--color-ink)" : "var(--color-chip)", color: step === n ? "#fff" : "var(--color-ink-soft)" }}
+              >
+                <span className="flex h-5 w-5 items-center justify-center rounded-full text-[11px]" style={{ background: step === n ? "rgba(255,255,255,0.2)" : "var(--color-card)" }}>
+                  {n}
+                </span>
+                {withDims(n === 1 ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: n === 1 ? "20×15" : "15×20" })}
+              </button>
+            ))}
+            <button
+              onClick={() => goToStep(step === 1 ? 2 : 1)}
+              className="ms-auto rounded-lg px-3.5 py-1.5 text-sm font-bold"
+              style={{ background: step === 1 ? "var(--color-amber-deep)" : "transparent", color: step === 1 ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
+            >
+              {step === 1 ? t("המשך למסגרת לאורך ←") : t("→ חזרה למסגרת לרוחב")}
+            </button>
+          </div>
+          {step === 2 ? (
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 [@media(max-height:500px)]:p-3">{renderPortraitPanel()}</div>
+          ) : (
+          <>
           <div role="tablist" className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:[@media(max-height:500px)]:py-2">
             {PANELS.map((panel) => {
               const open = openPanel === panel.key;
@@ -1395,6 +1625,8 @@ export default function MagnetFrameEditor() {
           <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 [@media(max-height:500px)]:p-3">
             {openPanel && renderPanelContent(openPanel)}
           </div>
+          </>
+          )}
         </section>
 
         {/* Side by side when the screen is short (a phone held sideways), stacked on a tall one. */}
@@ -1405,6 +1637,11 @@ export default function MagnetFrameEditor() {
                 <div key={o} className={o === "portrait" ? "[@media(min-width:1024px)_and_(min-height:700px)]:w-[60%] [@media(min-width:1024px)_and_(min-height:700px)]:mx-auto w-full" : "w-full"}>
                   <div className="mb-1.5 text-[11px] font-semibold text-ink-soft text-center">
                     {withDims(o === "landscape" ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: o === "landscape" ? "20×15" : "15×20" })}
+                    {(step === 1) === (o === "landscape") && (
+                      <span className="ms-1.5 rounded-full px-1.5 py-px text-[10px] text-white" style={{ background: "var(--color-amber-deep)" }}>
+                        {t("בעריכה")}
+                      </span>
+                    )}
                   </div>
                   {renderFrame(o)}
                   {/* Wraps to two rows in a narrow column (the portrait frame on a phone held sideways). */}

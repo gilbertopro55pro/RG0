@@ -237,6 +237,8 @@ export type MagnetFrameTextElement = {
   shadowEnabled: boolean;
   shadowBlurPx: number;
   shadowDistancePx: number;
+  // Degrees, clockwise, around the element's center. Missing on designs saved before rotation.
+  rotation?: number;
 };
 
 // A dropped decorative element — a built-in ALBUM_ORNAMENTS entry (ornamentId, recolorable via
@@ -257,6 +259,7 @@ export type MagnetFrameDecorationElement = {
   yPct: number;
   sizePct: number;
   color: string;
+  rotation?: number;
 };
 
 export type MagnetFrameElement = MagnetFrameTextElement | MagnetFrameDecorationElement;
