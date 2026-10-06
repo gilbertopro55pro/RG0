@@ -3123,6 +3123,18 @@ export default function GalleryManageView({
         setSettingsOpen(true);
       },
     },
+    // Share and slideshow sit right beside the settings (owner, 2026-10-06), as labelled buttons
+    // instead of the small icons at the end of the row.
+    ...(gallery.published && !isArchived ? [{ key: "share", label: t("שיתוף"), active: shareOpen, onClick: openShare }] : []),
+    {
+      key: "slideshow",
+      label: t("מצגת תמונות"),
+      active: slideshowManageOpen,
+      onClick: () => {
+        setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
+        setSlideshowManageOpen(true);
+      },
+    },
     // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
     ...(photos.length > 0 && nonBasicTierAllowed
       ? [{ key: "album", label: t("עיצוב אלבום"), active: albumManageOpen, onClick: openAlbumManage }]
@@ -3137,49 +3149,7 @@ export default function GalleryManageView({
           : "flex items-center gap-1.5"
       }
     >
-      {gallery.published && !isArchived && (
-        <button
-          onClick={openShare}
-          aria-label={t("שיתוף")}
-          title={t("שיתוף")}
-          className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
-          style={{
-            background: shareOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
-            borderColor: shareOpen ? "var(--color-amber-deep)" : "var(--color-line)",
-            // Fixed color, not the theme-flipped token — the unset state's background
-            // stays literal white in both themes, so the icon must too or it goes near-
-            // invisible once --color-ink-soft flips light for dark mode.
-            color: shareOpen ? "var(--color-on-accent)" : "var(--color-ink-soft)",
-          }}
-        >
-          <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-            <circle cx={18} cy={5} r={3} />
-            <circle cx={6} cy={12} r={3} />
-            <circle cx={18} cy={19} r={3} />
-            <line x1={8.6} y1={13.5} x2={15.4} y2={17.5} />
-            <line x1={15.4} y1={6.5} x2={8.6} y2={10.5} />
-          </svg>
-        </button>
-      )}
-      <button
-        onClick={() => {
-          setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
-          setSlideshowManageOpen(true);
-        }}
-        aria-label={t("מצגת תמונות")}
-        title={t("מצגת תמונות")}
-        className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border ${BTN_PRESS}`}
-        style={{
-          background: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-input-bg)",
-          borderColor: slideshowManageOpen ? "var(--color-amber-deep)" : "var(--color-line)",
-          color: slideshowManageOpen ? "var(--color-on-accent)" : "var(--color-ink-soft)",
-        }}
-      >
-        <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-          <rect x={3} y={3} width={18} height={18} rx={3} />
-          <path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none" />
-        </svg>
-      </button>
+      {/* Share and slideshow moved next to "הגדרות גלריה" (managerTabItems). */}
       {/* Runs entirely in the browser (see src/lib/faceRecognition.ts) — no photo ever
           leaves the photographer's device for this except the already-cached results. */}
       <button
