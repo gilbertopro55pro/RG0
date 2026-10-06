@@ -183,3 +183,37 @@ export function fillBookTemplate(
   });
   return out;
 }
+
+// How much a photographer's own template may crop a photo before the page falls back to the engine.
+const OWN_TEMPLATE_MAX_CROP = 1.8;
+
+/**
+ * The automatic design's own-template share (owner, 2026-10-06: "mostly my templates — 70% mine,
+ * 30% the system's"). For each page, in order: the photographer's own page template (album_templates)
+ * for exactly that page's photo count, or null for the style's own layout. A page takes an own
+ * template while the share so far is under `share` and one fits (least cropping first, the one used
+ * least so far and never the previous page's), so own pages spread evenly through the book. A count
+ * with no own template stays with the style's layout and the next pages catch up.
+ */
+export function ownTemplatePlan(pages: LayoutPhoto[][], own: AlbumFrame[][], W: number, H: number, share = 0.7): (AlbumFrame[] | null)[] {
+  const uses = new Map<AlbumFrame[], number>();
+  let used = 0;
+  let prev: AlbumFrame[] | null = null;
+  return pages.map((photos, i) => {
+    let pick: AlbumFrame[] | null = null;
+    if (photos.length > 1 && used < Math.round(share * (i + 1))) {
+      const fits = own
+        .filter((f) => f.length === photos.length && f !== prev)
+        .map((frames) => ({ frames, ...assignToFrames(frames, photos, W, H) }))
+        .filter((c) => c.worst <= OWN_TEMPLATE_MAX_CROP)
+        .sort((a, b) => (uses.get(a.frames) ?? 0) - (uses.get(b.frames) ?? 0) || a.cost - b.cost);
+      pick = fits[0]?.frames ?? null;
+    }
+    if (pick) {
+      used++;
+      uses.set(pick, (uses.get(pick) ?? 0) + 1);
+    }
+    prev = pick;
+    return pick;
+  });
+}

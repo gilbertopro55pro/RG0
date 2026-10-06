@@ -1920,6 +1920,24 @@ function computeSpacingGuides(
   return { guides, snapXPct, snapYPct };
 }
 
+// Snap while MOVING onto the green print-safe frame: the moved box's left/right edge onto the
+// frame's left/right line, and its top/bottom edge onto the frame's top/bottom line (owner,
+// 2026-10-06: a multi-photo selection should lock onto the green frame on both axes).
+function computeMarginMoveSnap(
+  box: { xPct: number; yPct: number; widthPct: number; heightPct: number },
+  marginInsetPct: { x: number; y: number } | null
+): { snapXPct?: number; snapYPct?: number } {
+  if (!marginInsetPct) return {};
+  const { x: mx, y: my } = marginInsetPct;
+  let snapXPct: number | undefined;
+  let snapYPct: number | undefined;
+  if (Math.abs(box.xPct - mx) < SNAP_THRESHOLD) snapXPct = mx;
+  else if (Math.abs(box.xPct + box.widthPct - (100 - mx)) < SNAP_THRESHOLD) snapXPct = 100 - mx - box.widthPct;
+  if (Math.abs(box.yPct - my) < SNAP_THRESHOLD) snapYPct = my;
+  else if (Math.abs(box.yPct + box.heightPct - (100 - my)) < SNAP_THRESHOLD) snapYPct = 100 - my - box.heightPct;
+  return { snapXPct, snapYPct };
+}
+
 // Guide lines while RESIZING — checks only the edge(s) actually moving (per the active handle)
 // against every other element's matching edge, the page's own edges, the page center, and the
 // green print-safe margin frame, so growing/shrinking a frame shows the same kind of "you've
@@ -3638,9 +3656,8 @@ export default function AlbumSpreadCanvasEditor({
     const groupIds = Object.keys(drag.groupStart);
     if (groupIds.length > 1) {
       // Multiple selected elements move together by the same delta. Guides/snapping are computed
-      // from the PRIMARY (dragged) element against everything NOT in the group, exactly like a
-      // single-element move — the resulting correction is then applied to every group member so
-      // the whole selection snaps together instead of just the one frame under the cursor.
+      // from the selection's bounding box against everything NOT in the group — the resulting
+      // correction is then applied to every group member so the whole selection snaps together.
       // Clamped against the PRIMARY element's own width/height, not a flat 95 — a flat cap only
       // bounds the anchor CORNER, so anything wider/taller than 5% of the page could still be
       // dragged clean off the right/bottom edge with zero resistance. Per explicit request: no
@@ -3648,7 +3665,6 @@ export default function AlbumSpreadCanvasEditor({
       const groupCandidateX = Math.max(0, Math.min(100 - primaryStart.widthPct, primaryStart.xPct + dxPct));
       const groupCandidateY = Math.max(0, Math.min(100 - primaryStart.heightPct, primaryStart.yPct + dyPct));
       const groupOthers = elements.filter((x) => !drag.groupStart[x.id]);
-      const groupCandidateBox = { xPct: groupCandidateX, yPct: groupCandidateY, widthPct: primaryStart.widthPct, heightPct: primaryStart.heightPct };
       // Alignment (page center included) is checked for the WHOLE selection's bounding box, so a
       // group centers on the page as one block (owner, 2026-10-06: selecting several photos showed
       // no center snap — it used to test only the photo under the cursor).
@@ -3659,11 +3675,17 @@ export default function AlbumSpreadCanvasEditor({
       const gBottom = Math.max(...groupMembers.map((g) => g.yPct + g.heightPct)) + (groupCandidateY - primaryStart.yPct);
       const groupBox = { xPct: gLeft, yPct: gTop, widthPct: gRight - gLeft, heightPct: gBottom - gTop };
       const { guides: gAlignGuides, snapXPct: gaSnapX, snapYPct: gaSnapY } = computeAlignment(groupBox, groupOthers);
-      const { guides: gSpacingGuides, snapXPct: gsSnapX, snapYPct: gsSnapY } = computeSpacingGuides(groupCandidateBox, groupOthers);
+      const { snapXPct: gmSnapX, snapYPct: gmSnapY } = computeMarginMoveSnap(groupBox, marginInsetPct);
+      // Equal spacing is measured from the whole selection's outer edges too, so the block keeps an
+      // even gap to the photos around it.
+      const { guides: gSpacingGuides, snapXPct: gsSnapX, snapYPct: gsSnapY } = computeSpacingGuides(groupBox, groupOthers);
+      const gSnapX = gaSnapX ?? gmSnapX ?? gsSnapX;
+      const gSnapY = gaSnapY ?? gmSnapY ?? gsSnapY;
       setGuides(gAlignGuides);
       setSpacingGuides(gaSnapX !== undefined || gaSnapY !== undefined ? [] : gSpacingGuides);
-      const correctionX = gaSnapX !== undefined ? gaSnapX - gLeft : (gsSnapX ?? groupCandidateX) - groupCandidateX;
-      const correctionY = gaSnapY !== undefined ? gaSnapY - gTop : (gsSnapY ?? groupCandidateY) - groupCandidateY;
+      setMarginSnap({ x: gaSnapX === undefined && gmSnapX !== undefined, y: gaSnapY === undefined && gmSnapY !== undefined });
+      const correctionX = gSnapX !== undefined ? gSnapX - gLeft : 0;
+      const correctionY = gSnapY !== undefined ? gSnapY - gTop : 0;
       setElements((prev) =>
         prev.map((e2) => {
           const gs = drag.groupStart[e2.id];
@@ -3687,11 +3709,13 @@ export default function AlbumSpreadCanvasEditor({
     const candidateBox = { xPct: candidateX, yPct: candidateY, widthPct: primaryStart.widthPct, heightPct: primaryStart.heightPct };
     const { guides: nextGuides, snapXPct: aSnapX, snapYPct: aSnapY } = computeAlignment(candidateBox, others);
     const { guides: nextSpacingGuides, snapXPct: sSnapX, snapYPct: sSnapY } = computeSpacingGuides(candidateBox, others);
+    const { snapXPct: mSnapX, snapYPct: mSnapY } = computeMarginMoveSnap(candidateBox, marginInsetPct);
     setGuides(nextGuides);
     setSpacingGuides(nextSpacingGuides);
+    setMarginSnap({ x: aSnapX === undefined && mSnapX !== undefined, y: aSnapY === undefined && mSnapY !== undefined });
     updateElement(drag.id, {
-      xPct: aSnapX ?? sSnapX ?? candidateX,
-      yPct: aSnapY ?? sSnapY ?? candidateY,
+      xPct: aSnapX ?? mSnapX ?? sSnapX ?? candidateX,
+      yPct: aSnapY ?? mSnapY ?? sSnapY ?? candidateY,
     });
   };
 
