@@ -95,7 +95,7 @@ export type LayoutInput = {
 // photo). The UI must NOT pull these into the print safe margin; everything else it fits.
 // background: the spread's background photo (gallery_album_spreads.background_photo_id) and its blur
 // (0-100, same scale as the editor's slider). Clean style: one of the spread's own photos at 45%.
-export type LayoutOutput = { elements: AlbumElement[]; bleedIds?: string[]; background?: { photoId: string; blur: number } };
+export type LayoutOutput = { elements: AlbumElement[]; bleedIds?: string[]; background?: { photoId: string; blur: number; opacity?: number } };
 
 export type CoverInput = {
   style: AutoStyleId;

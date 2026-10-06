@@ -1764,9 +1764,265 @@ function composeCatalog(ctx: Ctx): Cand | null {
   return cands[1 + ((v - 1) % (cands.length - 1))];
 }
 
+// ---------------------------------------------------------------------------------------------
+// Signature style — clean and modern (owner, 2026-10-06): "this is the style I want", measured
+// from the photographer's own albums (Ortal's bat mitzvah, Ron & Noya, Itay & Lital's henna — 54
+// inner spreads):
+//  - many photos a page (3-5 on the first pages, 8-15 later), in tidy justified rows (one height a
+//    row, every row the grid's full width), ~0.7cm gaps, the grid filling the page top to bottom;
+//  - page kinds, mixed through the book: a faded hero bleeding from one side (fade-25 toward the
+//    grid, the grid sitting on the faded strip); two faded heroes, one at each side, with a column
+//    between them; a full-page grid; a grid beside one big photo spanning its height;
+//  - a translucent shape behind the grid (white ~45% across the page in clean, a white outline
+//    frame in modern);
+//  - framed photos with a thin 3px outline (black in clean, white in modern) and a 35% shadow;
+//  - a blurred photo of the page as its background on every page (40%, at 55% opacity).
+// ---------------------------------------------------------------------------------------------
+
+type SigKind = "fade" | "two" | "grid" | "feature";
+const SIG_MAX_CROP = 1.35;
+const SIG_HERO_CROP = 1.6;
+type SigGrid = { rects: Placed[]; bounds: Rect; crop: number; score: number; fill: number };
+
+// Justified rows filling `box`: each row as wide as the grid, the rows' heights scaled together to
+// the box height (crop ≤ ~1.35); when the rows would be far too tall the grid narrows (centred).
+function sigRows(photos: P[], idxs: number[], box: Rect, g: number): SigGrid | null {
+  const k = idxs.length;
+  if (!k || box.w <= 0 || box.h <= 0) return null;
+  let best: SigGrid | null = null;
+  for (let r = 1; r <= Math.min(k, 5); r++) {
+    const parts = [balancedRows(photos, idxs, r)];
+    if (r > 1 && k > r) parts.push(lptRows(photos, idxs, r));
+    for (const rows of parts) {
+      if (rows.length !== r) continue;
+      const A = rows.map((row) => row.reduce((s, i) => s + photos[i].aspect, 0));
+      const heightsAt = (w: number) => rows.map((row, i) => (w - g * (row.length - 1)) / A[i]);
+      const avail = box.h - g * (r - 1);
+      let w = box.w;
+      let hs = heightsAt(w);
+      let f = avail / hs.reduce((a, b) => a + b, 0);
+      if (f < 1 / 1.12) {
+        // Too tall: narrow the grid until the rows fit (down to 70% of the box).
+        const inv = rows.reduce((s, _, i) => s + 1 / A[i], 0);
+        const gapTerm = rows.reduce((s, row, i) => s + (g * (row.length - 1)) / A[i], 0);
+        w = clamp((avail / 1.06 + gapTerm) / inv, box.w * 0.7, box.w);
+        hs = heightsAt(w);
+        f = avail / hs.reduce((a, b) => a + b, 0);
+      }
+      // Too short: the rows stretch at most 1.3 taller (a little off the sides), the rest stays as
+      // even margin.
+      const fy = Math.min(f, 1.3);
+      const crop = Math.max(fy, 1 / fy);
+      const usedH = hs.reduce((a, b) => a + b * fy, 0) + g * (r - 1);
+      const ox = box.x + (box.w - w) / 2;
+      let y = box.y + (box.h - usedH) / 2;
+      const rects: Placed[] = [];
+      rows.forEach((row, i) => {
+        let x = ox;
+        const h = hs[i] * fy;
+        for (const idx of row) {
+          const pw = hs[i] * photos[idx].aspect;
+          rects.push({ idx, r: { x, y, w: pw, h } });
+          x += pw + g;
+        }
+        y += h + g;
+      });
+      const disparity = Math.max(...hs) / Math.min(...hs);
+      const lonely = k >= 4 ? rows.filter((row) => row.length === 1).length : 0;
+      const fill = (w * usedH) / (box.w * box.h);
+      const score = 2 * fill - 1.6 * Math.abs(Math.log(fy)) - 0.5 * Math.max(0, Math.log(disparity / 1.7)) - 0.25 * lonely - (crop > SIG_MAX_CROP ? 2 : 0);
+      if (!best || score > best.score) best = { rects, bounds: { x: ox, y: box.y + (box.h - usedH) / 2, w, h: usedH }, crop, score, fill };
+    }
+  }
+  return best;
+}
+
+// The photo that best fits a w x h frame (least crop), skipping `skip`.
+function sigBestFit(photos: P[], w: number, h: number, skip: Set<number>, prefer?: number): { idx: number; crop: number } | null {
+  let best: { idx: number; crop: number } | null = null;
+  photos.forEach((p, i) => {
+    if (skip.has(i)) return;
+    const crop = cropOf(p.aspect, { x: 0, y: 0, w, h }) * (i === prefer ? 0.92 : 1);
+    if (!best || crop < best.crop) best = { idx: i, crop };
+  });
+  return best;
+}
+
+type SigPlan = {
+  kind: SigKind;
+  heroes: { idx: number; r: Rect; mask?: string }[];
+  grid: SigGrid;
+  extra: Placed[]; // framed photos outside the rows (the feature photo)
+  panel: Rect | null;
+  panelMask?: string;
+  score: number;
+};
+
+function sigPlan(ctx: Ctx, kind: SigKind, side: 0 | 1): SigPlan | null {
+  const { geo, photos } = ctx;
+  const { W, H } = geo;
+  const n = photos.length;
+  const g = 0.7 * clamp(H / 30, 0.65, 1.2);
+  const mx = 0.035 * W;
+  const my = 0.06 * H;
+  const all = range(0, n);
+  const left = side === 0;
+  if (kind === "fade") {
+    if (n < 2) return null;
+    // The hero's width follows its photo within a range set by how many photos share the page
+    // (a wide hero with few photos, a narrow strip with many).
+    const [lo, hi] = n <= 3 ? [0.6, 0.75] : n <= 5 ? [0.52, 0.7] : n <= 8 ? [0.38, 0.55] : n <= 12 ? [0.3, 0.45] : [0.26, 0.38];
+    const widthFor = (i: number) => clamp(H * photos[i].aspect, lo * W, hi * W);
+    let hero: { idx: number; crop: number } | null = null;
+    photos.forEach((p, i) => {
+      // A landscape hero is preferred (a wide faded photo is what most of the owner's pages open
+      // with); a portrait takes the strip when no landscape fits.
+      const crop = cropOf(p.aspect, { x: 0, y: 0, w: widthFor(i), h: H }) * (i === ctx.heroIdx ? 0.95 : 1) * (p.aspect > 1.05 ? 0.8 : 1);
+      if (!hero || crop < hero.crop) hero = { idx: i, crop };
+    });
+    if (!hero || (hero as { crop: number }).crop > SIG_HERO_CROP) return null;
+    const hp = hero as { idx: number; crop: number };
+    const hw = widthFor(hp.idx);
+    const r = { x: left ? 0 : W - hw, y: 0, w: hw, h: H };
+    // The grid reaches over the hero's faded strip (the last ~20% of it), never past it.
+    const near = 0.8 * hw;
+    const box = left ? { x: near, y: my, w: W - mx - near, h: H - 2 * my } : { x: mx, y: my, w: W - near - mx, h: H - 2 * my };
+    const grid = sigRows(photos, all.filter((i) => i !== hp.idx), box, g);
+    if (!grid) return null;
+    const gb = grid.bounds;
+    const panel = n >= 7 ? (left ? { x: gb.x - 0.03 * W, y: gb.y - 0.035 * H, w: W - gb.x + 0.03 * W, h: gb.h + 0.07 * H } : { x: 0, y: gb.y - 0.035 * H, w: gb.x + gb.w + 0.03 * W, h: gb.h + 0.07 * H }) : null;
+    return {
+      kind,
+      heroes: [{ idx: hp.idx, r, mask: left ? "fade-right-25" : "fade-left-25" }],
+      grid,
+      extra: [],
+      panel,
+      panelMask: left ? "fade-left-25" : "fade-right-25",
+      score: grid.score - 0.4 * Math.log(hp.crop),
+    };
+  }
+  if (kind === "two") {
+    if (!geo.double || n < 3 || n > 6) return null;
+    const hw = 0.32 * W;
+    const a = sigBestFit(photos, hw, H, new Set(), ctx.heroIdx);
+    if (!a || a.crop > SIG_HERO_CROP) return null;
+    const b = sigBestFit(photos, hw, H, new Set([a.idx]));
+    if (!b || b.crop > SIG_HERO_CROP) return null;
+    const box = { x: 0.8 * hw, y: my, w: W - 1.6 * hw, h: H - 2 * my };
+    const grid = sigRows(photos, all.filter((i) => i !== a.idx && i !== b.idx), box, g);
+    if (!grid) return null;
+    const [l, rr] = left ? [a.idx, b.idx] : [b.idx, a.idx];
+    const gb = grid.bounds;
+    return {
+      kind,
+      heroes: [
+        { idx: l, r: { x: 0, y: 0, w: hw, h: H }, mask: "fade-right-25" },
+        { idx: rr, r: { x: W - hw, y: 0, w: hw, h: H }, mask: "fade-left-25" },
+      ],
+      grid,
+      extra: [],
+      panel: { x: gb.x - 0.025 * W, y: gb.y - 0.04 * H, w: gb.w + 0.05 * W, h: gb.h + 0.08 * H },
+      panelMask: "fade-vert-15",
+      score: grid.score - 0.4 * Math.log(a.crop * b.crop),
+    };
+  }
+  const box = { x: mx, y: my, w: W - 2 * mx, h: H - 2 * my };
+  if (kind === "grid") {
+    if (n < 4) return null;
+    const grid = sigRows(photos, all, box, g);
+    if (!grid) return null;
+    const gb = grid.bounds;
+    return { kind, heroes: [], grid, extra: [], panel: { x: 0, y: gb.y + 0.12 * gb.h, w: W, h: 0.76 * gb.h }, score: grid.score };
+  }
+  // feature: one big photo spanning the grid's height at one side, rows beside it.
+  if (n < 5) return null;
+  const fh = box.h;
+  const pick = sigBestFit(photos, clamp(fh * 0.75, 0.3 * box.w, 0.45 * box.w), fh, new Set(), ctx.heroIdx);
+  if (!pick) return null;
+  const fw = clamp(fh * photos[pick.idx].aspect, 0.3 * box.w, 0.45 * box.w);
+  const fr = { x: left ? box.x : box.x + box.w - fw, y: box.y, w: fw, h: fh };
+  if (cropOf(photos[pick.idx].aspect, fr) > SIG_MAX_CROP + 0.1) return null;
+  const rest = left ? { x: box.x + fw + g, y: box.y, w: box.w - fw - g, h: box.h } : { x: box.x, y: box.y, w: box.w - fw - g, h: box.h };
+  const grid = sigRows(photos, all.filter((i) => i !== pick.idx), rest, g);
+  if (!grid) return null;
+  return {
+    kind,
+    heroes: [],
+    grid,
+    extra: [{ idx: pick.idx, r: fr }],
+    panel: { x: 0, y: box.y + 0.12 * box.h, w: W, h: 0.76 * box.h },
+    score: grid.score - 0.5 * Math.log(cropOf(photos[pick.idx].aspect, fr)),
+  };
+}
+
+// The page kinds in the order a book cycles through them, by how many photos the page holds.
+function sigCycle(n: number): SigKind[] {
+  return n <= 3 ? ["fade", "two"] : n <= 6 ? ["fade", "two", "fade", "grid"] : ["fade", "grid", "feature", "grid"];
+}
+
+function composeSignature(ctx: Ctx): AlbumElement[] | null {
+  const { geo, photos, input } = ctx;
+  const n = photos.length;
+  const turn = input.spreadIndex + (input.variant ?? 0);
+  const cycle = sigCycle(n);
+  const want = cycle[turn % cycle.length];
+  // The side flips every time the same kind comes round again, so consecutive faded heroes (and
+  // feature photos) alternate sides through the book.
+  const seen = Math.floor(turn / cycle.length) * cycle.filter((k) => k === want).length + cycle.slice(0, turn % cycle.length).filter((k) => k === want).length;
+  const side = (seen % 2) as 0 | 1;
+  // The page's own kind when it works; else the best of the others.
+  let plan = sigPlan(ctx, want, side);
+  // A grid that had to shrink well inside its space (white on both sides) gives way too.
+  if (!plan || plan.grid.crop > SIG_MAX_CROP || plan.grid.fill < 0.8) {
+    const alts = (["fade", "grid", "feature", "two"] as SigKind[])
+      .filter((k) => k !== want)
+      .map((k) => sigPlan(ctx, k, side))
+      .filter((p): p is SigPlan => !!p)
+      .sort((a, b) => b.score - a.score);
+    if (alts[0] && (!plan || alts[0].score > plan.score)) plan = alts[0];
+  }
+  if (!plan) return null;
+  const els: AlbumElement[] = [];
+  let k = 0;
+  for (const h of plan.heroes) {
+    const zone: Partial<FaceZone> = h.mask === "fade-right-25" ? { x0: 0.02, x1: 0.75 } : h.mask === "fade-left-25" ? { x0: 0.25, x1: 0.98 } : {};
+    const focal = bleedFocal(ctx, h.idx, h.r, zone);
+    const el = photoEl(`${ctx.prefix}-${k++}`, photos[h.idx].id, h.r, geo, { ...(h.mask ? { maskId: h.mask } : {}), ...(focal ? { focalX: focal.focalX, focalY: focal.focalY } : {}) });
+    ctx.bleed.add(el.id);
+    if (focal) ctx.fixedFocal.add(el.id);
+    els.push(el);
+  }
+  if (plan.heroes.length) ctx.heroIdx = plan.heroes[0].idx;
+  else if (plan.extra.length) ctx.heroIdx = plan.extra[0].idx;
+  if (plan.panel && input.style === "modern") {
+    // Modern: a white outline frame around the grid (the owner's Ron & Noya album), inside the page.
+    const b = boundsOf([...plan.extra, ...plan.grid.rects].map((p) => p.r));
+    const pad = 0.025 * geo.H;
+    const x0 = Math.max(0.012 * geo.W, b.x - pad);
+    const y0 = Math.max(0.02 * geo.H, b.y - pad);
+    const x1 = Math.min(0.988 * geo.W, b.x + b.w + pad);
+    const y1 = Math.min(0.98 * geo.H, b.y + b.h + pad);
+    els.push(shapeEl(`${ctx.prefix}-panel`, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, geo, "#ffffff", { shapeStyle: "rect-outline", borderWidth: 6, borderColor: "#ffffff", opacity: 70 }));
+  } else if (plan.panel) {
+    // Clean: a translucent white sheet behind the grid, running off the page edge.
+    const r = plan.panel;
+    const clipped = { x: Math.max(0, r.x), y: Math.max(0, r.y), w: Math.min(geo.W, r.x + r.w) - Math.max(0, r.x), h: Math.min(geo.H, r.y + r.h) - Math.max(0, r.y) };
+    const panel = shapeEl(`${ctx.prefix}-panel`, clipped, geo, "#ffffff", { opacity: 45, ...(plan.panelMask ? { maskId: plan.panelMask } : {}) });
+    ctx.bleed.add(panel.id);
+    els.push(panel);
+  }
+  const framed = [...plan.extra, ...plan.grid.rects].sort((a, b) => a.idx - b.idx);
+  for (const f of framed) els.push(photoEl(`${ctx.prefix}-${k++}`, photos[f.idx].id, f.r, geo));
+  return els;
+}
+
 function composeSpread(ctx: Ctx): AlbumElement[] | null {
   const { geo, photos, input } = ctx;
   const cfg = STYLE_CFG[input.style] ?? STYLE_CFG.clean;
+  if (input.style === "clean" || input.style === "modern") {
+    const els = composeSignature(ctx);
+    if (els) return els;
+  }
   if (input.style === "clean") {
     if (input.variant) {
       // Redesign: the clean structures plus the general composer's other kinds (two heroes, a band
@@ -1837,28 +2093,6 @@ function buildElements(ctx: Ctx, c: Cand): AlbumElement[] {
     const phase = hashString(`${input.spreadIndex}|tape`) % 2;
     els.push(...tapeEls(ctx, frames, phase, frames.length));
   }
-  if (input.style === "modern") {
-    // A thin accent line in the space under a block that doesn't reach the page's lower part.
-    const lineColor = "#b08d57"; // gold on the charcoal page
-    c.clusters.forEach((cl, i) => {
-      const cb = cl.bounds;
-      const below = cl.avail.y + cl.avail.h - (cb.y + cb.h);
-      if (below < 0.12 * H) return;
-      const len = Math.min(0.4 * cb.w, 0.16 * W);
-      const y = cb.y + cb.h + below / 2;
-      const t = Math.max(0.06, H * 0.004);
-      for (const x of [cb.x + cb.w - len, cb.x]) {
-        const lr = { x, y: y - t / 2, w: len, h: t };
-        const hits = [...c.bleeds.map((b) => b.r), ...c.frames.map((f) => f.r)].some(
-          (r) => lr.x < r.x + r.w && lr.x + lr.w > r.x && lr.y < r.y + r.h && lr.y + lr.h > r.y
-        );
-        if (!hits && x >= 0.04 * W && x + len <= 0.96 * W) {
-          els.push(lineEl(`${ctx.prefix}-line-${i}`, x, y, len, geo, lineColor));
-          break;
-        }
-      }
-    });
-  }
   return els;
 }
 
@@ -1873,18 +2107,19 @@ function buildElements(ctx: Ctx, c: Cand): AlbumElement[] {
 //   modern   — nothing: bare photos, edge to edge with tight gaps on the charcoal page.
 const FRAME_BORDER = { borderWidth: 3, borderColor: "#ffffff", shadow: 35 } as const;
 const FRAME_FINISH: Record<AutoStyleId, { borderWidth: number; borderColor: string; shadow: number } | null> = {
-  clean: FRAME_BORDER,
+  // Clean and modern follow the photographer's own albums (2026-10-06): a thin 3px outline, black
+  // in clean and white in modern, with a 35% shadow.
+  clean: { borderWidth: 3, borderColor: "#000000", shadow: 35 },
   catalog: { borderWidth: 5, borderColor: "#ffffff", shadow: 15 },
   // (3px like clean — owner, 2026-09-30: the 10px polaroid border was too thick.)
   scribble: { borderWidth: 3, borderColor: "#ffffff", shadow: 45 },
-  modern: null,
+  modern: { borderWidth: 3, borderColor: "#ffffff", shadow: 35 },
 };
 
 // A full-spread colour under everything (the paper of the page): scribble's warm kraft paper and
 // modern's charcoal. It's a bleed (the UI must not pull it into the safe margin).
 const PAGE_COLOR: Partial<Record<AutoStyleId, { suffix: string; color: string }>> = {
   scribble: { suffix: "paper", color: "#efe6d6" },
-  modern: { suffix: "bg", color: "#1c1c1c" },
 };
 
 function frameAspectOf(e: AlbumPhotoElement, geo: Geo): number {
@@ -1982,11 +2217,14 @@ export function layoutSpread(input: LayoutInput): LayoutOutput {
   // Clean and catalog (owner, 2026-09-29): every spread (the cover aside) has a background — its hero,
   // blurred 45%, so the faded hero melts into a soft copy of itself and the white around the grid
   // takes the page's colours.
-  if (input.style === "clean" || input.style === "catalog") out.background = { photoId: ctx.photos[ctx.heroIdx ?? pickHero(ctx.photos)].id, blur: CLEAN_BACKGROUND_BLUR };
+  if (input.style === "clean" || input.style === "modern") out.background = { photoId: ctx.photos[ctx.heroIdx ?? pickHero(ctx.photos)].id, blur: SIGNATURE_BACKGROUND.blur, opacity: SIGNATURE_BACKGROUND.opacity };
+  else if (input.style === "catalog") out.background = { photoId: ctx.photos[ctx.heroIdx ?? pickHero(ctx.photos)].id, blur: CLEAN_BACKGROUND_BLUR };
   return out;
 }
 
 const CLEAN_BACKGROUND_BLUR = 45;
+// The photographer's own albums: blur ~40 at ~55% opacity on every page (2026-10-06).
+const SIGNATURE_BACKGROUND = { blur: 40, opacity: 55 };
 
 type CoverStyle = { font: string; color: string; maxFs: number };
 
@@ -2027,6 +2265,20 @@ export function layoutCover(input: CoverInput): LayoutOutput {
       ...extra,
     };
   };
+
+  if (photo && (style === "clean" || style === "modern")) {
+    // The owner's covers (2026-10-06): the photo inset a little with a soft shadow, the same photo
+    // blurred behind it, a translucent white strip across its lower part and the title on it.
+    const ix = 0.03 * W;
+    const iy = 0.03 * H;
+    const r = { x: ix, y: iy, w: W - 2 * ix, h: H - 2 * iy };
+    const c = faceCropFocal(photo.aspect, r.w / r.h, validFaces(input.photo ?? undefined), { y0: 0.03, y1: 0.68 });
+    const fallback = c.fits ? c : faceCropFocal(photo.aspect, r.w / r.h, validFaces(input.photo ?? undefined));
+    els.push(photoEl("auto-cover-photo", photo.id, r, geo, { focalX: fallback.focalX, focalY: fallback.focalY, zoom: 100, shadow: 30 }));
+    els.push(shapeEl("auto-cover-band", { x: ix, y: 0.72 * H, w: W - 2 * ix, h: 0.25 * H }, geo, "#ffffff", { opacity: 25 }));
+    els.push(text(fsFor(ts.maxFs), 83, "#ffffff", ts.font, { shadow: 60 }));
+    return { elements: els, background: { photoId: photo.id, blur: 40, opacity: 60 } };
+  }
 
   if (photo) {
     // The photo covers the whole canvas (a bleed element, no border), cropped around the faces and
