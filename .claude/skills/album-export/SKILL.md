@@ -33,6 +33,12 @@ through `notificationEmailFor`).
 | PSD | `export-psd` | Vercel, same path as JPG | zip of layered PSDs, 300 DPI in resolution info | valid `8BPS` v1, 3543×2362, 11s |
 | בית דפוס | `send-to-print-house` | Vercel, same JPG job + `send_to_email` | email to the print house with a 7-day link; reply-to is the photographer | toast "נשלח בהצלחה ל-…", job `ready`; JPGs at 300 DPI; email confirmed delivered to the inbox (not spam) |
 
+Print-house email wording (2026-10-06): Gmail put the old notification-style mail ("קבצי הדפסה | …",
+no signature) under the Updates tab. It now reads as a personal note: subject "קבצים להדפסה: אלבום …",
+a short body, "אפשר פשוט להשיב למייל הזה", and the photographer's signature (name, phone, email).
+Gmail's tabs are its own classifier, so this improves the odds but can't guarantee the inbox; the
+sure fix on the recipient side is moving one email to Primary ("do this for future messages").
+
 Print-house notes (since 2026-09-28): the "שליחה לבית דפוס" sheet has an optional
 "הנחיות והערות לבית הדפוס" textarea. It's sent as `notes` (trimmed, max 2000), stored on the job
 as `send_notes` (migration 0139) and added to the print-house email under "הנחיות והערות:".
