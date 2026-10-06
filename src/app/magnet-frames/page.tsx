@@ -26,8 +26,9 @@ export default async function MagnetFramesPage() {
   return (
     // The editor renders its own title row (title, help, save) and sizes itself to the screen, so the
     // bottom padding stays small: the page itself doesn't scroll.
-    <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-5 pb-4 w-full">
-      <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-3" />
+    <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-5 [@media(max-height:500px)]:pt-2 pb-4 w-full">
+      {/* On a short screen (a phone held sideways) the editor's title row carries its own back arrow. */}
+      <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-3 [@media(max-height:500px)]:hidden" />
       <MagnetFrameEditor />
     </div>
   );
