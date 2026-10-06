@@ -9,6 +9,7 @@ import {
 } from "@/lib/magnetFrame";
 import { MAGNET_FRAME_DPI, MAGNET_EXPORT_SCALE as S, magnetExportDimensions } from "@/lib/magnetFrameShared";
 import type { LoadedMagnetDesign } from "@/lib/magnetFrameLoad";
+import { getAlbumFontDef } from "@/lib/albumFontFiles";
 import type { FrameOrientation, MagnetFrameElement } from "@/lib/types";
 
 // Same fix as albumPsd.ts (see its comment): ag-psd also writes the legacy `lrFX` effects block,
@@ -71,6 +72,45 @@ async function trimmedLayer(png: Buffer, name: string, extra: Partial<Layer> = {
   };
 }
 
+// Photoshop finds a font by its PostScript name. For these Google fonts that's the family without
+// spaces plus the style ("Heebo-Bold", "FrankRuhlLibre-Regular", "PlayfairDisplay-Italic"). Fonts
+// that come in one weight only get Photoshop's faux bold/italic instead of a style that doesn't exist.
+const SINGLE_STYLE_FONTS = new Set(["secular-one", "suez-one", "great-vibes", "pacifico", "permanent-marker", "gveret-levin", "alef"]);
+const HEBREW_RE = /[\u0590-\u05FF]/;
+
+function typeLayerData(el: Extract<MagnetFrameElement, { type: "text" }>, widthPx: number, heightPx: number): NonNullable<Layer["text"]> {
+  const text = el.text.trim();
+  // A Latin-only font with Hebrew text renders the Hebrew in Heebo, here as in the PNG.
+  const def = HEBREW_RE.test(text) && getAlbumFontDef(el.fontKey).category === "latin" ? getAlbumFontDef("heebo") : getAlbumFontDef(el.fontKey);
+  const family = def.label.replace(/\s*\(.*\)\s*$/, "").replace(/\s+/g, "");
+  const single = SINGLE_STYLE_FONTS.has(def.key);
+  const styleName = single ? "Regular" : el.bold && el.italic ? "BoldItalic" : el.bold ? "Bold" : el.italic ? "Italic" : "Regular";
+  const fontSizePx = el.fontSizePx * S;
+  // Point text anchored at the middle of its baseline (centered paragraph); the baseline sits about
+  // a third of the size below the visual center. Rotation turns around that anchor.
+  const cx = (el.xPct / 100) * widthPx;
+  const cy = (el.yPct / 100) * heightPx + fontSizePx * 0.35;
+  const rad = ((el.rotation ?? 0) * Math.PI) / 180;
+  const color = el.color.replace("#", "");
+  const full = color.length === 3 ? color.split("").map((c) => c + c).join("") : color;
+  const n = parseInt(full, 16);
+  return {
+    text,
+    transform: [Math.cos(rad), Math.sin(rad), -Math.sin(rad), Math.cos(rad), cx, cy],
+    antiAlias: "smooth",
+    style: {
+      font: { name: `${family}-${styleName}` },
+      // Photoshop's type size is this number times the transform's scale (1 here), in pixels.
+      fontSize: fontSizePx,
+      fillColor: { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 },
+      fauxBold: single && el.bold,
+      fauxItalic: single && el.italic,
+      underline: el.underline,
+    },
+    paragraphStyle: { justification: "center" },
+  };
+}
+
 function elementName(el: MagnetFrameElement, index: number): string {
   if (el.type === "text") return (el.text.trim() || "טקסט").replace(/\s+/g, " ").slice(0, 40);
   if (el.floralId?.startsWith("digit-")) return `ספרה ${index + 1}`;
@@ -85,8 +125,7 @@ function elementName(el: MagnetFrameElement, index: number): string {
 //   shows inside the window, like the PNG's shadow).
 // - "טקסטורה": clipped to the mat, opacity already in the pixels.
 // - One layer per text and element, in the editor's order. A text's shadow is a live Drop Shadow.
-// Text is pixels, not editable type: a Hebrew type layer needs fonts and Photoshop's own text
-// engine, which can't be checked from here.
+// Each text is an editable type layer (see typeLayerData), with a hidden picture of it as a backup.
 export async function renderMagnetFramePsd(orientation: FrameOrientation, design: LoadedMagnetDesign): Promise<Buffer> {
   const { widthPx, heightPx } = magnetExportDimensions(orientation);
   const { elements, settings, customTextureImage, customElementBuffers } = design;
@@ -131,7 +170,19 @@ export async function renderMagnetFramePsd(orientation: FrameOrientation, design
         ? dropShadow({ angle: 135, distancePx: el.shadowDistancePx * S * Math.SQRT2, sizePx: el.shadowBlurPx * S * 2.5, opacity: 0.55 })
         : undefined;
     const layer = await trimmedLayer(png, elementName(el, i), effects ? { effects } : {});
-    if (layer) children.push(layer);
+    if (!layer) continue;
+    if (el.type !== "text") {
+      children.push(layer);
+      continue;
+    }
+    // Text (owner, 2026-10-06): a real, editable Photoshop type layer carrying our own rendering as
+    // its pixels, so it looks right the moment the file opens. Photoshop asks to "Update" type
+    // layers written this way; after updating it redraws them with its own engine and the
+    // photographer's installed font. A hidden picture of the same text stays underneath as a
+    // backup, in case that redraw comes out different (a missing font, or Hebrew in a Photoshop
+    // without Middle Eastern features turned on).
+    children.push({ ...layer, name: `${layer.name} (תמונה, גיבוי)`, hidden: true, effects: undefined });
+    children.push({ ...layer, text: typeLayerData(el, widthPx, heightPx) });
   }
 
   // The flattened image too, so previews (Finder, Bridge, the browser) show the real design.
