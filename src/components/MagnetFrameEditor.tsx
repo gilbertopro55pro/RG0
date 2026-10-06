@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { ALBUM_ORNAMENTS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { MAGNET_FRAME_TEXTURES, findMagnetFrameTexture, textureDataUrl } from "@/lib/magnetFrameTextures";
@@ -1294,7 +1295,7 @@ export default function MagnetFrameEditor() {
         return;
       }
       const top = el.getBoundingClientRect().top + window.scrollY;
-      setFitHeight(Math.max(320, Math.floor(window.innerHeight - top - 16)));
+      setFitHeight(Math.max(200, Math.floor(window.innerHeight - top - 16)));
       setTallScreen(window.matchMedia("(min-width: 1024px) and (min-height: 700px)").matches);
     };
     measure();
@@ -1323,8 +1324,17 @@ export default function MagnetFrameEditor() {
       <p className="text-sm text-ink-soft">{t("כלי עיצוב המגנטים עובד במצב אופקי: המסגרות מצד אחד והפאנלים מהצד השני. סובבו את הטלפון כדי להמשיך.")}</p>
     </div>
     <div className={`[@media(pointer:coarse)_and_(orientation:portrait)_and_(max-width:767px)]:hidden ${ALBUM_FONT_CLASS_NAMES}`}>
-      <div className="flex items-center gap-2 mb-4">
-        <h1 className="text-[26px] font-bold font-display">{t("עיצוב מסגרת מגנט")}</h1>
+      <div className="flex items-center gap-2 mb-4 [@media(max-height:500px)]:mb-2">
+        <Link
+          href="/"
+          aria-label={t("חזרה לדף הבית")}
+          className="hidden [@media(max-height:500px)]:flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line bg-card text-ink-soft"
+        >
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="ltr:rotate-180">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </Link>
+        <h1 className="text-[26px] [@media(max-height:500px)]:text-lg font-bold font-display">{t("עיצוב מסגרת מגנט")}</h1>
         <div className="relative">
           <button
             onClick={() => setHelpOpen((v) => !v)}
@@ -1350,7 +1360,7 @@ export default function MagnetFrameEditor() {
         <button
           onClick={() => void save()}
           disabled={saving || !!exportBusy}
-          className="ms-auto shrink-0 rounded-xl px-7 py-3 text-base font-bold bg-ink text-white shadow-card disabled:opacity-60"
+          className="ms-auto shrink-0 rounded-xl px-7 py-3 [@media(max-height:500px)]:py-1.5 [@media(max-height:500px)]:px-5 text-base font-bold bg-ink text-white shadow-card disabled:opacity-60"
         >
           {saving && !exportBusy ? t("שומר...") : t("שמירה")}
         </button>
@@ -1362,7 +1372,7 @@ export default function MagnetFrameEditor() {
         style={fitHeight ? { height: fitHeight } : undefined}
       >
         <section className="rounded-2xl bg-card border border-line shadow-card overflow-hidden flex flex-col sm:h-full">
-          <div role="tablist" className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div role="tablist" className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:[@media(max-height:500px)]:py-2">
             {PANELS.map((panel) => {
               const open = openPanel === panel.key;
               return (
@@ -1382,7 +1392,7 @@ export default function MagnetFrameEditor() {
               );
             })}
           </div>
-          <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto p-4">
+          <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 [@media(max-height:500px)]:p-3">
             {openPanel && renderPanelContent(openPanel)}
           </div>
         </section>
