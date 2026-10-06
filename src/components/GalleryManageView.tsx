@@ -5155,8 +5155,9 @@ export default function GalleryManageView({
                 />
               ) : (
               <>
-                {/* Open to every plan with the album editor (owner, 2026-09-30; was admin-only
-                    while being polished) — this whole branch is already behind nonBasicTierAllowed. */}
+                {/* Admin only again (owner, 2026-10-06): the result still needs polish (layouts not
+                    tidy enough, photo order mixed up). Was open to every plan from 2026-09-30. */}
+                {photographerEmail === ADMIN_EMAIL && (
                 <button
                   type="button"
                   onClick={openAutoDesign}
@@ -5168,6 +5169,7 @@ export default function GalleryManageView({
                   </span>
                   <span className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold bg-ink text-white">{t("התחלה")}</span>
                 </button>
+                )}
                 <p className="text-xs text-ink-soft mb-3.5">
                   {t("קודם כל, מה מידות האלבום להדפסה? תתחילו מעמוד ריק אחד, ומשם תוכלו לבחור תבנית מוכנה או לעצב בעצמכם, ולהוסיף עוד עמודים בהמשך.")}
                 </p>
@@ -5601,7 +5603,8 @@ export default function GalleryManageView({
                           >
                             <IconAlbumClose size={9} />
                           </button>
-                          {nonBasicTierAllowed && spread.width_cm === null && (
+                          {/* Part of the automatic designer: admin only for now, like it (2026-10-06). */}
+                          {photographerEmail === ADMIN_EMAIL && spread.width_cm === null && (
                             <button
                               onClick={() => redesignSpread(spread)}
                               disabled={redesigning !== null}

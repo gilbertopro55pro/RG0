@@ -4,7 +4,7 @@ import { useResumeState } from "@/lib/updateResume";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AlbumElement, AlbumFrame, AlbumOrnamentElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement, AlbumTemplateRow, GalleryAlbumSpreadRow } from "@/lib/types";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
-import { TEXT_COLOR_PALETTE, isLightTextColor } from "@/lib/textColor";
+import { TEXT_COLOR_PALETTE } from "@/lib/textColor";
 import { TEMPLATE_TABS, TEMPLATE_BANK, templateTabFor, type TemplateTabKey } from "@/lib/albumTemplateBank";
 import { ALBUM_MASKS, maskCssUrl, findMask } from "@/lib/albumMasks";
 import { ALBUM_ORNAMENTS, ORNAMENT_TABS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
@@ -15,7 +15,7 @@ import AlbumEditorGuideModal from "@/components/AlbumEditorGuideModal";
 import AlbumSpreadThumbnail from "@/components/AlbumSpreadThumbnail";
 import { useT } from "@/i18n/client";
 import type { TFn } from "@/i18n/translate";
-import { ALBUM_BLUR_MAX_PX, computePhotoFraming, cssFilterFor, boxShadowFor, textShadowFor, type PhotoWithUrl } from "@/lib/albumRender";
+import { ALBUM_BLUR_MAX_PX, computePhotoFraming, cssFilterFor, boxShadowFor, textEffectsCss, type PhotoWithUrl } from "@/lib/albumRender";
 import { textHeightPctForFontSize, MAX_TEXT_HEIGHT_OVERSIZE_RATIO } from "@/lib/albumTextSizing";
 
 export type { PhotoWithUrl };
@@ -1314,6 +1314,26 @@ function TextFloatingMenu({
           onUpdate({ fontSize: v, heightPct: Math.min(Math.max(el.heightPct ?? 0, natural), natural * MAX_TEXT_HEIGHT_OVERSIZE_RATIO) });
         }}
       />
+      {/* Shadow and outline (owner, 2026-10-06), drawn the same in every export (textEffectsCss /
+          textShadowSpecs). */}
+      <MiniSlider label={t("עוצמת צל")} value={el.shadow ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ shadow: v })} />
+      <MiniSlider label={t("קו מתאר")} value={el.strokeWidth ?? 0} min={0} max={20} unit="pt" onChange={(v) => onUpdate({ strokeWidth: v })} />
+      {!!el.strokeWidth && (
+        <div className="flex flex-wrap gap-1.5">
+          {TEXT_COLOR_PALETTE.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => onUpdate({ strokeColor: value })}
+              title={label}
+              className="h-5 w-5 rounded-full"
+              style={{
+                background: value,
+                boxShadow: (el.strokeColor ?? "#000000") === value ? "0 0 0 2px #fff, 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)",
+              }}
+            />
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-1">
         <button
           onClick={() => onUpdate({ locked: !el.locked })}
@@ -2420,6 +2440,13 @@ export default function AlbumSpreadCanvasEditor({
   const selectedElements = elements.filter((e) => selectedIds.has(e.id));
   const selectedPhotos = selectedElements.filter((e): e is AlbumPhotoElement => e.type === "photo");
   const selectedText = selectedElements.length === 1 && selectedElements[0].type === "text" ? selectedElements[0] : null;
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const lastTextTapRef = useRef<{ id: string; at: number } | null>(null);
+  const startEditingText = (el: AlbumTextElement) => {
+    if (el.locked) return;
+    setSelectedIds(new Set([el.id]));
+    setEditingTextId(el.id);
+  };
   // The photo the floating circular menu anchors to and reads toggle-state from — the first
   // selected element that actually has an image (an empty placeholder frame has nothing to
   // filter/blur/rotate, so it's skipped even if selected).
@@ -2755,14 +2782,22 @@ export default function AlbumSpreadCanvasEditor({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
-      const active = document.activeElement;
-      if (active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)) return;
+      // Only a field you type into keeps the arrows. A slider, checkbox or button that still has
+      // focus after a click used to swallow them, so nudging seemed not to work (owner, 2026-10-06).
+      const active = document.activeElement as HTMLElement | null;
+      const typing =
+        !!active &&
+        (active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT" ||
+          active.isContentEditable ||
+          (active.tagName === "INPUT" && !["range", "checkbox", "radio", "button", "color"].includes((active as HTMLInputElement).type)));
+      if (typing) return;
       if (selectedIds.size === 0) return;
       const canvas = canvasRef.current;
       if (!canvas) return;
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      const stepPx = 2;
+      const stepPx = e.shiftKey ? 10 : 2;
       const stepXPct = rect.width > 0 ? (stepPx / rect.width) * 100 : 0;
       const stepYPct = rect.height > 0 ? (stepPx / rect.height) * 100 : 0;
       const dx = e.key === "ArrowLeft" ? -stepXPct : e.key === "ArrowRight" ? stepXPct : 0;
@@ -3289,6 +3324,33 @@ export default function AlbumSpreadCanvasEditor({
   };
 
   const removeBackground = () => setBackgroundPhotoId(null);
+
+  // "הוספת טקסט" adds a ready text box right away (owner, 2026-10-06); its words are edited in place
+  // with a double click / double tap (see editingTextId). Same size, font and color as the draft
+  // panel's defaults, and the same cascade so boxes don't land on top of each other.
+  const addDefaultText = () => {
+    const id = `el-${Date.now()}`;
+    const widthPct = 60;
+    const heightPct = textHeightPctForFontSize(textDraftFontSize, album);
+    const cascade = (elements.filter((e) => e.type === "text").length % 8) * 4;
+    setElements((prev) => [
+      ...prev,
+      {
+        id,
+        type: "text",
+        text: t("הטקסט שלכם כאן"),
+        xPct: Math.min(100 - widthPct, 20 + cascade),
+        yPct: Math.min(100 - heightPct, 40 + cascade),
+        widthPct,
+        heightPct,
+        fontSize: textDraftFontSize,
+        fontFamily: textDraftFontFamily,
+        color: textDraftColor,
+        align: "center",
+      },
+    ]);
+    setSelectedIds(new Set([id]));
+  };
 
   const addText = () => {
     if (!textDraft.trim()) return;
@@ -4853,12 +4915,31 @@ export default function AlbumSpreadCanvasEditor({
                 // Safe to bleed past the page edge here since this canvas has no overflow-hidden.
                 return renderShapeEl(el, isSelected);
               }
+              const editing = editingTextId === el.id;
               return (
                 <div
                   key={el.id}
                   onPointerDown={(e) => {
+                    if (editing) {
+                      e.stopPropagation();
+                      return;
+                    }
                     setSelectedIds(new Set([el.id]));
                     startDrag(e, el, "move");
+                  }}
+                  onPointerUp={(e) => {
+                    // A double tap on a touch screen (no dblclick there) opens the same editing.
+                    if (e.pointerType === "mouse" || editing) return;
+                    const now = Date.now();
+                    const last = lastTextTapRef.current;
+                    if (last && last.id === el.id && now - last.at < 350) {
+                      lastTextTapRef.current = null;
+                      startEditingText(el);
+                    } else lastTextTapRef.current = { id: el.id, at: now };
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    startEditingText(el);
                   }}
                   className="absolute cursor-move px-1 flex items-center overflow-visible"
                   style={{
@@ -4879,16 +4960,41 @@ export default function AlbumSpreadCanvasEditor({
                     // sets a real shadow/glow value via the sliders, that takes over completely
                     // instead of stacking on top of it (two shadow systems fighting on the same
                     // text would just look muddy).
-                    textShadow:
-                      el.shadow || el.glow
-                        ? textShadowFor(el.shadow, el.glow)
-                        : isLightTextColor(el.color)
-                          ? "0 1px 4px rgba(0,0,0,0.7)"
-                          : "0 1px 4px rgba(255,255,255,0.7)",
+                    // Shadow, glow and outline as every export draws them (textEffectsCss).
+                    ...textEffectsCss(el),
                     outline: isSelected ? "2px dashed var(--color-amber-deep)" : "none",
                   }}
                 >
-                  <span>{el.text}</span>
+                  {editing ? (
+                    // Edited in place (owner, 2026-10-06: double click / double tap on the text).
+                    // Enter or a click outside keeps the change, Escape cancels; Shift+Enter is a new line.
+                    <textarea
+                      autoFocus
+                      defaultValue={el.text}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          setEditingTextId(null);
+                        } else if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const value = e.currentTarget.value.trim();
+                        if (editingTextId === el.id && value) updateElement(el.id, { text: value });
+                        setEditingTextId(null);
+                      }}
+                      rows={Math.max(1, el.text.split("\n").length)}
+                      className="w-full resize-none bg-white/70 outline-none"
+                      style={{ font: "inherit", color: "inherit", textAlign: "inherit", textShadow: "none", WebkitTextStroke: "0", lineHeight: 1.15 }}
+                    />
+                  ) : (
+                    <span>{el.text}</span>
+                  )}
                   {isSelected && (
                     <span
                       onPointerDown={(e) => startDrag(e, el, "resize")}
@@ -5654,12 +5760,7 @@ export default function AlbumSpreadCanvasEditor({
             <button
               ref={textButtonRef}
               onClick={() => {
-                const r = textButtonRef.current?.getBoundingClientRect();
-                if (r) {
-                  const w = Math.max(r.width, 320);
-                  setTextPanelRect({ top: r.bottom, left: r.right - w, width: w });
-                }
-                setTextDraftOpen(true);
+                addDefaultText();
               }}
               title={t("הוספת טקסט")}
               className="flex-1 rounded-full py-2.5 text-sm font-semibold bg-white border border-line text-ink flex items-center justify-center gap-1.5"
@@ -5805,15 +5906,7 @@ export default function AlbumSpreadCanvasEditor({
               <button
                 ref={textButtonRef}
                 onClick={() => {
-                  const triggerRect = textButtonRef.current?.getBoundingClientRect();
-                  const widthRect = masksButtonRef.current?.getBoundingClientRect() ?? triggerRect;
-                  // Same "2 action-buttons' width, grown leftward from the trigger's own right
-                  // edge" as מסכות/עיטורים/תבניות/צורות above.
-                  if (triggerRect && widthRect) {
-                    const w = widthRect.width * 2 + 4;
-                    setTextPanelRect({ top: triggerRect.bottom, left: widthRect.right - w, width: w });
-                  }
-                  setTextDraftOpen(true);
+                  addDefaultText();
                 }}
                 title={t("הוספת טקסט")}
                 className="flex-1 min-w-0 rounded-full py-1 text-[9px] font-semibold bg-white border border-line text-ink truncate flex items-center justify-center gap-1"

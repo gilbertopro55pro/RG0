@@ -108,6 +108,18 @@ Regions (since 2026-09-26): the Vercel functions run in `fra1` (vercel.json `reg
 Supabase; the Fly render worker is in `iad`. If exports slow down or time out after that move,
 check the Vercel→Fly leg first.
 
+- **Text effects (since 2026-10-06):** shadow, glow and the new outline (`strokeWidth` in points of
+  the 1600pt reference, `strokeColor`) are defined once in `textShadowSpecs` / `textEffectsCss`
+  (albumRender.ts) and drawn by every renderer: the editor and client proofing (CSS), JPG/PSD
+  (`svgTextLayer` `effects`: blurred offset copies + a `vector-effect="non-scaling-stroke"` outline;
+  without non-scaling the per-glyph font-units scale shrank the outline to nothing), PDF (offset
+  copies and a ring of copies, since pdf-lib has no blur or stroke). No shadow/glow set = the soft
+  contrast shadow the editor always showed; before this, JPG/PSD drew no text shadow at all and the
+  PDF a fixed 2pt one. Text fields must be copied in **both** text mappings of
+  `resolvePageElements` (the preset-layout one and the custom-layout one) — missing the second is
+  what first hid the outline in testing. Verified locally: JPG + PDF of a page with outline,
+  shadow, outline+shadow and plain text.
+
 ## Testing live (the procedure that passed)
 
 Run tests on the test account only, never on a real photographer's album. The script
