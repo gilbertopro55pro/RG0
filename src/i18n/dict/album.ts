@@ -408,6 +408,7 @@ const dict: AreaDict = {
     "מכין PSD...": "Preparing PSD...",
     "קובץ פוטושופ עם שכבות: המסגרת, הטקסטורה, כל טקסט ואלמנט בשכבה משלו, והצללות כ-Layer Style": "Layered Photoshop file: the frame, the texture, each text and element on its own layer, and shadows as Layer Styles",
     "כלי עיצוב המגנטים עובד במצב אופקי: המסגרות מצד אחד והפאנלים מהצד השני. סובבו את הטלפון כדי להמשיך.": "The magnet design tool works in landscape: the frames on one side and the panels on the other. Rotate your phone to continue.",
+    "הסבר": "Help",
   },
   ru: {
     "מזהה פרצופים בתאים": "Распознаём лица в ячейках",
@@ -815,6 +816,7 @@ const dict: AreaDict = {
     "מכין PSD...": "Готовим PSD...",
     "קובץ פוטושופ עם שכבות: המסגרת, הטקסטורה, כל טקסט ואלמנט בשכבה משלו, והצללות כ-Layer Style": "Многослойный файл Photoshop: рамка, текстура, каждый текст и элемент на отдельном слое, тени как Layer Style",
     "כלי עיצוב המגנטים עובד במצב אופקי: המסגרות מצד אחד והפאנלים מהצד השני. סובבו את הטלפון כדי להמשיך.": "Инструмент дизайна магнитов работает в горизонтальном режиме: рамки с одной стороны, панели с другой. Поверните телефон, чтобы продолжить.",
+    "הסבר": "Пояснение",
   },
 };
 export default dict;

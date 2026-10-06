@@ -48,7 +48,7 @@ if (!process.env.GF_STATE) {
   if (await notNow.count()) await notNow.first().click().catch(() => {});
 
   await page.getByRole("button", { name: "+ הוספת טקסט" }).click();
-  await page.getByRole("button", { name: "אלמנטים" }).click();
+  await page.getByRole("tab", { name: "אלמנטים" }).click();
   await page.waitForTimeout(800);
   await page.locator("button[title]:visible").filter({ has: page.locator("img") }).first().click();
   await page.waitForTimeout(500);
@@ -57,8 +57,9 @@ if (!process.env.GF_STATE) {
   await page.getByRole("button", { name: "שמירה", exact: true }).click();
   console.log("save:", (await saved).status());
 
-  for (const [label, name] of [["הורדת מסגרת רוחב (20×15)", "landscape"], ["הורדת מסגרת אורך (15×20)", "portrait"]]) {
-    const btn = page.getByRole("button", { name: label });
+  // Under each preview: "PNG" and "PSD" buttons, landscape first.
+  for (const [index, name] of [[0, "landscape"], [1, "portrait"]]) {
+    const btn = page.getByRole("button", { name: "PNG", exact: true }).nth(index);
     await btn.waitFor({ timeout: 30000 });
     const [d] = await Promise.all([page.waitForEvent("download", { timeout: 120000 }).catch(() => null), btn.click()]);
     if (!d) { console.log(name, "download: NONE"); continue; }
