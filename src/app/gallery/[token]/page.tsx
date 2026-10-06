@@ -451,6 +451,8 @@ export default async function PublicGalleryPage({
             focalX={gallery.cover_focal_x}
             focalY={gallery.cover_focal_y}
             scrollLabel={t("גלילה לתמונות")}
+            textPosition={gallery.cover_text_position}
+            shape={gallery.cover_shape}
           />
           {galleryView}
         </div>

@@ -17,6 +17,8 @@ export default function GalleryPremiumCover({
   focalY = 50,
   scrollLabel,
   variant = "page",
+  textPosition = "below",
+  shape = "rectangle",
 }: {
   photoUrl: string | null;
   title: string;
@@ -29,6 +31,13 @@ export default function GalleryPremiumCover({
   // aria-label of the scroll cue (page variant only).
   scrollLabel?: string;
   variant?: "page" | "preview" | "manage";
+  // The design settings' "מיקום הכיתוב" and "צורת התמונה" (owner, 2026-10-06: the premium theme gets
+  // the same controls as the others). Text: "below" = low on the photo (the original premium look),
+  // "above" = high, "center-left"/"center-right" = vertically centered at that side. Shape:
+  // "rectangle" = the full first screen (the original), "banner" = a shorter cover, "square" /
+  // "circle" = the photo framed in that shape over a blurred copy of itself.
+  textPosition?: string;
+  shape?: string;
 }) {
   const isPage = variant === "page";
   const isManage = variant === "manage";
@@ -37,10 +46,51 @@ export default function GalleryPremiumCover({
       ? COVER_WIDTHS.map((w) => `${optimizedImageUrl(photoUrl, w)} ${w}w`).join(", ")
       : undefined;
 
+  const framed = shape === "square" || shape === "circle";
+  const isBanner = shape === "banner";
+  const pos = textPosition === "above" || textPosition === "center-left" || textPosition === "center-right" ? textPosition : "below";
+  const side = pos === "center-left" ? "left" : pos === "center-right" ? "right" : null;
+  // The scrim darkens only where the text sits, so the rest of the photo stays untouched.
+  const scrim =
+    pos === "above"
+      ? "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.2) 32%, rgba(0,0,0,0) 58%)"
+      : side
+        ? `linear-gradient(to ${side === "left" ? "right" : "left"}, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.18) 38%, rgba(0,0,0,0) 62%)`
+        : "linear-gradient(to top, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.22) 32%, rgba(0,0,0,0) 58%)";
+  const big = isPage || isManage;
+  const pad = isPage ? "px-6 sm:px-12 lg:px-20" : isManage ? "px-6 sm:px-12 lg:px-20" : "px-4";
+  const textBox =
+    pos === "above"
+      ? `absolute inset-x-0 top-0 ${pad} ${logoUrl ? (big ? "pt-24 sm:pt-28" : "pt-9") : big ? "pt-[clamp(40px,9svh,96px)]" : "pt-4"}`
+      : side
+        ? `absolute inset-y-0 ${side === "left" ? "left-0" : "right-0"} flex flex-col justify-center ${pad} ${big ? "max-w-[min(560px,62%)]" : "max-w-[62%]"}`
+        : `absolute inset-x-0 bottom-0 ${pad} ${isPage ? "pb-[clamp(56px,11svh,112px)]" : isManage ? "pb-12 sm:pb-16" : "pb-4"}`;
+  // A framed photo sits centred, or on the far side from text placed at a side.
+  const frameStyle: React.CSSProperties = {
+    // Beside text the frame stays under half the width, so the two never overlap on a phone.
+    height: big ? (side ? "min(64%, 42vw)" : "min(64%, 78vw)") : side ? "min(64%, 42%)" : "64%",
+    aspectRatio: "1 / 1",
+    borderRadius: shape === "circle" ? "50%" : "2px",
+    boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+    top: "50%",
+    ...(side === "left" ? { right: big ? "8%" : "6%" } : side === "right" ? { left: big ? "8%" : "6%" } : { left: "50%" }),
+    transform: side ? "translateY(-50%)" : "translate(-50%, -50%)",
+  };
+
   return (
     <header
       className={`gt-premium-cover relative overflow-hidden ${
-        isPage ? "h-[92svh] sm:h-[100svh] min-h-[420px]" : isManage ? "h-[64svh] sm:h-[calc(100svh-150px)] min-h-[320px]" : "aspect-[4/3]"
+        isBanner
+          ? isPage
+            ? "h-[62svh] min-h-[340px]"
+            : isManage
+              ? "h-[46svh] min-h-[280px]"
+              : "aspect-[16/8]"
+          : isPage
+            ? "h-[92svh] sm:h-[100svh] min-h-[420px]"
+            : isManage
+              ? "h-[64svh] sm:h-[calc(100svh-150px)] min-h-[320px]"
+              : "aspect-[4/3]"
       }`}
       style={{ background: "#2b2c2f" }}
     >
@@ -60,15 +110,19 @@ export default function GalleryPremiumCover({
           alt=""
           fetchPriority={isPage ? "high" : undefined}
           className="gt-cover-img absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: `${focalX}% ${focalY}%` }}
+          style={{
+            objectPosition: `${focalX}% ${focalY}%`,
+            ...(framed ? { filter: "blur(26px) brightness(0.72)", transform: "scale(1.12)" } : {}),
+          }}
         />
       )}
-      {/* Scrim: only the lower part darkens, so the photo stays untouched where the eye lands. */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0"
-        style={{ background: "linear-gradient(to top, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.22) 32%, rgba(0,0,0,0) 58%)" }}
-      />
+      {photoUrl && framed && (
+        <div className="absolute overflow-hidden" style={frameStyle}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photoUrl} srcSet={srcSet} sizes={srcSet ? "80vh" : undefined} alt="" className="h-full w-full object-cover" style={{ objectPosition: `${focalX}% ${focalY}%` }} />
+        </div>
+      )}
+      <div aria-hidden="true" className="absolute inset-0" style={{ background: scrim }} />
       {logoUrl && (
         <div className={`absolute inset-x-0 top-0 flex justify-center ${isPage || isManage ? "pt-5 sm:pt-7" : "pt-2.5"}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -80,17 +134,13 @@ export default function GalleryPremiumCover({
           />
         </div>
       )}
-      <div
-        className={`absolute inset-x-0 bottom-0 text-white ${
-          isPage ? "px-6 pb-[clamp(56px,11svh,112px)] sm:px-12 lg:px-20" : isManage ? "px-6 pb-12 sm:px-12 sm:pb-16 lg:px-20" : "px-4 pb-4"
-        }`}
-      >
+      <div className={`${textBox} text-white`} style={side ? { textAlign: side, direction: "rtl" } : undefined}>
         <h1
-          className="max-w-[16ch]"
+          className={side ? "" : "max-w-[16ch]"}
           style={{
             fontFamily: "var(--font-gallery-serif), serif",
             fontWeight: 300,
-            fontSize: isPage ? "clamp(40px, 7.4vw, 76px)" : isManage ? "clamp(40px, 7.4vw, 76px)" : "26px",
+            fontSize: big ? (side || framed ? "clamp(34px, 5.6vw, 64px)" : "clamp(40px, 7.4vw, 76px)") : side || framed ? "20px" : "26px",
             lineHeight: 1.04,
             letterSpacing: "-0.01em",
             textWrap: "balance",
