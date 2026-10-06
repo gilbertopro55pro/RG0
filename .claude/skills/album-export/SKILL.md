@@ -38,6 +38,9 @@ no signature) under the Updates tab. It now reads as a personal note: subject "�
 a short body, "אפשר פשוט להשיב למייל הזה", and the photographer's signature (name, phone, email).
 Gmail's tabs are its own classifier, so this improves the odds but can't guarantee the inbox; the
 sure fix on the recipient side is moving one email to Primary ("do this for future messages").
+Verified 2026-10-06 (test job 4b4b76a5, test account → the owner's Gmail): the new wording landed
+in the inbox (Primary). The owner's earlier test to the print house, which landed in Updates, may
+have been sent before this version went live.
 
 Print-house notes (since 2026-09-28): the "שליחה לבית דפוס" sheet has an optional
 "הנחיות והערות לבית הדפוס" textarea. It's sent as `notes` (trimmed, max 2000), stored on the job
