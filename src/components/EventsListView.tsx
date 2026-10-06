@@ -9,6 +9,7 @@ import { googleColorRgba } from "@/lib/googleColors";
 import { eventDisplayName } from "@/lib/eventDisplayName";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
+import { compareEventsChronologically } from "@/lib/eventOrder";
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
 type StatusFilter = "upcoming" | "completed" | "all" | "duplicates";
@@ -92,8 +93,8 @@ export default function EventsListView({
       return true;
     });
     result.sort((a, b) => {
-      if (sortOrder === "desc") return b.event_date.localeCompare(a.event_date);
-      return a.event_date.localeCompare(b.event_date);
+      if (sortOrder === "desc") return compareEventsChronologically(b, a);
+      return compareEventsChronologically(a, b);
     });
     return result;
   }, [events, query, statusFilter, sortOrder, selectedMonth]);
