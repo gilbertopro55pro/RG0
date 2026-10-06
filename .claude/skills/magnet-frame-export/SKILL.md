@@ -31,6 +31,24 @@ API returns 403.
   and each has its download button under it. Picking an element on a preview opens its panel.
   Mobile: the two previews side by side on top, the panels below. Verified live 2026-10-05: panels,
   kept state, save 200, both downloads (2362×1772 / 1772×2362, 300 DPI), no sideways scroll at 390px.
+- **Since 2026-10-06:** title row = title, "?" help, bold "שמירה". Panels are a horizontal tab row
+  (solo, each keeps its scroll). The editor measures the space under the title row and fills it,
+  so the page never scrolls; only the panels side does. Under 500px tall (phone sideways) the
+  title row is compact with its own back arrow. A phone held upright gets a "rotate" card instead
+  (CSS only, the editor stays mounted).
+- **Two steps (2026-10-06):** step 1 = landscape frame (all panels; the portrait preview is
+  read-only). Step 2 = portrait frame, pre-filled: each element mapped region by region (`mapAxis`:
+  mat / window / mat per axis) and a text wider than 90% of 1200px scaled down (widths measured
+  from the landscape preview). Only placement is edited there (drag, nudge, size, rotation, back to
+  automatic); adjustments are `portraitOverrides` and the POST sends `portraitElements`. On load,
+  portrait positions that differ from the landscape ones are taken as overrides.
+- **Rotation (2026-10-06):** `rotation` (degrees, clockwise) on text and decorations. The export
+  rotates each element around its own visible center (`rotateLayerAroundContent` / `placeCentered`
+  in magnetFrame.ts; text + its shadow turn together, like the CSS). Verified locally: text −20°,
+  a digit 30°, an ornament 45° at the corner (cropped at the edge, no error).
+- **Texture on the mat only:** masked by the plain mat (`shadowEnabled: false`), not by the shadowed
+  base, whose shadow pixels inside the window used to let the texture show there. In the editor
+  the window's checker has a white base under it.
 - The portrait preview is the point of the layout: a text centered on the landscape bottom mat can
   sit partly over the photo window in portrait (the portrait mat is a smaller share of the height).
 
