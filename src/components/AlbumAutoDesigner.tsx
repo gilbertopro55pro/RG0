@@ -7,7 +7,7 @@ import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
 import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
-import { bleedIdsOf, bookPagesWithoutCover, fillBookTemplate } from "@/lib/albumAuto/templateFill";
+import { bleedIdsOf, bookPagesWithoutCover, fillBookTemplate, frameElements, ownTemplatePlan } from "@/lib/albumAuto/templateFill";
 import type { AlbumBookTemplateRow, AlbumTemplateRow } from "@/lib/types";
 import { CELL_ORDER, cellLabel, countNames, detectEventKind, pickCellFaces, planAlbum } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
@@ -389,18 +389,35 @@ export default function AlbumAutoDesigner({
             heightCm: size.height,
             userTemplates: pageTemplates.map((tpl) => tpl.frames),
           }).map((elements) => ({ elements, bleedIds: bleedIdsOf(elements) }))
-        : plan.spreads.map((s, i) => {
-            const out = layoutSpread({
-              style,
-              photos: s.photoIds.map(layoutPhoto),
-              heroId: s.heroId,
-              section: s.section,
-              spreadIndex: i,
-              widthCm: size.width,
-              heightCm: size.height,
+        : (() => {
+            // Mostly the photographer's own page templates (70%), the style's layout for the rest
+            // (owner, 2026-10-06) — see ownTemplatePlan.
+            const ownPlan = ownTemplatePlan(
+              plan.spreads.map((s) => [...new Set(s.photoIds)].map(layoutPhoto)),
+              pageTemplates.map((tpl) => tpl.frames).filter((f) => Array.isArray(f) && f.length > 0),
+              size.width,
+              size.height
+            );
+            return plan.spreads.map((s, i) => {
+              const out = layoutSpread({
+                style,
+                photos: s.photoIds.map(layoutPhoto),
+                heroId: s.heroId,
+                section: s.section,
+                spreadIndex: i,
+                widthCm: size.width,
+                heightCm: size.height,
+              });
+              const background = out.background ? { background: out.background } : {};
+              const own = ownPlan[i];
+              if (!own) return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...background };
+              // The style's page colour (a full-page shape) and blurred background stay, so own pages
+              // sit in the same book; the photos take the template's frames and its own finish.
+              const pageShapes = out.elements.filter((e) => e.type === "shape" && e.xPct <= 0.5 && e.yPct <= 0.5 && e.widthPct >= 99.5 && e.heightPct >= 99.5);
+              const photoEls = frameElements(own, [...new Set(s.photoIds)].map(layoutPhoto), size.width, size.height, `own-${i}`);
+              return { elements: [...pageShapes, ...photoEls], bleedIds: [...pageShapes.map((e) => e.id), ...bleedIdsOf(photoEls)], ...background };
             });
-            return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...(out.background ? { background: out.background } : {}) };
-          });
+          })();
       const cover =
         coverMode === "on"
           ? {
