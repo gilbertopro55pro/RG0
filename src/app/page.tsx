@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { compareEventsChronologically } from "@/lib/eventOrder";
 import { quoteExtrasFor } from "@/lib/quoteDefaults";
 import { canChooseClientLang } from "@/lib/clientLang";
 import { IconMagnetFrame } from "@/components/icons/NavIcons";
@@ -91,6 +92,7 @@ export default async function DashboardPage() {
       .from("events")
       .select("*, custom_packages(name), event_stages(event_id, done, stage_key, custom_stage_id, stage_order)")
       .order("event_date", { ascending: true })
+      .order("event_start_time", { ascending: true, nullsFirst: false })
       .returns<(EventWithCustomPackage & { event_stages: Pick<EventStageRow, "event_id" | "done" | "stage_key" | "custom_stage_id" | "stage_order">[] })[]>(),
     supabase.from("custom_packages").select("*").order("sort_order", { ascending: true }).returns<CustomPackageRow[]>(),
     supabase.from("event_types").select("*").order("sort_order", { ascending: true }).returns<EventTypeRow[]>(),
@@ -258,7 +260,9 @@ export default async function DashboardPage() {
         // An evening event ending at 00:00 (or later) ends tomorrow, not before its start.
         (!e.event_start_time || e.event_end_time > e.event_start_time) &&
         e.event_end_time.slice(0, 5) <= nowTime.slice(0, 5));
-    const upcoming = (events ?? []).find((e) => !e.closed_at && e.event_date >= todayIso && !shootDone(e));
+    // Sorted here too (not only in the query), so a morning and an evening shoot on the same day
+    // always come in their real order.
+    const upcoming = [...(events ?? [])].sort(compareEventsChronologically).find((e) => !e.closed_at && e.event_date >= todayIso && !shootDone(e));
     if (upcoming) {
       const p = (payments ?? []).find((x) => x.event_id === upcoming.id);
       const due = p

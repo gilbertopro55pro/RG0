@@ -16,6 +16,7 @@ export default async function ClientPortalsPage() {
       .from("events")
       .select("*, custom_packages(name)")
       .order("event_date", { ascending: false })
+      .order("event_start_time", { ascending: false, nullsFirst: false })
       .returns<(EventRow & { custom_packages: { name: string } | null })[]>(),
   ]);
   if (!photographer) redirect("/");
