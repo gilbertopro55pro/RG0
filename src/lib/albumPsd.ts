@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { writePsdBuffer, type Layer, type LayerEffectsInfo } from "ag-psd";
 import { infoHandlers } from "ag-psd/dist/additionalInfo.js";
 import { downloadObjectBuffer } from "@/lib/storage";
-import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, ornamentLayerRaw, composeShapeTile, DPI } from "@/lib/albumRaster";
+import { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, albumTextEffects, ornamentLayerRaw, composeShapeTile, DPI } from "@/lib/albumRaster";
 import { findOrnament } from "@/lib/albumOrnaments";
 import type { GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
@@ -212,6 +212,7 @@ export async function renderAlbumPagePsd({
         pageWidthPx,
         pageHeightPx,
         fontFamily: el.fontFamily,
+        effects: albumTextEffects(el, pageWidthPx),
       });
       const rgba = await pngToRawRgba(png);
       children.push({ name: "טקסט", top: 0, left: 0, bottom: rgba.height, right: rgba.width, imageData: { data: rgba.data, width: rgba.width, height: rgba.height } });

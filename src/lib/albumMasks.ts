@@ -153,6 +153,20 @@ export const ALBUM_MASKS: AlbumMask[] = [
   { id: "fade-right-40", label: "דהייה ימינה 40%", svg: fadeRight(40) },
   { id: "fade-left-40", label: "דהייה שמאלה 40%", svg: fadeLeft(40) },
   { id: "fade-both-15", label: "דהייה משני הצדדים 15%", svg: fadeBothSides(15) },
+  // Owner, 2026-10-06: 25% from both sides, and the same reversed — clear at the edges, fading out
+  // toward the middle (transparent at the center, back to full 25% to each side of it).
+  { id: "fade-both-25", label: "דהייה משני הצדדים 25%", svg: fadeBothSides(25) },
+  {
+    id: "fade-center-25",
+    label: "דהייה מהמרכז החוצה 25%",
+    svg: linearFade([
+      { offset: 0, opacity: 1 },
+      { offset: 25, opacity: 1 },
+      { offset: 50, opacity: 0 },
+      { offset: 75, opacity: 1 },
+      { offset: 100, opacity: 1 },
+    ]),
+  },
 
   // More directional fades.
   { id: "fade-top-25", label: "דהייה למעלה 25%", svg: fadeTop(25) },

@@ -1,9 +1,9 @@
 "use client";
 
+import { textEffectsCss } from "@/lib/albumRender";
 import { useState } from "react";
 import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { ALBUM_BLUR_MAX_PX, computePhotoFraming } from "@/lib/albumRender";
-import { isLightTextColor } from "@/lib/textColor";
 import { maskCssUrl, findMask } from "@/lib/albumMasks";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsFilterId, adjustmentsSvgFilter, type PhotoAdjustments } from "@/lib/albumAdjustments";
@@ -62,6 +62,10 @@ export type ClientAlbumElement =
       fontFamily?: string;
       color: string;
       align: "right" | "center" | "left";
+      shadow?: number;
+      glow?: number;
+      strokeWidth?: number;
+      strokeColor?: string;
     }
   | {
       id: string;
@@ -178,7 +182,8 @@ function TextOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "text" }>
         color: el.color,
         fontSize: `calc(${el.fontSize} / 1600 * 100cqw)`,
         fontFamily: albumFontFamilyCss(el.fontFamily),
-        textShadow: isLightTextColor(el.color) ? "0 1px 4px rgba(0,0,0,0.7)" : "0 1px 4px rgba(255,255,255,0.7)",
+        // Shadow, glow and outline exactly as in the editor and the exports.
+        ...textEffectsCss(el),
       }}
     >
       <span>{el.text}</span>

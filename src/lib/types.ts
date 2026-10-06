@@ -737,6 +737,10 @@ export type AlbumTextElement = {
   align: "right" | "center" | "left";
   shadow?: number; // 0-100 drop-shadow intensity, default 0 — same 0-100 scale as AlbumPhotoElement.shadow
   glow?: number; // 0-100 outer-glow intensity (soft white halo, for light text over busy photos), default 0
+  // Outline around the letters, in points on the 1600pt reference canvas (like fontSize); 0/missing
+  // = none. strokeColor defaults to black.
+  strokeWidth?: number;
+  strokeColor?: string;
   locked?: boolean; // see AlbumPhotoElement.locked's own comment
 };
 

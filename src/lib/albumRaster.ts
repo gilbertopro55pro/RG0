@@ -10,6 +10,7 @@ import { ALBUM_MASKS } from "@/lib/albumMasks";
 import { findOrnament } from "@/lib/albumOrnaments";
 import { applyAdjustmentsToRgba, type PhotoAdjustments } from "@/lib/albumAdjustments";
 import { sharpSharpenOptions } from "@/lib/albumSharpen";
+import { textShadowSpecs, type TextShadowSpec } from "@/lib/albumRender";
 
 export const DPI = 300;
 
@@ -137,6 +138,11 @@ async function layoutTextAsSvgPaths(
   return { pathsSvg: parts.join(""), width: cursorX, ascentPx: hebrewFont.ascent * metricsScale, descentPx: Math.abs(hebrewFont.descent) * metricsScale };
 }
 
+// The text effects of an album text element at this page's scale (see svgTextLayer's `effects`).
+function albumTextEffects(el: ResolvedText, pageWidthPx: number) {
+  return { shadows: textShadowSpecs(el), strokeWidth: el.strokeWidth, strokeColor: el.strokeColor, unitPx: pageWidthPx / 1600 };
+}
+
 async function svgTextLayer(
   text: string,
   opts: {
@@ -158,6 +164,9 @@ async function svgTextLayer(
     bold?: boolean;
     italic?: boolean;
     underline?: boolean;
+    // Album text effects (see textShadowSpecs in albumRender.ts), with `unitPx` = this page's pixels
+    // per point of the 1600pt reference canvas.
+    effects?: { shadows: TextShadowSpec[]; strokeWidth?: number; strokeColor?: string; unitPx: number };
   }
 ): Promise<Buffer> {
   const { pathsSvg, width, ascentPx, descentPx } = await layoutTextAsSvgPaths(text, opts.fontFamily, opts.fontSizePx);
@@ -179,11 +188,37 @@ async function svgTextLayer(
   const underlineRect = opts.underline
     ? `<rect x="${startX}" y="${baselineY + opts.fontSizePx * 0.08}" width="${width}" height="${Math.max(1, opts.fontSizePx * 0.055)}" fill="${opts.color}" />`
     : "";
-  const svg = `<svg width="${opts.pageWidthPx}" height="${opts.pageHeightPx}" xmlns="http://www.w3.org/2000/svg">
-<g fill="${opts.color}"${strokeAttr} transform="${transform}">${pathsSvg}</g>
-${underlineRect}
+  const fx = opts.effects;
+  // Outline: drawn under the fill at twice the width, so strokeWidth shows outside the letters
+  // (same as the editor's -webkit-text-stroke with paint-order: stroke fill).
+  const outlineAttr =
+    fx?.strokeWidth && fx.strokeWidth > 0
+      ? ` stroke="${fx.strokeColor ?? "#000000"}" stroke-width="${(fx.strokeWidth * 2 * fx.unitPx).toFixed(2)}" stroke-linejoin="round" paint-order="stroke fill"`
+      : strokeAttr;
+  // Each glyph path carries its own tiny font-units scale, which would shrink the outline to nothing;
+  // a non-scaling stroke keeps its width in page pixels.
+  const glyphs = outlineAttr !== strokeAttr ? pathsSvg.replace(/<path /g, '<path vector-effect="non-scaling-stroke" ') : pathsSvg;
+  const svgFor = (fill: string, fillOpacity: number, dx: number, dy: number) =>
+    `<svg width="${opts.pageWidthPx}" height="${opts.pageHeightPx}" xmlns="http://www.w3.org/2000/svg">
+<g transform="translate(${dx},${dy})"><g fill="${fill}" fill-opacity="${fillOpacity}"${fill === opts.color ? outlineAttr : outlineAttr.replace(/stroke="[^"]*"/, `stroke="${fill}" stroke-opacity="${fillOpacity}"`)} transform="${transform}">${glyphs}</g>
+${underlineRect.replace(`fill="${opts.color}"`, `fill="${fill}" fill-opacity="${fillOpacity}"`)}</g>
 </svg>`;
-  return sharp(Buffer.from(svg)).png().toBuffer();
+  const main = await sharp(Buffer.from(svgFor(opts.color, 1, 0, 0))).png().toBuffer();
+  if (!fx || fx.shadows.length === 0) return main;
+  // Each shadow: the same shape in the shadow's color, offset and blurred (a CSS blur radius is
+  // about two Gaussian sigmas). CSS paints the first shadow on top, so they're laid bottom-up.
+  const layers: { input: Buffer }[] = [];
+  for (const sh of [...fx.shadows].reverse()) {
+    const color = `rgb(${sh.rgb.join(",")})`;
+    let layer = await sharp(Buffer.from(svgFor(color, Math.min(1, sh.alpha), sh.dx * fx.unitPx, sh.dy * fx.unitPx))).png().toBuffer();
+    const sigma = (sh.blur * fx.unitPx) / 2;
+    if (sigma >= 0.3) layer = await sharp(layer).blur(sigma).png().toBuffer();
+    layers.push({ input: layer });
+  }
+  return sharp({ create: { width: opts.pageWidthPx, height: opts.pageHeightPx, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([...layers, { input: main }])
+    .png()
+    .toBuffer();
 }
 
 type ResolvedPhoto = {
@@ -210,7 +245,22 @@ type ResolvedPhoto = {
   adjustments?: PhotoAdjustments;
   sharpness?: number;
 };
-type ResolvedText = { kind: "text"; text: string; x: number; y: number; width: number; height: number; fontSizePx: number; color: string; align: "right" | "center" | "left"; fontFamily?: string };
+type ResolvedText = {
+  kind: "text";
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSizePx: number;
+  color: string;
+  align: "right" | "center" | "left";
+  fontFamily?: string;
+  shadow?: number;
+  glow?: number;
+  strokeWidth?: number;
+  strokeColor?: string;
+};
 type ResolvedOrnament = {
   kind: "ornament";
   ornamentId?: string;
@@ -271,6 +321,10 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
       color: el.color,
       align: el.align,
       fontFamily: el.fontFamily,
+      shadow: el.shadow,
+      glow: el.glow,
+      strokeWidth: el.strokeWidth,
+      strokeColor: el.strokeColor,
     }));
 
   if (spread.layout === "custom") {
@@ -365,6 +419,10 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
         color: el.color,
         align: el.align,
         fontFamily: el.fontFamily,
+        shadow: el.shadow,
+        glow: el.glow,
+        strokeWidth: el.strokeWidth,
+        strokeColor: el.strokeColor,
       };
     });
   }
@@ -896,6 +954,7 @@ export async function renderAlbumPageJpeg({
           pageWidthPx,
           pageHeightPx,
           fontFamily: el.fontFamily,
+          effects: albumTextEffects(el, pageWidthPx),
         });
         composites.push({ input: svg, left: 0, top: 0 });
       } catch {
@@ -981,4 +1040,4 @@ export async function renderAlbumPageJpeg({
     .toBuffer();
 }
 
-export { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, shadowLayerPng, applyMaskToRaw, ornamentLayerRaw, composeShapeTile, hexToRgb };
+export { resolvePageElements, coverCropRaw, composePhotoTile, svgTextLayer, albumTextEffects, shadowLayerPng, applyMaskToRaw, ornamentLayerRaw, composeShapeTile, hexToRgb };

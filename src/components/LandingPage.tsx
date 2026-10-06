@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import LandingFaq from "@/components/LandingFaq";
-import LandingAlbumSection from "@/components/LandingAlbumSection";
 import LandingQuoteSection from "@/components/LandingQuoteSection";
 import LandingMagnetSection from "@/components/LandingMagnetSection";
 import TimeSavingsCalculator from "@/components/TimeSavingsCalculator";
@@ -53,7 +52,7 @@ const JOURNEY: { title: string; tkey?: string; icon: string; text: string }[] = 
   {
     title: "גלריה ואלבום",
     icon: "M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6",
-    text: "גלריה פרטית שבה הלקוח בוחר תמונות. האלבום מעוצב אוטומטית מהתמונות שבחר, והלקוח מאשר בפורטל.",
+    text: "גלריה פרטית שבה הלקוח בוחר תמונות. מעצבים את האלבום מהתמונות שבחר, והלקוח מאשר בפורטל.",
   },
   {
     title: "מסירה",
@@ -153,9 +152,6 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
             <nav className="flex items-center gap-4 lg:gap-8 text-[15px] lg:text-base">
               <a href="#features" className="hidden lg:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
                 {t("איך זה עובד")}
-              </a>
-              <a href="#album" className="hidden lg:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
-                {t("עיצוב אלבום")}
               </a>
               <a href="#pricing" className="hidden sm:inline text-[var(--l-on-navy-soft)] hover:text-[var(--l-on-navy)]">
                 {t("מחירים")}
@@ -310,7 +306,6 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
       <LandingQuoteSection lang={lang} />
 
       {/* The automatic album designer (owner, 2026-09-30). */}
-      <LandingAlbumSection lang={lang} />
 
       {/* The magnet frame designer, its own section (owner, 2026-09-30). */}
       <LandingMagnetSection lang={lang} />

@@ -1,6 +1,7 @@
 import { hasAdjustments, adjustmentsFilterId, type PhotoAdjustments } from "@/lib/albumAdjustments";
 import { sharpenFilterId } from "@/lib/albumSharpen";
 import type { AlbumPhotoFilter } from "@/lib/types";
+import { isLightTextColor } from "@/lib/textColor";
 
 // Shared, pure rendering helpers for one album spread's photo/mask/shadow compositing math — used
 // by the interactive canvas editor (AlbumSpreadCanvasEditor.tsx), the read-only spread thumbnail
@@ -92,6 +93,44 @@ export function boxShadowFor(shadowPct: number | undefined, distancePct?: number
 // drop shadow and an outer glow — genuinely different effects, a dark offset shadow for depth vs a
 // soft white halo for legibility over a busy photo — stack as two separate entries in one value
 // instead of needing two properties or two DOM layers.
+// The text effects every renderer draws the same way (editor, client proofing, JPG/PSD/PDF), in
+// points on the 1600pt reference canvas so they scale with the page like fontSize does. No shadow
+// or glow set = the soft contrast shadow the editor always showed by default.
+export type TextShadowSpec = { dx: number; dy: number; blur: number; rgb: [number, number, number]; alpha: number };
+export function textShadowSpecs(el: { color: string; shadow?: number; glow?: number }): TextShadowSpec[] {
+  const out: TextShadowSpec[] = [];
+  if (el.shadow || el.glow) {
+    if (el.shadow) {
+      const s = el.shadow / 100;
+      out.push({ dx: s * 6, dy: s * 6, blur: s * 15, rgb: [0, 0, 0], alpha: 0.2 + s * 0.5 });
+    }
+    if (el.glow) {
+      const g = el.glow / 100;
+      out.push({ dx: 0, dy: 0, blur: 3 + g * 27, rgb: [255, 255, 255], alpha: 0.35 + g * 0.55 });
+    }
+  } else {
+    const light = isLightTextColor(el.color);
+    out.push({ dx: 0, dy: 1.5, blur: 6, rgb: light ? [0, 0, 0] : [255, 255, 255], alpha: 0.7 });
+  }
+  return out;
+}
+
+// CSS for the same effects inside a container-query canvas (cqw = 1% of the canvas width).
+export function textEffectsCss(el: { color: string; shadow?: number; glow?: number; strokeWidth?: number; strokeColor?: string }): {
+  textShadow: string;
+  WebkitTextStroke?: string;
+  paintOrder?: string;
+} {
+  const u = (v: number) => `calc(${v.toFixed(2)} / 1600 * 100cqw)`;
+  const textShadow = textShadowSpecs(el)
+    .map((s) => `${u(s.dx)} ${u(s.dy)} ${u(s.blur)} rgba(${s.rgb.join(",")},${s.alpha.toFixed(3)})`)
+    .join(", ");
+  if (!el.strokeWidth) return { textShadow };
+  // The stroke is centered on the letter edge; painting it under the fill shows only the outer half,
+  // so it's drawn twice as wide to show strokeWidth outside the letters.
+  return { textShadow, WebkitTextStroke: `${u(el.strokeWidth * 2)} ${el.strokeColor ?? "#000000"}`, paintOrder: "stroke fill" };
+}
+
 export function textShadowFor(shadowPct: number | undefined, glowPct: number | undefined): string | undefined {
   const parts: string[] = [];
   if (shadowPct) {

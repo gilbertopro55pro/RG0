@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { textShadowSpecs } from "@/lib/albumRender";
 import path from "node:path";
 import {
   PDFDocument,
@@ -6,6 +7,7 @@ import {
   PDFImage,
   PDFPage,
   rgb,
+  type RGB,
   pushGraphicsState,
   popGraphicsState,
   moveTo,
@@ -18,7 +20,7 @@ import {
 import fontkit from "@pdf-lib/fontkit";
 import sharp from "sharp";
 import { downloadObjectBuffer } from "@/lib/storage";
-import { textColorRgb01, isLightTextColor } from "@/lib/textColor";
+import { textColorRgb01 } from "@/lib/textColor";
 import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
 import { ALBUM_BLUR_MAX_PX, coverCropRaw, applyMaskToRaw, ornamentLayerRaw, composeShapeTile } from "@/lib/albumRaster";
@@ -277,11 +279,8 @@ function drawTextElement(
   // derivation) — just flipped for PDF's y-up axis, so "below the top" is a SUBTRACTION here.
   const y = boxTopY - boxHeight / 2 - (ascent - descent) / 2;
   const mainColor = rgb(...textColorRgb01(el.color));
-  const shadowColor = isLightTextColor(el.color) ? rgb(0, 0, 0) : rgb(1, 1, 1);
-  for (const [dx, dy, color] of [
-    [2, -2, shadowColor],
-    [0, 0, mainColor],
-  ] as const) {
+  const unit = pageWidth / 1600;
+  const draw = (dx: number, dy: number, color: RGB, opacity?: number) =>
     drawAlignedBidiText(page, el.text, {
       boxX: boxX + dx,
       boxWidth,
@@ -289,10 +288,30 @@ function drawTextElement(
       size,
       align: el.align,
       color,
+      opacity,
       hebrewFont: fonts.hebrewFont,
       latinFont: fonts.latinFont,
     });
+  // pdf-lib has no blur or text stroke, so the shared effects (textShadowSpecs, as in the editor and
+  // the JPG/PSD) are approximated with copies: a shadow is its offset copy, softened into a ring of
+  // faint copies when blurred; an outline is a ring of copies in the outline color. PDF's y axis
+  // points up, so a downward shadow is a negative dy.
+  const ring = (radius: number, steps: number) =>
+    Array.from({ length: steps }, (_, i) => [Math.cos((i / steps) * 2 * Math.PI) * radius, Math.sin((i / steps) * 2 * Math.PI) * radius] as const);
+  for (const sh of [...textShadowSpecs(el)].reverse()) {
+    const color = rgb(sh.rgb[0] / 255, sh.rgb[1] / 255, sh.rgb[2] / 255);
+    const ox = sh.dx * unit;
+    const oy = -sh.dy * unit;
+    const spread = (sh.blur * unit) / 3;
+    if (spread < 0.5) draw(ox, oy, color, sh.alpha);
+    else for (const [rx, ry] of ring(spread, 8)) draw(ox + rx, oy + ry, color, Math.min(1, sh.alpha / 3));
   }
+  if (el.strokeWidth) {
+    const strokeColor = rgb(...textColorRgb01(el.strokeColor ?? "#000000"));
+    const radius = el.strokeWidth * unit;
+    for (const [rx, ry] of ring(radius, Math.max(12, Math.round(radius * 4)))) draw(rx, ry, strokeColor);
+  }
+  draw(0, 0, mainColor);
 }
 
 export async function generateAlbumPdf({

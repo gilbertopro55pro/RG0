@@ -157,14 +157,14 @@ export function drawCenteredBidiText(
 export function drawAlignedBidiText(
   page: PDFPage,
   text: string,
-  opts: { boxX: number; boxWidth: number; y: number; size: number; align: "left" | "center" | "right"; hebrewFont: PDFFont; latinFont: PDFFont; color: RGB }
+  opts: { boxX: number; boxWidth: number; y: number; size: number; align: "left" | "center" | "right"; hebrewFont: PDFFont; latinFont: PDFFont; color: RGB; opacity?: number }
 ) {
   const { visualRuns, widths, totalWidth } = layoutVisualRuns(text, opts.hebrewFont, opts.latinFont, opts.size);
   const startX =
     opts.align === "left" ? opts.boxX : opts.align === "right" ? opts.boxX + opts.boxWidth - totalWidth : opts.boxX + (opts.boxWidth - totalWidth) / 2;
   let cursorX = startX;
   visualRuns.forEach((r, i) => {
-    page.drawText(r.text, { x: cursorX, y: opts.y, size: opts.size, font: r.font, color: opts.color });
+    page.drawText(r.text, { x: cursorX, y: opts.y, size: opts.size, font: r.font, color: opts.color, ...(opts.opacity !== undefined ? { opacity: opts.opacity } : {}) });
     cursorX += widths[i];
   });
 }
