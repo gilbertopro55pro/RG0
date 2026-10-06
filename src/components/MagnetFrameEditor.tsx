@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { ALBUM_ORNAMENTS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { MAGNET_FRAME_TEXTURES, findMagnetFrameTexture, textureDataUrl } from "@/lib/magnetFrameTextures";
@@ -44,6 +44,15 @@ function Dim({ children }: { children: string }) {
     <span dir="ltr" style={{ unicodeBidi: "isolate" }}>
       {children}
     </span>
+  );
+}
+
+function DownloadGlyph() {
+  return (
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+      <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
+      <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
+    </svg>
   );
 }
 
@@ -504,14 +513,23 @@ export default function MagnetFrameEditor() {
     }
   };
 
-  // Opening a panel closes the one that was open; its sub-tab, choices and scroll stay as they were.
-  const togglePanel = (key: PanelKey) => setOpenPanel((prev) => (prev === key ? null : key));
+  // One tab open at a time ("solo"). Switching keeps the previous one's sub-tab and choices (they're
+  // editor state) and its scroll position (saved here, restored below).
+  const panelScrollRef = useRef<HTMLDivElement>(null);
+  const selectPanel = (key: PanelKey) => {
+    if (key === openPanel) return;
+    if (panelScrollRef.current && openPanel) panelScroll.current[openPanel] = panelScrollRef.current.scrollTop;
+    setOpenPanel(key);
+  };
+  useLayoutEffect(() => {
+    if (panelScrollRef.current && openPanel) panelScrollRef.current.scrollTop = panelScroll.current[openPanel] ?? 0;
+  }, [openPanel]);
 
   // Picking an element on a preview opens the panel that edits it.
   const selectOnCanvas = (el: MagnetFrameElement) => {
     setSelectedId(el.id);
-    if (el.type === "text") setOpenPanel("text");
-    else setOpenPanel((prev) => (prev === "digits" && el.floralId?.startsWith("digit-") ? "digits" : "elements"));
+    if (el.type === "text") selectPanel("text");
+    else selectPanel(openPanel === "digits" && el.floralId?.startsWith("digit-") ? "digits" : "elements");
   };
 
   const renderFrame = (orientation: FrameOrientation) => {
@@ -636,23 +654,6 @@ export default function MagnetFrameEditor() {
     </div>
     );
   };
-
-  const panelBody = (key: PanelKey, children: React.ReactNode) => (
-    <div
-      ref={(el) => {
-        if (el && el.dataset.restored !== "1") {
-          el.scrollTop = panelScroll.current[key] ?? 0;
-          el.dataset.restored = "1";
-        }
-      }}
-      onScroll={(e) => {
-        panelScroll.current[key] = e.currentTarget.scrollTop;
-      }}
-      className="px-3 pb-3 pt-1 max-h-[62svh] overflow-y-auto"
-    >
-      {children}
-    </div>
-  );
 
   const PANELS: { key: PanelKey; label: string }[] = [
     { key: "text", label: "טקסט" },
@@ -1278,6 +1279,33 @@ export default function MagnetFrameEditor() {
     );
   };
 
+  // The editor fills the screen below the title row (owner, 2026-10-06): no page scroll. The right
+  // side scrolls on its own, and the frames on the left stay put, sized to fit the height.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [fitHeight, setFitHeight] = useState<number | null>(null);
+  const [tallScreen, setTallScreen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  useLayoutEffect(() => {
+    if (!loaded) return;
+    const measure = () => {
+      const el = gridRef.current;
+      if (!el || window.innerWidth < 640) {
+        setFitHeight(null);
+        return;
+      }
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setFitHeight(Math.max(320, Math.floor(window.innerHeight - top - 16)));
+      setTallScreen(window.matchMedia("(min-width: 1024px) and (min-height: 700px)").matches);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [loaded]);
+  // Widest the previews column may get and still fit fitHeight: stacked (tall screen) the two frames
+  // take about 1.55× its width plus labels and buttons; side by side, the landscape frame is 16/25
+  // of it at 3:4.
+  const previewsMaxWidth = fitHeight ? Math.max(200, tallScreen ? (fitHeight - 170) / 1.55 : (fitHeight - 130) / 0.48) : undefined;
+
   if (!loaded) return null;
 
   // Two sides (owner's design, 2026-10-05): the panels on the right (65%), and on the left (35%)
@@ -1294,81 +1322,116 @@ export default function MagnetFrameEditor() {
       <p className="text-lg font-bold font-display">{t("סובבו את המכשיר למצב אופקי")}</p>
       <p className="text-sm text-ink-soft">{t("כלי עיצוב המגנטים עובד במצב אופקי: המסגרות מצד אחד והפאנלים מהצד השני. סובבו את הטלפון כדי להמשיך.")}</p>
     </div>
-    <div className={`grid gap-4 sm:gap-5 sm:grid-cols-[minmax(0,65fr)_minmax(0,35fr)] items-start [@media(pointer:coarse)_and_(orientation:portrait)_and_(max-width:767px)]:hidden ${ALBUM_FONT_CLASS_NAMES}`}>
-      <section className="rounded-2xl bg-card border border-line shadow-card overflow-hidden">
-        <div className="p-4 border-b border-line flex flex-wrap items-start gap-3">
-          <p className="flex-1 min-w-[220px] text-xs leading-relaxed text-ink-soft">
-            {withDims(
-              t("בסיס לבן פשוט במידה {landscape} ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך ({portrait}) עם אותו הטקסט והאלמנטים."),
-              { landscape: "20×15", portrait: "15×20" }
-            )}
-          </p>
-          <button onClick={() => void save()} disabled={saving || !!exportBusy} className="shrink-0 rounded-lg px-5 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60">
-            {saving && !exportBusy ? t("שומר...") : t("שמירה")}
+    <div className={`[@media(pointer:coarse)_and_(orientation:portrait)_and_(max-width:767px)]:hidden ${ALBUM_FONT_CLASS_NAMES}`}>
+      <div className="flex items-center gap-2 mb-4">
+        <h1 className="text-[26px] font-bold font-display">{t("עיצוב מסגרת מגנט")}</h1>
+        <div className="relative">
+          <button
+            onClick={() => setHelpOpen((v) => !v)}
+            aria-label={t("הסבר")}
+            aria-expanded={helpOpen}
+            className="h-7 w-7 rounded-full border border-line bg-card text-sm font-bold text-ink-soft flex items-center justify-center"
+          >
+            ?
           </button>
-        </div>
-        {PANELS.map((panel) => {
-          const open = openPanel === panel.key;
-          return (
-            <div key={panel.key} className="border-b border-line last:border-b-0">
-              <button
-                onClick={() => togglePanel(panel.key)}
-                aria-expanded={open}
-                className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-sm font-semibold text-start transition-colors"
-                style={{ background: open ? "var(--color-chip)" : undefined, color: "var(--color-ink)" }}
-              >
-                {t(panel.label)}
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-ink-soft transition-transform" style={{ transform: open ? "rotate(180deg)" : undefined }}>
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </button>
-              {open && panelBody(panel.key, renderPanelContent(panel.key))}
+          {helpOpen && (
+            <div
+              role="dialog"
+              className="absolute start-0 top-9 z-30 w-[min(360px,80vw)] rounded-xl p-3.5 bg-card border border-line shadow-sheet text-xs leading-relaxed text-ink-soft"
+              onClick={() => setHelpOpen(false)}
+            >
+              {withDims(
+                t("בסיס לבן פשוט במידה {landscape} ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך ({portrait}) עם אותו הטקסט והאלמנטים."),
+                { landscape: "20×15", portrait: "15×20" }
+              )}
             </div>
-          );
-        })}
-      </section>
-
-      {/* Side by side when the screen is short (a phone held sideways), stacked on a tall one. */}
-      <aside className="order-first sm:order-none sm:sticky sm:top-[80px]">
-        <div className="mx-auto w-full [@media(min-width:1024px)_and_(min-height:700px)]:max-w-[min(100%,calc((100svh_-_330px)/1.6))]">
-          <div className="grid grid-cols-[16fr_9fr] items-start gap-2 sm:gap-3 [@media(min-width:1024px)_and_(min-height:700px)]:grid-cols-1 [@media(min-width:1024px)_and_(min-height:700px)]:gap-4">
-            {(["landscape", "portrait"] as const).map((o) => (
-              <div key={o} className={o === "portrait" ? "[@media(min-width:1024px)_and_(min-height:700px)]:w-[60%] [@media(min-width:1024px)_and_(min-height:700px)]:mx-auto w-full" : "w-full"}>
-                <div className="mb-1.5 text-[11px] font-semibold text-ink-soft text-center">
-                  {withDims(o === "landscape" ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: o === "landscape" ? "20×15" : "15×20" })}
-                </div>
-                {renderFrame(o)}
-                <div className="mt-2 flex flex-col gap-1.5 xl:flex-row">
-                  <button
-                    onClick={() => download(o)}
-                    disabled={!!exportBusy || saving}
-                    className="flex-1 rounded-lg px-2 py-2 text-[11px] sm:text-xs font-semibold bg-chip text-ink disabled:opacity-60"
-                  >
-                    {exportBusy === `${o}-png`
-                      ? saving
-                        ? t("שומר...")
-                        : t("מוריד...")
-                      : o === "landscape"
-                        ? withDims(t("הורדת מסגרת רוחב ({size})"), { size: "20×15" })
-                        : withDims(t("הורדת מסגרת אורך ({size})"), { size: "15×20" })}
-                  </button>
-                  <button
-                    onClick={() => download(o, "psd")}
-                    disabled={!!exportBusy || saving}
-                    title={t("קובץ פוטושופ עם שכבות: המסגרת, הטקסטורה, כל טקסט ואלמנט בשכבה משלו, והצללות כ-Layer Style")}
-                    className="xl:flex-none rounded-lg px-3 py-2 text-[11px] sm:text-xs font-semibold border border-line bg-card text-ink disabled:opacity-60"
-                  >
-                    {exportBusy === `${o}-psd` ? (saving ? t("שומר...") : t("מכין PSD...")) : t("הורדת PSD")}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-3 text-[11px] leading-relaxed text-ink-soft text-center">{t("שתי המסגרות מתעדכנות יחד. אפשר לגרור אלמנטים בכל אחת מהן.")}</p>
-          {error && <p className="mt-2 text-xs text-rose text-center">{error}</p>}
-          {savedOnce && !designId && <p className="mt-1 text-[11px] text-ink-soft text-center">{t("השמירה נכשלה. נסו שוב.")}</p>}
+          )}
         </div>
-      </aside>
+        <button
+          onClick={() => void save()}
+          disabled={saving || !!exportBusy}
+          className="ms-auto shrink-0 rounded-xl px-7 py-3 text-base font-bold bg-ink text-white shadow-card disabled:opacity-60"
+        >
+          {saving && !exportBusy ? t("שומר...") : t("שמירה")}
+        </button>
+      </div>
+
+      <div
+        ref={gridRef}
+        className="grid gap-4 sm:gap-5 sm:grid-cols-[minmax(0,65fr)_minmax(0,35fr)] items-start"
+        style={fitHeight ? { height: fitHeight } : undefined}
+      >
+        <section className="rounded-2xl bg-card border border-line shadow-card overflow-hidden flex flex-col sm:h-full">
+          <div role="tablist" className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {PANELS.map((panel) => {
+              const open = openPanel === panel.key;
+              return (
+                <button
+                  key={panel.key}
+                  role="tab"
+                  aria-selected={open}
+                  onClick={() => selectPanel(panel.key)}
+                  className="shrink-0 whitespace-nowrap px-3.5 py-3 text-sm font-semibold transition-colors"
+                  style={{
+                    color: open ? "var(--color-ink)" : "var(--color-ink-soft)",
+                    boxShadow: open ? "inset 0 -2px 0 var(--color-amber-deep)" : undefined,
+                  }}
+                >
+                  {t(panel.label)}
+                </button>
+              );
+            })}
+          </div>
+          <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto p-4">
+            {openPanel && renderPanelContent(openPanel)}
+          </div>
+        </section>
+
+        {/* Side by side when the screen is short (a phone held sideways), stacked on a tall one. */}
+        <aside className="order-first sm:order-none sm:h-full sm:overflow-hidden">
+          <div className="mx-auto w-full" style={previewsMaxWidth ? { maxWidth: previewsMaxWidth } : undefined}>
+            <div className="grid grid-cols-[16fr_9fr] items-start gap-2 sm:gap-3 [@media(min-width:1024px)_and_(min-height:700px)]:grid-cols-1 [@media(min-width:1024px)_and_(min-height:700px)]:gap-4">
+              {(["landscape", "portrait"] as const).map((o) => (
+                <div key={o} className={o === "portrait" ? "[@media(min-width:1024px)_and_(min-height:700px)]:w-[60%] [@media(min-width:1024px)_and_(min-height:700px)]:mx-auto w-full" : "w-full"}>
+                  <div className="mb-1.5 text-[11px] font-semibold text-ink-soft text-center">
+                    {withDims(o === "landscape" ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: o === "landscape" ? "20×15" : "15×20" })}
+                  </div>
+                  {renderFrame(o)}
+                  <div className="mt-2 flex gap-1.5">
+                    <button
+                      onClick={() => download(o)}
+                      disabled={!!exportBusy || saving}
+                      title={o === "landscape" ? t("הורדת מסגרת רוחב ({size})", { size: "20×15" }) : t("הורדת מסגרת אורך ({size})", { size: "15×20" })}
+                      className="flex-1 min-w-0 rounded-lg px-1.5 py-2 text-[11px] sm:text-xs font-semibold bg-chip text-ink disabled:opacity-60 flex items-center justify-center gap-1"
+                    >
+                      {exportBusy === `${o}-png` ? (saving ? t("שומר...") : t("מוריד...")) : (
+                        <>
+                          <DownloadGlyph /> PNG
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => download(o, "psd")}
+                      disabled={!!exportBusy || saving}
+                      title={t("קובץ פוטושופ עם שכבות: המסגרת, הטקסטורה, כל טקסט ואלמנט בשכבה משלו, והצללות כ-Layer Style")}
+                      className="flex-1 min-w-0 rounded-lg px-1.5 py-2 text-[11px] sm:text-xs font-semibold border border-line bg-card text-ink disabled:opacity-60 flex items-center justify-center gap-1"
+                    >
+                      {exportBusy === `${o}-psd` ? (saving ? t("שומר...") : t("מכין PSD...")) : (
+                        <>
+                          <DownloadGlyph /> PSD
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-ink-soft text-center">{t("שתי המסגרות מתעדכנות יחד. אפשר לגרור אלמנטים בכל אחת מהן.")}</p>
+            {error && <p className="mt-2 text-xs text-rose text-center">{error}</p>}
+            {savedOnce && !designId && <p className="mt-1 text-[11px] text-ink-soft text-center">{t("השמירה נכשלה. נסו שוב.")}</p>}
+          </div>
+        </aside>
+      </div>
     </div>
     </>
   );
