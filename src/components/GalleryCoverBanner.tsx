@@ -26,12 +26,12 @@ export default function GalleryCoverBanner({
 }) {
   const theme = resolveGalleryTheme(themeId, { titleFontOverride });
   // The premium theme's cover is a full-screen photo (rendered directly by the gallery page); this
-  // component only shows it here for the design settings' live preview. Text position and shape
-  // don't apply to it.
+  // component only shows it here for the design settings' live preview, with its own reading of
+  // text position and shape (see GalleryPremiumCover).
   if (theme.coverStyle === "fullbleed") {
     return (
       <div className="mb-4">
-        <GalleryPremiumCover photoUrl={photoUrl} title={title} dateLabel={dateLabel} focalX={focalX} focalY={focalY} variant="preview" />
+        <GalleryPremiumCover photoUrl={photoUrl} title={title} dateLabel={dateLabel} focalX={focalX} focalY={focalY} variant="preview" textPosition={textPosition} shape={shape} />
       </div>
     );
   }

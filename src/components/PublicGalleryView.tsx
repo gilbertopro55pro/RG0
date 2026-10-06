@@ -1095,6 +1095,18 @@ export default function PublicGalleryView({
 
   const renderPremiumBody = () => (
     <>
+      {slideshowPhotos.length > 0 && (
+        <div className="mx-3 sm:mx-0 mb-6 sm:mb-8">
+          <button
+            onClick={() => setSlideshowOpen(true)}
+            className={`w-full h-12 flex items-center justify-center gap-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gt-ink)] ${BTN_PRESS}`}
+            style={{ background: "var(--gt-accent)", color: "var(--gt-accent-ink)", borderRadius: "var(--gt-radius)" }}
+          >
+            <PlayIcon size={17} />
+            {t("מצגת תמונות")}
+          </button>
+        </div>
+      )}
       {album && albumSpreads.length > 0 && (
         <div
           className="mx-3 sm:mx-0 mb-8 sm:mb-12 flex flex-wrap items-center gap-x-5 gap-y-3 border p-3 sm:p-4"
@@ -1421,10 +1433,12 @@ export default function PublicGalleryView({
           </svg>
         </button>
       )}
-      {!premium && (
+      {/* The floating share button shows in every theme, premium included (owner, 2026-10-06: the
+          premium bar's small icon wasn't enough), shown once the cover is scrolled past there. */}
+      {(!premium || pastCover) && (
       <button
         onClick={openGalleryShare}
-        className={`fixed start-5 md:rtl:translate-x-[5cm] md:ltr:-translate-x-[5cm] z-40 h-11 px-4 rounded-full flex items-center gap-1.5 shadow-sheet text-sm font-semibold ${BTN_PRESS} ${favoriteCount > 0 || selectionMode || usedLabels.length > 0 ? "bottom-28" : "bottom-5"}`}
+        className={`fixed start-5 md:rtl:translate-x-[5cm] md:ltr:-translate-x-[5cm] z-40 h-11 px-4 ${premium ? "rounded-[2px]" : "rounded-full"} flex items-center gap-1.5 shadow-sheet text-sm font-semibold ${BTN_PRESS} ${favoriteCount > 0 || selectionMode || usedLabels.length > 0 ? "bottom-28" : "bottom-5"}`}
         style={{ background: "var(--gt-surface)", border: "1px solid var(--gt-border)", color: "var(--gt-ink)" }}
       >
         <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">

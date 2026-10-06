@@ -3446,6 +3446,8 @@ export default function GalleryManageView({
             logoUrl={brandLogoUrl}
             focalX={gallery.cover_focal_x}
             focalY={gallery.cover_focal_y}
+            textPosition={gallery.cover_text_position}
+            shape={gallery.cover_shape}
           />
           <Link
             href="/galleries"
@@ -6505,9 +6507,9 @@ function GallerySettingsModal({
               </>
             )}
 
-            {/* The premium theme's cover is always a full-screen photo with the title low on it, so
-                text position and shape don't apply there. */}
-            {galleryThemeById(theme).coverStyle !== "fullbleed" && (
+            {/* Text position and shape apply to every theme, the premium one included (its own
+                full-screen reading of them, see GalleryPremiumCover). */}
+            {(
             <>
             <p className="text-xs text-ink-soft mb-2.5">{t("מיקום הכיתוב")}</p>
             <div className="grid grid-cols-4 gap-2 mb-5">
