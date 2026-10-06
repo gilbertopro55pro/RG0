@@ -19,10 +19,10 @@ export async function GET() {
   return NextResponse.json({ design: designs?.[0] ?? null });
 }
 
-// Always saves the FULL current landscape canvas and derives the portrait one from it — xPct/yPct
-// (of each canvas's own dimensions) and sizePct (of the shorter side) already carry over as-is
-// between the two aspect ratios, so "same text and elements as the width frame" is a plain deep
-// clone, not a re-layout (see MagnetFrameEditor.tsx).
+// Saves both frames. Since the two-step editor (2026-10-06) the portrait frame has its own positions
+// (step 2 starts from the landscape layout fitted to the portrait frame, then the photographer
+// adjusts), so the editor sends portraitElements. A client without it falls back to a copy of the
+// landscape elements, the old behavior.
 export async function POST(request: Request) {
   const auth = await requireDesignToolsUser();
   if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
@@ -32,11 +32,12 @@ export async function POST(request: Request) {
     id,
     eventId,
     elements,
+    portraitElements: sentPortrait,
     frameSettings,
-  }: { id?: string; eventId?: string | null; elements: MagnetFrameElement[]; frameSettings?: MagnetFrameSettings } = await request.json();
+  }: { id?: string; eventId?: string | null; elements: MagnetFrameElement[]; portraitElements?: MagnetFrameElement[]; frameSettings?: MagnetFrameSettings } = await request.json();
   if (!Array.isArray(elements)) return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
 
-  const portraitElements = JSON.parse(JSON.stringify(elements)) as MagnetFrameElement[];
+  const portraitElements = Array.isArray(sentPortrait) ? sentPortrait : (JSON.parse(JSON.stringify(elements)) as MagnetFrameElement[]);
   const settings = frameSettings ?? DEFAULT_MAGNET_FRAME_SETTINGS;
 
   if (id) {
