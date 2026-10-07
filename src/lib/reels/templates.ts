@@ -1,3 +1,5 @@
+import { EXTRA_TRANSITIONS, type ExtraTransition } from "./transitionsExtra";
+
 // Reels from a gallery's photos (owner, 2026-10-07, admin only for now): the photographer picks
 // photos, a platform (its size) and one of five templates, edits the text, previews it live, and
 // exports a real MP4 in the browser (see render.ts for the frames, encode.ts for the file).
@@ -16,9 +18,10 @@ export const REEL_PLATFORMS: ReelPlatform[] = [
   { id: "fb-post", label: "פייסבוק פוסט", width: 1080, height: 1080, note: "1:1" },
 ];
 
-// Every transition the engine draws (see transitions.ts), grouped in the picker by category like
-// CapCut's (owner, 2026-10-07: "the transitions should be more varied and random").
-export type ReelTransition =
+// Every transition the engine draws (see transitions.ts and transitionsExtra.ts), grouped in the
+// picker by category like CapCut's (owner, 2026-10-07: "the transitions should be more varied and
+// random"; then "10 more in every category").
+export type BaseTransition =
   | "fade"
   | "slide"
   | "push"
@@ -43,6 +46,8 @@ export type ReelTransition =
   | "zoomblur"
   | "trio";
 
+export type ReelTransition = BaseTransition | ExtraTransition;
+
 export type ReelTransitionCategory = "basic" | "light" | "glitch" | "mask" | "3d" | "motion";
 
 export const REEL_TRANSITION_CATEGORIES: { id: ReelTransitionCategory; label: string }[] = [
@@ -56,7 +61,7 @@ export const REEL_TRANSITION_CATEGORIES: { id: ReelTransitionCategory; label: st
 
 // `min` is the shortest the transition can run (seconds, at the template's own pace): a tile or a
 // rotation needs longer than the template's own (e.g. 0.18s for the fast beat) to read at all.
-export const REEL_TRANSITIONS: { id: ReelTransition; label: string; category: ReelTransitionCategory; min: number }[] = [
+const BASE_TRANSITIONS: { id: BaseTransition; label: string; category: ReelTransitionCategory; min: number }[] = [
   { id: "fade", label: "דהייה", category: "basic", min: 0.4 },
   { id: "slide", label: "החלקה לצד", category: "basic", min: 0.35 },
   { id: "push", label: "דחיפה למעלה", category: "basic", min: 0.35 },
@@ -81,6 +86,8 @@ export const REEL_TRANSITIONS: { id: ReelTransition; label: string; category: Re
   { id: "zoomblur", label: "זום מטושטש", category: "motion", min: 0.4 },
   { id: "trio", label: "כרטיס נכנס", category: "motion", min: 0.55 },
 ];
+
+export const REEL_TRANSITIONS: { id: ReelTransition; label: string; category: ReelTransitionCategory; min: number }[] = [...BASE_TRANSITIONS, ...EXTRA_TRANSITIONS];
 
 export function transitionInfo(id: ReelTransition) {
   return REEL_TRANSITIONS.find((x) => x.id === id) ?? REEL_TRANSITIONS[0];
@@ -223,7 +230,8 @@ export type ReelMusic = {
 export type ReelSettings = {
   platform: ReelPlatformId;
   templateId: string;
-  length: ReelLength;
+  // null = no fixed length: the reel is as long as the times on the timeline add up to.
+  length: ReelLength | null;
   fit: ReelFit;
   // Strength of the blurred background behind a whole photo, 0-100.
   blur: number;

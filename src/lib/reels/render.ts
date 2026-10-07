@@ -19,53 +19,146 @@ export type ReelTimeline = {
   transition: number; // the template's transition length at this pace (some run longer)
   pace: number; // how much faster (<1) or slower (>1) than the template's own timing
   tail: number; // the ending text's own screen at the end
-  total: number; // exactly the chosen length
+  total: number; // the chosen length, or (with no fixed length) the sum of the segments
+  fixed: boolean; // a length was chosen from the list
   dropped: number; // photos that don't fit the chosen length
+  unit: number | null; // the beat subdivision the automatic cuts are on (null = no music tempo)
 };
 
 // The shortest a photo can stay on screen.
 export const MIN_SEGMENT = 0.4;
+// With no fixed length, a reel can grow up to this (Instagram's longest reel is 3 minutes).
+export const MAX_FREE_LENGTH = 180;
 
 export function segmentCount(photoCount: number, tpl: ReelTemplate) {
   return Math.max(1, tpl.frame === "split" ? Math.ceil(photoCount / 2) : photoCount);
 }
 
-// The time each segment gets when the photographer hasn't set it: an equal share of the length,
-// cut on the beat of the music when its tempo is known, so every transition lands on a beat.
-export function autoDurations(segments: number, avail: number, bpm: number | null): number[] {
-  const even = () => Array.from({ length: segments }, () => avail / segments);
-  if (!bpm) return even();
-  // Cut on whole beats when each photo gets several of them, otherwise on half or quarter beats,
-  // so the shares stay close to equal.
-  let unit = 60 / bpm;
-  while (avail / segments / unit < 4 && unit > 60 / bpm / 4) unit /= 2;
-  const units = Math.floor(avail / unit + 1e-6);
-  if (units < segments) return even();
-  const q = Math.floor(units / segments);
-  const extra = units - q * segments;
-  // The leftover units spread evenly along the reel, not bunched at the start.
-  const out = Array.from({ length: segments }, (_, i) => (q + (Math.floor(((i + 1) * extra) / segments) - Math.floor((i * extra) / segments))) * unit);
-  out[segments - 1] += avail - units * unit;
+const tailFor = (settings: ReelSettings, total: number) => (settings.text.show && settings.text.ending.trim() ? Math.min(1.8, total * 0.18) : 0);
+
+// Moves every cut onto the nearest point of the beat grid (cumulatively, so the total stays the
+// same), unless that would make a segment shorter than the minimum.
+function snapCuts(durs: number[], unit: number | null): number[] {
+  if (!unit) return durs;
+  const out: number[] = [];
+  let acc = 0;
+  let prev = 0;
+  const end = durs.reduce((x, y) => x + y, 0);
+  for (let i = 0; i < durs.length; i++) {
+    acc += durs[i];
+    let cut = i === durs.length - 1 ? end : Math.round(acc / unit) * unit;
+    if (cut - prev < MIN_SEGMENT || (i < durs.length - 1 && end - cut < MIN_SEGMENT * (durs.length - 1 - i))) cut = acc;
+    out.push(cut - prev);
+    prev = cut;
+  }
   return out;
 }
 
-export function reelTimeline(photoCount: number, tpl: ReelTemplate, settings: ReelSettings, custom?: number[] | null, bpm?: number | null): ReelTimeline {
-  const total = settings.length;
-  const tail = settings.text.show && settings.text.ending.trim() ? Math.min(1.8, total * 0.18) : 0;
-  const avail = total - tail;
+// The beat subdivision to cut on: whole beats when each segment gets several, otherwise half or
+// quarter beats, so the shares stay close to what they'd be without music.
+function beatUnit(bpm: number | null, share: number): number | null {
+  if (!bpm) return null;
+  let unit = 60 / bpm;
+  while (share / unit < 4 && unit > 60 / bpm / 4) unit /= 2;
+  return unit;
+}
+
+// The time each segment gets when the photographer hasn't set it. `prefs` is what each segment
+// would like: a photo the template's own time, a video clip its own length. With a fixed length
+// the shares are scaled to fill it (a clip never longer than itself); then the cuts move onto the
+// music's beat when its tempo is known, so every transition lands on a beat.
+export function autoDurations(prefs: number[], avail: number | null, bpm: number | null, videoMax: (number | null)[] = []): { durs: number[]; unit: number | null } {
+  const n = prefs.length;
+  let durs: number[];
+  if (avail == null) {
+    durs = prefs.map((p) => Math.max(MIN_SEGMENT, p));
+  } else {
+    durs = prefs.slice();
+    const capped = new Set<number>();
+    for (let round = 0; round < n; round++) {
+      const freeIdx = durs.map((_, i) => i).filter((i) => !capped.has(i));
+      const fixedSum = [...capped].reduce((x, i) => x + durs[i], 0);
+      const prefSum = freeIdx.reduce((x, i) => x + prefs[i], 0) || 1;
+      const scale = (avail - fixedSum) / prefSum;
+      let changed = false;
+      for (const i of freeIdx) {
+        durs[i] = prefs[i] * scale;
+        const max = videoMax[i];
+        if (max != null && durs[i] > max && freeIdx.length > 1) {
+          durs[i] = max;
+          capped.add(i);
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+  }
+  const unit = beatUnit(bpm, durs.reduce((x, y) => x + y, 0) / Math.max(1, n));
+  return { durs: snapCuts(durs, unit), unit };
+}
+
+// `segVideo` gives each segment's video length (null for a photo segment).
+export function reelTimeline(photoCount: number, tpl: ReelTemplate, settings: ReelSettings, custom?: number[] | null, bpm?: number | null, segVideo: (number | null)[] = []): ReelTimeline {
   const all = segmentCount(photoCount, tpl);
-  const segments = Math.max(1, Math.min(all, Math.floor(avail / MIN_SEGMENT)));
-  const sum = custom?.reduce((x, y) => x + y, 0) ?? 0;
-  const durs = custom && custom.length === segments && Math.abs(sum - avail) < 0.02 && custom.every((d) => d >= MIN_SEGMENT - 1e-6) ? custom.slice() : autoDurations(segments, avail, bpm ?? null);
+  const fixed = settings.length != null;
+  const validCustom = (n: number) => !!custom && custom.length === n && custom.every((d) => d >= MIN_SEGMENT - 1e-6);
+  let durs: number[];
+  let segments: number;
+  let tail: number;
+  let unit: number | null = null;
+  if (fixed) {
+    const total = settings.length as number;
+    tail = tailFor(settings, total);
+    const avail = total - tail;
+    segments = Math.max(1, Math.min(all, Math.floor(avail / MIN_SEGMENT)));
+    const sum = custom?.reduce((x, y) => x + y, 0) ?? 0;
+    if (validCustom(segments) && Math.abs(sum - avail) < 0.02) durs = custom!.slice();
+    else {
+      const prefs = Array.from({ length: segments }, (_, i) => segVideo[i] ?? tpl.photoSeconds);
+      ({ durs, unit } = autoDurations(prefs, avail, bpm ?? null, segVideo.slice(0, segments)));
+    }
+  } else {
+    segments = all;
+    if (validCustom(segments)) durs = custom!.slice();
+    else {
+      const prefs = Array.from({ length: segments }, (_, i) => Math.min(segVideo[i] ?? tpl.photoSeconds, 30));
+      ({ durs, unit } = autoDurations(prefs, null, bpm ?? null));
+    }
+    // Never past the longest reel the networks take.
+    let sum = durs.reduce((x, y) => x + y, 0);
+    if (sum > MAX_FREE_LENGTH) durs = durs.map((d) => Math.max(MIN_SEGMENT, (d * MAX_FREE_LENGTH) / sum));
+    sum = durs.reduce((x, y) => x + y, 0);
+    tail = tailFor(settings, sum + 1.8);
+  }
   const starts: number[] = [];
   let acc = 0;
   for (const d of durs) {
     starts.push(acc);
     acc += d;
   }
-  const pace = Math.max(0.5, Math.min(1.3, avail / segments / tpl.photoSeconds));
-  const dropped = (tpl.frame === "split" ? Math.max(0, photoCount - segments * 2) : Math.max(0, photoCount - segments));
-  return { segments, durs, starts, transition: tpl.transitionSeconds * pace, pace, tail, total, dropped };
+  const total = fixed ? (settings.length as number) : acc + tail;
+  const pace = Math.max(0.5, Math.min(1.3, acc / segments / tpl.photoSeconds));
+  const dropped = tpl.frame === "split" ? Math.max(0, photoCount - segments * 2) : Math.max(0, photoCount - segments);
+  return { segments, durs, starts, transition: tpl.transitionSeconds * pace, pace, tail, total, fixed, dropped, unit };
+}
+
+// The clips playing at time t and how far into each one: a clip plays from the moment it starts
+// coming in (the transition before it). Used to keep videos on the right frame.
+export function activeMedia(t: number, tl: ReelTimeline, tpl: ReelTemplate, settings: ReelSettings, imageCount: number): { index: number; local: number }[] {
+  if (!imageCount) return [];
+  const pool = transitionPool(tpl, settings);
+  const lenAfter = (k: number) => (k >= 0 && k < tl.segments - 1 ? transitionLength(transitionAfter(k, pool, settings.seed), tl, k) : 0);
+  const per = tpl.frame === "split" ? 2 : 1;
+  const out: { index: number; local: number }[] = [];
+  const k = segmentAt(tl, t);
+  const add = (seg: number) => {
+    const from = tl.starts[seg] - lenAfter(seg - 1);
+    for (let j = 0; j < per; j++) out.push({ index: (seg * per + j) % imageCount, local: Math.max(0, t - from) });
+  };
+  add(k);
+  const len = lenAfter(k);
+  if (len > 0 && t > tl.starts[k] + tl.durs[k] - len) add(k + 1);
+  return out;
 }
 
 // The mix of transitions in use: the photographer's choice, or the template's own.

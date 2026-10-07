@@ -6,12 +6,16 @@ import { MIN_SEGMENT } from "@/lib/reels/render";
 
 // The reel's timeline (owner, 2026-10-07: "very simple, drag & drop"): one clip per photo, as
 // wide as the time it's on screen, scrolling sideways. Drag the gold line between two clips to
-// give one more time and the other less (the reel's length stays exactly what was chosen); drag a
-// clip by its handle to move it; tap a clip to jump the preview there.
+// give one more time and the other less (with a fixed length the total stays exactly the same;
+// with no fixed length only that clip changes and the reel grows or shrinks); drag a clip by its
+// handle to move it; tap a clip to jump the preview there. A dragged edge snaps (magnet) to the
+// music's beat, whole and half seconds, the playhead, or an even split, with a guide line saying
+// which — the photographer can turn snapping off.
 
-export type TimelineClip = { key: string; thumbs: string[] };
+export type TimelineClip = { key: string; thumbs: string[]; video?: boolean };
 
-const SNAP = 0.05;
+// How close (in pixels) an edge has to come to a snap point to jump onto it.
+const SNAP_PX = 10;
 
 export default function ReelTimelineEditor({
   clips,
@@ -24,6 +28,9 @@ export default function ReelTimelineEditor({
   onSeek,
   onDurs,
   onReorder,
+  free,
+  snap,
+  onSnap,
 }: {
   clips: TimelineClip[];
   durs: number[];
@@ -36,19 +43,32 @@ export default function ReelTimelineEditor({
   onSeek: (t: number) => void;
   onDurs: (durs: number[]) => void;
   onReorder: (from: number, to: number) => void;
+  // No fixed length: an edge only changes the clip before it.
+  free: boolean;
+  snap: boolean;
+  onSnap: (on: boolean) => void;
 }) {
   const t = useT();
-  const pps = Math.max(40, Math.min(140, 900 / total));
+  // A fixed scale with no fixed length, so the clips don't rescale under the finger while it drags.
+  const pps = free ? 60 : Math.max(40, Math.min(140, 900 / total));
   const width = total * pps;
   const scroller = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<{ from: number; dx: number; to: number } | null>(null);
+  const [guide, setGuide] = useState<{ at: number; label: string } | null>(null);
 
-  const snapTime = (abs: number) => {
-    if (beat) {
-      const nearest = Math.round(abs / beat) * beat;
-      if (Math.abs(nearest - abs) < 0.12) return nearest;
-    }
-    return Math.round(abs / SNAP) * SNAP;
+  // The snap points for the edge after clip k, nearest first; null when nothing is close.
+  const snapTo = (raw: number, k: number, pairEnd: number): { at: number; label: string } | null => {
+    const points: { at: number; label: string }[] = [];
+    if (beat) points.push({ at: Math.round(raw / beat) * beat, label: t("קצב") });
+    points.push({ at: Math.round(raw), label: t("שנייה שלמה") });
+    points.push({ at: Math.round(raw * 2) / 2, label: t("חצי שנייה") });
+    points.push({ at: time, label: t("הסמן") });
+    if (!free && k + 1 < durs.length) points.push({ at: (starts[k] + pairEnd) / 2, label: t("חלוקה שווה") });
+    if (free && k > 0) points.push({ at: starts[k] + durs[k - 1], label: t("כמו התמונה הקודמת") });
+    const thr = SNAP_PX / pps;
+    let best: { at: number; label: string } | null = null;
+    for (const pt of points) if (Math.abs(pt.at - raw) <= thr && (!best || Math.abs(pt.at - raw) < Math.abs(best.at - raw))) best = pt;
+    return best;
   };
 
   // Dragging the edge after clip k.
@@ -59,17 +79,23 @@ export default function ReelTimelineEditor({
     el.setPointerCapture(e.pointerId);
     const x0 = e.clientX;
     const a0 = durs[k];
-    const b0 = durs[k + 1];
+    const b0 = durs[k + 1] ?? 0;
     const edge0 = starts[k] + a0;
+    const pairEnd = starts[k] + a0 + b0;
+    const lo = starts[k] + MIN_SEGMENT;
+    const hi = free ? starts[k] + 60 : pairEnd - MIN_SEGMENT;
     const move = (ev: PointerEvent) => {
       const raw = edge0 + (ev.clientX - x0) / pps;
-      const edge = Math.max(starts[k] + MIN_SEGMENT, Math.min(starts[k] + a0 + b0 - MIN_SEGMENT, snapTime(raw)));
+      const hit = snap ? snapTo(raw, k, pairEnd) : null;
+      const edge = Math.max(lo, Math.min(hi, hit ? hit.at : Math.round(raw * 100) / 100));
+      setGuide(hit && edge === hit.at ? hit : null);
       const next = durs.slice();
       next[k] = edge - starts[k];
-      next[k + 1] = a0 + b0 - next[k];
+      if (!free) next[k + 1] = a0 + b0 - next[k];
       onDurs(next);
     };
     const up = () => {
+      setGuide(null);
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
       el.removeEventListener("pointercancel", up);
@@ -123,7 +149,25 @@ export default function ReelTimelineEditor({
   const step = total > 30 ? 5 : total > 10 ? 2 : 1;
   for (let s = 0; s <= total + 1e-6; s += step) ticks.push(s);
 
+  const edges = free ? clips.map((_, k) => k) : clips.slice(0, -1).map((_, k) => k);
+
   return (
+    <div>
+    <div className="flex justify-end mb-1.5">
+      <button
+        type="button"
+        onClick={() => onSnap(!snap)}
+        aria-pressed={snap}
+        className={`flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-[11px] font-semibold transition-colors ${snap ? "bg-ink text-white border-ink" : "bg-white text-ink-soft border-line"}`}
+        title={t("נעיצה של הקצוות לקצב, לשניות ולסמן")}
+      >
+        <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden="true">
+          <path d="M6 3v8a6 6 0 0 0 12 0V3" />
+          <path d="M6 7h4M14 7h4" />
+        </svg>
+        {snap ? t("נעיצה פועלת") : t("נעיצה כבויה")}
+      </button>
+    </div>
     <div ref={scroller} dir="ltr" className="overflow-x-auto overscroll-x-contain pb-2 select-none" style={{ scrollbarWidth: "thin" }}>
       <div className="relative" style={{ width: width + 24, paddingInline: 12 }}>
         {/* time ruler: tap to jump there */}
@@ -171,6 +215,7 @@ export default function ReelTimelineEditor({
                   </svg>
                 </button>
                 <span className="absolute bottom-1 left-1 rounded-sm bg-black/60 px-1 text-[10px] text-white font-data">{durs[k].toFixed(1)}s</span>
+                {c.video && <span className="absolute top-1 right-1 rounded-sm bg-black/60 px-1 text-[10px] text-white">▶</span>}
               </div>
             );
           })}
@@ -180,17 +225,25 @@ export default function ReelTimelineEditor({
               style={{ left: (drag.to > drag.from ? starts[drag.to] + durs[drag.to] : starts[drag.to]) * pps - 2 }}
             />
           )}
-          {clips.slice(0, -1).map((c, k) => (
+          {edges.map((k) => (
             <div
-              key={`edge-${c.key}`}
+              key={`edge-${clips[k].key}`}
               onPointerDown={startResize(k)}
               className="absolute top-0 h-full z-10 flex justify-center cursor-ew-resize group"
               style={{ left: (starts[k] + durs[k]) * pps - 11, width: 20, touchAction: "none" }}
               aria-label={t("גרירה לשינוי הזמן")}
             >
-              <span className="h-full w-[4px] rounded-sm bg-amber-deep/80 group-hover:bg-amber-deep shadow" />
+              <span className={`h-full w-[4px] rounded-sm shadow transition-transform ${guide && Math.abs(guide.at - (starts[k] + durs[k])) < 1e-6 ? "bg-amber-deep scale-x-150" : "bg-amber-deep/80 group-hover:bg-amber-deep"}`} />
             </div>
           ))}
+          {guide && (
+            <div className="absolute -top-5 -bottom-1 z-30 pointer-events-none" style={{ left: guide.at * pps }}>
+              <div className="absolute inset-y-0 w-0 border-l border-dashed border-amber-deep" />
+              <span className="absolute -top-0.5 left-1 whitespace-nowrap rounded-sm bg-amber-deep px-1 text-[10px] text-white">
+                {guide.label} · {guide.at.toFixed(2)}s
+              </span>
+            </div>
+          )}
           {tail > 0 && (
             <div
               className="absolute top-0 h-full rounded-sm border border-dashed border-line bg-white/60 flex items-center justify-center text-[10px] text-ink-soft"
@@ -202,6 +255,7 @@ export default function ReelTimelineEditor({
           <div className="absolute -top-1 -bottom-1 w-[2px] bg-rose z-40 pointer-events-none" style={{ left: Math.min(total, time) * pps }} />
         </div>
       </div>
+    </div>
     </div>
   );
 }
