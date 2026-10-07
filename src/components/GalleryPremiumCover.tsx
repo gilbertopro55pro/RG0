@@ -124,7 +124,8 @@ export default function GalleryPremiumCover({
       )}
       <div aria-hidden="true" className="absolute inset-0" style={{ background: scrim }} />
       {logoUrl && (
-        <div className={`absolute inset-x-0 top-0 flex justify-center ${isPage || isManage ? "pt-5 sm:pt-7" : "pt-2.5"}`}>
+        // The top-left corner (owner, 2026-10-07): centred, it sat on the subject's head.
+        <div className={`absolute left-0 top-0 ${isPage || isManage ? "pl-5 pt-5 sm:pl-7 sm:pt-7" : "pl-2.5 pt-2.5"}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={logoUrl}

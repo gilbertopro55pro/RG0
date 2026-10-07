@@ -3479,7 +3479,6 @@ export default function GalleryManageView({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={brandLogoUrl} alt="" className="h-7 w-auto max-w-[140px] shrink-0 object-contain" />
             )}
-            {renderChapterTabs("hidden md:flex min-w-0 flex-1 items-center gap-6 overflow-x-auto")}
             {/* On a phone the actions scroll sideways inside the bar instead of widening the page. */}
             <div className="ms-auto flex min-w-0 items-center gap-0.5 lg:gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {managerTabItems.map((item) => (
@@ -3500,7 +3499,9 @@ export default function GalleryManageView({
               {photos.length > 0 && renderManagerIcons(true)}
             </div>
           </div>
-          {renderChapterTabs("md:hidden flex h-11 items-center gap-5 overflow-x-auto px-4 border-t border-[var(--gt-border)]")}
+          {/* The tabs get their own row under the actions on every width: sharing one row, the two
+              ran into each other (owner, 2026-10-07). */}
+          {renderChapterTabs("mx-auto max-w-[1600px] flex h-11 items-center gap-5 sm:gap-6 overflow-x-auto px-4 sm:px-6 lg:px-10 border-t border-[var(--gt-border)]")}
         </div>
       </div>
     );
