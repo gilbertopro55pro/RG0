@@ -1,14 +1,15 @@
 import type { ReelTransition } from "./templates";
 import { clamp01, drawBlurred, drawGrain, drawSegment, easeIn, easeInOut, easeOut, layer, rand, roundRectPath, type Scene } from "./scene";
 
-// The move from segment k (at progress p) to segment k+1, q = 0-1 through the transition.
+// The move from segment k (at progress p) to segment k+1 (at progress pB, already moving), q =
+// 0-1 through the transition.
 // `salt` makes the random parts (direction, glitch slices, the torn shape) differ between
 // transitions but stay the same on every frame of the same one.
-export function drawTransition(ctx: CanvasRenderingContext2D, sc: Scene, kind: ReelTransition, k: number, p: number, q: number, salt: number) {
+export function drawTransition(ctx: CanvasRenderingContext2D, sc: Scene, kind: ReelTransition, k: number, p: number, pB: number, q: number, salt: number) {
   const { W, H } = sc;
   const e = easeInOut(q);
   const A = (c: CanvasRenderingContext2D = ctx) => drawSegment(c, sc, k, p);
-  const B = (c: CanvasRenderingContext2D = ctx) => drawSegment(c, sc, k + 1, 0);
+  const B = (c: CanvasRenderingContext2D = ctx) => drawSegment(c, sc, k + 1, pB);
   const dir = rand(salt, 7) < 0.5 ? 1 : -1;
   const pulse = 1 - Math.abs(q - 0.5) * 2;
 
@@ -62,7 +63,7 @@ export function drawTransition(ctx: CanvasRenderingContext2D, sc: Scene, kind: R
       drawBlurred(ctx, sc, k, p, clamp01(q * 1.8));
       ctx.save();
       ctx.globalAlpha = easeInOut(clamp01((q - 0.3) / 0.4));
-      drawBlurred(ctx, sc, k + 1, 0, clamp01((1 - q) * 1.8));
+      drawBlurred(ctx, sc, k + 1, pB, clamp01((1 - q) * 1.8));
       ctx.restore();
       return;
     }

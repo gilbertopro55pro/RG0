@@ -54,7 +54,7 @@ export const REEL_TRANSITION_CATEGORIES: { id: ReelTransitionCategory; label: st
   { id: "motion", label: "תנועה ורטט" },
 ];
 
-// `min` is the shortest the transition can run (seconds, before the speed setting): a tile or a
+// `min` is the shortest the transition can run (seconds, at the template's own pace): a tile or a
 // rotation needs longer than the template's own (e.g. 0.18s for the fast beat) to read at all.
 export const REEL_TRANSITIONS: { id: ReelTransition; label: string; category: ReelTransitionCategory; min: number }[] = [
   { id: "fade", label: "דהייה", category: "basic", min: 0.4 },
@@ -93,7 +93,8 @@ export type ReelTemplate = {
   id: string;
   label: string;
   description: string;
-  // Seconds each photo stays (before the speed setting), and the transition into the next one.
+  // The pace the template is made for: seconds per photo, and the transition into the next one
+  // (the actual time per photo comes from the reel's length and the timeline).
   photoSeconds: number;
   transitionSeconds: number;
   // The transitions this template mixes at random (the photographer can change the mix).
@@ -203,19 +204,35 @@ export type ReelText = {
 // How a photo that doesn't match the video's shape is shown (owner, 2026-10-07: a landscape photo
 // in a vertical reel isn't cropped; black where there is no photo). "blur" fills that space with
 // a soft copy of the photo instead, "cover" crops to fill the screen.
+// How a photo that doesn't match the video's shape is shown. "blur" (the default, owner
+// 2026-10-07): the whole photo over a blurred copy of itself; "black": black around it; "cover":
+// cropped to fill the screen.
 export type ReelFit = "black" | "blur" | "cover";
+
+// The reel's length in seconds, picked from a list (owner, 2026-10-07).
+export const REEL_LENGTHS = [5, 10, 15, 30, 60] as const;
+export type ReelLength = (typeof REEL_LENGTHS)[number];
+
+export type ReelMusic = {
+  source: "none" | "library" | "upload";
+  trackId: string; // library track (music.ts)
+  volume: number; // 0-1
+  offset: number; // seconds into the track where the reel starts
+};
 
 export type ReelSettings = {
   platform: ReelPlatformId;
   templateId: string;
-  // 0.6 = faster, 1.6 = slower.
-  speed: number;
+  length: ReelLength;
   fit: ReelFit;
+  // Strength of the blurred background behind a whole photo, 0-100.
+  blur: number;
   // The transitions to mix ([] = the template's own mix), and the seed of the random order
   // ("shuffle" picks a new one).
   transitions: ReelTransition[];
   seed: number;
   text: ReelText;
+  music: ReelMusic;
 };
 
 export function defaultLineStyles(tpl: ReelTemplate): Record<ReelLineId, ReelLineStyle> {
