@@ -1229,19 +1229,35 @@ function TextFloatingMenu({
   album,
   onUpdate,
   onDeleteSelected,
+  maxHeightPx,
 }: {
   el: AlbumTextElement;
   album: { width_cm: number; height_cm: number };
   onUpdate: (patch: Partial<AlbumTextElement>) => void;
   onDeleteSelected: () => void;
+  // The canvas's own height: the panel never runs past it, and scrolls inside instead (owner,
+  // 2026-10-07).
+  maxHeightPx?: number;
 }) {
   const t = useT();
   return (
     <div
       className="w-[150px] rounded-xl border border-line bg-white p-2.5 shadow-sheet space-y-2"
+      style={maxHeightPx != null ? { maxHeight: `${maxHeightPx}px`, overflowY: "auto" } : undefined}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
+      {/* The words themselves, editable right here too (owner, 2026-10-07), alongside the
+          double-click editing on the canvas. */}
+      <textarea
+        value={el.text}
+        onChange={(e) => onUpdate({ text: e.target.value })}
+        rows={2}
+        dir="auto"
+        aria-label={t("עריכת הטקסט")}
+        placeholder={t("עריכת הטקסט")}
+        className="w-full rounded-lg px-2 py-1.5 text-xs bg-white border border-line resize-y"
+      />
       <div className="flex flex-wrap gap-1.5">
         {TEXT_COLOR_PALETTE.map(({ value, label }) => (
           <button
@@ -5360,7 +5376,13 @@ export default function AlbumSpreadCanvasEditor({
                 onSendToBack={() => sendToBack(lastSideSelection.el.id)}
               />
             ) : lastSideSelection.type === "text" ? (
-              <TextFloatingMenu el={lastSideSelection.el} album={album} onUpdate={(patch) => applyToSelectedTexts(lastSideSelection.el.id, patch)} onDeleteSelected={removeSelected} />
+              <TextFloatingMenu
+                el={(elements.find((x) => x.id === lastSideSelection.el.id) as AlbumTextElement | undefined) ?? lastSideSelection.el}
+                album={album}
+                onUpdate={(patch) => applyToSelectedTexts(lastSideSelection.el.id, patch)}
+                onDeleteSelected={removeSelected}
+                maxHeightPx={Math.max(160, canvasRestRect.height - 36)}
+              />
             ) : (
               <PhotoAdjustFloatingMenu
                 el={lastSideSelection.el}
@@ -5538,16 +5560,22 @@ export default function AlbumSpreadCanvasEditor({
                   </button>
                 )}
                 {favoritePhotos.length > 1 && (
-                  <select
-                    value={dragPanelSort}
-                    onChange={(e) => setDragPanelSort(e.target.value as "default" | "name" | "date")}
-                    title={t("סדר הצגת התמונות ברשימה")}
-                    className={`font-semibold text-ink-soft bg-transparent underline shrink-0 ${isPhone ? "text-[9px]" : "text-[11px]"}`}
-                  >
-                    <option value="default">{t("מיון: ברירת מחדל")}</option>
-                    <option value="name">{t("מיון: שם")}</option>
-                    <option value="date">{t("מיון: תאריך")}</option>
-                  </select>
+                  // The label shows at the size of "הצג הכל"; the real select lies invisibly on top
+                  // (a touch device forces selects to 16px against iOS zoom, which made it look
+                  // bigger — owner, 2026-10-07). Tapping still opens the native list.
+                  <span className={`relative font-semibold text-ink-soft underline shrink-0 ${isPhone ? "text-[9px]" : "text-[11px]"}`}>
+                    {dragPanelSort === "name" ? t("מיון: שם") : dragPanelSort === "date" ? t("מיון: תאריך") : t("מיון: ברירת מחדל")}
+                    <select
+                      value={dragPanelSort}
+                      onChange={(e) => setDragPanelSort(e.target.value as "default" | "name" | "date")}
+                      title={t("סדר הצגת התמונות ברשימה")}
+                      className="absolute inset-0 h-full w-full opacity-0 cursor-pointer"
+                    >
+                      <option value="default">{t("מיון: ברירת מחדל")}</option>
+                      <option value="name">{t("מיון: שם")}</option>
+                      <option value="date">{t("מיון: תאריך")}</option>
+                    </select>
+                  </span>
                 )}
               </div>
             </div>
