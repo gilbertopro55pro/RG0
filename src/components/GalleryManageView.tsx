@@ -92,10 +92,14 @@ import {
 } from "@/lib/activeUploadLock";
 import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
+import dynamic from "next/dynamic";
 import { dateLocale, type Lang } from "@/i18n/config";
 import { buildGalleryShareMessage, buildGalleryPhotosUploadedMessage, buildExportReadyMessage, galleryShareTitle } from "@/components/GalleryShareModal";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
+
+// The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
+const ReelBuilder = dynamic(() => import("@/components/ReelBuilder"), { ssr: false });
 
 type ZipJobPart = {
   partIndex: number;
@@ -426,6 +430,7 @@ export default function GalleryManageView({
   const [titleFontOverride, setTitleFontOverride] = useState(initialGallery.title_font_override);
   const [gridStyleOverride, setGridStyleOverride] = useState(initialGallery.grid_style_override);
   const [slideshowManageOpen, setSlideshowManageOpen] = useState(false);
+  const [reelOpen, setReelOpen] = useState(false);
   const [slideshowPhotoIds, setSlideshowPhotoIds] = useState<Set<string>>(new Set(initialGallery.slideshow_photo_ids));
   const [slideshowPreviewOpen, setSlideshowPreviewOpen] = useState(false);
   const [albumManageOpen, setAlbumManageOpen] = useState(false);
@@ -3158,6 +3163,8 @@ export default function GalleryManageView({
         setSlideshowManageOpen(true);
       },
     },
+    // Reels for Instagram / TikTok / Facebook — admin only while it's polished (2026-10-07).
+    ...(photographerEmail === ADMIN_EMAIL && photos.length > 0 ? [{ key: "reels", label: t("רילס"), active: reelOpen, onClick: () => setReelOpen(true) }] : []),
     // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
     ...(photos.length > 0 && nonBasicTierAllowed
       ? [{ key: "album", label: t("עיצוב אלבום"), active: albumManageOpen, onClick: openAlbumManage }]
@@ -4837,6 +4844,26 @@ export default function GalleryManageView({
         />
       )}
 
+      {reelOpen && (
+        <ReelBuilder
+          galleryId={gallery.id}
+          galleryTitle={gallery.title}
+          dateLabel={(() => {
+            const d = eventDate || gallery.shoot_date;
+            return d ? new Date(d).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "numeric", year: "numeric" }) : null;
+          })()}
+          studioName={photographerName || null}
+          photos={photos.map((p) => ({ id: p.id, thumbUrl: p.previewUrl ?? p.url, isFavorite: !!p.is_favorite }))}
+          initialSelection={
+            gallery.slideshow_photo_ids.length > 0
+              ? gallery.slideshow_photo_ids
+              : photos.some((p) => p.is_favorite)
+                ? photos.filter((p) => p.is_favorite).map((p) => p.id).slice(0, 12)
+                : photos.slice(0, 12).map((p) => p.id)
+          }
+          onClose={() => setReelOpen(false)}
+        />
+      )}
       {slideshowManageOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
