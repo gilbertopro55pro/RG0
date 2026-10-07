@@ -118,7 +118,9 @@ export default function PushNotificationsSettings() {
             aria-checked={status === "on"}
             aria-label={t("הפעלת התראות לטלפון")}
             className="relative h-6 w-11 shrink-0 rounded-full flex items-center px-0.5 disabled:opacity-60"
-            style={{ background: status === "on" ? "var(--color-amber-deep)" : "var(--color-line)", justifyContent: status === "on" ? "flex-start" : "flex-end" }}
+            // On = green with the knob at the end (left in Hebrew, right in English), like the
+            // intake assistant's switch (owner, 2026-10-07).
+            style={{ background: status === "on" ? "var(--color-sage)" : "var(--color-line)", justifyContent: status === "on" ? "flex-end" : "flex-start" }}
           >
             <span className="h-5 w-5 rounded-full bg-white shadow" />
           </button>
