@@ -462,3 +462,48 @@ html.gf-kb-open .fixed.inset-0 > * {
 html.gf-kb-open .gf-album-manage-card {
   height: calc(var(--gf-vvh, 100dvh) - 8px) !important;
 }
+
+/* ===========================================================================================
+   Premium look — the photographer's own app (owner, 2026-10-07: "כל המערכת תראה פרימיום, עם
+   שמירה על הכללים"). Only on html.gf-premium (src/lib/premiumScope.ts): client-facing pages
+   (gallery, quote, contract, portal, chat, print, landing) keep their own design. Only the look
+   changes — no position, size of layout, behaviour or loading spinner is touched:
+   - corners: text buttons, cards, dialogs and fields nearly square; circles (icon buttons,
+     switches, avatars, dots) stay round;
+   - colours (light theme): a deeper, quieter brass on a cleaner off-white, crisper cards, a
+     calmer background glow;
+   - headings (.font-display): the elegant Frank Ruhl serif the premium gallery uses.
+   =========================================================================================== */
+html.gf-premium {
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 3px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-3xl: 6px;
+  --radius-4xl: 6px;
+}
+/* Pills (a fully rounded element with sideways padding: a text button or chip) become nearly
+   square; a round element without sideways padding (an icon button, a dot) stays a circle, and so
+   do switches. */
+html.gf-premium .rounded-full[class*="px-"]:not([role="switch"]) {
+  border-radius: 3px;
+}
+html.gf-premium:not([data-theme="dark"]) {
+  --color-paper: #f5f3ef;
+  --color-amber: #8a6a31;
+  --color-amber-deep: #6d5320;
+  --color-amber-bg: #f0eadc;
+  --color-brass: #7d6128;
+  --color-line: #e3dfd7;
+  --color-card: rgba(255, 255, 255, 0.86);
+  --color-chip: #eeebe5;
+  --color-chip-tint: #f3eee3;
+  --glow-warm: rgba(196, 156, 84, 0.1);
+  --glow-cool: rgba(112, 132, 156, 0.08);
+}
+html.gf-premium .font-display {
+  font-family: var(--font-gallery-serif), serif;
+  letter-spacing: -0.005em;
+}

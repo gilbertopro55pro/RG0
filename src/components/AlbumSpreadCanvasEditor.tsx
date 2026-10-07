@@ -4141,12 +4141,13 @@ export default function AlbumSpreadCanvasEditor({
            into its surroundings in either theme. Shared by phone and desktop — not scoped inside
            either breakpoint's own block below. */
         .gf-album-canvas-wrap {
-          background: #d7d5df;
-          border-radius: 20px;
+          /* Premium (owner, 2026-10-07): a neutral warm grey, square corners. */
+          background: #dcd9d3;
+          border-radius: 3px;
           padding: 12px;
         }
         :root[data-theme="dark"] .gf-album-canvas-wrap {
-          background: #37333f;
+          background: #34322e;
         }
         :root[data-theme="dark"] .gf-album-pageswitcher-label {
           color: rgba(255, 255, 255, 0.72);
@@ -4322,7 +4323,7 @@ export default function AlbumSpreadCanvasEditor({
             inset-inline-end: 400px;
             z-index: 30;
             background: var(--color-paper);
-            border-radius: 16px;
+            border-radius: 4px;
             box-shadow: 0 10px 28px rgba(28, 27, 25, 0.2);
             padding: 10px 14px;
             max-height: 100%;
@@ -4672,7 +4673,7 @@ export default function AlbumSpreadCanvasEditor({
           // margins), via the --canvas-h-budget custom property — 66vh on real desktop, 60vh on
           // phone/tablet landscape (both real viewport-relative values, set by the <style> block
           // above; there's no separate reference-box size to convert between anymore).
-          className="gf-album-canvas relative w-[min(100%,var(--canvas-w-cap))] mx-auto rounded-xl select-none"
+          className="gf-album-canvas relative w-[min(100%,var(--canvas-w-cap))] mx-auto rounded-none select-none"
           style={{
             containerType: "inline-size",
             // Always literal white — this represents the physical printed page, not an app
