@@ -223,7 +223,8 @@ export type ReelMusic = {
 export type ReelSettings = {
   platform: ReelPlatformId;
   templateId: string;
-  length: ReelLength;
+  // null = no fixed length: the reel is as long as the times on the timeline add up to.
+  length: ReelLength | null;
   fit: ReelFit;
   // Strength of the blurred background behind a whole photo, 0-100.
   blur: number;

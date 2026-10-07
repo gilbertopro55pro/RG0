@@ -22,9 +22,9 @@ import {
   type ReelTransition,
   type ReelTransitionCategory,
 } from "@/lib/reels/templates";
-import { drawReelFrame, drawTransitionPreview, loadReelImage, reelFonts, reelTimeline, transitionPool, type ReelFonts, type ReelImage } from "@/lib/reels/render";
+import { activeMedia, drawReelFrame, drawTransitionPreview, loadReelImage, reelFonts, reelTimeline, transitionPool, type ReelFonts, type ReelImage } from "@/lib/reels/render";
 import { REEL_TRACKS, trackById } from "@/lib/reels/music";
-import { decodeTrack, musicGain, renderSoundtrack } from "@/lib/reels/audio";
+import { PreviewMusic, decodeTrack, musicGain, renderSoundtrack } from "@/lib/reels/audio";
 import ReelTimelineEditor, { type TimelineClip } from "@/components/ReelTimelineEditor";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES } from "@/lib/albumFonts";
 import { exportReelMp4, ReelCancelledError, ReelUnsupportedError } from "@/lib/reels/encode";
@@ -46,6 +46,47 @@ type Tab = "style" | "photos" | "transitions" | "music" | "text";
 
 // The photographer's own music file: at most this size (a few minutes of a normal song).
 const MAX_MUSIC_BYTES = 40 * 1024 * 1024;
+// Video clips from the device (owner, 2026-10-07): a few, each up to this size.
+const MAX_VIDEOS = 6;
+const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
+const isVideoId = (id: string) => id.startsWith("video:");
+
+type DeviceVideo = { file: File; url: string; el: HTMLVideoElement; duration: number; thumb: string };
+
+// Loads a clip from the device: its first frames, size, length and a small thumbnail.
+async function loadDeviceVideo(file: File): Promise<DeviceVideo> {
+  const url = URL.createObjectURL(file);
+  const el = document.createElement("video");
+  el.muted = true;
+  el.playsInline = true;
+  el.preload = "auto";
+  el.src = url;
+  await new Promise<void>((resolve, reject) => {
+    el.onloadeddata = () => resolve();
+    el.onerror = () => reject(new Error("video"));
+  });
+  let duration = el.duration;
+  if (!Number.isFinite(duration)) {
+    // Some WebM files only report their length after a seek to the end.
+    await new Promise<void>((resolve) => {
+      el.ontimeupdate = () => resolve();
+      el.currentTime = 1e7;
+    });
+    duration = el.duration;
+  }
+  await new Promise<void>((resolve) => {
+    el.onseeked = () => resolve();
+    el.currentTime = Math.min(0.5, duration / 3);
+  });
+  const c = document.createElement("canvas");
+  c.width = 200;
+  c.height = Math.max(1, Math.round((200 * el.videoHeight) / el.videoWidth));
+  c.getContext("2d")!.drawImage(el, 0, 0, c.width, c.height);
+  const thumb = c.toDataURL("image/jpeg", 0.75);
+  el.onseeked = null;
+  el.currentTime = 0;
+  return { file, url, el, duration: Number.isFinite(duration) ? duration : 5, thumb };
+}
 
 const LINES: { id: ReelLineId; label: string; hint: string; placeholder: string }[] = [
   { id: "title", label: "כותרת", hint: "נפתחת עם הסרטון, על התמונות הראשונות, ונעלמת אחרי כמה שניות.", placeholder: "למשל: רון ונויה" },
@@ -86,7 +127,8 @@ export default function ReelBuilder({
     length: 15,
     fit: "blur",
     blur: 60,
-    music: { source: "library", trackId: REEL_TRACKS[0].id, volume: 0.8, offset: 0 },
+    // Every reel starts without music (owner, 2026-10-07).
+    music: { source: "none", trackId: REEL_TRACKS[0].id, volume: 0.8, offset: 0 },
     transitions: [],
     seed: 1,
     text: {
@@ -104,8 +146,17 @@ export default function ReelBuilder({
   const [durState, setDurState] = useState<{ keys: string[]; durs: number[] } | null>(null);
   const [upload, setUpload] = useState<{ file: File; url: string } | null>(null);
   const [musicError, setMusicError] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [musicDuration, setMusicDuration] = useState<number | null>(null);
+  const [musicBuffer, setMusicBuffer] = useState<AudioBuffer | null>(null);
+  const playerRef = useRef<PreviewMusic | null>(null);
+  // Set whenever the music has to (re)start at the preview's current time: a seek, a new track,
+  // a new start point, play after pause.
+  const musicKeyRef = useRef("");
+  const [videos, setVideos] = useState<Map<string, DeviceVideo>>(new Map());
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [addingVideo, setAddingVideo] = useState(false);
+  // Timeline snapping (magnet), on unless the photographer turns it off.
+  const [snap, setSnap] = useState(true);
+  const seekCountRef = useRef(0);
   const [fonts, setFonts] = useState<ReelFonts | null>(null);
   const [playing, setPlaying] = useState(true);
   const [exporting, setExporting] = useState<number | null>(null);
@@ -141,7 +192,22 @@ export default function ReelBuilder({
     if (used.length !== durState.keys.length || used.some((k) => !byKey.has(k))) return null;
     return used.map((k) => byKey.get(k)!);
   }, [durState, segKeys]);
-  const timeline = useMemo(() => reelTimeline(readyImages.length, tpl, settings, custom, bpm), [readyImages.length, tpl, settings, custom, bpm]);
+  // Each segment's video length (null for photos), so a clip gets its own time.
+  const segVideo = useMemo(() => {
+    const out: (number | null)[] = [];
+    for (let i = 0; i < readyImages.length; i += perSeg) {
+      const clipLens = readyImages.slice(i, i + perSeg).map((im) => im.video?.duration ?? null).filter((d): d is number => d != null);
+      out.push(clipLens.length ? Math.max(...clipLens) : null);
+    }
+    return out;
+  }, [readyImages, perSeg]);
+  const timeline = useMemo(() => reelTimeline(readyImages.length, tpl, settings, custom, bpm, segVideo), [readyImages.length, tpl, settings, custom, bpm, segVideo]);
+  // Jumps the preview (and its music) to time t.
+  const seek = (time: number) => {
+    timeRef.current = time;
+    seekCountRef.current++;
+    setPreviewTime(time);
+  };
   const pool = transitionPool(tpl, settings);
 
   useEffect(() => {
@@ -171,7 +237,7 @@ export default function ReelBuilder({
   useEffect(() => {
     let alive = true;
     for (const id of selected) {
-      if (images.has(id)) continue;
+      if (images.has(id) || isVideoId(id)) continue;
       loadReelImage(`/api/galleries/${galleryId}/photos/${id}/image?size=1600`)
         .then((img) => {
           if (alive) setImages((prev) => new Map(prev).set(id, img));
@@ -183,44 +249,88 @@ export default function ReelBuilder({
     };
   }, [selected, galleryId, images]);
 
-  // Live preview: the same frames as the export, drawn small.
+  // The music for the preview, decoded once per track or file.
+  const musicUrl = settings.music.source === "library" ? track?.url ?? null : settings.music.source === "upload" ? upload?.url ?? null : null;
+  const musicKey = settings.music.source === "upload" && upload ? `upload:${upload.file.name}:${upload.file.size}` : musicUrl;
+  useEffect(() => {
+    if (!musicUrl || !musicKey) return;
+    let alive = true;
+    decodeTrack(musicKey, async () => (upload && settings.music.source === "upload" ? upload.file.arrayBuffer() : (await fetch(musicUrl)).arrayBuffer()))
+      .then((buf) => alive && setMusicBuffer(buf))
+      .catch(() => alive && setMusicError(t("לא הצלחנו לקרוא את קובץ המוזיקה.")));
+    return () => {
+      alive = false;
+      setMusicBuffer(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [musicKey]);
+  useEffect(() => () => playerRef.current?.close(), []);
+
+  // Live preview: the same frames as the export, drawn small. With music, the music is the clock
+  // (so it plays without a single jump) and the picture follows it.
   useEffect(() => {
     const canvas = previewRef.current;
     if (!canvas || !fonts) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let raf = 0;
-    let last = performance.now();
+    let last = -1;
     let uiTick = 0;
     const loop = (now: number) => {
-      // (A frame's timestamp can be a hair before `last`, so never step back in time.)
-      if (playing && timeline.total > 0) timeRef.current = (timeRef.current + Math.max(0, now - last) / 1000) % timeline.total;
+      if (last < 0) last = now;
+      const total = timeline.total;
+      const player = playerRef.current;
+      const buffer = settings.music.source === "none" ? null : musicBuffer;
+      if (buffer && playing && player) {
+        const key = `${musicKey}|${settings.music.offset}|${total}|${seekCountRef.current}`;
+        if (key !== musicKeyRef.current) {
+          musicKeyRef.current = key;
+          player.play(buffer, timeRef.current, settings.music.offset);
+        }
+      } else if (player?.running) {
+        player.stop();
+        musicKeyRef.current = "";
+      }
+      if (buffer && playing && player?.running) {
+        let tt = player.time();
+        if (tt >= total) {
+          player.play(buffer, 0, settings.music.offset);
+          tt = 0;
+        }
+        timeRef.current = tt;
+        player.setGain(musicGain(tt, total, settings.music.volume));
+      } else if (playing && total > 0) {
+        // (A frame's timestamp can be a hair before `last`, so never step back in time.)
+        timeRef.current = (timeRef.current + Math.max(0, now - last) / 1000) % total;
+      }
       last = now;
+      // Video clips: the one on screen plays at the right point; the others wait.
+      const act = new Map(activeMedia(timeRef.current, timeline, tpl, settings, readyImages.length).map((a) => [a.index, a.local]));
+      readyImages.forEach((img, i) => {
+        if (!img.live || !img.video) return;
+        const v = img.el as HTMLVideoElement;
+        const local = act.get(i);
+        if (local == null) {
+          if (!v.paused) v.pause();
+          return;
+        }
+        const want = Math.min(local, Math.max(0, img.video.duration - 0.05));
+        if (playing) {
+          if (v.paused && local < img.video.duration - 0.05) v.play().catch(() => {});
+          if (Math.abs(v.currentTime - want) > 0.3) v.currentTime = want;
+        } else {
+          if (!v.paused) v.pause();
+          if (Math.abs(v.currentTime - want) > 0.04) v.currentTime = want;
+        }
+      });
       drawReelFrame(ctx, canvas.width, canvas.height, timeRef.current, timeline, tpl, settings, readyImages, fonts);
       if (++uiTick % 6 === 0) setPreviewTime(timeRef.current);
-      // The music follows the preview: same start point, same fades, re-synced if it drifts.
-      const audio = audioRef.current;
-      if (audio && audio.src) {
-        if (playing && timeline.total > 0) {
-          const want = settings.music.offset + timeRef.current;
-          const dur = audio.duration;
-          const at = Number.isFinite(dur) && dur > 0 ? want % dur : want;
-          if (Math.abs(audio.currentTime - at) > 0.25) audio.currentTime = at;
-          audio.volume = Math.min(1, musicGain(timeRef.current, timeline.total, settings.music.volume));
-          if (audio.paused) audio.play().catch(() => {});
-        } else if (!audio.paused) audio.pause();
-      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    const audioEl = audioRef.current;
-    return () => {
-      cancelAnimationFrame(raf);
-      audioEl?.pause();
-    };
-  }, [fonts, playing, timeline, tpl, settings, readyImages]);
+    return () => cancelAnimationFrame(raf);
+  }, [fonts, playing, timeline, tpl, settings, readyImages, musicBuffer, musicKey]);
 
-  const musicUrl = settings.music.source === "library" ? track?.url ?? null : settings.music.source === "upload" ? upload?.url ?? null : null;
   useEffect(() => () => {
     if (upload) URL.revokeObjectURL(upload.url);
   }, [upload]);
@@ -241,7 +351,7 @@ export default function ReelBuilder({
       for (const id of Object.keys(styles) as ReelLineId[]) styles[id] = { ...styles[id], color: d[id].color };
       return { ...s, templateId: tp.id, transitions: [], text: { ...s.text, styles } };
     });
-    timeRef.current = 0;
+    seek(0);
   };
   const toggleTransition = (id: ReelTransition) =>
     setSettings((s) => {
@@ -273,6 +383,53 @@ export default function ReelBuilder({
     }
     setUpload({ file, url: URL.createObjectURL(file) });
     setSettings((s) => ({ ...s, music: { ...s.music, source: "upload", offset: 0 } }));
+  };
+  const addVideos = async (files: FileList | null) => {
+    setVideoError(null);
+    if (!files?.length) return;
+    setAddingVideo(true);
+    try {
+      for (const file of Array.from(files)) {
+        if (videos.size >= MAX_VIDEOS) {
+          setVideoError(t("אפשר להוסיף עד {n} קטעי וידאו.", { n: MAX_VIDEOS }));
+          break;
+        }
+        if (!file.type.startsWith("video/") && !/\.(mp4|mov|m4v|webm)$/i.test(file.name)) {
+          setVideoError(t("זה לא נראה כמו קובץ וידאו. אפשר MP4, MOV או WebM."));
+          continue;
+        }
+        if (file.size > MAX_VIDEO_BYTES) {
+          setVideoError(t("קטע הווידאו גדול מדי (עד 500MB)."));
+          continue;
+        }
+        try {
+          const v = await loadDeviceVideo(file);
+          const id = `video:${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          setVideos((prev) => new Map(prev).set(id, v));
+          setImages((prev) => new Map(prev).set(id, { el: v.el, width: v.el.videoWidth, height: v.el.videoHeight, live: true, video: { duration: v.duration } }));
+          setSelected((prev) => (prev.length >= MAX_PHOTOS ? prev : [...prev, id]));
+        } catch {
+          setVideoError(t("הדפדפן לא הצליח לפתוח את קטע הווידאו הזה."));
+        }
+      }
+    } finally {
+      setAddingVideo(false);
+    }
+  };
+  const removeItem = (id: string) => {
+    setSelected((prev) => prev.filter((x) => x !== id));
+    if (isVideoId(id)) {
+      const v = videos.get(id);
+      if (v) {
+        v.el.pause();
+        URL.revokeObjectURL(v.url);
+      }
+      setVideos((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   };
   const toggle = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= MAX_PHOTOS ? prev : [...prev, id]));
@@ -308,11 +465,63 @@ export default function ReelBuilder({
           setMusicError(t("לא הצלחנו לקרוא את קובץ המוזיקה, הסרטון ייווצר בלי מוזיקה."));
         }
       }
+      // Video clips are decoded frame by frame at exactly the moments the file needs (the preview's
+      // <video> elements only play approximately in time).
+      const exportImages = readyImages.slice();
+      const feeds: { frames: Set<number>; next: () => Promise<void> }[] = [];
+      const clipIdx = readyImages.map((im, i) => (im.live ? i : -1)).filter((i) => i >= 0);
+      if (clipIdx.length) {
+        const { Input, BlobSource, ALL_FORMATS, CanvasSink } = await import("mediabunny");
+        const frameCount = Math.max(1, Math.round(timeline.total * 30));
+        for (const i of clipIdx) {
+          const dv = videos.get(readyIds[i]);
+          const img = readyImages[i];
+          if (!dv || !img.video) continue;
+          const input = new Input({ source: new BlobSource(dv.file), formats: ALL_FORMATS });
+          const trackIn = await input.getPrimaryVideoTrack();
+          if (!trackIn || !(await trackIn.canDecode())) {
+            setVideoError(t("הדפדפן לא יכול לפענח את אחד מקטעי הווידאו, הוא יופיע כתמונה קפואה."));
+            continue;
+          }
+          const first = await trackIn.getFirstTimestamp();
+          const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+          const w = Math.max(2, Math.round(img.width * scale));
+          const h = Math.max(2, Math.round(img.height * scale));
+          const holder = document.createElement("canvas");
+          holder.width = w;
+          holder.height = h;
+          const hctx = holder.getContext("2d")!;
+          hctx.drawImage(img.el, 0, 0, w, h);
+          const frames = new Set<number>();
+          const stamps: number[] = [];
+          for (let f = 0; f < frameCount; f++) {
+            const hit = activeMedia(f / 30, timeline, tpl, settings, readyImages.length).find((a) => a.index === i);
+            if (!hit) continue;
+            frames.add(f);
+            stamps.push(first + Math.min(hit.local, Math.max(0, img.video.duration - 0.04)));
+          }
+          const sink = new CanvasSink(trackIn, { width: w, height: h, fit: "fill", poolSize: 1 });
+          const it = sink.canvasesAtTimestamps(stamps)[Symbol.asyncIterator]();
+          feeds.push({
+            frames,
+            next: async () => {
+              const r = await it.next();
+              if (!r.done && r.value) hctx.drawImage(r.value.canvas, 0, 0, w, h);
+            },
+          });
+          exportImages[i] = { el: holder, width: w, height: h, live: true, video: img.video };
+        }
+      }
       const blob = await exportReelMp4({
         audio,
         canvas,
         total: timeline.total,
-        draw: (time) => drawReelFrame(ctx, canvas.width, canvas.height, time, timeline, tpl, settings, readyImages, fonts),
+        prepare: feeds.length
+          ? async (_time, frame) => {
+              for (const fd of feeds) if (fd.frames.has(frame)) await fd.next();
+            }
+          : undefined,
+        draw: (time) => drawReelFrame(ctx, canvas.width, canvas.height, time, timeline, tpl, settings, exportImages, fonts),
         onProgress: (f) => setExporting(f),
         isCancelled: () => cancelRef.current,
       });
@@ -352,7 +561,7 @@ export default function ReelBuilder({
   const sectionTitle = "font-display text-[15px] font-semibold text-ink mb-1";
   const sectionHint = "text-[11px] text-ink-soft mb-2.5 leading-relaxed";
   const previewH = Math.round((PREVIEW_W * platform.height) / platform.width);
-  const thumbOf = new Map(photos.map((p) => [p.id, p.thumbUrl]));
+  const thumbOf = new Map([...photos.map((p) => [p.id, p.thumbUrl] as const), ...[...videos].map(([id, v]) => [id, v.thumb] as const)]);
   const tabs: { id: Tab; label: string }[] = [
     { id: "style", label: t("סגנון") },
     { id: "photos", label: t("תמונות") },
@@ -362,7 +571,17 @@ export default function ReelBuilder({
   ];
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-2 sm:p-4" style={{ background: "rgba(20, 18, 15, 0.78)" }} onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center p-2 sm:p-4"
+      style={{ background: "rgba(20, 18, 15, 0.78)" }}
+      onClick={onClose}
+      onPointerDownCapture={() => {
+        playerRef.current ??= new PreviewMusic();
+        playerRef.current.resume().then((woke) => {
+          if (woke) seekCountRef.current++;
+        });
+      }}
+    >
       <div ref={fontProbeRef} className={ALBUM_FONT_CLASS_NAMES} style={{ display: "none" }} aria-hidden="true" />
       <div className="w-full max-w-5xl max-h-full overflow-y-auto rounded-md bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 px-4 sm:px-6 pt-4 sm:pt-5 pb-3 border-b border-line">
@@ -460,12 +679,25 @@ export default function ReelBuilder({
                   </button>
                 </div>
                 <p className={sectionHint}>{t("הסדר כאן הוא הסדר בסרטון. החצים מזיזים תמונה קדימה או אחורה.")}</p>
+                <label className={`mb-3 flex items-center justify-between gap-3 rounded-md border border-dashed p-3 cursor-pointer transition-colors ${addingVideo ? "opacity-60" : "border-line bg-white hover:border-amber-deep"}`}>
+                  <span>
+                    <span className="block text-sm font-semibold">{addingVideo ? t("טוען את הווידאו…") : t("הוספת וידאו מהמכשיר")}</span>
+                    <span className="block text-[11px] text-ink-soft">{t("קטע וידאו נכנס לרילס כמו תמונה, ומתנגן באורך שלו. הסאונד של הקטע לא נכנס, רק המוזיקה.")}</span>
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-amber-deep">▶ {t("וידאו")}</span>
+                  <input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" multiple className="hidden" disabled={addingVideo} onChange={(e) => { addVideos(e.target.files); e.target.value = ""; }} />
+                </label>
+                {videoError && <p className="text-xs text-rose -mt-1.5 mb-2">{videoError}</p>}
                 <div className="flex gap-1.5 overflow-x-auto pb-1">
                   {selected.map((id, i) => (
                     <div key={id} className="relative shrink-0 w-16">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={thumbOf.get(id)} alt="" className="h-20 w-16 object-cover rounded-sm" />
                       <span className="absolute top-0.5 start-0.5 min-w-4 h-4 px-1 rounded-sm bg-black/70 text-white text-[10px] flex items-center justify-center font-data">{i + 1}</span>
+                      {isVideoId(id) && <span className="absolute bottom-6 start-0.5 rounded-sm bg-black/70 px-1 text-[10px] text-white">▶ {(videos.get(id)?.duration ?? 0).toFixed(1)}s</span>}
+                      <button onClick={() => removeItem(id)} className="absolute top-0.5 end-0.5 h-4 w-4 rounded-sm bg-black/70 text-white text-[10px] flex items-center justify-center" aria-label={t("הסרה מהרילס")}>
+                        ✕
+                      </button>
                       <div className="flex justify-between mt-0.5">
                         <button onClick={() => move(id, -1)} disabled={i === 0} className="text-xs px-1 disabled:opacity-30" aria-label={t("הקדמה")}>
                           →
@@ -532,7 +764,7 @@ export default function ReelBuilder({
                           onClick={() => {
                             setSettings((s) => ({ ...s, music: { ...s.music, source: "library", trackId: tr.id, offset: 0 } }));
                             setPlaying(true);
-                            timeRef.current = 0;
+                            seek(0);
                           }}
                           className={`text-start rounded-md border p-2.5 transition-colors ${on ? "border-amber-deep bg-amber-bg" : "border-line bg-white hover:border-amber-deep"}`}
                         >
@@ -582,14 +814,14 @@ export default function ReelBuilder({
                       <SliderNumber
                         value={Math.round(settings.music.offset * 10) / 10}
                         min={0}
-                        max={Math.max(1, Math.floor((track?.seconds ?? musicDuration ?? 60) - 1))}
+                        max={Math.max(1, Math.floor((track?.seconds ?? musicBuffer?.duration ?? 60) - 1))}
                         step={track ? 60 / track.bpm : 0.5}
                         suffix="s"
                         onChange={(v) => {
                           // A library track starts on a beat, so the cuts stay on the music's beat.
                           const snapped = track ? Math.round(v / (60 / track.bpm)) * (60 / track.bpm) : v;
                           setSettings((s) => ({ ...s, music: { ...s.music, offset: Math.max(0, snapped) } }));
-                          timeRef.current = 0;
+                          seek(0);
                         }}
                       />
                     </div>
@@ -711,14 +943,16 @@ export default function ReelBuilder({
               <label className="flex items-center gap-1.5">
                 <span className="text-xs font-semibold">{t("אורך הרילס")}</span>
                 <select
-                  value={settings.length}
+                  value={settings.length ?? ""}
                   onChange={(e) => {
+                    if (!e.target.value) return;
                     setSettings((s) => ({ ...s, length: Number(e.target.value) as ReelLength }));
                     setDurState(null);
-                    timeRef.current = 0;
+                    seek(0);
                   }}
                   className="h-9 rounded-md border border-line bg-white px-2 text-sm font-data"
                 >
+                  {settings.length == null && <option value="">{t("ללא אורך קבוע · {n} שניות", { n: timeline.total.toFixed(1) })}</option>}
                   {REEL_LENGTHS.map((l) => (
                     <option key={l} value={l}>
                       {t("{n} שניות", { n: l })}
@@ -726,6 +960,21 @@ export default function ReelBuilder({
                   ))}
                 </select>
               </label>
+              {settings.length != null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // No fixed length: the times stay as they are now, and each photo's time can
+                    // then grow or shrink on its own (the reel's length follows).
+                    setDurState({ keys: segKeys.slice(0, timeline.segments), durs: timeline.durs.slice() });
+                    setSettings((s) => ({ ...s, length: null }));
+                  }}
+                  className="h-9 px-3 rounded-md border border-line bg-white text-xs font-semibold text-ink-soft hover:border-amber-deep"
+                  title={t("ביטול האורך הקבוע: כל תמונה מקבלת את הזמן שלה, והרילס באורך שמתקבל")}
+                >
+                  {t("ביטול")}
+                </button>
+              )}
             </div>
           </div>
           {timeline.dropped > 0 && (
@@ -735,25 +984,27 @@ export default function ReelBuilder({
           )}
           {readyImages.length > 0 ? (
             <ReelTimelineEditor
-              clips={segKeys.slice(0, timeline.segments).map<TimelineClip>((key, k) => ({ key, thumbs: readyIds.slice(k * perSeg, k * perSeg + perSeg).map((id) => thumbOf.get(id) ?? "") }))}
+              clips={segKeys.slice(0, timeline.segments).map<TimelineClip>((key, k) => {
+                const ids = readyIds.slice(k * perSeg, k * perSeg + perSeg);
+                return { key, thumbs: ids.map((id) => thumbOf.get(id) ?? ""), video: ids.some(isVideoId) };
+              })}
               durs={timeline.durs}
               starts={timeline.starts}
               total={timeline.total}
               tail={timeline.tail}
               time={previewTime}
               beat={bpm ? 60 / bpm : null}
-              onSeek={(time) => {
-                timeRef.current = time;
-                setPreviewTime(time);
-              }}
+              onSeek={seek}
               onDurs={(durs) => setDurState({ keys: segKeys.slice(0, timeline.segments), durs })}
               onReorder={reorderSegments}
+              free={!timeline.fixed}
+              snap={snap}
+              onSnap={setSnap}
             />
           ) : (
             <p className="text-xs text-ink-soft py-4">{t("בחרו תמונות כדי לראות את ציר הזמן")}</p>
           )}
         </div>
-        {musicUrl && <audio ref={audioRef} src={musicUrl} preload="auto" loop className="hidden" onLoadedMetadata={(e) => setMusicDuration(e.currentTarget.duration || null)} />}
       </div>
     </div>
   );

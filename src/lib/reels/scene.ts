@@ -4,7 +4,9 @@ import type { ReelFit, ReelSettings, ReelTemplate } from "./templates";
 // one "segment" (a photo, a framed photo, or two stacked), and the helpers transitions share.
 // Every size is relative to the canvas, so the small preview and the full export look the same.
 
-export type ReelImage = { el: CanvasImageSource; width: number; height: number };
+// A photo, or a video clip from the device (`live`: its element shows a different frame every
+// time, so nothing drawn from it is cached, and it plays as it is, without the photo motion).
+export type ReelImage = { el: CanvasImageSource; width: number; height: number; live?: boolean; video?: { duration: number } };
 
 export type Scene = { W: number; H: number; tpl: ReelTemplate; settings: ReelSettings; images: ReelImage[] };
 
@@ -37,8 +39,10 @@ const FIT_MIN_VISIBLE = 0.72;
 // (0-100). Built by shrinking (stronger = smaller) and scaling back up in two steps, which works
 // in every browser (Safari's canvas has no reliable blur filter) and costs nothing per frame.
 const blurCache = new WeakMap<object, Map<number, ReelImage>>();
+const liveBlur = new WeakMap<object, { a: HTMLCanvasElement; c: HTMLCanvasElement }>();
 export function blurredCopy(img: ReelImage, strength = 60): ReelImage {
   const level = Math.round(Math.max(0, Math.min(100, strength)) / 5) * 5;
+  if (img.live) return liveBlurredCopy(img, level);
   let byLevel = blurCache.get(img.el as object);
   if (!byLevel) {
     byLevel = new Map();
@@ -71,11 +75,38 @@ export function blurredCopy(img: ReelImage, strength = 60): ReelImage {
   return out;
 }
 
+// A video's blurred copy, redrawn from its current frame every time (into canvases kept per clip).
+function liveBlurredCopy(img: ReelImage, level: number): ReelImage {
+  const tiny = Math.max(12, Math.round(420 / (1 + level / 8)));
+  const th = Math.max(8, Math.round((tiny * img.height) / img.width));
+  const w = Math.min(480, tiny * 4);
+  const h = Math.max(1, Math.round((w * img.height) / img.width));
+  let cv = liveBlur.get(img.el as object);
+  if (!cv || cv.a.width !== tiny || cv.c.width !== w) {
+    cv = { a: document.createElement("canvas"), c: document.createElement("canvas") };
+    cv.a.width = tiny;
+    cv.a.height = th;
+    cv.c.width = w;
+    cv.c.height = h;
+    liveBlur.set(img.el as object, cv);
+  }
+  const ga = cv.a.getContext("2d")!;
+  ga.imageSmoothingQuality = "high";
+  ga.drawImage(img.el, 0, 0, tiny, th);
+  const g = cv.c.getContext("2d")!;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(cv.a, 0, 0, w, h);
+  g.fillStyle = "rgba(0,0,0,0.16)";
+  g.fillRect(0, 0, w, h);
+  return { el: cv.c, width: w, height: h };
+}
+
 // The photo pre-shrunk close to the size it's drawn at. Drawing a 1600px photo into a much smaller
 // canvas every frame made a slow zoom shimmer and step (the browser resamples it roughly, and a
 // little differently each frame); from a source just above the drawn size the motion is smooth.
 const sizedCache = new WeakMap<object, Map<number, ReelImage>>();
 function sizedFor(img: ReelImage, drawW: number): ReelImage {
+  if (img.live) return img;
   const want = Math.ceil((drawW * 1.25) / 64) * 64;
   if (img.width <= want * 1.4) return img;
   let byW = sizedCache.get(img.el as object);
@@ -112,7 +143,9 @@ export function drawPhoto(ctx: CanvasRenderingContext2D, img: ReelImage, r: Rect
   const dir = index % 2 === 0 ? 1 : -1;
   let s = 1;
   let dx = 0;
-  if (motion === "kenburns") {
+  if (img.live) {
+    // A video moves by itself.
+  } else if (motion === "kenburns") {
     s = dir > 0 ? 1.04 + 0.1 * p : 1.14 - 0.1 * p;
     dx = dir * 0.03 * p * r.w;
   } else if (motion === "punch") {
@@ -143,7 +176,7 @@ export function drawPhoto(ctx: CanvasRenderingContext2D, img: ReelImage, r: Rect
       ctx.fillRect(r.x, r.y, r.w, r.h);
     }
     // The same motion, kept at or under the whole-photo size.
-    const k = 1 - (1.18 - Math.min(1.18, s)) * 0.5;
+    const k = img.live ? 1 : 1 - (1.18 - Math.min(1.18, s)) * 0.5;
     const base = containScale * k;
     const dw = img.width * base;
     const dh = img.height * base;

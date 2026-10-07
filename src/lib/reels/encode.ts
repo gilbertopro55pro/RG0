@@ -13,6 +13,8 @@ export async function exportReelMp4(opts: {
   canvas: HTMLCanvasElement;
   total: number;
   draw: (t: number) => void;
+  // Runs before each frame is drawn (e.g. decodes the frame of a video clip for that moment).
+  prepare?: (t: number, frame: number) => Promise<void>;
   onProgress?: (fraction: number) => void;
   isCancelled?: () => boolean;
   // The finished soundtrack (already trimmed, faded and at its volume), or null for none.
@@ -57,6 +59,7 @@ export async function exportReelMp4(opts: {
       throw new ReelCancelledError("cancelled");
     }
     const t = i * dt;
+    if (opts.prepare) await opts.prepare(t, i);
     draw(t);
     await source.add(t, dt);
     if (i % 6 === 0) opts.onProgress?.(i / frames);
