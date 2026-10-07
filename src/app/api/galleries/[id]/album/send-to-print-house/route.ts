@@ -63,7 +63,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // The link works for a week (so it isn't a permanent, unauthenticated way to redownload a
       // client's paid deliverable). The file is kept longer, so the photographer can renew the
       // link from the send sheet without rendering the album again (printHouseLinks.ts).
-      share_token: randomBytes(24).toString("base64url"),
+      // 12 characters, so the link in the print-house email stays short (72 random bits, and the
+      // link expires anyway). Older, longer tokens keep working.
+      share_token: randomBytes(9).toString("base64url"),
       link_expires_at: daysFromNow(PRINT_LINK_DAYS),
       expires_at: daysFromNow(PRINT_FILE_DAYS),
     })

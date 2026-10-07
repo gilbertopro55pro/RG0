@@ -26,6 +26,7 @@ export async function sendEmail({
   to,
   subject,
   text,
+  html,
   replyTo,
   attachments,
   fromName,
@@ -33,6 +34,8 @@ export async function sendEmail({
   to: string;
   subject: string;
   text: string;
+  // Optional HTML body; `text` still goes along as the plain-text part.
+  html?: string;
   replyTo?: string;
   attachments?: { filename: string; content: string }[];
   // The photographer's name, for mail going to their client. Omit for system mail.
@@ -56,6 +59,7 @@ export async function sendEmail({
       to,
       subject,
       text,
+      ...(html ? { html } : {}),
       ...(replyTo ? { reply_to: replyTo } : {}),
       ...(attachments ? { attachments } : {}),
     }),

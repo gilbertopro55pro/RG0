@@ -527,16 +527,34 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
         .select("name, email, phone")
         .eq("id", job.photographer_id)
         .maybeSingle<{ name: string | null; email: string | null; phone: string | null }>();
-      const signature = [sender?.name?.trim(), sender?.phone?.trim(), sender?.email ? notificationEmailFor(sender.email) : null].filter(Boolean).join("\n");
+      const signatureLines = [sender?.name?.trim(), sender?.phone?.trim(), sender?.email ? notificationEmailFor(sender.email) : null].filter(Boolean) as string[];
+      const notes = job.send_notes?.trim() ?? "";
+      // The album's own name, or the gallery's (the event) when the album kept the default name.
+      const albumTitle = album.title?.trim();
+      const albumName = !albumTitle || albumTitle === "האלבום שלכם" ? resolved.gallery.title : `${albumTitle} (${resolved.gallery.title})`;
+      const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      // A plain personal note, also as simple HTML (owner, 2026-10-07): the album's name stands out,
+      // the notes get their own paragraph, and the link reads "להורדת קובצי ההדפסה" instead of a
+      // long address. No images, banners or buttons — it should look like an email a person wrote.
+      const html =
+        `<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#222">` +
+        `<p>שלום,</p>` +
+        `<p>מצורפים קובצי ה-JPG להדפסה של האלבום <b>${esc(albumName)}</b>.</p>` +
+        `<p><a href="${esc(downloadUrl)}" style="color:#1a56c4;font-weight:bold">להורדת קובצי ההדפסה</a><br><span style="color:#666;font-size:13px">${esc(validUntil)}</span></p>` +
+        (notes ? `<p><b>הנחיות והערות:</b><br>${esc(notes).replace(/\r?\n/g, "<br>")}</p>` : "") +
+        `<p>אם יש שאלה, אפשר פשוט להשיב למייל הזה.</p>` +
+        `<p>תודה,<br>${signatureLines.map(esc).join("<br>")}</p>` +
+        `</div>`;
       await sendEmail({
         to: job.send_to_email,
         fromName: sender?.name ?? undefined,
         replyTo: sender?.email ? notificationEmailFor(sender.email) : undefined,
-        subject: `קבצים להדפסה: אלבום ${album.title}`,
+        subject: `קבצים להדפסה: אלבום ${albumName}`,
         text:
-          `שלום,\n\nמצורפים קובצי ה-JPG להדפסה של האלבום "${album.title}" (${resolved.gallery.title}).\n\nלהורדת הקבצים:\n${downloadUrl}\n${validUntil}\n\n` +
-          (job.send_notes?.trim() ? `הנחיות והערות:\n${job.send_notes.trim()}\n\n` : "") +
-          `אם יש שאלה, אפשר פשוט להשיב למייל הזה.\n\nתודה,\n${signature}`,
+          `שלום,\n\nמצורפים קובצי ה-JPG להדפסה של האלבום "${albumName}".\n\nלהורדת הקבצים:\n${downloadUrl}\n${validUntil}\n\n` +
+          (notes ? `הנחיות והערות:\n${notes}\n\n` : "") +
+          `אם יש שאלה, אפשר פשוט להשיב למייל הזה.\n\nתודה,\n${signatureLines.join("\n")}`,
+        html,
       });
     }
     await notifyPhotographerExportReady(supabase, job, album.title, storagePath);
