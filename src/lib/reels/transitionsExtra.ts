@@ -193,30 +193,51 @@ function hinge(ctx: CanvasRenderingContext2D, src: HTMLCanvasElement, W: number,
     const world = edge === "left" || edge === "top" ? d * cos : len - d * cos;
     return { pos: c + (world - c) * s, s };
   };
+  // The outline of the turned picture (near edge, then far edge), for one smooth shade.
+  const near: [number, number][] = [];
+  const far: [number, number][] = [];
   for (let i = 0; i < n; i++) {
-    const d0 = (i / n) * len;
-    const d1 = ((i + 1) / n) * len;
+    const d0 = Math.round((i / n) * len);
+    const d1 = Math.round(((i + 1) / n) * len);
     const a = proj(d0);
     const b = proj(d1);
     const lo = Math.min(a.pos, b.pos);
     const exact = Math.abs(b.pos - a.pos);
-    if (exact < 0.05) continue;
-    // The picture overlaps the next strip by a pixel (no seams); the shade doesn't (no lines).
-    const size = exact + (i < n - 1 ? 1 : 0);
     const s = (a.s + b.s) / 2;
     const span = cross * s;
     const off = (cross - span) / 2;
+    if (i === 0) near.push([a.pos, (cross - cross * a.s) / 2]);
+    near.push([b.pos, (cross - cross * b.s) / 2]);
+    if (exact < 0.05) continue;
+    // Each strip overlaps its neighbour by a pixel, so no seams show.
+    const size = exact + (i < n - 1 ? 1 : 0);
+    const lo2 = edge === "right" || edge === "bottom" ? lo - (i < n - 1 ? 1 : 0) : lo;
     // The source strip, in the picture's own coordinates.
     const s0 = edge === "left" || edge === "top" ? d0 : len - d1;
     const sl = d1 - d0;
-    if (horizontal) ctx.drawImage(src, s0, 0, sl, H, lo, off, size, span);
-    else ctx.drawImage(src, 0, s0, W, sl, off, lo, span, size);
-    if (shade > 0) {
-      ctx.fillStyle = `rgba(0,0,0,${Math.min(0.9, shade * (0.6 + 0.4 * ((i + 0.5) / n)))})`;
-      if (horizontal) ctx.fillRect(lo, off, exact, span);
-      else ctx.fillRect(off, lo, span, exact);
-    }
+    if (horizontal) ctx.drawImage(src, s0, 0, sl, H, lo2, off, size, span);
+    else ctx.drawImage(src, 0, s0, W, sl, off, lo2, span, size);
   }
+  if (shade <= 0) return;
+  for (const [pos, o] of near) far.push([pos, cross - o]);
+  const pts = near.concat(far.reverse());
+  ctx.save();
+  ctx.beginPath();
+  pts.forEach(([pos, o], i) => {
+    const x = horizontal ? pos : o;
+    const y = horizontal ? o : pos;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.closePath();
+  const start = near[0][0];
+  const end = near[near.length - 1][0];
+  const g = horizontal ? ctx.createLinearGradient(start, 0, end === start ? start + 1 : end, 0) : ctx.createLinearGradient(0, start, 0, end === start ? start + 1 : end);
+  g.addColorStop(0, `rgba(0,0,0,${Math.min(0.9, shade * 0.6)})`);
+  g.addColorStop(1, `rgba(0,0,0,${Math.min(0.9, shade)})`);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.restore();
 }
 
 export function drawExtraTransition(ctx: CanvasRenderingContext2D, sc: Scene, kind: ExtraTransition, k: number, p: number, pB: number, q: number, salt: number): void {
