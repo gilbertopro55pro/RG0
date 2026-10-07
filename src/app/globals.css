@@ -446,3 +446,19 @@ a.nav-tile.js-pressed {
     transform: none !important;
   }
 }
+
+/* Album tool on a phone with the keyboard up (GalleryManageView sets gf-kb-open and the visible
+   area's height/top): full-screen dialogs fit the visible area and scroll inside it, so the field
+   being typed in stays on screen above the keyboard. */
+html.gf-kb-open .fixed.inset-0 {
+  top: var(--gf-vvt, 0px) !important;
+  bottom: auto !important;
+  height: var(--gf-vvh, 100dvh) !important;
+}
+html.gf-kb-open .fixed.inset-0 > * {
+  max-height: calc(var(--gf-vvh, 100dvh) - 8px);
+  overflow-y: auto;
+}
+html.gf-kb-open .gf-album-manage-card {
+  height: calc(var(--gf-vvh, 100dvh) - 8px) !important;
+}

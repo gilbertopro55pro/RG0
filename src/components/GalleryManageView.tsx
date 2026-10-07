@@ -429,6 +429,29 @@ export default function GalleryManageView({
   const [slideshowPhotoIds, setSlideshowPhotoIds] = useState<Set<string>>(new Set(initialGallery.slideshow_photo_ids));
   const [slideshowPreviewOpen, setSlideshowPreviewOpen] = useState(false);
   const [albumManageOpen, setAlbumManageOpen] = useState(false);
+  // While the album tool is open, a phone's keyboard must not hide what's being typed (owner,
+  // 2026-10-07): the visible area (visualViewport) is tracked, and while the keyboard is up every
+  // full-screen dialog is fitted into it and scrolls inside (the rules are in globals.css,
+  // html.gf-kb-open).
+  useEffect(() => {
+    if (!albumManageOpen) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    const update = () => {
+      root.style.setProperty("--gf-vvh", `${vv.height}px`);
+      root.style.setProperty("--gf-vvt", `${vv.offsetTop}px`);
+      root.classList.toggle("gf-kb-open", vv.height < window.innerHeight * 0.8);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      root.classList.remove("gf-kb-open");
+    };
+  }, [albumManageOpen]);
   const albumManageOpenedAtRef = useRef(0);
   // Defaults to a smaller centered dialog rather than the old always-near-fullscreen size, so it
   // never risks being clipped by a short viewport — the photographer opts into fullscreen instead.
@@ -4956,6 +4979,14 @@ export default function GalleryManageView({
                 max-height: none !important;
               }
             }
+            /* A phone on its side (owner, 2026-10-07: show as much of the album as possible): the
+               tool's base size drops to 12px, so every rem-sized text, gap and button shrinks for
+               real (a true size, not zoom, so taps land where they look), and the page previews
+               go 7 to a row. The canvas editor keeps its own sizes. */
+            @media (max-width: 1023.98px) and (max-height: 560px) {
+              html:has(.gf-album-manage-card):not(:has(.gf-album-canvas-wrap)) { font-size: 12px; }
+              .gf-album-preview-grid { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; }
+            }
           `}</style>
           <div
             className={`gf-album-manage-card w-full max-w-sm rounded-3xl bg-paper shadow-sheet overflow-hidden flex flex-col ${
@@ -5507,7 +5538,7 @@ export default function GalleryManageView({
                             : t("לחצו על תמונה באחד העמודים, ואז על התמונה שאיתה להחליף.")}
                       </p>
                     )}
-                    <div className="grid grid-cols-5 gap-1.5 mb-4">
+                    <div className="gf-album-preview-grid grid grid-cols-5 gap-1.5 mb-4">
                     {albumSpreads.map((spread, i) => {
                       const commentCount = albumComments.filter((c) => c.spread_id === spread.id).length;
                       return (
