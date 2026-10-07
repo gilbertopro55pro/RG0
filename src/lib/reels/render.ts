@@ -1,17 +1,21 @@
-import type { ReelSettings, ReelTemplate } from "./templates";
+import { REEL_TRANSITIONS, transitionInfo, type ReelLineStyle, type ReelSettings, type ReelTemplate, type ReelTransition } from "./templates";
+import { clamp01, drawGrain, drawSegment, easeOut, type ReelImage, type Scene } from "./scene";
+import { drawTransition } from "./transitions";
+
+export type { ReelImage } from "./scene";
 
 // The reel's frame at time t, drawn from scratch every time (a pure function of t), so the live
 // preview and the exported MP4 are the same frames. Every size is relative to the canvas, so the
 // small preview canvas and the full 1080-wide export look identical.
 
-export type ReelImage = { el: CanvasImageSource; width: number; height: number };
-
-export type ReelFonts = { serif: string; sans: string };
+// `families` maps an album font key (src/lib/albumFonts.ts) to the CSS font family to draw it
+// with, for the fonts the photographer picked for a line of text.
+export type ReelFonts = { serif: string; sans: string; families: Record<string, string> };
 
 export type ReelTimeline = {
   segments: number;
   per: number; // seconds per segment
-  transition: number;
+  transition: number; // the template's transition length (some transitions run longer)
   tail: number; // extra hold at the end for the ending text
   total: number;
 };
@@ -26,120 +30,40 @@ export function reelTimeline(photoCount: number, tpl: ReelTemplate, settings: Re
   return { segments, per, transition, tail, total: segments * per + tail };
 }
 
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-const easeInOut = (v: number) => (v < 0.5 ? 2 * v * v : 1 - Math.pow(-2 * v + 2, 2) / 2);
-const easeOut = (v: number) => 1 - Math.pow(1 - v, 3);
-
-type Rect = { x: number; y: number; w: number; h: number };
-
-// The photo covering `r`, moved by the template's motion at progress p (0-1 through its segment).
-function drawCover(ctx: CanvasRenderingContext2D, img: ReelImage, r: Rect, p: number, motion: ReelTemplate["motion"], index: number) {
-  const dir = index % 2 === 0 ? 1 : -1;
-  let s = 1;
-  let dx = 0;
-  if (motion === "kenburns") {
-    s = dir > 0 ? 1.04 + 0.1 * p : 1.14 - 0.1 * p;
-    dx = dir * 0.03 * p * r.w;
-  } else if (motion === "punch") {
-    s = 1.18 - 0.16 * easeOut(clamp01(p * 3));
-  } else if (motion === "pan") {
-    s = 1.16;
-    dx = dir * (p - 0.5) * 0.1 * r.w;
-  } else {
-    s = 1.03 + 0.04 * p;
-  }
-  const base = Math.max(r.w / img.width, r.h / img.height) * s;
-  const dw = img.width * base;
-  const dh = img.height * base;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(r.x, r.y, r.w, r.h);
-  ctx.clip();
-  ctx.drawImage(img.el, r.x + (r.w - dw) / 2 + dx, r.y + (r.h - dh) / 2, dw, dh);
-  ctx.restore();
+// The mix of transitions in use: the photographer's choice, or the template's own.
+export function transitionPool(tpl: ReelTemplate, settings: ReelSettings): ReelTransition[] {
+  const valid = new Set(REEL_TRANSITIONS.map((x) => x.id));
+  const chosen = settings.transitions.filter((x) => valid.has(x));
+  return chosen.length ? chosen : tpl.transitions;
 }
 
-// A small, blurred and darkened copy of a photo for backgrounds, made once per photo.
-const blurCache = new WeakMap<object, ReelImage>();
-function blurredCopy(img: ReelImage): ReelImage {
-  const hit = blurCache.get(img.el as object);
-  if (hit) return hit;
-  const w = 180;
-  const h = Math.max(1, Math.round((w * img.height) / img.width));
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  const g = c.getContext("2d")!;
-  if (typeof g.filter === "string") g.filter = "blur(5px) brightness(0.72)";
-  g.drawImage(img.el, -8, -8, w + 16, h + 16);
-  if (typeof g.filter !== "string") {
-    g.fillStyle = "rgba(0,0,0,0.4)";
-    g.fillRect(0, 0, w, h);
+// Which transition follows segment k, picked at random from the mix (by the seed, so it's the same
+// on every frame and in the export), never the same one twice in a row.
+export function transitionAfter(k: number, pool: ReelTransition[], seed: number): ReelTransition {
+  const n = pool.length;
+  if (n === 1) return pool[0];
+  // Walked from the start (a reel has at most a few dozen), so a bumped pick is what the next
+  // one is compared with.
+  let prev = -1;
+  let idx = 0;
+  for (let i = 0; i <= k; i++) {
+    idx = Math.floor(rand01(seed, i) * n);
+    if (idx === prev) idx = (idx + 1) % n;
+    prev = idx;
   }
-  const out = { el: c, width: w, height: h };
-  blurCache.set(img.el as object, out);
-  return out;
+  return pool[idx];
 }
 
-// One segment's picture (a photo, a framed photo, or two photos stacked) filling the canvas.
-function drawSegment(ctx: CanvasRenderingContext2D, W: number, H: number, k: number, p: number, tpl: ReelTemplate, images: ReelImage[]) {
-  if (tpl.frame === "split") {
-    const a = images[(2 * k) % images.length];
-    const b = images[2 * k + 1];
-    if (!b) {
-      drawCover(ctx, a, { x: 0, y: 0, w: W, h: H }, p, tpl.motion, k);
-      return;
-    }
-    const gap = Math.round(W * 0.012);
-    const half = (H - gap) / 2;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, W, H);
-    drawCover(ctx, a, { x: 0, y: 0, w: W, h: half }, p, tpl.motion, 2 * k);
-    drawCover(ctx, b, { x: 0, y: half + gap, w: W, h: half }, p, tpl.motion, 2 * k + 1);
-    return;
-  }
-  const img = images[k % images.length];
-  if (tpl.frame === "framed") {
-    // A blurred, darkened copy as the background (blurred once per photo, small, then scaled up —
-    // blurring the full frame every frame made this template several times slower to export);
-    // the photo in a white frame over it.
-    drawCover(ctx, blurredCopy(img), { x: 0, y: 0, w: W, h: H }, 0.5, "drift", k);
-    const maxW = W * 0.82;
-    const maxH = H * 0.6;
-    const fit = Math.min(maxW / img.width, maxH / img.height);
-    const fw = img.width * fit;
-    const fh = img.height * fit;
-    const fx = (W - fw) / 2;
-    const fy = (H - fh) / 2 - H * 0.04;
-    const border = Math.round(W * 0.016);
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.35)";
-    ctx.shadowBlur = W * 0.04;
-    ctx.shadowOffsetY = W * 0.012;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(fx - border, fy - border, fw + 2 * border, fh + 2 * border);
-    ctx.restore();
-    drawCover(ctx, img, { x: fx, y: fy, w: fw, h: fh }, p, "drift", k);
-    return;
-  }
-  drawCover(ctx, img, { x: 0, y: 0, w: W, h: H }, p, tpl.motion, k);
+function rand01(seed: number, i: number) {
+  let h = Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(i + 1, 0xc2b2ae35);
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x7feb352d);
+  h ^= h >>> 15;
+  return (h >>> 0) / 4294967296;
 }
 
-let grainTile: HTMLCanvasElement | null = null;
-function grain(): HTMLCanvasElement {
-  if (grainTile) return grainTile;
-  const c = document.createElement("canvas");
-  c.width = c.height = 160;
-  const g = c.getContext("2d")!;
-  const data = g.createImageData(160, 160);
-  for (let i = 0; i < data.data.length; i += 4) {
-    const v = Math.random() * 255;
-    data.data[i] = data.data[i + 1] = data.data[i + 2] = v;
-    data.data[i + 3] = 255;
-  }
-  g.putImageData(data, 0, 0);
-  grainTile = c;
-  return c;
+function transitionLength(kind: ReelTransition, tl: ReelTimeline, speed: number) {
+  return Math.min(tl.per * 0.6, Math.max(tl.transition, transitionInfo(kind).min * speed));
 }
 
 const HEBREW = /[֐-׿]/;
@@ -161,79 +85,121 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string
   return out;
 }
 
-type TextLook = { titleFont: string; titleSize: number; subFont: string; subSize: number; boxed: boolean; line: boolean; shadow: boolean };
+type FontBase = { weight: number; size: number; family: string };
+type TextLook = { title: FontBase; sub: FontBase; boxed: boolean; line: boolean; shadow: boolean };
 
 function textLook(style: ReelTemplate["textStyle"], fonts: ReelFonts, W: number): TextLook {
+  const f = (weight: number, size: number, family: string): FontBase => ({ weight, size: W * size, family });
   switch (style) {
     case "bold":
-      return { titleFont: `800 ${W * 0.105}px ${fonts.sans}`, titleSize: W * 0.105, subFont: `600 ${W * 0.04}px ${fonts.sans}`, subSize: W * 0.04, boxed: false, line: false, shadow: true };
+      return { title: f(800, 0.105, fonts.sans), sub: f(600, 0.04, fonts.sans), boxed: false, line: false, shadow: true };
     case "cinema":
-      return { titleFont: `400 ${W * 0.075}px ${fonts.serif}`, titleSize: W * 0.075, subFont: `400 ${W * 0.032}px ${fonts.sans}`, subSize: W * 0.032, boxed: false, line: true, shadow: true };
+      return { title: f(400, 0.075, fonts.serif), sub: f(400, 0.032, fonts.sans), boxed: false, line: true, shadow: true };
     case "magazine":
-      return { titleFont: `500 ${W * 0.07}px ${fonts.serif}`, titleSize: W * 0.07, subFont: `500 ${W * 0.032}px ${fonts.sans}`, subSize: W * 0.032, boxed: true, line: false, shadow: false };
+      return { title: f(500, 0.07, fonts.serif), sub: f(500, 0.032, fonts.sans), boxed: true, line: false, shadow: false };
     case "modern":
-      return { titleFont: `600 ${W * 0.08}px ${fonts.sans}`, titleSize: W * 0.08, subFont: `400 ${W * 0.034}px ${fonts.sans}`, subSize: W * 0.034, boxed: false, line: true, shadow: true };
+      return { title: f(600, 0.08, fonts.sans), sub: f(400, 0.034, fonts.sans), boxed: false, line: true, shadow: true };
     default:
-      return { titleFont: `400 ${W * 0.09}px ${fonts.serif}`, titleSize: W * 0.09, subFont: `400 ${W * 0.034}px ${fonts.sans}`, subSize: W * 0.034, boxed: false, line: true, shadow: true };
+      return { title: f(400, 0.09, fonts.serif), sub: f(400, 0.034, fonts.sans), boxed: false, line: true, shadow: true };
   }
 }
 
-// A block of text (title + optional subtitle) centred at y, faded/raised by `a` (0-1).
-function drawTextBlock(ctx: CanvasRenderingContext2D, W: number, H: number, title: string, subtitle: string, y: number, a: number, look: TextLook, color: string) {
-  if (a <= 0 || (!title.trim() && !subtitle.trim())) return;
+// The font of one line: the template's, or the album font the photographer picked, at their size.
+function lineFont(base: FontBase, style: ReelLineStyle, fonts: ReelFonts): { font: string; size: number } {
+  const size = base.size * (Math.max(30, Math.min(300, style.size || 100)) / 100);
+  const picked = style.font ? fonts.families[style.font] : null;
+  return picked ? { font: `400 ${size}px ${picked}`, size } : { font: `${base.weight} ${size}px ${base.family}`, size };
+}
+
+type Line = { text: string; font: string; size: number; color: string; rotate: number; lh: number };
+
+function layoutLines(ctx: CanvasRenderingContext2D, text: string, base: FontBase, style: ReelLineStyle, fonts: ReelFonts, maxW: number, lhFactor: number): Line[] {
+  if (!text.trim()) return [];
+  const { font, size } = lineFont(base, style, fonts);
+  ctx.font = font;
+  return wrap(ctx, text.trim(), maxW).map((l) => ({ text: l, font, size, color: style.color, rotate: style.rotate || 0, lh: size * lhFactor }));
+}
+
+// A block of text (title + optional subtitle) centred at y, faded/raised by `a` (0-1). Each line
+// turns around its own centre by its rotation.
+function drawTextBlock(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  title: { text: string; style: ReelLineStyle },
+  subtitle: { text: string; style: ReelLineStyle } | null,
+  y: number,
+  a: number,
+  look: TextLook,
+  fonts: ReelFonts
+) {
+  if (a <= 0 || (!title.text.trim() && !subtitle?.text.trim())) return;
   const maxW = W * 0.84;
   ctx.save();
   ctx.globalAlpha = a;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.direction = HEBREW.test(title + subtitle) ? "rtl" : "ltr";
-  ctx.font = look.titleFont;
-  const tLines = title.trim() ? wrap(ctx, title.trim(), maxW) : [];
-  ctx.font = look.subFont;
-  const sLines = subtitle.trim() ? wrap(ctx, subtitle.trim(), maxW) : [];
-  const tLH = look.titleSize * 1.15;
-  const sLH = look.subSize * 1.5;
-  const lineGap = look.line && tLines.length && sLines.length ? look.subSize * 1.4 : sLines.length && tLines.length ? look.subSize * 0.6 : 0;
-  const blockH = tLines.length * tLH + lineGap + sLines.length * sLH;
+  ctx.direction = HEBREW.test(title.text + (subtitle?.text ?? "")) ? "rtl" : "ltr";
+  const tLines = layoutLines(ctx, title.text, look.title, title.style, fonts, maxW, 1.15);
+  const sLines = subtitle ? layoutLines(ctx, subtitle.text, look.sub, subtitle.style, fonts, maxW, 1.5) : [];
+  const subSize = sLines[0]?.size ?? look.sub.size;
+  const lineGap = look.line && tLines.length && sLines.length ? subSize * 1.4 : sLines.length && tLines.length ? subSize * 0.6 : 0;
+  const blockH = tLines.reduce((h, l) => h + l.lh, 0) + lineGap + sLines.reduce((h, l) => h + l.lh, 0);
   const rise = (1 - a) * W * 0.03;
   let cy = y - blockH / 2 + rise;
   if (look.boxed) {
     let wMax = 0;
-    ctx.font = look.titleFont;
-    for (const l of tLines) wMax = Math.max(wMax, ctx.measureText(l).width);
-    ctx.font = look.subFont;
-    for (const l of sLines) wMax = Math.max(wMax, ctx.measureText(l).width);
+    for (const l of [...tLines, ...sLines]) {
+      ctx.font = l.font;
+      wMax = Math.max(wMax, ctx.measureText(l.text).width);
+    }
     const padX = W * 0.06;
     const padY = W * 0.04;
     ctx.fillStyle = "rgba(255,255,255,0.94)";
     ctx.fillRect(W / 2 - wMax / 2 - padX, cy - padY, wMax + 2 * padX, blockH + 2 * padY);
-    color = "#1c1b19";
   }
-  if (look.shadow) {
-    ctx.shadowColor = "rgba(0,0,0,0.45)";
-    ctx.shadowBlur = W * 0.025;
-  }
-  ctx.fillStyle = color;
-  ctx.font = look.titleFont;
-  for (const l of tLines) {
-    ctx.fillText(l, W / 2, cy + tLH / 2);
-    cy += tLH;
-  }
+  const drawLine = (l: Line) => {
+    ctx.save();
+    if (look.shadow) {
+      ctx.shadowColor = "rgba(0,0,0,0.45)";
+      ctx.shadowBlur = W * 0.025;
+    }
+    ctx.translate(W / 2, cy + l.lh / 2);
+    if (l.rotate) ctx.rotate((l.rotate * Math.PI) / 180);
+    ctx.font = l.font;
+    ctx.fillStyle = l.color;
+    ctx.fillText(l.text, 0, 0);
+    ctx.restore();
+    cy += l.lh;
+  };
+  for (const l of tLines) drawLine(l);
   if (lineGap) {
     if (look.line) {
-      ctx.save();
-      ctx.shadowBlur = 0;
+      ctx.fillStyle = tLines[0]?.color ?? "#fff";
       ctx.fillRect(W / 2 - W * 0.06, cy + lineGap / 2 - W * 0.0015, W * 0.12, Math.max(1, W * 0.003));
-      ctx.restore();
     }
     cy += lineGap;
   }
-  ctx.font = look.subFont;
-  for (const l of sLines) {
-    ctx.fillText(l, W / 2, cy + sLH / 2);
-    cy += sLH;
-  }
+  for (const l of sLines) drawLine(l);
   ctx.restore();
+}
+
+// The pictures at time t (a segment, or the move between two), without text or overlays.
+function drawPictures(ctx: CanvasRenderingContext2D, sc: Scene, t: number, tl: ReelTimeline) {
+  const k = Math.max(0, Math.min(tl.segments - 1, Math.floor(t / tl.per)));
+  const local = t - k * tl.per;
+  const isLast = k === tl.segments - 1;
+  const segLen = isLast ? tl.total - k * tl.per : tl.per;
+  const p = clamp01(local / segLen);
+  if (!isLast) {
+    const kind = transitionAfter(k, transitionPool(sc.tpl, sc.settings), sc.settings.seed);
+    const len = transitionLength(kind, tl, sc.settings.speed);
+    if (local > tl.per - len) {
+      const q = clamp01((local - (tl.per - len)) / len);
+      drawTransition(ctx, sc, kind, k, p, q, sc.settings.seed * 131 + k);
+      return;
+    }
+  }
+  drawSegment(ctx, sc, k, p);
 }
 
 export function drawReelFrame(
@@ -255,73 +221,12 @@ export function drawReelFrame(
     return;
   }
   t = Math.max(0, Math.min(t, tl.total));
-  const k = Math.max(0, Math.min(tl.segments - 1, Math.floor(t / tl.per)));
-  const local = t - k * tl.per;
-  const isLast = k === tl.segments - 1;
-  const segLen = isLast ? tl.total - k * tl.per : tl.per;
-  const p = clamp01(local / segLen);
-  const inTransition = !isLast && local > tl.per - tl.transition;
-  if (!inTransition) {
-    drawSegment(ctx, W, H, k, p, tpl, images);
-  } else {
-    const q = clamp01((local - (tl.per - tl.transition)) / tl.transition);
-    const e = easeInOut(q);
-    switch (tpl.transition) {
-      case "fade":
-        drawSegment(ctx, W, H, k, p, tpl, images);
-        ctx.globalAlpha = e;
-        drawSegment(ctx, W, H, k + 1, 0, tpl, images);
-        ctx.globalAlpha = 1;
-        break;
-      case "flash": {
-        drawSegment(ctx, W, H, q < 0.5 ? k : k + 1, q < 0.5 ? p : 0, tpl, images);
-        ctx.fillStyle = `rgba(255,255,255,${0.85 * (1 - Math.abs(q - 0.5) * 2)})`;
-        ctx.fillRect(0, 0, W, H);
-        break;
-      }
-      case "slide": {
-        // Right to left reading: the next picture slides in from the left.
-        ctx.save();
-        ctx.translate(e * W, 0);
-        drawSegment(ctx, W, H, k, p, tpl, images);
-        ctx.restore();
-        ctx.save();
-        ctx.translate(-W + e * W, 0);
-        drawSegment(ctx, W, H, k + 1, 0, tpl, images);
-        ctx.restore();
-        break;
-      }
-      case "zoom": {
-        drawSegment(ctx, W, H, k + 1, 0, tpl, images);
-        ctx.save();
-        ctx.globalAlpha = 1 - e;
-        ctx.translate(W / 2, H / 2);
-        ctx.scale(1 + 0.35 * e, 1 + 0.35 * e);
-        ctx.translate(-W / 2, -H / 2);
-        drawSegment(ctx, W, H, k, p, tpl, images);
-        ctx.restore();
-        break;
-      }
-      case "black": {
-        drawSegment(ctx, W, H, q < 0.5 ? k : k + 1, q < 0.5 ? p : 0, tpl, images);
-        ctx.fillStyle = `rgba(0,0,0,${1 - Math.abs(q - 0.5) * 2})`;
-        ctx.fillRect(0, 0, W, H);
-        break;
-      }
-    }
-  }
+  const sc: Scene = { W, H, tpl, settings, images };
+  ctx.save();
+  drawPictures(ctx, sc, t, tl);
+  ctx.restore();
 
-  if (tpl.grain) {
-    ctx.save();
-    ctx.globalAlpha = 0.06;
-    const tile = grain();
-    const ox = Math.floor((t * 997) % 160);
-    const oy = Math.floor((t * 613) % 160);
-    ctx.translate(-ox, -oy);
-    ctx.fillStyle = ctx.createPattern(tile, "repeat")!;
-    ctx.fillRect(0, 0, W + 160, H + 160);
-    ctx.restore();
-  }
+  if (tpl.grain) drawGrain(ctx, W, H, t, 0.06);
 
   const bar = tpl.letterbox ? H * 0.1 : 0;
   if (bar) {
@@ -348,16 +253,31 @@ export function drawReelFrame(
       ctx.fillStyle = g;
       ctx.fillRect(0, y - H * 0.2, W, H * 0.4);
     }
-    drawTextBlock(ctx, W, H, text.title, text.subtitle, y, a, look, text.color);
+    drawTextBlock(ctx, W, { text: text.title, style: text.styles.title }, { text: text.subtitle, style: text.styles.subtitle }, y, a, look, fonts);
     if (tl.tail > 0) {
       const endStart = tl.total - tl.tail;
       const ea = easeOut(clamp01((t - endStart - 0.1) / 0.6));
       if (ea > 0) {
         ctx.fillStyle = `rgba(0,0,0,${0.45 * ea})`;
         ctx.fillRect(0, 0, W, H);
-        drawTextBlock(ctx, W, H, text.ending, "", H * 0.5, ea, { ...look, boxed: false }, text.color);
+        drawTextBlock(ctx, W, { text: text.ending, style: text.styles.ending }, null, H * 0.5, ea, { ...look, boxed: false }, fonts);
       }
     }
+  }
+  ctx.restore();
+}
+
+// One transition on a loop, for the picker's thumbnails: the first photo, the move, the second.
+export function drawTransitionPreview(ctx: CanvasRenderingContext2D, W: number, H: number, kind: ReelTransition, q: number, tpl: ReelTemplate, settings: ReelSettings, images: ReelImage[]) {
+  ctx.save();
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+  if (images.length) {
+    const sc: Scene = { W, H, tpl, settings, images };
+    // 0-0.3 the first photo, 0.3-0.75 the transition, then the second.
+    if (q < 0.3) drawSegment(ctx, sc, 0, q);
+    else if (q < 0.75) drawTransition(ctx, sc, kind, 0, q, (q - 0.3) / 0.45, 17);
+    else drawSegment(ctx, sc, 1, (q - 0.75) / 0.25);
   }
   ctx.restore();
 }
@@ -382,5 +302,5 @@ export async function reelFonts(): Promise<ReelFonts> {
   } catch {
     // Drawing still works with whatever font is ready.
   }
-  return { serif, sans };
+  return { serif, sans, families: {} };
 }
