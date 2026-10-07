@@ -2151,13 +2151,15 @@ export default function GalleryManageView({
     return folderRow.id;
   };
 
-  // Files upload UPLOAD_CONCURRENCY-at-a-time (a small worker pool below) instead of strictly one
+  // Files upload several at a time (a small worker pool below, uploadConcurrency) instead of strictly one
   // at a time — real speedup for a large batch, since the old sequential version left the
   // connection idle between files instead of keeping several transfers going at once. Combined
   // with putFileWithProgress's real byte-level progress (see its own comment in imageUpload.ts),
   // this is the fix for the confirmed "gets stuck every ~4%" report — that number is exactly
   // 100/25 for a 25-photo batch, i.e. the old progress bar only ever moved once per WHOLE file.
-  const UPLOAD_CONCURRENCY = 4;
+  // 8 at once on a computer (owner, 2026-10-07: upload as fast as the line allows); a phone keeps
+  // 4, since every transfer holds its whole file in memory.
+  const uploadConcurrency = () => (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches ? 4 : 8);
 
   const uploadResolvedFiles = async (items: { file: File; folderId: string | null }[]) => {
     if (items.length === 0) return;
@@ -2225,6 +2227,32 @@ export default function GalleryManageView({
     };
     let nextIndex = 0;
     let doneCount = 0;
+    // Every file's storage path is decided up front (a HEIC's name after conversion is known in
+    // advance), so the upload URLs can be fetched a few dozen at a time ahead of the workers
+    // instead of one request before each file (/api/storage/upload-urls).
+    const plannedPaths = items.map(({ file }) => {
+      const heic = isHeicFile(file);
+      const name = heic ? file.name.replace(/\.(heic|heif)$/i, ".jpg") : file.name;
+      return { path: `${user.id}/${gallery.id}/${crypto.randomUUID()}-${name}`, contentType: heic ? "image/jpeg" : file.type || "application/octet-stream" };
+    });
+    const URL_BATCH = 40;
+    const prefetched = new Map<number, Promise<string | null>>();
+    let prefetchedUpTo = 0;
+    const prefetchUrls = (fromIndex: number) => {
+      if (prefetchedUpTo > fromIndex + URL_BATCH / 2 || prefetchedUpTo >= items.length) return;
+      const start = Math.max(prefetchedUpTo, fromIndex);
+      const end = Math.min(items.length, start + URL_BATCH);
+      prefetchedUpTo = end;
+      const batch = fetch("/api/storage/upload-urls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bucket: "galleries", items: plannedPaths.slice(start, end) }),
+      })
+        .then(async (res) => (res.ok ? ((await res.json()) as { urls?: string[] }).urls ?? null : null))
+        .catch(() => null);
+      for (let j = start; j < end; j++) prefetched.set(j, batch.then((urls) => urls?.[j - start] ?? null));
+    };
+    prefetchUrls(0);
     // Preserves cancelRequested if it's already true on our own lock — a plain unconditional
     // write here would otherwise race a cancel just requested from the blocked tab (see
     // ActiveUploadLock's own comment) and silently erase it before this loop ever sees it.
@@ -2274,7 +2302,8 @@ export default function GalleryManageView({
             }
           }
           setUploading(`${t("מעלה תמונות...")} (${doneCount}/${items.length})`);
-          const path = `${user.id}/${gallery.id}/${crypto.randomUUID()}-${file.name}`;
+          const path = plannedPaths[i].path;
+          prefetchUrls(i);
 
           // A large batch (hundreds of files) takes long enough that a single transient network
           // blip on any one file is likely, not exceptional — retrying a couple of times before
@@ -2291,17 +2320,23 @@ export default function GalleryManageView({
             }
             if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
             try {
-              const urlRes = await fetch("/api/storage/upload-url", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ bucket: "galleries", path, contentType: file.type || "application/octet-stream" }),
-              });
-              const urlData = await urlRes.json();
-              if (!urlRes.ok || !urlData.url) {
-                lastFailureReason = urlData.error ?? t("שגיאה לא ידועה");
-                continue;
+              // The URL fetched ahead in a batch on the first try; on a retry (or if the batch
+              // request failed) a fresh one for just this file.
+              let url = attempt === 0 ? await (prefetched.get(i) ?? Promise.resolve(null)) : null;
+              if (!url) {
+                const urlRes = await fetch("/api/storage/upload-url", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ bucket: "galleries", path, contentType: file.type || "application/octet-stream" }),
+                });
+                const urlData = await urlRes.json();
+                if (!urlRes.ok || !urlData.url) {
+                  lastFailureReason = urlData.error ?? t("שגיאה לא ידועה");
+                  continue;
+                }
+                url = urlData.url as string;
               }
-              await putFileWithProgress(urlData.url, file, file.type || "application/octet-stream", (fraction) => {
+              await putFileWithProgress(url, file, file.type || "application/octet-stream", (fraction) => {
                 fileProgress[i] = fraction;
                 reportPct();
               });
@@ -2368,7 +2403,7 @@ export default function GalleryManageView({
     };
 
     try {
-      await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, items.length) }, () => worker()));
+      await Promise.all(Array.from({ length: Math.min(uploadConcurrency(), items.length) }, () => worker()));
       if (cancelRequestedRef.current) hadError = true;
     } finally {
       window.removeEventListener("offline", handleOffline);
