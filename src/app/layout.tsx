@@ -12,6 +12,9 @@ import GlobalLoadingBar from "@/components/GlobalLoadingBar";
 import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
 import AssistantLeadPopup from "@/components/AssistantLeadPopup";
+import PremiumScope from "@/components/PremiumScope";
+import { isClientFacingPath, PREMIUM_CLASS } from "@/lib/premiumScope";
+import { galleryFont } from "@/lib/galleryTheme";
 import { I18nProvider } from "@/i18n/client";
 import LangScope from "@/i18n/LangScope";
 import { getLang } from "@/i18n/server";
@@ -102,7 +105,7 @@ export default async function RootLayout({
     <html
       lang={lang}
       dir={dirOf(lang)}
-      className={`${rubik.variable} h-full antialiased`}
+      className={`${rubik.variable} ${galleryFont.variable} h-full antialiased${isClientFacingPath(path || "/") ? "" : ` ${PREMIUM_CLASS}`}`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
@@ -277,6 +280,7 @@ export default async function RootLayout({
           <GlobalButtonEffects />
           <BodyScrollLock />
           <GlobalLoadingBar />
+          <PremiumScope />
           <TopNav />
           <PageTransition>
             <LangScope>{children}</LangScope>
