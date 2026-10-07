@@ -1,5 +1,8 @@
 import type { ReelTransition } from "./templates";
+import { drawExtraTransition, EXTRA_TRANSITIONS, type ExtraTransition } from "./transitionsExtra";
 import { clamp01, drawBlurred, drawGrain, drawSegment, easeIn, easeInOut, easeOut, layer, rand, roundRectPath, type Scene } from "./scene";
+
+const EXTRA_IDS = new Set<string>(EXTRA_TRANSITIONS.map((x) => x.id));
 
 // The move from segment k (at progress p) to segment k+1 (at progress pB, already moving), q =
 // 0-1 through the transition.
@@ -13,6 +16,10 @@ export function drawTransition(ctx: CanvasRenderingContext2D, sc: Scene, kind: R
   const dir = rand(salt, 7) < 0.5 ? 1 : -1;
   const pulse = 1 - Math.abs(q - 0.5) * 2;
 
+  if (EXTRA_IDS.has(kind)) {
+    drawExtraTransition(ctx, sc, kind as ExtraTransition, k, p, pB, q, salt);
+    return;
+  }
   switch (kind) {
     case "fade": {
       A();
