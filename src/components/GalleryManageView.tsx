@@ -357,6 +357,7 @@ export default function GalleryManageView({
   const [faceFilterClusterId, setFaceFilterClusterId] = useState<string | null>(null);
   const [detectingFaces, setDetectingFaces] = useState(false);
   const [faceProgress, setFaceProgress] = useState<{ done: number; total: number } | null>(null);
+  const faceCancelRef = useRef<(() => void) | null>(null);
   const [faceError, setFaceError] = useState<string | null>(null);
   // Legacy galleries (created before migration 0084) can have expiry_days = null, meaning "store
   // indefinitely" — grandfathered, not force-migrated. The select below shows a sensible default
@@ -783,6 +784,12 @@ export default function GalleryManageView({
     setFaceError(null);
     setFaceProgress({ done: 0, total: photos.length });
     cancelRequestedRef.current = false;
+    // Cancelling has to take effect at once: checking the flag only between photos left the modal
+    // up while the models loaded or a slow photo was still being read (owner, 2026-10-07: "can't
+    // cancel face detection"). Each photo races this, so the loop stops the moment cancel is hit.
+    const cancelSignal = new Promise<"cancelled">((resolve) => {
+      faceCancelRef.current = () => resolve("cancelled");
+    });
     let succeeded = true;
     let cancelled = false;
     try {
@@ -794,7 +801,11 @@ export default function GalleryManageView({
         }
         const photo = photos[i];
         try {
-          const faces = await detectFacesInImageUrl(`/api/galleries/${gallery.id}/photos/${photo.id}/image`);
+          const faces = await Promise.race([detectFacesInImageUrl(`/api/galleries/${gallery.id}/photos/${photo.id}/image`), cancelSignal]);
+          if (faces === "cancelled") {
+            cancelled = true;
+            break;
+          }
           for (const face of faces) allFaces.push({ photoId: photo.id, ...face });
         } catch {
           // A single unreadable photo shouldn't sink detection for the rest of the gallery.
@@ -836,6 +847,7 @@ export default function GalleryManageView({
         setFaceProgress({ done: photos.length, total: photos.length });
         await new Promise((resolve) => setTimeout(resolve, 700));
       }
+      faceCancelRef.current = null;
       setDetectingFaces(false);
       setFaceProgress(null);
     }
@@ -3518,6 +3530,7 @@ export default function GalleryManageView({
               return;
             }
             cancelRequestedRef.current = true;
+            faceCancelRef.current?.();
             if (currentExportJobIdRef.current) cancelExportJob(currentExportJobIdRef.current);
             exportAbortControllerRef.current?.abort();
           }}
@@ -4906,8 +4919,10 @@ export default function GalleryManageView({
                         : "0 0 0 1px var(--color-line)",
                     }}
                   >
+                    {/* A small thumbnail, never the original: 150+ full-size photos in this
+                        grid ran an iPhone out of memory, and the page reloaded on the next tap. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.url} alt="" className="w-full h-full object-cover" />
+                    <img src={p.previewUrl ?? optimizedImageUrl(p.url, 256)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     {active && (
                       <span
                         className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
@@ -4944,7 +4959,7 @@ export default function GalleryManageView({
 
       {slideshowPreviewOpen && (
         <GallerySlideshow
-          photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: p.url }))}
+          photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: optimizedImageUrl(p.url, 1920) }))}
           onClose={() => setSlideshowPreviewOpen(false)}
           onDownload={downloadSlideshowZip}
           downloading={zippingFavorites}
@@ -6528,7 +6543,7 @@ function GallerySettingsModal({
                       }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.url} alt="" className="w-full h-full object-cover" />
+                      <img src={p.previewUrl ?? optimizedImageUrl(p.url, 256)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>
