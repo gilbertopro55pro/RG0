@@ -13,7 +13,7 @@ import { compareEventsChronologically } from "@/lib/eventOrder";
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
 type StatusFilter = "upcoming" | "completed" | "all" | "duplicates";
-type SortOrder = "asc" | "desc" | "month";
+type SortOrder = "asc" | "desc" | "month" | "date" | "range";
 const PAGE_SIZE = 10;
 
 // What needs the photographer's attention on an event — computed server-side in page.tsx.
@@ -67,6 +67,11 @@ export default function EventsListView({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("upcoming");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [selectedMonth, setSelectedMonth] = useState(currentMonthValue());
+  // Filter by the event's date (owner, 2026-10-07): one exact day, or a range (either end may be
+  // left empty for "from…" / "until…").
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" }));
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // "Done" is an explicit act now — the photographer's "סגירת אירוע" + confirmation (closed_at) —
@@ -90,6 +95,8 @@ export default function EventsListView({
         if (statusFilter === "completed" && !done) return false;
       }
       if (sortOrder === "month" && !event.event_date.startsWith(selectedMonth)) return false;
+      if (sortOrder === "date" && selectedDate && event.event_date !== selectedDate) return false;
+      if (sortOrder === "range" && ((rangeFrom && event.event_date < rangeFrom) || (rangeTo && event.event_date > rangeTo))) return false;
       return true;
     });
     result.sort((a, b) => {
@@ -97,7 +104,7 @@ export default function EventsListView({
       return compareEventsChronologically(a, b);
     });
     return result;
-  }, [events, query, statusFilter, sortOrder, selectedMonth]);
+  }, [events, query, statusFilter, sortOrder, selectedMonth, selectedDate, rangeFrom, rangeTo]);
 
   const visible = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visible.length;
@@ -159,6 +166,8 @@ export default function EventsListView({
             <option value="asc">{t("הקרוב ביותר")}</option>
             <option value="desc">{t("הרחוק ביותר")}</option>
             <option value="month">{t("חודש מסוים")}</option>
+            <option value="date">{t("תאריך מסוים")}</option>
+            <option value="range">{t("טווח תאריכים")}</option>
           </select>
           {sortOrder === "month" && (
             <input
@@ -170,6 +179,48 @@ export default function EventsListView({
               }}
               className="order-4 col-span-2 h-10 rounded-xl px-3 text-sm bg-card font-data"
             />
+          )}
+          {sortOrder === "date" && (
+            <input
+              type="date"
+              value={selectedDate}
+              aria-label={t("תאריך האירוע")}
+              onChange={(e) => {
+                setSelectedDate(e.target.value);
+                setVisibleCount(PAGE_SIZE);
+              }}
+              className="order-4 col-span-2 h-10 rounded-xl px-3 text-sm bg-card font-data"
+            />
+          )}
+          {sortOrder === "range" && (
+            <div className="order-4 col-span-2 grid grid-cols-2 gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-ink-soft">
+                <span className="shrink-0">{t("מתאריך")}</span>
+                <input
+                  type="date"
+                  value={rangeFrom}
+                  max={rangeTo || undefined}
+                  onChange={(e) => {
+                    setRangeFrom(e.target.value);
+                    setVisibleCount(PAGE_SIZE);
+                  }}
+                  className="min-w-0 flex-1 h-10 rounded-xl px-2 text-sm bg-card font-data text-ink"
+                />
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-ink-soft">
+                <span className="shrink-0">{t("עד תאריך")}</span>
+                <input
+                  type="date"
+                  value={rangeTo}
+                  min={rangeFrom || undefined}
+                  onChange={(e) => {
+                    setRangeTo(e.target.value);
+                    setVisibleCount(PAGE_SIZE);
+                  }}
+                  className="min-w-0 flex-1 h-10 rounded-xl px-2 text-sm bg-card font-data text-ink"
+                />
+              </label>
+            </div>
           )}
         </div>
       )}
