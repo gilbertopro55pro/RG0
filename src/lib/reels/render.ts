@@ -14,20 +14,58 @@ export type ReelFonts = { serif: string; sans: string; families: Record<string, 
 
 export type ReelTimeline = {
   segments: number;
-  per: number; // seconds per segment
-  transition: number; // the template's transition length (some transitions run longer)
-  tail: number; // extra hold at the end for the ending text
-  total: number;
+  durs: number[]; // seconds each segment shows (its transition into the next is inside it)
+  starts: number[];
+  transition: number; // the template's transition length at this pace (some run longer)
+  pace: number; // how much faster (<1) or slower (>1) than the template's own timing
+  tail: number; // the ending text's own screen at the end
+  total: number; // exactly the chosen length
+  dropped: number; // photos that don't fit the chosen length
 };
 
-const TAIL_SECONDS = 1.8;
+// The shortest a photo can stay on screen.
+export const MIN_SEGMENT = 0.4;
 
-export function reelTimeline(photoCount: number, tpl: ReelTemplate, settings: ReelSettings): ReelTimeline {
-  const segments = Math.max(1, tpl.frame === "split" ? Math.ceil(photoCount / 2) : photoCount);
-  const per = tpl.photoSeconds * settings.speed;
-  const transition = Math.min(tpl.transitionSeconds * settings.speed, per * 0.45);
-  const tail = settings.text.show && settings.text.ending.trim() ? TAIL_SECONDS : 0;
-  return { segments, per, transition, tail, total: segments * per + tail };
+export function segmentCount(photoCount: number, tpl: ReelTemplate) {
+  return Math.max(1, tpl.frame === "split" ? Math.ceil(photoCount / 2) : photoCount);
+}
+
+// The time each segment gets when the photographer hasn't set it: an equal share of the length,
+// cut on the beat of the music when its tempo is known, so every transition lands on a beat.
+export function autoDurations(segments: number, avail: number, bpm: number | null): number[] {
+  const even = () => Array.from({ length: segments }, () => avail / segments);
+  if (!bpm) return even();
+  // Cut on whole beats when each photo gets several of them, otherwise on half or quarter beats,
+  // so the shares stay close to equal.
+  let unit = 60 / bpm;
+  while (avail / segments / unit < 4 && unit > 60 / bpm / 4) unit /= 2;
+  const units = Math.floor(avail / unit + 1e-6);
+  if (units < segments) return even();
+  const q = Math.floor(units / segments);
+  const extra = units - q * segments;
+  // The leftover units spread evenly along the reel, not bunched at the start.
+  const out = Array.from({ length: segments }, (_, i) => (q + (Math.floor(((i + 1) * extra) / segments) - Math.floor((i * extra) / segments))) * unit);
+  out[segments - 1] += avail - units * unit;
+  return out;
+}
+
+export function reelTimeline(photoCount: number, tpl: ReelTemplate, settings: ReelSettings, custom?: number[] | null, bpm?: number | null): ReelTimeline {
+  const total = settings.length;
+  const tail = settings.text.show && settings.text.ending.trim() ? Math.min(1.8, total * 0.18) : 0;
+  const avail = total - tail;
+  const all = segmentCount(photoCount, tpl);
+  const segments = Math.max(1, Math.min(all, Math.floor(avail / MIN_SEGMENT)));
+  const sum = custom?.reduce((x, y) => x + y, 0) ?? 0;
+  const durs = custom && custom.length === segments && Math.abs(sum - avail) < 0.02 && custom.every((d) => d >= MIN_SEGMENT - 1e-6) ? custom.slice() : autoDurations(segments, avail, bpm ?? null);
+  const starts: number[] = [];
+  let acc = 0;
+  for (const d of durs) {
+    starts.push(acc);
+    acc += d;
+  }
+  const pace = Math.max(0.5, Math.min(1.3, avail / segments / tpl.photoSeconds));
+  const dropped = (tpl.frame === "split" ? Math.max(0, photoCount - segments * 2) : Math.max(0, photoCount - segments));
+  return { segments, durs, starts, transition: tpl.transitionSeconds * pace, pace, tail, total, dropped };
 }
 
 // The mix of transitions in use: the photographer's choice, or the template's own.
@@ -62,8 +100,10 @@ function rand01(seed: number, i: number) {
   return (h >>> 0) / 4294967296;
 }
 
-function transitionLength(kind: ReelTransition, tl: ReelTimeline, speed: number) {
-  return Math.min(tl.per * 0.6, Math.max(tl.transition, transitionInfo(kind).min * speed));
+// The length of the transition from segment k into k+1 (0 after the last segment).
+function transitionLength(kind: ReelTransition, tl: ReelTimeline, k: number) {
+  if (k < 0 || k >= tl.segments - 1) return 0;
+  return Math.min(0.6 * Math.min(tl.durs[k], tl.durs[k + 1]), Math.max(tl.transition, transitionInfo(kind).min * tl.pace));
 }
 
 const HEBREW = /[֐-׿]/;
@@ -183,23 +223,34 @@ function drawTextBlock(
   ctx.restore();
 }
 
-// The pictures at time t (a segment, or the move between two), without text or overlays.
+// Which segment is on screen at t.
+function segmentAt(tl: ReelTimeline, t: number) {
+  let k = 0;
+  while (k < tl.segments - 1 && t >= tl.starts[k + 1]) k++;
+  return k;
+}
+
+// The pictures at time t (a segment, or the move between two), without text or overlays. Each
+// photo's motion runs from the moment it starts coming in (the transition before it) to the end
+// of its own segment, so it never stands still during a transition and then jumps into motion.
 function drawPictures(ctx: CanvasRenderingContext2D, sc: Scene, t: number, tl: ReelTimeline) {
-  const k = Math.max(0, Math.min(tl.segments - 1, Math.floor(t / tl.per)));
-  const local = t - k * tl.per;
-  const isLast = k === tl.segments - 1;
-  const segLen = isLast ? tl.total - k * tl.per : tl.per;
-  const p = clamp01(local / segLen);
-  if (!isLast) {
-    const kind = transitionAfter(k, transitionPool(sc.tpl, sc.settings), sc.settings.seed);
-    const len = transitionLength(kind, tl, sc.settings.speed);
-    if (local > tl.per - len) {
-      const q = clamp01((local - (tl.per - len)) / len);
-      drawTransition(ctx, sc, kind, k, p, q, sc.settings.seed * 131 + k);
-      return;
-    }
+  const pool = transitionPool(sc.tpl, sc.settings);
+  const kindAfter = (k: number) => transitionAfter(k, pool, sc.settings.seed);
+  const lenAfter = (k: number) => (k >= 0 && k < tl.segments - 1 ? transitionLength(kindAfter(k), tl, k) : 0);
+  const progress = (k: number) => {
+    const pre = lenAfter(k - 1);
+    const end = k === tl.segments - 1 ? tl.total : tl.starts[k] + tl.durs[k];
+    return clamp01((t - (tl.starts[k] - pre)) / (end - tl.starts[k] + pre));
+  };
+  const k = segmentAt(tl, t);
+  const len = lenAfter(k);
+  const segEnd = tl.starts[k] + tl.durs[k];
+  if (len > 0 && t > segEnd - len) {
+    const q = clamp01((t - (segEnd - len)) / len);
+    drawTransition(ctx, sc, kindAfter(k), k, progress(k), progress(k + 1), q, sc.settings.seed * 131 + k);
+    return;
   }
-  drawSegment(ctx, sc, k, p);
+  drawSegment(ctx, sc, k, progress(k));
 }
 
 export function drawReelFrame(
@@ -240,7 +291,7 @@ export function drawReelFrame(
     const look = textLook(tpl.textStyle, fonts, W);
     const y = text.position === "top" ? bar + H * 0.16 : text.position === "center" ? H * 0.5 : H - bar - H * 0.17;
     // The title opens the reel: in over 0.6s, held, out before the second photo is well under way.
-    const titleEnd = Math.max(2.6, tl.per * 1.6);
+    const titleEnd = Math.min(tl.total - tl.tail, Math.max(1.8, Math.min(3.2, tl.durs[0] + (tl.durs[1] ?? 0) * 0.6)));
     const aIn = easeOut(clamp01((t - 0.25) / 0.6));
     const aOut = 1 - clamp01((t - (titleEnd - 0.5)) / 0.5);
     const a = Math.min(aIn, aOut);
@@ -276,8 +327,8 @@ export function drawTransitionPreview(ctx: CanvasRenderingContext2D, W: number, 
     const sc: Scene = { W, H, tpl, settings, images };
     // 0-0.3 the first photo, 0.3-0.75 the transition, then the second.
     if (q < 0.3) drawSegment(ctx, sc, 0, q);
-    else if (q < 0.75) drawTransition(ctx, sc, kind, 0, q, (q - 0.3) / 0.45, 17);
-    else drawSegment(ctx, sc, 1, (q - 0.75) / 0.25);
+    else if (q < 0.75) drawTransition(ctx, sc, kind, 0, q, (q - 0.3) * 0.5, (q - 0.3) / 0.45, 17);
+    else drawSegment(ctx, sc, 1, (q - 0.3) * 0.5);
   }
   ctx.restore();
 }

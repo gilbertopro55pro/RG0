@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/i18n/client";
 import {
+  REEL_LENGTHS,
   REEL_PLATFORMS,
   REEL_TEMPLATES,
   REEL_TRANSITIONS,
@@ -11,6 +12,7 @@ import {
   platformById,
   templateById,
   type ReelFit,
+  type ReelLength,
   type ReelLineId,
   type ReelLineStyle,
   type ReelPlatformId,
@@ -21,12 +23,16 @@ import {
   type ReelTransitionCategory,
 } from "@/lib/reels/templates";
 import { drawReelFrame, drawTransitionPreview, loadReelImage, reelFonts, reelTimeline, transitionPool, type ReelFonts, type ReelImage } from "@/lib/reels/render";
+import { REEL_TRACKS, trackById } from "@/lib/reels/music";
+import { decodeTrack, musicGain, renderSoundtrack } from "@/lib/reels/audio";
+import ReelTimelineEditor, { type TimelineClip } from "@/components/ReelTimelineEditor";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES } from "@/lib/albumFonts";
 import { exportReelMp4, ReelCancelledError, ReelUnsupportedError } from "@/lib/reels/encode";
 import { useBusy } from "@/lib/updateResume";
 
 // Reels from a gallery (owner, 2026-10-07, admin only while it's polished): pick photos, a
-// platform and a template, edit the text and speed, watch it live, and export a video file to
+// platform, a template and a length, set each photo's time on the timeline, add music, edit the
+// text, watch it live, and export a video file to
 // download or share straight to Instagram / TikTok / Facebook from the phone. Everything happens
 // in the browser (see src/lib/reels).
 
@@ -36,7 +42,10 @@ const MAX_PHOTOS = 30;
 const PREVIEW_W = 360;
 const TEXT_COLORS = ["#ffffff", "#f4e7c8", "#c9a15a", "#b08d57", "#1c1b19", "#7a2e3a"];
 
-type Tab = "style" | "photos" | "transitions" | "text";
+type Tab = "style" | "photos" | "transitions" | "music" | "text";
+
+// The photographer's own music file: at most this size (a few minutes of a normal song).
+const MAX_MUSIC_BYTES = 40 * 1024 * 1024;
 
 const LINES: { id: ReelLineId; label: string; hint: string; placeholder: string }[] = [
   { id: "title", label: "כותרת", hint: "נפתחת עם הסרטון, על התמונות הראשונות, ונעלמת אחרי כמה שניות.", placeholder: "למשל: רון ונויה" },
@@ -45,8 +54,8 @@ const LINES: { id: ReelLineId; label: string; hint: string; placeholder: string 
 ];
 
 const FIT_OPTIONS: { id: ReelFit; label: string; hint: string }[] = [
+  { id: "blur", label: "תמונה שלמה, רקע מטושטש", hint: "התמונה שלמה, ומסביבה עותק מטושטש של אותה תמונה" },
   { id: "black", label: "תמונה שלמה, רקע שחור", hint: "תמונה לרוחב בסרטון לאורך נשארת שלמה, עם שחור מעליה ומתחתיה" },
-  { id: "blur", label: "תמונה שלמה, רקע מטושטש", hint: "במקום השחור, עותק רך ומטושטש של אותה תמונה" },
   { id: "cover", label: "מילוי המסך", hint: "התמונה ממלאת את כל המסך, והצדדים שלה נחתכים" },
 ];
 
@@ -74,8 +83,10 @@ export default function ReelBuilder({
   const [settings, setSettings] = useState<ReelSettings>(() => ({
     platform: "ig-reel",
     templateId: REEL_TEMPLATES[0].id,
-    speed: 1,
-    fit: "black",
+    length: 15,
+    fit: "blur",
+    blur: 60,
+    music: { source: "library", trackId: REEL_TRACKS[0].id, volume: 0.8, offset: 0 },
     transitions: [],
     seed: 1,
     text: {
@@ -88,6 +99,13 @@ export default function ReelBuilder({
     },
   }));
   const [images, setImages] = useState<Map<string, ReelImage>>(new Map());
+  // Times the photographer set on the timeline (seconds per segment, keyed by its first photo);
+  // null = the automatic split.
+  const [durState, setDurState] = useState<{ keys: string[]; durs: number[] } | null>(null);
+  const [upload, setUpload] = useState<{ file: File; url: string } | null>(null);
+  const [musicError, setMusicError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [musicDuration, setMusicDuration] = useState<number | null>(null);
   const [fonts, setFonts] = useState<ReelFonts | null>(null);
   const [playing, setPlaying] = useState(true);
   const [exporting, setExporting] = useState<number | null>(null);
@@ -104,8 +122,26 @@ export default function ReelBuilder({
 
   const platform = platformById(settings.platform);
   const tpl = templateById(settings.templateId);
-  const readyImages = useMemo(() => selected.map((id) => images.get(id)).filter((x): x is ReelImage => !!x), [selected, images]);
-  const timeline = useMemo(() => reelTimeline(readyImages.length, tpl, settings), [readyImages.length, tpl, settings]);
+  const readyIds = useMemo(() => selected.filter((id) => images.has(id)), [selected, images]);
+  const readyImages = useMemo(() => readyIds.map((id) => images.get(id)!), [readyIds, images]);
+  const track = settings.music.source === "library" ? trackById(settings.music.trackId) : null;
+  const bpm = track?.bpm ?? null;
+  // Each segment is keyed by its (first) photo, so the times the photographer set travel with the
+  // photo when it's moved, and fall back to the automatic split when photos are added or removed.
+  const perSeg = tpl.frame === "split" ? 2 : 1;
+  const segKeys = useMemo(() => {
+    const keys: string[] = [];
+    for (let i = 0; i < readyIds.length; i += perSeg) keys.push(readyIds[i]);
+    return keys;
+  }, [readyIds, perSeg]);
+  const custom = useMemo(() => {
+    if (!durState) return null;
+    const byKey = new Map(durState.keys.map((k, i) => [k, durState.durs[i]]));
+    const used = segKeys.slice(0, durState.keys.length);
+    if (used.length !== durState.keys.length || used.some((k) => !byKey.has(k))) return null;
+    return used.map((k) => byKey.get(k)!);
+  }, [durState, segKeys]);
+  const timeline = useMemo(() => reelTimeline(readyImages.length, tpl, settings, custom, bpm), [readyImages.length, tpl, settings, custom, bpm]);
   const pool = transitionPool(tpl, settings);
 
   useEffect(() => {
@@ -162,11 +198,32 @@ export default function ReelBuilder({
       last = now;
       drawReelFrame(ctx, canvas.width, canvas.height, timeRef.current, timeline, tpl, settings, readyImages, fonts);
       if (++uiTick % 6 === 0) setPreviewTime(timeRef.current);
+      // The music follows the preview: same start point, same fades, re-synced if it drifts.
+      const audio = audioRef.current;
+      if (audio && audio.src) {
+        if (playing && timeline.total > 0) {
+          const want = settings.music.offset + timeRef.current;
+          const dur = audio.duration;
+          const at = Number.isFinite(dur) && dur > 0 ? want % dur : want;
+          if (Math.abs(audio.currentTime - at) > 0.25) audio.currentTime = at;
+          audio.volume = Math.min(1, musicGain(timeRef.current, timeline.total, settings.music.volume));
+          if (audio.paused) audio.play().catch(() => {});
+        } else if (!audio.paused) audio.pause();
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    const audioEl = audioRef.current;
+    return () => {
+      cancelAnimationFrame(raf);
+      audioEl?.pause();
+    };
   }, [fonts, playing, timeline, tpl, settings, readyImages]);
+
+  const musicUrl = settings.music.source === "library" ? track?.url ?? null : settings.music.source === "upload" ? upload?.url ?? null : null;
+  useEffect(() => () => {
+    if (upload) URL.revokeObjectURL(upload.url);
+  }, [upload]);
 
   useEffect(() => () => {
     if (result) URL.revokeObjectURL(result.url);
@@ -192,6 +249,31 @@ export default function ReelBuilder({
       const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
       return next.length ? { ...s, transitions: next } : s;
     });
+  // Moves segment `from` to `to` on the timeline (both photos of a split segment move together).
+  const reorderSegments = (from: number, to: number) => {
+    const groups: string[][] = [];
+    for (let i = 0; i < selected.length; i += perSeg) groups.push(selected.slice(i, i + perSeg));
+    if (from >= groups.length || to >= groups.length) return;
+    const [g] = groups.splice(from, 1);
+    groups.splice(to, 0, g);
+    setSelected(groups.flat());
+    // The current times travel with their photos.
+    if (!durState) setDurState({ keys: segKeys.slice(0, timeline.segments), durs: timeline.durs.slice() });
+  };
+  const chooseUpload = (file: File | undefined) => {
+    setMusicError(null);
+    if (!file) return;
+    if (!file.type.startsWith("audio/") && !/\.(mp3|m4a|aac|wav|ogg|oga|flac)$/i.test(file.name)) {
+      setMusicError(t("זה לא נראה כמו קובץ מוזיקה. אפשר MP3, M4A, WAV או AAC."));
+      return;
+    }
+    if (file.size > MAX_MUSIC_BYTES) {
+      setMusicError(t("הקובץ גדול מדי (עד 40MB)."));
+      return;
+    }
+    setUpload({ file, url: URL.createObjectURL(file) });
+    setSettings((s) => ({ ...s, music: { ...s.music, source: "upload", offset: 0 } }));
+  };
   const toggle = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= MAX_PHOTOS ? prev : [...prev, id]));
   const move = (id: string, dir: -1 | 1) =>
@@ -216,7 +298,18 @@ export default function ReelBuilder({
       canvas.width = platform.width;
       canvas.height = platform.height;
       const ctx = canvas.getContext("2d")!;
+      let audio: AudioBuffer | null = null;
+      if (musicUrl) {
+        try {
+          const key = settings.music.source === "upload" && upload ? `upload:${upload.file.name}:${upload.file.size}` : musicUrl;
+          const buffer = await decodeTrack(key, async () => (upload && settings.music.source === "upload" ? upload.file.arrayBuffer() : (await fetch(musicUrl)).arrayBuffer()));
+          audio = await renderSoundtrack(buffer, { offset: settings.music.offset, total: timeline.total, volume: settings.music.volume });
+        } catch {
+          setMusicError(t("לא הצלחנו לקרוא את קובץ המוזיקה, הסרטון ייווצר בלי מוזיקה."));
+        }
+      }
       const blob = await exportReelMp4({
+        audio,
         canvas,
         total: timeline.total,
         draw: (time) => drawReelFrame(ctx, canvas.width, canvas.height, time, timeline, tpl, settings, readyImages, fonts),
@@ -264,6 +357,7 @@ export default function ReelBuilder({
     { id: "style", label: t("סגנון") },
     { id: "photos", label: t("תמונות") },
     { id: "transitions", label: t("מעברים") },
+    { id: "music", label: t("מוזיקה") },
     { id: "text", label: t("טקסט") },
   ];
 
@@ -348,14 +442,12 @@ export default function ReelBuilder({
                   </div>
                 </section>
 
-                <section>
-                  <p className={sectionTitle}>{t("קצב")}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[11px] text-ink-soft">{t("מהיר")}</span>
-                    <input type="range" min={0.6} max={1.6} step={0.1} value={settings.speed} onChange={(e) => setSettings((s) => ({ ...s, speed: Number(e.target.value) }))} className="flex-1" style={{ accentColor: "var(--color-amber-deep)" }} />
-                    <span className="text-[11px] text-ink-soft">{t("איטי")}</span>
-                  </div>
-                </section>
+                {settings.fit === "blur" && (
+                  <section>
+                    <p className={sectionTitle}>{t("עוצמת הטשטוש של הרקע")}</p>
+                    <SliderNumber value={settings.blur} min={0} max={100} step={5} suffix="%" onChange={(v) => setSettings((s) => ({ ...s, blur: v }))} />
+                  </section>
+                )}
               </div>
             )}
 
@@ -418,6 +510,92 @@ export default function ReelBuilder({
                 sectionTitle={sectionTitle}
                 sectionHint={sectionHint}
               />
+            )}
+
+            {tab === "music" && (
+              <div className="space-y-5">
+                <section>
+                  <p className={sectionTitle}>{t("מוזיקה")}</p>
+                  <p className={sectionHint}>{t("כל השירים בספרייה מקוריים ונכתבו בשביל המערכת: מותר להשתמש בהם בכל רשת, בלי תמלוגים ובלי קרדיט. החיתוכים בין התמונות נופלים על הקצב של השיר.")}</p>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    <button
+                      onClick={() => setSettings((s) => ({ ...s, music: { ...s.music, source: "none" } }))}
+                      className={`text-start rounded-md border p-2.5 ${settings.music.source === "none" ? "border-amber-deep bg-amber-bg" : "border-line bg-white hover:border-amber-deep"}`}
+                    >
+                      <span className="block text-sm font-semibold">{t("בלי מוזיקה")}</span>
+                    </button>
+                    {REEL_TRACKS.map((tr) => {
+                      const on = settings.music.source === "library" && settings.music.trackId === tr.id;
+                      return (
+                        <button
+                          key={tr.id}
+                          onClick={() => {
+                            setSettings((s) => ({ ...s, music: { ...s.music, source: "library", trackId: tr.id, offset: 0 } }));
+                            setPlaying(true);
+                            timeRef.current = 0;
+                          }}
+                          className={`text-start rounded-md border p-2.5 transition-colors ${on ? "border-amber-deep bg-amber-bg" : "border-line bg-white hover:border-amber-deep"}`}
+                        >
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold font-display">{t(tr.label)}</span>
+                            <span className="text-[10px] text-ink-soft font-data">{tr.bpm} BPM</span>
+                          </span>
+                          <span className="block text-[11px] text-ink-soft mt-0.5">{t(tr.mood)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+                <section>
+                  <p className={sectionTitle}>{t("מוזיקה משלי")}</p>
+                  <p className={sectionHint}>{t("העלאת קובץ מהמכשיר (MP3, M4A, WAV). האחריות על זכויות היוצרים של שיר שמועלה היא של מי שמעלה אותו.")}</p>
+                  <label className={`flex items-center justify-between gap-3 rounded-md border p-3 cursor-pointer ${settings.music.source === "upload" ? "border-amber-deep bg-amber-bg" : "border-line bg-white hover:border-amber-deep"}`}>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold truncate">{upload ? upload.file.name : t("בחירת קובץ מוזיקה")}</span>
+                      {upload && settings.music.source !== "upload" && <span className="block text-[11px] text-ink-soft">{t("לחיצה כדי להשתמש בו שוב")}</span>}
+                    </span>
+                    <span className="shrink-0 text-xs font-semibold text-amber-deep">{upload ? t("החלפה") : t("העלאה")}</span>
+                    <input
+                      type="file"
+                      accept="audio/*,.mp3,.m4a,.aac,.wav"
+                      className="hidden"
+                      onChange={(e) => chooseUpload(e.target.files?.[0])}
+                      onClick={(e) => {
+                        if (upload && settings.music.source !== "upload") {
+                          e.preventDefault();
+                          setSettings((s) => ({ ...s, music: { ...s.music, source: "upload" } }));
+                        }
+                      }}
+                    />
+                  </label>
+                  {musicError && <p className="text-xs text-rose mt-1.5">{musicError}</p>}
+                </section>
+                {musicUrl && (
+                  <section className="space-y-3">
+                    <div>
+                      <p className={sectionTitle}>{t("עוצמה")}</p>
+                      <SliderNumber value={Math.round(settings.music.volume * 100)} min={0} max={100} step={5} suffix="%" onChange={(v) => setSettings((s) => ({ ...s, music: { ...s.music, volume: v / 100 } }))} />
+                    </div>
+                    <div>
+                      <p className={sectionTitle}>{t("התחלה מתוך השיר")}</p>
+                      <p className={sectionHint}>{t("מאיזו שנייה בשיר הסרטון מתחיל, למשל כדי לדלג על הפתיחה.")}</p>
+                      <SliderNumber
+                        value={Math.round(settings.music.offset * 10) / 10}
+                        min={0}
+                        max={Math.max(1, Math.floor((track?.seconds ?? musicDuration ?? 60) - 1))}
+                        step={track ? 60 / track.bpm : 0.5}
+                        suffix="s"
+                        onChange={(v) => {
+                          // A library track starts on a beat, so the cuts stay on the music's beat.
+                          const snapped = track ? Math.round(v / (60 / track.bpm)) * (60 / track.bpm) : v;
+                          setSettings((s) => ({ ...s, music: { ...s.music, offset: Math.max(0, snapped) } }));
+                          timeRef.current = 0;
+                        }}
+                      />
+                    </div>
+                  </section>
+                )}
+              </div>
             )}
 
             {tab === "text" && (
@@ -513,7 +691,91 @@ export default function ReelBuilder({
             )}
           </div>
         </div>
+
+        <div className="border-t border-line px-4 sm:px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div>
+              <p className="font-display text-[15px] font-semibold">{t("ציר הזמן")}</p>
+              <p className="text-[11px] text-ink-soft">
+                {t("גוררים את הקו הזהוב בין שתי תמונות כדי לשנות את הזמן שלהן, ואת הידית שעל התמונה כדי להזיז אותה.")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {durState ? (
+                <button onClick={() => setDurState(null)} className="text-xs font-semibold text-amber-deep underline underline-offset-2">
+                  {t("חלוקה אוטומטית")}
+                </button>
+              ) : (
+                <span className="text-[11px] text-ink-soft">{bpm ? t("חלוקה אוטומטית לפי הקצב של השיר") : t("חלוקה אוטומטית שווה")}</span>
+              )}
+              <label className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold">{t("אורך הרילס")}</span>
+                <select
+                  value={settings.length}
+                  onChange={(e) => {
+                    setSettings((s) => ({ ...s, length: Number(e.target.value) as ReelLength }));
+                    setDurState(null);
+                    timeRef.current = 0;
+                  }}
+                  className="h-9 rounded-md border border-line bg-white px-2 text-sm font-data"
+                >
+                  {REEL_LENGTHS.map((l) => (
+                    <option key={l} value={l}>
+                      {t("{n} שניות", { n: l })}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+          {timeline.dropped > 0 && (
+            <p className="text-[11px] text-rose mb-2">
+              {t("{n} תמונות לא נכנסות באורך הזה (לכל תמונה צריך לפחות חצי שנייה). אפשר להאריך את הרילס או להוריד תמונות.", { n: timeline.dropped })}
+            </p>
+          )}
+          {readyImages.length > 0 ? (
+            <ReelTimelineEditor
+              clips={segKeys.slice(0, timeline.segments).map<TimelineClip>((key, k) => ({ key, thumbs: readyIds.slice(k * perSeg, k * perSeg + perSeg).map((id) => thumbOf.get(id) ?? "") }))}
+              durs={timeline.durs}
+              starts={timeline.starts}
+              total={timeline.total}
+              tail={timeline.tail}
+              time={previewTime}
+              beat={bpm ? 60 / bpm : null}
+              onSeek={(time) => {
+                timeRef.current = time;
+                setPreviewTime(time);
+              }}
+              onDurs={(durs) => setDurState({ keys: segKeys.slice(0, timeline.segments), durs })}
+              onReorder={reorderSegments}
+            />
+          ) : (
+            <p className="text-xs text-ink-soft py-4">{t("בחרו תמונות כדי לראות את ציר הזמן")}</p>
+          )}
+        </div>
+        {musicUrl && <audio ref={audioRef} src={musicUrl} preload="auto" loop className="hidden" onLoadedMetadata={(e) => setMusicDuration(e.currentTarget.duration || null)} />}
       </div>
+    </div>
+  );
+}
+
+// A slider with a box for typing the exact value (every slider in the system takes both).
+function SliderNumber({ value, min, max, step, suffix, onChange }: { value: number; min: number; max: number; step: number; suffix: string; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="flex-1" style={{ accentColor: "var(--color-amber-deep)" }} />
+      <input
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (Number.isFinite(v)) onChange(Math.max(min, Math.min(max, v)));
+        }}
+        className="w-16 h-8 rounded-md border border-line bg-white px-1.5 text-xs font-data text-center"
+      />
+      <span className="text-[11px] text-ink-soft w-3">{suffix}</span>
     </div>
   );
 }

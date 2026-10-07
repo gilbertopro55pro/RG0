@@ -33,32 +33,82 @@ export function rand(...nums: number[]): number {
 // loses a little at the sides, so it still fills the screen.
 const FIT_MIN_VISIBLE = 0.72;
 
-// A small, blurred and darkened copy of a photo for backgrounds, made once per photo.
-const blurCache = new WeakMap<object, ReelImage>();
-export function blurredCopy(img: ReelImage): ReelImage {
-  const hit = blurCache.get(img.el as object);
+// A blurred, slightly darkened copy of a photo for backgrounds, made once per photo and strength
+// (0-100). Built by shrinking (stronger = smaller) and scaling back up in two steps, which works
+// in every browser (Safari's canvas has no reliable blur filter) and costs nothing per frame.
+const blurCache = new WeakMap<object, Map<number, ReelImage>>();
+export function blurredCopy(img: ReelImage, strength = 60): ReelImage {
+  const level = Math.round(Math.max(0, Math.min(100, strength)) / 5) * 5;
+  let byLevel = blurCache.get(img.el as object);
+  if (!byLevel) {
+    byLevel = new Map();
+    blurCache.set(img.el as object, byLevel);
+  }
+  const hit = byLevel.get(level);
   if (hit) return hit;
-  const w = 180;
+  const tiny = Math.max(12, Math.round(420 / (1 + level / 8)));
+  const th = Math.max(8, Math.round((tiny * img.height) / img.width));
+  const a = document.createElement("canvas");
+  a.width = tiny;
+  a.height = th;
+  const ga = a.getContext("2d")!;
+  ga.imageSmoothingEnabled = true;
+  ga.imageSmoothingQuality = "high";
+  ga.drawImage(img.el, 0, 0, tiny, th);
+  const w = Math.min(480, tiny * 4);
   const h = Math.max(1, Math.round((w * img.height) / img.width));
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
   const g = c.getContext("2d")!;
-  if (typeof g.filter === "string") g.filter = "blur(5px) brightness(0.72)";
-  g.drawImage(img.el, -8, -8, w + 16, h + 16);
-  if (typeof g.filter !== "string") {
-    g.fillStyle = "rgba(0,0,0,0.4)";
-    g.fillRect(0, 0, w, h);
-  }
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(a, 0, 0, w, h);
+  g.fillStyle = "rgba(0,0,0,0.16)";
+  g.fillRect(0, 0, w, h);
   const out = { el: c, width: w, height: h };
-  blurCache.set(img.el as object, out);
+  byLevel.set(level, out);
+  return out;
+}
+
+// The photo pre-shrunk close to the size it's drawn at. Drawing a 1600px photo into a much smaller
+// canvas every frame made a slow zoom shimmer and step (the browser resamples it roughly, and a
+// little differently each frame); from a source just above the drawn size the motion is smooth.
+const sizedCache = new WeakMap<object, Map<number, ReelImage>>();
+function sizedFor(img: ReelImage, drawW: number): ReelImage {
+  const want = Math.ceil((drawW * 1.25) / 64) * 64;
+  if (img.width <= want * 1.4) return img;
+  let byW = sizedCache.get(img.el as object);
+  if (!byW) {
+    byW = new Map();
+    sizedCache.set(img.el as object, byW);
+  }
+  const hit = byW.get(want);
+  if (hit) return hit;
+  // Halve in steps for a clean result, then the last step to size.
+  let src: CanvasImageSource = img.el;
+  let w = img.width;
+  let h = img.height;
+  while (w / 2 >= want) {
+    const c = document.createElement("canvas");
+    c.width = Math.round(w / 2);
+    c.height = Math.round(h / 2);
+    const g = c.getContext("2d")!;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(src, 0, 0, c.width, c.height);
+    src = c;
+    w = c.width;
+    h = c.height;
+  }
+  const out = { el: src, width: img.width, height: img.height };
+  byW.set(want, out);
   return out;
 }
 
 // The photo in `r`, moved by the template's motion at progress p (0-1 through its segment).
 // With fit "black"/"blur", a photo that doesn't match the rectangle's shape is shown whole (its
 // motion stays inside the rectangle, so nothing of it is ever cut off).
-export function drawPhoto(ctx: CanvasRenderingContext2D, img: ReelImage, r: Rect, p: number, motion: ReelTemplate["motion"], index: number, fit: ReelFit) {
+export function drawPhoto(ctx: CanvasRenderingContext2D, img: ReelImage, r: Rect, p: number, motion: ReelTemplate["motion"], index: number, fit: ReelFit, blur = 60) {
   const dir = index % 2 === 0 ? 1 : -1;
   let s = 1;
   let dx = 0;
@@ -81,9 +131,11 @@ export function drawPhoto(ctx: CanvasRenderingContext2D, img: ReelImage, r: Rect
   ctx.beginPath();
   ctx.rect(r.x, r.y, r.w, r.h);
   ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   if (whole) {
     if (fit === "blur") {
-      const bg = blurredCopy(img);
+      const bg = blurredCopy(img, blur);
       const bs = Math.max(r.w / bg.width, r.h / bg.height) * 1.08;
       ctx.drawImage(bg.el, r.x + (r.w - bg.width * bs) / 2, r.y + (r.h - bg.height * bs) / 2, bg.width * bs, bg.height * bs);
     } else {
@@ -97,20 +149,27 @@ export function drawPhoto(ctx: CanvasRenderingContext2D, img: ReelImage, r: Rect
     const dh = img.height * base;
     const room = Math.max(0, (r.w - dw) / 2);
     const mx = Math.max(-room, Math.min(room, dx * 0.5));
-    ctx.drawImage(img.el, r.x + (r.w - dw) / 2 + mx, r.y + (r.h - dh) / 2, dw, dh);
+    ctx.drawImage(sizedFor(img, containScale * img.width * drawScale(ctx)).el, r.x + (r.w - dw) / 2 + mx, r.y + (r.h - dh) / 2, dw, dh);
   } else {
     const base = coverScale * s;
     const dw = img.width * base;
     const dh = img.height * base;
-    ctx.drawImage(img.el, r.x + (r.w - dw) / 2 + dx, r.y + (r.h - dh) / 2, dw, dh);
+    ctx.drawImage(sizedFor(img, coverScale * 1.2 * img.width * drawScale(ctx)).el, r.x + (r.w - dw) / 2 + dx, r.y + (r.h - dh) / 2, dw, dh);
   }
   ctx.restore();
+}
+
+// How much the context is scaled (the blurred-transition layer draws at a fraction of the size).
+function drawScale(ctx: CanvasRenderingContext2D) {
+  const m = ctx.getTransform();
+  return Math.max(0.05, Math.hypot(m.a, m.b));
 }
 
 // One segment's picture (a photo, a framed photo, or two photos stacked) filling the canvas.
 export function drawSegment(ctx: CanvasRenderingContext2D, sc: Scene, k: number, p: number) {
   const { W, H, tpl, images } = sc;
   const fit = sc.settings.fit;
+  const blur = sc.settings.blur ?? 60;
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, W, H);
   if (!images.length) return;
@@ -118,22 +177,22 @@ export function drawSegment(ctx: CanvasRenderingContext2D, sc: Scene, k: number,
     const a = images[(2 * k) % images.length];
     const b = images[(2 * k + 1) % images.length];
     if (images.length === 1) {
-      drawPhoto(ctx, a, { x: 0, y: 0, w: W, h: H }, p, tpl.motion, k, fit);
+      drawPhoto(ctx, a, { x: 0, y: 0, w: W, h: H }, p, tpl.motion, k, fit, blur);
       return;
     }
     const gap = Math.round(W * 0.012);
     const half = (H - gap) / 2;
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, W, H);
-    drawPhoto(ctx, a, { x: 0, y: 0, w: W, h: half }, p, tpl.motion, 2 * k, fit);
-    drawPhoto(ctx, b, { x: 0, y: half + gap, w: W, h: half }, p, tpl.motion, 2 * k + 1, fit);
+    drawPhoto(ctx, a, { x: 0, y: 0, w: W, h: half }, p, tpl.motion, 2 * k, fit, blur);
+    drawPhoto(ctx, b, { x: 0, y: half + gap, w: W, h: half }, p, tpl.motion, 2 * k + 1, fit, blur);
     return;
   }
   const img = images[k % images.length];
   if (tpl.frame === "framed") {
     // A blurred, darkened copy as the background (blurred once per photo, small, then scaled up);
     // the photo in a white frame over it. The frame already shows the whole photo.
-    drawPhoto(ctx, blurredCopy(img), { x: 0, y: 0, w: W, h: H }, 0.5, "drift", k, "cover");
+    drawPhoto(ctx, blurredCopy(img, blur), { x: 0, y: 0, w: W, h: H }, 0.5, "drift", k, "cover");
     const fitScale = Math.min((W * 0.82) / img.width, (H * 0.6) / img.height);
     const fw = img.width * fitScale;
     const fh = img.height * fitScale;
@@ -150,7 +209,7 @@ export function drawSegment(ctx: CanvasRenderingContext2D, sc: Scene, k: number,
     drawPhoto(ctx, img, { x: fx, y: fy, w: fw, h: fh }, p, "drift", k, "cover");
     return;
   }
-  drawPhoto(ctx, img, { x: 0, y: 0, w: W, h: H }, p, tpl.motion, k, fit);
+  drawPhoto(ctx, img, { x: 0, y: 0, w: W, h: H }, p, tpl.motion, k, fit, blur);
 }
 
 // Off-screen canvases reused between frames (one set per size: the preview, the export and the
