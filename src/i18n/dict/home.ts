@@ -3,6 +3,9 @@ import type { AreaDict } from "@/i18n/types";
 // Area "home" (see src/i18n/dict/index.ts). Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "קבלה ללקוח על {amount}": "Receipt for {amount}",
+    "כבר הופקה קבלה על כל הסכום שהתקבל": "A receipt was already issued for everything received",
+    "לא נמצא סכום תשלום להפקת מסמך": "No payment amount found to issue a document for",
     "תזכורת לאישור עיצוב האלבום": "Album design approval reminder",
     "תזכורת לבחירת שירים לקליפ": "Clip song selection reminder",
     "עברו 3 ימים מאז ששלחת ל{name} את עיצוב האלבום, והוא עוד לא אושר בפורטל. לשלוח תזכורת בוואטסאפ?": "It's been 3 days since you sent {name} the album design, and it hasn't been approved in the portal yet. Send a reminder on WhatsApp?",
@@ -426,6 +429,9 @@ const dict: AreaDict = {
     "העיצוב האוטומטי של האלבום": "Automatic album design",
   },
   ru: {
+    "קבלה ללקוח על {amount}": "Квитанция на {amount}",
+    "כבר הופקה קבלה על כל הסכום שהתקבל": "Квитанция на всю полученную сумму уже выдана",
+    "לא נמצא סכום תשלום להפקת מסמך": "Не найдена сумма платежа для документа",
     "תזכורת לאישור עיצוב האלבום": "Напоминание об утверждении дизайна альбома",
     "תזכורת לבחירת שירים לקליפ": "Напоминание о выборе песен для клипа",
     "עברו 3 ימים מאז ששלחת ל{name} את עיצוב האלבום, והוא עוד לא אושר בפורטל. לשלוח תזכורת בוואטסאפ?": "Прошло 3 дня с тех пор, как вы отправили {name} дизайн альбома, а в портале его ещё не утвердили. Отправить напоминание в WhatsApp?",

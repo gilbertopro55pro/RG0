@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { amountToDocument } from "@/lib/paymentDocuments";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -734,8 +735,7 @@ export default function EventDetailView({
     if (clientEmailOverride) setClientEmail(clientEmailOverride);
     setDocumentEmailPrompt(null);
     if (payments) {
-      const column = field === "deposit" ? "deposit_document_url" : "balance_document_url";
-      setPayments({ ...payments, [column]: data.documentUrl });
+      setPayments({ ...payments, [`${field}_document_url`]: data.documentUrl, [`${field}_documented_amount`]: data.documentedAmount ?? null });
     }
   };
 
@@ -1051,6 +1051,7 @@ export default function EventDetailView({
               paid={payments.deposit_paid}
               paidAmount={payments.deposit_paid_amount}
               documentUrl={payments.deposit_document_url}
+              documentedAmount={payments.deposit_documented_amount}
               actionOpen={depositActionOpen}
               onToggleAction={() => {
                 setDepositActionOpen((v) => !v);
@@ -1088,6 +1089,7 @@ export default function EventDetailView({
               paidAmount={payments.balance_paid_amount}
               dueDateText={payments.balance_due_date ? t("עד {date}", { date: new Date(payments.balance_due_date).toLocaleDateString(locale) }) : null}
               documentUrl={payments.balance_document_url}
+              documentedAmount={payments.balance_documented_amount}
               actionOpen={balanceActionOpen}
               onToggleAction={() => {
                 setBalanceActionOpen((v) => !v);
@@ -1289,6 +1291,7 @@ function PaymentLegRow({
   paidAmount,
   dueDateText,
   documentUrl,
+  documentedAmount,
   actionOpen,
   onToggleAction,
   partialOpen,
@@ -1313,6 +1316,7 @@ function PaymentLegRow({
   paidAmount: number | null;
   dueDateText?: string | null;
   documentUrl: string | null;
+  documentedAmount: number | null;
   actionOpen: boolean;
   onToggleAction: () => void;
   partialOpen: boolean;
@@ -1339,6 +1343,9 @@ function PaymentLegRow({
   // textarea under every payment).
   const [notesOpen, setNotesOpen] = useState(!!notesDraft);
   const ils = (n: number) => `₪${Number(n).toLocaleString(locale)}`;
+  // A receipt can be issued for a partial payment too, and later for whatever came in since
+  // (owner, 2026-10-08) — always only for received money no receipt covers yet.
+  const toDocument = amountToDocument({ amount, paid, paidAmount, documentedAmount, documentUrl });
   return (
     <div className="px-4 py-3">
       <button onClick={onToggleAction} className="w-full flex items-center gap-2.5 text-start">
@@ -1405,16 +1412,20 @@ function PaymentLegRow({
       )}
 
       <div className="flex items-center gap-4 mt-1.5 text-xs">
-        {paid &&
-          (documentUrl ? (
-            <a href={documentUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-deep">
-              {t("צפייה במסמך")}
-            </a>
-          ) : (
-            <button onClick={onIssueDocument} disabled={issuingDocument} className="font-semibold text-amber-deep disabled:opacity-60">
-              {issuingDocument ? t("מפיק מסמך...") : t("קבלה ללקוח")}
-            </button>
-          ))}
+        {documentUrl && (
+          <a href={documentUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-deep">
+            {t("צפייה במסמך")}
+          </a>
+        )}
+        {toDocument > 0 && (
+          <button onClick={onIssueDocument} disabled={issuingDocument} className="font-semibold text-amber-deep disabled:opacity-60">
+            {issuingDocument
+              ? t("מפיק מסמך...")
+              : paid && !documentUrl
+                ? t("קבלה ללקוח")
+                : t("קבלה ללקוח על {amount}", { amount: ils(toDocument) })}
+          </button>
+        )}
         {!notesOpen && (
           <button onClick={() => setNotesOpen(true)} className="font-semibold text-amber-deep">
             {t("+ הערה")}
