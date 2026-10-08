@@ -10,6 +10,7 @@ import {
   CUSTOMIZABLE_MESSAGE_STAGES,
   STAGE_LABELS,
   builtInClientMessageTemplate,
+  isFixedStageName,
 } from "@/lib/stages";
 import type { ClientMessageTemplateRow, CustomPackageStageRow } from "@/lib/types";
 import { useT } from "@/i18n/client";
@@ -40,7 +41,9 @@ export default function ClientMessagesSettings({
   const t = useT();
   const supabase = createClient();
   const customEntries = customStages
-    .filter((s) => s.notify_client)
+    // A custom stage named like a fixed one (event closing, shoot day) is that fixed stage, whose
+    // message is the built-in one above.
+    .filter((s) => s.notify_client && !isFixedStageName(s.name))
     .map((s) => ({ key: `custom:${s.id}`, label: s.name }))
     .filter((entry) => initialTemplates.some((t) => t.stage_key === entry.key));
   const allKeys: { key: string; label: string; isCustom: boolean }[] = [

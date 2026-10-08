@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
 import { compareEventsChronologically } from "@/lib/eventOrder";
 import { quoteExtrasFor } from "@/lib/quoteDefaults";
 import { canChooseClientLang } from "@/lib/clientLang";
@@ -37,6 +38,7 @@ import PendingClientMessagePrompts, {
 } from "@/components/PendingClientMessagePrompts";
 import DashboardHero from "@/components/DashboardHero";
 import NextEventHero, { type NextEventHeroData } from "@/components/NextEventHero";
+import RefreshWhenStale from "@/components/RefreshWhenStale";
 import QuickActionsGrid from "@/components/QuickActionsGrid";
 import EventsListView, { type EventAttention } from "@/components/EventsListView";
 import LandingPage from "@/components/LandingPage";
@@ -375,6 +377,8 @@ export default async function DashboardPage() {
 
   return (
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-24 w-full">
+      {/* Going back to this screen shows the router's saved copy; this reloads it (see the component). */}
+      <RefreshWhenStale renderId={randomUUID()} />
       <div className="flex items-start justify-between gap-3 mb-5">
         <div className="min-w-0">
           <div className="text-[13px] text-ink-soft flex items-center gap-2">

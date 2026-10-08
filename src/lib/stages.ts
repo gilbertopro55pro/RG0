@@ -287,6 +287,31 @@ export const PACKAGE_FLOWS: Record<PackageType, StageKey[]> = {
   freelance_video_film_clip_reels: ["shoot_day", "client_song_selection", "video_approval"],
 };
 
+// The two stages every package starts with, custom packages included (owner, 2026-10-08): they
+// can't be renamed, moved or removed. In a custom package they're the built-in stages themselves
+// (event_stages rows with a stage_key, before the package's own custom stages), so everything
+// keyed on them works the same for every package: the home screen's next shoot skips a shoot
+// whose "יום הצילום" is marked, a signed contract marks "סגירת האירוע", and so on.
+export const FIXED_STAGES: StageKey[] = ["event_closing", "shoot_day"];
+
+// A custom stage named exactly like a fixed one: packages made before the stages were fixed have
+// those as their own stages. They're that fixed stage now, so they're left out of the package's
+// own list everywhere (the fixed stage takes their place).
+export function isFixedStageName(name: string): boolean {
+  const n = name.trim();
+  return FIXED_STAGES.some((k) => STAGE_LABELS[k] === n);
+}
+
+// A custom package's stages in order: the fixed stages, then the photographer's own.
+export function customPackageFlow<T extends { id: string; name: string }>(
+  customStages: T[]
+): { stage_key: StageKey | null; custom_stage_id: string | null }[] {
+  return [
+    ...FIXED_STAGES.map((k) => ({ stage_key: k, custom_stage_id: null })),
+    ...customStages.filter((cs) => !isFixedStageName(cs.name)).map((cs) => ({ stage_key: null, custom_stage_id: cs.id })),
+  ];
+}
+
 export const PACKAGE_LABELS: Record<PackageType, string> = {
   stills: "סטילס בלבד",
   stills_reel: "סטילס + קליפ",

@@ -12,7 +12,9 @@ import {
   STAGE_LABELS,
   CLIENT_MESSAGE_INSERT_OPTIONS,
   CLIENT_MESSAGE_EMOJI_OPTIONS,
+  FIXED_STAGES,
   PACKAGE_FLOWS,
+  isFixedStageName,
 } from "@/lib/stages";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
@@ -24,7 +26,9 @@ import { dateLocale } from "@/i18n/config";
 // purposes of isCustomStageName below, since that stage has no central template to fall back on —
 // only unlocking the per-stage message editor for names outside CUSTOMIZABLE_MESSAGE_STAGES is
 // what makes that editor actually useful for a stage like that.
-const ALL_STAGE_NAME_OPTIONS = PACKAGE_FLOWS.full;
+// The fixed stages every package starts with (event closing, shoot day) aren't offered: they're
+// already the first two stages of every package.
+const ALL_STAGE_NAME_OPTIONS = PACKAGE_FLOWS.full.filter((k) => !FIXED_STAGES.includes(k));
 
 // A stage name that matches one of the built-in customizable stages' own label already has its
 // message customized centrally (Settings → הודעות ללקוח/ה, keyed by that stage's real StageKey)
@@ -172,7 +176,7 @@ export default function CustomPackagesSettings({
                   <div className="text-sm font-semibold truncate">{pkg.name}</div>
                   <div className="text-xs text-ink-soft font-data">
                     {pkg.price != null ? `₪${Number(pkg.price).toLocaleString(dateLocale(lang))}, ` : ""}
-                    {t("{n} שלבים", { n: (stagesByPackage.get(pkg.id) ?? []).length })}
+                    {t("{n} שלבים", { n: FIXED_STAGES.length + (stagesByPackage.get(pkg.id) ?? []).filter((st) => !isFixedStageName(st.name)).length })}
                   </div>
                 </button>
                 <button onClick={() => setConfirmingDeleteId(pkg.id)} className="text-xs text-rose shrink-0">
@@ -215,7 +219,7 @@ type TopicDraft = {
 
 export function CustomPackageBuilder({
   pkg,
-  initialStages,
+  initialStages: allInitialStages,
   eventTypes,
   prices,
   onClose,
@@ -238,6 +242,10 @@ export function CustomPackageBuilder({
   const supabase = createClient();
   const t = useT();
   const entered = useModalEntered();
+  // The package's own stages. A stage named like a fixed one (event closing, shoot day — made
+  // before those were fixed) is that fixed stage now: shown as the locked row, never edited or
+  // removed from here.
+  const [initialStages] = useState(() => allInitialStages.filter((s) => !isFixedStageName(s.name)));
   // Rendered via a portal straight to document.body (see the return statement below) instead of
   // inline where this component sits in the tree — nested many levels deep inside SettingsTabs'
   // display:none/block-toggled tab container. A fixed-position full-screen modal nested that deep
@@ -457,6 +465,10 @@ export function CustomPackageBuilder({
       setError(t("יש להזין שם לחבילה"));
       return;
     }
+    if (validStages.some((s) => isFixedStageName(s.name))) {
+      setError(t("\"סגירת האירוע\" ו\"יום הצילום\" כבר קבועים בתחילת כל חבילה"));
+      return;
+    }
     setSaving(true);
     setError(null);
     const {
@@ -657,6 +669,21 @@ export function CustomPackageBuilder({
               <span className="text-[11px] text-ink-soft font-data">{stages.length}/{MAX_STAGES}</span>
             </div>
 
+            {/* The fixed stages every package starts with (owner, 2026-10-08): not editable. */}
+            <div className="space-y-2 mb-2">
+              {FIXED_STAGES.map((k, i) => (
+                <div key={k} className="rounded-xl px-3 py-2.5 flex items-center gap-2 bg-chip">
+                  <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-soft" aria-hidden="true">
+                    <rect x="5" y="11" width="14" height="10" rx="2" />
+                    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                  </svg>
+                  <span className="text-xs shrink-0 w-5 text-center text-ink-soft font-data">{i + 1}</span>
+                  <span className="text-sm font-semibold flex-1 min-w-0 truncate">{t(STAGE_LABELS[k])}</span>
+                  <span className="text-[11px] shrink-0 text-ink-soft">{t("שלב קבוע")}</span>
+                </div>
+              ))}
+            </div>
+
             {stages.length > 0 && (
               <div className="flex items-center justify-between mb-2 px-1">
                 <label className="flex items-center gap-1.5 text-xs cursor-pointer text-ink-soft">
@@ -697,7 +724,7 @@ export function CustomPackageBuilder({
                       onChange={() => toggleSelect(stage.clientId)}
                       aria-label={t("בחירת שלב למחיקה")}
                     />
-                    <span className="text-xs shrink-0 w-5 text-center text-ink-soft font-data">{i + 1}</span>
+                    <span className="text-xs shrink-0 w-5 text-center text-ink-soft font-data">{i + 1 + FIXED_STAGES.length}</span>
                     <div className="relative flex-1 min-w-0">
                       <input
                         value={stage.name}

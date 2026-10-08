@@ -3,6 +3,8 @@ import type { AreaDict } from "@/i18n/types";
 // Area "settingsAdmin" (see src/i18n/dict/index.ts). Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "שלב קבוע": "Fixed stage",
+    "\"סגירת האירוע\" ו\"יום הצילום\" כבר קבועים בתחילת כל חבילה": "\"Event closing\" and \"Shoot day\" are already the fixed first stages of every package",
     "מחירון לפי סוג אירוע": "Price list by event type",
     "המחירים משמשים ליצירת הצעות מחיר אוטומטיות (כולל בוט ה-AI בוואטסאפ). השאירו שדה ריק כדי לסמן שהחבילה לא מוצעת לסוג האירוע הזה, הבוט יציע חלופה או יפנה ליצירת קשר ישיר איתכם.": "These prices are used to create automatic price quotes (including the AI bot on WhatsApp). Leave a field empty to mark that the package isn't offered for this event type; the bot will suggest an alternative or refer the client to contact you directly.",
     "עדיין אין סוגי אירוע, הם נוספים אוטומטית כשמוסיפים תמחור בעת יצירת חבילה מותאמת אישית.": "No event types yet. They're added automatically when you add pricing while creating a custom package.",
@@ -169,6 +171,8 @@ const dict: AreaDict = {
     "לא נמצאו משתמשים.": "No users found.",
   },
   ru: {
+    "שלב קבוע": "Постоянный этап",
+    "\"סגירת האירוע\" ו\"יום הצילום\" כבר קבועים בתחילת כל חבילה": "«Закрытие мероприятия» и «День съёмки» уже являются постоянными первыми этапами каждого пакета",
     "מחירון לפי סוג אירוע": "Прайс-лист по типу мероприятия",
     "המחירים משמשים ליצירת הצעות מחיר אוטומטיות (כולל בוט ה-AI בוואטסאפ). השאירו שדה ריק כדי לסמן שהחבילה לא מוצעת לסוג האירוע הזה, הבוט יציע חלופה או יפנה ליצירת קשר ישיר איתכם.": "Эти цены используются для автоматических ценовых предложений (включая AI-бота в WhatsApp). Оставьте поле пустым, если пакет не предлагается для этого типа мероприятия: бот предложит альтернативу или попросит связаться с вами напрямую.",
     "עדיין אין סוגי אירוע, הם נוספים אוטומטית כשמוסיפים תמחור בעת יצירת חבילה מותאמת אישית.": "Типов мероприятий пока нет. Они добавляются автоматически, когда вы задаёте цены при создании индивидуального пакета.",
