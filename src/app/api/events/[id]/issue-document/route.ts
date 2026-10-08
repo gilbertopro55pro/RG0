@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isInvoiceProviderConnected, issueClientDocument } from "@/lib/invoicing";
 import type { InvoiceProvider } from "@/lib/types";
+import { amountToDocument, documentedOnLeg, receivedOnLeg, type PaymentLegDocState } from "@/lib/paymentDocuments";
 
 const FIELD_LABEL: Record<"deposit" | "balance", string> = {
   deposit: "מקדמה",
@@ -58,13 +59,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: payment } = await supabase
     .from("event_payments")
-    .select("deposit_amount, balance_amount")
+    .select(`${field}_amount, ${field}_paid, ${field}_paid_amount, ${field}_documented_amount, ${field}_document_url`)
     .eq("event_id", eventId)
-    .maybeSingle<{ deposit_amount: number | null; balance_amount: number | null }>();
-  const amount = field === "deposit" ? payment?.deposit_amount : payment?.balance_amount;
-  if (!amount) {
+    .maybeSingle<Record<string, unknown>>();
+  if (!payment) {
     return NextResponse.json({ error: "לא נמצא סכום תשלום להפקת מסמך" }, { status: 400 });
   }
+  // A receipt covers money actually received that no earlier receipt covered: on a partial
+  // payment the amount paid so far, and later only the difference (owner, 2026-10-08).
+  const leg: PaymentLegDocState = {
+    amount: Number(payment[`${field}_amount`]) || 0,
+    paid: !!payment[`${field}_paid`],
+    paidAmount: payment[`${field}_paid_amount`] == null ? null : Number(payment[`${field}_paid_amount`]),
+    documentedAmount: payment[`${field}_documented_amount`] == null ? null : Number(payment[`${field}_documented_amount`]),
+    documentUrl: (payment[`${field}_document_url`] as string | null) ?? null,
+  };
+  const amount = amountToDocument(leg);
+  if (!amount) {
+    return NextResponse.json(
+      { error: receivedOnLeg(leg) > 0 ? "כבר הופקה קבלה על כל הסכום שהתקבל" : "לא נמצא סכום תשלום להפקת מסמך" },
+      { status: 400 }
+    );
+  }
+  const partial = !leg.paid || documentedOnLeg(leg) > 0;
 
   try {
     const { documentLink } = await issueClientDocument({
@@ -74,15 +91,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       customerName: event.client_name,
       customerEmail: email,
       amount,
-      description: `תשלום ${FIELD_LABEL[field]}, ${event.client_name}`,
+      description: partial ? `תשלום חלקי על ${FIELD_LABEL[field]}, ${event.client_name}` : `תשלום ${FIELD_LABEL[field]}, ${event.client_name}`,
       emailSubject: `קבלה על תשלום | ${photographer.name}`,
       emailBody: `שלום, מצורפת קבלה על התשלום שהתקבל. תודה,\n${photographer.name}`,
     });
 
-    const column = field === "deposit" ? "deposit_document_url" : "balance_document_url";
-    await supabase.from("event_payments").update({ [column]: documentLink }).eq("event_id", eventId);
+    const documentedAmount = documentedOnLeg(leg) + amount;
+    await supabase
+      .from("event_payments")
+      .update({ [`${field}_document_url`]: documentLink, [`${field}_documented_amount`]: documentedAmount })
+      .eq("event_id", eventId);
 
-    return NextResponse.json({ documentUrl: documentLink });
+    return NextResponse.json({ documentUrl: documentLink, documentedAmount, amount });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "הפקת המסמך נכשלה" },

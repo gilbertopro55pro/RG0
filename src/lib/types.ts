@@ -459,6 +459,10 @@ export type EventPaymentRow = {
   balance_paid_at: string | null;
   deposit_document_url: string | null;
   balance_document_url: string | null;
+  // How much of the leg issued receipts already cover (receipts can be issued on partial payments;
+  // see lib/paymentDocuments.ts). The *_document_url is the latest receipt.
+  deposit_documented_amount: number | null;
+  balance_documented_amount: number | null;
   // Set only for a partial payment (deposit_paid/balance_paid stay false) — the remaining balance
   // is always computed live from deposit_amount/balance_amount rather than stored, so it can never
   // go stale if the declared amount itself is edited later.
