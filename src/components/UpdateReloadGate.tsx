@@ -7,7 +7,7 @@ import { saveResumeSnapshot, takeResumeScroll, useBusyLabels } from "@/lib/updat
 
 // Client-facing pages (galleries, contracts, quotes, portfolio…) and the auth pages never show
 // this — only the photographer's own app does.
-const HIDDEN_PREFIXES = ["/login", "/signup", "/reset-password", "/gallery", "/contracts", "/portal", "/quotes", "/billing", "/landing", "/en", "/ru", "/p", "/chat", "/print", "/terms", "/privacy", "/cookies", "/cancellation-policy", "/accessibility", "/business-info"];
+const HIDDEN_PREFIXES = ["/login", "/signup", "/reset-password", "/gallery", "/contracts", "/portal", "/quotes", "/r", "/billing", "/landing", "/en", "/ru", "/p", "/chat", "/print", "/terms", "/privacy", "/cookies", "/cancellation-policy", "/accessibility", "/business-info"];
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const SNOOZE_MS = 10 * 60 * 1000;
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID;

@@ -7,7 +7,7 @@ import { useLang } from "@/i18n/client";
 // pages, sign-in/sign-up, legal pages and the landing page stay Hebrew right-to-left even when the
 // device's UI language is English or Russian, instead of showing Hebrew text in a mirrored layout.
 const HEBREW_ONLY_PREFIXES = [
-  "/landing", "/login", "/signup", "/reset-password", "/gallery", "/contracts", "/portal", "/quotes", "/p", "/chat", "/print",
+  "/landing", "/login", "/signup", "/reset-password", "/gallery", "/contracts", "/portal", "/quotes", "/r", "/p", "/chat", "/print",
   "/terms", "/privacy", "/cookies", "/cancellation-policy", "/accessibility", "/business-info", "/desktop-handoff",
 ];
 

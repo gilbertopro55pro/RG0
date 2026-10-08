@@ -4,6 +4,7 @@
 const CLIENT_FACING_PREFIXES = [
   "/gallery/",
   "/quotes/",
+  "/r/",
   "/contracts/",
   "/portal/",
   "/chat/",
