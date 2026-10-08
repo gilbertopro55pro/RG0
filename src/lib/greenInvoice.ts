@@ -45,6 +45,7 @@ export async function issueDocument({
   description,
   date = new Date(),
   emailBody = "שלום, מצורפת קבלה על התשלום שהתקבל. תודה!",
+  paymentMethod,
 }: {
   apiId?: string;
   apiSecret?: string;
@@ -55,6 +56,10 @@ export async function issueDocument({
   description: string;
   date?: Date;
   emailBody?: string;
+  // How the client paid. Cash (1) and bank transfer (4) have their own payment types, per Green
+  // Invoice's own /payments/types list; anything else stays "Other" (11), with the method written
+  // in the description.
+  paymentMethod?: "cash" | "bit" | "paybox" | "transfer" | "other";
 }): Promise<{ documentLink: string }> {
   if (!apiId || !apiSecret) {
     throw new Error("חשבון חשבונית ירוקה לא מחובר");
@@ -96,7 +101,7 @@ export async function issueDocument({
       // — same reasoning as Finbot's type "7": the payment already happened elsewhere (PayPlus /
       // bank transfer / cash), we're only recording it, and we don't hold real card details to
       // report accurately as a credit-card payment.
-      payment: [{ date: dateStr, type: 11, price: amount, currency: "ILS" }],
+      payment: [{ date: dateStr, type: paymentMethod === "cash" ? 1 : paymentMethod === "transfer" ? 4 : 11, price: amount, currency: "ILS" }],
       remarks: description,
       emailContent: emailBody,
     }),
