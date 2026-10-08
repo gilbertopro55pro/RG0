@@ -5,11 +5,6 @@ import { isInvoiceProviderConnected, issueClientDocument } from "@/lib/invoicing
 import type { InvoiceProvider } from "@/lib/types";
 import { amountToDocument, documentedOnLeg, paymentMethodLabel, receivedOnLeg, RECEIPT_PAYMENT_METHODS, type PaymentLegDocState, type ReceiptPaymentMethod } from "@/lib/paymentDocuments";
 
-const FIELD_LABEL: Record<"deposit" | "balance", string> = {
-  deposit: "מקדמה",
-  balance: "יתרה",
-};
-
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
   const supabase = await createClient();
@@ -29,6 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     amount: amountInput,
     paymentMethod,
     paymentOther,
+    details: detailsInput,
   }: {
     field: "deposit" | "balance";
     clientEmail?: string;
@@ -36,6 +32,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     amount?: number;
     paymentMethod?: ReceiptPaymentMethod;
     paymentOther?: string;
+    // What the payment was for ("צילום בר מצווה"): the receipt's item line (owner, 2026-10-08).
+    details?: string;
   } = await request.json();
   if (paymentMethod && !RECEIPT_PAYMENT_METHODS.some((m) => m.id === paymentMethod)) {
     return NextResponse.json({ error: "בקשה לא חוקית" }, { status: 400 });
@@ -110,7 +108,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   const customerName = customerNameInput?.trim() || event.client_name;
   const methodLabel = paymentMethodLabel(paymentMethod, paymentOther);
-  const partial = !leg.paid || documentedOnLeg(leg) > 0;
+  // The item line is what the photographer wrote; whether it's a partial or full payment isn't
+  // written on the receipt (owner, 2026-10-08). The method goes in the payment type.
+  const details = detailsInput?.trim().slice(0, 200) || "תשלום";
 
   try {
     const { documentLink } = await issueClientDocument({
@@ -120,8 +120,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       customerName,
       customerEmail: email,
       amount,
-      description: `${partial || amount < leftOnLeg - 0.004 ? `תשלום חלקי על ${FIELD_LABEL[field]}` : `תשלום ${FIELD_LABEL[field]}`}, ${customerName}${methodLabel ? ` · אמצעי תשלום: ${methodLabel}` : ""}`,
+      description: details,
       paymentMethod,
+      paymentMethodLabel: methodLabel ?? undefined,
       emailSubject: `קבלה על תשלום | ${photographer.name}`,
       emailBody: `שלום, מצורפת קבלה על התשלום שהתקבל. תודה,\n${photographer.name}`,
     });

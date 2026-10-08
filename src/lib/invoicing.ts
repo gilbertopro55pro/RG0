@@ -28,6 +28,7 @@ export async function issueClientDocument({
   emailSubject,
   emailBody,
   paymentMethod,
+  paymentMethodLabel,
 }: {
   provider: InvoiceProvider;
   taxStatus: "exempt" | "licensed";
@@ -39,6 +40,9 @@ export async function issueClientDocument({
   emailSubject: string;
   emailBody: string;
   paymentMethod?: ReceiptPaymentMethod;
+  // The method as written on the screen ("ביט", or the free text for "other"), for the item line
+  // when the provider has no payment type of its own for it.
+  paymentMethodLabel?: string;
 }): Promise<{ documentLink: string }> {
   if (provider === "green_invoice") {
     return issueGreenInvoiceDocument({
@@ -51,6 +55,7 @@ export async function issueClientDocument({
       description,
       emailBody,
       paymentMethod,
+      paymentMethodLabel,
     });
   }
   return issueReceipt({
@@ -62,5 +67,7 @@ export async function issueClientDocument({
     description,
     emailSubject,
     emailBody,
+    paymentMethod,
+    paymentMethodLabel,
   });
 }

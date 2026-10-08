@@ -1,4 +1,5 @@
 import { stripPhoneFormatting } from "@/lib/phone";
+import type { ReceiptPaymentMethod } from "@/lib/paymentDocuments";
 
 // Finbot ("פינבוט") — the accountant's document-issuing system. API docs:
 // https://finbot.helpjuice.com/he_IL/api-docs-create-income
@@ -27,6 +28,13 @@ const VAT_RATE = 0.18;
 export function documentTypeForTaxStatus(status: "exempt" | "licensed"): string {
   return status === "licensed" ? TAX_INVOICE_DOCUMENT_TYPE : RECEIPT_DOCUMENT_TYPE;
 }
+
+// How the client paid → Finbot's payment type ("סוג תשלום" on the document), per Finbot's income API
+// docs: 0 מזומן, 1 העברה בנקאית, 2 אשראי, 3 צ׳ק, 4 ניכוי במקור, 5 PayPal, 7 אחר, 8 ביט, 9 פייבוקס.
+// Only "7" was verified live before 2026-10-08; credit and check need card/bank details we don't
+// collect, so "other" stays "7" (its free text goes on the item line instead).
+const FINBOT_PAYMENT_TYPE: Record<ReceiptPaymentMethod, string> = { cash: "0", transfer: "1", bit: "8", paybox: "9", other: "7" };
+const OTHER_PAYMENT_TYPE = "7";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -60,6 +68,8 @@ export async function issueReceipt({
   date = new Date(),
   emailSubject = "קבלה על תשלום | מערכת גילברטו",
   emailBody = "שלום, מצורפת קבלה על התשלום שהתקבל עבור המנוי במערכת גילברטו - ניהול צילום אירועים. תודה!",
+  paymentMethod,
+  paymentMethodLabel,
 }: {
   apiKey?: string;
   documentType?: string;
@@ -73,6 +83,11 @@ export async function issueReceipt({
   date?: Date;
   emailSubject?: string;
   emailBody?: string;
+  // How a photographer's client paid (the receipt screen); the platform's own receipts leave it
+  // out and stay "Other". The label is written on the item line whenever the document itself
+  // can't say it: "other" with its free text, or the fallback below.
+  paymentMethod?: ReceiptPaymentMethod;
+  paymentMethodLabel?: string;
 }): Promise<{ documentLink: string }> {
   const key = apiKey ?? requireEnv("FINBOT_API_KEY");
 
@@ -106,7 +121,7 @@ export async function issueReceipt({
   // Verified live 2026-10-01 (a ₪10 assistant pack): 8.47 without rounding was refused (and Finbot
   // emailed an error), the 6-decimal 8.474577 without rounding was accepted (receipt 30001). So the
   // 6-decimal price goes first now; each refused attempt costs the owner an error email.
-  const attempts: { price: number; rounding: boolean }[] = isLicensedDocument
+  const prices: { price: number; rounding: boolean }[] = isLicensedDocument
     ? [
         { price: Math.ceil(exact * 1e6) / 1e6, rounding: false },
         { price: round2(exact), rounding: false },
@@ -115,8 +130,20 @@ export async function issueReceipt({
       ]
     : [{ price: amount, rounding: true }];
 
+  // The client's payment method goes in its own payment type. Cash, transfer, Bit and PayBox
+  // weren't verified live when this was written, so if Finbot refuses one the same receipt is
+  // tried once more as "Other" with the method on the item line, then the price fallbacks: a
+  // receipt always comes out.
+  const payType = paymentMethod ? FINBOT_PAYMENT_TYPE[paymentMethod] : OTHER_PAYMENT_TYPE;
+  const withLabel = paymentMethodLabel ? `${description} · אמצעי תשלום: ${paymentMethodLabel}` : description;
+  const attempts = [
+    { ...prices[0], payType, itemName: payType === OTHER_PAYMENT_TYPE && paymentMethod ? withLabel : description },
+    ...(payType !== OTHER_PAYMENT_TYPE ? [{ ...prices[0], payType: OTHER_PAYMENT_TYPE, itemName: withLabel }] : []),
+    ...prices.slice(1).map((p) => ({ ...p, payType: OTHER_PAYMENT_TYPE, itemName: paymentMethod ? withLabel : description })),
+  ];
+
   let lastError: Error | null = null;
-  for (const { price: lineItemPrice, rounding } of attempts) {
+  for (const { price: lineItemPrice, rounding, payType: paymentType, itemName } of attempts) {
     try {
       return await postIncomeDocument(key, {
         type: documentType,
@@ -137,13 +164,13 @@ export async function issueReceipt({
           ...(cleanPhone ? { phone: cleanPhone } : {}),
           save: false,
         },
-        items: [{ name: description, amount: 1, price: lineItemPrice }],
+        items: [{ name: itemName, amount: 1, price: lineItemPrice }],
         // A receipt can't be issued without a payments entry (Finbot: "לא ניתן להפיק מסמך זה ללא
-        // אמצעי תשלום"). Using type "7" (Other) rather than "2" (credit card) — credit card entries
-        // require a real cardNumber + numberPayments, which PayPlus's webhook callback doesn't
-        // currently surface to us, and fabricating a card number on a real customer receipt would
-        // be wrong bookkeeping.
-        payments: [{ type: "7", date: dateStr, sum: amount }],
+        // אמצעי תשלום"). The platform's own receipts use type "7" (Other) rather than "2" (credit
+        // card) — credit card entries require a real cardNumber + numberPayments, which PayPlus's
+        // webhook callback doesn't currently surface to us, and fabricating a card number on a real
+        // customer receipt would be wrong bookkeeping.
+        payments: [{ type: paymentType, date: dateStr, sum: amount }],
         ...(customerEmail
           ? {
               email: {

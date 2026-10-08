@@ -207,6 +207,23 @@ changed blind (the docs weren't reachable). Check it with PayPlus support or the
   6-decimal 8.474577 without rounding was accepted. `issueReceipt` now tries the 6-decimal price
   first. This also applies to subscription renewals at non-round amounts (the ₪50 case above).
 
+## Photographers' client receipts: payment type and item line (2026-10-08)
+
+The event page's receipt screen (`EventDetailView` → `api/events/[id]/issue-document` →
+`lib/invoicing.ts`) issues receipts under the **photographer's own** Finbot / Green Invoice account.
+The platform's own subscription receipts are untouched by this and still use payment type "7".
+- **Item line:** the "פרטים" field, prefilled with `צילום <event type>`. Partial or full payment is
+  not written on the receipt (owner's decision).
+- **Finbot payment type** (`FINBOT_PAYMENT_TYPE` in `lib/finbot.ts`, from Finbot's income API docs):
+  0 cash, 1 bank transfer, 8 Bit, 9 PayBox, 7 other. The free text for "other" goes on the item line.
+  Credit (2) and check (3) need card or bank details that aren't collected.
+- **Only "7" was verified live** when this shipped. If Finbot refuses one of the others, the same
+  receipt is sent again as "7" with "· אמצעי תשלום: X" on the item line. A receipt always comes out,
+  and each refusal costs the photographer one Finbot error email. Once a real Bit, cash or transfer
+  receipt comes out with the right "סוג תשלום", record it here.
+- **Green Invoice:** 1 cash, 4 bank transfer, 11 other. Bit and PayBox go as 11, with the method on
+  the item line (its payment-app type 10 needs an `appType` whose values aren't documented).
+
 ## Billing columns are server-only (migration 0148, 2026-10-01)
 
 `photographers_update_own` used to let a photographer update every column of their own row from the
