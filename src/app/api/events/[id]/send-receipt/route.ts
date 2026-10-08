@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { fetchReceiptPdf } from "@/lib/receiptFile";
-import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { findReceiptLink } from "@/lib/receiptLinks";
 
 const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
@@ -41,16 +41,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const name = photographer?.name ?? "";
   const pdf = await fetchReceiptPdf(documentUrl);
   // The receipt's short link (made when it was issued), rather than the provider's long URL.
-  const { data: link } = await createServiceRoleClient()
-    .from("receipt_links")
-    .select("token")
-    .eq("document_url", documentUrl)
-    .eq("photographer_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<{ token: string }>();
-  const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || new URL(request.url).origin;
-  const viewLink = link ? `${origin}/r/${link.token}` : documentUrl;
+  const viewLink = (await findReceiptLink(request, user.id, documentUrl)) ?? documentUrl;
   try {
     await sendEmail({
       to: email,
