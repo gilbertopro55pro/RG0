@@ -5,6 +5,7 @@
 import { issueReceipt, documentTypeForTaxStatus as finbotDocumentType } from "@/lib/finbot";
 import { issueDocument as issueGreenInvoiceDocument, documentTypeForTaxStatus as greenInvoiceDocumentType } from "@/lib/greenInvoice";
 import type { InvoiceProvider } from "@/lib/types";
+import type { ReceiptPaymentMethod } from "@/lib/paymentDocuments";
 
 export function isInvoiceProviderConnected(
   provider: InvoiceProvider,
@@ -26,6 +27,7 @@ export async function issueClientDocument({
   description,
   emailSubject,
   emailBody,
+  paymentMethod,
 }: {
   provider: InvoiceProvider;
   taxStatus: "exempt" | "licensed";
@@ -36,6 +38,7 @@ export async function issueClientDocument({
   description: string;
   emailSubject: string;
   emailBody: string;
+  paymentMethod?: ReceiptPaymentMethod;
 }): Promise<{ documentLink: string }> {
   if (provider === "green_invoice") {
     return issueGreenInvoiceDocument({
@@ -47,6 +50,7 @@ export async function issueClientDocument({
       amount,
       description,
       emailBody,
+      paymentMethod,
     });
   }
   return issueReceipt({

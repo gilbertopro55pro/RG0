@@ -25,3 +25,21 @@ export function amountToDocument(leg: PaymentLegDocState): number {
   const diff = receivedOnLeg(leg) - documentedOnLeg(leg);
   return diff > 0.004 ? Math.round(diff * 100) / 100 : 0;
 }
+
+// How the client paid, chosen when issuing the receipt (owner, 2026-10-08).
+export type ReceiptPaymentMethod = "cash" | "bit" | "paybox" | "transfer" | "other";
+
+export const RECEIPT_PAYMENT_METHODS: { id: ReceiptPaymentMethod; label: string }[] = [
+  { id: "cash", label: "מזומן" },
+  { id: "bit", label: "ביט" },
+  { id: "paybox", label: "פייבוקס" },
+  { id: "transfer", label: "העברה בנקאית" },
+  { id: "other", label: "אחר" },
+];
+
+// The words that go on the receipt for the method ("other" carries the photographer's own text).
+export function paymentMethodLabel(method: ReceiptPaymentMethod | undefined, otherText?: string): string | null {
+  if (!method) return null;
+  if (method === "other") return otherText?.trim() || "אחר";
+  return RECEIPT_PAYMENT_METHODS.find((m) => m.id === method)?.label ?? null;
+}

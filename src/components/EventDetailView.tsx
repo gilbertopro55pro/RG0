@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { amountToDocument } from "@/lib/paymentDocuments";
+import { amountToDocument, RECEIPT_PAYMENT_METHODS, type ReceiptPaymentMethod } from "@/lib/paymentDocuments";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -710,33 +710,67 @@ export default function EventDetailView({
   };
 
   const [issuingDocument, setIssuingDocument] = useState<"deposit" | "balance" | null>(null);
-  const [documentEmailPrompt, setDocumentEmailPrompt] = useState<"deposit" | "balance" | null>(null);
-  const [documentEmailInput, setDocumentEmailInput] = useState(event.client_email ?? "");
   const [clientEmail, setClientEmail] = useState(event.client_email);
+  // The receipt screen (owner, 2026-10-08): the photographer picks the name, how the client paid
+  // and the amount, and those go on the receipt.
+  const [receiptDraft, setReceiptDraft] = useState<{
+    field: "deposit" | "balance";
+    name: string;
+    email: string;
+    method: ReceiptPaymentMethod;
+    other: string;
+    amount: string;
+  } | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
 
-  const issueDocument = async (field: "deposit" | "balance", clientEmailOverride?: string) => {
-    if (!clientEmailOverride && !clientEmail) {
-      setDocumentEmailPrompt(field);
-      return;
-    }
+  const issueDocument = (field: "deposit" | "balance") => {
+    if (!payments) return;
+    const suggested = amountToDocument({
+      amount: Number(payments[`${field}_amount`]),
+      paid: payments[`${field}_paid`],
+      paidAmount: payments[`${field}_paid_amount`],
+      documentedAmount: payments[`${field}_documented_amount`],
+      documentUrl: payments[`${field}_document_url`],
+    });
+    setReceiptError(null);
+    // Default: what was received and has no receipt yet; with nothing marked as received, the
+    // rest of the leg (a receipt can be issued straight away, and the payment is marked to match).
+    const left = Math.max(0, Number(payments[`${field}_amount`]) - (Number(payments[`${field}_documented_amount`]) || (payments[`${field}_document_url`] ? Number(payments[`${field}_amount`]) : 0)));
+    const initial = suggested || left;
+    setReceiptDraft({ field, name: event.client_name, email: clientEmail ?? "", method: "bit", other: "", amount: initial ? String(Math.round(initial * 100) / 100) : "" });
+  };
+
+  const submitReceipt = async () => {
+    if (!receiptDraft || !payments) return;
+    const { field } = receiptDraft;
+    const amount = Number(receiptDraft.amount);
+    if (!receiptDraft.name.trim()) return setReceiptError(t("נא למלא שם לקוח/ה"));
+    if (!receiptDraft.email.trim()) return setReceiptError(t("נדרש אימייל כדי לשלוח את המסמך."));
+    if (!(amount > 0)) return setReceiptError(t("יש להזין סכום גדול מ-0"));
+    if (receiptDraft.method === "other" && !receiptDraft.other.trim()) return setReceiptError(t("נא לכתוב את אמצעי התשלום"));
     setIssuingDocument(field);
-    setError(null);
+    setReceiptError(null);
     const res = await fetch(`/api/events/${event.id}/issue-document`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ field, clientEmail: clientEmailOverride }),
+      body: JSON.stringify({
+        field,
+        clientEmail: receiptDraft.email.trim(),
+        customerName: receiptDraft.name.trim(),
+        amount,
+        paymentMethod: receiptDraft.method,
+        paymentOther: receiptDraft.other.trim(),
+      }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     setIssuingDocument(null);
     if (!res.ok) {
-      setError(data.error ? t(data.error) : t("הפקת המסמך נכשלה"));
+      setReceiptError(data.error ? t(data.error) : t("הפקת המסמך נכשלה"));
       return;
     }
-    if (clientEmailOverride) setClientEmail(clientEmailOverride);
-    setDocumentEmailPrompt(null);
-    if (payments) {
-      setPayments({ ...payments, [`${field}_document_url`]: data.documentUrl, [`${field}_documented_amount`]: data.documentedAmount ?? null });
-    }
+    setClientEmail(receiptDraft.email.trim());
+    setReceiptDraft(null);
+    setPayments({ ...payments, ...(data.patch ?? {}), [`${field}_document_url`]: data.documentUrl, [`${field}_documented_amount`]: data.documentedAmount ?? null });
   };
 
   const toggleAssignee = async (teamMemberId: string) => {
@@ -1124,33 +1158,81 @@ export default function EventDetailView({
         </div>
       )}
 
-      {documentEmailPrompt && (
+      {receiptDraft && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
           style={{ background: "rgba(28, 27, 25, 0.45)" }}
-          onClick={() => setDocumentEmailPrompt(null)}
+          onClick={() => issuingDocument === null && setReceiptDraft(null)}
         >
-          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">{t("אימייל הלקוח/ה")}</h2>
-            <p className="text-sm text-ink-soft mb-3.5">{t("נדרש אימייל כדי לשלוח את המסמך.")}</p>
-            <input
-              type="email"
-              value={documentEmailInput}
-              onChange={(e) => setDocumentEmailInput(e.target.value)}
-              placeholder="example@gmail.com"
-              className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-3.5"
-              autoFocus
-            />
+          <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-1 font-display">{t("הפקת קבלה")}</h2>
+            <p className="text-xs text-ink-soft mb-4">{t("הפרטים כאן הם מה שיופיע בקבלה, והיא תישלח ללקוח/ה במייל.")}</p>
+            <label className="block mb-3">
+              <span className="text-xs font-semibold text-ink-soft">{t("שם הלקוח/ה")}</span>
+              <input
+                value={receiptDraft.name}
+                onChange={(e) => setReceiptDraft({ ...receiptDraft, name: e.target.value })}
+                className="w-full mt-1 rounded-lg px-3 py-2.5 text-sm border border-line bg-white"
+              />
+            </label>
+            <label className="block mb-3">
+              <span className="text-xs font-semibold text-ink-soft">{t("אימייל הלקוח/ה")}</span>
+              <input
+                type="email"
+                dir="ltr"
+                value={receiptDraft.email}
+                onChange={(e) => setReceiptDraft({ ...receiptDraft, email: e.target.value })}
+                placeholder="example@gmail.com"
+                className="w-full mt-1 rounded-lg px-3 py-2.5 text-sm border border-line bg-white text-start"
+              />
+            </label>
+            <div className="mb-3">
+              <span className="text-xs font-semibold text-ink-soft">{t("אמצעי תשלום")}</span>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {RECEIPT_PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setReceiptDraft({ ...receiptDraft, method: m.id })}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${receiptDraft.method === m.id ? "bg-ink text-white border-ink" : "bg-white border-line text-ink"}`}
+                  >
+                    {t(m.label)}
+                  </button>
+                ))}
+              </div>
+              {receiptDraft.method === "other" && (
+                <input
+                  value={receiptDraft.other}
+                  onChange={(e) => setReceiptDraft({ ...receiptDraft, other: e.target.value })}
+                  placeholder={t("למשל: צ׳ק, כרטיס אשראי")}
+                  autoFocus
+                  className="w-full mt-2 rounded-lg px-3 py-2.5 text-sm border border-line bg-white"
+                />
+              )}
+            </div>
+            <label className="block mb-4">
+              <span className="text-xs font-semibold text-ink-soft">{t("סכום (₪)")}</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                value={receiptDraft.amount}
+                onChange={(e) => setReceiptDraft({ ...receiptDraft, amount: e.target.value })}
+                className="w-full mt-1 rounded-lg px-3 py-2.5 text-sm border border-line bg-white font-data"
+              />
+            </label>
+            {receiptError && <p className="text-xs text-rose mb-3">{receiptError}</p>}
             <div className="flex gap-2">
               <button
-                onClick={() => issueDocument(documentEmailPrompt, documentEmailInput.trim())}
-                disabled={!documentEmailInput.trim() || issuingDocument !== null}
+                onClick={submitReceipt}
+                disabled={issuingDocument !== null}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
               >
-                {issuingDocument ? t("מפיק...") : t("הפקת מסמך")}
+                {issuingDocument ? t("מפיק...") : t("הפקת קבלה ושליחה")}
               </button>
               <button
-                onClick={() => setDocumentEmailPrompt(null)}
+                onClick={() => setReceiptDraft(null)}
+                disabled={issuingDocument !== null}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
               >
                 {t("ביטול")}
@@ -1346,6 +1428,8 @@ function PaymentLegRow({
   // A receipt can be issued for a partial payment too, and later for whatever came in since
   // (owner, 2026-10-08) — always only for received money no receipt covers yet.
   const toDocument = amountToDocument({ amount, paid, paidAmount, documentedAmount, documentUrl });
+  const documented = documentedAmount != null ? Number(documentedAmount) : documentUrl ? Number(amount) : 0;
+  const leftToReceipt = Math.max(0, Number(amount) - documented);
   return (
     <div className="px-4 py-3">
       <button onClick={onToggleAction} className="w-full flex items-center gap-2.5 text-start">
@@ -1417,13 +1501,13 @@ function PaymentLegRow({
             {t("צפייה במסמך")}
           </a>
         )}
-        {toDocument > 0 && (
+        {leftToReceipt > 0.004 && (
           <button onClick={onIssueDocument} disabled={issuingDocument} className="font-semibold text-amber-deep disabled:opacity-60">
             {issuingDocument
               ? t("מפיק מסמך...")
-              : paid && !documentUrl
-                ? t("קבלה ללקוח")
-                : t("קבלה ללקוח על {amount}", { amount: ils(toDocument) })}
+              : toDocument > 0 && !(paid && !documentUrl)
+                ? t("קבלה ללקוח על {amount}", { amount: ils(toDocument) })
+                : t("קבלה ללקוח")}
           </button>
         )}
         {!notesOpen && (
