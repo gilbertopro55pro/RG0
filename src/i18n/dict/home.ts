@@ -4,6 +4,8 @@ import type { AreaDict } from "@/i18n/types";
 const dict: AreaDict = {
   en: {
     "קבלה ללקוח/ה": "Client receipt",
+    "למשל: צילום בר מצווה, צילום חתונה": "e.g. Bar mitzvah photography, wedding photography",
+    "נא למלא על מה התשלום": "Please fill in what the payment is for",
     "הפרטים כאן הם מה שיופיע בקבלה. אחרי ההפקה אפשר לשלוח אותה במייל, בוואטסאפ או בכל אפליקציה.": "These details are what appears on the receipt. Once it's issued you can send it by email, WhatsApp or any app.",
     "התקבל ועוד בלי קבלה: {amount}": "Received, no receipt yet: {amount}",
     "כמה שולם?": "How much was paid?",
@@ -458,6 +460,8 @@ const dict: AreaDict = {
   },
   ru: {
     "קבלה ללקוח/ה": "Квитанция клиенту",
+    "למשל: צילום בר מצווה, צילום חתונה": "например: съёмка бар-мицвы, свадебная съёмка",
+    "נא למלא על מה התשלום": "Укажите, за что оплата",
     "הפרטים כאן הם מה שיופיע בקבלה. אחרי ההפקה אפשר לשלוח אותה במייל, בוואטסאפ או בכל אפליקציה.": "Эти данные появятся в квитанции. После выдачи её можно отправить по почте, в WhatsApp или через любое приложение.",
     "התקבל ועוד בלי קבלה: {amount}": "Получено без квитанции: {amount}",
     "כמה שולם?": "Сколько оплачено?",

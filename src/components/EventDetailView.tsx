@@ -718,6 +718,8 @@ export default function EventDetailView({
   const [receiptDraft, setReceiptDraft] = useState<{
     field: "deposit" | "balance";
     name: string;
+    // What the payment was for: the receipt's item line ("צילום בר מצווה").
+    details: string;
     method: ReceiptPaymentMethod;
     other: string;
     amount: string;
@@ -747,7 +749,9 @@ export default function EventDetailView({
       documentUrl: payments[`${field}_document_url`],
     });
     setReceiptError(null);
-    setReceiptDraft({ field, name: event.client_name, method: "bit", other: "", amount: "", suggested });
+    // Starts from the event's type (the receipt is in Hebrew, so is this), editable.
+    const details = event.event_type?.trim() ? `צילום ${event.event_type.trim()}` : "";
+    setReceiptDraft({ field, name: event.client_name, details, method: "bit", other: "", amount: "", suggested });
   };
 
   const submitReceipt = async () => {
@@ -755,6 +759,7 @@ export default function EventDetailView({
     const { field } = receiptDraft;
     const amount = Number(receiptDraft.amount);
     if (!receiptDraft.name.trim()) return setReceiptError(t("נא למלא שם לקוח/ה"));
+    if (!receiptDraft.details.trim()) return setReceiptError(t("נא למלא על מה התשלום"));
     if (!(amount > 0)) return setReceiptError(t("יש להזין סכום גדול מ-0"));
     if (receiptDraft.method === "other" && !receiptDraft.other.trim()) return setReceiptError(t("נא לכתוב את אמצעי התשלום"));
     setIssuingDocument(field);
@@ -765,6 +770,7 @@ export default function EventDetailView({
       body: JSON.stringify({
         field,
         customerName: receiptDraft.name.trim(),
+        details: receiptDraft.details.trim(),
         amount,
         paymentMethod: receiptDraft.method,
         paymentOther: receiptDraft.other.trim(),
@@ -1247,6 +1253,16 @@ export default function EventDetailView({
               <input
                 value={receiptDraft.name}
                 onChange={(e) => setReceiptDraft({ ...receiptDraft, name: e.target.value })}
+                className="w-full mt-1 rounded-lg px-3 py-2.5 text-sm border border-line bg-white"
+              />
+            </label>
+            <label className="block mb-3">
+              <span className="text-xs font-semibold text-ink-soft">{t("פרטים")}</span>
+              <input
+                value={receiptDraft.details}
+                onChange={(e) => setReceiptDraft({ ...receiptDraft, details: e.target.value })}
+                placeholder={t("למשל: צילום בר מצווה, צילום חתונה")}
+                maxLength={200}
                 className="w-full mt-1 rounded-lg px-3 py-2.5 text-sm border border-line bg-white"
               />
             </label>

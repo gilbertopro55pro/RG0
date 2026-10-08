@@ -46,6 +46,7 @@ export async function issueDocument({
   date = new Date(),
   emailBody = "שלום, מצורפת קבלה על התשלום שהתקבל. תודה!",
   paymentMethod,
+  paymentMethodLabel,
 }: {
   apiId?: string;
   apiSecret?: string;
@@ -57,15 +58,18 @@ export async function issueDocument({
   date?: Date;
   emailBody?: string;
   // How the client paid. Cash (1) and bank transfer (4) have their own payment types, per Green
-  // Invoice's own /payments/types list; anything else stays "Other" (11), with the method written
-  // in the description.
+  // Invoice's own /payments/types list; anything else stays "Other" (11), with the method
+  // (paymentMethodLabel) written on the item line.
   paymentMethod?: "cash" | "bit" | "paybox" | "transfer" | "other";
+  paymentMethodLabel?: string;
 }): Promise<{ documentLink: string }> {
   if (!apiId || !apiSecret) {
     throw new Error("חשבון חשבונית ירוקה לא מחובר");
   }
 
   const token = await getToken(apiId, apiSecret);
+  const paymentType = paymentMethod === "cash" ? 1 : paymentMethod === "transfer" ? 4 : 11;
+  const itemDescription = paymentType === 11 && paymentMethod && paymentMethodLabel ? `${description} · אמצעי תשלום: ${paymentMethodLabel}` : description;
 
   const dd = String(date.getDate()).padStart(2, "0");
   const mm = String(date.getMonth() + 1).padStart(2, "0");
@@ -90,7 +94,7 @@ export async function issueDocument({
       // the paid sum itself. A 400 receipt (עוסק פטור) carries no VAT, so it keeps the default.
       income: [
         {
-          description,
+          description: itemDescription,
           quantity: 1,
           price: amount,
           currency: "ILS",
@@ -101,8 +105,8 @@ export async function issueDocument({
       // — same reasoning as Finbot's type "7": the payment already happened elsewhere (PayPlus /
       // bank transfer / cash), we're only recording it, and we don't hold real card details to
       // report accurately as a credit-card payment.
-      payment: [{ date: dateStr, type: paymentMethod === "cash" ? 1 : paymentMethod === "transfer" ? 4 : 11, price: amount, currency: "ILS" }],
-      remarks: description,
+      payment: [{ date: dateStr, type: paymentType, price: amount, currency: "ILS" }],
+      remarks: itemDescription,
       emailContent: emailBody,
     }),
   });
