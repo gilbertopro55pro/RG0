@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { PACKAGE_FLOWS, type PackageType } from "@/lib/stages";
+import { customPackageFlow, PACKAGE_FLOWS, type PackageType } from "@/lib/stages";
 import type { CustomPackageStageRow, EventStageRow } from "@/lib/types";
 
 // Brings an existing event's stage list in line with a newly chosen package's flow: stages the new
@@ -16,7 +16,8 @@ export async function reconcileEventStages(
 ): Promise<string> {
   const desired: { identity: string; stage_key: string | null; custom_stage_id: string | null }[] = newPkg
     ? PACKAGE_FLOWS[newPkg].map((k) => ({ identity: k, stage_key: k as string | null, custom_stage_id: null }))
-    : customStages.map((cs) => ({ identity: `custom:${cs.id}`, stage_key: null, custom_stage_id: cs.id as string | null }));
+    : // A custom package: the fixed stages (event closing, shoot day), then its own.
+      customPackageFlow(customStages).map((st) => ({ identity: st.stage_key ?? `custom:${st.custom_stage_id}`, stage_key: st.stage_key as string | null, custom_stage_id: st.custom_stage_id }));
 
   const { data: existingStages, error: loadError } = await supabase
     .from("event_stages")

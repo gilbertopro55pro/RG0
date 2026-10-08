@@ -31,10 +31,10 @@ const selectArrowStyleFor = (side: "left" | "right") => ({
 const CLOSE_ANIMATION_MS = 220;
 
 // The auto-provisioned default package offered first in the package dropdown — a normal custom
-// package (editable/deletable in Settings) with exactly these two stages. See seedDefaultPackage.
+// package (editable/deletable in Settings). Its events get the fixed stages every package starts
+// with (event closing, shoot day — lib/stages.ts FIXED_STAGES), then this one. See seedDefaultPackage.
 const DEFAULT_PACKAGE_NAME = "ברירת מחדל";
 const DEFAULT_PACKAGE_STAGES = [
-  { name: "יום הצילום", notify_client: false, notify_text: null as string | null },
   { name: "מסירה סופית", notify_client: false, notify_text: null as string | null },
 ];
 

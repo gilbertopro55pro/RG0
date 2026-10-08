@@ -701,7 +701,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         },
         {
           heading: "בחירת חבילה",
-          body: "החבילה (המסומנת במסגרת בולטת) קובעת אילו שלבי עבודה יופיעו באירוע ובאיזה סדר. ברירת המחדל היא חבילה בשם \"ברירת מחדל\" עם שני שלבים בלבד: יום הצילום ומסירה סופית. אפשר לבחור חבילה מלאה מהרשימה, או ליצור חבילה מותאמת אישית משלכם עם \"+ חבילה מותאמת אישית חדשה\". את חבילת ברירת המחדל אפשר לערוך בהגדרות.",
+          body: "החבילה (המסומנת במסגרת בולטת) קובעת אילו שלבי עבודה יופיעו באירוע ובאיזה סדר. ברירת המחדל היא חבילה בשם \"ברירת מחדל\" עם שלושה שלבים: סגירת האירוע, יום הצילום ומסירה סופית. אפשר לבחור חבילה מלאה מהרשימה, או ליצור חבילה מותאמת אישית משלכם עם \"+ חבילה מותאמת אישית חדשה\". כל חבילה, גם מותאמת אישית, מתחילה בשני שלבים קבועים: סגירת האירוע ויום הצילום. את חבילת ברירת המחדל אפשר לערוך בהגדרות.",
         },
         {
           heading: "מתי ואיפה",
@@ -736,7 +736,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         },
         {
           heading: "Choosing a package",
-          body: "The package (in the highlighted frame) decides which work stages the event has, and in what order. The default is a package called \"ברירת מחדל\" (Default) with just two stages: the shoot day and final delivery. You can pick a full package from the list, or build your own with \"+ New custom package\". You can edit the default package in Settings.",
+          body: "The package (in the highlighted frame) decides which work stages the event has, and in what order. The default is a package called \"ברירת מחדל\" (Default) with three stages: event closing, the shoot day and final delivery. You can pick a full package from the list, or build your own with \"+ New custom package\". Every package, custom ones included, starts with two fixed stages: event closing and the shoot day. You can edit the default package in Settings.",
         },
         {
           heading: "When and where",
@@ -771,7 +771,7 @@ export const PAGE_GUIDES: Record<PageGuideKey, Record<GuideLang, Guide>> = {
         },
         {
           heading: "Выбор пакета",
-          body: "Пакет (в выделенной рамке) определяет, какие этапы работы будут в событии и в каком порядке. По умолчанию выбран пакет «ברירת מחדל» («По умолчанию») всего с двумя этапами: день съёмки и финальная передача. Можно выбрать полный пакет из списка или создать свой через «+ Новый персональный пакет». Пакет по умолчанию можно изменить в настройках.",
+          body: "Пакет (в выделенной рамке) определяет, какие этапы работы будут в событии и в каком порядке. По умолчанию выбран пакет «ברירת מחדל» («По умолчанию») с тремя этапами: закрытие мероприятия, день съёмки и финальная передача. Можно выбрать полный пакет из списка или создать свой через «+ Новый персональный пакет». Каждый пакет, в том числе персональный, начинается с двух постоянных этапов: закрытие мероприятия и день съёмки. Пакет по умолчанию можно изменить в настройках.",
         },
         {
           heading: "Когда и где",

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { PACKAGE_FLOWS, PACKAGE_LABELS, type PackageType } from "@/lib/stages";
+import { customPackageFlow, PACKAGE_FLOWS, PACKAGE_LABELS, type PackageType } from "@/lib/stages";
 import { GoogleCalendarDisconnectedError, syncEventToGoogleCalendar, updateEventInGoogleCalendar } from "@/lib/googleCalendarSync";
 import { syncEventToAppleCalendar } from "@/lib/appleCalendarSync";
 import type { CustomPackageRow, CustomPackageStageRow, EventRow } from "@/lib/types";
@@ -151,11 +151,12 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
   // per the standing "עדכון אדמין" staged-rollout process): it now stays open for every
   // photographer until the client signs a contract or the photographer sends the opening
   // WhatsApp message, matching the contract step now being available to all of them too.
+  // A custom package starts with the fixed stages (event closing, shoot day), then its own.
   const stageRows = customPackage
-    ? customStages.map((cs, i) => ({
+    ? customPackageFlow(customStages).map((st, i) => ({
         event_id: event.id,
-        stage_key: null as string | null,
-        custom_stage_id: cs.id as string | null,
+        stage_key: st.stage_key as string | null,
+        custom_stage_id: st.custom_stage_id,
         stage_order: i,
         done: false,
         done_at: null,

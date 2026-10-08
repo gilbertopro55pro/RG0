@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { PACKAGE_FLOWS, PACKAGE_LABELS, STAGE_LABELS, STAGE_TYPE, currentStageIndex } from "@/lib/stages";
+import { PACKAGE_FLOWS, PACKAGE_LABELS, STAGE_LABELS, STAGE_TYPE, currentStageIndex, type StageKey } from "@/lib/stages";
 import { normalizeIsraeliPhone } from "@/lib/whatsapp";
 import type { CustomPackageStageRow, EventPaymentRow, EventRow, EventStageRow, GalleryRow } from "@/lib/types";
 import PortalStageActions from "@/components/PortalStageActions";
@@ -84,17 +84,22 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
 
   // Client-facing view hides internal-only stages (culling, backup, etc.) — the client only cares
   // about checkpoints that involve them or mark real progress.
+  // A custom package's stages come from the event's own rows, in order: the fixed stages every
+  // package starts with (event closing, shoot day) are built-in rows, the rest the package's own.
+  const customById = new Map((customStagesData ?? []).map((cs) => [cs.id, cs]));
   const clientStages = event.custom_package_id
-    ? (customStagesData ?? [])
-        .map((cs, i) => ({
-          key: `custom:${cs.id}`,
-          label: cs.name /* typed by the photographer: as is */,
-          stage: byKey.get(`custom:${cs.id}`)!,
-          index: i,
-          notify: cs.notify_client,
-          role: stageRole(null, cs),
-        }))
-        .filter((s) => s.notify)
+    ? allStages
+        .map((st, i) => {
+          if (st.stage_key) {
+            const key = st.stage_key as StageKey;
+            return { key: key as string, label: t(STAGE_LABELS[key]), stage: st, index: i, notify: STAGE_TYPE[key] === "checkpoint", role: stageRole(key) };
+          }
+          const cs = customById.get(st.custom_stage_id ?? "");
+          return cs
+            ? { key: `custom:${cs.id}`, label: cs.name /* typed by the photographer: as is */, stage: st, index: i, notify: cs.notify_client, role: stageRole(null, cs) }
+            : null;
+        })
+        .filter((s): s is NonNullable<typeof s> => !!s && s.notify)
     : PACKAGE_FLOWS[event.package!]
         .map((key, i) => ({ key, label: t(STAGE_LABELS[key]), stage: byKey.get(key)!, index: i, role: stageRole(key) }))
         .filter(({ key }) => STAGE_TYPE[key] === "checkpoint");

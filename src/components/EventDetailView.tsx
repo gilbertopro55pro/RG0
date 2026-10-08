@@ -15,6 +15,7 @@ import {
   STAGE_TYPE,
   currentStageIndex,
   packageLabel,
+  type StageKey,
 } from "@/lib/stages";
 import type {
   CustomPackageStageRow,
@@ -404,19 +405,23 @@ export default function EventDetailView({
 
   const curIdx = currentStageIndex(stages);
 
+  const builtInDescriptor = (key: StageKey): StageDescriptor => ({
+    key,
+    label: STAGE_LABELS[key],
+    isCheckpoint: STAGE_TYPE[key] === "checkpoint",
+    requiresAlbumPdf: key === "album_approval",
+  });
+  // A custom package's list comes from the event's own stage rows, in order: the fixed stages
+  // every package starts with (event closing, shoot day) are built-in rows, the rest are the
+  // package's own. Older events keep whatever rows they were created with.
+  const customStageById = new Map(customStages.map((cs) => [cs.id, cs]));
   const stageDescriptors: StageDescriptor[] = event.custom_package_id
-    ? customStages.map((cs) => ({
-        key: `custom:${cs.id}`,
-        label: cs.name,
-        isCheckpoint: cs.notify_client,
-        requiresAlbumPdf: cs.requires_album_pdf,
-      }))
-    : PACKAGE_FLOWS[event.package!].map((key) => ({
-        key,
-        label: STAGE_LABELS[key],
-        isCheckpoint: STAGE_TYPE[key] === "checkpoint",
-        requiresAlbumPdf: key === "album_approval",
-      }));
+    ? stages.flatMap((s): StageDescriptor[] => {
+        if (s.stage_key) return [builtInDescriptor(s.stage_key as StageKey)];
+        const cs = customStageById.get(s.custom_stage_id ?? "");
+        return cs ? [{ key: `custom:${cs.id}`, label: cs.name, isCheckpoint: cs.notify_client, requiresAlbumPdf: cs.requires_album_pdf }] : [];
+      })
+    : PACKAGE_FLOWS[event.package!].map(builtInDescriptor);
 
   // Resolves the photographer's own saved template (Settings → הודעות ללקוח/ה) for a stage and
   // substitutes every token — shared by the manual "שליחת עדכון" button AND (for the admin
