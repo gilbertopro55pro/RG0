@@ -6,16 +6,9 @@ import type { AreaDict } from "@/i18n/types";
 // Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
-    // The receipt page behind a receipt's short link (app/r/[token])
+    // The WhatsApp card for a receipt's short link (app/r/[token])
     "קבלה על תשלום": "Payment receipt",
-    "הקבלה לא נמצאה.": "The receipt was not found.",
-    "מצורפת קבלה על התשלום.": "Here is your receipt for the payment.",
-    "סכום התשלום": "Payment amount",
-    "הורדת הקבלה": "Download the receipt",
-    "תודה,": "Thank you,",
     "לצפייה בקבלה ולהורדה שלה": "View and download your receipt",
-    "שאלה על הקבלה? שליחת הודעה בוואטסאפ": "A question about the receipt? Message us on WhatsApp",
-    "היי, יש לי שאלה לגבי הקבלה": "Hi, I have a question about the receipt",
 
     // Page states
     "הצעת המחיר לא נמצאה.": "The price quote was not found.",
@@ -94,16 +87,9 @@ const dict: AreaDict = {
     "נקה וחתום מחדש": "Clear and sign again",
   },
   ru: {
-    // The receipt page behind a receipt's short link (app/r/[token])
+    // The WhatsApp card for a receipt's short link (app/r/[token])
     "קבלה על תשלום": "Квитанция об оплате",
-    "הקבלה לא נמצאה.": "Квитанция не найдена.",
-    "מצורפת קבלה על התשלום.": "Прилагаем квитанцию об оплате.",
-    "סכום התשלום": "Сумма оплаты",
-    "הורדת הקבלה": "Скачать квитанцию",
-    "תודה,": "Спасибо,",
     "לצפייה בקבלה ולהורדה שלה": "Просмотр и скачивание квитанции",
-    "שאלה על הקבלה? שליחת הודעה בוואטסאפ": "Вопрос по квитанции? Напишите нам в WhatsApp",
-    "היי, יש לי שאלה לגבי הקבלה": "Здравствуйте, у меня вопрос по квитанции",
 
     // Page states
     "הצעת המחיר לא נמצאה.": "Ценовое предложение не найдено.",

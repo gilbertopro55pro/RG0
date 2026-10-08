@@ -1,12 +1,11 @@
-import { cache } from "react";
 import { randomBytes } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { clientLangFor } from "@/lib/clientLang";
 import type { Lang } from "@/i18n/config";
 
 // Short links to issued receipts (owner, 2026-10-08): myframeflow.com/r/<token> instead of the
-// invoicing provider's long URL. The link opens a page with the studio's logo and name and buttons
-// to view or download the PDF (app/r/[token]); WhatsApp shows it as a card with the logo.
+// invoicing provider's long URL. Tapping it goes straight to the receipt (app/r/[token]); WhatsApp
+// shows it as a card with the studio's name and logo.
 // Server-only: the table is read and written with the service role (no RLS policies).
 
 export const RECEIPT_TOKEN_RE = /^[A-Za-z0-9_-]{6,32}$/;
@@ -52,33 +51,26 @@ export async function findReceiptLink(request: Request, photographerId: string, 
 
 export type ReceiptLink = {
   documentUrl: string;
-  amount: number | null;
-  customerName: string | null;
   lang: Lang;
-  studio: { name: string; phone: string | null; logoPath: string | null };
+  studio: { name: string; logoPath: string | null };
 };
 
-// Cached per request, so the page and its metadata share one lookup.
-export const loadReceiptLink = cache(async (token: string): Promise<ReceiptLink | null> => {
+export async function loadReceiptLink(token: string): Promise<ReceiptLink | null> {
   if (!RECEIPT_TOKEN_RE.test(token)) return null;
   const { data } = await createServiceRoleClient()
     .from("receipt_links")
-    .select("document_url, amount, customer_name, photographers(name, phone, email, logo_storage_path), events(client_lang)")
+    .select("document_url, photographers(name, email, logo_storage_path), events(client_lang)")
     .eq("token", token)
     .maybeSingle<{
       document_url: string;
-      amount: number | null;
-      customer_name: string | null;
-      photographers: { name: string; phone: string | null; email: string | null; logo_storage_path: string | null } | null;
+      photographers: { name: string; email: string | null; logo_storage_path: string | null } | null;
       events: { client_lang: string | null } | null;
     }>();
   if (!data?.document_url) return null;
   const ph = data.photographers;
   return {
     documentUrl: data.document_url,
-    amount: data.amount == null ? null : Number(data.amount),
-    customerName: data.customer_name,
     lang: clientLangFor(ph?.email, data.events?.client_lang),
-    studio: { name: ph?.name ?? "", phone: ph?.phone ?? null, logoPath: ph?.logo_storage_path ?? null },
+    studio: { name: ph?.name ?? "", logoPath: ph?.logo_storage_path ?? null },
   };
-});
+}
