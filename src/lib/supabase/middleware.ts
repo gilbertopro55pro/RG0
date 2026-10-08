@@ -37,6 +37,8 @@ const PUBLIC_PATHS = [
   // The intake assistant's public chat (and its API) — a prospective client, no account.
   "/chat",
   "/api/intake-chat",
+  // A client's receipt, by its short link from a WhatsApp message (token-authenticated).
+  "/r",
   // The print house's download page for album files (a tracked link, token-authenticated).
   "/print",
   "/api/print",

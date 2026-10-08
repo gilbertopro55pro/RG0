@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { createClient } from "@/lib/supabase/server";
 import { isInvoiceProviderConnected, issueClientDocument } from "@/lib/invoicing";
 import type { InvoiceProvider } from "@/lib/types";
@@ -137,8 +139,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     await supabase.from("event_payments").update(patch).eq("event_id", eventId);
 
+    // A short link for the message (myframeflow.com/r/<token>) instead of the provider's long URL.
+    const shortLink = await createReceiptLink(user.id, eventId, documentLink, request);
     const ils = `₪${amount.toLocaleString("he-IL")}`;
-    const shareText = `שלום ${customerName}, מצורפת קבלה על תשלום בסך ${ils}.\nלצפייה בקבלה: ${documentLink}\nתודה,\n${photographer.name}`;
+    const shareText = `שלום ${customerName}, מצורפת קבלה על תשלום בסך ${ils}.\nלצפייה בקבלה: ${shortLink ?? documentLink}\nתודה,\n${photographer.name}`;
     return NextResponse.json({ documentUrl: documentLink, documentedAmount, amount, patch, shareText });
   } catch (e) {
     return NextResponse.json(
@@ -146,4 +150,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       { status: 500 }
     );
   }
+}
+
+// One short link per receipt; null if it couldn't be saved (the message then carries the
+// provider's own link, so sending never fails over this).
+async function createReceiptLink(photographerId: string, eventId: string, documentUrl: string, request: Request): Promise<string | null> {
+  const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || new URL(request.url).origin;
+  const admin = createServiceRoleClient();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const token = randomBytes(6).toString("base64url");
+    const { error } = await admin.from("receipt_links").insert({ token, photographer_id: photographerId, event_id: eventId, document_url: documentUrl });
+    if (!error) return `${origin}/r/${token}`;
+  }
+  return null;
 }
