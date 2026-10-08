@@ -52,12 +52,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "האירוע לא נמצא" }, { status: 404 });
   }
 
-  const email = clientEmail?.trim() || event.client_email;
-  if (!email) {
-    return NextResponse.json({ error: "נדרש אימייל של הלקוח/ה להפקת המסמך" }, { status: 400 });
-  }
-  if (clientEmail?.trim() && clientEmail.trim() !== event.client_email) {
-    await supabase.from("events").update({ client_email: clientEmail.trim() }).eq("id", eventId);
+  // No email is needed to issue (owner, 2026-10-08): the receipt is sent afterwards, by email,
+  // WhatsApp or the phone's share sheet (send-receipt / receipt-file). With an email given, the
+  // provider still emails it right away.
+  const email = clientEmail?.trim() || undefined;
+  if (email && email !== event.client_email) {
+    await supabase.from("events").update({ client_email: email }).eq("id", eventId);
   }
 
   const { data: photographer } = await supabase
@@ -137,7 +137,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     await supabase.from("event_payments").update(patch).eq("event_id", eventId);
 
-    return NextResponse.json({ documentUrl: documentLink, documentedAmount, amount, patch });
+    const ils = `₪${amount.toLocaleString("he-IL")}`;
+    const shareText = `שלום ${customerName}, מצורפת קבלה על תשלום בסך ${ils}.\nלצפייה בקבלה: ${documentLink}\nתודה,\n${photographer.name}`;
+    return NextResponse.json({ documentUrl: documentLink, documentedAmount, amount, patch, shareText });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "הפקת המסמך נכשלה" },

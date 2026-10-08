@@ -51,7 +51,7 @@ export async function issueDocument({
   apiSecret?: string;
   documentType?: number;
   customerName: string;
-  customerEmail: string;
+  customerEmail?: string;
   amount: number;
   description: string;
   date?: Date;
@@ -81,7 +81,7 @@ export async function issueDocument({
       currency: "ILS",
       client: {
         name: customerName,
-        emails: [customerEmail],
+        emails: customerEmail ? [customerEmail] : [],
         add: false,
       },
       // `amount` is the real sum received, VAT included. Income-row vatType 0 means "VAT is added on

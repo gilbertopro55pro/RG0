@@ -64,7 +64,9 @@ export async function issueReceipt({
   apiKey?: string;
   documentType?: string;
   customerName: string;
-  customerEmail: string;
+  // Optional for a photographer's client receipt (owner, 2026-10-08: issue without an email and
+  // send it afterwards); Finbot then emails no one. The platform's own receipts always pass one.
+  customerEmail?: string;
   customerPhone?: string;
   amount: number;
   description: string;
@@ -131,7 +133,7 @@ export async function issueReceipt({
         rounding,
         customer: {
           name: customerName,
-          email: customerEmail,
+          ...(customerEmail ? { email: customerEmail } : {}),
           ...(cleanPhone ? { phone: cleanPhone } : {}),
           save: false,
         },
@@ -142,11 +144,15 @@ export async function issueReceipt({
         // currently surface to us, and fabricating a card number on a real customer receipt would
         // be wrong bookkeeping.
         payments: [{ type: "7", date: dateStr, sum: amount }],
-        email: {
-          to: customerEmail,
-          subject: emailSubject,
-          body: emailBody,
-        },
+        ...(customerEmail
+          ? {
+              email: {
+                to: customerEmail,
+                subject: emailSubject,
+                body: emailBody,
+              },
+            }
+          : {}),
       });
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
