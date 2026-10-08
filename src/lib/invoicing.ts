@@ -33,7 +33,7 @@ export async function issueClientDocument({
   taxStatus: "exempt" | "licensed";
   photographer: { finbot_api_key: string | null; green_invoice_api_id: string | null; green_invoice_api_secret: string | null };
   customerName: string;
-  customerEmail: string;
+  customerEmail?: string;
   amount: number;
   description: string;
   emailSubject: string;
