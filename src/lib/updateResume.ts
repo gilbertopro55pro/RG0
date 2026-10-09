@@ -119,6 +119,19 @@ export function useBusy(key: string, label: string | null) {
   }, [key, label]);
 }
 
+// The same, from outside a component: background photo uploads (lib/galleryUploads.ts) keep running
+// after the gallery page is left, so they register here for as long as any upload is active.
+export function setBusyLabel(key: string, label: string | null) {
+  if (label) {
+    if (busy.get(key) === label) return;
+    busy.set(key, label);
+  } else {
+    if (!busy.has(key)) return;
+    busy.delete(key);
+  }
+  emit();
+}
+
 export function busyLabels(): string[] {
   return [...busy.values()];
 }

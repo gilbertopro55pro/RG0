@@ -9,6 +9,7 @@ import PageGuide from "@/components/PageGuide";
 import GalleryQuickActionsMenu from "@/components/GalleryQuickActionsMenu";
 import { readAlbumRotateResume } from "@/lib/albumRotateResume";
 import BackLink from "@/components/BackLink";
+import { getUploadsSnapshot, subscribeUploads, useGalleryUploads, type GalleryUpload } from "@/lib/galleryUploads";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, type Lang } from "@/i18n/config";
 
@@ -61,6 +62,21 @@ export default function GalleriesListView({
     if (!intent) return;
     setResuming(true);
     router.replace(`/galleries/${intent.galleryId}`);
+  }, [router]);
+
+  // Photo uploads running in the background (lib/galleryUploads.ts): each gallery's row shows its
+  // own progress, and when one finishes the photo counts are read from the server again.
+  const uploads = useGalleryUploads();
+  const uploadByGallery = useMemo(() => new Map(uploads.map((u) => [u.galleryId, u])), [uploads]);
+  useEffect(() => {
+    const activeIds = () => new Set(getUploadsSnapshot().filter((u) => u.phase === "queued" || u.phase === "uploading").map((u) => u.galleryId));
+    let before = activeIds();
+    return subscribeUploads(() => {
+      const now = activeIds();
+      const finished = [...before].some((id) => !now.has(id));
+      before = now;
+      if (finished) router.refresh();
+    });
   }, [router]);
 
   const [query, setQuery] = useState("");
@@ -239,6 +255,7 @@ export default function GalleriesListView({
                       <span className="text-ink-soft">{t("טיוטה")}</span>
                     )}
                   </div>
+                  {uploadByGallery.get(item.id) && <UploadLine upload={uploadByGallery.get(item.id)!} />}
                 </div>
                 {item.published && (
                   <button
@@ -303,6 +320,46 @@ export default function GalleriesListView({
           onClose={() => setQuickActionsItem(null)}
           onDeleted={() => setQuickActionsItem(null)}
         />
+      )}
+    </div>
+  );
+}
+
+// One gallery's background upload, under its name in the list.
+function UploadLine({ upload }: { upload: GalleryUpload }) {
+  const t = useT();
+  const running = upload.phase === "uploading";
+  const text =
+    upload.phase === "queued"
+      ? t("בתור להעלאה, {n} תמונות", { n: upload.total })
+      : running
+        ? t("מעלה {done} מתוך {total}", { done: upload.done, total: upload.total })
+        : upload.phase === "offline"
+          ? t("ההעלאה נעצרה, אין חיבור לאינטרנט")
+          : upload.phase === "cancelled"
+            ? t("ההעלאה בוטלה")
+            : upload.failed.length > 0
+              ? t("הועלו {ok} מתוך {total}, {n} לא הועלו", { ok: upload.succeeded, total: upload.total, n: upload.failed.length })
+              : t("הועלו {n} תמונות", { n: upload.succeeded });
+  const good = upload.phase === "done" && upload.failed.length === 0;
+  return (
+    <div className="mt-1.5" aria-live="polite">
+      <div className={`flex items-center gap-1.5 text-[11px] font-semibold ${good ? "text-sage" : upload.phase === "done" || upload.phase === "uploading" || upload.phase === "queued" ? "text-ink" : "text-rose"}`}>
+        {(running || upload.phase === "queued") && (
+          <span className={`h-3 w-3 shrink-0 rounded-full border-2 border-line border-t-ink ${running ? "animate-spin" : ""}`} aria-hidden="true" />
+        )}
+        {good && (
+          <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        )}
+        <span className="truncate">{text}</span>
+        {running && <span className="ms-auto shrink-0 font-data text-ink-soft">{Math.round(upload.pct)}%</span>}
+      </div>
+      {(running || upload.phase === "queued") && (
+        <div className="mt-1 h-1 rounded-full bg-line overflow-hidden">
+          <div className="h-full rounded-full bg-ink transition-[width] duration-300" style={{ width: `${upload.pct}%` }} />
+        </div>
       )}
     </div>
   );

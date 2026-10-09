@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -82,14 +82,20 @@ import { detectFacesInImageUrl, clusterFaces, type FaceBox } from "@/lib/faceRec
 import { GALLERY_EXPIRY_OPTIONS, GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, VIDEO_MAX_BYTES_BY_TIER, type SubscriptionPlan, type SubscriptionTier } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
-import { ALLOWED_ACCEPT, isAllowedImageFile, isHeicFile, convertHeicIfNeeded, putFileWithProgress } from "@/lib/imageUpload";
+import { ALLOWED_ACCEPT, isAllowedImageFile } from "@/lib/imageUpload";
+import { readActiveUploadLock, requestActiveUploadCancel, type ActiveUploadLock } from "@/lib/activeUploadLock";
 import {
-  readActiveUploadLock,
-  writeActiveUploadLock,
-  clearActiveUploadLock,
-  requestActiveUploadCancel,
-  type ActiveUploadLock,
-} from "@/lib/activeUploadLock";
+  activeUploadCount,
+  cancelUpload,
+  dismissUpload,
+  enqueueGalleryUpload,
+  getServerUploadsSnapshot,
+  getUploadsSnapshot,
+  onGalleryPhoto,
+  otherTabUpload,
+  sendUploadToBackground,
+  subscribeUploads,
+} from "@/lib/galleryUploads";
 import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
 import dynamic from "next/dynamic";
@@ -243,10 +249,6 @@ export default function GalleryManageView({
   // The loop-based operations (upload, face detection) poll the flag between items and stop
   // starting new ones; export is a single request, so it's aborted directly instead.
   const cancelRequestedRef = useRef(false);
-  // Set when a photo upload batch stops because the browser actually went offline (as opposed to
-  // the photographer pressing cancel, or one file failing outright) — lets uploadResolvedFiles
-  // show a specific "no network connection" message instead of the generic per-file failure list.
-  const offlineAbortedRef = useRef(false);
   const exportAbortControllerRef = useRef<AbortController | null>(null);
   // The currently in-flight export/print-house job's id, if any — lets the cancel button actually
   // stop the job SERVER-SIDE (see the DELETE handler on export-jobs/[jobId]/route.ts), not just
@@ -262,15 +264,9 @@ export default function GalleryManageView({
   // export always offers a WhatsApp share option too, not only the file itself.
   const [completedExportToast, setCompletedExportToast] = useState<{ downloadUrl: string; filename: string; mimeType: string; label: string; allowSaveDialog: boolean; linkOnly?: boolean } | null>(null);
   const [downloadingCompletedToast, setDownloadingCompletedToast] = useState(false);
-  // Neither photo uploads nor album exports (JPG/PDF/PSD — removed per explicit request, see
-  // ProgressModal's own onBackground usage below) offer a "המשך ברקע" button any more — both modals
-  // always block until their operation finishes or is cancelled. What either could always do,
-  // button or not, is keep running while the photographer's tab is
-  // hidden (they switched apps, locked the phone, etc.) — this ref tracks whether that happened at
-  // any point during the current batch, and drives BOTH the in-app completion toast below and the
-  // upload-finished email (see the fetch to upload-complete-notify in uploadResolvedFiles) so
-  // either surfaces even though they weren't watching when it actually finished.
-  const wasHiddenDuringUploadRef = useRef(false);
+  // A photo upload that ran in the background ("המשך ברקע", lib/galleryUploads.ts) ends with this
+  // toast when the photographer is on the gallery page; the engine itself emails and pushes a
+  // notification when they weren't watching it end.
   const [completedUploadToast, setCompletedUploadToast] = useState<{ succeededCount: number; totalCount: number } | null>(null);
   // Sole source of truth (not just a pointer to server state — see activeUploadLock.ts) for "is a
   // photo upload already running, in this tab or another." Set when uploadResolvedFiles finds an
@@ -376,11 +372,15 @@ export default function GalleryManageView({
   // PlanComparison.tsx), neither retroactive: existing video/albums an entry-tier photographer
   // already has stay intact, this only blocks starting NEW ones.
   const nonBasicTierAllowed = effectiveExpiryTier !== "basic";
-  const [uploading, setUploading] = useState<string | null>(null);
-  // 0..100 while a batch upload is running, mirroring how many of the batch's items are done —
-  // drives the bottle-green fill effect on the drop-zone so the photographer sees actual progress,
-  // not just a static "מעלה X מתוך Y" label. null when no upload is in progress.
-  const [uploadProgressPct, setUploadProgressPct] = useState<number | null>(null);
+  // This gallery's photo upload, from the shared upload engine (lib/galleryUploads.ts, owner
+  // 2026-10-09): it keeps running after the photographer leaves the page ("המשך ברקע"), several
+  // galleries can upload at once, and photos dropped in while it runs join it (the total grows).
+  const uploads = useSyncExternalStore(subscribeUploads, getUploadsSnapshot, getServerUploadsSnapshot);
+  const upload = uploads.find((u) => u.galleryId === gallery.id) ?? null;
+  const uploadActive = !!upload && (upload.phase === "queued" || upload.phase === "uploading");
+  const uploading: string | null = upload && uploadActive ? `${t("מעלה תמונות...")} (${upload.done}/${upload.total})` : null;
+  // 0..100 while it runs: drives the bottle-green fill on the drop zone. null when nothing uploads.
+  const uploadProgressPct: number | null = upload && uploadActive ? upload.pct : null;
   const [copied, setCopied] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [justPublished, setJustPublished] = useState(false);
@@ -2163,318 +2163,98 @@ export default function GalleryManageView({
     return folderRow.id;
   };
 
-  // Files upload several at a time (a small worker pool below, uploadConcurrency) instead of strictly one
-  // at a time — real speedup for a large batch, since the old sequential version left the
-  // connection idle between files instead of keeping several transfers going at once. Combined
-  // with putFileWithProgress's real byte-level progress (see its own comment in imageUpload.ts),
-  // this is the fix for the confirmed "gets stuck every ~4%" report — that number is exactly
-  // 100/25 for a 25-photo batch, i.e. the old progress bar only ever moved once per WHOLE file.
-  // 8 at once on a computer (owner, 2026-10-07: upload as fast as the line allows); a phone keeps
-  // 4, since every transfer holds its whole file in memory.
-  const uploadConcurrency = () => (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches ? 4 : 8);
-
   const uploadResolvedFiles = async (items: { file: File; folderId: string | null }[]) => {
     if (items.length === 0) return;
     setError(null);
-    if (photos.length + items.length > MAX_GALLERY_PHOTOS) {
+    // Photos still on their way in this gallery's running upload count toward the limit too.
+    const existing = photos.length + activeUploadCount(gallery.id);
+    if (existing + items.length > MAX_GALLERY_PHOTOS) {
       setError(
-        photos.length >= MAX_GALLERY_PHOTOS
-          ? t("הגלריה כבר מכילה {count} תמונות, הגעתם למגבלה של {max} תמונות לגלריה.", { count: photos.length, max: MAX_GALLERY_PHOTOS })
+        existing >= MAX_GALLERY_PHOTOS
+          ? t("הגלריה כבר מכילה {count} תמונות, הגעתם למגבלה של {max} תמונות לגלריה.", { count: existing, max: MAX_GALLERY_PHOTOS })
           : t("בגלריה יש כבר {count} תמונות, ונבחרו עוד {added}, יחד זה חורג מהמגבלה של {max} תמונות לגלריה. אפשר להעלות עד {left} תמונות נוספות בסבב הזה.", {
-              count: photos.length,
+              count: existing,
               added: items.length,
               max: MAX_GALLERY_PHOTOS,
-              left: MAX_GALLERY_PHOTOS - photos.length,
+              left: MAX_GALLERY_PHOTOS - existing,
             })
       );
       return;
     }
-    // Only one photo upload at a time, across every gallery and every tab (see activeUploadLock.ts
-    // for why this has to live in localStorage rather than a server-tracked job) — per explicit
-    // request, starting a second upload elsewhere is blocked until the active one is cancelled.
-    const otherLock = readActiveUploadLock();
-    if (otherLock && otherLock.galleryId !== gallery.id) {
-      setBlockedByOtherUpload(otherLock);
+    // One tab uploads at a time (two tabs would only split the connection between them). In this
+    // tab any number of galleries can upload together, and photos dropped into a gallery that is
+    // already uploading join that upload.
+    const other = otherTabUpload();
+    if (other) {
+      setBlockedByOtherUpload(other);
       return;
     }
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return;
+    setUploadJustFinished(null);
+    enqueueGalleryUpload({ galleryId: gallery.id, galleryTitle: gallery.title, userId: user.id, sortBase: photos.length, items });
+  };
 
-    const sortBase = photos.length;
-    let hadError = false;
-    let succeededCount = 0;
-    // Collected instead of surfaced one at a time — with a 340-file batch, `setError` overwriting
-    // itself on every failure meant only the LAST failed file was ever visible, silently losing
-    // every earlier one. One combined summary at the end shows all of them.
-    const failedFiles: string[] = [];
-    cancelRequestedRef.current = false;
-    offlineAbortedRef.current = false;
-    // A real disconnect mid-batch shouldn't be treated like "340 individual files failed" — that
-    // grinds through 3 retries times whatever's left, each waiting out a backoff delay against a
-    // connection that isn't coming back, before finally showing an unhelpful wall of per-file
-    // errors. The 'offline' event catches this the moment it happens (not just whenever the next
-    // fetch happens to throw), so the whole batch can stop right away with one clear reason.
-    const handleOffline = () => {
-      offlineAbortedRef.current = true;
-      cancelRequestedRef.current = true;
-    };
-    window.addEventListener("offline", handleOffline);
-    wasHiddenDuringUploadRef.current = false;
-    const handleVisibilityChange = () => {
-      if (document.hidden) wasHiddenDuringUploadRef.current = true;
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+  // This gallery's new photos appear as they land, also after leaving the page and coming back.
+  useEffect(
+    () =>
+      onGalleryPhoto(gallery.id, (row, file) => {
+        setPhotos((prev) => (prev.some((p) => p.id === row.id) ? prev : [...prev, { ...row, url: URL.createObjectURL(file) }]));
+      }),
+    [gallery.id]
+  );
 
-    // Per-file progress, 0-1, indexed by each file's ORIGINAL position in `items` (not completion
-    // order, which varies under concurrency) — real byte progress while a file is transferring
-    // (via putFileWithProgress), snapped to 1 once that file is fully done (success OR given up).
-    // Summed and divided by items.length for one smooth overall percentage that moves continuously
-    // instead of jumping in coarse per-file steps.
-    const fileProgress = new Array<number>(items.length).fill(0);
-    const reportPct = () => {
-      const sum = fileProgress.reduce((a, b) => a + b, 0);
-      setUploadProgressPct((sum / items.length) * 100);
-    };
-    let nextIndex = 0;
-    let doneCount = 0;
-    // Every file's storage path is decided up front (a HEIC's name after conversion is known in
-    // advance), so the upload URLs can be fetched a few dozen at a time ahead of the workers
-    // instead of one request before each file (/api/storage/upload-urls).
-    const plannedPaths = items.map(({ file }) => {
-      const heic = isHeicFile(file);
-      const name = heic ? file.name.replace(/\.(heic|heif)$/i, ".jpg") : file.name;
-      return { path: `${user.id}/${gallery.id}/${crypto.randomUUID()}-${name}`, contentType: heic ? "image/jpeg" : file.type || "application/octet-stream" };
-    });
-    const URL_BATCH = 40;
-    const prefetched = new Map<number, Promise<string | null>>();
-    let prefetchedUpTo = 0;
-    const prefetchUrls = (fromIndex: number) => {
-      if (prefetchedUpTo > fromIndex + URL_BATCH / 2 || prefetchedUpTo >= items.length) return;
-      const start = Math.max(prefetchedUpTo, fromIndex);
-      const end = Math.min(items.length, start + URL_BATCH);
-      prefetchedUpTo = end;
-      const batch = fetch("/api/storage/upload-urls", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bucket: "galleries", items: plannedPaths.slice(start, end) }),
-      })
-        .then(async (res) => (res.ok ? ((await res.json()) as { urls?: string[] }).urls ?? null : null))
-        .catch(() => null);
-      for (let j = start; j < end; j++) prefetched.set(j, batch.then((urls) => urls?.[j - start] ?? null));
-    };
-    prefetchUrls(0);
-    // Preserves cancelRequested if it's already true on our own lock — a plain unconditional
-    // write here would otherwise race a cancel just requested from the blocked tab (see
-    // ActiveUploadLock's own comment) and silently erase it before this loop ever sees it.
-    const heartbeatLock = () => {
-      const current = readActiveUploadLock();
-      writeActiveUploadLock({
-        galleryId: gallery.id,
-        galleryTitle: gallery.title,
-        totalCount: items.length,
-        doneCount,
-        lastHeartbeat: Date.now(),
-        cancelRequested: current?.galleryId === gallery.id ? current.cancelRequested : false,
-      });
-    };
-    heartbeatLock();
-
-    const worker = async () => {
-      while (true) {
-        if (!navigator.onLine) {
-          offlineAbortedRef.current = true;
-          cancelRequestedRef.current = true;
-        }
-        // Cross-tab cancel: a photographer blocked from starting a second upload elsewhere can
-        // cancel THIS one from there (see the blockedByOtherUpload screen below) — this is what
-        // makes that button actually take effect on the tab really running it.
-        if (readActiveUploadLock()?.cancelRequested) cancelRequestedRef.current = true;
-        if (cancelRequestedRef.current) return;
-        const i = nextIndex;
-        if (i >= items.length) return;
-        nextIndex++;
-
-        const { folderId } = items[i];
-        let file = items[i].file;
-        try {
-          if (isHeicFile(file)) {
-            setUploading(`${t("ממיר תמונות...")} (${doneCount}/${items.length})`);
-            try {
-              file = await convertHeicIfNeeded(file);
-            } catch {
-              failedFiles.push(`${file.name} (${t("המרה נכשלה")})`);
-              hadError = true;
-              fileProgress[i] = 1;
-              doneCount++;
-              reportPct();
-              heartbeatLock();
-              continue;
-            }
-          }
-          setUploading(`${t("מעלה תמונות...")} (${doneCount}/${items.length})`);
-          const path = plannedPaths[i].path;
-          prefetchUrls(i);
-
-          // A large batch (hundreds of files) takes long enough that a single transient network
-          // blip on any one file is likely, not exceptional — retrying a couple of times before
-          // giving up on that file turns "one bad wifi moment" into a non-event instead of forcing
-          // a manual re-upload of just that photo afterward.
-          let uploaded = false;
-          let lastFailureReason = t("שגיאה לא ידועה");
-          for (let attempt = 0; attempt < 3 && !uploaded; attempt++) {
-            if (!navigator.onLine) {
-              offlineAbortedRef.current = true;
-              cancelRequestedRef.current = true;
-              lastFailureReason = t("אין חיבור לאינטרנט");
-              break;
-            }
-            if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
-            try {
-              // The URL fetched ahead in a batch on the first try; on a retry (or if the batch
-              // request failed) a fresh one for just this file.
-              let url = attempt === 0 ? await (prefetched.get(i) ?? Promise.resolve(null)) : null;
-              if (!url) {
-                const urlRes = await fetch("/api/storage/upload-url", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ bucket: "galleries", path, contentType: file.type || "application/octet-stream" }),
-                });
-                const urlData = await urlRes.json();
-                if (!urlRes.ok || !urlData.url) {
-                  lastFailureReason = urlData.error ?? t("שגיאה לא ידועה");
-                  continue;
-                }
-                url = urlData.url as string;
-              }
-              await putFileWithProgress(url, file, file.type || "application/octet-stream", (fraction) => {
-                fileProgress[i] = fraction;
-                reportPct();
-              });
-              uploaded = true;
-            } catch (e) {
-              // A network-level failure (dropped connection, DNS hiccup) throws instead of
-              // resolving — caught here so the retry loop above can try again instead of the whole
-              // file (or the whole batch) silently giving up.
-              lastFailureReason = e instanceof Error ? e.message : t("שגיאת רשת");
-            }
-          }
-          fileProgress[i] = 1;
-          doneCount++;
-          reportPct();
-          heartbeatLock();
-          if (!uploaded) {
-            // Once offline is confirmed, this file's own failure is just noise on top of the
-            // single batch-level message shown below — no need to list it individually too.
-            if (!offlineAbortedRef.current) failedFiles.push(`${file.name} (${lastFailureReason})`);
-            hadError = true;
-            continue;
-          }
-
-          const { data: photoRow, error: insertError } = await supabase
-            .from("gallery_photos")
-            .insert({
-              gallery_id: gallery.id,
-              photographer_id: user.id,
-              storage_path: path,
-              original_filename: file.name,
-              file_size_bytes: file.size,
-              sort_order: sortBase + i,
-              folder_id: folderId,
-            })
-            .select()
-            .single<GalleryPhotoRow>();
-          if (insertError || !photoRow) {
-            failedFiles.push(`${file.name} (${insertError?.message ?? t("שגיאה בשמירה")})`);
-            hadError = true;
-            continue;
-          }
-          setPhotos((prev) => [...prev, { ...photoRow, url: URL.createObjectURL(file) }]);
-          succeededCount++;
-          // Fire-and-forget: generates the lightbox preview right now instead of waiting for
-          // someone to click the photo — by the time a photographer finishes uploading a batch and
-          // opens one to check it, the preview is already sitting in storage. `redirect: "manual"`
-          // stops the browser from following (and wastefully downloading) the redirect target; the
-          // route's own work (resize/compress/persist) already happened server-side by then.
-          fetch(`/api/galleries/${gallery.id}/photos/${photoRow.id}/preview`, { redirect: "manual" }).catch((e) =>
-            console.error("preview warm-up failed", photoRow.id, e)
-          );
-        } catch (e) {
-          // Catch-all for anything outside the retry loop above (e.g. a bug in this code itself) —
-          // without this the loop would abort silently and leave "מעלה..." on screen forever with
-          // no indication anything went wrong.
-          failedFiles.push(`${file.name} (${e instanceof Error ? e.message : t("שגיאה לא צפויה")})`);
-          hadError = true;
-          fileProgress[i] = 1;
-          doneCount++;
-          reportPct();
-          heartbeatLock();
-        }
+  // When this gallery's upload ends: the files that didn't make it, the "upload complete" toast for
+  // one that ran in the background, and the prompt to tell the client about the new photos. Then
+  // it leaves the uploads list.
+  const seenUploadPhaseRef = useRef<string | null>(null);
+  useEffect(() => {
+    const handle = () => {
+      const u = getUploadsSnapshot().find((g) => g.galleryId === gallery.id) ?? null;
+      if (!u) {
+        seenUploadPhaseRef.current = null;
+        return;
       }
-    };
-
-    try {
-      await Promise.all(Array.from({ length: Math.min(uploadConcurrency(), items.length) }, () => worker()));
-      if (cancelRequestedRef.current) hadError = true;
-    } finally {
-      window.removeEventListener("offline", handleOffline);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      clearActiveUploadLock(gallery.id);
-      if (offlineAbortedRef.current) {
+      const prev = seenUploadPhaseRef.current;
+      seenUploadPhaseRef.current = u.phase;
+      if (u.phase === "queued" || u.phase === "uploading" || prev === u.phase) return;
+      const ok = u.succeeded;
+      if (u.phase === "offline") {
         setError(
-          succeededCount > 0
-            ? t("אין חיבור לאינטרנט, ההעלאה הופסקה. {done} מתוך {total} תמונות הספיקו לעלות לפני שהחיבור ירד. יש לבדוק את החיבור לרשת ולהעלות את השאר שוב.", { done: succeededCount, total: items.length })
+          ok > 0
+            ? t("אין חיבור לאינטרנט, ההעלאה הופסקה. {done} מתוך {total} תמונות הספיקו לעלות לפני שהחיבור ירד. יש לבדוק את החיבור לרשת ולהעלות את השאר שוב.", { done: ok, total: u.total })
             : t("אין חיבור לאינטרנט, ההעלאה לא התחילה. יש לבדוק את החיבור לרשת ולנסות שוב.")
         );
-      } else if (failedFiles.length > 0) {
-        const shown = failedFiles.slice(0, 8);
-        const more = failedFiles.length - shown.length;
+      } else if (u.failed.length > 0) {
+        const shown = u.failed.slice(0, 8);
+        const more = u.failed.length - shown.length;
         setError(
           t("{n} קבצים לא הועלו: {files}{more}. שאר התמונות הועלו בהצלחה. אפשר להעלות את אלה שנכשלו שוב בנפרד.", {
-            n: failedFiles.length,
+            n: u.failed.length,
             files: shown.join(", "),
             more: more > 0 ? ` ${t("ועוד {n} נוספים", { n: more })}` : "",
           })
         );
-      }
-      // Snap to 100% and hold there briefly instead of jumping straight back to the idle state —
-      // matches the shared progress modal's own fill-then-reset pattern, so the last file finishing
-      // doesn't feel like it vanished mid-progress. Skipped on failure — a "done" flash would
-      // contradict the error message just surfaced, so a failed batch clears state immediately.
-      if (hadError) {
-        setUploading(null);
-        setUploadProgressPct(null);
-      } else {
-        setUploadProgressPct(100);
-        await new Promise((resolve) => setTimeout(resolve, 700));
-        // The photographer's tab was hidden at some point during the batch (switched apps, locked
-        // the phone) — the upload loop doesn't depend on the tab being visible, so it kept going
-        // regardless and is now genuinely done. Surface that both in-app (a floating toast, same
-        // as the export flow's identical pattern) and by email, since they may not even be looking
-        // at this tab right now to see the toast either.
-        if (wasHiddenDuringUploadRef.current) {
-          setCompletedUploadToast({ succeededCount, totalCount: items.length });
-          if (succeededCount > 0) {
-            fetch(`/api/galleries/${gallery.id}/upload-complete-notify`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ succeededCount, totalCount: items.length }),
-            }).catch(() => {});
-          }
-        }
-        setUploading(null);
-        setUploadProgressPct(null);
+      } else if (u.phase === "done") {
+        if (u.background) setCompletedUploadToast({ succeededCount: ok, totalCount: u.total });
         // Only worth prompting a client update for photos landing in a gallery the client can
-        // already see — if it isn't published yet, this upload is just prep and the client hasn't
-        // been sent a link at all, so the publish confirmation panel is the one that should notify
-        // them, not this one.
-        if (succeededCount > 0 && gallery.published) {
-          setUploadJustFinished(succeededCount);
-        }
+        // already see, and only for an upload that ended while this page was open.
+        if (ok > 0 && gallery.published && prev !== null) setUploadJustFinished(ok);
       }
-    }
-  };
+      // Photos that landed while this page was closed come from the server.
+      if (u.background || prev === null) router.refresh();
+      dismissUpload(gallery.id);
+    };
+    // Also an upload that finished while this page was closed (checked once, right after opening).
+    const first = setTimeout(handle, 0);
+    const unsubscribe = subscribeUploads(handle);
+    return () => {
+      clearTimeout(first);
+      unsubscribe();
+    };
+  }, [gallery.id, gallery.published, router, t]);
 
   const reportRejectedFormats = (rejected: File[]) => {
     if (rejected.length === 0) return;
@@ -3158,7 +2938,9 @@ export default function GalleryManageView({
   const exportOpActive = exportingAlbumPdf || exportingAlbumJpg || exportingAlbumPsd;
   // No visibility gate on uploads or exports here (unlike the print-house flag below) — neither
   // offers a "background" button any more, so their modal simply stays active for the whole batch.
-  const uploadOpActive = uploading != null;
+  // The upload's progress modal, unless it was sent to the background (then the floating uploads
+  // indicator shows it, UploadsIndicator).
+  const uploadOpActive = uploadActive && !upload?.background;
   const activeOp: { label: string; pct: number } | null =
     uploadOpActive
       ? { label: t("העלאת תמונות"), pct: uploadProgressPct ?? 0 }
@@ -3577,6 +3359,10 @@ export default function GalleryManageView({
               printHouseAbortControllerRef.current?.abort();
               return;
             }
+            if (uploadOpActive) {
+              cancelUpload(gallery.id);
+              return;
+            }
             cancelRequestedRef.current = true;
             faceCancelRef.current?.();
             if (currentExportJobIdRef.current) cancelExportJob(currentExportJobIdRef.current);
@@ -3589,7 +3375,18 @@ export default function GalleryManageView({
           // albumExportJobs.ts) impossible to sidestep by hiding the modal and clicking another
           // export button. Print-house sending is a distinct action (not "export") and keeps its own
           // backgrounding unchanged.
-          onBackground={printHouseOpActive ? () => setPrintHouseProgressVisible(false) : undefined}
+          // Photo uploads can go to the background too (owner, 2026-10-09): they keep running while the
+          // photographer moves on, and the galleries list shows each one's progress.
+          onBackground={
+            printHouseOpActive
+              ? () => setPrintHouseProgressVisible(false)
+              : uploadOpActive
+                ? () => {
+                    sendUploadToBackground(gallery.id);
+                    router.push("/galleries");
+                  }
+                : undefined
+          }
         />
       )}
       {blockedByOtherUpload && (
