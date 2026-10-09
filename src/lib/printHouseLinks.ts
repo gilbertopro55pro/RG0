@@ -36,5 +36,5 @@ export async function printPagesLine(
   const whole = (album?.cover_photo_id ? 1 : 0) + (count ?? 0);
   if (whole <= 0 || pageCount <= 0 || (fromPage <= 1 && pageCount >= whole)) return null;
   const to = Math.min(whole, fromPage + pageCount - 1);
-  return `עמודים ${fromPage}–${to} מתוך ${whole} (לא כל האלבום)`;
+  return to === fromPage ? `עמוד ${fromPage} מתוך ${whole} (לא כל האלבום)` : `עמודים ${fromPage}–${to} מתוך ${whole} (לא כל האלבום)`;
 }

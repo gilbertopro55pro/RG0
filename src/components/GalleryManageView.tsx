@@ -4652,7 +4652,9 @@ export default function GalleryManageView({
                 const r = printHouseRange();
                 return r.from === 1 && r.to === albumTotalPages
                   ? t("כל האלבום, {n} עמודים", { n: albumTotalPages })
-                  : t("עמודים {from}–{to} מתוך {n}", { from: r.from, to: r.to, n: albumTotalPages });
+                  : r.from === r.to
+                    ? t("עמוד {page} מתוך {n}", { page: r.from, n: albumTotalPages })
+                    : t("עמודים {from}–{to} מתוך {n}", { from: r.from, to: r.to, n: albumTotalPages });
               })()}
             </p>
             <PrintHouseEmailsSettings
@@ -4695,7 +4697,9 @@ export default function GalleryManageView({
                 const r = printHouseRange();
                 return r.from === 1 && r.to === albumTotalPages
                   ? t("כל האלבום, {n} עמודים", { n: albumTotalPages })
-                  : t("עמודים {from}–{to} מתוך {n}", { from: r.from, to: r.to, n: albumTotalPages });
+                  : r.from === r.to
+                    ? t("עמוד {page} מתוך {n}", { page: r.from, n: albumTotalPages })
+                    : t("עמודים {from}–{to} מתוך {n}", { from: r.from, to: r.to, n: albumTotalPages });
               })()}
             </p>
             <p className="text-xs text-ink-soft mb-4" dir="ltr">
