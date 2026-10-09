@@ -48,6 +48,16 @@ as `send_notes` (migration 0139) and added to the print-house email under "הנ�
 The home "עיצוב אלבום" quick access (`AlbumQuickAccessButton`) has the same "שליחה לבית דפוס" flow
 (print-house emails, notes, whole album via `to: 9999`), polled with the same ProgressModal.
 
+Print-house page range (2026-10-09, owner's request): the album tool's send sheet has "מעמוד /
+עד עמוד" inputs like the export range dialog (default: the whole album, clamped and ordered by
+`printHouseRange` in `GalleryManageView`), and sends `from`/`to` (the route always accepted them).
+The confirm dialog repeats the range. When only part of the album goes, the print-house email
+and the `/print/<token>` page say so in bold: "עמודים 3–7 מתוך 20 (לא כל האלבום)", or "עמוד N
+מתוך M" for one page (`printPagesLine` in `lib/printHouseLinks.ts`, which counts the cover as page 1,
+like `albumTotalPages`). A whole-album send shows no such line. The home quick access still sends
+the whole album. Checked with a mocked client (whole, 3–7, 1–10, a single page, a 1-page album);
+not sent live, because the test account's album has one page.
+
 Print-house download tracking (since 2026-09-28, migration 0140). The email links to
 `https://myframeflow.com/print/<share_token>`, not to R2. The page shows the album, the notes and
 a "הורדת הקבצים" button. Only the button counts (a POST to `/api/print/<token>/download`), because
