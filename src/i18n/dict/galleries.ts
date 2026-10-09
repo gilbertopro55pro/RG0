@@ -3,6 +3,9 @@ import type { AreaDict } from "@/i18n/types";
 // Area "galleries" (see src/i18n/dict/index.ts). Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "קובצי ה-JPG של העמודים שתבחר/י יישלחו כקישור להורדה, לכתובת שתבחר/י.": "The JPG files of the pages you choose are sent as a download link to the address you pick.",
+    "כל האלבום, {n} עמודים": "The whole album, {n} pages",
+    "עמודים {from}–{to} מתוך {n}": "Pages {from}–{to} of {n}",
     "איזו מצלמה יש לכם?": "Which camera do you have?",
     "נציג מדריך שלב-אחר-שלב עם הפרטים שלכם כבר ממולאים": "We'll show a step-by-step guide with your details already filled in",
     "בחירת מותג אחר": "Choose another brand",
@@ -393,6 +396,9 @@ const dict: AreaDict = {
     "קו נקי": "Clean line",
   },
   ru: {
+    "קובצי ה-JPG של העמודים שתבחר/י יישלחו כקישור להורדה, לכתובת שתבחר/י.": "JPG-файлы выбранных страниц будут отправлены ссылкой для скачивания на выбранный адрес.",
+    "כל האלבום, {n} עמודים": "Весь альбом, {n} стр.",
+    "עמודים {from}–{to} מתוך {n}": "Страницы {from}–{to} из {n}",
     "איזו מצלמה יש לכם?": "Какая у вас камера?",
     "נציג מדריך שלב-אחר-שלב עם הפרטים שלכם כבר ממולאים": "Мы покажем пошаговую инструкцию с уже заполненными вашими данными",
     "בחירת מותג אחר": "Выбрать другую марку",

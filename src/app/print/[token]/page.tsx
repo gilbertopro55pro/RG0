@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { loadPrintJob } from "@/lib/printHouseJob";
-import { formatPrintDay } from "@/lib/printHouseLinks";
+import { formatPrintDay, printPagesLine } from "@/lib/printHouseLinks";
 
 export const metadata: Metadata = { title: "קבצי הדפסה", robots: { index: false, follow: false } };
 
@@ -11,7 +11,8 @@ export const metadata: Metadata = { title: "קבצי הדפסה", robots: { inde
 export default async function PrintFilesPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ e?: string }> }) {
   const { token } = await params;
   const { e } = await searchParams;
-  const view = await loadPrintJob(createServiceRoleClient(), token);
+  const supabase = createServiceRoleClient();
+  const view = await loadPrintJob(supabase, token);
 
   if (!view) {
     return (
@@ -23,6 +24,8 @@ export default async function PrintFilesPage({ params, searchParams }: { params:
 
   const { job, albumTitle, galleryTitle, photographerName, blocked } = view;
   const pages = job.total_count;
+  // Only some of the album's pages were sent: say which.
+  const pagesLine = await printPagesLine(supabase, job.album_id, job.from_page, pages);
   const from = photographerName ? `מאת ${photographerName}` : "";
 
   return (
@@ -42,6 +45,7 @@ export default async function PrintFilesPage({ params, searchParams }: { params:
         <div className="text-xs text-ink-soft mb-1">קבצים</div>
         <div className="text-sm mb-3">
           {pages} עמודים, JPG ב-300 DPI (קובץ ZIP)
+          {pagesLine && <div className="font-semibold mt-1">{pagesLine}</div>}
         </div>
         {job.send_notes?.trim() && (
           <>

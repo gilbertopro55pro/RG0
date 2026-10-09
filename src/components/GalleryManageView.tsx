@@ -574,6 +574,9 @@ export default function GalleryManageView({
   const [printHouseSelectedId, setPrintHouseSelectedId] = useState<string | null>(null);
   // Instructions for the print house (paper, finish, quantity…), added to the email.
   const [printHouseNotes, setPrintHouseNotes] = useState("");
+  // Which pages go to the print house (owner, 2026-10-09): from/to, like the export range dialog.
+  const [printHouseFrom, setPrintHouseFrom] = useState(1);
+  const [printHouseTo, setPrintHouseTo] = useState(1);
   const [printHouseConfirmOpen, setPrintHouseConfirmOpen] = useState(false);
   const [sendingToPrintHouse, setSendingToPrintHouse] = useState(false);
   const [printHouseSendProgress, setPrintHouseSendProgress] = useState<number | null>(null);
@@ -1988,12 +1991,21 @@ export default function GalleryManageView({
       const preferred = rows.find((r) => r.is_default) ?? rows[0];
       setPrintHouseSelectedId(preferred?.id ?? null);
     }
+    setPrintHouseFrom(1);
+    setPrintHouseTo(albumTotalPages);
     setPrintHouseModalOpen(true);
   };
+
+  // The chosen pages, in order and inside the album (same rule as confirmExportRange).
+  const printHouseRange = () => ({
+    from: Math.max(1, Math.min(printHouseFrom, printHouseTo)),
+    to: Math.min(albumTotalPages, Math.max(printHouseFrom, printHouseTo)),
+  });
 
   const sendToPrintHouseConfirmed = async () => {
     const target = printHouseEmails.find((e) => e.id === printHouseSelectedId);
     if (!target) return;
+    const range = printHouseRange();
     setPrintHouseConfirmOpen(false);
     setPrintHouseModalOpen(false);
     setSendingToPrintHouse(true);
@@ -2005,7 +2017,7 @@ export default function GalleryManageView({
       const createRes = await fetch(`/api/galleries/${gallery.id}/album/send-to-print-house`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: target.email, from: 1, to: albumTotalPages, notes: printHouseNotes.trim() || undefined }),
+        body: JSON.stringify({ email: target.email, from: range.from, to: range.to, notes: printHouseNotes.trim() || undefined }),
         signal: controller.signal,
       });
       const createData = await createRes.json().catch(() => null);
@@ -4605,7 +4617,43 @@ export default function GalleryManageView({
               </button>
             </div>
             <p className="text-sm text-ink-soft mb-4">
-              {t("קובצי ה-JPG של כל עמודי האלבום יישלחו כקישור להורדה, לכתובת שתבחר/י.")}
+              {t("קובצי ה-JPG של העמודים שתבחר/י יישלחו כקישור להורדה, לכתובת שתבחר/י.")}
+            </p>
+            {/* The pages to send, like the export range dialog (owner, 2026-10-09). */}
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex-1">
+                <label htmlFor="print-house-from" className="block text-xs font-semibold text-ink-soft mb-1">{t("מעמוד")}</label>
+                <input
+                  id="print-house-from"
+                  type="number"
+                  min={1}
+                  max={albumTotalPages}
+                  value={printHouseFrom}
+                  onChange={(e) => setPrintHouseFrom(Number(e.target.value))}
+                  className="w-full rounded-lg border border-line px-3 py-2 text-sm bg-white text-ink"
+                />
+              </div>
+              <span className="text-ink-soft mt-5">{t("עד")}</span>
+              <div className="flex-1">
+                <label htmlFor="print-house-to" className="block text-xs font-semibold text-ink-soft mb-1">{t("עד עמוד")}</label>
+                <input
+                  id="print-house-to"
+                  type="number"
+                  min={1}
+                  max={albumTotalPages}
+                  value={printHouseTo}
+                  onChange={(e) => setPrintHouseTo(Number(e.target.value))}
+                  className="w-full rounded-lg border border-line px-3 py-2 text-sm bg-white text-ink"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-ink-soft mb-4">
+              {(() => {
+                const r = printHouseRange();
+                return r.from === 1 && r.to === albumTotalPages
+                  ? t("כל האלבום, {n} עמודים", { n: albumTotalPages })
+                  : t("עמודים {from}–{to} מתוך {n}", { from: r.from, to: r.to, n: albumTotalPages });
+              })()}
             </p>
             <PrintHouseEmailsSettings
               initialEmails={printHouseEmails}
@@ -4642,6 +4690,14 @@ export default function GalleryManageView({
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }}>
           <div className="w-full max-w-xs rounded-2xl p-5 bg-paper shadow-sheet text-center">
             <p className="text-sm font-semibold mb-1">{t("לשלוח את קובצי ה-JPG לבית הדפוס?")}</p>
+            <p className="text-xs text-ink-soft mb-1">
+              {(() => {
+                const r = printHouseRange();
+                return r.from === 1 && r.to === albumTotalPages
+                  ? t("כל האלבום, {n} עמודים", { n: albumTotalPages })
+                  : t("עמודים {from}–{to} מתוך {n}", { from: r.from, to: r.to, n: albumTotalPages });
+              })()}
+            </p>
             <p className="text-xs text-ink-soft mb-4" dir="ltr">
               {(() => {
                 const target = printHouseEmails.find((e) => e.id === printHouseSelectedId);
