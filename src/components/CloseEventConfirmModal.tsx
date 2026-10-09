@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ClosePreview } from "@/lib/closeEvent";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
@@ -69,7 +70,13 @@ export default function CloseEventConfirmModal({
 
   const money = (n: number) => `₪${n.toLocaleString(locale)}`;
 
-  return (
+  // Rendered at the end of <body>, not where the caller puts it (owner's report, 2026-10-09: on the
+  // home screen the confirm button flickered and closing didn't work). The home list wraps its rows
+  // in a frosted .bg-card with overflow-hidden, and an ancestor with backdrop-filter becomes the box
+  // a fixed element is placed in: the overlay was squeezed into the list's own height and clipped,
+  // cutting off the buttons, with blur nested in blur on top.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
@@ -157,6 +164,7 @@ export default function CloseEventConfirmModal({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
