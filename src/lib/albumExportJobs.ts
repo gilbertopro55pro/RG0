@@ -18,7 +18,7 @@ import { photographerLang } from "@/lib/clientLang";
 // dictionaries would force a worker redeploy on every unrelated translation change.
 import photographerNotifyDict from "@/i18n/dict/photographerNotify";
 import { makeT } from "@/i18n/translate";
-import { PRINT_LINK_DAYS, daysFromNow, formatPrintDay, printLinkUrl } from "@/lib/printHouseLinks";
+import { PRINT_LINK_DAYS, daysFromNow, formatPrintDay, printLinkUrl, printPagesLine } from "@/lib/printHouseLinks";
 import type { GalleryAlbumExportJobRow, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
 
 function sanitizeSegment(name: string): string {
@@ -533,6 +533,9 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
       const albumTitle = album.title?.trim();
       const albumName = !albumTitle || albumTitle === "האלבום שלכם" ? resolved.gallery.title : `${albumTitle} (${resolved.gallery.title})`;
       const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      // Only part of the album (the photographer picks the pages, owner 2026-10-09): say which, so
+      // the print house doesn't take it for the whole album.
+      const pagesLine = await printPagesLine(supabase, job.album_id, job.from_page, job.total_count);
       // A plain personal note, also as simple HTML (owner, 2026-10-07): the album's name stands out,
       // the notes get their own paragraph, and the link reads "להורדת קובצי ההדפסה" instead of a
       // long address. No images, banners or buttons — it should look like an email a person wrote.
@@ -540,6 +543,7 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
         `<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#222">` +
         `<p>שלום,</p>` +
         `<p>מצורפים קובצי ה-JPG להדפסה של האלבום <b>${esc(albumName)}</b>.</p>` +
+        (pagesLine ? `<p><b>${esc(pagesLine)}</b></p>` : "") +
         `<p><a href="${esc(downloadUrl)}" style="color:#1a56c4;font-weight:bold">להורדת קובצי ההדפסה</a><br><span style="color:#666;font-size:13px">${esc(validUntil)}</span></p>` +
         (notes ? `<p><b>הנחיות והערות:</b><br>${esc(notes).replace(/\r?\n/g, "<br>")}</p>` : "") +
         `<p>אם יש שאלה, אפשר פשוט להשיב למייל הזה.</p>` +
@@ -551,7 +555,9 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
         replyTo: sender?.email ? notificationEmailFor(sender.email) : undefined,
         subject: `קבצים להדפסה: אלבום ${albumName}`,
         text:
-          `שלום,\n\nמצורפים קובצי ה-JPG להדפסה של האלבום "${albumName}".\n\nלהורדת הקבצים:\n${downloadUrl}\n${validUntil}\n\n` +
+          `שלום,\n\nמצורפים קובצי ה-JPG להדפסה של האלבום "${albumName}".\n\n` +
+          (pagesLine ? `${pagesLine}\n\n` : "") +
+          `להורדת הקבצים:\n${downloadUrl}\n${validUntil}\n\n` +
           (notes ? `הנחיות והערות:\n${notes}\n\n` : "") +
           `אם יש שאלה, אפשר פשוט להשיב למייל הזה.\n\nתודה,\n${signatureLines.join("\n")}`,
         html,
