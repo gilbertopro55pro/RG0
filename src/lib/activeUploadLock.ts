@@ -8,6 +8,9 @@ export const ACTIVE_UPLOAD_STORAGE_KEY = "activeGalleryUpload";
 const STALE_MS = 15000;
 
 export type ActiveUploadLock = {
+  // The tab that's uploading (lib/galleryUploads.ts): one tab uploads at a time, but within it any
+  // number of galleries can. Missing on locks written before that (treated as another tab's).
+  tabId?: string;
   galleryId: string;
   galleryTitle: string;
   totalCount: number;

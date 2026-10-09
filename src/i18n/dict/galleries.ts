@@ -3,6 +3,15 @@ import type { AreaDict } from "@/i18n/types";
 // Area "galleries" (see src/i18n/dict/index.ts). Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "העלאת התמונות הסתיימה": "Photo upload finished",
+    "מעלה ל\"{title}\": {done} מתוך {total}": "Uploading to \"{title}\": {done} of {total}",
+    "מעלה ל-{n} גלריות: {done} מתוך {total}": "Uploading to {n} galleries: {done} of {total}",
+    "בתור להעלאה, {n} תמונות": "Queued for upload, {n} photos",
+    "מעלה {done} מתוך {total}": "Uploading {done} of {total}",
+    "ההעלאה נעצרה, אין חיבור לאינטרנט": "Upload stopped, no internet connection",
+    "ההעלאה בוטלה": "Upload cancelled",
+    "הועלו {ok} מתוך {total}, {n} לא הועלו": "{ok} of {total} uploaded, {n} failed",
+    "הועלו {n} תמונות": "{n} photos uploaded",
     "קובצי ה-JPG של העמודים שתבחר/י יישלחו כקישור להורדה, לכתובת שתבחר/י.": "The JPG files of the pages you choose are sent as a download link to the address you pick.",
     "כל האלבום, {n} עמודים": "The whole album, {n} pages",
     "עמודים {from}–{to} מתוך {n}": "Pages {from}–{to} of {n}",
@@ -397,6 +406,15 @@ const dict: AreaDict = {
     "קו נקי": "Clean line",
   },
   ru: {
+    "העלאת התמונות הסתיימה": "Загрузка фото завершена",
+    "מעלה ל\"{title}\": {done} מתוך {total}": "Загрузка в «{title}»: {done} из {total}",
+    "מעלה ל-{n} גלריות: {done} מתוך {total}": "Загрузка в галереи ({n}): {done} из {total}",
+    "בתור להעלאה, {n} תמונות": "В очереди на загрузку, фото: {n}",
+    "מעלה {done} מתוך {total}": "Загружено {done} из {total}",
+    "ההעלאה נעצרה, אין חיבור לאינטרנט": "Загрузка остановлена, нет подключения к интернету",
+    "ההעלאה בוטלה": "Загрузка отменена",
+    "הועלו {ok} מתוך {total}, {n} לא הועלו": "Загружено {ok} из {total}, не загружено: {n}",
+    "הועלו {n} תמונות": "Загружено фото: {n}",
     "קובצי ה-JPG של העמודים שתבחר/י יישלחו כקישור להורדה, לכתובת שתבחר/י.": "JPG-файлы выбранных страниц будут отправлены ссылкой для скачивания на выбранный адрес.",
     "כל האלבום, {n} עמודים": "Весь альбом, {n} стр.",
     "עמודים {from}–{to} מתוך {n}": "Страницы {from}–{to} из {n}",

@@ -11,6 +11,7 @@ import BodyScrollLock from "@/components/BodyScrollLock";
 import GlobalLoadingBar from "@/components/GlobalLoadingBar";
 import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
+import UploadsIndicator from "@/components/UploadsIndicator";
 import AssistantLeadPopup from "@/components/AssistantLeadPopup";
 import PremiumScope from "@/components/PremiumScope";
 import { isClientFacingPath, PREMIUM_CLASS } from "@/lib/premiumScope";
@@ -286,6 +287,7 @@ export default async function RootLayout({
             <LangScope>{children}</LangScope>
           </PageTransition>
           <InstallPrompt />
+          <UploadsIndicator />
           <ChangelogModal />
           <AssistantLeadPopup />
         </I18nProvider>

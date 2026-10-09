@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { authenticateGalleryRequest } from "@/lib/desktopAuth";
 import { sendEmail } from "@/lib/resend";
+import { sendPushToPhotographer } from "@/lib/push";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { GalleryRow, Photographer } from "@/lib/types";
 import { photographerLang } from "@/lib/clientLang";
@@ -10,9 +11,10 @@ import { makeT } from "@/i18n/translate";
 
 export const runtime = "nodejs";
 
-// Fired client-side (see uploadResolvedFiles in GalleryManageView.tsx) only when the tab was
-// hidden/backgrounded at some point during the upload — a photographer who stayed and watched it
-// finish already sees the in-app "upload complete" toast, so a duplicate email would just be noise.
+// Fired by the upload engine (lib/galleryUploads.ts) when an upload ends and the photographer wasn't
+// watching: it went to the background ("המשך ברקע"), they left the gallery page, or the app was
+// hidden. One who stayed and watched it finish already sees it on screen. Sends an email and, since
+// 2026-10-09 (owner's request, with background uploads), a phone notification.
 // Best-effort: a failed send here must never surface as an upload failure to the photographer.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -33,7 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .select("email, ui_lang")
       .eq("id", gallery.photographer_id)
       .maybeSingle<Pick<Photographer, "email" | "ui_lang">>();
-    if (!photographer?.email) return NextResponse.json({ ok: true });
+    if (!photographer) return NextResponse.json({ ok: true });
 
     const origin = new URL(request.url).origin;
     const galleryUrl = `${origin}/galleries/${gallery.id}`;
@@ -43,11 +45,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       succeededCount != null && totalCount != null
         ? t("העלאת התמונות לגלריה \"{title}\" הסתיימה, {ok} מתוך {total} תמונות הועלו בהצלחה.", { title: gallery.title, ok: succeededCount, total: totalCount })
         : t("העלאת התמונות לגלריה \"{title}\" הסתיימה.", { title: gallery.title });
-    await sendEmail({
-      to: notificationEmailFor(photographer.email),
-      subject: t("העלאת התמונות ל\"{title}\" הסתיימה", { title: gallery.title }),
-      text: `${t("שלום,")}\n\n${done}\n\n${t("לצפייה בגלריה:")}\n${galleryUrl}`,
-    });
+    await Promise.all([
+      photographer.email
+        ? sendEmail({
+            to: notificationEmailFor(photographer.email),
+            subject: t("העלאת התמונות ל\"{title}\" הסתיימה", { title: gallery.title }),
+            text: `${t("שלום,")}\n\n${done}\n\n${t("לצפייה בגלריה:")}\n${galleryUrl}`,
+          })
+        : null,
+      sendPushToPhotographer(gallery.photographer_id, {
+        title: t("העלאת התמונות ל\"{title}\" הסתיימה", { title: gallery.title }),
+        body: done,
+        url: `/galleries/${gallery.id}`,
+        tag: `upload-${gallery.id}`,
+      }),
+    ]);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[upload-complete-notify] failed to send upload-complete email", e);
