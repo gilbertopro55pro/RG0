@@ -7,6 +7,16 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { openWhatsApp } from "@/lib/waLink";
+import {
+  dismissUpload,
+  enqueueAlbumPdfUpload,
+  getUpload,
+  isUploadActive,
+  subscribeUploads,
+  uploadKey,
+  useUpload,
+  type AlbumPdfResult,
+} from "@/lib/galleryUploads";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import {
   PACKAGE_FLOWS,
@@ -173,40 +183,6 @@ function parseStageKey(key: string): { stageKey: string | null; customStageId: s
     : { stageKey: key, customStageId: null };
 }
 
-// XMLHttpRequest is the only browser upload API with a real progress event, so this PUTs
-// directly to a short-lived presigned R2 URL (minted server-side via /api/storage/upload-url,
-// since the R2 credentials themselves are secret) purely to drive the 0–100% indicator during
-// large PDF uploads.
-async function uploadFileWithProgress(
-  bucket: string,
-  path: string,
-  file: File,
-  onProgress: (pct: number) => void
-): Promise<void> {
-  const urlRes = await fetch("/api/storage/upload-url", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ bucket, path, contentType: file.type || "application/octet-stream" }),
-  });
-  const urlData = await urlRes.json();
-  if (!urlRes.ok || !urlData.url) throw new Error(urlData.error ?? "יצירת קישור להעלאה נכשלה");
-
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", urlData.url);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`העלאת הקובץ נכשלה (${xhr.status})`));
-    };
-    xhr.onerror = () => reject(new Error("שגיאת רשת בהעלאת הקובץ"));
-    xhr.send(file);
-  });
-}
-
 export default function EventDetailView({
   event,
   initialStages,
@@ -306,8 +282,16 @@ export default function EventDetailView({
   const reviewPromptEntered = useModalEntered();
   const [error, setError] = useState<string | null>(null);
   const [albumDesignFilename, setAlbumDesignFilename] = useState(event.album_design_pdf_filename);
-  const [uploadingAlbumDesign, setUploadingAlbumDesign] = useState(false);
-  const [albumUploadProgress, setAlbumUploadProgress] = useState<number | null>(null);
+  // The album design PDF uploads in the shared upload engine (lib/galleryUploads.ts, owner
+  // 2026-10-10): it keeps going if the photographer leaves the event, and the floating indicator
+  // brings them back here to send it to the client.
+  const albumUploadKey = uploadKey("album-pdf", event.id);
+  const albumUpload = useUpload(albumUploadKey);
+  const uploadingAlbumDesign = isUploadActive(albumUpload);
+  const albumUploadProgress = uploadingAlbumDesign && albumUpload ? Math.round(albumUpload.pct) : null;
+  // The WhatsApp message for the uploaded design, waiting for a tap: the browser opens WhatsApp
+  // only right after a tap, and an upload that took a while (or ended on another screen) has none.
+  const [pendingAlbumSend, setPendingAlbumSend] = useState<{ label: string; text: string; stageKey: string } | null>(null);
   // Tracks which stage keys currently have an in-flight toggle/undo/notify request — a rapid
   // double-tap before the first request resolves used to fire a second real WhatsApp message and
   // a duplicate log entry for the same action, since neither button disabled itself meanwhile.
@@ -550,54 +534,86 @@ export default function EventDetailView({
 
   const uploadAlbumDesign = async (key: string, file: File) => {
     setError(null);
-    setUploadingAlbumDesign(true);
-    setAlbumUploadProgress(0);
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) throw new Error(t("יש להתחבר מחדש"));
-      const path = `${session.user.id}/${event.id}/${crypto.randomUUID()}-${file.name}`;
-      await uploadFileWithProgress("album-designs", path, file, setAlbumUploadProgress);
-
-      if (key === "album_approval") {
-        // Standard checkpoint — attach the file and notify the client, but leave the stage for
-        // the client to confirm via their portal (or the photographer can toggle it manually now
-        // that a PDF exists).
-        const res = await fetch(`/api/events/${event.id}/album-design`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ albumDesignPdfPath: path, albumDesignPdfFilename: file.name }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ? t(data.error) : t("שגיאה בשמירת קובץ העיצוב"));
-        setAlbumDesignFilename(file.name);
-        if (data.notify) {
-          await notifyClientByWhatsApp(
-            STAGE_LABELS.album_approval,
-            buildStageNoticeText({
-              stageKey: "album_approval",
-              serverText: data.notify.text,
-              clientName: event.client_name,
-              url: data.notify.downloadUrl,
-              lang: clientMessageLang,
-            }),
-            "album_approval"
-          );
-        }
-        await refreshNotifications();
-      } else {
-        // Custom-package stage — keeps the original combined upload+complete behavior.
-        await setStageDone(key, true, { albumDesignPdfPath: path, albumDesignPdfFilename: file.name });
-        setAlbumDesignFilename(file.name);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? t(e.message) : t("שגיאה בהעלאת קובץ עיצוב האלבום"));
-    } finally {
-      setUploadingAlbumDesign(false);
-      setAlbumUploadProgress(null);
+    setPendingAlbumSend(null);
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      setError(t("יש להתחבר מחדש"));
+      return;
     }
+    enqueueAlbumPdfUpload({ eventId: event.id, title: event.client_name, userId: session.user.id, stageKey: key, file });
   };
+
+  // Once the file is saved on the event: the standard "אישור עיצוב אלבום" checkpoint only attaches
+  // it (the client confirms via their portal, or the photographer marks it done manually now that a
+  // PDF exists); a custom-package stage is marked done with it. Either way the client gets the
+  // design on WhatsApp.
+  const finishAlbumDesign = async (result: AlbumPdfResult) => {
+    setAlbumDesignFilename(result.filename);
+    const key = result.stageKey;
+    let send: { label: string; text: string; stageKey: string } | null = null;
+    if (key === "album_approval") {
+      if (result.notify) {
+        send = {
+          label: STAGE_LABELS.album_approval,
+          text: buildStageNoticeText({
+            stageKey: "album_approval",
+            serverText: result.notify.text ?? "",
+            clientName: event.client_name,
+            url: result.notify.downloadUrl ?? "",
+            lang: clientMessageLang,
+          }),
+          stageKey: "album_approval",
+        };
+      }
+    } else {
+      setStages((prev) =>
+        prev.map((s) => ((s.stage_key ?? `custom:${s.custom_stage_id}`) === key ? { ...s, done: true, done_at: result.stage?.done_at ?? new Date().toISOString() } : s))
+      );
+      if (result.notify) {
+        const label = stageDescriptors.find((d) => d.key === key)?.label ?? "";
+        send = { label, text: buildClientUpdateMessage(key, label) + (result.notify.downloadUrl ? `\n${result.notify.downloadUrl}` : ""), stageKey: key };
+      }
+    }
+    if (send && event.client_phone) {
+      // Still within the tap that picked the file (a quick upload): WhatsApp opens right away.
+      const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+      if (activation?.isActive) await notifyClientByWhatsApp(send.label, send.text, send.stageKey);
+      else setPendingAlbumSend(send);
+    }
+    await refreshNotifications();
+  };
+
+  const sendPendingAlbumDesign = async () => {
+    const send = pendingAlbumSend;
+    if (!send) return;
+    setPendingAlbumSend(null);
+    await notifyClientByWhatsApp(send.label, send.text, send.stageKey);
+    await refreshNotifications();
+  };
+
+  // When the upload ends, also one that ended while this page was closed (checked once on opening).
+  const finishAlbumDesignRef = useRef(finishAlbumDesign);
+  useEffect(() => {
+    finishAlbumDesignRef.current = finishAlbumDesign;
+  });
+  useEffect(() => {
+    const handle = () => {
+      const u = getUpload(albumUploadKey);
+      if (!u || isUploadActive(u)) return;
+      dismissUpload(albumUploadKey);
+      if (u.result) void finishAlbumDesignRef.current(u.result);
+      else if (u.phase === "offline") setError("אין חיבור לאינטרנט, העלאת הקובץ הופסקה. יש לבדוק את החיבור לרשת ולנסות שוב.");
+      else if (u.failed.length > 0) setError(u.failed[0]);
+    };
+    const first = setTimeout(handle, 0);
+    const unsubscribe = subscribeUploads(handle);
+    return () => {
+      clearTimeout(first);
+      unsubscribe();
+    };
+  }, [albumUploadKey]);
 
   const scheduleReviewRequest = async () => {
     setShowReviewPrompt(false);
@@ -1127,6 +1143,21 @@ export default function EventDetailView({
       )}
 
       {error && <p className="text-xs text-rose mb-3">{t(error)}</p>}
+
+      {pendingAlbumSend && (
+        <div className="rounded-xl px-3.5 py-3 mb-4 bg-sage-bg border border-line">
+          <p className="text-sm font-semibold mb-0.5">{t("עיצוב האלבום הועלה")}</p>
+          <p className="text-xs text-ink-soft mb-2.5">{t("נשאר לשלוח אותו ללקוח בוואטסאפ.")}</p>
+          <div className="flex gap-2">
+            <button onClick={sendPendingAlbumDesign} className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-sage text-white">
+              {t("שליחה ללקוח בוואטסאפ")}
+            </button>
+            <button onClick={() => setPendingAlbumSend(null)} className="rounded-lg px-3.5 py-2.5 text-sm font-medium bg-white border border-line text-ink-soft">
+              {t("לא עכשיו")}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Admin-only for now (see sendEventClosingUpdate's doc comment): shown whenever
           event_closing isn't done yet, regardless of contract status — this is the ONLY way to
@@ -1809,6 +1840,9 @@ function FilmStrip({
                       style={{ width: `${albumUploadProgress ?? 0}%`, background: "var(--color-amber)", transition: "width 150ms ease" }}
                     />
                   </div>
+                )}
+                {uploadingAlbumDesign && (
+                  <p className="text-[11px] text-ink-soft mt-1.5 text-center">{t("אפשר להמשיך לעבוד במערכת, ההעלאה ממשיכה ברקע.")}</p>
                 )}
                 <p className="text-[11px] text-ink-soft mt-1.5 text-center">
                   {d.key === "album_approval"

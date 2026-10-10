@@ -95,6 +95,7 @@ import {
   otherTabUpload,
   sendUploadToBackground,
   subscribeUploads,
+  uploadKey,
 } from "@/lib/galleryUploads";
 import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
@@ -376,7 +377,8 @@ export default function GalleryManageView({
   // 2026-10-09): it keeps running after the photographer leaves the page ("המשך ברקע"), several
   // galleries can upload at once, and photos dropped in while it runs join it (the total grows).
   const uploads = useSyncExternalStore(subscribeUploads, getUploadsSnapshot, getServerUploadsSnapshot);
-  const upload = uploads.find((u) => u.galleryId === gallery.id) ?? null;
+  const photoUploadKey = uploadKey("photos", gallery.id);
+  const upload = uploads.find((u) => u.key === photoUploadKey) ?? null;
   const uploadActive = !!upload && (upload.phase === "queued" || upload.phase === "uploading");
   const uploading: string | null = upload && uploadActive ? `${t("מעלה תמונות...")} (${upload.done}/${upload.total})` : null;
   // 0..100 while it runs: drives the bottle-green fill on the drop zone. null when nothing uploads.
@@ -2212,7 +2214,8 @@ export default function GalleryManageView({
   const seenUploadPhaseRef = useRef<string | null>(null);
   useEffect(() => {
     const handle = () => {
-      const u = getUploadsSnapshot().find((g) => g.galleryId === gallery.id) ?? null;
+      const key = uploadKey("photos", gallery.id);
+      const u = getUploadsSnapshot().find((g) => g.key === key) ?? null;
       if (!u) {
         seenUploadPhaseRef.current = null;
         return;
@@ -2245,7 +2248,7 @@ export default function GalleryManageView({
       }
       // Photos that landed while this page was closed come from the server.
       if (u.background || prev === null) router.refresh();
-      dismissUpload(gallery.id);
+      dismissUpload(key);
     };
     // Also an upload that finished while this page was closed (checked once, right after opening).
     const first = setTimeout(handle, 0);
@@ -3360,7 +3363,7 @@ export default function GalleryManageView({
               return;
             }
             if (uploadOpActive) {
-              cancelUpload(gallery.id);
+              cancelUpload(photoUploadKey);
               return;
             }
             cancelRequestedRef.current = true;
@@ -3382,7 +3385,7 @@ export default function GalleryManageView({
               ? () => setPrintHouseProgressVisible(false)
               : uploadOpActive
                 ? () => {
-                    sendUploadToBackground(gallery.id);
+                    sendUploadToBackground(photoUploadKey);
                     router.push("/galleries");
                   }
                 : undefined
@@ -3935,7 +3938,7 @@ export default function GalleryManageView({
         </div>
       )}
 
-      <GalleryVideosSection galleryId={gallery.id} allowed={nonBasicTierAllowed} maxBytes={VIDEO_MAX_BYTES_BY_TIER[effectiveExpiryTier] ?? 0} />
+      <GalleryVideosSection galleryId={gallery.id} galleryTitle={gallery.title} allowed={nonBasicTierAllowed} maxBytes={VIDEO_MAX_BYTES_BY_TIER[effectiveExpiryTier] ?? 0} />
       <GalleryFtpSection
         galleryId={gallery.id}
         allowed={SUBSCRIPTION_PLANS[photographerPlan].tier === "studio_pro" || photographerEmail === ADMIN_EMAIL}

@@ -2,9 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ALLOWED_ACCEPT, isAllowedImageFile, isHeicFile, convertHeicIfNeeded, putFileWithProgress } from "@/lib/imageUpload";
+import { ALLOWED_ACCEPT, isAllowedImageFile } from "@/lib/imageUpload";
+import {
+  cancelUpload,
+  dismissUpload,
+  enqueuePortfolioUpload,
+  getUploadsSnapshot,
+  isUploadActive,
+  onUploadItem,
+  otherTabUpload,
+  subscribeUploads,
+  useGalleryUploads,
+} from "@/lib/galleryUploads";
 import type { GalleryPhotoRow } from "@/lib/types";
-import { ProgressModal } from "@/components/ProgressModal";
 import { useT } from "@/i18n/client";
 
 // Sentinel for the dropdown's last option — picking it reveals a free-text input instead of
@@ -15,6 +25,9 @@ const CUSTOM_CATEGORY = "__custom__";
 // ("tab"), without going through a client gallery at all. Photos still need a `gallery_id` (see
 // gallery_photos' schema), so they land in one hidden, standalone gallery per photographer
 // (`is_portfolio_only`) — created lazily on first use, excluded from the regular galleries list.
+// The upload itself runs in the shared upload engine (lib/galleryUploads.ts, owner 2026-10-10):
+// it keeps going while the photographer moves around the app, and picking more photos meanwhile
+// joins it.
 export default function PortfolioUploadPanel({ photographerId }: { photographerId: string }) {
   const supabase = createClient();
   const t = useT();
@@ -25,25 +38,15 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
   const [category, setCategory] = useState("");
   const [customCategory, setCustomCategory] = useState("");
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [progressText, setProgressText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [doneCount, setDoneCount] = useState(0);
-  // Same full-screen blocking ProgressModal the gallery uploader uses (GalleryManageView.tsx) — a
-  // photographer shouldn't be able to wander off mid-upload and leave half a batch behind.
-  const [uploadPct, setUploadPct] = useState(0);
-  const cancelRequestedRef = useRef(false);
+  // Photos the last finished upload added (the success line).
+  const [addedCount, setAddedCount] = useState(0);
 
-  // Closing/reloading the tab mid-upload silently drops the rest of the batch — ask first.
-  useEffect(() => {
-    if (!uploading) return;
-    const warn = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [uploading]);
+  // A photographer has exactly one portfolio gallery, so the portfolio upload is the only one of
+  // its kind: coming back here mid-upload shows its progress.
+  const job = useGalleryUploads().find((u) => u.kind === "portfolio") ?? null;
+  const active = isUploadActive(job);
+  const jobKey = job?.key ?? null;
 
   // Loaded up front (not on-focus) — a <select> needs its options ready the moment it opens,
   // unlike the old text input + datalist combo this replaced.
@@ -54,6 +57,58 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
       // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
   }, [photographerId]);
+
+  // Listening while this panel is open makes the upload count as watched (no email or phone
+  // notification when it ends here). A photo landing in a new tab adds that tab to the dropdown.
+  useEffect(() => {
+    if (!jobKey) return;
+    return onUploadItem(jobKey, (value) => {
+      const tab = (value as GalleryPhotoRow).portfolio_category;
+      if (!tab) return;
+      setCategoryOptions((prev) => (prev.includes(tab) ? prev : [...prev, tab].sort((a, b) => a.localeCompare(b, "he"))));
+    });
+  }, [jobKey]);
+
+  // When the upload ends: how many made it, or what went wrong. Then it leaves the uploads list.
+  const seenUploadPhaseRef = useRef<string | null>(null);
+  useEffect(() => {
+    // The engine words each failure as "<file> (<reason>)" with its reason in Hebrew; the reason
+    // is one of the dictionary keys (galleries area), so it's shown in the photographer's language.
+    const failedLabel = (s: string) => s.replace(/ \(([^()]*)\)$/, (_, reason: string) => ` (${t(reason)})`);
+    const handle = () => {
+      const u = getUploadsSnapshot().find((g) => g.kind === "portfolio") ?? null;
+      if (!u) {
+        seenUploadPhaseRef.current = null;
+        return;
+      }
+      const prev = seenUploadPhaseRef.current;
+      seenUploadPhaseRef.current = u.phase;
+      if (u.phase === "queued" || u.phase === "uploading" || prev === u.phase) return;
+      let message: string | null = null;
+      if (u.phase === "offline") {
+        message =
+          u.succeeded > 0
+            ? t("אין חיבור לאינטרנט, ההעלאה הופסקה. {done} מתוך {total} תמונות הספיקו לעלות לפני שהחיבור ירד. יש לבדוק את החיבור לרשת ולהעלות את השאר שוב.", { done: u.succeeded, total: u.total })
+            : t("אין חיבור לאינטרנט, ההעלאה לא התחילה. יש לבדוק את החיבור לרשת ולנסות שוב.");
+      } else if (u.phase === "cancelled") {
+        message = t("ההעלאה בוטלה: {done} מתוך {n} תמונות הועלו לפני הביטול", { done: u.succeeded, n: u.total });
+      } else if (u.failed.length > 0) {
+        const files = u.failed.slice(0, 6).map(failedLabel).join(", ");
+        message = t("{n} קבצים לא הועלו: {files}", { n: u.failed.length, files: `${files}${u.failed.length > 6 ? ` ${t("ועוד...")}` : ""}` });
+      }
+      if (u.phase === "done") setAddedCount(u.succeeded);
+      // Added to what's shown already (e.g. the unsupported-format note from when the files were picked).
+      if (message) setError((prevError) => (prevError ? `${prevError}\n${message}` : message));
+      dismissUpload(u.key);
+    };
+    // Also an upload that ended while this panel was closed (checked once, right after opening).
+    const first = setTimeout(handle, 0);
+    const unsubscribe = subscribeUploads(handle);
+    return () => {
+      clearTimeout(first);
+      unsubscribe();
+    };
+  }, [t]);
 
   const getOrCreatePortfolioGallery = async (): Promise<string | null> => {
     const { data: existing, error: lookupError } = await supabase
@@ -97,115 +152,24 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList).filter(isAllowedImageFile);
     const rejected = fileList.length - files.length;
+    // Cleared so the same files can be picked again.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setAddedCount(0);
     if (files.length === 0) {
       setError(t("לא נבחרו קבצי תמונה תקינים"));
       return;
     }
-
-    setUploading(true);
-    setError(null);
-    setDoneCount(0);
-    setUploadPct(0);
-    cancelRequestedRef.current = false;
-    try {
-      const galleryId = await getOrCreatePortfolioGallery();
-      if (!galleryId) return;
-
-      const trimmedCategory = (category === CUSTOM_CATEGORY ? customCategory : category).trim() || null;
-      const failedFiles: string[] = [];
-      let succeeded = 0;
-
-      let cancelled = false;
-      for (let i = 0; i < files.length; i++) {
-        if (cancelRequestedRef.current) {
-          cancelled = true;
-          break;
-        }
-        let file = files[i];
-        setProgressText(t("מעלה {i} מתוך {n}...", { i: i + 1, n: files.length }));
-        setUploadPct((i / files.length) * 100);
-        try {
-          if (isHeicFile(file)) {
-            try {
-              file = await convertHeicIfNeeded(file);
-            } catch (e) {
-              failedFiles.push(`${file.name} (${t("המרה נכשלה")}${e instanceof Error ? `: ${e.message}` : ""})`);
-              continue;
-            }
-          }
-          const path = `${photographerId}/${galleryId}/${crypto.randomUUID()}-${file.name}`;
-          const contentType = file.type || "application/octet-stream";
-
-          // A transient network blip mid-batch used to fail that one file outright with no
-          // retry (unlike the regular gallery uploader, GalleryManageView.tsx, which already
-          // retries 3x) — same fix here: one bad moment on a real connection shouldn't force a
-          // manual re-upload of just that photo.
-          let uploaded = false;
-          let lastFailureReason = t("שגיאה לא ידועה");
-          for (let attempt = 0; attempt < 3 && !uploaded; attempt++) {
-            if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
-            try {
-              const urlRes = await fetch("/api/storage/upload-url", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ bucket: "galleries", path, contentType }),
-              });
-              const urlData = await urlRes.json();
-              if (!urlRes.ok || !urlData.url) {
-                lastFailureReason = urlData.error ?? t("שגיאה");
-                continue;
-              }
-              await putFileWithProgress(urlData.url, file, contentType, (fraction) => setUploadPct(((i + fraction) / files.length) * 100));
-              uploaded = true;
-            } catch (e) {
-              lastFailureReason = e instanceof Error ? e.message : t("שגיאת רשת");
-            }
-          }
-          if (!uploaded) {
-            failedFiles.push(`${file.name} (${lastFailureReason})`);
-            continue;
-          }
-          const { data: photoRow, error: insertError } = await supabase
-            .from("gallery_photos")
-            .insert({
-              gallery_id: galleryId,
-              photographer_id: photographerId,
-              storage_path: path,
-              original_filename: file.name,
-              file_size_bytes: file.size,
-              sort_order: i,
-              in_portfolio: true,
-              portfolio_category: trimmedCategory,
-            })
-            .select()
-            .single<GalleryPhotoRow>();
-          if (insertError || !photoRow) {
-            failedFiles.push(`${file.name} (${insertError?.message ?? t("שגיאה בשמירה")})`);
-            continue;
-          }
-          succeeded++;
-          setDoneCount(succeeded);
-          fetch(`/api/galleries/${galleryId}/photos/${photoRow.id}/preview`, { redirect: "manual" }).catch((e) =>
-            console.error("preview warm-up failed", photoRow.id, e)
-          );
-        } catch (e) {
-          failedFiles.push(`${file.name} (${e instanceof Error ? e.message : t("שגיאה לא צפויה")})`);
-        }
-      }
-
-      if (cancelled) {
-        setError(t("ההעלאה בוטלה: {done} מתוך {n} תמונות הועלו לפני הביטול", { done: succeeded, n: files.length }));
-      } else if (failedFiles.length > 0) {
-        setError(t("{n} קבצים לא הועלו: {files}", { n: failedFiles.length, files: `${failedFiles.slice(0, 6).join(", ")}${failedFiles.length > 6 ? ` ${t("ועוד...")}` : ""}` }));
-      }
-      if (rejected > 0) {
-        setError((prev) => (prev ? `${prev}, ${t("{n} קבצים לא בפורמט נתמך", { n: rejected })}` : t("{n} קבצים לא בפורמט נתמך", { n: rejected })));
-      }
-    } finally {
-      setUploading(false);
-      setProgressText(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+    // One tab uploads at a time (two would only split the connection between them).
+    if (otherTabUpload()) {
+      setError(t("כבר מתבצעת העלאה בחלון אחר. אפשר להעלות כאן כשהיא תסתיים."));
+      return;
     }
+    setError(rejected > 0 ? t("{n} קבצים לא בפורמט נתמך", { n: rejected }) : null);
+
+    const galleryId = await getOrCreatePortfolioGallery();
+    if (!galleryId) return;
+    const trimmedCategory = (category === CUSTOM_CATEGORY ? customCategory : category).trim() || null;
+    enqueuePortfolioUpload({ galleryId, userId: photographerId, category: trimmedCategory, files });
   };
 
   return (
@@ -217,7 +181,6 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
       <select
         value={category}
         onChange={(e) => setCategory(e.target.value)}
-        disabled={uploading}
         className={`w-full rounded-lg px-3 py-2 text-sm border border-line bg-white ${category === CUSTOM_CATEGORY ? "mb-2" : "mb-3"}`}
       >
         <option value="">{t("כללי (ללא נושא)")}</option>
@@ -233,24 +196,34 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
           value={customCategory}
           onChange={(e) => setCustomCategory(e.target.value)}
           placeholder={t("שם הלשונית החדשה, לדוגמה: חתונות")}
-          disabled={uploading}
           autoFocus
           className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-3"
         />
       )}
 
-      {uploading && <ProgressModal label={t("העלאת תמונות")} pct={uploadPct} onCancel={() => (cancelRequestedRef.current = true)} />}
+      {job && active && (
+        <div className="mb-3" aria-live="polite">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-ink">
+            <span className="h-3 w-3 shrink-0 rounded-full border-2 border-line border-t-ink animate-spin" aria-hidden="true" />
+            <span className="truncate">{t("מעלה {done} מתוך {total}", { done: job.done, total: job.total })}</span>
+            <span className="ms-auto shrink-0 font-data text-ink-soft">{Math.round(job.pct)}%</span>
+            <button onClick={() => cancelUpload(job.key)} className="shrink-0 text-rose underline">
+              {t("ביטול")}
+            </button>
+          </div>
+          <div className="mt-1 h-1 rounded-full bg-line overflow-hidden">
+            <div className="h-full rounded-full bg-ink transition-[width] duration-300" style={{ width: `${job.pct}%` }} />
+          </div>
+          <p className="text-[11px] text-ink-soft mt-1.5">{t("אפשר להמשיך לעבוד במערכת בזמן ההעלאה, ונעדכן כשהיא תסתיים.")}</p>
+        </div>
+      )}
       {error && <p className="text-xs text-rose mb-2 whitespace-pre-line">{error}</p>}
-      {progressText && <p className="text-xs text-ink-soft mb-2">{progressText}</p>}
-      {!uploading && doneCount > 0 && <p className="text-xs text-sage mb-2">{t("{n} תמונות נוספו לפורטפוליו", { n: doneCount })}</p>}
+      {!active && addedCount > 0 && <p className="text-xs text-sage mb-2">{t("{n} תמונות נוספו לפורטפוליו", { n: addedCount })}</p>}
 
       <input ref={fileInputRef} type="file" accept={ALLOWED_ACCEPT} multiple hidden onChange={(e) => handleFiles(e.target.files)} />
-      <button
-        onClick={() => fileInputRef.current?.click()}
-        disabled={uploading}
-        className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-      >
-        {uploading ? t("מעלה...") : t("בחירת תמונות והעלאה")}
+      {/* Stays usable while uploading: more photos join the running upload. */}
+      <button onClick={() => fileInputRef.current?.click()} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white">
+        {t("בחירת תמונות והעלאה")}
       </button>
     </div>
   );
