@@ -67,6 +67,8 @@ export type Photographer = {
   portfolio_enabled: boolean;
   portfolio_slug: string | null;
   portfolio_bio: string | null;
+  // The cover photo of each portfolio tab: tab name → gallery_photos id (migration 0158).
+  portfolio_category_covers: Record<string, string> | null;
   business_id: string | null;
   hourly_shoot_rate: number;
   pricing_suppliers: PricingSupplier[];

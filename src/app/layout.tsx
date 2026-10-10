@@ -201,6 +201,24 @@ export default async function RootLayout({
             background-size: 34px 12px;
             animation: bootWaveScroll 0.9s linear infinite;
           }
+          /* A full page load from inside the app (an internal link, a reload, back/forward, the
+             reload after an update) gets a plain spinner on the app's own background instead of
+             the logo screen, which made moving between pages feel like the app had crashed and
+             restarted (owner, 2026-10-10). The logo stays for a real first launch. */
+          @keyframes bootSpin { to { transform: rotate(360deg); } }
+          #boot-spinner { display: none; }
+          #boot-splash.boot-splash-quick { background: var(--color-paper, #f2efe9); transition-duration: 0.2s; }
+          #boot-splash.boot-splash-quick img,
+          #boot-splash.boot-splash-quick #boot-progress { display: none; }
+          #boot-splash.boot-splash-quick #boot-spinner {
+            display: block;
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            border: 3px solid rgba(127, 127, 127, 0.22);
+            border-top-color: var(--color-ink, #1c1b19);
+            animation: bootSpin 0.8s linear infinite;
+          }
         `}</style>
         {/* suppressHydrationWarning: the inline script below mutates this subtree (adding
             boot-splash-dynamic/boot-splash-out classes, setting the fill's width) before React
@@ -212,7 +230,16 @@ export default async function RootLayout({
           <div id="boot-progress" suppressHydrationWarning>
             <div id="boot-progress-fill" suppressHydrationWarning />
           </div>
+          <div id="boot-spinner" aria-hidden="true" />
         </div>
+        {/* Runs right where the splash is in the HTML, before it paints, so an in-app load never
+            flashes the logo first: same-origin referrer, a reload / back-forward, or this tab
+            already showed the app once (sessionStorage). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var s=document.getElementById("boot-splash");var n=performance.getEntriesByType&&performance.getEntriesByType("navigation")[0];var t=n&&n.type;var r=document.referrer&&document.referrer.indexOf(location.origin)===0;if(t==="reload"||t==="back_forward"||r||sessionStorage.getItem("app-booted"))s.classList.add("boot-splash-quick");sessionStorage.setItem("app-booted","1");}catch(e){}})();`,
+          }}
+        />
         {/* Drives the boot splash end-to-end:
             1. After a short real pause, switches from the static single-frame logo into the
                dynamic state (pulse animation + progress bar fades in) — see the comment above.
@@ -257,10 +284,12 @@ export default async function RootLayout({
               function hideBootSplash() {
                 clearInterval(poll);
                 setPct(100);
+                // The quick spinner has no bar to finish filling: it goes as soon as the page is in.
+                var quick = splash && splash.classList.contains("boot-splash-quick");
                 setTimeout(function () {
                   if (splash) splash.classList.add("boot-splash-out");
                   document.body.classList.add("app-content-in");
-                }, 350);
+                }, quick ? 0 : 350);
               }
               if (document.readyState === "complete") {
                 hideBootSplash();
