@@ -46,9 +46,19 @@ export async function convertHeicIfNeeded(file: File): Promise<File> {
 // report (with ~25 photos in the batch, 100/25 = 4% per file). This PUTs directly to an
 // already-minted presigned URL (minting itself, and any retry-the-whole-thing logic, stays the
 // caller's job) so the caller's progress bar can move continuously through each file's transfer.
-export function putFileWithProgress(url: string, file: File, contentType: string, onProgress: (fraction: number) => void): Promise<void> {
+// `signal` stops the transfer midway (cancelling a big upload shouldn't wait for the file to finish).
+export function putFileWithProgress(
+  url: string,
+  file: File,
+  contentType: string,
+  onProgress: (fraction: number) => void,
+  signal?: AbortSignal
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    if (signal?.aborted) return reject(new Error("בוטל"));
+    signal?.addEventListener("abort", () => xhr.abort());
+    xhr.onabort = () => reject(new Error("בוטל"));
     xhr.open("PUT", url);
     xhr.setRequestHeader("Content-Type", contentType);
     xhr.upload.onprogress = (e) => {

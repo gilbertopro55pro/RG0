@@ -17,6 +17,7 @@ import { useLang, useT } from "@/i18n/client";
 import { dirOf } from "@/i18n/config";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
+type UploadItem = { file: File; folderId: string | null };
 
 // Same ring geometry as GalleryManageView.tsx's ProgressModal (radius 42 on a 100×100 viewBox).
 const UPLOAD_RING_RADIUS = 42;
@@ -142,6 +143,39 @@ export default function PublicGalleryView({
   const uploadPct = uploadTotalBytes > 0 ? Math.min(100, ((uploadDoneBytes + uploadCurrentBytes) / uploadTotalBytes) * 100) : 0;
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const uploadDirInputRef = useRef<HTMLInputElement>(null);
+  // "המשך ברקע" swaps the full-screen overlay for a small floating pill so the client can keep
+  // browsing. Mirrored in a ref because the drain loop below is one long-lived async closure that
+  // needs the live value when it finishes, not the one from the render that started it.
+  const [uploadInBackground, setUploadInBackground] = useState(false);
+  const uploadInBackgroundRef = useRef(false);
+  const setUploadBackground = (value: boolean) => {
+    uploadInBackgroundRef.current = value;
+    setUploadInBackground(value);
+  };
+  // What the pill says for a few seconds after a background upload ends: "done" when every photo
+  // made it, "failed" when at least one didn't (uploadError says why).
+  const [uploadNotice, setUploadNotice] = useState<"done" | "failed" | null>(null);
+  const uploadNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissUploadNotice = () => {
+    if (uploadNoticeTimerRef.current) clearTimeout(uploadNoticeTimerRef.current);
+    setUploadNotice(null);
+  };
+  // Files waiting to upload. A single drain loop consumes it; photos picked or dropped while it
+  // runs are appended here and picked up by that same loop, instead of being blocked until the end.
+  const uploadQueueRef = useRef<UploadItem[]>([]);
+  const uploadDrainingRef = useRef(false);
+  const uploadRunning = uploadTotal > 0;
+
+  // The upload runs in this tab, so closing or reloading it drops whatever is still queued — ask first.
+  useEffect(() => {
+    if (!uploadRunning) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [uploadRunning]);
 
   // fetch() has no upload-progress event at all — only XHR exposes upload.onprogress — so the PUT
   // to the signed R2 URL goes through XHR here instead of fetch, unlike everywhere else in this
@@ -183,18 +217,25 @@ export default function PublicGalleryView({
   // Mirrors the photographer's own upload flow (GalleryManageView.tsx) one-for-one — same
   // signed-URL-then-PUT-then-record pattern, just against the token-scoped routes instead of the
   // photographer-authenticated ones, since this runs from an anonymous client session.
-  const uploadResolvedItems = async (items: { file: File; folderId: string | null }[]) => {
+  const uploadResolvedItems = async (items: UploadItem[]) => {
     if (items.length === 0) return;
-    setUploadError(null);
-    setUploadTotal(items.length);
-    setUploadingCount(0);
+    uploadQueueRef.current.push(...items);
+    setUploadTotal((n) => n + items.length);
     // Measured against the ORIGINAL file sizes, not the post-HEIC-conversion ones — the total is
-    // fixed once at the start of the batch, so switching basis mid-flight (a HEIC file becomes a
+    // set when files are queued, so switching basis mid-flight (a HEIC file becomes a
     // differently-sized JPEG) would make the running total drift and the percentage jump oddly.
-    setUploadTotalBytes(items.reduce((sum, it) => sum + it.file.size, 0));
-    setUploadDoneBytes(0);
-    setUploadCurrentBytes(0);
-    for (const { file: rawFile, folderId } of items) {
+    // Files that join a running upload just add their sizes on top.
+    setUploadTotalBytes((b) => b + items.reduce((sum, it) => sum + it.file.size, 0));
+    // A drain is already running: it picks the new files up from the queue.
+    if (uploadDrainingRef.current) return;
+    uploadDrainingRef.current = true;
+    setUploadError(null);
+    setUploadBackground(false);
+    dismissUploadNotice();
+    let failed = false;
+    // The queue is re-read after every file, so files appended mid-upload are uploaded here too.
+    for (let item = uploadQueueRef.current.shift(); item; item = uploadQueueRef.current.shift()) {
+      const { file: rawFile, folderId } = item;
       try {
         const file = await convertHeicIfNeeded(rawFile);
         const urlRes = await fetch(`/api/gallery/${token}/upload-url`, {
@@ -217,6 +258,7 @@ export default function PublicGalleryView({
 
         setPhotos((prev) => [...prev, { ...completeData.photo, url: URL.createObjectURL(file) }]);
       } catch (e) {
+        failed = true;
         setUploadError(e instanceof Error ? e.message : "שגיאה בהעלאה");
       } finally {
         setUploadDoneBytes((d) => d + rawFile.size);
@@ -224,10 +266,19 @@ export default function PublicGalleryView({
         setUploadingCount((c) => c + 1);
       }
     }
+    // No await between the empty-queue check above and here, so nothing can slip in unprocessed.
+    uploadDrainingRef.current = false;
     setUploadTotal(0);
     setUploadingCount(0);
     setUploadTotalBytes(0);
     setUploadDoneBytes(0);
+    // Sent to the background: there's no overlay to close, so the pill stays a moment longer to
+    // say how it went, then goes away on its own.
+    if (uploadInBackgroundRef.current) {
+      setUploadNotice(failed ? "failed" : "done");
+      uploadNoticeTimerRef.current = setTimeout(() => setUploadNotice(null), 4000);
+    }
+    setUploadBackground(false);
   };
 
   const handleUploadFiles = (fileList: FileList | null) => {
@@ -241,7 +292,7 @@ export default function PublicGalleryView({
   const handleUploadDirectory = async (fileList: FileList | null) => {
     if (!fileList) return;
     const cache = new Map(folders.map((f) => [f.name, f.id]));
-    const items: { file: File; folderId: string | null }[] = [];
+    const items: UploadItem[] = [];
     for (const file of Array.from(fileList)) {
       if (isHiddenFileName(file.name) || !isAllowedImageFile(file)) continue;
       const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || "";
@@ -259,7 +310,7 @@ export default function PublicGalleryView({
     if (dropped.length === 0) return;
     const allowed = dropped.filter((d) => isAllowedImageFile(d.file));
     const cache = new Map(folders.map((f) => [f.name, f.id]));
-    const items: { file: File; folderId: string | null }[] = [];
+    const items: UploadItem[] = [];
     for (const { file, relativePath } of allowed) {
       const folderName = folderNameFromPath(relativePath);
       const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
@@ -1542,25 +1593,31 @@ export default function PublicGalleryView({
               borderColor: isDragging ? "var(--gt-accent)" : "var(--gt-border)",
               background: isDragging ? "var(--gt-surface-soft)" : "var(--gt-surface)",
             }}
-            className={`flex border-2 border-dashed transition-colors ${uploadTotal > 0 ? "pointer-events-none opacity-60" : ""}`}
+            className="flex border-2 border-dashed transition-colors"
           >
+            {/* Stays live during an upload: whatever is picked or dropped now joins the running one. */}
             <button
               onClick={() => uploadInputRef.current?.click()}
-              disabled={uploadTotal > 0}
-              className="w-full flex items-center justify-center px-6 text-base font-semibold text-center"
+              className="w-full flex flex-col items-center justify-center gap-1 px-6 text-base font-semibold text-center"
               style={{ color: "var(--gt-ink)" }}
             >
-              {uploadTotal > 0
-                ? t("מעלה... ({done}/{total})", { done: uploadingCount, total: uploadTotal })
-                : isDragging
-                  ? t("שחררו כאן להעלאה")
-                  : t("העלאת תמונות, או גררו לכאן תמונות ותיקיות")}
+              {isDragging ? (
+                t("שחררו כאן להעלאה")
+              ) : uploadRunning ? (
+                <>
+                  <span>{t("מעלה... ({done}/{total})", { done: uploadingCount, total: uploadTotal })}</span>
+                  <span className="text-xs font-normal" style={{ color: "var(--gt-ink-soft)" }}>
+                    {t("אפשר להוסיף עוד תמונות להעלאה")}
+                  </span>
+                </>
+              ) : (
+                t("העלאת תמונות, או גררו לכאן תמונות ותיקיות")
+              )}
             </button>
           </div>
           <button
             onClick={() => uploadDirInputRef.current?.click()}
-            disabled={uploadTotal > 0}
-            className={`w-full flex items-center justify-center py-2 mt-1.5 text-xs font-semibold border disabled:opacity-60 ${BTN_PRESS}`}
+            className={`w-full flex items-center justify-center py-2 mt-1.5 text-xs font-semibold border ${BTN_PRESS}`}
             style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink-soft)", borderRadius: "var(--gt-radius)" }}
           >
             {t("העלאת תיקייה שלמה מהמחשב")}
@@ -1572,7 +1629,7 @@ export default function PublicGalleryView({
           )}
         </div>
       )}
-      {uploadTotal > 0 && (
+      {uploadRunning && !uploadInBackground && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }}>
           <div
             className="w-64 rounded-3xl overflow-hidden shadow-sheet flex flex-col items-center gap-3 px-6 py-9 text-center"
@@ -1623,8 +1680,66 @@ export default function PublicGalleryView({
                 {t("החלון ייסגר אוטומטית בסיום ההעלאה")}
               </div>
             </div>
+            <button
+              onClick={() => setUploadBackground(true)}
+              className={`mt-1 w-full py-2.5 text-sm font-semibold border ${BTN_PRESS}`}
+              style={{ background: "var(--gt-surface-soft)", borderColor: "var(--gt-border)", color: "var(--gt-ink)", borderRadius: "var(--gt-radius)" }}
+            >
+              {t("המשך ברקע")}
+            </button>
           </div>
         </div>
+      )}
+      {/* Background upload pill. Sits above the floating share / back-to-top buttons (bottom-5,
+          h-11), which themselves move up to bottom-28 while the favorites bar shows, so it never
+          covers either. z-[45]: above those, below the bottom sheets and the lightbox (z-50). */}
+      {((uploadRunning && uploadInBackground) || uploadNotice) && (
+        <button
+          onClick={() => (uploadRunning ? setUploadBackground(false) : dismissUploadNotice())}
+          className={`fixed inset-x-0 mx-auto w-fit max-w-[calc(100vw-2rem)] z-[45] flex items-center gap-2.5 overflow-hidden rounded-full border shadow-sheet ps-3 pe-4 py-2.5 text-sm font-semibold ${BTN_PRESS}`}
+          style={{
+            bottom: `calc(${bottomBarVisible ? "10.5rem" : "4.75rem"} + env(safe-area-inset-bottom, 0px))`,
+            background: "var(--gt-surface)",
+            borderColor: "var(--gt-border)",
+            color: "var(--gt-ink)",
+          }}
+        >
+          {uploadRunning ? (
+            <>
+              <svg viewBox="0 0 24 24" width={18} height={18} className="shrink-0 motion-safe:animate-spin" aria-hidden="true">
+                <circle cx={12} cy={12} r={9} fill="none" stroke="rgba(34,197,94,0.25)" strokeWidth={3} />
+                <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="#22c55e" strokeWidth={3} strokeLinecap="round" />
+              </svg>
+              <span className="min-w-0 truncate">{t("מעלה תמונות ({done}/{total})", { done: uploadingCount, total: uploadTotal })}</span>
+              <span className="font-data shrink-0" style={{ color: "#22c55e" }}>
+                {Math.floor(uploadPct)}%
+              </span>
+              <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[3px]" style={{ background: "rgba(34,197,94,0.2)" }} />
+              <span
+                aria-hidden="true"
+                className="absolute start-0 bottom-0 h-[3px]"
+                style={{ width: `${uploadPct}%`, background: "#22c55e", transition: "width 150ms linear" }}
+              />
+            </>
+          ) : (
+            <>
+              <span
+                aria-hidden="true"
+                className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-white"
+                style={{ background: uploadNotice === "done" ? "#22c55e" : "#ef4444" }}
+              >
+                {uploadNotice === "done" ? (
+                  <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12.5l4.5 4.5L19 7.5" />
+                  </svg>
+                ) : (
+                  <span className="text-xs font-bold leading-none">!</span>
+                )}
+              </span>
+              <span className="min-w-0 truncate">{uploadNotice === "done" ? t("התמונות הועלו") : t(uploadError ?? "שגיאה בהעלאה")}</span>
+            </>
+          )}
+        </button>
       )}
       {visiblePhotos.length === 0 ? (
         <p className="text-sm text-center py-16" style={{ color: "var(--gt-ink-soft)" }}>

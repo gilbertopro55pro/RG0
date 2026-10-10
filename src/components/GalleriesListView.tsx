@@ -64,12 +64,19 @@ export default function GalleriesListView({
     router.replace(`/galleries/${intent.galleryId}`);
   }, [router]);
 
-  // Photo uploads running in the background (lib/galleryUploads.ts): each gallery's row shows its
-  // own progress, and when one finishes the photo counts are read from the server again.
+  // Photo and video uploads running in the background (lib/galleryUploads.ts): each gallery's row
+  // shows its own progress (the photos when both run), and when one finishes the photo counts are
+  // read from the server again.
   const uploads = useGalleryUploads();
-  const uploadByGallery = useMemo(() => new Map(uploads.map((u) => [u.galleryId, u])), [uploads]);
+  const uploadByGallery = useMemo(() => {
+    const byGallery = new Map<string, GalleryUpload>();
+    for (const u of uploads) {
+      if (u.kind === "photos" || (u.kind === "videos" && !byGallery.has(u.targetId))) byGallery.set(u.targetId, u);
+    }
+    return byGallery;
+  }, [uploads]);
   useEffect(() => {
-    const activeIds = () => new Set(getUploadsSnapshot().filter((u) => u.phase === "queued" || u.phase === "uploading").map((u) => u.galleryId));
+    const activeIds = () => new Set(getUploadsSnapshot().filter((u) => u.phase === "queued" || u.phase === "uploading").map((u) => u.key));
     let before = activeIds();
     return subscribeUploads(() => {
       const now = activeIds();
@@ -329,9 +336,12 @@ export default function GalleriesListView({
 function UploadLine({ upload }: { upload: GalleryUpload }) {
   const t = useT();
   const running = upload.phase === "uploading";
+  const videos = upload.kind === "videos";
   const text =
     upload.phase === "queued"
-      ? t("בתור להעלאה, {n} תמונות", { n: upload.total })
+      ? videos
+        ? t("בתור להעלאה, {n} סרטונים", { n: upload.total })
+        : t("בתור להעלאה, {n} תמונות", { n: upload.total })
       : running
         ? t("מעלה {done} מתוך {total}", { done: upload.done, total: upload.total })
         : upload.phase === "offline"
@@ -340,7 +350,9 @@ function UploadLine({ upload }: { upload: GalleryUpload }) {
             ? t("ההעלאה בוטלה")
             : upload.failed.length > 0
               ? t("הועלו {ok} מתוך {total}, {n} לא הועלו", { ok: upload.succeeded, total: upload.total, n: upload.failed.length })
-              : t("הועלו {n} תמונות", { n: upload.succeeded });
+              : videos
+                ? t("הועלו {n} סרטונים", { n: upload.succeeded })
+                : t("הועלו {n} תמונות", { n: upload.succeeded });
   const good = upload.phase === "done" && upload.failed.length === 0;
   return (
     <div className="mt-1.5" aria-live="polite">

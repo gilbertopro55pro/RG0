@@ -138,6 +138,13 @@ const dict: AreaDict = {
     "העלאת התמונות לגלריה \"{title}\" הסתיימה.": "The photo upload to the gallery \"{title}\" finished.",
     "העלאת התמונות לגלריה \"{title}\" הסתיימה, {ok} מתוך {total} תמונות הועלו בהצלחה.": "The photo upload to the gallery \"{title}\" finished, {ok} of {total} photos uploaded successfully.",
     "לצפייה בגלריה:": "View the gallery:",
+    "העלאת התמונות לפורטפוליו הסתיימה": "Your portfolio photo upload finished",
+    "העלאת התמונות לפורטפוליו הסתיימה.": "Your portfolio photo upload finished.",
+    "העלאת התמונות לפורטפוליו הסתיימה, {ok} מתוך {total} תמונות הועלו בהצלחה.": "Your portfolio photo upload finished, {ok} of {total} photos uploaded successfully.",
+    "לצפייה בפורטפוליו:": "View your portfolio:",
+    "העלאת הסרטונים ל\"{title}\" הסתיימה": "The video upload to \"{title}\" finished",
+    "העלאת הסרטונים לגלריה \"{title}\" הסתיימה.": "The video upload to the gallery \"{title}\" finished.",
+    "העלאת הסרטונים לגלריה \"{title}\" הסתיימה, {ok} מתוך {total} סרטונים הועלו בהצלחה.": "The video upload to the gallery \"{title}\" finished, {ok} of {total} videos uploaded successfully.",
 
     // Album export ready
     "ייצוא {format} מוכן להורדה | {title}": "{format} export ready to download | {title}",
@@ -291,6 +298,13 @@ const dict: AreaDict = {
     "העלאת התמונות לגלריה \"{title}\" הסתיימה.": "Загрузка фото в галерею «{title}» завершена.",
     "העלאת התמונות לגלריה \"{title}\" הסתיימה, {ok} מתוך {total} תמונות הועלו בהצלחה.": "Загрузка фото в галерею «{title}» завершена, успешно загружено {ok} из {total}.",
     "לצפייה בגלריה:": "Открыть галерею:",
+    "העלאת התמונות לפורטפוליו הסתיימה": "Загрузка фото в портфолио завершена",
+    "העלאת התמונות לפורטפוליו הסתיימה.": "Загрузка фото в портфолио завершена.",
+    "העלאת התמונות לפורטפוליו הסתיימה, {ok} מתוך {total} תמונות הועלו בהצלחה.": "Загрузка фото в портфолио завершена, успешно загружено {ok} из {total}.",
+    "לצפייה בפורטפוליו:": "Открыть портфолио:",
+    "העלאת הסרטונים ל\"{title}\" הסתיימה": "Загрузка видео в «{title}» завершена",
+    "העלאת הסרטונים לגלריה \"{title}\" הסתיימה.": "Загрузка видео в галерею «{title}» завершена.",
+    "העלאת הסרטונים לגלריה \"{title}\" הסתיימה, {ok} מתוך {total} סרטונים הועלו בהצלחה.": "Загрузка видео в галерею «{title}» завершена, успешно загружено {ok} из {total}.",
 
     // Album export ready
     "ייצוא {format} מוכן להורדה | {title}": "Экспорт {format} готов к скачиванию | {title}",
