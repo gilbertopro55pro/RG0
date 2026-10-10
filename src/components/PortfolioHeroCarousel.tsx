@@ -68,10 +68,14 @@ export default function PortfolioHeroCarousel({ photos }: { photos: HeroPhoto[] 
   if (slides.length <= 1) {
     const only = slides[0] ?? [];
     return (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-1 h-[46vh] min-h-[280px] max-h-[560px]">
+      <div
+        className="grid grid-cols-1 md:grid-cols-3 gap-1 h-[46vh] min-h-[280px] max-h-[560px] select-none"
+        style={{ WebkitTouchCallout: "none" }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
         {only.map((p) => (
           // eslint-disable-next-line @next/next/no-img-element
-          <img key={p.id} src={p.url} alt="" className="w-full h-full object-cover" />
+          <img key={p.id} src={p.url} alt="" draggable={false} className="w-full h-full object-cover" />
         ))}
       </div>
     );
@@ -80,7 +84,13 @@ export default function PortfolioHeroCarousel({ photos }: { photos: HeroPhoto[] 
   const renderSlides = [...slides, slides[0]];
 
   return (
-    <div className="relative h-[46vh] min-h-[280px] max-h-[560px] overflow-hidden" dir="ltr">
+    // No long-press callout, drag or right-click menu: the portfolio is for viewing (owner, 2026-10-10).
+    <div
+      className="relative h-[46vh] min-h-[280px] max-h-[560px] overflow-hidden select-none"
+      dir="ltr"
+      style={{ WebkitTouchCallout: "none" }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <div
         className="flex h-full"
         style={{
@@ -97,6 +107,7 @@ export default function PortfolioHeroCarousel({ photos }: { photos: HeroPhoto[] 
                 key={p.id}
                 src={p.url}
                 alt=""
+                draggable={false}
                 className={j === 0 ? "w-full h-full object-cover" : "w-full h-full object-cover hidden md:block"}
               />
             ))}

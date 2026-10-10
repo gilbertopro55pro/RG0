@@ -3,7 +3,7 @@ import Link from "next/link";
 import { galleryFont } from "@/lib/galleryTheme";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import PortfolioHeroCarousel from "@/components/PortfolioHeroCarousel";
-import PortfolioGrid from "@/components/PortfolioGrid";
+import PortfolioBrowser from "@/components/PortfolioBrowser";
 import {
   loadPortfolio,
   scopePortfolioPhotos,
@@ -19,7 +19,6 @@ import {
 // Colors are hardcoded rather than reading the shared --color-* tokens: this page's look shouldn't
 // change based on a visitor's OS light/dark preference the way the rest of the app does.
 const INK = "#0b0b0d";
-const INK_RAISED = "#151517";
 const TEXT_SOFT = "#b7b7bd";
 const BRASS = "#c9a24b"; // the app's existing --color-brass, used here as the one deliberate
 // "premium" accent — see the 2026-09-23 brand critique's recommendation to lean on it as THE
@@ -71,17 +70,16 @@ export default async function PortfolioPage({
 
   const { scopedPhotos, gridPhotos } = scopePortfolioPhotos(allPhotos, tabsParam, activeCategory);
 
-  // Tab links need to carry the same restriction forward, or clicking between tabs on a curated
-  // link would silently widen back out to the whole portfolio.
-  const tabsSuffix = tabsParam ? `&tabs=${tabsParam}` : "";
-
   const categories = Array.from(new Set(scopedPhotos.map((p) => p.portfolio_category).filter((c): c is string => !!c)));
 
-  // One representative photo per category tile — the most recent tagged with it, since
-  // scopedPhotos is already ordered newest-first.
+  // One representative photo per category tile: the cover the photographer picked for that tab
+  // (Settings › פורטפוליו, photographers.portfolio_category_covers) while it's still in that tab,
+  // otherwise the most recent tagged with it (scopedPhotos is already ordered newest-first).
+  const covers = photographer.portfolio_category_covers ?? {};
   const categoryRepresentative = new Map<string, PortfolioPhoto>();
   for (const p of scopedPhotos) {
-    if (p.portfolio_category && !categoryRepresentative.has(p.portfolio_category)) categoryRepresentative.set(p.portfolio_category, p);
+    const c = p.portfolio_category;
+    if (c && (!categoryRepresentative.has(c) || covers[c] === p.id)) categoryRepresentative.set(c, p);
   }
   // Hero strip = only the photos the photographer starred (PortfolioFeaturedPicker.tsx), still
   // within this link's `tabs` scope. None starred → no strip at all, rather than a random pick.
@@ -163,70 +161,15 @@ export default async function PortfolioPage({
         </div>
       )}
 
-      {/* Category navigation as photo tiles rather than plain pills — each tab is a real image
-          from that category, not just a label, matching a photography portfolio's own visual
-          language (a tab bar of text pills is the one place this page still looked like the
-          app's admin UI instead of a showcase). */}
-      {categories.length > 0 && (
-        <div className="px-6 py-12" style={{ background: INK_RAISED }}>
-          <p className="text-center text-xs font-semibold mb-6" style={{ color: TEXT_SOFT }}>
-            נושאים
-          </p>
-          <div className="flex flex-wrap justify-center gap-5 max-w-4xl mx-auto">
-            <a
-              href={tabsParam ? `/p/${slug}?tabs=${tabsParam}` : `/p/${slug}`}
-              className="flex flex-col items-center gap-2 w-24"
-            >
-              <span
-                className="h-24 w-24 rounded-lg flex items-center justify-center text-[11px] font-semibold"
-                style={{
-                  background: !activeCategory ? BRASS : "#232326",
-                  color: !activeCategory ? "#1a1408" : TEXT_SOFT,
-                  boxShadow: !activeCategory ? `0 0 0 2px ${BRASS}` : undefined,
-                }}
-              >
-                הכל
-              </span>
-              <span className="text-[11px]" style={{ color: !activeCategory ? "#f2f2ee" : TEXT_SOFT }}>
-                הכל
-              </span>
-            </a>
-            {categories.map((c) => (
-              <a key={c} href={`/p/${slug}?category=${encodeURIComponent(c)}${tabsSuffix}`} className="flex flex-col items-center gap-2 w-24">
-                <span
-                  className="h-24 w-24 rounded-lg overflow-hidden bg-black/40"
-                  style={{ boxShadow: activeCategory === c ? `0 0 0 2px ${BRASS}` : undefined }}
-                >
-                  {categoryThumb.has(c) && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={categoryThumb.get(c)} alt="" className="h-full w-full object-cover" />
-                  )}
-                </span>
-                <span className="text-[11px] leading-snug text-center line-clamp-2 max-w-full" style={{ color: activeCategory === c ? "#f2f2ee" : TEXT_SOFT }}>
-                  {c}
-                </span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="px-3 sm:px-6 py-10" style={{ background: INK }}>
-        {gridPhotos.length === 0 ? (
-          <p className="text-center text-sm py-16" style={{ color: TEXT_SOFT }}>
-            {activeCategory ? "אין עדיין תמונות בנושא הזה." : "תיק העבודות עדיין ריק."}
-          </p>
-        ) : (
-          <PortfolioGrid
-            key={`${activeCategory ?? ""}|${tabsParam ?? ""}`}
-            slug={slug}
-            initialPhotos={gridInitial}
-            initialHasMore={gridPhotos.length > firstPage.length}
-            category={activeCategory}
-            tabs={tabsParam}
-          />
-        )}
-      </div>
+      {/* The tab tiles and the grid: tabs switch in place, without reloading the page. */}
+      <PortfolioBrowser
+        slug={slug}
+        tabs={tabsParam}
+        categories={categories.map((c) => ({ name: c, thumb: categoryThumb.get(c) ?? null }))}
+        initialCategory={activeCategory}
+        initialPhotos={gridInitial}
+        initialHasMore={gridPhotos.length > firstPage.length}
+      />
 
       <p className="text-center text-[11px] py-8" style={{ background: INK, color: TEXT_SOFT }}>
         תיק עבודות שנבנה עם{" "}
