@@ -3,6 +3,7 @@ import { getPublicPreviewUrl, getSignedDownloadUrl } from "@/lib/storage";
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import type { GalleryPhotoRow, Photographer } from "@/lib/types";
+import { sortSubTabs } from "@/lib/portfolioNames";
 
 // Server-only helpers shared by the public portfolio page (src/app/p/[slug]/page.tsx) and its
 // "load more" API (src/app/api/portfolio/[slug]/photos/route.ts) — both MUST gate and scope
@@ -83,7 +84,8 @@ export function scopePortfolioPhotos(
   return { scopedPhotos, gridPhotos };
 }
 
-// Each tab's sub-tabs, in the order they were started (by their oldest photo).
+// Each tab's sub-tabs: numbered ones ("1.הכנות", from numbered folders) by their number, the rest
+// after them in the order they were started (by their oldest photo).
 export function portfolioSubTabs(scopedPhotos: PortfolioPhoto[]): Record<string, string[]> {
   const first = new Map<string, Map<string, string>>();
   for (const p of scopedPhotos) {
@@ -94,7 +96,13 @@ export function portfolioSubTabs(scopedPhotos: PortfolioPhoto[]): Record<string,
     if (!seen || p.created_at < seen) subs.set(p.portfolio_subcategory, p.created_at);
   }
   return Object.fromEntries(
-    [...first.entries()].map(([tab, subs]) => [tab, [...subs.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([name]) => name)])
+    [...first.entries()].map(([tab, subs]) => [
+      tab,
+      sortSubTabs(
+        [...subs.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([name]) => name),
+        (name) => name
+      ),
+    ])
   );
 }
 

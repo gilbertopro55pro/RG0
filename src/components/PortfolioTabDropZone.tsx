@@ -133,7 +133,7 @@ export default function PortfolioTabDropZone({ photographerId, tab, subs }: { ph
             className="w-28 min-w-0 rounded-md border border-line bg-white px-1.5 py-1 text-xs"
           />
         )}
-        <span className="flex-1 min-w-0 truncate text-xs text-ink-soft">{dragging ? t("שחררו כאן להעלאה") : t("גררו לכאן תמונות או תיקיות")}</span>
+        <span className="flex-1 min-w-0 truncate text-xs text-ink-soft">{dragging ? t("שחררו כאן להעלאה") : t("גררו לכאן תיקיות (כל תיקייה = תת-לשונית) או תמונות")}</span>
         <button
           type="button"
           onClick={(e) => {

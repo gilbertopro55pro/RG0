@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import { getUploadsSnapshot, isUploadActive, subscribeUploads } from "@/lib/galleryUploads";
 import PortfolioTabDropZone from "@/components/PortfolioTabDropZone";
+import { sortSubTabs } from "@/lib/portfolioNames";
 import BodyPortal from "@/components/BodyPortal";
 import { useT } from "@/i18n/client";
 
@@ -159,9 +160,13 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
             key,
             label: key === UNCATEGORIZED ? "כללי (ללא נושא)" : key,
             count,
-            subs: Array.from(subCounts.get(key)?.entries() ?? [])
-              .map(([name, n]) => ({ name, count: n }))
-              .sort((a, b) => a.name.localeCompare(b.name, "he")),
+            // Same order as the public page: numbered sub-tabs ("1.הכנות") by their number first.
+            subs: sortSubTabs(
+              Array.from(subCounts.get(key)?.entries() ?? [])
+                .map(([name, n]) => ({ name, count: n }))
+                .sort((a, b) => a.name.localeCompare(b.name, "he")),
+              (s) => s.name
+            ),
           }))
           .sort((a, b) => a.label.localeCompare(b.label, "he"))
       );
