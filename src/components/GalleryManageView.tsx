@@ -349,6 +349,10 @@ export default function GalleryManageView({
   const [showRejectedOnly, setShowRejectedOnly] = useState(false);
   const [portfolioCategoryPhoto, setPortfolioCategoryPhoto] = useState<PhotoWithUrl | null>(null);
   const [portfolioCategoryInput, setPortfolioCategoryInput] = useState("");
+  // Optional sub-tab inside that tab, with each tab's existing sub-tabs (across all the
+  // photographer's portfolio photos, loaded when the sheet opens) as suggestions.
+  const [portfolioSubcategoryInput, setPortfolioSubcategoryInput] = useState("");
+  const [portfolioSubTabs, setPortfolioSubTabs] = useState<Record<string, string[]>>({});
   const [removeFromPortfolioPhoto, setRemoveFromPortfolioPhoto] = useState<PhotoWithUrl | null>(null);
   const [faceClusters, setFaceClusters] = useState<{ clusterId: string; photoIds: Set<string>; representative: { photoId: string; box: FaceBox } }[]>([]);
   const [faceFilterClusterId, setFaceFilterClusterId] = useState<string | null>(null);
@@ -2553,12 +2557,26 @@ export default function GalleryManageView({
     }
     setPortfolioCategoryPhoto(photo);
     setPortfolioCategoryInput(photo.portfolio_category ?? "");
+    setPortfolioSubcategoryInput(photo.portfolio_subcategory ?? "");
+    // A sub-tab exists only through the photos that carry it (RLS keeps this to the photographer's).
+    const { data } = await supabase
+      .from("gallery_photos")
+      .select("portfolio_category, portfolio_subcategory")
+      .eq("in_portfolio", true)
+      .not("portfolio_subcategory", "is", null);
+    const subTabs: Record<string, string[]> = {};
+    for (const r of (data ?? []) as Pick<GalleryPhotoRow, "portfolio_category" | "portfolio_subcategory">[]) {
+      if (!r.portfolio_category || !r.portfolio_subcategory) continue;
+      const list = (subTabs[r.portfolio_category] ??= []);
+      if (!list.includes(r.portfolio_subcategory)) list.push(r.portfolio_subcategory);
+    }
+    setPortfolioSubTabs(subTabs);
   };
 
   const confirmRemoveFromPortfolio = async () => {
     if (!removeFromPortfolioPhoto) return;
     const photoId = removeFromPortfolioPhoto.id;
-    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, in_portfolio: false, portfolio_category: null } : p)));
+    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, in_portfolio: false, portfolio_category: null, portfolio_subcategory: null } : p)));
     setRemoveFromPortfolioPhoto(null);
     await supabase.from("gallery_photos").update({ in_portfolio: false, portfolio_category: null }).eq("id", photoId);
   };
@@ -2566,10 +2584,11 @@ export default function GalleryManageView({
   const savePortfolioCategory = async () => {
     if (!portfolioCategoryPhoto) return;
     const category = portfolioCategoryInput.trim() || null;
+    const subcategory = category ? portfolioSubcategoryInput.trim() || null : null;
     const photoId = portfolioCategoryPhoto.id;
-    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, in_portfolio: true, portfolio_category: category } : p)));
+    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, in_portfolio: true, portfolio_category: category, portfolio_subcategory: subcategory } : p)));
     setPortfolioCategoryPhoto(null);
-    await supabase.from("gallery_photos").update({ in_portfolio: true, portfolio_category: category }).eq("id", photoId);
+    await supabase.from("gallery_photos").update({ in_portfolio: true, portfolio_category: category, portfolio_subcategory: subcategory }).eq("id", photoId);
   };
 
   const downloadPhoto = (photo: PhotoWithUrl) => {
@@ -5886,6 +5905,21 @@ export default function GalleryManageView({
             />
             <datalist id="portfolio-category-suggestions">
               {Array.from(new Set(photos.map((p) => p.portfolio_category).filter((c): c is string => !!c))).map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+            {/* A sub-tab needs a tab. */}
+            <label className="text-xs block mb-1 text-ink-soft">{t("תת-לשונית (לא חובה)")}</label>
+            <input
+              value={portfolioSubcategoryInput}
+              onChange={(e) => setPortfolioSubcategoryInput(e.target.value)}
+              list="portfolio-subcategory-suggestions"
+              disabled={!portfolioCategoryInput.trim()}
+              placeholder={portfolioCategoryInput.trim() ? t("לדוגמה: הכנות") : t("קודם בוחרים לשונית")}
+              className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-4 disabled:opacity-50"
+            />
+            <datalist id="portfolio-subcategory-suggestions">
+              {(portfolioSubTabs[portfolioCategoryInput.trim()] ?? []).map((c) => (
                 <option key={c} value={c} />
               ))}
             </datalist>

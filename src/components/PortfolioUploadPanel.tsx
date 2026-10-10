@@ -18,8 +18,13 @@ import type { GalleryPhotoRow } from "@/lib/types";
 import { useT } from "@/i18n/client";
 
 // Sentinel for the dropdown's last option — picking it reveals a free-text input instead of
-// picking one of the existing tabs. Never sent to the DB (see handleFiles' `trimmedCategory`).
+// picking one of the existing tabs. Never sent to the DB (see `chosenTab`). Same for sub-tabs.
 const CUSTOM_CATEGORY = "__custom__";
+const CUSTOM_SUBCATEGORY = "__custom__";
+
+const sortHe = (list: string[]) => list.sort((a, b) => a.localeCompare(b, "he"));
+// The list with `value` added (sorted), or the same list when it's there already.
+const withOption = (list: string[] | undefined, value: string) => (list?.includes(value) ? list : sortHe([...(list ?? []), value]));
 
 // Lets a photographer add photos straight to the public portfolio, tagged to a chosen category
 // ("tab"), without going through a client gallery at all. Photos still need a `gallery_id` (see
@@ -34,10 +39,16 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // "" means no tab (shows under "כללי"); CUSTOM_CATEGORY means the free-text input below is the
-  // real source of truth instead — see trimmedCategory in handleFiles.
+  // real source of truth instead — see chosenTab below.
   const [category, setCategory] = useState("");
   const [customCategory, setCustomCategory] = useState("");
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  // Optional sub-tab inside the chosen tab, same "" / CUSTOM_SUBCATEGORY scheme. A sub-tab exists
+  // only through the photos that carry it, so a tab's options are the distinct
+  // portfolio_subcategory values among its photos.
+  const [subcategory, setSubcategory] = useState("");
+  const [customSubcategory, setCustomSubcategory] = useState("");
+  const [subcategoryOptions, setSubcategoryOptions] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   // Photos the last finished upload added (the success line).
   const [addedCount, setAddedCount] = useState(0);
@@ -52,20 +63,25 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
   // unlike the old text input + datalist combo this replaced.
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from("gallery_photos").select("portfolio_category").eq("photographer_id", photographerId).not("portfolio_category", "is", null);
-      setCategoryOptions(Array.from(new Set((data ?? []).map((r) => r.portfolio_category as string).filter(Boolean))).sort((a, b) => a.localeCompare(b, "he")));
+      const { data } = await supabase.from("gallery_photos").select("portfolio_category, portfolio_subcategory").eq("photographer_id", photographerId).not("portfolio_category", "is", null);
+      const rows = (data ?? []) as Pick<GalleryPhotoRow, "portfolio_category" | "portfolio_subcategory">[];
+      setCategoryOptions(sortHe(Array.from(new Set(rows.map((r) => r.portfolio_category as string).filter(Boolean)))));
+      const subs: Record<string, string[]> = {};
+      for (const r of rows) if (r.portfolio_category && r.portfolio_subcategory) subs[r.portfolio_category] = withOption(subs[r.portfolio_category], r.portfolio_subcategory);
+      setSubcategoryOptions(subs);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
   }, [photographerId]);
 
   // Listening while this panel is open makes the upload count as watched (no email or phone
-  // notification when it ends here). A photo landing in a new tab adds that tab to the dropdown.
+  // notification when it ends here). A photo landing in a new tab (or sub-tab) adds it to the dropdown.
   useEffect(() => {
     if (!jobKey) return;
     return onUploadItem(jobKey, (value) => {
-      const tab = (value as GalleryPhotoRow).portfolio_category;
+      const { portfolio_category: tab, portfolio_subcategory: sub } = value as GalleryPhotoRow;
       if (!tab) return;
-      setCategoryOptions((prev) => (prev.includes(tab) ? prev : [...prev, tab].sort((a, b) => a.localeCompare(b, "he"))));
+      setCategoryOptions((prev) => withOption(prev, tab));
+      if (sub) setSubcategoryOptions((prev) => (prev[tab]?.includes(sub) ? prev : { ...prev, [tab]: withOption(prev[tab], sub) }));
     });
   }, [jobKey]);
 
@@ -148,6 +164,12 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
     return created.id;
   };
 
+  // The tab the upload goes to ("" = none). A sub-tab needs one, so its control shows only then.
+  const chosenTab = (category === CUSTOM_CATEGORY ? customCategory : category).trim();
+  const tabSubOptions = subcategoryOptions[chosenTab] ?? [];
+  // A picked sub-tab that the (retyped) new tab doesn't have falls back to none.
+  const subValue = subcategory === CUSTOM_SUBCATEGORY || tabSubOptions.includes(subcategory) ? subcategory : "";
+
   const handleFiles = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList).filter(isAllowedImageFile);
@@ -168,8 +190,9 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
 
     const galleryId = await getOrCreatePortfolioGallery();
     if (!galleryId) return;
-    const trimmedCategory = (category === CUSTOM_CATEGORY ? customCategory : category).trim() || null;
-    enqueuePortfolioUpload({ galleryId, userId: photographerId, category: trimmedCategory, files });
+    const trimmedCategory = chosenTab || null;
+    const trimmedSubcategory = trimmedCategory ? (subValue === CUSTOM_SUBCATEGORY ? customSubcategory : subValue).trim() || null : null;
+    enqueuePortfolioUpload({ galleryId, userId: photographerId, category: trimmedCategory, subcategory: trimmedSubcategory, files });
   };
 
   return (
@@ -180,7 +203,11 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
       <label className="text-xs block mb-1 text-ink-soft">{t("לשונית (נושא) להעלאה")}</label>
       <select
         value={category}
-        onChange={(e) => setCategory(e.target.value)}
+        onChange={(e) => {
+          setCategory(e.target.value);
+          setSubcategory("");
+          setCustomSubcategory("");
+        }}
         className={`w-full rounded-lg px-3 py-2 text-sm border border-line bg-white ${category === CUSTOM_CATEGORY ? "mb-2" : "mb-3"}`}
       >
         <option value="">{t("כללי (ללא נושא)")}</option>
@@ -199,6 +226,33 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
           autoFocus
           className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-3"
         />
+      )}
+      {chosenTab && (
+        <>
+          <label className="text-xs block mb-1 text-ink-soft">{t("תת-לשונית (לא חובה)")}</label>
+          <select
+            value={subValue}
+            onChange={(e) => setSubcategory(e.target.value)}
+            className={`w-full rounded-lg px-3 py-2 text-sm border border-line bg-white ${subValue === CUSTOM_SUBCATEGORY ? "mb-2" : "mb-3"}`}
+          >
+            <option value="">{t("בלי תת-לשונית")}</option>
+            {tabSubOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+            <option value={CUSTOM_SUBCATEGORY}>{t("+ תת-לשונית חדשה...")}</option>
+          </select>
+          {subValue === CUSTOM_SUBCATEGORY && (
+            <input
+              value={customSubcategory}
+              onChange={(e) => setCustomSubcategory(e.target.value)}
+              placeholder={t("שם תת-הלשונית החדשה, לדוגמה: הכנות")}
+              autoFocus
+              className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-3"
+            />
+          )}
+        </>
       )}
 
       {job && active && (
