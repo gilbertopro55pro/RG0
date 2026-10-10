@@ -282,6 +282,7 @@ const dict: AreaDict = {
     "הסיסמה הייעודית משמשת רק לחיבור הזה, ואפשר לבטל אותה בכל רגע מתוך אותו מסך ב-Apple בלי להשפיע על שאר החשבון. לעולם אל תזינו כאן את הסיסמה הרגילה של ה-Apple ID.": "The app-specific password is used only for this connection, and you can revoke it anytime from the same Apple screen without affecting the rest of your account. Never enter your regular Apple ID password here.",
     "שלבים 2–3 מוצגים רק אחרי התחברות אישית ולכן אין להם צילום מסך ציבורי. למקור הרשמי והמעודכן ביותר של Apple, כולל תמונות:": "Steps 2–3 are only shown after signing in, so there are no public screenshots. Apple's official, most up-to-date guide, with images:",
     "הבנתי, סגירה": "Got it, close",
+    "בחירת מסך בהגדרות": "Choose a settings screen",
   },
   ru: {
     "פרופיל": "Профиль",
@@ -563,6 +564,7 @@ const dict: AreaDict = {
     "הסיסמה הייעודית משמשת רק לחיבור הזה, ואפשר לבטל אותה בכל רגע מתוך אותו מסך ב-Apple בלי להשפיע על שאר החשבון. לעולם אל תזינו כאן את הסיסמה הרגילה של ה-Apple ID.": "Пароль для приложения используется только для этого подключения, его можно отозвать в любой момент на том же экране Apple, не затрагивая остальной аккаунт. Никогда не вводите здесь обычный пароль Apple ID.",
     "שלבים 2–3 מוצגים רק אחרי התחברות אישית ולכן אין להם צילום מסך ציבורי. למקור הרשמי והמעודכן ביותר של Apple, כולל תמונות:": "Шаги 2–3 видны только после входа, поэтому публичных скриншотов нет. Официальная и самая актуальная инструкция Apple с картинками:",
     "הבנתי, סגירה": "Понятно, закрыть",
+    "בחירת מסך בהגדרות": "Выбор раздела настроек",
   },
 };
 export default dict;
