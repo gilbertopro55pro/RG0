@@ -14,7 +14,7 @@ const FILTER_UNCATEGORIZED = "__none__";
 type PickerPhoto = { id: string; gallery_id: string; portfolio_featured: boolean };
 
 // Lets the photographer star which portfolio photos appear in the public portfolio's hero strip
-// (PortfolioHeroCarousel.tsx) — up to MAX_FEATURED. Browsable by tab and paged, since a portfolio
+// (PortfolioHeroStrip.tsx) — up to MAX_FEATURED. Browsable by tab and paged, since a portfolio
 // can hold thousands of photos; thumbnails come from the same authenticated preview route the
 // gallery manager uses. The DB trigger is the real cap — this UI just explains it up front.
 export default function PortfolioFeaturedPicker({ photographerId }: { photographerId: string }) {

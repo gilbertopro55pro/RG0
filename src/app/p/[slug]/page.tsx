@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { galleryFont } from "@/lib/galleryTheme";
 import { getSignedDownloadUrl } from "@/lib/storage";
-import PortfolioHeroCarousel from "@/components/PortfolioHeroCarousel";
 import PortfolioBrowser from "@/components/PortfolioBrowser";
 import {
   loadPortfolio,
   scopePortfolioPhotos,
   signPortfolioPhotos,
+  portfolioSubTabs,
+  sampleHeroPhotos,
   PORTFOLIO_PAGE_SIZE,
   PORTFOLIO_FEATURED_MAX,
   type PortfolioPhoto,
@@ -52,10 +53,11 @@ export default async function PortfolioPage({
 }: {
   params: Promise<{ slug: string }>;
   // `tabs`: curated-share restriction — see scopePortfolioPhotos in src/lib/portfolio.ts.
-  searchParams: Promise<{ category?: string; tabs?: string }>;
+  searchParams: Promise<{ category?: string; sub?: string; tabs?: string }>;
 }) {
   const { slug } = await params;
-  const { category: activeCategory, tabs: tabsParam } = await searchParams;
+  const { category: activeCategory, sub: subParam, tabs: tabsParam } = await searchParams;
+  const activeSub = activeCategory ? subParam : undefined;
   const data = await loadPortfolio(slug);
 
   if (!data) {
@@ -68,7 +70,8 @@ export default async function PortfolioPage({
 
   const { photographer, photos: allPhotos } = data;
 
-  const { scopedPhotos, gridPhotos } = scopePortfolioPhotos(allPhotos, tabsParam, activeCategory);
+  const { scopedPhotos, gridPhotos } = scopePortfolioPhotos(allPhotos, tabsParam, activeCategory, activeSub);
+  const subTabs = portfolioSubTabs(scopedPhotos);
 
   const categories = Array.from(new Set(scopedPhotos.map((p) => p.portfolio_category).filter((c): c is string => !!c)));
 
@@ -81,20 +84,22 @@ export default async function PortfolioPage({
     const c = p.portfolio_category;
     if (c && (!categoryRepresentative.has(c) || covers[c] === p.id)) categoryRepresentative.set(c, p);
   }
-  // Hero strip = only the photos the photographer starred (PortfolioFeaturedPicker.tsx), still
-  // within this link's `tabs` scope. None starred → no strip at all, rather than a random pick.
-  const heroSource = scopedPhotos.filter((p) => p.portfolio_featured).slice(0, PORTFOLIO_FEATURED_MAX);
+  // Hero strip on "הכל" = only the photos the photographer starred (PortfolioFeaturedPicker.tsx),
+  // still within this link's `tabs` scope; none starred → no strip there, rather than a random
+  // pick. Inside a tab (owner, 2026-10-10) it's a random mix of that tab, landscape and portrait.
+  const starredSource = scopedPhotos.filter((p) => p.portfolio_featured).slice(0, PORTFOLIO_FEATURED_MAX);
+  const heroSource = activeCategory ? sampleHeroPhotos(gridPhotos) : starredSource;
   // Only the first grid page is rendered (and signed) here — PortfolioGrid.tsx loads the rest
   // from /api/portfolio/[slug]/photos as the visitor scrolls.
   const firstPage = gridPhotos.slice(0, PORTFOLIO_PAGE_SIZE);
 
   const needed = new Map<string, PortfolioPhoto>();
-  for (const p of [...firstPage, ...categoryRepresentative.values(), ...heroSource]) needed.set(p.id, p);
+  for (const p of [...firstPage, ...categoryRepresentative.values(), ...starredSource, ...heroSource]) needed.set(p.id, p);
   const urlById = await signPortfolioPhotos(Array.from(needed.values()));
 
   const gridInitial = firstPage.map((p) => ({ id: p.id, url: urlById.get(p.id)! }));
   const categoryThumb = new Map(Array.from(categoryRepresentative.entries()).map(([cat, p]) => [cat, urlById.get(p.id)!]));
-  const heroPhotos = heroSource.map((p) => ({ id: p.id, url: urlById.get(p.id)! }));
+  const toHero = (p: PortfolioPhoto) => ({ id: p.id, url: urlById.get(p.id)!, aspect: p.preview_aspect_ratio });
 
   const logoUrl = photographer.logo_storage_path
     ? await getSignedDownloadUrl("logos", photographer.logo_storage_path, 60 * 60 * 24)
@@ -145,30 +150,34 @@ export default async function PortfolioPage({
         </div>
       </header>
 
-      <PortfolioHeroCarousel photos={heroPhotos} />
-
-      {/* "Get to know me" — populated from portfolio_bio (the "טקסט פתיחה" field in
-          PortfolioSettings.tsx). Full-bleed dark band rather than a floating card, so it reads as
-          part of the same editorial page instead of a bolted-on admin-style panel. */}
-      {photographer.portfolio_bio && (
-        <div className="px-6 py-14 text-center" style={{ background: INK }}>
-          <h2 className="text-2xl mb-4" style={{ fontFamily: "var(--font-gallery-serif)", color: "#f2f2ee" }}>
-            {photographer.name}
-          </h2>
-          <p className="max-w-xl mx-auto text-sm leading-relaxed whitespace-pre-line" style={{ color: TEXT_SOFT }}>
-            {photographer.portfolio_bio}
-          </p>
-        </div>
-      )}
-
-      {/* The tab tiles and the grid: tabs switch in place, without reloading the page. */}
+      {/* The strip, the intro, the tab tiles, sub-tabs and the grid: tabs switch in place, without
+          reloading the page, and the strip follows the open tab. */}
       <PortfolioBrowser
         slug={slug}
         tabs={tabsParam}
         categories={categories.map((c) => ({ name: c, thumb: categoryThumb.get(c) ?? null }))}
+        subTabs={subTabs}
         initialCategory={activeCategory}
+        initialSub={activeSub}
         initialPhotos={gridInitial}
         initialHasMore={gridPhotos.length > firstPage.length}
+        starredHero={starredSource.map(toHero)}
+        initialHero={heroSource.map(toHero)}
+        intro={
+          // "Get to know me" — populated from portfolio_bio (the "טקסט פתיחה" field in
+          // PortfolioSettings.tsx). Full-bleed dark band rather than a floating card, so it reads as
+          // part of the same editorial page instead of a bolted-on admin-style panel.
+          photographer.portfolio_bio ? (
+            <div className="px-6 py-14 text-center" style={{ background: INK }}>
+              <h2 className="text-2xl mb-4" style={{ fontFamily: "var(--font-gallery-serif)", color: "#f2f2ee" }}>
+                {photographer.name}
+              </h2>
+              <p className="max-w-xl mx-auto text-sm leading-relaxed whitespace-pre-line" style={{ color: TEXT_SOFT }}>
+                {photographer.portfolio_bio}
+              </p>
+            </div>
+          ) : null
+        }
       />
 
       <p className="text-center text-[11px] py-8" style={{ background: INK, color: TEXT_SOFT }}>
