@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import PortfolioGrid, { type GridPhoto } from "@/components/PortfolioGrid";
 import PortfolioHeroStrip, { STRIP_HEIGHT, type HeroPhoto } from "@/components/PortfolioHeroStrip";
+import { subTabLabel } from "@/lib/portfolioNames";
 
 const BRASS = "#c9a24b";
 const TEXT_SOFT = "#b7b7bd";
@@ -166,7 +167,8 @@ export default function PortfolioBrowser({
                   className="rounded-full px-4 py-1.5 text-xs font-semibold border transition-colors"
                   style={{ borderColor: on ? BRASS : "#2e2e33", background: on ? BRASS : "transparent", color: on ? "#1a1408" : TEXT_SOFT }}
                 >
-                  {s ?? "הכל"}
+                  {/* "1.הכנות" shows as "הכנות": the folder number only sets the order. */}
+                  {s ? subTabLabel(s) : "הכל"}
                 </a>
               );
             })}
