@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import { getUploadsSnapshot, isUploadActive, subscribeUploads } from "@/lib/galleryUploads";
 import PortfolioTabDropZone from "@/components/PortfolioTabDropZone";
+import BodyPortal from "@/components/BodyPortal";
 import { useT } from "@/i18n/client";
 
 const UNCATEGORIZED = "__uncategorized__";
@@ -523,7 +524,7 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
       </div>
 
       {confirmKey && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmKey(null)}>
+        <BodyPortal><div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmKey(null)}>
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-base font-bold mb-1 font-display">{t("הסרה מהפורטפוליו")}</h2>
             <p className="text-xs text-ink-soft mb-4">
@@ -540,11 +541,11 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
               </button>
             </div>
           </div>
-        </div>
+        </div></BodyPortal>
       )}
 
       {coverKey && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={closeCoverSheet}>
+        <BodyPortal><div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={closeCoverSheet}>
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-base font-bold mb-1 font-display">{t("תמונת השער של \"{name}\"", { name: coverName })}</h2>
             <p className="text-xs text-ink-soft mb-3">{t("התמונה שמופיעה על הלשונית בעמוד הפורטפוליו הציבורי. לחצו על תמונה כדי לבחור אותה.")}</p>
@@ -613,11 +614,11 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
               {t("סגירה")}
             </button>
           </div>
-        </div>
+        </div></BodyPortal>
       )}
 
       {(subSheet?.mode === "name" || subSheet?.mode === "rename") && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={closeSubSheet}>
+        <BodyPortal><div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={closeSubSheet}>
           <form
             className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet"
             onClick={(e) => e.stopPropagation()}
@@ -656,11 +657,11 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
               </button>
             </div>
           </form>
-        </div>
+        </div></BodyPortal>
       )}
 
       {subSheet?.mode === "photos" && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={closeSubSheet}>
+        <BodyPortal><div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={closeSubSheet}>
           {/* A column with only the grid scrolling, so the save button stays in reach under a long grid. */}
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-base font-bold mb-1 font-display">{t("תמונות לתת-הלשונית \"{name}\"", { name: subSheet.sub })}</h2>
@@ -738,11 +739,11 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
               </button>
             </div>
           </div>
-        </div>
+        </div></BodyPortal>
       )}
 
       {subSheet?.mode === "remove" && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={closeSubSheet}>
+        <BodyPortal><div className="fixed inset-0 z-[70] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={closeSubSheet}>
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-base font-bold mb-1 font-display">{t("הסרת תת-לשונית")}</h2>
             <p className="text-xs text-ink-soft mb-4">
@@ -758,7 +759,7 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
               </button>
             </div>
           </div>
-        </div>
+        </div></BodyPortal>
       )}
     </div>
   );
