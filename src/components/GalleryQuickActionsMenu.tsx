@@ -41,6 +41,9 @@ export default function GalleryQuickActionsMenu({
 
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [portfolioCategory, setPortfolioCategory] = useState(item.title);
+  // Optional sub-tab inside that tab; suggestions are each tab's existing sub-tabs.
+  const [subcategoryOptions, setSubcategoryOptions] = useState<Record<string, string[]>>({});
+  const [portfolioSubcategory, setPortfolioSubcategory] = useState("");
   const [savingPortfolio, setSavingPortfolio] = useState(false);
   const [portfolioDone, setPortfolioDone] = useState(false);
 
@@ -75,9 +78,18 @@ export default function GalleryQuickActionsMenu({
     await loadFolders();
     const { data } = await supabase
       .from("gallery_photos")
-      .select("portfolio_category")
+      .select("portfolio_category, portfolio_subcategory")
       .not("portfolio_category", "is", null);
-    setCategoryOptions(Array.from(new Set((data ?? []).map((r) => r.portfolio_category as string).filter(Boolean))));
+    const rows = (data ?? []) as { portfolio_category: string | null; portfolio_subcategory: string | null }[];
+    setCategoryOptions(Array.from(new Set(rows.map((r) => r.portfolio_category as string).filter(Boolean))));
+    // A sub-tab exists only through the photos that carry it.
+    const subs: Record<string, string[]> = {};
+    for (const r of rows) {
+      if (!r.portfolio_category || !r.portfolio_subcategory) continue;
+      const list = (subs[r.portfolio_category] ??= []);
+      if (!list.includes(r.portfolio_subcategory)) list.push(r.portfolio_subcategory);
+    }
+    setSubcategoryOptions(subs);
   };
 
   const openShare = async () => {
@@ -100,9 +112,10 @@ export default function GalleryQuickActionsMenu({
     setError(null);
     try {
       const category = portfolioCategory.trim() || null;
+      const subcategory = category ? portfolioSubcategory.trim() || null : null;
       let query = supabase
         .from("gallery_photos")
-        .update({ in_portfolio: true, portfolio_category: category })
+        .update({ in_portfolio: true, portfolio_category: category, portfolio_subcategory: subcategory })
         .eq("gallery_id", item.id);
 
       const allSelected = allKeys.every((k) => selectedFolderKeys.has(k));
@@ -229,6 +242,21 @@ export default function GalleryQuickActionsMenu({
                 />
                 <datalist id="quick-portfolio-category-suggestions">
                   {categoryOptions.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+                {/* A sub-tab needs a tab. */}
+                <p className="text-xs text-ink-soft mt-3 mb-2">{t("תת-לשונית (לא חובה)")}</p>
+                <input
+                  value={portfolioSubcategory}
+                  onChange={(e) => setPortfolioSubcategory(e.target.value)}
+                  list="quick-portfolio-subcategory-suggestions"
+                  disabled={!portfolioCategory.trim()}
+                  placeholder={portfolioCategory.trim() ? t("לדוגמה: הכנות") : t("קודם בוחרים לשונית")}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white disabled:opacity-50"
+                />
+                <datalist id="quick-portfolio-subcategory-suggestions">
+                  {(subcategoryOptions[portfolioCategory.trim()] ?? []).map((c) => (
                     <option key={c} value={c} />
                   ))}
                 </datalist>

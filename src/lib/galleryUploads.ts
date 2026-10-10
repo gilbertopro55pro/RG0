@@ -264,7 +264,14 @@ export function enqueueGalleryUpload(input: {
 
 // Photos straight to the portfolio, into the photographer's hidden portfolio gallery
 // (PortfolioUploadPanel finds or creates it first), tagged with the chosen tab.
-export function enqueuePortfolioUpload(input: { galleryId: string; userId: string; category: string | null; files: File[] }): void {
+export function enqueuePortfolioUpload(input: {
+  galleryId: string;
+  userId: string;
+  category: string | null;
+  // A sub-tab inside that tab (needs a tab).
+  subcategory?: string | null;
+  files: File[];
+}): void {
   if (input.files.length === 0) return;
   const job = jobFor({
     kind: "portfolio",
@@ -284,7 +291,12 @@ export function enqueuePortfolioUpload(input: { galleryId: string; userId: strin
         file,
         path: `${input.userId}/${input.galleryId}/${crypto.randomUUID()}-${name}`,
         contentType: heic ? "image/jpeg" : file.type || "application/octet-stream",
-        row: { sort_order: job.sortNext++, in_portfolio: true, portfolio_category: input.category },
+        row: {
+          sort_order: job.sortNext++,
+          in_portfolio: true,
+          portfolio_category: input.category,
+          portfolio_subcategory: input.category ? input.subcategory || null : null,
+        },
       };
     })
   );

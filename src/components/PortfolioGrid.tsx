@@ -17,6 +17,7 @@ export default function PortfolioGrid({
   initialPhotos,
   initialHasMore,
   category,
+  sub,
   tabs,
   emptyText,
   onPhotos,
@@ -25,6 +26,8 @@ export default function PortfolioGrid({
   initialPhotos: GridPhoto[];
   initialHasMore: boolean;
   category?: string;
+  // A sub-tab inside `category`.
+  sub?: string;
   tabs?: string;
   emptyText: string;
   // What's loaded so far, so switching back to this tab shows it at once.
@@ -65,6 +68,7 @@ export default function PortfolioGrid({
     try {
       const qs = new URLSearchParams({ offset: String(photos.length) });
       if (category) qs.set("category", category);
+      if (category && sub) qs.set("sub", sub);
       if (tabs) qs.set("tabs", tabs);
       const res = await fetch(`/api/portfolio/${encodeURIComponent(slug)}/photos?${qs}`);
       if (!res.ok) throw new Error(String(res.status));

@@ -11,7 +11,14 @@ import type { GalleryPhotoRow, Photographer } from "@/lib/types";
 
 export type PortfolioPhoto = Pick<
   GalleryPhotoRow,
-  "id" | "storage_path" | "preview_storage_path" | "portfolio_category" | "portfolio_featured" | "created_at"
+  | "id"
+  | "storage_path"
+  | "preview_storage_path"
+  | "preview_aspect_ratio"
+  | "portfolio_category"
+  | "portfolio_subcategory"
+  | "portfolio_featured"
+  | "created_at"
 >;
 
 // Sentinel for "uncategorized" inside the `tabs` param — mirrors PortfolioManagePanel's own
@@ -44,7 +51,7 @@ export async function loadPortfolio(slug: string) {
   const photos = await fetchAllRows<PortfolioPhoto>((from, to) =>
     supabase
       .from("gallery_photos")
-      .select("id, storage_path, preview_storage_path, portfolio_category, portfolio_featured, created_at")
+      .select("id, storage_path, preview_storage_path, preview_aspect_ratio, portfolio_category, portfolio_subcategory, portfolio_featured, created_at")
       .eq("photographer_id", photographer.id)
       .eq("in_portfolio", true)
       .order("created_at", { ascending: false })
@@ -59,13 +66,56 @@ export async function loadPortfolio(slug: string) {
 // comma-separated, percent-encoded list of categories (plus NO_CATEGORY_TAB) that one shared link
 // may show. Absent = everything. A category name containing a literal comma won't round-trip;
 // accepted as a rare-enough edge case not worth double-encoding for.
-export function scopePortfolioPhotos(allPhotos: PortfolioPhoto[], tabsParam: string | undefined, activeCategory: string | undefined) {
+// `activeSub` narrows a tab to one of its sub-tabs (portfolio_subcategory); the tab itself shows
+// all its photos, sub-tabs included. Sub-tabs follow their tab's `tabs` restriction.
+export function scopePortfolioPhotos(
+  allPhotos: PortfolioPhoto[],
+  tabsParam: string | undefined,
+  activeCategory: string | undefined,
+  activeSub?: string | undefined
+) {
   const allowedTabs = tabsParam ? new Set(tabsParam.split(",").map((t) => decodeURIComponent(t))) : null;
   const scopedPhotos = allowedTabs ? allPhotos.filter((p) => allowedTabs.has(p.portfolio_category ?? NO_CATEGORY_TAB)) : allPhotos;
   // Filtered from scopedPhotos, never allPhotos — a hand-edited `category=` naming a tab outside
   // the allowed set just yields nothing, instead of leaking that tab.
-  const gridPhotos = activeCategory ? scopedPhotos.filter((p) => p.portfolio_category === activeCategory) : scopedPhotos;
+  const tabPhotos = activeCategory ? scopedPhotos.filter((p) => p.portfolio_category === activeCategory) : scopedPhotos;
+  const gridPhotos = activeCategory && activeSub ? tabPhotos.filter((p) => p.portfolio_subcategory === activeSub) : tabPhotos;
   return { scopedPhotos, gridPhotos };
+}
+
+// Each tab's sub-tabs, in the order they were started (by their oldest photo).
+export function portfolioSubTabs(scopedPhotos: PortfolioPhoto[]): Record<string, string[]> {
+  const first = new Map<string, Map<string, string>>();
+  for (const p of scopedPhotos) {
+    if (!p.portfolio_category || !p.portfolio_subcategory) continue;
+    let subs = first.get(p.portfolio_category);
+    if (!subs) first.set(p.portfolio_category, (subs = new Map()));
+    const seen = subs.get(p.portfolio_subcategory);
+    if (!seen || p.created_at < seen) subs.set(p.portfolio_subcategory, p.created_at);
+  }
+  return Object.fromEntries(
+    [...first.entries()].map(([tab, subs]) => [tab, [...subs.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([name]) => name)])
+  );
+}
+
+export const PORTFOLIO_HERO_SAMPLE = 14;
+
+// The hero strip inside a tab (owner, 2026-10-10): photos picked at random from it, landscape and
+// portrait alike, alternating while both last so the strip never reads as all one shape.
+export function sampleHeroPhotos(photos: PortfolioPhoto[], n = PORTFOLIO_HERO_SAMPLE): PortfolioPhoto[] {
+  const shuffled = [...photos];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  const wide = shuffled.filter((p) => (p.preview_aspect_ratio ?? 1.5) >= 1);
+  const tall = shuffled.filter((p) => (p.preview_aspect_ratio ?? 1.5) < 1);
+  const out: PortfolioPhoto[] = [];
+  while (out.length < n && (wide.length || tall.length)) {
+    const next = (out.length % 2 === 0 ? wide.shift() ?? tall.shift() : tall.shift() ?? wide.shift())!;
+    out.push(next);
+  }
+  return out;
 }
 
 export async function signPortfolioPhotos(photos: PortfolioPhoto[]): Promise<Map<string, string>> {

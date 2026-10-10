@@ -566,6 +566,9 @@ export type GalleryPhotoRow = {
   culling_status: "pending" | "kept" | "rejected";
   in_portfolio: boolean;
   portfolio_category: string | null;
+  // The sub-tab inside that tab (e.g. "ריקודים" inside "חתונה"); cleared by a DB trigger whenever
+  // the photo leaves the portfolio or its tab (migration 0159).
+  portfolio_subcategory: string | null;
   // Starred for the public portfolio's hero strip — max 25 per photographer, enforced by the
   // enforce_portfolio_featured trigger (migration 0125), which also clears it on leaving the portfolio.
   portfolio_featured: boolean;
