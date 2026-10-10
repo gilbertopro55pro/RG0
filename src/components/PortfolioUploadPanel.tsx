@@ -2,18 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ALLOWED_ACCEPT, isAllowedImageFile } from "@/lib/imageUpload";
-import {
-  cancelUpload,
-  dismissUpload,
-  enqueuePortfolioUpload,
-  getUploadsSnapshot,
-  isUploadActive,
-  onUploadItem,
-  otherTabUpload,
-  subscribeUploads,
-  useGalleryUploads,
-} from "@/lib/galleryUploads";
+import { ALLOWED_ACCEPT } from "@/lib/imageUpload";
+import { cancelUpload, dismissUpload, getUploadsSnapshot, isUploadActive, onUploadItem, subscribeUploads, useGalleryUploads } from "@/lib/galleryUploads";
+import { readDataTransferItems, type DroppedFile } from "@/lib/fileDrop";
+import { droppedFromFileList, groupPortfolioFiles, portfolioImages, queuePortfolioUpload } from "@/lib/portfolioUploads";
 import type { GalleryPhotoRow } from "@/lib/types";
 import { useT } from "@/i18n/client";
 
@@ -32,11 +24,15 @@ const withOption = (list: string[] | undefined, value: string) => (list?.include
 // (`is_portfolio_only`) — created lazily on first use, excluded from the regular galleries list.
 // The upload itself runs in the shared upload engine (lib/galleryUploads.ts, owner 2026-10-10):
 // it keeps going while the photographer moves around the app, and picking more photos meanwhile
-// joins it.
+// joins it. Photos and folders can also be dragged in: like a gallery, a dragged folder becomes a
+// tab named after it (lib/portfolioUploads.ts); loose photos go to the tab chosen above.
 export default function PortfolioUploadPanel({ photographerId }: { photographerId: string }) {
   const supabase = createClient();
   const t = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
 
   // "" means no tab (shows under "כללי"); CUSTOM_CATEGORY means the free-text input below is the
   // real source of truth instead — see chosenTab below.
@@ -126,74 +122,31 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
     };
   }, [t]);
 
-  const getOrCreatePortfolioGallery = async (): Promise<string | null> => {
-    const { data: existing, error: lookupError } = await supabase
-      .from("galleries")
-      .select("id")
-      .eq("photographer_id", photographerId)
-      .eq("is_portfolio_only", true)
-      .maybeSingle<{ id: string }>();
-    // A real error here (not just "no row yet", which maybeSingle reports as no error at all)
-    // used to be silently swallowed — falling through to try creating a gallery even though we
-    // genuinely don't know if one already exists. Bail out instead so the real reason surfaces.
-    if (lookupError) {
-      setError(t("שגיאה בבדיקת מאגר הפורטפוליו: {message}", { message: lookupError.message }));
-      return null;
-    }
-    if (existing) return existing.id;
-
-    const { data: created, error: createError } = await supabase
-      .from("galleries")
-      .insert({
-        photographer_id: photographerId,
-        event_id: null,
-        title: "פורטפוליו | תמונות שהועלו ישירות",
-        is_portfolio_only: true,
-        published: false,
-        // Never actually used (this gallery is never published, so nothing here ever expires) —
-        // just satisfies the DB's enforce_gallery_expiry_by_plan trigger, which rejects a null
-        // expiry_days on every insert regardless of published state.
-        expiry_days: 7,
-      })
-      .select("id")
-      .single<{ id: string }>();
-    if (createError || !created) {
-      setError(createError?.message ?? t("שגיאה ביצירת מאגר הפורטפוליו"));
-      return null;
-    }
-    return created.id;
-  };
-
   // The tab the upload goes to ("" = none). A sub-tab needs one, so its control shows only then.
   const chosenTab = (category === CUSTOM_CATEGORY ? customCategory : category).trim();
   const tabSubOptions = subcategoryOptions[chosenTab] ?? [];
   // A picked sub-tab that the (retyped) new tab doesn't have falls back to none.
   const subValue = subcategory === CUSTOM_SUBCATEGORY || tabSubOptions.includes(subcategory) ? subcategory : "";
 
-  const handleFiles = async (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList).filter(isAllowedImageFile);
-    const rejected = fileList.length - files.length;
-    // Cleared so the same files can be picked again.
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  // A photo inside a folder goes to the tab named after that folder; a loose one to the tab (and
+  // sub-tab) chosen above.
+  const send = async (dropped: DroppedFile[]) => {
+    if (dropped.length === 0) return;
+    const { images, rejected } = portfolioImages(dropped);
     setAddedCount(0);
-    if (files.length === 0) {
+    if (images.length === 0) {
       setError(t("לא נבחרו קבצי תמונה תקינים"));
       return;
     }
-    // One tab uploads at a time (two would only split the connection between them).
-    if (otherTabUpload()) {
-      setError(t("כבר מתבצעת העלאה בחלון אחר. אפשר להעלות כאן כשהיא תסתיים."));
-      return;
-    }
     setError(rejected > 0 ? t("{n} קבצים לא בפורמט נתמך", { n: rejected }) : null);
-
-    const galleryId = await getOrCreatePortfolioGallery();
-    if (!galleryId) return;
-    const trimmedCategory = chosenTab || null;
-    const trimmedSubcategory = trimmedCategory ? (subValue === CUSTOM_SUBCATEGORY ? customSubcategory : subValue).trim() || null : null;
-    enqueuePortfolioUpload({ galleryId, userId: photographerId, category: trimmedCategory, subcategory: trimmedSubcategory, files });
+    const tab = chosenTab || null;
+    const sub = tab ? (subValue === CUSTOM_SUBCATEGORY ? customSubcategory : subValue).trim() || null : null;
+    const groups = groupPortfolioFiles(images.map((i) => (i.folder ? { file: i.file, category: i.folder, subcategory: null } : { file: i.file, category: tab, subcategory: sub })));
+    const failed = await queuePortfolioUpload(photographerId, groups);
+    if (failed) setError(t(failed.error, { message: failed.message ?? "" }));
   };
+
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
   return (
     <div className="mt-3.5 pt-3.5 border-t border-line">
@@ -274,10 +227,68 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
       {error && <p className="text-xs text-rose mb-2 whitespace-pre-line">{error}</p>}
       {!active && addedCount > 0 && <p className="text-xs text-sage mb-2">{t("{n} תמונות נוספו לפורטפוליו", { n: addedCount })}</p>}
 
-      <input ref={fileInputRef} type="file" accept={ALLOWED_ACCEPT} multiple hidden onChange={(e) => handleFiles(e.target.files)} />
-      {/* Stays usable while uploading: more photos join the running upload. */}
-      <button onClick={() => fileInputRef.current?.click()} className="rounded-lg px-4 py-2.5 text-sm font-semibold bg-ink text-white">
-        {t("בחירת תמונות והעלאה")}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ALLOWED_ACCEPT}
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files) void send(droppedFromFileList(e.target.files));
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        accept={ALLOWED_ACCEPT}
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files) void send(droppedFromFileList(e.target.files));
+          e.target.value = "";
+        }}
+        {...({ webkitdirectory: "true", directory: "true" } as unknown as Record<string, string>)}
+      />
+      {/* Stays usable while uploading: more photos join the running upload. On a phone it's a tap-to-pick button. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => fileInputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
+        }}
+        onDragEnter={(e) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          dragDepth.current++;
+          setDragging(true);
+        }}
+        onDragOver={(e) => {
+          if (hasFiles(e)) e.preventDefault();
+        }}
+        onDragLeave={(e) => {
+          if (!hasFiles(e)) return;
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDragging(false);
+        }}
+        onDrop={(e) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          dragDepth.current = 0;
+          setDragging(false);
+          // Read synchronously: the drop's items are gone once this handler returns.
+          void readDataTransferItems(e.dataTransfer.items).then(send);
+        }}
+        className={`flex min-h-[96px] flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-5 text-center cursor-pointer transition-colors ${
+          dragging ? "border-amber-deep bg-amber-bg" : "border-line bg-white"
+        }`}
+      >
+        <span className="text-sm font-semibold">{dragging ? t("שחררו כאן להעלאה") : t("גררו לכאן תמונות או תיקיות, או לחצו לבחירה")}</span>
+        <span className="text-[11px] text-ink-soft">{t("תיקייה שנגררת הופכת ללשונית בשם התיקייה. תמונות בודדות נכנסות ללשונית שבחרתם למעלה.")}</span>
+      </div>
+      <button type="button" onClick={() => folderInputRef.current?.click()} className="mt-2 text-xs font-semibold text-ink-soft underline">
+        {t("העלאת תיקייה")}
       </button>
     </div>
   );
