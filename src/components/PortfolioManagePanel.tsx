@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/paginatedFetch";
+import { getUploadsSnapshot, isUploadActive, subscribeUploads } from "@/lib/galleryUploads";
+import PortfolioTabDropZone from "@/components/PortfolioTabDropZone";
 import { useT } from "@/i18n/client";
 
 const UNCATEGORIZED = "__uncategorized__";
@@ -174,6 +176,30 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photographerId, refreshTick]);
+
+  // The counts follow a portfolio upload (each tab's drop zone, or the upload panel above) when it ends.
+  useEffect(() => {
+    let wasActive = isUploadActive(getUploadsSnapshot().find((u) => u.kind === "portfolio") ?? null);
+    return subscribeUploads(() => {
+      const nowActive = isUploadActive(getUploadsSnapshot().find((u) => u.kind === "portfolio") ?? null);
+      if (wasActive && !nowActive) setRefreshTick((n) => n + 1);
+      wasActive = nowActive;
+    });
+  }, []);
+
+  // Photos dropped just outside a drop zone would make the browser open the file instead (leaving
+  // the page, and the upload with it): on this screen a stray file drop does nothing.
+  useEffect(() => {
+    const guard = (e: DragEvent) => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+    };
+    window.addEventListener("dragover", guard);
+    window.addEventListener("drop", guard);
+    return () => {
+      window.removeEventListener("dragover", guard);
+      window.removeEventListener("drop", guard);
+    };
+  }, []);
 
   const confirmRemove = async () => {
     if (!confirmKey) return;
@@ -421,7 +447,10 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
   return (
     <div className="mt-3.5 pt-3.5 border-t border-line">
       <p className="text-sm font-semibold mb-1">{t("ניהול הפורטפוליו")}</p>
-      <p className="text-xs text-ink-soft mb-3">{t("התמונות נשארות בפורטפוליו הציבורי עד שתחליטו להסיר אותן.")}</p>
+      <p className="text-xs text-ink-soft mb-1">{t("התמונות נשארות בפורטפוליו הציבורי עד שתחליטו להסיר אותן.")}</p>
+      <p className="text-xs text-ink-soft mb-3">
+        {t("בכל לשונית יש אזור גרירה: בוחרים לאן (הלשונית עצמה או תת-לשונית) וגוררים תמונות. תיקייה שנגררת הופכת לתת-לשונית בשם שלה.")}
+      </p>
       {error && <p className="text-xs text-rose mb-2">{error}</p>}
       <div className="space-y-1.5">
         {groups.map((g) => {
@@ -429,7 +458,9 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
           const cover = covers[g.key];
           return (
             <div key={g.key} className="rounded-lg bg-chip text-sm">
-              <div className="flex items-center gap-3 px-3 py-2">
+              {/* From sm up the tab's drop zone sits in the row between its name and its buttons; on a
+                  phone it wraps to a full-width line under them. */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
                 {isTab ? (
                   <button
                     type="button"
@@ -446,9 +477,10 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
                   // Keeps the labels aligned with the tab rows, which have a thumbnail.
                   hasTabs && <span className="h-10 w-10 shrink-0" aria-hidden />
                 )}
-                <span className="flex-1 min-w-0">
+                <span className={`min-w-0 ${isTab ? "flex-1 sm:flex-none sm:max-w-[35%]" : "flex-1"}`}>
                   {isTab ? g.label : t(g.label)} <span className="text-ink-soft font-data">({g.count})</span>
                 </span>
+                {isTab && <PortfolioTabDropZone photographerId={photographerId} tab={g.key} subs={g.subs.map((s) => s.name)} />}
                 {isTab && (
                   <button onClick={() => openCoverSheet(g.key)} className="text-xs font-semibold text-ink-soft">
                     {t("תמונת שער")}
