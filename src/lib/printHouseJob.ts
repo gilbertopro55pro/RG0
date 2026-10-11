@@ -1,4 +1,5 @@
 // Loads a print-house job by its public share token for the /print page and its download route.
+import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GalleryAlbumExportJobRow } from "@/lib/types";
 
@@ -12,8 +13,17 @@ export type PrintJobView = {
   blocked: null | "preparing" | "failed" | "expired";
 };
 
+// A new print-house link token: 12 characters, so the link in the email stays short (72 random
+// bits, and the link expires anyway). Tokens from before 2026-10-07 are 32 characters.
+export const newPrintToken = () => randomBytes(9).toString("base64url");
+
+// Whether a token could be one we issued, checked before touching the database. It must accept every
+// length newPrintToken has ever made: when the tokens were shortened to 12 characters, this still
+// required 20, and every link sent from 2026-10-07 to 2026-10-11 showed "הקישור לא נמצא".
+const isPrintToken = (token: string) => /^[A-Za-z0-9_-]{12,128}$/.test(token);
+
 export async function loadPrintJob(supabase: SupabaseClient, token: string): Promise<PrintJobView | null> {
-  if (!token || token.length < 20) return null;
+  if (!token || !isPrintToken(token)) return null;
   const { data: job } = await supabase
     .from("gallery_album_export_jobs")
     .select("*")
