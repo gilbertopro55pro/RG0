@@ -49,7 +49,7 @@ logo, in a "coming soon" reveal style.
 ## Promo video (סרטון קידום, 2026-10-11)
 - 40.6s, 1080x1920, H.264 + AAC, about 9.6MB (under WhatsApp's 16MB). Delivered to the owner as a
   file, not in `public/`.
-- `promo.html` is the timeline, synced to the `energy` track (124 BPM, `public/reels/music`). Every
+- `promo.html` is the timeline, synced to 124 BPM (first the `energy` track, now `uplift-124`, below). Every
   scene starts on a bar: the hook during the quiet intro, the stamps on the drop (7.74s), the logo
   on the first accent (15.48s), the founder on the second (30.97s).
   - Scenes: hook "הצילום נגמר בחצות. הוואטסאפים לא.", night messages, stamps, 4.5 hours, "ומה אם כל זה
@@ -79,11 +79,27 @@ logo, in a "coming soon" reveal style.
   separate "גילברטו" text (owner, 2026-10-11). Run the repo's `promo.js` (not a copy in the run
   folder): it finds the logo relative to itself.
 - Review `<NAME>-strip.png` and the last frame (the link must show) before sending.
+- **Music: `uplift` (2026-10-11, owner: "יותר אנרגטית, נעימה לאוזן ולא צורמת").** All three videos
+  use one original track from `scripts/reel-music/tracks.mjs`, rendered at each video's tempo with
+  its sections on that video's scene changes. The beat comes in at `verseAt`, the hook at
+  `chorusAt`, and each `accents` bar gets a soft swell and crash:
+  - `uplift-124` → video 1: the beat on the stamps, the hook on the logo, the accent on the founder.
+  - `uplift-100` → video 2: the beat on 15:10, the hook on the turn, the accent on the end card.
+  - `uplift-118` → video 3: played from bar 3 (`MUSIC_START`). The beat on the second hook line,
+    the hook on the turn, the accent on the end card.
+  - Render: `node scripts/reel-music/tracks.mjs <dir> uplift-124`, then
+    `ffmpeg -i <dir>/uplift-124.wav -af volume=3dB -c:a aac -b:a 192k <dir>/uplift-124.m4a` (+3 dB:
+    the videos average about -15 dB with peaks near -2 dB, loud enough for a phone, without
+    clipping). The files aren't in the repo (and not in the reels library).
+  - Made to sound good on a phone: the bass sits at 110–220 Hz with only a light sub under it, and
+    there's no distortion. A shaker replaces bright hats, and the clap and crash are low-passed.
+    Measured against `energy`: most of the energy is in 150 Hz–2 kHz instead of under 150 Hz, the
+    2–8 kHz band is no louder, and nothing clips. It was not listened to: the owner's ear decides.
 - **Three videos (2026-10-11).** `TEMPLATE` picks one and `NAME` the output file. The hooks are
   different on purpose, so they can be tested against each other:
-  - `promo.html`, `gilberto-promo`: hook "הצילום נגמר בחצות". Track `energy.m4a`, 40.6s.
+  - `promo.html`, `gilberto-promo`: hook "הצילום נגמר בחצות". Music `uplift-124` (was `energy.m4a`), 40.6s.
   - `promo2.html`, `gilberto-promo-2`: the lost lead, "כמה אירועים הפסדתם כי עניתם מאוחר מדי?".
-    Track `acoustic.m4a` (100 BPM), 38.4s.
+    Music `uplift-100` (was `acoustic.m4a`), 38.4s.
     - **Midday, not night (owner, 2026-10-11):** a message at 12:40 in the middle of a shoot is
       still missed. 12:40, "שלישי, באמצע צילום ברית", "אתם באמצע צילום.". The clock jumps to 15:10
       where the track opens up (9.6s), and a second message comes in: "תודה, בינתיים מצאנו צלם
@@ -108,8 +124,8 @@ logo, in a "coming soon" reveal style.
     - Found while capturing (fixed 2026-10-11): the newest reply hid behind the input bar once the
       chat was taller than the screen (`scroll-mb-32` on the end marker in `IntakeChat.tsx`).
   - `promo3.html`, `gilberto-promo-3`: the morning after a wedding. 42.7s.
-    - Track `celebration.m4a` (118 BPM; owner, 2026-10-11: "מוזיקה דינאמית", it was the slow
-      `cinematic`). It starts at the track's 4th bar: the template sets `window.MUSIC_START` and
+    - 118 BPM (owner, 2026-10-11: "מוזיקה דינאמית", it was the slow `cinematic`), first
+      `celebration.m4a`, now `uplift-118`. It starts at the track's 4th bar: the template sets `window.MUSIC_START` and
       `promo.js` seeks the music to it. The drums come in on the second hook line (2s), and the
       chorus with its crash on the turn to the morning with Gilberto (18.3s).
     - "00:00. החתונה נגמרה. ובבוקר מחכה לכם עוד משמרת.". The clock flies from 00:00 to 08:30,
