@@ -55,6 +55,11 @@ logo, in a "coming soon" reveal style.
   - Scenes: hook "הצילום נגמר בחצות. הוואטסאפים לא.", night messages, stamps, 4.5 hours, "ומה אם כל זה
     היה קורה לבד?", logo, three product scenes from real footage, chips, founder, end card.
   - The end card shows `myframeflow.com/start` (a redirect to /signup in `next.config.ts`).
+  - **The closing message (owner, 2026-10-11):** "פחות ניהול. יותר צילום." was dropped: it
+    didn't say what the viewer gets. All three end cards now carry the same two lines and button:
+    - "אתם מצלמים." in white, then a gold line: "גילברטו דואג לכל השאר." (videos 1 and 3) or
+      "גילברטו עונה ללקוחות." (video 2, the assistant story).
+    - The button "נסו 14 יום בחינם" (a verb, not a label), and "ללא כרטיס אשראי וללא התחייבות".
 - `promo.js <run folder>` renders it frame by frame and adds the music, with a fade out. Add
   `preview` for stills only. A template that syncs to a later bar of its track sets
   `window.MUSIC_START` (seconds into the track).

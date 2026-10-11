@@ -69,10 +69,13 @@
   #f1 { top: 1080px; font-size: 80px; } #f2 { top: 1180px; font-size: 80px; } #f3 { top: 1310px; font-size: 42px; }
   /* end */
   #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 300px; gap: 36px; }
-  #end .mark { width: 400px; height: 400px; border-radius: 86px; box-shadow: 0 40px 110px rgba(0,0,0,.5), 0 0 110px rgba(201,161,90,.22); }
+  #end .mark { width: 300px; height: 300px; border-radius: 66px; box-shadow: 0 40px 110px rgba(0,0,0,.5), 0 0 110px rgba(201,161,90,.22); }
   #end b.name { font-size: 140px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
-  #end .tl { font-size: 56px; color: #aeb8cc; }
-  #cta { margin-top: 70px; background: #8f6f2f; color: #fff; font-weight: 800; font-size: 60px; padding: 34px 56px; border-radius: 6px; box-shadow: 0 30px 80px rgba(143,111,47,.45); }
+  /* The closing promise (owner, 2026-10-11: "פחות ניהול. יותר צילום." didn't say what you get). */
+  #end .msg { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 14px; }
+  #end .msg b { display: block; width: 960px; text-align: center; font-size: 96px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
+  #end .msg .m2 { color: #c9a15a; }
+  #cta { margin-top: 50px; background: #8f6f2f; color: #fff; font-weight: 800; font-size: 60px; padding: 34px 56px; border-radius: 6px; box-shadow: 0 30px 80px rgba(143,111,47,.45); }
   #link { margin-top: 26px; font-size: 64px; font-weight: 700; direction: ltr; letter-spacing: .01em; position: relative; padding-bottom: 14px; }
   #link u { position: absolute; left: 0; bottom: 0; height: 6px; background: #c9a15a; width: 0; }
   #free { font-size: 38px; color: #8792ab; margin-top: 6px; }
@@ -150,10 +153,10 @@
 <div id="s_end" class="scene">
   <div id="end">
     <img class="mark logoimg" src="logo.png" alt="">
-    <span class="tl">פחות ניהול. יותר צילום.</span>
-    <div id="cta">14 ימי ניסיון חינם</div>
+    <div class="msg"><b class="m1" data-fit>אתם מצלמים.</b><b class="m2" data-fit>גילברטו דואג לכל השאר.</b></div>
+    <div id="cta">נסו 14 יום בחינם</div>
     <div id="link">myframeflow.com/start<u></u></div>
-    <div id="free">ללא כרטיס אשראי</div>
+    <div id="free">ללא כרטיס אשראי וללא התחייבות</div>
   </div>
 </div>
 <div id="wm"><img class="mark logoimg" src="logo.png" alt=""><span>גילברטו</span></div>
@@ -251,7 +254,8 @@
     const e = S.s_end[0], EB = 0.5;
     const em = document.querySelector("#end .mark");
     em.style.transform = `scale(${0.6 + 0.4 * back((t - e) / 0.5)})`;
-    rise(document.querySelector("#end .tl"), t, e + 2 * EB, 30);
+    rise(document.querySelector("#end .m1"), t, e + 2 * EB, 30);
+    slam(document.querySelector("#end .m2"), t, e + 3 * EB, 1.15, 0.3);
     slam($("cta"), t, e + 4 * EB, 1.2, 0.3);
     rise($("link"), t, e + 6 * EB, 30);
     document.querySelector("#link u").style.width = 100 * ease((t - e - 7 * EB) / 0.5) + "%";
