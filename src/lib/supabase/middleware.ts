@@ -7,6 +7,8 @@ const PUBLIC_PATHS = [
   // The landing page in English and Russian (for ads), static and public like "/landing".
   "/en",
   "/ru",
+  // The landing page's share links, one link preview each (app/go/[variant]).
+  "/go",
   "/login",
   "/signup",
   "/reset-password",
