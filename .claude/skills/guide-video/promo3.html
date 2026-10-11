@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
-<!-- Promo 3, the morning after a wedding (1080x1920, 42.7s, celebration 118 BPM from its 4th bar). Driven by promo.js: window.renderAt(t).
+<!-- Promo 3, the morning after a wedding (1080x1920, 40.6s, the "energy" track, 124 BPM, from its 4th bar). Driven by promo.js: window.renderAt(t).
      The wedding ends at 00:00 and the client work waits for the morning (owner, 2026-10-11: a wedding
      doesn't end at 22:00, and nobody messages clients at midnight). -->
 <link rel="stylesheet" href="fonts.css">
@@ -71,7 +71,8 @@
   #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 300px; gap: 36px; }
   #end .mark { width: 300px; height: 300px; border-radius: 66px; box-shadow: 0 40px 110px rgba(0,0,0,.5), 0 0 110px rgba(201,161,90,.22); }
   #end b.name { font-size: 140px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
-  /* The closing promise (owner, 2026-10-11: "פחות ניהול. יותר צילום." didn't say what you get). */
+  /* The closing promise (owner, 2026-10-11): one human sentence over two lines, not "מילה. מילה."
+     ("פחות ניהול. יותר צילום." didn't say what you get). Both lines get the size of the smaller one. */
   #end .msg { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 14px; }
   #end .msg b { display: block; width: 960px; text-align: center; font-size: 96px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
   #end .msg .m2 { color: #c9a15a; }
@@ -153,7 +154,7 @@
 <div id="s_end" class="scene">
   <div id="end">
     <img class="mark logoimg" src="logo.png" alt="">
-    <div class="msg"><b class="m1" data-fit>אתם מצלמים.</b><b class="m2" data-fit>גילברטו דואג לכל השאר.</b></div>
+    <div class="msg"><b class="m1" data-fit>הבוקר שאחרי החתונה</b><b class="m2" data-fit>חוזר להיות שלכם.</b></div>
     <div id="cta">נסו 14 יום בחינם</div>
     <div id="link">myframeflow.com/start<u></u></div>
     <div id="free">ללא כרטיס אשראי וללא התחייבות</div>
@@ -185,13 +186,16 @@
       el.style.left = "50px"; el.style.right = "50px";
       while (el.scrollWidth > el.clientWidth && size > 40) el.style.fontSize = (size -= 2) + "px";
     });
+    const msg = [...document.querySelectorAll("#end .msg b")];
+    const least = Math.min(...msg.map((el) => parseFloat(getComputedStyle(el).fontSize)));
+    msg.forEach((el) => (el.style.fontSize = least + "px"));
   }
 
-  // celebration.m4a, 118 BPM: bar 2.03s (owner, 2026-10-11: "מוזיקה דינאמית"; it was the slow
-  // cinematic track). The music starts at the track's 4th bar (MUSIC_START, read by promo.js), so its
-  // drums come in at 1 bar (the second hook line) and its chorus, with a crash and the melody, at
-  // 9 bars: the turn to the morning with Gilberto. It runs out with the end card.
-  const BEAT = 60 / 118, BAR = 4 * BEAT, B = (n) => n * BAR;
+  // The first video's track (energy, 124 BPM: bar 1.94s; owner, 2026-10-11: "המוזיקה חייבת להיות
+  // כמו בסרטון הראשון"). It starts at the track's 4th bar (MUSIC_START, read by promo.js), so its
+  // claps and bass come in at 1 bar (the second hook line) and its drop, with a crash, at 9 bars:
+  // the turn to the morning with Gilberto.
+  const BEAT = 60 / 124, BAR = 4 * BEAT, B = (n) => n * BAR;
   window.MUSIC_START = B(3);
   const S = { s1: [0, B(1.5)], s2: [B(1.5), B(6)], s3: [B(6), B(7.5)], s4: [B(7.5), B(9)], s5: [B(9), B(12.5)], s6: [B(12.5), B(15.5)], s7: [B(15.5), B(17)], s_end: [B(17), B(21)] };
   const DURATION = B(21);

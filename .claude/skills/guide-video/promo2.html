@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
-<!-- Promo 2, the lost lead (1080x1920, 38.4s, acoustic 100 BPM). Driven by promo.js: window.renderAt(t).
+<!-- Promo 2, the lost lead (1080x1920, 36.8s, the "energy" track, 124 BPM). Driven by promo.js: window.renderAt(t).
      Midday, not night (owner, 2026-10-11): a message at 12:40 in the middle of a shoot is still missed.
      The chat scene is a real conversation with the assistant, captured live (chat-capture.js, f-chat). -->
 <link rel="stylesheet" href="fonts.css">
@@ -71,7 +71,8 @@
   #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 300px; gap: 36px; }
   #end .mark { width: 300px; height: 300px; border-radius: 66px; box-shadow: 0 40px 110px rgba(0,0,0,.5), 0 0 110px rgba(201,161,90,.22); }
   #end b.name { font-size: 140px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
-  /* The closing promise (owner, 2026-10-11: "פחות ניהול. יותר צילום." didn't say what you get). */
+  /* The closing promise (owner, 2026-10-11): one human sentence over two lines, not "מילה. מילה."
+     ("פחות ניהול. יותר צילום." didn't say what you get). Both lines get the size of the smaller one. */
   #end .msg { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 14px; }
   #end .msg b { display: block; width: 960px; text-align: center; font-size: 96px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
   #end .msg .m2 { color: #c9a15a; }
@@ -150,7 +151,7 @@
 <div id="s_end" class="scene">
   <div id="end">
     <img class="mark logoimg" src="logo.png" alt="">
-    <div class="msg"><b class="m1" data-fit>אתם מצלמים.</b><b class="m2" data-fit>גילברטו עונה ללקוחות.</b></div>
+    <div class="msg"><b class="m1" data-fit>בזמן שאתם מצלמים,</b><b class="m2" data-fit>גילברטו עונה ללקוחות שלכם.</b></div>
     <div id="cta">נסו 14 יום בחינם</div>
     <div id="link">myframeflow.com/start<u></u></div>
     <div id="free">ללא כרטיס אשראי וללא התחייבות</div>
@@ -189,11 +190,16 @@
       el.style.left = "50px"; el.style.right = "50px";
       while (el.scrollWidth > el.clientWidth && size > 40) el.style.fontSize = (size -= 2) + "px";
     });
+    const msg = [...document.querySelectorAll("#end .msg b")];
+    const least = Math.min(...msg.map((el) => parseFloat(getComputedStyle(el).fontSize)));
+    msg.forEach((el) => (el.style.fontSize = least + "px"));
   }
 
-  // 100 BPM: bar 2.4s. The track opens up at bar 4 (9.6s), on the clock jumping to 15:10.
-  const BEAT = 60 / 100, BAR = 4 * BEAT, B = (n) => n * BAR;
-  const S = { s1: [0, B(2)], s2: [B(2), B(5)], s3: [B(5), B(6)], s4: [B(6), B(10)], s5: [B(10), B(12)], s7: [B(12), B(13)], s_end: [B(13), B(16)] };
+  // The first video's track (energy, 124 BPM: bar 1.94s; owner, 2026-10-11: "המוזיקה חייבת להיות
+  // כמו בסרטון הראשון"). Its claps and bass come in at bar 4 (7.74s), on the clock jumping to 15:10,
+  // and it drops at bar 12 (23.2s), on the lead card. The chat keeps its 9.6s (5 bars).
+  const BEAT = 60 / 124, BAR = 4 * BEAT, B = (n) => n * BAR;
+  const S = { s1: [0, B(2)], s2: [B(2), B(6)], s3: [B(6), B(7)], s4: [B(7), B(12)], s5: [B(12), B(14)], s7: [B(14), B(15)], s_end: [B(15), B(19)] };
   // The live chat (f-chat/<n>.jpg, the capture's screenshots in order): what shows at time ct of the
   // scene. The typing dots cycle through their captured frames; the real waits (4-6s) are shortened.
   const chatFrame = (ct) => {
@@ -207,7 +213,7 @@
     if (ct < 6.6) return cyc(35, 57, 5.8);
     return 58; // the next question
   };
-  const DURATION = B(16);
+  const DURATION = B(19);
   const CHIPS = [
     ["M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "עונה 24/7"],
     ["M4 5h16v11H8l-4 4zM9 9h6M9 12h4", "עברית, אנגלית ורוסית"],
@@ -243,7 +249,7 @@
     slam($("lost"), t, jump + 1.5 * BEAT, 1.2, 0.3);
     // Turn
     rise($("t1"), t, S.s3[0] + 0.05, 60);
-    slam($("t2"), t, S.s3[0] + 2 * BEAT, 1.3);
+    slam($("t2"), t, S.s3[0] + 1.5 * BEAT, 1.3);
     $("flash").style.opacity = 0.7 * (1 - ease((t - S.s3[0]) / 0.45)) * (t >= S.s3[0] ? 1 : 0);
     $("wm").style.opacity = Math.min(ease((t - S.s4[0]) / 0.3), ease((S.s_end[0] - t) / 0.2));
     for (const [s, card] of [["s4", "c4"]]) {
