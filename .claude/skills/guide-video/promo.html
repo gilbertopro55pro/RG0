@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Gilberto promo (1080x1920, ~40.6s, 124 BPM "energy" track). Driven by promo.js: window.renderAt(t). -->
+<link rel="stylesheet" href="fonts.css">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; }
+  body { font-family: Rubik, sans-serif; color: #fff; position: relative; background: radial-gradient(120% 75% at 50% 35%, #172440 0%, #0b1220 58%, #070c16 100%); }
+  .scene { position: absolute; inset: 0; opacity: 0; }
+  .c { position: absolute; left: 70px; right: 70px; text-align: center; }
+  .w { color: #fff; } .b { color: #c9a15a; } .s { color: #aeb8cc; }
+  .big { font-weight: 800; letter-spacing: -.03em; line-height: 1.06; }
+  #glow { position: absolute; left: -200px; right: -200px; top: 380px; height: 1200px; background: radial-gradient(closest-side, rgba(201,161,90,.20), rgba(201,161,90,0)); }
+  #flash { position: absolute; inset: 0; background: radial-gradient(closest-side at 50% 42%, rgba(255,236,190,.95), rgba(201,161,90,.35) 45%, rgba(201,161,90,0) 75%); opacity: 0; }
+  .mark { display: inline-flex; align-items: center; justify-content: center; background: #8f6f2f; color: #fff; }
+  #wm { position: absolute; top: 150px; left: 64px; display: flex; align-items: center; gap: 14px; direction: rtl; opacity: 0; }
+  #wm .mark { width: 54px; height: 54px; border-radius: 13px; }
+  #wm span { font-weight: 700; font-size: 34px; }
+  /* hook */
+  #h1a { top: 690px; font-size: 124px; }
+  #h1b { top: 850px; font-size: 150px; }
+  [data-fit] { white-space: nowrap; }
+  #badge { top: 1080px; display: flex; justify-content: center; }
+  #badge span { display: inline-flex; align-items: center; gap: 16px; background: #c0392b; color: #fff; font-weight: 700; font-size: 42px; padding: 14px 30px; border-radius: 40px; }
+  /* night */
+  #clock { top: 420px; font-size: 40px; }
+  .bub { position: absolute; right: 80px; max-width: 880px; background: #1d2a40; border-radius: 34px; border-top-right-radius: 8px; padding: 26px 34px; font-size: 48px; line-height: 1.32; color: #eef2f8; text-align: right; box-shadow: 0 20px 50px rgba(0,0,0,.35); }
+  .bub small { display: block; font-size: 30px; color: #8792ab; margin-top: 8px; }
+  /* stamp */
+  .stamp { position: absolute; left: 0; right: 0; text-align: center; font-weight: 800; font-size: 112px; letter-spacing: -.03em; }
+  /* stat */
+  #statrow { top: 560px; display: flex; justify-content: center; align-items: baseline; gap: 30px; direction: rtl; }
+  #num { font-weight: 800; font-size: 360px; letter-spacing: -.05em; color: #c9a15a; line-height: 1; font-variant-numeric: tabular-nums; }
+  #unit { font-weight: 800; font-size: 120px; }
+  #statl1 { top: 1000px; font-size: 60px; }
+  #rule { position: absolute; top: 1150px; left: 50%; height: 4px; background: #c9a15a; transform: translateX(-50%); width: 0; }
+  #statl2 { top: 1200px; font-size: 76px; font-weight: 800; }
+  /* turn */
+  #turn1 { top: 760px; font-size: 104px; }
+  #turn2 { top: 890px; font-size: 124px; }
+  /* logo hit */
+  #hit { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px; }
+  #hit .mark { width: 280px; height: 280px; border-radius: 64px; box-shadow: 0 40px 120px rgba(201,161,90,.35); }
+  #hit b { font-size: 150px; font-weight: 800; letter-spacing: -.03em; }
+  #hit span { font-size: 54px; color: #aeb8cc; }
+  /* feature scenes */
+  .hd { position: absolute; top: 300px; left: 60px; right: 60px; text-align: center; font-weight: 800; font-size: 82px; letter-spacing: -.03em; line-height: 1.08; }
+  .hd span { display: block; color: #c9a15a; }
+  .sub { position: absolute; left: 70px; right: 70px; text-align: center; font-size: 44px; color: #aeb8cc; }
+  .card { position: absolute; left: 50%; border-radius: 52px; overflow: hidden; background: #f4efe6; box-shadow: 0 50px 120px rgba(0,0,0,.55), 0 0 0 10px #060a14, 0 0 0 12px #2a3650; }
+  .card img { display: block; width: 100%; }
+  .card .bar { display: flex; align-items: center; gap: 16px; padding: 24px 30px; background: #fbf8f2; border-bottom: 1px solid #e6dfd2; direction: rtl; color: #1a1408; }
+  .card .bar i { width: 62px; height: 62px; border-radius: 50%; background: #efe3c8; color: #8f6f2f; font-style: normal; font-weight: 700; font-size: 26px; display: flex; align-items: center; justify-content: center; }
+  .card .bar b { display: block; font-size: 32px; } .card .bar small { display: block; font-size: 24px; color: #2e9d5b; }
+  .tag { position: absolute; display: inline-flex; align-items: center; gap: 14px; background: #8f6f2f; color: #fff; font-weight: 700; font-size: 40px; padding: 20px 30px; border-radius: 22px; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+  /* chips */
+  #chips { position: absolute; top: 640px; left: 80px; right: 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px; direction: rtl; }
+  .chip { display: flex; align-items: center; gap: 22px; background: #131c2e; border: 2px solid #1c2638; border-radius: 26px; padding: 30px 28px; font-size: 42px; font-weight: 700; opacity: 0; }
+  .chip i { width: 64px; height: 64px; border-radius: 16px; background: #8f6f2f; flex: none; display: flex; align-items: center; justify-content: center; }
+  /* founder */
+  #fphoto { position: absolute; top: 330px; left: 50%; width: 560px; height: 660px; margin-left: -280px; border-radius: 30px; overflow: hidden; box-shadow: 0 0 0 6px #8f6f2f, 0 50px 120px rgba(0,0,0,.55); }
+  #fphoto img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 18%; }
+  #f1 { top: 1080px; font-size: 80px; } #f2 { top: 1180px; font-size: 80px; } #f3 { top: 1310px; font-size: 42px; }
+  /* end */
+  #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 380px; gap: 30px; }
+  #end .mark { width: 230px; height: 230px; border-radius: 54px; box-shadow: 0 40px 110px rgba(201,161,90,.3); }
+  #end b.name { font-size: 140px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+  #end .tl { font-size: 56px; color: #aeb8cc; }
+  #cta { margin-top: 70px; background: #8f6f2f; color: #fff; font-weight: 800; font-size: 60px; padding: 34px 56px; border-radius: 6px; box-shadow: 0 30px 80px rgba(143,111,47,.45); }
+  #link { margin-top: 26px; font-size: 64px; font-weight: 700; direction: ltr; letter-spacing: .01em; position: relative; padding-bottom: 14px; }
+  #link u { position: absolute; left: 0; bottom: 0; height: 6px; background: #c9a15a; width: 0; }
+  #free { font-size: 38px; color: #8792ab; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="glow"></div>
+
+<div id="s1" class="scene">
+  <div id="h1a" class="c big w" data-fit>הצילום נגמר בחצות.</div>
+  <div id="h1b" class="c big b" data-fit>הוואטסאפים לא.</div>
+  <div id="badge" class="c"><span><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4z"/></svg><em id="cnt" style="font-style:normal">0</em> הודעות שלא נקראו</span></div>
+</div>
+
+<div id="s2" class="scene">
+  <div id="clock" class="c s">01:12 · בדרך הביתה מחתונה</div>
+  <div class="bub" id="b1" style="top:520px">היי, ה-14.12 עדיין פנוי?<small>פנייה חדשה</small></div>
+  <div class="bub" id="b2" style="top:760px">אפשר לקבל את הצעת המחיר שוב? לא מוצאת אותה<small>לקוחה</small></div>
+  <div class="bub" id="b3" style="top:1060px">מתי הגלריה מהחינה מוכנה?<small>לקוחה</small></div>
+  <div class="bub" id="b4" style="top:1300px">העברתי את היתרה, אפשר קבלה?<small>לקוח</small></div>
+</div>
+
+<div id="s3" class="scene">
+  <div class="stamp" id="w1" style="top:560px">הצעות מחיר.</div>
+  <div class="stamp" id="w2" style="top:720px">חוזים.</div>
+  <div class="stamp" id="w3" style="top:880px" data-fit>תזכורות תשלום.</div>
+  <div class="stamp" id="w4" style="top:1040px">בחירת תמונות.</div>
+</div>
+
+<div id="s4" class="scene">
+  <div id="statrow" class="c"><span id="num">0</span><span id="unit">שעות</span></div>
+  <div id="statl1" class="c s">של עבודה מנהלית על כל אירוע</div>
+  <div id="rule"></div>
+  <div id="statl2" class="c w" data-fit>יותר מ-<span class="b">40</span> ימי עבודה בשנה.</div>
+</div>
+
+<div id="s5" class="scene">
+  <div id="turn1" class="c big w" data-fit>ומה אם כל זה</div>
+  <div id="turn2" class="c big b" data-fit>היה קורה לבד?</div>
+</div>
+
+<div id="s6" class="scene">
+  <div id="hit"><span class="mark"><svg width="150" height="150" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><b>גילברטו</b><span>כל העסק שלכם, במקום אחד.</span></div>
+</div>
+
+<div id="s7" class="scene">
+  <div class="hd">עוזר חכם שעונה ללקוחות<span>גם בשתיים בלילה.</span></div>
+  <div class="card" id="c7" style="top:560px;width:800px;margin-left:-400px">
+    <div class="bar"><i>סא</i><div><b>סטודיו אור</b><small>עונה מיד</small></div></div>
+    <img id="v7" alt="">
+  </div>
+</div>
+
+<div id="s8" class="scene">
+  <div class="hd">הצעת מחיר וחוזה<span>בקישור אחד.</span></div>
+  <div class="card" id="c8" style="top:560px;width:700px;margin-left:-350px"><img id="v8" alt=""></div>
+  <div class="tag" id="t8" style="top:1420px;left:120px"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>הלקוח אישר וחתם</div>
+</div>
+
+<div id="s9" class="scene">
+  <div class="hd">גלריה שבה הלקוח<span>בוחר את התמונות.</span></div>
+  <div class="card" id="c9" style="top:560px;width:700px;margin-left:-350px"><img id="v9" alt=""></div>
+  <div class="tag" id="t9" style="top:1440px;right:110px">ועיצוב אלבום אוטומטי</div>
+</div>
+
+<div id="s10" class="scene">
+  <div class="hd" style="top:380px">וכל השאר,<span>במקום אחד.</span></div>
+  <div id="chips"></div>
+</div>
+
+<div id="s11" class="scene">
+  <div id="fphoto"><img id="fimg" alt=""></div>
+  <div id="f1" class="c big w" data-fit>נבנתה בידי צלם אירועים,</div>
+  <div id="f2" class="c big b" data-fit>בשביל צלמי אירועים.</div>
+  <div id="f3" class="c s">רועי גלברט, צלם אירועים ומייסד גילברטו</div>
+</div>
+
+<div id="s12" class="scene">
+  <div id="end">
+    <span class="mark"><svg width="124" height="124" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+    <b class="name">גילברטו</b>
+    <span class="tl">פחות ניהול. יותר צילום.</span>
+    <div id="cta">14 ימי ניסיון חינם</div>
+    <div id="link">myframeflow.com/start<u></u></div>
+    <div id="free">ללא כרטיס אשראי</div>
+  </div>
+</div>
+
+<div id="wm"><span class="mark"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><span>גילברטו</span></div>
+<div id="flash"></div>
+
+<script>
+  // 124 BPM: one bar = 4 beats = 1.9355s. Scene edges sit on bars; the track's drop is at bar 4
+  // (7.74s) and its accents at bars 8 and 16 (15.48s, 30.97s).
+  const BEAT = 60 / 124, BAR = 4 * BEAT, B = (n) => n * BAR;
+  const S = {
+    s1: [0, B(2)], s2: [B(2), B(4)], s3: [B(4), B(5)], s4: [B(5), B(7)], s5: [B(7), B(8)], s6: [B(8), B(9)],
+    s7: [B(9), B(11)], s8: [B(11), B(13)], s9: [B(13), B(15)], s10: [B(15), B(16)], s11: [B(16), B(18)], s12: [B(18), B(21)],
+  };
+  const DURATION = B(21);
+  const clamp = (x) => Math.max(0, Math.min(1, x));
+  const ease = (x) => 1 - Math.pow(1 - clamp(x), 3);
+  const back = (x) => { x = clamp(x); const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+  const $ = (id) => document.getElementById(id);
+  // Scene opacity: quick in at its start, quick out at its end (the last scene stays).
+  const vis = (t, [a, b], fi = 0.22, fo = 0.18, last = false) => Math.min(ease((t - a) / fi), last ? 1 : ease((b - t) / fo));
+  // A "slam": scale from `from` to 1 and fade in, starting at `at`.
+  const slam = (el, t, at, from = 1.25, dur = 0.32) => { const p = ease((t - at) / dur); el.style.opacity = p; el.style.transform = `scale(${from - (from - 1) * p})`; };
+  const rise = (el, t, at, dist = 80, dur = 0.4) => { const p = ease((t - at) / dur); el.style.opacity = p; el.style.transform = `translateY(${(1 - p) * dist}px)`; };
+  const CHIPS = [
+    ["M12 3v2M5 10a7 7 0 0 1 14 0v5l2 3H3l2-3zM10 21h4", "תזכורות תשלום"],
+    ["M6 3h9l3 3v15H6zM9 13l2 2 4-4", "קבלות בקישור"],
+    ["M4 6h16v14H4zM4 10h16M9 3v4M15 3v4", "סנכרון ליומן"],
+    ["M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a7 7 0 0 1 14 0v1", "פורטל אישי ללקוח"],
+    ["M4 6h10M4 12h16M4 18h7M17 4v4M13 16v4", "חבילות ושלבים משלכם"],
+    ["M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z", "תיק עבודות ציבורי"],
+  ];
+  let cfg; const last = {};
+  window.setup = async (c) => {
+    cfg = c;
+    $("chips").innerHTML = CHIPS.map(([d, txt]) => `<div class="chip"><i><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg></i>${txt}</div>`).join("");
+    $("fimg").src = c.founder;
+    await document.fonts.ready;
+    // Lines marked data-fit stay on one line: shrink the font until the line fits its box.
+    document.querySelectorAll("[data-fit]").forEach((el) => {
+      let size = parseFloat(getComputedStyle(el).fontSize);
+      el.style.left = "50px"; el.style.right = "50px";
+      while (el.scrollWidth > el.clientWidth && size > 40) el.style.fontSize = (size -= 2) + "px";
+    });
+    await $("fimg").decode().catch(() => {});
+  };
+  // One pre-extracted frame per output frame, clamped to the clip's length.
+  async function clip(id, dir, count, local) {
+    const n = Math.min(count, Math.max(1, Math.floor(local * 30) + 1));
+    if (last[id] === n) return;
+    last[id] = n;
+    const el = $(id);
+    el.src = `${dir}/${String(n).padStart(5, "0")}.jpg`;
+    await el.decode().catch(() => {});
+  }
+  window.renderAt = async (t) => {
+    for (const [k, r] of Object.entries(S)) $(k).style.opacity = vis(t, r, 0.22, 0.18, k === "s12");
+    $("glow").style.opacity = 0.6 + 0.4 * Math.sin(t * 1.3);
+    // Hook
+    slam($("h1a"), t, 0.05, 1.3);
+    slam($("h1b"), t, 3 * BEAT, 1.35);
+    rise($("badge"), t, 5 * BEAT, 50);
+    $("cnt").textContent = Math.round(47 * ease((t - 5 * BEAT) / 1.2));
+    // Night messages, one every two beats
+    ["b1", "b2", "b3", "b4"].forEach((id, i) => rise($(id), t, S.s2[0] + 0.12 + i * 2 * BEAT, 70, 0.35));
+    rise($("clock"), t, S.s2[0], 30);
+    // Stamps on the beat after the drop
+    ["w1", "w2", "w3", "w4"].forEach((id, i) => {
+      const at = S.s3[0] + i * BEAT, el = $(id);
+      slam(el, t, at, 1.45, 0.22);
+      el.style.color = t - at < 0.18 ? "#c9a15a" : "#fff";
+    });
+    // Stat
+    const s4 = S.s4[0];
+    $("num").textContent = (4.5 * ease((t - s4 - 0.05) / 1.1)).toFixed(1);
+    slam($("statrow"), t, s4, 1.15, 0.3);
+    rise($("statl1"), t, s4 + 2 * BEAT, 40);
+    $("rule").style.width = 520 * ease((t - s4 - 4 * BEAT) / 0.4) + "px";
+    slam($("statl2"), t, s4 + 4 * BEAT, 1.2, 0.3);
+    // Turn
+    rise($("turn1"), t, S.s5[0] + 0.05, 60);
+    slam($("turn2"), t, S.s5[0] + 2 * BEAT, 1.3);
+    // Logo hit on the accent
+    const h = S.s6[0];
+    $("flash").style.opacity = 0.85 * (1 - ease((t - h) / 0.45)) * (t >= h ? 1 : 0);
+    const hm = document.querySelector("#hit .mark");
+    const hp = back((t - h) / 0.5);
+    hm.style.transform = `scale(${0.5 + 0.5 * hp})`;
+    rise(document.querySelector("#hit b"), t, h + 0.15, 40);
+    rise(document.querySelector("#hit span"), t, h + 2 * BEAT, 30);
+    // Small logo top left from the logo hit to the founder scene
+    $("wm").style.opacity = Math.min(ease((t - S.s7[0]) / 0.3), ease((S.s12[0] - t) / 0.2));
+    // Feature scenes
+    for (const [s, card, tag] of [["s7", "c7", null], ["s8", "c8", "t8"], ["s9", "c9", "t9"]]) {
+      const a = S[s][0];
+      rise(document.querySelector(`#${s} .hd`), t, a + 0.02, 50, 0.35);
+      const p = ease((t - a - 0.1) / 0.45);
+      $(card).style.opacity = p;
+      $(card).style.transform = `translateY(${(1 - p) * 260}px) scale(${0.94 + 0.06 * p})`;
+      if (tag) slam($(tag), t, a + 5 * BEAT, 1.3, 0.28);
+    }
+    if (t >= S.s7[0] - 0.1 && t < S.s7[1]) await clip("v7", cfg.intake, cfg.intakeN, Math.max(0, t - S.s7[0]));
+    if (t >= S.s8[0] - 0.1 && t < S.s8[1]) await clip("v8", cfg.quote, cfg.quoteN, Math.max(0, t - S.s8[0]));
+    if (t >= S.s9[0] - 0.1 && t < S.s9[1]) await clip("v9", cfg.gallery, cfg.galleryN, Math.max(0, t - S.s9[0]));
+    // Chips, one every half beat
+    rise(document.querySelector("#s10 .hd"), t, S.s10[0], 40, 0.3);
+    document.querySelectorAll(".chip").forEach((el, i) => slam(el, t, S.s10[0] + 0.12 + i * BEAT / 2, 1.25, 0.22));
+    // Founder on the second accent
+    const f = S.s11[0];
+    const fp = back((t - f) / 0.55);
+    $("fphoto").style.transform = `scale(${0.8 + 0.2 * fp})`;
+    $("fphoto").style.opacity = ease((t - f) / 0.3);
+    rise($("f1"), t, f + 2 * BEAT, 50);
+    slam($("f2"), t, f + 4 * BEAT, 1.25);
+    rise($("f3"), t, f + 6 * BEAT, 30);
+    // End card
+    const e = S.s12[0];
+    const em = document.querySelector("#end .mark");
+    em.style.transform = `scale(${0.6 + 0.4 * back((t - e) / 0.5)})`;
+    rise(document.querySelector("#end .name"), t, e + 0.15, 40);
+    rise(document.querySelector("#end .tl"), t, e + 2 * BEAT, 30);
+    slam($("cta"), t, e + 4 * BEAT, 1.2, 0.3);
+    rise($("link"), t, e + 6 * BEAT, 30);
+    document.querySelector("#link u").style.width = 100 * ease((t - e - 7 * BEAT) / 0.5) + "%";
+    rise($("free"), t, e + 8 * BEAT, 20);
+    const pulse = t > e + 9 * BEAT ? 1 + 0.03 * Math.max(0, Math.sin((t - e) * Math.PI * 2 / BAR)) : 1;
+    $("cta").style.transform = `scale(${pulse})`;
+  };
+  window.DURATION = DURATION;
+</script>
+</body>
+</html>

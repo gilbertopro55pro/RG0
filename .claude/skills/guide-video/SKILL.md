@@ -46,6 +46,29 @@ logo, in a "coming soon" reveal style.
   at `speed`). `teaser-assistant` is a live chat without a phone number, so no lead is created.
 - Delivered to the owner as files (not in `public/`). Review the strip and a frame at 6s and 16s.
 
+## Promo video (סרטון קידום, 2026-10-11)
+- 40.6s, 1080x1920, H.264 + AAC, about 9.6MB (under WhatsApp's 16MB). Delivered to the owner as a
+  file, not in `public/`.
+- `promo.html` is the timeline, synced to the `energy` track (124 BPM, `public/reels/music`). Every
+  scene starts on a bar: the hook during the quiet intro, the stamps on the drop (7.74s), the logo
+  on the first accent (15.48s), the founder on the second (30.97s).
+  - Scenes: hook "הצילום נגמר בחצות. הוואטסאפים לא.", night messages, stamps, 4.5 hours, "ומה אם כל זה
+    היה קורה לבד?", logo, three product scenes from real footage, chips, founder, end card.
+  - The end card shows `myframeflow.com/start` (a redirect to /signup in `next.config.ts`).
+- `promo.js <run folder>` renders it frame by frame and adds the music, with a fade out. Add
+  `preview` for stills only.
+- Prepare a run folder (ffmpeg = imageio_ffmpeg, see Setup):
+  - `fonts.css`: the live site's Rubik @font-face rules with their woff2 files, the same as for
+    `scripts/landing-og`. Write `url()` as absolute `file://` paths.
+  - `founder.jpg`: copy `public/landing/founder.jpg`.
+  - Footage from `public/guides`. Each crop leaves out that video's burned-in caption:
+    - `f-intake`: `-ss 24 -t 26 -i intake-demo.mp4 -vf "fps=6,crop=480:535:0:170,scale=900:-2"`
+    - `f-quote`: `-ss 11.5 -t 5.2 -i quote-flow.mp4 -vf "fps=24,crop=480:690:0:76,scale=900:-2"`
+    - `f-gallery`: `-ss 23.6 -t 6.4 -i galleries.mp4 -vf "fps=20,crop=480:652:0:0,scale=900:-2"`
+    - Write each as `-q:v 2 <dir>/%05d.jpg`. If a guide video is re-recorded, check the crops
+      again: the captions move.
+- Review `promo-strip.png` and the last frame (the link must show) before sending.
+
 ## Setup (once per container)
 1. Scratch dir outside the repo: `export GF_OUT=<scratchpad>/guide-video GF_STATE=<scratchpad>/qa-state.json`.
 2. `playwright-core` is needed (`npm i playwright-core` in the scratchpad if missing; Chromium is at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`). Run node with `NODE_PATH` pointing at that node_modules.
