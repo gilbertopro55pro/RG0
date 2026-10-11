@@ -86,6 +86,10 @@ one `event_notifications` row (`is_client_action`, so it's a red badge on the ev
     house downloading. Before, the photographer got the plain export notice with the long signed
     URL in the text.
   - `photographerExportEmail`: every other export. Its link reads "להורדת הקובץ".
+  - Verified live 2026-10-11 (test account, owner's inbox as the print house). The print-house
+    email arrived from `studio@gilbertopro.com` (so Resend accepts it, no fallback) and landed in
+    the Gmail inbox, with reply-to set to the photographer. The test account's own email is a
+    `+qatest` alias of the owner's inbox, so the photographer's copy reaches the owner too.
   - All three use `albumDisplayName`: the gallery's name when the album kept "האלבום שלכם".
     That covers the subject and the downloaded file name too.
 - **Token length (bug fixed 2026-10-11, v2.12.3).** On 2026-10-07 the token was shortened to 12
