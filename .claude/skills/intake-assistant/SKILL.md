@@ -226,6 +226,12 @@ never claims to be the photographer and answers honestly if asked whether it's a
   → "did you mean X in Y?"; not found → ask (spelling / which city), never claim it was noted.
   Small halls/synagogues are often missing from OSM, so a client who confirms the place + city is
   believed. The prompt also forbids saying a detail was saved unless save_details returned it.
+- **The newest reply hid behind the input bar (2026-10-11, found while capturing the promo video):**
+  once a conversation was taller than the phone screen, `scrollIntoView({ block: "end" })` lined
+  the end marker up with the bottom of the screen, under the sticky input bar, so every reply was
+  cut off until the client scrolled. Fixed with `scroll-mb-32` on the end marker in `IntakeChat.tsx`.
+  Headless screenshots also draw the frosted header wrongly (crisp text through it); that is the
+  test browser, not the site.
 - **Empty turn → fallback (2026-10-04):** the model once ended a turn with only an empty thinking
   block, so the client got "something went wrong". `runIntakeTurn` now drops such a response and
   asks once more (`retriedEmpty`).
