@@ -67,7 +67,21 @@ logo, in a "coming soon" reveal style.
     - `f-gallery`: `-ss 23.6 -t 6.4 -i galleries.mp4 -vf "fps=20,crop=480:652:0:0,scale=900:-2"`
     - Write each as `-q:v 2 <dir>/%05d.jpg`. If a guide video is re-recorded, check the crops
       again: the captions move.
-- Review `promo-strip.png` and the last frame (the link must show) before sending.
+- Review `<NAME>-strip.png` and the last frame (the link must show) before sending.
+- **Three videos (2026-10-11).** `TEMPLATE` picks one and `NAME` the output file. The hooks are
+  different on purpose, so they can be tested against each other:
+  - `promo.html`, `gilberto-promo`: hook "הצילום נגמר בחצות". Track `energy.m4a`, 40.6s.
+  - `promo2.html`, `gilberto-promo-2`: the lost lead, "כמה אירועים הפסדתם כי עניתם מאוחר מדי?". A
+    23:47 message, you're asleep, the client books someone else. Then the assistant, a lead card,
+    the quote. Track `acoustic.m4a` (100 BPM); the turn lands where the track opens up (9.6s),
+    38.4s.
+  - `promo3.html`, `gilberto-promo-3`: the evening after a wedding. The clock runs from 22:00 to
+    01:30 over five tasks, rewinds, the same evening with everything done, the home screen,
+    "22:05. הולכים לישון.". Track `cinematic.m4a` (80 BPM); the logo is on its peak (36s), 42s.
+  - Extra footage for 2 and 3, in the same run folder:
+    - `f-intake2`: `-ss 20 -t 37 -i intake-demo.mp4 -vf "fps=6,crop=480:535:0:170,scale=900:-2"`
+    - `f-quote2`: `-ss 11.5 -t 6.2 -i quote-flow.mp4 -vf "fps=24,crop=480:690:0:76,scale=900:-2"`
+    - `f-home`: `-ss 1.5 -t 6.5 -i overview.mp4 -vf "fps=30,crop=480:660:0:0,scale=900:-2"`
 
 ## Setup (once per container)
 1. Scratch dir outside the repo: `export GF_OUT=<scratchpad>/guide-video GF_STATE=<scratchpad>/qa-state.json`.
