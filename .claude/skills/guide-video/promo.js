@@ -1,0 +1,56 @@
+// Gilberto promo video (SKILL.md "Promo video"): renders promo.html frame by frame (deterministic,
+// no dropped frames) and encodes it with the music. The run folder must hold fonts.css (+ its font
+// files), founder.jpg and the f-intake / f-quote / f-gallery frame folders (see SKILL.md).
+// Usage: PWC=<playwright-core dir> FF=<ffmpeg> MUSIC=<repo>/public/reels/music/energy.m4a node promo.js <run folder> [preview]
+const { chromium } = require(process.env.PWC);
+const { spawn, execFileSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+const dir = process.argv[2];
+const preview = process.argv[3] === "preview";
+const FF = process.env.FF, FPS = 30;
+const count = (d) => fs.readdirSync(path.join(dir, d)).filter((f) => f.endsWith(".jpg")).length;
+(async () => {
+  const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--allow-file-access-from-files"] });
+  const p = await b.newPage({ viewport: { width: 1080, height: 1920 } });
+  p.on("pageerror", (e) => console.log("pageerror", e.message));
+  fs.copyFileSync(path.join(__dirname, "promo.html"), path.join(dir, "promo.html"));
+  fs.mkdirSync(path.join(dir, "prev"), { recursive: true });
+  await p.goto("file://" + path.join(dir, "promo.html"));
+  await p.evaluate((c) => window.setup(c), {
+    intake: "file://" + path.join(dir, "f-intake"), intakeN: count("f-intake"),
+    quote: "file://" + path.join(dir, "f-quote"), quoteN: count("f-quote"),
+    gallery: "file://" + path.join(dir, "f-gallery"), galleryN: count("f-gallery"),
+    founder: "file://" + path.join(dir, "founder.jpg"),
+  });
+  const duration = await p.evaluate(() => window.DURATION);
+  if (preview) {
+    // Stills at chosen times for review.
+    const times = [0.6, 2.6, 6.9, 9.4, 12.5, 14.6, 16.6, 19.5, 23.9, 27.8, 30.6, 33.8, 37.0, 40.4];
+    for (const s of times) {
+      await p.evaluate((t) => window.renderAt(t), s);
+      await p.screenshot({ path: path.join(dir, "prev", `t${s.toFixed(1)}.jpg`), type: "jpeg", quality: 80 });
+    }
+    await b.close();
+    console.log("preview done", duration);
+    return;
+  }
+  const silent = path.join(dir, "promo-silent.mp4");
+  const ff = spawn(FF, ["-hide_banner", "-loglevel", "error", "-y", "-f", "image2pipe", "-c:v", "mjpeg", "-framerate", String(FPS), "-i", "-",
+    "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", silent], { stdio: ["pipe", "inherit", "inherit"] });
+  const total = Math.round(duration * FPS);
+  for (let i = 0; i < total; i++) {
+    await p.evaluate((t) => window.renderAt(t), i / FPS);
+    const buf = await p.screenshot({ type: "jpeg", quality: 93 });
+    if (!ff.stdin.write(buf)) await new Promise((r) => ff.stdin.once("drain", r));
+  }
+  ff.stdin.end();
+  await new Promise((r) => ff.on("close", r));
+  await b.close();
+  const out = path.join(dir, "gilberto-promo.mp4");
+  const fadeAt = (duration - 2.6).toFixed(2);
+  execFileSync(FF, ["-hide_banner", "-loglevel", "error", "-y", "-i", silent, "-i", process.env.MUSIC, "-t", duration.toFixed(3),
+    "-af", `afade=t=in:st=0:d=0.15,afade=t=out:st=${fadeAt}:d=2.6`, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out]);
+  execFileSync(FF, ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=0.5,scale=150:-1,tile=11x2", "-frames:v", "1", path.join(dir, "promo-strip.png")]);
+  console.log(out, total, "frames");
+})().catch((e) => { console.error("FATAL", e.message); process.exit(1); });
