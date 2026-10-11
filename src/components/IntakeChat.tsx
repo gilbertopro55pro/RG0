@@ -239,7 +239,9 @@ function ChatView({
                 {t("הפרטים הועברו ל{studio}, תשובה תוך {hours} שעות", { studio, hours: replyHours })}
               </div>
             )}
-            <div ref={endRef} />
+            {/* The input bar below is sticky: without the margin, scrolling to here leaves the newest
+                message behind it once the conversation is taller than the screen. */}
+            <div ref={endRef} className="scroll-mb-32" />
           </div>
           <div className="sticky bottom-0 bg-card border-t border-line px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom,0px))]">
             {error && <p className="text-xs text-rose mb-1.5 text-center">{error}</p>}
