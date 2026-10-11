@@ -195,11 +195,10 @@ tracks.lofi = () => {
 };
 
 // 6. Dance energy — four-on-the-floor house, pumping chords, arpeggio.
-tracks.energy = () => {
+const energy = (bars = 24) => () => {
   setSeed(66);
   const bpm = 124, b = 60 / bpm, bar = 4 * b;
   const prog = ["Am", "F", "C", "G"];
-  const bars = 24;
   const mx = new Mix(bars * bar + 2);
   for (let i = 0; i < bars; i++) {
     const t0 = i * bar;
@@ -224,9 +223,13 @@ tracks.energy = () => {
   duck(mx.get("verb"), b, 0, 0.4, mx.n);
   return master(mx, { verb: { room: 0.7, damp: 0.5 }, fadeOut: 2.5, targetRms: 0.16 });
 };
+tracks.energy = energy();
+// Longer renders for the promo videos (guide-video SKILL.md), only when asked for by name: not part of
+// the reels library. The same track; the chorus just runs on.
+const variants = { "energy-28": energy(28) };
 
 const only = process.argv[3];
-for (const [id, fn] of Object.entries(tracks)) {
+for (const [id, fn] of Object.entries(only && variants[only] ? { [only]: variants[only] } : tracks)) {
   if (only && only !== id) continue;
   const t0 = Date.now();
   const res = fn();

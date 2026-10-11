@@ -57,10 +57,11 @@ logo, in a "coming soon" reveal style.
   - The end card shows `myframeflow.com/start` (a redirect to /signup in `next.config.ts`).
   - **The closing message (owner, 2026-10-11):** "פחות ניהול. יותר צילום." was dropped: it
     didn't say what the viewer gets. Each end card has one human sentence over two lines, white then
-    gold, both lines the same size. Not "מילה. מילה." (owner):
-    - Video 1: "אתם מצלמים, / וגילברטו דואגת לכל השאר."
-    - Video 2: "בזמן שאתם מצלמים, / גילברטו עונה ללקוחות שלכם."
-    - Video 3: "הבוקר שאחרי החתונה / חוזר להיות שלכם."
+    gold, both lines the same size. Not "מילה. מילה.", and no period at the end of a line anywhere
+    in the videos, to read more human (owner); "X. Y" inside a line became "X, Y":
+    - Video 1: "אתם מצלמים, / וגילברטו דואגת לכל השאר"
+    - Video 2: "בזמן שאתם מצלמים, / גילברטו עונה ללקוחות שלכם"
+    - Video 3: "הבוקר שאחרי החתונה / חוזר להיות שלכם"
     - The button "נסו 14 יום בחינם" (a verb, not a label), and "ללא כרטיס אשראי וללא התחייבות".
 - `promo.js <run folder>` renders it frame by frame and adds the music, with a fade out. Add
   `preview` for stills only. A template that syncs to a later bar of its track sets
@@ -83,7 +84,10 @@ logo, in a "coming soon" reveal style.
 - Review `<NAME>-strip.png` and the last frame (the link must show) before sending.
 - **Music: the `energy` track in all three (owner, 2026-10-11: "המוזיקה חייבת להיות כמו בסרטון
   הראשון").** Videos 2 and 3 were retimed to its 124 BPM, so their scene changes land on its bars:
-  its claps and bass come in at bar 4 and it drops at bar 12. Tried and dropped the same day:
+  its claps and bass come in at bar 4 and it drops at bar 12. Video 3 runs past the track's 24
+  bars, so it uses `energy-28`, the same track rendered 4 bars longer
+  (`node scripts/reel-music/tracks.mjs <dir> energy-28`, then AAC 192k; not in the reels library).
+  Tried and dropped the same day:
   `acoustic` and `celebration` for videos 2 and 3, then an original "uplift" track for all three.
   The owner preferred the first video's music.
 - **Three videos (2026-10-11).** `TEMPLATE` picks one and `NAME` the output file. The hooks are
@@ -116,7 +120,7 @@ logo, in a "coming soon" reveal style.
     - Found while capturing (fixed 2026-10-11): the newest reply hid behind the input bar once the
       chat was taller than the screen (`scroll-mb-32` on the end marker in `IntakeChat.tsx`).
   - `promo3.html`, `gilberto-promo-3`: the morning after a wedding.
-    - Track `energy.m4a`, 40.6s, from its 4th bar: the template sets `window.MUSIC_START` and
+    - Track `energy-28.m4a`, 44.5s, from its 4th bar: the template sets `window.MUSIC_START` and
       `promo.js` seeks the music to it. The claps and bass come in on the second hook line (1.9s),
       and the drop with its crash on the turn to the morning with Gilberto (17.4s).
     - "00:00. החתונה נגמרה. ובבוקר מחכה לכם עוד משמרת.". The clock flies from 00:00 to 08:30,
@@ -124,6 +128,31 @@ logo, in a "coming soon" reveal style.
     - Then it rewinds to the same morning with everything done ("עוזר הפניות ענה להן עוד בזמן
       החתונה"), the home screen, and "08:45. מתחילים לערוך.". With Gilberto it takes 15 minutes
       (08:30 → 08:45); the owner found 5 minutes too much to believe.
+    - **A real process, the quote fix (owner, 2026-10-11: "show at least one process").** "הלקוחות
+      ביקשו שינוי בהצעה? מתקנים ושולחים תוך דקה" over eight real screens of the live app, with a
+      tap mark where each next step is pressed. It replaced the home screen footage, and the video
+      is now 44.5s (track `energy-28`, below).
+      1. The lead card, ₪9,250, "עדכון הצעת מחיר".
+      2. The builder.
+      3. The extra videographer row removed.
+      4. Video 2,400 → 2,000, total ₪7,050.
+      5. The preview, "שליחה ללקוח/ה".
+      6. "לא, רק הצעת המחיר".
+      7. "נשלח בהצלחה".
+      8. The client's page on the same link, ₪7,050, with the tag "אותו קישור, וההצעה כבר מעודכנת".
+    - **How it was captured:** `live-drive.js`, logged in as the test account (Setup, step 4). The
+      demo lead "נועה ואיתי" (050-0000123, 12.8.2027, כפר המכביה) was created in the app. Its
+      `details` were then set with SQL so the full builder opens: only an assistant lead with
+      details opens it, a bare lead gets a plain amount field.
+      - The first send was ₪9,250 (with a 1,800 extra videographer), the fix ₪7,050.
+      - Both sends used the same link (`/quotes/<token>`).
+      - Frames: `f-fix/%05d.jpg`, each a 1080x1290 window (430 CSS px) of the 360x720 screen around
+        its step. The lead card is padded below, so the other test leads (their phone numbers)
+        don't show. The client page is cropped below its header, which shows the test account's
+        email. Tap points are in `FIX` in `promo3.html`.
+      - Found while capturing: "עדכון הצעת מחיר" opens the builder from the lead's assistant
+        details again, not from the quote that was sent. A manual price (the 1,800) comes back
+        empty.
     - Owner, 2026-10-11: a wedding doesn't end at 22:00, and nobody messages clients at midnight.
       The client work belongs in the morning. Until then it was a 22:00 → 01:30 evening.
   - Extra footage for 2 and 3, in the same run folder:
