@@ -144,7 +144,7 @@
 </div>
 <div id="s7" class="scene">
   <div id="cup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%"><path d="M17 8h1a4 4 0 1 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zM6 2v2M10 2v2M14 2v2"/></svg></div>
-  <div id="bed1" class="c">08:35</div>
+  <div id="bed1" class="c">08:45</div>
   <div id="bed2" class="c big b" data-fit>מתחילים לערוך.</div>
 </div>
 <div id="s_end" class="scene">
@@ -218,9 +218,9 @@
     $("rw").style.transform = `rotate(${-540 * ease((t - r0) / 1.6)}deg)`;
     rise($("r1"), t, r0 + 2 * BEAT, 40);
     slam($("r2"), t, r0 + 3 * BEAT, 1.25, 0.28);
-    // The morning with: the same jobs, already done.
+    // The morning with: the same jobs, done in a quarter of an hour (owner: 5 minutes was too much).
     const o0 = S.s5[0];
-    $("clock3").textContent = fmt(lerpKeys(t, [[o0, M(8, 30)], [S.s5[1], M(8, 34)]]));
+    $("clock3").textContent = fmt(lerpKeys(t, [[o0, M(8, 30)], [S.s5[1], M(8, 44)]]));
     [0, 1, 2, 3, 4].forEach((i) => {
       const at = o0 + 0.5 + i * 2 * BEAT;
       rise($("to" + i), t, at, 50, 0.35);
