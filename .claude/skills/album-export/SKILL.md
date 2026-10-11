@@ -82,7 +82,9 @@ one `event_notifications` row (`is_client_action`, so it's a red badge on the ev
     `send_to_email` null → really not found. Otherwise it's the token check.
   - Live check without rendering or email: insert a test-account job with `status = 'failed'`,
     `send_to_email` set and a 12-character token, then curl `/print/<token>`. It should show
-    "הכנת הקבצים נכשלה", not "הקישור לא נמצא". Delete the row afterwards.
+    "הכנת הקבצים נכשלה", not "הקישור לא נמצא". Afterwards, neutralize the row with an UPDATE
+    (`share_token`, `send_to_email`, `link_expires_at` = null, `expires_at = now()`). A DELETE
+    through the Supabase connector waits for a confirmation and times out after 60s.
 - Verified live 2026-09-28 (test account, job 7b3cd568): processing set `link_expires_at`. Page
   GETs and a GET on the download route left the count at 0. POST ×2 gave count 2 and exactly one
   notification, and the zip held 10 JPGs. With `link_expires_at` in the past, the page shows "תוקף
