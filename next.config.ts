@@ -21,6 +21,11 @@ const nextConfig: NextConfig = {
   // (pdf-lib and the sharp/SVG text renderer both need real font bytes). Output file tracing's
   // static analysis usually catches fs.readFile calls with literal paths, but this makes it
   // explicit so the font files are never silently dropped from the deployed function bundle.
+  // A short, friendly signup link for ads and videos ("myframeflow.com/start", owner 2026-10-11).
+  // Config redirects run before the auth proxy, so it works with no session.
+  async redirects() {
+    return [{ source: "/start", destination: "/signup", permanent: false }];
+  },
   outputFileTracingIncludes: {
     "/api/galleries/\\[id\\]/album/export-pdf": ["src/assets/fonts/**/*"],
     "/api/galleries/\\[id\\]/album/export-jpg": ["src/assets/fonts/**/*"],
