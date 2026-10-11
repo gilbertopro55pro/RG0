@@ -34,6 +34,8 @@ const NAME = process.env.NAME || "gilberto-promo";
     chat: "file://" + path.join(dir, "f-chat"), chatN: count("f-chat"),
   });
   const duration = await p.evaluate(() => window.DURATION);
+  // Where in the track the video starts, when its timeline is synced to a later bar (promo3).
+  const musicStart = await p.evaluate(() => window.MUSIC_START || 0);
   if (preview) {
     // Stills at chosen times for review.
     const times = (process.env.TIMES || "0.6,2.6,6.9,9.4,12.5,14.6,16.6,19.5,23.9,27.8,30.6,33.8,37.0,40.4").split(",").map(Number).filter((x) => x < duration);
@@ -59,7 +61,7 @@ const NAME = process.env.NAME || "gilberto-promo";
   await b.close();
   const out = path.join(dir, `${NAME}.mp4`);
   const fadeAt = (duration - 2.6).toFixed(2);
-  execFileSync(FF, ["-hide_banner", "-loglevel", "error", "-y", "-i", silent, "-i", process.env.MUSIC, "-t", duration.toFixed(3),
+  execFileSync(FF, ["-hide_banner", "-loglevel", "error", "-y", "-i", silent, "-ss", musicStart.toFixed(3), "-i", process.env.MUSIC, "-t", duration.toFixed(3),
     "-af", `afade=t=in:st=0:d=0.15,afade=t=out:st=${fadeAt}:d=2.6`, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out]);
   execFileSync(FF, ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=0.5,scale=150:-1,tile=11x2", "-frames:v", "1", path.join(dir, `${NAME}-strip.png`)]);
   console.log(out, total, "frames");

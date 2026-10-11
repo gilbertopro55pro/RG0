@@ -56,7 +56,8 @@ logo, in a "coming soon" reveal style.
     היה קורה לבד?", logo, three product scenes from real footage, chips, founder, end card.
   - The end card shows `myframeflow.com/start` (a redirect to /signup in `next.config.ts`).
 - `promo.js <run folder>` renders it frame by frame and adds the music, with a fade out. Add
-  `preview` for stills only.
+  `preview` for stills only. A template that syncs to a later bar of its track sets
+  `window.MUSIC_START` (seconds into the track).
 - Prepare a run folder (ffmpeg = imageio_ffmpeg, see Setup):
   - `fonts.css`: the live site's Rubik @font-face rules with their woff2 files, the same as for
     `scripts/landing-og`. Write `url()` as absolute `file://` paths.
@@ -101,8 +102,11 @@ logo, in a "coming soon" reveal style.
       their frames, and the real 4–6s waits are shortened.
     - Found while capturing (fixed 2026-10-11): the newest reply hid behind the input bar once the
       chat was taller than the screen (`scroll-mb-32` on the end marker in `IntakeChat.tsx`).
-  - `promo3.html`, `gilberto-promo-3`: the morning after a wedding. Track `cinematic.m4a` (80 BPM),
-    42s; the logo is on its peak (36s).
+  - `promo3.html`, `gilberto-promo-3`: the morning after a wedding. 42.7s.
+    - Track `celebration.m4a` (118 BPM; owner, 2026-10-11: "מוזיקה דינאמית", it was the slow
+      `cinematic`). It starts at the track's 4th bar: the template sets `window.MUSIC_START` and
+      `promo.js` seeks the music to it. The drums come in on the second hook line (2s), and the
+      chorus with its crash on the turn to the morning with Gilberto (18.3s).
     - "00:00. החתונה נגמרה. ובבוקר מחכה לכם עוד משמרת.". The clock flies from 00:00 to 08:30,
       then runs over five client tasks to 11:00, "ועוד לא התחלתם לערוך.".
     - Then it rewinds to the same morning with everything done ("עוזר הפניות ענה להן עוד בזמן
