@@ -19,6 +19,8 @@ const NAME = process.env.NAME || "gilberto-promo";
   const p = await b.newPage({ viewport: { width: 1080, height: 1920 } });
   p.on("pageerror", (e) => console.log("pageerror", e.message));
   fs.copyFileSync(path.join(__dirname, TEMPLATE), path.join(dir, TEMPLATE));
+  // The system logo (the app icon) is the brand mark in every video.
+  fs.copyFileSync(path.join(__dirname, "../../../public/icons/icon-512.png"), path.join(dir, "logo.png"));
   fs.mkdirSync(path.join(dir, "prev"), { recursive: true });
   await p.goto("file://" + path.join(dir, TEMPLATE));
   await p.evaluate((c) => window.setup(c), {

@@ -67,6 +67,10 @@ logo, in a "coming soon" reveal style.
     - `f-gallery`: `-ss 23.6 -t 6.4 -i galleries.mp4 -vf "fps=20,crop=480:652:0:0,scale=900:-2"`
     - Write each as `-q:v 2 <dir>/%05d.jpg`. If a guide video is re-recorded, check the crops
       again: the captions move.
+- The brand mark in all three videos is the system logo, `public/icons/icon-512.png`. It shows in
+  the logo moment, the end card, the small corner mark, and video 2's notifications. `promo.js`
+  copies it into the run folder as `logo.png`. It already carries the name, so the end card has no
+  separate "גילברטו" text (owner, 2026-10-11).
 - Review `<NAME>-strip.png` and the last frame (the link must show) before sending.
 - **Three videos (2026-10-11).** `TEMPLATE` picks one and `NAME` the output file. The hooks are
   different on purpose, so they can be tested against each other:

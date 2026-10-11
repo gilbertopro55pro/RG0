@@ -16,7 +16,9 @@
   #flash { position: absolute; inset: 0; background: radial-gradient(closest-side at 50% 42%, rgba(255,236,190,.95), rgba(201,161,90,.35) 45%, rgba(201,161,90,0) 75%); opacity: 0; }
   .mark { display: inline-flex; align-items: center; justify-content: center; background: #8f6f2f; color: #fff; }
   #wm { position: absolute; top: 150px; left: 64px; display: flex; align-items: center; gap: 14px; direction: rtl; opacity: 0; }
-  #wm .mark { width: 54px; height: 54px; border-radius: 13px; }
+  #wm .mark { width: 66px; height: 66px; border-radius: 15px; }
+  /* The system logo (public/icons/icon-512.png) wherever the brand mark shows. */
+  .logoimg { display: block; object-fit: cover; }
   #wm span { font-weight: 700; font-size: 34px; }
   /* hook */
   #h1a { top: 690px; font-size: 124px; }
@@ -42,7 +44,7 @@
   #turn2 { top: 890px; font-size: 124px; }
   /* logo hit */
   #hit { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px; }
-  #hit .mark { width: 280px; height: 280px; border-radius: 64px; box-shadow: 0 40px 120px rgba(201,161,90,.35); }
+  #hit .mark { width: 440px; height: 440px; border-radius: 96px; box-shadow: 0 40px 120px rgba(0,0,0,.5), 0 0 120px rgba(201,161,90,.25); }
   #hit b { font-size: 150px; font-weight: 800; letter-spacing: -.03em; }
   #hit span { font-size: 54px; color: #aeb8cc; }
   /* feature scenes */
@@ -64,8 +66,8 @@
   #fphoto img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 18%; }
   #f1 { top: 1080px; font-size: 80px; } #f2 { top: 1180px; font-size: 80px; } #f3 { top: 1310px; font-size: 42px; }
   /* end */
-  #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 380px; gap: 30px; }
-  #end .mark { width: 230px; height: 230px; border-radius: 54px; box-shadow: 0 40px 110px rgba(201,161,90,.3); }
+  #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 300px; gap: 36px; }
+  #end .mark { width: 400px; height: 400px; border-radius: 86px; box-shadow: 0 40px 110px rgba(0,0,0,.5), 0 0 110px rgba(201,161,90,.22); }
   #end b.name { font-size: 140px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
   #end .tl { font-size: 56px; color: #aeb8cc; }
   #cta { margin-top: 70px; background: #8f6f2f; color: #fff; font-weight: 800; font-size: 60px; padding: 34px 56px; border-radius: 6px; box-shadow: 0 30px 80px rgba(143,111,47,.45); }
@@ -111,7 +113,7 @@
 </div>
 
 <div id="s6" class="scene">
-  <div id="hit"><span class="mark"><svg width="150" height="150" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><b>גילברטו</b><span>כל העסק שלכם, במקום אחד.</span></div>
+  <div id="hit"><img class="mark logoimg" src="logo.png" alt=""><span>כל העסק שלכם, במקום אחד.</span></div>
 </div>
 
 <div id="s7" class="scene">
@@ -148,8 +150,7 @@
 
 <div id="s12" class="scene">
   <div id="end">
-    <span class="mark"><svg width="124" height="124" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
-    <b class="name">גילברטו</b>
+    <img class="mark logoimg" src="logo.png" alt="">
     <span class="tl">פחות ניהול. יותר צילום.</span>
     <div id="cta">14 ימי ניסיון חינם</div>
     <div id="link">myframeflow.com/start<u></u></div>
@@ -157,7 +158,7 @@
   </div>
 </div>
 
-<div id="wm"><span class="mark"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><span>גילברטו</span></div>
+<div id="wm"><img class="mark logoimg" src="logo.png" alt=""><span>גילברטו</span></div>
 <div id="flash"></div>
 
 <script>
@@ -199,6 +200,7 @@
       while (el.scrollWidth > el.clientWidth && size > 40) el.style.fontSize = (size -= 2) + "px";
     });
     await $("fimg").decode().catch(() => {});
+    await Promise.all([...document.querySelectorAll(".logoimg")].map((i) => i.decode().catch(() => {})));
   };
   // One pre-extracted frame per output frame, clamped to the clip's length.
   async function clip(id, dir, count, local) {
@@ -242,7 +244,6 @@
     const hm = document.querySelector("#hit .mark");
     const hp = back((t - h) / 0.5);
     hm.style.transform = `scale(${0.5 + 0.5 * hp})`;
-    rise(document.querySelector("#hit b"), t, h + 0.15, 40);
     rise(document.querySelector("#hit span"), t, h + 2 * BEAT, 30);
     // Small logo top left from the logo hit to the founder scene
     $("wm").style.opacity = Math.min(ease((t - S.s7[0]) / 0.3), ease((S.s12[0] - t) / 0.2));
@@ -273,7 +274,6 @@
     const e = S.s12[0];
     const em = document.querySelector("#end .mark");
     em.style.transform = `scale(${0.6 + 0.4 * back((t - e) / 0.5)})`;
-    rise(document.querySelector("#end .name"), t, e + 0.15, 40);
     rise(document.querySelector("#end .tl"), t, e + 2 * BEAT, 30);
     slam($("cta"), t, e + 4 * BEAT, 1.2, 0.3);
     rise($("link"), t, e + 6 * BEAT, 30);
