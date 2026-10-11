@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Promo 2, the lost lead (1080x1920, 38.4s, acoustic 100 BPM). Driven by promo.js: window.renderAt(t). -->
+<link rel="stylesheet" href="fonts.css">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; }
+  body { font-family: Rubik, sans-serif; color: #fff; position: relative; background: radial-gradient(120% 75% at 50% 35%, #172440 0%, #0b1220 58%, #070c16 100%); }
+  .scene { position: absolute; inset: 0; opacity: 0; }
+  .c { position: absolute; left: 70px; right: 70px; text-align: center; }
+  .w { color: #fff; } .b { color: #c9a15a; } .s { color: #aeb8cc; }
+  .big { font-weight: 800; letter-spacing: -.03em; line-height: 1.06; }
+  #glow { position: absolute; left: -200px; right: -200px; top: 380px; height: 1200px; background: radial-gradient(closest-side, rgba(201,161,90,.20), rgba(201,161,90,0)); }
+  #flash { position: absolute; inset: 0; background: radial-gradient(closest-side at 50% 42%, rgba(255,236,190,.95), rgba(201,161,90,.35) 45%, rgba(201,161,90,0) 75%); opacity: 0; }
+  .mark { display: inline-flex; align-items: center; justify-content: center; background: #8f6f2f; color: #fff; }
+  #wm { position: absolute; top: 150px; left: 64px; display: flex; align-items: center; gap: 14px; direction: rtl; opacity: 0; }
+  #wm .mark { width: 54px; height: 54px; border-radius: 13px; }
+  #wm span { font-weight: 700; font-size: 34px; }
+  /* hook */
+  #h1a { top: 690px; font-size: 124px; }
+  #h1b { top: 850px; font-size: 150px; }
+  [data-fit] { white-space: nowrap; }
+  #badge { top: 1080px; display: flex; justify-content: center; }
+  #badge span { display: inline-flex; align-items: center; gap: 16px; background: #c0392b; color: #fff; font-weight: 700; font-size: 42px; padding: 14px 30px; border-radius: 40px; }
+  /* night */
+  #clock { top: 420px; font-size: 40px; }
+  .bub { position: absolute; right: 80px; max-width: 880px; background: #1d2a40; border-radius: 34px; border-top-right-radius: 8px; padding: 26px 34px; font-size: 48px; line-height: 1.32; color: #eef2f8; text-align: right; box-shadow: 0 20px 50px rgba(0,0,0,.35); }
+  .bub small { display: block; font-size: 30px; color: #8792ab; margin-top: 8px; }
+  /* stamp */
+  .stamp { position: absolute; left: 0; right: 0; text-align: center; font-weight: 800; font-size: 112px; letter-spacing: -.03em; }
+  /* stat */
+  #statrow { top: 560px; display: flex; justify-content: center; align-items: baseline; gap: 30px; direction: rtl; }
+  #num { font-weight: 800; font-size: 360px; letter-spacing: -.05em; color: #c9a15a; line-height: 1; font-variant-numeric: tabular-nums; }
+  #unit { font-weight: 800; font-size: 120px; }
+  #statl1 { top: 1000px; font-size: 60px; }
+  #rule { position: absolute; top: 1150px; left: 50%; height: 4px; background: #c9a15a; transform: translateX(-50%); width: 0; }
+  #statl2 { top: 1200px; font-size: 76px; font-weight: 800; }
+  /* turn */
+  #turn1 { top: 760px; font-size: 104px; }
+  #turn2 { top: 890px; font-size: 124px; }
+  /* logo hit */
+  #hit { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px; }
+  #hit .mark { width: 280px; height: 280px; border-radius: 64px; box-shadow: 0 40px 120px rgba(201,161,90,.35); }
+  #hit b { font-size: 150px; font-weight: 800; letter-spacing: -.03em; }
+  #hit span { font-size: 54px; color: #aeb8cc; }
+  /* feature scenes */
+  .hd { position: absolute; top: 300px; left: 60px; right: 60px; text-align: center; font-weight: 800; font-size: 82px; letter-spacing: -.03em; line-height: 1.08; }
+  .hd span { display: block; color: #c9a15a; }
+  .sub { position: absolute; left: 70px; right: 70px; text-align: center; font-size: 44px; color: #aeb8cc; }
+  .card { position: absolute; left: 50%; border-radius: 52px; overflow: hidden; background: #f4efe6; box-shadow: 0 50px 120px rgba(0,0,0,.55), 0 0 0 10px #060a14, 0 0 0 12px #2a3650; }
+  .card img { display: block; width: 100%; }
+  .card .bar { display: flex; align-items: center; gap: 16px; padding: 24px 30px; background: #fbf8f2; border-bottom: 1px solid #e6dfd2; direction: rtl; color: #1a1408; }
+  .card .bar i { width: 62px; height: 62px; border-radius: 50%; background: #efe3c8; color: #8f6f2f; font-style: normal; font-weight: 700; font-size: 26px; display: flex; align-items: center; justify-content: center; }
+  .card .bar b { display: block; font-size: 32px; } .card .bar small { display: block; font-size: 24px; color: #2e9d5b; }
+  .tag { position: absolute; display: inline-flex; align-items: center; gap: 14px; background: #8f6f2f; color: #fff; font-weight: 700; font-size: 40px; padding: 20px 30px; border-radius: 22px; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+  /* chips */
+  #chips { position: absolute; top: 640px; left: 80px; right: 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px; direction: rtl; }
+  .chip { display: flex; align-items: center; gap: 22px; background: #131c2e; border: 2px solid #1c2638; border-radius: 26px; padding: 30px 28px; font-size: 42px; font-weight: 700; opacity: 0; }
+  .chip i { width: 64px; height: 64px; border-radius: 16px; background: #8f6f2f; flex: none; display: flex; align-items: center; justify-content: center; }
+  /* founder */
+  #fphoto { position: absolute; top: 330px; left: 50%; width: 560px; height: 660px; margin-left: -280px; border-radius: 30px; overflow: hidden; box-shadow: 0 0 0 6px #8f6f2f, 0 50px 120px rgba(0,0,0,.55); }
+  #fphoto img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 18%; }
+  #f1 { top: 1080px; font-size: 80px; } #f2 { top: 1180px; font-size: 80px; } #f3 { top: 1310px; font-size: 42px; }
+  /* end */
+  #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 380px; gap: 30px; }
+  #end .mark { width: 230px; height: 230px; border-radius: 54px; box-shadow: 0 40px 110px rgba(201,161,90,.3); }
+  #end b.name { font-size: 140px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+  #end .tl { font-size: 56px; color: #aeb8cc; }
+  #cta { margin-top: 70px; background: #8f6f2f; color: #fff; font-weight: 800; font-size: 60px; padding: 34px 56px; border-radius: 6px; box-shadow: 0 30px 80px rgba(143,111,47,.45); }
+  #link { margin-top: 26px; font-size: 64px; font-weight: 700; direction: ltr; letter-spacing: .01em; position: relative; padding-bottom: 14px; }
+  #link u { position: absolute; left: 0; bottom: 0; height: 6px; background: #c9a15a; width: 0; }
+  #free { font-size: 38px; color: #8792ab; margin-top: 6px; }
+
+  #lock { position: absolute; top: 330px; left: 0; right: 0; text-align: center; }
+  #lock b { display: block; font-size: 230px; font-weight: 300; letter-spacing: -.03em; line-height: 1; }
+  #lock span { display: block; font-size: 42px; color: #aeb8cc; margin-top: 12px; }
+  #notif { position: absolute; top: 760px; left: 70px; right: 70px; background: rgba(29,42,64,.92); border-radius: 40px; padding: 30px 34px; display: flex; gap: 24px; align-items: flex-start; direction: rtl; box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+  #notif .mark { width: 84px; height: 84px; border-radius: 20px; flex: none; }
+  #notif b { display: block; font-size: 38px; } #notif p { font-size: 44px; line-height: 1.3; color: #eef2f8; margin-top: 6px; }
+  #notif small { position: absolute; top: 30px; left: 34px; font-size: 30px; color: #8792ab; }
+  #sleep { top: 1120px; font-size: 76px; font-weight: 800; }
+  #lost { top: 1260px; font-size: 64px; font-weight: 800; color: #e0675b; }
+  #leadn { position: absolute; top: 540px; left: 70px; right: 70px; background: rgba(29,42,64,.95); border-radius: 34px; padding: 24px 30px; display: flex; gap: 20px; align-items: center; direction: rtl; }
+  #leadn .mark { width: 70px; height: 70px; border-radius: 18px; flex: none; }
+  #leadn b { display: block; font-size: 32px; } #leadn span { font-size: 36px; color: #dfe5ef; }
+  #lead { position: absolute; top: 760px; left: 110px; right: 110px; background: #fbf8f2; color: #1a1408; border-radius: 40px; padding: 44px 46px; direction: rtl; box-shadow: 0 50px 120px rgba(0,0,0,.55); }
+  #lead .chipl { display: inline-block; background: #efe3c8; color: #8f6f2f; font-weight: 700; font-size: 30px; padding: 8px 20px; border-radius: 14px; }
+  #lead h3 { font-size: 64px; font-weight: 800; margin: 18px 0 22px; }
+  #lead .row { display: flex; justify-content: space-between; font-size: 38px; padding: 14px 0; border-top: 1px solid #e6dfd2; opacity: 0; }
+  #lead .row span { color: #6b6455; } #lead .row b { font-weight: 700; }
+  #lead .row .ok { color: #2e9d5b; font-weight: 700; }
+  #lead .go { margin-top: 26px; background: #0b1220; color: #fff; text-align: center; font-weight: 700; font-size: 38px; padding: 24px; border-radius: 18px; opacity: 0; }
+
+</style>
+</head>
+<body>
+<div id="glow"></div>
+
+<div id="s1" class="scene">
+  <div id="h1a" class="c big w" data-fit style="top:690px;font-size:124px">כמה אירועים הפסדתם</div>
+  <div id="h1b" class="c big b" data-fit style="top:850px;font-size:124px">כי עניתם מאוחר מדי?</div>
+</div>
+<div id="s2" class="scene">
+  <div id="lock"><b>23:47</b><span>שלישי, אחרי יום צילום ארוך</span></div>
+  <div id="notif"><span class="mark"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><div><b>לקוח חדש</b><p>היי, ה-14.12 עדיין פנוי? מחפשים צלם לחתונה</p></div><small>עכשיו</small></div>
+  <div id="sleep" class="c w">אתם ישנים.</div>
+  <div id="lost" class="c" data-fit>בבוקר הוא כבר סגר עם צלם אחר.</div>
+</div>
+<div id="s3" class="scene">
+  <div id="t1" class="c big w" data-fit style="top:760px;font-size:110px">עם גילברטו,</div>
+  <div id="t2" class="c big b" data-fit style="top:900px;font-size:120px">מישהו כבר עונה לו.</div>
+</div>
+<div id="s4" class="scene">
+  <div class="hd">עוזר הפניות עונה מיד<span>ושואל את השאלות הנכונות.</span></div>
+  <div class="card" id="c4" style="top:560px;width:800px;margin-left:-400px">
+    <div class="bar"><i>סא</i><div><b>סטודיו אור</b><small>עונה מיד</small></div></div>
+    <img id="v4" alt="">
+  </div>
+  <div class="tag" id="t4a" style="top:1380px;left:90px"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>בודק ביומן שהתאריך פנוי</div>
+  <div class="tag" id="t4b" style="top:1500px;right:90px"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>בלי מחירים, רק פרטים</div>
+</div>
+<div id="s5" class="scene">
+  <div class="hd" style="top:290px">ואתם מקבלים ליד מסודר<span>עם כל הפרטים.</span></div>
+  <div id="leadn"><span class="mark"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><div><b>גילברטו · פנייה חדשה מהעוזר</b><span>נועה ואיתי, חתונה, 12.8.2027</span></div></div>
+  <div id="lead"><span class="chipl">ליד חדש</span><h3>נועה ואיתי</h3>
+    <div class="row"><span>אירוע</span><b>חתונה</b></div>
+    <div class="row"><span>תאריך</span><b>12.8.2027 · <span class="ok">פנוי</span></b></div>
+    <div class="row"><span>מקום</span><b>ראשון לציון</b></div>
+    <div class="row"><span>אורחים</span><b>כ-300</b></div>
+    <div class="row"><span>טלפון</span><b dir="ltr">050-0000123</b></div>
+    <div class="go">שליחת הצעת מחיר</div>
+  </div>
+</div>
+<div id="s6" class="scene">
+  <div class="hd">הצעת מחיר בקישור,<span>והלקוח מאשר וחותם.</span></div>
+  <div class="card" id="c6" style="top:560px;width:700px;margin-left:-350px"><img id="v6" alt=""></div>
+  <div class="tag" id="t6" style="top:1440px;left:120px"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>האירוע נכנס ליומן</div>
+</div>
+<div id="s7" class="scene">
+  <div class="hd" style="top:380px">עוזר שעובד בשבילכם,<span>גם כשאתם לא.</span></div>
+  <div id="chips"></div>
+</div>
+<div id="s_end" class="scene">
+  <div id="end">
+    <span class="mark"><svg width="124" height="124" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+    <b class="name">גילברטו</b>
+    <span class="tl">עוזר פניות חכם לצלמי אירועים</span>
+    <div id="cta">14 ימי ניסיון חינם</div>
+    <div id="link">myframeflow.com/start<u></u></div>
+    <div id="free">ללא כרטיס אשראי</div>
+  </div>
+</div>
+<div id="wm"><span class="mark"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><span>גילברטו</span></div>
+<div id="flash"></div>
+<script>
+  const clamp = (x) => Math.max(0, Math.min(1, x));
+  const ease = (x) => 1 - Math.pow(1 - clamp(x), 3);
+  const back = (x) => { x = clamp(x); const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+  const $ = (id) => document.getElementById(id);
+  const vis = (t, [a, b], fi = 0.22, fo = 0.18, last = false) => Math.min(ease((t - a) / fi), last ? 1 : ease((b - t) / fo));
+  const slam = (el, t, at, from = 1.25, dur = 0.32) => { const p = ease((t - at) / dur); el.style.opacity = p; el.style.transform = `scale(${from - (from - 1) * p})`; };
+  const rise = (el, t, at, dist = 80, dur = 0.4) => { const p = ease((t - at) / dur); el.style.opacity = p; el.style.transform = `translateY(${(1 - p) * dist}px)`; };
+  let cfg; const last = {};
+  async function clip(id, dir, count, local, fps = 30) {
+    const n = Math.min(count, Math.max(1, Math.floor(local * fps) + 1));
+    if (last[id] === n) return;
+    last[id] = n;
+    const el = $(id);
+    el.src = `${dir}/${String(n).padStart(5, "0")}.jpg`;
+    await el.decode().catch(() => {});
+  }
+  async function fitAll() {
+    await document.fonts.ready;
+    document.querySelectorAll("[data-fit]").forEach((el) => {
+      let size = parseFloat(getComputedStyle(el).fontSize);
+      el.style.left = "50px"; el.style.right = "50px";
+      while (el.scrollWidth > el.clientWidth && size > 40) el.style.fontSize = (size -= 2) + "px";
+    });
+  }
+
+  // 100 BPM: bar 2.4s. The track opens up at bar 4 (9.6s), on the turn.
+  const BEAT = 60 / 100, BAR = 4 * BEAT, B = (n) => n * BAR;
+  const S = { s1: [0, B(2)], s2: [B(2), B(4)], s3: [B(4), B(5)], s4: [B(5), B(8)], s5: [B(8), B(10)], s6: [B(10), B(12)], s7: [B(12), B(13)], s_end: [B(13), B(16)] };
+  const DURATION = B(16);
+  const CHIPS = [
+    ["M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "עונה 24/7"],
+    ["M4 5h16v11H8l-4 4zM9 9h6M9 12h4", "עברית, אנגלית ורוסית"],
+    ["M4 6h16v14H4zM4 10h16M9 3v4M15 3v4", "בודק זמינות ביומן"],
+    ["M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a7 7 0 0 1 14 0v1M19 8v6M16 11h6", "ליד ישר למערכת"],
+  ];
+  window.setup = async (c) => {
+    cfg = c;
+    $("chips").innerHTML = CHIPS.map(([d, txt]) => `<div class="chip"><i><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg></i>${txt}</div>`).join("");
+    await fitAll();
+  };
+  window.renderAt = async (t) => {
+    for (const [k, r] of Object.entries(S)) $(k).style.opacity = vis(t, r, 0.22, 0.18, k === "s_end");
+    $("glow").style.opacity = 0.55 + 0.35 * Math.sin(t * 1.1);
+    slam($("h1a"), t, 0.05, 1.3);
+    slam($("h1b"), t, 3 * BEAT, 1.35);
+    // Night: the lock screen, the message, you're asleep, the client is gone.
+    const n0 = S.s2[0];
+    rise($("lock"), t, n0, 30);
+    const np = ease((t - n0 - 0.4) / 0.4);
+    $("notif").style.opacity = np * (t > n0 + 6 * BEAT ? 0.45 : 1);
+    $("notif").style.transform = `translateY(${(1 - np) * -120}px)`;
+    rise($("sleep"), t, n0 + 3 * BEAT, 40);
+    slam($("lost"), t, n0 + 6 * BEAT, 1.2, 0.3);
+    // Turn
+    rise($("t1"), t, S.s3[0] + 0.05, 60);
+    slam($("t2"), t, S.s3[0] + 2 * BEAT, 1.3);
+    $("flash").style.opacity = 0.7 * (1 - ease((t - S.s3[0]) / 0.45)) * (t >= S.s3[0] ? 1 : 0);
+    $("wm").style.opacity = Math.min(ease((t - S.s4[0]) / 0.3), ease((S.s_end[0] - t) / 0.2));
+    for (const [s, card] of [["s4", "c4"], ["s6", "c6"]]) {
+      const a = S[s][0];
+      rise(document.querySelector(`#${s} .hd`), t, a + 0.02, 50, 0.35);
+      const p = ease((t - a - 0.1) / 0.45);
+      $(card).style.opacity = p;
+      $(card).style.transform = `translateY(${(1 - p) * 260}px) scale(${0.94 + 0.06 * p})`;
+    }
+    slam($("t4a"), t, S.s4[0] + 5 * BEAT, 1.3, 0.28);
+    slam($("t4b"), t, S.s4[0] + 8 * BEAT, 1.3, 0.28);
+    slam($("t6"), t, S.s6[0] + 5 * BEAT, 1.3, 0.28);
+    if (t >= S.s4[0] - 0.1 && t < S.s4[1]) await clip("v4", cfg.intake2, cfg.intake2N, Math.max(0, t - S.s4[0]));
+    if (t >= S.s6[0] - 0.1 && t < S.s6[1]) await clip("v6", cfg.quote2, cfg.quote2N, Math.max(0, t - S.s6[0]));
+    // The lead: a notification, then the card fills in row by row.
+    const l0 = S.s5[0];
+    rise(document.querySelector("#s5 .hd"), t, l0 + 0.02, 50, 0.35);
+    const ln = ease((t - l0 - 0.15) / 0.35);
+    $("leadn").style.opacity = ln; $("leadn").style.transform = `translateY(${(1 - ln) * -80}px)`;
+    rise($("lead"), t, l0 + 2 * BEAT, 120, 0.45);
+    document.querySelectorAll("#lead .row").forEach((el, i) => rise(el, t, l0 + 3 * BEAT + i * BEAT / 2, 20, 0.25));
+    slam(document.querySelector("#lead .go"), t, l0 + 6.5 * BEAT, 1.15, 0.25);
+    rise(document.querySelector("#s7 .hd"), t, S.s7[0], 40, 0.3);
+    document.querySelectorAll(".chip").forEach((el, i) => slam(el, t, S.s7[0] + 0.1 + i * BEAT / 2, 1.25, 0.22));
+
+    const e = S.s_end[0];
+    const em = document.querySelector("#end .mark");
+    em.style.transform = `scale(${0.6 + 0.4 * back((t - e) / 0.5)})`;
+    rise(document.querySelector("#end .name"), t, e + 0.15, 40);
+    rise(document.querySelector("#end .tl"), t, e + 2 * BEAT, 30);
+    slam($("cta"), t, e + 4 * BEAT, 1.2, 0.3);
+    rise($("link"), t, e + 6 * BEAT, 30);
+    document.querySelector("#link u").style.width = 100 * ease((t - e - 7 * BEAT) / 0.5) + "%";
+    rise($("free"), t, e + 8 * BEAT, 20);
+    const pulse = t > e + 9 * BEAT ? 1 + 0.03 * Math.max(0, Math.sin((t - e) * Math.PI * 2 / BAR)) : 1;
+    $("cta").style.transform = `scale(${pulse})`;
+
+  };
+  window.DURATION = DURATION;
+</script>
+</body>
+</html>
