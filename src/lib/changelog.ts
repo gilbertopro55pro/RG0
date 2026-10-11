@@ -25,6 +25,19 @@ export function changesFor(entry: ChangelogEntry, lang: Lang): string[] {
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.3",
+    date: "2026-10-11",
+    changes: [
+      "תוקן: הקישור שבית הדפוס מקבל במייל פתח \"הקישור לא נמצא\" בכל שליחה מאז 7.10. הקישורים שכבר נשלחו עובדים עכשיו, ולא צריך לשלוח אותם מחדש",
+    ],
+    en: [
+      "Fixed: the link the print house gets by email opened \"Link not found\" for every send since October 7. Links already sent work now, so there's no need to send them again",
+    ],
+    ru: [
+      "Исправлено: ссылка, которую типография получает по почте, открывала «Ссылка не найдена» для всех отправок с 7 октября. Уже отправленные ссылки теперь работают, отправлять их заново не нужно",
+    ],
+  },
+  {
     version: "2.12.2",
     date: "2026-10-05",
     changes: [

@@ -72,6 +72,17 @@ one `event_notifications` row (`is_client_action`, so it's a red badge on the ev
   exists (`POST …/print-sends/<job>/renew`, same link works again), copy the link, or send again
   once the file is gone.
 - Jobs from before 0140 have no `share_token` and keep the direct signed link ("בלי מעקב הורדה").
+- **Token length (bug fixed 2026-10-11, v2.12.3).** On 2026-10-07 the token was shortened to 12
+  characters, but `loadPrintJob` still rejected anything under 20. So every print link sent from
+  then until 2026-10-11 opened "הקישור לא נמצא", and the download button failed too. Three sends
+  were affected, and all of them work again without resending. Tokens are made by `newPrintToken`
+  and checked by `isPrintToken`, both in `lib/printHouseJob.ts`. Change them together: the check
+  must accept every length ever issued (12 now, 32 and 64 in older rows).
+  - A "הקישור לא נמצא" report: look the job up by `share_token`. Missing row, or
+    `send_to_email` null → really not found. Otherwise it's the token check.
+  - Live check without rendering or email: insert a test-account job with `status = 'failed'`,
+    `send_to_email` set and a 12-character token, then curl `/print/<token>`. It should show
+    "הכנת הקבצים נכשלה", not "הקישור לא נמצא". Delete the row afterwards.
 - Verified live 2026-09-28 (test account, job 7b3cd568): processing set `link_expires_at`. Page
   GETs and a GET on the download route left the count at 0. POST ×2 gave count 2 and exactly one
   notification, and the zip held 10 JPGs. With `link_expires_at` in the past, the page shows "תוקף
