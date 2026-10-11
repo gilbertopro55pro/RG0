@@ -2,7 +2,9 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
-<!-- Promo 3, the evening after a wedding (1080x1920, 42s, cinematic 80 BPM). Driven by promo.js: window.renderAt(t). -->
+<!-- Promo 3, the morning after a wedding (1080x1920, 42s, cinematic 80 BPM). Driven by promo.js: window.renderAt(t).
+     The wedding ends at 00:00 and the client work waits for the morning (owner, 2026-10-11: a wedding
+     doesn't end at 22:00, and nobody messages clients at midnight). -->
 <link rel="stylesheet" href="fonts.css">
 <style>
   * { box-sizing: border-box; margin: 0; }
@@ -93,7 +95,7 @@
   #r1 { top: 1060px; font-size: 84px; } #r2 { top: 1170px; font-size: 96px; }
   #clock3 { position: absolute; top: 300px; left: 0; right: 0; text-align: center; font-size: 170px; font-weight: 800; letter-spacing: -.04em; color: #c9a15a; direction: ltr; font-variant-numeric: tabular-nums; }
   #lbl3 { top: 500px; font-size: 40px; color: #aeb8cc; }
-  #moon { position: absolute; top: 470px; left: 50%; margin-left: -100px; width: 200px; height: 200px; color: #c9a15a; }
+  #cup { position: absolute; top: 470px; left: 50%; margin-left: -100px; width: 200px; height: 200px; color: #c9a15a; }
   #bed1 { top: 720px; font-size: 280px; font-weight: 800; letter-spacing: -.04em; direction: ltr; font-variant-numeric: tabular-nums; }
   #bed2 { top: 1060px; font-size: 104px; }
 
@@ -103,34 +105,34 @@
 <div id="glow"></div>
 
 <div id="s1" class="scene">
-  <div id="kick" class="c">ערב אחרי חתונה. בלי גילברטו.</div>
-  <div id="clock1" class="c">22:00</div>
-  <div id="o1" class="c big w" data-fit>סיימתם לצלם.</div>
-  <div id="o2" class="c big b" data-fit>העבודה רק מתחילה.</div>
+  <div id="kick" class="c">ליל חתונה. בלי גילברטו.</div>
+  <div id="clock1" class="c">00:00</div>
+  <div id="o1" class="c big w" data-fit>החתונה נגמרה.</div>
+  <div id="o2" class="c big b" data-fit>ובבוקר מחכה לכם עוד משמרת.</div>
 </div>
 <div id="s2" class="scene">
-  <div id="clock2">22:00</div>
-  <div id="lbl2" class="c">ערב אחרי חתונה. בלי גילברטו.</div>
-  <div class="task" id="tb0" style="top:640px"><time>22:40</time><span>עונים לשלוש פניות חדשות</span></div>
-  <div class="task" id="tb1" style="top:810px"><time>23:15</time><span>מתקנים הצעת מחיר ושולחים שוב</span></div>
-  <div class="task" id="tb2" style="top:980px"><time>23:50</time><span>מזכירים ללקוח להעביר את היתרה</span></div>
-  <div class="task" id="tb3" style="top:1150px"><time>00:30</time><span>מחפשים 60 מספרי קבצים מהבחירה</span></div>
-  <div class="task" id="tb4" style="top:1320px"><time>01:10</time><span>שולחים שוב את הקישור לגלריה</span></div>
+  <div id="clock2">00:00</div>
+  <div id="lbl2" class="c">הבוקר שאחרי. בלי גילברטו.</div>
+  <div class="task" id="tb0" style="top:640px"><time>08:40</time><span>עונים לשלוש פניות מאתמול</span></div>
+  <div class="task" id="tb1" style="top:810px"><time>09:20</time><span>מתקנים הצעת מחיר ושולחים שוב</span></div>
+  <div class="task" id="tb2" style="top:980px"><time>09:50</time><span>מזכירים ללקוח להעביר את היתרה</span></div>
+  <div class="task" id="tb3" style="top:1150px"><time>10:05</time><span>מחפשים 60 מספרי קבצים מהבחירה</span></div>
+  <div class="task" id="tb4" style="top:1320px"><time>10:45</time><span>שולחים שוב את הקישור לגלריה</span></div>
 </div>
 <div id="s3" class="scene">
-  <div id="late1" class="c">01:30</div>
-  <div id="late2" class="c big w" data-fit>ועדיין לא ישנתם.</div>
+  <div id="late1" class="c">11:00</div>
+  <div id="late2" class="c big w" data-fit>ועוד לא התחלתם לערוך.</div>
 </div>
 <div id="s4" class="scene">
   <div id="rw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg></div>
-  <div id="rclock" class="c">01:30</div>
-  <div id="r1" class="c big w" data-fit>ועכשיו, אותו ערב</div>
+  <div id="rclock" class="c">11:00</div>
+  <div id="r1" class="c big w" data-fit>ועכשיו, אותו בוקר</div>
   <div id="r2" class="c big b" data-fit>עם גילברטו.</div>
 </div>
 <div id="s5" class="scene">
-  <div id="clock3">22:00</div>
-  <div id="lbl3" class="c">ערב אחרי חתונה. עם גילברטו.</div>
-  <div class="task done" id="to0" style="top:620px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>פניות חדשות<small>עוזר הפניות כבר ענה ושמר את הפרטים</small></span></div>
+  <div id="clock3">08:30</div>
+  <div id="lbl3" class="c">הבוקר שאחרי. עם גילברטו.</div>
+  <div class="task done" id="to0" style="top:620px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>פניות חדשות<small>עוזר הפניות ענה להן עוד בזמן החתונה</small></span></div>
   <div class="task done" id="to1" style="top:796px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>הצעת מחיר<small>הלקוח אישר וחתם בקישור</small></span></div>
   <div class="task done" id="to2" style="top:972px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>תזכורת יתרה<small>מוכנה לשליחה בלחיצה</small></span></div>
   <div class="task done" id="to3" style="top:1148px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>בחירת תמונות<small>מסודרת בגלריה, מוכנה לאלבום</small></span></div>
@@ -141,9 +143,9 @@
   <div class="card" id="c6" style="top:560px;width:720px;margin-left:-360px"><img id="v6" alt=""></div>
 </div>
 <div id="s7" class="scene">
-  <div id="moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></div>
-  <div id="bed1" class="c">22:05</div>
-  <div id="bed2" class="c big b" data-fit>הולכים לישון.</div>
+  <div id="cup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%"><path d="M17 8h1a4 4 0 1 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zM6 2v2M10 2v2M14 2v2"/></svg></div>
+  <div id="bed1" class="c">08:35</div>
+  <div id="bed2" class="c big b" data-fit>מתחילים לערוך.</div>
 </div>
 <div id="s_end" class="scene">
   <div id="end">
@@ -187,11 +189,11 @@
   const S = { s1: [0, B(1)], s2: [B(1), B(4)], s3: [B(4), B(5)], s4: [B(5), B(6)], s5: [B(6), B(9)], s6: [B(9), B(11)], s7: [B(11), B(12)], s_end: [B(12), B(14)] };
   const DURATION = B(14);
   const fmt = (min) => { min = ((Math.round(min) % 1440) + 1440) % 1440; return String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0"); };
-  // Minutes after midnight on a 22:00 → 01:30 evening (past midnight counts on).
-  const M = (h, m) => (h < 12 ? h + 24 : h) * 60 + m;
+  // Minutes after midnight (the wedding ends at 00:00, everything else is the next morning).
+  const M = (h, m) => h * 60 + m;
   const lerpKeys = (t, keys) => { if (t <= keys[0][0]) return keys[0][1]; for (let i = 1; i < keys.length; i++) if (t <= keys[i][0]) { const [a, va] = keys[i - 1], [b, vb] = keys[i]; return va + (vb - va) * ease((t - a) / (b - a)); } return keys[keys.length - 1][1]; };
   const BAD_AT = [0, 1, 2, 3, 4].map((i) => B(1) + 0.6 + i * 2 * BEAT);
-  const BAD_MIN = [M(22, 40), M(23, 15), M(23, 50), M(0, 30), M(1, 10)];
+  const BAD_MIN = [M(8, 40), M(9, 20), M(9, 50), M(10, 5), M(10, 45)];
   window.setup = async (c) => { cfg = c; await fitAll();
     await Promise.all([...document.querySelectorAll(".logoimg")].map((i) => i.decode().catch(() => {}))); };
   window.renderAt = async (t) => {
@@ -202,22 +204,23 @@
     slam($("clock1"), t, 0.1, 1.2, 0.4);
     rise($("o1"), t, 1.2, 40);
     slam($("o2"), t, 2 * BEAT + 0.6, 1.25, 0.3);
-    // The evening without: the clock runs to each task's time as it lands.
-    const keys = [[B(1), M(22, 0)], ...BAD_AT.map((at, i) => [at + 0.3, BAD_MIN[i]]), [B(4) - 0.2, M(1, 30)]];
+    // The morning without: the night flies by (00:00 → 08:30), then the clock runs to each task's
+    // time as it lands.
+    const keys = [[B(1), M(0, 0)], [B(1) + 0.5, M(8, 30)], ...BAD_AT.map((at, i) => [at + 0.3, BAD_MIN[i]]), [B(4) - 0.2, M(11, 0)]];
     $("clock2").textContent = fmt(lerpKeys(t, keys));
     BAD_AT.forEach((at, i) => rise($("tb" + i), t, at, 60, 0.35));
-    // 01:30 on the hit
+    // 11:00 on the hit
     slam($("late1"), t, S.s3[0], 1.25, 0.3);
     rise($("late2"), t, S.s3[0] + 2 * BEAT, 40);
     // Rewind
     const r0 = S.s4[0];
-    $("rclock").textContent = fmt(lerpKeys(t, [[r0 + 0.2, M(1, 30)], [r0 + 1.6, M(22, 0)]]));
+    $("rclock").textContent = fmt(lerpKeys(t, [[r0 + 0.2, M(11, 0)], [r0 + 1.6, M(8, 30)]]));
     $("rw").style.transform = `rotate(${-540 * ease((t - r0) / 1.6)}deg)`;
     rise($("r1"), t, r0 + 2 * BEAT, 40);
     slam($("r2"), t, r0 + 3 * BEAT, 1.25, 0.28);
-    // The evening with: the same jobs, already done.
+    // The morning with: the same jobs, already done.
     const o0 = S.s5[0];
-    $("clock3").textContent = fmt(lerpKeys(t, [[o0, M(22, 0)], [S.s5[1], M(22, 4)]]));
+    $("clock3").textContent = fmt(lerpKeys(t, [[o0, M(8, 30)], [S.s5[1], M(8, 34)]]));
     [0, 1, 2, 3, 4].forEach((i) => {
       const at = o0 + 0.5 + i * 2 * BEAT;
       rise($("to" + i), t, at, 50, 0.35);
@@ -233,10 +236,10 @@
     $("c6").style.opacity = hp;
     $("c6").style.transform = `translateY(${(1 - hp) * 260}px) scale(${0.94 + 0.06 * hp})`;
     if (t >= h0 - 0.1 && t < S.s6[1]) await clip("v6", cfg.home, cfg.homeN, Math.max(0, t - h0));
-    // Bedtime
+    // Off to edit
     const m0 = S.s7[0];
-    $("moon").style.opacity = ease((t - m0) / 0.4);
-    $("moon").style.transform = `scale(${0.7 + 0.3 * back((t - m0) / 0.6)})`;
+    $("cup").style.opacity = ease((t - m0) / 0.4);
+    $("cup").style.transform = `scale(${0.7 + 0.3 * back((t - m0) / 0.6)})`;
     slam($("bed1"), t, m0 + BEAT, 1.2, 0.3);
     rise($("bed2"), t, m0 + 2 * BEAT, 40);
 

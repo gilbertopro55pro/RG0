@@ -101,9 +101,14 @@ logo, in a "coming soon" reveal style.
       their frames, and the real 4–6s waits are shortened.
     - Found while capturing (fixed 2026-10-11): the newest reply hid behind the input bar once the
       chat was taller than the screen (`scroll-mb-32` on the end marker in `IntakeChat.tsx`).
-  - `promo3.html`, `gilberto-promo-3`: the evening after a wedding. The clock runs from 22:00 to
-    01:30 over five tasks, rewinds, the same evening with everything done, the home screen,
-    "22:05. הולכים לישון.". Track `cinematic.m4a` (80 BPM); the logo is on its peak (36s), 42s.
+  - `promo3.html`, `gilberto-promo-3`: the morning after a wedding. Track `cinematic.m4a` (80 BPM),
+    42s; the logo is on its peak (36s).
+    - "00:00. החתונה נגמרה. ובבוקר מחכה לכם עוד משמרת.". The clock flies from 00:00 to 08:30,
+      then runs over five client tasks to 11:00, "ועוד לא התחלתם לערוך.".
+    - Then it rewinds to the same morning with everything done ("עוזר הפניות ענה להן עוד בזמן
+      החתונה"), the home screen, and "08:35. מתחילים לערוך.".
+    - Owner, 2026-10-11: a wedding doesn't end at 22:00, and nobody messages clients at midnight.
+      The client work belongs in the morning. Until then it was a 22:00 → 01:30 evening.
   - Extra footage for 2 and 3, in the same run folder:
     - `f-intake2`: `-ss 20 -t 37 -i intake-demo.mp4 -vf "fps=6,crop=480:535:0:170,scale=900:-2"`
     - `f-quote2`: `-ss 11.5 -t 6.2 -i quote-flow.mp4 -vf "fps=24,crop=480:690:0:76,scale=900:-2"`
