@@ -49,16 +49,18 @@ logo, in a "coming soon" reveal style.
 ## Promo video (סרטון קידום, 2026-10-11)
 - 40.6s, 1080x1920, H.264 + AAC, about 9.6MB (under WhatsApp's 16MB). Delivered to the owner as a
   file, not in `public/`.
-- `promo.html` is the timeline, synced to 124 BPM (first the `energy` track, now `uplift-124`, below). Every
+- `promo.html` is the timeline, synced to the `energy` track (124 BPM, `public/reels/music`). Every
   scene starts on a bar: the hook during the quiet intro, the stamps on the drop (7.74s), the logo
   on the first accent (15.48s), the founder on the second (30.97s).
   - Scenes: hook "הצילום נגמר בחצות. הוואטסאפים לא.", night messages, stamps, 4.5 hours, "ומה אם כל זה
     היה קורה לבד?", logo, three product scenes from real footage, chips, founder, end card.
   - The end card shows `myframeflow.com/start` (a redirect to /signup in `next.config.ts`).
   - **The closing message (owner, 2026-10-11):** "פחות ניהול. יותר צילום." was dropped: it
-    didn't say what the viewer gets. All three end cards now carry the same two lines and button:
-    - "אתם מצלמים." in white, then a gold line: "גילברטו דואג לכל השאר." (videos 1 and 3) or
-      "גילברטו עונה ללקוחות." (video 2, the assistant story).
+    didn't say what the viewer gets. Each end card has one human sentence over two lines, white then
+    gold, both lines the same size. Not "מילה. מילה." (owner):
+    - Video 1: "אתם מצלמים, / וגילברטו דואגת לכל השאר."
+    - Video 2: "בזמן שאתם מצלמים, / גילברטו עונה ללקוחות שלכם."
+    - Video 3: "הבוקר שאחרי החתונה / חוזר להיות שלכם."
     - The button "נסו 14 יום בחינם" (a verb, not a label), and "ללא כרטיס אשראי וללא התחייבות".
 - `promo.js <run folder>` renders it frame by frame and adds the music, with a fade out. Add
   `preview` for stills only. A template that syncs to a later bar of its track sets
@@ -79,30 +81,20 @@ logo, in a "coming soon" reveal style.
   separate "גילברטו" text (owner, 2026-10-11). Run the repo's `promo.js` (not a copy in the run
   folder): it finds the logo relative to itself.
 - Review `<NAME>-strip.png` and the last frame (the link must show) before sending.
-- **Music: `uplift` (2026-10-11, owner: "יותר אנרגטית, נעימה לאוזן ולא צורמת").** All three videos
-  use one original track from `scripts/reel-music/tracks.mjs`, rendered at each video's tempo with
-  its sections on that video's scene changes. The beat comes in at `verseAt`, the hook at
-  `chorusAt`, and each `accents` bar gets a soft swell and crash:
-  - `uplift-124` → video 1: the beat on the stamps, the hook on the logo, the accent on the founder.
-  - `uplift-100` → video 2: the beat on 15:10, the hook on the turn, the accent on the end card.
-  - `uplift-118` → video 3: played from bar 3 (`MUSIC_START`). The beat on the second hook line,
-    the hook on the turn, the accent on the end card.
-  - Render: `node scripts/reel-music/tracks.mjs <dir> uplift-124`, then
-    `ffmpeg -i <dir>/uplift-124.wav -af volume=3dB -c:a aac -b:a 192k <dir>/uplift-124.m4a` (+3 dB:
-    the videos average about -15 dB with peaks near -2 dB, loud enough for a phone, without
-    clipping). The files aren't in the repo (and not in the reels library).
-  - Made to sound good on a phone: the bass sits at 110–220 Hz with only a light sub under it, and
-    there's no distortion. A shaker replaces bright hats, and the clap and crash are low-passed.
-    Measured against `energy`: most of the energy is in 150 Hz–2 kHz instead of under 150 Hz, the
-    2–8 kHz band is no louder, and nothing clips. It was not listened to: the owner's ear decides.
+- **Music: the `energy` track in all three (owner, 2026-10-11: "המוזיקה חייבת להיות כמו בסרטון
+  הראשון").** Videos 2 and 3 were retimed to its 124 BPM, so their scene changes land on its bars:
+  its claps and bass come in at bar 4 and it drops at bar 12. Tried and dropped the same day:
+  `acoustic` and `celebration` for videos 2 and 3, then an original "uplift" track for all three.
+  The owner preferred the first video's music.
 - **Three videos (2026-10-11).** `TEMPLATE` picks one and `NAME` the output file. The hooks are
   different on purpose, so they can be tested against each other:
-  - `promo.html`, `gilberto-promo`: hook "הצילום נגמר בחצות". Music `uplift-124` (was `energy.m4a`), 40.6s.
+  - `promo.html`, `gilberto-promo`: hook "הצילום נגמר בחצות". Track `energy.m4a`, 40.6s.
   - `promo2.html`, `gilberto-promo-2`: the lost lead, "כמה אירועים הפסדתם כי עניתם מאוחר מדי?".
-    Music `uplift-100` (was `acoustic.m4a`), 38.4s.
+    Track `energy.m4a`, 36.8s: the claps and bass on the 15:10 jump (bar 4), the drop on the lead
+    card (bar 12).
     - **Midday, not night (owner, 2026-10-11):** a message at 12:40 in the middle of a shoot is
       still missed. 12:40, "שלישי, באמצע צילום ברית", "אתם באמצע צילום.". The clock jumps to 15:10
-      where the track opens up (9.6s), and a second message comes in: "תודה, בינתיים מצאנו צלם
+      where the claps and bass come in (7.74s), and a second message comes in: "תודה, בינתיים מצאנו צלם
       אחר". Then "מי שענה ראשון, קיבל את האירוע." and the turn "עם גילברטו, אתם עונים ראשונים.".
     - The notifications use a plain green messaging icon, not the Gilberto logo: before Gilberto
       the message reaches the phone, not the app.
@@ -110,7 +102,7 @@ logo, in a "coming soon" reveal style.
       screenshots of a live conversation with the assistant on the test account (`f-chat`). The
       client's first message is the same as the notification, and the lead card matches what was
       said (12.8.2027, כפר המכביה, כ-300).
-    - No quote scene (it was cut to keep 38.4s); the quote is in videos 1 and 3.
+    - No quote scene (cut to keep the video short); the quote is in videos 1 and 3.
   - **Capturing the chat** (`chat-capture.js`, header of the file):
     - Run it in the background, then write each client message to `in-<i>.txt` after reading the
       previous reply in `out-<i>.txt`. A scripted list of messages ignores what the assistant
@@ -123,11 +115,10 @@ logo, in a "coming soon" reveal style.
       their frames, and the real 4–6s waits are shortened.
     - Found while capturing (fixed 2026-10-11): the newest reply hid behind the input bar once the
       chat was taller than the screen (`scroll-mb-32` on the end marker in `IntakeChat.tsx`).
-  - `promo3.html`, `gilberto-promo-3`: the morning after a wedding. 42.7s.
-    - 118 BPM (owner, 2026-10-11: "מוזיקה דינאמית", it was the slow `cinematic`), first
-      `celebration.m4a`, now `uplift-118`. It starts at the track's 4th bar: the template sets `window.MUSIC_START` and
-      `promo.js` seeks the music to it. The drums come in on the second hook line (2s), and the
-      chorus with its crash on the turn to the morning with Gilberto (18.3s).
+  - `promo3.html`, `gilberto-promo-3`: the morning after a wedding.
+    - Track `energy.m4a`, 40.6s, from its 4th bar: the template sets `window.MUSIC_START` and
+      `promo.js` seeks the music to it. The claps and bass come in on the second hook line (1.9s),
+      and the drop with its crash on the turn to the morning with Gilberto (17.4s).
     - "00:00. החתונה נגמרה. ובבוקר מחכה לכם עוד משמרת.". The clock flies from 00:00 to 08:30,
       then runs over five client tasks to 11:00, "ועוד לא התחלתם לערוך.".
     - Then it rewinds to the same morning with everything done ("עוזר הפניות ענה להן עוד בזמן
