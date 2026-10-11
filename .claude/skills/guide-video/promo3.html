@@ -238,16 +238,18 @@
     slam($("bed1"), t, m0 + BEAT, 1.2, 0.3);
     rise($("bed2"), t, m0 + 2 * BEAT, 40);
 
-    const e = S.s_end[0];
+    // The track is slow (a beat is 0.75s): the end card steps every half second, so the link
+    // is up for the last three seconds.
+    const e = S.s_end[0], EB = 0.5;
     const em = document.querySelector("#end .mark");
     em.style.transform = `scale(${0.6 + 0.4 * back((t - e) / 0.5)})`;
     rise(document.querySelector("#end .name"), t, e + 0.15, 40);
-    rise(document.querySelector("#end .tl"), t, e + 2 * BEAT, 30);
-    slam($("cta"), t, e + 4 * BEAT, 1.2, 0.3);
-    rise($("link"), t, e + 6 * BEAT, 30);
-    document.querySelector("#link u").style.width = 100 * ease((t - e - 7 * BEAT) / 0.5) + "%";
-    rise($("free"), t, e + 8 * BEAT, 20);
-    const pulse = t > e + 9 * BEAT ? 1 + 0.03 * Math.max(0, Math.sin((t - e) * Math.PI * 2 / BAR)) : 1;
+    rise(document.querySelector("#end .tl"), t, e + 2 * EB, 30);
+    slam($("cta"), t, e + 4 * EB, 1.2, 0.3);
+    rise($("link"), t, e + 6 * EB, 30);
+    document.querySelector("#link u").style.width = 100 * ease((t - e - 7 * EB) / 0.5) + "%";
+    rise($("free"), t, e + 8 * EB, 20);
+    const pulse = t > e + 9 * EB ? 1 + 0.03 * Math.max(0, Math.sin((t - e) * Math.PI * 2 / 2)) : 1;
     $("cta").style.transform = `scale(${pulse})`;
 
   };
