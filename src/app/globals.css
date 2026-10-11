@@ -124,6 +124,11 @@
   --l-line: #dce1ea;
   --l-accent: #8f6f2f;
   --l-on-accent: #ffffff;
+  /* Landing sketch 2 (2026-10-11): the brass on navy, and the "today" side of the pain/solution rows. */
+  --l-accent-light: #c9a15a;
+  --l-pain: #9a3b34;
+  --l-pain-bg: #f8eeec;
+  --l-pain-ink: #4a2a27;
   color: var(--l-ink);
   background: var(--l-bg);
 }

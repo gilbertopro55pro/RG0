@@ -4,6 +4,8 @@ import LandingFaq from "@/components/LandingFaq";
 import LandingQuoteSection from "@/components/LandingQuoteSection";
 import LandingMagnetSection from "@/components/LandingMagnetSection";
 import TimeSavingsCalculator from "@/components/TimeSavingsCalculator";
+import LandingPainSection from "@/components/LandingPainSection";
+import LandingProcessSection from "@/components/LandingProcessSection";
 import PricingToggle from "@/components/PricingToggle";
 import PlanComparison from "@/components/PlanComparison";
 import { LandingFooter, LandingLangSwitch, LANDING_CONTAINER, authHref, landingHome } from "@/components/LandingChrome";
@@ -24,41 +26,21 @@ import { makeT, type TFn } from "@/i18n/translate";
 // translate with makeT(messagesFor(lang)); the client sections (FAQ, pricing, calculator) read the
 // same lang from the ClientLangScope this page wraps itself in, never from the ui_lang cookie.
 
-// A typical road an event takes. Every line is something the product actually does today, worded
-// as what it does: reminders are prepared and the photographer sends them, nothing goes out on its own.
-const JOURNEY: { title: string; tkey?: string; icon: string; text: string }[] = [
-  {
-    title: "פנייה",
-    icon: "M4 5h16v11H8l-4 4z",
-    text: "כל ליד נכנס למקום אחד, והצעת מחיר יוצאת בקישור בוואטסאפ. הלקוח מאשר בטלפון. לליד שלא חזר, מחכה הודעת מעקב מוכנה.",
-  },
-  {
-    title: "סגירה",
-    // "סגירה" alone is "Close" (a button) in the shared dictionary; here it's the booking step.
-    tkey: "סגירה (שלב בדרך האירוע)",
-    icon: "M6 3h9l3 3v15H6zM9 13l2 2 4-4",
-    text: "הלקוח ממלא שאלון קצר וחותם על החוזה באותו קישור. האירוע נפתח לבד ונכנס ליומן Google או Apple.",
-  },
-  {
-    title: "לפני האירוע",
-    icon: "M4 6h16v14H4zM4 10h16M9 3v4M15 3v4",
-    text: "פורטל אישי ללקוח עם השלבים והתשלומים. כשמגיע מועד היתרה, תזכורת מוכנה לשליחה בוואטסאפ.",
-  },
-  {
-    title: "יום הצילום",
-    icon: "M4 8h3l2-3h6l2 3h3v11H4zM12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
-    text: "מקום עם ניווט, שעות, טלפון הלקוח והחבילה, במסך אחד. בפרו+ מעלים לגלריה ישר מהמצלמה.",
-  },
-  {
-    title: "גלריה ואלבום",
-    icon: "M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6",
-    text: "גלריה פרטית שבה הלקוח בוחר תמונות. מעצבים את האלבום מהתמונות שבחר, והלקוח מאשר בפורטל.",
-  },
-  {
-    title: "מסירה",
-    icon: "M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z",
-    text: "מסירה וסגירה עם תמונה ברורה של מה שולם. כמה ימים אחרי, תזכורת לבקש ביקורת.",
-  },
+// The hero's tiles: what the product does, one line each (landing sketch 2, 2026-10-11).
+const HERO_TILES = [
+  { icon: "M4 5h16v11H8l-4 4zM9 9h6M9 12h4", text: "עוזר חכם שמשיב ללקוחות גם בלילה" },
+  { icon: "M6 3h9l3 3v15H6zM9 13l2 2 4-4", text: "הצעת מחיר וחוזה בקישור אחד" },
+  { icon: "M4 6h10M4 12h16M4 18h7M17 4v4M13 16v4", text: "תהליך עבודה לפי השיטה שלכם" },
+  { icon: "M12 3v2M5 10a7 7 0 0 1 14 0v5l2 3H3l2-3zM10 21h4", text: "תזכורות תשלום וקבלות" },
+  { icon: "M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6", text: "גלריה ועיצוב אלבום אוטומטי" },
+  { icon: "M4 6h16v14H4zM4 10h16M9 3v4M15 3v4", text: "סנכרון עם יומן Google ו-Apple" },
+];
+
+// What waits on the phone after a wedding: the pain, in the clients' own words.
+const NIGHT_MESSAGES = [
+  { text: "היי, ה-14.12 עדיין פנוי? מחפשים צלם לבר מצווה", meta: "פנייה חדשה, לפני שעתיים" },
+  { text: "אפשר לקבל את הצעת המחיר שוב? לא מוצאת אותה", meta: "לקוחה, אתמול" },
+  { text: "מתי הגלריה מהחינה מוכנה? 🙏", meta: "לקוחה, לפני 3 ימים" },
 ];
 
 const MORE = [
@@ -83,13 +65,26 @@ function Icon({ d, size = 24, className = "", strokeWidth = 1.9 }: { d: string; 
   );
 }
 
+// "**x**" in a translated line is set in the accent color, so the translations keep the emphasis.
+function emphasized(text: string) {
+  return text.split("**").map((part, i) =>
+    i % 2 === 1 ? (
+      <b key={i} className="font-semibold text-[var(--l-accent-light)]">
+        {part}
+      </b>
+    ) : (
+      part
+    )
+  );
+}
+
 function PrimaryCta({ lang, t, className = "" }: { lang: Lang; t: TFn; className?: string }) {
   return (
     <Link
       href={authHref("/signup", lang)}
       className={`h-14 px-7 rounded-[1px] inline-flex items-center justify-center gap-2.5 text-lg font-bold bg-[var(--l-accent)] text-[var(--l-on-accent)] ${className}`}
     >
-      {t("להתחיל 14 יום חינם")}
+      {t("להתחיל 14 ימי ניסיון חינם")}
       <Icon d="M19 12H5M11 6l-6 6 6 6" size={18} strokeWidth={2.2} className="ltr:rotate-180" />
     </Link>
   );
@@ -168,139 +163,86 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
             </nav>
           </header>
 
-          <div className="pt-10 pb-16 lg:pt-[88px] lg:pb-28 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-12 lg:gap-16">
-            <div className="flex flex-col gap-6 lg:gap-8 lg:max-w-[720px]">
+          {/* Landing sketch 2 (owner, 2026-10-11), the first of its three headlines: the photographer
+              shoots, the system takes the management. The founder's quote and a night of client
+              messages sit beside it (the product tour video moved out with that sketch). */}
+          <div className="pt-10 pb-14 lg:pt-16 lg:pb-24 grid gap-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:gap-14 lg:items-start">
+            <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-on-navy-soft)]">
-                <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
-                {t("מערכת לצלמי אירועים, שנבנתה ע״י צלם אירועים")}
+                <span className="w-2 h-2 shrink-0 rounded-[2px] bg-[var(--l-accent)]" />
+                {t("מערכת ניהול לצלמי אירועים, שפותחה בידי צלם אירועים")}
               </div>
-              <h1 className="font-display m-0 text-[54px] sm:text-7xl lg:text-[112px] leading-[0.98] font-bold tracking-[-0.035em] text-white text-balance">
-                {t("פחות ניהול.")}
-                <br />
-                {t("יותר צילום.")}
+              <h1 className="font-display mt-5 mb-0 text-[40px] sm:text-6xl lg:text-[70px] leading-[1.06] font-bold tracking-[-0.03em] text-white text-balance">
+                {t("צלמים, אתם מתמקדים בצילום,")} <span className="text-[var(--l-accent-light)]">{t("ואת הניהול אנחנו לוקחים על עצמנו.")}</span>
               </h1>
-              <p className="m-0 text-lg lg:text-[22px] leading-[1.55] text-[var(--l-on-navy-soft)] lg:max-w-[600px]">
-                {t("לידים, חוזים, תשלומים, גלריות ואלבומים במקום אחד. גילברטו מראה לכם בכל אירוע מה הצעד הבא, ומכינה את ההודעות ללקוח לפי שיטת העבודה שלכם.")}
-              </p>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3">
+              <div className="mt-5 lg:mt-6 flex flex-col gap-3 text-[17px] lg:text-xl leading-[1.6] lg:max-w-[640px]">
+                <p className="m-0 font-semibold text-white">
+                  {t("הפכתם לצלמים מתוך אהבה לצילום ומתוך כישרון אמיתי, ולא כדי להעביר את הערבים בהודעות וואטסאפ, בחוזים ובתזכורות תשלום.")}
+                </p>
+                <p className="m-0 text-[var(--l-on-navy-soft)]">
+                  {emphasized(
+                    t(
+                      "אך מאחורי כל אירוע מסתתרות **כארבע וחצי שעות של עבודה מנהלית**, מהפנייה הראשונה ועד מסירת האלבום. צלם שמצלם שישה אירועים בחודש מאבד כך **יותר מ-40 ימי עבודה בשנה**. גילברטו לוקחת על עצמה את רוב העבודה הזו, כדי שתוכלו לחזור לעיסוק שבשבילו פתחתם את העסק."
+                    )
+                  )}
+                </p>
+              </div>
+              <div className="mt-7 flex flex-col sm:flex-row sm:flex-wrap gap-2.5 sm:gap-3">
                 <PrimaryCta lang={lang} t={t} />
                 <a
-                  href="#pricing"
-                  className="h-[52px] sm:h-14 px-6 rounded-[1px] inline-flex items-center justify-center border border-[var(--l-navy-border)] text-[var(--l-on-navy)] text-[17px] sm:text-lg font-semibold"
+                  href="#calc"
+                  className="min-h-[52px] sm:min-h-14 px-6 py-2 rounded-[1px] inline-flex items-center justify-center text-center border border-[var(--l-navy-border)] text-[var(--l-on-navy)] text-[17px] sm:text-lg font-semibold"
                 >
-                  {t("כמה זה עולה")}
+                  {t("כמה זמן אתם משקיעים בעבודה מנהלית?")}
                 </a>
               </div>
-              <p className="m-0 text-sm lg:text-[15px] text-[var(--l-on-navy-mute)] text-center sm:text-start">
-                {t("בלי כרטיס אשראי. בזמן הניסיון כל האפשרויות של פרו+ פתוחות.")}
+              <p className="mt-3 mb-0 text-sm text-[var(--l-on-navy-mute)]">
+                {t("ללא כרטיס אשראי. החישוב: כ-270 דקות של עבודה מנהלית לאירוע (הפירוט בהמשך העמוד), שישה אירועים בחודש ויום עבודה בן שמונה שעות.")}
               </p>
+
+              <ul aria-label={t("מה המערכת עושה")} className="mt-7 mb-0 p-0 list-none grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {HERO_TILES.map((tile) => (
+                  <li key={tile.text} className="min-w-0 flex flex-col gap-2 rounded-[12px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-3">
+                    <Icon d={tile.icon} size={22} className="text-[var(--l-accent-light)]" />
+                    <span className="text-[13.5px] font-semibold leading-snug">{t(tile.text)}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
-            {/* The product itself: the real tour, playing in a phone frame. */}
-            <div className="relative self-center shrink-0 w-[260px] sm:w-[300px] lg:w-[440px] lg:h-[620px]">
-              <div className="hidden lg:block absolute top-[40px] bottom-0 start-[20px] end-[60px] rounded-[28px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)]" />
-              <div className="relative lg:absolute lg:end-[100px] lg:top-0 w-full lg:w-[300px] rounded-[44px] p-3 bg-[#060a14] border border-[#2a3650] shadow-[0_40px_90px_rgba(0,0,0,0.5)]">
-                <video
-                  src="/guides/overview.mp4"
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  preload="metadata"
-                  aria-label={t("סיור במערכת גילברטו")}
-                  className="block w-full aspect-[480/768] object-cover object-top rounded-[34px] bg-[var(--l-bg-alt)]"
-                />
-              </div>
-              <div className="hidden lg:flex absolute start-0 bottom-16 w-[210px] flex-col gap-1 rounded-[14px] bg-white text-[var(--l-ink)] px-4 py-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
-                <span className="text-xs text-[var(--l-ink-soft)]">{t("עכשיו")}</span>
-                <span className="text-sm font-bold leading-snug">{t("הלקוחה אישרה את עיצוב האלבום")}</span>
+            <div className="flex flex-col gap-4 min-w-0">
+              <figure className="m-0 flex gap-4 items-start rounded-[14px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/landing/founder.jpg" alt="" className="w-20 h-[94px] shrink-0 object-cover rounded-[2px] border border-[var(--l-navy-border)]" />
+                <div className="min-w-0">
+                  <blockquote className="m-0 text-lg leading-normal font-semibold text-white">
+                    {lang === "he" ? "״" : lang === "ru" ? "«" : "“"}
+                    {t("פיתחתי את גילברטו משום שאחרי כל אירוע חיכו לי עוד שעות ארוכות של הודעות, קבצים ותזכורות. היום כל אלה מסודרים ומוכנים מראש, ואני מתפנה לצלם.")}
+                    {lang === "he" ? "״" : lang === "ru" ? "»" : "”"}
+                  </blockquote>
+                  <figcaption className="mt-2.5 text-sm text-[var(--l-on-navy-soft)]">{t("רועי גלברט, צלם אירועים ומייסד גילברטו")}</figcaption>
+                </div>
+              </figure>
+              <div role="group" aria-label={t("דוגמה להודעות שמחכות אחרי אירוע")} className="flex flex-col gap-2 rounded-[14px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-4">
+                <span className="text-xs text-[var(--l-on-navy-mute)]">{t("01:12, בדרך הביתה מחתונה")}</span>
+                {NIGHT_MESSAGES.map((m) => (
+                  <div key={m.text} className="max-w-[92%] rounded-[10px] rounded-ee-[2px] bg-[#1d2a40] px-3 py-2 text-sm text-[#e9edf5]">
+                    {t(m.text)}
+                    <small className="block mt-0.5 text-[11.5px] text-[var(--l-on-navy-mute)]">{t(m.meta)}</small>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* A person behind the product, right after the hero: a photographer who built it for himself is
-          the one thing no competitor can copy, so it comes before the features (visitor feedback,
-          2026-09-29). Dark so the quote stands out (owner's call); navy-2 with a rule on top so it
-          reads as its own section, not the hero's tail. */}
-      <section className="bg-[var(--l-navy-2)] text-[var(--l-on-navy)] border-t border-[var(--l-navy-line)]">
-        <div className={`${CONTAINER} py-14 lg:py-24 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8 lg:gap-20`}>
-          <figure className="m-0 flex flex-col gap-5 lg:gap-7 lg:max-w-[820px]">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="var(--l-accent)" aria-hidden="true">
-              <path d="M10 7H6a2 2 0 0 0-2 2v4h4v4h2V7zM20 7h-4a2 2 0 0 0-2 2v4h4v4h2V7z" />
-            </svg>
-            <blockquote className="font-display m-0 text-2xl lg:text-[38px] leading-[1.35] font-semibold tracking-[-0.015em] text-white">
-              {t("בניתי את גילברטו כי אחרי כל צילום אירוע חיכו לי עוד שעות של וואטסאפים, קבצים ותזכורות. היום כל זה מסודר ומוכן מראש, ואני חוזר לצלם.")}
-            </blockquote>
-            <figcaption className="flex items-center gap-3.5 text-base lg:text-lg text-[var(--l-on-navy-soft)]">
-              {/* Phones: the whole photo, small, next to the name (owner: not just the face). Desktop shows the large one beside the quote. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/landing/founder.jpg" alt="" className="lg:hidden w-[62px] h-[72px] object-cover rounded-[2px] border border-[var(--l-navy-border)]" />
-              <span>{t("רועי גלברט, צלם אירועים ומייסד גילברטו")}</span>
-            </figcaption>
-          </figure>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/landing/founder.jpg"
-            alt={t("רועי גלברט, צלם אירועים ומייסד גילברטו")}
-            loading="lazy"
-            className="hidden lg:block w-[340px] aspect-[635/744] object-cover shrink-0 rounded-[2px] border border-[var(--l-navy-border)] shadow-[0_30px_70px_rgba(0,0,0,0.45)]"
-          />
-        </div>
-      </section>
+      <LandingPainSection lang={lang} />
 
-      {/* JOURNEY — a real sequence, drawn as a line of icons rather than numbers. */}
-      <section id="features" className="bg-[var(--l-bg)] scroll-mt-4">
-        <div className={`${CONTAINER} py-16 lg:py-32 flex flex-col gap-8 lg:gap-16`}>
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3.5 lg:gap-16">
-            <h2 className="font-display m-0 text-4xl lg:text-6xl leading-[1.05] font-bold tracking-[-0.03em] lg:max-w-[620px] text-balance">
-              {t("מהפנייה הראשונה ועד המסירה.")}
-            </h2>
-            <p className="m-0 text-[17px] lg:text-[19px] leading-relaxed text-[var(--l-ink-soft)] lg:max-w-[520px]">
-              {t("כל צלם עובד אחרת. אתם מגדירים את החבילות, השלבים וההודעות ללקוח, וגילברטו מסדרת את העבודה סביבם. ככה נראית דרך טיפוסית של אירוע:")}
-            </p>
-          </div>
-          <ol className="relative m-0 p-0 list-none grid grid-cols-1 lg:grid-cols-6 gap-7">
-            <span aria-hidden="true" className="absolute bg-[var(--l-line)] start-[23px] top-6 bottom-6 w-0.5 lg:start-7 lg:end-7 lg:top-[27px] lg:bottom-auto lg:w-auto lg:h-0.5" />
-            {JOURNEY.map((step) => (
-              <li key={step.title} className="relative flex lg:flex-col gap-4">
-                <span className="w-12 h-12 lg:w-14 lg:h-14 shrink-0 rounded-[12px] lg:rounded-[14px] bg-[var(--l-navy)] text-[var(--l-accent)] flex items-center justify-center shadow-[0_0_0_6px_#fff] lg:shadow-[0_0_0_8px_#fff]">
-                  <Icon d={step.icon} size={22} />
-                </span>
-                <span className="flex flex-col gap-1.5 lg:gap-4 pt-1 lg:pt-0">
-                  <span className="font-display text-xl lg:text-[22px] font-bold tracking-tight">
-                    {lang === "he" || !step.tkey ? t(step.title) : t(step.tkey)}
-                  </span>
-                  <span className="text-base leading-relaxed text-[var(--l-ink-soft)]">{t(step.text)}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
-          <p className="m-0 flex items-start gap-3.5 rounded-[14px] bg-[var(--l-bg-alt)] px-5 py-4 lg:px-6 lg:py-5 text-base lg:text-[17px] text-[#3a4560]">
-            <Icon d="M4 6h16M4 12h10M4 18h6" size={22} className="shrink-0 mt-0.5 text-[var(--l-ink)]" />
-            {t("השלבים כאן הם דוגמה. בכל חבילה בונים מסלול משלכם, ואפשר לסמן שלב כבוצע בכל סדר, כי לא כל לקוח מתקדם באותו קצב.")}
-          </p>
-        </div>
-      </section>
+      <LandingProcessSection lang={lang} />
 
-      {/* MORE */}
-      <section className="bg-[var(--l-bg-alt)]">
-        <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col gap-6 lg:gap-12`}>
-          <h2 className="font-display m-0 text-3xl lg:text-5xl leading-[1.1] font-bold tracking-[-0.025em]">{t("ועוד דברים שתשתמשו בהם כל שבוע")}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 lg:gap-4">
-            {MORE.map((item) => (
-              <div key={item.title} className="flex lg:flex-col gap-3.5 rounded-[16px] lg:rounded-[18px] bg-white border border-[var(--l-line)] p-5 lg:p-8 lg:min-h-[180px]">
-                <Icon d={item.icon} size={28} className="shrink-0 text-[var(--l-accent)] w-6 h-6 lg:w-7 lg:h-7" />
-                <span className="flex flex-col gap-1 lg:gap-3.5">
-                  <span className="font-display text-lg lg:text-[22px] font-bold tracking-tight">{t(item.title)}</span>
-                  <span className="text-[15px] lg:text-[17px] leading-relaxed text-[var(--l-ink-soft)]">{t(item.text)}</span>
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Interactive time-savings calculator: the visitor's own numbers, not ours. */}
+      <TimeSavingsCalculator />
 
       {/* The quote flow: link → approval → questionnaire → contract → event (owner, 2026-10-01). */}
       <LandingQuoteSection lang={lang} />
@@ -383,8 +325,23 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
         </div>
       </section>
 
-      {/* Interactive time-savings calculator: the visitor's own numbers, not ours. */}
-      <TimeSavingsCalculator />
+      {/* MORE (white, between the navy assistant and the grey pricing). */}
+      <section className="bg-[var(--l-bg)]">
+        <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col gap-6 lg:gap-12`}>
+          <h2 className="font-display m-0 text-3xl lg:text-5xl leading-[1.1] font-bold tracking-[-0.025em]">{t("ועוד דברים שתשתמשו בהם כל שבוע")}</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 lg:gap-4">
+            {MORE.map((item) => (
+              <div key={item.title} className="flex lg:flex-col gap-3.5 rounded-[16px] lg:rounded-[18px] bg-white border border-[var(--l-line)] p-5 lg:p-8 lg:min-h-[180px]">
+                <Icon d={item.icon} size={28} className="shrink-0 text-[var(--l-accent)] w-6 h-6 lg:w-7 lg:h-7" />
+                <span className="flex flex-col gap-1 lg:gap-3.5">
+                  <span className="font-display text-lg lg:text-[22px] font-bold tracking-tight">{t(item.title)}</span>
+                  <span className="text-[15px] lg:text-[17px] leading-relaxed text-[var(--l-ink-soft)]">{t(item.text)}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <section id="pricing" className="bg-[var(--l-bg-alt)] scroll-mt-4">
         <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col gap-6 lg:gap-10`}>
@@ -405,6 +362,17 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
           <div className="flex-1 min-w-0">
             <LandingFaq />
           </div>
+        </div>
+      </section>
+
+      {/* Last call (landing sketch 2). */}
+      <section className="bg-[var(--l-navy-2)] text-[var(--l-on-navy)] text-center">
+        <div className={`${CONTAINER} py-16 lg:py-24 flex flex-col items-center`}>
+          <h2 className="font-display m-0 text-[30px] lg:text-5xl leading-[1.12] font-bold tracking-[-0.025em] text-white text-balance">
+            {t("השאירו לנו את הניהול, וחזרו לצלם")}
+          </h2>
+          <p className="mt-3 mb-0 text-base lg:text-lg text-[var(--l-on-navy-soft)]">{t("14 ימי ניסיון חינם עם כל האפשרויות, ללא כרטיס אשראי וללא התחייבות.")}</p>
+          <PrimaryCta lang={lang} t={t} className="mt-6" />
         </div>
       </section>
 

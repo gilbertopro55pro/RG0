@@ -1,105 +1,102 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { LANDING_CONTAINER } from "@/components/LandingChrome";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
+import {
+  ADMIN_MINUTES_PER_EVENT,
+  DEFAULT_EVENTS_PER_MONTH,
+  DEFAULT_HOURLY_VALUE,
+  MINUTES_LEFT_WITH_GILBERTO,
+  hoursSavedPerMonth,
+  workdaysPerYear,
+} from "@/lib/adminTime";
 
-// Rough, defensible per-event admin-time estimates for a photographer working without a single
-// system — quote, WhatsApp back-and-forth, contract, gallery + chasing photo selection, payment
-// reminders, calendar coordination. ~2 hours/event is a conservative, round total.
-const MINUTES_WITHOUT_SYSTEM_PER_EVENT = 115;
-// What's realistically still needed with Gilberto handling the repetitive parts automatically —
-// personal touches (replying to a real question, culling/style choices) don't disappear.
-const MINUTES_WITH_GILBERTO_PER_EVENT = 20;
-const DEFAULT_HOURLY_VALUE = 150;
-
+// The landing calculator (sketch 2, 2026-10-11): the visitor's own numbers, not ours. The admin
+// time per event starts at the page's itemized total (lib/adminTime.ts) and can be moved, since the
+// page says "every photographer works differently".
 export default function TimeSavingsCalculator() {
-  const [eventsPerMonth, setEventsPerMonth] = useState(6);
+  const [eventsPerMonth, setEventsPerMonth] = useState(DEFAULT_EVENTS_PER_MONTH);
+  const [adminMinutes, setAdminMinutes] = useState(ADMIN_MINUTES_PER_EVENT);
   const [hourlyValue, setHourlyValue] = useState(DEFAULT_HOURLY_VALUE);
   const t = useT();
   const locale = dateLocale(useLang());
 
-  // hoursWithout is still computed (kept for parity with the original math) but no longer shown.
-  const { hoursSaved, moneySaved } = useMemo(() => {
-    const minutesSavedPerEvent = MINUTES_WITHOUT_SYSTEM_PER_EVENT - MINUTES_WITH_GILBERTO_PER_EVENT;
-    const totalMinutesSaved = minutesSavedPerEvent * eventsPerMonth;
-    const hoursSaved = Math.round((totalMinutesSaved / 60) * 10) / 10;
-    const hoursWithout = Math.round(((MINUTES_WITHOUT_SYSTEM_PER_EVENT * eventsPerMonth) / 60) * 10) / 10;
-    const moneySaved = Math.round(hoursSaved * hourlyValue);
-    return { hoursSaved, moneySaved, hoursWithout };
-  }, [eventsPerMonth, hourlyValue]);
+  const hoursSaved = hoursSavedPerMonth(adminMinutes, eventsPerMonth);
+  const moneySaved = Math.round(hoursSaved * hourlyValue);
+  const daysSaved = workdaysPerYear(adminMinutes - MINUTES_LEFT_WITH_GILBERTO, eventsPerMonth);
+
+  const sliders = [
+    { id: "tsc-events", label: t("כמה אירועים אתם מצלמים בחודש?"), shown: eventsPerMonth.toLocaleString(locale), value: eventsPerMonth, min: 1, max: 25, step: 1, set: setEventsPerMonth },
+    {
+      id: "tsc-admin",
+      label: t("זמן עבודה מנהלית על כל אירוע"),
+      shown: t("{n} שעות", { n: (adminMinutes / 60).toLocaleString(locale) }),
+      value: adminMinutes,
+      // From an hour and a half ("1 שעות" isn't Hebrew), up to eight.
+      min: 90,
+      max: 480,
+      step: 30,
+      set: setAdminMinutes,
+    },
+    { id: "tsc-hourly", label: t("מה שווי שעת העבודה שלכם?"), shown: `₪${hourlyValue.toLocaleString(locale)}`, value: hourlyValue, min: 50, max: 500, step: 10, set: setHourlyValue },
+  ];
+  const results = [
+    { value: hoursSaved.toLocaleString(locale), label: t("שעות שחוזרות אליכם בחודש") },
+    { value: `₪${moneySaved.toLocaleString(locale)}`, label: t("שווי הזמן הזה בחודש") },
+    { value: daysSaved.toLocaleString(locale), label: t("ימי עבודה שחוזרים אליכם בשנה") },
+  ];
 
   return (
-    <section className="bg-[var(--l-bg)] text-[var(--l-ink)]">
-      <div className="max-w-[1344px] mx-auto px-5 sm:px-8 lg:px-12 py-16 lg:py-28 flex flex-col lg:flex-row lg:items-center gap-6 lg:gap-[72px]">
-        <div className="lg:w-[440px] lg:shrink-0 flex flex-col gap-3 lg:gap-5">
-          <h2 className="font-display font-bold text-[30px] leading-[1.15] lg:text-5xl lg:leading-[1.1] tracking-[-0.025em] m-0">
-            {t("כמה זמן אתם מבזבזים על ניהול?")}
+    <section id="calc" className="bg-[var(--l-navy)] text-[var(--l-on-navy)] scroll-mt-4">
+      <div className={`${LANDING_CONTAINER} py-16 lg:py-28`}>
+        <div className="flex flex-col gap-3 max-w-[760px]">
+          <span className="text-sm font-bold text-[var(--l-accent-light)]">{t("מחשבון")}</span>
+          <h2 className="font-display m-0 text-[30px] lg:text-5xl leading-[1.12] font-bold tracking-[-0.025em] text-white text-balance">
+            {t("כמה זמן וכסף העבודה המנהלית עולה לכם?")}
           </h2>
-          <p className="m-0 text-base lg:text-[19px] leading-[1.6] text-[var(--l-ink-soft)]">
-            {t("הזיזו את הסמנים לפי העסק שלכם. החישוב: כ-115 דקות ניהול לאירוע בלי מערכת, כ-20 דקות עם גילברטו.")}
-          </p>
+          <p className="m-0 text-[17px] lg:text-lg leading-relaxed text-[var(--l-on-navy-soft)]">{t("הזיזו את הסמנים בהתאם לעסק שלכם, וקבלו את המספרים שלכם.")}</p>
         </div>
 
-        <div className="flex-1 min-w-0 flex flex-col gap-4">
-          <div className="border border-[var(--l-line)] rounded-[18px] lg:rounded-[20px] p-[22px] lg:p-10 flex flex-col gap-6 lg:gap-8 bg-[var(--l-bg)]">
-            <div className="flex flex-col gap-2.5 lg:gap-3.5">
-              <div className="flex items-center justify-between gap-4 text-base lg:text-lg">
-                <label htmlFor="tsc-events" className="font-semibold">
-                  {t("כמה אירועים אתם מצלמים בחודש?")}
-                </label>
-                <span className="font-display font-data font-bold">{eventsPerMonth}</span>
-              </div>
-              <input
-                id="tsc-events"
-                type="range"
-                min={1}
-                max={25}
-                value={eventsPerMonth}
-                onChange={(e) => setEventsPerMonth(Number(e.target.value))}
-                className="w-full"
-                style={{ accentColor: "var(--l-navy)" }}
-              />
-            </div>
-
-            <div className="flex flex-col gap-2.5 lg:gap-3.5">
-              <div className="flex items-center justify-between gap-4 text-base lg:text-lg">
-                <label htmlFor="tsc-hourly" className="font-semibold">
-                  {t("כמה שווה לכם שעת עבודה?")}
-                </label>
-                <span className="font-display font-data font-bold">₪{Number(hourlyValue).toLocaleString(locale)}</span>
-              </div>
-              <input
-                id="tsc-hourly"
-                type="range"
-                min={50}
-                max={400}
-                step={10}
-                value={hourlyValue}
-                onChange={(e) => setHourlyValue(Number(e.target.value))}
-                className="w-full"
-                style={{ accentColor: "var(--l-navy)" }}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5 lg:gap-4" aria-live="polite">
-              <div className="rounded-[1px] bg-[var(--l-navy)] text-[var(--l-on-navy)] p-4 lg:p-6 flex flex-col gap-1 lg:gap-1.5 min-w-0">
-                <div className="text-[13px] lg:text-[15px] text-[var(--l-on-navy-soft)]">{t("שעות שחוזרות אליכם בחודש")}</div>
-                <div className="font-display font-data font-bold text-[clamp(22px,7vw,36px)] sm:text-4xl lg:text-[52px] leading-none tracking-[-0.03em]">
-                  {hoursSaved}
+        <div className="mt-8 grid gap-7 lg:grid-cols-2 lg:gap-12 items-start">
+          <div className="flex flex-col gap-6">
+            {sliders.map((s) => (
+              <div key={s.id} className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-4 text-base lg:text-[17px] font-semibold">
+                  <label htmlFor={s.id}>{s.label}</label>
+                  <output htmlFor={s.id} className="shrink-0 whitespace-nowrap font-extrabold tabular-nums text-white">
+                    {s.shown}
+                  </output>
                 </div>
+                <input
+                  id={s.id}
+                  type="range"
+                  min={s.min}
+                  max={s.max}
+                  step={s.step}
+                  value={s.value}
+                  onChange={(e) => s.set(Number(e.target.value))}
+                  className="w-full"
+                  style={{ accentColor: "var(--l-accent-light)" }}
+                />
               </div>
-              <div className="rounded-[1px] bg-[var(--l-accent)] text-[var(--l-on-accent)] p-4 lg:p-6 flex flex-col gap-1 lg:gap-1.5 min-w-0">
-                <div className="text-[13px] lg:text-[15px] font-semibold">{t("שווי הזמן הזה בחודש")}</div>
-                <div className="font-display font-data font-bold text-[clamp(22px,7vw,36px)] sm:text-4xl lg:text-[52px] leading-none tracking-[-0.03em] break-words">
-                  ₪{moneySaved.toLocaleString(locale)}
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
-          <p className="m-0 text-[11px] leading-relaxed text-[var(--l-ink-soft)]">
-            {t("מבוסס על הזמן הממוצע שצלמים מדווחים שהם משקיעים בהצעות מחיר, תיאום בוואטסאפ, חוזים, שיתוף גלריות ותזכורות תשלום, לעומת אותם שלבים כשהכל מרוכז במקום אחד, עם תבניות והודעות מוכנות מראש. זו הערכה, לא התחייבות.")}
-          </p>
+
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5" aria-live="polite">
+              {results.map((r) => (
+                <div key={r.label} className="min-w-0 rounded-[12px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-4">
+                  <div className="font-display text-[clamp(26px,4vw,36px)] font-extrabold leading-[1.1] tabular-nums text-white break-words">{r.value}</div>
+                  <div className="mt-1 text-[13px] text-[var(--l-on-navy-soft)]">{r.label}</div>
+                </div>
+              ))}
+            </div>
+            <p className="m-0 text-xs leading-relaxed text-[var(--l-on-navy-mute)]">
+              {t("החישוב מניח שגם עם גילברטו נשארות כ-40 דקות לאירוע, ושיום עבודה הוא שמונה שעות. זו הערכה, לא התחייבות.")}
+            </p>
+          </div>
         </div>
       </div>
     </section>
