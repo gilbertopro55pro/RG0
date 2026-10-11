@@ -95,27 +95,36 @@ const CONTAINER = LANDING_CONTAINER;
 // Metadata for each language's landing URL: the Hebrew page keeps its canonical "/", and all three
 // point at each other (hreflang) so search engines show the right one. openGraph/twitter are set in
 // full because a child's openGraph replaces the root layout's rather than merging into it.
+// The link preview (WhatsApp, Facebook) is the landing hero itself with the logo small at the top
+// left (owner, 2026-10-11), one image per language (public/og, made by scripts/landing-og). Only the
+// landing routes get it: every other page keeps the root layout's app icon, so a quote or gallery
+// link a photographer sends a client never previews as an ad.
 export function landingMetadata(lang: Lang): Metadata {
   const t = makeT(messagesFor(lang));
   const title = t("גילברטו | ניהול תהליך צילום אירועים");
   const description = t("מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה");
   const languages = { he: "/", en: "/en", ru: "/ru" };
   const alternates = { canonical: landingHome(lang), languages };
-  // The Hebrew page's title/description stay the root layout's, exactly as before.
-  if (lang === "he") return { alternates };
+  const image = {
+    url: `/og/landing-${lang}.jpg`,
+    width: 1200,
+    height: 630,
+    alt: `${t("צלמים, אתם מתמקדים בצילום,")} ${t("ואת הניהול אנחנו לוקחים על עצמנו.")}`,
+  };
   return {
-    title,
-    description,
+    // The Hebrew page's title/description stay the root layout's, exactly as before.
+    ...(lang === "he" ? {} : { title, description }),
     alternates,
     openGraph: {
+      type: "website",
       title,
       description,
       siteName: t("גילברטו"),
-      locale: lang === "ru" ? "ru_RU" : "en_US",
+      locale: lang === "ru" ? "ru_RU" : lang === "en" ? "en_US" : "he_IL",
       url: landingHome(lang),
-      images: [{ url: "/icons/icon-512.png", width: 512, height: 512 }],
+      images: [image],
     },
-    twitter: { card: "summary", title, description, images: ["/icons/icon-512.png"] },
+    twitter: { card: "summary_large_image", title, description, images: [image.url] },
   };
 }
 
