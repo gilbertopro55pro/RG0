@@ -99,6 +99,9 @@
   #r1 { top: 1060px; font-size: 84px; } #r2 { top: 1170px; font-size: 96px; }
   #clock3 { position: absolute; top: 300px; left: 0; right: 0; text-align: center; font-size: 170px; font-weight: 800; letter-spacing: -.04em; color: #c9a15a; direction: ltr; font-variant-numeric: tabular-nums; }
   #lbl3 { top: 500px; font-size: 40px; color: #aeb8cc; }
+  /* the quote fix (real screens, f-fix): a tap mark where the next step is pressed */
+  #tap { position: absolute; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; background: rgba(201,161,90,.32); border: 5px solid #c9a15a; box-shadow: 0 0 0 10px rgba(201,161,90,.15); opacity: 0; pointer-events: none; }
+  #t6 { white-space: nowrap; }
   #cup { position: absolute; top: 470px; left: 50%; margin-left: -100px; width: 200px; height: 200px; color: #c9a15a; }
   #bed1 { top: 720px; font-size: 280px; font-weight: 800; letter-spacing: -.04em; direction: ltr; font-variant-numeric: tabular-nums; }
   #bed2 { top: 1060px; font-size: 104px; }
@@ -109,14 +112,14 @@
 <div id="glow"></div>
 
 <div id="s1" class="scene">
-  <div id="kick" class="c">ליל חתונה. בלי גילברטו.</div>
+  <div id="kick" class="c">ליל חתונה, בלי גילברטו</div>
   <div id="clock1" class="c">00:00</div>
-  <div id="o1" class="c big w" data-fit>החתונה נגמרה.</div>
-  <div id="o2" class="c big b" data-fit>ובבוקר מחכה לכם עוד משמרת.</div>
+  <div id="o1" class="c big w" data-fit>החתונה נגמרה</div>
+  <div id="o2" class="c big b" data-fit>ובבוקר מחכה לכם עוד משמרת</div>
 </div>
 <div id="s2" class="scene">
   <div id="clock2">00:00</div>
-  <div id="lbl2" class="c">הבוקר שאחרי. בלי גילברטו.</div>
+  <div id="lbl2" class="c">הבוקר שאחרי, בלי גילברטו</div>
   <div class="task" id="tb0" style="top:640px"><time>08:40</time><span>עונים לשלוש פניות מאתמול</span></div>
   <div class="task" id="tb1" style="top:810px"><time>09:20</time><span>מתקנים הצעת מחיר ושולחים שוב</span></div>
   <div class="task" id="tb2" style="top:980px"><time>09:50</time><span>מזכירים ללקוח להעביר את היתרה</span></div>
@@ -125,17 +128,17 @@
 </div>
 <div id="s3" class="scene">
   <div id="late1" class="c">11:00</div>
-  <div id="late2" class="c big w" data-fit>ועוד לא התחלתם לערוך.</div>
+  <div id="late2" class="c big w" data-fit>ועוד לא התחלתם לערוך</div>
 </div>
 <div id="s4" class="scene">
   <div id="rw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg></div>
   <div id="rclock" class="c">11:00</div>
   <div id="r1" class="c big w" data-fit>ועכשיו, אותו בוקר</div>
-  <div id="r2" class="c big b" data-fit>עם גילברטו.</div>
+  <div id="r2" class="c big b" data-fit>עם גילברטו</div>
 </div>
 <div id="s5" class="scene">
   <div id="clock3">08:30</div>
-  <div id="lbl3" class="c">הבוקר שאחרי. עם גילברטו.</div>
+  <div id="lbl3" class="c">הבוקר שאחרי, עם גילברטו</div>
   <div class="task done" id="to0" style="top:620px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>פניות חדשות<small>עוזר הפניות ענה להן עוד בזמן החתונה</small></span></div>
   <div class="task done" id="to1" style="top:796px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>הצעת מחיר<small>הלקוח אישר וחתם בקישור</small></span></div>
   <div class="task done" id="to2" style="top:972px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>תזכורת יתרה<small>מוכנה לשליחה בלחיצה</small></span></div>
@@ -143,18 +146,19 @@
   <div class="task done" id="to4" style="top:1324px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>קישור לגלריה<small>הלקוח כבר בפנים</small></span></div>
 </div>
 <div id="s6" class="scene">
-  <div class="hd">וכל העסק<span>מול העיניים.</span></div>
-  <div class="card" id="c6" style="top:560px;width:720px;margin-left:-360px"><img id="v6" alt=""></div>
+  <div class="hd" style="top:250px;font-size:66px">הלקוחות ביקשו שינוי בהצעה?<span>מתקנים ושולחים תוך דקה</span></div>
+  <div class="card" id="c6" style="top:450px;width:780px;margin-left:-390px"><img id="v6" alt=""><i id="tap"></i></div>
+  <div class="tag" id="t6" style="top:1345px;left:50%;transform:translateX(-50%)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>אותו קישור, וההצעה כבר מעודכנת</div>
 </div>
 <div id="s7" class="scene">
   <div id="cup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%"><path d="M17 8h1a4 4 0 1 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zM6 2v2M10 2v2M14 2v2"/></svg></div>
   <div id="bed1" class="c">08:45</div>
-  <div id="bed2" class="c big b" data-fit>מתחילים לערוך.</div>
+  <div id="bed2" class="c big b" data-fit>מתחילים לערוך</div>
 </div>
 <div id="s_end" class="scene">
   <div id="end">
     <img class="mark logoimg" src="logo.png" alt="">
-    <div class="msg"><b class="m1" data-fit>הבוקר שאחרי החתונה</b><b class="m2" data-fit>חוזר להיות שלכם.</b></div>
+    <div class="msg"><b class="m1" data-fit>הבוקר שאחרי החתונה</b><b class="m2" data-fit>חוזר להיות שלכם</b></div>
     <div id="cta">נסו 14 יום בחינם</div>
     <div id="link">myframeflow.com/start<u></u></div>
     <div id="free">ללא כרטיס אשראי וללא התחייבות</div>
@@ -179,6 +183,13 @@
     el.src = `${dir}/${String(n).padStart(5, "0")}.jpg`;
     await el.decode().catch(() => {});
   }
+  async function frame(id, dir, n) {
+    if (last[id] === n) return;
+    last[id] = n;
+    const el = $(id);
+    el.src = `${dir}/${String(n).padStart(5, "0")}.jpg`;
+    await el.decode().catch(() => {});
+  }
   async function fitAll() {
     await document.fonts.ready;
     document.querySelectorAll("[data-fit]").forEach((el) => {
@@ -197,8 +208,14 @@
   // the turn to the morning with Gilberto.
   const BEAT = 60 / 124, BAR = 4 * BEAT, B = (n) => n * BAR;
   window.MUSIC_START = B(3);
-  const S = { s1: [0, B(1.5)], s2: [B(1.5), B(6)], s3: [B(6), B(7.5)], s4: [B(7.5), B(9)], s5: [B(9), B(12.5)], s6: [B(12.5), B(15.5)], s7: [B(15.5), B(17)], s_end: [B(17), B(21)] };
-  const DURATION = B(21);
+  // s6 is a real quote fix (owner, 2026-10-11: show at least one process), captured on the live app
+  // with the test account: the lead card, the builder, a row removed and a price changed, the
+  // preview, the contract question, "sent", and the client's page on the same link.
+  const S = { s1: [0, B(1.5)], s2: [B(1.5), B(6)], s3: [B(6), B(7.5)], s4: [B(7.5), B(9)], s5: [B(9), B(12.5)], s6: [B(12.5), B(17.5)], s7: [B(17.5), B(19)], s_end: [B(19), B(23)] };
+  const DURATION = B(23);
+  // [start in the scene (s), frame in f-fix, where its next step is tapped (frame px, 1080x1290: each
+  // frame is a 430px-tall window of the 360px-wide phone screen, at 3x, around the step)]
+  const FIX = [[0, 1, [480, 660]], [1.45, 2, [153, 747]], [2.6, 3, [309, 621]], [3.6, 4, [540, 1188]], [4.8, 5, [765, 1179]], [5.9, 6, [540, 987]], [6.9, 7, null], [7.9, 8, null]];
   const fmt = (min) => { min = ((Math.round(min) % 1440) + 1440) % 1440; return String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0"); };
   // Minutes after midnight (the wedding ends at 00:00, everything else is the next morning).
   const M = (h, m) => h * 60 + m;
@@ -240,13 +257,25 @@
     });
     $("flash").style.opacity = 0.6 * (1 - ease((t - S.s5[0]) / 0.45)) * (t >= S.s5[0] ? 1 : 0) + 0.85 * (1 - ease((t - S.s_end[0]) / 0.5)) * (t >= S.s_end[0] ? 1 : 0);
     $("wm").style.opacity = Math.min(ease((t - S.s5[0]) / 0.3), ease((S.s7[0] - t) / 0.2));
-    // Home screen footage
-    const h0 = S.s6[0];
+    // The quote fix: each real screen in turn, with a tap mark just before the next one
+    const h0 = S.s6[0], ht = t - h0;
     rise(document.querySelector("#s6 .hd"), t, h0 + 0.02, 50, 0.35);
     const hp = ease((t - h0 - 0.1) / 0.45);
     $("c6").style.opacity = hp;
     $("c6").style.transform = `translateY(${(1 - hp) * 260}px) scale(${0.94 + 0.06 * hp})`;
-    if (t >= h0 - 0.1 && t < S.s6[1]) await clip("v6", cfg.home, cfg.homeN, Math.max(0, t - h0));
+    let k = 0;
+    while (k + 1 < FIX.length && ht >= FIX[k + 1][0]) k++;
+    const tap = $("tap"), next = FIX[k + 1] ? FIX[k + 1][0] : Infinity, at = FIX[k][2];
+    const tp = at ? (ht - (next - 0.6)) / 0.55 : -1;
+    if (tp >= 0 && tp <= 1) {
+      const sc = 780 / 1080;
+      tap.style.left = at[0] * sc + "px"; tap.style.top = at[1] * sc + "px";
+      tap.style.opacity = Math.sin(Math.PI * Math.min(1, tp * 1.2));
+      tap.style.transform = `scale(${1.25 - 0.35 * ease(tp * 1.5)})`;
+    } else tap.style.opacity = 0;
+    slam($("t6"), t, h0 + FIX[7][0] + 0.35, 1.15, 0.28);
+    $("t6").style.transform = `translateX(-50%) ${$("t6").style.transform}`;
+    if (t >= h0 - 0.1 && t < S.s6[1]) await frame("v6", cfg.fix, FIX[k][1]);
     // Off to edit
     const m0 = S.s7[0];
     $("cup").style.opacity = ease((t - m0) / 0.4);

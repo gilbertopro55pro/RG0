@@ -32,6 +32,7 @@ const NAME = process.env.NAME || "gilberto-promo";
     quote2: "file://" + path.join(dir, "f-quote2"), quote2N: count("f-quote2"),
     home: "file://" + path.join(dir, "f-home"), homeN: count("f-home"),
     chat: "file://" + path.join(dir, "f-chat"), chatN: count("f-chat"),
+    fix: "file://" + path.join(dir, "f-fix"), fixN: count("f-fix"),
   });
   const duration = await p.evaluate(() => window.DURATION);
   // Where in the track the video starts, when its timeline is synced to a later bar (promo3).
