@@ -15,9 +15,13 @@ const SYSTEM_SENDER_NAME = "גילברטו";
 // that used to bake one fixed display name ("רועי גלברט - צילום") onto every email for every
 // photographer, including a quote another photographer sent to their own client (found
 // 2026-09-23). The verified sending address itself never changes, only the name shown.
-function fromHeader(fromName: string | undefined): string {
+export function senderAddress(): string {
   const configured = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
-  const address = configured.match(/<([^>]+)>/)?.[1]?.trim() ?? configured.trim();
+  return configured.match(/<([^>]+)>/)?.[1]?.trim() ?? configured.trim();
+}
+
+function fromHeader(fromName: string | undefined): string {
+  const address = senderAddress();
   const name = (fromName ?? "").replace(/["<>\r\n]/g, "").trim().slice(0, 60) || SYSTEM_SENDER_NAME;
   return `"${name}" <${address}>`;
 }
