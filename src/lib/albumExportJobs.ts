@@ -10,7 +10,7 @@ import { downloadObjectBuffer, uploadObjectStream, uploadObject, getSignedDownlo
 import { renderAlbumPageJpeg, pxFromCm } from "@/lib/albumRaster";
 import { renderAlbumPagePsd } from "@/lib/albumPsd";
 import { generateAlbumPdf } from "@/lib/albumPdf";
-import { sendEmail, senderAddress } from "@/lib/resend";
+import { sendEmail, clientSenderAddress } from "@/lib/resend";
 import { albumDisplayName, photographerExportEmail, photographerPrintSentEmail, printHouseEmail } from "@/lib/albumExportEmails";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { photographerLang } from "@/lib/clientLang";
@@ -559,7 +559,7 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
         to: job.send_to_email,
         fromName: sender?.name ?? undefined,
         replyTo: sender?.email ? notificationEmailFor(sender.email) : undefined,
-        ...printHouseEmail({ albumName, pagesLine, downloadUrl, validUntil, notes: job.send_notes?.trim() ?? "", signatureLines, senderAddress: senderAddress() }),
+        ...printHouseEmail({ albumName, pagesLine, downloadUrl, validUntil, notes: job.send_notes?.trim() ?? "", signatureLines, senderAddress: clientSenderAddress() }),
       });
     }
     await notifyPhotographerExportReady(supabase, job, albumName, storagePath, printLinkExpiresAt);

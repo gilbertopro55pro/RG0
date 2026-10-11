@@ -76,7 +76,8 @@ one `event_notifications` row (`is_client_action`, so it's a red badge on the ev
   (pure, so they can be rendered to HTML and checked without sending):
   - `printHouseEmail`: to the print house, in Hebrew. It ends with a small grey block of steps
     to get the next emails into the inbox: Gmail desktop/phone, Outlook, spam, add the sender to
-    contacts (`senderAddress()` in `resend.ts`). The owner asked for it after the mail landed under
+    contacts (`clientSenderAddress()` in `resend.ts`, the `studio@` address that mail on a
+    photographer's behalf comes from since 2026-10-11; system mail stays on `updates@`). The owner asked for it after the mail landed under
     "עדכונים".
   - `photographerPrintSentEmail`: the photographer's own copy of a print send, in their
     language. It says where it went, the pages, the notes, how long the print link lasts, and
