@@ -31,6 +31,7 @@ const NAME = process.env.NAME || "gilberto-promo";
     intake2: "file://" + path.join(dir, "f-intake2"), intake2N: count("f-intake2"),
     quote2: "file://" + path.join(dir, "f-quote2"), quote2N: count("f-quote2"),
     home: "file://" + path.join(dir, "f-home"), homeN: count("f-home"),
+    chat: "file://" + path.join(dir, "f-chat"), chatN: count("f-chat"),
   });
   const duration = await p.evaluate(() => window.DURATION);
   if (preview) {

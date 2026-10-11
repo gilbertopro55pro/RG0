@@ -68,17 +68,39 @@ logo, in a "coming soon" reveal style.
     - Write each as `-q:v 2 <dir>/%05d.jpg`. If a guide video is re-recorded, check the crops
       again: the captions move.
 - The brand mark in all three videos is the system logo, `public/icons/icon-512.png`. It shows in
-  the logo moment, the end card, the small corner mark, and video 2's notifications. `promo.js`
+  the logo moment, the end card, the small corner mark, and video 2's lead notification. `promo.js`
   copies it into the run folder as `logo.png`. It already carries the name, so the end card has no
-  separate "גילברטו" text (owner, 2026-10-11).
+  separate "גילברטו" text (owner, 2026-10-11). Run the repo's `promo.js` (not a copy in the run
+  folder): it finds the logo relative to itself.
 - Review `<NAME>-strip.png` and the last frame (the link must show) before sending.
 - **Three videos (2026-10-11).** `TEMPLATE` picks one and `NAME` the output file. The hooks are
   different on purpose, so they can be tested against each other:
   - `promo.html`, `gilberto-promo`: hook "הצילום נגמר בחצות". Track `energy.m4a`, 40.6s.
-  - `promo2.html`, `gilberto-promo-2`: the lost lead, "כמה אירועים הפסדתם כי עניתם מאוחר מדי?". A
-    23:47 message, you're asleep, the client books someone else. Then the assistant, a lead card,
-    the quote. Track `acoustic.m4a` (100 BPM); the turn lands where the track opens up (9.6s),
-    38.4s.
+  - `promo2.html`, `gilberto-promo-2`: the lost lead, "כמה אירועים הפסדתם כי עניתם מאוחר מדי?".
+    Track `acoustic.m4a` (100 BPM), 38.4s.
+    - **Midday, not night (owner, 2026-10-11):** a message at 12:40 in the middle of a shoot is
+      still missed. 12:40, "שלישי, באמצע צילום ברית", "אתם באמצע צילום.". The clock jumps to 15:10
+      where the track opens up (9.6s), and a second message comes in: "תודה, בינתיים מצאנו צלם
+      אחר". Then "מי שענה ראשון, קיבל את האירוע." and the turn "עם גילברטו, אתם עונים ראשונים.".
+    - The notifications use a plain green messaging icon, not the Gilberto logo: before Gilberto
+      the message reaches the phone, not the app.
+    - **The chat is real (owner: "שיראה אמיתי"):** "12:40. אותה הודעה, והפעם עונים לה מיד." over
+      screenshots of a live conversation with the assistant on the test account (`f-chat`). The
+      client's first message is the same as the notification, and the lead card matches what was
+      said (12.8.2027, כפר המכביה, כ-300).
+    - No quote scene (it was cut to keep 38.4s); the quote is in videos 1 and 3.
+  - **Capturing the chat** (`chat-capture.js`, header of the file):
+    - Run it in the background, then write each client message to `in-<i>.txt` after reading the
+      previous reply in `out-<i>.txt`. A scripted list of messages ignores what the assistant
+      asked (it asked to confirm the year of "12.8", and the client answered something else).
+    - Write the date with a year ("12.8.27"). Name a place OpenStreetMap knows (כפר המכביה). It
+      didn't know "לאגו" and suggested "לאונרדו".
+    - Never send a phone number, so there's no lead and no email.
+    - Then crop off the top 15px (a rendering artifact) and copy the frames as
+      `f-chat/%05d.jpg`. Map them to time in `chatFrame` in `promo2.html`: the dots cycle through
+      their frames, and the real 4–6s waits are shortened.
+    - Found while capturing (fixed 2026-10-11): the newest reply hid behind the input bar once the
+      chat was taller than the screen (`scroll-mb-32` on the end marker in `IntakeChat.tsx`).
   - `promo3.html`, `gilberto-promo-3`: the evening after a wedding. The clock runs from 22:00 to
     01:30 over five tasks, rewinds, the same evening with everything done, the home screen,
     "22:05. הולכים לישון.". Track `cinematic.m4a` (80 BPM); the logo is on its peak (36s), 42s.

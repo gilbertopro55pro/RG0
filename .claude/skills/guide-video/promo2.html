@@ -2,7 +2,9 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
-<!-- Promo 2, the lost lead (1080x1920, 38.4s, acoustic 100 BPM). Driven by promo.js: window.renderAt(t). -->
+<!-- Promo 2, the lost lead (1080x1920, 38.4s, acoustic 100 BPM). Driven by promo.js: window.renderAt(t).
+     Midday, not night (owner, 2026-10-11): a message at 12:40 in the middle of a shoot is still missed.
+     The chat scene is a real conversation with the assistant, captured live (chat-capture.js, f-chat). -->
 <link rel="stylesheet" href="fonts.css">
 <style>
   * { box-sizing: border-box; margin: 0; }
@@ -76,14 +78,19 @@
   #free { font-size: 38px; color: #8792ab; margin-top: 6px; }
 
   #lock { position: absolute; top: 330px; left: 0; right: 0; text-align: center; }
-  #lock b { display: block; font-size: 230px; font-weight: 300; letter-spacing: -.03em; line-height: 1; }
+  #clk { position: relative; height: 230px; overflow: hidden; }
+  #clk b { position: absolute; left: 0; right: 0; font-size: 230px; font-weight: 300; letter-spacing: -.03em; line-height: 1; }
   #lock span { display: block; font-size: 42px; color: #aeb8cc; margin-top: 12px; }
-  #notif { position: absolute; top: 760px; left: 70px; right: 70px; background: rgba(29,42,64,.92); border-radius: 40px; padding: 30px 34px; display: flex; gap: 24px; align-items: flex-start; direction: rtl; box-shadow: 0 30px 80px rgba(0,0,0,.45); }
-  #notif .mark { width: 84px; height: 84px; border-radius: 20px; flex: none; }
-  #notif b { display: block; font-size: 38px; } #notif p { font-size: 44px; line-height: 1.3; color: #eef2f8; margin-top: 6px; }
-  #notif small { position: absolute; top: 30px; left: 34px; font-size: 30px; color: #8792ab; }
-  #sleep { top: 1120px; font-size: 76px; font-weight: 800; }
-  #lost { top: 1260px; font-size: 64px; font-weight: 800; color: #e0675b; }
+  /* A plain messaging app's notification: before Gilberto the message arrives on the phone, not in the app. */
+  .nt { position: absolute; left: 70px; right: 70px; background: rgba(29,42,64,.92); border-radius: 40px; padding: 30px 34px; display: flex; gap: 24px; align-items: flex-start; direction: rtl; box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+  #notif { top: 700px; } #notif2 { top: 950px; }
+  .nt .app { width: 84px; height: 84px; border-radius: 20px; flex: none; background: #34c759; display: flex; align-items: center; justify-content: center; }
+  .nt b { display: block; font-size: 38px; } .nt p { font-size: 44px; line-height: 1.3; color: #eef2f8; margin-top: 6px; }
+  .nt small { position: absolute; top: 30px; left: 34px; font-size: 30px; color: #8792ab; }
+  #busy { top: 1010px; font-size: 76px; font-weight: 800; }
+  #lost { top: 1240px; font-size: 64px; font-weight: 800; color: #e0675b; }
+  /* the real chat: tags straddle the card's left edge, in the empty part of the chat header */
+  #s4 .tag { top: 476px; left: 92px; font-size: 34px; padding: 16px 24px; }
   #leadn { position: absolute; top: 540px; left: 70px; right: 70px; background: rgba(29,42,64,.95); border-radius: 34px; padding: 24px 30px; display: flex; gap: 20px; align-items: center; direction: rtl; }
   #leadn .mark { width: 70px; height: 70px; border-radius: 18px; flex: none; }
   #leadn b { display: block; font-size: 32px; } #leadn span { font-size: 36px; color: #dfe5ef; }
@@ -105,23 +112,21 @@
   <div id="h1b" class="c big b" data-fit style="top:850px;font-size:124px">כי עניתם מאוחר מדי?</div>
 </div>
 <div id="s2" class="scene">
-  <div id="lock"><b>23:47</b><span>שלישי, אחרי יום צילום ארוך</span></div>
-  <div id="notif"><img class="mark logoimg" src="logo.png" alt=""><div><b>לקוח חדש</b><p>היי, ה-14.12 עדיין פנוי? מחפשים צלם לחתונה</p></div><small>עכשיו</small></div>
-  <div id="sleep" class="c w">אתם ישנים.</div>
-  <div id="lost" class="c" data-fit>בבוקר הוא כבר סגר עם צלם אחר.</div>
+  <div id="lock"><div id="clk"><b id="clkA">12:40</b><b id="clkB">15:10</b></div><span>שלישי, באמצע צילום ברית</span></div>
+  <div id="notif" class="nt"><i class="app"><svg width="48" height="48" viewBox="0 0 24 24" fill="#fff"><path d="M12 3C6.5 3 2 6.6 2 11c0 2.4 1.3 4.5 3.4 6L4.6 21l4.3-2.4c1 .3 2 .4 3.1.4 5.5 0 10-3.6 10-8s-4.5-8-10-8z"/></svg></i><div><b>נועה</b><p>היי, ה-12.8.27 עדיין פנוי? מחפשים צלם לחתונה</p></div><small id="n1t">עכשיו</small></div>
+  <div id="busy" class="c w">אתם באמצע צילום.</div>
+  <div id="notif2" class="nt"><i class="app"><svg width="48" height="48" viewBox="0 0 24 24" fill="#fff"><path d="M12 3C6.5 3 2 6.6 2 11c0 2.4 1.3 4.5 3.4 6L4.6 21l4.3-2.4c1 .3 2 .4 3.1.4 5.5 0 10-3.6 10-8s-4.5-8-10-8z"/></svg></i><div><b>נועה</b><p>תודה, בינתיים מצאנו צלם אחר</p></div><small>עכשיו</small></div>
+  <div id="lost" class="c" data-fit>מי שענה ראשון, קיבל את האירוע.</div>
 </div>
 <div id="s3" class="scene">
   <div id="t1" class="c big w" data-fit style="top:760px;font-size:110px">עם גילברטו,</div>
-  <div id="t2" class="c big b" data-fit style="top:900px;font-size:120px">מישהו כבר עונה לו.</div>
+  <div id="t2" class="c big b" data-fit style="top:900px;font-size:120px">אתם עונים ראשונים.</div>
 </div>
 <div id="s4" class="scene">
-  <div class="hd">עוזר הפניות עונה מיד<span>ושואל את השאלות הנכונות.</span></div>
-  <div class="card" id="c4" style="top:560px;width:800px;margin-left:-400px">
-    <div class="bar"><i>סא</i><div><b>סטודיו אור</b><small>עונה מיד</small></div></div>
-    <img id="v4" alt="">
-  </div>
-  <div class="tag" id="t4a" style="top:1380px;left:90px"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>בודק ביומן שהתאריך פנוי</div>
-  <div class="tag" id="t4b" style="top:1500px;right:90px"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>בלי מחירים, רק פרטים</div>
+  <div class="hd" style="top:220px">12:40. אותה הודעה,<span>והפעם עונים לה מיד.</span></div>
+  <div class="card" id="c4" style="top:450px;width:760px;margin-left:-380px"><img id="v4" alt=""></div>
+  <div class="tag" id="t4a"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>בדק ביומן: התאריך פנוי</div>
+  <div class="tag" id="t4b"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>אוסף את כל הפרטים</div>
 </div>
 <div id="s5" class="scene">
   <div class="hd" style="top:290px">ואתם מקבלים ליד מסודר<span>עם כל הפרטים.</span></div>
@@ -129,16 +134,11 @@
   <div id="lead"><span class="chipl">ליד חדש</span><h3>נועה ואיתי</h3>
     <div class="row"><span>אירוע</span><b>חתונה</b></div>
     <div class="row"><span>תאריך</span><b>12.8.2027 · <span class="ok">פנוי</span></b></div>
-    <div class="row"><span>מקום</span><b>ראשון לציון</b></div>
+    <div class="row"><span>מקום</span><b>כפר המכביה, רמת גן</b></div>
     <div class="row"><span>אורחים</span><b>כ-300</b></div>
     <div class="row"><span>טלפון</span><b dir="ltr">050-0000123</b></div>
     <div class="go">שליחת הצעת מחיר</div>
   </div>
-</div>
-<div id="s6" class="scene">
-  <div class="hd">הצעת מחיר בקישור,<span>והלקוח מאשר וחותם.</span></div>
-  <div class="card" id="c6" style="top:560px;width:700px;margin-left:-350px"><img id="v6" alt=""></div>
-  <div class="tag" id="t6" style="top:1440px;left:120px"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>האירוע נכנס ליומן</div>
 </div>
 <div id="s7" class="scene">
   <div class="hd" style="top:380px">עוזר שעובד בשבילכם,<span>גם כשאתם לא.</span></div>
@@ -172,6 +172,13 @@
     el.src = `${dir}/${String(n).padStart(5, "0")}.jpg`;
     await el.decode().catch(() => {});
   }
+  async function frame(id, dir, n) {
+    if (last[id] === n) return;
+    last[id] = n;
+    const el = $(id);
+    el.src = `${dir}/${String(n).padStart(5, "0")}.jpg`;
+    await el.decode().catch(() => {});
+  }
   async function fitAll() {
     await document.fonts.ready;
     document.querySelectorAll("[data-fit]").forEach((el) => {
@@ -181,9 +188,22 @@
     });
   }
 
-  // 100 BPM: bar 2.4s. The track opens up at bar 4 (9.6s), on the turn.
+  // 100 BPM: bar 2.4s. The track opens up at bar 4 (9.6s), on the clock jumping to 15:10.
   const BEAT = 60 / 100, BAR = 4 * BEAT, B = (n) => n * BAR;
-  const S = { s1: [0, B(2)], s2: [B(2), B(4)], s3: [B(4), B(5)], s4: [B(5), B(8)], s5: [B(8), B(10)], s6: [B(10), B(12)], s7: [B(12), B(13)], s_end: [B(13), B(16)] };
+  const S = { s1: [0, B(2)], s2: [B(2), B(5)], s3: [B(5), B(6)], s4: [B(6), B(10)], s5: [B(10), B(12)], s7: [B(12), B(13)], s_end: [B(13), B(16)] };
+  // The live chat (f-chat/<n>.jpg, the capture's screenshots in order): what shows at time ct of the
+  // scene. The typing dots cycle through their captured frames; the real waits (4-6s) are shortened.
+  const chatFrame = (ct) => {
+    const cyc = (a, b, from) => a + (Math.floor((ct - from) * 8) % (b - a + 1));
+    if (ct < 0.45) return 1;
+    if (ct < 1.25) return 2 + Math.min(7, Math.floor((ct - 0.45) / 0.1)); // typing the first message
+    if (ct < 3.0) return cyc(10, 23, 1.25); // sent, typing dots
+    if (ct < 4.2) return cyc(24, 27, 3.0); // "the date is free", dots
+    if (ct < 5.2) return 28; // "where is the event?"
+    if (ct < 5.8) return 29 + Math.min(5, Math.floor((ct - 5.2) / 0.1)); // typing the answer
+    if (ct < 6.6) return cyc(35, 57, 5.8);
+    return 58; // the next question
+  };
   const DURATION = B(16);
   const CHIPS = [
     ["M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "עונה 24/7"],
@@ -202,31 +222,39 @@
     $("glow").style.opacity = 0.55 + 0.35 * Math.sin(t * 1.1);
     slam($("h1a"), t, 0.05, 1.3);
     slam($("h1b"), t, 3 * BEAT, 1.35);
-    // Night: the lock screen, the message, you're asleep, the client is gone.
-    const n0 = S.s2[0];
+    // Midday: the message at 12:40, you're shooting, 15:10 and she found someone else.
+    const n0 = S.s2[0], jump = n0 + 8 * BEAT;
     rise($("lock"), t, n0, 30);
     const np = ease((t - n0 - 0.4) / 0.4);
-    $("notif").style.opacity = np * (t > n0 + 6 * BEAT ? 0.45 : 1);
+    $("notif").style.opacity = np * (t > jump ? 0.45 : 1);
     $("notif").style.transform = `translateY(${(1 - np) * -120}px)`;
-    rise($("sleep"), t, n0 + 3 * BEAT, 40);
-    slam($("lost"), t, n0 + 6 * BEAT, 1.2, 0.3);
+    $("n1t").textContent = t > jump ? "12:40" : "עכשיו";
+    rise($("busy"), t, n0 + 3 * BEAT, 40);
+    if (t > jump - 0.5) $("busy").style.opacity = ease((jump - 0.15 - t) / 0.3);
+    const cp = ease((t - jump) / 0.35);
+    $("clkA").style.transform = `translateY(${-cp * 100}%)`; $("clkA").style.opacity = 1 - cp;
+    $("clkB").style.transform = `translateY(${(1 - cp) * 100}%)`; $("clkB").style.opacity = cp;
+    const n2 = ease((t - jump - 0.3) / 0.4);
+    $("notif2").style.opacity = n2;
+    $("notif2").style.transform = `translateY(${(1 - n2) * -120}px)`;
+    slam($("lost"), t, jump + 1.5 * BEAT, 1.2, 0.3);
     // Turn
     rise($("t1"), t, S.s3[0] + 0.05, 60);
     slam($("t2"), t, S.s3[0] + 2 * BEAT, 1.3);
     $("flash").style.opacity = 0.7 * (1 - ease((t - S.s3[0]) / 0.45)) * (t >= S.s3[0] ? 1 : 0);
     $("wm").style.opacity = Math.min(ease((t - S.s4[0]) / 0.3), ease((S.s_end[0] - t) / 0.2));
-    for (const [s, card] of [["s4", "c4"], ["s6", "c6"]]) {
+    for (const [s, card] of [["s4", "c4"]]) {
       const a = S[s][0];
       rise(document.querySelector(`#${s} .hd`), t, a + 0.02, 50, 0.35);
       const p = ease((t - a - 0.1) / 0.45);
       $(card).style.opacity = p;
       $(card).style.transform = `translateY(${(1 - p) * 260}px) scale(${0.94 + 0.06 * p})`;
     }
-    slam($("t4a"), t, S.s4[0] + 5 * BEAT, 1.3, 0.28);
-    slam($("t4b"), t, S.s4[0] + 8 * BEAT, 1.3, 0.28);
-    slam($("t6"), t, S.s6[0] + 5 * BEAT, 1.3, 0.28);
-    if (t >= S.s4[0] - 0.1 && t < S.s4[1]) await clip("v4", cfg.intake2, cfg.intake2N, Math.max(0, t - S.s4[0]));
-    if (t >= S.s6[0] - 0.1 && t < S.s6[1]) await clip("v6", cfg.quote2, cfg.quote2N, Math.max(0, t - S.s6[0]));
+    // One tag at a time: the date check when "free" lands, then the details.
+    slam($("t4a"), t, S.s4[0] + 3.0, 1.3, 0.28);
+    if (t > S.s4[0] + 6.4) $("t4a").style.opacity = ease((S.s4[0] + 6.6 - t) / 0.2);
+    slam($("t4b"), t, S.s4[0] + 6.6, 1.3, 0.28);
+    if (t >= S.s4[0] - 0.1 && t < S.s4[1]) await frame("v4", cfg.chat, chatFrame(Math.max(0, t - S.s4[0])));
     // The lead: a notification, then the card fills in row by row.
     const l0 = S.s5[0];
     rise(document.querySelector("#s5 .hd"), t, l0 + 0.02, 50, 0.35);
