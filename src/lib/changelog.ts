@@ -25,6 +25,22 @@ export function changesFor(entry: ChangelogEntry, lang: Lang): string[] {
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.4",
+    date: "2026-10-11",
+    changes: [
+      "אחרי שליחה לבית הדפוס מגיע אליכם מייל מסודר: לאן נשלח, אילו עמודים, ההערות ששלחתם, וקישור קצר להורדת עותק. במקום הודעת ייצוא עם קישור ארוך",
+      "במייל לבית הדפוס יש עכשיו הסבר קצר איך להעביר את המיילים הבאים לדואר הנכנס, אם המייל הגיע ל\"עדכונים\", ל\"קידומי מכירות\" או לספאם",
+    ],
+    en: [
+      "After a send to the print house you get a tidy email: where it went, which pages, the notes you sent, and a short link to download a copy. It replaces the export notice with a long link",
+      "The print house's email now has short steps to get the next emails into the inbox, if it landed in \"Updates\", \"Promotions\" or spam",
+    ],
+    ru: [
+      "После отправки в типографию вы получаете аккуратное письмо: куда отправлено, какие страницы, ваши комментарии и короткая ссылка для скачивания копии. Вместо уведомления об экспорте с длинной ссылкой",
+      "В письме для типографии теперь есть короткая инструкция, как сделать, чтобы следующие письма приходили во «Входящие», если это попало в «Оповещения», «Промоакции» или спам",
+    ],
+  },
+  {
     version: "2.12.3",
     date: "2026-10-11",
     changes: [

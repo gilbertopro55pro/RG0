@@ -150,6 +150,15 @@ const dict: AreaDict = {
     "ייצוא {format} מוכן להורדה | {title}": "{format} export ready to download | {title}",
     "ייצוא ה-{format} של האלבום \"{title}\" הסתיים ומוכן להורדה:": "The {format} export of the album \"{title}\" is done and ready to download:",
     "הקישור בתוקף לשבוע ימים.": "The link is valid for one week.",
+    "להורדת הקובץ": "Download the file",
+    "נשלח לבית הדפוס: אלבום {title}": "Sent to the print house: album {title}",
+    "קובצי ה-JPG להדפסה של האלבום {title} נשלחו אל {house}.": "The print JPG files of the album {title} were sent to {house}.",
+    "עמוד {n} מתוך {total} (לא כל האלבום)": "Page {n} of {total} (not the whole album)",
+    "עמודים {from}–{to} מתוך {total} (לא כל האלבום)": "Pages {from}–{to} of {total} (not the whole album)",
+    "ההנחיות וההערות ששלחת:": "The instructions and notes you sent:",
+    "הקישור של בית הדפוס בתוקף עד {date}.": "The print house's link is valid until {date}.",
+    "בחלון \"שליחה לבית דפוס\", תחת \"שליחות קודמות\", רואים מתי בית הדפוס הוריד את הקבצים ואפשר לחדש את הקישור.": "In \"Send to print house\", under \"Previous sends\", you can see when the print house downloaded the files and renew the link.",
+    "להורדת עותק של הקבצים": "Download a copy of the files",
 
     // Analytics export
     "נתוני הכנסות | {month} | גילברטו": "Revenue data | {month} | Gilberto",
@@ -310,6 +319,15 @@ const dict: AreaDict = {
     "ייצוא {format} מוכן להורדה | {title}": "Экспорт {format} готов к скачиванию | {title}",
     "ייצוא ה-{format} של האלבום \"{title}\" הסתיים ומוכן להורדה:": "Экспорт {format} альбома «{title}» завершён и готов к скачиванию:",
     "הקישור בתוקף לשבוע ימים.": "Ссылка действует одну неделю.",
+    "להורדת הקובץ": "Скачать файл",
+    "נשלח לבית הדפוס: אלבום {title}": "Отправлено в типографию: альбом {title}",
+    "קובצי ה-JPG להדפסה של האלבום {title} נשלחו אל {house}.": "JPG-файлы для печати альбома {title} отправлены: {house}.",
+    "עמוד {n} מתוך {total} (לא כל האלבום)": "Страница {n} из {total} (не весь альбом)",
+    "עמודים {from}–{to} מתוך {total} (לא כל האלבום)": "Страницы {from}–{to} из {total} (не весь альбом)",
+    "ההנחיות וההערות ששלחת:": "Указания и комментарии, которые вы отправили:",
+    "הקישור של בית הדפוס בתוקף עד {date}.": "Ссылка для типографии действует до {date}.",
+    "בחלון \"שליחה לבית דפוס\", תחת \"שליחות קודמות\", רואים מתי בית הדפוס הוריד את הקבצים ואפשר לחדש את הקישור.": "В окне «Отправить в типографию», в разделе «Предыдущие отправки», видно, когда типография скачала файлы, и можно продлить ссылку.",
+    "להורדת עותק של הקבצים": "Скачать копию файлов",
 
     // Analytics export
     "נתוני הכנסות | {month} | גילברטו": "Данные о доходах | {month} | Гилберто",

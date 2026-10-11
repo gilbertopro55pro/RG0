@@ -72,6 +72,21 @@ one `event_notifications` row (`is_client_action`, so it's a red badge on the ev
   exists (`POST …/print-sends/<job>/renew`, same link works again), copy the link, or send again
   once the file is gone.
 - Jobs from before 0140 have no `share_token` and keep the direct signed link ("בלי מעקב הורדה").
+- **The emails (since 2026-10-11, v2.12.4).** The builders are in `lib/albumExportEmails.ts`
+  (pure, so they can be rendered to HTML and checked without sending):
+  - `printHouseEmail`: to the print house, in Hebrew. It ends with a small grey block of steps
+    to get the next emails into the inbox: Gmail desktop/phone, Outlook, spam, add the sender to
+    contacts (`senderAddress()` in `resend.ts`). The owner asked for it after the mail landed under
+    "עדכונים".
+  - `photographerPrintSentEmail`: the photographer's own copy of a print send, in their
+    language. It says where it went, the pages, the notes, how long the print link lasts, and
+    "שליחות קודמות". There's a link to download a copy. It's the signed storage link, never the
+    print house's `/print/` link, so the photographer opening it isn't counted as the print
+    house downloading. Before, the photographer got the plain export notice with the long signed
+    URL in the text.
+  - `photographerExportEmail`: every other export. Its link reads "להורדת הקובץ".
+  - All three use `albumDisplayName`: the gallery's name when the album kept "האלבום שלכם".
+    That covers the subject and the downloaded file name too.
 - **Token length (bug fixed 2026-10-11, v2.12.3).** On 2026-10-07 the token was shortened to 12
   characters, but `loadPrintJob` still rejected anything under 20. So every print link sent from
   then until 2026-10-11 opened "הקישור לא נמצא", and the download button failed too. Three sends

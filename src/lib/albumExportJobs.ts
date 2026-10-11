@@ -10,7 +10,8 @@ import { downloadObjectBuffer, uploadObjectStream, uploadObject, getSignedDownlo
 import { renderAlbumPageJpeg, pxFromCm } from "@/lib/albumRaster";
 import { renderAlbumPagePsd } from "@/lib/albumPsd";
 import { generateAlbumPdf } from "@/lib/albumPdf";
-import { sendEmail } from "@/lib/resend";
+import { sendEmail, senderAddress } from "@/lib/resend";
+import { albumDisplayName, photographerExportEmail, photographerPrintSentEmail, printHouseEmail } from "@/lib/albumExportEmails";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { photographerLang } from "@/lib/clientLang";
 // Only the photographer-notification dictionary, not every area's (src/i18n/dict/index.ts): this
@@ -241,9 +242,11 @@ const TARGET_MAX_BYTES: Record<"high" | "web", number> = {
 // itself, which already succeeded and is sitting in storage regardless.
 async function notifyPhotographerExportReady(
   supabase: ReturnType<typeof createServiceRoleClient>,
-  job: Pick<GalleryAlbumExportJobRow, "photographer_id" | "format">,
-  albumTitle: string,
-  storagePath: string
+  job: Pick<GalleryAlbumExportJobRow, "photographer_id" | "format" | "album_id" | "from_page" | "total_count" | "send_to_email" | "send_notes">,
+  albumName: string,
+  storagePath: string,
+  // For a print-house job: when the print house's link expires.
+  printLinkExpiresAt: string | null = null
 ): Promise<void> {
   try {
     const { data: photographer } = await supabase
@@ -255,14 +258,35 @@ async function notifyPhotographerExportReady(
     // In the photographer's own language (photographers.ui_lang); Hebrew when unset.
     const lang = photographerLang(photographer.ui_lang);
     const t = makeT(lang === "he" ? {} : photographerNotifyDict[lang]);
+    const rtl = lang === "he";
     const formatLabel = job.format === "pdf" ? "PDF" : job.format === "jpg" ? "JPG" : "PSD";
-    const filename = job.format === "pdf" ? `${sanitizeSegment(albumTitle)}.pdf` : `${sanitizeSegment(albumTitle)}-${job.format}.zip`;
+    const filename = job.format === "pdf" ? `${sanitizeSegment(albumName)}.pdf` : `${sanitizeSegment(albumName)}-${job.format}.zip`;
     const downloadUrl = await getSignedDownloadUrl("galleries", storagePath, 60 * 60 * 24 * 7, filename);
-    await sendEmail({
-      to: notificationEmailFor(photographer.email),
-      subject: t("ייצוא {format} מוכן להורדה | {title}", { format: formatLabel, title: albumTitle }),
-      text: `${t("שלום,")}\n\n${t("ייצוא ה-{format} של האלבום \"{title}\" הסתיים ומוכן להורדה:", { format: formatLabel, title: albumTitle })}\n${downloadUrl}\n\n${t("הקישור בתוקף לשבוע ימים.")}`,
-    });
+    let email;
+    if (job.send_to_email) {
+      // A send to the print house: a copy of what went out, like the print house's own email.
+      const { data: house } = await supabase
+        .from("print_house_emails")
+        .select("label")
+        .eq("photographer_id", job.photographer_id)
+        .eq("email", job.send_to_email)
+        .limit(1)
+        .maybeSingle<{ label: string | null }>();
+      email = photographerPrintSentEmail({
+        t,
+        rtl,
+        albumName,
+        house: house?.label?.trim() || job.send_to_email,
+        houseEmail: job.send_to_email,
+        pagesLine: await printPagesLine(supabase, job.album_id, job.from_page, job.total_count, t),
+        printValidUntil: printLinkExpiresAt ? formatPrintDay(printLinkExpiresAt) : null,
+        notes: job.send_notes?.trim() ?? "",
+        copyUrl: downloadUrl,
+      });
+    } else {
+      email = photographerExportEmail({ t, rtl, formatLabel, albumName, downloadUrl });
+    }
+    await sendEmail({ to: notificationEmailFor(photographer.email), ...email });
   } catch (e) {
     // Best-effort — a failed notification email must never fail the export itself (see the
     // function's own comment above) — but silently swallowing the error made a real failure here
@@ -502,6 +526,8 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
       .update({ status: "ready", storage_path: storagePath, processed_count: job.total_count, error_message: null, updated_at: new Date().toISOString() })
       .eq("id", jobId);
 
+    const albumName = albumDisplayName(album.title, resolved.gallery.title);
+    let printLinkExpiresAt: string | null = null;
     // Print-house jobs don't end in a client download — the deliverable IS the email, sent once
     // the file is actually ready rather than the old route's synchronous zip-then-email round trip.
     if (job.send_to_email) {
@@ -511,59 +537,32 @@ export async function processAlbumExportJob(jobId: string, origin: string): Prom
       let validUntil = `הקישור בתוקף לשבוע ימים.`;
       if (job.share_token) {
         // The week counts from when the files are actually ready, not from when the job was queued.
-        const linkExpiresAt = daysFromNow(PRINT_LINK_DAYS);
-        await supabase.from("gallery_album_export_jobs").update({ link_expires_at: linkExpiresAt }).eq("id", jobId);
+        printLinkExpiresAt = daysFromNow(PRINT_LINK_DAYS);
+        await supabase.from("gallery_album_export_jobs").update({ link_expires_at: printLinkExpiresAt }).eq("id", jobId);
         downloadUrl = printLinkUrl(job.share_token);
-        validUntil = `הקישור בתוקף עד ${formatPrintDay(linkExpiresAt)}.`;
+        validUntil = `הקישור בתוקף עד ${formatPrintDay(printLinkExpiresAt)}.`;
       } else {
         downloadUrl = await getSignedDownloadUrl("galleries", storagePath, 60 * 60 * 24 * 7, `${rootDir}.zip`);
       }
-      // Goes to the photographer's print house, so it's sent in the photographer's name. Written as
-      // a personal note from the photographer (a plain subject, no "|" template, and a signature
-      // with name, phone and email), since Gmail filed the old notification-style mail under the
-      // Updates tab instead of the inbox (owner, 2026-10-06).
+      // Goes to the photographer's print house, so it's sent in the photographer's name, with
+      // replies going to the photographer (albumExportEmails.ts has why it's written the way it is).
       const { data: sender } = await supabase
         .from("photographers")
         .select("name, email, phone")
         .eq("id", job.photographer_id)
         .maybeSingle<{ name: string | null; email: string | null; phone: string | null }>();
       const signatureLines = [sender?.name?.trim(), sender?.phone?.trim(), sender?.email ? notificationEmailFor(sender.email) : null].filter(Boolean) as string[];
-      const notes = job.send_notes?.trim() ?? "";
-      // The album's own name, or the gallery's (the event) when the album kept the default name.
-      const albumTitle = album.title?.trim();
-      const albumName = !albumTitle || albumTitle === "האלבום שלכם" ? resolved.gallery.title : `${albumTitle} (${resolved.gallery.title})`;
-      const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
       // Only part of the album (the photographer picks the pages, owner 2026-10-09): say which, so
       // the print house doesn't take it for the whole album.
       const pagesLine = await printPagesLine(supabase, job.album_id, job.from_page, job.total_count);
-      // A plain personal note, also as simple HTML (owner, 2026-10-07): the album's name stands out,
-      // the notes get their own paragraph, and the link reads "להורדת קובצי ההדפסה" instead of a
-      // long address. No images, banners or buttons — it should look like an email a person wrote.
-      const html =
-        `<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#222">` +
-        `<p>שלום,</p>` +
-        `<p>מצורפים קובצי ה-JPG להדפסה של האלבום <b>${esc(albumName)}</b>.</p>` +
-        (pagesLine ? `<p><b>${esc(pagesLine)}</b></p>` : "") +
-        `<p><a href="${esc(downloadUrl)}" style="color:#1a56c4;font-weight:bold">להורדת קובצי ההדפסה</a><br><span style="color:#666;font-size:13px">${esc(validUntil)}</span></p>` +
-        (notes ? `<p><b>הנחיות והערות:</b><br>${esc(notes).replace(/\r?\n/g, "<br>")}</p>` : "") +
-        `<p>אם יש שאלה, אפשר פשוט להשיב למייל הזה.</p>` +
-        `<p>תודה,<br>${signatureLines.map(esc).join("<br>")}</p>` +
-        `</div>`;
       await sendEmail({
         to: job.send_to_email,
         fromName: sender?.name ?? undefined,
         replyTo: sender?.email ? notificationEmailFor(sender.email) : undefined,
-        subject: `קבצים להדפסה: אלבום ${albumName}`,
-        text:
-          `שלום,\n\nמצורפים קובצי ה-JPG להדפסה של האלבום "${albumName}".\n\n` +
-          (pagesLine ? `${pagesLine}\n\n` : "") +
-          `להורדת הקבצים:\n${downloadUrl}\n${validUntil}\n\n` +
-          (notes ? `הנחיות והערות:\n${notes}\n\n` : "") +
-          `אם יש שאלה, אפשר פשוט להשיב למייל הזה.\n\nתודה,\n${signatureLines.join("\n")}`,
-        html,
+        ...printHouseEmail({ albumName, pagesLine, downloadUrl, validUntil, notes: job.send_notes?.trim() ?? "", signatureLines, senderAddress: senderAddress() }),
       });
     }
-    await notifyPhotographerExportReady(supabase, job, album.title, storagePath);
+    await notifyPhotographerExportReady(supabase, job, albumName, storagePath, printLinkExpiresAt);
   } catch (e) {
     await supabase
       .from("gallery_album_export_jobs")
@@ -667,7 +666,7 @@ export async function processAlbumPdfJobOnWorker(jobId: string): Promise<void> {
       .from("gallery_album_export_jobs")
       .update({ status: "ready", storage_path: storagePath, processed_count: job.total_count, error_message: null, updated_at: new Date().toISOString() })
       .eq("id", jobId);
-    await notifyPhotographerExportReady(supabase, job, album.title, storagePath);
+    await notifyPhotographerExportReady(supabase, job, albumDisplayName(album.title, resolved.gallery.title), storagePath);
   } catch (e) {
     await supabase
       .from("gallery_album_export_jobs")
