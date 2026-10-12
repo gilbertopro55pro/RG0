@@ -199,6 +199,12 @@ Sandbox-only noise: the in-browser download from R2 sometimes fails with
 not the app. Check the timing in the DB (`updated_at - created_at`); the script falls back to the
 signed URL.
 
+Text in the PDF (`lib/pdfText.ts`, 2026-10-12): brackets are mirrored in right-to-left runs and
+characters the font has no glyph for (emoji) are left out. Verified live on the Fly worker: a
+temporary text element on the test album's page ("יעל ואיתי (12.8.2027) 💍", "Noa & Itay - חתונה
+[2027]") came out right, then the page was restored. Since 2026-10-07 the test album has a single
+empty page (`elements = []`), so a passing PDF is 1 blank page, not the 10 pages in the table.
+
 ## When a user reports an export problem
 
 1. Find the job:
