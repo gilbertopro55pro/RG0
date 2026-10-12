@@ -25,6 +25,19 @@ export function changesFor(entry: ChangelogEntry, lang: Lang): string[] {
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.5",
+    date: "2026-10-12",
+    changes: [
+      "\"עדכון הצעת מחיר\" נפתח עכשיו מההצעה ששלחתם, עם אותם פריטים ומחירים, אותן שעות והערות. מחיר שהזנתם ידנית כבר לא נעלם, ומשנים רק את מה שצריך",
+    ],
+    en: [
+      "\"Update price quote\" now opens the quote you sent, with the same items and prices, hours and notes. A price you typed in by hand no longer disappears, so you only change what's needed",
+    ],
+    ru: [
+      "«Обновить ценовое предложение» теперь открывает отправленное предложение: те же позиции и цены, часы и комментарии. Цена, введённая вручную, больше не пропадает, и вы меняете только нужное",
+    ],
+  },
+  {
     version: "2.12.4",
     date: "2026-10-11",
     changes: [
