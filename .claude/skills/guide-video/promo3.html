@@ -81,11 +81,11 @@
   #link u { position: absolute; left: 0; bottom: 0; height: 6px; background: #c9a15a; width: 0; }
   #free { font-size: 38px; color: #8792ab; margin-top: 6px; }
 
-  #kick { top: 470px; font-size: 44px; color: #c9a15a; font-weight: 700; }
+  #kick { top: 450px; font-size: 54px; color: #c9a15a; font-weight: 700; }
   #clock1 { top: 560px; font-size: 280px; font-weight: 800; letter-spacing: -.04em; font-variant-numeric: tabular-nums; direction: ltr; }
   #o1 { top: 940px; font-size: 90px; } #o2 { top: 1060px; font-size: 96px; }
   #clock2 { position: absolute; top: 300px; left: 0; right: 0; text-align: center; font-size: 190px; font-weight: 800; letter-spacing: -.04em; font-variant-numeric: tabular-nums; direction: ltr; }
-  #lbl2 { top: 520px; font-size: 40px; color: #aeb8cc; }
+  #lbl2 { top: 515px; font-size: 50px; color: #aeb8cc; }
   .task { position: absolute; left: 80px; right: 80px; display: flex; align-items: center; gap: 26px; direction: rtl; background: #131c2e; border: 2px solid #1c2638; border-radius: 26px; padding: 26px 30px; opacity: 0; }
   .task time { flex: none; font-weight: 800; font-size: 40px; color: #e0675b; direction: ltr; font-variant-numeric: tabular-nums; width: 150px; text-align: center; }
   .task span { font-size: 44px; font-weight: 600; line-height: 1.25; }
@@ -98,13 +98,22 @@
   #rclock { top: 790px; font-size: 200px; font-weight: 800; letter-spacing: -.04em; direction: ltr; font-variant-numeric: tabular-nums; }
   #r1 { top: 1060px; font-size: 84px; } #r2 { top: 1170px; font-size: 96px; }
   #clock3 { position: absolute; top: 300px; left: 0; right: 0; text-align: center; font-size: 170px; font-weight: 800; letter-spacing: -.04em; color: #c9a15a; direction: ltr; font-variant-numeric: tabular-nums; }
-  #lbl3 { top: 500px; font-size: 40px; color: #aeb8cc; }
+  #lbl3 { top: 495px; font-size: 50px; color: #aeb8cc; }
   /* the quote fix (real screens, f-fix): a tap mark where the next step is pressed */
   #tap { position: absolute; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; background: rgba(201,161,90,.32); border: 5px solid #c9a15a; box-shadow: 0 0 0 10px rgba(201,161,90,.15); opacity: 0; pointer-events: none; }
   #t6 { white-space: nowrap; }
   #cup { position: absolute; top: 470px; left: 50%; margin-left: -100px; width: 200px; height: 200px; color: #c9a15a; }
   #bed1 { top: 720px; font-size: 280px; font-weight: 800; letter-spacing: -.04em; direction: ltr; font-variant-numeric: tabular-nums; }
   #bed2 { top: 1060px; font-size: 104px; }
+  /* "בלי גילברטו" / "עם גילברטו" (owner, 2026-10-12: emphasize them with an effect). A marker stroke
+     is drawn behind the words, right to left: red, then a short shake, without Gilberto; gold, then
+     a light sweep and a glow, with. */
+  .hl { position: relative; display: inline-block; padding: 0 .3em; margin: 0 .06em; font-weight: 800; isolation: isolate; }
+  .hl > b { position: absolute; inset: -.04em 0; border-radius: .2em; transform-origin: 100% 50%; transform: scaleX(0); z-index: -1; overflow: hidden; }
+  #kick .hl, #lbl2 .hl, #lbl3 .hl { font-size: 1.2em; }
+  .hl.no { color: #fff; } .hl.no > b { background: #c0392b; }
+  .hl.yes > b { background: linear-gradient(180deg, #ddb96f, #b4863a); }
+  .hl > b > i { position: absolute; top: 0; bottom: 0; width: 45%; left: 100%; background: linear-gradient(100deg, rgba(255,255,255,0), rgba(255,255,255,.8), rgba(255,255,255,0)); }
 
 </style>
 </head>
@@ -112,14 +121,14 @@
 <div id="glow"></div>
 
 <div id="s1" class="scene">
-  <div id="kick" class="c">ליל חתונה, בלי גילברטו</div>
+  <div id="kick" class="c">ליל חתונה, <span class="hl no" id="hl1"><b></b>בלי גילברטו</span></div>
   <div id="clock1" class="c">00:00</div>
   <div id="o1" class="c big w" data-fit>החתונה נגמרה</div>
   <div id="o2" class="c big b" data-fit>ובבוקר מחכה לכם עוד משמרת</div>
 </div>
 <div id="s2" class="scene">
   <div id="clock2">00:00</div>
-  <div id="lbl2" class="c">הבוקר שאחרי, בלי גילברטו</div>
+  <div id="lbl2" class="c">הבוקר שאחרי, <span class="hl no" id="hl2"><b></b>בלי גילברטו</span></div>
   <div class="task" id="tb0" style="top:640px"><time>08:40</time><span>עונים לשלוש פניות מאתמול</span></div>
   <div class="task" id="tb1" style="top:810px"><time>09:20</time><span>מתקנים הצעת מחיר ושולחים שוב</span></div>
   <div class="task" id="tb2" style="top:980px"><time>09:50</time><span>מזכירים ללקוח להעביר את היתרה</span></div>
@@ -134,11 +143,11 @@
   <div id="rw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg></div>
   <div id="rclock" class="c">11:00</div>
   <div id="r1" class="c big w" data-fit>ועכשיו, אותו בוקר</div>
-  <div id="r2" class="c big b" data-fit>עם גילברטו</div>
+  <div id="r2" class="c big b" data-fit><span class="hl yes" id="hl3"><b><i></i></b>עם גילברטו</span></div>
 </div>
 <div id="s5" class="scene">
   <div id="clock3">08:30</div>
-  <div id="lbl3" class="c">הבוקר שאחרי, עם גילברטו</div>
+  <div id="lbl3" class="c">הבוקר שאחרי, <span class="hl yes" id="hl4"><b><i></i></b>עם גילברטו</span></div>
   <div class="task done" id="to0" style="top:620px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>פניות חדשות<small>עוזר הפניות ענה להן עוד בזמן החתונה</small></span></div>
   <div class="task done" id="to1" style="top:796px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>הצעת מחיר<small>הלקוח אישר וחתם בקישור</small></span></div>
   <div class="task done" id="to2" style="top:972px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>תזכורת יתרה<small>מוכנה לשליחה בלחיצה</small></span></div>
@@ -174,6 +183,23 @@
   const vis = (t, [a, b], fi = 0.22, fo = 0.18, last = false) => Math.min(ease((t - a) / fi), last ? 1 : ease((b - t) / fo));
   const slam = (el, t, at, from = 1.25, dur = 0.32) => { const p = ease((t - at) / dur); el.style.opacity = p; el.style.transform = `scale(${from - (from - 1) * p})`; };
   const rise = (el, t, at, dist = 80, dur = 0.4) => { const p = ease((t - at) / dur); el.style.opacity = p; el.style.transform = `translateY(${(1 - p) * dist}px)`; };
+  // The marker behind "בלי/עם גילברטו" (.hl): drawn in 0.3s from `at`, the words pop as it lands, then
+  // a decaying shake (without) or a light sweep and a gold glow (with). Gold words turn navy on the gold.
+  const mix = (a, b, p) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * p)).join(",")})`;
+  const marker = (el, t, at) => {
+    const sw = el.firstElementChild, yes = el.classList.contains("yes");
+    const p = ease((t - at) / 0.3);
+    sw.style.transform = `scaleX(${p})`;
+    const pop = 1 + 0.12 * Math.sin(Math.PI * clamp((t - at - 0.15) / 0.3));
+    const s = t - at - 0.3;
+    const dx = !yes && s > 0 && s < 0.5 ? 12 * Math.sin(s * 2 * Math.PI * 8) * (1 - s / 0.5) : 0;
+    el.style.transform = `translateX(${dx}px) scale(${pop})`;
+    if (!yes) return;
+    el.style.color = mix([201, 161, 90], [11, 18, 32], p);
+    sw.firstElementChild.style.left = 100 - 150 * ease((t - at - 0.35) / 0.6) + "%";
+    const g = Math.sin(Math.PI * clamp((t - at - 0.25) / 1.1));
+    sw.style.boxShadow = `0 0 ${60 * g}px ${12 * g}px rgba(225,185,110,${0.55 * g})`;
+  };
   let cfg; const last = {};
   async function clip(id, dir, count, local, fps = 30) {
     const n = Math.min(count, Math.max(1, Math.floor(local * fps) + 1));
@@ -229,6 +255,7 @@
     $("glow").style.opacity = 0.5 + 0.35 * Math.sin(t * 0.9);
     // Hook
     rise($("kick"), t, 0.05, 20);
+    marker($("hl1"), t, 0.4);
     slam($("clock1"), t, 0.1, 1.2, 0.4);
     rise($("o1"), t, 1.2, 40);
     slam($("o2"), t, B(1), 1.25, 0.3); // with the drums
@@ -237,6 +264,7 @@
     const keys = [[S.s2[0], M(0, 0)], [S.s2[0] + 0.5, M(8, 30)], ...BAD_AT.map((at, i) => [at + 0.3, BAD_MIN[i]]), [S.s2[1] - 0.2, M(11, 0)]];
     $("clock2").textContent = fmt(lerpKeys(t, keys));
     BAD_AT.forEach((at, i) => rise($("tb" + i), t, at, 60, 0.35));
+    marker($("hl2"), t, S.s2[0] + 0.2);
     // 11:00 on the hit
     slam($("late1"), t, S.s3[0], 1.25, 0.3);
     rise($("late2"), t, S.s3[0] + 2 * BEAT, 40);
@@ -246,8 +274,10 @@
     $("rw").style.transform = `rotate(${-540 * ease((t - r0) / 1.6)}deg)`;
     rise($("r1"), t, r0 + 2 * BEAT, 40);
     slam($("r2"), t, r0 + 3 * BEAT, 1.25, 0.28);
+    marker($("hl3"), t, r0 + 3 * BEAT + 0.22);
     // The morning with: the same jobs, done in a quarter of an hour (owner: 5 minutes was too much).
     const o0 = S.s5[0];
+    marker($("hl4"), t, o0 + 0.3);
     $("clock3").textContent = fmt(lerpKeys(t, [[o0, M(8, 30)], [S.s5[1], M(8, 44)]]));
     [0, 1, 2, 3, 4].forEach((i) => {
       const at = o0 + 0.5 + i * 2 * BEAT;

@@ -153,6 +153,11 @@ logo, in a "coming soon" reveal style.
       - Found while capturing, fixed 2026-10-12: "עדכון הצעת מחיר" rebuilt the builder from the
         lead's assistant details, not from the quote that was sent, so a manual price (the 1,800)
         came back empty. It now reopens the sent quote (`buildPrefillFromSentQuote`).
+    - **"בלי גילברטו" and "עם גילברטו" are emphasized (owner, 2026-10-12).** A marker stroke (`.hl`,
+      `marker()` in `promo3.html`) is drawn behind the words, right to left, and the words pop as it
+      lands. Without Gilberto, the marker is red and the words shake briefly. With Gilberto, it is
+      gold, the words turn navy, and a light sweep and a glow follow. In the small lines (the hook
+      kicker, the two "הבוקר שאחרי" labels) the words are 1.2× the line.
     - Owner, 2026-10-11: a wedding doesn't end at 22:00, and nobody messages clients at midnight.
       The client work belongs in the morning. Until then it was a 22:00 → 01:30 evening.
   - Extra footage for 2 and 3, in the same run folder:
