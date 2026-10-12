@@ -124,7 +124,10 @@ export default function EventPricingCalculator({
   const money = (n: number) => currency(n, dateLocale(lang));
 
   const [step, setStep] = useState<Step>("calculator");
-  const [mode, setMode] = useState<Mode>("event");
+  // Reopening a sent quote (prefill.sent) starts from it as it went out: its mode, hours, rate, tax
+  // status and notes too, not only its rows.
+  const sent = prefill?.sent;
+  const [mode, setMode] = useState<Mode>(sent?.mode ?? "event");
   // Starts unselected — a freshly opened builder must never look like it's already tied to
   // whatever quote happens to be most recent; loading one is an explicit choice from the dropdown.
   const [selectedQuoteId, setSelectedQuoteId] = useState("");
@@ -134,10 +137,13 @@ export default function EventPricingCalculator({
   // Defaults to the photographer's own business status from Settings (ProfileSettingsView.tsx),
   // but stays a per-calculation toggle — a photographer occasionally quoting for a different
   // business arrangement can still switch it for just this one quote without touching Settings.
-  const [taxStatus, setTaxStatus] = useState<"exempt" | "licensed">(defaultTaxStatus);
+  const [taxStatus, setTaxStatus] = useState<"exempt" | "licensed">(sent?.taxStatus ?? defaultTaxStatus);
   const isExempt = taxStatus === "exempt";
-  const [hours, setHours] = useState(() => (prefill?.startTime && prefill.endTime ? hoursBetween(prefill.startTime, prefill.endTime) ?? 0 : 0));
-  const [rate, setRate] = useState(hourlyRate);
+  const [initialHours] = useState(() => sent?.hours ?? (prefill?.startTime && prefill.endTime ? hoursBetween(prefill.startTime, prefill.endTime) ?? 0 : 0));
+  const [hours, setHours] = useState(initialHours);
+  // The sent shoot line's price over its hours, so it comes back the same even if the account's
+  // hourly rate changed since.
+  const [rate, setRate] = useState(sent?.shootPrice != null && initialHours > 0 ? sent.shootPrice / initialHours : hourlyRate);
 
   // The photographer's saved default supplier list — only read from here (to populate the picker
   // dropdown and to seed a row's starting price the moment a supplier is chosen); renaming or
@@ -161,10 +167,11 @@ export default function EventPricingCalculator({
   const [quoteEventType, setQuoteEventType] = useState(prefill?.eventType ?? "");
   const [quoteEventDate, setQuoteEventDate] = useState(prefill?.eventDate ?? "");
   const [quoteEventLocation, setQuoteEventLocation] = useState(prefill?.eventLocation ?? "");
-  const [quoteNotes, setQuoteNotes] = useState("");
+  const [quoteNotes, setQuoteNotes] = useState(sent?.notes ?? "");
   // Until the photographer edits the notes, they follow the quote: the video / magnets lines appear
-  // only when the quote has such an item (quoteExtras accounts only).
-  const [notesTouched, setNotesTouched] = useState(false);
+  // only when the quote has such an item (quoteExtras accounts only). A sent quote's notes count as
+  // edited: they're what the client got.
+  const [notesTouched, setNotesTouched] = useState(!!sent?.notes);
   // Only asked for (and only relevant) outside freelance mode — freelance already has its own
   // fixed hours/rate cells on the main screen, set before this wizard ever opens.
   const [quoteStartTime, setQuoteStartTime] = useState(prefill?.startTime ?? "");
@@ -784,7 +791,11 @@ export default function EventPricingCalculator({
 
             {prefill && (
               <div className="rounded-lg p-2.5 mb-3 text-xs leading-relaxed" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
-                <div className="font-semibold mb-0.5">{t("מולא מהשיחה עם העוזר. כדאי לעבור ולאשר לפני השליחה.")}</div>
+                <div className="font-semibold mb-0.5">
+                  {sent
+                    ? t("נטען מההצעה ששלחתם ב-{date}. משנים מה שצריך ושולחים שוב.", { date: formatDateDMY(sent.at) })
+                    : t("מולא מהשיחה עם העוזר. כדאי לעבור ולאשר לפני השליחה.")}
+                </div>
                 {prefill.hints.length > 0 && <div className="[overflow-wrap:anywhere]">{prefill.hints.join(" · ")}</div>}
                 {prefill.vendorRows.some((r) => r.supplierId === "__custom__" && !r.price) && (
                   <div className="mt-0.5">{t("לשורות בלי מחיר צריך להזין מחיר.")}</div>

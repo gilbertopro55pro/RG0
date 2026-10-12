@@ -6,7 +6,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { PACKAGE_LABELS, resolveLeadPackageLabel, type PackageType } from "@/lib/stages";
 import type { CustomPackageRow, EventTypeRow, LeadRow, LeadStatus, PackagePriceRow, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
-import { buildLeadQuotePrefill, hasQuotePrefill } from "@/lib/leadQuotePrefill";
+import { buildLeadQuotePrefill, buildPrefillFromSentQuote, hasQuotePrefill, hasSentQuote } from "@/lib/leadQuotePrefill";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { CustomPackageBuilder } from "@/components/CustomPackagesSettings";
 import PageGuide from "@/components/PageGuide";
@@ -312,7 +312,7 @@ export default function LeadsView({
               )}
               {quoteFormLeadId !== lead.id && !lead.converted_event_id && (
                 <button
-                  onClick={() => (hasQuotePrefill(lead.details) ? setBuilderLead(lead) : setQuoteFormLeadId(lead.id))}
+                  onClick={() => (hasSentQuote(lead.quote_details) || hasQuotePrefill(lead.details) ? setBuilderLead(lead) : setQuoteFormLeadId(lead.id))}
                   className="text-[13px] font-bold h-9 px-3 rounded-lg bg-white border border-line text-ink"
                 >
                   {lead.quote_sent_at || lead.quoted_amount ? t("עדכון הצעת מחיר") : t("שליחת הצעת מחיר")}
@@ -470,7 +470,7 @@ export default function LeadsView({
         />
       )}
 
-      {builderLead && hasQuotePrefill(builderLead.details) && (
+      {builderLead && (hasSentQuote(builderLead.quote_details) || hasQuotePrefill(builderLead.details)) && (
         <EventPricingCalculator
           hourlyRate={quoteBuilder.hourlyRate}
           suppliers={quoteBuilder.suppliers}
@@ -482,13 +482,24 @@ export default function LeadsView({
           quoteExtras={quoteBuilder.quoteExtras}
           clientLangPicker={quoteBuilder.clientLangPicker}
           initialClientLang={builderLead.client_lang}
-          prefill={buildLeadQuotePrefill({
-            details: builderLead.details,
-            leadName: builderLead.name,
-            leadPhone: builderLead.phone,
-            suppliers: quoteBuilder.suppliers,
-            templates: quoteBuilder.templates,
-          })}
+          prefill={
+            // "עדכון הצעת מחיר" reopens the quote that was sent, as it went out; a first quote starts
+            // from the assistant's conversation.
+            hasSentQuote(builderLead.quote_details)
+              ? buildPrefillFromSentQuote({
+                  quote: builderLead.quote_details,
+                  leadName: builderLead.name,
+                  leadPhone: builderLead.phone,
+                  suppliers: quoteBuilder.suppliers,
+                })
+              : buildLeadQuotePrefill({
+                  details: builderLead.details!,
+                  leadName: builderLead.name,
+                  leadPhone: builderLead.phone,
+                  suppliers: quoteBuilder.suppliers,
+                  templates: quoteBuilder.templates,
+                })
+          }
           leadId={builderLead.id}
           onLeadQuoted={(patch) => updateLead(builderLead.id, patch)}
           onClose={() => setBuilderLead(null)}
