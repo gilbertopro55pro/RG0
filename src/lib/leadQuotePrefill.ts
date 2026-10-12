@@ -3,6 +3,7 @@
 // hours, and the supplier rows that match what the client asked the coverage to include. Pure (no
 // React, no DB) so it can be tested on its own. Nothing here sends anything: the photographer still
 // reviews every field in the builder and taps send.
+import type { LeadQuoteDetails } from "@/lib/leadQuote";
 import type { IntakeDetails, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
 
 // The builder's own fixed line for the shoot itself (hours × rate); never a vendor row.
@@ -14,7 +15,7 @@ export type PrefillVendorRow = {
   customName: string;
   price: number;
   // Why the row is there (for the summary shown above the rows, and for tests).
-  reason: CoverageCategory | "template";
+  reason: CoverageCategory | "template" | "sent";
 };
 
 export type LeadQuotePrefill = {
@@ -33,6 +34,16 @@ export type LeadQuotePrefill = {
   // Short lines from the conversation for the photographer to keep in mind while reviewing
   // (guests, morning/evening, wishes...). Shown in the builder only, never put on the quote.
   hints: string[];
+  // Reopened from the quote already sent to the lead (buildPrefillFromSentQuote), not from the
+  // conversation: these carry the rest of that quote over as it was.
+  sent?: {
+    at: string; // ISO, when it was sent
+    mode: "event" | "freelance";
+    hours: number | null; // a freelance quote's hours; an event quote's come from its times
+    shootPrice: number | null; // the "צילום אירוע" line, so the rate gives the same price
+    taxStatus: "exempt" | "licensed";
+    notes: string;
+  };
 };
 
 export type CoverageCategory = "photo" | "video" | "secondVideo" | "album" | "magnets" | "drone" | "prints" | "clip" | "stream";
@@ -293,6 +304,58 @@ export function buildLeadQuotePrefill(input: {
     requested,
     hints,
   };
+}
+
+// "עדכון הצעת מחיר" on a lead the builder already sent a quote to: start from that quote
+// (leads.quote_details) as it went out, not from the assistant's conversation again, so a price typed
+// by hand or a row added or removed isn't lost (found 2026-10-11: a manual 1,800 came back empty).
+// Items match a saved supplier by name but keep the price that was sent.
+export function buildPrefillFromSentQuote(input: {
+  quote: LeadQuoteDetails;
+  leadName?: string | null;
+  leadPhone?: string | null;
+  suppliers: PricingSupplier[];
+}): LeadQuotePrefill {
+  const { quote: q, suppliers } = input;
+  const shoot = q.items.find((it) => it.item === SHOOT_ITEM);
+  const startTime = hhmm(q.startTime);
+  const endTime = hhmm(q.endTime);
+  // A freelance quote has only the shoot line, with its hours as the details ("6 שעות") and no times.
+  const freelanceHours = !startTime && shoot ? /^(\d+(?:\.\d+)?)\s*שעות$/.exec(shoot.details.trim()) : null;
+  const mode = freelanceHours && q.items.length === 1 ? "freelance" : "event";
+  return {
+    clientName: (input.leadName ?? "").trim(),
+    clientPhone: (input.leadPhone ?? "").trim(),
+    eventType: (q.eventType ?? "").trim(),
+    eventDate: /^\d{4}-\d{2}-\d{2}$/.test(q.eventDate ?? "") ? q.eventDate! : "",
+    eventLocation: (q.eventLocation ?? "").trim(),
+    startTime,
+    endTime,
+    vendorRows: q.items
+      .filter((it) => it.item !== SHOOT_ITEM)
+      .map((it) => {
+        const s = suppliers.find((sup) => sup.name === it.item);
+        return s
+          ? { supplierId: s.id, customName: "", price: it.price, reason: "sent" as const }
+          : { supplierId: "__custom__", customName: it.item, price: it.price, reason: "sent" as const };
+      }),
+    templateId: null,
+    requested: [],
+    hints: [],
+    sent: {
+      at: q.createdAt,
+      mode,
+      hours: freelanceHours ? Number(freelanceHours[1]) : null,
+      shootPrice: shoot ? shoot.price : null,
+      taxStatus: q.showVat ? "licensed" : "exempt",
+      notes: q.notes ?? "",
+    },
+  };
+}
+
+// Whether the builder sent this lead a quote it can reopen (the simple amount form saves no items).
+export function hasSentQuote(quote: LeadQuoteDetails | null | undefined): quote is LeadQuoteDetails {
+  return !!quote && Array.isArray(quote.items) && quote.items.length > 0;
 }
 
 // Whether a lead has anything from the assistant worth pre-filling the builder with.

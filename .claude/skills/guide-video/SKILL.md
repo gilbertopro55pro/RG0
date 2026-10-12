@@ -150,9 +150,9 @@ logo, in a "coming soon" reveal style.
         its step. The lead card is padded below, so the other test leads (their phone numbers)
         don't show. The client page is cropped below its header, which shows the test account's
         email. Tap points are in `FIX` in `promo3.html`.
-      - Found while capturing: "עדכון הצעת מחיר" opens the builder from the lead's assistant
-        details again, not from the quote that was sent. A manual price (the 1,800) comes back
-        empty.
+      - Found while capturing, fixed 2026-10-12: "עדכון הצעת מחיר" rebuilt the builder from the
+        lead's assistant details, not from the quote that was sent, so a manual price (the 1,800)
+        came back empty. It now reopens the sent quote (`buildPrefillFromSentQuote`).
     - Owner, 2026-10-11: a wedding doesn't end at 22:00, and nobody messages clients at midnight.
       The client work belongs in the morning. Until then it was a 22:00 → 01:30 evening.
   - Extra footage for 2 and 3, in the same run folder:
