@@ -32,7 +32,18 @@ type Step = "calculator" | "quoteForm" | "preview" | "savePrompt" | "leadFollowU
 type DuplicateLead = { id: string; name: string; phone: string | null; event_date_interest: string | null; event_type_name: string | null; status: string; source: string | null; created_at: string };
 // A row in the per-quote vendor list: either a real saved supplier (supplierId matches
 // PricingSupplier.id) or a free-typed one-off (supplierId === "__custom__", name in customName).
-type QuoteVendorRow = { id: string; supplierId: string; customName: string; price: number };
+// note: free text beside a saved item ("30x20, 40 עמודים"), the line's details on the quote.
+type QuoteVendorRow = { id: string; supplierId: string; customName: string; note: string; price: number };
+
+// A saved quote/template line back into a row: a saved item by name gets its details as the note; a
+// free-text row has no note field, so its details (from a template built in Settings) join its name.
+const rowFromItem = (it: PriceQuoteItem, supplierList: PricingSupplier[]): QuoteVendorRow => {
+  const matched = supplierList.find((s) => s.name === it.item);
+  const details = (it.details ?? "").trim();
+  return matched
+    ? { id: makeId(), supplierId: matched.id, customName: "", note: details, price: matched.price }
+    : { id: makeId(), supplierId: "__custom__", customName: details ? `${it.item} (${details})` : it.item, note: "", price: it.price };
+};
 
 function makeId(): string {
   return Math.random().toString(36).slice(2);
@@ -153,7 +164,7 @@ export default function EventPricingCalculator({
   // Starts empty — a new quote must never inherit the vendor list from whatever quote was open
   // before; the photographer explicitly builds the vendor rows relevant to this one.
   const [quoteVendorRows, setQuoteVendorRows] = useState<QuoteVendorRow[]>(() =>
-    (prefill?.vendorRows ?? []).map((r) => ({ id: makeId(), supplierId: r.supplierId, customName: r.customName, price: r.price }))
+    (prefill?.vendorRows ?? []).map((r) => ({ id: makeId(), supplierId: r.supplierId, customName: r.customName, note: r.note ?? "", price: r.price }))
   );
   // "עריכת ספקים" here means bulk-managing THIS quote's own vendor rows (multi-select + delete) —
   // every row is already directly editable (name/price) without entering this mode; it's purely a
@@ -256,14 +267,7 @@ export default function EventPricingCalculator({
     // renamed or removed since this quote was built simply becomes a free-text row, which is the
     // safest fallback (no silently-wrong price tied to the wrong current supplier).
     const vendorItems = q.items.filter((it) => it.item !== "צילום אירוע");
-    setQuoteVendorRows(
-      vendorItems.map((it) => {
-        const matched = supplierList.find((s) => s.name === it.item);
-        return matched
-          ? { id: makeId(), supplierId: matched.id, customName: "", price: matched.price }
-          : { id: makeId(), supplierId: "__custom__", customName: it.item, price: it.price };
-      })
-    );
+    setQuoteVendorRows(vendorItems.map((it) => rowFromItem(it, supplierList)));
   };
 
   // A template (built in Settings) is a curated preset of items, not a past quote tied to hours/
@@ -273,29 +277,20 @@ export default function EventPricingCalculator({
     setSelectedTemplateId(id);
     const tmpl = templates.find((tpl) => tpl.id === id);
     if (!tmpl) return;
-    setQuoteVendorRows(
-      tmpl.items
-        .filter((it) => it.item !== "צילום אירוע")
-        .map((it) => {
-          const matched = supplierList.find((s) => s.name === it.item);
-          return matched
-            ? { id: makeId(), supplierId: matched.id, customName: "", price: matched.price }
-            : { id: makeId(), supplierId: "__custom__", customName: it.item, price: it.price };
-        })
-    );
+    setQuoteVendorRows(tmpl.items.filter((it) => it.item !== "צילום אירוע").map((it) => rowFromItem(it, supplierList)));
   };
 
-  const addVendorRow = () => setQuoteVendorRows((prev) => [...prev, { id: makeId(), supplierId: "", customName: "", price: 0 }]);
+  const addVendorRow = () => setQuoteVendorRows((prev) => [...prev, { id: makeId(), supplierId: "", customName: "", note: "", price: 0 }]);
   const removeVendorRow = (id: string) => setQuoteVendorRows((prev) => prev.filter((r) => r.id !== id));
   const updateVendorRow = (id: string, patch: Partial<QuoteVendorRow>) =>
     setQuoteVendorRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const selectVendorSupplier = (rowId: string, value: string) => {
     if (value === "__custom__") {
-      updateVendorRow(rowId, { supplierId: value, customName: "", price: 0 });
+      updateVendorRow(rowId, { supplierId: value, customName: "", note: "", price: 0 });
       return;
     }
     const matched = supplierList.find((s) => s.id === value);
-    updateVendorRow(rowId, { supplierId: value, customName: "", price: matched?.price ?? 0 });
+    updateVendorRow(rowId, { supplierId: value, customName: "", note: "", price: matched?.price ?? 0 });
   };
 
   const toggleDeleteSelect = (id: string) => {
@@ -438,7 +433,7 @@ export default function EventPricingCalculator({
     const supplierItems: PriceQuoteItem[] = quoteVendorRows
       .map((r) => {
         const name = r.supplierId === "__custom__" ? r.customName.trim() : supplierList.find((s) => s.id === r.supplierId)?.name ?? "";
-        return name ? { item: name, details: "", price: vendorRowPrice(r) } : null;
+        return name ? { item: name, details: r.supplierId === "__custom__" ? "" : r.note.trim(), price: vendorRowPrice(r) } : null;
       })
       .filter((it): it is PriceQuoteItem => it !== null);
     return [shootItem, ...supplierItems];
@@ -975,13 +970,25 @@ export default function EventPricingCalculator({
                           ))}
                           <option value="__custom__">{t("טקסט חופשי...")}</option>
                         </select>
-                        {row.supplierId === "__custom__" && (
+                        {row.supplierId === "__custom__" ? (
                           <input
                             value={row.customName}
                             onChange={(e) => updateVendorRow(row.id, { customName: e.target.value })}
                             placeholder={t("שם הספק")}
                             className="flex-1 min-w-0 text-xs bg-transparent outline-none"
                           />
+                        ) : (
+                          row.supplierId && (
+                            // A note on a saved item (owner, 2026-10-12): it goes on the quote as the
+                            // line's details ("אלבום מעוצב · 30x20, 40 עמודים").
+                            <input
+                              value={row.note}
+                              onChange={(e) => updateVendorRow(row.id, { note: e.target.value })}
+                              placeholder={t("הערה (לא חובה)")}
+                              aria-label={t("הערה לפריט")}
+                              className="flex-1 min-w-0 text-xs bg-transparent outline-none border-s border-line ps-1.5"
+                            />
+                          )
                         )}
                         {/* Editable for every row, preset suppliers included — this is a per-quote price,
                             seeded from the supplier's saved default on selection but freely overridable

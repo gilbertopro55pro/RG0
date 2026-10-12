@@ -9,10 +9,16 @@ import type { IntakeDetails, PriceQuoteTemplateRow, PricingSupplier } from "@/li
 // The builder's own fixed line for the shoot itself (hours × rate); never a vendor row.
 const SHOOT_ITEM = "צילום אירוע";
 
+// A quote line's details: a saved item's note in the builder, or part of a free-text row's name.
+const detailsOf = (it: { details?: string }) => (it.details ?? "").trim();
+const nameWithDetails = (it: { item: string; details?: string }) => (detailsOf(it) ? `${it.item} (${detailsOf(it)})` : it.item);
+
 export type PrefillVendorRow = {
   // A saved supplier's id, or "__custom__" for a free-text row (name in customName).
   supplierId: string;
   customName: string;
+  // A saved item's note, its details on the quote (a free-text row's details join its name).
+  note?: string;
   price: number;
   // Why the row is there (for the summary shown above the rows, and for tests).
   reason: CoverageCategory | "template" | "sent";
@@ -250,8 +256,8 @@ export function buildLeadQuotePrefill(input: {
       rows.push(
         s
           ? // The template's price for this package, not the supplier's list price on its own.
-            { supplierId: s.id, customName: "", price: typeof it.price === "number" ? it.price : s.price, reason: "template" }
-          : { supplierId: "__custom__", customName: it.item, price: it.price, reason: "template" }
+            { supplierId: s.id, customName: "", note: detailsOf(it), price: typeof it.price === "number" ? it.price : s.price, reason: "template" }
+          : { supplierId: "__custom__", customName: nameWithDetails(it), price: it.price, reason: "template" }
       );
       const cat = classifyName(it.item);
       if (cat) coveredCategories.add(cat);
@@ -336,8 +342,8 @@ export function buildPrefillFromSentQuote(input: {
       .map((it) => {
         const s = suppliers.find((sup) => sup.name === it.item);
         return s
-          ? { supplierId: s.id, customName: "", price: it.price, reason: "sent" as const }
-          : { supplierId: "__custom__", customName: it.item, price: it.price, reason: "sent" as const };
+          ? { supplierId: s.id, customName: "", note: detailsOf(it), price: it.price, reason: "sent" as const }
+          : { supplierId: "__custom__", customName: nameWithDetails(it), price: it.price, reason: "sent" as const };
       }),
     templateId: null,
     requested: [],
