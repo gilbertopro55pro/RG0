@@ -984,7 +984,7 @@ export default function EventPricingCalculator({
                             <input
                               value={row.note}
                               onChange={(e) => updateVendorRow(row.id, { note: e.target.value })}
-                              placeholder={t("הערה (לא חובה)")}
+                              placeholder={t("הערה")}
                               aria-label={t("הערה לפריט")}
                               className="flex-1 min-w-0 text-xs bg-transparent outline-none border-s border-line ps-1.5"
                             />
@@ -999,7 +999,7 @@ export default function EventPricingCalculator({
                           type="number"
                           min={0}
                           placeholder="0"
-                          className="w-20 shrink-0 text-xs font-data bg-transparent outline-none text-end"
+                          className="w-16 shrink-0 text-xs font-data bg-transparent outline-none text-end"
                         />
                         {!managingSuppliers && (
                           <button onClick={() => removeVendorRow(row.id)} className="text-ink-soft text-xs shrink-0" aria-label={t("הסרת ספק")}>
