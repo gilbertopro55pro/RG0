@@ -220,7 +220,23 @@ never claims to be the photographer and answers honestly if asked whether it's a
   a contract clause changes, update the FAQ answer in the same step, or the assistant quotes the
   old terms.
 
-- **A location that doesn't exist was accepted (2026-10-04, owner's report):** "Kirtay sababa" got
+- **A place it doesn't recognise is accepted as written (owner, 2026-10-12, replaces the 2026-10-04
+  rule below):** asking "לא מצאתי אולם בשם הזה, אפשר לוודא את האיות? או שזה בטוח אשדוד?" gave away
+  that it's software.
+  - A clear match on the map is still saved with the right spelling and city.
+  - Anything else is saved exactly as the client wrote it, with `locationUnverified: true`, and the
+    conversation goes on with no question about spelling or the city.
+  - The photographer sees "(לוודא מול הלקוח את המקום המדויק)" next to the place, in the lead's notes
+    and in the email. Not in the conversation PDF, which can go to the client.
+  - Rule in the prompt and in the `check_location` notes. The flag is set in `save_details`.
+- **Punctuation that gives away an AI (owner, 2026-10-12):** long dashes, a dash between clauses,
+  semicolons, the "…" character, curly quotes, list markers and bold.
+  - The prompt asks for WhatsApp punctuation (commas, periods, question marks), and not to repeat
+    the client's details back like a clerk ("300 אורחים, יפה", "רשמתי", "רק כדי לוודא").
+  - `humanPunctuation` runs on every reply in every language, like `hebrewGreetings`, before it's
+    stored and shown. A range keeps a plain hyphen ("19:00-00:00").
+  - The honesty line stays: asked "bot or human?", it says it's the photographer's assistant.
+- **A location that doesn't exist was accepted (2026-10-04, owner's report; superseded above):** "Kirtay sababa" got
   "Got it, noted the location" and the model never even called save_details. Now: `check_location`
   before saving a place; a clear match is saved with the correct spelling and city; a near match
   → "did you mean X in Y?"; not found → ask (spelling / which city), never claim it was noted.

@@ -359,6 +359,10 @@ export type IntakeDetails = {
   dateUndecided?: boolean;
   approxDate?: string;
   location?: string;
+  // The place as the client wrote it, not found or not clearly matched on the map: saved anyway
+  // (asking about spelling gives away that it's software, owner 2026-10-12) and the photographer
+  // confirms the exact place. False once a clear match is saved.
+  locationUnverified?: boolean;
   guests?: string;
   startTime?: string;
   endTime?: string;
