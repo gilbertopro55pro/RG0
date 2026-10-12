@@ -128,6 +128,9 @@ export default function QuoteApprovalFlow({
     initialConvertedEventId ? (initialContract && initialContract.status !== "signed" ? "contract" : "done") : initialApprovedAt ? "questionnaire" : "view"
   );
   const [approving, setApproving] = useState(false);
+  // The date taken before the client could go ahead (approve or questionnaire): the date, shown as
+  // a call-the-photographer card instead of an error.
+  const [dateTaken, setDateTaken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [clientAccessToken, setClientAccessToken] = useState<string | null>(initialClientAccessToken);
 
@@ -157,6 +160,10 @@ export default function QuoteApprovalFlow({
     try {
       const res = await fetch(`/api/quotes/${token}/approve`, { method: "POST" });
       const data = await res.json();
+      if (data.dateTaken) {
+        setDateTaken(data.date ?? "");
+        return;
+      }
       if (!res.ok) throw new Error(t(data.error ?? "האישור נכשל"));
       setStep("questionnaire");
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -174,6 +181,7 @@ export default function QuoteApprovalFlow({
     }
     setSubmitting(true);
     setError(null);
+    setDateTaken(null);
     try {
       const res = await fetch(`/api/quotes/${token}/submit-questionnaire`, {
         method: "POST",
@@ -192,6 +200,10 @@ export default function QuoteApprovalFlow({
         }),
       });
       const data = await res.json();
+      if (data.dateTaken) {
+        setDateTaken(data.date ?? formDate);
+        return;
+      }
       if (!res.ok) throw new Error(t(data.error ?? "שליחת הפרטים נכשלה"));
       setClientAccessToken(data.clientAccessToken ?? null);
       const next: EventContractRow | null = data.contract ?? null;
@@ -343,14 +355,18 @@ export default function QuoteApprovalFlow({
               )}
 
               {error && <p className="text-sm text-rose mt-6">{error}</p>}
-              <button
-                onClick={approve}
-                disabled={approving}
-                className="w-full rounded-xl py-4 mt-8 text-base font-bold text-white disabled:opacity-60"
-                style={{ background: NAVY }}
-              >
-                {approving ? t("מאשר...") : t("אישור ההצעה")}
-              </button>
+              {dateTaken !== null ? (
+                <DateTakenNotice date={dateTaken} photographer={photographer} />
+              ) : (
+                <button
+                  onClick={approve}
+                  disabled={approving}
+                  className="w-full rounded-xl py-4 mt-8 text-base font-bold text-white disabled:opacity-60"
+                  style={{ background: NAVY }}
+                >
+                  {approving ? t("מאשר...") : t("אישור ההצעה")}
+                </button>
+              )}
               <p className="mt-4 text-sm text-center leading-relaxed" style={{ color: INK_SOFT }}>
                 {t("שאלות לפני שמאשרים?")} {photographer.name}, <span dir="ltr">{photographer.phone}</span>
                 {photographer.whatsappSignature && <span className="block text-xs mt-1">{photographer.whatsappSignature}</span>}
@@ -383,7 +399,7 @@ export default function QuoteApprovalFlow({
                   <label className={label} style={{ color: INK_SOFT }}>
                     {t("תאריך האירוע")}
                   </label>
-                  <input value={formDate} onChange={(e) => setFormDate(e.target.value)} type="date" dir="ltr" className={inputClass} style={{ borderColor: HAIRLINE }} />
+                  <input value={formDate} onChange={(e) => { setFormDate(e.target.value); setDateTaken(null); }} type="date" dir="ltr" className={inputClass} style={{ borderColor: HAIRLINE }} />
                 </div>
                 <div>
                   <label className={label} style={{ color: INK_SOFT }}>
@@ -438,6 +454,7 @@ export default function QuoteApprovalFlow({
                 </div>
 
                 {error && <p className="text-sm text-rose">{error}</p>}
+                {dateTaken !== null && <DateTakenNotice date={dateTaken} photographer={photographer} />}
                 <button onClick={submitQuestionnaire} disabled={submitting} className="w-full rounded-xl py-4 text-base font-bold text-white disabled:opacity-60" style={{ background: NAVY }}>
                   {submitting ? t("שולח...") : t("שליחת הפרטים")}
                 </button>
@@ -497,6 +514,39 @@ function Field({ labelText, value, ltr }: { labelText: string; value: string; lt
       <div className="text-[15px] font-bold mt-0.5 break-words" style={{ color: NAVY }}>
         <span dir={ltr ? "ltr" : undefined}>{value}</span>
       </div>
+    </div>
+  );
+}
+
+// The quote's date was taken before the client could go ahead (owner, 2026-10-12): instead of a dead
+// end, the photographer whose quote this is, with a call button. The photographer is told too
+// (lib/dateTakenNotify.ts).
+function DateTakenNotice({ date, photographer }: { date: string; photographer: QuotePhotographer }) {
+  const t = useT();
+  const lang = useLang();
+  const shown = /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? new Date(date).toLocaleDateString(dateLocale(lang), { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, ".")
+    : "";
+  const tel = (photographer.phone ?? "").replace(/[^\d+]/g, "");
+  return (
+    <div className="rounded-2xl p-5 mt-8 text-center" style={{ background: PAPER, border: `1px solid ${HAIRLINE}` }} role="alert">
+      <p className="text-lg font-bold font-display" style={{ color: NAVY }}>
+        {shown ? t("התאריך {date} כבר נתפס", { date: shown }) : t("התאריך כבר נתפס")}
+      </p>
+      <p className="mt-2 text-[15px] leading-relaxed" style={{ color: INK_SOFT }}>
+        {t("כדי למצוא פתרון, צרו קשר טלפוני עם {name}.", { name: photographer.name })}
+      </p>
+      {tel ? (
+        <a href={`tel:${tel}`} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-4 text-base font-bold text-white" style={{ background: NAVY }}>
+          {t("התקשרות")} <span dir="ltr">{photographer.phone}</span>
+        </a>
+      ) : (
+        photographer.email && (
+          <a href={`mailto:${photographer.email}`} className="mt-4 flex w-full items-center justify-center rounded-xl py-4 text-base font-bold text-white" style={{ background: NAVY }}>
+            <span dir="ltr">{photographer.email}</span>
+          </a>
+        )
+      )}
     </div>
   );
 }
