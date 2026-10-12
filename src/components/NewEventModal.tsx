@@ -16,6 +16,7 @@ import NativeDateTimeField from "@/components/NativeDateTimeField";
 import EventTypeField from "@/components/EventTypeField";
 import CompactGuideModal from "@/components/CompactGuideModal";
 import { useLang, useT } from "@/i18n/client";
+import { dateConflictMessage } from "@/lib/dateConflictMessage";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 // The 4 video-editing sub-choices collapse to this one representative value in the top-level
@@ -108,6 +109,9 @@ export default function NewEventModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateConflict, setDateConflict] = useState(false);
+  // A booking in the photographer's Google Calendar on the date (dateConflict.ts): a warning, not a
+  // block, since the event being created is often that same booking.
+  const [calendarConflict, setCalendarConflict] = useState<string | null>(null);
   const [addingToWaitlist, setAddingToWaitlist] = useState(false);
   const [createdEvent, setCreatedEvent] = useState<{ id: string; clientAccessToken: string; googleCalendarSynced: boolean } | null>(null);
   const [sendingUpdate, setSendingUpdate] = useState(false);
@@ -244,11 +248,12 @@ export default function NewEventModal({
     setStep((s) => (s === 3 ? 2 : 1) as Step);
   };
 
-  const submit = async () => {
+  const submit = async (allowCalendarConflict = false) => {
     if (!clientName || !eventDate) return;
     setSaving(true);
     setError(null);
     setDateConflict(false);
+    setCalendarConflict(null);
 
     const res = await fetch("/api/events", {
       method: "POST",
@@ -269,14 +274,19 @@ export default function NewEventModal({
         balance: Number(balance) || 0,
         paymentReminderDate: wantsPaymentReminder ? paymentReminderDate : null,
         sourceGoogleCalendarEventId: initial?.sourceGoogleCalendarEventId ?? null,
+        allowCalendarConflict,
       }),
     });
     const data = await res.json();
 
     if (!res.ok) {
-      setError(data.error ? t(data.error) : t("שגיאה ביצירת האירוע"));
-      setDateConflict(!!data.conflict);
       setSaving(false);
+      if (data.conflictSource === "calendar") {
+        setCalendarConflict(dateConflictMessage(t, data, false));
+        return;
+      }
+      setError(data.conflict ? dateConflictMessage(t, data, false) : data.error ? t(data.error) : t("שגיאה ביצירת האירוע"));
+      setDateConflict(!!data.conflict);
       return;
     }
 
@@ -938,6 +948,36 @@ export default function NewEventModal({
               <button
                 onClick={() => setConfirmSaveOpen(false)}
                 className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+              >
+                {t("ביטול")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {calendarConflict && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+          onClick={() => setCalendarConflict(null)}
+        >
+          <div className="w-[85%] max-w-md rounded-3xl p-5 pb-6 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("התאריך תפוס ביומן Google")}</h2>
+            <p className="text-sm text-ink mb-2">{calendarConflict}</p>
+            <p className="text-sm text-ink-soft mb-5">{t("אם זה אותו אירוע, או שזה לא מפריע, אפשר ליצור בכל זאת.")}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => submit(true)}
+                disabled={saving}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+              >
+                {saving ? t("שומר...") : t("יצירה בכל זאת")}
+              </button>
+              <button
+                onClick={() => setCalendarConflict(null)}
+                disabled={saving}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft disabled:opacity-60"
               >
                 {t("ביטול")}
               </button>

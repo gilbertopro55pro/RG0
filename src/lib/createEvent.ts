@@ -3,7 +3,7 @@ import { customPackageFlow, PACKAGE_FLOWS, PACKAGE_LABELS, type PackageType } fr
 import { GoogleCalendarDisconnectedError, syncEventToGoogleCalendar, updateEventInGoogleCalendar } from "@/lib/googleCalendarSync";
 import { syncEventToAppleCalendar } from "@/lib/appleCalendarSync";
 import type { CustomPackageRow, CustomPackageStageRow, EventRow } from "@/lib/types";
-import { eventsConflict } from "@/lib/eventTime";
+import { findDateConflict, type DateConflict } from "@/lib/dateConflict";
 import { calendarEventTitle } from "@/lib/eventDisplayName";
 
 export type CreateEventParams = {
@@ -27,11 +27,14 @@ export type CreateEventParams = {
   // side effect below then updates that SAME calendar event in place (recoloring it to the normal
   // app-synced color) instead of creating a brand new one, which would leave a duplicate behind.
   sourceGoogleCalendarEventId?: string | null;
+  // The photographer's own form: a booking in their Google Calendar on the date stops the creation
+  // too (a warning they can create past, then this is false). See dateConflict.ts.
+  checkCalendar?: boolean;
 };
 
 export type CreateEventResult =
   | { ok: true; event: EventRow; googleCalendarSynced: boolean }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string; conflict?: DateConflict };
 
 // The actual "create an event + every side effect that goes with it" logic, shared between the
 // authenticated new-event form (src/app/api/events/route.ts) and the public, admin-gated
@@ -57,6 +60,7 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
     balance,
     paymentReminderDate,
     sourceGoogleCalendarEventId,
+    checkCalendar = false,
   } = params;
 
   if (!clientName || !eventDate || (!pkg && !customPackageId) || (pkg && !PACKAGE_FLOWS[pkg])) {
@@ -88,18 +92,22 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
 
   const packageLabelText = customPackage ? customPackage.name : PACKAGE_LABELS[pkg!];
 
-  const { data: sameDateEvents } = await supabase
-    .from("events")
-    .select("id, client_name, event_start_time, event_end_time")
-    .eq("photographer_id", photographerId)
-    .eq("event_date", eventDate)
-    .returns<{ id: string; client_name: string; event_start_time: string | null; event_end_time: string | null }[]>();
-
-  const conflicting = (sameDateEvents ?? []).find((e) =>
-    eventsConflict({ start: eventStartTime, end: eventEndTime }, { start: e.event_start_time, end: e.event_end_time })
-  );
-  if (conflicting) {
-    return { ok: false, status: 409, error: `כבר קיים אירוע בתאריך זה (${conflicting.client_name}).` };
+  const conflict = await findDateConflict(supabase, {
+    photographerId,
+    date: eventDate,
+    start: eventStartTime,
+    end: eventEndTime,
+    calendar: checkCalendar,
+    excludeCalendarIds: [sourceGoogleCalendarEventId],
+  });
+  if (conflict) {
+    const error =
+      conflict.source === "event"
+        ? `כבר קיים אירוע בתאריך זה (${conflict.name}).`
+        : conflict.name
+          ? `ביומן Google שלכם כבר רשום בתאריך הזה: ${conflict.name}.`
+          : "ביומן Google שלכם כבר רשום משהו בתאריך הזה.";
+    return { ok: false, status: 409, error, conflict };
   }
 
   const { data: event, error: insertError } = await supabase

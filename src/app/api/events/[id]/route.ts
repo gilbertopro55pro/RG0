@@ -11,7 +11,7 @@ import { PACKAGE_FLOWS, packageLabel, type PackageType } from "@/lib/stages";
 import { reconcileEventStages } from "@/lib/reconcileEventStages";
 import { calendarEventTitle } from "@/lib/eventDisplayName";
 import type { CustomPackageRow, CustomPackageStageRow, EventRow } from "@/lib/types";
-import { eventsConflict } from "@/lib/eventTime";
+import { findDateConflict } from "@/lib/dateConflict";
 import { canChooseClientLang } from "@/lib/clientLang";
 import { isLang } from "@/i18n/config";
 
@@ -84,23 +84,40 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "האירוע לא נמצא" }, { status: 404 });
   }
 
-  const { data: sameDateEvents } = await supabase
-    .from("events")
-    .select("id, client_name, event_start_time, event_end_time")
-    .eq("photographer_id", user.id)
-    .eq("event_date", eventDate)
-    .neq("id", eventId)
-    .returns<{ id: string; client_name: string; event_start_time: string | null; event_end_time: string | null }[]>();
+  // The date check runs only when the date or the hours changed, so an event already saved as a
+  // double booking doesn't ask again on every edit. It also checks the photographer's Google
+  // Calendar, like the intake assistant does (owner, 2026-10-12), leaving out this event's own entry.
+  const hhmm = (v: string | null | undefined) => (v ? v.slice(0, 5) : null);
+  const whenChanged =
+    eventDate !== existing.event_date ||
+    hhmm(eventStartTime) !== hhmm(existing.event_start_time) ||
+    hhmm(eventEndTime) !== hhmm(existing.event_end_time);
+  const conflict =
+    whenChanged && !allowDoubleBooking
+      ? await findDateConflict(supabase, {
+          photographerId: user.id,
+          date: eventDate,
+          start: eventStartTime,
+          end: eventEndTime,
+          calendar: true,
+          excludeEventId: eventId,
+          excludeCalendarIds: [existing.google_calendar_event_id],
+        })
+      : null;
 
-  const conflicting = (sameDateEvents ?? []).find((e) =>
-    eventsConflict({ start: eventStartTime, end: eventEndTime }, { start: e.event_start_time, end: e.event_end_time })
-  );
-
-  if (conflicting && !allowDoubleBooking) {
+  if (conflict) {
+    // conflictSource/conflictWith let the form word the message in the photographer's language.
     return NextResponse.json(
       {
         conflict: true,
-        error: `כבר קיים אירוע בתאריך זה (${conflicting.client_name}). אפשר לשמור בכל זאת.`,
+        conflictSource: conflict.source,
+        conflictWith: conflict.name,
+        error:
+          conflict.source === "event"
+            ? `כבר קיים אירוע בתאריך זה (${conflict.name}). אפשר לשמור בכל זאת.`
+            : conflict.name
+              ? `ביומן Google שלכם כבר רשום בתאריך הזה: ${conflict.name}. אפשר לשמור בכל זאת.`
+              : "ביומן Google שלכם כבר רשום משהו בתאריך הזה. אפשר לשמור בכל זאת.",
       },
       { status: 409 }
     );

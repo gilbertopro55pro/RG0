@@ -41,12 +41,13 @@ export function googleEventOnDate(e: GoogleCalendarEvent, date: string): TimedEv
 // syncs (google_calendar_color_id). The intake assistant checks these next to its own events, so a
 // booking written only in the calendar still makes the date taken (bug found by the owner,
 // 2026-09-26). Any Google failure returns [] and the check falls back to the app's events.
-export async function googleBusyOnDate(
+// With the entry's id and title, for a check that has to leave one out or name it (dateConflict.ts).
+export async function googleBusyEntriesOnDate(
   supabase: SupabaseClient,
   photographerId: string,
   colors: (string | null | undefined)[],
   date: string
-): Promise<TimedEvent[]> {
+): Promise<(TimedEvent & { id: string; summary: string })[]> {
   const wanted = new Set(colors.filter((c): c is string => !!c));
   if (wanted.size === 0) return [];
   try {
@@ -57,10 +58,25 @@ export async function googleBusyOnDate(
     if (!events) return [];
     return events
       .filter((e) => e.colorId && wanted.has(e.colorId))
-      .map((e) => googleEventOnDate(e, date))
-      .filter((e): e is TimedEvent => e !== null);
+      .flatMap((e) => {
+        const on = googleEventOnDate(e, date);
+        return on ? [{ ...on, id: e.id, summary: (e.summary ?? "").trim() }] : [];
+      });
   } catch (e) {
-    console.error("Intake calendar check failed:", photographerId, e);
+    console.error("Calendar busy check failed:", photographerId, e);
     return [];
   }
+}
+
+export async function googleBusyOnDate(
+  supabase: SupabaseClient,
+  photographerId: string,
+  colors: (string | null | undefined)[],
+  date: string
+): Promise<TimedEvent[]> {
+  return (await googleBusyEntriesOnDate(supabase, photographerId, colors, date)).map(({ arrival_time, event_start_time, event_end_time }) => ({
+    arrival_time,
+    event_start_time,
+    event_end_time,
+  }));
 }
