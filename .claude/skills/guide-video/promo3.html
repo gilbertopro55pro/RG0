@@ -105,12 +105,13 @@
   #cup { position: absolute; top: 470px; left: 50%; margin-left: -100px; width: 200px; height: 200px; color: #c9a15a; }
   #bed1 { top: 720px; font-size: 280px; font-weight: 800; letter-spacing: -.04em; direction: ltr; font-variant-numeric: tabular-nums; }
   #bed2 { top: 1060px; font-size: 104px; }
-  /* "בלי גילברטו" / "עם גילברטו" (owner, 2026-10-12: emphasize them with an effect). A marker stroke
-     is drawn behind the words, right to left: red, then a short shake, without Gilberto; gold, then
-     a light sweep and a glow, with. */
+  /* "בלי" / "עם" in "בלי/עם גילברטו" (owner, 2026-10-12: emphasize the word itself, not the name).
+     A marker stroke is drawn behind it, right to left: red, then a short shake, for "בלי"; gold, then
+     a light sweep and a glow, for "עם". The name next to it stays plain (white in the grey labels). */
   .hl { position: relative; display: inline-block; padding: 0 .3em; margin: 0 .06em; font-weight: 800; isolation: isolate; }
   .hl > b { position: absolute; inset: -.04em 0; border-radius: .2em; transform-origin: 100% 50%; transform: scaleX(0); z-index: -1; overflow: hidden; }
   #kick .hl, #lbl2 .hl, #lbl3 .hl { font-size: 1.2em; }
+  .gb { color: #fff; font-weight: 700; }
   .hl.no { color: #fff; } .hl.no > b { background: #c0392b; }
   .hl.yes > b { background: linear-gradient(180deg, #ddb96f, #b4863a); }
   .hl > b > i { position: absolute; top: 0; bottom: 0; width: 45%; left: 100%; background: linear-gradient(100deg, rgba(255,255,255,0), rgba(255,255,255,.8), rgba(255,255,255,0)); }
@@ -121,14 +122,14 @@
 <div id="glow"></div>
 
 <div id="s1" class="scene">
-  <div id="kick" class="c">ליל חתונה, <span class="hl no" id="hl1"><b></b>בלי גילברטו</span></div>
+  <div id="kick" class="c">ליל חתונה, <span class="hl no" id="hl1"><b></b>בלי</span> גילברטו</div>
   <div id="clock1" class="c">00:00</div>
   <div id="o1" class="c big w" data-fit>החתונה נגמרה</div>
   <div id="o2" class="c big b" data-fit>ובבוקר מחכה לכם עוד משמרת</div>
 </div>
 <div id="s2" class="scene">
   <div id="clock2">00:00</div>
-  <div id="lbl2" class="c">הבוקר שאחרי, <span class="hl no" id="hl2"><b></b>בלי גילברטו</span></div>
+  <div id="lbl2" class="c">הבוקר שאחרי, <span class="hl no" id="hl2"><b></b>בלי</span> <span class="gb">גילברטו</span></div>
   <div class="task" id="tb0" style="top:640px"><time>08:40</time><span>עונים לשלוש פניות מאתמול</span></div>
   <div class="task" id="tb1" style="top:810px"><time>09:20</time><span>מתקנים הצעת מחיר ושולחים שוב</span></div>
   <div class="task" id="tb2" style="top:980px"><time>09:50</time><span>מזכירים ללקוח להעביר את היתרה</span></div>
@@ -143,11 +144,11 @@
   <div id="rw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg></div>
   <div id="rclock" class="c">11:00</div>
   <div id="r1" class="c big w" data-fit>ועכשיו, אותו בוקר</div>
-  <div id="r2" class="c big b" data-fit><span class="hl yes" id="hl3"><b><i></i></b>עם גילברטו</span></div>
+  <div id="r2" class="c big b" data-fit><span class="hl yes" id="hl3"><b><i></i></b>עם</span> גילברטו</div>
 </div>
 <div id="s5" class="scene">
   <div id="clock3">08:30</div>
-  <div id="lbl3" class="c">הבוקר שאחרי, <span class="hl yes" id="hl4"><b><i></i></b>עם גילברטו</span></div>
+  <div id="lbl3" class="c">הבוקר שאחרי, <span class="hl yes" id="hl4"><b><i></i></b>עם</span> <span class="gb">גילברטו</span></div>
   <div class="task done" id="to0" style="top:620px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>פניות חדשות<small>עוזר הפניות ענה להן עוד בזמן החתונה</small></span></div>
   <div class="task done" id="to1" style="top:796px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>הצעת מחיר<small>הלקוח אישר וחתם בקישור</small></span></div>
   <div class="task done" id="to2" style="top:972px"><span class="ck"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span><span>תזכורת יתרה<small>מוכנה לשליחה בלחיצה</small></span></div>
@@ -183,7 +184,7 @@
   const vis = (t, [a, b], fi = 0.22, fo = 0.18, last = false) => Math.min(ease((t - a) / fi), last ? 1 : ease((b - t) / fo));
   const slam = (el, t, at, from = 1.25, dur = 0.32) => { const p = ease((t - at) / dur); el.style.opacity = p; el.style.transform = `scale(${from - (from - 1) * p})`; };
   const rise = (el, t, at, dist = 80, dur = 0.4) => { const p = ease((t - at) / dur); el.style.opacity = p; el.style.transform = `translateY(${(1 - p) * dist}px)`; };
-  // The marker behind "בלי/עם גילברטו" (.hl): drawn in 0.3s from `at`, the words pop as it lands, then
+  // The marker behind "בלי" / "עם" (.hl): drawn in 0.3s from `at`, the words pop as it lands, then
   // a decaying shake (without) or a light sweep and a gold glow (with). Gold words turn navy on the gold.
   const mix = (a, b, p) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * p)).join(",")})`;
   const marker = (el, t, at) => {
