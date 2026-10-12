@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { sendPushToPhotographer } from "@/lib/push";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type { LeadRow } from "@/lib/types";
+import type { LeadQuoteDetails } from "@/lib/leadQuote";
+import { findDateConflict } from "@/lib/dateConflict";
+import { notifyDateTaken } from "@/lib/dateTakenNotify";
 import { photographerLang } from "@/lib/clientLang";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
@@ -15,15 +18,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("*, photographers(email, ui_lang)")
+    .select("*, photographers(name, email, ui_lang)")
     .eq("quote_token", token)
-    .maybeSingle<LeadRow & { photographers: { email: string; ui_lang: string | null } | null }>();
+    .maybeSingle<LeadRow & { quote_details: LeadQuoteDetails | null; photographers: { name: string; email: string; ui_lang: string | null } | null }>();
 
   if (!lead || !lead.quoted_amount) {
     return NextResponse.json({ error: "הצעת המחיר לא נמצאה" }, { status: 404 });
   }
   if (lead.quote_approved_at) {
     return NextResponse.json({ ok: true, alreadyApproved: true });
+  }
+
+  // The quote's date taken in the meantime (owner, 2026-10-12): the quote isn't approved, the client
+  // page asks the client to call the photographer, and the photographer is told. The same check the
+  // questionnaire runs next (events in the app, not Google Calendar, where a photographer often holds
+  // this very client's date), so a client is never let through here only to be stopped there.
+  const date = [lead.quote_details?.eventDate, lead.event_date_interest].find((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d));
+  if (date) {
+    const takenBy = await findDateConflict(supabase, {
+      photographerId: lead.photographer_id,
+      date,
+      start: lead.quote_details?.startTime || null,
+      end: lead.quote_details?.endTime || null,
+      calendar: false,
+      excludeEventId: lead.converted_event_id ?? undefined,
+    });
+    if (takenBy) {
+      await notifyDateTaken(supabase, lead, { date, clientName: lead.name, clientPhone: lead.phone ?? "", takenBy, stage: "approve" });
+      return NextResponse.json({ dateTaken: true, date, error: "התאריך הזה כבר לא פנוי. עדכנו את הצלם, והוא ייצור איתכם קשר כדי לתאם." }, { status: 409 });
+    }
   }
 
   const { error } = await supabase.from("leads").update({ quote_approved_at: new Date().toISOString() }).eq("id", lead.id);
