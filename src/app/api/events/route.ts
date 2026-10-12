@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     balance,
     paymentReminderDate,
     sourceGoogleCalendarEventId,
+    allowCalendarConflict,
   }: {
     clientName: string;
     eventType?: string | null;
@@ -45,6 +46,8 @@ export async function POST(request: Request) {
     balance: number;
     paymentReminderDate: string | null;
     sourceGoogleCalendarEventId?: string | null;
+    // "יצירה בכל זאת" after a warning about a booking in the photographer's Google Calendar.
+    allowCalendarConflict?: boolean;
   } = body;
 
   const result = await createEventWithSideEffects(supabase, {
@@ -64,12 +67,17 @@ export async function POST(request: Request) {
     balance,
     paymentReminderDate,
     sourceGoogleCalendarEventId,
+    checkCalendar: allowCalendarConflict !== true,
   });
 
   if (!result.ok) {
-    return NextResponse.json(result.status === 409 ? { conflict: true, error: result.error } : { error: result.error }, {
-      status: result.status,
-    });
+    // conflictSource/conflictWith let the form word the message in the photographer's language.
+    return NextResponse.json(
+      result.conflict
+        ? { conflict: true, conflictSource: result.conflict.source, conflictWith: result.conflict.name, error: result.error }
+        : { error: result.error },
+      { status: result.status }
+    );
   }
 
   return NextResponse.json({

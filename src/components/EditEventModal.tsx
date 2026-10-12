@@ -11,6 +11,7 @@ import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import NativeDateTimeField from "@/components/NativeDateTimeField";
 import { useLang, useT } from "@/i18n/client";
+import { dateConflictMessage } from "@/lib/dateConflictMessage";
 import { dateLocale } from "@/i18n/config";
 import ClientLangSelect from "@/components/ClientLangSelect";
 
@@ -127,7 +128,7 @@ export default function EditEventModal({
     setSaving(false);
 
     if (!res.ok) {
-      setError(data.error ? t(data.error) : t("שגיאה בעדכון האירוע"));
+      setError(data.conflict ? dateConflictMessage(t, data, true) : data.error ? t(data.error) : t("שגיאה בעדכון האירוע"));
       setDateConflict(!!data.conflict);
       return;
     }

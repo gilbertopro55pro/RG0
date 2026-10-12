@@ -97,7 +97,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     });
 
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      // A date taken in the meantime: the client never sees whose event it is (it named the other
+      // client until 2026-10-12).
+      return NextResponse.json(
+        { error: result.conflict ? "התאריך הזה כבר לא פנוי. כדאי ליצור קשר עם הצלם כדי לתאם." : result.error },
+        { status: result.status }
+      );
     }
 
     await supabase
