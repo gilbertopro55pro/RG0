@@ -110,10 +110,10 @@ function LoginForm({ lang, justConfirmed, confirmError }: { lang: Lang; justConf
             <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
             {t("מערכת ניהול לצלמי אירועים")}
           </div>
-          <p className="font-display m-0 text-[72px] leading-[0.98] font-bold tracking-[-0.035em] text-white">
-            {t("פחות ניהול.")}
-            <br />
-            {t("יותר צילום.")}
+          {/* Owner, 2026-10-12: "פחות ניהול. יותר צילום." didn't say what you get; the same line closes the promo videos. */}
+          <p className="font-display m-0 text-[60px] leading-[1.05] font-bold tracking-[-0.035em] text-white">
+            <span className="block">{t("אתם מצלמים,")}</span>
+            <span className="block text-balance text-[var(--l-accent-light)]">{t("וגילברטו דואגת לכל השאר")}</span>
           </p>
           <p className="m-0 text-lg leading-relaxed text-[var(--l-on-navy-soft)] max-w-[440px]">
             {t("לידים, חוזים, תשלומים, גלריות ואלבומים במקום אחד, והצעד הבא בכל אירוע מחכה לכם מוכן.")}

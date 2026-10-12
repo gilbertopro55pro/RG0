@@ -184,7 +184,8 @@ function buildSystem(p: IntakePhotographer, channel: IntakeChannel, lang: Lang |
 - מגוונים: לא פותחים כל הודעה ב"מעולה", "אשמח", "נהדר" או "שמחה לשמוע", ולא חוזרים על אותו ניסוח פעמיים.
 - כשמדברים על ${name}, ואם זה שם של אדם, משתמשים בשם הפרטי בלבד (למשל "רועי"), לא בשם המלא בכל פעם.
 - תאריכים כותבים במילים, כמו שאנשים מדברים ("יום חמישי, 5 בנובמבר"), בלי השנה כשהיא ברורה.
-- בלי רשימות, תבליטים, כוכביות, כותרות ומקפים. גם הסיכום בסוף הוא משפט או שניים רגילים, לא רשימה.
+- כותבים כמו בוואטסאפ, רק עם פסיקים, נקודות וסימני שאלה. בלי מקף ארוך (— או –) ובלי מקף בין חלקי משפט, בלי נקודה-פסיק, בלי נקודתיים שפותחות רשימה, בלי שלוש נקודות ובלי מירכאות. בלי רשימות, תבליטים, כוכביות וכותרות. גם הסיכום בסוף הוא משפט או שניים רגילים (בעל העסק ביקש, 2026-10-12: סימנים כאלה מסגירים שזו לא כתיבה של אדם).
+- לא חוזרים על פרט שהלקוח אמר כמו פקיד ("300 אורחים, יפה", "מעולה, רשמתי", "רק כדי לוודא"). מגיבים בקצרה כמו אדם, או ממשיכים ישר לשאלה הבאה.
 - בלי ניסוחים של מוקד שירות או רובוט: לא "איך אוכל לעזור", "אני כאן כדי", "בהתאם לבקשתכם", "נשמח לעמוד לשירותכם", "כעוזר".
 - אימוג'י רק מדי פעם, כמו שאדם כותב: לכל היותר אחד בהודעה, ולא בכל הודעה.
 - כשיש שני דברים נפרדים לומר (תשובה ואז שאלה), מפרידים ביניהם בשורה ריקה. הם יוצגו כשתי הודעות קצרות.
@@ -201,12 +202,11 @@ ${p.intake_allow_split_day ? `- ${name} יכול לצלם באותו יום גם
 - אחרי ש-join_waitlist החזיר ok, מסיימים בתודה ובהסבר ש${name} יעדכן אם התאריך יתפנה. לא ממשיכים לאסוף פרטים ולא מציעים הצעת מחיר לתאריך תפוס.
 - בכל פעם שהלקוח נותן פרט, קוראים ל-save_details עם מה שנאמר.
 - אסור לכתוב ללקוח שפרט נרשם, נשמר או "סומן" אם לא קראתם באותו סבב ל-save_details והוא החזיר אותו ב-saved.
-- מקום האירוע (בעל העסק ביקש, 2026-10-04): כשהלקוח כותב מקום, קודם קוראים ל-check_location, ורק אחר כך שומרים.
-  - נמצאה התאמה ברורה: שומרים בשם הנכון (גם אם הלקוח כתב עם שגיאת כתיב), עם העיר, וממשיכים בלי להעיר על זה.
-  - יש התאמה דומה אבל לא זהה: שואלים בטבעיות אם התכוונו אליה ("רק לוודא, הכוונה לאולמי X בראשון לציון?"), ושומרים אחרי שאישרו.
-  - לא נמצא, ואין עיר מוכרת: לא שומרים ולא אומרים שזה נרשם. שואלים בעדינות, בלי להאשים: לבדוק את השם, או באיזו עיר המקום. אולמות ובתי כנסת קטנים לפעמים לא מופיעים במפה, אז אם הלקוח מאשר שהמקום קיים ואומר באיזו עיר, שומרים "שם המקום, העיר" וממשיכים.
-  - אם הלקוח שואל אם המקום קיים, עונים לפי מה שהבדיקה מצאה, בכנות.
-  - לא מזכירים מפה, חיפוש או בדיקה. מדברים כמו אדם שלא מכיר את השם ("לא בטוח שאני מכיר מקום בשם הזה, באיזו עיר הוא?"), לא כמו מערכת.
+- מקום האירוע (בעל העסק ביקש, 2026-10-12): כשהלקוח כותב מקום, קוראים ל-check_location ואז שומרים.
+  - נמצאה התאמה ברורה, אותו מקום בדיוק: שומרים בשם הנכון ועם העיר (גם אם הלקוח כתב עם שגיאת כתיב), וממשיכים בלי להעיר על זה.
+  - לא נמצא, או שלא בטוח שזה אותו מקום: מקבלים את מה שהלקוח כתב. שומרים את המקום בדיוק כפי שנכתב, עם locationUnverified=true, וממשיכים לשאלה הבאה כאילו המקום מוכר. ${name} יוודא את המקום המדויק בעצמו.
+  - אף פעם לא אומרים ללקוח שהמקום לא נמצא או לא מוכר, לא שואלים על איות או על עיר, לא מציעים שם אחר ולא שואלים "בטוח?". שאלות כאלה מסגירות שזו תוכנה ולא אדם.
+  - לא מזכירים מפה, חיפוש או בדיקה.
 - מה הצילום יכלול: שואלים מה הם רוצים שהצילום יכלול. אם שואלים מה האפשרויות: תמונות, וידאו, מגנטים ואלבום דיגיטלי מעוצב. שומרים ב-save_details בשדה coverage.
 - אם רוצים וידאו: שואלים אם צריך צלם וידאו נוסף, כלומר שני אנשי צוות (צלם סטילס, ${name}, וצלם וידאו). אם בשאלות הנפוצות יש מידע על צלם וידאו או צלם שני, עונים לפיו. שומרים בשדה videoCrew.
 - בר מצווה או בת מצווה: מוודאים אם זה אירוע בוקר (עלייה לתורה) או אירוע ערב, כי יש שקוראים לעלייה לתורה "בר מצווה". שומרים ב-save_details בשדה eventSlot (ובבדיקת התאריך שולחים את ה-slot המתאים).
@@ -253,6 +253,7 @@ const TOOLS: Anthropic.Tool[] = [
         dateUndecided: { type: "boolean", description: "true כשללקוח עוד אין תאריך" },
         approxDate: { type: "string", description: "מתי בערך, כשאין תאריך: חודש/עונה/שנה, או כמה תאריכים שמתלבטים ביניהם" },
         location: { type: "string", description: "מקום האירוע (אולם/עיר)" },
+        locationUnverified: { type: "boolean", description: "true כשהמקום לא נמצא בבדיקה או לא תאם בבירור, ונשמר כפי שהלקוח כתב. הצלם יוודא" },
         guests: { type: "string", description: "מספר אורחים משוער" },
         startTime: { type: "string", description: "HH:MM" },
         endTime: { type: "string", description: "HH:MM" },
@@ -303,7 +304,7 @@ function leadNotes(d: IntakeDetails): string {
   const lines = [
     !d.eventDate && d.dateUndecided ? `תאריך: ${dateText(d)}` : null,
     d.eventDate && d.eventSlot ? `חלק ביום: ${SLOT_LABELS[d.eventSlot]}` : null,
-    d.location ? `מקום: ${d.location}` : null,
+    d.location ? `מקום: ${d.location}${d.locationUnverified ? " (לוודא מול הלקוח את המקום המדויק)" : ""}` : null,
     d.guests ? `אורחים: ${d.guests}` : null,
     d.coverage ? `לכלול: ${d.coverage}` : null,
     d.videoCrew ? `צלם וידאו נוסף: ${d.videoCrew}` : null,
@@ -435,7 +436,7 @@ async function notifyPhotographer(p: IntakePhotographer, notice: NoticeText, d: 
     d.phone ? t("טלפון: {v}", { v: d.phone }) : null,
     d.eventType ? t("אירוע: {v}", { v: d.eventType }) : null,
     date ? t("תאריך: {v}", { v: date }) : null,
-    d.location ? t("מקום: {v}", { v: d.location }) : null,
+    d.location ? t("מקום: {v}", { v: d.location }) + (d.locationUnverified ? ` ${t("(לוודא מול הלקוח את המקום המדויק)")}` : "") : null,
     d.guests ? t("אורחים: {v}", { v: d.guests }) : null,
     d.eventSlot ? t("חלק ביום: {v}", { v: t(SLOT_LABELS[d.eventSlot]) }) : null,
     d.coverage ? t("לכלול: {v}", { v: d.coverage }) : null,
@@ -508,8 +509,11 @@ async function runTool(
 ): Promise<string> {
   if (name === "check_location") {
     const r = await lookupPlace(String(input.query ?? ""));
-    if (r.error) return JSON.stringify({ checked: false, note: "הבדיקה במפה לא זמינה כרגע. אם המקום לא מוכר לכם או לא כולל עיר, לשאול את הלקוח באיזו עיר הוא" });
-    return JSON.stringify(r.found ? { found: true, matches: r.matches } : { found: false, note: "לא נמצא במפה. ייתכן שגיאת כתיב או מקום קטן שלא במפה: לשאול את הלקוח" });
+    // Not found, or no answer from the map: the client's own words are kept and the photographer
+    // checks them. Asking about spelling or the city gives away that it's software (owner, 2026-10-12).
+    const keep = "לשמור את המקום בדיוק כפי שהלקוח כתב, עם locationUnverified=true, ולהמשיך לשאלה הבאה בלי להעיר על המקום ובלי לשאול עליו";
+    if (r.error) return JSON.stringify({ checked: false, note: keep });
+    return JSON.stringify(r.found ? { found: true, matches: r.matches, note: `רק אם אחת ההתאמות היא בבירור אותו מקום, לשמור בשם שלה. אחרת: ${keep}` } : { found: false, note: keep });
   }
   if (name === "check_availability") {
     const date = String(input.date ?? "");
@@ -551,6 +555,8 @@ async function runTool(
     if (patch.eventDate) patch.dateUndecided = false;
     if (patch.eventDate && patch.eventDate !== conv.collected.eventDate) delete conv.collected.dateAvailable;
     if (input.eventSlot === "morning" || input.eventSlot === "evening") patch.eventSlot = input.eventSlot;
+    // A place saved from a clear match clears the flag; one kept as the client wrote it sets it.
+    if (patch.location) patch.locationUnverified = input.locationUnverified === true;
     if (input.nothingElse === true) patch.nothingElse = true;
     // Only set in a multilingual conversation (turnLangs has an entry); never anything but he/en/ru.
     if (turnLangs.has(conv) && isLang(input.client_language)) turnLangs.set(conv, { lang: input.client_language, explicit: true });
@@ -631,6 +637,28 @@ export function hebrewGreetings(text: string): string {
   return out;
 }
 
+// The prompt asks for WhatsApp punctuation, and the model still reaches for typography nobody types
+// on a phone: long dashes, a dash between clauses, semicolons, the ellipsis character, curly quotes,
+// list markers (owner, 2026-10-12: "כל המקפים הארוכים... מסגירים שזאת בינה מלאכותית"). Applied to
+// every reply before it's stored, like hebrewGreetings, so the lead's conversation matches.
+export function humanPunctuation(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/^[ \t]*(?:[-•*]|\d+[.)])[ \t]+/gm, "")
+    .replace(/(\d)\s*[–—]\s*(\d)/g, "$1-$2")
+    .replace(/(\d)\s+-\s+(\d)/g, "$1-$2")
+    .replace(/\s*[–—]\s*/g, ", ")
+    .replace(/(\S) - (?=\S)/g, "$1, ")
+    .replace(/…/g, "...")
+    .replace(/[“”„«»]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/;\s*/g, ", ")
+    .replace(/[ \t]+,/g, ",")
+    .replace(/,(\s*,)+/g, ",")
+    .replace(/^,\s*/gm, "")
+    .replace(/,\s*([.?!])/g, "$1");
+}
+
 // Runs one client message through the model (with its tool rounds) and returns the reply.
 // Mutates `conv` (messages, collected, state, lead_id); the caller persists it.
 export async function runIntakeTurn(
@@ -682,8 +710,12 @@ export async function runIntakeTurn(
     add("cache_read", u.cache_read_input_tokens);
     add("cache_write", u.cache_creation_input_tokens);
     add("calls", 1);
-    // In a multilingual conversation only Hebrew replies are touched ("Mazel tov" in English stays).
-    for (const b of response.content) if (b.type === "text" && (!lang || /[\u0590-\u05FF]/.test(b.text))) b.text = hebrewGreetings(b.text);
+    // Greetings: in a multilingual conversation only Hebrew replies ("Mazel tov" in English stays). Punctuation: every reply.
+    for (const b of response.content) {
+      if (b.type !== "text") continue;
+      if (!lang || /[\u0590-\u05FF]/.test(b.text)) b.text = hebrewGreetings(b.text);
+      b.text = humanPunctuation(b.text);
+    }
     messages.push({ role: "assistant", content: response.content });
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
