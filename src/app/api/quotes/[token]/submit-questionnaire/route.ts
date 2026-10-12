@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { createEventWithSideEffects } from "@/lib/createEvent";
+import type { DateConflict } from "@/lib/dateConflict";
+import { sendPushToPhotographer } from "@/lib/push";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
@@ -97,12 +100,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     });
 
     if (!result.ok) {
-      // A date taken in the meantime: the client never sees whose event it is (it named the other
-      // client until 2026-10-12).
-      return NextResponse.json(
-        { error: result.conflict ? "התאריך הזה כבר לא פנוי. כדאי ליצור קשר עם הצלם כדי לתאם." : result.error },
-        { status: result.status }
-      );
+      // A date taken in the meantime: the photographer is told, and the client never sees whose
+      // event it is (it named the other client until 2026-10-12).
+      if (result.conflict) {
+        await notifyDateTaken(supabase, lead, body.eventDate, body.clientName.trim(), (body.clientPhone ?? lead.phone ?? "").trim(), result.conflict);
+        return NextResponse.json({ error: "התאריך הזה כבר לא פנוי. עדכנו את הצלם, והוא ייצור איתכם קשר כדי לתאם." }, { status: 409 });
+      }
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     await supabase
@@ -159,5 +163,53 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   } catch (e) {
     console.error("[submit-questionnaire] unhandled error", e);
     return NextResponse.json({ error: "שגיאה ביצירת האירוע" }, { status: 500 });
+  }
+}
+
+// The date was taken between the quote and the questionnaire, so the client can't finish and no
+// event is created. Until 2026-10-12 nobody told the photographer (owner: "תסגור את הפער"). A phone
+// notification and an email, once per lead and date (leads.date_conflict_notified_for, claimed
+// atomically), so a client retrying the same date doesn't send it again.
+async function notifyDateTaken(
+  supabase: SupabaseClient,
+  lead: LeadRow & { photographers: Photographer | null },
+  date: string,
+  clientName: string,
+  clientPhone: string,
+  takenBy: DateConflict
+) {
+  const p = lead.photographers;
+  if (!p || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  const { data: claimed, error } = await supabase
+    .from("leads")
+    .update({ date_conflict_notified_for: date })
+    .eq("id", lead.id)
+    .or(`date_conflict_notified_for.is.null,date_conflict_notified_for.neq.${date}`)
+    .select("id");
+  if (error) console.error("[submit-questionnaire] date-taken claim failed", error);
+  if (!claimed?.length) return;
+
+  const lang = photographerLang(p.ui_lang);
+  const t = makeT(messagesFor(lang));
+  const dateStr = new Date(date).toLocaleDateString(dateLocale(lang));
+  await sendPushToPhotographer(lead.photographer_id, {
+    title: t("{name} אישרו את ההצעה, אבל התאריך תפוס", { name: clientName }),
+    body: t("{date} כבר תפוס אצלך ({other}). כדאי ליצור איתם קשר.", { date: dateStr, other: takenBy.name }),
+    url: "/leads",
+    tag: `date-taken-${lead.id}`,
+  });
+  if (!p.email) return;
+  try {
+    await sendEmail({
+      to: notificationEmailFor(p.email),
+      subject: t("התאריך כבר תפוס | {name}", { name: clientName }),
+      text:
+        `${t("שלום {name},", { name: p.name })}\n\n` +
+        `${t("{client} אישר/ה את הצעת המחיר, אבל לא הצליח/ה לסיים את שאלון הפרטים: התאריך {date} כבר תפוס אצלך ({other}). האירוע לא נוצר.", { client: clientName, date: dateStr, other: takenBy.name })}\n\n` +
+        `${t("טלפון: {v}", { v: clientPhone || t("לא הוזן") })}\n\n` +
+        t("כדאי ליצור קשר כדי לתאם. אחרי שמתאמים תאריך אחר או מפנים את התאריך, הלקוח/ה יכול/ה למלא שוב את השאלון באותו קישור להצעת המחיר."),
+    });
+  } catch (e) {
+    console.error("[submit-questionnaire] failed to send date-taken email", e);
   }
 }
