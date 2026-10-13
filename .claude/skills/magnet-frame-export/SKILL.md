@@ -140,6 +140,11 @@ Run tests on the test account only: saving overwrites the account's design.
    make sure the card is hidden, the page redirects and the APIs return 403, then **restore
    `monthly`**.
 
+Next.js 16.4.0 / sharp 0.35.5 (2026-10-13): `export-test.js` passed live after the upgrade (save 200, both
+orientations 2362×1772 / 1772×2362, 300 dpi, transparent window, opaque mat). The only code
+change in the tool was a type annotation in `composeMagnetFrameElements` (sharp 0.35 types
+`toBuffer()` as `Buffer<ArrayBuffer>`).
+
 ## When a user reports a problem
 
 1. "שגיאה בהורדת הקובץ": the export GET failed. Check Vercel logs for

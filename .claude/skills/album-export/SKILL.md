@@ -205,6 +205,27 @@ temporary text element on the test album's page ("יעל ואיתי (12.8.2027) 
 [2027]") came out right, then the page was restored. Since 2026-10-07 the test album has a single
 empty page (`elements = []`), so a passing PDF is 1 blank page, not the 10 pages in the table.
 
+Text in JPG/PSD (`albumRaster.ts`, 2026-10-13): the same run order as the PDF (`visualRunsOf` from
+`pdfText.ts`), so brackets are mirrored and characters neither font has (emoji) are left out. Until
+then JPG, PSD and the print house came out with "יעל ואיתי )12.8.2027(", an empty box for an emoji,
+a scrambled "22,222 ש״ח (כולל מע״מ 18%)", and a cover title ending in "Noa & Itay(". Lines without
+brackets ("רותם & דניאל · 12.6.2026", "ח.פ: 039119243", "Hello (World) 2027") came out
+pixel-identical before and after. **No album font has Cyrillic**, so Russian text is left out of
+every format (it used to be boxes in JPG/PSD); fixing that means adding Cyrillic font files.
+
+**Testing with content (2026-10-13):** the test album page is empty, so a passing export proves
+little. To check photos, masks, shadows, blurred background and text, put elements on it for the
+test and restore it afterwards: `update gallery_album_spreads set elements = '<json>'::jsonb,
+background_photo_id = '<photo id>', background_blur = 49, background_opacity = 50 where id =
+'b434b637-2396-4a61-96d5-5f2461dde607'` (photo ids from the gallery's `gallery_photos`), then back to
+`elements = '[]', background_photo_id = null, background_blur = 0, background_opacity = 100`.
+
+**Next.js 16.4.0 / sharp 0.35.5 (2026-10-13):** before the upgrade, rendered locally with sharp
+0.34.5 and 0.35.5 (the real geometry of album d2c21e82 plus a text/ornament/shape page, with
+synthetic photos): JPG byte-identical, PDF pixel-identical. After the upgrade, live on the Fly
+worker with 6 photos and 2 texts on the test page: PDF (7 images), JPG 3543×2362 at 300 dpi, PSD
+`8BPS` at the same size, all `ready`.
+
 ## When a user reports an export problem
 
 1. Find the job:
