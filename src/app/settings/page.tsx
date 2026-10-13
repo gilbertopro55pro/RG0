@@ -33,8 +33,7 @@ import { SUBSCRIPTION_PLANS, TEAM_MEMBER_LIMIT_BY_TIER, STORAGE_CAP_BYTES_BY_TIE
 import BackLink from "@/components/BackLink";
 import { hasAppAccess, isInTrial, TRIAL_STORAGE_CAP_BYTES } from "@/lib/subscription";
 import { intakeMonthlyCap } from "@/lib/intakeAssistant";
-import { monthStartIsrael } from "@/lib/intakeChatAccess";
-import { canBuyIntakePacks } from "@/lib/intakeCredits";
+import { canBuyIntakePacks, monthKeyIsrael } from "@/lib/intakeCredits";
 import { getT } from "@/i18n/server";
 
 export default async function SettingsPage({
@@ -84,13 +83,14 @@ export default async function SettingsPage({
   if (!photographer) redirect("/");
   if (!hasAppAccess(photographer)) redirect("/billing");
 
-  const { count: intakeUsedThisMonth } = await supabase
-    .from("bot_conversations")
-    .select("id", { count: "exact", head: true })
-    .eq("channel", "web")
-    .eq("extra_credit", false)
-    .gt("client_turns", 0)
-    .gte("created_at", monthStartIsrael().toISOString());
+  // The server-only monthly counter (intake_monthly_usage, migration 0166), readable by its owner.
+  const { data: intakeUsage } = await supabase
+    .from("intake_monthly_usage")
+    .select("used")
+    .eq("photographer_id", user!.id)
+    .eq("month", monthKeyIsrael())
+    .maybeSingle<{ used: number }>();
+  const intakeUsedThisMonth = intakeUsage?.used ?? 0;
 
   const t = await getT();
 

@@ -44,29 +44,38 @@ export async function assistantUnavailableReason(supabase: ServiceClient, p: Cha
   return used >= cap && (p.intake_extra_conversations ?? 0) <= 0 ? "cap" : null;
 }
 
-// This month's web conversations that count toward the plan's cap (a client wrote at least once;
-// conversations paid with a bought credit don't count).
+// This month's web conversations that count toward the plan's cap (conversations paid with a bought
+// credit don't count). A server-only counter (intake_monthly_usage, migration 0166), not a count of
+// bot_conversations rows: deleting a lead deletes its conversation, which used to give the slot back.
 export async function intakeUsedThisMonth(supabase: ServiceClient, photographerId: string): Promise<number> {
-  const { count } = await supabase
-    .from("bot_conversations")
-    .select("id", { count: "exact", head: true })
+  const { data } = await supabase
+    .from("intake_monthly_usage")
+    .select("used")
     .eq("photographer_id", photographerId)
-    .eq("channel", "web")
-    .eq("extra_credit", false)
-    .gt("client_turns", 0)
-    .gte("created_at", monthStartIsrael().toISOString());
-  return count ?? 0;
+    .eq("month", monthKeyIsrael())
+    .maybeSingle<{ used: number }>();
+  return data?.used ?? 0;
 }
 
 // A new conversation takes a slot: the plan's monthly cap first, then a bought conversation.
 // Null = no slot (the caller shows the form). When this conversation brings the month to 90% of
 // the cap, the photographer's phone gets one notification for the month (owner, 2026-10-01).
+// Checking the cap and taking the slot is one statement (claim_intake_monthly_slot), so two new
+// chats at once can't both take the last one.
 export async function claimConversationSlot(supabase: ServiceClient, p: ChatPhotographer): Promise<{ extraCredit: boolean } | null> {
   const cap = intakeMonthlyCap(p);
-  const used = await intakeUsedThisMonth(supabase, p.id);
-  if (used < cap) {
-    if (used + 1 >= cap) await alertCapFull(supabase, p, cap);
-    else if (used + 1 >= Math.ceil(cap * INTAKE_ALERT_RATIO)) await alertNearCap(supabase, p, used + 1, cap);
+  const { data: used, error } = await supabase.rpc("claim_intake_monthly_slot", {
+    p_photographer: p.id,
+    p_month: monthKeyIsrael(),
+    p_cap: cap,
+  });
+  if (error) {
+    console.error("Intake slot claim failed:", p.id, error);
+    return null;
+  }
+  if (typeof used === "number") {
+    if (used >= cap) await alertCapFull(supabase, p, cap);
+    else if (used >= Math.ceil(cap * INTAKE_ALERT_RATIO)) await alertNearCap(supabase, p, used, cap);
     return { extraCredit: false };
   }
   const { data: took } = await supabase.rpc("consume_intake_extra", { p_photographer: p.id });
@@ -141,13 +150,4 @@ async function alertNearCap(supabase: ServiceClient, p: ChatPhotographer, used: 
     url: "/settings?tab=automation",
     tag: "intake-cap",
   });
-}
-
-export function monthStartIsrael(): Date {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit" }).formatToParts(new Date());
-  const y = parts.find((x) => x.type === "year")!.value;
-  const m = parts.find((x) => x.type === "month")!.value;
-  // Midnight Israel time ≈ 21:00/22:00 UTC the day before; the 3-hour margin only ever counts a
-  // few extra hours of the previous month, never misses this month's conversations.
-  return new Date(Date.UTC(Number(y), Number(m) - 1, 1) - 3 * 3600_000);
 }

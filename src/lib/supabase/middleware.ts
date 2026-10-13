@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { ACCESS_COLUMNS, LOCKED_ALLOWED_API, isLockedOut, isWriteMethod, lockedOutResponse, type AccessRow } from "@/lib/appAccess";
 
 const PUBLIC_PATHS = [
   "/",
@@ -133,6 +134,25 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
+  }
+
+  // The server-side lock (lib/appAccess.ts): a photographer whose trial ended or whose subscription
+  // lapsed can't write through the API either. Only writes to the photographer's own API cost the
+  // lookup; public paths (a client's gallery, portal or quote) are never gated. If the lookup fails,
+  // the request goes through: an outage must not lock out paying accounts.
+  if (
+    user &&
+    pathname.startsWith("/api/") &&
+    !isPublicPath &&
+    isWriteMethod(request.method) &&
+    !LOCKED_ALLOWED_API.some((path) => pathname === path || pathname.startsWith(`${path}/`))
+  ) {
+    const { data: row } = await supabase
+      .from("photographers")
+      .select(ACCESS_COLUMNS)
+      .eq("id", user.sub)
+      .maybeSingle<AccessRow>();
+    if (isLockedOut(row)) return lockedOutResponse(request.cookies.get("ui_lang")?.value);
   }
 
   return supabaseResponse;
