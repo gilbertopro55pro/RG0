@@ -104,7 +104,8 @@
     // B: the line, and the phone rising with a quick screen per beat.
     const b0 = B(4);
     reveal($("l1"), t, b0 + 0.04);
-    reveal($("l2"), t, B(6), { stagger: 0.07 });
+    // a beat after the first line (owner, 2026-10-13: half a second more for "וגילברטו דואגת לכל השאר")
+    reveal($("l2"), t, B(5), { stagger: 0.07 });
     const up = ease((t - b0) / 0.55);
     const fly = easeIn((t - B(7.65)) / B(0.35));
     const ph = $("ph");
@@ -145,7 +146,7 @@
   window.AUDIO = {
     duration: DURATION, drop: 0, end: B(11),
     cues: [[0, "shutter"], [B(1), "shutter"], [B(2), "shutter"], [B(3), "shutter"], [B(0.5), "pop", 0.7],
-      [B(4), "whoosh"], [B(5), "tap"], [B(6), "tap"], [B(6), "pop", 0.6], [B(7), "tap"],
+      [B(4), "whoosh"], [B(5), "tap"], [B(5), "pop", 0.6], [B(6), "tap"], [B(7), "tap"],
       [B(8), "suck"], [B(8), "impact"], [B(9), "pop", 0.7], [B(10), "impact", 0.5], [B(10.5), "tick", 1.5]],
   };
 </script>
