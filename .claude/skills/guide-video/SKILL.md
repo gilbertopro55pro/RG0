@@ -168,6 +168,50 @@ logo, in a "coming soon" reveal style.
     - `f-quote2`: `-ss 11.5 -t 6.2 -i quote-flow.mp4 -vf "fps=24,crop=480:690:0:76,scale=900:-2"`
     - `f-home`: `-ss 1.5 -t 6.5 -i overview.mp4 -vf "fps=30,crop=480:660:0:0,scale=900:-2"`
 
+## Short ads (מודעות 6/12/20 שניות, 2026-10-13)
+The owner asked for three paid-social ads: up to 6s (a hook and the invitation), up to 12s (pain,
+solution, invitation), and up to 20s (pain, solution, features, invitation). They should look and
+sound "like a professional video editor made them, with no sign of AI": effects and dynamic music.
+They are delivered as files, not in `public/`.
+- **Files.**
+  - `ad1.html` (6.0s), `ad2.html` (12.0s), `ad3.html` (19.9s): the timelines.
+  - `ad-lib.js`: the shared motion.
+    - A camera: a slow push, a punch-in and a decaying shake on hits.
+    - Words rising from behind their line (`[data-words]`), and the marker from promo3.
+    - A whip pan, film grain and a light leak.
+  - `ad.css`: the shared look.
+    - The promo navy, gold and Rubik.
+    - A 3D phone with the real footage on its screen.
+    - The end card.
+  - `ad.js`: renders a template frame by frame. It reads its `window.AUDIO`, builds the soundtrack with `ad-audio.mjs`, and muxes.
+- **Run.** `PWC=… FF=… TEMPLATE=ad2.html NAME=gilberto-ad-12s node ad.js <run folder>` (add `preview` plus `TIMES=…` for stills).
+  - The run folder needs `fonts.css`.
+  - It needs the promo footage folders (`f-chat`, `f-quote2`, `f-gallery`, `f-home`), symlinked from the promo run folder.
+  - It needs `ph/<pexels id>.jpg`: the demo gallery's Pexels wedding photos, license free for commercial use.
+- **Sound (`ad-audio.mjs`).** It isn't a cut of the `energy` file: the track is re-arranged to each ad from the same patterns and seed as in `scripts/reel-music/tracks.mjs`, so it's the same music.
+  - The build sits under the pain at about half the level, with a riser and a snare roll into the drop.
+  - The drop lands on the turn ("עם גילברטו").
+  - `breaks` drop the kick for a breath before a hit (ad 3, before "40 דקות").
+  - It ends on a **button**: a last hit with a held chord, not a fade.
+  - Sound effects are placed from the template's `cues`, all synthesized (none taken from apps): shutter (photo cuts), ping and buzz (notifications), whoosh, suck (a rise into a hit), impact, tap, tick (counters) and pop (words and cards).
+  - The edit and the sound come from the same `B(n)` beats, so they can't drift.
+- **The three ads.**
+  - **6s:** "צלמים?" over four wedding photos, one per beat, each with a shutter and a short flash. Then "אתם מצלמים, / וגילברטו דואגת לכל השאר" over the phone, with a screen per beat (the gallery, its chapters, the chat, the quote). End: "בואו להתנסות / עם גילברטו", with the button "התחילו 14 יום בחינם" ("נסו" would repeat "להתנסות").
+  - **12s:** 00:41 after 10 hours of shooting. Client messages pile up faster and faster; the first is the one the assistant answers in the real chat. "הצילום נגמר, / הוואטסאפים לא" (a red marker on "לא"). On the drop, "עם גילברטו". Then the real chat, with the labels "בדק ביומן: התאריך פנוי", "אוסף את כל הפרטים" and "ליד חדש מחכה לכם". The end card is video 2's ("בזמן שאתם מצלמים, / גילברטו עונה ללקוחות שלכם").
+  - **20s:** "על כל אירוע יש בערך 4.5 שעות של עבודה מנהלית" (the landing page's figure, `lib/adminTime.ts`), counting up from 2. The tasks pile up as cards, and on the drop they are pulled into the logo: "את רוב העבודה הזאת / גילברטו עושה בשבילכם". Then four features, 5 beats each, on one phone that turns between them:
+    1. The assistant.
+    2. Quote and contract.
+    3. Galleries.
+    4. The home screen.
+    
+    Then "4.5 שעות" is struck out and "40 דקות" lands, and the end card ("אתם מצלמים, / וגילברטו דואגת לכל השאר").
+- **Rules kept.** Same as the promos: no period at the end of a line, the logo already carries the name, and each end card has one sentence on two lines of the same size (`fitAll` shrinks both to the smaller).
+  - All text sits between y 250 and 1450, clear of the Reels/TikTok interface.
+  - The first frame already says something (it's the thumbnail).
+  - The assistant never quotes prices, so the client messages ask about dates, packages and video, not "how much".
+- **Encoding.** CRF 19 capped at 8 Mb/s (the grain is noise and inflates the file; the first render was 12.5MB for 6s).
+- **Review.** Before sending: stills at the transitions, real frames from the mp4 (`-ss`), and the audio envelope (RMS per beat). The hits and the button must land on the beats. The music can't be heard from here, so the owner judges it by ear.
+
 ## Setup (once per container)
 1. Scratch dir outside the repo: `export GF_OUT=<scratchpad>/guide-video GF_STATE=<scratchpad>/qa-state.json`.
 2. `playwright-core` is needed (`npm i playwright-core` in the scratchpad if missing; Chromium is at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`). Run node with `NODE_PATH` pointing at that node_modules.

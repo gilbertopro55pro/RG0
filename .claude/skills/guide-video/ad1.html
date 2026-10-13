@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Ad 1, 6 s (SKILL.md "Short ads"): "צלמים?" over wedding photos cut on the beat like a camera
+     firing, the brand line over the app, and the invitation. Starts on the drop of the energy track. -->
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="ad.css">
+<style>
+  #q { top: 720px; font-size: 250px; font-weight: 900; letter-spacing: -.04em; line-height: 1; text-shadow: 0 10px 60px rgba(0,0,0,.55); }
+  #qline { position: absolute; top: 1000px; left: 50%; height: 10px; width: 520px; margin-left: -260px; background: #c9a15a; transform-origin: 100% 50%; transform: scaleX(0); border-radius: 5px; }
+  #l1 { top: 290px; font-size: 104px; }
+  #l2 { top: 410px; font-size: 92px; }
+  #sC .end { padding-top: 420px; }
+  #endbg { position: absolute; inset: -60px; background-size: cover; background-position: 50% 35%; filter: blur(34px) brightness(.5) saturate(1.1); opacity: .28; }
+  #bgph { position: absolute; inset: -60px; background-size: cover; background-position: 50% 40%; filter: blur(26px) brightness(.38) saturate(1.1); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div id="sA" class="scene">
+    <div class="ph" id="p0"></div><div class="ph" id="p1"></div><div class="ph" id="p2"></div><div class="ph" id="p3"></div>
+    <div class="shade"></div>
+    <div id="q" class="c">צלמים?</div>
+    <div id="qline"></div>
+  </div>
+  <div id="sB" class="scene">
+    <div id="bgph"></div>
+    <div id="l1" class="c big w" data-words>אתם מצלמים,</div>
+    <div id="l2" class="c big g" data-words data-fit>וגילברטו דואגת לכל השאר</div>
+    <div class="rig"><div class="phone" id="ph"><div class="scr"><div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="ic"><svg width="34" height="22" viewBox="0 0 34 22"><rect x="0" y="14" width="5" height="8" rx="1" fill="#14100a"/><rect x="8" y="10" width="5" height="12" rx="1" fill="#14100a"/><rect x="16" y="5" width="5" height="17" rx="1" fill="#14100a"/><rect x="24" y="0" width="5" height="22" rx="1" fill="#14100a"/></svg><svg width="50" height="24" viewBox="0 0 50 24"><rect x="1" y="1" width="42" height="22" rx="6" fill="none" stroke="#14100a" stroke-width="2" opacity=".5"/><rect x="4" y="4" width="32" height="16" rx="3" fill="#14100a"/><rect x="45" y="8" width="3" height="8" rx="1" fill="#14100a" opacity=".5"/></svg></span></div>
+      <img class="feed" id="scr" alt=""><div class="glare" id="glare"></div></div></div></div>
+  </div>
+  <div id="sC" class="scene">
+    <div id="endbg"></div>
+    <div class="end">
+      <img class="mark logoimg" src="logo.png" alt="">
+      <div class="msg"><b class="m1" data-words>בואו להתנסות</b><b class="m2" data-words>עם גילברטו</b></div>
+      <div class="cta">התחילו 14 יום בחינם<i></i></div>
+      <div class="link">myframeflow.com/start<u></u></div>
+      <div class="free">ללא כרטיס אשראי וללא התחייבות</div>
+    </div>
+  </div>
+  <div id="leak"></div>
+  <div id="gflash"></div>
+  <div id="flash"></div>
+  <div id="vig"></div>
+</div>
+<canvas id="grain" width="360" height="640"></canvas>
+<script src="ad-lib.js"></script>
+<script>
+  // Bars of the energy track (124 BPM). The ad opens on its drop: the first frame already has the
+  // question (the thumbnail), and every photo change is a beat with a shutter.
+  const S = { sA: [0, B(4)], sB: [B(4), B(8)], sC: [B(8), Infinity] };
+  const DURATION = 6.0;
+  const PHOTOS = ["1801263", "27399481", "5310630", "10360896"];
+  // The phone's screens, one per beat: the client's gallery (cover, then the chapters), the
+  // assistant's chat, the quote page. [scene beat, footage, frame]
+  const SCREENS = [[4, "gallery", 1], [5, "gallery", 64], [6, "chat", 44], [7, "quote2", 4]];
+  const HITS = [0, B(8), B(10)];
+  let cfg;
+  window.setup = async (c) => {
+    cfg = c;
+    PHOTOS.forEach((p, i) => ($("p" + i).style.backgroundImage = `url(${c.photos[p]})`));
+    $("bgph").style.backgroundImage = `url(${c.photos[PHOTOS[3]]})`;
+    $("endbg").style.backgroundImage = `url(${c.photos[PHOTOS[0]]})`;
+    splitWords();
+    await fitAll();
+    await Promise.all([...document.querySelectorAll("img.logoimg")].map((i) => i.decode().catch(() => {})));
+    // Preload every photo so no frame shows a half-loaded one.
+    await Promise.all(PHOTOS.map((p) => new Promise((r) => { const im = new Image(); im.onload = r; im.onerror = r; im.src = c.photos[p]; })));
+  };
+  window.renderAt = async (t) => {
+    // A is on from the very first frame (the thumbnail) and cuts out under the flash.
+    for (const [k, r] of Object.entries(S)) $(k).style.opacity = k === "sA" ? (t < r[1] ? 1 : 0) : vis(t, r, 0.1, 0.1);
+    // camera: a slow push all the way through, a punch and a shake on the hits
+    const sh = shake(t, HITS);
+    $("stage").style.transform = `translate(${sh.x}px, ${sh.y}px) rotate(${sh.r}deg) scale(${1 + 0.02 * (t / DURATION) + punch(t, HITS)})`;
+    $("glow").style.opacity = 0.45 + 0.3 * Math.sin(t * 1.3);
+
+    // A: a photo per beat, each pushing in; a white flash and the question punching with the shutter.
+    PHOTOS.forEach((p, i) => {
+      const a = B(i), on = t >= a && (i === 3 || t < B(i + 1));
+      const el = $("p" + i);
+      el.style.opacity = on ? 1 : 0;
+      const k = clamp((t - a) / B(1.2));
+      el.style.transform = `scale(${1.14 - 0.08 * ease(k)}) translateX(${(i % 2 ? -1 : 1) * 18 * k}px)`;
+    });
+    // Out of A: the last photo rushes at the camera.
+    if (t > B(3.6)) { const z = easeIn((t - B(3.6)) / B(0.4)); $("p3").style.transform = `scale(${1.06 + 0.6 * z})`; $("p3").style.filter = `blur(${z * 18}px)`; }
+    const q = $("q");
+    const qp = 1 + 0.06 * [0, 1, 2, 3].reduce((s, i) => s + (t >= B(i) && t < B(i) + 0.18 ? 1 - (t - B(i)) / 0.18 : 0), 0);
+    q.style.transform = `scale(${(1.05 - 0.05 * ease(t / 0.3)) * qp})`;
+    q.style.opacity = 1 - easeIn((t - B(3.6)) / B(0.4));
+    $("qline").style.transform = `scaleX(${ease((t - B(0.5)) / 0.35)})`;
+    $("qline").style.opacity = q.style.opacity;
+    let fl = 0;
+    for (const i of [1, 2, 3]) if (t >= B(i)) fl = Math.max(fl, 0.5 * (1 - ease((t - B(i)) / 0.09)));
+    if (t >= B(4)) fl = Math.max(fl, 0.9 * (1 - ease((t - B(4)) / 0.2)));
+    $("flash").style.opacity = fl;
+
+    // B: the line, and the phone rising with a quick screen per beat.
+    const b0 = B(4);
+    reveal($("l1"), t, b0 + 0.04);
+    reveal($("l2"), t, B(6), { stagger: 0.07 });
+    const up = ease((t - b0) / 0.55);
+    const fly = easeIn((t - B(7.65)) / B(0.35));
+    const ph = $("ph");
+    ph.style.top = 640 + (1 - up) * 1100 + "px";
+    ph.style.transform = `rotateX(${(1 - up) * 24 + 3}deg) rotateY(${-8 + 5 * Math.sin(t * 1.4)}deg) rotateZ(${(1 - up) * -4}deg) translateZ(${fly * 1400}px)`;
+    ph.style.filter = fly > 0 ? `blur(${fly * 16}px)` : "none";
+    ph.parentElement.style.opacity = 1 - fly;
+    $("glare").style.backgroundPosition = `${100 - 100 * clamp((t - b0) / B(4))}% 0`;
+    $("bgph").style.transform = `scale(${1.1 + 0.05 * clamp((t - b0) / B(4))})`;
+    let k = 0;
+    while (k + 1 < SCREENS.length && t >= B(SCREENS[k + 1][0])) k++;
+    const [sbeat, foot, fr] = SCREENS[k];
+    if (t >= b0 - 0.05 && t < B(8)) {
+      const f = cfg.foot[foot];
+      await setImg($("scr"), `${f.dir}/${String(Math.min(f.n, fr)).padStart(5, "0")}.jpg`);
+      // each screen drifts up a little, as if scrolled
+      $("scr").style.transform = `translateY(${-40 * ease((t - B(sbeat)) / B(1))}px)`;
+    }
+
+    // C: the invitation, one element per beat, the button glinting after it lands.
+    const c0 = B(8);
+    $("endbg").style.transform = `scale(${1.15 - 0.08 * clamp((t - c0) / 2.2)})`;
+    const mk = document.querySelector("#sC .mark");
+    mk.style.transform = `scale(${0.5 + 0.5 * back((t - c0) / 0.42)}) rotate(${(1 - ease((t - c0) / 0.42)) * -10}deg)`;
+    $("gflash").style.opacity = t >= c0 ? 0.8 * (1 - ease((t - c0) / 0.45)) : 0;
+    reveal(document.querySelector("#sC .m1"), t, B(9));
+    reveal(document.querySelector("#sC .m2"), t, B(9) + 0.16);
+    const cta = document.querySelector("#sC .cta");
+    slam(cta, t, B(10), 1.25, 0.24);
+    cta.firstElementChild.style.left = -40 + 180 * ease((t - B(10.4)) / 0.6) + "%";
+    rise(document.querySelector("#sC .link"), t, B(10.5), 30, 0.3);
+    document.querySelector("#sC .link u").style.width = 100 * ease((t - B(10.9)) / 0.4) + "%";
+    rise(document.querySelector("#sC .free"), t, B(11), 20, 0.3);
+    leak(t, [0, B(4), B(8)]);
+    grain(t);
+  };
+  window.DURATION = DURATION;
+  window.AUDIO = {
+    duration: DURATION, drop: 0, end: B(11),
+    cues: [[0, "shutter"], [B(1), "shutter"], [B(2), "shutter"], [B(3), "shutter"], [B(0.5), "pop", 0.7],
+      [B(4), "whoosh"], [B(5), "tap"], [B(6), "tap"], [B(6), "pop", 0.6], [B(7), "tap"],
+      [B(8), "suck"], [B(8), "impact"], [B(9), "pop", 0.7], [B(10), "impact", 0.5], [B(10.5), "tick", 1.5]],
+  };
+</script>
+</body>
+</html>

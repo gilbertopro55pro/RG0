@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Ad 2, 12 s (SKILL.md "Short ads"): the pain (client messages piling up after a shoot), the turn
+     on the drop, the solution (the assistant answering the same message in a real chat), the end
+     card. The music builds under the pain and drops on "עם גילברטו". -->
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="ad.css">
+<style>
+  #clock { position: absolute; top: 240px; left: 0; right: 0; text-align: center; font-size: 210px; font-weight: 300; letter-spacing: -.03em; line-height: 1; direction: ltr; font-variant-numeric: tabular-nums; }
+  #after { top: 470px; font-size: 44px; color: #aeb8cc; }
+  .nt { position: absolute; left: 70px; right: 70px; height: 132px; background: rgba(38,50,74,.88); border-radius: 36px; padding: 22px 28px; display: flex; gap: 22px; align-items: center; direction: rtl; box-shadow: 0 24px 60px rgba(0,0,0,.4); opacity: 0; transform-origin: 50% 0; }
+  .nt .app { width: 76px; height: 76px; border-radius: 18px; flex: none; background: #34c759; display: flex; align-items: center; justify-content: center; }
+  .nt div { min-width: 0; }
+  .nt b { display: block; font-size: 32px; } .nt p { font-size: 38px; color: #eef2f8; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nt small { position: absolute; top: 22px; left: 30px; font-size: 26px; color: #8792ab; }
+  #p1 { top: 1150px; font-size: 104px; }
+  #p2 { top: 1270px; font-size: 112px; }
+  #turn { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 520px; }
+  #turn .mark { width: 230px; height: 230px; border-radius: 52px; box-shadow: 0 40px 110px rgba(0,0,0,.5), 0 0 110px rgba(201,161,90,.3); }
+  #turnl { margin-top: 70px; font-size: 150px; font-weight: 800; letter-spacing: -.03em; white-space: nowrap; }
+  .hd { position: absolute; top: 240px; left: 50px; right: 50px; text-align: center; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
+  #h1 { font-size: 88px; } #h2 { font-size: 80px; top: 345px; color: #c9a15a; }
+  #tA { top: 820px; left: 34px; } #tB { top: 1040px; left: 34px; } #tC { top: 1260px; left: 34px; }
+  #sD .end { padding-top: 400px; }
+  #nightbg { position: absolute; inset: -60px; background-size: cover; background-position: 50% 30%; filter: blur(22px) brightness(.42) saturate(.8); opacity: .5; }
+  #endbg { position: absolute; inset: -60px; background-size: cover; background-position: 50% 35%; filter: blur(34px) brightness(.5); opacity: .25; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div id="sA" class="scene">
+    <div id="nightbg"></div>
+    <div id="clock">00:41</div>
+    <div id="after" class="c">אחרי 10 שעות צילום</div>
+    <div id="stack"></div>
+    <div id="p1" class="c big w" data-words>הצילום נגמר,</div>
+    <div id="p2" class="c big g"><span class="wd"><i>הוואטסאפים</i></span> <span class="hl no" id="hlno"><b></b>לא</span></div>
+  </div>
+  <div id="sB" class="scene">
+    <div id="turn"><img class="mark logoimg" src="logo.png" alt=""><div id="turnl"><span class="hl" id="hlyes"><b><i></i></b>עם</span> גילברטו</div></div>
+  </div>
+  <div id="sC" class="scene">
+    <div class="hd" id="h1" data-words>עוזר הפניות עונה להם</div>
+    <div class="hd" id="h2" data-words>תוך שניות, גם אחרי חצות</div>
+    <div class="rig"><div class="phone" id="ph"><div class="scr"><div class="island"></div>
+      <div class="sb"><span>00:42</span><span class="ic"><svg width="34" height="22" viewBox="0 0 34 22"><rect x="0" y="14" width="5" height="8" rx="1" fill="#14100a"/><rect x="8" y="10" width="5" height="12" rx="1" fill="#14100a"/><rect x="16" y="5" width="5" height="17" rx="1" fill="#14100a"/><rect x="24" y="0" width="5" height="22" rx="1" fill="#14100a"/></svg><svg width="50" height="24" viewBox="0 0 50 24"><rect x="1" y="1" width="42" height="22" rx="6" fill="none" stroke="#14100a" stroke-width="2" opacity=".5"/><rect x="4" y="4" width="22" height="16" rx="3" fill="#14100a"/><rect x="45" y="8" width="3" height="8" rx="1" fill="#14100a" opacity=".5"/></svg></span></div>
+      <img class="feed" id="scr" alt=""><div class="glare" id="glare"></div></div></div></div>
+    <div class="tag" id="tA"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>בדק ביומן: התאריך פנוי</div>
+    <div class="tag" id="tB"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>אוסף את כל הפרטים</div>
+    <div class="tag" id="tC"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>ליד חדש מחכה לכם</div>
+  </div>
+  <div id="sD" class="scene">
+    <div id="endbg"></div>
+    <div class="end">
+      <img class="mark logoimg" src="logo.png" alt="">
+      <div class="msg"><b class="m1" data-words>בזמן שאתם מצלמים,</b><b class="m2" data-words>גילברטו עונה ללקוחות שלכם</b></div>
+      <div class="cta">נסו 14 יום בחינם<i></i></div>
+      <div class="link">myframeflow.com/start<u></u></div>
+      <div class="free">ללא כרטיס אשראי וללא התחייבות</div>
+    </div>
+  </div>
+  <div id="leak"></div>
+  <div id="gflash"></div>
+  <div id="flash"></div>
+  <div id="vig"></div>
+</div>
+<canvas id="grain" width="360" height="640"></canvas>
+<script src="ad-lib.js"></script>
+<script>
+  // 124 BPM. The pain is the track's build (two bars), the drop lands on the turn.
+  const S = { sA: [0, B(8)], sB: [B(8), B(10)], sC: [B(10), B(18)], sD: [B(18), Infinity] };
+  const DURATION = 12.0;
+  // Client messages after the shoot, faster and faster. The first one is the message the assistant
+  // answers in the real chat (f-chat). No emoji: Rubik has none.
+  const MSGS = [
+    [-0.6, "נועה", "היי, ה-12.8.27 עדיין פנוי? מחפשים צלם לחתונה"],
+    [1.5, "דניאל", "אפשר לקבל פרטים על החבילות?"],
+    [3, "שירן", "אתם מצלמים גם וידאו?"],
+    [4.5, "מור", "מחפשים צלם לבר מצווה בנובמבר"],
+    [5.5, "אבי", "אפשר לדבר מחר בבוקר?"],
+    [6.5, "נועה", "???"],
+  ];
+  const NT_TOP = 560, NT_STEP = 146, NT_MAX = 4;
+  // The real chat, shortened: the client's message goes out, "the date is free", "where is the
+  // event?", the client types the answer and it goes out.
+  const chatFrame = (ct) => {
+    const cyc = (a, b, from) => a + (Math.floor((ct - from) * 8) % (b - a + 1));
+    if (ct < 0.3) return 9;
+    if (ct < 1.15) return cyc(10, 23, 0.3);
+    if (ct < 2.0) return 24;
+    if (ct < 2.55) return 28;
+    if (ct < 3.1) return 29 + Math.min(5, Math.floor((ct - 2.55) / 0.09));
+    return cyc(35, 46, 3.1);
+  };
+  const HITS = [B(8), B(18)];
+  let cfg;
+  window.setup = async (c) => {
+    cfg = c;
+    $("stack").innerHTML = MSGS.map(([, who, txt], i) => `<div class="nt" id="n${i}"><i class="app"><svg width="44" height="44" viewBox="0 0 24 24" fill="#fff"><path d="M12 3C6.5 3 2 6.6 2 11c0 2.4 1.3 4.5 3.4 6L4.6 21l4.3-2.4c1 .3 2 .4 3.1.4 5.5 0 10-3.6 10-8s-4.5-8-10-8z"/></svg></i><div><b>${who}</b><p>${txt}</p></div><small>עכשיו</small></div>`).join("");
+    $("endbg").style.backgroundImage = `url(${c.photos["1801263"]})`;
+    $("nightbg").style.backgroundImage = `url(${c.photos["10360896"]})`;
+    splitWords();
+    await fitAll();
+    await Promise.all([...document.querySelectorAll("img.logoimg")].map((i) => i.decode().catch(() => {})));
+  };
+  window.renderAt = async (t) => {
+    for (const [k, r] of Object.entries(S)) $(k).style.opacity = k === "sA" ? (t < r[1] ? 1 : 0) : vis(t, r, 0.1, 0.12);
+    const pings = MSGS.map(([at]) => B(at));
+    const sh = shake(t, [...pings.map((p) => p + 0.02)], 7, 0.3);
+    const sh2 = shake(t, HITS, 18, 0.4);
+    $("stage").style.transform = `translate(${sh.x + sh2.x}px, ${sh.y + sh2.y}px) rotate(${sh.r + sh2.r}deg) scale(${1 + 0.025 * (t / DURATION) + punch(t, HITS)})`;
+    $("glow").style.opacity = 0.4 + 0.3 * Math.sin(t * 1.1);
+
+    // A: time passes, the messages pile up (the newest on top, the older ones pushed down and dimmed).
+    $("nightbg").style.transform = `scale(${1.12 - 0.06 * clamp(t / B(8))})`;
+    const mins = 41 + Math.floor(11 * clamp(t / B(7.5)));
+    $("clock").textContent = "00:" + String(mins).padStart(2, "0");
+    const arrived = pings.filter((p) => t >= p).length;
+    MSGS.forEach((m, i) => {
+      const el = $("n" + i);
+      const a = ease((t - pings[i]) / 0.32);
+      if (t < pings[i]) { el.style.opacity = 0; return; }
+      // slot 0 is the top; each later message pushes this one one slot down
+      let slot = 0;
+      for (let j = i + 1; j < MSGS.length; j++) slot += ease((t - pings[j]) / 0.3);
+      const y = NT_TOP + slot * NT_STEP - (1 - a) * 120;
+      const s = 1 - 0.035 * slot;
+      el.style.top = y + "px";
+      el.style.transform = `scale(${s * (0.92 + 0.08 * back(a))})`;
+      el.style.opacity = Math.min(a, clamp(NT_MAX - slot + 0.2)) * (1 - 0.12 * slot);
+    });
+    reveal($("p1"), t, B(1.5));
+    // "הוואטסאפים" rises, then the red marker lands on "לא" with the claps
+    const w2 = document.querySelector("#p2 .wd > i");
+    const pw = ease((t - B(4)) / 0.38);
+    w2.style.transform = `translateY(${(1 - pw) * 105}%) rotate(${(1 - pw) * 7}deg)`;
+    $("hlno").style.opacity = t >= B(5) ? 1 : 0;
+    marker($("hlno"), t, B(5));
+    $("p2").style.opacity = 1;
+    // Out of A: everything is swept up, with a blur, into the drop.
+    const sw = easeIn((t - B(7.55)) / B(0.45));
+    $("sA").style.transform = `translateY(${-sw * 900}px)`;
+    $("sA").style.filter = sw > 0 ? `blur(${sw * 24}px)` : "none";
+
+    // B: the turn on the drop.
+    const b0 = B(8);
+    $("gflash").style.opacity = (t >= b0 ? 0.85 * (1 - ease((t - b0) / 0.5)) : 0) + (t >= B(18) ? 0.6 * (1 - ease((t - B(18)) / 0.45)) : 0);
+    const mk = document.querySelector("#turn .mark");
+    mk.style.transform = `scale(${0.5 + 0.5 * back((t - b0) / 0.4)}) rotate(${(1 - ease((t - b0) / 0.4)) * -12}deg)`;
+    slam($("turnl"), t, b0 + 0.12, 1.4, 0.26);
+    marker($("hlyes"), t, b0 + 0.3);
+    // B out: a whip to the left
+    if (t >= B(9.6)) whip($("turn"), t, B(9.6), { dir: -1, dur: B(0.4) }); else { $("turn").style.transform = ""; $("turn").style.filter = "none"; }
+
+    // C: the real chat on the phone, with what the assistant did as labels.
+    const c0 = B(10);
+    reveal($("h1"), t, c0 + 0.02);
+    reveal($("h2"), t, c0 + B(1));
+    const up = ease((t - c0) / 0.5);
+    const ph = $("ph");
+    ph.style.top = 560 + (1 - up) * 1000 + "px";
+    ph.style.transform = `rotateX(${(1 - up) * 22 + 3}deg) rotateY(${7 - 4 * Math.sin((t - c0) * 1.2)}deg) rotateZ(${(1 - up) * 4}deg)`;
+    $("glare").style.backgroundPosition = `${100 - 100 * clamp((t - c0) / B(8))}% 0`;
+    if (t >= c0 - 0.05 && t < B(18)) await setImg($("scr"), `${cfg.foot.chat.dir}/${String(chatFrame(Math.max(0, t - c0))).padStart(5, "0")}.jpg`);
+    for (const [id, at] of [["tA", B(12.5)], ["tB", B(14.5)], ["tC", B(16.5)]]) {
+      const p = back((t - at) / 0.32, 2.2);
+      $(id).style.opacity = clamp((t - at) / 0.08);
+      $(id).style.transform = `scale(${t >= at ? 0.6 + 0.4 * p : 0.6}) rotate(${(1 - ease((t - at) / 0.32)) * -6}deg)`;
+    }
+    // C out: the phone and labels drop away
+    const co = easeIn((t - B(17.6)) / B(0.4));
+    $("sC").style.transform = `translateY(${co * 300}px) scale(${1 - 0.1 * co})`;
+
+    // D: end card
+    const d0 = B(18);
+    $("endbg").style.transform = `scale(${1.15 - 0.08 * clamp((t - d0) / 3)})`;
+    const em = document.querySelector("#sD .mark");
+    em.style.transform = `scale(${0.5 + 0.5 * back((t - d0) / 0.42)}) rotate(${(1 - ease((t - d0) / 0.42)) * -10}deg)`;
+    reveal(document.querySelector("#sD .m1"), t, B(19));
+    reveal(document.querySelector("#sD .m2"), t, B(19.5));
+    const cta = document.querySelector("#sD .cta");
+    slam(cta, t, B(20.5), 1.25, 0.24);
+    cta.firstElementChild.style.left = -40 + 180 * ease((t - B(21)) / 0.6) + "%";
+    rise(document.querySelector("#sD .link"), t, B(21.5), 30, 0.3);
+    document.querySelector("#sD .link u").style.width = 100 * ease((t - B(22)) / 0.4) + "%";
+    rise(document.querySelector("#sD .free"), t, B(22.5), 20, 0.3);
+    leak(t, [B(8), B(18)]);
+    grain(t);
+  };
+  window.DURATION = DURATION;
+  window.AUDIO = {
+    duration: DURATION, drop: B(8), end: B(23),
+    cues: [
+      ...MSGS.flatMap(([at], i) => [[Math.max(0, B(at)), "ping", i === 5 ? 1.2 : 1], [Math.max(0, B(at)), "buzz", 0.8]]),
+      [B(1.5), "pop", 0.6], [B(5), "pop", 0.8],
+      [B(8), "suck"], [B(8), "impact"], [B(8.3), "pop"], [B(9.6), "whoosh"],
+      [B(10), "pop", 0.6], [B(10.3), "tap", 0.8], [B(12.5), "pop"], [B(14.5), "pop"], [B(16.5), "pop"],
+      [B(17.6), "whoosh", 0.8], [B(18), "impact", 0.8], [B(19), "pop", 0.6], [B(20.5), "impact", 0.45], [B(21.5), "tick", 1.5],
+    ],
+  };
+</script>
+</body>
+</html>
