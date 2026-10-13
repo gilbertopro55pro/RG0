@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { IconSettings } from "@/components/icons/NavIcons";
-import { CURRENT_VERSION } from "@/lib/changelog";
 import { useT } from "@/i18n/client";
 
 // Moved out of the quick-actions grid to sit right next to the "האירועים שלי" heading instead —
 // same unseen-changelog dot it always had, just relocated.
-export default function SettingsGearLink() {
+// The version comes from the server (lib/changelog.ts is ~270KB and must not ship with every page).
+export default function SettingsGearLink({ currentVersion: CURRENT_VERSION }: { currentVersion: string }) {
   const t = useT();
   const [hasUnseenUpdate, setHasUnseenUpdate] = useState(false);
 

@@ -824,7 +824,8 @@ export default function PublicGalleryView({
   const shareLinkFailed = !!madeForThese && !madeForThese.url;
   const galleryShareUrl = () => shareLink ?? "";
   const shareNotReady = shareDisabled || !shareLink;
-  const galleryShareMessage = () => `הגלריה שלי מוכנה לצפייה 📸\n${galleryShareUrl()}`;
+  // In the gallery's language (the client's), like the rest of this page.
+  const galleryShareMessage = () => t("הגלריה שלי מוכנה לצפייה 📸\n{url}", { url: galleryShareUrl() });
 
   const openGalleryShare = () => {
     setGalleryShareScope({ kind: "gallery" });
@@ -900,7 +901,7 @@ export default function PublicGalleryView({
   const shareGalleryViaOther = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: "גלריה", text: galleryShareMessage(), url: galleryShareUrl() });
+        await navigator.share({ title: t("גלריה"), text: galleryShareMessage(), url: galleryShareUrl() });
       } catch {
         // user canceled the native share sheet — nothing to do
       }

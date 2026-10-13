@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { openWhatsApp } from "@/lib/waLink";
 import { useT } from "@/i18n/client";
@@ -71,28 +71,59 @@ export default function PendingClientMessagePrompts({
   const t = useT();
   const [queue, setQueue] = useState<PendingItem[]>([...paymentReminders, ...reviewRequests, ...leadFollowUps, ...clientReminders]);
   const [busy, setBusy] = useState(false);
+  // The WhatsApp message of the prompt on screen, fetched when it shows (dryRun), so the send button
+  // opens WhatsApp right in the tap. iPhone blocks opening it after a request, and the reminder was
+  // then recorded as sent although WhatsApp never opened (audit 2026-10-13).
+  const [preview, setPreview] = useState<{ id: string; phone: string; message: string } | null>(null);
   const entered = useModalEntered();
+  const current = queue[0] as PendingItem | undefined;
 
-  if (queue.length === 0) return null;
-  const current = queue[0];
+  const urlFor = (item: PendingItem) =>
+    item.type === "payment"
+      ? `/api/scheduled-messages/${item.id}/confirm`
+      : item.type === "review"
+        ? `/api/scheduled-messages/${item.id}/confirm-review`
+        : isClientReminder(item)
+          ? `/api/scheduled-messages/${item.id}/confirm-client-reminder`
+          : `/api/scheduled-messages/${item.id}/confirm-lead-followup`;
+  // The answer that sends a message: "not paid yet" for a payment, "send" for the others.
+  const sendBody = (item: PendingItem) => (item.type === "payment" ? { paid: false } : { send: true });
+
+  useEffect(() => {
+    if (!current) return;
+    let cancelled = false;
+    fetch(urlFor(current), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...sendBody(current), dryRun: true }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { clientPhone?: string; message?: string } | null) => {
+        if (!cancelled && data?.clientPhone && data.message) setPreview({ id: current.id, phone: data.clientPhone, message: data.message });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id]);
+
+  if (!current) return null;
 
   const respond = async (paidOrSend: boolean) => {
+    const sends = current.type === "payment" ? !paidOrSend : paidOrSend;
+    const ready = sends && preview?.id === current.id ? preview : null;
+    // Opened first, inside the tap; the send is recorded right after.
+    if (ready) openWhatsApp(ready.phone, ready.message);
     setBusy(true);
-    const url =
-      current.type === "payment"
-        ? `/api/scheduled-messages/${current.id}/confirm`
-        : current.type === "review"
-          ? `/api/scheduled-messages/${current.id}/confirm-review`
-          : isClientReminder(current)
-            ? `/api/scheduled-messages/${current.id}/confirm-client-reminder`
-            : `/api/scheduled-messages/${current.id}/confirm-lead-followup`;
     const body = current.type === "payment" ? { paid: paidOrSend } : { send: paidOrSend };
-    const res = await fetch(url, {
+    const res = await fetch(urlFor(current), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    });
-    if (res.ok) {
+      keepalive: true,
+    }).catch(() => null);
+    if (res?.ok && !ready) {
       const data: { sent: boolean; clientPhone?: string; message?: string } = await res.json();
       if (data.sent && data.clientPhone && data.message) {
         openWhatsApp(data.clientPhone, data.message);

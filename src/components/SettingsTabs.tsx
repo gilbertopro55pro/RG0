@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { CURRENT_VERSION } from "@/lib/changelog";
 import { useT } from "@/i18n/client";
 
 export default function SettingsTabs({
   tabs,
   initialTab,
+  currentVersion: CURRENT_VERSION,
 }: {
   tabs: { id: string; label: string; content: ReactNode }[];
+  // From the server: lib/changelog.ts (~270KB) must not ship with the page.
+  currentVersion: string;
   // ?tab=<id> on /settings opens that tab (e.g. the new-lead popup's link to notifications).
   initialTab?: string;
 }) {

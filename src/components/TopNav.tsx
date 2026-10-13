@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { CURRENT_VERSION } from "@/lib/changelog";
 import GlassTabStrip from "@/components/GlassTabStrip";
 import { useT } from "@/i18n/client";
 import { IconHome, IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics, IconSettings } from "@/components/icons/NavIcons";
@@ -30,7 +29,8 @@ const NAV_ITEMS = [
 // own dashboard nav to every potential client who opened a shared portfolio link.
 export const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/r", "/billing", "/landing", "/en", "/ru", "/p", "/chat", "/print", "/terms", "/privacy", "/cookies", "/cancellation-policy", "/accessibility", "/business-info"];
 
-export default function TopNav() {
+// The version comes from the server (lib/changelog.ts is ~270KB and must not ship with every page).
+export default function TopNav({ currentVersion: CURRENT_VERSION }: { currentVersion: string }) {
   const pathname = usePathname();
   const t = useT();
   const [hasUnseenUpdate, setHasUnseenUpdate] = useState(false);

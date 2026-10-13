@@ -766,7 +766,8 @@ export default function EventPricingCalculator({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
-      onClick={onClose}
+      // No close on a tap outside (audit 2026-10-13): a stray tap while scrolling on a phone threw
+      // away the whole quote. The close button and "ביטול" still close it.
     >
       <div
         className="w-full max-w-md h-[75vh] overflow-y-auto rounded-3xl p-5 pb-6 bg-paper shadow-sheet"

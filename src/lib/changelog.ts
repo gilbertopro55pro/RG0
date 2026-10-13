@@ -1,22 +1,8 @@
-import type { Lang } from "@/i18n/config";
+import type { ChangelogEntry } from "@/lib/changelogEntry";
 
-export type ChangelogEntry = {
-  version: string;
-  date: string;
-  // Hebrew, the source text (and the fallback for any language without a translation).
-  changes: string[];
-  // Translations for the photographer's screen language (Settings › מראה › שפת הממשק): same
-  // order and length as `changes`. Missing → the Hebrew `changes` is shown.
-  en?: string[];
-  ru?: string[];
-};
-
-// The entry's lines in the viewer's UI language, falling back to Hebrew when the translation is
-// missing or doesn't line up with the Hebrew list.
-export function changesFor(entry: ChangelogEntry, lang: Lang): string[] {
-  const tr = lang === "en" ? entry.en : lang === "ru" ? entry.ru : undefined;
-  return tr && tr.length === entry.changes.length ? tr : entry.changes;
-}
+// The type and changesFor live in lib/changelogEntry.ts. Import this file only from server code:
+// client components get CURRENT_VERSION / the latest entry as props (the history is ~270KB).
+export { changesFor, type ChangelogEntry } from "@/lib/changelogEntry";
 
 // Newest first. CURRENT_VERSION is derived from entries[0] — bump a version by adding a new
 // entry at the top, not by editing this constant directly.
