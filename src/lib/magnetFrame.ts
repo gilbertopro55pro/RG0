@@ -299,7 +299,7 @@ async function composeDecorationElement(base: Buffer, el: Extract<MagnetFrameEle
 // the DB + storage — this function has no DB access of its own).
 export async function composeMagnetFrameElements(elements: MagnetFrameElement[], orientation: FrameOrientation, customElementBuffers: Map<string, Buffer> = new Map()): Promise<Buffer> {
   const { widthPx, heightPx } = magnetExportDimensions(orientation);
-  let buffer = await sharp({ create: { width: widthPx, height: heightPx, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+  let buffer: Buffer = await sharp({ create: { width: widthPx, height: heightPx, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .png()
     .toBuffer();
   for (const el of elements) {
