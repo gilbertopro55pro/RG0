@@ -37,6 +37,7 @@ import type {
   GalleryRow,
   TeamMember,
 } from "@/lib/types";
+import { clipSongLines } from "@/lib/clipSongs";
 import SendUpdateButton from "@/components/SendUpdateButton";
 import ContractSection from "@/components/ContractSection";
 import PortalLinkSection from "@/components/PortalLinkSection";
@@ -1502,6 +1503,29 @@ export default function EventDetailView({
         </div>
       )}
 
+
+      {/* The clip songs the client chose in the portal (owner, 2026-10-13; lib/clipSongs.ts). */}
+      {clipSongLines(event.clip_songs).length > 0 && (
+        <div className="mt-7 rounded-2xl p-4 bg-card border border-line shadow-card">
+          <div className="text-sm font-semibold mb-2">{t("השירים לקליפ")}</div>
+          <ul className="space-y-1.5 text-sm">
+            {clipSongLines(event.clip_songs).map((l) => (
+              <li key={l.label} className="[overflow-wrap:anywhere]">
+                <span className="text-ink-soft">{t(l.label)}: </span>
+                {l.value.split(/(https?:\/\/\S+)/g).map((part, i) =>
+                  /^https?:\/\//.test(part) ? (
+                    <a key={i} href={part} target="_blank" rel="noopener noreferrer" dir="ltr" className="font-semibold underline underline-offset-2" style={{ color: "var(--color-amber-deep)" }}>
+                      {part}
+                    </a>
+                  ) : (
+                    <span key={i} dir="auto">{part}</span>
+                  )
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="mt-7">
         <div className="flex items-center gap-2 mb-3.5">

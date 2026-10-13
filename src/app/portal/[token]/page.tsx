@@ -4,6 +4,7 @@ import { normalizeIsraeliPhone } from "@/lib/whatsapp";
 import type { CustomPackageStageRow, EventPaymentRow, EventRow, EventStageRow, GalleryRow } from "@/lib/types";
 import PortalStageActions from "@/components/PortalStageActions";
 import { stageRole } from "@/lib/clientReminders";
+import { isWeddingEvent } from "@/lib/clipSongs";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { clientLangFor } from "@/lib/clientLang";
 import ClientLangScope from "@/i18n/ClientLangScope";
@@ -72,12 +73,6 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
     albumDesignUrl = await getSignedDownloadUrl("album-designs", event.album_design_pdf_path, 3600);
   }
 
-  const whatsappSongLink = event.photographers?.phone
-    ? `https://wa.me/${normalizeIsraeliPhone(event.photographers.phone)}?text=${encodeURIComponent(
-        `היי! רציתי לשלוח את השיר לקליפ עבור האירוע של ${event.client_name}: `
-      )}`
-    : null;
-
   const allStages = stages ?? [];
   const curIdx = currentStageIndex(allStages);
   const byKey = new Map(allStages.map((s) => [s.stage_key ?? `custom:${s.custom_stage_id}`, s]));
@@ -134,7 +129,8 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           }))}
           galleryLink={galleryLink}
           albumDesignUrl={albumDesignUrl}
-          whatsappLink={whatsappSongLink}
+          twoSongs={isWeddingEvent(event.event_type)}
+          clipSongs={event.clip_songs ?? null}
         />
       </div>
 

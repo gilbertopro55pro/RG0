@@ -135,6 +135,8 @@ export type EventRow = {
   // 3-day reminders (lib/clientReminders.ts, migration 0152).
   album_approved_at?: string | null;
   songs_chosen_at?: string | null;
+  // The songs the client chose for the clip in the portal (lib/clipSongs.ts, migration 0161).
+  clip_songs?: import("@/lib/clipSongs").ClipSongs | null;
   // Free-text occasion (e.g. "עלייה לתורה") — display-only prefix on the event card via
   // eventDisplayName(); client_name itself stays the plain client name for messages/contracts.
   event_type: string | null;
