@@ -50,6 +50,14 @@ export async function scheduleLeadQuoteFollowUp(
   supabase: SupabaseClient<any>,
   leadId: string
 ) {
+  // One pending nudge per lead: sending the quote again (or an updated one) moves it, instead of
+  // adding a second one beside it.
+  await supabase
+    .from("scheduled_messages")
+    .update({ status: "canceled" })
+    .eq("lead_id", leadId)
+    .eq("kind", "lead_quote_followup")
+    .eq("status", "pending");
   await supabase.from("scheduled_messages").insert({
     lead_id: leadId,
     kind: "lead_quote_followup" as const,

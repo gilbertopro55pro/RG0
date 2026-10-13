@@ -130,6 +130,7 @@ type FollowUpLead = {
   quoted_amount: number | null;
   status: string;
   photographer_id: string;
+  quote_approved_at: string | null;
   archived_at: string | null;
   client_lang: string | null;
 };
@@ -144,11 +145,13 @@ type FollowUpLead = {
 async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: ScheduledMessage) {
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, name, phone, email, event_date_interest, event_type_name, quoted_amount, status, photographer_id, archived_at, client_lang")
+    .select("id, name, phone, email, event_date_interest, event_type_name, quoted_amount, status, photographer_id, archived_at, client_lang, quote_approved_at")
     .eq("id", message.lead_id)
     .single<FollowUpLead>();
 
-  if (!lead || lead.status === "won" || lead.status === "lost" || lead.archived_at) {
+  // An approved quote needs no nudge (the client was emailed "our quote is still open" after
+  // approving it).
+  if (!lead || lead.status === "won" || lead.status === "lost" || lead.archived_at || lead.quote_approved_at) {
     await supabase.from("scheduled_messages").update({ status: "canceled" }).eq("id", message.id);
     return { id: message.id, status: "canceled", reason: "lead no longer active" };
   }

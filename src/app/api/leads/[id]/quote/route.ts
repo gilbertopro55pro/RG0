@@ -21,13 +21,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "יש להזין סכום תקין" }, { status: 400 });
   }
 
+  // A quote that changed after the client approved it needs their approval again: the client's page
+  // opened on the old approval, so the new price was never seen or approved (audit 2026-10-13).
+  const { data: before } = await supabase
+    .from("leads")
+    .select("quoted_amount, quote_details, quote_approved_at")
+    .eq("id", leadId)
+    .maybeSingle<{ quoted_amount: number | null; quote_details: unknown; quote_approved_at: string | null }>();
+  const sentDetails = details && Array.isArray(details.items) && JSON.stringify(details).length < 20000 ? details : null;
+  const changed =
+    !!before &&
+    (Number(before.quoted_amount) !== Number(amount) || (sentDetails !== null && stableJson(before.quote_details) !== stableJson(sentDetails)));
+
   const { data: lead, error } = await supabase
     .from("leads")
     .update({
+      ...(changed && before?.quote_approved_at ? { quote_approved_at: null } : {}),
       quoted_amount: amount,
       quote_note: note || null,
       // The full quote from the builder (lib/leadQuote.ts); the old amount-only form sends none.
-      ...(details && Array.isArray(details.items) && JSON.stringify(details).length < 20000 ? { quote_details: details } : {}),
+      ...(sentDetails ? { quote_details: sentDetails } : {}),
       quote_sent_at: new Date().toISOString(),
       status: "quoted",
       ...(isLang(clientLang) && canChooseClientLang(user.email) ? { client_lang: clientLang } : {}),
@@ -43,4 +56,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   await scheduleLeadQuoteFollowUp(supabase, leadId);
 
   return NextResponse.json({ lead });
+}
+
+// JSON with object keys sorted at every level: the database (jsonb) doesn't keep the key order the
+// builder sent, so a plain JSON.stringify would call every resent quote "changed".
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .filter((k) => (value as Record<string, unknown>)[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson((value as Record<string, unknown>)[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
 }

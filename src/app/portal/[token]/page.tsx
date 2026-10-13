@@ -75,6 +75,16 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
 
   const allStages = stages ?? [];
   const curIdx = currentStageIndex(allStages);
+  // The photographer told the client the album / the full video is ready (the notify button
+  // schedules these reminders, lib/clientReminders.ts).
+  const { data: sentReminders } = await supabase
+    .from("scheduled_messages")
+    .select("kind")
+    .eq("event_id", event.id)
+    .in("kind", ["album_approval_reminder", "song_selection_reminder"])
+    .returns<{ kind: string }[]>();
+  const albumSent = (sentReminders ?? []).some((r) => r.kind === "album_approval_reminder");
+  const videoSent = (sentReminders ?? []).some((r) => r.kind === "song_selection_reminder");
   const byKey = new Map(allStages.map((s) => [s.stage_key ?? `custom:${s.custom_stage_id}`, s]));
 
   // Client-facing view hides internal-only stages (culling, backup, etc.) — the client only cares
@@ -126,6 +136,15 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
             label: s.label,
             done: clientDone(s),
             isCurrent: s.index === curIdx,
+            // The album / video approval opens once there's something to approve: the stage is
+            // current, the stage before it is done, or it was sent to the client. Until 2026-10-13 it
+            // could be approved from day one, which also cancelled the "approve the album" reminder.
+            approvalOpen:
+              s.index === curIdx ||
+              s.index === 0 ||
+              !!allStages[s.index - 1]?.done ||
+              (s.role === "album_approval" && (!!albumDesignUrl || albumSent)) ||
+              (s.role === "video_approval" && videoSent),
           }))}
           galleryLink={galleryLink}
           albumDesignUrl={albumDesignUrl}

@@ -24,6 +24,7 @@ const dict: AreaDict = {
     "האישור נכשל": "The approval failed",
     "יש למלא שם מלא ותאריך אירוע": "Please fill in your full name and the event date",
     "שליחת הפרטים נכשלה": "Sending the details failed",
+    "השאלון כבר נשלח ונמצא בטיפול. אפשר לרענן את הדף בעוד רגע.": "The questionnaire was already sent and is being processed. You can refresh the page in a moment.",
 
     // Quote
     "{amount} ש״ח": "₪{amount}",
@@ -109,6 +110,7 @@ const dict: AreaDict = {
     "האישור נכשל": "Не удалось подтвердить",
     "יש למלא שם מלא ותאריך אירוע": "Укажите полное имя и дату мероприятия",
     "שליחת הפרטים נכשלה": "Не удалось отправить данные",
+    "השאלון כבר נשלח ונמצא בטיפול. אפשר לרענן את הדף בעוד רגע.": "Анкета уже отправлена и обрабатывается. Обновите страницу через минуту.",
 
     // Quote
     "{amount} ש״ח": "{amount} ₪",

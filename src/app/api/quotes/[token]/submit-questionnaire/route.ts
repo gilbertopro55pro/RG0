@@ -66,6 +66,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       return NextResponse.json({ error: "יש למלא שם מלא ותאריך אירוע" }, { status: 400 });
     }
 
+    // One event per lead (migration 0168): two submissions at once (a double tap, two tabs) both saw
+    // no event yet and both created one. The run that claims the lead first creates the event; a
+    // claim older than 2 minutes is a run that failed, so the client can try again.
+    const staleClaim = new Date(Date.now() - 120_000).toISOString();
+    const { data: claimed } = await supabase
+      .from("leads")
+      .update({ conversion_claimed_at: new Date().toISOString() })
+      .eq("id", lead.id)
+      .is("converted_event_id", null)
+      .or(`conversion_claimed_at.is.null,conversion_claimed_at.lt."${staleClaim}"`)
+      .select("id");
+    if (!claimed?.length) {
+      return NextResponse.json({ error: "השאלון כבר נשלח ונמצא בטיפול. אפשר לרענן את הדף בעוד רגע." }, { status: 409 });
+    }
+    const releaseClaim = () => supabase.from("leads").update({ conversion_claimed_at: null }).eq("id", lead.id);
+
     const isCustom = lead.package_interest?.startsWith("custom:") ?? false;
     const customPackageId = isCustom ? lead.package_interest!.slice(7) : null;
     // A quote from the quote builder has items, not a package (owner, 2026-10-01: the client got
@@ -98,6 +114,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     });
 
     if (!result.ok) {
+      await releaseClaim();
       // A date taken in the meantime: the photographer is told, and the client page asks the client
       // to call them (dateTaken). The client never sees whose event it is (it named the other
       // client until 2026-10-12).
