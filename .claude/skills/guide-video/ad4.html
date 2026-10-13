@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Ad 4, 6 s (SKILL.md "Short ads, round 2"): the automatic album design. "עוד מעצבים אלבומים
+     לבד?" over an empty spread whose frames are the real layout; the photos drop into them, then the
+     pages turn (Hebrew direction: the left page lifts over the spine to the right). The spreads were
+     designed by the real auto-designer (planAlbum + layoutSpread, "clean") and rendered by the
+     export renderer (alb/). -->
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="ad.css">
+<style>
+  #h1 { top: 270px; font-size: 120px; } #h2 { top: 400px; font-size: 120px; }
+  #m1 { top: 270px; font-size: 112px; } #m2 { top: 395px; font-size: 104px; }
+  #bgsp { position: absolute; inset: -80px; background-size: cover; background-position: 50% 50%; filter: blur(40px) brightness(.45); opacity: 0; }
+  #desk { position: absolute; left: 0; right: 0; top: 640px; height: 900px; perspective: 2200px; perspective-origin: 50% 20%; }
+  #book { position: absolute; left: 50%; top: 120px; width: 980px; height: 490px; margin-left: -490px; transform-style: preserve-3d; }
+  #book .half, #leaf .face { position: absolute; top: 0; width: 490px; height: 490px; background-size: 980px 490px; background-repeat: no-repeat; }
+  #book .L { left: 0; background-position: 0 0; } #book .R { left: 490px; background-position: -490px 0; }
+  #wire { position: absolute; inset: 0; background: #f4f1ea; }
+  #wire i { position: absolute; border: 4px dashed #cbbfa8; border-radius: 4px; }
+  #fill { position: absolute; inset: 0; }
+  #fill i { position: absolute; background-size: 980px 490px; background-repeat: no-repeat; box-shadow: 0 6px 16px rgba(0,0,0,.25); }
+  #full { position: absolute; inset: 0; background-size: 980px 490px; opacity: 0; }
+  #leaf { position: absolute; left: 0; top: 0; width: 490px; height: 490px; transform-origin: 100% 50%; transform-style: preserve-3d; display: none; }
+  #leaf .face { left: 0; backface-visibility: hidden; }
+  #leaf .front { background-position: 0 0; }
+  #leaf .back { background-position: -490px 0; transform: rotateY(180deg); }
+  #leaf .shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 60%); opacity: 0; backface-visibility: hidden; }
+  #fold { position: absolute; left: 50%; top: 0; bottom: 0; width: 70px; margin-left: -35px; background: linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,.18) 48%, rgba(255,255,255,.12) 52%, rgba(0,0,0,0)); pointer-events: none; }
+  #bookshadow { position: absolute; left: 50%; top: 600px; width: 1000px; height: 90px; margin-left: -500px; background: radial-gradient(closest-side, rgba(0,0,0,.55), rgba(0,0,0,0)); }
+  #sC .end { padding-top: 400px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div id="bgsp"></div>
+  <div id="sA" class="scene">
+    <div id="h1" class="c big w" data-words>עוד מעצבים</div>
+    <div id="h2" class="c big g" data-words>אלבומים לבד?</div>
+    <div id="m1" class="c big w" data-words>גילברטו מעצבת</div>
+    <div id="m2" class="c big g" data-words>את כל העמודים</div>
+    <div id="desk"><div id="bookshadow"></div><div id="book">
+      <div class="half L" id="baseL"></div><div class="half R" id="baseR"></div>
+      <div id="wire"></div><div id="fill"></div><div id="full"></div>
+      <div id="leaf"><div class="face front" id="lf"></div><div class="face back" id="lb"></div><div class="shade" id="ls"></div></div>
+      <div id="fold"></div>
+    </div></div>
+  </div>
+  <div id="sC" class="scene">
+    <div class="end">
+      <img class="mark logoimg" src="logo.png" alt="">
+      <div class="msg"><b class="m1" data-words>האלבום כולו מעוצב,</b><b class="m2" data-words>בזמן שאתם שותים קפה</b></div>
+      <div class="cta">נסו 14 יום בחינם<i></i></div>
+      <div class="link">myframeflow.com/start<u></u></div>
+      <div class="free">ללא כרטיס אשראי וללא התחייבות</div>
+    </div>
+  </div>
+  <div id="leak"></div>
+  <div id="gflash"></div>
+  <div id="flash"></div>
+  <div id="vig"></div>
+</div>
+<canvas id="grain" width="360" height="640"></canvas>
+<script src="ad-lib.js"></script>
+<script>
+  // Opens on the drop. The photos drop into the empty spread on beat 3, the pages turn on beats 5–7,
+  // the end card lands on beat 8 (the bar).
+  const S = { sA: [0, B(8)], sC: [B(8), Infinity] };
+  const DURATION = 6.0;
+  const FIRST = 2, FLIPS = [[B(5), 3], [B(6), 4], [B(7), 5]];
+  const FILL_AT = B(3), FILL_STEP = 0.075;
+  const HITS = [0, B(3), B(8)];
+  let cfg, frames = [];
+  const url = (n) => cfg.alb["sp" + String(n).padStart(2, "0")];
+  const bg = (el, n) => { el.style.backgroundImage = `url(${url(n)})`; };
+  window.setup = async (c) => {
+    cfg = c;
+    // The first spread's photo frames, from the auto-designer's layout (percent of the spread).
+    frames = c.albPlan.spreads[FIRST].elements.filter((e) => e.type === "photo");
+    const box = (e) => `left:${e.xPct * 9.8}px;top:${e.yPct * 4.9}px;width:${e.widthPct * 9.8}px;height:${e.heightPct * 4.9}px`;
+    $("wire").innerHTML = frames.map((e) => `<i style="${box(e)}"></i>`).join("");
+    $("fill").innerHTML = frames.map((e) => `<i style="${box(e)};background-image:url(${url(FIRST)});background-position:${-e.xPct * 9.8}px ${-e.yPct * 4.9}px"></i>`).join("");
+    bg($("full"), FIRST);
+    splitWords();
+    await fitAll();
+    await Promise.all([...document.querySelectorAll("img.logoimg")].map((i) => i.decode().catch(() => {})));
+    await Promise.all([FIRST, 3, 4, 5].map((n) => new Promise((r) => { const im = new Image(); im.onload = r; im.onerror = r; im.src = url(n); })));
+  };
+  window.renderAt = async (t) => {
+    for (const [k, r] of Object.entries(S)) $(k).style.opacity = k === "sA" ? (t < r[1] ? 1 : 0) : vis(t, r, 0.1, 0.1);
+    const sh = shake(t, HITS, 14, 0.35);
+    $("stage").style.transform = `translate(${sh.x}px, ${sh.y}px) rotate(${sh.r}deg) scale(${1 + 0.02 * (t / DURATION) + punch(t, HITS, 0.05)})`;
+    $("glow").style.opacity = 0.4 + 0.3 * Math.sin(t * 1.3);
+
+    // Hook, then the line that answers it.
+    reveal($("h1"), t, -1, { out: FILL_AT - 0.12 });
+    reveal($("h2"), t, -1, { out: FILL_AT - 0.08 });
+    $("h2").style.transform = `scale(${1 + 0.05 * [0, B(2)].reduce((s, h) => s + (t >= h && t < h + 0.2 ? 1 - (t - h) / 0.2 : 0), 0)})`;
+    reveal($("m1"), t, FILL_AT + 0.05);
+    reveal($("m2"), t, FILL_AT + 0.2);
+
+    // The book lies on a desk; the camera leans in as the pages turn.
+    const lean = ease((t - B(4)) / B(4));
+    $("book").style.transform = `rotateX(${16 - 6 * lean}deg) translateZ(${60 * lean}px) rotateZ(${-1.5 + 1.5 * lean}deg)`;
+    // Empty frames (the real layout) breathing, then the photos dropping in one by one.
+    $("wire").style.opacity = 1 - ease((t - FILL_AT - frames.length * FILL_STEP) / 0.2);
+    [...$("fill").children].forEach((el, i) => {
+      const at = FILL_AT + i * FILL_STEP;
+      const p = back((t - at) / 0.22, 2.4);
+      el.style.opacity = clamp((t - at) / 0.05);
+      el.style.transform = `scale(${t >= at ? 0.6 + 0.4 * p : 0.6})`;
+    });
+    const done = FILL_AT + frames.length * FILL_STEP + 0.1;
+    $("full").style.opacity = ease((t - done) / 0.22);
+    $("fill").style.opacity = 1 - ease((t - done - 0.15) / 0.15);
+    $("bgsp").style.opacity = 0.32 * ease((t - done) / 0.4);
+
+    // Page turns: the current spread's left page lifts over the spine to the right, its back is the
+    // next spread's right page; under it the next spread's left page appears.
+    let cur = FIRST, flip = null;
+    for (const [at, n] of FLIPS) { if (t >= at + 0.42) cur = n; else if (t >= at) { flip = [at, n]; break; } }
+    const leaf = $("leaf");
+    if (flip) {
+      const [at, n] = flip, p = easeIO((t - at) / 0.42);
+      bg($("baseL"), n); bg($("baseR"), cur); bg($("lf"), cur); bg($("lb"), n);
+      $("full").style.opacity = 0;
+      leaf.style.display = "block";
+      leaf.style.transform = `rotateY(${180 * p}deg) translateZ(1px)`;
+      $("ls").style.opacity = Math.sin(Math.PI * p);
+      bg($("bgsp"), cur);
+    } else {
+      leaf.style.display = "none";
+      bg($("baseL"), cur); bg($("baseR"), cur);
+      if (cur !== FIRST) { $("full").style.opacity = 0; }
+      bg($("bgsp"), cur);
+    }
+    // Out: the book rushes at the camera into the end card.
+    const out = easeIn((t - B(7.6)) / B(0.4));
+    $("desk").style.transform = `scale(${1 + 0.8 * out})`;
+    $("desk").style.filter = out > 0 ? `blur(${out * 16}px)` : "none";
+    $("desk").style.opacity = 1 - out;
+    for (const id of ["m1", "m2"]) $(id).style.opacity = 1 - out;
+
+    // End card
+    const c0 = B(8);
+    $("gflash").style.opacity = t >= c0 ? 0.75 * (1 - ease((t - c0) / 0.45)) : 0;
+    const mk = document.querySelector("#sC .mark");
+    mk.style.transform = `scale(${0.5 + 0.5 * back((t - c0) / 0.42)}) rotate(${(1 - ease((t - c0) / 0.42)) * -10}deg)`;
+    reveal(document.querySelector("#sC .m1"), t, B(8.6));
+    reveal(document.querySelector("#sC .m2"), t, B(9.1));
+    const cta = document.querySelector("#sC .cta");
+    slam(cta, t, B(10), 1.25, 0.24);
+    cta.firstElementChild.style.left = -40 + 180 * ease((t - B(10.4)) / 0.6) + "%";
+    rise(document.querySelector("#sC .link"), t, B(10.5), 30, 0.3);
+    document.querySelector("#sC .link u").style.width = 100 * ease((t - B(10.9)) / 0.4) + "%";
+    rise(document.querySelector("#sC .free"), t, B(11), 20, 0.3);
+    leak(t, [B(3) + 0.3, B(8)]);
+    grain(t);
+  };
+  window.DURATION = DURATION;
+  window.AUDIO = {
+    duration: DURATION, drop: 0, end: B(11),
+    cues: [[0, "impact", 0.7], [B(2), "pop", 0.5],
+      [B(3), "suck"], [B(3), "impact", 0.6], ...[0, 1, 2, 3, 4].map((i) => [B(3) + i * 0.075, "tap", 0.8]),
+      ...[5, 6, 7].map((b) => [B(b), "whoosh", 0.55]),
+      [B(8), "suck"], [B(8), "impact"], [B(8.6), "pop", 0.6], [B(10), "impact", 0.45], [B(10.5), "tick", 1.5]],
+  };
+</script>
+</body>
+</html>

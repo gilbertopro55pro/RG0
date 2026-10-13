@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Ad 6, 20 s (SKILL.md "Short ads, round 2"): the whole process in one place. The pain is one
+     wedding spread over eight apps (generic tiles, no brand marks); on the drop they fly into the
+     five steps of one process; then the camera travels along a track of five real screens (inquiry,
+     quote and contract, shoot day, gallery, album), and the result: nothing falls through the cracks. -->
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="ad.css">
+<style>
+  #h1 { top: 250px; font-size: 124px; } #h2 { top: 384px; font-size: 104px; }
+  .tile { position: absolute; width: 220px; height: 220px; border-radius: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #fff; font-size: 30px; font-weight: 700; box-shadow: 0 24px 60px rgba(0,0,0,.45); opacity: 0; }
+  .tile b { position: absolute; top: -14px; left: -14px; min-width: 64px; height: 64px; padding: 0 14px; border-radius: 32px; background: #e0473b; color: #fff; font-size: 34px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 6px #0b1220; }
+  #pain { top: 1380px; font-size: 76px; }
+  #stepper { position: absolute; top: 230px; left: 70px; right: 70px; height: 150px; direction: rtl; opacity: 0; }
+  #stepper .ln { position: absolute; top: 34px; right: 50px; left: 50px; height: 6px; background: #26324c; border-radius: 3px; }
+  #stepper .ln u { position: absolute; top: 0; right: 0; height: 100%; width: 0; background: #c9a15a; border-radius: 3px; }
+  .dot { position: absolute; top: 0; width: 74px; height: 74px; margin-right: -37px; border-radius: 50%; background: #16203a; border: 5px solid #3a4560; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 32px; color: #aeb8cc; }
+  .dot span { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 30px; font-weight: 700; color: #8792ab; }
+  .dot.on { border-color: #c9a15a; color: #c9a15a; } .dot.on span { color: #fff; }
+  .dot.done { background: #c9a15a; border-color: #c9a15a; color: #14100a; }
+  #turn { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 600px; }
+  #turn .mark { width: 200px; height: 200px; border-radius: 46px; box-shadow: 0 40px 110px rgba(0,0,0,.5), 0 0 110px rgba(201,161,90,.3); }
+  #tl1 { margin-top: 60px; font-size: 112px; } #tl2 { font-size: 80px; color: #c9a15a; }
+  #tl1, #tl2 { width: 1000px; text-align: center; font-weight: 800; letter-spacing: -.03em; line-height: 1.15; white-space: nowrap; }
+  .sh { position: absolute; top: 450px; left: 50px; right: 50px; text-align: center; font-weight: 800; font-size: 80px; letter-spacing: -.03em; white-space: nowrap; }
+  #track { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; perspective: 2200px; }
+  .card { position: absolute; top: 620px; width: 640px; height: 860px; margin-left: -320px; border-radius: 50px; overflow: hidden; background: #f4efe6; box-shadow: 0 50px 120px rgba(0,0,0,.55), 0 0 0 8px #0a0f1a, 0 0 0 10px #2a3650; }
+  .card img { display: block; width: 100%; }
+  .card.land { top: 830px; width: 900px; height: 450px; margin-left: -450px; border-radius: 18px; background: #fff; }
+  .card.land img { height: 100%; object-fit: cover; }
+  .ck { position: absolute; top: -40px; right: -40px; width: 120px; height: 120px; border-radius: 50%; background: #c9a15a; color: #14100a; display: flex; align-items: center; justify-content: center; opacity: 0; box-shadow: 0 20px 50px rgba(0,0,0,.5); z-index: 3; }
+  #r1 { top: 1250px; font-size: 104px; } #r2 { top: 1370px; font-size: 104px; color: #c9a15a; }
+  #sF .end { padding-top: 400px; }
+  #endbg { position: absolute; inset: -60px; background-size: cover; background-position: 50% 35%; filter: blur(34px) brightness(.5); opacity: .25; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div id="sA" class="scene">
+    <div id="h1" class="c big w" data-words>חתונה אחת,</div>
+    <div id="h2" class="c big g" data-words>8 אפליקציות פתוחות</div>
+    <div id="tiles"></div>
+    <div id="pain" class="c big w" data-words data-fit>ותמיד משהו נופל בין הכיסאות</div>
+  </div>
+  <div id="sB" class="scene">
+    <div id="turn"><img class="mark logoimg" src="logo.png" alt=""><div id="tl1" data-words>עם גילברטו,</div><div id="tl2" data-words>תהליך אחד, מהפנייה ועד המסירה</div></div>
+  </div>
+  <div id="sC" class="scene">
+    <div id="heads"></div>
+    <div id="track"></div>
+  </div>
+  <div id="sD" class="scene">
+    <div id="r1" class="c big w" data-words>ושום דבר לא נופל</div>
+    <div id="r2" class="c big" data-words>בין הכיסאות</div>
+  </div>
+  <div id="stepper"><div class="ln"><u id="lnu"></u></div><div id="dots"></div></div>
+  <div id="sF" class="scene">
+    <div id="endbg"></div>
+    <div class="end">
+      <img class="mark logoimg" src="logo.png" alt="">
+      <div class="msg"><b class="m1" data-words>מהפנייה ועד המסירה,</b><b class="m2" data-words>הכל מסודר במקום אחד</b></div>
+      <div class="cta">נסו 14 יום בחינם<i></i></div>
+      <div class="link">myframeflow.com/start<u></u></div>
+      <div class="free">ללא כרטיס אשראי וללא התחייבות</div>
+    </div>
+  </div>
+  <div id="leak"></div>
+  <div id="gflash"></div>
+  <div id="flash"></div>
+  <div id="vig"></div>
+</div>
+<canvas id="grain" width="360" height="640"></canvas>
+<script src="ad-lib.js"></script>
+<script>
+  // 124 BPM: the chaos is the build (two bars), the drop turns it into one process, a station every
+  // bar, a breath (no kick) over the overview, the hit on "שום דבר לא נופל", the end card on the bar.
+  const S = { sA: [0, B(8)], sB: [B(8), B(10)], sC: [B(10), B(30)], sD: [B(30), B(34)], sF: [B(34), Infinity] };
+  const DURATION = 19.9;
+  // Generic tools (no brand marks): [label, colour, svg path, x, y, tilt]
+  const TOOLS = [
+    ["הודעות", "#2e9d5b", "M4 5h16v11H9l-5 4z", 110, 560, -6],
+    ["טבלה", "#2f7d4f", "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14", 420, 520, 4],
+    ["יומן", "#c0392b", "M4 6h16v14H4zM4 10h16M9 3v4M15 3v4", 730, 590, -3],
+    ["PDF", "#a33a3a", "M7 3h7l5 5v13H7zM14 3v5h5", 180, 860, 5],
+    ["תיקיות", "#3c6fb4", "M3 7h7l2 2h9v10H3z", 500, 830, -4],
+    ["תזכורות", "#d08a2c", "M12 4a6 6 0 0 1 6 6v4l2 3H4l2-3v-4a6 6 0 0 1 6-6zM10 20h4", 790, 880, 6],
+    ["פתקים", "#b8a23a", "M5 4h14v12l-4 4H5zM15 16v4M9 9h6M9 12h4", 270, 1120, -5],
+    ["קבצים", "#6b5bb5", "M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4 4 0 0 1 0 9zM12 12v6M9.5 14.5L12 12l2.5 2.5", 640, 1110, 3],
+  ];
+  const TILE_AT = (i) => (i < 3 ? -1 : B(0.2 + (i - 2) * 0.55));
+  // The five stations: [label, line, footage, footage clock]
+  const STATIONS = [
+    ["פנייה", "העוזר עונה ואוסף את הפרטים", "chat", (ct) => chatFrame(ct * 1.6)],
+    ["הצעה וחוזה", "הלקוח מאשר וחותם בקישור", "quote2", (ct) => 1 + Math.floor(ct * 24 * 2.6)],
+    ["יום הצילום", "כל האירועים והשלבים מול העיניים", "home", (ct) => 1 + Math.floor(ct * 30)],
+    ["גלריה", "הלקוחות בוחרים מועדפים", "gallery", (ct) => 1 + Math.floor(ct * 20 * 2.2)],
+    ["אלבום", "מעוצב אוטומטית מהבחירה שלהם", "album", null],
+  ];
+  const ST_AT = (i) => B(10 + 4 * i);
+  const SPACING = 780;
+  const chatFrame = (ct) => {
+    const cyc = (a, b, from) => a + (Math.floor((ct - from) * 8) % (b - a + 1));
+    if (ct < 0.3) return 9;
+    if (ct < 1.15) return cyc(10, 23, 0.3);
+    if (ct < 2.0) return 24;
+    if (ct < 2.55) return 28;
+    if (ct < 3.1) return 29 + Math.min(5, Math.floor((ct - 2.55) / 0.09));
+    return cyc(35, 46, 3.1);
+  };
+  const HITS = [B(8), B(32), B(34)];
+  let cfg;
+  // Stepper dots: RTL, the first step on the right.
+  const DOT_X = (i) => 960 - i * 210;
+  window.setup = async (c) => {
+    cfg = c;
+    $("tiles").innerHTML = TOOLS.map(([label, col, d, x, y], i) => `<div class="tile" id="tool${i}" style="left:${x}px;top:${y}px;background:linear-gradient(160deg, ${col}, ${col}cc)"><b id="bd${i}">1</b><svg width="92" height="92" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>${label}</div>`).join("");
+    $("dots").innerHTML = STATIONS.map(([label], i) => `<div class="dot" id="dt${i}" style="right:${50 + i * ((940 - 100) / 4)}px"><i style="font-style:normal">${i + 1}</i><span>${label}</span></div>`).join("");
+    $("heads").innerHTML = STATIONS.map(([, line], i) => `<div class="sh" id="sh${i}" data-words data-fit>${line}</div>`).join("");
+    $("track").innerHTML = STATIONS.map(([, , foot], i) => `<div class="card${foot === "album" ? " land" : ""}" id="cd${i}" style="left:${540 - i * SPACING}px"><img id="im${i}" alt=""><span class="ck" id="ck${i}"><svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span></div>`).join("");
+    $("im4").src = c.alb.sp02;
+    $("endbg").style.backgroundImage = `url(${c.photos["1801263"]})`;
+    splitWords();
+    await fitAll();
+    await Promise.all([...document.querySelectorAll("img.logoimg, #im4")].map((i) => i.decode().catch(() => {})));
+    // first frames of each card, so a card entering from the side already has its screen
+    for (let i = 0; i < 4; i++) { const f = c.foot[STATIONS[i][2]]; const im = $("im" + i); im.src = `${f.dir}/${String(STATIONS[i][3](0)).padStart(5, "0")}.jpg`; await im.decode().catch(() => {}); }
+  };
+  window.renderAt = async (t) => {
+    for (const [k, r] of Object.entries(S)) $(k).style.opacity = k === "sA" ? (t < r[1] ? 1 : 0) : vis(t, r, 0.1, 0.12);
+    const sh = shake(t, HITS, 16, 0.38);
+    $("stage").style.transform = `translate(${sh.x}px, ${sh.y}px) rotate(${sh.r}deg) scale(${1 + 0.02 * (t / DURATION) + punch(t, HITS)})`;
+    $("glow").style.opacity = 0.4 + 0.3 * Math.sin(t * 1.1);
+
+    // A: tools pile up, badges climb, it all jitters; on the drop they fly up into the five steps.
+    reveal($("h1"), t, -1);
+    reveal($("h2"), t, -1);
+    const jit = clamp((t - B(4)) / B(3.4));
+    const fly = easeIn((t - B(7.4)) / B(0.6));
+    TOOLS.forEach(([, , , x, y, tilt], i) => {
+      const el = $("tool" + i), at = TILE_AT(i);
+      const p = back((t - at) / 0.3, 2);
+      const jx = Math.sin(t * 37 + i * 3) * 9 * jit, jy = Math.cos(t * 31 + i * 5) * 9 * jit;
+      const tx = DOT_X(i % 5) - (x + 110), ty = 267 - (y + 110);
+      el.style.opacity = clamp((t - at) / 0.06) * (1 - fly);
+      el.style.transform = `translate(${jx + tx * fly}px, ${jy + ty * fly}px) rotate(${tilt * (1 - fly) + Math.sin(t * 23 + i) * 3 * jit}deg) scale(${(t >= at ? 0.5 + 0.5 * p : 0.5) * (1 - 0.75 * fly)})`;
+      // badges: messages keep coming
+      const n = 1 + Math.floor(Math.max(0, t - at) * (1.2 + i * 0.35) * (1 + 3 * jit));
+      $("bd" + i).textContent = n > 99 ? "99+" : n;
+    });
+    reveal($("pain"), t, B(4.4));
+    for (const id of ["h1", "h2", "pain"]) $(id).style.opacity = 1 - fly;
+
+    // The stepper: appears on the drop and stays through the stations.
+    const stp = $("stepper");
+    stp.style.opacity = Math.min(ease((t - B(8)) / 0.3), 1 - ease((t - B(29.7)) / 0.3));
+    let cur = -1;
+    for (let i = 0; i < 5; i++) if (t >= ST_AT(i)) cur = i;
+    for (let i = 0; i < 5; i++) {
+      const d = $("dt" + i);
+      d.className = "dot" + (i < cur ? " done" : i === cur ? " on" : "");
+      d.firstElementChild.textContent = i < cur ? "✓" : String(i + 1);
+      const at = ST_AT(i);
+      d.style.transform = `scale(${t >= at && t < at + 0.3 ? 1 + 0.25 * (1 - (t - at) / 0.3) : 1})`;
+    }
+    $("lnu").style.width = (cur < 0 ? 0 : 100 * Math.min(1, (cur + ease((t - ST_AT(Math.max(cur, 0))) / B(4)) * (cur < 4 ? 1 : 0)) / 4)) + "%";
+
+    // B: the turn.
+    const b0 = B(8);
+    $("gflash").style.opacity = (t >= b0 ? 0.8 * (1 - ease((t - b0) / 0.5)) : 0) + (t >= B(32) ? 0.5 * (1 - ease((t - B(32)) / 0.4)) : 0) + (t >= B(34) ? 0.5 * (1 - ease((t - B(34)) / 0.4)) : 0);
+    const mk = document.querySelector("#turn .mark");
+    mk.style.transform = `scale(${0.4 + 0.6 * back((t - b0) / 0.4)}) rotate(${(1 - ease((t - b0) / 0.4)) * -14}deg)`;
+    reveal($("tl1"), t, b0 + 0.08);
+    reveal($("tl2"), t, b0 + B(0.7));
+    if (t >= B(9.6)) whip($("turn"), t, B(9.6), { dir: -1, dur: B(0.4) }); else { $("turn").style.transform = ""; $("turn").style.filter = "none"; }
+
+    // C: the camera travels along the track from station to station (RTL: the next one comes from
+    // the left), with motion blur on the move.
+    const c0 = B(10);
+    let pos = 0, moving = 0;
+    for (let i = 1; i < 5; i++) {
+      const T = ST_AT(i), m = (t - (T - 0.25)) / 0.45;
+      pos += ease(m);
+      if (m > 0 && m < 1) moving = Math.sin(Math.PI * m);
+    }
+    const enter = ease((t - c0) / 0.5);
+    $("track").style.transform = `translateX(${pos * SPACING}px) translateY(${(1 - enter) * 900}px)`;
+    $("track").style.filter = moving > 0.05 ? `blur(${moving * 14}px)` : "none";
+    STATIONS.forEach(([, , foot, clock], i) => {
+      const d = Math.abs(i - pos);
+      const cd = $("cd" + i);
+      cd.style.transform = `scale(${1 - 0.18 * Math.min(1, d)}) rotateY(${(i - pos) * -8}deg)`;
+      cd.style.opacity = 1 - 0.55 * Math.min(1, d);
+      reveal($("sh" + i), t, ST_AT(i) + 0.08, { out: i < 4 ? ST_AT(i + 1) - 0.2 : B(29.7) });
+    });
+    if (cur >= 0 && cur < 4 && t < B(30)) {
+      const [, , foot, clock] = STATIONS[cur];
+      const f = cfg.foot[foot];
+      await setImg($("im" + cur), `${f.dir}/${String(Math.max(1, Math.min(f.n, clock(Math.max(0, t - ST_AT(cur)))))).padStart(5, "0")}.jpg`);
+    }
+    $("im4").style.transform = `scale(${1.04 + 0.04 * clamp((t - ST_AT(4)) / B(4))})`;
+
+    // D: the overview. The camera pulls back over the whole track; each station gets its check.
+    const d0 = B(30);
+    const zo = easeIO((t - d0) / B(1.2));
+    if (t >= d0 - 0.2) {
+      $("sC").style.opacity = 1;
+      const sc = 1 - 0.74 * zo;
+      $("track").style.transform = `translateX(${(4 * SPACING) * (1 - zo) + 2 * SPACING * zo * sc}px) translateY(${-260 * zo}px) scale(${sc})`;
+      $("track").style.transformOrigin = "540px 1050px";
+      $("track").style.filter = "none";
+      for (let i = 0; i < 5; i++) { $("cd" + i).style.opacity = 1; $("cd" + i).style.transform = "none"; }
+    }
+    for (let i = 0; i < 5; i++) {
+      const at = d0 + B(1.2) + i * 0.12;
+      const ck = $("ck" + i);
+      ck.style.opacity = clamp((t - at) / 0.05);
+      ck.style.transform = `scale(${t >= at ? 2.2 * back((t - at) / 0.3, 2.4) : 0})`;
+    }
+    $("sD").style.opacity = t >= d0 ? 1 - easeIn((t - B(33.6)) / B(0.4)) : 0;
+    if (t >= B(33.6)) { $("sC").style.opacity = 1 - easeIn((t - B(33.6)) / B(0.4)); }
+    if (t >= B(34)) $("sC").style.opacity = 0;
+    reveal($("r1"), t, B(32));
+    reveal($("r2"), t, B(32) + 0.12);
+    $("r1").style.transform = `scale(${t >= B(32) ? 1 + 0.1 * (1 - ease((t - B(32)) / 0.3)) : 1})`;
+
+    // F: end card
+    const e0 = B(34);
+    $("endbg").style.transform = `scale(${1.15 - 0.08 * clamp((t - e0) / 3.5)})`;
+    const em = document.querySelector("#sF .mark");
+    em.style.transform = `scale(${0.5 + 0.5 * back((t - e0) / 0.42)}) rotate(${(1 - ease((t - e0) / 0.42)) * -10}deg)`;
+    reveal(document.querySelector("#sF .m1"), t, B(35));
+    reveal(document.querySelector("#sF .m2"), t, B(35.5));
+    const cta = document.querySelector("#sF .cta");
+    slam(cta, t, B(36.5), 1.25, 0.24);
+    cta.firstElementChild.style.left = -40 + 180 * ease((t - B(37)) / 0.6) + "%";
+    rise(document.querySelector("#sF .link"), t, B(37.5), 30, 0.3);
+    document.querySelector("#sF .link u").style.width = 100 * ease((t - B(38)) / 0.4) + "%";
+    rise(document.querySelector("#sF .free"), t, B(38.5), 20, 0.3);
+    leak(t, [B(8), B(32), B(34)]);
+    grain(t);
+  };
+  window.DURATION = DURATION;
+  window.AUDIO = {
+    duration: DURATION, drop: B(8), end: B(40), breaks: [[B(30), B(32)]],
+    cues: [
+      ...TOOLS.map((_, i) => [Math.max(0, TILE_AT(i)), "pop", 0.8, i % 2 ? -0.35 : 0.35]),
+      [B(4), "buzz", 0.7], [B(5), "ping", 0.6], [B(5.5), "buzz", 0.7], [B(6.25), "ping", 0.6], [B(6.75), "buzz", 0.8], [B(4.4), "pop", 0.5],
+      [B(8), "suck"], [B(8), "impact"], [B(8.7), "pop", 0.6], [B(9.6), "whoosh"],
+      [B(10), "whoosh", 0.7], ...[1, 2, 3, 4].map((i) => [ST_AT(i) - 0.25, "whoosh", 0.8]), ...[0, 1, 2, 3, 4].map((i) => [ST_AT(i), "tick", 1.5]),
+      [B(30), "whoosh", 0.6], ...[0, 1, 2, 3, 4].map((i) => [B(31.2) + i * 0.12, "tap", 0.9]),
+      [B(32), "impact"], [B(33.6), "suck"], [B(34), "impact", 0.8], [B(35), "pop", 0.6], [B(36.5), "impact", 0.45], [B(37.5), "tick", 1.5],
+    ],
+  };
+</script>
+</body>
+</html>

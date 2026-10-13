@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Ad 5, 12 s (SKILL.md "Short ads, round 2"): from a quote to a closed event in one link. The pain
+     is the back-and-forth after a quote (a chat that keeps scrolling, "ועדיין אין חוזה חתום"); the
+     turn collapses it into one link; the solution is the real client page (f-quote2): approve, fill
+     in the details, sign, and the event is closed. -->
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="ad.css">
+<style>
+  #h1 { top: 250px; font-size: 108px; } #h2 { top: 372px; font-size: 96px; }
+  #chat { position: absolute; left: 70px; right: 70px; top: 540px; height: 820px; border-radius: 44px; background: #0f1726; box-shadow: 0 40px 100px rgba(0,0,0,.5), inset 0 0 0 2px #1f2a40; overflow: hidden; }
+  #chat .top { position: absolute; left: 0; right: 0; top: 0; height: 110px; background: #16203a; display: flex; align-items: center; gap: 20px; padding: 0 32px; direction: rtl; z-index: 2; }
+  #chat .top i { width: 66px; height: 66px; border-radius: 50%; background: #efe3c8; color: #8f6f2f; font-style: normal; font-weight: 800; font-size: 30px; display: flex; align-items: center; justify-content: center; }
+  #chat .top b { display: block; font-size: 36px; } #chat .top small { font-size: 26px; color: #34c759; }
+  .bb { position: absolute; max-width: 700px; padding: 20px 28px; border-radius: 30px; font-size: 38px; line-height: 1.25; white-space: nowrap; opacity: 0; }
+  .bb.them { right: 28px; background: #26324c; color: #eef2f8; border-top-right-radius: 8px; }
+  .bb.me { left: 28px; background: #c9a15a; color: #14100a; border-top-left-radius: 8px; font-weight: 500; }
+  #nope { position: absolute; top: 880px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: #c0392b; color: #fff; font-weight: 800; font-size: 64px; padding: 26px 44px; border-radius: 22px; box-shadow: 0 30px 80px rgba(192,57,43,.5); opacity: 0; }
+  #turn { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 560px; }
+  #t1 { font-size: 104px; font-weight: 800; letter-spacing: -.03em; }
+  #pill { margin-top: 56px; display: inline-flex; align-items: center; gap: 22px; background: #fff; color: #14100a; border-radius: 80px; padding: 30px 50px; font-size: 50px; font-weight: 700; direction: ltr; box-shadow: 0 30px 90px rgba(201,161,90,.45), 0 0 0 6px rgba(201,161,90,.35); }
+  #t2 { margin-top: 64px; font-size: 104px; font-weight: 800; letter-spacing: -.03em; color: #c9a15a; white-space: nowrap; }
+  .hd { position: absolute; left: 50px; right: 50px; text-align: center; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; white-space: nowrap; }
+  #c1 { top: 236px; font-size: 84px; } #c2 { top: 336px; font-size: 68px; color: #c9a15a; }
+  #steps { position: absolute; top: 450px; left: 40px; right: 40px; display: flex; justify-content: center; gap: 16px; direction: rtl; }
+  .st { display: inline-flex; align-items: center; gap: 12px; padding: 16px 22px; border-radius: 40px; border: 3px solid #3a4560; color: #aeb8cc; font-size: 34px; font-weight: 700; white-space: nowrap; }
+  .st i { width: 40px; height: 40px; border-radius: 50%; border: 3px solid #3a4560; display: flex; align-items: center; justify-content: center; font-style: normal; flex: none; }
+  .st.on { background: #c9a15a; border-color: #c9a15a; color: #14100a; }
+  .st.on i { background: #14100a; border-color: #14100a; color: #c9a15a; }
+  #stamp { position: absolute; top: 980px; left: 50%; margin-left: -400px; width: 800px; text-align: center; border: 12px solid #c9a15a; color: #c9a15a; background: rgba(11,18,32,.88); border-radius: 30px; font-size: 120px; font-weight: 900; letter-spacing: -.02em; padding: 22px 0 30px; opacity: 0; box-shadow: 0 40px 120px rgba(0,0,0,.6); }
+  #sD .end { padding-top: 400px; }
+  #endbg { position: absolute; inset: -60px; background-size: cover; background-position: 50% 35%; filter: blur(34px) brightness(.5); opacity: .25; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div id="sA" class="scene">
+    <div id="h1" class="c big w" data-words>שלחתם הצעת מחיר,</div>
+    <div id="h2" class="c big g" data-words>ומתחיל ההלוך ושוב</div>
+    <div id="chat"><div class="top"><i>נ</i><div><b>נועה ואיתי</b><small>מקלידה...</small></div></div><div id="bubbles"></div></div>
+    <div id="nope">ועדיין אין חוזה חתום</div>
+  </div>
+  <div id="sB" class="scene">
+    <div id="turn">
+      <div id="t1" data-words>עם גילברטו,</div>
+      <div id="pill"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#8f6f2f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>myframeflow.com/quotes/…</div>
+      <div id="t2">שולחים קישור <span class="hl" id="hl1"><b><i></i></b>אחד</span></div>
+    </div>
+  </div>
+  <div id="sC" class="scene">
+    <div class="hd" id="c1" data-words>הלקוח מאשר, ממלא וחותם</div>
+    <div class="hd" id="c2" data-words>בלי שתרדפו אחריו</div>
+    <div id="steps">
+      <span class="st" id="st0"><i>1</i>אישור ההצעה</span><span class="st" id="st1"><i>2</i>פרטי האירוע</span><span class="st" id="st2"><i>3</i>חתימה</span>
+    </div>
+    <div class="rig"><div class="phone" id="ph"><div class="scr"><div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="ic"><svg width="34" height="22" viewBox="0 0 34 22"><rect x="0" y="14" width="5" height="8" rx="1" fill="#14100a"/><rect x="8" y="10" width="5" height="12" rx="1" fill="#14100a"/><rect x="16" y="5" width="5" height="17" rx="1" fill="#14100a"/><rect x="24" y="0" width="5" height="22" rx="1" fill="#14100a"/></svg><svg width="50" height="24" viewBox="0 0 50 24"><rect x="1" y="1" width="42" height="22" rx="6" fill="none" stroke="#14100a" stroke-width="2" opacity=".5"/><rect x="4" y="4" width="32" height="16" rx="3" fill="#14100a"/><rect x="45" y="8" width="3" height="8" rx="1" fill="#14100a" opacity=".5"/></svg></span></div>
+      <img class="feed" id="scr" alt=""><div class="glare" id="glare"></div></div></div></div>
+    <div id="stamp">האירוע נסגר</div>
+  </div>
+  <div id="sD" class="scene">
+    <div id="endbg"></div>
+    <div class="end">
+      <img class="mark logoimg" src="logo.png" alt="">
+      <div class="msg"><b class="m1" data-words>מהצעת מחיר לאירוע סגור,</b><b class="m2" data-words>בקישור אחד</b></div>
+      <div class="cta">נסו 14 יום בחינם<i></i></div>
+      <div class="link">myframeflow.com/start<u></u></div>
+      <div class="free">ללא כרטיס אשראי וללא התחייבות</div>
+    </div>
+  </div>
+  <div id="leak"></div>
+  <div id="gflash"></div>
+  <div id="flash"></div>
+  <div id="vig"></div>
+</div>
+<canvas id="grain" width="360" height="640"></canvas>
+<script src="ad-lib.js"></script>
+<script>
+  // 124 BPM: the back-and-forth is the build (two bars), the link lands on the drop.
+  const S = { sA: [0, B(8)], sB: [B(8), B(10)], sC: [B(10), B(18)], sD: [B(18), Infinity] };
+  const DURATION = 12.0;
+  // The chat after a quote, faster and faster. No deposit talk: the client page doesn't take payments.
+  const CHAT = [
+    ["me", "מצרף הצעת מחיר לחתונה"], ["them", "תודה! נעבור עליה ונחזור אליך"], ["them", "אפשר בלי הווידאו?"],
+    ["me", "שלחתי הצעה מעודכנת"], ["them", "מעולה, איך סוגרים?"], ["me", "שולח חוזה לחתימה"],
+    ["them", "צריך להדפיס אותו?"], ["me", "כן, לחתום ולשלוח צילום"], ["them", "אין לנו מדפסת בבית"],
+    ["them", "ומה השעות של הצילום?"], ["me", "שלחתי שוב את החוזה"], ["them", "לא מוצאים את הקובץ"], ["them", "???"], ["me", "שלחתי שוב"],
+  ];
+  const CHAT_AT = CHAT.map((_, i) => B(0.25) + B(7) * (1 - Math.pow(1 - i / CHAT.length, 1.6)));
+  const BB_H = 104;
+  // The client's page, sped up 2.2x: approve (frame 35), details sent (105), signed (149).
+  const QSPEED = 2.2, Q0 = B(10.4);
+  const qf = (ct) => 1 + Math.floor(ct * 24 * QSPEED);
+  const STEP_AT = [35, 105, 149].map((f) => Q0 + (f - 1) / (24 * QSPEED));
+  const STAMP_AT = B(16.6);
+  const HITS = [B(8), STAMP_AT, B(18)];
+  let cfg;
+  window.setup = async (c) => {
+    cfg = c;
+    $("bubbles").innerHTML = CHAT.map(([who, txt], i) => `<div class="bb ${who}" id="b${i}">${txt}</div>`).join("");
+    $("endbg").style.backgroundImage = `url(${c.photos["1801263"]})`;
+    splitWords();
+    await fitAll();
+    await Promise.all([...document.querySelectorAll("img.logoimg")].map((i) => i.decode().catch(() => {})));
+  };
+  window.renderAt = async (t) => {
+    for (const [k, r] of Object.entries(S)) $(k).style.opacity = k === "sA" ? (t < r[1] ? 1 : 0) : vis(t, r, 0.1, 0.12);
+    const sh = shake(t, [...HITS, B(6)], 16, 0.38);
+    $("stage").style.transform = `translate(${sh.x}px, ${sh.y}px) rotate(${sh.r}deg) scale(${1 + 0.025 * (t / DURATION) + punch(t, HITS)})`;
+    $("glow").style.opacity = 0.4 + 0.3 * Math.sin(t * 1.1);
+
+    // A: the chat keeps scrolling; the newest message sits at the bottom.
+    reveal($("h1"), t, -1);
+    reveal($("h2"), t, B(1.5));
+    const arrived = (j) => ease((t - CHAT_AT[j]) / 0.22);
+    CHAT.forEach((_, i) => {
+      const el = $("b" + i);
+      if (t < CHAT_AT[i]) { el.style.opacity = 0; return; }
+      let above = 0;
+      for (let j = i + 1; j < CHAT.length; j++) above += arrived(j);
+      const a = arrived(i);
+      el.style.top = 820 - 130 - above * BB_H + (1 - a) * 60 + "px";
+      el.style.opacity = a;
+      el.style.transform = `scale(${0.85 + 0.15 * back((t - CHAT_AT[i]) / 0.25)})`;
+    });
+    const fast = clamp((t - B(5)) / B(2.5));
+    $("bubbles").style.filter = fast > 0.3 ? `blur(${(fast - 0.3) * 5}px)` : "none";
+    const np = back((t - B(6)) / 0.3, 2);
+    $("nope").style.opacity = clamp((t - B(6)) / 0.06);
+    $("nope").style.transform = `translateX(-50%) rotate(-3deg) scale(${t >= B(6) ? 0.6 + 0.4 * np : 0.6})`;
+    // Into the drop: everything is pulled into one point.
+    const pull = easeIn((t - B(7.45)) / B(0.55));
+    for (const id of ["chat", "nope", "h1", "h2"]) {
+      const el = $(id);
+      el.style.opacity = id === "nope" ? Math.min(+el.style.opacity, 1 - pull) : 1 - pull;
+      if (id === "chat") el.style.transform = `scale(${1 - 0.9 * pull})`;
+      if (pull > 0) el.style.filter = `blur(${pull * 14}px)`;
+    }
+
+    // B: one link.
+    const b0 = B(8);
+    $("gflash").style.opacity = (t >= b0 ? 0.8 * (1 - ease((t - b0) / 0.5)) : 0) + (t >= B(18) ? 0.55 * (1 - ease((t - B(18)) / 0.45)) : 0);
+    reveal($("t1"), t, b0 + 0.04);
+    const pp = back((t - b0) / 0.38, 2);
+    $("pill").style.transform = `scale(${t >= b0 ? 0.3 + 0.7 * pp : 0.3})`;
+    $("pill").style.opacity = clamp((t - b0) / 0.06);
+    rise($("t2"), t, b0 + B(0.6), 40, 0.3);
+    marker($("hl1"), t, b0 + B(0.9));
+    if (t >= B(9.6)) whip($("turn"), t, B(9.6), { dir: -1, dur: B(0.4) }); else { $("turn").style.transform = ""; $("turn").style.filter = "none"; }
+
+    // C: the real client page; the steps light up as the client gets to them.
+    const c0 = B(10);
+    reveal($("c1"), t, c0 + 0.02);
+    reveal($("c2"), t, c0 + B(1));
+    STEP_AT.forEach((at, i) => {
+      const el = $("st" + i), on = t >= at;
+      el.classList.toggle("on", on);
+      el.firstElementChild.textContent = on ? "✓" : String(i + 1);
+      el.style.transform = `scale(${on ? 1 + 0.12 * (1 - ease((t - at) / 0.3)) : 1})`;
+      el.style.opacity = ease((t - c0 - 0.2 - i * 0.08) / 0.25);
+    });
+    const up = ease((t - c0) / 0.5);
+    const ph = $("ph");
+    ph.style.top = 560 + (1 - up) * 1000 + "px";
+    ph.style.transform = `rotateX(${(1 - up) * 22 + 3}deg) rotateY(${-6 + 3 * Math.sin((t - c0) * 1.2)}deg) rotateZ(${(1 - up) * -4}deg)`;
+    $("glare").style.backgroundPosition = `${100 - 100 * clamp((t - c0) / B(8))}% 0`;
+    if (t >= c0 - 0.05 && t < B(18)) {
+      const f = cfg.foot.quote2;
+      await setImg($("scr"), `${f.dir}/${String(Math.max(1, Math.min(f.n, qf(Math.max(0, t - Q0))))).padStart(5, "0")}.jpg`);
+    }
+    const sp = ease((t - STAMP_AT) / 0.2);
+    $("stamp").style.opacity = clamp((t - STAMP_AT) / 0.04);
+    $("stamp").style.transform = `rotate(-7deg) scale(${t >= STAMP_AT ? 1.6 - 0.6 * sp : 1.6})`;
+    const co = easeIn((t - B(17.6)) / B(0.4));
+    $("sC").style.transform = `translateY(${co * 300}px) scale(${1 - 0.1 * co})`;
+
+    // D: end card
+    const d0 = B(18);
+    $("endbg").style.transform = `scale(${1.15 - 0.08 * clamp((t - d0) / 3)})`;
+    const em = document.querySelector("#sD .mark");
+    em.style.transform = `scale(${0.5 + 0.5 * back((t - d0) / 0.42)}) rotate(${(1 - ease((t - d0) / 0.42)) * -10}deg)`;
+    reveal(document.querySelector("#sD .m1"), t, B(19));
+    reveal(document.querySelector("#sD .m2"), t, B(19.6));
+    const cta = document.querySelector("#sD .cta");
+    slam(cta, t, B(20.5), 1.25, 0.24);
+    cta.firstElementChild.style.left = -40 + 180 * ease((t - B(21)) / 0.6) + "%";
+    rise(document.querySelector("#sD .link"), t, B(21.5), 30, 0.3);
+    document.querySelector("#sD .link u").style.width = 100 * ease((t - B(22)) / 0.4) + "%";
+    rise(document.querySelector("#sD .free"), t, B(22.5), 20, 0.3);
+    leak(t, [B(8), B(18)]);
+    grain(t);
+  };
+  window.DURATION = DURATION;
+  window.AUDIO = {
+    duration: DURATION, drop: B(8), end: B(23),
+    cues: [
+      ...CHAT_AT.map((at, i) => [at, "pop", 0.55 + 0.25 * (i % 2), i % 2 ? 0.3 : -0.3]),
+      [B(1.5), "pop", 0.5], [B(6), "impact", 0.5],
+      [B(8), "suck"], [B(8), "impact"], [B(8.6), "pop", 0.6], [B(8.9), "tap"], [B(9.6), "whoosh"],
+      [B(10), "pop", 0.6], ...STEP_AT.map((at) => [at, "tick", 1.6]), ...STEP_AT.map((at) => [at - 0.05, "tap", 0.7]),
+      [STAMP_AT, "impact"], [B(17.6), "whoosh", 0.8], [B(18), "impact", 0.8], [B(19), "pop", 0.6], [B(20.5), "impact", 0.45], [B(21.5), "tick", 1.5],
+    ],
+  };
+</script>
+</body>
+</html>

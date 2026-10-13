@@ -3,7 +3,8 @@
 // Usage: PWC=<playwright-core dir> FF=<ffmpeg> TEMPLATE=ad1.html NAME=gilberto-ad-6s \
 //          node ad.js <run folder> [preview]   (preview: stills at TIMES=…, no video)
 // The run folder holds fonts.css, the footage folders (f-chat, f-quote2, f-gallery, f-home, f-fix,
-// f-intake2, as for the promo videos) and ph/<pexels id>.jpg (the stock wedding photos).
+// f-intake2, as for the promo videos), ph/<pexels id>.jpg (the stock wedding photos) and, for the
+// album ad, alb/ (spreads from the real auto-designer, see SKILL.md "Short ads, round 2").
 const { chromium } = require(process.env.PWC);
 const { spawn, execFileSync } = require("child_process");
 const fs = require("fs");
@@ -21,11 +22,18 @@ const count = (d) => (fs.existsSync(path.join(dir, d)) ? fs.readdirSync(path.joi
   for (const d of fs.readdirSync(dir).filter((d) => d.startsWith("f-"))) foot[d.slice(2)] = { dir: "file://" + path.join(dir, d), n: count(d) };
   const photos = {};
   if (fs.existsSync(path.join(dir, "ph"))) for (const f of fs.readdirSync(path.join(dir, "ph"))) photos[f.replace(/\.jpg$/, "")] = "file://" + path.join(dir, "ph", f);
+  // Album spreads designed by the real auto-designer (alb/spNN.jpg) and their layout (alb/plan.json).
+  const alb = {};
+  let albPlan = null;
+  if (fs.existsSync(path.join(dir, "alb"))) {
+    for (const f of fs.readdirSync(path.join(dir, "alb")).filter((f) => f.endsWith(".jpg"))) alb[f.replace(/\.jpg$/, "")] = "file://" + path.join(dir, "alb", f);
+    if (fs.existsSync(path.join(dir, "alb", "plan.json"))) albPlan = JSON.parse(fs.readFileSync(path.join(dir, "alb", "plan.json"), "utf8"));
+  }
   const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--allow-file-access-from-files"] });
   const p = await b.newPage({ viewport: { width: 1080, height: 1920 } });
   p.on("pageerror", (e) => console.log("pageerror", e.message));
   await p.goto("file://" + path.join(dir, TEMPLATE));
-  await p.evaluate((c) => window.setup(c), { foot, photos, founder: "file://" + path.join(dir, "founder.jpg") });
+  await p.evaluate((c) => window.setup(c), { foot, photos, alb, albPlan, founder: "file://" + path.join(dir, "founder.jpg") });
   const duration = await p.evaluate(() => window.DURATION);
   fs.mkdirSync(path.join(dir, "prev"), { recursive: true });
   if (preview) {
