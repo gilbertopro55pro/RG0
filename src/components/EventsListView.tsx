@@ -10,10 +10,11 @@ import { eventDisplayName } from "@/lib/eventDisplayName";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
 import { compareEventsChronologically } from "@/lib/eventOrder";
+import { comingWeekRange, DEFAULT_HOME_VIEW, type HomeEventsView, type HomeSortOrder, type HomeStatusFilter } from "@/lib/homeEventsView";
 
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null };
-type StatusFilter = "upcoming" | "completed" | "all" | "duplicates";
-type SortOrder = "asc" | "desc" | "month" | "date" | "range";
+type StatusFilter = HomeStatusFilter;
+type SortOrder = HomeSortOrder;
 const PAGE_SIZE = 10;
 
 // What needs the photographer's attention on an event — computed server-side in page.tsx.
@@ -50,8 +51,14 @@ export default function EventsListView({
   isPhotographer,
   needsReviewColorId,
   attentionByEvent = {},
+  initialView = DEFAULT_HOME_VIEW,
+  saveView = false,
 }: {
   attentionByEvent?: Record<string, EventAttention>;
+  // The view saved on the account (photographers.home_events_view); "the coming week" by default.
+  initialView?: HomeEventsView;
+  // Save every change of view on the account (a photographer; a team member has no row to save to).
+  saveView?: boolean;
   events: EventWithCustomPackage[];
   // Name of the first stage not done yet; null when every stage is done (ready to close).
   nextStageByEvent: Record<string, string | null>;
@@ -64,8 +71,8 @@ export default function EventsListView({
 }) {
   const t = useT();
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("upcoming");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialView.status);
+  const [sortOrder, setSortOrder] = useState<SortOrder>(initialView.sort);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthValue());
   // Filter by the event's date (owner, 2026-10-07): one exact day, or a range (either end may be
   // left empty for "from…" / "until…").
@@ -79,6 +86,22 @@ export default function EventsListView({
   // active list by itself.
   const isEventDone = (event: EventWithCustomPackage) => !!event.closed_at;
 
+  // The chosen view is saved on the account, so it's the same after logging out and on any device
+  // (owner, 2026-10-13). A failed save only means the next visit opens on the previous view.
+  const changeView = (next: HomeEventsView) => {
+    setStatusFilter(next.status);
+    setSortOrder(next.sort);
+    setVisibleCount(PAGE_SIZE);
+    if (!saveView) return;
+    fetch("/api/preferences/home-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(next),
+      keepalive: true,
+    }).catch(() => {});
+  };
+  const week = comingWeekRange();
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const result = events.filter((event) => {
@@ -89,7 +112,9 @@ export default function EventsListView({
       }
       // The filter's own label is "כפילויות / פרילנס" — matches either, not just resolution_note.
       if (statusFilter === "duplicates" && !event.resolution_note && !isFreelanceEvent(event)) return false;
-      if (statusFilter !== "duplicates" && statusFilter !== "all") {
+      // The coming week: every event dated today through a week from today, whatever its status.
+      if (statusFilter === "week" && (event.event_date < week.from || event.event_date > week.to)) return false;
+      if (statusFilter === "upcoming" || statusFilter === "completed") {
         const done = isEventDone(event);
         if (statusFilter === "upcoming" && done) return false;
         if (statusFilter === "completed" && !done) return false;
@@ -104,7 +129,7 @@ export default function EventsListView({
       return compareEventsChronologically(a, b);
     });
     return result;
-  }, [events, query, statusFilter, sortOrder, selectedMonth, selectedDate, rangeFrom, rangeTo]);
+  }, [events, query, statusFilter, sortOrder, selectedMonth, selectedDate, rangeFrom, rangeTo, week.from, week.to]);
 
   const visible = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visible.length;
@@ -126,13 +151,11 @@ export default function EventsListView({
         <div className="grid grid-cols-2 gap-2 mb-3">
           <select
             value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value as StatusFilter);
-              setVisibleCount(PAGE_SIZE);
-            }}
+            onChange={(e) => changeView({ status: e.target.value as StatusFilter, sort: sortOrder })}
             aria-label={t("סינון לפי סטטוס")}
             className="order-2 min-w-0 h-10 rounded-xl px-2.5 text-sm bg-card"
           >
+            <option value="week">{t("השבוע הקרוב")}</option>
             <option value="upcoming">{t("פעילים")}</option>
             <option value="completed">{t("הושלמו")}</option>
             <option value="all">{t("הכל")}</option>
@@ -156,10 +179,7 @@ export default function EventsListView({
           </label>
           <select
             value={sortOrder}
-            onChange={(e) => {
-              setSortOrder(e.target.value as SortOrder);
-              setVisibleCount(PAGE_SIZE);
-            }}
+            onChange={(e) => changeView({ status: statusFilter, sort: e.target.value as SortOrder })}
             aria-label={t("מיון")}
             className="order-3 min-w-0 h-10 rounded-xl px-2.5 text-sm bg-card"
           >
@@ -288,7 +308,14 @@ export default function EventsListView({
             ? isPhotographer
               ? t("עדיין אין אירועים. לחצו על + כדי לסגור אירוע ראשון")
               : t("עדיין לא הוקצו לך אירועים")
-            : t("לא נמצאו אירועים תואמים")}
+            : statusFilter === "week" && !query.trim()
+              ? t("אין אירועים בשבוע הקרוב")
+              : t("לא נמצאו אירועים תואמים")}
+          {events.length > 0 && statusFilter === "week" && (
+            <button onClick={() => changeView({ status: "all", sort: sortOrder })} className="block mx-auto mt-3 text-sm font-semibold underline underline-offset-2 text-ink">
+              {t("הצגת כל האירועים")}
+            </button>
+          )}
         </div>
       )}
     </div>
