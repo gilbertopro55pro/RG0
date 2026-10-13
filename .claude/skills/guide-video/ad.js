@@ -12,6 +12,8 @@ const path = require("path");
 const dir = path.resolve(process.argv[2]);
 const preview = process.argv[3] === "preview";
 const FF = process.env.FF, FPS = 30;
+// Bitrate cap (Mb/s). 8M keeps up to ~16 s under WhatsApp's 16MB; a longer ad needs less (25 s: 5.5M).
+const MAXRATE = process.env.MAXRATE || "8M";
 const TEMPLATE = process.env.TEMPLATE || "ad1.html";
 const NAME = process.env.NAME || TEMPLATE.replace(".html", "");
 const count = (d) => (fs.existsSync(path.join(dir, d)) ? fs.readdirSync(path.join(dir, d)).filter((f) => f.endsWith(".jpg")).length : 0);
@@ -48,7 +50,7 @@ const count = (d) => (fs.existsSync(path.join(dir, d)) ? fs.readdirSync(path.joi
   }
   const silent = path.join(dir, `${NAME}-silent.mp4`);
   const ff = spawn(FF, ["-hide_banner", "-loglevel", "error", "-y", "-f", "image2pipe", "-c:v", "mjpeg", "-framerate", String(FPS), "-i", "-",
-    "-c:v", "libx264", "-preset", "slow", "-crf", "19", "-maxrate", "8M", "-bufsize", "16M", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", silent], { stdio: ["pipe", "inherit", "inherit"] });
+    "-c:v", "libx264", "-preset", "slow", "-crf", "19", "-maxrate", MAXRATE, "-bufsize", String(parseFloat(MAXRATE) * 2) + "M", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", silent], { stdio: ["pipe", "inherit", "inherit"] });
   const total = Math.round(duration * FPS);
   for (let i = 0; i < total; i++) {
     await p.evaluate((t) => window.renderAt(t), i / FPS);
