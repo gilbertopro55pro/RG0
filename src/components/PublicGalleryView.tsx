@@ -718,15 +718,20 @@ export default function PublicGalleryView({
     return total > 0 ? Math.round((done / total) * 100) : 0;
   })();
 
+  // Sends only what changed since the last save: this page may show just some tabs or photos of the
+  // gallery (?folders= / ?photos=), and favorites outside it must stay as they are.
   const saveFavorites = async () => {
     if (readOnly) return;
+    const added = [...currentFavoriteIds].filter((id) => !savedFavoriteIds.has(id));
+    const removed = [...savedFavoriteIds].filter((id) => !currentFavoriteIds.has(id));
+    if (added.length === 0 && removed.length === 0) return;
     setSaving(true);
-    await fetch(`/api/gallery/${token}/favorite`, {
+    const res = await fetch(`/api/gallery/${token}/favorite`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ favoritePhotoIds: [...currentFavoriteIds] }),
-    });
-    setSavedFavoriteIds(currentFavoriteIds);
+      body: JSON.stringify({ added, removed }),
+    }).catch(() => null);
+    if (res?.ok) setSavedFavoriteIds(currentFavoriteIds);
     setSaving(false);
   };
 

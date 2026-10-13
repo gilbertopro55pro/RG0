@@ -13,6 +13,8 @@ type ClientStage = {
   label: string;
   done: boolean;
   isCurrent: boolean;
+  // An approval stage only takes the client's approval once there's something to approve.
+  approvalOpen?: boolean;
 };
 
 const EXPLANATIONS: Partial<Record<StageKey, string>> = {
@@ -90,7 +92,7 @@ export default function PortalStageActions({
 
   return (
     <div className="space-y-1.5">
-      {stages.map(({ key, role, label, isCurrent }) => {
+      {stages.map(({ key, role, label, isCurrent, approvalOpen = true }) => {
         const done = localDone.has(key);
         const r = role ?? key;
         const explanationHe = EXPLANATIONS[r as StageKey];
@@ -161,7 +163,15 @@ export default function PortalStageActions({
               </div>
             )}
 
-            {!done && explanation && (
+            {!done && isClientCompletable && !approvalOpen && (
+              <p className="mt-2 ms-9 text-xs leading-relaxed text-ink-soft">
+                {r === "album_approval"
+                  ? t("כשעיצוב האלבום יהיה מוכן, נשלח לכם הודעה ותוכלו לאשר אותו כאן.")
+                  : t("כשהסרטון יהיה מוכן, נשלח לכם הודעה ותוכלו לאשר אותו כאן.")}
+              </p>
+            )}
+
+            {!done && explanation && (!isClientCompletable || approvalOpen) && (
               <div className="mt-2 ms-9 space-y-2">
                 <p className="text-xs leading-relaxed text-ink-soft">{explanation}</p>
 

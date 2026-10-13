@@ -53,6 +53,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  // No "the quote is still open" nudge after the client approved it.
+  await supabase
+    .from("scheduled_messages")
+    .update({ status: "canceled" })
+    .eq("lead_id", lead.id)
+    .eq("kind", "lead_quote_followup")
+    .eq("status", "pending");
 
   // To the photographer, in their own language (photographers.ui_lang).
   const t = makeT(messagesFor(photographerLang(lead.photographers?.ui_lang)));
