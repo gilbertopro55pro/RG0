@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { bucketPhotosIntoParts, chunkArray, triggerZipJobProcessing } from "@/lib/zipJobs";
-import type { GalleryPhotoRow, GalleryRow } from "@/lib/types";
+import { photoInScope, resolveGalleryToken } from "@/lib/galleryAccess";
+import type { GalleryPhotoRow } from "@/lib/types";
 
 // Kicks off a background zip build instead of building it inline in this request — the
 // synchronous download-zip route works for a reasonably-sized selection, but a gallery with
@@ -22,21 +23,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const supabase = createServiceRoleClient();
 
-  const { data: gallery } = await supabase
-    .from("galleries")
-    .select("*")
-    .eq("access_token", token)
-    .maybeSingle<GalleryRow>();
-
-  if (!gallery) {
+  // The client's own link, or a read-only share link within its scope (lib/galleryAccess.ts).
+  const access = await resolveGalleryToken(supabase, token);
+  if (!access) {
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
+  const gallery = access.gallery;
 
   const serverAuthClient = await createServerSupabaseClient();
   const {
     data: { user },
   } = await serverAuthClient.auth.getUser();
-  const isOwner = !!user && user.id === gallery.photographer_id;
+  const isOwner = !access.readOnly && !!user && user.id === gallery.photographer_id;
 
   if (!isOwner) {
     if (!gallery.published || gallery.archived_at) {
@@ -51,14 +49,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     chunkArray(photoIds).map((ids) => {
       let q = supabase
         .from("gallery_photos")
-        .select("id, file_size_bytes")
+        .select("id, folder_id, file_size_bytes")
         .eq("gallery_id", gallery.id)
         .in("id", ids);
       if (!isOwner) q = q.neq("culling_status", "rejected");
-      return q.returns<Pick<GalleryPhotoRow, "id" | "file_size_bytes">[]>();
+      return q.returns<Pick<GalleryPhotoRow, "id" | "folder_id" | "file_size_bytes">[]>();
     })
   );
-  const photos = photoChunkResults.flatMap((r) => r.data ?? []);
+  const photos = photoChunkResults.flatMap((r) => r.data ?? []).filter((p) => photoInScope(p, access.scope));
   if (photos.length === 0) {
     return NextResponse.json({ error: "התמונות לא נמצאו" }, { status: 404 });
   }
@@ -76,7 +74,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         part_count: parts.length,
         photo_ids: ids,
         total_count: ids.length,
-        quality: quality === "web" ? "web" : "full",
+        quality: quality === "web" || access.scope?.quality === "web" ? "web" : "full",
       }))
     )
     .select("id, part_index")

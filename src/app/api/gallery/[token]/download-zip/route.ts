@@ -4,7 +4,9 @@ import { Readable } from "node:stream";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { downloadObjectBuffer } from "@/lib/storage";
-import type { GalleryFolderRow, GalleryPhotoRow, GalleryRow } from "@/lib/types";
+import { resizeForWebQuality } from "@/lib/zipJobs";
+import { photoInScope, resolveGalleryToken } from "@/lib/galleryAccess";
+import type { GalleryFolderRow, GalleryPhotoRow } from "@/lib/types";
 
 const NO_FOLDER_LABEL = "כללי";
 
@@ -61,15 +63,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const supabase = createServiceRoleClient();
 
-  const { data: gallery } = await supabase
-    .from("galleries")
-    .select("*")
-    .eq("access_token", token)
-    .maybeSingle<GalleryRow>();
-
-  if (!gallery) {
+  // The client's own link, or a read-only share link within its scope (lib/galleryAccess.ts).
+  const access = await resolveGalleryToken(supabase, token);
+  if (!access) {
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
+  const gallery = access.gallery;
 
   // The photographer downloading their own gallery (e.g. exporting the client's favorites for
   // retouching) isn't bound by the client-facing publish/downloads-enabled gates — those settings
@@ -78,7 +77,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const {
     data: { user },
   } = await serverAuthClient.auth.getUser();
-  const isOwner = !!user && user.id === gallery.photographer_id;
+  const isOwner = !access.readOnly && !!user && user.id === gallery.photographer_id;
 
   if (!isOwner) {
     if (!gallery.published || gallery.archived_at) {
@@ -94,13 +93,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       chunk(photoIds, PHOTO_ID_CHUNK_SIZE).map((ids) => {
         let q = supabase
           .from("gallery_photos")
-          .select("storage_path, original_filename, folder_id, file_size_bytes")
+          .select("id, storage_path, original_filename, folder_id, file_size_bytes")
           .eq("gallery_id", gallery.id)
           .in("id", ids);
         // A rejected photo's id is never offered by the client-facing gallery UI, but nothing
         // stops a direct request for one by id — only the owner can pull rejected photos.
         if (!isOwner) q = q.neq("culling_status", "rejected");
-        return q.returns<Pick<GalleryPhotoRow, "storage_path" | "original_filename" | "folder_id" | "file_size_bytes">[]>();
+        return q.returns<Pick<GalleryPhotoRow, "id" | "storage_path" | "original_filename" | "folder_id" | "file_size_bytes">[]>();
       })
     ),
     supabase
@@ -109,7 +108,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .eq("gallery_id", gallery.id)
       .returns<Pick<GalleryFolderRow, "id" | "name">[]>(),
   ]);
-  const photos = photoChunkResults.flatMap((r) => r.data ?? []);
+  const photos = photoChunkResults.flatMap((r) => r.data ?? []).filter((p) => photoInScope(p, access.scope));
+  const webQuality = access.scope?.quality === "web";
 
   if (photos.length === 0) {
     return NextResponse.json({ error: "התמונות לא נמצאו" }, { status: 404 });
@@ -172,8 +172,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const pump = async () => {
       while (cursor < photos.length) {
         const photo = photos[cursor++];
-        const buffer = await downloadObjectBuffer("galleries", photo.storage_path);
+        let buffer = await downloadObjectBuffer("galleries", photo.storage_path);
         if (!buffer) continue;
+        // A share link at web quality never hands out originals (same resize as a web zip job).
+        if (webQuality) buffer = await resizeForWebQuality(buffer).catch(() => buffer as Buffer);
         const folderName = photo.folder_id ? folderNameById.get(photo.folder_id) ?? NO_FOLDER_LABEL : NO_FOLDER_LABEL;
         const dir = useSubfolders ? `${rootDir}/${sanitizeSegment(folderName)}` : rootDir;
         archive.append(buffer, { name: `${dir}/${uniqueName(dir, photo.original_filename)}` });

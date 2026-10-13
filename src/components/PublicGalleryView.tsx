@@ -65,6 +65,7 @@ export default function PublicGalleryView({
   initiallyConfirmed,
   allowDownloads,
   allowClientUpload = false,
+  readOnly = false,
   themeId = "classic",
   titleFontOverride = null,
   gridStyleOverride = null,
@@ -83,6 +84,9 @@ export default function PublicGalleryView({
   initiallyConfirmed: boolean;
   allowDownloads: boolean;
   allowClientUpload?: boolean;
+  // A read-only share link (lib/galleryAccess.ts): viewing and downloading only. No favorites,
+  // labels, selection or album; the server refuses those writes for this link anyway.
+  readOnly?: boolean;
   // Set when this link was shared with a quality cap (?quality=web) — locks the download and
   // re-share quality choices to "web" instead of offering the full-resolution originals.
   restrictedQuality?: "web" | null;
@@ -474,6 +478,7 @@ export default function PublicGalleryView({
   // into its normal compact form, which read as an inconsistent flicker. The compact bar is now
   // what shows from the first favorite onward; opening the full panel is always an explicit tap.
   const toggleFavorite = (photo: PhotoWithUrl) => {
+    if (readOnly) return;
     const next = !photo.is_favorite;
     setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, is_favorite: next } : p)));
   };
@@ -714,6 +719,7 @@ export default function PublicGalleryView({
   })();
 
   const saveFavorites = async () => {
+    if (readOnly) return;
     setSaving(true);
     await fetch(`/api/gallery/${token}/favorite`, {
       method: "POST",
@@ -764,29 +770,55 @@ export default function PublicGalleryView({
     triggerAnchorDownload(data.url, photo.original_filename);
   };
 
-  // Mirrors GalleryManageView's own share-link builder: a link scoped to specific photo ids wins
-  // over the folder checkboxes (the two scopes are never active together), and the folder
-  // checkboxes only narrow the link when not everything is checked — checking every box is the
-  // same as sharing the whole gallery, so it collapses back to the plain base URL.
+  // "Share my gallery" never passes on this link itself: it makes a separate read-only link
+  // (POST share-links, lib/galleryAccess.ts) whose scope the server enforces. Before, the scope was
+  // ?folders= / ?photos= / ?quality= on the client's own link, which anyone could remove, and the
+  // same link could change favorites, confirm the selection or approve the album. The link is made
+  // as soon as the panel opens (and again when its choices change), so every share button stays a
+  // plain click (iOS blocks window.open after an await).
   const hasUnfoldered = photos.some((p) => !p.folder_id);
   const allShareFolderKeys = [...folders.map((f) => f.id), ...(hasUnfoldered ? [NO_FOLDER_KEY] : [])];
   const showFolderPicker = galleryShareScope?.kind === "gallery" && folders.length > 0;
   const shareDisabled = showFolderPicker && shareSelectedFolders.size === 0;
+  // The link made for one exact set of choices (key); a link for other choices is never shown.
+  const [madeShareLink, setMadeShareLink] = useState<{ key: string; url: string | null } | null>(null);
 
-  const galleryShareUrl = () => {
-    const base = `${window.location.origin}/gallery/${token}`;
-    const params = new URLSearchParams();
-    if (galleryShareScope?.kind === "photos") {
-      params.set("photos", galleryShareScope.ids.join(","));
-    } else if (showFolderPicker && !allShareFolderKeys.every((k) => shareSelectedFolders.has(k))) {
-      params.set("folders", [...shareSelectedFolders].join(","));
-    }
-    // A link the recipient received already restricted to web quality can't be re-shared at full
-    // quality — the cap only ever narrows, never widens.
-    if (shareQuality === "web" || restrictedQuality === "web") params.set("quality", "web");
-    const qs = params.toString();
-    return qs ? `${base}?${qs}` : base;
-  };
+  const shareRequestKey =
+    galleryShareOpen && galleryShareScope && !shareDisabled
+      ? JSON.stringify({
+          photos: galleryShareScope.kind === "photos" ? galleryShareScope.ids : undefined,
+          folders:
+            galleryShareScope.kind === "gallery" && showFolderPicker && !allShareFolderKeys.every((k) => shareSelectedFolders.has(k))
+              ? [...shareSelectedFolders]
+              : undefined,
+          // A link received at web quality can't be re-shared at full quality (the server keeps it so).
+          quality: shareQuality === "web" || restrictedQuality === "web" ? "web" : "full",
+        })
+      : null;
+
+  useEffect(() => {
+    if (!shareRequestKey) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const res = await fetch(`/api/gallery/${token}/share-links`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: shareRequestKey,
+      }).catch(() => null);
+      const data: { url?: string } | null = res?.ok ? await res.json().catch(() => null) : null;
+      if (!cancelled) setMadeShareLink({ key: shareRequestKey, url: data?.url ?? null });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [shareRequestKey, token]);
+
+  const madeForThese = madeShareLink && madeShareLink.key === shareRequestKey ? madeShareLink : null;
+  const shareLink = madeForThese?.url ?? null;
+  const shareLinkFailed = !!madeForThese && !madeForThese.url;
+  const galleryShareUrl = () => shareLink ?? "";
+  const shareNotReady = shareDisabled || !shareLink;
   const galleryShareMessage = () => `הגלריה שלי מוכנה לצפייה 📸\n${galleryShareUrl()}`;
 
   const openGalleryShare = () => {
@@ -1025,11 +1057,13 @@ export default function PublicGalleryView({
           </div>
           {renderChapterNav("hidden md:flex min-w-0 flex-1 items-center gap-6 overflow-x-auto")}
           <div className="ms-auto flex shrink-0 items-center gap-0.5 lg:gap-1">
-            <button onClick={() => setFavoritesPanelOpen(true)} className={barBtn} aria-label={t("{n} מועדפים", { n: favoriteCount })}>
-              <HeartIcon filled={favoriteCount > 0} size={19} color="var(--gt-ink)" />
-              <span className="hidden lg:inline">{t("מועדפים")}</span>
-              {favoriteCount > 0 && <span className="tabular-nums">{favoriteCount}</span>}
-            </button>
+            {!readOnly && (
+              <button onClick={() => setFavoritesPanelOpen(true)} className={barBtn} aria-label={t("{n} מועדפים", { n: favoriteCount })}>
+                <HeartIcon filled={favoriteCount > 0} size={19} color="var(--gt-ink)" />
+                <span className="hidden lg:inline">{t("מועדפים")}</span>
+                {favoriteCount > 0 && <span className="tabular-nums">{favoriteCount}</span>}
+              </button>
+            )}
             {allowDownloads && photos.length > 0 && (
               <button onClick={openDownloadAll} disabled={zipping} className={barBtn} aria-label={t("הורדת כל התמונות ({n})", { n: photos.length })}>
                 <DownloadIcon size={19} stroke="currentColor" />
@@ -1084,14 +1118,16 @@ export default function PublicGalleryView({
       >
         <div className="absolute inset-x-0 top-0 z-10 flex h-14 items-center justify-between px-2 sm:px-4" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center">
-            <button
-              onClick={() => toggleFavorite(photo)}
-              className={lbBtn}
-              aria-label={photo.is_favorite ? t("הסרה מהמועדפים") : t("הוספה למועדפים")}
-              aria-pressed={photo.is_favorite}
-            >
-              <HeartIcon filled={photo.is_favorite} size={21} color="#fff" />
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() => toggleFavorite(photo)}
+                className={lbBtn}
+                aria-label={photo.is_favorite ? t("הסרה מהמועדפים") : t("הוספה למועדפים")}
+                aria-pressed={photo.is_favorite}
+              >
+                <HeartIcon filled={photo.is_favorite} size={21} color="#fff" />
+              </button>
+            )}
             {allowDownloads && (
               <button onClick={() => downloadPhoto(photo)} className={lbBtn} aria-label={t("הורדת התמונה")}>
                 <DownloadIcon size={21} stroke="currentColor" />
@@ -1295,8 +1331,8 @@ export default function PublicGalleryView({
               photo={photo}
               selectionMode={selectionMode}
               isSelected={isSelected}
-              toggleFavorite={toggleFavorite}
-              onOpenLabel={setLabelEditPhoto}
+              toggleFavorite={readOnly ? undefined : toggleFavorite}
+              onOpenLabel={readOnly ? undefined : setLabelEditPhoto}
               onDownload={allowDownloads ? downloadPhoto : undefined}
               premium
             />
@@ -1356,7 +1392,7 @@ export default function PublicGalleryView({
                   <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent" }} />
                 )}
               </button>
-              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} premium={premium} />
+              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={readOnly ? undefined : toggleFavorite} onOpenLabel={readOnly ? undefined : setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} premium={premium} />
             </div>
           );
         })}
@@ -1410,7 +1446,7 @@ export default function PublicGalleryView({
                   <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent" }} />
                 )}
               </button>
-              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} premium={premium} />
+              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={readOnly ? undefined : toggleFavorite} onOpenLabel={readOnly ? undefined : setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} premium={premium} />
             </div>
           );
         })}
@@ -1463,7 +1499,7 @@ export default function PublicGalleryView({
                   <div className="absolute inset-0" style={{ background: isSelected ? "color-mix(in srgb, var(--gt-accent) 30%, transparent)" : "transparent", borderRadius: framed ? "calc(var(--gt-photo-radius) - 6px)" : undefined }} />
                 )}
               </button>
-              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={toggleFavorite} onOpenLabel={setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} inset={framed ? 8 : 0} premium={premium} />
+              <PhotoTileOverlays photo={photo} selectionMode={selectionMode} isSelected={isSelected} toggleFavorite={readOnly ? undefined : toggleFavorite} onOpenLabel={readOnly ? undefined : setLabelEditPhoto} onDownload={premium && !allowDownloads ? undefined : downloadPhoto} inset={framed ? 8 : 0} premium={premium} />
             </div>
           );
         })}
@@ -1819,7 +1855,7 @@ export default function PublicGalleryView({
           is active, tapping a photo favorites it directly, so this always shows one unified
           favorites count instead of a separate "selected" count. Sized up with bigger text on
           both mobile and desktop so it can't be missed. */}
-      {(favoriteCount > 0 || selectionMode || usedLabels.length > 0) && (pastCover || selectionMode) && (
+      {!readOnly && (favoriteCount > 0 || selectionMode || usedLabels.length > 0) && (pastCover || selectionMode) && (
         <div
           className={`fixed bottom-3 right-3 left-3 md:right-auto md:left-1/2 md:-translate-x-1/2 z-40 flex flex-col gap-2 ${premium ? "rounded-[4px]" : "rounded-2xl"} px-4 py-3 md:py-3.5 md:min-w-[240px] shadow-sheet border`}
           style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)" }}
@@ -2268,22 +2304,27 @@ export default function PublicGalleryView({
                 </div>
 
                 <div className="space-y-2.5">
-                  <button onClick={shareGalleryViaWhatsapp} disabled={shareDisabled} className={`w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface-soft)", color: "var(--gt-accent)" }}>
+                  <button onClick={shareGalleryViaWhatsapp} disabled={shareNotReady} className={`w-full rounded-lg py-3 text-sm font-semibold disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface-soft)", color: "var(--gt-accent)" }}>
                     {t("וואטסאפ")}
                   </button>
-                  <button onClick={shareGalleryViaInstagram} disabled={shareDisabled} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
+                  <button onClick={shareGalleryViaInstagram} disabled={shareNotReady} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
                     {t("אינסטגרם")}
                   </button>
-                  <button onClick={shareGalleryViaTiktok} disabled={shareDisabled} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
+                  <button onClick={shareGalleryViaTiktok} disabled={shareNotReady} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
                     {t("טיקטוק")}
                   </button>
-                  <button onClick={shareGalleryViaQr} disabled={shareDisabled} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
+                  <button onClick={shareGalleryViaQr} disabled={shareNotReady} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
                     {t("קוד QR")}
                   </button>
-                  <button onClick={shareGalleryViaOther} disabled={shareDisabled} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
+                  <button onClick={shareGalleryViaOther} disabled={shareNotReady} className={`w-full rounded-lg py-3 text-sm font-semibold border disabled:opacity-40 ${BTN_PRESS}`} style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}>
                     {t("אחר")}
                   </button>
                 </div>
+                {!shareDisabled && !shareLink && (
+                  <p className="text-xs text-center mt-3" style={{ color: "var(--gt-ink-soft)" }}>
+                    {shareLinkFailed ? t("יצירת הקישור נכשלה. סגרו ופתחו שוב את השיתוף") : t("מכין קישור לצפייה בלבד...")}
+                  </p>
+                )}
                 {shareFeedback && (
                   <p className="text-xs text-center mt-3 font-medium" style={{ color: "var(--gt-accent)" }}>{shareFeedback}</p>
                 )}
@@ -2627,7 +2668,7 @@ function PhotoTileOverlays({
   photo: PhotoWithUrl;
   selectionMode: boolean;
   isSelected: boolean;
-  toggleFavorite: (photo: PhotoWithUrl) => void;
+  toggleFavorite?: (photo: PhotoWithUrl) => void;
   onOpenLabel?: (photo: PhotoWithUrl) => void;
   onDownload?: (photo: PhotoWithUrl) => void;
   inset?: number;
@@ -2663,19 +2704,21 @@ function PhotoTileOverlays({
           {isSelected && <CheckIcon />}
         </div>
       )}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleFavorite(photo);
-        }}
-        className={`absolute h-8 w-8 rounded-full flex items-center justify-center backdrop-blur-md ${
-          photo.is_favorite ? "bg-black/30" : "bg-white/20"
-        } ${BTN_PRESS}`}
-        style={{ top: offset, insetInlineStart: offset }}
-        aria-label={t("סמן כמועדף")}
-      >
-        <HeartIcon filled={photo.is_favorite} />
-      </button>
+      {toggleFavorite && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleFavorite(photo);
+          }}
+          className={`absolute h-8 w-8 rounded-full flex items-center justify-center backdrop-blur-md ${
+            photo.is_favorite ? "bg-black/30" : "bg-white/20"
+          } ${BTN_PRESS}`}
+          style={{ top: offset, insetInlineStart: offset }}
+          aria-label={t("סמן כמועדף")}
+        >
+          <HeartIcon filled={photo.is_favorite} />
+        </button>
+      )}
       {onDownload && (
         <button
           onClick={(e) => {
@@ -2729,7 +2772,7 @@ function PremiumTileOverlays({
   photo: PhotoWithUrl;
   selectionMode: boolean;
   isSelected: boolean;
-  toggleFavorite: (photo: PhotoWithUrl) => void;
+  toggleFavorite?: (photo: PhotoWithUrl) => void;
   onOpenLabel?: (photo: PhotoWithUrl) => void;
   onDownload?: (photo: PhotoWithUrl) => void;
   inset?: number;
@@ -2781,18 +2824,20 @@ function PremiumTileOverlays({
             <DownloadIcon size={18} stroke="#fff" />
           </button>
         )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleFavorite(photo);
-          }}
-          className={`${glyphBtn} ${photo.is_favorite ? "" : HOVER_REVEAL}`}
-          style={{ filter: PREMIUM_GLYPH_SHADOW }}
-          aria-label={photo.is_favorite ? t("הסרה מהמועדפים") : t("הוספה למועדפים")}
-          aria-pressed={photo.is_favorite}
-        >
-          <HeartIcon filled={photo.is_favorite} size={19} color="#fff" />
-        </button>
+        {toggleFavorite && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFavorite(photo);
+            }}
+            className={`${glyphBtn} ${photo.is_favorite ? "" : HOVER_REVEAL}`}
+            style={{ filter: PREMIUM_GLYPH_SHADOW }}
+            aria-label={photo.is_favorite ? t("הסרה מהמועדפים") : t("הוספה למועדפים")}
+            aria-pressed={photo.is_favorite}
+          >
+            <HeartIcon filled={photo.is_favorite} size={19} color="#fff" />
+          </button>
+        )}
       </div>
     </>
   );

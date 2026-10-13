@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { getOrCreatePreviewUrl } from "@/lib/galleryPhotoPreview";
-import type { GalleryPhotoRow, GalleryRow } from "@/lib/types";
+import { photoInScope, resolveGalleryToken } from "@/lib/galleryAccess";
+import type { GalleryPhotoRow } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -13,24 +14,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   const { token, photoId } = await params;
   const supabase = createServiceRoleClient();
 
-  const { data: gallery } = await supabase
-    .from("galleries")
-    .select("*")
-    .eq("access_token", token)
-    .eq("published", true)
-    .maybeSingle<GalleryRow>();
-  if (!gallery || gallery.archived_at) {
+  // The client's own link, or a read-only share link within its scope (lib/galleryAccess.ts).
+  const access = await resolveGalleryToken(supabase, token);
+  const gallery = access?.gallery;
+  if (!access || !gallery || !gallery.published || gallery.archived_at) {
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
 
   const { data: photo } = await supabase
     .from("gallery_photos")
-    .select("id, gallery_id, storage_path, preview_storage_path")
+    .select("id, gallery_id, folder_id, storage_path, preview_storage_path")
     .eq("id", photoId)
     .eq("gallery_id", gallery.id)
     .neq("culling_status", "rejected")
-    .maybeSingle<Pick<GalleryPhotoRow, "id" | "gallery_id" | "storage_path" | "preview_storage_path">>();
-  if (!photo) {
+    .maybeSingle<Pick<GalleryPhotoRow, "id" | "gallery_id" | "folder_id" | "storage_path" | "preview_storage_path">>();
+  if (!photo || !photoInScope(photo, access.scope)) {
     return NextResponse.json({ error: "התמונה לא נמצאה" }, { status: 404 });
   }
 

@@ -1,17 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { getSignedDownloadUrl } from "@/lib/storage";
-import type { GalleryRow, GalleryZipJobRow } from "@/lib/types";
+import { resolveGalleryToken } from "@/lib/galleryAccess";
+import type { GalleryZipJobRow } from "@/lib/types";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ token: string; batchId: string }> }) {
   const { token, batchId } = await params;
   const supabase = createServiceRoleClient();
 
-  const { data: gallery } = await supabase
-    .from("galleries")
-    .select("id, title")
-    .eq("access_token", token)
-    .maybeSingle<Pick<GalleryRow, "id" | "title">>();
+  // The client's own link or a read-only share link (whose zip jobs were scoped when created).
+  const gallery = (await resolveGalleryToken(supabase, token))?.gallery;
   if (!gallery) {
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
