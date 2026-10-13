@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isLockedOut, type AccessRow } from "@/lib/appAccess";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { LEAD_FOLLOW_UP_TEMPLATES } from "@/lib/stages";
@@ -83,9 +84,9 @@ export async function GET(request: NextRequest) {
 async function processLeadFollowUp(supabase: SupabaseClient<any>, message: ScheduledMessage) {
   const { data: lead } = await supabase
     .from("leads")
-    .select("name, phone, status, archived_at")
+    .select("name, phone, status, archived_at, photographers(email, subscription_status, trial_ends_at)")
     .eq("id", message.lead_id)
-    .single<{ name: string; phone: string | null; status: string; archived_at: string | null }>();
+    .single<{ name: string; phone: string | null; status: string; archived_at: string | null; photographers: AccessRow | null }>();
 
   // The lead converted or died since this step was scheduled — nothing to send. This is a
   // defensive fallback; the normal path cancels these rows outright when status changes
@@ -97,6 +98,12 @@ async function processLeadFollowUp(supabase: SupabaseClient<any>, message: Sched
   if (!lead.phone) {
     await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", message.id);
     return { id: message.id, status: "failed", reason: "no lead phone" };
+  }
+  // These go out from the platform's own WhatsApp number (Meta charges per conversation), so a
+  // photographer whose trial ended or whose subscription lapsed gets none (lib/appAccess.ts).
+  if (isLockedOut(lead.photographers)) {
+    await supabase.from("scheduled_messages").update({ status: "canceled" }).eq("id", message.id);
+    return { id: message.id, status: "canceled", reason: "subscription inactive" };
   }
 
   const step = LEAD_FOLLOW_UP_TEMPLATES[(message.sequence_step ?? 1) - 1];

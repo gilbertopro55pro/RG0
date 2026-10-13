@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isLockedOut, type AccessRow } from "@/lib/appAccess";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
@@ -38,13 +39,18 @@ export async function POST(request: Request) {
   // future credential requests. The admin account keeps access regardless of its own plan.
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("plan, email")
+    .select("plan, email, subscription_status, trial_ends_at")
     .eq("id", gallery.photographer_id)
-    .maybeSingle<{ plan: SubscriptionPlan; email: string }>();
+    .maybeSingle<{ plan: SubscriptionPlan } & AccessRow>();
   const isFramePlus = photographer && SUBSCRIPTION_PLANS[photographer.plan].tier === "studio_pro";
   const isAdmin = photographer?.email === ADMIN_EMAIL;
   if (!isFramePlus && !isAdmin) {
     return NextResponse.json({ error: "FTP Live is only available on the פרו+ plan" }, { status: 403 });
+  }
+  // A trial runs on the פרו+ plan, so an ended trial (or a lapsed subscription) still passed the
+  // plan check above and kept uploading over FTP (lib/appAccess.ts).
+  if (isLockedOut(photographer)) {
+    return NextResponse.json({ error: "subscription inactive" }, { status: 403 });
   }
 
   return NextResponse.json({ galleryId: gallery.id, photographerId: gallery.photographer_id });

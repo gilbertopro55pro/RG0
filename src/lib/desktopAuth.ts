@@ -1,6 +1,20 @@
 import { NextResponse } from "next/server";
 import { createClient as createAnonClient } from "@supabase/supabase-js";
 import { createClient as createCookieClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { ACCESS_COLUMNS, isLockedOut, isWriteMethod, lockedOutResponse, type AccessRow } from "@/lib/appAccess";
+
+// The server-side lock (lib/appAccess.ts) for these routes: the bearer-token path (the desktop app)
+// and /api/desktop/* (public to the proxy) never pass the proxy's own check.
+async function lockedOut(request: Request, userId: string): Promise<NextResponse | null> {
+  if (!isWriteMethod(request.method)) return null;
+  const { data: row } = await createServiceRoleClient()
+    .from("photographers")
+    .select(ACCESS_COLUMNS)
+    .eq("id", userId)
+    .maybeSingle<AccessRow>();
+  return isLockedOut(row) ? lockedOutResponse() : null;
+}
 
 // Accepts EITHER the normal cookie session (browser use) OR a bearer token (the desktop app,
 // which has no cookie jar shared with this site) — either way the caller gets back just the
@@ -18,6 +32,8 @@ export async function authenticateGalleryRequest(request: Request): Promise<{ us
     if (error || !user) {
       return { error: NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 }) };
     }
+    const locked = await lockedOut(request, user.id);
+    if (locked) return { error: locked };
     return { userId: user.id };
   }
   const supabase = await createCookieClient();
@@ -27,5 +43,7 @@ export async function authenticateGalleryRequest(request: Request): Promise<{ us
   if (!user) {
     return { error: NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 }) };
   }
+  const locked = await lockedOut(request, user.id);
+  if (locked) return { error: locked };
   return { userId: user.id };
 }

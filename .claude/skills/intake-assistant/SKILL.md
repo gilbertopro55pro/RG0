@@ -51,7 +51,12 @@ below, so don't change them without asking.
 - **Model:** Claude Sonnet 5 (`INTAKE_MODEL`), effort `low`, with a cached system prompt.
 - **Caps (owner's decision, 2026-09-29):** פרו סטארט 100, פרו 150 and פרו+ 200 conversations a
   month; the admin gets 1000. Every plan has the assistant (until 09-29 פרו סטארט had none and פרו
-  had 100). A conversation counts once it has at least one client message.
+  had 100). A conversation counts when it opens, on the client's first message.
+  - **The count is its own server-only counter** (`intake_monthly_usage`, migration 0166, since
+    2026-10-13): `claim_intake_monthly_slot` checks the cap and takes the slot in one statement
+    (service role only). It used to be a count of this month's `bot_conversations` rows, and
+    deleting a lead (which deletes its conversation) gave the slot back. The settings meter reads
+    the same counter.
   - When the assistant is off, the plan has lapsed, or the cap is reached, the same page shows a
     plain inquiry form (`/api/intake-chat/<key>/form`, no model call, lead `source='form'`).
     A client is never turned away.
@@ -272,8 +277,8 @@ every text block before it's stored, so the lead's conversation and PDF match.
 - **"The chat doesn't answer":** `ANTHROPIC_API_KEY` in Vercel. Engine errors are logged as
   `Intake assistant API error` and the client gets the fallback line.
 - **"The form shows instead of the chat":** check the reason — the toggle is off, `hasAppAccess`
-  is false, or the monthly cap is reached (count `channel='web'`,
-  `client_turns > 0` this month).
+  is false, or the monthly cap is reached
+  (`select used from intake_monthly_usage where photographer_id = '<id>' and month = 'YYYY-MM'`).
 - **A missing lead:** the client never gave a phone number (by design). Look at
   `bot_conversations.collected`.
 - **A bad answer:** read the conversation in the lead ("השיחה עם העוזר"), then fix the system
