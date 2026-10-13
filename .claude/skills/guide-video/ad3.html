@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Ad 3, 20 s (SKILL.md "Short ads"): the pain (4.5 hours of admin per event, the landing page's
+     figure from lib/adminTime.ts), the turn on the drop (the tasks are pulled into the logo), four
+     features over real footage on one phone, the result (40 minutes), the end card. -->
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="ad.css">
+<style>
+  #kick { top: 300px; font-size: 58px; color: #aeb8cc; font-weight: 600; }
+  #statrow { position: absolute; top: 390px; left: 0; right: 0; display: flex; justify-content: center; align-items: baseline; gap: 28px; direction: rtl; }
+  #num { font-weight: 800; font-size: 340px; letter-spacing: -.05em; color: #c9a15a; line-height: 1; font-variant-numeric: tabular-nums; direction: ltr; }
+  #unit { font-weight: 800; font-size: 130px; }
+  #admin { top: 770px; font-size: 76px; }
+  .chip { position: absolute; display: inline-flex; align-items: center; gap: 18px; background: #16203a; border: 2px solid #26324c; border-radius: 26px; padding: 24px 32px; font-size: 44px; font-weight: 700; white-space: nowrap; box-shadow: 0 24px 60px rgba(0,0,0,.4); opacity: 0; }
+  .chip i { width: 18px; height: 18px; border-radius: 50%; background: #e0675b; flex: none; box-shadow: 0 0 0 6px rgba(224,103,91,.2); }
+  #turn { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 470px; }
+  #turn .mark { width: 230px; height: 230px; border-radius: 52px; box-shadow: 0 40px 110px rgba(0,0,0,.5), 0 0 110px rgba(201,161,90,.3); }
+  #tl1 { margin-top: 70px; font-size: 92px; } #tl2 { font-size: 100px; color: #c9a15a; }
+  #tl1, #tl2 { position: relative; left: auto; right: auto; width: 1000px; text-align: center; font-weight: 800; letter-spacing: -.03em; line-height: 1.12; white-space: nowrap; }
+  #idx { position: absolute; top: 236px; left: 0; right: 0; text-align: center; font-size: 40px; font-weight: 700; color: #c9a15a; letter-spacing: .12em; direction: ltr; }
+  .fh { position: absolute; left: 50px; right: 50px; text-align: center; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; white-space: nowrap; }
+  .fh.a { top: 296px; font-size: 92px; } .fh.b { top: 404px; font-size: 70px; color: #c9a15a; }
+  #was { top: 560px; font-size: 150px; font-weight: 800; color: #aeb8cc; direction: rtl; }
+  #strike { position: absolute; top: 650px; left: 50%; height: 14px; width: 640px; margin-left: -320px; background: #e0675b; border-radius: 7px; transform-origin: 100% 50%; transform: scaleX(0) rotate(-4deg); }
+  #now { top: 800px; font-size: 230px; font-weight: 900; color: #c9a15a; letter-spacing: -.04em; line-height: 1; }
+  #per { top: 1080px; font-size: 64px; }
+  #sF .end { padding-top: 400px; }
+  #endbg { position: absolute; inset: -60px; background-size: cover; background-position: 50% 35%; filter: blur(34px) brightness(.5); opacity: .25; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div id="sA" class="scene">
+    <div id="kick" class="c">על כל אירוע יש בערך</div>
+    <div id="statrow"><span id="num">2.0</span><span id="unit">שעות</span></div>
+    <div id="admin" class="c big w" data-words>של עבודה מנהלית</div>
+    <div id="chips"></div>
+  </div>
+  <div id="sB" class="scene">
+    <div id="turn"><img class="mark logoimg" src="logo.png" alt=""><div id="tl1" data-words>את רוב העבודה הזאת</div><div id="tl2" data-words>גילברטו עושה בשבילכם</div></div>
+  </div>
+  <div id="sC" class="scene">
+    <div id="idx">01 / 04</div>
+    <div id="feats"></div>
+    <div class="rig"><div class="phone" id="ph"><div class="scr"><div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="ic"><svg width="34" height="22" viewBox="0 0 34 22"><rect x="0" y="14" width="5" height="8" rx="1" fill="#14100a"/><rect x="8" y="10" width="5" height="12" rx="1" fill="#14100a"/><rect x="16" y="5" width="5" height="17" rx="1" fill="#14100a"/><rect x="24" y="0" width="5" height="22" rx="1" fill="#14100a"/></svg><svg width="50" height="24" viewBox="0 0 50 24"><rect x="1" y="1" width="42" height="22" rx="6" fill="none" stroke="#14100a" stroke-width="2" opacity=".5"/><rect x="4" y="4" width="32" height="16" rx="3" fill="#14100a"/><rect x="45" y="8" width="3" height="8" rx="1" fill="#14100a" opacity=".5"/></svg></span></div>
+      <img class="feed" id="scr" alt=""><div class="glare" id="glare"></div></div></div></div>
+  </div>
+  <div id="sD" class="scene">
+    <div id="was" class="c">4.5 שעות</div>
+    <div id="strike"></div>
+    <div id="now" class="c">40 דקות</div>
+    <div id="per" class="c w" data-words>לכל אירוע, עם גילברטו</div>
+  </div>
+  <div id="sF" class="scene">
+    <div id="endbg"></div>
+    <div class="end">
+      <img class="mark logoimg" src="logo.png" alt="">
+      <div class="msg"><b class="m1" data-words>אתם מצלמים,</b><b class="m2" data-words>וגילברטו דואגת לכל השאר</b></div>
+      <div class="cta">נסו 14 יום בחינם<i></i></div>
+      <div class="link">myframeflow.com/start<u></u></div>
+      <div class="free">ללא כרטיס אשראי וללא התחייבות</div>
+    </div>
+  </div>
+  <div id="leak"></div>
+  <div id="gflash"></div>
+  <div id="flash"></div>
+  <div id="vig"></div>
+</div>
+<canvas id="grain" width="360" height="640"></canvas>
+<script src="ad-lib.js"></script>
+<script>
+  // 124 BPM: the pain is the build (two bars), the drop lands on the turn, a feature every 5 beats,
+  // a breath (no kick) before "40 דקות", and the button on the end card.
+  const S = { sA: [0, B(8)], sB: [B(8), B(10)], sC: [B(10), B(30)], sD: [B(30), B(34)], sF: [B(34), Infinity] };
+  const DURATION = 19.9;
+  // The admin around one event (the landing page's breakdown), as cards that pile up.
+  const CHIPS = [["וואטסאפים", 120, 980, -5], ["הצעות מחיר", 560, 1010, 4], ["חוזים", 150, 1150, 3], ["תזכורות תשלום", 470, 1170, -4], ["שליחת גלריות", 110, 1310, -2], ["בחירת תמונות", 520, 1330, 5]];
+  const CHIP_AT = (i) => B(3.5 + i * 0.6);
+  // [first beat, line 1, line 2, footage, footage clock (local s -> frame)]
+  const FEATS = [
+    [10, "עוזר פניות", "שעונה ללקוחות מיד, 24/7", "chat", (ct) => chatFrame(ct * 1.3)],
+    [15, "הצעת מחיר וחוזה", "מאשרים וחותמים בקישור אחד", "quote2", (ct) => 1 + Math.floor(ct * 24 * 2)],
+    [20, "גלריות מעוצבות", "עם מועדפים, הורדות ושיתוף", "gallery", (ct) => 1 + Math.floor(ct * 20 * 1.8)],
+    [25, "כל האירועים במסך אחד", "והתזכורות מגיעות בזמן", "home", (ct) => 1 + Math.floor(ct * 30)],
+  ];
+  const chatFrame = (ct) => {
+    const cyc = (a, b, from) => a + (Math.floor((ct - from) * 8) % (b - a + 1));
+    if (ct < 0.3) return 9;
+    if (ct < 1.15) return cyc(10, 23, 0.3);
+    if (ct < 2.0) return 24;
+    if (ct < 2.55) return 28;
+    if (ct < 3.1) return 29 + Math.min(5, Math.floor((ct - 2.55) / 0.09));
+    return cyc(35, 46, 3.1);
+  };
+  const HITS = [B(8), B(32), B(34)];
+  let cfg;
+  window.setup = async (c) => {
+    cfg = c;
+    $("chips").innerHTML = CHIPS.map(([txt, x, y], i) => `<div class="chip" id="k${i}" style="left:${x}px;top:${y}px"><i></i>${txt}</div>`).join("");
+    $("feats").innerHTML = FEATS.map(([, a, b], i) => `<div class="fh a" id="fa${i}" data-words>${a}</div><div class="fh b" id="fb${i}" data-words>${b}</div>`).join("");
+    $("endbg").style.backgroundImage = `url(${c.photos["1801263"]})`;
+    splitWords();
+    await fitAll();
+    await Promise.all([...document.querySelectorAll("img.logoimg")].map((i) => i.decode().catch(() => {})));
+  };
+  window.renderAt = async (t) => {
+    for (const [k, r] of Object.entries(S)) $(k).style.opacity = k === "sA" ? (t < r[1] ? 1 : 0) : vis(t, r, 0.1, 0.12);
+    const sh = shake(t, HITS, 18, 0.4);
+    $("stage").style.transform = `translate(${sh.x}px, ${sh.y}px) rotate(${sh.r}deg) scale(${1 + 0.02 * (t / DURATION) + punch(t, HITS)})`;
+    $("glow").style.opacity = 0.4 + 0.3 * Math.sin(t * 1.1);
+
+    // A: the hours count up, then the work piles up around them.
+    const v = 2 + 2.5 * ease((t - 0.05) / B(3));
+    $("num").textContent = (Math.round(v * 2) / 2).toFixed(1);
+    $("num").style.transform = `scale(${1 + 0.06 * (1 - ease(t / 0.3))})`;
+    reveal($("admin"), t, B(2));
+    CHIPS.forEach(([, x, y, rot], i) => {
+      const el = $("k" + i), at = CHIP_AT(i);
+      // Into the drop, every card is pulled to the middle of the frame, where the logo lands.
+      const pull = easeIn((t - B(7.45) - i * 0.02) / B(0.55));
+      const p = back((t - at) / 0.3, 2);
+      const w = el.offsetWidth, h = el.offsetHeight;
+      const dx = (540 - (x + w / 2)) * pull, dy = (585 - (y + h / 2)) * pull;
+      el.style.opacity = clamp((t - at) / 0.06) * (1 - pull);
+      el.style.transform = `translate(${dx}px, ${dy}px) rotate(${rot * (1 - pull)}deg) scale(${(t >= at ? 0.5 + 0.5 * p : 0.5) * (1 - 0.8 * pull)})`;
+    });
+    const out = easeIn((t - B(7.45)) / B(0.55));
+    for (const id of ["kick", "statrow", "admin"]) { $(id).style.filter = out > 0 ? `blur(${out * 14}px)` : "none"; }
+    $("statrow").style.opacity = 1 - out; $("kick").style.opacity = 1 - out;
+
+    // B: the logo lands where the work went, and the turn.
+    const b0 = B(8);
+    $("gflash").style.opacity = (t >= b0 ? 0.85 * (1 - ease((t - b0) / 0.5)) : 0) + (t >= B(32) ? 0.5 * (1 - ease((t - B(32)) / 0.4)) : 0) + (t >= B(34) ? 0.5 * (1 - ease((t - B(34)) / 0.4)) : 0);
+    const mk = document.querySelector("#turn .mark");
+    mk.style.transform = `scale(${0.4 + 0.6 * back((t - b0) / 0.4)}) rotate(${(1 - ease((t - b0) / 0.4)) * -14}deg)`;
+    reveal($("tl1"), t, b0 + 0.08);
+    reveal($("tl2"), t, b0 + B(0.75));
+    if (t >= B(9.6)) whip($("turn"), t, B(9.6), { dir: -1, dur: B(0.4) }); else { $("turn").style.transform = ""; $("turn").style.filter = "none"; }
+
+    // C: one phone, four features. Between them the phone turns away and back with the next screen.
+    const c0 = B(10);
+    let f = 0;
+    while (f + 1 < FEATS.length && t >= B(FEATS[f + 1][0])) f++;
+    FEATS.forEach(([beat], i) => {
+      const next = FEATS[i + 1] ? B(FEATS[i + 1][0]) : B(30);
+      reveal($("fa" + i), t, B(beat) + 0.06, { out: next - 0.2 });
+      reveal($("fb" + i), t, B(beat) + B(0.6), { out: next - 0.2 });
+    });
+    $("idx").textContent = `0${f + 1} / 04`;
+    $("idx").style.opacity = ease((t - c0) / 0.3);
+    const up = ease((t - c0) / 0.5);
+    let turn = 0;
+    for (const [beat] of FEATS.slice(1)) {
+      const T = B(beat);
+      if (t >= T - 0.2 && t < T) turn = 75 * easeIn((t - (T - 0.2)) / 0.2);
+      else if (t >= T && t < T + 0.28) turn = -75 * (1 - ease((t - T) / 0.28));
+    }
+    const ph = $("ph");
+    ph.style.top = 600 + (1 - up) * 1000 + "px";
+    ph.style.transform = `rotateX(${(1 - up) * 22 + 3}deg) rotateY(${turn + (f % 2 ? 7 : -7) + 3 * Math.sin((t - c0) * 1.2)}deg) rotateZ(${(1 - up) * -4}deg)`;
+    ph.style.filter = Math.abs(turn) > 2 ? `blur(${Math.abs(turn) / 75 * 10}px)` : "none";
+    $("glare").style.backgroundPosition = `${100 - 100 * (((t - c0) / B(5)) % 1)}% 0`;
+    if (t >= c0 - 0.05 && t < B(30)) {
+      const [beat, , , foot, clock] = FEATS[f];
+      const fo = cfg.foot[foot];
+      await setImg($("scr"), `${fo.dir}/${String(Math.max(1, Math.min(fo.n, clock(Math.max(0, t - B(beat)))))).padStart(5, "0")}.jpg`);
+    }
+    const co = easeIn((t - B(29.6)) / B(0.4));
+    $("sC").style.transform = `translateY(${co * 260}px) scale(${1 - 0.08 * co})`;
+
+    // D: the result. The old figure is struck out in the breath, the new one lands on the hit.
+    rise($("was"), t, B(30) + 0.05, 40, 0.3);
+    $("strike").style.transform = `scaleX(${ease((t - B(31)) / 0.3)}) rotate(-4deg)`;
+    $("was").style.opacity = Math.min(ease((t - B(30)) / 0.3), 1 - 0.5 * ease((t - B(31.2)) / 0.3));
+    slam($("now"), t, B(32), 1.5, 0.26);
+    reveal($("per"), t, B(32.6));
+    const dout = easeIn((t - B(33.6)) / B(0.4));
+    $("sD").style.transform = `scale(${1 + 0.3 * dout})`;
+    $("sD").style.filter = dout > 0 ? `blur(${dout * 18}px)` : "none";
+
+    // F: end card
+    const e0 = B(34);
+    $("endbg").style.transform = `scale(${1.15 - 0.08 * clamp((t - e0) / 3.5)})`;
+    const em = document.querySelector("#sF .mark");
+    em.style.transform = `scale(${0.5 + 0.5 * back((t - e0) / 0.42)}) rotate(${(1 - ease((t - e0) / 0.42)) * -10}deg)`;
+    reveal(document.querySelector("#sF .m1"), t, B(35));
+    reveal(document.querySelector("#sF .m2"), t, B(35.5));
+    const cta = document.querySelector("#sF .cta");
+    slam(cta, t, B(36.5), 1.25, 0.24);
+    cta.firstElementChild.style.left = -40 + 180 * ease((t - B(37)) / 0.6) + "%";
+    rise(document.querySelector("#sF .link"), t, B(37.5), 30, 0.3);
+    document.querySelector("#sF .link u").style.width = 100 * ease((t - B(38)) / 0.4) + "%";
+    rise(document.querySelector("#sF .free"), t, B(38.5), 20, 0.3);
+    leak(t, [B(8), B(32), B(34)]);
+    grain(t);
+  };
+  window.DURATION = DURATION;
+  // Ticks as the hours count up (every half hour), a pop per card.
+  const ticks = [];
+  for (let k = 1; k <= 5; k++) ticks.push([0.05 + B(3) * (1 - Math.cbrt(1 - k / 5)), "tick", 1.4]);
+  window.AUDIO = {
+    duration: DURATION, drop: B(8), end: B(40), breaks: [[B(30), B(32)]],
+    cues: [
+      ...ticks, [B(2), "pop", 0.6], ...CHIPS.map((_, i) => [CHIP_AT(i), "pop", 0.9, (i % 2 ? -0.3 : 0.3)]),
+      [B(8), "suck"], [B(8), "impact"], [B(8.75), "pop", 0.6], [B(9.6), "whoosh"],
+      [B(10), "pop", 0.6], ...FEATS.slice(1).map(([beat]) => [B(beat) - 0.2, "whoosh", 0.9]), ...FEATS.map(([beat]) => [B(beat) + B(0.6), "pop", 0.5]),
+      [B(29.6), "whoosh", 0.8], [B(31), "whoosh", 0.5], [B(32), "impact"], [B(32.6), "pop", 0.6],
+      [B(33.6), "suck"], [B(34), "impact", 0.8], [B(35), "pop", 0.6], [B(36.5), "impact", 0.45], [B(37.5), "tick", 1.5],
+    ],
+  };
+</script>
+</body>
+</html>

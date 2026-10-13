@@ -1,0 +1,52 @@
+/* Shared look of the short ads (ad1/ad2/ad3.html): the promo videos' navy, gold and Rubik, with a
+   camera, grain and vignette over everything. Text stays between y 250 and 1450, clear of the
+   Reels/TikTok interface at the top, the bottom and the right edge. */
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1080px; height: 1920px; overflow: hidden; }
+body { font-family: Rubik, sans-serif; color: #fff; background: #070c16; }
+#stage { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 75% at 50% 35%, #172440 0%, #0b1220 58%, #070c16 100%); transform-origin: 50% 45%; }
+.scene { position: absolute; inset: 0; opacity: 0; }
+.c { position: absolute; left: 60px; right: 60px; text-align: center; }
+.w { color: #fff; } .g { color: #c9a15a; } .s { color: #aeb8cc; }
+.big { font-weight: 800; letter-spacing: -.03em; line-height: 1.08; }
+[data-fit] { white-space: nowrap; }
+/* words rise from behind their own line */
+.wd { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 .02em .08em; margin-bottom: -.08em; }
+.wd > i { display: inline-block; font-style: normal; transform: translateY(105%); transform-origin: 0 100%; }
+#glow { position: absolute; left: -200px; right: -200px; top: 380px; height: 1200px; background: radial-gradient(closest-side, rgba(201,161,90,.2), rgba(201,161,90,0)); }
+#flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+#gflash { position: absolute; inset: 0; background: radial-gradient(closest-side at 50% 42%, rgba(255,236,190,.95), rgba(201,161,90,.35) 45%, rgba(201,161,90,0) 75%); opacity: 0; }
+#leak { position: absolute; width: 1700px; height: 1700px; margin: -850px 0 0 -850px; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,196,120,.6), rgba(255,150,70,.2) 50%, rgba(255,150,70,0)); mix-blend-mode: screen; opacity: 0; pointer-events: none; }
+#vig { position: absolute; inset: 0; background: radial-gradient(125% 85% at 50% 45%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%); pointer-events: none; }
+#grain { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; mix-blend-mode: overlay; opacity: 0; pointer-events: none; }
+.logoimg { display: block; object-fit: cover; }
+/* full-bleed photos */
+.ph { position: absolute; inset: -40px; background-size: cover; background-position: 50% 40%; opacity: 0; }
+.shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7,12,22,.55) 0%, rgba(7,12,22,.15) 30%, rgba(7,12,22,.35) 60%, rgba(7,12,22,.85) 100%); }
+/* the phone: real footage of the app on its screen, rising from below the frame */
+.rig { position: absolute; inset: 0; perspective: 2400px; perspective-origin: 50% 40%; }
+.phone { position: absolute; left: 50%; width: 700px; height: 1460px; margin-left: -350px; border-radius: 100px; background: linear-gradient(145deg, #2b3448, #0b0f18 40%, #151b28); padding: 18px; box-shadow: 0 60px 140px rgba(0,0,0,.6), 0 0 0 2px #46526c, inset 0 0 0 2px #0a0d14; transform-style: preserve-3d; }
+.phone .scr { position: relative; width: 100%; height: 100%; border-radius: 84px; overflow: hidden; background: #f4efe6; }
+.phone .sb { position: relative; height: 78px; display: flex; justify-content: space-between; align-items: center; padding: 6px 66px 0; font-weight: 600; font-size: 27px; color: #14100a; direction: ltr; background: #fbf8f2; }
+.phone .sb .ic { display: flex; gap: 10px; align-items: center; }
+.phone .island { position: absolute; top: 16px; left: 50%; width: 196px; height: 56px; margin-left: -98px; border-radius: 30px; background: #000; z-index: 2; }
+.phone img.feed { display: block; width: 100%; }
+.phone .glare { position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,0) 38%, rgba(255,255,255,.16) 46%, rgba(255,255,255,0) 54%); background-size: 300% 100%; pointer-events: none; }
+/* a label that pops out next to the phone */
+.tag { position: absolute; display: inline-flex; align-items: center; gap: 14px; background: #8f6f2f; color: #fff; font-weight: 700; font-size: 38px; padding: 18px 28px; border-radius: 22px; box-shadow: 0 24px 60px rgba(0,0,0,.45); white-space: nowrap; opacity: 0; }
+/* the marker behind a word (see marker() in ad-lib.js) */
+.hl { position: relative; display: inline-block; padding: 0 .28em; margin: 0 .04em; isolation: isolate; }
+.hl > b { position: absolute; inset: -.02em 0; border-radius: .18em; transform-origin: 100% 50%; transform: scaleX(0); z-index: -1; overflow: hidden; background: linear-gradient(180deg, #ddb96f, #b4863a); }
+.hl > b > i { position: absolute; top: 0; bottom: 0; width: 45%; left: 100%; background: linear-gradient(100deg, rgba(255,255,255,0), rgba(255,255,255,.8), rgba(255,255,255,0)); }
+.hl.no > b { background: #c0392b; } .hl.no { color: #fff; }
+/* end card */
+.end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 300px; }
+.end .mark { width: 280px; height: 280px; border-radius: 62px; box-shadow: 0 40px 110px rgba(0,0,0,.5), 0 0 110px rgba(201,161,90,.25); }
+.end .msg { display: flex; flex-direction: column; align-items: center; margin-top: 64px; }
+.end .msg > b { display: block; width: 980px; text-align: center; font-size: 100px; font-weight: 800; letter-spacing: -.03em; line-height: 1.12; white-space: nowrap; }
+.end .msg .m2 { color: #c9a15a; }
+.end .cta { margin-top: 60px; background: linear-gradient(180deg, #a3803a, #8f6f2f); color: #fff; font-weight: 800; font-size: 60px; padding: 34px 60px; border-radius: 8px; box-shadow: 0 30px 80px rgba(143,111,47,.45); position: relative; overflow: hidden; }
+.end .cta i { position: absolute; top: 0; bottom: 0; width: 40%; left: -40%; background: linear-gradient(100deg, rgba(255,255,255,0), rgba(255,255,255,.35), rgba(255,255,255,0)); }
+.end .link { margin-top: 30px; font-size: 62px; font-weight: 700; direction: ltr; position: relative; padding-bottom: 14px; }
+.end .link u { position: absolute; left: 0; bottom: 0; height: 6px; background: #c9a15a; width: 0; }
+.end .free { font-size: 38px; color: #8792ab; margin-top: 8px; }
