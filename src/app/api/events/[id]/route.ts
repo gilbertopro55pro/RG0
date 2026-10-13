@@ -139,7 +139,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (newCustomId) {
       const [{ data: cp }, { data: cs }] = await Promise.all([
         supabase.from("custom_packages").select("*").eq("id", newCustomId).maybeSingle<CustomPackageRow>(),
-        supabase.from("custom_package_stages").select("*").eq("package_id", newCustomId).order("sort_order", { ascending: true }).returns<CustomPackageStageRow[]>(),
+        supabase.from("custom_package_stages").select("*").eq("package_id", newCustomId).is("archived_at", null).order("sort_order", { ascending: true }).returns<CustomPackageStageRow[]>(),
       ]);
       if (!cp || !cs) return NextResponse.json({ error: "החבילה המותאמת אישית לא נמצאה" }, { status: 400 });
       newCustomPackage = cp;
@@ -350,6 +350,14 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     } catch (e) {
       appleCalendarError = e instanceof Error ? e.message : "שגיאה לא ידועה";
     }
+  }
+
+  // The event's gallery is kept, as a standalone gallery with its own expiry and deletion. The
+  // dialog never said it would be deleted, and deleting it with the event (FK cascade) dropped its
+  // rows without its files, which stayed in storage for good, and took its portfolio photos along.
+  const { error: detachError } = await supabase.from("galleries").update({ event_id: null }).eq("event_id", eventId);
+  if (detachError) {
+    return NextResponse.json({ error: detachError.message }, { status: 500 });
   }
 
   const { error: deleteError } = await supabase.from("events").delete().eq("id", eventId);
