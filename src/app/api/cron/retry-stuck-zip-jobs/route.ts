@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
     .lt("expires_at", new Date().toISOString())
     .returns<{ id: string; storage_path: string | null }[]>();
   if (expiredJobs && expiredJobs.length > 0) {
-    const paths = expiredJobs.map((j) => j.storage_path).filter((p): p is string => !!p);
+    // Only zip files (security fix 2026-10-13): these paths are deleted with the service role.
+    const paths = expiredJobs.map((j) => j.storage_path).filter((p): p is string => !!p && p.startsWith("zip-jobs/"));
     if (paths.length > 0) await removeObjects("galleries", paths);
     await supabase
       .from("gallery_zip_jobs")
@@ -107,7 +108,7 @@ export async function GET(request: NextRequest) {
     .or("send_to_email.is.null,storage_path.not.is.null")
     .returns<{ id: string; storage_path: string | null; send_to_email: string | null }[]>();
   if (expiredAlbumJobs && expiredAlbumJobs.length > 0) {
-    const paths = expiredAlbumJobs.map((j) => j.storage_path).filter((p): p is string => !!p);
+    const paths = expiredAlbumJobs.map((j) => j.storage_path).filter((p): p is string => !!p && p.startsWith("album-exports/"));
     if (paths.length > 0) await removeObjects("galleries", paths);
     const printIds = expiredAlbumJobs.filter((j) => j.send_to_email).map((j) => j.id);
     const otherIds = expiredAlbumJobs.filter((j) => !j.send_to_email).map((j) => j.id);

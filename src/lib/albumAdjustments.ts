@@ -106,8 +106,13 @@ function adjustmentsFingerprint(adj: PhotoAdjustments): string {
     .join("_");
 }
 
+// Only id-safe characters (security fix 2026-10-13): the id is written into SVG markup set with
+// dangerouslySetInnerHTML, and both the element id and the adjustment values come from stored
+// album data, so a crafted value could otherwise close the attribute and inject script.
+export const safeSvgId = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "");
+
 export function adjustmentsFilterId(elId: string, adj: PhotoAdjustments): string {
-  return `album-adjust-${elId}-${adjustmentsFingerprint(adj)}`;
+  return safeSvgId(`album-adjust-${elId}-${adjustmentsFingerprint(adj)}`);
 }
 
 // Full <filter> element markup — tone curve first, then the color matrix, matching the order the

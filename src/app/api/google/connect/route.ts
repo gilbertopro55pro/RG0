@@ -24,7 +24,9 @@ export async function GET(request: NextRequest) {
     path: "/",
     ...(cookieDomain ? { domain: cookieDomain } : {}),
   });
-  if (redirectPath?.startsWith("/")) {
+  // A path on this site only (security fix 2026-10-13): "//evil.com" or "/\\evil.com" also start
+  // with "/" and would send the user to another site after Google's callback.
+  if (redirectPath && /^\/(?![\/\\])/.test(redirectPath) && !redirectPath.includes("\\")) {
     res.cookies.set("google_oauth_redirect", redirectPath, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
