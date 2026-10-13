@@ -4,7 +4,17 @@ import type { AreaDict } from "@/i18n/types";
 // Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
-    "שלחו לנו בוואטסאפ שיר אחד או שניים לקליפ, שיר שקט ושיר קצבי (שם השיר או קישור). אחרי ששלחתם, לחצו כאן כדי לסמן שסיימתם.": "Send us one or two songs for the clip on WhatsApp, a calm one and an upbeat one (the song name or a link). Once you've sent them, tap here to mark it done.",
+    "כתבו את שם השיר לקליפ, או הדביקו קישור מיוטיוב.": "Write the name of the song for the clip, or paste a YouTube link.",
+    "כתבו את שמות השירים לקליפ ההיילייטס, או הדביקו קישורים מיוטיוב: שיר רגוע ושיר קצבי.": "Write the names of the songs for the highlights clip, or paste YouTube links: a calm song and an upbeat one.",
+    "מעדיפים שיר אחד לקליפ": "We'd prefer one song for the clip",
+    "השיר לקליפ": "Song for the clip",
+    "שיר רגוע": "Calm song",
+    "שיר קצבי": "Upbeat song",
+    "שם השיר או קישור ליוטיוב": "Song name or YouTube link",
+    "אישור השיר": "Confirm the song",
+    "אישור השירים": "Confirm the songs",
+    "לא הצלחנו לשמור. נסו שוב.": "We couldn't save that. Please try again.",
+    "השירים לקליפ": "Clip songs",
     "סטטוס האירוע": "Event status",
     "מקדמה: ₪{amount}": "Deposit: ₪{amount}",
     "יתרה: ₪{amount}": "Balance: ₪{amount}",
@@ -21,7 +31,6 @@ const dict: AreaDict = {
       "Look through the album design and make sure everything is exactly as you wanted. If it's all good, tap to approve the design.",
     "מעבר לגלריה ובחירת תמונות": "Go to the gallery and choose photos",
     "הגלריה עדיין בהכנה. נשלח לכם הודעה כשהיא תהיה מוכנה": "The gallery is still being prepared. We'll let you know when it's ready",
-    "שליחת שם השיר בוואטסאפ": "Send the song name on WhatsApp",
     "צפייה בעיצוב האלבום": "View the album design",
     "עדיין לא הועלה כאן קובץ עיצוב. אם קיבלתם אותו בדרך אחרת (וואטסאפ, מייל וכו') אפשר לאשר גם ככה.":
       "No design file has been uploaded here yet. If you received it another way (WhatsApp, email, etc.), you can still approve it.",
@@ -29,7 +38,17 @@ const dict: AreaDict = {
     "אישרתי, סימון כבוצע": "Approved, mark as done",
   },
   ru: {
-    "שלחו לנו בוואטסאפ שיר אחד או שניים לקליפ, שיר שקט ושיר קצבי (שם השיר או קישור). אחרי ששלחתם, לחצו כאן כדי לסמן שסיימתם.": "Пришлите нам в WhatsApp одну-две песни для клипа — спокойную и ритмичную (название или ссылку). После отправки нажмите здесь, чтобы отметить, что всё готово.",
+    "כתבו את שם השיר לקליפ, או הדביקו קישור מיוטיוב.": "Напишите название песни для клипа или вставьте ссылку на YouTube.",
+    "כתבו את שמות השירים לקליפ ההיילייטס, או הדביקו קישורים מיוטיוב: שיר רגוע ושיר קצבי.": "Напишите названия песен для клипа с лучшими моментами или вставьте ссылки на YouTube: спокойную песню и ритмичную.",
+    "מעדיפים שיר אחד לקליפ": "Предпочитаем одну песню для клипа",
+    "השיר לקליפ": "Песня для клипа",
+    "שיר רגוע": "Спокойная песня",
+    "שיר קצבי": "Ритмичная песня",
+    "שם השיר או קישור ליוטיוב": "Название песни или ссылка на YouTube",
+    "אישור השיר": "Подтвердить песню",
+    "אישור השירים": "Подтвердить песни",
+    "לא הצלחנו לשמור. נסו שוב.": "Не удалось сохранить. Попробуйте ещё раз.",
+    "השירים לקליפ": "Песни для клипа",
     "סטטוס האירוע": "Статус мероприятия",
     "מקדמה: ₪{amount}": "Предоплата: ₪{amount}",
     "יתרה: ₪{amount}": "Остаток: ₪{amount}",
@@ -46,7 +65,6 @@ const dict: AreaDict = {
       "Просмотрите дизайн альбома и убедитесь, что всё именно так, как вы хотели. Если всё в порядке, нажмите, чтобы утвердить дизайн.",
     "מעבר לגלריה ובחירת תמונות": "Перейти в галерею и выбрать фото",
     "הגלריה עדיין בהכנה. נשלח לכם הודעה כשהיא תהיה מוכנה": "Галерея ещё готовится. Мы сообщим вам, когда она будет готова",
-    "שליחת שם השיר בוואטסאפ": "Отправить название песни в WhatsApp",
     "צפייה בעיצוב האלבום": "Посмотреть дизайн альбома",
     "עדיין לא הועלה כאן קובץ עיצוב. אם קיבלתם אותו בדרך אחרת (וואטסאפ, מייל וכו') אפשר לאשר גם ככה.":
       "Файл дизайна сюда ещё не загружен. Если вы получили его другим способом (WhatsApp, почта и т. д.), можно подтвердить и так.",
