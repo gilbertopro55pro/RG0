@@ -209,7 +209,7 @@ They are delivered as files, not in `public/`.
   - All text sits between y 250 and 1450, clear of the Reels/TikTok interface.
   - The first frame already says something (it's the thumbnail).
   - The assistant never quotes prices, so the client messages ask about dates, packages and video, not "how much".
-- **Encoding.** CRF 19 capped at 8 Mb/s by default (`MAXRATE`; the grain is noise and inflates the file; the first render was 12.5MB for 6s). For a 25s ad use `MAXRATE=4.5M` (15MB).
+- **Encoding.** CRF 19 capped at 8 Mb/s by default (`MAXRATE`; the grain is noise and inflates the file; the first render was 12.5MB for 6s). For a 26.5s ad use `MAXRATE=4.3M` (15MB).
 - **Review.** Before sending: stills at the transitions, real frames from the mp4 (`-ss`), and the audio envelope (RMS per beat). The hits and the button must land on the beats. The music can't be heard from here, so the owner judges it by ear.
 
 ## Short ads, round 2 (2026-10-13)
@@ -228,7 +228,7 @@ own lines:
   - Then the real client page (`f-quote2` at 2.2×). The three steps light up when the footage reaches them: approve at frame 35, details at 105, signed at 149.
   - The stamp "האירוע נסגר" closes it.
   - No deposit talk: the client page doesn't take payments.
-- **`ad6.html`, 25s, the whole process** (was 20s; owner, 2026-10-13: the stations and the turn moved too fast to read, so the turn is now a bar and each station 6 beats; render with `MAXRATE=4.5M` to stay under 16MB) ("מהפנייה ועד המסירה, הכל מסודר במקום אחד"):
+- **`ad6.html`, 26.5s, the whole process** (was 20s; owner, 2026-10-13: the stations and the turn moved too fast to read, so the turn is now a bar and each station 6 beats; then "ושום דבר לא נופל בין הכיסאות" got three more beats, ~3s on screen; render with `MAXRATE=4.3M` to stay under 16MB) ("מהפנייה ועד המסירה, הכל מסודר במקום אחד"):
   - The hook is "חתונה אחת, / 8 אפליקציות פתוחות": generic tool tiles with climbing badges, no brand marks or brand names. Then "ותמיד משהו נופל בין הכיסאות".
   - On the drop the tiles fly up into a five-step stepper.
   - The camera then travels along a track of five real screens, one per bar: the inquiry (`f-chat`), quote and contract (`f-quote2`), shoot day (`f-home`), the gallery (`f-gallery`) and the album (a spread from the auto-designer).

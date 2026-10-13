@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
-<!-- Ad 6, 25 s (SKILL.md "Short ads, round 2"): the whole process in one place. The pain is one
+<!-- Ad 6, 26.5 s (SKILL.md "Short ads, round 2"): the whole process in one place. The pain is one
      wedding spread over eight apps (generic tiles, no brand marks); on the drop they fly into the
      five steps of one process; then the camera travels along a track of five real screens (inquiry,
      quote and contract, shoot day, gallery, album), and the result: nothing falls through the cracks. -->
@@ -77,9 +77,10 @@
 <script>
   // 124 BPM: the chaos is the build (two bars), the drop turns it into one process (a bar), a station
   // every six beats, a breath (no kick) over the overview, the hit on "שום דבר לא נופל", the end card.
-  // 25 s (owner, 2026-10-13: the 20 s cut moved too fast to read the stations and the turn).
-  const S = { sA: [0, B(8)], sB: [B(8), B(12)], sC: [B(12), B(42)], sD: [B(42), B(46)], sF: [B(46), Infinity] };
-  const DURATION = 25.0;
+  // 26.5 s (owner, 2026-10-13: the 20 s cut moved too fast to read the stations and the turn, and
+  // "ושום דבר לא נופל בין הכיסאות" got three more beats).
+  const S = { sA: [0, B(8)], sB: [B(8), B(12)], sC: [B(12), B(42)], sD: [B(42), B(49)], sF: [B(49), Infinity] };
+  const DURATION = 26.5;
   // Generic tools (no brand marks): [label, colour, svg path, x, y, tilt]
   const TOOLS = [
     ["הודעות", "#2e9d5b", "M4 5h16v11H9l-5 4z", 110, 560, -6],
@@ -111,7 +112,7 @@
     if (ct < 3.1) return 29 + Math.min(5, Math.floor((ct - 2.55) / 0.09));
     return cyc(35, 46, 3.1);
   };
-  const HITS = [B(8), B(44), B(46)];
+  const HITS = [B(8), B(44), B(49)];
   let cfg;
   // Stepper dots: RTL, the first step on the right.
   const DOT_X = (i) => 960 - i * 210;
@@ -170,7 +171,7 @@
 
     // B: the turn.
     const b0 = B(8);
-    $("gflash").style.opacity = (t >= b0 ? 0.8 * (1 - ease((t - b0) / 0.5)) : 0) + (t >= B(44) ? 0.5 * (1 - ease((t - B(44)) / 0.4)) : 0) + (t >= B(46) ? 0.5 * (1 - ease((t - B(46)) / 0.4)) : 0);
+    $("gflash").style.opacity = (t >= b0 ? 0.8 * (1 - ease((t - b0) / 0.5)) : 0) + (t >= B(44) ? 0.5 * (1 - ease((t - B(44)) / 0.4)) : 0) + (t >= B(49) ? 0.5 * (1 - ease((t - B(49)) / 0.4)) : 0);
     const mk = document.querySelector("#turn .mark");
     mk.style.transform = `scale(${0.4 + 0.6 * back((t - b0) / 0.4)}) rotate(${(1 - ease((t - b0) / 0.4)) * -14}deg)`;
     reveal($("tl1"), t, b0 + 0.08);
@@ -208,7 +209,8 @@
     const zo = easeIO((t - d0) / B(1.2));
     if (t >= d0 - 0.2) {
       $("sC").style.opacity = 1;
-      const sc = 1 - 0.74 * zo;
+      // a slow push while "ושום דבר לא נופל" holds (owner, 2026-10-13: +1.5 s on this beat)
+      const sc = (1 - 0.74 * zo) * (1 + 0.05 * clamp((t - B(44)) / B(7.6)));
       $("track").style.transform = `translateX(${(4 * SPACING) * (1 - zo) + 2 * SPACING * zo * sc}px) translateY(${-260 * zo}px) scale(${sc})`;
       $("track").style.transformOrigin = "540px 1050px";
       $("track").style.filter = "none";
@@ -220,39 +222,39 @@
       ck.style.opacity = clamp((t - at) / 0.05);
       ck.style.transform = `scale(${t >= at ? 2.2 * back((t - at) / 0.3, 2.4) : 0})`;
     }
-    $("sD").style.opacity = t >= d0 ? 1 - easeIn((t - B(45.6)) / B(0.4)) : 0;
-    if (t >= B(45.6)) { $("sC").style.opacity = 1 - easeIn((t - B(45.6)) / B(0.4)); }
-    if (t >= B(46)) $("sC").style.opacity = 0;
+    $("sD").style.opacity = t >= d0 ? 1 - easeIn((t - B(48.6)) / B(0.4)) : 0;
+    if (t >= B(48.6)) { $("sC").style.opacity = 1 - easeIn((t - B(48.6)) / B(0.4)); }
+    if (t >= B(49)) $("sC").style.opacity = 0;
     reveal($("r1"), t, B(44));
     reveal($("r2"), t, B(44) + 0.12);
     $("r1").style.transform = `scale(${t >= B(44) ? 1 + 0.1 * (1 - ease((t - B(44)) / 0.3)) : 1})`;
 
     // F: end card
-    const e0 = B(46);
+    const e0 = B(49);
     $("endbg").style.transform = `scale(${1.15 - 0.08 * clamp((t - e0) / 3.5)})`;
     const em = document.querySelector("#sF .mark");
     em.style.transform = `scale(${0.5 + 0.5 * back((t - e0) / 0.42)}) rotate(${(1 - ease((t - e0) / 0.42)) * -10}deg)`;
-    reveal(document.querySelector("#sF .m1"), t, B(46.8));
-    reveal(document.querySelector("#sF .m2"), t, B(47.3));
+    reveal(document.querySelector("#sF .m1"), t, B(49.8));
+    reveal(document.querySelector("#sF .m2"), t, B(50.3));
     const cta = document.querySelector("#sF .cta");
-    slam(cta, t, B(48), 1.25, 0.24);
-    cta.firstElementChild.style.left = -40 + 180 * ease((t - B(48.5)) / 0.6) + "%";
-    rise(document.querySelector("#sF .link"), t, B(48.7), 30, 0.3);
-    document.querySelector("#sF .link u").style.width = 100 * ease((t - B(49.1)) / 0.4) + "%";
-    rise(document.querySelector("#sF .free"), t, B(49.5), 20, 0.3);
-    leak(t, [B(8), B(44), B(46)]);
+    slam(cta, t, B(51), 1.25, 0.24);
+    cta.firstElementChild.style.left = -40 + 180 * ease((t - B(51.5)) / 0.6) + "%";
+    rise(document.querySelector("#sF .link"), t, B(51.7), 30, 0.3);
+    document.querySelector("#sF .link u").style.width = 100 * ease((t - B(52.1)) / 0.4) + "%";
+    rise(document.querySelector("#sF .free"), t, B(52.5), 20, 0.3);
+    leak(t, [B(8), B(44), B(49)]);
     grain(t);
   };
   window.DURATION = DURATION;
   window.AUDIO = {
-    duration: DURATION, drop: B(8), end: B(51), breaks: [[B(42), B(44)]],
+    duration: DURATION, drop: B(8), end: B(54), breaks: [[B(42), B(44)]],
     cues: [
       ...TOOLS.map((_, i) => [Math.max(0, TILE_AT(i)), "pop", 0.8, i % 2 ? -0.35 : 0.35]),
       [B(4), "buzz", 0.7], [B(5), "ping", 0.6], [B(5.5), "buzz", 0.7], [B(6.25), "ping", 0.6], [B(6.75), "buzz", 0.8], [B(4), "pop", 0.5],
       [B(8), "suck"], [B(8), "impact"], [B(8.7), "pop", 0.6], [B(11.6), "whoosh"],
       [B(12), "whoosh", 0.7], ...[1, 2, 3, 4].map((i) => [ST_AT(i) - 0.25, "whoosh", 0.8]), ...[0, 1, 2, 3, 4].map((i) => [ST_AT(i), "tick", 1.5]),
       [B(42), "whoosh", 0.6], ...[0, 1, 2, 3, 4].map((i) => [B(43.2) + i * 0.12, "tap", 0.9]),
-      [B(44), "impact"], [B(45.6), "suck"], [B(46), "impact", 0.8], [B(46.8), "pop", 0.6], [B(48), "impact", 0.45], [B(48.7), "tick", 1.5],
+      [B(44), "impact"], [B(48.6), "suck"], [B(49), "impact", 0.8], [B(49.8), "pop", 0.6], [B(51), "impact", 0.45], [B(51.7), "tick", 1.5],
     ],
   };
 </script>
