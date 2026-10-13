@@ -51,9 +51,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       signature_data_url: signatureDataUrl,
     })
     .eq("id", contract.id)
+    // Atomic with the check above: two signatures sent at once sign (and notify) once.
+    .neq("status", "signed")
     .select()
-    .single();
+    .maybeSingle();
 
+  if (!error && !updated) {
+    return NextResponse.json({ error: "החוזה כבר נחתם" }, { status: 400 });
+  }
   if (error || !updated) {
     return NextResponse.json({ error: error?.message ?? "שגיאה בחתימת החוזה" }, { status: 500 });
   }
