@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { parseHomeEventsView } from "@/lib/homeEventsView";
 import { CURRENT_VERSION } from "@/lib/changelog";
 import { randomUUID } from "node:crypto";
 import { compareEventsChronologically } from "@/lib/eventOrder";
@@ -464,6 +465,8 @@ export default async function DashboardPage() {
         isPhotographer={isPhotographer}
         needsReviewColorId={photographer?.google_calendar_import_color_id}
         attentionByEvent={attentionByEvent}
+        initialView={parseHomeEventsView(photographer?.home_events_view)}
+        saveView={!!photographer}
       />
       <FeedbackButton />
       <PendingClientMessagePrompts
