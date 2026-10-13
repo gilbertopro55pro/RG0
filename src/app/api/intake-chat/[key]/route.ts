@@ -69,6 +69,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (reason) return NextResponse.json({ unavailable: reason }, { status: 409 });
     const { allowed: newAllowed } = await checkRateLimit(`intake-new:${ip}`, { maxRequests: 60, windowSeconds: 86_400 });
     if (!newAllowed) return NextResponse.json({ error: "יותר מדי שיחות חדשות מהמכשיר הזה היום" }, { status: 429 });
+    // A ceiling per photographer as well (audit 2026-10-13): many addresses opening chats at once
+    // could otherwise drain the month's conversations and the bought ones within minutes. Beyond it
+    // clients get the regular form, so a lead is never lost.
+    const { allowed: studioAllowed } = await checkRateLimit(`intake-new-studio:${p.id}`, { maxRequests: 30, windowSeconds: 3600 });
+    if (!studioAllowed) return NextResponse.json({ unavailable: "cap" }, { status: 409 });
     // The monthly cap first, then a bought conversation (lib/intakeChatAccess.ts).
     const slot = await claimConversationSlot(supabase, p);
     if (!slot) return NextResponse.json({ unavailable: "cap" }, { status: 409 });

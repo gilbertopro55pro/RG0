@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { checkRateLimit } from "@/lib/rateLimit";
 import { sendPushToPhotographer } from "@/lib/push";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { ALBUM_ACTIVITY_TEMPLATE } from "@/lib/stages";
@@ -40,6 +41,10 @@ export async function notifyPhotographerOfAlbumActivity(
 
   // The WhatsApp template is Meta-approved in Hebrew, so its text stays Hebrew.
   if (!photographer?.phone) return;
+  // A paid template: one per event every 30 minutes, however many comments or approvals come in
+  // (the push above still goes out for each, replacing the previous one).
+  const { allowed } = await checkRateLimit(`album-wa:${eventId}`, { maxRequests: 1, windowSeconds: 1800 });
+  if (!allowed) return;
 
   try {
     await sendWhatsAppTemplate(photographer.phone, ALBUM_ACTIVITY_TEMPLATE, [event.client_name, action]);

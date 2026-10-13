@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
+import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { notifyPhotographerOfAlbumActivity } from "@/lib/albumNotify";
 import type { GalleryAlbumRow, GalleryRow } from "@/lib/types";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  // Each comment notifies the photographer (a push, and a paid WhatsApp template); a ceiling per
+  // device stops a flood (audit 2026-10-13).
+  const { allowed } = await checkRateLimit(`album-comment:${clientIpFrom(request)}`, { maxRequests: 30, windowSeconds: 600 });
+  if (!allowed) return NextResponse.json({ error: "יותר מדי הערות. נסו שוב בעוד כמה דקות" }, { status: 429 });
   const { spreadId, text }: { spreadId: string; text: string } = await request.json();
 
   if (!spreadId || !text?.trim()) {
