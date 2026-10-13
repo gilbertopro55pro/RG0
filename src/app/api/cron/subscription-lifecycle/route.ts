@@ -6,6 +6,7 @@ import { createPayplusCheckoutLink, deletePayplusRecurring, PAYPLUS_BILLING, pay
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { Photographer } from "@/lib/types";
 import { ADMIN_EMAIL } from "@/lib/admin";
+import { alertBillingAdmin } from "@/lib/billingAlerts";
 import { photographerLang } from "@/lib/clientLang";
 import { planSwitchEmail, renewalReminderEmail, trialDeletionFinalWarningEmail, trialDeletionWarningEmail, trialEndingEmail } from "@/lib/billingEmails";
 import { deleteExpiredTrialAccount, isTrialDeletionCandidate, trialDeletionDate, TRIAL_RETENTION_DAYS, WARN_DAYS_BEFORE } from "@/lib/accountDeletion";
@@ -112,12 +113,26 @@ export async function GET(request: NextRequest) {
     const targetPlan = photographer.pending_plan;
     if (!targetPlan || !(targetPlan in SUBSCRIPTION_PLANS)) continue;
     try {
+      // Once the old recurring is really gone, the account has none until the new checkout is paid:
+      // no renewal reminder for a charge that won't come, /billing open for the payment, and the
+      // missed-renewal alert (step 6) if it never comes. If cancelling failed, the uid stays, so the
+      // webhook cancels it as superseded when the new checkout is paid, and the admin is told.
+      let oldRecurringGone = !photographer.payplus_recurring_uid;
       if (photographer.payplus_recurring_uid) {
-        await deletePayplusRecurring(photographer.payplus_recurring_uid).catch((e) => {
-          // Proceed regardless — setting up the new recurring below doesn't depend on the old
-          // one actually being gone, and leaving the person stuck with neither is worse.
+        try {
+          await deletePayplusRecurring(photographer.payplus_recurring_uid);
+          oldRecurringGone = true;
+        } catch (e) {
+          // Proceed regardless — setting up the new recurring below doesn't depend on the old one
+          // actually being gone, and leaving the person stuck with neither is worse.
           console.error(`Failed to cancel prior recurring for ${photographer.id}:`, e);
-        });
+          await alertBillingAdmin(
+            `החלפת מסלול: הוראת הקבע הקודמת לא בוטלה (${photographer.name})`,
+            `בהחלפת המסלול של ${photographer.name} (${photographer.id}), ביטול הוראת הקבע הקודמת ב-PayPlus נכשל, ` +
+              `והיא עלולה לחייב לצד המסלול החדש.\n\nהוראת הקבע: ${photographer.payplus_recurring_uid}\n` +
+              `שגיאה: ${e instanceof Error ? e.message : "לא ידועה"}\n\nמה לעשות: למחוק אותה ב-PayPlus › הוראות קבע.`
+          );
+        }
       }
 
       const { paymentPageLink } = await createPayplusCheckoutLink({
@@ -147,7 +162,7 @@ export async function GET(request: NextRequest) {
 
       await supabase
         .from("photographers")
-        .update({ pending_plan: null, pending_plan_effective_at: null })
+        .update({ pending_plan: null, pending_plan_effective_at: null, ...(oldRecurringGone ? { payplus_recurring_uid: null } : {}) })
         .eq("id", photographer.id);
       switchedCount++;
     } catch (e) {
@@ -294,7 +309,30 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // 7. PayPlus callbacks left without an outcome: the run died half-way (a timeout, a failed update)
+  // and no retry took it over (see claimEvent in the webhook). The charge may have happened while
+  // the account still shows locked. Each one is reported once: this run covers what was recorded
+  // between 25 and 1 hours ago, and the next daily run starts where this one ended.
+  const { data: stuckEvents } = await supabase
+    .from("payplus_webhook_events")
+    .select("created_at, transaction_uid, photographer_id, receipt_status")
+    .is("outcome", null)
+    .gte("created_at", new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString())
+    .lt("created_at", new Date(now.getTime() - 60 * 60 * 1000).toISOString())
+    .returns<{ created_at: string; transaction_uid: string | null; photographer_id: string | null; receipt_status: string | null }[]>();
+  if (stuckEvents && stuckEvents.length > 0) {
+    await alertBillingAdmin(
+      "עדכון תשלום מ-PayPlus לא הושלם",
+      `${stuckEvents.length} עדכונים מ-PayPlus התקבלו אבל הטיפול בהם לא הסתיים:\n\n` +
+        stuckEvents
+          .map((e) => `${e.created_at} · חשבון ${e.photographer_id ?? "?"} · עסקה ${e.transaction_uid ?? "?"} · קבלה: ${e.receipt_status ?? "לא הופקה"}`)
+          .join("\n") +
+        `\n\nמה לבדוק: ב-PayPlus אם החיוב עבר, ובחשבון שהסטטוס active ותאריך החידוש עודכן. אם לא, לעדכן ידנית ולהפיק קבלה.`
+    );
+  }
+
   return NextResponse.json({
+    stuckWebhookEvents: stuckEvents?.length ?? 0,
     missedRenewalAlerted: missedAlerted,
     finalized: finalizedCount,
     reminded: remindedCount,

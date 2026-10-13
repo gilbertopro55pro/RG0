@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
+import { addBillingMonths } from "@/lib/billingDates";
 
 const API_BASE = "https://restapi.payplus.co.il/api/v1.0";
 
@@ -164,24 +165,25 @@ export function verifyPayplusWebhookSignature(rawBody: string, hashHeader: strin
 // CURRENT plan's billing-cycle length (not its literal identity) so this works for any of the
 // four plans, including a cross-tier switch like annual -> studio_pro_monthly.
 export function computePlanSwitchEffectiveDate(currentPlan: SubscriptionPlan, currentPeriodEnd: Date): Date {
-  const result = new Date(currentPeriodEnd);
   if (PAYPLUS_BILLING[currentPlan].recurringRangeMonths <= 1) {
-    result.setDate(result.getDate() - 1);
-  } else {
-    result.setMonth(result.getMonth() - 2);
+    return new Date(currentPeriodEnd.getTime() - 24 * 60 * 60 * 1000);
   }
-  return result;
+  return addBillingMonths(currentPeriodEnd, -2);
 }
 
 // Cancels a photographer's recurring subscription so no future charges occur.
+// PayPlus answers with `results` (as generateLink reads it); this used to read only `result`, so a
+// cancel that PayPlus carried out was still reported as failed (no cancel had gone through the app
+// by 2026-10-13, so it never showed). Either spelling counts now.
 export async function deletePayplusRecurring(recurringUid: string): Promise<void> {
   const res = await fetch(`${API_BASE}/RecurringPayments/DeleteRecurring/${recurringUid}`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ terminal_uid: process.env.PAYPLUS_TERMINAL_UID ?? "" }),
   });
-  const data = await res.json();
-  if (!res.ok || data?.result?.status !== "success") {
-    throw new Error(data?.result?.description ?? "ביטול המנוי נכשל");
+  const data = await res.json().catch(() => null);
+  const outcome = data?.results ?? data?.result;
+  if (!res.ok || outcome?.status !== "success") {
+    throw new Error(outcome?.description ?? `ביטול הוראת הקבע נכשל (HTTP ${res.status})`);
   }
 }

@@ -1,6 +1,8 @@
 // Green Invoice ("חשבונית ירוקה" / מורנינג) — second supported document-issuing provider,
 // alongside Finbot. API docs: https://www.greeninvoice.co.il/api-docs/ (base URL below per the
 // 2026 infrastructure update — the old www.greeninvoice.co.il/api host is deprecated).
+import { israelIsoDateString } from "@/lib/billingDates";
+
 const GREEN_INVOICE_API_URL = "https://api.greeninvoice.co.il/api/v1";
 
 // 400 = קבלה (Receipt) — for עוסק פטור.
@@ -71,10 +73,8 @@ export async function issueDocument({
   const paymentType = paymentMethod === "cash" ? 1 : paymentMethod === "transfer" ? 4 : 11;
   const itemDescription = paymentType === 11 && paymentMethod && paymentMethodLabel ? `${description} · אמצעי תשלום: ${paymentMethodLabel}` : description;
 
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = date.getFullYear();
-  const dateStr = `${yyyy}-${mm}-${dd}`;
+  // The Israeli date, not the UTC server's (a receipt issued after midnight was dated the day before).
+  const dateStr = israelIsoDateString(date);
 
   const res = await fetch(`${GREEN_INVOICE_API_URL}/documents`, {
     method: "POST",

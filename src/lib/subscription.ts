@@ -33,3 +33,20 @@ export function hasAppAccess(p: AccessFields, now = new Date()): boolean {
   if (p.subscription_status === "trialing") return !p.trial_ends_at || new Date(p.trial_ends_at) > now;
   return false;
 }
+
+// From this many days before the paid period ends, an active account with nothing to renew it pays
+// from /billing itself.
+export const RENEWAL_PAYMENT_DAYS_BEFORE = 3;
+
+// An active account whose paid period is ending (or has ended) with no recurring to renew it: a plan
+// switch whose new checkout wasn't paid yet (the cron cancels the old recurring and emails a link),
+// or a recurring removed in PayPlus. /billing is open to it and Settings › Subscription links there,
+// so the person can pay without the emailed link. Not offered earlier: PayPlus starts the new
+// recurring on the payment day, so paying early would give up the days already paid for.
+export function renewalPaymentDue(
+  p: Pick<Photographer, "subscription_status" | "payplus_recurring_uid" | "cancel_at_period_end" | "current_period_end">,
+  now = new Date()
+): boolean {
+  if (p.subscription_status !== "active" || p.payplus_recurring_uid || p.cancel_at_period_end || !p.current_period_end) return false;
+  return new Date(p.current_period_end).getTime() - now.getTime() <= RENEWAL_PAYMENT_DAYS_BEFORE * 86_400_000;
+}

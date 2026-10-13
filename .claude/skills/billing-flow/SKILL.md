@@ -36,10 +36,15 @@ data needs a short confirmation from the user first (CLAUDE.md).
 5. **Webhook** (`POST /api/payplus/webhook`, HMAC-SHA256 of the raw body with the secret key, header `hash`):
    - One row per transaction in `payplus_webhook_events`. The unique `transaction_uid` means a
      retried callback stops before doing anything.
-   - Success (`status_code "000"`) sets `active`, `plan`, `current_period_end` (+ cycle), and the
-     customer/recurring uids. Failure sets `past_due`, which locks the app and sends them to /billing.
-   - A new checkout (`transaction.type = "payment_page"`) cancels the account's previous recurring,
-     so two recurrings never charge in parallel.
+   - Success (`status_code "000"`) sets `active`, `plan`, `current_period_end` (+ cycle, on the
+     Israeli calendar: `addBillingMonths` in `lib/billingDates.ts`, Jan 31 → Feb 28), and the
+     customer/recurring uids. A failure sets `past_due` (locks the app, sends them to /billing)
+     **only** for a `recurring` callback from the recurring on file. A declined checkout card or an
+     old recurring's failure changes nothing, and a failed transaction's uids are never stored.
+   - A new checkout (`transaction.type = "payment_page"`) cancels the account's previous recurring
+     (before the row is updated), so two recurrings never charge in parallel, and resets
+     `cancel_at_period_end=false`, `auto_renew=true` and any `pending_plan`. A renewal keeps a
+     scheduled switch and never replaces the stored recurring uid.
    - Receipt: Finbot `issueReceipt`, a **חשבונית מס קבלה** (the platform is עוסק מורשה, 18% VAT),
      for the amount PayPlus actually charged, emailed by Finbot to the customer. The result is
      recorded on the event row: `receipt_status` = issued/failed, plus `receipt_link` or `receipt_error`.
@@ -52,8 +57,9 @@ data needs a short confirmation from the user first (CLAUDE.md).
    - finalizing cancellations at period end
    - due plan switches (cancel the old recurring and email a new checkout link)
    - trial reminders
-7. **Cancel** (`/api/payplus/cancel`): deletes the PayPlus recurring and sets `cancel_at_period_end`.
-   Access continues until `current_period_end`, then the cron sets `canceled`.
+7. **Cancel** (`/api/payplus/cancel`): deletes the PayPlus recurring and sets `cancel_at_period_end`
+   (service role). Access continues until `current_period_end`, then the cron sets `canceled`. A
+   failed PayPlus delete returns an error to the screen and emails the admin.
 
 ## Verified live (2026-09-24)
 
@@ -224,6 +230,49 @@ The platform's own subscription receipts are untouched by this and still use pay
 - **Green Invoice:** 1 cash, 4 bank transfer, 11 other. Bit and PayBox go as 11, with the method on
   the item line (its payment-app type 10 needs an `appType` whose values aren't documented).
 
+## Billing hardening (audit 2026-10-13, migration 0165)
+
+Found in a code audit; none of these had hit a real account yet. Each one is in the code now:
+- **Cancelling never worked through the app.** `deletePayplusRecurring` read `result` while PayPlus
+  answers with `results` (as `generateLink` reads it), so every delete was reported as failed, even
+  when PayPlus did it. No account had ever cancelled from the app (DB check), so it never showed.
+  Both spellings count now. Not verified against PayPlus itself (keys are sensitive): the first real
+  cancel or plan switch is the test. A failed delete emails the admin (cancel, plan switch, superseded
+  recurring on a new checkout).
+- **A cancelled account that subscribed again** kept `cancel_at_period_end=true`, so the cron would
+  have closed it at the end of the period it had just paid for, while its new recurring kept
+  charging. A new checkout resets the flags.
+- **Any failure locked the account.** A trial user whose card was declined on the checkout page would
+  have been locked out of the rest of the trial, and the failed transaction's recurring uid replaced
+  the live one. See the webhook section above.
+- **A renewal cleared a scheduled plan switch** (`pending_plan`), silently dropping it. Now only a
+  new checkout clears it.
+- **A callback whose run died half-way was lost**: the retry hit the unique index and stopped.
+  `payplus_webhook_events.claimed_at` lets a retry take over a row with no outcome after 5 minutes
+  (`maxDuration` is 120s, so the first run is surely gone). A receipt already issued is not issued
+  again. A failed account update now returns 500 (no outcome) and emails the admin. Cron step 7
+  emails the admin about callbacks still without an outcome after an hour.
+- **Unexpected renewals** (from a recurring other than the one on file, or after a cancel) extend the
+  period and email the admin to refund or delete the recurring.
+- **Plan switch** (cron step 3): once the old recurring is really deleted, `payplus_recurring_uid` is
+  cleared. Before, renewal reminders could go out for a charge that would never come, and /billing
+  refused the payment (409, "already active").
+- **Paying when nothing renews:** an active account with a paid period, no recurring and not
+  cancelling can pay at /billing from 3 days before `current_period_end` (`renewalPaymentDue` in
+  `lib/subscription.ts`), and Settings › Subscription links there. Not earlier: PayPlus starts the new
+  recurring on the payment day, so paying early gives up paid days.
+- **Dates:** receipts (Finbot and Green Invoice) are dated by the Israeli date. A charge at 01:39
+  Israel time was dated the day before on the UTC server.
+- **More server-only columns** (guard trigger, 0165): `auto_renew`, `cancel_at_period_end`,
+  `pending_plan`, `pending_plan_effective_at`, `renewal_reminder_sent_at`,
+  `trial_reminder_sent_at`. Before, a photographer who cancelled could set `cancel_at_period_end`
+  back to false from the browser and keep an "active" account with nothing left to pay.
+  /api/payplus/cancel and /api/payplus/switch-plan write them with the service role.
+- Tested with a simulated webhook (in-memory DB, 23 checks: trial checkout, duplicate, taken-over
+  callback without a second receipt, cancelled account returning, past_due paying again, renewal with
+  a pending switch, renewal from an old recurring, declined trial card, declined own renewal, failed
+  update, failed superseded delete, renewal after cancel, unknown account, double charge).
+
 ## Billing columns are server-only (migration 0148, 2026-10-01)
 
 `photographers_update_own` used to let a photographer update every column of their own row from the
@@ -247,11 +296,13 @@ select subscription_status, plan, signup_plan, trial_ends_at, current_period_end
        cancel_at_period_end, pending_plan, payplus_recurring_uid is not null has_recurring
 from photographers where id = '<id>';
 ```
-- A customer is locked out: `past_due` means the last charge failed (they pay again at /billing,
-  and the old recurring gets cancelled automatically). A `trialing` account with a past
+- A customer is locked out: `past_due` means their recurring's last charge failed (they pay again
+  at /billing, and the old recurring gets cancelled automatically). A `trialing` account with a past
   `trial_ends_at` means the trial ended.
 - "I paid but I'm still locked": no callback row means PayPlus didn't reach the webhook (check
-  the callback URL in PayPlus). A row with `outcome` null or an error means read the Vercel logs.
+  the callback URL in PayPlus). A row with `outcome` null means its run died half-way (cron step 7
+  emails about it): read the Vercel logs. `failed_not_locked` is a declined charge that wasn't the
+  account's own renewal.
 - A missing receipt: the `receipt_status/receipt_error` of that transaction. On `failed`, issue
   one manually in Finbot.
 

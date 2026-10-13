@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { computePlanSwitchEffectiveDate } from "@/lib/payplus";
 import type { Photographer } from "@/lib/types";
 import { SUBSCRIPTION_PLANS, STORAGE_CAP_BYTES_BY_TIER, type SubscriptionPlan } from "@/lib/stages";
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
   if (!photographer) {
     return NextResponse.json({ error: "רק צלמים יכולים להחליף מסלול" }, { status: 403 });
   }
-  if (photographer.subscription_status !== "active" && photographer.subscription_status !== "trialing") {
+  if ((photographer.subscription_status !== "active" && photographer.subscription_status !== "trialing") || photographer.cancel_at_period_end) {
     return NextResponse.json({ error: "אין מנוי פעיל להחלפה" }, { status: 400 });
   }
 
@@ -34,8 +35,13 @@ export async function POST(request: Request) {
     .json()
     .catch(() => ({}));
 
+  // The scheduled switch is server-only (photographers_guard_privileged, migration 0165), so it's
+  // written with the service role, after the checks here.
+  const admin = createServiceRoleClient();
+
   if (cancel) {
-    await supabase.from("photographers").update({ pending_plan: null, pending_plan_effective_at: null }).eq("id", user.id);
+    const { error } = await admin.from("photographers").update({ pending_plan: null, pending_plan_effective_at: null }).eq("id", user.id);
+    if (error) return NextResponse.json({ error: "שגיאה בביטול ההחלפה המתוזמנת" }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
 
@@ -68,10 +74,11 @@ export async function POST(request: Request) {
 
   const effectiveAt = computePlanSwitchEffectiveDate(photographer.plan, new Date(photographer.current_period_end));
 
-  await supabase
+  const { error } = await admin
     .from("photographers")
     .update({ pending_plan: targetPlan, pending_plan_effective_at: effectiveAt.toISOString() })
     .eq("id", user.id);
+  if (error) return NextResponse.json({ error: "שגיאה בתזמון החלפת המסלול" }, { status: 500 });
 
   return NextResponse.json({ ok: true, effectiveAt: effectiveAt.toISOString() });
 }

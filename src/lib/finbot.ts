@@ -1,4 +1,5 @@
 import { stripPhoneFormatting } from "@/lib/phone";
+import { israelDateString } from "@/lib/billingDates";
 import type { ReceiptPaymentMethod } from "@/lib/paymentDocuments";
 
 // Finbot ("פינבוט") — the accountant's document-issuing system. API docs:
@@ -91,11 +92,8 @@ export async function issueReceipt({
 }): Promise<{ documentLink: string }> {
   const key = apiKey ?? requireEnv("FINBOT_API_KEY");
 
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = date.getFullYear();
-
-  const dateStr = `${dd}/${mm}/${yyyy}`;
+  // The Israeli date: on the UTC server, a charge at 01:39 Israel time was still dated the day before.
+  const dateStr = israelDateString(date);
   const cleanPhone = sanitizePhone(customerPhone);
 
   // Finbot: "מסמך כולל/ לא כולל מע"מ" — vatType true means the document CHARGES VAT (only valid
