@@ -4,7 +4,7 @@ import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { GENERIC_STAGE_UPDATE_TEMPLATE } from "@/lib/stages";
-import { removeObjects, removePreviewObjects } from "@/lib/storage";
+import { removeGalleryFiles } from "@/lib/storage";
 import type { GalleryRow } from "@/lib/types";
 import { runLeadRetention } from "@/lib/leadRetention";
 import { clientLangFor, photographerLang } from "@/lib/clientLang";
@@ -207,42 +207,45 @@ export async function GET(request: NextRequest) {
   let deletedCount = 0;
   for (const gallery of toDelete ?? []) {
     // Rescue portfolio photos first: re-home them into the photographer's hidden portfolio
-    // gallery so the FK cascade below (and the R2 deletion right after) never touches them.
-    const { data: portfolioPhotoIds } = await supabase
+    // gallery so the FK cascade below never touches them. Their files stay where they are, so the
+    // storage sweep below skips them.
+    const { data: portfolioPhotos } = await supabase
       .from("gallery_photos")
-      .select("id")
+      .select("id, storage_path, preview_storage_path")
       .eq("gallery_id", gallery.id)
       .eq("in_portfolio", true)
-      .returns<{ id: string }[]>();
-    if (portfolioPhotoIds && portfolioPhotoIds.length > 0) {
+      .returns<{ id: string; storage_path: string; preview_storage_path: string | null }[]>();
+    if (portfolioPhotos && portfolioPhotos.length > 0) {
       const portfolioGalleryId = await getOrCreatePortfolioGalleryId(supabase, gallery.photographer_id);
       await supabase
         .from("gallery_photos")
         .update({ gallery_id: portfolioGalleryId, folder_id: null })
-        .in("id", portfolioPhotoIds.map((p) => p.id));
+        .in("id", portfolioPhotos.map((p) => p.id));
     }
 
-    const { data: photos } = await supabase
-      .from("gallery_photos")
-      .select("storage_path, preview_storage_path")
-      .eq("gallery_id", gallery.id)
-      .returns<{ storage_path: string; preview_storage_path: string | null }[]>();
-
-    if (photos && photos.length > 0) {
-      // A .webp preview lives in the separate previews bucket (removePreviewObjects) — anything
-      // else is a pre-migration legacy preview still in the main bucket, deleted the normal way
-      // right alongside its storage_path.
-      // Only files under this gallery's own prefixes (security fix 2026-10-13): a row's paths are
-      // deleted with the service role, so a path pointing elsewhere must never be followed.
-      const ownPrefix = `${gallery.photographer_id}/`;
-      const paths = photos.flatMap((p) => [
-        p.storage_path,
-        p.preview_storage_path && !p.preview_storage_path.endsWith(".webp") ? p.preview_storage_path : null,
-      ]).filter((x): x is string => !!x && x.startsWith(ownPrefix));
-      const previewPaths = photos
-        .map((p) => p.preview_storage_path)
-        .filter((x): x is string => !!x && x.endsWith(".webp") && x.startsWith(`previews/${gallery.id}/`));
-      await Promise.all([removeObjects("galleries", paths), removePreviewObjects(previewPaths)]);
+    // Every file of the gallery: its whole storage prefix (photos, videos, uploads of any kind) and
+    // its zip and album-export files, not only the photo rows' paths (videos used to stay forever).
+    // Only this gallery's own prefixes are swept (security rule 2026-10-13).
+    const [{ data: zipJobs }, { data: exportJobs }] = await Promise.all([
+      supabase.from("gallery_zip_jobs").select("storage_path").eq("gallery_id", gallery.id).not("storage_path", "is", null).returns<{ storage_path: string }[]>(),
+      supabase.from("gallery_album_export_jobs").select("storage_path").eq("gallery_id", gallery.id).not("storage_path", "is", null).returns<{ storage_path: string }[]>(),
+    ]);
+    const extraMainKeys = [...(zipJobs ?? []), ...(exportJobs ?? [])]
+      .map((j) => j.storage_path)
+      .filter((p) => p.startsWith("zip-jobs/") || p.startsWith("album-exports/"))
+      .map((p) => `galleries/${p}`);
+    try {
+      await removeGalleryFiles({
+        photographerId: gallery.photographer_id,
+        galleryId: gallery.id,
+        keepMainPaths: (portfolioPhotos ?? []).flatMap((p) => [p.storage_path, p.preview_storage_path ?? ""]).filter(Boolean),
+        keepPreviewKeys: (portfolioPhotos ?? []).map((p) => p.preview_storage_path ?? "").filter((x) => x.endsWith(".webp")),
+        extraMainKeys,
+      });
+    } catch (e) {
+      // The rows stay, so the next run tries again instead of leaving files without a row.
+      console.error(`Gallery ${gallery.id} storage cleanup failed:`, e);
+      continue;
     }
 
     if (gallery.event_id) {

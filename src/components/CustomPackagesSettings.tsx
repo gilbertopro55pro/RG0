@@ -524,8 +524,10 @@ export function CustomPackageBuilder({
       requires_album_pdf: s.requiresAlbumPdf,
     });
 
+    // A removed stage is archived, not deleted (migration 0169): its event_stages rows cascade on
+    // delete, which erased it, and whether it was done, from every existing event of the package.
     if (removedIds.length > 0) {
-      await supabase.from("custom_package_stages").delete().in("id", removedIds);
+      await supabase.from("custom_package_stages").update({ archived_at: new Date().toISOString() }).in("id", removedIds);
     }
 
     const updates = validStages

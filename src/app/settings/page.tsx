@@ -69,7 +69,8 @@ export default async function SettingsPage({
     supabase.from("event_types").select("*").order("sort_order", { ascending: true }).returns<EventTypeRow[]>(),
     supabase.from("package_prices").select("*").returns<PackagePriceRow[]>(),
     supabase.from("custom_packages").select("*").order("sort_order", { ascending: true }).returns<CustomPackageRow[]>(),
-    supabase.from("custom_package_stages").select("*").order("sort_order", { ascending: true }).returns<CustomPackageStageRow[]>(),
+    // Archived stages (removed from a package, migration 0169) stay only on existing events.
+    supabase.from("custom_package_stages").select("*").is("archived_at", null).order("sort_order", { ascending: true }).returns<CustomPackageStageRow[]>(),
     supabase.from("print_house_emails").select("*").order("created_at", { ascending: true }).returns<PrintHouseEmailRow[]>(),
     supabase.from("price_quotes").select("*").order("created_at", { ascending: false }).returns<PriceQuoteRow[]>(),
     supabase.from("price_quote_templates").select("*").order("created_at", { ascending: true }).returns<PriceQuoteTemplateRow[]>(),

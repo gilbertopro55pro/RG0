@@ -76,6 +76,7 @@ export async function createEventWithSideEffects(supabase: SupabaseClient<any>, 
         .from("custom_package_stages")
         .select("*")
         .eq("package_id", customPackageId)
+        .is("archived_at", null)
         .order("sort_order", { ascending: true })
         .returns<CustomPackageStageRow[]>(),
     ]);

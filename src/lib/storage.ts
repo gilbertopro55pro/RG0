@@ -403,3 +403,34 @@ export async function removePreviewPrefixes(prefixes: string[], extraKeys: strin
   await deleteKeys(s3, bucketName, [...keys]);
   return keys.size;
 }
+
+// Everything under one gallery's own prefixes, for its permanent deletion: in the main bucket
+// "galleries/<photographer>/<gallery>/" (photos, legacy previews, videos, client, desktop and FTP
+// uploads) plus the given extra keys (zip parts, album exports), and in the previews bucket
+// "previews/<gallery>/". Keys to keep are skipped: portfolio photos moved out of the gallery keep
+// their files where they are. Before 2026-10-13 only the photo rows' own paths were deleted, so a
+// gallery's videos (and anything without a row) stayed in storage for good.
+export async function removeGalleryFiles(args: {
+  photographerId: string;
+  galleryId: string;
+  keepMainPaths?: string[];
+  keepPreviewKeys?: string[];
+  extraMainKeys?: string[];
+}): Promise<number> {
+  const keepMain = new Set((args.keepMainPaths ?? []).map((p) => keyFor("galleries", p)));
+  const keepPreview = new Set(args.keepPreviewKeys ?? []);
+
+  const mainBucket = requireEnv("R2_BUCKET_NAME");
+  const s3 = client();
+  const { keys: mainKeys } = await listKeys(s3, mainBucket, keyFor("galleries", `${args.photographerId}/${args.galleryId}/`));
+  const mainToDelete = [...new Set([...mainKeys, ...(args.extraMainKeys ?? [])])].filter((k) => !keepMain.has(k));
+  await deleteKeys(s3, mainBucket, mainToDelete);
+
+  const previewBucket = requireEnv("R2_PREVIEWS_BUCKET_NAME");
+  const ps3 = previewsClient();
+  const { keys: previewKeys } = await listKeys(ps3, previewBucket, `previews/${args.galleryId}/`);
+  const previewToDelete = previewKeys.filter((k) => !keepPreview.has(k));
+  await deleteKeys(ps3, previewBucket, previewToDelete);
+
+  return mainToDelete.length + previewToDelete.length;
+}
