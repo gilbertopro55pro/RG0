@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import sharp, { type OverlayOptions } from "sharp";
 import fontkit from "@pdf-lib/fontkit";
-import { splitRuns } from "@/lib/pdfText";
+import { visualRunsOf } from "@/lib/pdfText";
 import { downloadObjectBuffer } from "@/lib/storage";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
 import type { AlbumElement, AlbumPhotoFilter, GalleryAlbumRow, GalleryAlbumSpreadRow, GalleryPhotoRow } from "@/lib/types";
@@ -50,12 +50,27 @@ const HEBREW_RANGE = /[֐-׿]/;
 function hebrewGlyphSafe(ch: string): boolean {
   return HEBREW_RANGE.test(ch) || ch === " ";
 }
-function splitByFontCoverage<T>(text: string, hebrewFont: T, latinFont: T): { text: string; font: T }[] {
-  const segments: { text: string; font: T }[] = [];
+type FontkitFont = ReturnType<typeof fontkit.create>;
+// The font that draws a character, or null when neither font has a glyph for it (an emoji).
+function fontForChar(ch: string, hebrewFont: FontkitFont, latinFont: FontkitFont): FontkitFont | null {
+  const cp = ch.codePointAt(0)!;
+  if (hebrewGlyphSafe(ch) && hebrewFont.hasGlyphForCodePoint(cp)) return hebrewFont;
+  return latinFont.hasGlyphForCodePoint(cp) ? latinFont : null;
+}
+// Characters neither font can draw are left out, as in the PDF (pdfText.ts), instead of printing an
+// empty box ("יעל ואיתי 💍", 2026-10-13). Whitespace always stays.
+function drawableText(text: string, hebrewFont: FontkitFont, latinFont: FontkitFont): string {
+  const chars = [...text];
+  const kept = chars.filter((ch) => /\s/.test(ch) || fontForChar(ch, hebrewFont, latinFont));
+  if (kept.length === chars.length) return text;
+  return kept.join("").replace(/\s{2,}/g, " ").trim();
+}
+function splitByFontCoverage(text: string, hebrewFont: FontkitFont, latinFont: FontkitFont): { text: string; font: FontkitFont }[] {
+  const segments: { text: string; font: FontkitFont }[] = [];
   let current = "";
-  let currentFont: T | null = null;
+  let currentFont: FontkitFont | null = null;
   for (const ch of text) {
-    const font = hebrewGlyphSafe(ch) ? hebrewFont : latinFont;
+    const font = fontForChar(ch, hebrewFont, latinFont) ?? latinFont;
     if (currentFont === null) currentFont = font;
     if (font !== currentFont) {
       segments.push({ text: current, font: currentFont });
@@ -72,12 +87,11 @@ function splitByFontCoverage<T>(text: string, hebrewFont: T, latinFont: T): { te
 // (runs right-to-left overall, Latin/digit runs kept in natural/logical order) — returns the paths
 // already positioned along a single baseline at x=0, plus the total ink width so the caller can
 // align/center the whole block.
-// Uses pdfText.ts's splitRuns (boundary-neutral-aware — see its comments) rather than a cruder
-// per-character splitter: an earlier version of this function treated every non-Hebrew,
-// non-space character (an ampersand, a middle dot, a period) as an immediate direction-forcing
-// boundary, which fractured something like "רותם & דניאל · 12.6.2026" into four separately
-// re-ordered fragments instead of one coherent Hebrew run — confirmed empirically by rendering it
-// and finding the two names visually swapped/glued to the wrong neighbor.
+// The run order comes from pdfText.ts's visualRunsOf, the same one the PDF export uses, so a page's
+// text reads the same in every format. It keeps neutrals with the text around them ("רותם & דניאל ·
+// 12.6.2026" stays one Hebrew run) and mirrors brackets in right-to-left text. Until 2026-10-13 this
+// used an older splitter with no mirroring: "יעל ואיתי (12.8.2027)" came out of the JPG/PSD as
+// "יעל ואיתי )12.8.2027(" while the PDF was right.
 //
 // Hebrew-font segments are handed to fontkit in NATURAL/LOGICAL character order, NOT
 // pre-reversed. This went back and forth twice before landing here for good, so the reasoning is
@@ -90,8 +104,7 @@ function splitByFontCoverage<T>(text: string, hebrewFont: T, latinFont: T): { te
 // TWICE — once by hand, once by fontkit internally — which cancels out back to natural order and
 // is exactly what rendered as backwards text (confirmed 2026-09-16 by rendering a real album
 // spread's real text both ways and comparing). PSD reuses this exact function (svgTextLayer is
-// shared via albumPsd.ts's own import); pdf-lib's own drawText (used by PDF export, pdfText.ts)
-// does NOT do this — see splitRuns' sibling there for why that path still reverses by hand.
+// shared via albumPsd.ts's own import).
 async function layoutTextAsSvgPaths(
   text: string,
   fontFamily: string | undefined,
@@ -100,15 +113,18 @@ async function layoutTextAsSvgPaths(
   const { hebrewFile, latinFile } = getAlbumFontFiles(fontFamily);
   const [hebrewFont, latinFont] = await Promise.all([loadFontkitFont(hebrewFile), loadFontkitFont(latinFile)]);
 
-  // splitRuns classifies neutrals (&, ·, ., digits' surrounding punctuation) INTO the Hebrew run
-  // for bidi-ordering purposes, which is correct for *position* but not for *glyph lookup* — a
-  // second pass (splitByFontCoverage) routes any character the Hebrew font doesn't actually cover
-  // to the Latin font instead. Segments are reversed relative to each other (same rule as the
-  // top-level runs); each segment's own characters stay in logical order — fontkit reverses a
-  // Hebrew segment's glyphs itself (see this function's own top comment).
-  const visualRuns = splitRuns(text)
-    .reverse()
-    .flatMap((r) => (r.rtl ? splitByFontCoverage(r.text, hebrewFont, latinFont).reverse() : [{ text: r.text, font: latinFont }]));
+  // A right-to-left run holds neutrals (&, ·, ., brackets) with its Hebrew for *position*, but the
+  // Hebrew font has no glyph for them — a second pass (splitByFontCoverage) routes them to the Latin
+  // font. Segments are reversed relative to each other (same rule as the top-level runs). A segment
+  // with Hebrew keeps logical order (fontkit reverses it, see this function's own top comment); one
+  // without Hebrew (" (" between two runs) is reversed here, since fontkit leaves it alone.
+  const visualRuns = visualRunsOf(drawableText(text, hebrewFont, latinFont)).flatMap((r) =>
+    r.rtl
+      ? splitByFontCoverage(r.text, hebrewFont, latinFont)
+          .reverse()
+          .map((sg) => (HEBREW_RANGE.test(sg.text) ? sg : { ...sg, text: [...sg.text].reverse().join("") }))
+      : [{ text: r.text, font: latinFont }]
+  );
 
   let cursorX = 0;
   const parts: string[] = [];
