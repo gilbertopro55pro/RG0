@@ -27,6 +27,7 @@ import ClientLangScope from "@/i18n/ClientLangScope";
 import { dateLocale, type Lang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
+import { photoInScope, resolveGalleryToken } from "@/lib/galleryAccess";
 
 // The client's language for this gallery (UI languages phase 2): the event's client_lang, gated by
 // clientLangFor (Hebrew for every non-admin photographer). A gallery with no event stays Hebrew.
@@ -48,7 +49,7 @@ async function galleryLang(supabase: ReturnType<typeof createServiceRoleClient>,
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
   const { token } = await params;
   const supabase = createServiceRoleClient();
-  const { data: gallery } = await supabase.from("galleries").select("*").eq("access_token", token).maybeSingle<GalleryRow>();
+  const gallery = (await resolveGalleryToken(supabase, token))?.gallery ?? null;
   // Unpublished galleries render "not found" to anyone but their own owner (see the page body
   // below) — matching that here so a link preview never leaks a photo from a gallery the client
   // isn't actually supposed to be able to see yet.
@@ -101,21 +102,21 @@ export default async function PublicGalleryPage({
 }) {
   const { token } = await params;
   const { folders: foldersParam, photos: photosParam, quality: qualityParam } = await searchParams;
-  const restrictedQuality = qualityParam === "web" ? "web" : null;
   const supabase = createServiceRoleClient();
 
-  const { data: gallery } = await supabase
-    .from("galleries")
-    .select("*")
-    .eq("access_token", token)
-    .maybeSingle<GalleryRow>();
+  // The client's own link, or a read-only share link whose scope is enforced here, not by the URL
+  // parameters (lib/galleryAccess.ts).
+  const access = await resolveGalleryToken(supabase, token);
+  const gallery = access?.gallery ?? null;
+  const readOnly = !!access?.readOnly;
+  const restrictedQuality = qualityParam === "web" || access?.scope?.quality === "web" ? "web" : null;
 
   // Published galleries are open to anyone with the link, as always. An unpublished one is only
   // shown if the requester is authenticated as the gallery's own photographer — lets them preview
   // exactly what the client will eventually see, on the same URL the client will get, without
   // opening the gallery up to anyone else before it's actually published.
   let isOwnerPreview = false;
-  if (gallery && !gallery.published) {
+  if (gallery && !gallery.published && !readOnly) {
     const authedSupabase = await createClient();
     const {
       data: { user },
@@ -181,6 +182,14 @@ export default async function PublicGalleryPage({
   // excluded photos never even get a signed URL generated or sent to the client.
   let folders = foldersRaw ?? [];
   let photos = photosRaw ?? [];
+  // A read-only share link: only what it was shared with, whatever the URL says. The client's own
+  // favorites aren't shown to whoever it was shared with.
+  if (access?.scope) {
+    const scope = access.scope;
+    photos = photos.filter((p) => photoInScope(p, scope)).map((p) => ({ ...p, is_favorite: false }));
+    if (scope.photoIds) folders = [];
+    else if (scope.folderKeys) folders = folders.filter((f) => scope.folderKeys!.includes(f.id));
+  }
   if (foldersParam) {
     const selected = new Set(foldersParam.split(","));
     folders = folders.filter((f) => selected.has(f.id));
@@ -224,21 +233,26 @@ export default async function PublicGalleryPage({
     }));
   }
 
+  // A share link limited to some tabs or photos doesn't carry the gallery's videos.
+  const scopedShare = !!access?.scope && (!!access.scope.folderKeys || !!access.scope.photoIds);
   const videosWithUrls =
-    videosRaw && videosRaw.length > 0
+    videosRaw && videosRaw.length > 0 && !scopedShare
       ? await Promise.all(
           videosRaw.map(async (v) => ({ id: v.id, name: v.original_filename, url: await getSignedDownloadUrl("galleries", v.storage_path, 3600) }))
         )
       : [];
 
   // The album is only shown to the client once the photographer has sent it — a draft is a
-  // photographer-only work-in-progress.
-  const { data: album } = await supabase
-    .from("gallery_albums")
-    .select("*")
-    .eq("gallery_id", gallery.id)
-    .neq("status", "draft")
-    .maybeSingle<GalleryAlbumRow>();
+  // photographer-only work-in-progress. Never on a read-only share link: approving and commenting
+  // on the design are the client's.
+  const { data: album } = readOnly
+    ? { data: null }
+    : await supabase
+        .from("gallery_albums")
+        .select("*")
+        .eq("gallery_id", gallery.id)
+        .neq("status", "draft")
+        .maybeSingle<GalleryAlbumRow>();
 
   let albumSpreadsForClient: {
     id: string;
@@ -405,7 +419,8 @@ export default async function PublicGalleryPage({
       initialFolders={folders ?? []}
       initiallyConfirmed={!!gallery.selection_confirmed_at}
       allowDownloads={gallery.allow_downloads}
-      allowClientUpload={gallery.allow_client_upload}
+      allowClientUpload={gallery.allow_client_upload && !readOnly}
+      readOnly={readOnly}
       themeId={gallery.theme}
       titleFontOverride={gallery.title_font_override}
       gridStyleOverride={gallery.grid_style_override}

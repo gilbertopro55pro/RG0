@@ -81,7 +81,7 @@ export function zipJobStoragePath(batchId: string, partIndex: number): string {
 // deliberately not an iterative search for an exact byte target, which would mean several full
 // re-encodes of the same image per photo.
 const WEB_QUALITY_MAX_BYTES = 3 * 1024 * 1024;
-async function resizeForWebQuality(buffer: Buffer): Promise<Buffer> {
+export async function resizeForWebQuality(buffer: Buffer): Promise<Buffer> {
   const first = await sharp(buffer)
     .rotate()
     .resize(2400, 2400, { fit: "inside", withoutEnlargement: true })

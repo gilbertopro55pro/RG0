@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { getSignedDownloadUrl } from "@/lib/storage";
-import type { GalleryPhotoRow, GalleryRow } from "@/lib/types";
+import type { GalleryPhotoRow } from "@/lib/types";
+import { photoInScope, resolveGalleryToken } from "@/lib/galleryAccess";
 
 // Display URLs (fetched once per page load, batched) are generated without a per-file download
 // filename — this route generates a short-lived, correctly-named one on demand, only when a
@@ -15,15 +16,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const supabase = createServiceRoleClient();
 
-  const { data: gallery } = await supabase
-    .from("galleries")
-    .select("*")
-    .eq("access_token", token)
-    .eq("published", true)
-    .is("archived_at", null)
-    .maybeSingle<GalleryRow>();
+  // The client's own link, or a read-only share link within its scope (lib/galleryAccess.ts).
+  const access = await resolveGalleryToken(supabase, token);
+  const gallery = access && access.gallery.published && !access.gallery.archived_at ? access.gallery : null;
 
-  if (!gallery) {
+  if (!access || !gallery) {
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
   if (!gallery.allow_downloads) {
@@ -32,14 +29,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { data: photo } = await supabase
     .from("gallery_photos")
-    .select("storage_path, original_filename")
+    .select("id, folder_id, storage_path, original_filename")
     .eq("id", photoId)
     .eq("gallery_id", gallery.id)
     .neq("culling_status", "rejected")
-    .maybeSingle<Pick<GalleryPhotoRow, "storage_path" | "original_filename">>();
+    .maybeSingle<Pick<GalleryPhotoRow, "id" | "folder_id" | "storage_path" | "original_filename">>();
 
-  if (!photo) {
+  if (!photo || !photoInScope(photo, access.scope)) {
     return NextResponse.json({ error: "התמונה לא נמצאה" }, { status: 404 });
+  }
+  // A share link at web quality never hands out the original: the file is resized on the way out.
+  if (access.scope?.quality === "web") {
+    return NextResponse.json({ url: `/api/gallery/${token}/download/web?photoId=${photo.id}` });
   }
 
   const signedUrl = await getSignedDownloadUrl("galleries", photo.storage_path, 300, photo.original_filename);
