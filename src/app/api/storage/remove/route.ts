@@ -48,6 +48,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "בקשה לא חוקית" }, { status: 400 });
   }
 
+  // Each preview must be the caller's (security fix 2026-10-13): preview URLs are public on every
+  // shared gallery page, so the shape check alone let any signed-in user delete another studio's
+  // previews. A preview is the caller's when its gallery is, or when one of the caller's photos
+  // still points at it (a portfolio photo rescued from a deleted gallery keeps its old path). The
+  // photo rows are still there at this point: callers remove the files before the rows. RLS limits
+  // both selects to the caller's own rows.
+  if (previewPaths.length > 0) {
+    const galleryIds = [...new Set(previewPaths.map((p) => p.split("/")[1]))];
+    const { data: ownedGalleries } = await supabase.from("galleries").select("id").in("id", galleryIds).returns<{ id: string }[]>();
+    const owned = new Set((ownedGalleries ?? []).map((g) => g.id));
+    const rest = previewPaths.filter((p) => !owned.has(p.split("/")[1]));
+    if (rest.length > 0) {
+      const { data: ownPhotos } = await supabase
+        .from("gallery_photos")
+        .select("preview_storage_path")
+        .in("preview_storage_path", rest)
+        .returns<{ preview_storage_path: string }[]>();
+      const ownPaths = new Set((ownPhotos ?? []).map((r) => r.preview_storage_path));
+      if (rest.some((p) => !ownPaths.has(p))) {
+        return NextResponse.json({ error: "בקשה לא חוקית" }, { status: 403 });
+      }
+    }
+  }
+
   try {
     await Promise.all([removeObjects(bucket, paths), removePreviewObjects(previewPaths)]);
   } catch (e) {

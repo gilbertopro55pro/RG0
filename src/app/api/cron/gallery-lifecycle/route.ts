@@ -232,13 +232,16 @@ export async function GET(request: NextRequest) {
       // A .webp preview lives in the separate previews bucket (removePreviewObjects) — anything
       // else is a pre-migration legacy preview still in the main bucket, deleted the normal way
       // right alongside its storage_path.
+      // Only files under this gallery's own prefixes (security fix 2026-10-13): a row's paths are
+      // deleted with the service role, so a path pointing elsewhere must never be followed.
+      const ownPrefix = `${gallery.photographer_id}/`;
       const paths = photos.flatMap((p) => [
         p.storage_path,
         p.preview_storage_path && !p.preview_storage_path.endsWith(".webp") ? p.preview_storage_path : null,
-      ]).filter((x): x is string => !!x);
+      ]).filter((x): x is string => !!x && x.startsWith(ownPrefix));
       const previewPaths = photos
         .map((p) => p.preview_storage_path)
-        .filter((x): x is string => !!x && x.endsWith(".webp"));
+        .filter((x): x is string => !!x && x.endsWith(".webp") && x.startsWith(`previews/${gallery.id}/`));
       await Promise.all([removeObjects("galleries", paths), removePreviewObjects(previewPaths)]);
     }
 

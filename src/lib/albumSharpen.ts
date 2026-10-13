@@ -1,3 +1,4 @@
+import { safeSvgId } from "@/lib/albumAdjustments";
 // Sharpness (unsharp-mask-family edge enhancement) — deliberately kept OUT of albumAdjustments.ts's
 // shared tone-curve/color-matrix pipeline (see that file's own top comment for why): it's a spatial
 // convolution, a genuinely different algorithm class from a per-pixel curve, and the two paths that
@@ -13,7 +14,7 @@
 const MAX_KERNEL_STRENGTH = 0.55; // convolution strength at sharpness=100 — kept moderate to avoid visible haloing
 
 export function sharpenFilterId(elId: string, sharpness: number): string {
-  return `album-sharpen-${elId}-${Math.round(sharpness)}`;
+  return safeSvgId(`album-sharpen-${elId}-${Math.round(sharpness)}`);
 }
 
 export function sharpenSvgFilter(elId: string, sharpness: number | undefined): string {
