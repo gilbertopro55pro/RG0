@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Rubik } from "next/font/google";
 import Script from "next/script";
+// Server only: the client components get the version and the latest entry as props, so the
+// whole history (~270KB) never ships with every page.
+import { CHANGELOG, CURRENT_VERSION } from "@/lib/changelog";
 import "./globals.css";
 import PWARegister from "@/components/PWARegister";
 import UpdateReloadGate from "@/components/UpdateReloadGate";
@@ -311,13 +314,13 @@ export default async function RootLayout({
           <BodyScrollLock />
           <GlobalLoadingBar />
           <PremiumScope />
-          <TopNav />
+          <TopNav currentVersion={CURRENT_VERSION} />
           <PageTransition>
             <LangScope>{children}</LangScope>
           </PageTransition>
           <InstallPrompt />
           <UploadsIndicator />
-          <ChangelogModal />
+          <ChangelogModal latest={CHANGELOG[0]} />
           <AssistantLeadPopup />
         </I18nProvider>
       </body>

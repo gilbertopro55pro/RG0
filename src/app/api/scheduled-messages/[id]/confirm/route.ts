@@ -15,7 +15,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
   }
 
-  const { paid }: { paid: boolean } = await request.json();
+  const { paid, dryRun }: { paid: boolean; dryRun?: boolean } = await request.json();
 
   const { data: message } = await supabase
     .from("scheduled_messages")
@@ -70,6 +70,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     "שלום {name},\nתזכורת ידידותית, נשארה יתרה של ₪{amount} לתשלום עבור האירוע שלכם.\n\nלצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n{link}",
     { name: event.client_name, amount: lang === "he" ? balance : Number(balance).toLocaleString(dateLocale(lang)), link: portalLink }
   );
+
+  // A preview (dryRun): the prompt fetches the message when it shows, so the send button opens
+  // WhatsApp right in the tap (iPhone blocks it after a request) and only then records the send.
+  if (dryRun) return NextResponse.json({ ok: true, sent: true, clientPhone: event.client_phone, message: message_text });
 
   await supabase
     .from("scheduled_messages")

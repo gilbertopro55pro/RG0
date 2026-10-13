@@ -104,6 +104,7 @@ export default async function SettingsPage({
       <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-5" />
       <h1 className="text-[22px] font-bold mb-5 font-display">{t("הגדרות")}</h1>
       <SettingsTabs
+        currentVersion={CURRENT_VERSION}
         initialTab={tab}
         tabs={[
           {

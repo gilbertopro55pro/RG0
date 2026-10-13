@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { CURRENT_VERSION } from "@/lib/changelog";
 import { randomUUID } from "node:crypto";
 import { compareEventsChronologically } from "@/lib/eventOrder";
 import { quoteExtrasFor } from "@/lib/quoteDefaults";
@@ -394,7 +395,7 @@ export default async function DashboardPage() {
         {isPhotographer && (
           <div className="flex items-center gap-2 shrink-0 mt-1">
             <CalendarLink />
-            <SettingsGearLink />
+            <SettingsGearLink currentVersion={CURRENT_VERSION} />
           </div>
         )}
       </div>

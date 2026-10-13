@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { CHANGELOG, CURRENT_VERSION, changesFor } from "@/lib/changelog";
+import { changesFor, type ChangelogEntry } from "@/lib/changelogEntry";
 import { useLang, useT } from "@/i18n/client";
 
 const SEEN_KEY = "changelog-seen-version";
 const CLOSE_ANIMATION_MS = 220;
 
-export default function ChangelogModal() {
+// The version and its entry come from the server (layout.tsx), not lib/changelog.ts itself.
+export default function ChangelogModal({ latest }: { latest: ChangelogEntry }) {
+  const CURRENT_VERSION = latest.version;
   const pathname = usePathname();
   const t = useT();
   const lang = useLang();
@@ -34,7 +36,6 @@ export default function ChangelogModal() {
   // per explicit request, even though the badge on the settings nav tile still hints at it globally.
   if (pathname !== "/settings" || !visible) return null;
 
-  const latest = CHANGELOG[0];
 
   const dismiss = () => {
     setClosing(true);

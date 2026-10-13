@@ -18,7 +18,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
 
-  const { send }: { send: boolean } = await request.json();
+  const { send, dryRun }: { send: boolean; dryRun?: boolean } = await request.json();
 
   // RLS: only the photographer's own rows.
   const { data: message } = await supabase
@@ -68,6 +68,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     : t("היי {name} 😊\nרק מזכירים שהסרט המלא מחכה לכם להורדה בפורטל האישי.\nוגם, אשמח שתבחרו שיר או שניים לקליפ: שיר שקט ושיר קצבי 🎵\n{link}", { name: event.client_name, link });
   const signature = event.photographers?.whatsapp_signature?.trim();
   if (signature) text += `\n\n${signature}`;
+
+  // A preview (dryRun): the prompt fetches the message when it shows, so the send button opens
+  // WhatsApp right in the tap (iPhone blocks it after a request) and only then records the send.
+  if (dryRun) return NextResponse.json({ ok: true, sent: true, clientPhone: event.client_phone, message: text });
 
   await supabase.from("scheduled_messages").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", message.id);
   await supabase.from("event_notifications").insert({
