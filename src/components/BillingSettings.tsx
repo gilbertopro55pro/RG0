@@ -1,6 +1,6 @@
 "use client";
 
-import { isInTrial, trialDaysLeft } from "@/lib/subscription";
+import { isInTrial, trialDaysLeft, renewalPaymentDue, RENEWAL_PAYMENT_DAYS_BEFORE } from "@/lib/subscription";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -40,6 +40,10 @@ export default function BillingSettings({ photographer }: { photographer: Photog
   const isActive = status === "active" || status === "trialing";
   const periodEndHe = computePeriodEnd(photographer).toLocaleDateString(dateLocale(lang));
   const autoRenewOn = autoRenew && !cancelAtPeriodEnd;
+  // A paid period with nothing to renew it (a plan switch waiting for its payment, or a recurring
+  // removed in PayPlus). Accounts without a period end (manual ones) keep the usual wording.
+  const noRecurring = status === "active" && !photographer.payplus_recurring_uid && !!photographer.current_period_end;
+  const renewalDue = !cancelAtPeriodEnd && renewalPaymentDue({ ...photographer, subscription_status: status });
 
   const otherPlanKeys = (Object.keys(SUBSCRIPTION_PLANS) as SubscriptionPlan[]).filter((key) => key !== photographer.plan);
   const [pendingPlan, setPendingPlan] = useState(photographer.pending_plan);
@@ -67,7 +71,7 @@ export default function BillingSettings({ photographer }: { photographer: Photog
     const data = await res.json().catch(() => ({}));
     setSwitching(false);
     if (!res.ok) {
-      setSwitchError(data.error ?? t("שגיאה בתזמון החלפת המסלול"));
+      setSwitchError(t(data.error ?? "שגיאה בתזמון החלפת המסלול"));
       return;
     }
     setPendingPlan(targetKey);
@@ -151,8 +155,16 @@ export default function BillingSettings({ photographer }: { photographer: Photog
         <p className="text-xs mb-3 text-ink-soft">
           {cancelAtPeriodEnd
             ? t("החידוש האוטומטי כבוי, הגישה למערכת פעילה עד {date}.", { date: periodEndHe })
-            : t("מחזור החיוב הנוכחי ({plan}) מסתיים ומתחדש אוטומטית ב-{date}.", { plan: t(plan.label), date: periodEndHe })}
+            : noRecurring
+              ? t("למנוי אין חיוב חוזר פעיל, ולכן הוא לא יתחדש לבד ב-{date}. את התשלום לחידוש אפשר להשלים כאן, החל מ-{n} ימים לפני.", { date: periodEndHe, n: RENEWAL_PAYMENT_DAYS_BEFORE })
+              : t("מחזור החיוב הנוכחי ({plan}) מסתיים ומתחדש אוטומטית ב-{date}.", { plan: t(plan.label), date: periodEndHe })}
         </p>
+      )}
+
+      {renewalDue && (
+        <Link href="/billing" className="block w-full text-center rounded-lg py-2.5 mb-3 text-sm font-semibold bg-amber-deep text-white">
+          {t("תשלום לחידוש המנוי")}
+        </Link>
       )}
 
       {canceledAccessUntil && (
