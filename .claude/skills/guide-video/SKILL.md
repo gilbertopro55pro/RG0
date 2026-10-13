@@ -212,6 +212,35 @@ They are delivered as files, not in `public/`.
 - **Encoding.** CRF 19 capped at 8 Mb/s (the grain is noise and inflates the file; the first render was 12.5MB for 6s).
 - **Review.** Before sending: stills at the transitions, real frames from the mp4 (`-ss`), and the audio envelope (RMS per beat). The hits and the button must land on the beats. The music can't be heard from here, so the owner judges it by ear.
 
+## Short ads, round 2 (2026-10-13)
+The owner asked for three more (6/12/20s), each with a hook at the start, pain and solution in the
+12s and 20s, and **a different precise message in each**. The first round's messages (the
+assistant, the brand line, the 4.5 hours) were not repeated; these come from the landing page's
+own lines:
+- **`ad4.html`, 6s, the automatic album** ("האלבום כולו מעוצב, בזמן שאתם שותים קפה"):
+  - The hook is "עוד מעצבים / אלבומים לבד?" over an empty spread.
+  - Its dashed frames are the real layout of the first spread. The photos drop into them one by one ("גילברטו מעצבת / את כל העמודים").
+  - The pages turn on beats 5–7 in the Hebrew direction: the left page lifts over the spine to the right, and its back is the next spread's right page.
+- **`ad5.html`, 12s, one link** ("מהצעת מחיר לאירוע סגור, בקישור אחד"):
+  - The hook is "שלחתם הצעת מחיר, / ומתחיל ההלוך ושוב".
+  - The pain is a chat that keeps scrolling faster: an updated quote, "צריך להדפיס אותו?", "אין לנו מדפסת". Then "ועדיין אין חוזה חתום" lands.
+  - On the drop everything collapses into one link pill ("שולחים קישור אחד", with the marker on "אחד").
+  - Then the real client page (`f-quote2` at 2.2×). The three steps light up when the footage reaches them: approve at frame 35, details at 105, signed at 149.
+  - The stamp "האירוע נסגר" closes it.
+  - No deposit talk: the client page doesn't take payments.
+- **`ad6.html`, 20s, the whole process** ("מהפנייה ועד המסירה, הכל מסודר במקום אחד"):
+  - The hook is "חתונה אחת, / 8 אפליקציות פתוחות": generic tool tiles with climbing badges, no brand marks or brand names. Then "ותמיד משהו נופל בין הכיסאות".
+  - On the drop the tiles fly up into a five-step stepper.
+  - The camera then travels along a track of five real screens, one per bar: the inquiry (`f-chat`), quote and contract (`f-quote2`), shoot day (`f-home`), the gallery (`f-gallery`) and the album (a spread from the auto-designer).
+  - It pulls back over the whole track, each step gets a check, and "ושום דבר לא נופל / בין הכיסאות" lands after a break.
+- **Real album spreads** (`alb/` in the run folder):
+  - Run `planAlbum` + `layoutSpread` + `layoutCover` (style `clean`, 60×30, `targetSpreads` 10) on the photos with `npx tsx`.
+  - Use a tsconfig whose `paths` map `@/lib/storage` to a local mock that reads the photo files.
+  - Render with `renderAlbumPageJpeg` (2400×1200).
+  - Write `alb/spNN.jpg` and `alb/plan.json` (the elements, for the empty-frame outlines). `ad.js` passes both as `cfg.alb` / `cfg.albPlan`.
+  - The scratch script was `autoalb/auto.ts`; re-create it from this description.
+  - With the stock photos the engine put several couples in one album; a photographer notices. **The right input is one real wedding gallery** (the owner's, with the couple's consent), the same way.
+
 ## Setup (once per container)
 1. Scratch dir outside the repo: `export GF_OUT=<scratchpad>/guide-video GF_STATE=<scratchpad>/qa-state.json`.
 2. `playwright-core` is needed (`npm i playwright-core` in the scratchpad if missing; Chromium is at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`). Run node with `NODE_PATH` pointing at that node_modules.
