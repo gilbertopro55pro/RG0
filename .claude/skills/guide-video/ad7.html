@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Ad 7, 15 s (SKILL.md "Short ads, round 2"): ad6's message cut to Meta's range (a 5–15 s video
+     qualifies for every placement). Fewer captions, each up at least ~2 s: the hook and the pain
+     share the first scene, the turn is a bar, and over the montage of the five real screens one line
+     stays up the whole time ("ושום דבר לא נופל בין הכיסאות") while each step is checked off. -->
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="ad.css">
+<style>
+  #h1 { top: 250px; font-size: 124px; } #h2 { top: 384px; font-size: 104px; }
+  .tile { position: absolute; width: 220px; height: 220px; border-radius: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #fff; font-size: 30px; font-weight: 700; box-shadow: 0 24px 60px rgba(0,0,0,.45); opacity: 0; }
+  .tile b { position: absolute; top: -14px; left: -14px; min-width: 64px; height: 64px; padding: 0 14px; border-radius: 32px; background: #e0473b; color: #fff; font-size: 34px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 6px #0b1220; }
+  #pain { top: 1380px; font-size: 76px; }
+  #stepper { position: absolute; top: 230px; left: 70px; right: 70px; height: 150px; direction: rtl; opacity: 0; }
+  #stepper .ln { position: absolute; top: 34px; right: 50px; left: 50px; height: 6px; background: #26324c; border-radius: 3px; }
+  #stepper .ln u { position: absolute; top: 0; right: 0; height: 100%; width: 0; background: #c9a15a; border-radius: 3px; }
+  .dot { position: absolute; top: 0; width: 74px; height: 74px; margin-right: -37px; border-radius: 50%; background: #16203a; border: 5px solid #3a4560; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 32px; color: #aeb8cc; }
+  .dot span { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 30px; font-weight: 700; color: #8792ab; }
+  .dot.on { border-color: #c9a15a; color: #c9a15a; } .dot.on span { color: #fff; }
+  .dot.done { background: #c9a15a; border-color: #c9a15a; color: #14100a; }
+  #turn { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 600px; }
+  #turn .mark { width: 200px; height: 200px; border-radius: 46px; box-shadow: 0 40px 110px rgba(0,0,0,.5), 0 0 110px rgba(201,161,90,.3); }
+  #tl1 { margin-top: 60px; font-size: 112px; } #tl2 { font-size: 80px; color: #c9a15a; }
+  #tl1, #tl2 { width: 980px; text-align: center; font-weight: 800; letter-spacing: -.03em; line-height: 1.15; white-space: nowrap; }
+  .sh { position: absolute; top: 450px; left: 50px; right: 50px; text-align: center; font-weight: 800; font-size: 80px; letter-spacing: -.03em; white-space: nowrap; }
+  #track { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; perspective: 2200px; }
+  .card { position: absolute; top: 470px; width: 520px; height: 700px; margin-left: -260px; border-radius: 50px; overflow: hidden; background: #f4efe6; box-shadow: 0 50px 120px rgba(0,0,0,.55), 0 0 0 8px #0a0f1a, 0 0 0 10px #2a3650; }
+  .card img { display: block; width: 100%; }
+  .card.land { top: 620px; width: 800px; height: 400px; margin-left: -400px; border-radius: 18px; background: #fff; }
+  .card.land img { height: 100%; object-fit: cover; }
+  .ck { position: absolute; top: -40px; right: -40px; width: 120px; height: 120px; border-radius: 50%; background: #c9a15a; color: #14100a; display: flex; align-items: center; justify-content: center; opacity: 0; box-shadow: 0 20px 50px rgba(0,0,0,.5); z-index: 3; }
+  #r1 { top: 1235px; font-size: 96px; } #r2 { top: 1345px; font-size: 96px; color: #c9a15a; }
+  #sF .end { padding-top: 400px; }
+  #endbg { position: absolute; inset: -60px; background-size: cover; background-position: 50% 35%; filter: blur(34px) brightness(.5); opacity: .25; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div id="sA" class="scene">
+    <div id="h1" class="c big w" data-words>חתונה אחת,</div>
+    <div id="h2" class="c big g" data-words>8 אפליקציות פתוחות</div>
+    <div id="tiles"></div>
+    <div id="pain" class="c big w" data-words data-fit>ותמיד משהו נופל בין הכיסאות</div>
+  </div>
+  <div id="sB" class="scene">
+    <div id="turn"><img class="mark logoimg" src="logo.png" alt=""><div id="tl1" data-words data-fit>עם גילברטו,</div><div id="tl2" data-words data-fit>הכל בתהליך אחד</div></div>
+  </div>
+  <div id="sC" class="scene">
+    <div id="track"></div>
+    <div id="r1" class="c big w" data-words>ושום דבר לא נופל</div>
+    <div id="r2" class="c big" data-words>בין הכיסאות</div>
+  </div>
+  <div id="stepper"><div class="ln"><u id="lnu"></u></div><div id="dots"></div></div>
+  <div id="sF" class="scene">
+    <div id="endbg"></div>
+    <div class="end">
+      <img class="mark logoimg" src="logo.png" alt="">
+      <div class="msg"><b class="m1" data-words>מהפנייה ועד המסירה,</b><b class="m2" data-words>הכל מסודר במקום אחד</b></div>
+      <div class="cta">נסו 14 יום בחינם<i></i></div>
+      <div class="link">myframeflow.com/start<u></u></div>
+      <div class="free">ללא כרטיס אשראי וללא התחייבות</div>
+    </div>
+  </div>
+  <div id="leak"></div>
+  <div id="gflash"></div>
+  <div id="flash"></div>
+  <div id="vig"></div>
+</div>
+<canvas id="grain" width="360" height="640"></canvas>
+<script src="ad-lib.js"></script>
+<script>
+  // 124 BPM, 15 s. The hook and the pain are the build (two bars), the drop turns the tools into one
+  // process (a bar), the five screens go by two beats each with the payoff line held over them, a
+  // short pull-back shows them all checked, and the end card lands on the bar.
+  const S = { sA: [0, B(8)], sB: [B(8), B(12)], sC: [B(12), B(24)], sF: [B(24), Infinity] };
+  const DURATION = 15.0;
+  // Generic tools (no brand marks): [label, colour, svg path, x, y, tilt]
+  const TOOLS = [
+    ["הודעות", "#2e9d5b", "M4 5h16v11H9l-5 4z", 110, 560, -6],
+    ["טבלה", "#2f7d4f", "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14", 420, 520, 4],
+    ["יומן", "#c0392b", "M4 6h16v14H4zM4 10h16M9 3v4M15 3v4", 730, 590, -3],
+    ["PDF", "#a33a3a", "M7 3h7l5 5v13H7zM14 3v5h5", 180, 860, 5],
+    ["תיקיות", "#3c6fb4", "M3 7h7l2 2h9v10H3z", 500, 830, -4],
+    ["תזכורות", "#d08a2c", "M12 4a6 6 0 0 1 6 6v4l2 3H4l2-3v-4a6 6 0 0 1 6-6zM10 20h4", 790, 880, 6],
+    ["פתקים", "#b8a23a", "M5 4h14v12l-4 4H5zM15 16v4M9 9h6M9 12h4", 270, 1120, -5],
+    ["קבצים", "#6b5bb5", "M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4 4 0 0 1 0 9zM12 12v6M9.5 14.5L12 12l2.5 2.5", 640, 1110, 3],
+  ];
+  const TILE_AT = (i) => (i < 3 ? -1 : B(0.2 + (i - 2) * 0.55));
+  // The five stations, two beats each: [label, footage, footage clock]
+  const STATIONS = [
+    ["פנייה", "chat", (ct) => chatFrame(ct * 2.6)],
+    ["הצעה וחוזה", "quote2", (ct) => 1 + Math.floor(ct * 24 * 4)],
+    ["יום הצילום", "home", (ct) => 1 + Math.floor(ct * 30)],
+    ["גלריה", "gallery", (ct) => 1 + Math.floor(ct * 20 * 3.5)],
+    ["אלבום", "album", null],
+  ];
+  const ST_AT = (i) => B(12 + 2 * i);
+  const PULL = B(22);
+  const SPACING = 640;
+  const chatFrame = (ct) => {
+    const cyc = (a, b, from) => a + (Math.floor((ct - from) * 8) % (b - a + 1));
+    if (ct < 0.3) return 9;
+    if (ct < 1.15) return cyc(10, 23, 0.3);
+    if (ct < 2.0) return 24;
+    if (ct < 2.55) return 28;
+    if (ct < 3.1) return 29 + Math.min(5, Math.floor((ct - 2.55) / 0.09));
+    return cyc(35, 46, 3.1);
+  };
+  const HITS = [B(8), B(24)];
+  let cfg;
+  // Stepper dots: RTL, the first step on the right.
+  const DOT_X = (i) => 960 - i * 210;
+  window.setup = async (c) => {
+    cfg = c;
+    $("tiles").innerHTML = TOOLS.map(([label, col, d, x, y], i) => `<div class="tile" id="tool${i}" style="left:${x}px;top:${y}px;background:linear-gradient(160deg, ${col}, ${col}cc)"><b id="bd${i}">1</b><svg width="92" height="92" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>${label}</div>`).join("");
+    $("dots").innerHTML = STATIONS.map(([label], i) => `<div class="dot" id="dt${i}" style="right:${50 + i * ((940 - 100) / 4)}px"><i style="font-style:normal">${i + 1}</i><span>${label}</span></div>`).join("");
+    $("track").innerHTML = STATIONS.map(([, foot], i) => `<div class="card${foot === "album" ? " land" : ""}" id="cd${i}" style="left:${540 - i * SPACING}px"><img id="im${i}" alt=""><span class="ck" id="ck${i}"><svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span></div>`).join("");
+    $("im4").src = c.alb.sp02;
+    $("endbg").style.backgroundImage = `url(${c.photos["1801263"]})`;
+    splitWords();
+    await fitAll();
+    await Promise.all([...document.querySelectorAll("img.logoimg, #im4")].map((i) => i.decode().catch(() => {})));
+    for (let i = 0; i < 4; i++) { const f = c.foot[STATIONS[i][1]]; const im = $("im" + i); im.src = `${f.dir}/${String(STATIONS[i][2](0)).padStart(5, "0")}.jpg`; await im.decode().catch(() => {}); }
+  };
+  window.renderAt = async (t) => {
+    for (const [k, r] of Object.entries(S)) $(k).style.opacity = k === "sA" ? (t < r[1] ? 1 : 0) : vis(t, r, 0.1, 0.12);
+    const sh = shake(t, HITS, 16, 0.38);
+    $("stage").style.transform = `translate(${sh.x}px, ${sh.y}px) rotate(${sh.r}deg) scale(${1 + 0.02 * (t / DURATION) + punch(t, HITS)})`;
+    $("glow").style.opacity = 0.4 + 0.3 * Math.sin(t * 1.1);
+
+    // A: the hook is up from the first frame; tools pile up, badges climb; the pain line on the
+    // claps; on the drop the tools fly up into the five steps.
+    reveal($("h1"), t, -1);
+    reveal($("h2"), t, -1);
+    const jit = clamp((t - B(4)) / B(3.4));
+    const fly = easeIn((t - B(7.4)) / B(0.6));
+    TOOLS.forEach(([, , , x, y, tilt], i) => {
+      const el = $("tool" + i), at = TILE_AT(i);
+      const p = back((t - at) / 0.3, 2);
+      const jx = Math.sin(t * 37 + i * 3) * 9 * jit, jy = Math.cos(t * 31 + i * 5) * 9 * jit;
+      const tx = DOT_X(i % 5) - (x + 110), ty = 267 - (y + 110);
+      el.style.opacity = clamp((t - at) / 0.06) * (1 - fly);
+      el.style.transform = `translate(${jx + tx * fly}px, ${jy + ty * fly}px) rotate(${tilt * (1 - fly) + Math.sin(t * 23 + i) * 3 * jit}deg) scale(${(t >= at ? 0.5 + 0.5 * p : 0.5) * (1 - 0.75 * fly)})`;
+      const n = 1 + Math.floor(Math.max(0, t - at) * (1.2 + i * 0.35) * (1 + 3 * jit));
+      $("bd" + i).textContent = n > 99 ? "99+" : n;
+    });
+    reveal($("pain"), t, B(4));
+    for (const id of ["h1", "h2", "pain"]) $(id).style.opacity = 1 - fly;
+
+    // The stepper: from the drop until the end card; a step turns gold and gets a check as its
+    // screen goes by.
+    const stp = $("stepper");
+    stp.style.opacity = Math.min(ease((t - B(8)) / 0.3), 1 - ease((t - B(23.6)) / 0.3));
+    let cur = -1;
+    for (let i = 0; i < 5; i++) if (t >= ST_AT(i)) cur = i;
+    const allDone = t >= PULL;
+    for (let i = 0; i < 5; i++) {
+      const d = $("dt" + i), done = i < cur || allDone;
+      d.className = "dot" + (done ? " done" : i === cur ? " on" : "");
+      d.firstElementChild.textContent = done ? "✓" : String(i + 1);
+      const at = ST_AT(i);
+      d.style.transform = `scale(${t >= at && t < at + 0.3 ? 1 + 0.25 * (1 - (t - at) / 0.3) : 1})`;
+    }
+    $("lnu").style.width = (cur < 0 ? 0 : 100 * Math.min(1, (cur + (cur < 4 ? ease((t - ST_AT(cur)) / B(2)) : 0)) / 4)) + "%";
+
+    // B: the turn.
+    const b0 = B(8);
+    $("gflash").style.opacity = (t >= b0 ? 0.8 * (1 - ease((t - b0) / 0.5)) : 0) + (t >= B(24) ? 0.5 * (1 - ease((t - B(24)) / 0.4)) : 0);
+    const mk = document.querySelector("#turn .mark");
+    mk.style.transform = `scale(${0.4 + 0.6 * back((t - b0) / 0.4)}) rotate(${(1 - ease((t - b0) / 0.4)) * -14}deg)`;
+    reveal($("tl1"), t, b0 + 0.08);
+    reveal($("tl2"), t, b0 + B(0.7));
+    if (t >= B(11.6)) whip($("turn"), t, B(11.6), { dir: -1, dur: B(0.4) }); else { $("turn").style.transform = ""; $("turn").style.filter = "none"; }
+
+    // C: the camera travels along the five screens (RTL: the next one comes from the left), each
+    // checked off as it leaves; the payoff line stays up over all of it; then a short pull-back.
+    const c0 = B(12);
+    let pos = 0, moving = 0;
+    for (let i = 1; i < 5; i++) {
+      const T = ST_AT(i), m = (t - (T - 0.2)) / 0.38;
+      pos += ease(m);
+      if (m > 0 && m < 1) moving = Math.sin(Math.PI * m);
+    }
+    const enter = ease((t - c0) / 0.45);
+    const zo = easeIO((t - PULL) / B(1.3));
+    const sc = 1 - 0.62 * zo;
+    const tr = $("track");
+    tr.style.transformOrigin = "540px 820px";
+    tr.style.transform = `translateX(${pos * SPACING * (1 - zo) + 2 * SPACING * zo * sc}px) translateY(${(1 - enter) * 900 - 60 * zo}px) scale(${sc})`;
+    tr.style.filter = moving > 0.05 && zo === 0 ? `blur(${moving * 12}px)` : "none";
+    STATIONS.forEach((_, i) => {
+      const d = Math.abs(i - pos);
+      const cd = $("cd" + i);
+      cd.style.transform = zo > 0 ? "none" : `scale(${1 - 0.18 * Math.min(1, d)}) rotateY(${(i - pos) * -8}deg)`;
+      cd.style.opacity = zo > 0 ? 1 : 1 - 0.55 * Math.min(1, d);
+      const at = i < 4 ? ST_AT(i + 1) - 0.12 : PULL + B(1);
+      const ck = $("ck" + i);
+      ck.style.opacity = clamp((t - at) / 0.05);
+      ck.style.transform = `scale(${t >= at ? 1.6 * back((t - at) / 0.3, 2.4) : 0})`;
+    });
+    if (cur >= 0 && cur < 4 && t < PULL) {
+      const [, foot, clock] = STATIONS[cur];
+      const f = cfg.foot[foot];
+      await setImg($("im" + cur), `${f.dir}/${String(Math.max(1, Math.min(f.n, clock(Math.max(0, t - ST_AT(cur)))))).padStart(5, "0")}.jpg`);
+    }
+    $("im4").style.transform = `scale(${1.04 + 0.04 * clamp((t - ST_AT(4)) / B(2))})`;
+    reveal($("r1"), t, B(13));
+    reveal($("r2"), t, B(13) + 0.14);
+    const out = easeIn((t - B(23.6)) / B(0.4));
+    $("sC").style.filter = out > 0 ? `blur(${out * 16}px)` : "none";
+
+    // F: end card
+    const e0 = B(24);
+    $("endbg").style.transform = `scale(${1.15 - 0.08 * clamp((t - e0) / 3.4)})`;
+    const em = document.querySelector("#sF .mark");
+    em.style.transform = `scale(${0.5 + 0.5 * back((t - e0) / 0.42)}) rotate(${(1 - ease((t - e0) / 0.42)) * -10}deg)`;
+    reveal(document.querySelector("#sF .m1"), t, B(24.8));
+    reveal(document.querySelector("#sF .m2"), t, B(25.3));
+    const cta = document.querySelector("#sF .cta");
+    slam(cta, t, B(26.3), 1.25, 0.24);
+    cta.firstElementChild.style.left = -40 + 180 * ease((t - B(26.8)) / 0.6) + "%";
+    rise(document.querySelector("#sF .link"), t, B(27), 30, 0.3);
+    document.querySelector("#sF .link u").style.width = 100 * ease((t - B(27.4)) / 0.4) + "%";
+    rise(document.querySelector("#sF .free"), t, B(27.8), 20, 0.3);
+    leak(t, [B(8), B(24)]);
+    grain(t);
+  };
+  window.DURATION = DURATION;
+  window.AUDIO = {
+    duration: DURATION, drop: B(8), end: B(30),
+    cues: [
+      ...TOOLS.map((_, i) => [Math.max(0, TILE_AT(i)), "pop", 0.8, i % 2 ? -0.35 : 0.35]),
+      [B(4), "buzz", 0.7], [B(4), "pop", 0.5], [B(5), "ping", 0.6], [B(5.5), "buzz", 0.7], [B(6.25), "ping", 0.6], [B(6.75), "buzz", 0.8],
+      [B(8), "suck"], [B(8), "impact"], [B(8.7), "pop", 0.6], [B(11.6), "whoosh"],
+      [B(12), "whoosh", 0.7], ...[1, 2, 3, 4].map((i) => [ST_AT(i) - 0.2, "whoosh", 0.7]), ...[0, 1, 2, 3, 4].map((i) => [ST_AT(i), "tick", 1.4]),
+      ...[1, 2, 3, 4].map((i) => [ST_AT(i) - 0.12, "tap", 0.8]), [B(13), "pop", 0.6],
+      [PULL, "whoosh", 0.6], [PULL + B(1), "tap", 0.9], [B(23.6), "suck"], [B(24), "impact", 0.8], [B(24.8), "pop", 0.6], [B(26.3), "impact", 0.45], [B(27), "tick", 1.5],
+    ],
+  };
+</script>
+</body>
+</html>

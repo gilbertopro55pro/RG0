@@ -233,6 +233,13 @@ own lines:
   - On the drop the tiles fly up into a five-step stepper.
   - The camera then travels along a track of five real screens, one per bar: the inquiry (`f-chat`), quote and contract (`f-quote2`), shoot day (`f-home`), the gallery (`f-gallery`) and the album (a spread from the auto-designer).
   - It pulls back over the whole track, each step gets a check, and "ושום דבר לא נופל / בין הכיסאות" lands after a break.
+- **`ad7.html`, 15s: ad6's message cut to Meta's range** (owner, 2026-10-14: "תואם לטווח של מטא", with every line readable). Third-party guides agree that a video of 5–15s qualifies for all Meta placements; Meta's own page wasn't checked from here.
+  - The fix is less text, not faster cuts. Each caption stays up at least ~1.7s.
+  - The hook and the pain share the first scene ("חתונה אחת, / 8 אפליקציות פתוחות", then "ותמיד משהו נופל בין הכיסאות" on the claps).
+  - The turn is a bar ("עם גילברטו, / הכל בתהליך אחד").
+  - The five real screens go by two beats each, and each is checked off on the stepper and on its card as it leaves. The payoff line "ושום דבר לא נופל / בין הכיסאות" stays up over the whole montage (~5s).
+  - A short pull-back, then the end card on the bar.
+  - Rendered with `MAXRATE=7M` (12MB).
 - **Real album spreads** (`alb/` in the run folder):
   - Run `planAlbum` + `layoutSpread` + `layoutCover` (style `clean`, 60×30, `targetSpreads` 10) on the photos with `npx tsx`.
   - Use a tsconfig whose `paths` map `@/lib/storage` to a local mock that reads the photo files.
