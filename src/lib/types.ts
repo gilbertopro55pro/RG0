@@ -420,6 +420,9 @@ export type LeadRow = {
   needs_details: boolean;
   // Where the lead came from (lib/leadSource.ts, migration 0133).
   referral_source: string | null;
+  // The ad's campaign and ad names (utm_campaign / utm_content on the chat link; lib/campaigns.ts).
+  referral_campaign?: string | null;
+  referral_ad?: string | null;
   converted_event_id: string | null;
   event_type_name: string | null;
   created_at: string;
