@@ -33,7 +33,7 @@ export const maxDuration = 60;
 
 const MODEL = "claude-opus-5-5";
 // Bump when the prompt changes, so stored answers from the old prompt are recomputed.
-const PROMPT_VERSION = 1;
+const PROMPT_VERSION = 2;
 
 const LANGUAGE_NAME: Record<Lang, string> = { he: "Hebrew", en: "English", ru: "Russian" };
 
@@ -49,7 +49,7 @@ Rules:
 - When spend is missing, one tip is to enter it, because cost per booked event can't be measured without it.
 - When both are known, compare the cost per booked event with the average booking value.
 - Write in {LANGUAGE}, plainly and directly, as a business advisor would speak to the owner. No marketing language, no emojis, no markdown. The summary is at most 2 sentences; each tip is at most 2 sentences.
-- In Hebrew, write "פנייה" (two yods) for an inquiry, "ליד" for a lead, "הצעת מחיר" for a quote.`;
+- In Hebrew, address the photographer in the plural, as the rest of the app does ("שלחו", "הוצאתם", "כדאי לכם"), never in the singular masculine or feminine. Write "פנייה" (two yods) for an inquiry, "ליד" for a lead, "הצעת מחיר" for a quote.`;
 
 const SCHEMA = {
   type: "object",
