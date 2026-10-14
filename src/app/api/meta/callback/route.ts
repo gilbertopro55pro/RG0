@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { campaignsAllowed } from "@/lib/campaignsAccess";
-import { exchangeCode, listAdAccounts, syncMetaSpend } from "@/lib/metaAds";
+import { exchangeCode, listAdAccounts, loadConnection, syncMetaSpend } from "@/lib/metaAds";
 
 // Back from Facebook's sign-in (lib/metaAds.ts): the code becomes a long-lived token, kept server-side
 // only (meta_ad_connections has no RLS policy). With a single ad account it's chosen and synced at
@@ -29,7 +29,9 @@ export async function GET(request: NextRequest) {
   try {
     const { token, expiresAt } = await exchangeCode(code);
     const accounts = await listAdAccounts(token);
-    const only = accounts.length === 1 ? accounts[0] : null;
+    // Reconnecting keeps the account chosen before, if this sign-in still reaches it.
+    const previous = await loadConnection(service, user.id);
+    const only = accounts.length === 1 ? accounts[0] : (accounts.find((a) => a.id === previous?.ad_account_id) ?? null);
     const { error } = await service.from("meta_ad_connections").upsert(
       {
         photographer_id: user.id,

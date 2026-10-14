@@ -135,7 +135,8 @@ function monthsBack(month: string, by: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-type InsightRow = { campaign_name?: string; spend?: string; impressions?: string; clicks?: string; date_start?: string };
+// inline_link_clicks: clicks on the ad's link (to the chat). "clicks" also counts likes and comments.
+type InsightRow = { campaign_name?: string; spend?: string; impressions?: string; clicks?: string; inline_link_clicks?: string; date_start?: string };
 
 // Pulls the chosen account's monthly spend, impressions and clicks per campaign (the last 13 months)
 // and replaces the synced rows in ad_spend. A hand-typed row for the same campaign and month gives way
@@ -150,7 +151,7 @@ export async function syncMetaSpend(service: SupabaseClient, photographerId: str
     const rows: InsightRow[] = [];
     let page = await graph<{ data?: InsightRow[]; paging?: { next?: string } }>(`/${c.ad_account_id}/insights`, c.access_token, {
       level: "campaign",
-      fields: "campaign_name,spend,impressions,clicks",
+      fields: "campaign_name,spend,impressions,clicks,inline_link_clicks",
       time_increment: "monthly",
       time_range: JSON.stringify({ since: `${firstMonth}-01`, until: today }),
       limit: "500",
@@ -171,7 +172,7 @@ export async function syncMetaSpend(service: SupabaseClient, photographerId: str
       const cur = merged.get(key) ?? { month, campaign, amount: 0, impressions: 0, clicks: 0 };
       cur.amount += Number(r.spend ?? 0) || 0;
       cur.impressions += Number(r.impressions ?? 0) || 0;
-      cur.clicks += Number(r.clicks ?? 0) || 0;
+      cur.clicks += Number(r.inline_link_clicks ?? r.clicks ?? 0) || 0;
       merged.set(key, cur);
     }
     const now = new Date().toISOString();
