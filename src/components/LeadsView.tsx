@@ -180,28 +180,34 @@ export default function LeadsView({
         blurb={t("כל פנייה חדשה מתחילה כאן כליד. שולחים ללקוח/ה הצעת מחיר, ואחרי שהיא מאושרת אפשר להפוך אותה לאירוע סגור בלחיצה.")}
       />
 
-      {(() => {
-        // Leads per source over the last 30 days: which channel (ad, Instagram, WhatsApp, QR...) brings clients.
-        const counts = new Map<string, number>();
-        for (const l of leads) {
-          if (!l.referral_source || new Date(l.created_at).getTime() < sourcesSince) continue;
-          const label = t(sourceLabel(l.referral_source)!);
-          counts.set(label, (counts.get(label) ?? 0) + 1);
-        }
-        if (counts.size === 0) return null;
-        const parts = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-        return (
-          <p className="text-xs text-ink-soft mb-3">
-            {t("מקורות ב-30 הימים האחרונים:")}{" "}
-            {parts.map(([label, n], i) => (
-              <span key={label}>
-                {i > 0 && ", "}
-                {label} <span className="font-data font-semibold text-ink">{n}</span>
-              </span>
-            ))}
-          </p>
-        );
-      })()}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
+        {(() => {
+          // Leads per source over the last 30 days: which channel (ad, Instagram, WhatsApp, QR...) brings clients.
+          const counts = new Map<string, number>();
+          for (const l of leads) {
+            if (!l.referral_source || new Date(l.created_at).getTime() < sourcesSince) continue;
+            const label = t(sourceLabel(l.referral_source)!);
+            counts.set(label, (counts.get(label) ?? 0) + 1);
+          }
+          if (counts.size === 0) return null;
+          const parts = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+          return (
+            <p className="text-xs text-ink-soft">
+              {t("מקורות ב-30 הימים האחרונים:")}{" "}
+              {parts.map(([label, n], i) => (
+                <span key={label}>
+                  {i > 0 && ", "}
+                  {label} <span className="font-data font-semibold text-ink">{n}</span>
+                </span>
+              ))}
+            </p>
+          );
+        })()}
+        {/* Campaign tracking (owner, 2026-10-14): per-campaign leads, bookings and cost. */}
+        <Link href="/leads/campaigns" className="text-xs font-semibold underline underline-offset-2" style={{ color: "var(--color-amber-deep)" }}>
+          {t("מעקב קמפיינים ←")}
+        </Link>
+      </div>
 
       {leads.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">{t("אין עדיין לידים. לחצו על \"ליד חדש\" כדי להוסיף")}</div>}
 
