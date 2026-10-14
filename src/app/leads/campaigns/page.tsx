@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { metaStatus } from "@/lib/metaAds";
 import type { Photographer } from "@/lib/types";
 import { hasAppAccess } from "@/lib/subscription";
 import { chatLinkFor } from "@/lib/intakeGreeting";
@@ -7,6 +9,7 @@ import {
   CAMPAIGN_PERIODS,
   HISTORY_COLUMNS,
   LEAD_COLUMNS,
+  SPEND_COLUMNS,
   eventValues,
   fromHistoryRow,
   fromLeadRow,
@@ -37,7 +40,8 @@ async function fetchAll<T>(page: (from: number, to: number) => PromiseLike<{ dat
   return out;
 }
 
-export default async function CampaignsPage() {
+export default async function CampaignsPage({ searchParams }: { searchParams: Promise<{ meta?: string }> }) {
+  const { meta: metaResult } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -71,7 +75,7 @@ export default async function CampaignsPage() {
         .range(from, to)
         .returns<HistoryReportRow[]>()
     ),
-    supabase.from("ad_spend").select("month, campaign, amount").eq("photographer_id", user!.id).gte("month", firstMonth).returns<AdSpendRow[]>(),
+    supabase.from("ad_spend").select(SPEND_COLUMNS).eq("photographer_id", user!.id).gte("month", firstMonth).returns<AdSpendRow[]>(),
     supabase.from("campaign_insights").select("period, result, created_at").eq("photographer_id", user!.id).returns<StoredInsight[]>(),
   ]);
 
@@ -87,6 +91,9 @@ export default async function CampaignsPage() {
     payments.push(...(data ?? []));
   }
 
+  // The Meta ad account connection, without the token (lib/metaAds.ts; the table is server-only).
+  const meta = await metaStatus(createServiceRoleClient(), user!.id);
+
   const chatPath = `/chat/${photographer.portfolio_slug ?? photographer.intake_chat_token}`;
 
   return (
@@ -98,6 +105,8 @@ export default async function CampaignsPage() {
         insights={(insightRows ?? []).filter((r) => isCampaignPeriod(r.period))}
         adLink={`${chatLinkFor(chatPath)}?src=ad`}
         nowIso={now.toISOString()}
+        meta={meta}
+        metaResult={metaResult ?? null}
       />
     </div>
   );

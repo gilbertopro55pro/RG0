@@ -135,7 +135,31 @@ export function fromHistoryRow(r: HistoryReportRow): CampaignLead {
   };
 }
 
-export type AdSpendRow = { month: string; campaign: string; amount: number | string };
+// A month's spend on one campaign. Rows synced from a connected Meta ad account (lib/metaAds.ts)
+// carry source "meta" and the campaign's impressions and clicks too.
+export type AdSpendRow = {
+  month: string;
+  campaign: string;
+  amount: number | string;
+  source?: string | null;
+  impressions?: number | null;
+  clicks?: number | null;
+};
+export const SPEND_COLUMNS = "month, campaign, amount, source, impressions, clicks";
+
+// The Meta ad account connection as the page shows it (never the token; lib/metaAds.ts metaStatus).
+export type MetaStatus = {
+  // META_APP_ID / META_APP_SECRET are set, so the connect button can work.
+  configured: boolean;
+  connected: boolean;
+  accountId: string | null;
+  accountName: string | null;
+  currency: string | null;
+  accounts: { id: string; name: string; currency: string | null }[];
+  lastSyncAt: string | null;
+  lastError: string | null;
+  expiresAt: string | null;
+};
 
 // An event's value: what the photographer charges for it (event_payments deposit + balance).
 export type EventPaymentValueRow = { event_id: string; deposit_amount: number | string | null; balance_amount: number | string | null };
@@ -154,8 +178,13 @@ export type CampaignRow = {
   quoted: number;
   booked: number;
   revenue: number;
-  // What was entered for this campaign over the period. Null when nothing was entered.
+  // What was entered (or synced from Meta) for this campaign over the period. Null when nothing was.
   spend: number | null;
+  // From Meta, when the ad account is connected (0 otherwise).
+  impressions: number;
+  clicks: number;
+  // Some of the period's spend came from Meta (so it isn't typed in by hand).
+  metaSynced: boolean;
   // Leads and bookings per ad inside a campaign, most leads first.
   ads: { ad: string; leads: number; booked: number }[];
   // Median hours from lead to quote, over the leads where both are known.
@@ -165,7 +194,7 @@ export type CampaignRow = {
 export type CampaignReport = {
   months: string[];
   rows: CampaignRow[];
-  totals: { leads: number; quoted: number; booked: number; revenue: number; spend: number };
+  totals: { leads: number; quoted: number; booked: number; revenue: number; spend: number; clicks: number };
 };
 
 export function isBooked(l: Pick<CampaignLead, "converted_event_id" | "status">): boolean {
@@ -186,7 +215,7 @@ export function buildCampaignReport(input: { leads: CampaignLead[]; spend: AdSpe
   const row = (key: string, campaign: string | null, source: string | null): Acc => {
     let r = rows.get(key);
     if (!r) {
-      r = { key, campaign, source, leads: 0, quoted: 0, booked: 0, revenue: 0, spend: null, ads: [], medianHoursToQuote: null, adMap: new Map(), hours: [] };
+      r = { key, campaign, source, leads: 0, quoted: 0, booked: 0, revenue: 0, spend: null, impressions: 0, clicks: 0, metaSynced: false, ads: [], medianHoursToQuote: null, adMap: new Map(), hours: [] };
       rows.set(key, r);
     }
     return r;
@@ -217,6 +246,9 @@ export function buildCampaignReport(input: { leads: CampaignLead[]; spend: AdSpe
     // Spend without a campaign name belongs to the ads that came without one.
     const r = s.campaign ? row(`c:${s.campaign}`, s.campaign, "ad") : row("s:ad", null, "ad");
     r.spend = (r.spend ?? 0) + amount;
+    r.impressions += num(s.impressions) ?? 0;
+    r.clicks += num(s.clicks) ?? 0;
+    if (s.source === "meta") r.metaSynced = true;
   }
 
   const out: CampaignRow[] = [...rows.values()].map(({ adMap, hours, ...r }) => ({
@@ -231,8 +263,8 @@ export function buildCampaignReport(input: { leads: CampaignLead[]; spend: AdSpe
     return (b.spend ?? 0) - (a.spend ?? 0) || b.leads - a.leads;
   });
   const totals = out.reduce(
-    (t, r) => ({ leads: t.leads + r.leads, quoted: t.quoted + r.quoted, booked: t.booked + r.booked, revenue: t.revenue + r.revenue, spend: t.spend + (r.spend ?? 0) }),
-    { leads: 0, quoted: 0, booked: 0, revenue: 0, spend: 0 }
+    (t, r) => ({ leads: t.leads + r.leads, quoted: t.quoted + r.quoted, booked: t.booked + r.booked, revenue: t.revenue + r.revenue, spend: t.spend + (r.spend ?? 0), clicks: t.clicks + r.clicks }),
+    { leads: 0, quoted: 0, booked: 0, revenue: 0, spend: 0, clicks: 0 }
   );
   return { months: input.months, rows: out, totals };
 }

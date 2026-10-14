@@ -180,7 +180,7 @@ export default function LeadsView({
         blurb={t("כל פנייה חדשה מתחילה כאן כליד. שולחים ללקוח/ה הצעת מחיר, ואחרי שהיא מאושרת אפשר להפוך אותה לאירוע סגור בלחיצה.")}
       />
 
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-3">
         {(() => {
           // Leads per source over the last 30 days: which channel (ad, Instagram, WhatsApp, QR...) brings clients.
           const counts = new Map<string, number>();
@@ -205,8 +205,15 @@ export default function LeadsView({
         })()}
         {/* Campaign tracking (owner, 2026-10-14): per-campaign leads, bookings and cost. Admin only for now (campaignsAllowed). */}
         {isAdmin && (
-          <Link href="/leads/campaigns" className="text-xs font-semibold underline underline-offset-2" style={{ color: "var(--color-amber-deep)" }}>
-            {t("מעקב קמפיינים ←")}
+          <Link
+            href="/leads/campaigns"
+            className="h-9 px-3.5 rounded-full border border-line text-[13px] font-bold text-ink inline-flex items-center gap-1.5 shrink-0"
+            style={{ background: "var(--color-input-bg)" }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 3v18h18M7 15l4-4 3 3 5-6" />
+            </svg>
+            {t("מעקב קמפיינים")}
           </Link>
         )}
       </div>

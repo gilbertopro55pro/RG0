@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
@@ -18,12 +18,14 @@ import {
   type CampaignLead,
   type CampaignPeriod,
   type CampaignRow,
+  type MetaStatus,
 } from "@/lib/campaigns";
 
 // Campaign tracking (owner, 2026-10-14; app/leads/campaigns, lib/campaigns.ts): per campaign, the
 // leads, quotes, booked events and their value against what the ads cost; the spend entered per
 // campaign per month (api/campaigns/spend); an AI reading of the numbers (api/campaigns/insights);
-// and how to set the link up in a Meta ad.
+// how to set the link up in a Meta ad; and the connected Meta ad account (lib/metaAds.ts), which
+// syncs each campaign's spend, impressions and clicks so they aren't typed in by hand.
 
 // A row of campaign_insights, as read by the page.
 export type StoredInsight = { period: string; result: unknown; created_at: string };
@@ -72,6 +74,19 @@ const spendCampaign = (r: CampaignRow) => r.campaign ?? "";
 
 type Insight = { result: CampaignInsights; createdAt: string };
 
+// A sync older than this is refreshed in the background when the page opens.
+const META_STALE_MS = 6 * 60 * 60 * 1000;
+
+// ?meta= after the Facebook sign-in (api/meta/callback).
+const META_RESULTS: Record<string, { text: string; error?: boolean }> = {
+  connected: { text: "חשבון המודעות חובר, וההוצאות עודכנו ממטא." },
+  choose: { text: "בחרו איזה חשבון מודעות לחבר." },
+  denied: { text: "החיבור למטא בוטל.", error: true },
+  error: { text: "החיבור למטא נכשל. נסו שוב.", error: true },
+  no_accounts: { text: "לא נמצא חשבון מודעות במשתמש הפייסבוק הזה.", error: true },
+  not_configured: { text: "החיבור למטא עוד לא הוגדר במערכת.", error: true },
+};
+
 export default function CampaignsView({
   leads,
   spend: initialSpend,
@@ -79,6 +94,8 @@ export default function CampaignsView({
   insights: storedInsights,
   adLink,
   nowIso,
+  meta: initialMeta,
+  metaResult,
 }: {
   leads: CampaignLead[];
   spend: AdSpendRow[];
@@ -86,6 +103,8 @@ export default function CampaignsView({
   insights: StoredInsight[];
   adLink: string;
   nowIso: string;
+  meta: MetaStatus;
+  metaResult: string | null;
 }) {
   const t = useT();
   const lang = useLang();
@@ -110,6 +129,47 @@ export default function CampaignsView({
   const [insightError, setInsightError] = useState<{ period: CampaignPeriod; message: string } | null>(null);
 
   const [copied, setCopied] = useState<"link" | "params" | null>(null);
+
+  const [meta, setMeta] = useState<MetaStatus>(initialMeta);
+  const [metaBusy, setMetaBusy] = useState<"sync" | "account" | "disconnect" | null>(null);
+  const [metaError, setMetaError] = useState<string | null>(null);
+  const [pickAccount, setPickAccount] = useState(initialMeta.accounts[0]?.id ?? "");
+  const [notice, setNotice] = useState(metaResult ? META_RESULTS[metaResult] ?? null : null);
+
+  // One call for sync, account choice and disconnect: the answer carries the new status (and spend).
+  const metaCall = async (kind: "sync" | "account" | "disconnect", body?: object) => {
+    setMetaBusy(kind);
+    setMetaError(null);
+    try {
+      const res = await fetch(`/api/meta/${kind}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
+      const data = (await res.json().catch(() => ({}))) as { status?: MetaStatus; spend?: AdSpendRow[]; syncError?: string | null; error?: string };
+      if (!res.ok || !data.status) {
+        setMetaError(data.error ? t(data.error) : t("הפעולה נכשלה, נסו שוב"));
+        return;
+      }
+      setMeta(data.status);
+      if (data.spend) {
+        setSpend(data.spend);
+        setFormRev((r) => r + 1);
+      }
+      if (data.syncError) setMetaError(t("העדכון ממטא נכשל. אם זה חוזר, חברו את החשבון מחדש."));
+    } catch {
+      setMetaError(t("הפעולה נכשלה, נסו שוב"));
+    } finally {
+      setMetaBusy(null);
+    }
+  };
+
+  // Opening the page refreshes a sync that's a few hours old, in the background.
+  useEffect(() => {
+    if (!initialMeta.connected || !initialMeta.accountId) return;
+    const last = initialMeta.lastSyncAt ? Date.parse(initialMeta.lastSyncAt) : 0;
+    if (Date.parse(nowIso) - last < META_STALE_MS) return;
+    const timer = setTimeout(() => void metaCall("sync"), 0);
+    return () => clearTimeout(timer);
+    // Once, on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState("");
@@ -227,6 +287,118 @@ export default function CampaignsView({
       <h1 className="text-[26px] font-bold mb-1.5 font-display">{t("מעקב קמפיינים")}</h1>
       <p className="text-sm text-ink-soft mb-4">{t("כמה פניות, הצעות מחיר ואירועים הביא כל קמפיין, ומה כל אחד מהם עלה לכם.")}</p>
 
+      {/* The Meta ad account: connect, pick the account, sync, disconnect (lib/metaAds.ts). */}
+      <section aria-labelledby="campaigns-meta" className="rounded-2xl bg-card border border-line p-4 mb-5">
+        <h2 id="campaigns-meta" className="text-base font-bold font-display mb-1">
+          {t("חשבון המודעות במטא")}
+        </h2>
+        {notice && (
+          <p
+            className="text-xs rounded-lg px-3 py-2 mb-2.5"
+            style={notice.error ? { background: "var(--color-rose-bg)", color: "var(--color-rose)" } : { background: "var(--color-sage-bg)", color: "var(--color-sage)" }}
+          >
+            {t(notice.text)}
+            <button type="button" onClick={() => setNotice(null)} className="ms-2 underline" aria-label={t("סגירה")}>
+              ✕
+            </button>
+          </p>
+        )}
+        {!meta.configured ? (
+          <p className="text-sm text-ink-soft">{t("החיבור למטא עוד לא הוגדר במערכת. אחרי שתוקם האפליקציה במטא, יופיע כאן כפתור לחיבור החשבון.")}</p>
+        ) : !meta.connected ? (
+          <div className="grid gap-2.5">
+            <p className="text-sm text-ink-soft">{t("מחברים פעם אחת, וההוצאה, ההופעות והקליקים של כל קמפיין מתעדכנים כאן לבד, בלי להקליד.")}</p>
+            <a
+              href="/api/meta/connect"
+              className="justify-self-start h-10 px-4 rounded-full text-sm font-bold inline-flex items-center"
+              style={{ background: "#1877F2", color: "#fff" }}
+            >
+              {t("חיבור חשבון המודעות במטא")}
+            </a>
+          </div>
+        ) : !meta.accountId ? (
+          <div className="grid gap-2.5">
+            <p className="text-sm text-ink-soft">{t("למשתמש הזה יש כמה חשבונות מודעות. בחרו את החשבון של המודעות לצ'אט.")}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={pickAccount}
+                onChange={(e) => setPickAccount(e.target.value)}
+                aria-label={t("חשבון מודעות")}
+                className="rounded-lg px-3 py-2 text-sm border border-line"
+                style={{ background: "var(--color-input-bg)" }}
+              >
+                {meta.accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                    {a.currency ? ` (${a.currency})` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!pickAccount || !!metaBusy}
+                onClick={() => void metaCall("account", { accountId: pickAccount })}
+                className="h-10 px-4 rounded-full bg-ink text-white text-sm font-bold disabled:opacity-60"
+              >
+                {metaBusy === "account" ? t("מחבר…") : t("חיבור החשבון")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-2">
+            <div className="text-sm">
+              {t("מחובר:")} <b dir="auto">{meta.accountName}</b>
+            </div>
+            <div className="text-xs text-ink-soft">
+              {metaBusy === "sync"
+                ? t("מעדכן ממטא…")
+                : meta.lastSyncAt
+                  ? t("עודכן לאחרונה: {time}", {
+                      time: new Date(meta.lastSyncAt).toLocaleString(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jerusalem" }),
+                    })
+                  : t("עוד לא עודכן")}
+            </div>
+            {meta.currency && meta.currency !== "ILS" && (
+              <p className="text-xs rounded-lg px-3 py-2" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
+                {t("חשבון המודעות מחויב ב-{currency}, וההוצאה מוצגת כאן בלי המרה לשקלים.", { currency: meta.currency })}
+              </p>
+            )}
+            {meta.expiresAt && Date.parse(meta.expiresAt) - Date.parse(nowIso) < 7 * 24 * 3600 * 1000 && (
+              <p className="text-xs rounded-lg px-3 py-2" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
+                {t("החיבור למטא פג או יפוג בקרוב. כדי שהנתונים ימשיכו להתעדכן, חברו את החשבון מחדש.")}
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <button
+                type="button"
+                disabled={!!metaBusy}
+                onClick={() => void metaCall("sync")}
+                className="h-9 px-3.5 rounded-full border border-line text-[13px] font-bold disabled:opacity-60"
+                style={{ background: "var(--color-input-bg)" }}
+              >
+                {t("עדכון ממטא")}
+              </button>
+              <a href="/api/meta/connect" className="h-9 px-3.5 rounded-full border border-line text-[13px] font-bold inline-flex items-center" style={{ background: "var(--color-input-bg)" }}>
+                {t("חיבור מחדש")}
+              </a>
+              <button
+                type="button"
+                disabled={!!metaBusy}
+                onClick={() => void metaCall("disconnect")}
+                className="h-9 px-3 text-[13px] font-semibold text-ink-soft underline underline-offset-2 disabled:opacity-60"
+              >
+                {metaBusy === "disconnect" ? t("מנתק…") : t("ניתוק")}
+              </button>
+            </div>
+          </div>
+        )}
+        {metaError && (
+          <p className="text-xs rounded-lg px-3 py-2 mt-2" style={{ background: "var(--color-rose-bg)", color: "var(--color-rose)" }}>
+            {metaError}
+          </p>
+        )}
+      </section>
+
       {/* Period */}
       <div role="group" aria-label={t("תקופה")} className="flex flex-wrap gap-1.5 mb-1.5">
         {CAMPAIGN_PERIODS.map((p) => (
@@ -286,7 +458,12 @@ export default function CampaignsView({
           <div className="grid gap-3 mt-2">
             {paidRows.map((r) => (
               <RowCard key={r.key} row={r} title={rowTitle(r)} paid money={money} ratio={ratio} t={t}>
-                {singleMonth && (
+                {singleMonth && r.metaSynced && (
+                  <div className="mt-3 pt-3 border-t border-line text-xs text-ink-soft">
+                    {t("ההוצאה ב{month} מסונכרנת מחשבון המודעות במטא.", { month: monthName(singleMonth, locale) })}
+                  </div>
+                )}
+                {singleMonth && !r.metaSynced && (
                   <div className="mt-3 pt-3 border-t border-line">
                     <SpendInput
                       key={`${singleMonth}|${r.key}|${formRev}`}
@@ -471,7 +648,7 @@ export default function CampaignsView({
               {t("בשדה \"פרמטרים של כתובת URL\" (URL parameters) הדביקו את שורת הפרמטרים. מטא מחליפה בעצמה את {{campaign.name}} ואת {{ad.name}} בשם האמיתי של הקמפיין ושל המודעה.")}
             </li>
             <li>{t("מפרסמים את המודעה. כל פנייה שמגיעה ממנה תופיע כאן, תחת שם הקמפיין.")}</li>
-            <li>{t("פעם בחודש, רושמים כאן כמה עלה כל קמפיין.")}</li>
+            <li>{t("ההוצאה על כל קמפיין מתעדכנת לבד כשחשבון המודעות מחובר. בלי חיבור, רושמים אותה כאן פעם בחודש.")}</li>
           </ol>
           <p className="text-xs rounded-lg px-3 py-2" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
             {t("מודעות שפותחות ישירות את וואטסאפ (קליק לוואטסאפ) עדיין לא נמדדות כאן. נמדדות רק מודעות שמובילות לקישור של הצ'אט.")}
@@ -548,6 +725,13 @@ function RowCard({
             <Metric label={t("עלות לפנייה")} value={spend > 0 && r.leads > 0 ? money(spend / r.leads) : "—"} />
             <Metric label={t("עלות לאירוע")} value={spend > 0 && r.booked > 0 ? money(spend / r.booked) : "—"} />
             <Metric label={t("הכנסה מול הוצאה")} value={spend > 0 ? ratio(r.revenue / spend) : "—"} />
+            {r.clicks > 0 && (
+              <>
+                <Metric label={t("קליקים")} value={r.clicks.toLocaleString()} />
+                <Metric label={t("עלות לקליק")} value={spend > 0 ? `₪${(spend / r.clicks).toFixed(2)}` : "—"} />
+                <Metric label={t("מקליק לפנייה")} value={`${((r.leads / r.clicks) * 100).toFixed(1)}%`} />
+              </>
+            )}
           </>
         )}
       </div>
