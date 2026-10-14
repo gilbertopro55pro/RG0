@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Ad 8, 12 s (SKILL.md "Short ads, round 2"): leads, quotes and follow-up reminders, replacing the
+     assistant in the 12 s slot (owner, 2026-10-14: people want a person to talk to, so sell what keeps
+     the photographer answering fast, not the bot). Pain: leads that age and close with someone else.
+     Turn on the drop. Three real screens: the leads list (guides/leads.mp4), sending a quote (f-fix),
+     the 2-day follow-up reminder (PendingClientMessagePrompts' own wording, over the home screen). -->
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="ad.css">
+<style>
+  #h1 { top: 250px; font-size: 100px; } #h2 { top: 365px; font-size: 92px; }
+  .ld { position: absolute; left: 90px; right: 90px; height: 170px; background: #fbf8f2; color: #1c1b19; border-radius: 34px; padding: 26px 34px; direction: rtl; box-shadow: 0 24px 60px rgba(0,0,0,.4); opacity: 0; }
+  .ld b { display: block; font-size: 44px; font-weight: 800; }
+  .ld span { display: block; font-size: 32px; color: #625e56; margin-top: 6px; }
+  .ld em { position: absolute; top: 30px; left: 30px; font-style: normal; font-size: 28px; font-weight: 700; padding: 8px 18px; border-radius: 20px; background: #efe3c8; color: #8f6f2f; }
+  .ld .ago { color: #c0392b; font-weight: 700; }
+  .ld .lost { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-8deg); white-space: nowrap; border: 7px solid #c0392b; color: #c0392b; background: rgba(251,248,242,.92); font-size: 52px; font-weight: 900; padding: 6px 26px; border-radius: 14px; opacity: 0; }
+  .hd2 { position: absolute; left: 50px; right: 50px; text-align: center; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; white-space: nowrap; }
+  #s1 { top: 230px; font-size: 96px; } #s2 { top: 340px; font-size: 100px; color: #c9a15a; }
+  #card { position: absolute; left: 50%; top: 580px; width: 620px; height: 860px; margin-left: -310px; border-radius: 50px; background: #f2efe9; box-shadow: 0 50px 120px rgba(0,0,0,.55), 0 0 0 8px #0a0f1a, 0 0 0 10px #2a3650; transform-style: preserve-3d; }
+  #card .cin { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+  #card img.feed { display: block; width: 100%; }
+  #pill { position: absolute; top: -46px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: #c9a15a; color: #14100a; font-size: 48px; font-weight: 800; padding: 12px 40px; border-radius: 40px; box-shadow: 0 16px 40px rgba(0,0,0,.45); z-index: 3; }
+  #tap { position: absolute; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; background: rgba(201,161,90,.32); border: 5px solid #c9a15a; box-shadow: 0 0 0 10px rgba(201,161,90,.15); opacity: 0; z-index: 4; }
+  /* the follow-up reminder: the app's own prompt (PendingClientMessagePrompts), over the home screen */
+  #rem { position: absolute; inset: 0; opacity: 0; }
+  #rem .dim { position: absolute; inset: 0; background: rgba(28,27,25,.45); }
+  #rem .box { position: absolute; left: 34px; right: 34px; top: 230px; background: #f2efe9; border-radius: 40px; padding: 38px 34px; direction: rtl; color: #1c1b19; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+  #rem h4 { font-size: 46px; font-weight: 800; margin-bottom: 18px; }
+  #rem p { font-size: 34px; line-height: 1.45; color: #625e56; margin-bottom: 34px; }
+  #rem p b { color: #1c1b19; }
+  #rem .btns { display: flex; gap: 16px; }
+  #rem .btns i { flex: 1; text-align: center; font-style: normal; font-size: 30px; font-weight: 700; color: #fff; padding: 26px 0; border-radius: 16px; white-space: nowrap; }
+  #rem .skip { background: #1c1b19; } #rem .send { background: #3c7353; }
+  #sD .end { padding-top: 400px; }
+  #endbg { position: absolute; inset: -60px; background-size: cover; background-position: 50% 35%; filter: blur(34px) brightness(.5); opacity: .25; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div id="sA" class="scene">
+    <div id="h1" class="c big w" data-words data-fit>ליד שלא חזרתם אליו,</div>
+    <div id="h2" class="c big g" data-words data-fit>הוא אירוע שהלך למתחרה</div>
+    <div id="leads"></div>
+  </div>
+  <div id="sC" class="scene">
+    <div class="hd2" id="s1" data-words>עם גילברטו,</div>
+    <div class="hd2" id="s2"><span class="wd"><i><span class="hl" id="hl1"><b><i></i></b>אף</span></i></span> <span class="wd"><i>ליד</i></span> <span class="wd"><i>לא</i></span> <span class="wd"><i>נשכח</i></span></div>
+    <div class="rig"><div id="card"><div class="cin"><img class="feed" id="scr" alt=""><div id="rem"><div class="dim"></div><div class="box"><h4>מעקב אחרי הצעת מחיר</h4><p>עברו יומיים מאז ששלחת ל<b>נועה ואיתי</b> הצעת מחיר של ₪9,250. לשלוח תזכורת מעקב בוואטסאפ?</p><div class="btns"><i class="skip">דלג הפעם</i><i class="send" id="send">שליחה בוואטסאפ</i></div></div></div><i id="tap"></i></div><span id="pill">כל הלידים במקום אחד</span></div></div>
+  </div>
+  <div id="sD" class="scene">
+    <div id="endbg"></div>
+    <div class="end">
+      <img class="mark logoimg" src="logo.png" alt="">
+      <div class="msg"><b class="m1" data-words>כל ליד מקבל הצעה,</b><b class="m2" data-words>וכל הצעה מקבלת מעקב</b></div>
+      <div class="cta">נסו 14 יום בחינם<i></i></div>
+      <div class="link">myframeflow.com/start<u></u></div>
+      <div class="free">ללא כרטיס אשראי וללא התחייבות</div>
+    </div>
+  </div>
+  <div id="leak"></div>
+  <div id="gflash"></div>
+  <div id="flash"></div>
+  <div id="vig"></div>
+</div>
+<canvas id="grain" width="360" height="640"></canvas>
+<script src="ad-lib.js"></script>
+<script>
+  // 124 BPM, 12 s. The pain is the build (two bars), the drop lands on "עם גילברטו", three features of
+  // 3.25 beats each, the end card. The headline stays up over all three features.
+  const S = { sA: [0, B(8)], sC: [B(8), B(18.5)], sD: [B(18.5), Infinity] };
+  const DURATION = 12.0;
+  // Leads that age: [name, event, status, days at the start, days at the end, when it closes elsewhere]
+  const LEADS = [
+    ["נועה ואיתי", "חתונה", "נשלחה הצעת מחיר", 2, 9, 4.4],
+    ["דניאל לוי", "בר מצווה", "יצרנו קשר", 3, 11, 5.4],
+    ["שירה כהן", "ברית", "נשלחה הצעת מחיר", 4, 13, 6.3],
+    ["מור ואלון", "חתונה", "חדש", 5, 14, 7.0],
+  ];
+  const FEATS = [
+    [B(8.5), "כל הלידים במקום אחד"],
+    [B(11.75), "הצעת מחיר בלחיצה"],
+    [B(15), "ותזכורת מעקב בזמן"],
+  ];
+  // The quote: the preview with "שליחה ללקוח/ה" tapped, then "נשלח בהצלחה" (f-fix frames 5 and 7;
+  // tap point in frame px, 1080 wide).
+  const QUOTE = [[0, 5, [765, 1179]], [0.85, 7, null]];
+  const HITS = [B(8), B(18.5)];
+  let cfg;
+  window.setup = async (c) => {
+    cfg = c;
+    $("leads").innerHTML = LEADS.map(([n, ev, st], i) => `<div class="ld" id="ld${i}" style="top:${560 + i * 200}px"><b>${n}</b><span>${ev} · <span class="ago" id="ago${i}"></span></span><em>${st}</em><i class="lost" id="lost${i}">סגר עם צלם אחר</i></div>`).join("");
+    $("endbg").style.backgroundImage = `url(${c.photos["1801263"]})`;
+    splitWords();
+    await fitAll();
+    await Promise.all([...document.querySelectorAll("img.logoimg")].map((i) => i.decode().catch(() => {})));
+  };
+  window.renderAt = async (t) => {
+    for (const [k, r] of Object.entries(S)) $(k).style.opacity = k === "sA" ? (t < r[1] ? 1 : 0) : vis(t, r, 0.1, 0.12);
+    const lostAt = LEADS.map((l) => B(l[5]));
+    const sh = shake(t, [...HITS], 18, 0.4);
+    const sh2 = shake(t, lostAt.map((x) => x + 0.02), 8, 0.3);
+    $("stage").style.transform = `translate(${sh.x + sh2.x}px, ${sh.y + sh2.y}px) rotate(${sh.r + sh2.r}deg) scale(${1 + 0.025 * (t / DURATION) + punch(t, HITS)})`;
+    $("glow").style.opacity = 0.4 + 0.3 * Math.sin(t * 1.1);
+
+    // A: the hook is up from the first frame. The leads age day by day, and one by one they close
+    // with someone else.
+    reveal($("h1"), t, -1);
+    reveal($("h2"), t, -1);
+    LEADS.forEach(([, , , d0, d1], i) => {
+      const el = $("ld" + i), at = i < 2 ? -1 : B(0.4 + (i - 2) * 0.7);
+      const p = back((t - at) / 0.3, 2);
+      el.style.opacity = clamp((t - at) / 0.06);
+      const lost = lostAt[i];
+      const days = Math.round(d0 + (d1 - d0) * clamp(t / lost));
+      $("ago" + i).textContent = `לפני ${days} ימים`;
+      const lp = ease((t - lost) / 0.22);
+      el.style.filter = t >= lost ? `grayscale(${lp}) brightness(${1 - 0.35 * lp})` : "none";
+      el.style.transform = `scale(${(t >= at ? 0.85 + 0.15 * p : 0.85) * (1 - 0.04 * lp)})`;
+      const st = $("lost" + i);
+      st.style.opacity = clamp((t - lost) / 0.05);
+      st.style.transform = `translate(-50%, -50%) rotate(-8deg) scale(${t >= lost ? 1.8 - 0.8 * ease((t - lost) / 0.2) : 1.8})`;
+    });
+    // Into the drop: the cards fall away.
+    const fall = easeIn((t - B(7.5)) / B(0.5));
+    $("leads").style.transform = `translateY(${fall * 900}px) rotate(${fall * 6}deg)`;
+    $("leads").style.filter = fall > 0 ? `blur(${fall * 16}px)` : "none";
+    for (const id of ["h1", "h2"]) $(id).style.opacity = 1 - fall;
+
+    // C: the headline, held over the three features.
+    const c0 = B(8);
+    $("gflash").style.opacity = (t >= c0 ? 0.8 * (1 - ease((t - c0) / 0.5)) : 0) + (t >= B(18.5) ? 0.55 * (1 - ease((t - B(18.5)) / 0.45)) : 0);
+    reveal($("s1"), t, c0 + 0.05);
+    const w2 = [...document.querySelectorAll("#s2 .wd > i")];
+    w2.forEach((w, i) => { const p = ease((t - c0 - B(0.6) - i * 0.06) / 0.38); w.style.transform = `translateY(${(1 - p) * 105}%) rotate(${(1 - p) * 7}deg)`; });
+    marker($("hl1"), t, c0 + B(1.2));
+    // the card rises, and turns away and back between features
+    const up = ease((t - c0 - 0.1) / 0.5);
+    let f = 0;
+    while (f + 1 < FEATS.length && t >= FEATS[f + 1][0]) f++;
+    let turn = 0;
+    for (const [T] of FEATS.slice(1)) {
+      if (t >= T - 0.2 && t < T) turn = 75 * easeIn((t - (T - 0.2)) / 0.2);
+      else if (t >= T && t < T + 0.28) turn = -75 * (1 - ease((t - T) / 0.28));
+    }
+    const card = $("card");
+    card.style.top = 600 + (1 - up) * 1000 + "px";
+    card.style.transform = `rotateX(${(1 - up) * 20 + 3}deg) rotateY(${turn + (f % 2 ? 6 : -6) + 2.5 * Math.sin((t - c0) * 1.2)}deg)`;
+    card.style.filter = Math.abs(turn) > 2 ? `blur(${Math.abs(turn) / 75 * 10}px)` : "none";
+    $("pill").textContent = FEATS[f][1];
+    const pp = back((t - FEATS[f][0]) / 0.3, 2.2);
+    $("pill").style.transform = `translateX(-50%) scale(${t >= FEATS[f][0] ? 0.7 + 0.3 * pp : 0.7})`;
+    $("pill").style.opacity = clamp((t - FEATS[0][0]) / 0.08);
+    // the screens
+    const tap = $("tap");
+    tap.style.opacity = 0;
+    $("rem").style.opacity = 0;
+    if (t >= c0 - 0.05 && t < B(18.5)) {
+      const ft = t - FEATS[f][0];
+      if (f === 0) {
+        const fo = cfg.foot.leads;
+        await setImg($("scr"), `${fo.dir}/${String(Math.max(1, Math.min(fo.n, 1 + Math.floor(Math.max(0, t - c0) * 24)))).padStart(5, "0")}.jpg`);
+      } else if (f === 1) {
+        let k = 0;
+        while (k + 1 < QUOTE.length && ft >= QUOTE[k + 1][0]) k++;
+        await setImg($("scr"), `${cfg.foot.fix.dir}/${String(QUOTE[k][1]).padStart(5, "0")}.jpg`);
+        const nx = QUOTE[k + 1] ? QUOTE[k + 1][0] : Infinity, at = QUOTE[k][2];
+        const tp = at ? (ft - (nx - 0.5)) / 0.45 : -1;
+        if (tp >= 0 && tp <= 1) {
+          const sc = 620 / 1080;
+          tap.style.left = at[0] * sc + "px"; tap.style.top = at[1] * sc + "px";
+          tap.style.opacity = Math.sin(Math.PI * Math.min(1, tp * 1.2));
+          tap.style.transform = `scale(${1.25 - 0.35 * ease(tp * 1.5)})`;
+        }
+      } else {
+        await setImg($("scr"), `${cfg.foot.home.dir}/00001.jpg`);
+        const rp = ease((ft - 0.15) / 0.3);
+        $("rem").style.opacity = rp;
+        document.querySelector("#rem .box").style.transform = `translateY(${(1 - rp) * 60}px) scale(${0.94 + 0.06 * rp})`;
+        // the tap on "שליחה בוואטסאפ"
+        const tp = (ft - 0.95) / 0.45;
+        if (tp >= 0 && tp <= 1) {
+          const b = $("send");
+          tap.style.left = b.offsetLeft + b.offsetWidth / 2 + 34 + "px";
+          tap.style.top = 230 + b.offsetTop + b.offsetHeight / 2 + "px";
+          tap.style.opacity = Math.sin(Math.PI * Math.min(1, tp * 1.2));
+          tap.style.transform = `scale(${1.25 - 0.35 * ease(tp * 1.5)})`;
+        }
+        $("send").style.filter = ft > 1.05 && ft < 1.3 ? "brightness(.85)" : "none";
+      }
+    }
+    const co = easeIn((t - B(18.1)) / B(0.4));
+    $("sC").style.transform = `translateY(${co * 260}px) scale(${1 - 0.08 * co})`;
+
+    // D: end card
+    const d0 = B(18.5);
+    $("endbg").style.transform = `scale(${1.15 - 0.08 * clamp((t - d0) / 3)})`;
+    const em = document.querySelector("#sD .mark");
+    em.style.transform = `scale(${0.5 + 0.5 * back((t - d0) / 0.42)}) rotate(${(1 - ease((t - d0) / 0.42)) * -10}deg)`;
+    reveal(document.querySelector("#sD .m1"), t, B(19.2));
+    reveal(document.querySelector("#sD .m2"), t, B(19.7));
+    const cta = document.querySelector("#sD .cta");
+    slam(cta, t, B(20.8), 1.25, 0.24);
+    cta.firstElementChild.style.left = -40 + 180 * ease((t - B(21.3)) / 0.6) + "%";
+    rise(document.querySelector("#sD .link"), t, B(21.4), 30, 0.3);
+    document.querySelector("#sD .link u").style.width = 100 * ease((t - B(21.8)) / 0.4) + "%";
+    rise(document.querySelector("#sD .free"), t, B(22), 20, 0.3);
+    leak(t, [B(8), B(18.5)]);
+    grain(t);
+  };
+  window.DURATION = DURATION;
+  window.AUDIO = {
+    duration: DURATION, drop: B(8), end: B(23),
+    cues: [
+      [B(0.4), "pop", 0.7, 0.3], [B(1.1), "pop", 0.7, -0.3],
+      ...LEADS.map((l) => [B(l[5]), "impact", 0.45]), ...LEADS.map((l) => [B(l[5]), "buzz", 0.5]),
+      [B(7.5), "whoosh", 0.7], [B(8), "suck"], [B(8), "impact"], [B(8.6), "pop", 0.6], [B(9.2), "pop", 0.6],
+      ...FEATS.slice(1).map(([T]) => [T - 0.2, "whoosh", 0.85]), ...FEATS.map(([T]) => [T, "tick", 1.4]),
+      [FEATS[1][0] + 0.55, "tap"], [FEATS[2][0] + 0.15, "pop", 0.6], [FEATS[2][0] + 1.05, "tap"],
+      [B(18.1), "whoosh", 0.8], [B(18.5), "impact", 0.8], [B(19.2), "pop", 0.6], [B(20.8), "impact", 0.45], [B(21.4), "tick", 1.5],
+    ],
+  };
+</script>
+</body>
+</html>

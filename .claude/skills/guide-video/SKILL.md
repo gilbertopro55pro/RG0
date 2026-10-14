@@ -240,6 +240,14 @@ own lines:
   - The five real screens go by three or four beats each (3, 4, 3, 4, 3; two was too fast to read the step). Each card carries its step's name in a large gold label, and is checked off on the stepper and on its card as it leaves. The payoff line "ושום דבר לא נופל / בין הכיסאות" stays up over the whole montage (~5s).
   - A short pull-back, then the end card on the bar.
   - Rendered with `MAXRATE=6M` (14MB).
+- **`ad8.html`, 12s: leads, quotes and follow-up reminders.** It replaces the assistant in the 12s slot (owner, 2026-10-14: people want a person to talk to, so the ad sells what keeps the photographer answering fast, not the bot). `ad2.html` (the assistant) stays in the repo.
+  - **The hook** is up from frame 0: "ליד שלא חזרתם אליו, / הוא אירוע שהלך למתחרה". Lead cards with the app's statuses ("נשלחה הצעת מחיר", "יצרנו קשר", "חדש") age day by day, and one by one get the stamp "סגר עם צלם אחר".
+  - **The drop** lands on "עם גילברטו, / אף ליד לא נשכח" (gold marker on "אף"). That headline stays up over three features, each 3.25 beats with a gold label on the card:
+    - "כל הלידים במקום אחד": the leads list, cropped from `guides/leads.mp4` at 3.2–6.4s (`crop=480:640:0:0`, above its caption), in `f-leads`.
+    - "הצעת מחיר בלחיצה": `f-fix` frame 5 with the send tapped, then frame 7 ("נשלח בהצלחה").
+    - "ותזכורת מעקב בזמן": the 2-day follow-up prompt, drawn with `PendingClientMessagePrompts`' own wording, title and buttons over the home screen, then a tap on "שליחה בוואטסאפ".
+  - **End card:** "כל ליד מקבל הצעה, / וכל הצעה מקבלת מעקב". Rendered with `MAXRATE=8M` (9MB).
+- **Spelling:** "פנייה" with a double yod (owner, 2026-10-14). With one yod, "מהפניה" reads as a referral (הַפְנָיָה).
 - **Real album spreads** (`alb/` in the run folder):
   - Run `planAlbum` + `layoutSpread` + `layoutCover` (style `clean`, 60×30, `targetSpreads` 10) on the photos with `npx tsx`.
   - Use a tsconfig whose `paths` map `@/lib/storage` to a local mock that reads the photo files.
