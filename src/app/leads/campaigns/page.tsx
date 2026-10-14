@@ -17,6 +17,7 @@ import {
   type HistoryReportRow,
   type LeadReportRow,
 } from "@/lib/campaigns";
+import { campaignsAllowed } from "@/lib/campaignsAccess";
 import CampaignsView, { type StoredInsight } from "@/components/CampaignsView";
 
 // Campaign tracking (owner, 2026-10-14; lib/campaigns.ts, migration 0172): which ad campaign brought
@@ -45,6 +46,7 @@ export default async function CampaignsPage() {
   const { data: photographer } = await supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>();
   if (!photographer) redirect("/");
   if (!hasAppAccess(photographer)) redirect("/billing");
+  if (!campaignsAllowed(photographer.email)) redirect("/leads");
 
   // Computed once here and passed down, so the server and the browser agree on "this month".
   const now = new Date();

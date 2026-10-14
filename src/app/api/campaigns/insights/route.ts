@@ -21,6 +21,7 @@ import {
   type HistoryReportRow,
   type LeadReportRow,
 } from "@/lib/campaigns";
+import { campaignsAllowed } from "@/lib/campaignsAccess";
 import type { Lang } from "@/i18n/config";
 
 export const runtime = "nodejs";
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
+  if (!campaignsAllowed(user.email)) return NextResponse.json({ error: "not found" }, { status: 404 });
   const body = (await request.json().catch(() => null)) as { period?: unknown; force?: unknown } | null;
   if (!isCampaignPeriod(body?.period)) return NextResponse.json({ error: "תקופה לא תקינה" }, { status: 400 });
   const period = body.period;
