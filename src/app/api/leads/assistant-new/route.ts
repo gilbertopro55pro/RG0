@@ -9,7 +9,8 @@ import { createClient } from "@/lib/supabase/server";
 // Reminder (owner, 2026-10-14): "תזכורת" in the popup picks 30 minutes, an hour or 3 hours, and
 // the lead pops up again then, unless it was handled by hand in the meantime: its status changed
 // from "new", a quote was sent, it became an event, it was archived or deleted, or the
-// conversation summary was sent on WhatsApp (that route clears the reminder).
+// conversation summary was sent on WhatsApp (that route clears the reminder). When it falls due a
+// phone notification goes out too (api/cron/lead-reminders), so it reaches a closed app.
 
 // The choices offered in the popup (REMIND_OPTIONS in components/AssistantLeadPopup.tsx).
 const REMIND_MINUTES = [30, 60, 180] as const;
@@ -51,6 +52,8 @@ export async function POST(request: Request) {
       assistant_seen_at: new Date(now).toISOString(),
       // Opening the lead (or the next reminder) replaces any reminder already set.
       assistant_remind_at: remind ? new Date(now + remind * 60_000).toISOString() : null,
+      // The new reminder gets its own phone notification (api/cron/lead-reminders).
+      assistant_remind_pushed_at: null,
     })
     .eq("photographer_id", user.id)
     .in("id", ids);

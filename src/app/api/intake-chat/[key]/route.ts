@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { resolveChatPhotographer, assistantUnavailableReason, claimConversationSlot } from "@/lib/intakeChatAccess";
 import { cleanSource } from "@/lib/leadSource";
+import { cleanCampaignName } from "@/lib/campaigns";
 import { canChooseClientLang, clientLangFor } from "@/lib/clientLang";
 import { isLang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
@@ -18,7 +19,7 @@ async function loadConversation(supabase: ReturnType<typeof createServiceRoleCli
   if (!token || !UUID_RE.test(token)) return null;
   const { data } = await supabase
     .from("bot_conversations")
-    .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, referral_source")
+    .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, referral_source, referral_campaign, referral_ad")
     .eq("session_token", token)
     .eq("photographer_id", photographerId)
     .eq("channel", "web")
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   // lang: the chat page's language (UI languages phase 2). Only the admin's chat uses it; error
   // strings stay Hebrew here and the page translates them.
-  const body: { session?: string; message?: string; src?: string; lang?: string } = await request.json().catch(() => ({}));
+  const body: { session?: string; message?: string; src?: string; campaign?: string; ad?: string; lang?: string } = await request.json().catch(() => ({}));
   const text = (body.message ?? "").trim();
   if (!text) return NextResponse.json({ error: "הודעה ריקה" }, { status: 400 });
   if (text.length > MAX_MESSAGE_CHARS) return NextResponse.json({ error: "ההודעה ארוכה מדי" }, { status: 400 });
@@ -79,8 +80,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!slot) return NextResponse.json({ unavailable: "cap" }, { status: 409 });
     const { data: created, error } = await supabase
       .from("bot_conversations")
-      .insert({ photographer_id: p.id, channel: "web", client_phone: null, referral_source: cleanSource(body.src), extra_credit: slot.extraCredit })
-      .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, referral_source")
+      .insert({ photographer_id: p.id, channel: "web", client_phone: null, referral_source: cleanSource(body.src), referral_campaign: cleanCampaignName(body.campaign), referral_ad: cleanCampaignName(body.ad), extra_credit: slot.extraCredit })
+      .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, referral_source, referral_campaign, referral_ad")
       .single<IntakeConversation>();
     if (error || !created) return NextResponse.json({ error: "שגיאה בפתיחת השיחה" }, { status: 500 });
     conv = created;

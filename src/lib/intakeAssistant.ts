@@ -60,8 +60,11 @@ export type IntakeConversation = {
   completed_at: string | null;
   // Summed token usage across this conversation's model calls (migration 0130).
   usage: Record<string, number>;
-  // Where the client came from (lib/leadSource.ts, migration 0133).
+  // Where the client came from (lib/leadSource.ts, migration 0133), and the ad's campaign and ad
+  // names (lib/campaigns.ts, migration 0172).
   referral_source?: string | null;
+  referral_campaign?: string | null;
+  referral_ad?: string | null;
 };
 
 export function intakeMonthlyCap(p: Pick<Photographer, "email" | "plan">): number {
@@ -333,6 +336,8 @@ async function upsertLead(supabase: ServiceClient, conv: IntakeConversation, p: 
     source: "assistant",
     bot_conversation_id: conv.id,
     referral_source: conv.referral_source ?? null,
+    referral_campaign: conv.referral_campaign ?? null,
+    referral_ad: conv.referral_ad ?? null,
   };
   if (conv.lead_id) {
     await supabase.from("leads").update({ ...row, ...leadLangPatch(conv, false) }).eq("id", conv.lead_id);
@@ -796,7 +801,7 @@ export async function finalizeIdleConversations(supabase: ServiceClient, siteUrl
   const now = Date.now();
   const { data: convs } = await supabase
     .from("bot_conversations")
-    .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, referral_source, busy_until")
+    .select("id, photographer_id, state, collected, messages, lead_id, client_turns, session_token, completed_at, usage, referral_source, referral_campaign, referral_ad, busy_until")
     .eq("state", "collecting_info")
     .is("completed_at", null)
     .not("lead_id", "is", null)
