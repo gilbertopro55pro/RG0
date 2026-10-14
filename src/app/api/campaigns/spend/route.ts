@@ -43,6 +43,17 @@ export async function POST(request: Request) {
   const amount = typeof rawAmount === "number" ? Math.round(rawAmount * 100) / 100 : null;
 
   const admin = createServiceRoleClient();
+  // A month synced from the connected Meta ad account (lib/metaAds.ts) isn't typed over: the next
+  // sync would replace it anyway.
+  const { data: existing } = await admin
+    .from("ad_spend")
+    .select("source")
+    .eq("photographer_id", user.id)
+    .eq("month", month)
+    .eq("campaign", campaign)
+    .maybeSingle<{ source: string }>();
+  if (existing?.source === "meta") return NextResponse.json({ error: t("הסכום הזה מסונכרן מחשבון המודעות במטא") }, { status: 409 });
+
   if (!amount) {
     const { error } = await admin.from("ad_spend").delete().eq("photographer_id", user.id).eq("month", month).eq("campaign", campaign);
     if (error) return NextResponse.json({ error: t("שגיאה בשמירה") }, { status: 500 });

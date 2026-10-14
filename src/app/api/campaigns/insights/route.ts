@@ -9,6 +9,7 @@ import { sourceLabel } from "@/lib/leadSource";
 import {
   HISTORY_COLUMNS,
   LEAD_COLUMNS,
+  SPEND_COLUMNS,
   buildCampaignReport,
   eventValues,
   fromHistoryRow,
@@ -34,13 +35,13 @@ export const maxDuration = 60;
 
 const MODEL = "claude-opus-5-5";
 // Bump when the prompt changes, so stored answers from the old prompt are recomputed.
-const PROMPT_VERSION = 2;
+const PROMPT_VERSION = 3;
 
 const LANGUAGE_NAME: Record<Lang, string> = { he: "Hebrew", en: "English", ru: "Russian" };
 
 const SYSTEM = `You analyze the ad campaigns of an event photographer in Israel (weddings, bar and bat mitzvahs, brit ceremonies and similar). The photographer uses Gilberto, a management app: ads lead to an AI intake chat, every inquiry becomes a lead, the photographer sends a price quote, and a booked client becomes an event.
 
-You get the numbers for one period, per campaign (or per source for leads without a campaign name): leads, quotes sent, booked events, revenue (the booked events' value, in ILS), ad spend the photographer entered (ILS, null when not entered), median hours from inquiry to quote, and leads per ad.
+You get the numbers for one period, per campaign (or per source for leads without a campaign name): leads, quotes sent, booked events, revenue (the booked events' value, in ILS), ad spend (ILS, null when not entered), impressions and clicks (when the Meta ad account is connected, else 0), median hours from inquiry to quote, and leads per ad.
 
 Write a short, honest analysis and 3 to 5 concrete tips that would improve results: where to move budget, which campaign or ad to pause or scale, what to test in the creative or audience, how fast to answer, how to follow up on quotes that got no answer.
 
@@ -49,6 +50,7 @@ Rules:
 - Small numbers are not proof. With fewer than 10 leads in a campaign or fewer than 3 bookings, say the sample is small and phrase the tip as something to test. Set lowData to true when the period has fewer than 10 leads in total, or when no spend was entered at all.
 - When spend is missing, one tip is to enter it, because cost per booked event can't be measured without it.
 - When both are known, compare the cost per booked event with the average booking value.
+- With clicks: many clicks but few leads points at the chat or the offer (people arrive and don't write); few clicks for the impressions points at the ad itself (image, text, audience).
 - Write in {LANGUAGE}, plainly and directly, as a business advisor would speak to the owner. No marketing language, no emojis, no markdown. The summary is at most 2 sentences; each tip is at most 2 sentences.
 - In Hebrew, address the photographer in the plural, as the rest of the app does ("שלחו", "הוצאתם", "כדאי לכם"), never in the singular masculine or feminine. Write "פנייה" (two yods) for an inquiry, "ליד" for a lead, "הצעת מחיר" for a quote.`;
 
@@ -91,7 +93,7 @@ export async function POST(request: Request) {
     supabase.from("photographers").select("ui_lang").eq("id", user.id).maybeSingle<{ ui_lang: string | null }>(),
     supabase.from("leads").select(LEAD_COLUMNS).eq("photographer_id", user.id).returns<LeadReportRow[]>(),
     supabase.from("lead_history").select(HISTORY_COLUMNS).eq("photographer_id", user.id).returns<HistoryReportRow[]>(),
-    supabase.from("ad_spend").select("month, campaign, amount").eq("photographer_id", user.id).returns<AdSpendRow[]>(),
+    supabase.from("ad_spend").select(SPEND_COLUMNS).eq("photographer_id", user.id).returns<AdSpendRow[]>(),
     supabase.from("campaign_insights").select("data_hash, result, created_at").eq("photographer_id", user.id).eq("period", period).maybeSingle<{ data_hash: string; result: unknown; created_at: string }>(),
   ]);
   if (!photographer) return NextResponse.json({ error: "החשבון לא נמצא" }, { status: 404 });
@@ -117,6 +119,8 @@ export async function POST(request: Request) {
       booked: r.booked,
       revenue: Math.round(r.revenue),
       spend: r.spend === null ? null : Math.round(r.spend),
+      impressions: r.impressions,
+      clicks: r.clicks,
       medianHoursToQuote: r.medianHoursToQuote === null ? null : Math.round(r.medianHoursToQuote * 10) / 10,
       ads: r.ads.slice(0, 8),
     })),
