@@ -9,6 +9,8 @@ import { useLang, useT } from "@/i18n/client";
 // whatever screen of the app the photographer is on, until it's seen once (leads.assistant_seen_at,
 // migration 0144; api/leads/assistant-new). Checked on load, every minute, and when the app comes
 // back to the foreground. Not on the public / client-facing pages (the same list TopNav hides on).
+// "תזכורת" (owner, 2026-10-14) replaces "אחר כך": 30 minutes, an hour or 3 hours, and the lead pops
+// up again then, unless it was handled by hand in the meantime (see api/leads/assistant-new).
 
 type NewLead = {
   id: string;
@@ -18,9 +20,17 @@ type NewLead = {
   event_date_interest: string | null;
   needs_details: boolean | null;
   created_at: string;
+  // Seen before, back because its reminder is due.
+  reminder: boolean;
 };
 
 const POLL_MS = 60_000;
+// Minutes, as POST api/leads/assistant-new accepts them (REMIND_MINUTES there).
+const REMIND_OPTIONS = [
+  { minutes: 30, label: "30 דקות" },
+  { minutes: 60, label: "שעה" },
+  { minutes: 180, label: "3 שעות" },
+] as const;
 
 function dateLabel(iso: string | null): string | null {
   if (!iso) return null;
@@ -35,6 +45,7 @@ export default function AssistantLeadPopup() {
   const lang = useLang();
   const router = useRouter();
   const [leads, setLeads] = useState<NewLead[]>([]);
+  const [picking, setPicking] = useState(false);
   // Phone notifications not on for this device yet (components/PushNotificationsSettings.tsx):
   // the popup invites to turn them on.
   const [pushOff, setPushOff] = useState(false);
@@ -89,23 +100,23 @@ export default function AssistantLeadPopup() {
   const lead = leads[0];
   const more = leads.length - 1;
 
-  const markSeenAnd = (path: string | null) => {
+  const markSeenAnd = (path: string | null, remindMinutes?: number) => {
     const ids = leads.map((l) => l.id);
     setLeads([]);
-    fetch("/api/leads/assistant-new", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) }).catch(() => {});
+    setPicking(false);
+    fetch("/api/leads/assistant-new", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, remindMinutes }) }).catch(() => {});
     if (path) router.push(path);
   };
-  const markSeen = (open: boolean) => markSeenAnd(open ? "/leads" : null);
 
   const facts = [lead.event_type_name, dateLabel(lead.event_date_interest)].filter(Boolean).join(" · ");
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.45)" }} role="dialog" aria-modal="true" aria-label={t("פנייה חדשה מהעוזר")}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.45)" }} role="dialog" aria-modal="true" aria-label={t(lead.reminder ? "תזכורת: פנייה שעוד לא טופלה" : "פנייה חדשה מהעוזר")}>
       <div className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet">
         <div className="flex items-center gap-2 mb-3">
           <span className="h-2 w-2 rounded-full animate-pulse" style={{ background: "var(--color-amber-deep)" }} />
           <span className="text-xs font-semibold" style={{ color: "var(--color-amber-deep)" }}>
-            {t("פנייה חדשה מהעוזר")}
+            {t(lead.reminder ? "תזכורת: פנייה שעוד לא טופלה" : "פנייה חדשה מהעוזר")}
           </span>
         </div>
         <h2 className="text-lg font-bold font-display leading-snug">{lead.name}</h2>
@@ -122,14 +133,36 @@ export default function AssistantLeadPopup() {
             {t("לקבל פניות כאלה גם כהתראה בטלפון")}
           </button>
         )}
-        <div className="flex gap-2 mt-5">
-          <button type="button" onClick={() => markSeen(true)} className="flex-1 h-11 rounded-xl bg-ink text-white text-sm font-semibold">
-            {t("לצפייה בליד")}
-          </button>
-          <button type="button" onClick={() => markSeen(false)} className="h-11 px-4 rounded-xl border border-line bg-white text-sm font-semibold text-ink">
-            {t("אחר כך")}
-          </button>
-        </div>
+        {picking ? (
+          <div className="mt-5">
+            <p className="text-sm font-semibold mb-2">{t("מתי להזכיר לך?")}</p>
+            <div className="flex gap-2">
+              {REMIND_OPTIONS.map((o) => (
+                <button
+                  key={o.minutes}
+                  type="button"
+                  onClick={() => markSeenAnd(null, o.minutes)}
+                  className="flex-1 h-11 rounded-xl border border-line bg-white text-sm font-semibold text-ink"
+                >
+                  {t(o.label)}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-ink-soft mt-2">{t("אם תטפלו בליד לפני כן, התזכורת לא תופיע.")}</p>
+            <button type="button" onClick={() => setPicking(false)} className="mt-2 text-xs font-semibold underline text-ink-soft">
+              {t("חזרה")}
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2 mt-5">
+            <button type="button" onClick={() => markSeenAnd("/leads")} className="flex-1 h-11 rounded-xl bg-ink text-white text-sm font-semibold">
+              {t("לצפייה בליד")}
+            </button>
+            <button type="button" onClick={() => setPicking(true)} className="h-11 px-4 rounded-xl border border-line bg-white text-sm font-semibold text-ink">
+              {t("תזכורת")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
