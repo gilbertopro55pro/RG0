@@ -203,10 +203,12 @@ export default function LeadsView({
             </p>
           );
         })()}
-        {/* Campaign tracking (owner, 2026-10-14): per-campaign leads, bookings and cost. */}
-        <Link href="/leads/campaigns" className="text-xs font-semibold underline underline-offset-2" style={{ color: "var(--color-amber-deep)" }}>
-          {t("מעקב קמפיינים ←")}
-        </Link>
+        {/* Campaign tracking (owner, 2026-10-14): per-campaign leads, bookings and cost. Admin only for now (campaignsAllowed). */}
+        {isAdmin && (
+          <Link href="/leads/campaigns" className="text-xs font-semibold underline underline-offset-2" style={{ color: "var(--color-amber-deep)" }}>
+            {t("מעקב קמפיינים ←")}
+          </Link>
+        )}
       </div>
 
       {leads.length === 0 && <div className="text-center py-16 text-sm text-ink-soft">{t("אין עדיין לידים. לחצו על \"ליד חדש\" כדי להוסיף")}</div>}
