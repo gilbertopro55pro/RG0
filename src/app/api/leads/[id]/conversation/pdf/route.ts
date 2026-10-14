@@ -34,6 +34,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   const pdf = await conversationPdf(photographer, details, conv.messages ?? []);
   if (!pdf) return NextResponse.json({ error: "אין הודעות בשיחה" }, { status: 404 });
 
+  // Sending the summary to the client is handling the lead by hand: a reminder set from the
+  // new-lead popup (api/leads/assistant-new) is dropped.
+  await supabase.from("leads").update({ assistant_remind_at: null }).eq("id", lead.id).not("assistant_remind_at", "is", null);
+
   const path = `${user.id}/conversation-${lead.id}-${Date.now()}.pdf`;
   await uploadObject("price-quotes", path, Buffer.from(pdf), "application/pdf");
   const url = await getSignedDownloadUrl("price-quotes", path, 60 * 60 * 24 * 7, conversationPdfName(details, photographer));

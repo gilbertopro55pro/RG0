@@ -37,6 +37,14 @@ below, so don't change them without asking.
   migration 0144). Not on public/client pages (TopNav's `HIDDEN_PREFIXES`). Polls every minute and
   on returning to the app. Marking seen doesn't count as lead activity (the `leads_touch_activity`
   trigger skips an update that only changes `assistant_seen_at`).
+- **Reminder instead of "later" (2026-10-14, owner's request):** the popup's second button is
+  "תזכורת": 30 minutes, an hour or 3 hours (`leads.assistant_remind_at`, migration 0171). The lead
+  pops up again when it's due, headed "תזכורת: פנייה שעוד לא טופלה", unless it was handled by hand
+  first: status no longer "new", a quote sent (`quote_sent_at` / `quoted_amount`), converted to an
+  event, archived or deleted, or the conversation summary sent on WhatsApp (that route clears the
+  reminder). "לצפייה בליד" clears any reminder. Setting it isn't lead activity either (same trigger).
+  The popup only shows while the app is open; a reminder that falls due with the app closed shows
+  on the next open (no push for it, push types are the owner's call).
 - **Phone notification (2026-10-01):** a new assistant lead pushes "פנייה חדשה מהעוזר" to the
   photographer's devices the moment the lead row is first inserted (`upsertLead`, `lib/push.ts`),
   ahead of the handoff email. Form leads push too. The popup invites to turn notifications on.
