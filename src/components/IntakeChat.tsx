@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { sourceFromSearch } from "@/lib/leadSource";
+import { campaignFromSearch } from "@/lib/campaigns";
 import { I18nProvider, useLang, useT } from "@/i18n/client";
 import { dirOf, type Lang } from "@/i18n/config";
 import { detectTextLang } from "@/i18n/detect";
@@ -152,8 +153,9 @@ function ChatView({
       const res = await fetch(`/api/intake-chat/${encodeURIComponent(chatKey)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // src: which link the client came from (?src=, utm_source, fbclid); used when the conversation starts.
-        body: JSON.stringify({ session, message: text, src: sourceFromSearch(window.location.search), lang: msgLang }),
+        // src: which link the client came from (?src=, utm_source, fbclid), and the ad's campaign and ad
+        // names (utm_campaign / utm_content); used when the conversation starts.
+        body: JSON.stringify({ session, message: text, src: sourceFromSearch(window.location.search), ...campaignFromSearch(window.location.search), lang: msgLang }),
       });
       const data: { session?: string; reply?: string; state?: string; error?: string; unavailable?: string; newLead?: boolean } = await res
         .json()
@@ -318,7 +320,7 @@ function InquiryForm({ chatKey, studio }: { chatKey: string; studio: string }) {
         const res = await fetch(`/api/intake-chat/${encodeURIComponent(chatKey)}/form`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, phone, eventType, date, notes, src: sourceFromSearch(window.location.search), lang }),
+          body: JSON.stringify({ name, phone, eventType, date, notes, src: sourceFromSearch(window.location.search), ...campaignFromSearch(window.location.search), lang }),
         }).catch(() => null);
         setSending(false);
         if (res?.ok) {

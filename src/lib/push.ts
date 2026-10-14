@@ -5,7 +5,8 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 // settings (components/PushNotificationsSettings.tsx → api/push/subscribe); the server sends to
 // every device they have. What's sent (owner's choice, kept short on purpose so notifications stay
 // worth reading): a new lead from the assistant, a client approving a quote / signing a contract,
-// a client approving an album design or leaving album comments.
+// a client approving an album design or leaving album comments, a lead reminder that fell due
+// (api/cron/lead-reminders).
 //
 // iPhone: only when the app was added to the home screen (iOS 16.4+), an Apple rule. Android: in
 // the browser too. Keys: NEXT_PUBLIC_VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT (Vercel).

@@ -6,6 +6,7 @@ import { resolveChatPhotographer } from "@/lib/intakeChatAccess";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { cleanSource } from "@/lib/leadSource";
+import { cleanCampaignName } from "@/lib/campaigns";
 import { canChooseClientLang, photographerLang } from "@/lib/clientLang";
 import { isLang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { allowed } = await checkRateLimit(`intake-form:${clientIpFrom(request)}`, { maxRequests: 30, windowSeconds: 3600 });
   if (!allowed) return NextResponse.json({ error: "יותר מדי פניות. נסו שוב מאוחר יותר" }, { status: 429 });
 
-  const body: { name?: string; phone?: string; date?: string; eventType?: string; notes?: string; src?: string; lang?: string } = await request.json().catch(() => ({}));
+  const body: { name?: string; phone?: string; date?: string; eventType?: string; notes?: string; src?: string; campaign?: string; ad?: string; lang?: string } = await request.json().catch(() => ({}));
   const name = (body.name ?? "").trim().slice(0, 100);
   const phone = (body.phone ?? "").trim().slice(0, 30);
   if (!name || !phone) return NextResponse.json({ error: "צריך שם וטלפון" }, { status: 400 });
@@ -41,6 +42,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     notes,
     source: "form",
     referral_source: cleanSource(body.src),
+    referral_campaign: cleanCampaignName(body.campaign),
+    referral_ad: cleanCampaignName(body.ad),
     details: { clientName: name, phone, eventDate: date ?? undefined, eventType: eventType ?? undefined, wishes: notes ?? undefined },
     needs_details: true,
     // The chat page's language (UI languages phase 2): admin only, for now; otherwise left null.

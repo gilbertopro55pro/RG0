@@ -43,8 +43,12 @@ below, so don't change them without asking.
   first: status no longer "new", a quote sent (`quote_sent_at` / `quoted_amount`), converted to an
   event, archived or deleted, or the conversation summary sent on WhatsApp (that route clears the
   reminder). "לצפייה בליד" clears any reminder. Setting it isn't lead activity either (same trigger).
-  The popup only shows while the app is open; a reminder that falls due with the app closed shows
-  on the next open (no push for it, push types are the owner's call).
+  When it falls due a phone notification goes out too (owner approved, 2026-10-14):
+  `api/cron/lead-reminders` runs every minute, same handled-by-hand conditions, once per reminder
+  (`assistant_remind_pushed_at`, cleared when a new reminder is set; migration 0172).
+- **Campaign tracking (2026-10-14):** the chat and the form keep the ad's `utm_campaign` /
+  `utm_content` on the conversation and the lead (`referral_campaign` / `referral_ad`), see
+  `lib/campaigns.ts` and CLAUDE.md "מעקב קמפיינים".
 - **Phone notification (2026-10-01):** a new assistant lead pushes "פנייה חדשה מהעוזר" to the
   photographer's devices the moment the lead row is first inserted (`upsertLead`, `lib/push.ts`),
   ahead of the handoff email. Form leads push too. The popup invites to turn notifications on.
