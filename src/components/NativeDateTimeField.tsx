@@ -12,18 +12,26 @@ import { useEffect, useState } from "react";
 // Electron BrowserView, can fail to render that popup at all), while the browser's default handling
 // of a genuinely visible, focusable input always does. So under (hover: hover) and (pointer: fine)
 // this renders the real control directly — no overlay, no showPicker() call, nothing that can fail.
+// Also the date-and-time field of the reminder dialogs (owner, 2026-10-15: on the iPhone it ran
+// wider than the two buttons under it); className sizes the box there (h-11).
 export default function NativeDateTimeField({
   type,
   value,
   onChange,
   display,
   compact = false,
+  min,
+  ariaLabel,
+  className = "",
 }: {
-  type: "date" | "time";
+  type: "date" | "time" | "datetime-local";
   value: string;
   onChange: (value: string) => void;
   display: React.ReactNode;
   compact?: boolean;
+  min?: string;
+  ariaLabel?: string;
+  className?: string;
 }) {
   const [desktopPointer, setDesktopPointer] = useState(false);
 
@@ -37,10 +45,12 @@ export default function NativeDateTimeField({
 
   if (desktopPointer) {
     return (
-      <div className="relative w-full rounded-lg border border-line bg-white">
+      <div className={`relative w-full rounded-lg border border-line bg-white ${className}`}>
         <input
           type={type}
           value={value}
+          min={min}
+          aria-label={ariaLabel}
           onChange={(e) => onChange(e.target.value)}
           dir="ltr"
           className={`w-full h-full ${compact ? "px-1.5" : "px-3"} py-2 text-sm text-center bg-transparent`}
@@ -50,13 +60,15 @@ export default function NativeDateTimeField({
   }
 
   return (
-    <div className="relative w-full rounded-lg border border-line bg-white overflow-hidden">
-      <div className={`pointer-events-none flex items-center justify-center ${compact ? "px-1.5" : "px-3"} py-2 text-sm`} dir="ltr">
+    <div className={`relative w-full rounded-lg border border-line bg-white overflow-hidden ${className}`}>
+      <div className={`pointer-events-none flex h-full items-center justify-center ${compact ? "px-1.5" : "px-3"} py-2 text-sm`} dir="ltr">
         {display}
       </div>
       <input
         type={type}
         value={value}
+        min={min}
+        aria-label={ariaLabel}
         onChange={(e) => onChange(e.target.value)}
         onClick={(e) => {
           // Wrapped in try/catch — a confirmed WebKit bug (showPicker() doesn't work on iOS,
