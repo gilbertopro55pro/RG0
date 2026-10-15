@@ -390,6 +390,8 @@ export type LeadRow = {
   name: string;
   // Language of the client's quote page (and the event it becomes). Null = Hebrew. Migration 0150.
   client_lang?: string | null;
+  // When to get back to the client (lib/leadContactReminder.ts, migration 0175). Null = none.
+  contact_remind_at?: string | null;
   phone: string | null;
   email: string | null;
   event_date_interest: string | null;

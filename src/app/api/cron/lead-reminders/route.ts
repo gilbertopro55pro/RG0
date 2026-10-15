@@ -17,6 +17,8 @@ export const maxDuration = 60;
 // which setting a new reminder clears. The popup shows the lead again when the app is next opened.
 // The same for a quote follow-up put off with "תזכורת" (owner, 2026-10-15; scheduled_messages
 // remind_at / remind_pushed_at): one handled by hand since (lib/leadFollowUp.ts) is closed instead.
+// And a contact reminder set when marking a lead "יצרתי קשר" (owner, 2026-10-15;
+// lib/leadContactReminder.ts), for a lead still open.
 
 type DueFollowUp = {
   id: string;
@@ -118,5 +120,36 @@ export async function GET(request: NextRequest) {
       tag: `quote-followup-${f.id}`,
     });
   }
-  return NextResponse.json({ due: data?.length ?? 0, sent, followUps: followUps?.length ?? 0, followUpsSent });
+  const { data: contacts, error: contactsError } = await supabase
+    .from("leads")
+    .select("id, photographer_id, name, event_type_name, event_date_interest, photographers(email, subscription_status, trial_ends_at, ui_lang)")
+    .lte("contact_remind_at", now)
+    .is("contact_remind_pushed_at", null)
+    .is("archived_at", null)
+    .is("converted_event_id", null)
+    .not("status", "in", "(won,lost)")
+    .limit(100)
+    .returns<DueLead[]>();
+  if (contactsError) return NextResponse.json({ error: contactsError.message }, { status: 500 });
+
+  let contactsSent = 0;
+  for (const lead of contacts ?? []) {
+    const { data: claimed } = await supabase
+      .from("leads")
+      .update({ contact_remind_pushed_at: now })
+      .eq("id", lead.id)
+      .is("contact_remind_pushed_at", null)
+      .select("id");
+    if (!claimed?.length || isLockedOut(lead.photographers)) continue;
+    const lang = photographerLang(lead.photographers?.ui_lang);
+    const t = makeT(messagesFor(lang));
+    const date = lead.event_date_interest ? new Date(lead.event_date_interest).toLocaleDateString(dateLocale(lang)) : null;
+    contactsSent += await sendPushToPhotographer(lead.photographer_id, {
+      title: t("תזכורת: ליצור קשר עם {name}", { name: lead.name }),
+      body: [lead.event_type_name, date].filter(Boolean).join(" · ") || t("לחצו לפתיחת הלידים"),
+      url: "/leads",
+      tag: `contact-reminder-${lead.id}`,
+    });
+  }
+  return NextResponse.json({ due: data?.length ?? 0, sent, followUps: followUps?.length ?? 0, followUpsSent, contacts: contacts?.length ?? 0, contactsSent });
 }

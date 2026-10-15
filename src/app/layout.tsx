@@ -16,6 +16,7 @@ import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
 import UploadsIndicator from "@/components/UploadsIndicator";
 import AssistantLeadPopup from "@/components/AssistantLeadPopup";
+import ContactReminderPopup from "@/components/ContactReminderPopup";
 import PremiumScope from "@/components/PremiumScope";
 import { isClientFacingPath, PREMIUM_CLASS } from "@/lib/premiumScope";
 import { galleryFont } from "@/lib/galleryTheme";
@@ -321,6 +322,7 @@ export default async function RootLayout({
           <InstallPrompt />
           <UploadsIndicator />
           <ChangelogModal latest={CHANGELOG[0]} />
+          <ContactReminderPopup />
           <AssistantLeadPopup />
         </I18nProvider>
       </body>
