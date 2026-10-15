@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/i18n/client";
 import {
+  REEL_BEAT_FX,
   REEL_LENGTHS,
   REEL_PLATFORMS,
   REEL_TEMPLATES,
@@ -11,6 +12,7 @@ import {
   defaultLineStyles,
   platformById,
   templateById,
+  type ReelBeatFx,
   type ReelFit,
   type ReelLength,
   type ReelLineId,
@@ -22,12 +24,16 @@ import {
   type ReelTransition,
   type ReelTransitionCategory,
 } from "@/lib/reels/templates";
-import { activeMedia, drawReelFrame, drawTransitionPreview, loadReelImage, reelFonts, reelTimeline, transitionPool, type ReelFonts, type ReelImage } from "@/lib/reels/render";
+import { MIN_SEGMENT, activeMedia, drawReelFrame, drawTransitionPreview, loadReelImage, reelFonts, reelTimeline, transitionPool, type ReelFonts, type ReelImage, type ReelTempo } from "@/lib/reels/render";
+import { drawFxPreview } from "@/lib/reels/beatFx";
+import { detectTempoFromBuffer, type DetectedTempo } from "@/lib/reels/tempo";
+import { createClient } from "@/lib/supabase/client";
 import { REEL_TRACKS, trackById } from "@/lib/reels/music";
 import { PreviewMusic, decodeTrack, musicGain, renderSoundtrack } from "@/lib/reels/audio";
 import ReelTimelineEditor, { type TimelineClip } from "@/components/ReelTimelineEditor";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES } from "@/lib/albumFonts";
 import { exportReelMp4, ReelCancelledError, ReelUnsupportedError } from "@/lib/reels/encode";
+import { FIT_MIN_VISIBLE } from "@/lib/reels/scene";
 import { useBusy } from "@/lib/updateResume";
 
 // Reels from a gallery (owner, 2026-10-07, admin only while it's polished): pick photos, a
@@ -46,21 +52,41 @@ type Tab = "style" | "photos" | "transitions" | "music" | "text";
 
 // The photographer's own music file: at most this size (a few minutes of a normal song).
 const MAX_MUSIC_BYTES = 40 * 1024 * 1024;
-// Video clips from the device (owner, 2026-10-07): a few, each up to this size.
-const MAX_VIDEOS = 6;
+// Video clips (owner, 2026-10-07 from the device; 2026-10-15 also the gallery's own videos): a
+// few, a device file up to this size (a gallery video is already within its plan's limit).
+const MAX_VIDEOS = 10;
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
+// "video:<n>" a clip from the device, "video:g:<id>" one of the gallery's videos (gallery_videos).
 const isVideoId = (id: string) => id.startsWith("video:");
+const galleryClipId = (videoId: string) => `video:g:${videoId}`;
 
-type DeviceVideo = { file: File; url: string; el: HTMLVideoElement; duration: number; thumb: string };
+type GalleryVideo = { id: string; name: string; size: number | null };
+type ClipSource = { kind: "file"; file: File } | { kind: "gallery"; videoId: string };
+type ClipVideo = { source: ClipSource; url: string; el: HTMLVideoElement; duration: number; thumb: string };
+// The photographer's in-point (seconds into the clip), how it fits the reel's shape (null: like the
+// photos; clips fill the screen by default, owner 2026-10-15: "crop them to the format"), and where
+// a cropped clip is cut (0-1).
+type ClipOptions = { start: number; focus: number; fit: ReelFit | null };
+const CLIP_DEFAULTS: ClipOptions = { start: 0, focus: 0.5, fit: "cover" };
 
-// Loads a clip from the device: its first frames, size, length and a small thumbnail.
-async function loadDeviceVideo(file: File): Promise<DeviceVideo> {
-  const url = URL.createObjectURL(file);
+// A gallery video's playback address: a signed link to the file in storage, good for 30 minutes
+// (the storage allows reading it from the page, so frames can be drawn and exported).
+async function galleryVideoUrl(galleryId: string, videoId: string): Promise<string> {
+  const res = await fetch(`/api/galleries/${galleryId}/videos/${videoId}/url`);
+  const data = (await res.json().catch(() => ({}))) as { url?: string };
+  if (!res.ok || !data.url) throw new Error("video-url");
+  return data.url;
+}
+
+// Loads a clip: its first frames, size, length and a small thumbnail. A gallery video streams from
+// storage (only the parts that play are downloaded, so a long film costs little).
+async function loadClipVideo(src: string, remote: boolean): Promise<{ el: HTMLVideoElement; duration: number; thumb: string }> {
   const el = document.createElement("video");
   el.muted = true;
   el.playsInline = true;
   el.preload = "auto";
-  el.src = url;
+  if (remote) el.crossOrigin = "anonymous";
+  el.src = src;
   await new Promise<void>((resolve, reject) => {
     el.onloadeddata = () => resolve();
     el.onerror = () => reject(new Error("video"));
@@ -78,14 +104,19 @@ async function loadDeviceVideo(file: File): Promise<DeviceVideo> {
     el.onseeked = () => resolve();
     el.currentTime = Math.min(0.5, duration / 3);
   });
-  const c = document.createElement("canvas");
-  c.width = 200;
-  c.height = Math.max(1, Math.round((200 * el.videoHeight) / el.videoWidth));
-  c.getContext("2d")!.drawImage(el, 0, 0, c.width, c.height);
-  const thumb = c.toDataURL("image/jpeg", 0.75);
+  let thumb = "";
+  try {
+    const c = document.createElement("canvas");
+    c.width = 200;
+    c.height = Math.max(1, Math.round((200 * el.videoHeight) / el.videoWidth));
+    c.getContext("2d")!.drawImage(el, 0, 0, c.width, c.height);
+    thumb = c.toDataURL("image/jpeg", 0.75);
+  } catch {
+    // No thumbnail; the clip still plays.
+  }
   el.onseeked = null;
   el.currentTime = 0;
-  return { file, url, el, duration: Number.isFinite(duration) ? duration : 5, thumb };
+  return { el, duration: Number.isFinite(duration) ? duration : 5, thumb };
 }
 
 const LINES: { id: ReelLineId; label: string; hint: string; placeholder: string }[] = [
@@ -131,6 +162,7 @@ export default function ReelBuilder({
     music: { source: "none", trackId: REEL_TRACKS[0].id, volume: 0.8, offset: 0 },
     transitions: [],
     seed: 1,
+    fx: null,
     text: {
       title: galleryTitle,
       subtitle: dateLabel ?? "",
@@ -146,14 +178,22 @@ export default function ReelBuilder({
   const [durState, setDurState] = useState<{ keys: string[]; durs: number[] } | null>(null);
   const [upload, setUpload] = useState<{ file: File; url: string } | null>(null);
   const [musicError, setMusicError] = useState<string | null>(null);
-  const [musicBuffer, setMusicBuffer] = useState<AudioBuffer | null>(null);
+  // The decoded music, with the track or file it belongs to.
+  const [musicBuf, setMusicBuf] = useState<{ key: string; buffer: AudioBuffer } | null>(null);
+  // The tempo found in an uploaded song (null: no steady beat), per file.
+  const [uploadTempo, setUploadTempo] = useState<{ key: string; tempo: DetectedTempo | null } | null>(null);
   const playerRef = useRef<PreviewMusic | null>(null);
   // Set whenever the music has to (re)start at the preview's current time: a seek, a new track,
   // a new start point, play after pause.
   const musicKeyRef = useRef("");
-  const [videos, setVideos] = useState<Map<string, DeviceVideo>>(new Map());
+  const [videos, setVideos] = useState<Map<string, ClipVideo>>(new Map());
+  const [clipOpts, setClipOpts] = useState<Map<string, ClipOptions>>(new Map());
+  const [editingClip, setEditingClip] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [addingVideo, setAddingVideo] = useState(false);
+  // The gallery's own videos (gallery_videos), and the ones loading right now.
+  const [galleryVideos, setGalleryVideos] = useState<GalleryVideo[]>([]);
+  const [loadingClips, setLoadingClips] = useState<Set<string>>(new Set());
   // Timeline snapping (magnet), on unless the photographer turns it off.
   const [snap, setSnap] = useState(true);
   const seekCountRef = useRef(0);
@@ -174,9 +214,39 @@ export default function ReelBuilder({
   const platform = platformById(settings.platform);
   const tpl = templateById(settings.templateId);
   const readyIds = useMemo(() => selected.filter((id) => images.has(id)), [selected, images]);
-  const readyImages = useMemo(() => readyIds.map((id) => images.get(id)!), [readyIds, images]);
+  // A clip plays from its in-point, for what's left of it after that, cut where the photographer set.
+  const readyImages = useMemo(
+    () =>
+      readyIds.map((id) => {
+        const img = images.get(id)!;
+        const clip = videos.get(id);
+        const o = clipOpts.get(id);
+        if (!img.video || !clip || !o) return img;
+        const start = Math.max(0, Math.min(o.start, clip.duration - MIN_SEGMENT));
+        return { ...img, video: { start, duration: Math.max(MIN_SEGMENT, clip.duration - start) }, focus: o.focus, fit: o.fit ?? undefined };
+      }),
+    [readyIds, images, videos, clipOpts]
+  );
   const track = settings.music.source === "library" ? trackById(settings.music.trackId) : null;
-  const bpm = track?.bpm ?? null;
+  const musicUrl = settings.music.source === "library" ? track?.url ?? null : settings.music.source === "upload" ? upload?.url ?? null : null;
+  const musicKey = settings.music.source === "upload" && upload ? `upload:${upload.file.name}:${upload.file.size}` : musicUrl;
+  const musicBuffer = musicBuf && musicBuf.key === musicKey ? musicBuf.buffer : null;
+  const detected = settings.music.source === "upload" && uploadTempo && uploadTempo.key === musicKey ? uploadTempo.tempo : null;
+  // The music's tempo: a library track's is known (and it starts on a beat); an uploaded song's is
+  // detected. The phase is where its first beat falls in the reel, after the start point in the song.
+  const tempo = useMemo<ReelTempo | null>(() => {
+    const at = (bpmValue: number, firstBeat: number): ReelTempo => {
+      const beatLen = 60 / bpmValue;
+      let phase = (((firstBeat - settings.music.offset) % beatLen) + beatLen) % beatLen;
+      // Within a few hundredths of a second of a beat is on it (no one hears that).
+      if (phase < 0.03 || beatLen - phase < 0.03) phase = 0;
+      return { bpm: bpmValue, phase };
+    };
+    if (track) return at(track.bpm, 0);
+    if (detected) return at(detected.bpm, detected.firstBeat);
+    return null;
+  }, [track, detected, settings.music.offset]);
+  const bpm = tempo?.bpm ?? null;
   // Each segment is keyed by its (first) photo, so the times the photographer set travel with the
   // photo when it's moved, and fall back to the automatic split when photos are added or removed.
   const perSeg = tpl.frame === "split" ? 2 : 1;
@@ -201,7 +271,7 @@ export default function ReelBuilder({
     }
     return out;
   }, [readyImages, perSeg]);
-  const timeline = useMemo(() => reelTimeline(readyImages.length, tpl, settings, custom, bpm, segVideo), [readyImages.length, tpl, settings, custom, bpm, segVideo]);
+  const timeline = useMemo(() => reelTimeline(readyImages.length, tpl, settings, custom, tempo, segVideo), [readyImages.length, tpl, settings, custom, tempo, segVideo]);
   // Jumps the preview (and its music) to time t.
   const seek = (time: number) => {
     timeRef.current = time;
@@ -213,6 +283,24 @@ export default function ReelBuilder({
   useEffect(() => {
     reelFonts().then(setFonts);
   }, []);
+
+  // The gallery's own videos, to put in the reel like photos (RLS: only the photographer's own).
+  useEffect(() => {
+    let alive = true;
+    createClient()
+      .from("gallery_videos")
+      .select("id, original_filename, file_size_bytes")
+      .eq("gallery_id", galleryId)
+      .order("sort_order", { ascending: true })
+      .returns<{ id: string; original_filename: string | null; file_size_bytes: number | null }[]>()
+      .then(({ data }) => {
+        if (alive) setGalleryVideos((data ?? []).map((v) => ({ id: v.id, name: v.original_filename || t("וידאו"), size: v.file_size_bytes })));
+      });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [galleryId]);
 
   // The album fonts picked for the lines: their family is read from the probe and loaded before
   // drawing (until then the line draws in the template's font).
@@ -250,20 +338,38 @@ export default function ReelBuilder({
   }, [selected, galleryId, images]);
 
   // The music for the preview, decoded once per track or file.
-  const musicUrl = settings.music.source === "library" ? track?.url ?? null : settings.music.source === "upload" ? upload?.url ?? null : null;
-  const musicKey = settings.music.source === "upload" && upload ? `upload:${upload.file.name}:${upload.file.size}` : musicUrl;
   useEffect(() => {
     if (!musicUrl || !musicKey) return;
     let alive = true;
     decodeTrack(musicKey, async () => (upload && settings.music.source === "upload" ? upload.file.arrayBuffer() : (await fetch(musicUrl)).arrayBuffer()))
-      .then((buf) => alive && setMusicBuffer(buf))
+      .then((buffer) => alive && setMusicBuf({ key: musicKey, buffer }))
       .catch(() => alive && setMusicError(t("לא הצלחנו לקרוא את קובץ המוזיקה.")));
     return () => {
       alive = false;
-      setMusicBuffer(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [musicKey]);
+
+  // An uploaded song's tempo, found once per file (owner, 2026-10-15: the beat templates work with
+  // the photographer's own music too). The reel then starts on the song's first beat.
+  useEffect(() => {
+    if (settings.music.source !== "upload" || !musicBuffer || !musicKey || uploadTempo?.key === musicKey) return;
+    const timer = setTimeout(() => {
+      let found: DetectedTempo | null = null;
+      try {
+        found = detectTempoFromBuffer(musicBuffer);
+      } catch {
+        found = null;
+      }
+      setUploadTempo({ key: musicKey, tempo: found });
+      // A first beat right at the start (or a hair before the next one) needs no skip.
+      const firstBeat = found ? found.firstBeat : 0;
+      if (found && firstBeat > 0.03 && 60 / found.bpm - firstBeat > 0.03) {
+        setSettings((s) => (s.music.source === "upload" && s.music.offset === 0 ? { ...s, music: { ...s.music, offset: firstBeat } } : s));
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [settings.music.source, musicBuffer, musicKey, uploadTempo]);
   useEffect(() => () => playerRef.current?.close(), []);
 
   // Live preview: the same frames as the export, drawn small. With music, the music is the clock
@@ -314,7 +420,7 @@ export default function ReelBuilder({
           if (!v.paused) v.pause();
           return;
         }
-        const want = Math.min(local, Math.max(0, img.video.duration - 0.05));
+        const want = img.video.start + Math.min(local, Math.max(0, img.video.duration - 0.05));
         if (playing) {
           if (v.paused && local < img.video.duration - 0.05) v.play().catch(() => {});
           if (Math.abs(v.currentTime - want) > 0.3) v.currentTime = want;
@@ -349,10 +455,16 @@ export default function ReelBuilder({
       const d = defaultLineStyles(tp);
       const styles = { ...s.text.styles };
       for (const id of Object.keys(styles) as ReelLineId[]) styles[id] = { ...styles[id], color: d[id].color };
-      return { ...s, templateId: tp.id, transitions: [], text: { ...s.text, styles } };
+      // A beat template comes with the track it's made for, when the reel has no music yet.
+      const music = tp.beat && s.music.source === "none" ? { ...s.music, source: "library" as const, trackId: tp.beat.track, offset: 0 } : s.music;
+      return { ...s, templateId: tp.id, transitions: [], fx: null, music, text: { ...s.text, styles } };
     });
+    if (tp.beat) setPlaying(true);
     seek(0);
   };
+  // The effects on now (the template's own until the photographer picks), and a tap on one.
+  const fxOn = useMemo<ReelBeatFx[]>(() => settings.fx ?? (tpl.fx ? Array.from(new Set([...tpl.fx.cut, ...(tpl.fx.pulse ?? []), ...(tpl.fx.accent ?? [])])) : []), [settings.fx, tpl]);
+  const toggleFx = (id: ReelBeatFx) => setSettings((s) => ({ ...s, fx: fxOn.includes(id) ? fxOn.filter((x) => x !== id) : [...fxOn, id] }));
   const toggleTransition = (id: ReelTransition) =>
     setSettings((s) => {
       const current = transitionPool(templateById(s.templateId), s);
@@ -402,13 +514,13 @@ export default function ReelBuilder({
           setVideoError(t("קטע הווידאו גדול מדי (עד 500MB)."));
           continue;
         }
+        const url = URL.createObjectURL(file);
         try {
-          const v = await loadDeviceVideo(file);
+          const v = await loadClipVideo(url, false);
           const id = `video:${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-          setVideos((prev) => new Map(prev).set(id, v));
-          setImages((prev) => new Map(prev).set(id, { el: v.el, width: v.el.videoWidth, height: v.el.videoHeight, live: true, video: { duration: v.duration } }));
-          setSelected((prev) => (prev.length >= MAX_PHOTOS ? prev : [...prev, id]));
+          addClip(id, { ...v, source: { kind: "file", file }, url });
         } catch {
+          URL.revokeObjectURL(url);
           setVideoError(t("הדפדפן לא הצליח לפתוח את קטע הווידאו הזה."));
         }
       }
@@ -416,20 +528,96 @@ export default function ReelBuilder({
       setAddingVideo(false);
     }
   };
+  // A loaded clip joins the reel (at the end, like a picked photo).
+  const addClip = (id: string, clip: ClipVideo) => {
+    setVideos((prev) => new Map(prev).set(id, clip));
+    setImages((prev) => new Map(prev).set(id, { el: clip.el, width: clip.el.videoWidth, height: clip.el.videoHeight, live: true, video: { duration: clip.duration, start: 0 } }));
+    setClipOpts((prev) => new Map(prev).set(id, CLIP_DEFAULTS));
+    setSelected((prev) => (prev.length >= MAX_PHOTOS || prev.includes(id) ? prev : [...prev, id]));
+  };
+  // One of the gallery's videos in or out of the reel. It streams from storage; a signed link that
+  // ran out (after 30 minutes) is renewed when the player hits it.
+  const toggleGalleryVideo = async (gv: GalleryVideo) => {
+    const id = galleryClipId(gv.id);
+    setVideoError(null);
+    if (selected.includes(id)) {
+      removeItem(id);
+      return;
+    }
+    if (loadingClips.has(gv.id)) return;
+    if (videos.size >= MAX_VIDEOS) {
+      setVideoError(t("אפשר להוסיף עד {n} קטעי וידאו.", { n: MAX_VIDEOS }));
+      return;
+    }
+    setLoadingClips((prev) => new Set(prev).add(gv.id));
+    try {
+      const url = await galleryVideoUrl(galleryId, gv.id);
+      const v = await loadClipVideo(url, true);
+      let renewedAt = 0;
+      v.el.addEventListener("error", () => {
+        if (Date.now() - renewedAt < 60_000) return;
+        renewedAt = Date.now();
+        const at = v.el.currentTime;
+        galleryVideoUrl(galleryId, gv.id)
+          .then((fresh) => {
+            v.el.src = fresh;
+            v.el.currentTime = at;
+          })
+          .catch(() => {});
+      });
+      addClip(id, { ...v, source: { kind: "gallery", videoId: gv.id }, url });
+    } catch {
+      setVideoError(t("לא הצלחנו לפתוח את הסרטון מהגלריה. ייתכן שהדפדפן לא תומך בפורמט שלו."));
+    } finally {
+      setLoadingClips((prev) => {
+        const next = new Set(prev);
+        next.delete(gv.id);
+        return next;
+      });
+    }
+  };
   const removeItem = (id: string) => {
     setSelected((prev) => prev.filter((x) => x !== id));
+    if (editingClip === id) setEditingClip(null);
     if (isVideoId(id)) {
       const v = videos.get(id);
       if (v) {
         v.el.pause();
-        URL.revokeObjectURL(v.url);
+        if (v.source.kind === "file") URL.revokeObjectURL(v.url);
+        else v.el.removeAttribute("src");
       }
       setVideos((prev) => {
         const next = new Map(prev);
         next.delete(id);
         return next;
       });
+      setImages((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
     }
+  };
+  // Where a clip starts in the reel (to show it in the preview while it's being edited).
+  const clipTime = (id: string) => {
+    const seg = Math.floor(readyIds.indexOf(id) / perSeg);
+    return seg >= 0 && seg < timeline.segments ? timeline.starts[seg] : null;
+  };
+  const setClip = (id: string, patch: Partial<ClipOptions>) => {
+    setClipOpts((prev) => new Map(prev).set(id, { ...(prev.get(id) ?? CLIP_DEFAULTS), ...patch }));
+    const at = clipTime(id);
+    if (at !== null) seek(at + 0.01);
+  };
+  // Which way a clip is cut to fit the reel's shape ("x": its sides, "y": top and bottom), or null
+  // when it's shown whole (the same rule as drawPhoto in scene.ts).
+  const clipCropAxis = (el: HTMLVideoElement, fit: ReelFit): "x" | "y" | null => {
+    if (tpl.frame === "framed" || !el.videoWidth || !el.videoHeight) return null;
+    const rw = platform.width;
+    const rh = tpl.frame === "split" ? platform.height / 2 : platform.height;
+    const cover = Math.max(rw / el.videoWidth, rh / el.videoHeight);
+    const visible = Math.min(rw / el.videoWidth, rh / el.videoHeight) / cover;
+    if (visible > 0.995 || (fit !== "cover" && visible < FIT_MIN_VISIBLE)) return null;
+    return el.videoWidth / el.videoHeight > rw / rh ? "x" : "y";
   };
   const toggle = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= MAX_PHOTOS ? prev : [...prev, id]));
@@ -471,14 +659,29 @@ export default function ReelBuilder({
       const feeds: { frames: Set<number>; next: () => Promise<void> }[] = [];
       const clipIdx = readyImages.map((im, i) => (im.live ? i : -1)).filter((i) => i >= 0);
       if (clipIdx.length) {
-        const { Input, BlobSource, ALL_FORMATS, CanvasSink } = await import("mediabunny");
+        const { Input, BlobSource, UrlSource, ALL_FORMATS, CanvasSink } = await import("mediabunny");
+        const openTrack = (source: InstanceType<typeof BlobSource> | InstanceType<typeof UrlSource>) => new Input({ source, formats: ALL_FORMATS }).getPrimaryVideoTrack();
         const frameCount = Math.max(1, Math.round(timeline.total * 30));
         for (const i of clipIdx) {
           const dv = videos.get(readyIds[i]);
           const img = readyImages[i];
           if (!dv || !img.video) continue;
-          const input = new Input({ source: new BlobSource(dv.file), formats: ALL_FORMATS });
-          const trackIn = await input.getPrimaryVideoTrack();
+          let trackIn: Awaited<ReturnType<typeof openTrack>> = null;
+          try {
+            if (dv.source.kind === "file") trackIn = await openTrack(new BlobSource(dv.source.file));
+            else {
+              // A gallery video is read from storage in parts (only what the reel uses); a browser
+              // that won't read parts of it gets the whole file.
+              const url = await galleryVideoUrl(galleryId, dv.source.videoId);
+              try {
+                trackIn = await openTrack(new UrlSource(url, { getRetryDelay: (n) => (n < 3 ? 1 : null) }));
+              } catch {
+                trackIn = await openTrack(new BlobSource(await (await fetch(url)).blob()));
+              }
+            }
+          } catch {
+            trackIn = null;
+          }
           if (!trackIn || !(await trackIn.canDecode())) {
             setVideoError(t("הדפדפן לא יכול לפענח את אחד מקטעי הווידאו, הוא יופיע כתמונה קפואה."));
             continue;
@@ -498,7 +701,7 @@ export default function ReelBuilder({
             const hit = activeMedia(f / 30, timeline, tpl, settings, readyImages.length).find((a) => a.index === i);
             if (!hit) continue;
             frames.add(f);
-            stamps.push(first + Math.min(hit.local, Math.max(0, img.video.duration - 0.04)));
+            stamps.push(first + img.video.start + Math.min(hit.local, Math.max(0, img.video.duration - 0.04)));
           }
           const sink = new CanvasSink(trackIn, { width: w, height: h, fit: "fill", poolSize: 1 });
           const it = sink.canvasesAtTimestamps(stamps)[Symbol.asyncIterator]();
@@ -509,7 +712,8 @@ export default function ReelBuilder({
               if (!r.done && r.value) hctx.drawImage(r.value.canvas, 0, 0, w, h);
             },
           });
-          exportImages[i] = { el: holder, width: w, height: h, live: true, video: img.video };
+          // The same clip (its in-point, fit and crop), drawn from the decoded frames.
+          exportImages[i] = { ...img, el: holder, width: w, height: h };
         }
       }
       const blob = await exportReelMp4({
@@ -628,20 +832,29 @@ export default function ReelBuilder({
                   <p className={sectionTitle}>{t("תבנית")}</p>
                   <p className={sectionHint}>{t("התנועה, המעברים והטקסט של הסרטון. אפשר לשנות כל אחד מהם אחר כך.")}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {REEL_TEMPLATES.map((tp) => {
-                      const active = settings.templateId === tp.id;
-                      return (
-                        <button
-                          key={tp.id}
-                          onClick={() => chooseTemplate(tp)}
-                          className={`text-start rounded-md border p-3 transition-colors ${active ? "border-amber-deep bg-amber-bg" : "border-line bg-white hover:border-amber-deep"}`}
-                        >
-                          <span className="block text-sm font-semibold font-display">{t(tp.label)}</span>
-                          <span className="block text-[11px] text-ink-soft leading-snug mt-1">{t(tp.description)}</span>
-                        </button>
-                      );
-                    })}
+                    {REEL_TEMPLATES.filter((tp) => !tp.beat).map((tp) => (
+                      <TemplateCard key={tp.id} tp={tp} active={settings.templateId === tp.id} onPick={() => chooseTemplate(tp)} />
+                    ))}
                   </div>
+                </section>
+
+                <section>
+                  <p className={sectionTitle}>{t("על הביט")}</p>
+                  <p className={sectionHint}>
+                    {t("כמו בקאפקאט: כל חיתוך נופל בדיוק על הביט של השיר, עם אפקט שמכה עליו. כל תבנית באה עם שיר מהספרייה, ואפשר להחליף אותו או להעלות שיר משלכם.")}
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {REEL_TEMPLATES.filter((tp) => tp.beat).map((tp) => (
+                      <TemplateCard key={tp.id} tp={tp} active={settings.templateId === tp.id} onPick={() => chooseTemplate(tp)} />
+                    ))}
+                  </div>
+                  {tpl.beat && !tempo && (
+                    <p className="text-[11px] text-rose mt-2">
+                      {settings.music.source === "upload" && uploadTempo?.key === musicKey
+                        ? t("לא זיהינו קצב קבוע בשיר שהעליתם, ולכן החיתוכים לא נופלים על הביט. אפשר לבחור שיר מהספרייה.")
+                        : t("כדי שהחיתוכים ייפלו על הביט, בחרו שיר בלשונית המוזיקה.")}
+                    </p>
+                  )}
                 </section>
 
                 <section>
@@ -687,14 +900,51 @@ export default function ReelBuilder({
                   <span className="shrink-0 text-xs font-semibold text-amber-deep">▶ {t("וידאו")}</span>
                   <input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" multiple className="hidden" disabled={addingVideo} onChange={(e) => { addVideos(e.target.files); e.target.value = ""; }} />
                 </label>
+                {galleryVideos.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs font-semibold mb-0.5">{t("סרטונים מהגלריה")}</p>
+                    <p className="text-[11px] text-ink-soft mb-1.5">{t("לחיצה מוסיפה את הסרטון לרילס. אחרי שהוא נוסף, ✂ על התמונה הקטנה שלו בוחר מאיזו שנייה הוא מתחיל ואיזה חלק מהפריים נשאר.")}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {galleryVideos.map((gv) => {
+                        const on = selected.includes(galleryClipId(gv.id));
+                        const busy = loadingClips.has(gv.id);
+                        return (
+                          <button
+                            key={gv.id}
+                            onClick={() => toggleGalleryVideo(gv)}
+                            disabled={busy}
+                            className={`flex items-center gap-2 max-w-full rounded-md border px-2.5 py-1.5 text-xs transition-colors ${on ? "border-amber-deep bg-amber-bg font-semibold" : "border-line bg-white hover:border-amber-deep"} ${busy ? "opacity-60" : ""}`}
+                          >
+                            <span className="shrink-0 text-amber-deep">{busy ? <span className="inline-block h-3 w-3 rounded-full border-2 border-line border-t-amber-deep animate-spin align-middle" /> : on ? "✓" : "▶"}</span>
+                            <span className="truncate max-w-[180px]" dir="auto">{gv.name}</span>
+                            {gv.size ? <span className="shrink-0 text-[10px] text-ink-soft font-data">{Math.max(1, Math.round(gv.size / 1048576))}MB</span> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 {videoError && <p className="text-xs text-rose -mt-1.5 mb-2">{videoError}</p>}
                 <div className="flex gap-1.5 overflow-x-auto pb-1">
                   {selected.map((id, i) => (
                     <div key={id} className="relative shrink-0 w-16">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={thumbOf.get(id)} alt="" className="h-20 w-16 object-cover rounded-sm" />
+                      {thumbOf.get(id) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={thumbOf.get(id)} alt="" className={`h-20 w-16 object-cover rounded-sm ${editingClip === id ? "ring-2 ring-amber-deep" : ""}`} />
+                      ) : (
+                        <span className={`flex h-20 w-16 items-center justify-center rounded-sm bg-ink text-white/80 text-lg ${editingClip === id ? "ring-2 ring-amber-deep" : ""}`}>▶</span>
+                      )}
                       <span className="absolute top-0.5 start-0.5 min-w-4 h-4 px-1 rounded-sm bg-black/70 text-white text-[10px] flex items-center justify-center font-data">{i + 1}</span>
                       {isVideoId(id) && <span className="absolute bottom-6 start-0.5 rounded-sm bg-black/70 px-1 text-[10px] text-white">▶ {(videos.get(id)?.duration ?? 0).toFixed(1)}s</span>}
+                      {isVideoId(id) && (
+                        <button
+                          onClick={() => setEditingClip((cur) => (cur === id ? null : id))}
+                          className={`absolute top-5 end-0.5 h-4 w-4 rounded-sm text-[10px] flex items-center justify-center ${editingClip === id ? "bg-amber-deep text-white" : "bg-black/70 text-white"}`}
+                          aria-label={t("עריכת קטע הווידאו")}
+                        >
+                          ✂
+                        </button>
+                      )}
                       <button onClick={() => removeItem(id)} className="absolute top-0.5 end-0.5 h-4 w-4 rounded-sm bg-black/70 text-white text-[10px] flex items-center justify-center" aria-label={t("הסרה מהרילס")}>
                         ✕
                       </button>
@@ -710,6 +960,17 @@ export default function ReelBuilder({
                   ))}
                   {selected.length === 0 && <p className="text-xs text-ink-soft py-6">{t("בחרו תמונות כדי להתחיל")}</p>}
                 </div>
+                {editingClip && videos.has(editingClip) && selected.includes(editingClip) && (
+                  <ClipEditor
+                    clip={videos.get(editingClip)!}
+                    options={clipOpts.get(editingClip) ?? CLIP_DEFAULTS}
+                    reelFit={settings.fit}
+                    framed={tpl.frame === "framed"}
+                    cropAxis={clipCropAxis(videos.get(editingClip)!.el, clipOpts.get(editingClip)?.fit ?? settings.fit)}
+                    onChange={(patch) => setClip(editingClip, patch)}
+                    onDone={() => setEditingClip(null)}
+                  />
+                )}
                 {picking && (
                   <div className="mt-2 grid grid-cols-5 sm:grid-cols-8 gap-1 max-h-72 overflow-y-auto">
                     {photos.map((p) => {
@@ -739,6 +1000,20 @@ export default function ReelBuilder({
                 onTemplateMix={() => setSettings((s) => ({ ...s, transitions: [] }))}
                 onAll={() => setSettings((s) => ({ ...s, transitions: REEL_TRANSITIONS.map((x) => x.id) }))}
                 onShuffle={() => setSettings((s) => ({ ...s, seed: (s.seed % 9973) + 1 + Math.floor(Math.random() * 500) }))}
+                sectionTitle={sectionTitle}
+                sectionHint={sectionHint}
+              />
+            )}
+            {tab === "transitions" && (
+              <FxPicker
+                tpl={tpl}
+                settings={settings}
+                images={readyImages}
+                on={fxOn}
+                onToggle={toggleFx}
+                onTemplate={() => setSettings((s) => ({ ...s, fx: null }))}
+                onNone={() => setSettings((s) => ({ ...s, fx: [] }))}
+                onBeat={!!bpm}
                 sectionTitle={sectionTitle}
                 sectionHint={sectionHint}
               />
@@ -801,6 +1076,15 @@ export default function ReelBuilder({
                     />
                   </label>
                   {musicError && <p className="text-xs text-rose mt-1.5">{musicError}</p>}
+                  {settings.music.source === "upload" && musicBuffer && (
+                    <p className="text-[11px] text-ink-soft mt-1.5">
+                      {uploadTempo?.key !== musicKey
+                        ? t("מזהה את הקצב של השיר…")
+                        : detected
+                          ? t("זיהינו קצב של {bpm} BPM: החיתוכים בין התמונות נופלים על הביט של השיר.", { bpm: Math.round(detected.bpm) })
+                          : t("לא זיהינו קצב קבוע בשיר הזה, ולכן החיתוכים לא נופלים על הביט.")}
+                    </p>
+                  )}
                 </section>
                 {musicUrl && (
                   <section className="space-y-3">
@@ -815,11 +1099,18 @@ export default function ReelBuilder({
                         value={Math.round(settings.music.offset * 10) / 10}
                         min={0}
                         max={Math.max(1, Math.floor((track?.seconds ?? musicBuffer?.duration ?? 60) - 1))}
-                        step={track ? 60 / track.bpm : 0.5}
+                        step={bpm ? 60 / bpm : 0.5}
                         suffix="s"
                         onChange={(v) => {
-                          // A library track starts on a beat, so the cuts stay on the music's beat.
-                          const snapped = track ? Math.round(v / (60 / track.bpm)) * (60 / track.bpm) : v;
+                          // The reel starts on one of the song's beats (a library track's first beat
+                          // is at 0, an uploaded song's where it was detected), so the cuts stay on it.
+                          const first = track ? 0 : detected?.firstBeat ?? null;
+                          let snapped = v;
+                          if (bpm && first !== null) {
+                            const beatLen = 60 / bpm;
+                            snapped = first + Math.round((v - first) / beatLen) * beatLen;
+                            if (snapped < 0) snapped += beatLen;
+                          }
                           setSettings((s) => ({ ...s, music: { ...s.music, offset: Math.max(0, snapped) } }));
                           seek(0);
                         }}
@@ -994,6 +1285,7 @@ export default function ReelBuilder({
               tail={timeline.tail}
               time={previewTime}
               beat={bpm ? 60 / bpm : null}
+              phase={timeline.phase}
               onSeek={seek}
               onDurs={(durs) => setDurState({ keys: segKeys.slice(0, timeline.segments), durs })}
               onReorder={reorderSegments}
@@ -1236,5 +1528,199 @@ function LineEditor({
         {numberBox(style.rotate, -45, 45, (v) => onStyle({ rotate: v }), "°")}
       </div>
     </div>
+  );
+}
+
+// A template in the picker; a beat template also names the track it's made for.
+function TemplateCard({ tp, active, onPick }: { tp: ReelTemplate; active: boolean; onPick: () => void }) {
+  const t = useT();
+  const track = tp.beat ? trackById(tp.beat.track) : null;
+  return (
+    <button onClick={onPick} className={`text-start rounded-md border p-3 transition-colors ${active ? "border-amber-deep bg-amber-bg" : "border-line bg-white hover:border-amber-deep"}`}>
+      <span className="block text-sm font-semibold font-display">{t(tp.label)}</span>
+      <span className="block text-[11px] text-ink-soft leading-snug mt-1">{t(tp.description)}</span>
+      {track && (
+        <span className="block text-[10px] text-amber-deep font-semibold mt-1.5">
+          ♪ {t(track.label)} <span className="font-data">· {track.bpm} BPM</span>
+        </span>
+      )}
+    </button>
+  );
+}
+
+// One video clip's options: where in it the reel's part starts, how it fits the reel's shape, and
+// (when it's cropped) which part of the frame stays. The preview jumps to the clip on every change.
+function ClipEditor({
+  clip,
+  options,
+  reelFit,
+  framed,
+  cropAxis,
+  onChange,
+  onDone,
+}: {
+  clip: ClipVideo;
+  options: ClipOptions;
+  reelFit: ReelFit;
+  framed: boolean;
+  cropAxis: "x" | "y" | null;
+  onChange: (patch: Partial<ClipOptions>) => void;
+  onDone: () => void;
+}) {
+  const t = useT();
+  const maxStart = Math.max(0, Math.floor((clip.duration - MIN_SEGMENT) * 10) / 10);
+  const whole: ReelFit = reelFit === "cover" ? "blur" : reelFit;
+  const fit = options.fit ?? reelFit;
+  const fits: { id: ReelFit | null; label: string }[] = [
+    { id: "cover", label: t("חיתוך למילוי המסך") },
+    { id: whole, label: t("הסרטון שלם") },
+    { id: null, label: t("כמו התמונות") },
+  ];
+  return (
+    <div className="mt-3 rounded-md border border-line bg-white p-3.5 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-display text-sm font-semibold">{t("עריכת קטע הווידאו")}</p>
+        <button onClick={onDone} className="text-xs font-semibold text-amber-deep underline underline-offset-2">
+          {t("סיום")}
+        </button>
+      </div>
+      <div>
+        <p className="text-xs font-semibold">{t("התחלה מתוך הקטע")}</p>
+        <p className="text-[11px] text-ink-soft mb-1">{t("מאיזו שנייה בסרטון הקטע מתחיל. הוא מתנגן משם, כל עוד הזמן שלו בציר נמשך. אורך הסרטון: {n} שניות.", { n: clip.duration.toFixed(1) })}</p>
+        <SliderNumber value={Math.round(Math.min(options.start, maxStart) * 10) / 10} min={0} max={maxStart} step={0.1} suffix="s" onChange={(v) => onChange({ start: v })} />
+      </div>
+      {!framed && (
+        <div>
+          <p className="text-xs font-semibold mb-1">{t("התאמה לגודל הרילס")}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {fits.map((f) => (
+              <button
+                key={f.label}
+                onClick={() => onChange({ fit: f.id })}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors ${options.fit === f.id ? "bg-ink text-white border-ink" : "bg-white border-line text-ink hover:border-amber-deep"}`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {cropAxis ? (
+        <div>
+          <p className="text-xs font-semibold">{t("מיקום החיתוך")}</p>
+          <p className="text-[11px] text-ink-soft mb-1">
+            {cropAxis === "x" ? t("הסרטון רחב מהרילס ונחתך בצדדים. בחרו איזה חלק ממנו נשאר.") : t("הסרטון גבוה מהרילס ונחתך למעלה ולמטה. בחרו איזה חלק ממנו נשאר.")}
+          </p>
+          <div className="flex items-center gap-2" dir="ltr">
+            <span className="text-[11px] text-ink-soft w-12 text-center">{cropAxis === "x" ? t("שמאל") : t("למעלה")}</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round(options.focus * 100)}
+              onChange={(e) => onChange({ focus: Number(e.target.value) / 100 })}
+              className="flex-1"
+              style={{ accentColor: "var(--color-amber-deep)" }}
+            />
+            <span className="text-[11px] text-ink-soft w-12 text-center">{cropAxis === "x" ? t("ימין") : t("למטה")}</span>
+          </div>
+        </div>
+      ) : (
+        !framed &&
+        fit !== "cover" && <p className="text-[11px] text-ink-soft">{t("הסרטון מוצג שלם. כדי שימלא את המסך, בחרו \"חיתוך למילוי המסך\".")}</p>
+      )}
+    </div>
+  );
+}
+
+// The on-beat effects, each a small live loop of a cut with the effect hitting on it. Tapping one
+// adds it to, or takes it out of, the effects every cut gets.
+function FxPicker({
+  tpl,
+  settings,
+  images,
+  on,
+  onToggle,
+  onTemplate,
+  onNone,
+  onBeat,
+  sectionTitle,
+  sectionHint,
+}: {
+  tpl: ReelTemplate;
+  settings: ReelSettings;
+  images: ReelImage[];
+  on: ReelBeatFx[];
+  onToggle: (id: ReelBeatFx) => void;
+  onTemplate: () => void;
+  onNone: () => void;
+  onBeat: boolean;
+  sectionTitle: string;
+  sectionHint: string;
+}) {
+  const t = useT();
+  const canvases = useRef(new Map<ReelBeatFx, HTMLCanvasElement>());
+  const sample = useMemo(() => images.slice(0, 2), [images]);
+
+  useEffect(() => {
+    let raf = 0;
+    const start = performance.now();
+    let last = 0;
+    const loop = (now: number) => {
+      if (now - last > 33) {
+        last = now;
+        const q = (((now - start) / 1000) % 1.8) / 1.8;
+        for (const [id, c] of canvases.current) {
+          const ctx = c.getContext("2d");
+          if (ctx) drawFxPreview(ctx, c.width, c.height, id, q, tpl, settings, sample);
+        }
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [tpl, settings, sample]);
+
+  return (
+    <section className="mt-7">
+      <p className={sectionTitle}>{t("אפקטים על הביט")}</p>
+      <p className={sectionHint}>
+        {onBeat
+          ? t("האפקטים המסומנים מכים בכל חיתוך, והחיתוכים נופלים על הביט של השיר. לחיצה מוסיפה או מורידה אפקט.")
+          : t("האפקטים המסומנים מכים בכל חיתוך. עם שיר מהספרייה, או שיר שזיהינו את הקצב שלו, החיתוכים נופלים על הביט.")}
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5 mb-3">
+        <button onClick={onTemplate} className={`px-3 py-1.5 rounded-md text-xs font-semibold border ${settings.fx === null ? "bg-ink text-white border-ink" : "bg-white border-line"}`}>
+          {t("האפקטים של התבנית")}
+        </button>
+        <button onClick={onNone} className={`px-3 py-1.5 rounded-md text-xs font-semibold border ${settings.fx !== null && on.length === 0 ? "bg-ink text-white border-ink" : "bg-white border-line"}`}>
+          {t("בלי אפקטים")}
+        </button>
+        <span className="text-[11px] text-ink-soft ms-auto">{t("{n} אפקטים בשימוש", { n: on.length })}</span>
+      </div>
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
+        {REEL_BEAT_FX.map((x) => {
+          const active = on.includes(x.id);
+          return (
+            <button key={x.id} onClick={() => onToggle(x.id)} className="text-center">
+              <span className={`relative block overflow-hidden rounded-sm transition-shadow ${active ? "ring-2 ring-amber-deep" : "ring-1 ring-line"}`}>
+                <canvas
+                  ref={(el) => {
+                    if (el) canvases.current.set(x.id, el);
+                    else canvases.current.delete(x.id);
+                  }}
+                  width={120}
+                  height={150}
+                  className="block w-full h-auto bg-black"
+                />
+                {active && <span className="absolute top-1 end-1 h-5 w-5 rounded-full bg-amber-deep text-white text-[11px] flex items-center justify-center shadow">✓</span>}
+              </span>
+              <span className={`block text-[11px] mt-1 ${active ? "text-ink font-semibold" : "text-ink-soft"}`}>{t(x.label)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }

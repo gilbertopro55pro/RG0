@@ -21,6 +21,12 @@ export function drawTransition(ctx: CanvasRenderingContext2D, sc: Scene, kind: R
     return;
   }
   switch (kind) {
+    case "cut": {
+      // Runs for no time in a reel (transitionLength is 0); the picker's thumbnail just cuts.
+      if (q < 0.5) A();
+      else B();
+      return;
+    }
     case "fade": {
       A();
       ctx.save();

@@ -22,6 +22,7 @@ export const REEL_PLATFORMS: ReelPlatform[] = [
 // picker by category like CapCut's (owner, 2026-10-07: "the transitions should be more varied and
 // random"; then "10 more in every category").
 export type BaseTransition =
+  | "cut"
   | "fade"
   | "slide"
   | "push"
@@ -62,6 +63,8 @@ export const REEL_TRANSITION_CATEGORIES: { id: ReelTransitionCategory; label: st
 // `min` is the shortest the transition can run (seconds, at the template's own pace): a tile or a
 // rotation needs longer than the template's own (e.g. 0.18s for the fast beat) to read at all.
 const BASE_TRANSITIONS: { id: BaseTransition; label: string; category: ReelTransitionCategory; min: number }[] = [
+  // No transition: the next photo is there at once, exactly on the cut (the beat templates' own).
+  { id: "cut", label: "חיתוך חד", category: "basic", min: 0 },
   { id: "fade", label: "דהייה", category: "basic", min: 0.4 },
   { id: "slide", label: "החלקה לצד", category: "basic", min: 0.35 },
   { id: "push", label: "דחיפה למעלה", category: "basic", min: 0.35 },
@@ -92,6 +95,28 @@ export const REEL_TRANSITIONS: { id: ReelTransition; label: string; category: Re
 export function transitionInfo(id: ReelTransition) {
   return REEL_TRANSITIONS.find((x) => x.id === id) ?? REEL_TRANSITIONS[0];
 }
+// Effects that fire on the beat (owner, 2026-10-15: "templates like CapCut's, where the transitions
+// happen exactly on the beat, with special effects"). Each one hits at a cut (or a beat) and fades
+// out in a fraction of a second; see beatFx.ts.
+export type ReelBeatFx = "punch" | "shake" | "flash" | "rgb" | "zoomblur" | "glitch" | "strobe" | "invert" | "bw" | "mirror";
+
+export const REEL_BEAT_FX: { id: ReelBeatFx; label: string }[] = [
+  { id: "punch", label: "זום חבטה" },
+  { id: "shake", label: "רעידה" },
+  { id: "flash", label: "הבזק" },
+  { id: "rgb", label: "פיצול צבעים" },
+  { id: "zoomblur", label: "זום מטושטש" },
+  { id: "glitch", label: "גליץ'" },
+  { id: "strobe", label: "סטרובו" },
+  { id: "invert", label: "נגטיב" },
+  { id: "bw", label: "שחור־לבן" },
+  { id: "mirror", label: "מסך משולש" },
+];
+
+// Which effects a template fires: on every cut, on the beats in between (softer), and on every
+// `accentEvery`-th cut (stronger, e.g. the start of a bar).
+export type ReelFxSpec = { cut: ReelBeatFx[]; pulse?: ReelBeatFx[]; accent?: ReelBeatFx[]; accentEvery?: number };
+
 export type ReelMotion = "kenburns" | "punch" | "pan" | "drift";
 export type ReelFrame = "full" | "framed" | "split";
 export type ReelTextStyle = "serif" | "bold" | "cinema" | "magazine" | "modern";
@@ -113,6 +138,10 @@ export type ReelTemplate = {
   textStyle: ReelTextStyle;
   // The colour the text and any thin lines use by default.
   accent: string;
+  // Beat templates: how many beats each photo stays (the pattern repeats), and the library track
+  // the template is made for (picked with it when the reel has no music yet).
+  beat?: { pattern: number[]; track: string };
+  fx?: ReelFxSpec;
 };
 
 export const REEL_TEMPLATES: ReelTemplate[] = [
@@ -186,6 +215,121 @@ export const REEL_TEMPLATES: ReelTemplate[] = [
     textStyle: "modern",
     accent: "#ffffff",
   },
+  // ---- On the beat (owner, 2026-10-15): every cut lands exactly on the music's beat, with an
+  // effect that hits on it. Made for the library tracks (their tempo is known) or an uploaded song
+  // whose tempo was detected. ----
+  {
+    id: "beat-flash",
+    label: "הבזק על הביט",
+    description: "חיתוך חד על כל ביט, הבזק לבן וזום קטן שקופץ עם הקצב",
+    photoSeconds: 1,
+    transitionSeconds: 0.2,
+    transitions: ["cut"],
+    motion: "drift",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "bold",
+    accent: "#ffffff",
+    beat: { pattern: [2, 2, 1, 1, 2], track: "celebration" },
+    fx: { cut: ["flash", "punch"], pulse: ["punch"] },
+  },
+  {
+    id: "beat-zoom",
+    label: "זום על הביט",
+    description: "מעברי זום קצרים שנוחתים על הביט, וזום חבטה בכל פעימה",
+    photoSeconds: 1,
+    transitionSeconds: 0.22,
+    transitions: ["zoomin", "crosszoom", "punch", "zoomblur"],
+    motion: "punch",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "bold",
+    accent: "#ffffff",
+    beat: { pattern: [1, 1, 1, 1, 2, 2], track: "energy" },
+    fx: { cut: ["punch", "zoomblur"], pulse: ["punch"] },
+  },
+  {
+    id: "beat-glitch",
+    label: "גליץ' על הביט",
+    description: "פיצול צבעים וגליץ' על כל חיתוך, ונגטיב קצר בתחילת כל תיבה",
+    photoSeconds: 1,
+    transitionSeconds: 0.2,
+    transitions: ["cut", "rgbsplit", "tear", "glitch"],
+    motion: "drift",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "modern",
+    accent: "#ffffff",
+    beat: { pattern: [2, 1, 1, 2, 2], track: "energy" },
+    fx: { cut: ["rgb", "glitch"], accent: ["invert"], accentEvery: 4 },
+  },
+  {
+    id: "beat-shake",
+    label: "רעידה ובום",
+    description: "תנועת שוט ונחיתה על הביט, עם רעידה והבזק",
+    photoSeconds: 1.4,
+    transitionSeconds: 0.24,
+    transitions: ["cut", "whip", "hshake", "slam"],
+    motion: "drift",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "bold",
+    accent: "#ffffff",
+    beat: { pattern: [2, 2, 4], track: "celebration" },
+    fx: { cut: ["shake", "flash"], pulse: ["shake"] },
+  },
+  {
+    id: "beat-strobe",
+    label: "סטרובו",
+    description: "חיתוכים מהירים על כל ביט עם הבזקי סטרובו, ושחור־לבן בתחילת תיבה",
+    photoSeconds: 0.6,
+    transitionSeconds: 0.18,
+    transitions: ["cut"],
+    motion: "punch",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "modern",
+    accent: "#ffffff",
+    beat: { pattern: [1, 1, 1, 1, 1, 1, 2], track: "energy" },
+    fx: { cut: ["strobe"], accent: ["bw"], accentEvery: 4 },
+  },
+  {
+    id: "beat-split",
+    label: "מסך משולש",
+    description: "על כל חיתוך התמונה מתפצלת לשלושה מסכים לרגע, ואז ממלאת את המסך",
+    photoSeconds: 1.4,
+    transitionSeconds: 0.25,
+    transitions: ["cut", "slide", "push"],
+    motion: "drift",
+    frame: "full",
+    letterbox: false,
+    grain: false,
+    textStyle: "modern",
+    accent: "#ffffff",
+    beat: { pattern: [2, 2, 4], track: "acoustic" },
+    fx: { cut: ["mirror", "flash"], pulse: ["punch"] },
+  },
+  {
+    id: "beat-cinema",
+    label: "קולנועי על הביט",
+    description: "פסים שחורים, מעבר מטושטש שנוחת על הביט והבזק רך בשיא",
+    photoSeconds: 2.6,
+    transitionSeconds: 0.4,
+    transitions: ["zoomblur", "whip", "leak", "dipwhite"],
+    motion: "pan",
+    frame: "full",
+    letterbox: true,
+    grain: true,
+    textStyle: "cinema",
+    accent: "#e9d8b0",
+    beat: { pattern: [4, 4, 2, 2, 4], track: "cinematic" },
+    fx: { cut: ["zoomblur"], accent: ["flash"], accentEvery: 2 },
+  },
 ];
 
 export type ReelTextPosition = "top" | "center" | "bottom";
@@ -239,6 +383,8 @@ export type ReelSettings = {
   // ("shuffle" picks a new one).
   transitions: ReelTransition[];
   seed: number;
+  // The on-beat effects ([] = none), or null for the template's own.
+  fx: ReelBeatFx[] | null;
   text: ReelText;
   music: ReelMusic;
 };

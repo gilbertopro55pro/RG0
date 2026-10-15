@@ -1,6 +1,7 @@
 import { REEL_TRANSITIONS, transitionInfo, type ReelLineStyle, type ReelSettings, type ReelTemplate, type ReelTransition } from "./templates";
 import { clamp01, drawGrain, drawSegment, easeOut, type ReelImage, type Scene } from "./scene";
 import { drawTransition } from "./transitions";
+import { applyFxPost, applyFxTransform, fxEvents, fxSpec } from "./beatFx";
 
 export type { ReelImage } from "./scene";
 
@@ -23,7 +24,13 @@ export type ReelTimeline = {
   fixed: boolean; // a length was chosen from the list
   dropped: number; // photos that don't fit the chosen length
   unit: number | null; // the beat subdivision the automatic cuts are on (null = no music tempo)
+  beat: number | null; // the music's beat (seconds), when its tempo is known
+  phase: number; // where the first beat falls in the reel (seconds, under one beat)
 };
+
+// The music's tempo: beats per minute, and where its first beat falls in the reel (0 when the
+// reel starts on a beat, as a library track always does).
+export type ReelTempo = { bpm: number; phase: number };
 
 // The shortest a photo can stay on screen.
 export const MIN_SEGMENT = 0.4;
@@ -38,7 +45,7 @@ const tailFor = (settings: ReelSettings, total: number) => (settings.text.show &
 
 // Moves every cut onto the nearest point of the beat grid (cumulatively, so the total stays the
 // same), unless that would make a segment shorter than the minimum.
-function snapCuts(durs: number[], unit: number | null): number[] {
+function snapCuts(durs: number[], unit: number | null, phase = 0): number[] {
   if (!unit) return durs;
   const out: number[] = [];
   let acc = 0;
@@ -46,7 +53,7 @@ function snapCuts(durs: number[], unit: number | null): number[] {
   const end = durs.reduce((x, y) => x + y, 0);
   for (let i = 0; i < durs.length; i++) {
     acc += durs[i];
-    let cut = i === durs.length - 1 ? end : Math.round(acc / unit) * unit;
+    let cut = i === durs.length - 1 ? end : phase + Math.round((acc - phase) / unit) * unit;
     if (cut - prev < MIN_SEGMENT || (i < durs.length - 1 && end - cut < MIN_SEGMENT * (durs.length - 1 - i))) cut = acc;
     out.push(cut - prev);
     prev = cut;
@@ -67,7 +74,7 @@ function beatUnit(bpm: number | null, share: number): number | null {
 // would like: a photo the template's own time, a video clip its own length. With a fixed length
 // the shares are scaled to fill it (a clip never longer than itself); then the cuts move onto the
 // music's beat when its tempo is known, so every transition lands on a beat.
-export function autoDurations(prefs: number[], avail: number | null, bpm: number | null, videoMax: (number | null)[] = []): { durs: number[]; unit: number | null } {
+export function autoDurations(prefs: number[], avail: number | null, bpm: number | null, videoMax: (number | null)[] = [], phase = 0): { durs: number[]; unit: number | null } {
   const n = prefs.length;
   let durs: number[];
   if (avail == null) {
@@ -94,13 +101,48 @@ export function autoDurations(prefs: number[], avail: number | null, bpm: number
     }
   }
   const unit = beatUnit(bpm, durs.reduce((x, y) => x + y, 0) / Math.max(1, n));
-  return { durs: snapCuts(durs, unit), unit };
+  return { durs: snapCuts(durs, unit, phase), unit };
+}
+
+// Beat templates: each photo stays the pattern's number of whole beats, so every cut is on a beat
+// (the first photo also gets the time before the first beat). With a fixed length (`avail`), the
+// pattern is stretched or squeezed to fill it, still in whole beats and never under the shortest
+// time a photo can stay; photos that don't fit even then are left out, as elsewhere.
+function beatDurations(n: number, pattern: number[], beat: number, phase: number, avail: number | null): number[] {
+  const minB = Math.max(1, Math.ceil(MIN_SEGMENT / beat - 1e-6));
+  const base = Array.from({ length: n }, (_, i) => Math.max(minB, Math.round(pattern[i % pattern.length] || 1)));
+  if (avail == null) {
+    const free = base.map((b) => b * beat);
+    free[0] += phase;
+    return free;
+  }
+  const totalB = Math.max(minB, Math.floor((avail - phase) / beat + 1e-6));
+  const segs = Math.max(1, Math.min(n, Math.floor(totalB / minB)));
+  const b = base.slice(0, segs);
+  const sum = b.reduce((x, y) => x + y, 0);
+  const out: number[] = [];
+  let prev = 0;
+  let acc = 0;
+  for (let i = 0; i < segs; i++) {
+    acc += b[i];
+    let cut = i === segs - 1 ? totalB : Math.round((acc * totalB) / sum);
+    cut = Math.max(prev + minB, Math.min(cut, totalB - (segs - 1 - i) * minB));
+    out.push((cut - prev) * beat);
+    prev = cut;
+  }
+  out[0] += phase;
+  return out;
 }
 
 // `segVideo` gives each segment's video length (null for a photo segment).
-export function reelTimeline(photoCount: number, tpl: ReelTemplate, settings: ReelSettings, custom?: number[] | null, bpm?: number | null, segVideo: (number | null)[] = []): ReelTimeline {
+export function reelTimeline(photoCount: number, tpl: ReelTemplate, settings: ReelSettings, custom?: number[] | null, tempo?: ReelTempo | null, segVideo: (number | null)[] = []): ReelTimeline {
   const all = segmentCount(photoCount, tpl);
   const fixed = settings.length != null;
+  const bpm = tempo?.bpm ?? null;
+  const beat = bpm ? 60 / bpm : null;
+  const phase = beat ? ((((tempo?.phase ?? 0) % beat) + beat) % beat) : 0;
+  // A beat template with a known tempo cuts by its pattern of beats.
+  const pattern = beat && tpl.beat?.pattern.length ? tpl.beat.pattern : null;
   const validCustom = (n: number) => !!custom && custom.length === n && custom.every((d) => d >= MIN_SEGMENT - 1e-6);
   let durs: number[];
   let segments: number;
@@ -113,16 +155,25 @@ export function reelTimeline(photoCount: number, tpl: ReelTemplate, settings: Re
     segments = Math.max(1, Math.min(all, Math.floor(avail / MIN_SEGMENT)));
     const sum = custom?.reduce((x, y) => x + y, 0) ?? 0;
     if (validCustom(segments) && Math.abs(sum - avail) < 0.02) durs = custom!.slice();
-    else {
+    else if (pattern && beat) {
+      durs = beatDurations(segments, pattern, beat, phase, avail);
+      segments = durs.length;
+      unit = beat;
+      // The ending text comes in on the last cut, which is on a beat.
+      if (tail > 0) tail = total - durs.reduce((x, y) => x + y, 0);
+    } else {
       const prefs = Array.from({ length: segments }, (_, i) => segVideo[i] ?? tpl.photoSeconds);
-      ({ durs, unit } = autoDurations(prefs, avail, bpm ?? null, segVideo.slice(0, segments)));
+      ({ durs, unit } = autoDurations(prefs, avail, bpm, segVideo.slice(0, segments), phase));
     }
   } else {
     segments = all;
     if (validCustom(segments)) durs = custom!.slice();
-    else {
+    else if (pattern && beat) {
+      durs = beatDurations(segments, pattern, beat, phase, null);
+      unit = beat;
+    } else {
       const prefs = Array.from({ length: segments }, (_, i) => Math.min(segVideo[i] ?? tpl.photoSeconds, 30));
-      ({ durs, unit } = autoDurations(prefs, null, bpm ?? null));
+      ({ durs, unit } = autoDurations(prefs, null, bpm, [], phase));
     }
     // Never past the longest reel the networks take.
     let sum = durs.reduce((x, y) => x + y, 0);
@@ -139,7 +190,7 @@ export function reelTimeline(photoCount: number, tpl: ReelTemplate, settings: Re
   const total = fixed ? (settings.length as number) : acc + tail;
   const pace = Math.max(0.5, Math.min(1.3, acc / segments / tpl.photoSeconds));
   const dropped = tpl.frame === "split" ? Math.max(0, photoCount - segments * 2) : Math.max(0, photoCount - segments);
-  return { segments, durs, starts, transition: tpl.transitionSeconds * pace, pace, tail, total, fixed, dropped, unit };
+  return { segments, durs, starts, transition: tpl.transitionSeconds * pace, pace, tail, total, fixed, dropped, unit, beat, phase };
 }
 
 // The clips playing at time t and how far into each one: a clip plays from the moment it starts
@@ -193,9 +244,10 @@ function rand01(seed: number, i: number) {
   return (h >>> 0) / 4294967296;
 }
 
-// The length of the transition from segment k into k+1 (0 after the last segment).
+// The length of the transition from segment k into k+1 (0 after the last segment, and for a hard
+// cut). It ends on the cut, so with the cuts on the beat, every transition lands on a beat.
 function transitionLength(kind: ReelTransition, tl: ReelTimeline, k: number) {
-  if (k < 0 || k >= tl.segments - 1) return 0;
+  if (k < 0 || k >= tl.segments - 1 || kind === "cut") return 0;
   return Math.min(0.6 * Math.min(tl.durs[k], tl.durs[k + 1]), Math.max(tl.transition, transitionInfo(kind).min * tl.pace));
 }
 
@@ -366,9 +418,14 @@ export function drawReelFrame(
   }
   t = Math.max(0, Math.min(t, tl.total));
   const sc: Scene = { W, H, tpl, settings, images };
+  // The on-beat effects: the zoom punch and shake move the picture as it's drawn, the rest pass
+  // over it (beatFx.ts).
+  const fx = fxEvents(t, tl, fxSpec(tpl, settings));
   ctx.save();
+  applyFxTransform(ctx, W, H, fx);
   drawPictures(ctx, sc, t, tl);
   ctx.restore();
+  applyFxPost(ctx, W, H, fx);
 
   if (tpl.grain) drawGrain(ctx, W, H, t, 0.06);
 

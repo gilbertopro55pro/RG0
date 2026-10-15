@@ -4,9 +4,21 @@ import type { ReelFit, ReelSettings, ReelTemplate } from "./templates";
 // one "segment" (a photo, a framed photo, or two stacked), and the helpers transitions share.
 // Every size is relative to the canvas, so the small preview and the full export look the same.
 
-// A photo, or a video clip from the device (`live`: its element shows a different frame every
-// time, so nothing drawn from it is cached, and it plays as it is, without the photo motion).
-export type ReelImage = { el: CanvasImageSource; width: number; height: number; live?: boolean; video?: { duration: number } };
+// A photo, or a video clip (from the device or the gallery; `live`: its element shows a different
+// frame every time, so nothing drawn from it is cached, and it plays as it is, without the photo
+// motion). A clip plays from `start` seconds into it (the photographer's in-point), for at most
+// `duration` seconds (what's left after the in-point). `focus` (0-1) is where a clip that's cropped
+// to the reel's shape is cut: 0 keeps its left (or top) edge, 0.5 the middle, 1 the right (bottom).
+export type ReelImage = {
+  el: CanvasImageSource;
+  width: number;
+  height: number;
+  live?: boolean;
+  video?: { duration: number; start: number };
+  focus?: number;
+  // A clip's own way to fit the reel's shape, over the reel's setting (clips fill it by default).
+  fit?: ReelFit;
+};
 
 export type Scene = { W: number; H: number; tpl: ReelTemplate; settings: ReelSettings; images: ReelImage[] };
 
@@ -33,7 +45,7 @@ export function rand(...nums: number[]): number {
 // A photo whose visible part under "cover" would be less than this is shown whole instead (a
 // landscape photo in a vertical reel, or in a square post). A portrait photo in a 9:16 reel only
 // loses a little at the sides, so it still fills the screen.
-const FIT_MIN_VISIBLE = 0.72;
+export const FIT_MIN_VISIBLE = 0.72;
 
 // A blurred, slightly darkened copy of a photo for backgrounds, made once per photo and strength
 // (0-100). Built by shrinking (stronger = smaller) and scaling back up in two steps, which works
@@ -156,6 +168,7 @@ export function drawPhoto(ctx: CanvasRenderingContext2D, img: ReelImage, r: Rect
   } else {
     s = 1.03 + 0.04 * p;
   }
+  fit = img.fit ?? fit;
   const coverScale = Math.max(r.w / img.width, r.h / img.height);
   const containScale = Math.min(r.w / img.width, r.h / img.height);
   const visible = containScale / coverScale;
@@ -187,7 +200,8 @@ export function drawPhoto(ctx: CanvasRenderingContext2D, img: ReelImage, r: Rect
     const base = coverScale * s;
     const dw = img.width * base;
     const dh = img.height * base;
-    ctx.drawImage(sizedFor(img, coverScale * 1.2 * img.width * drawScale(ctx)).el, r.x + (r.w - dw) / 2 + dx, r.y + (r.h - dh) / 2, dw, dh);
+    const f = img.focus ?? 0.5;
+    ctx.drawImage(sizedFor(img, coverScale * 1.2 * img.width * drawScale(ctx)).el, r.x + (r.w - dw) * f + dx, r.y + (r.h - dh) * f, dw, dh);
   }
   ctx.restore();
 }

@@ -25,6 +25,7 @@ export default function ReelTimelineEditor({
   tail,
   time,
   beat,
+  phase = 0,
   onSeek,
   onDurs,
   onReorder,
@@ -40,6 +41,8 @@ export default function ReelTimelineEditor({
   time: number;
   // Seconds per beat of the music, when known: a dragged edge snaps to it.
   beat: number | null;
+  // Where the first beat falls (seconds), for a song that doesn't start on one.
+  phase?: number;
   onSeek: (t: number) => void;
   onDurs: (durs: number[]) => void;
   onReorder: (from: number, to: number) => void;
@@ -59,7 +62,7 @@ export default function ReelTimelineEditor({
   // The snap points for the edge after clip k, nearest first; null when nothing is close.
   const snapTo = (raw: number, k: number, pairEnd: number): { at: number; label: string } | null => {
     const points: { at: number; label: string }[] = [];
-    if (beat) points.push({ at: Math.round(raw / beat) * beat, label: t("קצב") });
+    if (beat) points.push({ at: phase + Math.round((raw - phase) / beat) * beat, label: t("קצב") });
     points.push({ at: Math.round(raw), label: t("שנייה שלמה") });
     points.push({ at: Math.round(raw * 2) / 2, label: t("חצי שנייה") });
     points.push({ at: time, label: t("הסמן") });
