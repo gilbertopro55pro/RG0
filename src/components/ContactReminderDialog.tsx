@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import BodyPortal from "@/components/BodyPortal";
+import ReminderDateTimeField from "@/components/ReminderDateTimeField";
 import { useT } from "@/i18n/client";
 import { CONTACT_REMIND_MAX_DAYS } from "@/lib/leadContactReminder";
 
@@ -68,16 +69,14 @@ export default function ContactReminderDialog({
           <h2 className="text-lg font-bold font-display mb-1.5">{title}</h2>
           <div className="text-sm text-ink-soft mb-4">{text}</div>
           <label className="block text-xs font-semibold mb-1.5">{t("מתי להזכיר לך?")}</label>
-          <input
-            type="datetime-local"
+          <ReminderDateTimeField
             value={value}
             min={min}
-            onChange={(e) => {
-              setValue(e.target.value);
+            ariaLabel={t("מתי להזכיר לך?")}
+            onChange={(v) => {
+              setValue(v);
               setError(null);
             }}
-            dir="ltr"
-            className="w-full h-11 rounded-lg border border-line bg-white px-2 text-sm"
           />
           {error && <p className="text-xs text-rose mt-1.5">{error}</p>}
           <div className="flex gap-2 mt-5">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useModalEntered } from "@/lib/useModalEntered";
+import ReminderDateTimeField from "@/components/ReminderDateTimeField";
 import { openWhatsApp } from "@/lib/waLink";
 import { useT } from "@/i18n/client";
 
@@ -298,14 +299,12 @@ export default function PendingClientMessagePrompts({
                 </div>
                 {custom && (
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <input
-                      type="datetime-local"
+                    <ReminderDateTimeField
                       value={custom.value}
                       min={custom.min}
-                      onChange={(e) => setCustom({ ...custom, value: e.target.value, error: false })}
-                      aria-label={t("תאריך ושעה")}
-                      dir="ltr"
-                      className="w-full sm:flex-1 min-w-0 h-11 rounded-lg border border-line bg-white px-2 text-sm"
+                      onChange={(v) => setCustom({ ...custom, value: v, error: false })}
+                      ariaLabel={t("תאריך ושעה")}
+                      className="sm:flex-1 min-w-0"
                     />
                     <button onClick={remindAtCustom} disabled={busy || !custom.value} className="rounded-lg h-11 px-4 text-sm font-semibold bg-ink text-white disabled:opacity-60">
                       {t("קביעת התזכורת")}
