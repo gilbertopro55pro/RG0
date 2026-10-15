@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { buildWaMeLink } from "@/lib/waLink";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -17,6 +17,7 @@ import { sourceLabel } from "@/lib/leadSource";
 import { daysUntilPurge } from "@/lib/leadRetention";
 import { createClient } from "@/lib/supabase/client";
 import ContactReminderDialog from "@/components/ContactReminderDialog";
+import { announceContactReminder, onContactReminderChange } from "@/lib/contactReminderSync";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, isLang, LANG_LABELS, LANGS, type Lang } from "@/i18n/config";
 import type { TFn } from "@/i18n/translate";
@@ -160,9 +161,14 @@ export default function LeadsView({
       body: JSON.stringify({ remindAt }),
     }).catch(() => null);
     if (!res?.ok) return false;
-    updateLead(id, { contact_remind_at: remindAt });
+    announceContactReminder(id, remindAt);
     return true;
   };
+  // Every change, from here or from the reminder popup (lib/contactReminderSync.ts), lands on the card.
+  useEffect(
+    () => onContactReminderChange((id, remindAt) => setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, contact_remind_at: remindAt } : l)))),
+    []
+  );
 
   const setStatus = async (id: string, status: LeadStatus) => {
     const before = leads.find((l) => l.id === id);
