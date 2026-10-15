@@ -46,6 +46,7 @@ import EventsListView, { type EventAttention } from "@/components/EventsListView
 import LandingPage from "@/components/LandingPage";
 import SettingsGearLink from "@/components/SettingsGearLink";
 import AlbumQuickAccessButton from "@/components/AlbumQuickAccessButton";
+import { FOLLOW_UP_LEAD_COLUMNS, quoteFollowUpHandled, type FollowUpLeadState } from "@/lib/leadFollowUp";
 
 const HEBREW_MONTHS = [
   "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
@@ -104,7 +105,7 @@ export default async function DashboardPage() {
     supabase.from("event_payments").select("*").returns<EventPaymentRow[]>(),
     supabase
       .from("scheduled_messages")
-      .select("id, event_id, lead_id, kind, events(client_name), leads(name, phone, quoted_amount)")
+      .select(`id, event_id, lead_id, kind, remind_at, remind_set_at, events(client_name), leads(name, phone, quoted_amount, ${FOLLOW_UP_LEAD_COLUMNS})`)
       .in("kind", ["payment_reminder", "review_request", "lead_quote_followup", "album_approval_reminder", "song_selection_reminder"])
       .eq("status", "awaiting_confirmation")
       .returns<
@@ -113,8 +114,10 @@ export default async function DashboardPage() {
           event_id: string | null;
           lead_id: string | null;
           kind: "payment_reminder" | "review_request" | "lead_quote_followup" | "album_approval_reminder" | "song_selection_reminder";
+          remind_at: string | null;
+          remind_set_at: string | null;
           events: { client_name: string } | null;
-          leads: { name: string; phone: string | null; quoted_amount: number | null } | null;
+          leads: ({ name: string; phone: string | null; quoted_amount: number | null } & FollowUpLeadState) | null;
         }[]
       >(),
     // Powers the progress badge on each event card — only client-initiated steps (contract
@@ -366,14 +369,19 @@ export default async function DashboardPage() {
           clientName: s.events?.client_name ?? t("לקוח"),
         }))
     : [];
+  // A follow-up put off with "תזכורת" waits until its time, and is gone if the lead was handled
+  // since (lib/leadFollowUp.ts; the reminders cron then closes it).
+  const nowMs = new Date().getTime();
   const pendingLeadFollowUps: PendingLeadFollowUp[] = photographer
     ? (scheduledReminders ?? [])
         .filter((s) => s.kind === "lead_quote_followup")
+        .filter((s) => !(s.remind_at && Date.parse(s.remind_at) > nowMs) && !quoteFollowUpHandled(s.leads, s.remind_set_at))
         .map((s) => ({
           type: "lead_followup" as const,
           id: s.id,
           leadName: s.leads?.name ?? t("ליד"),
           quotedAmount: s.leads?.quoted_amount ?? 0,
+          reminder: !!s.remind_at,
         }))
     : [];
 
