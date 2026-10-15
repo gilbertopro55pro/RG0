@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { QUOTE_FOLLOWUP_REMIND_MINUTES, leadQuoteFollowUpMessage } from "@/lib/leadFollowUp";
+import { QUOTE_FOLLOWUP_REMIND_MAX_DAYS, QUOTE_FOLLOWUP_REMIND_MINUTES, leadQuoteFollowUpMessage } from "@/lib/leadFollowUp";
 import { clientLangFor } from "@/lib/clientLang";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "יש להתחבר מחדש" }, { status: 401 });
   }
 
-  const { send, dryRun, remindMinutes }: { send?: boolean; dryRun?: boolean; remindMinutes?: unknown } = await request.json();
+  const { send, dryRun, remindMinutes, remindAt }: { send?: boolean; dryRun?: boolean; remindMinutes?: unknown; remindAt?: unknown } = await request.json();
 
   const { data: message } = await supabase
     .from("scheduled_messages")
@@ -28,17 +28,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "התזכורת כבר טופלה או לא נמצאה" }, { status: 404 });
   }
 
-  // "תזכורת" (owner, 2026-10-15): the prompt comes back in 30 minutes, an hour or 3 hours, with a
-  // phone notification (api/cron/lead-reminders), unless the lead is handled by hand before that.
-  if (remindMinutes !== undefined) {
-    const minutes = Number(remindMinutes);
-    if (!(QUOTE_FOLLOWUP_REMIND_MINUTES as readonly number[]).includes(minutes)) {
-      return NextResponse.json({ error: "זמן תזכורת לא תקין" }, { status: 400 });
-    }
+  // "תזכורת" (owner, 2026-10-15): the prompt comes back in 30 minutes, an hour, or at a date and
+  // time of the photographer's choice, with a phone notification (api/cron/lead-reminders), unless
+  // the lead is handled by hand before that.
+  if (remindMinutes !== undefined || remindAt !== undefined) {
     const now = Date.now();
+    let at: number;
+    if (remindAt !== undefined) {
+      at = typeof remindAt === "string" ? Date.parse(remindAt) : NaN;
+      if (!Number.isFinite(at) || at < now + 30_000 || at > now + QUOTE_FOLLOWUP_REMIND_MAX_DAYS * 86_400_000) {
+        return NextResponse.json({ error: "זמן תזכורת לא תקין" }, { status: 400 });
+      }
+    } else {
+      const minutes = Number(remindMinutes);
+      if (!(QUOTE_FOLLOWUP_REMIND_MINUTES as readonly number[]).includes(minutes)) {
+        return NextResponse.json({ error: "זמן תזכורת לא תקין" }, { status: 400 });
+      }
+      at = now + minutes * 60_000;
+    }
     await supabase
       .from("scheduled_messages")
-      .update({ remind_at: new Date(now + minutes * 60_000).toISOString(), remind_set_at: new Date(now).toISOString(), remind_pushed_at: null })
+      .update({ remind_at: new Date(at).toISOString(), remind_set_at: new Date(now).toISOString(), remind_pushed_at: null })
       .eq("id", message.id);
     return NextResponse.json({ ok: true, reminded: true });
   }
