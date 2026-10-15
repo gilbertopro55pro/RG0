@@ -365,7 +365,9 @@ export const REEL_LENGTHS = [5, 10, 15, 30, 60] as const;
 export type ReelLength = (typeof REEL_LENGTHS)[number];
 
 export type ReelMusic = {
-  source: "none" | "library" | "upload";
+  // "sync": a song the photographer adds in Instagram or TikTok (owner, 2026-10-15). Its file is
+  // used only to cut on its beat and to hear it in the preview; the exported video has no sound.
+  source: "none" | "library" | "upload" | "sync";
   trackId: string; // library track (music.ts)
   volume: number; // 0-1
   offset: number; // seconds into the track where the reel starts

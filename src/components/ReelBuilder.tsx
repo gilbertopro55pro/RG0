@@ -177,6 +177,8 @@ export default function ReelBuilder({
   // null = the automatic split.
   const [durState, setDurState] = useState<{ keys: string[]; durs: number[] } | null>(null);
   const [upload, setUpload] = useState<{ file: File; url: string } | null>(null);
+  // The song the photographer will add in Instagram or TikTok (music source "sync").
+  const [syncSong, setSyncSong] = useState<{ file: File; url: string } | null>(null);
   const [musicError, setMusicError] = useState<string | null>(null);
   // The decoded music, with the track or file it belongs to.
   const [musicBuf, setMusicBuf] = useState<{ key: string; buffer: AudioBuffer } | null>(null);
@@ -200,7 +202,8 @@ export default function ReelBuilder({
   const [fonts, setFonts] = useState<ReelFonts | null>(null);
   const [playing, setPlaying] = useState(true);
   const [exporting, setExporting] = useState<number | null>(null);
-  const [result, setResult] = useState<{ url: string; blob: Blob } | null>(null);
+  // `silent`: made for a song added in the app, with the second the song starts at there.
+  const [result, setResult] = useState<{ url: string; blob: Blob; silent: { offset: number } | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef(false);
   const previewRef = useRef<HTMLCanvasElement | null>(null);
@@ -228,10 +231,13 @@ export default function ReelBuilder({
     [readyIds, images, videos, clipOpts]
   );
   const track = settings.music.source === "library" ? trackById(settings.music.trackId) : null;
-  const musicUrl = settings.music.source === "library" ? track?.url ?? null : settings.music.source === "upload" ? upload?.url ?? null : null;
-  const musicKey = settings.music.source === "upload" && upload ? `upload:${upload.file.name}:${upload.file.size}` : musicUrl;
+  // A song file from the device: the photographer's own music, or the one for the app.
+  const ownSong = settings.music.source === "upload" ? upload : settings.music.source === "sync" ? syncSong : null;
+  const syncMode = settings.music.source === "sync";
+  const musicUrl = track ? track.url : ownSong?.url ?? null;
+  const musicKey = ownSong ? `file:${ownSong.file.name}:${ownSong.file.size}` : musicUrl;
   const musicBuffer = musicBuf && musicBuf.key === musicKey ? musicBuf.buffer : null;
-  const detected = settings.music.source === "upload" && uploadTempo && uploadTempo.key === musicKey ? uploadTempo.tempo : null;
+  const detected = ownSong && uploadTempo && uploadTempo.key === musicKey ? uploadTempo.tempo : null;
   // The music's tempo: a library track's is known (and it starts on a beat); an uploaded song's is
   // detected. The phase is where its first beat falls in the reel, after the start point in the song.
   const tempo = useMemo<ReelTempo | null>(() => {
@@ -341,7 +347,7 @@ export default function ReelBuilder({
   useEffect(() => {
     if (!musicUrl || !musicKey) return;
     let alive = true;
-    decodeTrack(musicKey, async () => (upload && settings.music.source === "upload" ? upload.file.arrayBuffer() : (await fetch(musicUrl)).arrayBuffer()))
+    decodeTrack(musicKey, async () => (ownSong ? ownSong.file.arrayBuffer() : (await fetch(musicUrl)).arrayBuffer()))
       .then((buffer) => alive && setMusicBuf({ key: musicKey, buffer }))
       .catch(() => alive && setMusicError(t("לא הצלחנו לקרוא את קובץ המוזיקה.")));
     return () => {
@@ -353,7 +359,7 @@ export default function ReelBuilder({
   // An uploaded song's tempo, found once per file (owner, 2026-10-15: the beat templates work with
   // the photographer's own music too). The reel then starts on the song's first beat.
   useEffect(() => {
-    if (settings.music.source !== "upload" || !musicBuffer || !musicKey || uploadTempo?.key === musicKey) return;
+    if (!ownSong || !musicBuffer || !musicKey || uploadTempo?.key === musicKey) return;
     const timer = setTimeout(() => {
       let found: DetectedTempo | null = null;
       try {
@@ -362,6 +368,9 @@ export default function ReelBuilder({
         found = null;
       }
       setUploadTempo({ key: musicKey, tempo: found });
+      // A song for the app keeps its start (0:00 is the one point the photographer can hit exactly
+      // there); the cuts move onto its beat instead (the timeline's phase).
+      if (settings.music.source === "sync") return;
       // A first beat right at the start (or a hair before the next one) needs no skip.
       const firstBeat = found ? found.firstBeat : 0;
       if (found && firstBeat > 0.03 && 60 / found.bpm - firstBeat > 0.03) {
@@ -369,6 +378,7 @@ export default function ReelBuilder({
       }
     }, 0);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.music.source, musicBuffer, musicKey, uploadTempo]);
   useEffect(() => () => playerRef.current?.close(), []);
 
@@ -495,6 +505,24 @@ export default function ReelBuilder({
     }
     setUpload({ file, url: URL.createObjectURL(file) });
     setSettings((s) => ({ ...s, music: { ...s.music, source: "upload", offset: 0 } }));
+  };
+  // The song for Instagram or TikTok: same checks, its own slot, and it starts at 0:00.
+  const chooseSyncSong = (file: File | undefined) => {
+    setMusicError(null);
+    if (!file) return;
+    if (!file.type.startsWith("audio/") && !/\.(mp3|m4a|aac|wav|ogg|oga|flac)$/i.test(file.name)) {
+      setMusicError(t("זה לא נראה כמו קובץ מוזיקה. אפשר MP3, M4A, WAV או AAC."));
+      return;
+    }
+    if (file.size > MAX_MUSIC_BYTES) {
+      setMusicError(t("הקובץ גדול מדי (עד 40MB)."));
+      return;
+    }
+    if (syncSong) URL.revokeObjectURL(syncSong.url);
+    setSyncSong({ file, url: URL.createObjectURL(file) });
+    setSettings((s) => ({ ...s, music: { ...s.music, source: "sync", offset: 0 } }));
+    setPlaying(true);
+    seek(0);
   };
   const addVideos = async (files: FileList | null) => {
     setVideoError(null);
@@ -644,10 +672,10 @@ export default function ReelBuilder({
       canvas.height = platform.height;
       const ctx = canvas.getContext("2d")!;
       let audio: AudioBuffer | null = null;
-      if (musicUrl) {
+      // A song for the app stays out of the file: the photographer adds it there.
+      if (musicUrl && musicKey && !syncMode) {
         try {
-          const key = settings.music.source === "upload" && upload ? `upload:${upload.file.name}:${upload.file.size}` : musicUrl;
-          const buffer = await decodeTrack(key, async () => (upload && settings.music.source === "upload" ? upload.file.arrayBuffer() : (await fetch(musicUrl)).arrayBuffer()));
+          const buffer = await decodeTrack(musicKey, async () => (ownSong ? ownSong.file.arrayBuffer() : (await fetch(musicUrl)).arrayBuffer()));
           audio = await renderSoundtrack(buffer, { offset: settings.music.offset, total: timeline.total, volume: settings.music.volume });
         } catch {
           setMusicError(t("לא הצלחנו לקרוא את קובץ המוזיקה, הסרטון ייווצר בלי מוזיקה."));
@@ -729,7 +757,7 @@ export default function ReelBuilder({
         onProgress: (f) => setExporting(f),
         isCancelled: () => cancelRef.current,
       });
-      setResult({ url: URL.createObjectURL(blob), blob });
+      setResult({ url: URL.createObjectURL(blob), blob, silent: syncMode ? { offset: settings.music.offset } : null });
     } catch (e) {
       if (e instanceof ReelCancelledError) return;
       setError(e instanceof ReelUnsupportedError ? t("הדפדפן הזה לא תומך ביצירת וידאו. נסו בכרום או בספארי מעודכן.") : t("יצירת הרילס נכשלה, נסו שוב."));
@@ -850,7 +878,7 @@ export default function ReelBuilder({
                   </div>
                   {tpl.beat && !tempo && (
                     <p className="text-[11px] text-rose mt-2">
-                      {settings.music.source === "upload" && uploadTempo?.key === musicKey
+                      {ownSong && uploadTempo?.key === musicKey
                         ? t("לא זיהינו קצב קבוע בשיר שהעליתם, ולכן החיתוכים לא נופלים על הביט. אפשר לבחור שיר מהספרייה.")
                         : t("כדי שהחיתוכים ייפלו על הביט, בחרו שיר בלשונית המוזיקה.")}
                     </p>
@@ -1054,6 +1082,35 @@ export default function ReelBuilder({
                   </div>
                 </section>
                 <section>
+                  <p className={sectionTitle}>{t("שיר שאוסיף באינסטגרם או בטיקטוק")}</p>
+                  <p className={sectionHint}>
+                    {t("לשירים טרנדיים. מעלים כאן את קובץ השיר רק כדי שהחיתוכים ייפלו על הביט שלו, ושומעים אותו בתצוגה. הקובץ לא עולה לשרת, והסרטון ייצא בלי מוזיקה. את השיר מוסיפים באפליקציה, מאותה שנייה.")}
+                  </p>
+                  <label className={`flex items-center justify-between gap-3 rounded-md border p-3 cursor-pointer ${syncMode ? "border-amber-deep bg-amber-bg" : "border-line bg-white hover:border-amber-deep"}`}>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold truncate" dir="auto">{syncSong ? syncSong.file.name : t("בחירת קובץ השיר")}</span>
+                      {syncSong && !syncMode && <span className="block text-[11px] text-ink-soft">{t("לחיצה כדי להשתמש בו שוב")}</span>}
+                    </span>
+                    <span className="shrink-0 text-xs font-semibold text-amber-deep">{syncSong ? t("החלפה") : t("העלאה")}</span>
+                    <input
+                      type="file"
+                      accept="audio/*,.mp3,.m4a,.aac,.wav"
+                      className="hidden"
+                      onChange={(e) => {
+                        chooseSyncSong(e.target.files?.[0]);
+                        e.target.value = "";
+                      }}
+                      onClick={(e) => {
+                        if (syncSong && !syncMode) {
+                          e.preventDefault();
+                          setSettings((s) => ({ ...s, music: { ...s.music, source: "sync", offset: 0 } }));
+                          seek(0);
+                        }
+                      }}
+                    />
+                  </label>
+                </section>
+                <section>
                   <p className={sectionTitle}>{t("מוזיקה משלי")}</p>
                   <p className={sectionHint}>{t("העלאת קובץ מהמכשיר (MP3, M4A, WAV). האחריות על זכויות היוצרים של שיר שמועלה היא של מי שמעלה אותו.")}</p>
                   <label className={`flex items-center justify-between gap-3 rounded-md border p-3 cursor-pointer ${settings.music.source === "upload" ? "border-amber-deep bg-amber-bg" : "border-line bg-white hover:border-amber-deep"}`}>
@@ -1075,33 +1132,54 @@ export default function ReelBuilder({
                       }}
                     />
                   </label>
-                  {musicError && <p className="text-xs text-rose mt-1.5">{musicError}</p>}
-                  {settings.music.source === "upload" && musicBuffer && (
-                    <p className="text-[11px] text-ink-soft mt-1.5">
-                      {uploadTempo?.key !== musicKey
-                        ? t("מזהה את הקצב של השיר…")
-                        : detected
-                          ? t("זיהינו קצב של {bpm} BPM: החיתוכים בין התמונות נופלים על הביט של השיר.", { bpm: Math.round(detected.bpm) })
-                          : t("לא זיהינו קצב קבוע בשיר הזה, ולכן החיתוכים לא נופלים על הביט.")}
-                    </p>
-                  )}
                 </section>
+                {musicError && <p className="text-xs text-rose -mt-3">{musicError}</p>}
+                {ownSong && musicBuffer && (
+                  <p className="text-[11px] text-ink-soft -mt-3">
+                    {uploadTempo?.key !== musicKey
+                      ? t("מזהה את הקצב של השיר…")
+                      : detected
+                        ? t("זיהינו קצב של {bpm} BPM: החיתוכים בין התמונות נופלים על הביט של השיר.", { bpm: Math.round(detected.bpm) })
+                        : t("לא זיהינו קצב קבוע בשיר הזה, ולכן החיתוכים לא נופלים על הביט.")}
+                  </p>
+                )}
                 {musicUrl && (
                   <section className="space-y-3">
-                    <div>
-                      <p className={sectionTitle}>{t("עוצמה")}</p>
-                      <SliderNumber value={Math.round(settings.music.volume * 100)} min={0} max={100} step={5} suffix="%" onChange={(v) => setSettings((s) => ({ ...s, music: { ...s.music, volume: v / 100 } }))} />
-                    </div>
+                    {!syncMode && (
+                      <div>
+                        <p className={sectionTitle}>{t("עוצמה")}</p>
+                        <SliderNumber value={Math.round(settings.music.volume * 100)} min={0} max={100} step={5} suffix="%" onChange={(v) => setSettings((s) => ({ ...s, music: { ...s.music, volume: v / 100 } }))} />
+                      </div>
+                    )}
                     <div>
                       <p className={sectionTitle}>{t("התחלה מתוך השיר")}</p>
-                      <p className={sectionHint}>{t("מאיזו שנייה בשיר הסרטון מתחיל, למשל כדי לדלג על הפתיחה.")}</p>
+                      <p className={sectionHint}>
+                        {syncMode
+                          ? t("באפליקציה תבחרו את אותה שנייה. הכי מדויק להתחיל מ-0:00: שם אי אפשר לפספס, ואינסטגרם וטיקטוק בוחרים לבד קטע מאמצע השיר, אז צריך לגרור להתחלה.")
+                          : t("מאיזו שנייה בשיר הסרטון מתחיל, למשל כדי לדלג על הפתיחה.")}
+                      </p>
+                      {syncMode && (
+                        <p className="text-sm font-semibold mb-1.5">
+                          {t("באפליקציה, השיר מתחיל ב-")}
+                          <span className="font-data" dir="ltr">
+                            {clockTime(settings.music.offset)}
+                          </span>
+                        </p>
+                      )}
                       <SliderNumber
                         value={Math.round(settings.music.offset * 10) / 10}
                         min={0}
                         max={Math.max(1, Math.floor((track?.seconds ?? musicBuffer?.duration ?? 60) - 1))}
-                        step={bpm ? 60 / bpm : 0.5}
+                        step={syncMode ? 1 : bpm ? 60 / bpm : 0.5}
                         suffix="s"
                         onChange={(v) => {
+                          // In the app a start can only be picked by the whole second; the cuts
+                          // still land on the song's beat (the timeline shifts onto it).
+                          if (syncMode) {
+                            setSettings((s) => ({ ...s, music: { ...s.music, offset: Math.max(0, Math.round(v)) } }));
+                            seek(0);
+                            return;
+                          }
                           // The reel starts on one of the song's beats (a library track's first beat
                           // is at 0, an uploaded song's where it was detected), so the cuts stay on it.
                           const first = track ? 0 : detected?.firstBeat ?? null;
@@ -1190,7 +1268,7 @@ export default function ReelBuilder({
                 disabled={!fonts || readyImages.length === 0}
                 className="w-full max-w-[300px] h-11 rounded-md bg-ink text-white text-sm font-semibold tracking-wide disabled:opacity-50"
               >
-                {t("יצירת הסרטון")}
+                {syncMode ? t("יצירת הסרטון (בלי מוזיקה)") : t("יצירת הסרטון")}
               </button>
             )}
             {error && <p className="text-xs text-rose max-w-[300px] text-center">{error}</p>}
@@ -1207,6 +1285,7 @@ export default function ReelBuilder({
                     </button>
                   )}
                 </div>
+                {result.silent && <AppMusicSteps offset={result.silent.offset} songName={syncSong?.file.name ?? null} platform={settings.platform} />}
                 {result.blob.type === "video/webm" && (
                   <p className="text-[11px] text-ink-soft">{t("הדפדפן הזה יצר קובץ WebM. לאינסטגרם ולטיקטוק עדיף ליצור את הסרטון בכרום או בספארי בטלפון, שמייצרים MP4.")}</p>
                 )}
@@ -1722,5 +1801,62 @@ function FxPicker({
         })}
       </div>
     </section>
+  );
+}
+
+// "0:42" for a second in a song (as Instagram and TikTok show it).
+function clockTime(seconds: number) {
+  const s = Math.max(0, Math.round(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// How to add the song in Instagram or TikTok, from the same second, so the cuts land on its beat.
+function AppMusicSteps({ offset, songName, platform }: { offset: number; songName: string | null; platform: ReelPlatformId }) {
+  const t = useT();
+  const [app, setApp] = useState<"instagram" | "tiktok">(platform === "tiktok" ? "tiktok" : "instagram");
+  const time = clockTime(offset);
+  const atStart = Math.round(offset) === 0;
+  const steps =
+    app === "instagram"
+      ? [
+          t("מעלים את הסרטון כרילס חדש."),
+          t("לוחצים על סמל המוזיקה (♫) ובוחרים את אותו שיר."),
+          atStart ? t("גוררים את השיר עד ההתחלה, 0:00. אינסטגרם בוחר לבד קטע מאמצע השיר, ולכן חייבים לגרור.") : t("גוררים את השיר עד שמוצגת השנייה {time}.", { time }),
+          t("לוחצים על \"סיום\" ומפרסמים. אחרי הפרסום אי אפשר להחליף את השיר."),
+        ]
+      : [
+          t("מעלים את הסרטון."),
+          t("לוחצים על \"הוספת צליל\" ובוחרים את אותו שיר."),
+          atStart ? t("לוחצים על המספריים (✂) וגוררים עד ההתחלה, 0:00.") : t("לוחצים על המספריים (✂) וגוררים עד {time}.", { time }),
+          t("אם אין מספריים, טיקטוק לא מאפשר לבחור את תחילת השיר הזה, והחיתוכים לא ייפלו על הביט. כדאי לבחור שיר אחר."),
+        ];
+  return (
+    <div className="rounded-md border border-amber-deep bg-amber-bg p-3 space-y-2">
+      <p className="text-sm font-semibold">{t("עכשיו מוסיפים את השיר באפליקציה")}</p>
+      {songName && (
+        <p className="text-[11px] text-ink-soft truncate" dir="auto">
+          ♪ {songName} · <span dir="ltr">{time}</span>
+        </p>
+      )}
+      <div className="flex gap-1.5">
+        {(["instagram", "tiktok"] as const).map((a) => (
+          <button
+            key={a}
+            onClick={() => setApp(a)}
+            className={`px-3 py-1 rounded-md text-xs font-semibold border ${app === a ? "bg-ink text-white border-ink" : "bg-white border-line"}`}
+          >
+            {a === "instagram" ? t("אינסטגרם") : t("טיקטוק")}
+          </button>
+        ))}
+      </div>
+      <ol className="list-decimal ps-5 space-y-1 text-xs leading-relaxed">
+        {steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+      <p className="text-[11px] text-ink-soft leading-relaxed">
+        {t("צריך את אותה גרסה של השיר שהעליתם כאן, לא רמיקס או גרסה מקוצרת. בחשבון עסקי, באינסטגרם ובטיקטוק, רוב השירים הטרנדיים לא זמינים. בחשבון אישי או בחשבון יוצר הם זמינים.")}
+      </p>
+    </div>
   );
 }
