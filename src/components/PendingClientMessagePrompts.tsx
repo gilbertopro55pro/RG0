@@ -36,7 +36,17 @@ export type PendingLeadFollowUp = {
   id: string;
   leadName: string;
   quotedAmount: number;
+  // Back after "תזכורת" (owner, 2026-10-15).
+  reminder?: boolean;
 };
+
+// "תזכורת" on the quote follow-up, as on the new-lead popup (AssistantLeadPopup): the prompt comes
+// back then, with a phone notification, unless the lead is handled by hand before that.
+const REMIND_OPTIONS = [
+  { minutes: 30, label: "30 דקות" },
+  { minutes: 60, label: "שעה" },
+  { minutes: 180, label: "3 שעות" },
+];
 
 // 3 days after the album-design-ready / full-film-ready message, when the client still hasn't
 // approved the album / picked the clip songs (lib/clientReminders.ts).
@@ -77,6 +87,8 @@ export default function PendingClientMessagePrompts({
   const [preview, setPreview] = useState<{ id: string; phone: string; message: string } | null>(null);
   const entered = useModalEntered();
   const current = queue[0] as PendingItem | undefined;
+  // The prompt whose reminder times are showing.
+  const [pickingId, setPickingId] = useState<string | null>(null);
 
   const urlFor = (item: PendingItem) =>
     item.type === "payment"
@@ -130,6 +142,19 @@ export default function PendingClientMessagePrompts({
       }
     }
     setBusy(false);
+    setQueue((prev) => prev.slice(1));
+  };
+
+  const remind = async (minutes: number) => {
+    setBusy(true);
+    await fetch(urlFor(current), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remindMinutes: minutes }),
+      keepalive: true,
+    }).catch(() => null);
+    setBusy(false);
+    setPickingId(null);
     setQueue((prev) => prev.slice(1));
   };
 
@@ -219,26 +244,55 @@ export default function PendingClientMessagePrompts({
           </>
         ) : (
           <>
-            <h2 className="text-lg font-bold mb-2 font-display">{t("מעקב אחרי הצעת מחיר")}</h2>
+            <h2 className="text-lg font-bold mb-2 font-display">{current.reminder ? t("תזכורת: מעקב אחרי הצעת מחיר") : t("מעקב אחרי הצעת מחיר")}</h2>
             <p className="text-sm text-ink-soft mb-5">
               {withBoldName(t("עברו יומיים מאז ששלחת ל{name} הצעת מחיר של ₪{amount}. לשלוח תזכורת מעקב בוואטסאפ?", { amount: current.quotedAmount }), current.leadName)}
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => respond(false)}
-                disabled={busy}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-              >
-                {t("דלג הפעם")}
-              </button>
-              <button
-                onClick={() => respond(true)}
-                disabled={busy}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
-              >
-                {t("שליחה בוואטסאפ")}
-              </button>
-            </div>
+            {pickingId === current.id ? (
+              <div>
+                <p className="text-sm font-semibold mb-2">{t("מתי להזכיר לך?")}</p>
+                <div className="flex gap-2">
+                  {REMIND_OPTIONS.map((o) => (
+                    <button
+                      key={o.minutes}
+                      onClick={() => remind(o.minutes)}
+                      disabled={busy}
+                      className="flex-1 rounded-lg py-3 text-sm font-semibold border border-line bg-white text-ink disabled:opacity-60"
+                    >
+                      {t(o.label)}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-ink-soft mt-2">{t("אם תטפלו בליד לפני כן, התזכורת לא תופיע.")}</p>
+                <button onClick={() => setPickingId(null)} className="mt-2 text-xs font-semibold underline text-ink-soft">
+                  {t("חזרה")}
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => respond(false)}
+                  disabled={busy}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                >
+                  {t("דלג הפעם")}
+                </button>
+                <button
+                  onClick={() => setPickingId(current.id)}
+                  disabled={busy}
+                  className="rounded-lg py-3 px-4 text-sm font-semibold border border-line bg-white text-ink disabled:opacity-60"
+                >
+                  {t("תזכורת")}
+                </button>
+                <button
+                  onClick={() => respond(true)}
+                  disabled={busy}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-sage text-white disabled:opacity-60"
+                >
+                  {t("שליחה בוואטסאפ")}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

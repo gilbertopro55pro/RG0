@@ -8,6 +8,31 @@ export function leadQuoteFollowUpMessage(leadName: string, signature: string | n
   return signature?.trim() ? `${body}\n\n${signature.trim()}` : body;
 }
 
+// "תזכורת" on the quote follow-up prompt (owner, 2026-10-15): the minutes the photographer can
+// pick, as on the new-lead popup.
+export const QUOTE_FOLLOWUP_REMIND_MINUTES = [30, 60, 180] as const;
+
+export type FollowUpLeadState = {
+  status: string | null;
+  archived_at: string | null;
+  converted_event_id: string | null;
+  quote_approved_at: string | null;
+  last_activity_at: string | null;
+};
+
+// A quote follow-up needs no prompt once the lead moved on: won, lost, archived, booked, or the
+// client approved the quote. One the photographer put off ("תזכורת", remindSetAt) is also done when
+// anything happened on the lead since (a new quote, a status or a note change, the client writing
+// again): that's the lead handled by hand.
+export function quoteFollowUpHandled(lead: FollowUpLeadState | null, remindSetAt: string | null): boolean {
+  if (!lead) return true;
+  if (lead.status === "won" || lead.status === "lost" || lead.archived_at || lead.converted_event_id || lead.quote_approved_at) return true;
+  return !!remindSetAt && !!lead.last_activity_at && Date.parse(lead.last_activity_at) > Date.parse(remindSetAt);
+}
+
+// The lead columns quoteFollowUpHandled reads.
+export const FOLLOW_UP_LEAD_COLUMNS = "status, archived_at, converted_event_id, quote_approved_at, last_activity_at";
+
 function addDays(date: Date, days: number): Date {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
