@@ -8,9 +8,10 @@ export function leadQuoteFollowUpMessage(leadName: string, signature: string | n
   return signature?.trim() ? `${body}\n\n${signature.trim()}` : body;
 }
 
-// "תזכורת" on the quote follow-up prompt (owner, 2026-10-15): the minutes the photographer can
-// pick, as on the new-lead popup.
-export const QUOTE_FOLLOWUP_REMIND_MINUTES = [30, 60, 180] as const;
+// "תזכורת" on the quote follow-up prompt (owner, 2026-10-15): the quick times the photographer can
+// pick, or a date and time of their own up to this many days ahead.
+export const QUOTE_FOLLOWUP_REMIND_MINUTES = [30, 60] as const;
+export const QUOTE_FOLLOWUP_REMIND_MAX_DAYS = 90;
 
 export type FollowUpLeadState = {
   status: string | null;

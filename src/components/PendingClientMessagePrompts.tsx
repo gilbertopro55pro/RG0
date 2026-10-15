@@ -41,12 +41,18 @@ export type PendingLeadFollowUp = {
 };
 
 // "תזכורת" on the quote follow-up, as on the new-lead popup (AssistantLeadPopup): the prompt comes
-// back then, with a phone notification, unless the lead is handled by hand before that.
+// back then, with a phone notification, unless the lead is handled by hand before that. Besides
+// the two quick times, a date and time of the photographer's choice (owner, 2026-10-15).
 const REMIND_OPTIONS = [
   { minutes: 30, label: "30 דקות" },
   { minutes: 60, label: "שעה" },
-  { minutes: 180, label: "3 שעות" },
 ];
+
+// "2026-10-16T10:00" in the device's own time zone, for a datetime-local field.
+function localInputValue(d: Date) {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 // 3 days after the album-design-ready / full-film-ready message, when the client still hasn't
 // approved the album / picked the clip songs (lib/clientReminders.ts).
@@ -87,8 +93,10 @@ export default function PendingClientMessagePrompts({
   const [preview, setPreview] = useState<{ id: string; phone: string; message: string } | null>(null);
   const entered = useModalEntered();
   const current = queue[0] as PendingItem | undefined;
-  // The prompt whose reminder times are showing.
+  // The prompt whose reminder times are showing, and the date and time being picked (with its
+  // earliest value) when the photographer chose their own.
   const [pickingId, setPickingId] = useState<string | null>(null);
+  const [custom, setCustom] = useState<{ value: string; min: string; error: boolean } | null>(null);
 
   const urlFor = (item: PendingItem) =>
     item.type === "payment"
@@ -145,17 +153,35 @@ export default function PendingClientMessagePrompts({
     setQueue((prev) => prev.slice(1));
   };
 
-  const remind = async (minutes: number) => {
+  const remind = async (when: { remindMinutes: number } | { remindAt: string }) => {
     setBusy(true);
     await fetch(urlFor(current), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ remindMinutes: minutes }),
+      body: JSON.stringify(when),
       keepalive: true,
     }).catch(() => null);
     setBusy(false);
     setPickingId(null);
+    setCustom(null);
     setQueue((prev) => prev.slice(1));
+  };
+  // Own date and time: tomorrow at 10:00 to start from, never in the past.
+  const openCustom = () => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(start.getDate() + 1);
+    start.setHours(10, 0, 0, 0);
+    setCustom({ value: localInputValue(start), min: localInputValue(now), error: false });
+  };
+  const remindAtCustom = () => {
+    if (!custom) return;
+    const at = new Date(custom.value);
+    if (Number.isNaN(at.getTime()) || at.getTime() < new Date().getTime() + 60_000) {
+      setCustom({ ...custom, error: true });
+      return;
+    }
+    remind({ remindAt: at.toISOString() });
   };
 
   return (
@@ -255,16 +281,46 @@ export default function PendingClientMessagePrompts({
                   {REMIND_OPTIONS.map((o) => (
                     <button
                       key={o.minutes}
-                      onClick={() => remind(o.minutes)}
+                      onClick={() => remind({ remindMinutes: o.minutes })}
                       disabled={busy}
                       className="flex-1 rounded-lg py-3 text-sm font-semibold border border-line bg-white text-ink disabled:opacity-60"
                     >
                       {t(o.label)}
                     </button>
                   ))}
+                  <button
+                    onClick={openCustom}
+                    disabled={busy}
+                    className={`flex-1 rounded-lg py-3 text-sm font-semibold border disabled:opacity-60 ${custom ? "border-amber-deep bg-amber-bg text-ink" : "border-line bg-white text-ink"}`}
+                  >
+                    {t("תאריך ושעה")}
+                  </button>
                 </div>
-                <p className="text-xs text-ink-soft mt-2">{t("אם תטפלו בליד לפני כן, התזכורת לא תופיע.")}</p>
-                <button onClick={() => setPickingId(null)} className="mt-2 text-xs font-semibold underline text-ink-soft">
+                {custom && (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="datetime-local"
+                      value={custom.value}
+                      min={custom.min}
+                      onChange={(e) => setCustom({ ...custom, value: e.target.value, error: false })}
+                      aria-label={t("תאריך ושעה")}
+                      dir="ltr"
+                      className="w-full sm:flex-1 min-w-0 h-11 rounded-lg border border-line bg-white px-2 text-sm"
+                    />
+                    <button onClick={remindAtCustom} disabled={busy || !custom.value} className="rounded-lg h-11 px-4 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+                      {t("קביעת התזכורת")}
+                    </button>
+                  </div>
+                )}
+                {custom?.error && <p className="text-xs text-rose mt-1.5">{t("בחרו תאריך ושעה שעוד לא עברו.")}</p>}
+                <p className="text-xs text-ink-soft mt-2">{t("אם תטפלו בהצעת המחיר לפני כן, התזכורת לא תופיע.")}</p>
+                <button
+                  onClick={() => {
+                    setPickingId(null);
+                    setCustom(null);
+                  }}
+                  className="mt-2 text-xs font-semibold underline text-ink-soft"
+                >
                   {t("חזרה")}
                 </button>
               </div>
