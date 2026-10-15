@@ -6,6 +6,7 @@ import { HIDDEN_PREFIXES } from "@/components/TopNav";
 import ContactReminderDialog from "@/components/ContactReminderDialog";
 import { buildWaMeLink } from "@/lib/waLink";
 import type { DueContactReminder } from "@/lib/leadContactReminder";
+import { announceContactReminder } from "@/lib/contactReminderSync";
 import { useLang, useT } from "@/i18n/client";
 
 // A contact reminder that fell due (owner, 2026-10-15; lib/leadContactReminder.ts) pops up on
@@ -75,7 +76,9 @@ export default function ContactReminderPopup() {
       body: JSON.stringify({ remindAt }),
       keepalive: true,
     }).catch(() => null);
-    return !!res?.ok;
+    if (!res?.ok) return false;
+    announceContactReminder(lead.id, remindAt);
+    return true;
   };
   // Handled: the reminder is cleared and the next one (if any) shows.
   const done = (open?: () => void) => {
