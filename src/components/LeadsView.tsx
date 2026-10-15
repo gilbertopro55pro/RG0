@@ -16,6 +16,7 @@ import RowMenu from "@/components/RowMenu";
 import { sourceLabel } from "@/lib/leadSource";
 import { daysUntilPurge } from "@/lib/leadRetention";
 import { createClient } from "@/lib/supabase/client";
+import ContactReminderDialog from "@/components/ContactReminderDialog";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, isLang, LANG_LABELS, LANGS, type Lang } from "@/i18n/config";
 import type { TFn } from "@/i18n/translate";
@@ -37,6 +38,14 @@ export type LeadsQuoteBuilderData = {
   // The client-language picker (UI languages phase 2): canChooseClientLang, admin only for now.
   clientLangPicker?: boolean;
 };
+
+// "20.10, 18:30" for a reminder, Israel time.
+function reminderLabel(iso: string, lang: Lang): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString(dateLocale(lang), { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric" });
+  const time = d.toLocaleTimeString(dateLocale(lang), { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${date}, ${time}`;
+}
 
 // "נוצר ב-29.9.2026, 15:55", Israel time.
 function createdLabel(iso: string, t: TFn, lang: Lang): string {
@@ -141,7 +150,23 @@ export default function LeadsView({
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   };
 
+  // Marking a lead "יצרתי קשר" asks whether to set a reminder to get back to the client (owner,
+  // 2026-10-15; lib/leadContactReminder.ts).
+  const [contactAsk, setContactAsk] = useState<LeadRow | null>(null);
+  const setContactReminder = async (id: string, remindAt: string | null) => {
+    const res = await fetch(`/api/leads/${id}/contact-reminder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remindAt }),
+    }).catch(() => null);
+    if (!res?.ok) return false;
+    updateLead(id, { contact_remind_at: remindAt });
+    return true;
+  };
+
   const setStatus = async (id: string, status: LeadStatus) => {
+    const before = leads.find((l) => l.id === id);
+    if (status === "contacted" && before && before.status !== "contacted") setContactAsk({ ...before, status });
     updateLead(id, { status });
     await fetch(`/api/leads/${id}`, {
       method: "PATCH",
@@ -275,6 +300,14 @@ export default function LeadsView({
                   ))}
                 </select>
                 <div className="text-[10.5px] text-ink-soft leading-tight">{createdLabel(lead.created_at, t, lang)}</div>
+                {lead.contact_remind_at && lead.status !== "won" && lead.status !== "lost" && (
+                  <div className="text-[10.5px] leading-tight flex items-center gap-1" style={{ color: "var(--color-amber-deep)" }}>
+                    <span>{t("תזכורת ליצירת קשר: {when}", { when: reminderLabel(lead.contact_remind_at, lang) })}</span>
+                    <button onClick={() => setContactReminder(lead.id, null)} className="underline" aria-label={t("ביטול התזכורת")}>
+                      {t("ביטול")}
+                    </button>
+                  </div>
+                )}
                 {lead.quote_sent_at && <QuoteSentAge sentAt={lead.quote_sent_at} closed={lead.status === "won" || lead.status === "lost"} now={now} />}
               </div>
             </div>
@@ -521,6 +554,18 @@ export default function LeadsView({
         />
       )}
 
+      {contactAsk && (
+        <ContactReminderDialog
+          title={t("לקבוע תזכורת ליצירת קשר?")}
+          text={t("תזכורת ליצור קשר עם {name}, בתאריך ובשעה שתבחרו. היא תקפוץ באפליקציה ותגיע גם כהתראה לטלפון.", { name: contactAsk.name })}
+          onCancel={() => setContactAsk(null)}
+          onConfirm={async (remindAt) => {
+            const ok = await setContactReminder(contactAsk.id, remindAt);
+            if (ok) setContactAsk(null);
+            return ok;
+          }}
+        />
+      )}
       {convertLead && (
         <NewEventModal
           onClose={closeConvert}
