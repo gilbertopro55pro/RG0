@@ -46,3 +46,6 @@ supabase/.temp/
 
 # Coming-soon teaser renders, delivered to the owner as files (not part of the site)
 /teasers-out/
+
+# MediaPipe WASM, copied from node_modules (scripts/copyMediapipeWasm.mjs)
+/public/models/mediapipe/vision_wasm_internal.*
