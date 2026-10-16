@@ -25,11 +25,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     // The client's language (admin only for now; other accounts' value is ignored).
     client_lang?: string;
     clientLang?: string;
+    photographer_note?: string | null;
   } = await request.json();
 
   const update: Record<string, unknown> = {};
   if (body.status !== undefined) update.status = body.status;
   if (body.notes !== undefined) update.notes = body.notes;
+  // The photographer's own note (the leads screen's "⋯" menu); empty clears it.
+  if (body.photographer_note !== undefined) update.photographer_note = String(body.photographer_note ?? "").trim().slice(0, 2000) || null;
   if (body.quoted_amount !== undefined) update.quoted_amount = body.quoted_amount;
   if (body.quote_note !== undefined) update.quote_note = body.quote_note;
   const clientLang = body.client_lang ?? body.clientLang;
