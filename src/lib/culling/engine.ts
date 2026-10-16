@@ -14,7 +14,9 @@ import type { CullFeatures, FaceFeatures } from "@/lib/culling/verdict";
 // 4. The region around the eyes is measured for sharpness at full resolution and at a fixed scale,
 //    and the photo itself in a grid of tiles (for photos without people).
 
-export const ENGINE_VERSION = "1";
+// 2 (2026-10-16): head pose, iris gaze and all 52 expression blendshapes per face, for "מבט לא
+// למצלמה" and, later, "לא מחמיא"; a larger crop for MediaPipe (448px), so the iris is resolved.
+export const ENGINE_VERSION = "2";
 
 const DETECT_EDGE = 1280;
 const MAX_FACES = 6;
@@ -27,7 +29,7 @@ const MP_FILESET = {
   wasmBinaryPath: "/models/mediapipe/vision_wasm_internal.wasm",
 };
 const MP_MODEL = "/models/mediapipe/face_landmarker.task";
-const MP_CROP = 256;
+const MP_CROP = 448;
 
 type FaceApi = typeof import("@vladmandic/face-api");
 let modelsPromise: Promise<{ faceapi: FaceApi; landmarker: FaceLandmarker }> | null = null;
@@ -45,6 +47,7 @@ export function loadCullingModels() {
         runningMode: "IMAGE",
         numFaces: 1,
         outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
         minFaceDetectionConfidence: 0.3,
         minFacePresenceConfidence: 0.3,
       });
@@ -90,6 +93,50 @@ const r4 = (v: number) => Number(v.toFixed(4));
 // ×2, corner, lower lid ×2), the subject's left then right.
 const MP_EYE_L = [33, 160, 158, 133, 153, 144];
 const MP_EYE_R = [362, 385, 387, 263, 373, 380];
+// The iris centres (the refined landmarks 468–477 of the face landmarker model).
+const MP_IRIS = [468, 473];
+
+// Head rotation in degrees from MediaPipe's facial transformation matrix (4×4). The layout is told
+// apart by where the translation sits: its depth (tens of cm from the camera) is the largest term.
+function headPose(m: { data: number[] } | undefined): { yaw: number; pitch: number; roll: number } | null {
+  const d = m?.data;
+  if (!d || d.length < 16) return null;
+  const colMajor = Math.abs(d[14]) >= Math.abs(d[11]);
+  const r = (i: number, j: number) => (colMajor ? d[j * 4 + i] : d[i * 4 + j]);
+  const deg = (v: number) => Number(((v * 180) / Math.PI).toFixed(1));
+  return {
+    yaw: deg(Math.atan2(-r(2, 0), Math.hypot(r(2, 1), r(2, 2)))),
+    pitch: deg(Math.atan2(r(2, 1), r(2, 2))),
+    roll: deg(Math.atan2(r(1, 0), r(0, 0))),
+  };
+}
+
+// Where each iris sits between its eye's corners: 0 centred, about ±0.5 at the corners
+// (horizontal), and up/down against the eye's width. Both eyes averaged.
+function irisGaze(pt: (i: number) => [number, number]): { gazeH: number; gazeV: number } | null {
+  const eyes = [
+    [pt(33), pt(133)],
+    [pt(362), pt(263)],
+  ];
+  const irises = MP_IRIS.map(pt);
+  let h = 0;
+  let v = 0;
+  for (const iris of irises) {
+    // Each iris to the eye whose centre is nearer (no reliance on the index order).
+    const eye = eyes.reduce((best, e) =>
+      Math.hypot(iris[0] - (e[0][0] + e[1][0]) / 2, iris[1] - (e[0][1] + e[1][1]) / 2) <
+      Math.hypot(iris[0] - (best[0][0] + best[1][0]) / 2, iris[1] - (best[0][1] + best[1][1]) / 2)
+        ? e
+        : best
+    );
+    const x0 = Math.min(eye[0][0], eye[1][0]);
+    const width = Math.abs(eye[1][0] - eye[0][0]);
+    if (width <= 0) return null;
+    h += (iris[0] - x0) / width - 0.5;
+    v += (iris[1] - (eye[0][1] + eye[1][1]) / 2) / width;
+  }
+  return { gazeH: Number((h / 2).toFixed(3)), gazeV: Number((v / 2).toFixed(3)) };
+}
 
 export async function analyzePhoto(blob: Blob, source: CullFeatures["source"], downloadMs: number): Promise<CullFeatures> {
   const { faceapi, landmarker } = await loadCullingModels();
@@ -148,6 +195,8 @@ export async function analyzePhoto(blob: Blob, source: CullFeatures["source"], d
           const at = (i: number): [number, number] => [sx + lm[i].x * side, sy + lm[i].y * side];
           const score = (name: string) => r4(shapes.find((c) => c.categoryName === name)?.score ?? 0);
           // MediaPipe names the blendshapes from the subject's side.
+          const pose = headPose(res.facialTransformationMatrixes?.[0]);
+          const gaze = lm.length > 473 ? irisGaze(at) : null;
           mp = {
             blinkL: score("eyeBlinkLeft"),
             blinkR: score("eyeBlinkRight"),
@@ -155,6 +204,14 @@ export async function analyzePhoto(blob: Blob, source: CullFeatures["source"], d
             squintR: score("eyeSquintRight"),
             earL: eyeAspectRatio(MP_EYE_L.map(at)),
             earR: eyeAspectRatio(MP_EYE_R.map(at)),
+            yaw: pose?.yaw ?? null,
+            pitch: pose?.pitch ?? null,
+            roll: pose?.roll ?? null,
+            gazeH: gaze?.gazeH ?? null,
+            gazeV: gaze?.gazeV ?? null,
+            // All 52 blendshapes in the model's own order (BLENDSHAPE_NAMES), for the expressions
+            // behind "לא מחמיא" to be learned from the labels later.
+            shapes: [...shapes].sort((a, b) => a.index - b.index).map((c) => Number(c.score.toFixed(3))),
           };
           eyePts = [...MP_EYE_L, ...MP_EYE_R].map(at);
         }
