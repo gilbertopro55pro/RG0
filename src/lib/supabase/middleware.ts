@@ -42,6 +42,8 @@ const PUBLIC_PATHS = [
   "/api/intake-chat",
   // A client's receipt, by its short link from a WhatsApp message (token-authenticated).
   "/r",
+  // A short client link (lib/shortLinks.ts): redirects to the portal, gallery, quote or contract.
+  "/s",
   // The print house's download page for album files (a tracked link, token-authenticated).
   "/print",
   "/api/print",

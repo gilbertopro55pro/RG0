@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { openWhatsApp } from "@/lib/waLink";
 import { useT } from "@/i18n/client";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 export default function PortalLinkSection({
   token,
@@ -22,7 +23,7 @@ export default function PortalLinkSection({
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
 
-  const portalLink = () => `${window.location.origin}/portal/${token}`;
+  const portalLink = () => shortClientUrl(window.location.origin, "portal", token);
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(portalLink());

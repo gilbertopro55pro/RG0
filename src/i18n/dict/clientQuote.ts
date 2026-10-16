@@ -9,6 +9,13 @@ const dict: AreaDict = {
     // The WhatsApp card for a receipt's short link (app/r/[token])
     "קבלה על תשלום": "Payment receipt",
     "לצפייה בקבלה ולהורדה שלה": "View and download your receipt",
+    // The card of a short client link (app/s/[code]).
+    "הפורטל האישי שלכם": "Your personal portal",
+    "חוזה לחתימה": "Contract to sign",
+    "הפורטל האישי שלכם: סטטוס האירוע והתשלומים": "Your personal portal: event status and payments",
+    "הצעת מחיר לצפייה ולאישור": "A price quote to view and approve",
+    "חוזה לחתימה דיגיטלית": "A contract to sign online",
+    "הקישור לא נמצא": "Link not found",
 
     // Page states
     "הצעת המחיר לא נמצאה.": "The price quote was not found.",
@@ -95,6 +102,13 @@ const dict: AreaDict = {
     // The WhatsApp card for a receipt's short link (app/r/[token])
     "קבלה על תשלום": "Квитанция об оплате",
     "לצפייה בקבלה ולהורדה שלה": "Просмотр и скачивание квитанции",
+    // The card of a short client link (app/s/[code]).
+    "הפורטל האישי שלכם": "Ваш личный портал",
+    "חוזה לחתימה": "Договор на подпись",
+    "הפורטל האישי שלכם: סטטוס האירוע והתשלומים": "Ваш личный портал: статус мероприятия и платежи",
+    "הצעת מחיר לצפייה ולאישור": "Коммерческое предложение для просмотра и подтверждения",
+    "חוזה לחתימה דיגיטלית": "Договор для подписи онлайн",
+    "הקישור לא נמצא": "Ссылка не найдена",
 
     // Page states
     "הצעת המחיר לא נמצאה.": "Ценовое предложение не найдено.",

@@ -4,6 +4,7 @@ import { clientLangFor } from "@/lib/clientLang";
 import { dateLocale } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // themselves — see PaymentReminderPrompts.tsx). This just builds the message and marks the
   // reminder handled; there's no server callback to confirm the tap actually happened, same
   // as the other interactive wa.me flows.
-  const portalLink = `${new URL(request.url).origin}/portal/${event.client_access_token}`;
+  const portalLink = shortClientUrl(new URL(request.url).origin, "portal", event.client_access_token);
   // In the client's language (UI languages phase 3); "he" for every non-admin account, where the
   // amount stays unformatted exactly as before.
   const lang = clientLangFor(user.email, event.client_lang);

@@ -8,6 +8,7 @@ import PageGuide from "@/components/PageGuide";
 import BackLink from "@/components/BackLink";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 const HE_MONTHS_SHORT = ["ינו׳", "פבר׳", "מרץ", "אפר׳", "מאי", "יוני", "יולי", "אוג׳", "ספט׳", "אוק׳", "נוב׳", "דצמ׳"];
 
@@ -45,7 +46,7 @@ function PortalRow({ event }: { event: EventWithCustomPackage }) {
   const [copied, setCopied] = useState(false);
 
   const copyLink = async () => {
-    const link = `${window.location.origin}/portal/${event.client_access_token}`;
+    const link = shortClientUrl(window.location.origin, "portal", event.client_access_token);
     await navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

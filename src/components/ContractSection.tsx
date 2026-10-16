@@ -6,6 +6,7 @@ import { useModalEntered } from "@/lib/useModalEntered";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 export default function ContractSection({
   eventId,
@@ -66,7 +67,7 @@ export default function ContractSection({
 
   const copyLink = async () => {
     if (!contract) return;
-    const signLink = `${window.location.origin}/contracts/${contract.sign_token}`;
+    const signLink = shortClientUrl(window.location.origin, "contract", contract.sign_token);
     await navigator.clipboard.writeText(signLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

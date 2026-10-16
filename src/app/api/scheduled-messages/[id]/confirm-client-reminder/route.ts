@@ -5,6 +5,7 @@ import { clientLangFor } from "@/lib/clientLang";
 import { reminderStillNeeded, type ClientReminderKind } from "@/lib/clientReminders";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 // The photographer's answer to the dashboard prompt for an album-approval / song-selection
 // reminder (lib/clientReminders.ts). send=true → the ready WhatsApp text to the client (opened
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const t = makeT(messagesFor(clientLangFor(user.email, event.client_lang)));
-  const link = `${request.nextUrl.origin}/portal/${event.client_access_token}`;
+  const link = shortClientUrl(request.nextUrl.origin, "portal", event.client_access_token);
   let text = album
     ? t("היי {name} 😊\nרק מזכירים שעיצוב האלבום מחכה לאישור שלכם. אפשר לצפות ולאשר בפורטל האישי:\n{link}\n\nרוצים לשנות משהו? פשוט כתבו לי כאן.", { name: event.client_name, link })
     : t("היי {name} 😊\nרק מזכירים שהסרט המלא מחכה לכם להורדה בפורטל האישי.\nוגם, אשמח שתבחרו שיר או שניים לקליפ: שיר שקט ושיר קצבי 🎵\n{link}", { name: event.client_name, link });

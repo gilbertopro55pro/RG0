@@ -69,13 +69,15 @@ export const metadata: Metadata = {
     title: "גילברטו | ניהול תהליך צילום אירועים",
     description: "מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה",
     siteName: "גילברטו",
-    images: [{ url: "/icons/icon-512.png", width: 512, height: 512 }],
+    // The small icon (under WhatsApp's 300px) so a shared link shows a thumbnail beside the text,
+    // not a banner over the message (owner, 2026-10-16). The landing pages set their own wide image.
+    images: [{ url: "/icons/icon-192.png", width: 192, height: 192 }],
   },
   twitter: {
     card: "summary",
     title: "גילברטו | ניהול תהליך צילום אירועים",
     description: "מערכת לניהול תהליך צילום אירועים מסגירה עד מסירה",
-    images: ["/icons/icon-512.png"],
+    images: ["/icons/icon-192.png"],
   },
   appleWebApp: {
     capable: true,

@@ -102,6 +102,7 @@ import { useT, useLang } from "@/i18n/client";
 import dynamic from "next/dynamic";
 import { dateLocale, type Lang } from "@/i18n/config";
 import { buildGalleryShareMessage, buildGalleryPhotosUploadedMessage, buildExportReadyMessage, galleryShareTitle } from "@/components/GalleryShareModal";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
 
@@ -2688,7 +2689,7 @@ export default function GalleryManageView({
   };
 
   const copyLink = async () => {
-    await navigator.clipboard.writeText(`${window.location.origin}/gallery/${gallery.access_token}`);
+    await navigator.clipboard.writeText(shortClientUrl(window.location.origin, "gallery", gallery.access_token));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -2717,7 +2718,7 @@ export default function GalleryManageView({
   const shareDisabled = showFolderPicker && shareSelectedFolders.size === 0;
 
   const buildShareUrl = () => {
-    const base = `${window.location.origin}/gallery/${gallery.access_token}`;
+    const base = shortClientUrl(window.location.origin, "gallery", gallery.access_token);
     const params = new URLSearchParams();
     if (showFolderPicker) {
       const allSelected = allShareOptionKeys.every((k) => shareSelectedFolders.has(k));
