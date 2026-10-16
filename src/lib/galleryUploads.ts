@@ -63,7 +63,15 @@ export type AlbumPdfResult = {
   stage: { done_at: string | null } | null;
 };
 
-export type GalleryVideoUploadRow = { id: string; storage_path: string; original_filename: string; file_size_bytes: number };
+export type GalleryVideoUploadRow = {
+  id: string;
+  storage_path: string;
+  original_filename: string;
+  file_size_bytes: number;
+  // A portfolio video's tab and sub-tab (migration 0176); not selected for a gallery's videos.
+  portfolio_category?: string | null;
+  portfolio_subcategory?: string | null;
+};
 
 type Item = { file: File; path: string; contentType: string; row: Record<string, unknown> };
 
@@ -302,14 +310,24 @@ export function enqueuePortfolioUpload(input: {
   );
 }
 
-// A gallery's videos (the size limit of the photographer's plan is checked before this).
-export function enqueueVideoUpload(input: { galleryId: string; galleryTitle: string; userId: string; sortBase: number; files: File[] }): void {
+// A gallery's videos (the size limit of the photographer's plan is checked before this). Also the
+// portfolio's videos (PortfolioVideoUploadPanel): into the hidden portfolio gallery, with `href`
+// to the portfolio settings and `row` carrying each file's tab and sub-tab.
+export function enqueueVideoUpload(input: {
+  galleryId: string;
+  galleryTitle: string;
+  userId: string;
+  sortBase: number;
+  files: File[];
+  href?: string;
+  row?: (file: File) => Record<string, unknown>;
+}): void {
   if (input.files.length === 0) return;
   const job = jobFor({
     kind: "videos",
     targetId: input.galleryId,
     title: input.galleryTitle,
-    href: `/galleries/${input.galleryId}`,
+    href: input.href ?? `/galleries/${input.galleryId}`,
     userId: input.userId,
     bucket: "galleries",
     sortBase: input.sortBase,
@@ -320,7 +338,7 @@ export function enqueueVideoUpload(input: { galleryId: string; galleryTitle: str
       file,
       path: `${input.userId}/${input.galleryId}/video-${crypto.randomUUID()}-${file.name}`,
       contentType: file.type || "video/mp4",
-      row: { sort_order: job.sortNext++ },
+      row: { sort_order: job.sortNext++, ...input.row?.(file) },
     }))
   );
 }
@@ -476,7 +494,7 @@ async function save(job: Job, item: Item, file: File): Promise<Saved> {
         file_size_bytes: file.size,
         ...item.row,
       })
-      .select("id, storage_path, original_filename, file_size_bytes")
+      .select("id, storage_path, original_filename, file_size_bytes, portfolio_category, portfolio_subcategory")
       .single<GalleryVideoUploadRow>();
     if (error || !data) {
       // The DB trigger (enforce_gallery_video_by_plan) is the real gate, and the file already

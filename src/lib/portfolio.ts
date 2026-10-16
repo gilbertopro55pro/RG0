@@ -22,6 +22,17 @@ export type PortfolioPhoto = Pick<
   | "created_at"
 >;
 
+// A video in the portfolio (gallery_videos.in_portfolio, migration 0176): uploaded straight to the
+// portfolio, tagged with a tab and a sub-tab like a photo. Played from its signed URL.
+export type PortfolioVideo = {
+  id: string;
+  storage_path: string;
+  original_filename: string;
+  portfolio_category: string | null;
+  portfolio_subcategory: string | null;
+  created_at: string;
+};
+
 // Sentinel for "uncategorized" inside the `tabs` param — mirrors PortfolioManagePanel's own
 // UNCATEGORIZED constant (and PortfolioSettings.tsx's copy of this one).
 export const NO_CATEGORY_TAB = "__none__";
@@ -60,7 +71,31 @@ export async function loadPortfolio(slug: string) {
       .returns<PortfolioPhoto[]>()
   );
 
-  return { photographer, photos };
+  // Few compared with photos (each is a whole clip), so all of them, newest first.
+  const { data: videoRows } = await supabase
+    .from("gallery_videos")
+    .select("id, storage_path, original_filename, portfolio_category, portfolio_subcategory, created_at")
+    .eq("photographer_id", photographer.id)
+    .eq("in_portfolio", true)
+    .order("created_at", { ascending: false })
+    .limit(500)
+    .returns<PortfolioVideo[]>();
+
+  return { photographer, photos, videos: videoRows ?? [] };
+}
+
+// The videos a link may show: the same `tabs` restriction as the photos (scopePortfolioPhotos).
+export function scopePortfolioVideos(allVideos: PortfolioVideo[], tabsParam: string | undefined): PortfolioVideo[] {
+  if (!tabsParam) return allVideos;
+  const allowedTabs = new Set(tabsParam.split(",").map((t) => decodeURIComponent(t)));
+  return allVideos.filter((v) => allowedTabs.has(v.portfolio_category ?? NO_CATEGORY_TAB));
+}
+
+// Signed playback URLs (a day, like the photos'); R2's signed GETs take range requests, so seeking works.
+export async function signPortfolioVideos(videos: PortfolioVideo[]): Promise<Map<string, string>> {
+  const urlById = new Map<string, string>();
+  await Promise.all(videos.map(async (v) => urlById.set(v.id, await getSignedDownloadUrl("galleries", v.storage_path, 60 * 60 * 24))));
+  return urlById;
 }
 
 // `tabs` is a curated-share restriction set by PortfolioSettings.tsx's share sheet: a
@@ -86,7 +121,8 @@ export function scopePortfolioPhotos(
 
 // Each tab's sub-tabs: numbered ones ("1.הכנות", from numbered folders) by their number, the rest
 // after them in the order they were started (by their oldest photo).
-export function portfolioSubTabs(scopedPhotos: PortfolioPhoto[]): Record<string, string[]> {
+// Videos count too: a sub-tab that only has videos is still a sub-tab.
+export function portfolioSubTabs(scopedPhotos: Pick<PortfolioPhoto, "portfolio_category" | "portfolio_subcategory" | "created_at">[]): Record<string, string[]> {
   const first = new Map<string, Map<string, string>>();
   for (const p of scopedPhotos) {
     if (!p.portfolio_category || !p.portfolio_subcategory) continue;

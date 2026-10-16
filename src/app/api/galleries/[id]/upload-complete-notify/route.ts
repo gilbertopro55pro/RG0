@@ -52,23 +52,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             done: counted ? t("העלאת התמונות לפורטפוליו הסתיימה, {ok} מתוך {total} תמונות הועלו בהצלחה.", vars) : t("העלאת התמונות לפורטפוליו הסתיימה."),
             link: t("לצפייה בפורטפוליו:"),
           }
-        : kind === "videos"
+        : kind === "videos" && gallery.is_portfolio_only
           ? {
-              path: `/galleries/${gallery.id}`,
-              subject: t("העלאת הסרטונים ל\"{title}\" הסתיימה", vars),
-              done: counted
-                ? t("העלאת הסרטונים לגלריה \"{title}\" הסתיימה, {ok} מתוך {total} סרטונים הועלו בהצלחה.", vars)
-                : t("העלאת הסרטונים לגלריה \"{title}\" הסתיימה.", vars),
-              link: t("לצפייה בגלריה:"),
+              // Videos straight to the portfolio (PortfolioVideoUploadPanel, its hidden gallery).
+              path: "/settings?tab=portfolio",
+              subject: t("העלאת הסרטונים לפורטפוליו הסתיימה"),
+              done: counted ? t("העלאת הסרטונים לפורטפוליו הסתיימה, {ok} מתוך {total} סרטונים הועלו בהצלחה.", vars) : t("העלאת הסרטונים לפורטפוליו הסתיימה."),
+              link: t("לצפייה בפורטפוליו:"),
             }
-          : {
-              path: `/galleries/${gallery.id}`,
-              subject: t("העלאת התמונות ל\"{title}\" הסתיימה", vars),
-              done: counted
-                ? t("העלאת התמונות לגלריה \"{title}\" הסתיימה, {ok} מתוך {total} תמונות הועלו בהצלחה.", vars)
-                : t("העלאת התמונות לגלריה \"{title}\" הסתיימה.", vars),
-              link: t("לצפייה בגלריה:"),
-            };
+          : kind === "videos"
+            ? {
+                path: `/galleries/${gallery.id}`,
+                subject: t("העלאת הסרטונים ל\"{title}\" הסתיימה", vars),
+                done: counted
+                  ? t("העלאת הסרטונים לגלריה \"{title}\" הסתיימה, {ok} מתוך {total} סרטונים הועלו בהצלחה.", vars)
+                  : t("העלאת הסרטונים לגלריה \"{title}\" הסתיימה.", vars),
+                link: t("לצפייה בגלריה:"),
+              }
+            : {
+                path: `/galleries/${gallery.id}`,
+                subject: t("העלאת התמונות ל\"{title}\" הסתיימה", vars),
+                done: counted
+                  ? t("העלאת התמונות לגלריה \"{title}\" הסתיימה, {ok} מתוך {total} תמונות הועלו בהצלחה.", vars)
+                  : t("העלאת התמונות לגלריה \"{title}\" הסתיימה.", vars),
+                link: t("לצפייה בגלריה:"),
+              };
     await Promise.all([
       photographer.email
         ? sendEmail({

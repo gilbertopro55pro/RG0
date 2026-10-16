@@ -414,6 +414,11 @@ export const VIDEO_MAX_BYTES_BY_TIER: Record<SubscriptionTier, number | null> = 
   studio_pro: 500 * 1024 * 1024,
 };
 
+// Videos straight to the public portfolio (owner, 2026-10-16): פרו and פרו+ alike, up to 400MB a
+// file (the entry tier has no portfolio at all). Mirrored by enforce_gallery_video_by_plan
+// (migration 0176) for a video in the portfolio gallery.
+export const PORTFOLIO_VIDEO_MAX_BYTES = 400 * 1024 * 1024;
+
 // Closed, bounded set of gallery retention windows — the main lever a capped tier has over its own
 // storage footprint. Days, not months, because "week" and "14 days" aren't whole months. The DB
 // trigger (enforce_gallery_expiry_by_plan, migration 0084 + 0116 + this tier's own follow-up) is
