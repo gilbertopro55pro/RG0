@@ -51,9 +51,10 @@ export function toRow(l: PhotoLabel): { label: Label; unflattering: boolean; not
 
 export const hasFlags = (f: LabelFlags) => f.blurry || f.eyes || f.notLooking || f.unflattering;
 
-// Done: labelled, except a skip from before the new problems existed. Those are shown again, since
-// many of them were most likely exactly the two problems that had no button yet.
-export const isDone = (l: PhotoLabel | undefined) => !!l && (!l.skip || l.v === LABEL_VERSION);
+// Done: labelled with all four problems on screen. The owner chose (2026-10-16) to label again from
+// scratch once the two new problems were added, so a label from before (labeled_v null) counts as
+// not labelled anywhere: it's shown again, empty, and the engine test ignores it.
+export const isDone = (l: PhotoLabel | undefined) => !!l && l.v === LABEL_VERSION;
 
 // What a label says, for the badge on the photo.
 export function describe(l: PhotoLabel): string[] {
