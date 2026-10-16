@@ -36,6 +36,7 @@ export default function QuickActionsGrid({
   defaultTaxStatus,
   quoteExtras,
   clientLangPicker,
+  cullingLink,
 }: {
   hourlyRate: number;
   suppliers: PricingSupplier[];
@@ -46,6 +47,8 @@ export default function QuickActionsGrid({
   defaultTaxStatus: "exempt" | "licensed";
   quoteExtras?: boolean;
   clientLangPicker?: boolean;
+  // Admin only: the photo-culling test (labelling + engine), one tap from home on the phone.
+  cullingLink?: boolean;
 }) {
   const t = useT();
   const [calculatorOpen, setCalculatorOpen] = useState(false);
@@ -74,6 +77,15 @@ export default function QuickActionsGrid({
             </Link>
           );
         })}
+        {cullingLink && (
+          <Link href="/admin/culling" data-press="tint" className="px-3.5 py-3 flex items-center gap-2 text-start col-span-3 lg:col-span-6" style={TILE_STYLE}>
+            <span style={{ color: "var(--color-brass)" }}>
+              <IconGallery className="h-5 w-5" />
+            </span>
+            <span className="text-[13px] font-medium leading-tight">{t("סינון תמונות: סימון ומדידה")}</span>
+            <span className="text-[11px] text-ink-soft ms-auto">{t("אדמין")}</span>
+          </Link>
+        )}
       </nav>
       {calculatorOpen && (
         <EventPricingCalculator
