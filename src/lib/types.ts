@@ -392,6 +392,8 @@ export type LeadRow = {
   client_lang?: string | null;
   // When to get back to the client (lib/leadContactReminder.ts, migration 0175). Null = none.
   contact_remind_at?: string | null;
+  // The photographer's own note (migration 0177), separate from `notes`, which the assistant writes.
+  photographer_note?: string | null;
   phone: string | null;
   email: string | null;
   event_date_interest: string | null;

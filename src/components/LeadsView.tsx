@@ -17,6 +17,7 @@ import { sourceLabel } from "@/lib/leadSource";
 import { daysUntilPurge } from "@/lib/leadRetention";
 import { createClient } from "@/lib/supabase/client";
 import ContactReminderDialog from "@/components/ContactReminderDialog";
+import BodyPortal from "@/components/BodyPortal";
 import { announceContactReminder, onContactReminderChange } from "@/lib/contactReminderSync";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, isLang, LANG_LABELS, LANGS, type Lang } from "@/i18n/config";
@@ -198,6 +199,33 @@ export default function LeadsView({
     await fetch(`/api/leads/${id}`, { method: "DELETE" });
   };
 
+  // Tapping a lead's phone asks how to reach them: WhatsApp or a call (owner, 2026-10-16).
+  const [phoneLead, setPhoneLead] = useState<LeadRow | null>(null);
+  // "מחיקת הליד" sits next to the language picker and asks once before deleting.
+  const [deleteAskId, setDeleteAskId] = useState<string | null>(null);
+  // The photographer's own note (leads.photographer_note), added and edited from the "⋯" menu.
+  const [noteEdit, setNoteEdit] = useState<{ id: string; text: string } | null>(null);
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteError, setNoteError] = useState(false);
+  const saveNote = async () => {
+    if (!noteEdit) return;
+    const note = noteEdit.text.trim() || null;
+    setNoteSaving(true);
+    setNoteError(false);
+    const res = await fetch(`/api/leads/${noteEdit.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photographer_note: note }),
+    }).catch(() => null);
+    setNoteSaving(false);
+    if (!res?.ok) {
+      setNoteError(true);
+      return;
+    }
+    updateLead(noteEdit.id, { photographer_note: note });
+    setNoteEdit(null);
+  };
+
   return (
     <div className="pb-8">
       <div className="flex items-center justify-between mb-1.5">
@@ -288,9 +316,15 @@ export default function LeadsView({
                   </div>
                 )}
                 {lead.phone && (
-                  <div className="text-[13px] text-ink-soft font-data" dir="ltr" style={{ textAlign: lang === "he" ? "right" : "left" }}>
+                  <button
+                    type="button"
+                    onClick={() => setPhoneLead(lead)}
+                    className="block text-[13px] text-ink-soft font-data underline-offset-2 hover:underline"
+                    dir="ltr"
+                    aria-label={t("יצירת קשר עם {name}", { name: lead.name })}
+                  >
                     {lead.phone}
-                  </div>
+                  </button>
                 )}
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
@@ -321,6 +355,11 @@ export default function LeadsView({
 
             {lead.event_type_name && <p className="text-[13px] mb-1">{lead.event_type_name}</p>}
             {lead.notes && <p className="text-xs text-ink-soft mb-2.5">{lead.notes}</p>}
+            {lead.photographer_note && noteEdit?.id !== lead.id && (
+              <p className="text-xs mb-2.5 rounded-lg bg-chip px-2.5 py-1.5 whitespace-pre-line">
+                <span className="font-semibold">{t("הערה:")}</span> {lead.photographer_note}
+              </p>
+            )}
             {lead.bot_conversation_id && <ConversationToggle leadId={lead.id} hasPhone={!!lead.phone} />}
 
             {lead.quoted_amount && (
@@ -391,8 +430,66 @@ export default function LeadsView({
                   ))}
                 </select>
               )}
-              <RowMenu items={[{ label: t("מחיקת הליד"), onClick: () => deleteLead(lead.id), danger: true }]} />
+              {deleteAskId === lead.id ? (
+                <span className="flex items-center gap-1.5 text-[12px]">
+                  <span className="font-semibold text-rose">{t("למחוק את הליד?")}</span>
+                  <button
+                    onClick={() => {
+                      setDeleteAskId(null);
+                      void deleteLead(lead.id);
+                    }}
+                    className="h-7 px-2.5 rounded-full bg-rose text-white font-semibold"
+                  >
+                    {t("כן, מחיקה")}
+                  </button>
+                  <button onClick={() => setDeleteAskId(null)} className="h-7 px-2 rounded-full text-ink-soft underline">
+                    {t("ביטול")}
+                  </button>
+                </span>
+              ) : (
+                <button onClick={() => setDeleteAskId(lead.id)} className="text-[11px] h-7 px-2.5 rounded-full font-semibold bg-chip text-rose">
+                  {t("מחיקת הליד")}
+                </button>
+              )}
+              <RowMenu
+                items={[
+                  {
+                    label: lead.photographer_note ? t("עריכת ההערה") : t("הוספת הערה"),
+                    onClick: () => {
+                      setNoteError(false);
+                      setNoteEdit({ id: lead.id, text: lead.photographer_note ?? "" });
+                    },
+                  },
+                ]}
+              />
             </div>
+
+            {noteEdit?.id === lead.id && (
+              <div className="mt-2.5 rounded-xl bg-chip p-3">
+                <label htmlFor={`lead-note-${lead.id}`} className="block text-xs font-semibold mb-1.5">
+                  {t("הערה")}
+                </label>
+                <textarea
+                  id={`lead-note-${lead.id}`}
+                  value={noteEdit.text}
+                  onChange={(e) => setNoteEdit({ id: lead.id, text: e.target.value })}
+                  rows={3}
+                  maxLength={2000}
+                  autoFocus
+                  placeholder={t("למשל: ביקשו לחזור אחרי שיסגרו אולם")}
+                  className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none"
+                />
+                {noteError && <p className="text-xs text-rose mt-1">{t("שגיאה בשמירה. נסו שוב")}</p>}
+                <div className="flex gap-2 mt-2">
+                  <button onClick={saveNote} disabled={noteSaving} className="h-9 px-4 rounded-lg bg-ink text-white text-[13px] font-bold disabled:opacity-60">
+                    {noteSaving ? t("שומר...") : t("שמירה")}
+                  </button>
+                  <button onClick={() => setNoteEdit(null)} disabled={noteSaving} className="h-9 px-4 rounded-lg bg-white border border-line text-[13px] font-semibold text-ink">
+                    {t("ביטול")}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {quoteFormLeadId === lead.id && (
               <QuoteForm
@@ -441,9 +538,15 @@ export default function LeadsView({
                         </div>
                       )}
                       {lead.phone && (
-                        <div className="text-[13px] text-ink-soft font-data" dir="ltr" style={{ textAlign: lang === "he" ? "right" : "left" }}>
+                        <button
+                          type="button"
+                          onClick={() => setPhoneLead(lead)}
+                          className="block text-[13px] text-ink-soft font-data underline-offset-2 hover:underline"
+                          dir="ltr"
+                          aria-label={t("יצירת קשר עם {name}", { name: lead.name })}
+                        >
                           {lead.phone}
-                        </div>
+                        </button>
                       )}
                     </div>
                     {lead.event_type_name && <p className="text-[13px] mb-1">{lead.event_type_name}</p>}
@@ -559,6 +662,43 @@ export default function LeadsView({
           onLeadQuoted={(patch) => updateLead(builderLead.id, patch)}
           onClose={() => setBuilderLead(null)}
         />
+      )}
+
+      {phoneLead?.phone && (
+        <BodyPortal>
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+            style={{ background: "rgba(28, 27, 25, 0.45)" }}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("יצירת קשר עם {name}", { name: phoneLead.name })}
+            onClick={() => setPhoneLead(null)}
+          >
+            <div className="w-full max-w-xs rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-lg font-bold font-display">{phoneLead.name}</h2>
+              <p className="text-sm text-ink-soft font-data mb-4" dir="ltr" style={{ textAlign: lang === "he" ? "right" : "left" }}>
+                {phoneLead.phone}
+              </p>
+              <div className="flex flex-col gap-2">
+                <a
+                  href={buildWaMeLink(phoneLead.phone, "")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setPhoneLead(null)}
+                  className="h-11 rounded-xl bg-sage text-white text-sm font-semibold flex items-center justify-center"
+                >
+                  {t("וואטסאפ")}
+                </a>
+                <a href={`tel:${phoneLead.phone}`} onClick={() => setPhoneLead(null)} className="h-11 rounded-xl bg-ink text-white text-sm font-semibold flex items-center justify-center">
+                  {t("חיוג")}
+                </a>
+                <button onClick={() => setPhoneLead(null)} className="h-10 rounded-xl text-sm font-semibold text-ink-soft">
+                  {t("ביטול")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </BodyPortal>
       )}
 
       {contactAsk && (
