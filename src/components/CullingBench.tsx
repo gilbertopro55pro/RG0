@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import { useT } from "@/i18n/client";
+import { LABEL_COLUMNS, type LabelRow } from "@/lib/culling/labels";
 import { ENGINE_VERSION, analyzePhoto, loadCullingModels } from "@/lib/culling/engine";
 import {
   benchReport,
@@ -11,7 +12,6 @@ import {
   mistakeKinds,
   type BenchItem,
   type CullFeatures,
-  type CullLabel,
   type CullVerdict,
   type MistakeKind,
   type Rate,
@@ -39,6 +39,8 @@ const MISTAKE_TEXT: Record<MistakeKind, string> = {
   falseBlur: "סומנה לא בפוקוס בטעות",
   missedEyes: "עיניים עצומות שלא נתפסו",
   falseEyes: "סומנה עיניים עצומות בטעות",
+  missedLook: "מבט לא למצלמה שלא נתפס",
+  falseLook: "סומנה מבט לא למצלמה בטעות",
   review: "לבדיקה",
 };
 
@@ -57,7 +59,7 @@ export default function CullingBench({
   const t = useT();
   const [galleryId, setGalleryId] = useState(initialGalleryId);
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [labels, setLabels] = useState<Map<string, CullLabel>>(new Map());
+  const [labels, setLabels] = useState<Map<string, LabelRow>>(new Map());
   const [results, setResults] = useState<Map<string, Result>>(new Map());
   const [loading, setLoading] = useState(false);
   const [scope, setScope] = useState<"labeled" | "all">("labeled");
@@ -76,8 +78,8 @@ export default function CullingBench({
         fetchAllRows<Photo>((from, to) =>
           supabase.from("gallery_photos").select("id, folder_id, original_filename, storage_path").eq("gallery_id", galleryId).order("id").range(from, to).returns<Photo[]>()
         ),
-        fetchAllRows<{ photo_id: string; label: CullLabel }>((from, to) =>
-          supabase.from("culling_labels").select("photo_id, label").eq("gallery_id", galleryId).order("photo_id").range(from, to).returns<{ photo_id: string; label: CullLabel }[]>()
+        fetchAllRows<LabelRow>((from, to) =>
+          supabase.from("culling_labels").select(LABEL_COLUMNS).eq("gallery_id", galleryId).order("photo_id").range(from, to).returns<LabelRow[]>()
         ),
         fetchAllRows<{ photo_id: string; engine_version: string; features: CullFeatures | null; error: string | null }>((from, to) =>
           supabase
@@ -91,7 +93,7 @@ export default function CullingBench({
       ]);
       if (cancelled) return;
       setPhotos(photoRows ?? []);
-      setLabels(new Map((labelRows ?? []).map((r) => [r.photo_id, r.label])));
+      setLabels(new Map((labelRows ?? []).map((r) => [r.photo_id, r])));
       setResults(new Map((resultRows ?? []).map((r) => [r.photo_id, { features: r.features, error: r.error, version: r.engine_version }])));
       setLoading(false);
     })();
@@ -100,7 +102,7 @@ export default function CullingBench({
     };
   }, [galleryId, supabase]);
 
-  const inScope = useMemo(() => (scope === "labeled" ? photos.filter((p) => labels.has(p.id) && labels.get(p.id) !== "skip") : photos), [photos, labels, scope]);
+  const inScope = useMemo(() => (scope === "labeled" ? photos.filter((p) => labels.has(p.id) && labels.get(p.id)!.label !== "skip") : photos), [photos, labels, scope]);
   const pending = useMemo(() => inScope.filter((p) => results.get(p.id)?.version !== ENGINE_VERSION || !results.get(p.id)?.features), [inScope, results]);
 
   async function download(p: Photo): Promise<{ blob: Blob; source: CullFeatures["source"]; ms: number }> {
@@ -184,10 +186,10 @@ export default function CullingBench({
   const items: BenchItem[] = useMemo(() => {
     const out: BenchItem[] = [];
     for (const p of photos) {
-      const label = labels.get(p.id);
+      const row = labels.get(p.id);
       const f = results.get(p.id)?.features;
-      if (!label || label === "skip" || !f || f.v !== ENGINE_VERSION) continue;
-      out.push({ photoId: p.id, label, decision: decide(f) });
+      if (!row || row.label === "skip" || !f || f.v !== ENGINE_VERSION) continue;
+      out.push({ photoId: p.id, label: row.label, notLooking: row.not_looking, unflattering: row.unflattering, v: row.labeled_v, decision: decide(f) });
     }
     return out;
   }, [photos, labels, results]);
@@ -213,7 +215,7 @@ export default function CullingBench({
 
   const mistakes = useMemo(() => items.filter((it) => mistakeKinds(it).includes(filter)), [items, filter]);
   const mistakeCounts = useMemo(() => {
-    const c: Record<MistakeKind, number> = { missedBlur: 0, falseBlur: 0, missedEyes: 0, falseEyes: 0, review: 0 };
+    const c: Record<MistakeKind, number> = { missedBlur: 0, falseBlur: 0, missedEyes: 0, falseEyes: 0, missedLook: 0, falseLook: 0, review: 0 };
     for (const it of items) for (const k of mistakeKinds(it)) c[k]++;
     return c;
   }, [items]);
@@ -297,11 +299,13 @@ export default function CullingBench({
 
           {measured.length > 0 && (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
                 <Stat label={t("עיניים עצומות: דיוק")} rate={report.eyesPrecision} target={90} />
                 <Stat label={t("לא בפוקוס: נתפסו")} rate={report.blurRecall} target={85} />
                 <Stat label={t("לא בפוקוס: דיוק")} rate={report.blurPrecision} target={80} />
                 <Stat label={t("עיניים עצומות: נתפסו")} rate={report.eyesRecall} target={null} />
+                <Stat label={t("מבט לא למצלמה: דיוק")} rate={report.lookPrecision} target={null} />
+                <Stat label={t("מבט לא למצלמה: נתפסו")} rate={report.lookRecall} target={null} />
               </div>
               <p className="text-xs text-ink-soft mb-1 leading-relaxed">
                 {t("{n} תמונות מסומנות נמדדו. לבדיקה: {review}. זמן עיבוד לתמונה: {avg} שניות בממוצע, {p90} ב-90% מהתמונות (בלי ההורדה, {dl} שניות).", {
@@ -311,6 +315,9 @@ export default function CullingBench({
                   p90: (timing.p90 / 1000).toFixed(1),
                   dl: (timing.download / 1000).toFixed(1),
                 })}
+              </p>
+              <p className="text-xs text-ink-soft mb-1">
+                {t("לא מחמיא: {n} תמונות מסומנות. המנוע עוד לא מזהה את זה, והסימונים נשמרים כדי ללמוד מהם בהמשך.", { n: report.unflattering })}
               </p>
               {timing.proxy > 0 && (
                 <p className="text-xs text-rose mb-1">{t("{n} תמונות נמדדו מעותק של 2000 פיקסלים ולא מהמקור, ולכן מדידת הפוקוס בהן פחות מדויקת.", { n: timing.proxy })}</p>
@@ -436,6 +443,8 @@ function MistakeCard({ galleryId, item, features }: { galleryId: string; item: B
         {d.focusFrom === "eyes" ? t("חדות העיניים {v}", { v: d.focusValue ?? "—" }) : t("בלי פרצוף, חדות הסצנה {v}", { v: d.focusValue ?? "—" })}
         {d.blinkValue !== null && ` · ${t("עצימת עיניים {v}", { v: d.blinkValue.toFixed(2) })}`}
         {d.earValue !== null && ` · ${t("פתיחת העין {v}", { v: d.earValue.toFixed(2) })}`}
+        {d.yawValue !== null && ` · ${t("סיבוב הראש {v}°", { v: Math.round(d.yawValue) })}`}
+        {d.gazeValue !== null && ` · ${t("מבט הצידה {v}", { v: d.gazeValue.toFixed(2) })}`}
         {` · ${t("{n} פרצופים", { n: features.faces.length })}`}
         {main && ` · ${t("מרחק עיניים {n}px", { n: main.iod })}`}
       </p>

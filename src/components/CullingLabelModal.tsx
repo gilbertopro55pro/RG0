@@ -7,12 +7,29 @@ import { BTN_PRESS } from "@/lib/viewTransition";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import CullingZoom from "@/components/CullingZoom";
 import { useT } from "@/i18n/client";
-import { LABELS, labelText, nextUnlabelled, saveCullingLabel, type Label } from "@/lib/culling/labels";
+import {
+  FLAGS,
+  LABEL_COLUMNS,
+  NO_FLAGS,
+  describe,
+  fromRow,
+  hasFlags,
+  isDone,
+  nextOpen,
+  saveCullingLabel,
+  type LabelFlags,
+  type LabelRow,
+  type PhotoLabel,
+} from "@/lib/culling/labels";
 
 // Photo culling labels, full screen (owner, 2026-10-16: "דרך הטלפון", "ישירות דרך הגלריה"). Opened
 // from a gallery (admin only, next to "מיון תמונות") with the photos on screen, or from the labelling
-// page. Built for a phone: the buttons sit under the thumb, a swipe moves between photos, a tap
-// opens the original at 100% around the tapped point. Keys 1–4 and 0 still work on a computer.
+// page with its mixed order. Built for a phone: the buttons sit under the thumb, a swipe moves
+// between photos, a tap opens the original at 100% around the tapped point.
+//
+// A photo can have several problems: the problem buttons toggle, and the one big button commits.
+// With nothing toggled it reads "תקינה", so a fine photo is still one tap. Keys: 1 fine, 2–5 the
+// problems, Enter save, 0 skip, arrows, Z zoom.
 
 type Photo = { id: string; storage_path: string; original_filename: string };
 
@@ -26,15 +43,17 @@ export default function CullingLabelModal({
   photos: Photo[];
   galleryId: string;
   userId: string;
-  onLabel?: (photoId: string, label: Label | null) => void;
+  onLabel?: (photoId: string, label: PhotoLabel | null) => void;
   onClose: () => void;
 }) {
   const t = useT();
   const supabase = useMemo(() => createClient(), []);
-  const [labels, setLabels] = useState<Map<string, Label> | null>(null);
+  const [labels, setLabels] = useState<Map<string, PhotoLabel> | null>(null);
   const [index, setIndex] = useState(0);
   const [error, setError] = useState(false);
   const [zoom, setZoom] = useState<{ x: number; y: number } | null>(null);
+  // The problems toggled on the photo on screen, before saving; starts from its saved label.
+  const [draft, setDraft] = useState<{ photoId: string | null; flags: LabelFlags }>({ photoId: null, flags: NO_FLAGS });
   const touch = useRef<{ x: number; y: number; swiped: boolean } | null>(null);
   const ids = useMemo(() => photos.map((p) => p.id), [photos]);
 
@@ -49,17 +68,17 @@ export default function CullingLabelModal({
     };
   }, []);
 
-  // Fresh labels on open; starts on the first photo without one.
+  // Fresh labels on open; starts on the first photo still to label.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const rows = await fetchAllRows<{ photo_id: string; label: Label }>((from, to) =>
-        supabase.from("culling_labels").select("photo_id, label").eq("gallery_id", galleryId).order("photo_id").range(from, to).returns<{ photo_id: string; label: Label }[]>()
+      const rows = await fetchAllRows<LabelRow>((from, to) =>
+        supabase.from("culling_labels").select(LABEL_COLUMNS).eq("gallery_id", galleryId).order("photo_id").range(from, to).returns<LabelRow[]>()
       );
       if (cancelled) return;
-      const map = new Map((rows ?? []).map((r) => [r.photo_id, r.label]));
+      const map = new Map((rows ?? []).map((r) => [r.photo_id, fromRow(r)]));
       setLabels(map);
-      const first = ids.findIndex((id) => !map.has(id));
+      const first = ids.findIndex((id) => !isDone(map.get(id)));
       setIndex(first === -1 ? 0 : first);
     })();
     return () => {
@@ -68,6 +87,13 @@ export default function CullingLabelModal({
   }, [supabase, galleryId, ids]);
 
   const photo = photos[index] ?? null;
+  const saved = photo ? labels?.get(photo.id) : undefined;
+  // A new photo on screen: the draft starts from what was saved for it.
+  if (photo && labels && draft.photoId !== photo.id) {
+    setDraft({ photoId: photo.id, flags: saved && !saved.skip ? saved.flags : NO_FLAGS });
+  }
+  const flags = draft.photoId === photo?.id ? draft.flags : NO_FLAGS;
+
   const imageUrl = (p: Photo) => `/api/galleries/${galleryId}/photos/${p.id}/image?size=2000`;
   const go = useCallback((delta: number) => setIndex((i) => Math.max(0, Math.min(photos.length - 1, i + delta))), [photos.length]);
 
@@ -80,13 +106,13 @@ export default function CullingLabelModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, photos]);
 
-  const label = useCallback(
-    async (value: Label) => {
+  const commit = useCallback(
+    async (value: PhotoLabel) => {
       if (!photo || !labels) return;
       const prev = labels.get(photo.id) ?? null;
       const next = new Map(labels).set(photo.id, value);
       setLabels(next);
-      setIndex(nextUnlabelled(ids, index, next));
+      setIndex(nextOpen(ids, index, next));
       setError(false);
       onLabel?.(photo.id, value);
       const ok = await saveCullingLabel(supabase, { photoId: photo.id, userId, galleryId, label: value });
@@ -104,28 +130,49 @@ export default function CullingLabelModal({
     [photo, labels, ids, index, onLabel, supabase, userId, galleryId]
   );
 
+  const toggle = useCallback(
+    (key: keyof LabelFlags) => {
+      if (!photo) return;
+      setDraft((d) => ({ photoId: photo.id, flags: { ...(d.photoId === photo.id ? d.flags : NO_FLAGS), [key]: !(d.photoId === photo.id && d.flags[key]) } }));
+    },
+    [photo]
+  );
+  const saveDraft = useCallback(() => void commit({ skip: false, flags, v: 2 }), [commit, flags]);
+  const markFine = useCallback(() => void commit({ skip: false, flags: NO_FLAGS, v: 2 }), [commit]);
+  const skip = useCallback(() => void commit({ skip: true, flags: NO_FLAGS, v: 2 }), [commit]);
+
   // Visual "forward" is left in a right-to-left page (the same as the gallery's own lightbox).
   useEffect(() => {
     const rtl = document.documentElement.dir !== "ltr";
     const onKey = (e: KeyboardEvent) => {
       if (zoom) return;
       if (e.target instanceof HTMLElement && ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
-      const l = LABELS.find((x) => x.hotkey === e.key);
-      if (l) {
+      // Enter saves even when a problem button still has the focus from a click (its default would
+      // toggle that problem off again).
+      const f = FLAGS.find((x) => x.hotkey === e.key);
+      if (f) {
         e.preventDefault();
-        void label(l.key);
-      } else if (e.key === "Escape") onClose();
+        toggle(f.key);
+      } else if (e.key === "1") {
+        e.preventDefault();
+        markFine();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        saveDraft();
+      } else if (e.key === "0") skip();
+      else if (e.key === "Escape") onClose();
       else if (e.key === (rtl ? "ArrowLeft" : "ArrowRight")) go(1);
       else if (e.key === (rtl ? "ArrowRight" : "ArrowLeft")) go(-1);
       else if (e.key.toLowerCase() === "z") setZoom({ x: 0.5, y: 0.5 });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [label, go, onClose, zoom]);
+  }, [toggle, markFine, saveDraft, skip, go, onClose, zoom]);
 
-  const counted = useMemo(() => (labels ? ids.filter((id) => labels.has(id) && labels.get(id) !== "skip").length : 0), [ids, labels]);
-  const current = photo && labels?.get(photo.id);
+  const done = useMemo(() => (labels ? ids.filter((id) => isDone(labels.get(id)) && !labels.get(id)!.skip).length : 0), [ids, labels]);
   const closeZoom = useCallback(() => setZoom(null), []);
+  const anyFlag = hasFlags(flags);
+  const flagCount = FLAGS.filter((f) => flags[f.key]).length;
 
   return (
     <div className="fixed inset-0 z-[70] bg-black flex flex-col select-none" role="dialog" aria-modal="true" aria-label={t("סימון למודל הסינון")}>
@@ -135,7 +182,7 @@ export default function CullingLabelModal({
         </button>
         <div className="text-center min-w-0">
           <div className="text-sm font-semibold font-data">{photos.length ? t("תמונה {n} מתוך {total}", { n: index + 1, total: photos.length }) : ""}</div>
-          <div className="text-[11px] text-white/60 mt-0.5">{t("סומנו {n} מהתמונות כאן", { n: counted })}</div>
+          <div className="text-[11px] text-white/60 mt-0.5">{t("סומנו {n} מהתמונות כאן", { n: done })}</div>
         </div>
         <div className="h-9 w-9" />
       </div>
@@ -179,10 +226,12 @@ export default function CullingLabelModal({
               }}
               className="max-h-full max-w-full object-contain cursor-zoom-in"
             />
-            {current && (
-              <span className="absolute top-2 start-1/2 -translate-x-1/2 rtl:translate-x-1/2 text-xs font-semibold px-3 py-1 rounded-full bg-white text-ink">
-                {t(labelText(current))}
-              </span>
+            {saved && (
+              <div className="absolute top-2 inset-x-0 flex justify-center px-3 pointer-events-none">
+                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-white text-ink text-center">
+                  {isDone(saved) ? describe(saved).map((x) => t(x)).join(" · ") : t("דילגת עליה קודם, כדאי לסמן שוב")}
+                </span>
+              </div>
             )}
           </>
         ) : null}
@@ -190,38 +239,40 @@ export default function CullingLabelModal({
 
       <div className="px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+12px)] space-y-2">
         {error && <p className="text-xs text-center text-rose">{t("שמירת הסימון נכשלה, נסו שוב.")}</p>}
-        <button
-          onClick={() => void label("ok")}
-          disabled={!photo || !labels}
-          className={`w-full h-14 rounded-2xl text-base font-bold text-white disabled:opacity-50 ${current === "ok" ? "ring-2 ring-white" : ""} ${BTN_PRESS}`}
-          style={{ background: "var(--color-sage)" }}
-        >
-          ✓ {t("תקינה")}
-        </button>
-        <div className="grid grid-cols-3 gap-2">
-          {LABELS.filter((l) => l.key !== "ok" && l.key !== "skip").map((l) => (
+        <div className="grid grid-cols-2 gap-2">
+          {FLAGS.map((f) => (
             <button
-              key={l.key}
-              onClick={() => void label(l.key)}
+              key={f.key}
+              onClick={() => toggle(f.key)}
               disabled={!photo || !labels}
-              className={`h-12 rounded-2xl text-sm font-semibold bg-white/15 text-white disabled:opacity-50 ${current === l.key ? "ring-2 ring-white" : ""} ${BTN_PRESS}`}
+              aria-pressed={flags[f.key]}
+              className={`h-12 rounded-2xl text-sm font-semibold disabled:opacity-50 ${flags[f.key] ? "bg-white text-ink" : "bg-white/15 text-white"} ${BTN_PRESS}`}
             >
-              {t(l.text)}
+              {flags[f.key] ? "✓ " : ""}
+              {t(f.text)}
             </button>
           ))}
         </div>
+        <button
+          onClick={anyFlag ? saveDraft : markFine}
+          disabled={!photo || !labels}
+          className={`w-full h-14 rounded-2xl text-base font-bold text-white disabled:opacity-50 ${BTN_PRESS}`}
+          style={{ background: anyFlag ? "var(--color-amber-deep)" : "var(--color-sage)" }}
+        >
+          {anyFlag ? t("שמירה ({n}) והבאה", { n: flagCount }) : `✓ ${t("תקינה")}`}
+        </button>
         <div className="flex items-center justify-between text-xs text-white/70 pt-1">
           <button onClick={() => go(-1)} disabled={index === 0} className="px-2 py-1.5 disabled:opacity-30">
             {t("הקודמת")}
           </button>
-          <button onClick={() => void label("skip")} disabled={!photo || !labels} className="px-3 py-1.5 underline disabled:opacity-30">
+          <button onClick={skip} disabled={!photo || !labels} className="px-3 py-1.5 underline disabled:opacity-30">
             {t("דילוג (לא בטוח)")}
           </button>
           <button onClick={() => go(1)} disabled={index >= photos.length - 1} className="px-2 py-1.5 disabled:opacity-30">
             {t("הבאה")}
           </button>
         </div>
-        <p className="hidden sm:block text-center text-[11px] text-white/40">{t("מקשים: 1–4 ו-0 לסימון, חיצים למעבר, Z להגדלה")}</p>
+        <p className="hidden sm:block text-center text-[11px] text-white/40">{t("מקשים: 1 תקינה, 2–5 בעיות, Enter שמירה, 0 דילוג, חיצים למעבר, Z להגדלה")}</p>
       </div>
 
       {zoom && photo && <CullingZoom storagePath={photo.storage_path} x={zoom.x} y={zoom.y} onClose={closeZoom} />}
