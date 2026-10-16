@@ -400,15 +400,14 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
     if (!next || next === sub) return;
     setSubSaving(true);
     setSubError(null);
-    // Renaming onto another sub-tab's name merges the two — the same as adding photos to it.
-    const { error: updateError } = await supabase
-      .from("gallery_photos")
-      .update({ portfolio_subcategory: next })
-      .eq("photographer_id", photographerId)
-      .eq("portfolio_category", tab)
-      .eq("portfolio_subcategory", sub);
+    // Renaming onto another sub-tab's name merges the two — the same as adding photos to it. The
+    // sub-tab's videos (PortfolioVideoUploadPanel) move with it.
+    const [{ error: updateError }, { error: videoError }] = await Promise.all([
+      supabase.from("gallery_photos").update({ portfolio_subcategory: next }).eq("photographer_id", photographerId).eq("portfolio_category", tab).eq("portfolio_subcategory", sub),
+      supabase.from("gallery_videos").update({ portfolio_subcategory: next }).eq("photographer_id", photographerId).eq("in_portfolio", true).eq("portfolio_category", tab).eq("portfolio_subcategory", sub),
+    ]);
     setSubSaving(false);
-    if (updateError) {
+    if (updateError || videoError) {
       setSubError(t("שגיאה בשמירה. נסו שוב"));
       return;
     }
@@ -421,14 +420,13 @@ export default function PortfolioManagePanel({ photographerId }: { photographerI
     const { tab, sub } = subSheet;
     setSubSaving(true);
     setSubError(null);
-    const { error: updateError } = await supabase
-      .from("gallery_photos")
-      .update({ portfolio_subcategory: null })
-      .eq("photographer_id", photographerId)
-      .eq("portfolio_category", tab)
-      .eq("portfolio_subcategory", sub);
+    // Its videos stay in the tab too.
+    const [{ error: updateError }, { error: videoError }] = await Promise.all([
+      supabase.from("gallery_photos").update({ portfolio_subcategory: null }).eq("photographer_id", photographerId).eq("portfolio_category", tab).eq("portfolio_subcategory", sub),
+      supabase.from("gallery_videos").update({ portfolio_subcategory: null }).eq("photographer_id", photographerId).eq("in_portfolio", true).eq("portfolio_category", tab).eq("portfolio_subcategory", sub),
+    ]);
     setSubSaving(false);
-    if (updateError) {
+    if (updateError || videoError) {
       setSubError(t("שגיאה בשמירה. נסו שוב"));
       return;
     }

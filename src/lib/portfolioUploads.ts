@@ -83,3 +83,28 @@ export async function queuePortfolioUpload(photographerId: string, groups: Portf
   }
   return null;
 }
+
+// Videos straight to the portfolio (owner, 2026-10-16; PortfolioVideoUploadPanel). A dragged folder
+// becomes a tab named after it, and a folder inside it a sub-tab (the folder that directly holds
+// the video): "חתונות/דנה ואורי/clip.mp4" → tab "חתונות", sub-tab "דנה ואורי". A loose video has
+// no tab ("כללי").
+const VIDEO_FILE = /\.(mp4|m4v|mov|webm)$/i;
+
+export function isPortfolioVideoFile(file: File): boolean {
+  return file.type.startsWith("video/") || VIDEO_FILE.test(file.name);
+}
+
+export type PortfolioVideoEntry = { file: File; tab: string | null; sub: string | null };
+
+export function portfolioVideos(dropped: DroppedFile[], maxBytes: number): { videos: PortfolioVideoEntry[]; rejected: number; tooBig: File[] } {
+  const visible = dropped.filter((d) => !isHiddenFileName(d.file.name));
+  const candidates = visible.filter((d) => isPortfolioVideoFile(d.file));
+  const tooBig = candidates.filter((d) => d.file.size > maxBytes).map((d) => d.file);
+  const videos = candidates
+    .filter((d) => d.file.size <= maxBytes)
+    .map((d) => {
+      const parts = d.relativePath.split("/").map((p) => p.trim()).filter(Boolean);
+      return { file: d.file, tab: parts.length >= 2 ? parts[0] : null, sub: parts.length >= 3 ? parts[parts.length - 2] : null };
+    });
+  return { videos, rejected: visible.length - candidates.length, tooBig };
+}

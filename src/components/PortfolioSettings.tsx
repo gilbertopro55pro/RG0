@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PortfolioUploadPanel from "@/components/PortfolioUploadPanel";
+import PortfolioVideoUploadPanel from "@/components/PortfolioVideoUploadPanel";
 import PortfolioManagePanel from "@/components/PortfolioManagePanel";
 import PortfolioFeaturedPicker from "@/components/PortfolioFeaturedPicker";
 import BodyPortal from "@/components/BodyPortal";
@@ -63,12 +64,12 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
   useEffect(() => {
     if (!shareOpen) return;
     (async () => {
-      const { data } = await supabase
-        .from("gallery_photos")
-        .select("portfolio_category")
-        .eq("photographer_id", photographer.id)
-        .eq("in_portfolio", true);
-      const keys = new Set((data ?? []).map((r) => r.portfolio_category ?? NO_CATEGORY_TAB));
+      // Videos count too (migration 0176): a tab that only has videos can be shared as well.
+      const [{ data }, { data: videoTabs }] = await Promise.all([
+        supabase.from("gallery_photos").select("portfolio_category").eq("photographer_id", photographer.id).eq("in_portfolio", true),
+        supabase.from("gallery_videos").select("portfolio_category").eq("photographer_id", photographer.id).eq("in_portfolio", true),
+      ]);
+      const keys = new Set([...(data ?? []), ...(videoTabs ?? [])].map((r) => r.portfolio_category ?? NO_CATEGORY_TAB));
       const tabs: ShareTab[] = Array.from(keys)
         .filter((k) => k !== NO_CATEGORY_TAB)
         .sort((a, b) => a.localeCompare(b, "he"))
@@ -230,6 +231,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
             className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-3 resize-none"
           />
           <PortfolioUploadPanel photographerId={photographer.id} />
+          <PortfolioVideoUploadPanel photographerId={photographer.id} />
           <PortfolioFeaturedPicker photographerId={photographer.id} />
           <PortfolioManagePanel photographerId={photographer.id} />
         </>

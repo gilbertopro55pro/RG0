@@ -15,8 +15,10 @@ export default function UploadsIndicator() {
   const t = useT();
   const pathname = usePathname() ?? "";
   const uploads = useGalleryUploads();
-  const shownHere = (u: GalleryUpload) =>
-    ((u.kind === "photos" || u.kind === "videos") && pathname === "/galleries") || (pathname === u.href.split("?")[0] && !u.background);
+  // A gallery's photos and videos show on its row in the galleries list (the portfolio's videos,
+  // in the hidden portfolio gallery, don't).
+  const onGalleriesList = (u: GalleryUpload) => u.kind === "photos" || (u.kind === "videos" && u.href.startsWith("/galleries"));
+  const shownHere = (u: GalleryUpload) => (onGalleriesList(u) && pathname === "/galleries") || (pathname === u.href.split("?")[0] && !u.background);
   const visible = uploads.filter((u) => !shownHere(u));
   if (visible.length === 0) return null;
   const active = visible.filter(isUploadActive);
@@ -44,7 +46,7 @@ export default function UploadsIndicator() {
     href = active[0].href;
   } else if (active.length > 1) {
     label = onlyPhotos(active) ? t("מעלה ל-{n} גלריות: {done} מתוך {total}", { n: active.length, done, total }) : t("{n} העלאות פעילות", { n: active.length });
-    href = active.every((u) => u.kind === "photos" || u.kind === "videos") ? "/galleries" : active[0].href;
+    href = active.every(onGalleriesList) ? "/galleries" : active[0].href;
   } else if (albumReady) {
     label = t("עיצוב האלבום של {title} הועלה, לשליחה ללקוח", { title: albumReady.title });
     href = albumReady.href;
@@ -53,7 +55,7 @@ export default function UploadsIndicator() {
     href = troubled.href;
   } else {
     label = onlyPhotos(visible) ? t("העלאת התמונות הסתיימה") : t("ההעלאה הסתיימה");
-    href = visible.every((u) => u.kind === "photos" || u.kind === "videos") ? "/galleries" : visible[0].href;
+    href = visible.every(onGalleriesList) ? "/galleries" : visible[0].href;
   }
 
   return (

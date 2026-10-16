@@ -6,7 +6,9 @@ import PortfolioBrowser from "@/components/PortfolioBrowser";
 import {
   loadPortfolio,
   scopePortfolioPhotos,
+  scopePortfolioVideos,
   signPortfolioPhotos,
+  signPortfolioVideos,
   portfolioSubTabs,
   sampleHeroPhotos,
   PORTFOLIO_PAGE_SIZE,
@@ -68,12 +70,27 @@ export default async function PortfolioPage({
     );
   }
 
-  const { photographer, photos: allPhotos } = data;
+  const { photographer, photos: allPhotos, videos: allVideos } = data;
 
   const { scopedPhotos, gridPhotos } = scopePortfolioPhotos(allPhotos, tabsParam, activeCategory, activeSub);
-  const subTabs = portfolioSubTabs(scopedPhotos);
+  // Videos go to the browser whole (they're few) and it picks the open tab's; only the `tabs` scope applies here.
+  const scopedVideos = scopePortfolioVideos(allVideos, tabsParam);
+  const subTabs = portfolioSubTabs([...scopedPhotos, ...scopedVideos]);
 
-  const categories = Array.from(new Set(scopedPhotos.map((p) => p.portfolio_category).filter((c): c is string => !!c)));
+  // The tabs with photos in their order, then any tab that only has videos.
+  const photoCategories = new Set(scopedPhotos.map((p) => p.portfolio_category).filter((c): c is string => !!c));
+  const categories = Array.from(
+    new Set([...photoCategories, ...scopedVideos.map((v) => v.portfolio_category).filter((c): c is string => !!c)])
+  );
+  // Sub-tabs that have photos, per tab — the rest only have videos, and the browser neither waits
+  // for a photo strip nor fetches a photo grid there.
+  const photoSubs = new Map<string, Set<string>>();
+  for (const p of scopedPhotos) {
+    if (!p.portfolio_category || !p.portfolio_subcategory) continue;
+    let subs = photoSubs.get(p.portfolio_category);
+    if (!subs) photoSubs.set(p.portfolio_category, (subs = new Set()));
+    subs.add(p.portfolio_subcategory);
+  }
 
   // One representative photo per category tile: the cover the photographer picked for that tab
   // (Settings › פורטפוליו, photographers.portfolio_category_covers) while it's still in that tab,
@@ -95,11 +112,19 @@ export default async function PortfolioPage({
 
   const needed = new Map<string, PortfolioPhoto>();
   for (const p of [...firstPage, ...categoryRepresentative.values(), ...starredSource, ...heroSource]) needed.set(p.id, p);
-  const urlById = await signPortfolioPhotos(Array.from(needed.values()));
+  const [urlById, videoUrlById] = await Promise.all([signPortfolioPhotos(Array.from(needed.values())), signPortfolioVideos(scopedVideos)]);
 
   const gridInitial = firstPage.map((p) => ({ id: p.id, url: urlById.get(p.id)! }));
   const categoryThumb = new Map(Array.from(categoryRepresentative.entries()).map(([cat, p]) => [cat, urlById.get(p.id)!]));
   const toHero = (p: PortfolioPhoto) => ({ id: p.id, url: urlById.get(p.id)!, aspect: p.preview_aspect_ratio });
+  const videos = scopedVideos.map((v) => ({
+    id: v.id,
+    url: videoUrlById.get(v.id)!,
+    // The file's name without its extension ("חתונה - קליפ.mp4" → "חתונה - קליפ").
+    name: v.original_filename.replace(/\.[^.]+$/, "") || v.original_filename,
+    category: v.portfolio_category,
+    sub: v.portfolio_subcategory,
+  }));
 
   const logoUrl = photographer.logo_storage_path
     ? await getSignedDownloadUrl("logos", photographer.logo_storage_path, 60 * 60 * 24)
@@ -155,8 +180,14 @@ export default async function PortfolioPage({
       <PortfolioBrowser
         slug={slug}
         tabs={tabsParam}
-        categories={categories.map((c) => ({ name: c, thumb: categoryThumb.get(c) ?? null }))}
+        categories={categories.map((c) => ({
+          name: c,
+          thumb: categoryThumb.get(c) ?? null,
+          videoOnly: !photoCategories.has(c),
+          videoOnlySubs: (subTabs[c] ?? []).filter((s) => !photoSubs.get(c)?.has(s)),
+        }))}
         subTabs={subTabs}
+        videos={videos}
         initialCategory={activeCategory}
         initialSub={activeSub}
         initialPhotos={gridInitial}
