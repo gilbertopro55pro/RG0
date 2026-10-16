@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { AdminPhotographerRow } from "@/app/admin/page";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import AdminPaymentLocks from "@/components/AdminPaymentLocks";
@@ -50,7 +51,10 @@ export default async function AdminDashboardView({ photographers }: { photograph
   return (
     <>
       <h1 className="text-[22px] font-bold mb-1 font-display">{t("לוח בקרה למנהל")}</h1>
-      <p className="text-xs mb-5 text-ink-soft">{t("נתוני משתמשים בכל המערכת. מוצג רק לחשבון המנהל.")}</p>
+      <p className="text-xs mb-3 text-ink-soft">{t("נתוני משתמשים בכל המערכת. מוצג רק לחשבון המנהל.")}</p>
+      <Link href="/admin/culling" className="inline-block mb-5 text-sm font-semibold underline text-amber-deep">
+        {t("סימון תמונות לבדיקת הסינון")}
+      </Link>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         <StatTile label={t("סה״כ צלמים רשומים")} value={total} />
