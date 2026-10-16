@@ -26,9 +26,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ gal
   const serviceRole = createServiceRoleClient();
   const { data: gallery } = await serviceRole
     .from("galleries")
-    .select("id, photographer_id")
+    .select("id, photographer_id, title")
     .eq("id", galleryId)
-    .maybeSingle<{ id: string; photographer_id: string }>();
+    .maybeSingle<{ id: string; photographer_id: string; title: string }>();
   if (!gallery || gallery.photographer_id !== auth.userId) {
     return NextResponse.json({ error: "הגלריה לא נמצאה" }, { status: 404 });
   }
@@ -63,6 +63,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ gal
   }
 
   after(async () => {
+    // The phone (and any other device) shows that the desktop app is uploading here (migration 0181).
+    await serviceRole.rpc("bump_upload_progress", { p_photographer: auth.userId, p_gallery: galleryId, p_source: "desktop", p_title: gallery.title });
     try {
       await getOrCreatePreviewUrl(serviceRole, { id: photo.id, gallery_id: galleryId, storage_path: path, preview_storage_path: null });
     } catch (e) {

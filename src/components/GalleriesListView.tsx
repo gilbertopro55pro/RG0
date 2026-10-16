@@ -10,6 +10,8 @@ import GalleryQuickActionsMenu from "@/components/GalleryQuickActionsMenu";
 import { readAlbumRotateResume } from "@/lib/albumRotateResume";
 import BackLink from "@/components/BackLink";
 import { getUploadsSnapshot, subscribeUploads, useGalleryUploads, type GalleryUpload } from "@/lib/galleryUploads";
+import { useRemoteUploads } from "@/lib/remoteUploads";
+import RemoteUploadLine from "@/components/RemoteUploadLine";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, type Lang } from "@/i18n/config";
 import { shortClientUrl } from "@/lib/shortLinks";
@@ -76,6 +78,14 @@ export default function GalleriesListView({
     }
     return byGallery;
   }, [uploads]);
+  // Uploads running on another device or tab (owner, 2026-10-16: the computer's upload didn't show
+  // on the phone): the newest one per gallery, when this tab isn't uploading there itself.
+  const remoteUploads = useRemoteUploads();
+  const remoteByGallery = useMemo(() => {
+    const byGallery = new Map<string, (typeof remoteUploads)[number]>();
+    for (const r of remoteUploads) if (!byGallery.has(r.galleryId)) byGallery.set(r.galleryId, r);
+    return byGallery;
+  }, [remoteUploads]);
   useEffect(() => {
     const activeIds = () => new Set(getUploadsSnapshot().filter((u) => u.phase === "queued" || u.phase === "uploading").map((u) => u.key));
     let before = activeIds();
@@ -263,7 +273,11 @@ export default function GalleriesListView({
                       <span className="text-ink-soft">{t("טיוטה")}</span>
                     )}
                   </div>
-                  {uploadByGallery.get(item.id) && <UploadLine upload={uploadByGallery.get(item.id)!} />}
+                  {uploadByGallery.get(item.id) ? (
+                    <UploadLine upload={uploadByGallery.get(item.id)!} />
+                  ) : (
+                    remoteByGallery.get(item.id) && <RemoteUploadLine upload={remoteByGallery.get(item.id)!} />
+                  )}
                 </div>
                 {item.published && (
                   <button
