@@ -108,6 +108,8 @@ type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null 
 
 // The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
 const ReelBuilder = dynamic(() => import("@/components/ReelBuilder"), { ssr: false });
+// Photo culling labels for the admin's culling-engine test (app/admin/culling), loaded only when opened.
+const CullingLabelModal = dynamic(() => import("@/components/CullingLabelModal"), { ssr: false });
 
 type ZipJobPart = {
   partIndex: number;
@@ -347,6 +349,7 @@ export default function GalleryManageView({
   const [zipPanelOpen, setZipPanelOpen] = useState(false);
   const downloadedZipPartsRef = useRef<Set<number>>(new Set());
   const [cullingIndex, setCullingIndex] = useState<number | null>(null);
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
   const [showRejectedOnly, setShowRejectedOnly] = useState(false);
   const [portfolioCategoryPhoto, setPortfolioCategoryPhoto] = useState<PhotoWithUrl | null>(null);
   const [portfolioCategoryInput, setPortfolioCategoryInput] = useState("");
@@ -3622,6 +3625,14 @@ export default function GalleryManageView({
             {photos.some((p) => p.culling_status === "pending") &&
               ` (${t("{n} ממתינות", { n: photos.filter((p) => p.culling_status === "pending").length })})`}
           </button>
+          {photographerEmail === ADMIN_EMAIL && (
+            <button
+              onClick={() => setLabelModalOpen(true)}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold border border-line bg-white text-ink ${BTN_PRESS}`}
+            >
+              {t("סימון למודל הסינון")}
+            </button>
+          )}
           {photos.some((p) => p.culling_status === "rejected") && (
             <button
               onClick={() => setShowRejectedOnly((v) => !v)}
@@ -5966,6 +5977,10 @@ export default function GalleryManageView({
             </div>
           </div>
         </div>
+      )}
+      {labelModalOpen && (
+        // The photos on screen (the open folder and filters), in the gallery's order.
+        <CullingLabelModal photos={visiblePhotos} galleryId={gallery.id} userId={gallery.photographer_id} onClose={() => setLabelModalOpen(false)} />
       )}
       {cullingIndex !== null && (
         <PhotoCullingModal

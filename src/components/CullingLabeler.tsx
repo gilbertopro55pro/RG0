@@ -3,27 +3,29 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/paginatedFetch";
-import BodyPortal from "@/components/BodyPortal";
+import CullingZoom from "@/components/CullingZoom";
+import CullingLabelModal from "@/components/CullingLabelModal";
 import { useT } from "@/i18n/client";
+import { LABELS, labelText, nextUnlabelled, saveCullingLabel, type Label } from "@/lib/culling/labels";
 
 // Photo culling, round 0 (owner, 2026-10-16; app/admin/culling): labelling a test gallery by hand.
 // One photo at a time, one tap (or key) per photo: fine / out of focus / eyes closed / both / skip,
 // then on to the next unlabelled one. The order mixes the events (folders) evenly, so the first
 // ~300 labels cover all of them. Judging focus needs full resolution: tapping the photo opens the
-// original at 100% around the tapped point. Labels go to culling_labels (migration 0178).
+// original at 100% around the tapped point. Labels go to culling_labels (migration 0178). On a
+// phone, "full screen" opens the same order in CullingLabelModal (the gallery's labelling screen).
 
-type Label = "ok" | "blurry" | "eyes_closed" | "both" | "skip";
 type Photo = { id: string; folder_id: string | null; original_filename: string; storage_path: string };
 type Folder = { id: string; name: string; sort_order: number };
 
 const TARGET = 300;
-const LABELS: { key: Label; text: string; hotkey: string; className: string }[] = [
-  { key: "ok", text: "תקינה", hotkey: "1", className: "bg-sage text-white" },
-  { key: "blurry", text: "לא בפוקוס", hotkey: "2", className: "bg-ink text-white" },
-  { key: "eyes_closed", text: "עיניים עצומות", hotkey: "3", className: "bg-ink text-white" },
-  { key: "both", text: "גם וגם", hotkey: "4", className: "bg-ink text-white" },
-  { key: "skip", text: "דילוג", hotkey: "0", className: "bg-white border border-line text-ink-soft" },
-];
+const LABEL_CLASS: Record<Label, string> = {
+  ok: "bg-sage text-white",
+  blurry: "bg-ink text-white",
+  eyes_closed: "bg-ink text-white",
+  both: "bg-ink text-white",
+  skip: "bg-white border border-line text-ink-soft",
+};
 
 // A stable pseudo-random order (FNV-1a of the id), the same on every visit.
 function hash(s: string): number {
@@ -67,7 +69,8 @@ export default function CullingLabeler({
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [zoom, setZoom] = useState<{ url: string | null; x: number; y: number } | null>(null);
+  const [zoom, setZoom] = useState<{ x: number; y: number } | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     if (!galleryId) return;
@@ -119,13 +122,7 @@ export default function CullingLabeler({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, order]);
 
-  const nextUnlabelled = useCallback(
-    (from: number, map: Map<string, Label>) => {
-      for (let i = from + 1; i < order.length; i++) if (!map.has(order[i].id)) return i;
-      return Math.min(from + 1, order.length - 1);
-    },
-    [order]
-  );
+  const orderIds = useMemo(() => order.map((p) => p.id), [order]);
 
   const label = useCallback(
     async (value: Label) => {
@@ -133,11 +130,9 @@ export default function CullingLabeler({
       const prev = labels.get(photo.id);
       const next = new Map(labels).set(photo.id, value);
       setLabels(next);
-      setIndex(nextUnlabelled(index, next));
-      const { error: saveError } = await supabase
-        .from("culling_labels")
-        .upsert({ photo_id: photo.id, photographer_id: userId, gallery_id: galleryId, label: value, updated_at: new Date().toISOString() }, { onConflict: "photo_id" });
-      if (saveError) {
+      setIndex(nextUnlabelled(orderIds, index, next));
+      const ok = await saveCullingLabel(supabase, { photoId: photo.id, userId, galleryId, label: value });
+      if (!ok) {
         setError(t("שמירת הסימון נכשלה, נסו שוב."));
         setLabels((cur) => {
           const back = new Map(cur);
@@ -147,43 +142,32 @@ export default function CullingLabeler({
         });
       }
     },
-    [photo, galleryId, labels, index, nextUnlabelled, supabase, userId, t]
+    [photo, galleryId, labels, index, orderIds, supabase, userId, t]
   );
 
-  const openZoom = async (e: React.MouseEvent<HTMLImageElement>) => {
-    if (!photo) return;
+  const openZoom = (e: React.MouseEvent<HTMLImageElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width;
-    const y = (e.clientY - r.top) / r.height;
-    setZoom({ url: null, x, y });
-    const res = await fetch("/api/storage/download-url", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bucket: "galleries", path: photo.storage_path }),
-    }).catch(() => null);
-    const data = res?.ok ? await res.json() : null;
-    if (data?.url) setZoom({ url: data.url, x, y });
-    else setZoom(null);
+    setZoom({ x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
   };
+  const closeZoom = useCallback(() => setZoom(null), []);
 
   // 1–4 and 0 label, the arrows move (left is next, the page reads right to left), Z zooms, Esc closes it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLElement && ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
-      if (zoom) {
-        if (e.key === "Escape" || e.key.toLowerCase() === "z") setZoom(null);
-        return;
-      }
+      // The zoom and the full-screen labelling take their own keys.
+      if (zoom || fullscreen) return;
       const l = LABELS.find((x) => x.hotkey === e.key);
       if (l) {
         e.preventDefault();
         void label(l.key);
       } else if (e.key === "ArrowLeft") setIndex((i) => Math.min(i + 1, order.length - 1));
       else if (e.key === "ArrowRight") setIndex((i) => Math.max(i - 1, 0));
+      else if (e.key.toLowerCase() === "z") setZoom({ x: 0.5, y: 0.5 });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [label, order.length, zoom]);
+  }, [label, order.length, zoom, fullscreen]);
 
   const counts = useMemo(() => {
     const c = { total: 0, ok: 0, blurry: 0, eyes_closed: 0, both: 0, skip: 0 } as Record<Label | "total", number>;
@@ -251,6 +235,13 @@ export default function CullingLabeler({
             {counts.total >= TARGET && <p className="text-xs text-sage mt-1.5">{t("הגעת ליעד. אפשר להמשיך לסמן, וכל סימון נוסף מחזק את הבדיקה.")}</p>}
           </div>
 
+          <button
+            onClick={() => setFullscreen(true)}
+            className="w-full sm:w-auto mb-3 h-11 px-5 rounded-xl text-sm font-semibold bg-ink text-white"
+          >
+            {t("סימון במסך מלא (נוח בטלפון)")}
+          </button>
+
           {photo && (
             <div className="rounded-2xl bg-card p-3">
               <div className="flex items-center justify-between text-xs text-ink-soft mb-2">
@@ -273,7 +264,7 @@ export default function CullingLabeler({
               </div>
               {labels.get(photo.id) && (
                 <p className="text-xs text-ink-soft mt-2">
-                  {t("סומנה כ:")} <b className="text-ink">{t(LABELS.find((l) => l.key === labels.get(photo.id))!.text)}</b>
+                  {t("סומנה כ:")} <b className="text-ink">{t(labelText(labels.get(photo.id)!))}</b>
                 </p>
               )}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3">
@@ -281,7 +272,7 @@ export default function CullingLabeler({
                   <button
                     key={l.key}
                     onClick={() => void label(l.key)}
-                    className={`h-11 rounded-xl text-sm font-semibold ${l.className} ${labels.get(photo.id) === l.key ? "ring-2 ring-offset-2 ring-amber-deep" : ""}`}
+                    className={`h-11 rounded-xl text-sm font-semibold ${LABEL_CLASS[l.key]} ${labels.get(photo.id) === l.key ? "ring-2 ring-offset-2 ring-amber-deep" : ""}`}
                   >
                     {t(l.text)} <span className="opacity-60 font-data text-xs">({l.hotkey})</span>
                   </button>
@@ -302,35 +293,26 @@ export default function CullingLabeler({
         </>
       )}
 
-      {zoom && (
-        <BodyPortal>
-          <div className="fixed inset-0 z-[90] bg-black" role="dialog" aria-modal="true" aria-label={t("הגדלה")}>
-            <button onClick={() => setZoom(null)} className="absolute top-3 end-3 z-10 h-10 px-4 rounded-full bg-white/90 text-sm font-semibold">
-              {t("סגירה")}
-            </button>
-            {!zoom.url ? (
-              <p className="absolute inset-0 flex items-center justify-center text-sm text-white/80">{t("טוען את המקור...")}</p>
-            ) : (
-              <div
-                className="absolute inset-0 overflow-auto"
-                ref={(el) => {
-                  // Once the original has its size, scroll to the point that was tapped.
-                  const img = el?.querySelector("img");
-                  if (!el || !img) return;
-                  const center = () => {
-                    el.scrollLeft = img.naturalWidth * zoom.x - el.clientWidth / 2;
-                    el.scrollTop = img.naturalHeight * zoom.y - el.clientHeight / 2;
-                  };
-                  if (img.complete) center();
-                  else img.onload = center;
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={zoom.url} alt="" className="max-w-none" onClick={() => setZoom(null)} />
-              </div>
-            )}
-          </div>
-        </BodyPortal>
+      {zoom && photo && <CullingZoom storagePath={photo.storage_path} x={zoom.x} y={zoom.y} onClose={closeZoom} />}
+      {fullscreen && galleryId && (
+        <CullingLabelModal
+          photos={order}
+          galleryId={galleryId}
+          userId={userId}
+          onLabel={(id, l) =>
+            setLabels((cur) => {
+              const next = new Map(cur);
+              if (l) next.set(id, l);
+              else next.delete(id);
+              return next;
+            })
+          }
+          onClose={() => {
+            setFullscreen(false);
+            const first = order.findIndex((p) => !labels.has(p.id));
+            setIndex(first === -1 ? 0 : first);
+          }}
+        />
       )}
     </div>
   );
