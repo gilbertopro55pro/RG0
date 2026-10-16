@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import PortfolioGrid, { type GridPhoto } from "@/components/PortfolioGrid";
 import PortfolioHeroStrip, { STRIP_HEIGHT, type HeroPhoto } from "@/components/PortfolioHeroStrip";
+import PortfolioVideoSection, { PlayIcon } from "@/components/PortfolioVideoSection";
 import { subTabLabel } from "@/lib/portfolioNames";
 
 const BRASS = "#c9a24b";
@@ -19,11 +20,13 @@ const scopeKey = (category?: string, sub?: string) => `${category ?? ""}|${sub ?
 // button still work, but nothing reloads. A scope's first page comes from
 // /api/portfolio/[slug]/photos, and what was loaded is kept, so going back is instant.
 // The strip shows the starred photos on "הכל" and a random mix of the open tab (or sub-tab).
+// The videos come whole from the page (they're few), and the open scope's show above the photos.
 export default function PortfolioBrowser({
   slug,
   tabs,
   categories,
   subTabs,
+  videos,
   initialCategory,
   initialSub,
   initialPhotos,
@@ -34,9 +37,12 @@ export default function PortfolioBrowser({
 }: {
   slug: string;
   tabs?: string;
-  categories: { name: string; thumb: string | null }[];
+  // `videoOnly`: a tab with videos and no photos (no thumbnail, a play icon instead);
+  // `videoOnlySubs`: its sub-tabs that have no photos.
+  categories: { name: string; thumb: string | null; videoOnly?: boolean; videoOnlySubs?: string[] }[];
   // Each tab's sub-tabs, in order.
   subTabs: Record<string, string[]>;
+  videos: { id: string; url: string; name: string; category: string | null; sub: string | null }[];
   initialCategory?: string;
   initialSub?: string;
   initialPhotos: GridPhoto[];
@@ -57,7 +63,12 @@ export default function PortfolioBrowser({
     () => new Map(initialCategory ? [[scopeKey(initialCategory, initialSub), initialHero]] : [])
   );
   const current = loaded.get(key);
-  const hero = active ? heroes.get(key) : starredHero;
+  const tab = active ? categories.find((c) => c.name === active) : undefined;
+  // A scope with only videos: no strip to wait for and no photo page to fetch.
+  const noPhotos = !!tab && (!!tab.videoOnly || (!!sub && !!tab.videoOnlySubs?.includes(sub)));
+  const hero = noPhotos ? [] : active ? heroes.get(key) : starredHero;
+  // "הכל": every video; a tab: its own, sub-tabs included; a sub-tab: only its own.
+  const scopeVideos = videos.filter((v) => !active || (v.category === active && (!sub || v.sub === sub)));
 
   const hrefFor = (category?: string, subTab?: string) => {
     const qs = new URLSearchParams();
@@ -77,7 +88,7 @@ export default function PortfolioBrowser({
 
   // A tab's strip: a fresh random mix the first time it's opened, then kept.
   useEffect(() => {
-    if (!active || heroes.has(key)) return;
+    if (!active || noPhotos || heroes.has(key)) return;
     let cancelled = false;
     const qs = new URLSearchParams({ sample: "1", category: active });
     if (sub) qs.set("sub", sub);
@@ -91,7 +102,7 @@ export default function PortfolioBrowser({
     return () => {
       cancelled = true;
     };
-  }, [active, sub, key, heroes, slug, tabs]);
+  }, [active, sub, key, noPhotos, heroes, slug, tabs]);
 
   const subs = active ? (subTabs[active] ?? []) : [];
 
@@ -138,10 +149,14 @@ export default function PortfolioBrowser({
                   className="h-24 w-24 rounded-lg overflow-hidden bg-black/40 transition-shadow"
                   style={{ boxShadow: active === c.name ? `0 0 0 2px ${BRASS}` : undefined }}
                 >
-                  {c.thumb && (
+                  {c.thumb ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={c.thumb} alt="" draggable={false} className="h-full w-full object-cover" onContextMenu={(e) => e.preventDefault()} />
-                  )}
+                  ) : c.videoOnly ? (
+                    <span className="h-full w-full flex items-center justify-center" style={{ background: "#0b0b0d" }}>
+                      <PlayIcon size={32} />
+                    </span>
+                  ) : null}
                 </span>
                 <span className="text-[11px] leading-snug text-center line-clamp-2 max-w-full" style={{ color: active === c.name ? "#f2f2ee" : TEXT_SOFT }}>
                   {c.name}
@@ -174,15 +189,17 @@ export default function PortfolioBrowser({
             })}
           </div>
         )}
+        <PortfolioVideoSection key={key} videos={scopeVideos} />
         <PortfolioGrid
           key={`${key}|${tabs ?? ""}`}
           slug={slug}
           initialPhotos={current?.photos ?? []}
-          initialHasMore={current ? current.hasMore : true}
+          initialHasMore={current ? current.hasMore : !noPhotos}
           category={active}
           sub={sub}
           tabs={tabs}
-          emptyText={active ? "אין עדיין תמונות בנושא הזה." : "תיק העבודות עדיין ריק."}
+          // Videos and no photos: the videos are the content, not an empty tab.
+          emptyText={scopeVideos.length > 0 ? "" : active ? "אין עדיין תמונות בנושא הזה." : "תיק העבודות עדיין ריק."}
           onPhotos={(photos, hasMore) => setLoaded((prev) => new Map(prev).set(key, { photos, hasMore }))}
         />
       </div>

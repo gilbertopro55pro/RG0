@@ -107,6 +107,8 @@ export default function PortfolioGrid({
   }, [hasMore, failed]);
 
   if (photos.length === 0 && !hasMore) {
+    // No text when the scope has videos and only lacks photos (PortfolioBrowser passes "").
+    if (!emptyText) return null;
     return (
       <p className="text-center text-sm py-16" style={{ color: "#b7b7bd" }}>
         {emptyText}
