@@ -89,14 +89,10 @@ export default function CullingLabeler({
   const order = useMemo(() => mixedOrder(folderFilter ? photos.filter((p) => p.folder_id === folderFilter) : photos), [photos, folderFilter]);
 
   const counts = useMemo(() => {
-    const c = { done: 0, fine: 0, skip: 0, toReview: 0, blurry: 0, eyes: 0, notLooking: 0, unflattering: 0 };
+    const c = { done: 0, fine: 0, skip: 0, blurry: 0, eyes: 0, notLooking: 0, unflattering: 0 };
     for (const p of photos) {
       const l = labels.get(p.id);
-      if (!l) continue;
-      if (!isDone(l)) {
-        c.toReview++;
-        continue;
-      }
+      if (!l || !isDone(l)) continue;
       if (l.skip) {
         c.skip++;
         continue;
@@ -152,7 +148,6 @@ export default function CullingLabeler({
           <div className="rounded-2xl bg-card p-4 mb-4">
             <div className="flex items-center justify-between text-sm font-semibold mb-1.5">
               <span>{t("סומנו {n} מתוך {target}", { n: counts.done, target: TARGET })}</span>
-              {counts.toReview > 0 && <span className="text-xs text-amber-deep">{t("{n} דילוגים ישנים יוצגו שוב", { n: counts.toReview })}</span>}
             </div>
             <div className="h-1.5 rounded-full bg-line overflow-hidden mb-2">
               <div className="h-full bg-ink transition-[width] duration-300" style={{ width: `${Math.min(100, (counts.done / TARGET) * 100)}%` }} />

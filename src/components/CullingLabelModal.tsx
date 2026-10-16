@@ -90,7 +90,7 @@ export default function CullingLabelModal({
   const saved = photo ? labels?.get(photo.id) : undefined;
   // A new photo on screen: the draft starts from what was saved for it.
   if (photo && labels && draft.photoId !== photo.id) {
-    setDraft({ photoId: photo.id, flags: saved && !saved.skip ? saved.flags : NO_FLAGS });
+    setDraft({ photoId: photo.id, flags: isDone(saved) && !saved!.skip ? saved!.flags : NO_FLAGS });
   }
   const flags = draft.photoId === photo?.id ? draft.flags : NO_FLAGS;
 
@@ -226,11 +226,9 @@ export default function CullingLabelModal({
               }}
               className="max-h-full max-w-full object-contain cursor-zoom-in"
             />
-            {saved && (
+            {isDone(saved) && (
               <div className="absolute top-2 inset-x-0 flex justify-center px-3 pointer-events-none">
-                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-white text-ink text-center">
-                  {isDone(saved) ? describe(saved).map((x) => t(x)).join(" · ") : t("דילגת עליה קודם, כדאי לסמן שוב")}
-                </span>
+                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-white text-ink text-center">{describe(saved!).map((x) => t(x)).join(" · ")}</span>
               </div>
             )}
           </>

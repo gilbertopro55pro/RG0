@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import { useT } from "@/i18n/client";
-import { LABEL_COLUMNS, type LabelRow } from "@/lib/culling/labels";
+import { LABEL_COLUMNS, LABEL_VERSION, type LabelRow } from "@/lib/culling/labels";
 import { ENGINE_VERSION, analyzePhoto, loadCullingModels } from "@/lib/culling/engine";
 import {
   benchReport,
@@ -93,7 +93,9 @@ export default function CullingBench({
       ]);
       if (cancelled) return;
       setPhotos(photoRows ?? []);
-      setLabels(new Map((labelRows ?? []).map((r) => [r.photo_id, r])));
+      // Only labels made with all four problems on screen: the owner labels again from scratch
+      // (2026-10-16), and the earlier ones aren't the same question.
+      setLabels(new Map((labelRows ?? []).filter((r) => r.labeled_v === LABEL_VERSION).map((r) => [r.photo_id, r])));
       setResults(new Map((resultRows ?? []).map((r) => [r.photo_id, { features: r.features, error: r.error, version: r.engine_version }])));
       setLoading(false);
     })();
