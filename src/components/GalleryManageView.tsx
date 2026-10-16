@@ -76,6 +76,8 @@ import FaceCircle from "@/components/FaceCircle";
 import AlbumEditorGuideModal from "@/components/AlbumEditorGuideModal";
 import AlbumSpreadThumbnail from "@/components/AlbumSpreadThumbnail";
 import PhotoCullingModal from "@/components/PhotoCullingModal";
+import RemoteUploadLine from "@/components/RemoteUploadLine";
+import { useRemoteUploads } from "@/lib/remoteUploads";
 import GalleryVideosSection from "@/components/GalleryVideosSection";
 import GalleryFtpSection from "@/components/GalleryFtpSection";
 import { detectFacesInImageUrl, clusterFaces, type FaceBox } from "@/lib/faceRecognition";
@@ -389,6 +391,9 @@ export default function GalleryManageView({
   const upload = uploads.find((u) => u.key === photoUploadKey) ?? null;
   const uploadActive = !!upload && (upload.phase === "queued" || upload.phase === "uploading");
   const uploading: string | null = upload && uploadActive ? `${t("מעלה תמונות...")} (${upload.done}/${upload.total})` : null;
+  // This gallery's uploads running on another device or tab (owner, 2026-10-16: the computer's
+  // upload didn't show on the phone), lib/remoteUploads.ts.
+  const remoteUploads = useRemoteUploads(gallery.id);
   // 0..100 while it runs: drives the bottle-green fill on the drop zone. null when nothing uploads.
   const uploadProgressPct: number | null = upload && uploadActive ? upload.pct : null;
   const [copied, setCopied] = useState(false);
@@ -2896,6 +2901,10 @@ export default function GalleryManageView({
         ].filter((c) => c.photos.length > 0)
       : null;
   const visiblePhotos = chapters ? chapters.flatMap((c) => c.photos) : filteredPhotos;
+  // A tab with no photos yet gets the drop zone too (owner, 2026-10-16: after uploading to one tab,
+  // the next, empty tab showed nothing to drop on). Files dropped while it's open go to that tab.
+  const activeFolderName = activeFolderId ? folders.find((f) => f.id === activeFolderId)?.name ?? null : null;
+  const folderEmpty = !!activeFolderId && photos.length > 0 && !photos.some((p) => p.folder_id === activeFolderId);
   const visibleIndex = new Map(visiblePhotos.map((p, i) => [p.id, i]));
   // The photographer's own management grid mirrors the same resolved style the client actually
   // sees — no separate local toggle, so there's only ever one layout control to reason about.
@@ -3407,10 +3416,9 @@ export default function GalleryManageView({
             printHouseOpActive
               ? () => setPrintHouseProgressVisible(false)
               : uploadOpActive
-                ? () => {
-                    sendUploadToBackground(photoUploadKey);
-                    router.push("/galleries");
-                  }
+                ? // The photographer stays on the gallery (owner, 2026-10-16): the upload line under the
+                  // tabs shows the progress, and the galleries list and the floating indicator too.
+                  () => sendUploadToBackground(photoUploadKey)
                 : undefined
           }
         />
@@ -3806,6 +3814,13 @@ export default function GalleryManageView({
           )}
         </div>
       )}
+      {remoteUploads.length > 0 && (
+        <div className="mb-3 rounded-xl bg-card px-3 py-1.5">
+          {remoteUploads.map((r) => (
+            <RemoteUploadLine key={r.id} upload={r} onRefresh={() => window.location.reload()} />
+          ))}
+        </div>
+      )}
       {isDragging && (
         <div
           className="fixed inset-0 z-[90] pointer-events-none flex items-center justify-center p-4"
@@ -3925,6 +3940,23 @@ export default function GalleryManageView({
           {t("פריסה: {layout}, משתנה ב״הגדרות גלריה״", { layout: t(GRID_STYLE_OPTIONS.find((g) => g.id === resolvedGridStyle)?.label ?? "") })}
         </span>
       </div>
+
+      {folderEmpty && (
+        <div
+          style={{ minHeight: "10cm" }}
+          className={`flex rounded-lg border-2 border-dashed transition-colors mb-4 ${isDragging ? "border-amber-deep bg-amber-bg" : "border-line"}`}
+        >
+          <label
+            htmlFor={`gallery-upload-${gallery.id}`}
+            className={`w-full flex items-center justify-center px-6 text-base font-semibold cursor-pointer text-ink text-center ${BTN_PRESS}`}
+          >
+            {uploading ??
+              (isDragging
+                ? t("שחררו כאן להעלאה")
+                : t("העלאת תמונות ללשונית \"{name}\", או גררו לכאן תמונות", { name: activeFolderName ?? "" }))}
+          </label>
+        </div>
+      )}
 
       {visiblePhotos.length > 0 && (
         <div className="flex items-center gap-2 mb-3">

@@ -36,7 +36,12 @@ export async function POST(request: Request) {
   // photographer pairing — without this check, a bug or leak on the FTP server's side could
   // silently cross-link a photo into a gallery it doesn't belong to, since the service-role client
   // bypasses RLS entirely and nothing else here ties galleryId to photographerId.
-  const { data: gallery } = await supabase.from("galleries").select("id").eq("id", galleryId).eq("photographer_id", photographerId).maybeSingle();
+  const { data: gallery } = await supabase
+    .from("galleries")
+    .select("id, title")
+    .eq("id", galleryId)
+    .eq("photographer_id", photographerId)
+    .maybeSingle<{ id: string; title: string }>();
   if (!gallery) {
     return NextResponse.json({ error: "gallery not found" }, { status: 404 });
   }
@@ -61,6 +66,8 @@ export async function POST(request: Request) {
   }
 
   after(async () => {
+    // The app on every device shows that photos are arriving over FTP (migration 0181).
+    await supabase.rpc("bump_upload_progress", { p_photographer: photographerId, p_gallery: galleryId, p_source: "ftp", p_title: gallery.title });
     try {
       await getOrCreatePreviewUrl(supabase, { id: photo.id, gallery_id: galleryId, storage_path: path, preview_storage_path: null });
     } catch (e) {

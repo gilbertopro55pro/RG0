@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { convertHeicIfNeeded, isHeicFile, putFileWithProgress } from "@/lib/imageUpload";
 import { createClient } from "@/lib/supabase/client";
+import { reportRemoteUploads } from "@/lib/remoteUploads";
 import { readActiveUploadLock, writeActiveUploadLock, ACTIVE_UPLOAD_STORAGE_KEY, type ActiveUploadLock } from "@/lib/activeUploadLock";
 import { setBusyLabel } from "@/lib/updateResume";
 import type { GalleryPhotoRow } from "@/lib/types";
@@ -651,6 +652,7 @@ function finish(job: Job, phase: UploadPhase) {
   job.state.phase = phase;
   job.state.finishedAt = Date.now();
   emit();
+  reportRemote(true);
   writeLock();
   // The photographer gets an email and a phone notification when they weren't watching it end:
   // the upload went to the background, they left its screen, or the app was hidden. The album PDF
@@ -678,7 +680,17 @@ function finish(job: Job, phase: UploadPhase) {
 // The cross-tab lock (lib/activeUploadLock.ts): another tab sees this one is uploading, and can
 // ask it to cancel. Kept fresh by a heartbeat while anything is uploading. The album PDF (one file)
 // doesn't hold it.
+// Every other device (and tab) sees this tab's uploads: upload_progress, lib/remoteUploads.ts.
+function reportRemote(force = false) {
+  reportRemoteUploads(
+    uploadTabId(),
+    [...jobs.values()].map((j) => ({ state: j.state, userId: j.userId })),
+    force
+  );
+}
+
 function writeLock() {
+  reportRemote();
   const active = [...jobs.values()].filter((j) => isActive(j) && j.state.kind !== "album-pdf");
   if (active.length === 0) {
     try {
