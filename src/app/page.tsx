@@ -439,6 +439,7 @@ export default async function DashboardPage() {
           defaultTaxStatus={photographer.business_tax_status}
           quoteExtras={quoteExtrasFor(photographer.email)}
           clientLangPicker={canChooseClientLang(photographer.email)}
+          cullingLink={photographer.email === ADMIN_EMAIL}
         />
       )}
 
