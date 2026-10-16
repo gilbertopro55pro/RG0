@@ -49,6 +49,7 @@ import CloseEventConfirmModal from "@/components/CloseEventConfirmModal";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale, type Lang } from "@/i18n/config";
 import type { TFn } from "@/i18n/translate";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 const EditEventModal = dynamic(() => import("@/components/EditEventModal"), { ssr: false });
 
@@ -422,7 +423,7 @@ export default function EventDetailView({
     // exist during this "use client" component's initial server-render pass.
     const galleryLink =
       initialGallery && initialGallery.published && !initialGallery.archived_at
-        ? `${window.location.origin}/gallery/${initialGallery.access_token}`
+        ? shortClientUrl(window.location.origin, "gallery", initialGallery.access_token)
         : null;
     return buildClientMessageText({
       stageKey: key,
@@ -438,7 +439,7 @@ export default function EventDetailView({
       arrivalTime: event.arrival_time,
       depositAmount: payments ? payments.deposit_amount : null,
       balanceAmount: payments ? payments.balance_amount : null,
-      linkUrl: galleryLink ?? `${window.location.origin}/portal/${event.client_access_token}`,
+      linkUrl: galleryLink ?? shortClientUrl(window.location.origin, "portal", event.client_access_token),
       whatsappSignature,
       lang: clientMessageLang,
     });

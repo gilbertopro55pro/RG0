@@ -11,6 +11,7 @@ import BackLink from "@/components/BackLink";
 import RowMenu from "@/components/RowMenu";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
 
@@ -176,7 +177,7 @@ function ConfirmEventDialog({
     const data: { id: string; clientAccessToken: string } = await res.json();
     if (entry.client_phone) {
       const formattedDate = new Date(entry.requested_date).toLocaleDateString("he-IL");
-      const portalLink = `${window.location.origin}/portal/${data.clientAccessToken}`;
+      const portalLink = shortClientUrl(window.location.origin, "portal", data.clientAccessToken);
       const message =
         `שלום ${entry.client_name},\nהאירוע שלכם נסגר במערכת בהצלחה 🎉\n\n` +
         `תאריך: ${formattedDate}\n\n` +

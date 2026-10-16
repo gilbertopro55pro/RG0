@@ -21,6 +21,7 @@ import { announceContactReminder, onContactReminderChange } from "@/lib/contactR
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, isLang, LANG_LABELS, LANGS, type Lang } from "@/i18n/config";
 import type { TFn } from "@/i18n/translate";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
@@ -652,7 +653,7 @@ function CopyQuoteLinkButton({ token }: { token: string }) {
   return (
     <button
       onClick={async () => {
-        await navigator.clipboard.writeText(`${window.location.origin}/quotes/${token}`);
+        await navigator.clipboard.writeText(shortClientUrl(window.location.origin, "quote", token));
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}

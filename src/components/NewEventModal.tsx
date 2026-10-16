@@ -17,6 +17,7 @@ import EventTypeField from "@/components/EventTypeField";
 import CompactGuideModal from "@/components/CompactGuideModal";
 import { useLang, useT } from "@/i18n/client";
 import { dateConflictMessage } from "@/lib/dateConflictMessage";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 // The 4 video-editing sub-choices collapse to this one representative value in the top-level
@@ -325,7 +326,7 @@ export default function NewEventModal({
   const sendBookingUpdate = () => {
     if (!clientPhone || !createdEvent) return;
     setSendingUpdate(true);
-    const portalLink = `${window.location.origin}/portal/${createdEvent.clientAccessToken}`;
+    const portalLink = shortClientUrl(window.location.origin, "portal", createdEvent.clientAccessToken);
     const message = buildClientMessageText({
       stageKey: "event_closing",
       stageLabel: "סגירת האירוע",
@@ -410,7 +411,7 @@ export default function NewEventModal({
 
   const copyContractLink = async () => {
     if (!contract) return;
-    await navigator.clipboard.writeText(`${window.location.origin}/contracts/${contract.sign_token}`);
+    await navigator.clipboard.writeText(shortClientUrl(window.location.origin, "contract", contract.sign_token));
     setCopiedContractLink(true);
     setTimeout(() => setCopiedContractLink(false), 2000);
   };

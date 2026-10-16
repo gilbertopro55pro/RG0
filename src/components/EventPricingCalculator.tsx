@@ -13,6 +13,7 @@ import { IconArrowRight } from "@/components/icons/NavIcons";
 import ClientLangSelect from "@/components/ClientLangSelect";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, isLang, type Lang } from "@/i18n/config";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 const VAT_RATE = 0.18;
 const HOURS_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1);
@@ -683,7 +684,7 @@ export default function EventPricingCalculator({
     linkTarget
       ? quoteLinkMessage(
           quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate), messageLang, quoteEventDate),
-          `${typeof window === "undefined" ? "" : window.location.origin}/quotes/${linkTarget.token}`,
+          shortClientUrl(typeof window === "undefined" ? "" : window.location.origin, "quote", linkTarget.token),
           signature,
           withContract,
           messageLang

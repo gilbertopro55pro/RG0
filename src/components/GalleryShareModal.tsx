@@ -6,6 +6,7 @@ import { useT } from "@/i18n/client";
 import type { Lang } from "@/i18n/config";
 import clientEmails from "@/i18n/dict/clientEmails";
 import { makeT } from "@/i18n/translate";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 const NO_FOLDER_KEY = "none";
 // One specific account's own wording, requested verbatim — every other photographer gets a
@@ -138,7 +139,7 @@ export default function GalleryShareModal({
   const shareDisabled = showFolderPicker && shareSelectedFolders.size === 0;
 
   const buildShareUrl = () => {
-    const base = `${window.location.origin}/gallery/${accessToken}`;
+    const base = shortClientUrl(window.location.origin, "gallery", accessToken);
     const params = new URLSearchParams();
     if (showFolderPicker) {
       const allSelected = allShareOptionKeys.every((k) => shareSelectedFolders.has(k));

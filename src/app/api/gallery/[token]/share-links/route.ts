@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { narrowScope, resolveGalleryToken } from "@/lib/galleryAccess";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_IDS = 5000;
@@ -36,5 +37,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .single<{ token: string }>();
   if (error || !link) return NextResponse.json({ error: "יצירת הקישור נכשלה" }, { status: 500 });
 
-  return NextResponse.json({ token: link.token, url: `${new URL(request.url).origin}/gallery/${link.token}` });
+  return NextResponse.json({ token: link.token, url: shortClientUrl(new URL(request.url).origin, "gallery", link.token) });
 }

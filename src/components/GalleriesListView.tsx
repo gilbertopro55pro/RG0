@@ -12,6 +12,7 @@ import BackLink from "@/components/BackLink";
 import { getUploadsSnapshot, subscribeUploads, useGalleryUploads, type GalleryUpload } from "@/lib/galleryUploads";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, type Lang } from "@/i18n/config";
+import { shortClientUrl } from "@/lib/shortLinks";
 
 export type GalleryListItem = {
   id: string;
@@ -139,7 +140,7 @@ export default function GalleriesListView({
   const copyLink = async (item: GalleryListItem, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const url = `${window.location.origin}/gallery/${item.accessToken}`;
+    const url = shortClientUrl(window.location.origin, "gallery", item.accessToken);
     try {
       await navigator.clipboard.writeText(url);
       setCopiedId(item.id);
