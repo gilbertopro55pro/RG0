@@ -1,5 +1,6 @@
 import type { LeadQuoteDetails } from "@/lib/leadQuote";
 import type { PackageType, StageKey, SubscriptionPlan } from "@/lib/stages";
+import type { QuoteDiscount } from "@/lib/quoteDiscount";
 
 export type SubscriptionStatus = "incomplete" | "active" | "past_due" | "canceled" | "trialing";
 
@@ -115,6 +116,8 @@ export type PriceQuoteRow = {
   work_start_time: string | null;
   work_end_time: string | null;
   notes: string | null;
+  // A discount off the items' sum (lib/quoteDiscount.ts); subtotal/total already have it taken off.
+  discount?: QuoteDiscount | null;
   created_at: string;
   updated_at: string;
 };

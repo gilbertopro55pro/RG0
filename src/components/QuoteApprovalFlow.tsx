@@ -323,6 +323,20 @@ export default function QuoteApprovalFlow({
 
               {/* Totals */}
               <section className="mt-6 rounded-xl p-3 sm:max-w-[300px]" style={{ background: PAPER }}>
+                {/* A discount (lib/quoteDiscount.ts): the sum before it, then the discount in gold,
+                    with no minus sign (right to left, it would land after the number). */}
+                {details?.discount && (
+                  <>
+                    <div className="flex justify-between px-2 py-1.5 text-sm" style={{ color: INK_SOFT }}>
+                      <span>{t("סה״כ לפני הנחה")}</span>
+                      <span style={{ color: NAVY }}>{money(t, lang, details.subtotal + details.discount.amount)}</span>
+                    </div>
+                    <div className="flex justify-between px-2 py-1.5 text-sm" style={{ color: INK_SOFT }}>
+                      <span>{details.discount.type === "percent" ? t("הנחה {n}%", { n: details.discount.value }) : t("הנחה")}</span>
+                      <span style={{ color: GOLD_DEEP }}>{money(t, lang, details.discount.amount)}</span>
+                    </div>
+                  </>
+                )}
                 {details?.showVat !== false && details && (
                   <>
                     <div className="flex justify-between px-2 py-1.5 text-sm" style={{ color: INK_SOFT }}>

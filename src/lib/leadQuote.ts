@@ -1,5 +1,6 @@
 import type { PriceQuoteItem } from "@/lib/types";
 import type { PackageType } from "@/lib/stages";
+import type { QuoteDiscount } from "@/lib/quoteDiscount";
 import { classifyName } from "@/lib/leadQuotePrefill";
 
 // A quote sent to a lead from the quote builder (leads.quote_details, migration 0146): what the
@@ -7,6 +8,7 @@ import { classifyName } from "@/lib/leadQuotePrefill";
 // after approval starts from.
 export type LeadQuoteDetails = {
   items: PriceQuoteItem[];
+  // After the discount, before VAT (the VAT line is computed on it). With no discount it's the items' sum.
   subtotal: number;
   vatAmount: number;
   total: number;
@@ -21,6 +23,8 @@ export type LeadQuoteDetails = {
   // The photographer chose to send a contract with the quote (owner, 2026-10-01): the client's
   // questionnaire ends with signing it (lib/quoteContract.ts).
   withContract?: boolean;
+  // A discount off the items' sum, before VAT (owner, 2026-10-17, lib/quoteDiscount.ts).
+  discount?: QuoteDiscount;
 };
 
 // The owner's shooting hours (2026-10-01): evening 19:00-00:00 with family photos at 18:30, morning

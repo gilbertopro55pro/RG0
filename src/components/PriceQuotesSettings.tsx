@@ -437,6 +437,9 @@ export default function PriceQuotesSettings({
       subtotal,
       vat_amount: vatAmount,
       total,
+      // This form has no discount: the totals above are the items' own, so a discount saved from the
+      // builder (lib/quoteDiscount.ts) no longer applies once the quote is saved here.
+      discount: null,
     };
 
     if (formOpen && formOpen !== "new") {
