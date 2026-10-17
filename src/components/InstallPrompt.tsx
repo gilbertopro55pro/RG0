@@ -27,6 +27,14 @@ export default function InstallPrompt() {
     const nav = navigator as Navigator & { standalone?: boolean };
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches || !!nav.standalone;
     if (isStandalone) return;
+    // Safari on a Mac installs the site as a Dock app that can't read photos dragged into it: every
+    // dragged photo failed there, while the app installed from Chrome uploads fine (owner,
+    // 2026-10-17). No nudge on a Mac in Safari. iPhone and iPad keep it: there the home-screen app
+    // is the only way to get phone notifications, and photos come from the picker, not a drag
+    // (an iPad reports itself as a Mac, but with a touch screen).
+    const ua = navigator.userAgent;
+    const macSafari = /Macintosh/.test(ua) && /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Firefox|Edg|OPR/.test(ua) && navigator.maxTouchPoints <= 1;
+    if (macSafari) return;
 
     setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
     setVisible(true);
