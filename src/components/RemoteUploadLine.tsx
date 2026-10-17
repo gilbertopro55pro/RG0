@@ -12,6 +12,8 @@ export default function RemoteUploadLine({ upload, onRefresh }: { upload: Remote
   const videos = upload.kind === "videos";
   const running = upload.status === "uploading";
   const counted = upload.total != null;
+  // Ended with every file failed (an upload that stopped because the files couldn't be read).
+  const nothing = upload.status === "done" && upload.done > 0 && upload.succeeded === 0;
   const text = running
     ? counted
       ? t("מעלה {device}: {done} מתוך {total}", { device, done: upload.done, total: upload.total! })
@@ -24,11 +26,13 @@ export default function RemoteUploadLine({ upload, onRefresh }: { upload: Remote
         ? t("ההעלאה {device} נעצרה, אין שם חיבור לאינטרנט", { device })
         : upload.status === "cancelled"
           ? t("ההעלאה {device} בוטלה", { device })
-          : videos
-            ? t("הועלו {n} סרטונים {device}", { device, n: upload.succeeded })
-            : t("הועלו {n} תמונות {device}", { device, n: upload.succeeded });
-  const good = upload.status === "done";
-  const bad = upload.status === "stalled" || upload.status === "offline" || upload.status === "cancelled";
+          : nothing
+            ? t("ההעלאה {device} נעצרה, אף תמונה לא עלתה", { device })
+            : videos
+              ? t("הועלו {n} סרטונים {device}", { device, n: upload.succeeded })
+              : t("הועלו {n} תמונות {device}", { device, n: upload.succeeded });
+  const good = upload.status === "done" && !nothing;
+  const bad = upload.status === "stalled" || upload.status === "offline" || upload.status === "cancelled" || nothing;
   return (
     <div className="mt-1.5" aria-live="polite">
       <div className={`flex items-center gap-1.5 text-[11px] font-semibold ${good ? "text-sage" : bad ? "text-rose" : "text-ink"}`}>
