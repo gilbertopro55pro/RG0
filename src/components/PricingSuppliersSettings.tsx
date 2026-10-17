@@ -19,16 +19,11 @@ function makeId(): string {
   return Math.random().toString(36).slice(2);
 }
 
-export default function PricingSuppliersSettings({
-  initialHourlyRate,
-  initialSuppliers,
-}: {
-  initialHourlyRate: number;
-  initialSuppliers: PricingSupplier[];
-}) {
+// The hourly shooting rate used to be set here too. It was removed (owner, 2026-10-17): the
+// calculator has its own rate field and remembers the last rate typed there (EventPricingCalculator).
+export default function PricingSuppliersSettings({ initialSuppliers }: { initialSuppliers: PricingSupplier[] }) {
   const supabase = createClient();
   const t = useT();
-  const [hourlyRate, setHourlyRate] = useState(initialHourlyRate);
   const [suppliers, setSuppliers] = useState<PricingSupplier[]>(
     initialSuppliers.length > 0 ? initialSuppliers : DEFAULT_SUPPLIERS.map((s) => ({ ...s, id: makeId() }))
   );
@@ -54,7 +49,7 @@ export default function PricingSuppliersSettings({
     const cleanSuppliers = suppliers.filter((s) => s.name.trim());
     await supabase
       .from("photographers")
-      .update({ hourly_shoot_rate: hourlyRate, pricing_suppliers: cleanSuppliers })
+      .update({ pricing_suppliers: cleanSuppliers })
       .eq("id", user.id);
     setSuppliers(cleanSuppliers);
     setSaving(false);
@@ -66,23 +61,8 @@ export default function PricingSuppliersSettings({
     <div className="rounded-2xl p-4 bg-card border border-line shadow-card">
       <div className="text-sm font-semibold mb-1">{t("מחשבון אירועים: ספקים ותמחור")}</div>
       <p className="text-xs mb-3.5 text-ink-soft">
-        {t("עלות הספקים ומחיר שעת הצילום שלך משמשים את מחשבון האירועים בדף הבית לחישוב מהיר של המחיר לדרוש מלקוח.")}
+        {t("עלות הספקים משמשת את מחשבון האירועים בדף הבית לחישוב מהיר של המחיר לדרוש מלקוח.")}
       </p>
-
-      <div className="rounded-xl p-3 bg-chip mb-3">
-        <div className="text-xs font-semibold mb-1.5">{t("מחיר שעת צילום")}</div>
-        <div className="flex items-center gap-2">
-          <input
-            value={hourlyRate || ""}
-            onChange={(e) => setHourlyRate(Number(e.target.value) || 0)}
-            type="number"
-            min={0}
-            placeholder="0"
-            className="w-28 rounded-lg px-2.5 py-1.5 text-sm border border-line bg-white font-data"
-          />
-          <span className="text-xs text-ink-soft">{t("₪ לשעה")}</span>
-        </div>
-      </div>
 
       <div className="text-xs font-semibold mb-1.5">{t("ספקים")}</div>
       <div className="space-y-1.5 mb-2.5">

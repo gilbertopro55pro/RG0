@@ -134,7 +134,6 @@ export default async function SettingsPage({
                 </div>
                 <div className="mt-5">
                   <PricingSuppliersSettings
-                    initialHourlyRate={photographer.hourly_shoot_rate}
                     initialSuppliers={photographer.pricing_suppliers}
                   />
                 </div>
