@@ -11,6 +11,8 @@ export function optimizedImageUrl(url: string, width: number, quality = 75): str
   // fetch them (that 404s), so a freshly-uploaded photo's local preview must bypass it entirely.
   // It's already a local, unoptimized-but-small preview anyway; the real optimized URL kicks in
   // once the page reloads and gets the actual signed storage URL from the server.
-  if (url.startsWith("blob:") || url.startsWith("data:")) return url;
+  // Our own /api/ image routes need the photographer's session, which the optimizer doesn't have
+  // (a photo uploaded on this page points at one until the page reloads).
+  if (url.startsWith("blob:") || url.startsWith("data:") || url.startsWith("/api/")) return url;
   return `/_next/image?url=${encodeURIComponent(url)}&w=${width}&q=${quality}`;
 }
