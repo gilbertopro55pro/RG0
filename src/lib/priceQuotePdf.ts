@@ -8,6 +8,7 @@ import { notificationEmailFor } from "@/lib/notificationEmail";
 import { dateLocale, type Lang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT, type TFn } from "@/i18n/translate";
+import type { QuoteDiscount } from "@/lib/quoteDiscount";
 
 // A4 portrait, in points (72pt/inch) — a business document, unlike the album export's fixed
 // landscape spread size, so this gets its own page-size constant rather than reusing albumPdf's.
@@ -93,12 +94,15 @@ export async function buildPriceQuotePdf(params: {
   // Free-text notes/comments on the quote itself (not any one line item) — printed as its own
   // wrapped block after the cost summary. Omitted entirely when blank.
   notes?: string;
+  // A discount (lib/quoteDiscount.ts): subtotal already has it taken off, so the totals card adds the
+  // items' sum before it and the discount line above the usual rows.
+  discount?: QuoteDiscount | null;
   // UI languages phase 3: the client's language (clientLangFor, resolved by the caller). en/ru
   // translate every label and mirror the layout left-to-right; the photographer's own text (items,
   // details, notes, name) stays as typed. Hebrew (the default) is drawn exactly as before.
   lang?: Lang;
 }): Promise<Uint8Array> {
-  const { photographer, logoBuffer, clientName, items, subtotal, vatAmount, total, createdAt, showVat = true, eventDetails, notes, lang = "he" } = params;
+  const { photographer, logoBuffer, clientName, items, subtotal, vatAmount, total, createdAt, showVat = true, eventDetails, notes, discount, lang = "he" } = params;
   const t = makeT(messagesFor(lang));
   const ltr = lang !== "he";
   // Mirrors a box (x, width) across the page for a left-to-right document, and flips its alignment:
@@ -285,20 +289,31 @@ export async function buildPriceQuotePdf(params: {
 
   // ── Totals: a rounded paper card on the left; the amount due on an ink strip, in gold.
   y -= 20;
-  const summaryRows: [string, number][] = showVat
+  // The discount amount has no minus sign: in a right-to-left line the bidi algorithm puts it after the
+  // number ("500-"). The label says it's a discount, and the amount is in gold.
+  const discountRows: [string, number, RGB][] = discount
     ? [
-        [t("סה״כ לפני מע״מ"), subtotal],
-        [t("מע״מ 18%"), vatAmount],
+        [t("סה״כ לפני הנחה"), subtotal + discount.amount, INK],
+        [discount.type === "percent" ? t("הנחה {n}%", { n: discount.value }) : t("הנחה"), discount.amount, GOLD_DEEP],
       ]
     : [];
+  const summaryRows: [string, number, RGB][] = [
+    ...discountRows,
+    ...(showVat
+      ? ([
+          [t("סה״כ לפני מע״מ"), subtotal, INK],
+          [t("מע״מ 18%"), vatAmount, INK],
+        ] as [string, number, RGB][])
+      : []),
+  ];
   const totalsW = 236;
   const totalsH = 16 + summaryRows.length * 22 + 40;
   ensureSpace(totalsH + 10);
   roundedRect(page, mx(MARGIN, totalsW), y, totalsW, totalsH, 10, PAPER);
   let ty = y - 12;
-  for (const [label, value] of summaryRows) {
+  for (const [label, value, color] of summaryRows) {
     text(label, { x: MARGIN + 14, width: totalsW - 28, y: ty - 10, size: 9.5, font: regular, color: INK_SOFT });
-    text(money(value), { x: MARGIN + 14, width: totalsW - 28, y: ty - 10, size: 9.5, font: regular, color: INK, align: "left" });
+    text(money(value), { x: MARGIN + 14, width: totalsW - 28, y: ty - 10, size: 9.5, font: regular, color, align: "left" });
     ty -= 22;
   }
   roundedRect(page, mx(MARGIN + 6, totalsW - 12), ty - 2, totalsW - 12, 34, 8, TOTAL_NAVY);

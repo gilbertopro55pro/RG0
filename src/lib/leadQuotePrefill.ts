@@ -5,6 +5,7 @@
 // reviews every field in the builder and taps send.
 import type { LeadQuoteDetails } from "@/lib/leadQuote";
 import type { IntakeDetails, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
+import { readQuoteDiscount, type QuoteDiscountType } from "@/lib/quoteDiscount";
 
 // The builder's own fixed line for the shoot itself (hours × rate); never a vendor row.
 const SHOOT_ITEM = "צילום אירוע";
@@ -49,6 +50,7 @@ export type LeadQuotePrefill = {
     shootPrice: number | null; // the "צילום אירוע" line, so the rate gives the same price
     taxStatus: "exempt" | "licensed";
     notes: string;
+    discount: { type: QuoteDiscountType; value: number } | null;
   };
 };
 
@@ -355,6 +357,7 @@ export function buildPrefillFromSentQuote(input: {
       shootPrice: shoot ? shoot.price : null,
       taxStatus: q.showVat ? "licensed" : "exempt",
       notes: q.notes ?? "",
+      discount: readQuoteDiscount(q.discount),
     },
   };
 }

@@ -4,6 +4,7 @@ import { downloadObjectBuffer } from "@/lib/storage";
 import { buildPriceQuotePdf } from "@/lib/priceQuotePdf";
 import type { Photographer, PriceQuoteItem } from "@/lib/types";
 import { clientLangFor } from "@/lib/clientLang";
+import { readQuoteDiscount } from "@/lib/quoteDiscount";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,9 @@ export async function POST(request: Request) {
 
   // clientLang: the client's language (the builder's picker, or the lead's client_lang for the lead
   // card's download); clientLangFor keeps Hebrew for every non-admin account.
-  const { clientName, items, subtotal, vatAmount, total, showVat, eventDetails, notes, clientLang }: {
+  // discount: lib/quoteDiscount.ts. createdAt: the date printed on the quote (a quote from the
+  // history keeps the day it was sent); today when absent.
+  const { clientName, items, subtotal, vatAmount, total, showVat, eventDetails, notes, clientLang, discount, createdAt }: {
     clientName: string;
     items: PriceQuoteItem[];
     subtotal: number;
@@ -31,7 +34,10 @@ export async function POST(request: Request) {
     eventDetails?: { type?: string; date?: string; location?: string; workHours?: string };
     notes?: string;
     clientLang?: string;
+    discount?: unknown;
+    createdAt?: string;
   } = await request.json();
+  const printedAt = createdAt && !Number.isNaN(Date.parse(createdAt)) ? new Date(createdAt) : new Date();
 
   const { data: photographer } = await supabase
     .from("photographers")
@@ -54,10 +60,11 @@ export async function POST(request: Request) {
     subtotal: subtotal || 0,
     vatAmount: vatAmount || 0,
     total: total || 0,
-    createdAt: new Date(),
+    createdAt: printedAt,
     showVat,
     eventDetails,
     notes,
+    discount: readQuoteDiscount(discount),
     lang: clientLangFor(photographer.email, clientLang),
   });
 

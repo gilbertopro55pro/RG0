@@ -10,6 +10,8 @@ import { clientLangFor } from "@/lib/clientLang";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 import { quoteShareCaption } from "@/lib/quoteDefaults";
+import { readQuoteDiscount } from "@/lib/quoteDiscount";
+import { recordQuoteHistory } from "@/lib/quoteHistory";
 
 export const runtime = "nodejs";
 
@@ -70,6 +72,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     createdAt: new Date(quote.created_at),
     eventDetails,
     notes: quote.notes ?? undefined,
+    discount: readQuoteDiscount(quote.discount),
     lang,
   });
 
@@ -120,5 +123,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .select()
     .single<PriceQuoteRow>();
 
-  return NextResponse.json({ quote: updated ?? quote, whatsapp });
+  // Into the quote history like every quote that goes out (lib/quoteHistory.ts).
+  const sentQuote = updated ?? quote;
+  await recordQuoteHistory(supabase, {
+    photographerId: user.id,
+    leadId: null,
+    clientName: sentQuote.client_name,
+    clientPhone: sentQuote.client_phone,
+    clientLang: lang === "he" ? null : lang,
+    details: {
+      items: sentQuote.items,
+      subtotal: Number(sentQuote.subtotal),
+      vatAmount: Number(sentQuote.vat_amount),
+      total: Number(sentQuote.total),
+      showVat: true,
+      eventType: sentQuote.event_type ?? undefined,
+      eventDate: sentQuote.event_date?.slice(0, 10) ?? undefined,
+      eventLocation: sentQuote.event_location ?? undefined,
+      startTime: sentQuote.work_start_time?.slice(0, 5) ?? undefined,
+      endTime: sentQuote.work_end_time?.slice(0, 5) ?? undefined,
+      notes: sentQuote.notes ?? undefined,
+      discount: readQuoteDiscount(sentQuote.discount) ?? undefined,
+      createdAt: new Date().toISOString(),
+    },
+    total: Number(sentQuote.total),
+  });
+
+  return NextResponse.json({ quote: sentQuote, whatsapp });
 }

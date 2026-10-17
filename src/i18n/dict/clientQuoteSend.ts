@@ -23,6 +23,8 @@ const dict: AreaDict = {
     "שלום,\n\nמצורפת הצעת מחיר מ{name}.\n\nבברכה,\n{name}":
       "Hello,\n\nPlease find attached a price quote from {name}.\n\nBest regards,\n{name}",
     "לכבוד: {name}": "For: {name}",
+    // Sent again from the quote history (QuoteHistoryList), as a PDF link
+    "הצעת המחיר בקובץ PDF: {url}": "Your price quote (PDF): {url}",
 
     // Contract page
     "נוסח ההסכם כתוב בעברית, כפי שהצלם ניסח אותו. לשאלות על התנאים אפשר לפנות ישירות לצלם.":
@@ -45,6 +47,7 @@ const dict: AreaDict = {
     "שלום,\n\nמצורפת הצעת מחיר מ{name}.\n\nבברכה,\n{name}":
       "Здравствуйте!\n\nВо вложении ценовое предложение от {name}.\n\nС уважением,\n{name}",
     "לכבוד: {name}": "Для: {name}",
+    "הצעת המחיר בקובץ PDF: {url}": "Ваше ценовое предложение (PDF): {url}",
 
     // Contract page
     "נוסח ההסכם כתוב בעברית, כפי שהצלם ניסח אותו. לשאלות על התנאים אפשר לפנות ישירות לצלם.":

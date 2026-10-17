@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { LeadQuoteDetails } from "@/lib/leadQuote";
 import { createClient } from "@/lib/supabase/server";
 import { scheduleLeadQuoteFollowUp } from "@/lib/leadFollowUp";
+import { recordQuoteHistory } from "@/lib/quoteHistory";
 import { canChooseClientLang } from "@/lib/clientLang";
 import { isLang } from "@/i18n/config";
 
@@ -16,7 +17,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   // clientLang: the client's language picked on the builder's preview (admin only for now).
-  const { amount, note, details, clientLang }: { amount: number; note?: string; details?: LeadQuoteDetails; clientLang?: string } = await request.json();
+  // client: the name and phone typed on the quote, for the quote history (they can differ from the lead's).
+  const { amount, note, details, clientLang, client }: { amount: number; note?: string; details?: LeadQuoteDetails; clientLang?: string; client?: { name?: string; phone?: string } } =
+    await request.json();
   if (!amount || amount <= 0) {
     return NextResponse.json({ error: "יש להזין סכום תקין" }, { status: 400 });
   }
@@ -54,6 +57,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   await scheduleLeadQuoteFollowUp(supabase, leadId);
+  // Every quote from the builder goes into the history (the amount-only form sends no items).
+  if (sentDetails) {
+    await recordQuoteHistory(supabase, {
+      photographerId: user.id,
+      leadId,
+      clientName: client?.name || lead.name || "",
+      clientPhone: client?.phone || lead.phone,
+      clientLang: lead.client_lang ?? null,
+      details: sentDetails,
+      total: amount,
+    });
+  }
 
   return NextResponse.json({ lead });
 }

@@ -5,6 +5,7 @@ import { findLeadsByPhone } from "@/lib/leadDuplicates";
 import type { PackageType } from "@/lib/stages";
 import type { LeadQuoteDetails } from "@/lib/leadQuote";
 import { scheduleLeadQuoteFollowUp } from "@/lib/leadFollowUp";
+import { recordQuoteHistory } from "@/lib/quoteHistory";
 import { canChooseClientLang } from "@/lib/clientLang";
 import { isLang } from "@/i18n/config";
 
@@ -89,6 +90,17 @@ export async function POST(request: Request) {
   }
 
   if (quote) await scheduleLeadQuoteFollowUp(supabase, lead.id);
+  if (quote && details) {
+    await recordQuoteHistory(supabase, {
+      photographerId: user.id,
+      leadId: lead.id,
+      clientName: lead.name ?? "",
+      clientPhone: lead.phone,
+      clientLang: lead.client_lang ?? null,
+      details,
+      total: quote.amount,
+    });
+  }
 
   return NextResponse.json({ lead });
 }

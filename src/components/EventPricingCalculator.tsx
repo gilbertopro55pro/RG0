@@ -14,6 +14,8 @@ import ClientLangSelect from "@/components/ClientLangSelect";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, isLang, type Lang } from "@/i18n/config";
 import { shortClientUrl } from "@/lib/shortLinks";
+import { quoteTotals, readQuoteDiscount, toQuoteDiscount, type QuoteDiscountType } from "@/lib/quoteDiscount";
+import QuoteHistoryList from "@/components/QuoteHistoryList";
 
 const VAT_RATE = 0.18;
 const HOURS_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1);
@@ -156,6 +158,12 @@ export default function EventPricingCalculator({
   // The sent shoot line's price over its hours, so it comes back the same even if the account's
   // hourly rate changed since.
   const [rate, setRate] = useState(sent?.shootPrice != null && initialHours > 0 ? sent.shootPrice / initialHours : hourlyRate);
+  // A discount off the items' sum, before VAT (owner, 2026-10-17, lib/quoteDiscount.ts): in shekels
+  // or as a percent. 0 = none.
+  const [discountType, setDiscountType] = useState<QuoteDiscountType>(sent?.discount?.type ?? "amount");
+  const [discountValue, setDiscountValue] = useState(sent?.discount?.value ?? 0);
+  // "הצעה חדשה" or the history of every quote sent (QuoteHistoryList).
+  const [tab, setTab] = useState<"new" | "history">("new");
 
   // The photographer's saved default supplier list — only read from here (to populate the picker
   // dropdown and to seed a row's starting price the moment a supplier is chosen); renaming or
@@ -264,6 +272,9 @@ export default function EventPricingCalculator({
     }
     if (q.event_hours != null) setHours(Number(q.event_hours));
     if (q.hourly_rate_used != null) setRate(Number(q.hourly_rate_used));
+    const savedDiscount = readQuoteDiscount(q.discount);
+    setDiscountType(savedDiscount?.type ?? "amount");
+    setDiscountValue(savedDiscount?.value ?? 0);
     // Matches the quote's saved item names back against the current supplier list — a supplier
     // renamed or removed since this quote was built simply becomes a free-text row, which is the
     // safest fallback (no silently-wrong price tied to the wrong current supplier).
@@ -376,13 +387,14 @@ export default function EventPricingCalculator({
   // possible without touching that supplier's account-wide default.
   const vendorRowPrice = (row: QuoteVendorRow): number => Number(row.price) || 0;
 
-  const { subtotal, vatAmount, total } = useMemo(() => {
+  // subtotal: after the discount, before VAT. itemsSum: before the discount.
+  const { itemsSum, discountAmount, subtotal, vatAmount, total } = useMemo(() => {
     const shootCost = hours * rate;
     const suppliersCost = mode === "freelance" ? 0 : quoteVendorRows.reduce((sum, r) => sum + vendorRowPrice(r), 0);
-    const sub = shootCost + suppliersCost;
-    const vat = isExempt ? 0 : Math.round(sub * VAT_RATE * 100) / 100;
-    return { subtotal: sub, vatAmount: vat, total: Math.round((sub + vat) * 100) / 100 };
-  }, [hours, rate, mode, quoteVendorRows, supplierList, isExempt, vendorRowPrice]);
+    return quoteTotals(shootCost + suppliersCost, { type: discountType, value: discountValue }, isExempt ? 0 : VAT_RATE);
+  }, [hours, rate, mode, quoteVendorRows, supplierList, isExempt, vendorRowPrice, discountType, discountValue]);
+  const discount = toQuoteDiscount(discountType, discountValue, discountAmount);
+  const discountLabel = discountType === "percent" ? t("הנחה {n}%", { n: discountValue }) : t("הנחה");
 
   const shootDetails = mode === "freelance" ? `${hours} שעות` : `${quoteStartTime}–${quoteEndTime}`;
 
@@ -418,7 +430,14 @@ export default function EventPricingCalculator({
     const target = eligibleRows.reduce((max, r) => (vendorRowPrice(r) > vendorRowPrice(max) ? r : max));
     const everythingElse =
       hours * rate + quoteVendorRows.filter((r) => r.id !== target.id).reduce((sum, r) => sum + vendorRowPrice(r), 0);
-    const newPrice = Math.round((desiredTotal / (1 + VAT_RATE) - everythingElse) * 100) / 100;
+    // The items' sum that lands on the total after the discount: a percent scales it, shekels add back.
+    const beforeVat = desiredTotal / (1 + VAT_RATE);
+    const neededSum = discountValue > 0 ? (discountType === "percent" ? beforeVat / (1 - Math.min(discountValue, 99) / 100) : beforeVat + discountValue) : beforeVat;
+    const estimate = Math.round((neededSum - everythingElse) * 100) / 100;
+    // Rounding to agorot can leave the total one agora off (6,000.01 on the PDF): nudge to the price
+    // that lands on the requested total exactly, when there is one.
+    const totalWith = (price: number) => quoteTotals(everythingElse + price, { type: discountType, value: discountValue }, VAT_RATE).total;
+    const newPrice = [0, -0.01, 0.01, -0.02, 0.02, -0.03, 0.03].map((d) => Math.round((estimate + d) * 100) / 100).find((p) => totalWith(p) === desiredTotal) ?? estimate;
     if (newPrice < 0) {
       setRoundingError(t("המחיר המבוקש נמוך מדי להתאמה"));
       return;
@@ -523,6 +542,7 @@ export default function EventPricingCalculator({
             workHours: mode !== "freelance" && quoteStartTime && quoteEndTime ? `${quoteStartTime}-${quoteEndTime}` : undefined,
           },
           notes: notesValue.trim() || undefined,
+          discount,
           ...(clientLangPicker ? { clientLang: langOverride ?? clientLang } : {}),
         }),
       });
@@ -577,6 +597,7 @@ export default function EventPricingCalculator({
         work_start_time: mode !== "freelance" && quoteStartTime ? quoteStartTime : null,
         work_end_time: mode !== "freelance" && quoteEndTime ? quoteEndTime : null,
         notes: notesValue.trim() || null,
+        discount,
       });
     }
     setSavingQuote(false);
@@ -606,9 +627,12 @@ export default function EventPricingCalculator({
       startTime: mode !== "freelance" && quoteStartTime ? quoteStartTime : undefined,
       endTime: mode !== "freelance" && quoteEndTime ? quoteEndTime : undefined,
       notes: notesValue.trim() || undefined,
+      discount: discount ?? undefined,
       createdAt: new Date().toISOString(),
     },
-      });
+    // The name and phone on the quote, for the quote history (they can differ from the lead's).
+    client: { name: quoteClientName.trim(), phone: quoteClientPhone.trim() },
+  });
   const attachQuote = (leadId: string) =>
     fetch(`/api/leads/${leadId}/quote`, {
       method: "POST",
@@ -802,6 +826,27 @@ export default function EventPricingCalculator({
               </button>
             </div>
 
+            <div className="flex border-b border-line mb-3.5" role="tablist">
+              {([
+                ["new", "הצעה חדשה"],
+                ["history", "היסטוריית הצעות"],
+              ] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  role="tab"
+                  aria-selected={tab === k}
+                  onClick={() => setTab(k)}
+                  className={`flex-1 pb-2 -mb-px text-sm font-semibold border-b-2 ${tab === k ? "border-ink text-ink" : "border-transparent text-ink-soft"}`}
+                >
+                  {t(label)}
+                </button>
+              ))}
+            </div>
+
+            {tab === "history" && <QuoteHistoryList signature={signature} />}
+
+            {tab === "new" && (
+            <>
             {prefill && (
               <div className="rounded-lg p-2.5 mb-3 text-xs leading-relaxed" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
                 <div className="font-semibold mb-0.5">
@@ -1041,14 +1086,63 @@ export default function EventPricingCalculator({
             )}
 
             <div className="rounded-lg border border-line bg-white p-2.5 space-y-1">
+              {/* The discount (owner, 2026-10-17): typed after the prices, in shekels or percent,
+                  taken off before VAT. */}
+              <div className="flex items-center justify-between gap-2 text-xs text-ink-soft pb-1">
+                <span>{t("הנחה")}</span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    value={discountValue || ""}
+                    onChange={(e) => setDiscountValue(Math.min(discountType === "percent" ? 100 : Infinity, Math.max(0, Number(e.target.value) || 0)))}
+                    type="number"
+                    min={0}
+                    max={discountType === "percent" ? 100 : undefined}
+                    placeholder="0"
+                    aria-label={t("סכום ההנחה")}
+                    className="w-20 rounded-md border border-line bg-white px-1.5 py-0.5 text-xs font-data text-end outline-none"
+                  />
+                  <div className="flex rounded-md border border-line overflow-hidden" role="group" aria-label={t("סוג ההנחה")}>
+                    {([
+                      ["amount", "₪"],
+                      ["percent", "%"],
+                    ] as const).map(([k, sign]) => (
+                      <button
+                        key={k}
+                        onClick={() => {
+                          setDiscountType(k);
+                          if (k === "percent") setDiscountValue((v) => Math.min(v, 100));
+                        }}
+                        aria-pressed={discountType === k}
+                        aria-label={k === "amount" ? t("הנחה בשקלים") : t("הנחה באחוזים")}
+                        className="px-2 py-0.5 text-[11px] font-semibold font-data"
+                        style={{ background: discountType === k ? "var(--color-ink)" : "transparent", color: discountType === k ? "var(--color-paper)" : "var(--color-ink-soft)" }}
+                      >
+                        {sign}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {discount && (
+                <>
+                  <div className="flex items-center justify-between text-xs text-ink-soft pt-1 border-t border-line">
+                    <span>{t("סה״כ לפני הנחה")}</span>
+                    <span className="font-data">{money(itemsSum)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-semibold text-amber-deep">
+                    <span>{discountLabel}</span>
+                    <span className="font-data">{money(discountAmount)}</span>
+                  </div>
+                </>
+              )}
               {isExempt ? (
-                <div className="flex items-center justify-between text-sm font-semibold">
+                <div className="flex items-center justify-between text-sm font-semibold pt-1 border-t border-line">
                   <span>{t("סה\"כ לתשלום")}</span>
                   <span className="font-data text-amber-deep">{money(total)}</span>
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-between text-xs text-ink-soft">
+                  <div className="flex items-center justify-between text-xs text-ink-soft pt-1 border-t border-line">
                     <span>{t("סה\"כ לא כולל מע\"מ")}</span>
                     <span className="font-data">{money(subtotal)}</span>
                   </div>
@@ -1093,6 +1187,8 @@ export default function EventPricingCalculator({
             <button onClick={openQuoteForm} className="w-full mt-3 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
               {t("יצירת הצעת מחיר ללקוח")}
             </button>
+            </>
+            )}
           </>
         )}
 
@@ -1380,6 +1476,18 @@ export default function EventPricingCalculator({
               </div>
             </div>
             <div className="rounded-lg border border-line bg-white p-2.5 space-y-1 mb-3">
+              {discount && (
+                <>
+                  <div className="flex items-center justify-between text-xs text-ink-soft">
+                    <span>{t("סה״כ לפני הנחה")}</span>
+                    <span className="font-data">{money(itemsSum)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-semibold text-amber-deep pb-1 border-b border-line">
+                    <span>{discountLabel}</span>
+                    <span className="font-data">{money(discountAmount)}</span>
+                  </div>
+                </>
+              )}
               {isExempt ? (
                 <div className="flex items-center justify-between text-sm font-semibold">
                   <span>{t("סה\"כ לתשלום")}</span>

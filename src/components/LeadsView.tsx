@@ -761,6 +761,8 @@ function QuotePdfButton({ lead }: { lead: LeadRow }) {
             workHours: d.startTime && d.endTime ? `${d.startTime}-${d.endTime}` : undefined,
           },
           notes: d.notes,
+          discount: d.discount,
+          createdAt: d.createdAt,
           // The client's language (the route keeps Hebrew for every non-admin account).
           clientLang: lead.client_lang ?? undefined,
         }),
