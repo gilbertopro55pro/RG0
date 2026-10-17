@@ -86,9 +86,18 @@ export async function readDroppedEntries(items: DataTransferItemList): Promise<D
   // Both are read now, while the drop event still holds them.
   const list = Array.from(items).filter((item) => item.kind === "file");
   const roots = list.map((item) => ({ entry: item.webkitGetAsEntry?.() ?? null, file: item.getAsFile() }));
+  // A photo dropped on its own (not inside a folder) is taken as the drop hands it over (getAsFile,
+  // the same File as dataTransfer.files): the standard drop path every browser supports for
+  // uploads. Only folders are walked through their entries.
   const results = await Promise.all(
     roots.map(({ entry, file }) =>
-      entry ? readEntryTree(entry, "") : Promise.resolve(file && !isHiddenFileName(file.name) ? [{ name: file.name, relativePath: file.name, file }] : [])
+      entry?.isDirectory
+        ? readEntryTree(entry, "")
+        : file
+          ? Promise.resolve(isHiddenFileName(file.name) ? [] : [{ name: file.name, relativePath: file.name, file }])
+          : entry
+            ? readEntryTree(entry, "")
+            : Promise.resolve([])
     )
   );
   return results.flat();

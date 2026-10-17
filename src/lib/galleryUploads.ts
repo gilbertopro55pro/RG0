@@ -49,6 +49,9 @@ export type GalleryUpload = {
   // the reason the files gave, and how many were never sent.
   // `detail` is what the browser said when the file was read, for diagnosis (upload_progress.note).
   halted: { reason: string; left: number; detail: string | null } | null;
+  // The first file that failed and what the browser said, for diagnosis (upload_progress.note),
+  // also when the upload went on.
+  problem: { reason: string; detail: string | null } | null;
   // Overall progress 0–100, counting each file's bytes as they go.
   pct: number;
   phase: UploadPhase;
@@ -418,6 +421,7 @@ function jobFor(init: { kind: UploadKind; targetId: string; title: string; href:
       succeeded: 0,
       failed: [],
       halted: null,
+      problem: null,
       pct: 0,
       phase: "queued",
       background: false,
@@ -685,6 +689,7 @@ async function worker() {
     } else if (failure) {
       // The album PDF is one file: its screen shows the reason alone.
       job.state.failed.push(job.state.kind === "album-pdf" ? failure : `${item.name} (${failure})`);
+      if (!job.state.problem) job.state.problem = { reason: failure, detail };
       if (job.state.kind === "photos" && !job.cancel && job.state.succeeded === 0 && job.state.failed.length >= HALT_AFTER) {
         job.state.halted = { reason: failure, left: 0, detail };
         stop(job);
@@ -712,7 +717,7 @@ function finishCancelled() {
 // Reads the file's first chunk: null when it reads, else what the browser said. A slice of a file
 // that is gone from the disk can still read fine in Chrome, but its stream fails (checked
 // 2026-10-17 on files deleted after they were picked).
-async function unreadableReason(file: File): Promise<string | null> {
+export async function unreadableReason(file: File): Promise<string | null> {
   try {
     const reader = file.stream().getReader();
     const chunk = await reader.read();

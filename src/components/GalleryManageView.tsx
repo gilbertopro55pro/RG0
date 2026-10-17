@@ -25,7 +25,7 @@ import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
 import PrintHouseSendsHistory from "@/components/PrintHouseSendsHistory";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { readDroppedEntries, folderNameFromPath, isHiddenFileName } from "@/lib/fileDrop";
+import { readDroppedEntries, folderNameFromPath, isHiddenFileName, fileOfEntry } from "@/lib/fileDrop";
 import { ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
 import { STARTER_BOOK_TEMPLATES, generateStarterBookPages, type StarterTemplateId } from "@/lib/albumStarterTemplates";
 import { usePinchSize } from "@/lib/usePinchColumns";
@@ -77,7 +77,7 @@ import AlbumEditorGuideModal from "@/components/AlbumEditorGuideModal";
 import AlbumSpreadThumbnail from "@/components/AlbumSpreadThumbnail";
 import PhotoCullingModal from "@/components/PhotoCullingModal";
 import RemoteUploadLine from "@/components/RemoteUploadLine";
-import { useRemoteUploads } from "@/lib/remoteUploads";
+import { reportUnreadableDrop, useRemoteUploads } from "@/lib/remoteUploads";
 import GalleryVideosSection from "@/components/GalleryVideosSection";
 import GalleryFtpSection from "@/components/GalleryFtpSection";
 import { detectFacesInImageUrl, clusterFaces, type FaceBox } from "@/lib/faceRecognition";
@@ -94,6 +94,8 @@ import {
   getUploadsSnapshot,
   onGalleryPhoto,
   otherTabUpload,
+  unreadableReason,
+  uploadTabId,
   sendUploadToBackground,
   subscribeUploads,
   UNREADABLE_FILE,
@@ -242,6 +244,9 @@ export default function GalleryManageView({
   // The last upload stopped because the browser couldn't read the files: the error offers picking
   // the folder instead of dragging it.
   const [uploadHalted, setUploadHalted] = useState(false);
+  // A drop the browser couldn't read (checked before anything is sent): a window offers picking the
+  // same folder or photos instead.
+  const [dropUnreadable, setDropUnreadable] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [mgrAspectRatios, setMgrAspectRatios] = useState<Record<string, number>>({});
   // Loads every visible thumbnail behind the scenes and reveals the whole grid together once
@@ -2189,6 +2194,7 @@ export default function GalleryManageView({
     if (items.length === 0) return false;
     setError(null);
     setUploadHalted(false);
+    setDropUnreadable(false);
     // Photos still on their way in this gallery's running upload count toward the limit too.
     const existing = photos.length + activeUploadCount(gallery.id);
     if (existing + items.length > MAX_GALLERY_PHOTOS) {
@@ -2308,12 +2314,20 @@ export default function GalleryManageView({
       } else if (u.failed.length > 0) {
         const shown = u.failed.slice(0, 8);
         const more = u.failed.length - shown.length;
+        const files = shown.join(", ") + (more > 0 ? ` ${t("ועוד {n} נוספים", { n: more })}` : "");
+        // Files the browser couldn't read: the same hint and picker buttons as a stopped upload.
+        const unreadable = u.failed.some((f) => f.includes(UNREADABLE_FILE));
+        setUploadHalted(unreadable);
         setError(
-          t("{n} קבצים לא הועלו: {files}{more}. שאר התמונות הועלו בהצלחה. אפשר להעלות את אלה שנכשלו שוב בנפרד.", {
-            n: u.failed.length,
-            files: shown.join(", "),
-            more: more > 0 ? ` ${t("ועוד {n} נוספים", { n: more })}` : "",
-          })
+          `${
+            ok > 0
+              ? t("{n} קבצים לא הועלו: {files}{more}. שאר התמונות הועלו בהצלחה. אפשר להעלות את אלה שנכשלו שוב בנפרד.", { n: u.failed.length, files: shown.join(", "), more: more > 0 ? ` ${t("ועוד {n} נוספים", { n: more })}` : "" })
+              : t("אף אחת מהתמונות לא עלתה: {files}.", { files })
+          }${
+            unreadable
+              ? ` ${t("הדפדפן לא מצליח לקרוא את הקבצים מהמחשב. אפשר לבחור את התיקייה בכפתור כאן למטה, במקום לגרור. אם גם זה לא עובד: תיקייה ב-iCloud, ב-Google Drive או ב-OneDrive צריך קודם להוריד למחשב (ב-Mac: לחיצה ימנית על התיקייה ב-Finder, ואז \"הורדה עכשיו\"). תיקייה בכונן חיצוני: לוודא שהוא מחובר.")}`
+              : ""
+          }`
         );
       } else if (u.phase === "done") {
         if (u.background) setCompletedUploadToast({ succeededCount: ok, totalCount: u.total });
@@ -2381,6 +2395,25 @@ export default function GalleryManageView({
     if (dropped.length === 0) return;
     const allowed = dropped.filter((d) => isAllowedImageName(d.name));
     const rejected = dropped.filter((d) => !isAllowedImageName(d.name)).map((d) => d.name);
+    // Can the browser read what was dropped? Safari's app on a Mac (added to the Dock) and a cloud
+    // folder that isn't on the computer hand over files it then can't read (owner, 2026-10-17: every
+    // photo failed there, while the same drag worked in Chrome). Checked on the first photo, before
+    // a tab is opened or anything is sent; the photographer picks the folder instead.
+    const first = allowed[0];
+    if (first) {
+      let probe: File | null = first.file ?? null;
+      let problem: string | null = null;
+      if (!probe && first.entry) probe = await fileOfEntry(first.entry).catch((e: unknown) => ((problem = e instanceof Error ? `${e.name}: ${e.message}` : String(e)), null));
+      if (probe) problem = await unreadableReason(probe);
+      if (problem || !probe) {
+        setDropUnreadable(true);
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) reportUnreadableDrop({ tabId: uploadTabId(), galleryId: gallery.id, title: gallery.title, userId: user.id, count: allowed.length, note: `${UNREADABLE_FILE} (drop) | ${problem ?? "no file"}` });
+        return;
+      }
+    }
     const cache = new Map(folders.map((f) => [f.name, f.id]));
     const resolved: GalleryUploadItem[] = [];
     for (const d of allowed) {
@@ -3471,6 +3504,27 @@ export default function GalleryManageView({
         />
         )}
         </UploadPct>
+      )}
+      {dropUnreadable && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }} onClick={() => setDropUnreadable(false)}>
+          <div className="relative w-full max-w-sm rounded-3xl bg-paper shadow-sheet p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold mb-2">{t("הדפדפן לא מצליח לקרוא את התמונות שגררת")}</h3>
+            <p className="text-sm text-ink-soft mb-4 leading-relaxed">
+              {t("זה קורה באפליקציה שנוספה ל-Dock מ-Safari, או כשהתיקייה ב-iCloud ולא הורדה למחשב. אפשר לבחור את אותה תיקייה או את אותן תמונות מהמחשב, או לגרור דרך Chrome.")}
+            </p>
+            <div className="flex flex-col gap-2">
+              <label htmlFor={`gallery-upload-dir-${gallery.id}`} className={`cursor-pointer rounded-xl py-3 text-sm font-semibold text-center bg-ink text-white ${BTN_PRESS}`}>
+                {t("בחירת התיקייה מהמחשב")}
+              </label>
+              <label htmlFor={`gallery-upload-${gallery.id}`} className={`cursor-pointer rounded-xl py-3 text-sm font-semibold text-center bg-white border border-line text-ink ${BTN_PRESS}`}>
+                {t("בחירת תמונות")}
+              </label>
+              <button onClick={() => setDropUnreadable(false)} className="py-2 text-sm text-ink-soft underline underline-offset-2">
+                {t("סגירה")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {blockedByOtherUpload && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }}>

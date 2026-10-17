@@ -91,7 +91,10 @@ export function reportRemoteUploads(tabId: string, jobs: { state: GalleryUpload;
       phase: state.phase === "queued" ? "uploading" : state.phase,
       updated_at: new Date(now).toISOString(),
       // Why it stopped, for diagnosis (migration 0182).
-      note: state.halted ? [state.halted.reason, state.halted.detail, navigator.userAgent].filter(Boolean).join(" | ").slice(0, 500) : null,
+      note: (() => {
+        const p = state.halted ?? state.problem;
+        return p ? [p.reason, p.detail, navigator.userAgent].filter(Boolean).join(" | ").slice(0, 500) : null;
+      })(),
     }))
     // An upload that ended is written once; one still running is refreshed every time (it's the
     // heartbeat another device reads).
@@ -117,6 +120,35 @@ export function reportRemoteUploads(tabId: string, jobs: { state: GalleryUpload;
       .lt("updated_at", new Date(now - 24 * 3600_000).toISOString())
       .then(() => {});
   }
+}
+
+// A drop the browser couldn't read, so nothing was sent (GalleryManageView checks the first file
+// before uploading): one row, ended, with what the browser said, for diagnosis. Another device shows
+// it as stopped with nothing uploaded.
+export function reportUnreadableDrop(input: { tabId: string; galleryId: string; title: string; userId: string; count: number; note: string }) {
+  const now = new Date().toISOString();
+  void createClient()
+    .from("upload_progress")
+    .upsert(
+      {
+        id: `${input.tabId}:drop:${input.galleryId}`,
+        photographer_id: input.userId,
+        gallery_id: input.galleryId,
+        kind: "photos",
+        source: "web",
+        device: deviceKind(),
+        title: input.title,
+        total: input.count,
+        done: input.count,
+        succeeded: 0,
+        pct: 0,
+        phase: "done",
+        updated_at: now,
+        note: `${input.note} | ${navigator.userAgent}`.slice(0, 500),
+      },
+      { onConflict: "id" }
+    )
+    .then(() => {});
 }
 
 // --- Reading (galleries list, gallery page) ---
