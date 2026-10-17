@@ -44,6 +44,9 @@ export type GalleryUpload = {
   done: number;
   succeeded: number;
   failed: string[];
+  // A gallery upload stopped because every file failed from the very first one (see HALT_AFTER):
+  // the reason the files gave, and how many were never sent.
+  halted: { reason: string; left: number } | null;
   // Overall progress 0–100, counting each file's bytes as they go.
   pct: number;
   phase: UploadPhase;
@@ -107,6 +110,12 @@ const URL_BATCH = 40;
 // sent to the client stays until the event page sends it.
 const KEEP_DONE_MS = 20_000;
 const KEEP_FAILED_MS = 10 * 60_000;
+// This many files failing in a row from the start of a gallery upload, with none saved, is one
+// problem, not one per file (owner, 2026-10-17: 987 photos ran for 8 minutes and none were saved).
+// The upload stops and the gallery page says why.
+const HALT_AFTER = 10;
+const NETWORK_ERROR = "שגיאת רשת";
+export const UNREADABLE_FILE = "הקובץ לא נקרא מהמחשב";
 
 const concurrency = () => (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches ? 4 : 8);
 const isActive = (j: Job) => j.state.phase === "queued" || j.state.phase === "uploading";
@@ -387,6 +396,7 @@ function jobFor(init: { kind: UploadKind; targetId: string; title: string; href:
       done: 0,
       succeeded: 0,
       failed: [],
+      halted: null,
       pct: 0,
       phase: "queued",
       background: false,
@@ -611,6 +621,9 @@ async function worker() {
         if (!uploaded) {
           // A file stopped by a cancel, or by the connection dropping, isn't a failed file.
           failure = job.state.phase === "offline" || job.cancel ? null : reason;
+          // A file the browser can't read (in a cloud folder that isn't on the computer, on a drive
+          // that was unplugged, moved after the drop) fails its upload as a plain network error.
+          if (failure === NETWORK_ERROR && !(await readable(file))) failure = UNREADABLE_FILE;
         } else {
           const result = await save(job, item, file);
           if (result.ok) saved = result.value;
@@ -628,6 +641,10 @@ async function worker() {
     } else if (failure) {
       // The album PDF is one file: its screen shows the reason alone.
       job.state.failed.push(job.state.kind === "album-pdf" ? failure : `${file.name} (${failure})`);
+      if (job.state.kind === "photos" && !job.cancel && job.state.succeeded === 0 && job.state.failed.length >= HALT_AFTER) {
+        job.state.halted = { reason: failure, left: 0 };
+        stop(job);
+      }
     }
     report(job);
     if (job.state.done >= job.items.length && isActive(job)) finish(job, "done");
@@ -648,8 +665,19 @@ function finishCancelled() {
   }
 }
 
+function readable(file: File): Promise<boolean> {
+  return file
+    .slice(0, 1)
+    .arrayBuffer()
+    .then(
+      () => true,
+      () => false
+    );
+}
+
 function finish(job: Job, phase: UploadPhase) {
   job.state.phase = phase;
+  if (job.state.halted) job.state.halted.left = job.state.total - job.state.succeeded - job.state.failed.length;
   job.state.finishedAt = Date.now();
   emit();
   reportRemote(true);

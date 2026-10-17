@@ -97,6 +97,7 @@ import {
   otherTabUpload,
   sendUploadToBackground,
   subscribeUploads,
+  UNREADABLE_FILE,
   uploadKey,
 } from "@/lib/galleryUploads";
 import BackLink from "@/components/BackLink";
@@ -2178,8 +2179,9 @@ export default function GalleryManageView({
     return folderRow.id;
   };
 
-  const uploadResolvedFiles = async (items: { file: File; folderId: string | null }[]) => {
-    if (items.length === 0) return;
+  // True when the upload started (or joined this gallery's running one).
+  const uploadResolvedFiles = async (items: { file: File; folderId: string | null }[]): Promise<boolean> => {
+    if (items.length === 0) return false;
     setError(null);
     // Photos still on their way in this gallery's running upload count toward the limit too.
     const existing = photos.length + activeUploadCount(gallery.id);
@@ -2194,7 +2196,7 @@ export default function GalleryManageView({
               left: MAX_GALLERY_PHOTOS - existing,
             })
       );
-      return;
+      return false;
     }
     // One tab uploads at a time (two tabs would only split the connection between them). In this
     // tab any number of galleries can upload together, and photos dropped into a gallery that is
@@ -2202,14 +2204,24 @@ export default function GalleryManageView({
     const other = otherTabUpload();
     if (other) {
       setBlockedByOtherUpload(other);
-      return;
+      return false;
     }
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) return false;
     setUploadJustFinished(null);
     enqueueGalleryUpload({ galleryId: gallery.id, galleryTitle: gallery.title, userId: user.id, sortBase: photos.length, items });
+    return true;
+  };
+
+  // A dropped folder lands in a tab named after it (ensureFolderId), also when another tab is open
+  // (owner, 2026-10-17). The page moves to that tab, so the photographer sees the photos arrive
+  // there instead of an open tab that stays the same. Several folders at once: "הכל".
+  const showUploadTab = (items: { folderId: string | null }[]) => {
+    const ids = new Set(items.map((i) => i.folderId));
+    if (ids.size > 1) setActiveFolderId(null);
+    else if (ids.size === 1) setActiveFolderId([...ids][0]);
   };
 
   // This gallery's new photos appear as they land, also after leaving the page and coming back.
@@ -2242,6 +2254,18 @@ export default function GalleryManageView({
           ok > 0
             ? t("אין חיבור לאינטרנט, ההעלאה הופסקה. {done} מתוך {total} תמונות הספיקו לעלות לפני שהחיבור ירד. יש לבדוק את החיבור לרשת ולהעלות את השאר שוב.", { done: ok, total: u.total })
             : t("אין חיבור לאינטרנט, ההעלאה לא התחילה. יש לבדוק את החיבור לרשת ולנסות שוב.")
+        );
+      } else if (u.halted) {
+        setError(
+          `${t("ההעלאה נעצרה: {n} התמונות הראשונות לא עלו, ולכן {left} התמונות האחרות לא נשלחו. הסיבה: {reason}.", {
+            n: u.failed.length,
+            left: u.halted.left,
+            reason: t(u.halted.reason),
+          })} ${
+            u.halted.reason === UNREADABLE_FILE
+              ? t("הדפדפן לא מצליח לקרוא את הקבצים מהמחשב. אם התיקייה נמצאת ב-Google Drive, ב-iCloud או ב-OneDrive, יש להוריד אותה למחשב קודם. אם היא בכונן חיצוני, לוודא שהוא מחובר. אחר כך לגרור שוב.")
+              : t("כדאי לבדוק את החיבור לאינטרנט ולנסות שוב. אם זה חוזר, שלחו לנו את ההודעה הזו.")
+          }`
         );
       } else if (u.failed.length > 0) {
         const shown = u.failed.slice(0, 8);
@@ -2307,7 +2331,7 @@ export default function GalleryManageView({
       const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
       items.push({ file, folderId });
     }
-    await uploadResolvedFiles(items);
+    if (await uploadResolvedFiles(items)) showUploadTab(items);
     reportRejectedFormats(rejected);
     if (directoryInputRef.current) directoryInputRef.current.value = "";
   };
@@ -2324,7 +2348,7 @@ export default function GalleryManageView({
       const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
       resolved.push({ file, folderId });
     }
-    await uploadResolvedFiles(resolved);
+    if (await uploadResolvedFiles(resolved)) showUploadTab(resolved);
     reportRejectedFormats(rejected);
   };
 
@@ -3953,7 +3977,12 @@ export default function GalleryManageView({
             {uploading ??
               (isDragging
                 ? t("שחררו כאן להעלאה")
-                : t("העלאת תמונות ללשונית \"{name}\", או גררו לכאן תמונות", { name: activeFolderName ?? "" }))}
+                : (
+                  <span>
+                    {t("העלאת תמונות ללשונית \"{name}\", או גררו לכאן תמונות", { name: activeFolderName ?? "" })}
+                    <span className="block mt-1 text-xs font-normal text-ink-soft">{t("תיקייה שגוררים לכאן נפתחת כלשונית חדשה בשם שלה")}</span>
+                  </span>
+                ))}
           </label>
         </div>
       )}
