@@ -63,9 +63,6 @@ export function deviceKind(): string {
 
 const written = new Map<string, string>();
 let lastWrite = 0;
-// Writes go out one after another: sent together, an earlier "uploading" could land after the
-// final state and leave a stopped upload looking like it's still running (seen 2026-10-17).
-let writing: Promise<unknown> = Promise.resolve();
 let cleaned = false;
 
 // Called by the engine's heartbeat (every 3s while anything uploads) and when an upload ends. Writes
@@ -105,7 +102,13 @@ export function reportRemoteUploads(tabId: string, jobs: { state: GalleryUpload;
       return true;
     });
   if (rows.length === 0) return;
-  writing = writing.then(() => supabase.from("upload_progress").upsert(rows, { onConflict: "id" })).catch(() => {});
+  const send = (list: typeof rows) => void supabase.from("upload_progress").upsert(list, { onConflict: "id" }).then(() => {});
+  send(rows);
+  // An upload's final state goes out again a moment later: a progress write sent just before it can
+  // land after it, and the upload then looks like it's still running on other devices (seen
+  // 2026-10-17). Chaining the writes instead let one slow request hold back all the others.
+  const finals = rows.filter((r) => r.phase !== "uploading");
+  if (finals.length > 0) setTimeout(() => send(finals), 2000);
   if (!cleaned) {
     cleaned = true;
     void supabase
