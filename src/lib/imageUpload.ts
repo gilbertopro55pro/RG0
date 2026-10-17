@@ -16,6 +16,19 @@ export const MAX_CLIENT_UPLOAD_BYTES = 30 * 1024 * 1024;
 const ALLOWED_EXTENSIONS_SET = new Set(ALLOWED_EXTENSIONS);
 export const ALLOWED_ACCEPT = "image/jpeg,image/png,image/gif,image/bmp,image/heic,image/heif";
 
+// The same check by name, for a dropped file not read yet (lib/fileDrop.ts, DroppedEntry).
+export function isAllowedImageName(name: string): boolean {
+  if (name.startsWith(".")) return false;
+  const ext = name.split(".").pop()?.toLowerCase();
+  return !!ext && ALLOWED_EXTENSIONS_SET.has(ext);
+}
+
+// A file's type from its name, for a dropped file not read yet (File.type comes from the same).
+export function imageContentTypeOf(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase();
+  return ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : ext === "bmp" ? "image/bmp" : ext === "heic" ? "image/heic" : ext === "heif" ? "image/heif" : "application/octet-stream";
+}
+
 export function isAllowedImageFile(file: File): boolean {
   // Dot-prefixed names (macOS AppleDouble sidecars like "._IMG_1234.jpg", ".DS_Store") keep the
   // real file's extension, so the extension check alone lets them through — reject them here too.

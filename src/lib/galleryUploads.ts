@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { convertHeicIfNeeded, isHeicFile, putFileWithProgress } from "@/lib/imageUpload";
+import { convertHeicIfNeeded, imageContentTypeOf, isHeicFile, putFileWithProgress } from "@/lib/imageUpload";
+import { fileOfEntry } from "@/lib/fileDrop";
 import { createClient } from "@/lib/supabase/client";
 import { reportRemoteUploads } from "@/lib/remoteUploads";
 import { readActiveUploadLock, writeActiveUploadLock, ACTIVE_UPLOAD_STORAGE_KEY, type ActiveUploadLock } from "@/lib/activeUploadLock";
@@ -46,7 +47,8 @@ export type GalleryUpload = {
   failed: string[];
   // A gallery upload stopped because every file failed from the very first one (see HALT_AFTER):
   // the reason the files gave, and how many were never sent.
-  halted: { reason: string; left: number } | null;
+  // `detail` is what the browser said when the file was read, for diagnosis (upload_progress.note).
+  halted: { reason: string; left: number; detail: string | null } | null;
   // Overall progress 0–100, counting each file's bytes as they go.
   pct: number;
   phase: UploadPhase;
@@ -77,7 +79,9 @@ export type GalleryVideoUploadRow = {
   portfolio_subcategory?: string | null;
 };
 
-type Item = { file: File; path: string; contentType: string; row: Record<string, unknown> };
+// `file` is null for a dropped file not read yet (its `entry` is read when its turn comes, see
+// lib/fileDrop.ts), and once the file is done, so a big upload doesn't hold every file to the end.
+type Item = { file: File | null; entry?: FileSystemFileEntry; name: string; path: string; contentType: string; row: Record<string, unknown> };
 
 type Job = {
   state: GalleryUpload;
@@ -174,6 +178,13 @@ export function useGalleryUploads(): GalleryUpload[] {
   return useSyncExternalStore(subscribeUploads, getUploadsSnapshot, getServerUploadsSnapshot);
 }
 
+// One value from the uploads. The component redraws only when that value changes, so `select` must
+// return a string, number or boolean (a new object every time would redraw every time). For a big
+// screen (the gallery page with thousands of photos) that shouldn't redraw on every progress tick.
+export function useUploadValue<T extends string | number | boolean | null>(select: (uploads: GalleryUpload[]) => T): T {
+  return useSyncExternalStore(subscribeUploads, () => select(getUploadsSnapshot()), () => select(getServerUploadsSnapshot()));
+}
+
 // One upload (running or just finished), or null.
 export function useUpload(key: string): GalleryUpload | null {
   return useGalleryUploads().find((u) => u.key === key) ?? null;
@@ -248,12 +259,15 @@ export function otherTabUpload(): ActiveUploadLock | null {
   return lock.tabId === uploadTabId() ? null : lock;
 }
 
+// A picked file, or a dropped one by its entry (read when it's uploaded, lib/fileDrop.ts).
+export type GalleryUploadItem = { file: File; folderId: string | null } | { entry: FileSystemFileEntry; name: string; folderId: string | null };
+
 export function enqueueGalleryUpload(input: {
   galleryId: string;
   galleryTitle: string;
   userId: string;
   sortBase: number;
-  items: { file: File; folderId: string | null }[];
+  items: GalleryUploadItem[];
 }): void {
   if (input.items.length === 0) return;
   const job = jobFor({
@@ -267,14 +281,18 @@ export function enqueueGalleryUpload(input: {
   });
   add(
     job,
-    input.items.map(({ file, folderId }) => {
-      const heic = isHeicFile(file);
-      const name = heic ? file.name.replace(/\.(heic|heif)$/i, ".jpg") : file.name;
+    input.items.map((it) => {
+      const file = "file" in it ? it.file : null;
+      const original = file ? file.name : (it as { name: string }).name;
+      const heic = file ? isHeicFile(file) : /\.(heic|heif)$/i.test(original);
+      const name = heic ? original.replace(/\.(heic|heif)$/i, ".jpg") : original;
       return {
         file,
+        entry: "entry" in it ? it.entry : undefined,
+        name: original,
         path: `${input.userId}/${input.galleryId}/${crypto.randomUUID()}-${name}`,
-        contentType: heic ? "image/jpeg" : file.type || "application/octet-stream",
-        row: { folder_id: folderId, sort_order: job.sortNext++ },
+        contentType: heic ? "image/jpeg" : (file ? file.type : imageContentTypeOf(original)) || "application/octet-stream",
+        row: { folder_id: it.folderId, sort_order: job.sortNext++ },
       };
     })
   );
@@ -307,6 +325,7 @@ export function enqueuePortfolioUpload(input: {
       const name = heic ? file.name.replace(/\.(heic|heif)$/i, ".jpg") : file.name;
       return {
         file,
+        name: file.name,
         path: `${input.userId}/${input.galleryId}/${crypto.randomUUID()}-${name}`,
         contentType: heic ? "image/jpeg" : file.type || "application/octet-stream",
         row: {
@@ -346,6 +365,7 @@ export function enqueueVideoUpload(input: {
     job,
     input.files.map((file) => ({
       file,
+      name: file.name,
       path: `${input.userId}/${input.galleryId}/video-${crypto.randomUUID()}-${file.name}`,
       contentType: file.type || "video/mp4",
       row: { sort_order: job.sortNext++, ...input.row?.(file) },
@@ -374,6 +394,7 @@ export function enqueueAlbumPdfUpload(input: { eventId: string; title: string; u
   add(job, [
     {
       file: input.file,
+      name: input.file.name,
       path: `${input.userId}/${input.eventId}/${crypto.randomUUID()}-${input.file.name}`,
       contentType: input.file.type || "application/octet-stream",
       row: { stageKey: input.stageKey },
@@ -559,10 +580,20 @@ async function worker() {
       emit();
     }
     const item = job.items[i];
-    let file = item.file;
+    let file: File | null = item.file;
     let failure: string | null = null;
+    let detail: string | null = null;
     let saved: unknown = undefined;
     try {
+      if (!file && item.entry) {
+        try {
+          file = await fileOfEntry(item.entry);
+        } catch (e) {
+          failure = UNREADABLE_FILE;
+          detail = errorText(e);
+        }
+      }
+      if (!file) throw new Error(failure ?? UNREADABLE_FILE);
       if (isPhotoKind(job.state.kind) && isHeicFile(file)) {
         try {
           file = await convertHeicIfNeeded(file);
@@ -582,6 +613,10 @@ async function worker() {
             break;
           }
           if (attempt > 0) await new Promise((r) => setTimeout(r, 1000 * attempt));
+          // A dropped file is taken again from its entry for a retry: the first copy may have gone
+          // stale (the file changed after the drop, e.g. a cloud folder finished downloading it).
+          if (attempt > 0 && item.entry && !isHeicFile(file)) file = await fileOfEntry(item.entry).catch(() => file!);
+          const sending: File = file;
           try {
             let url = attempt === 0 ? await (job.urls.get(i) ?? Promise.resolve(null)) : null;
             if (!url) {
@@ -602,7 +637,7 @@ async function worker() {
             try {
               await putFileWithProgress(
                 url,
-                file,
+                sending,
                 item.contentType,
                 (fraction) => {
                   job.progress[i] = fraction;
@@ -624,7 +659,11 @@ async function worker() {
           failure = job.state.phase === "offline" || job.cancel ? null : reason;
           // A file the browser can't read (in a cloud folder that isn't on the computer, on a drive
           // that was unplugged, moved after the drop) fails its upload as a plain network error.
-          if (failure && !(await readable(file))) failure = UNREADABLE_FILE;
+          const unread = failure ? await unreadableReason(file) : null;
+          if (unread) {
+            failure = UNREADABLE_FILE;
+            detail = unread;
+          }
         } else {
           const result = await save(job, item, file);
           if (result.ok) saved = result.value;
@@ -636,14 +675,18 @@ async function worker() {
     }
     job.progress[i] = 1;
     job.state.done++;
-    if (saved !== undefined) {
+    // Done with the file: a big upload shouldn't hold every file it sent until it ends.
+    item.file = null;
+    item.entry = undefined;
+    if (saved !== undefined && file) {
       job.state.succeeded++;
-      itemListeners.get(job.state.key)?.forEach((cb) => cb(saved, file));
+      const sent = file;
+      itemListeners.get(job.state.key)?.forEach((cb) => cb(saved, sent));
     } else if (failure) {
       // The album PDF is one file: its screen shows the reason alone.
-      job.state.failed.push(job.state.kind === "album-pdf" ? failure : `${file.name} (${failure})`);
+      job.state.failed.push(job.state.kind === "album-pdf" ? failure : `${item.name} (${failure})`);
       if (job.state.kind === "photos" && !job.cancel && job.state.succeeded === 0 && job.state.failed.length >= HALT_AFTER) {
-        job.state.halted = { reason: failure, left: 0 };
+        job.state.halted = { reason: failure, left: 0, detail };
         stop(job);
       }
     }
@@ -666,17 +709,22 @@ function finishCancelled() {
   }
 }
 
-// Reads the file's first chunk. A slice of a file that is gone from the disk can still read fine
-// in Chrome, but its stream fails (checked 2026-10-17 on files deleted after they were picked).
-async function readable(file: File): Promise<boolean> {
+// Reads the file's first chunk: null when it reads, else what the browser said. A slice of a file
+// that is gone from the disk can still read fine in Chrome, but its stream fails (checked
+// 2026-10-17 on files deleted after they were picked).
+async function unreadableReason(file: File): Promise<string | null> {
   try {
     const reader = file.stream().getReader();
     const chunk = await reader.read();
     reader.cancel().catch(() => {});
-    return file.size === 0 || (chunk.value?.byteLength ?? 0) > 0;
-  } catch {
-    return false;
+    return file.size === 0 || (chunk.value?.byteLength ?? 0) > 0 ? null : "empty read";
+  } catch (e) {
+    return errorText(e);
   }
+}
+
+function errorText(e: unknown): string {
+  return e instanceof Error ? `${e.name}: ${e.message}`.slice(0, 200) : String(e).slice(0, 200);
 }
 
 function finish(job: Job, phase: UploadPhase) {
