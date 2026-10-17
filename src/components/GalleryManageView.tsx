@@ -2286,11 +2286,15 @@ export default function GalleryManageView({
       } else if (u.halted) {
         setUploadHalted(u.halted.reason === UNREADABLE_FILE);
         setError(
-          `${t("ההעלאה נעצרה: {n} התמונות הראשונות לא עלו, ולכן {left} התמונות האחרות לא נשלחו. הסיבה: {reason}.", {
-            n: u.failed.length,
-            left: u.halted.left,
-            reason: t(u.halted.reason),
-          })} ${
+          `${
+            u.halted.left > 0
+              ? t("ההעלאה נעצרה: {n} התמונות הראשונות לא עלו, ולכן {left} התמונות האחרות לא נשלחו. הסיבה: {reason}.", {
+                  n: u.failed.length,
+                  left: u.halted.left,
+                  reason: t(u.halted.reason),
+                })
+              : t("אף אחת מ-{n} התמונות לא עלתה. הסיבה: {reason}.", { n: u.failed.length, reason: t(u.halted.reason) })
+          } ${
             u.halted.reason === UNREADABLE_FILE
               ? t("הדפדפן לא מצליח לקרוא את הקבצים מהמחשב. אפשר לבחור את התיקייה בכפתור כאן למטה, במקום לגרור. אם גם זה לא עובד: תיקייה ב-iCloud, ב-Google Drive או ב-OneDrive צריך קודם להוריד למחשב (ב-Mac: לחיצה ימנית על התיקייה ב-Finder, ואז \"הורדה עכשיו\"). תיקייה בכונן חיצוני: לוודא שהוא מחובר.")
               : t("כדאי לבדוק את החיבור לאינטרנט ולנסות שוב. אם זה חוזר, שלחו לנו את ההודעה הזו.")
