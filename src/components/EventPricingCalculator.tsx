@@ -538,6 +538,22 @@ export default function EventPricingCalculator({
     }
   };
 
+  // A rate typed here is the next quote's starting rate (photographers.hourly_shoot_rate). Settings
+  // had a field for it until the owner removed it (2026-10-17). Only what the photographer types
+  // counts: a rate filled in from a sent quote doesn't change it.
+  const rememberRateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typeRate = (value: number) => {
+    setRate(value);
+    if (rememberRateTimer.current) clearTimeout(rememberRateTimer.current);
+    if (value <= 0) return;
+    rememberRateTimer.current = setTimeout(async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) await supabase.from("photographers").update({ hourly_shoot_rate: value }).eq("id", user.id);
+    }, 1200);
+  };
+
   const confirmSaveQuote = async () => {
     setSavingQuote(true);
     const {
@@ -897,7 +913,7 @@ export default function EventPricingCalculator({
                   <div className="text-[10px] text-ink-soft mb-1">{t("מחיר שעת צילום")}</div>
                   <input
                     value={rate || ""}
-                    onChange={(e) => setRate(Number(e.target.value) || 0)}
+                    onChange={(e) => typeRate(Number(e.target.value) || 0)}
                     type="number"
                     min={0}
                     step={50}
