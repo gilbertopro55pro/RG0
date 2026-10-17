@@ -666,16 +666,17 @@ function finishCancelled() {
   }
 }
 
-// A slice of a file that is gone from the disk reads as empty in Chrome instead of failing, so the
-// bytes are counted (checked 2026-10-17 with a file deleted after it was picked).
-function readable(file: File): Promise<boolean> {
-  return file
-    .slice(0, 1)
-    .arrayBuffer()
-    .then(
-      (b) => b.byteLength === Math.min(1, file.size),
-      () => false
-    );
+// Reads the file's first chunk. A slice of a file that is gone from the disk can still read fine
+// in Chrome, but its stream fails (checked 2026-10-17 on files deleted after they were picked).
+async function readable(file: File): Promise<boolean> {
+  try {
+    const reader = file.stream().getReader();
+    const chunk = await reader.read();
+    reader.cancel().catch(() => {});
+    return file.size === 0 || (chunk.value?.byteLength ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }
 
 function finish(job: Job, phase: UploadPhase) {
