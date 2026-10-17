@@ -666,12 +666,14 @@ function finishCancelled() {
   }
 }
 
+// A slice of a file that is gone from the disk reads as empty in Chrome instead of failing, so the
+// bytes are counted (checked 2026-10-17 with a file deleted after it was picked).
 function readable(file: File): Promise<boolean> {
   return file
     .slice(0, 1)
     .arrayBuffer()
     .then(
-      () => true,
+      (b) => b.byteLength === Math.min(1, file.size),
       () => false
     );
 }
