@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { startTransition, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -25,7 +25,7 @@ import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
 import PrintHouseSendsHistory from "@/components/PrintHouseSendsHistory";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { readDataTransferItems, folderNameFromPath, isHiddenFileName } from "@/lib/fileDrop";
+import { readDroppedEntries, folderNameFromPath, isHiddenFileName } from "@/lib/fileDrop";
 import { ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
 import { STARTER_BOOK_TEMPLATES, generateStarterBookPages, type StarterTemplateId } from "@/lib/albumStarterTemplates";
 import { usePinchSize } from "@/lib/usePinchColumns";
@@ -84,14 +84,13 @@ import { detectFacesInImageUrl, clusterFaces, type FaceBox } from "@/lib/faceRec
 import { GALLERY_EXPIRY_OPTIONS, GALLERY_EXPIRY_OPTIONS_BY_TIER, SUBSCRIPTION_PLANS, VIDEO_MAX_BYTES_BY_TIER, type SubscriptionPlan, type SubscriptionTier } from "@/lib/stages";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
-import { ALLOWED_ACCEPT, isAllowedImageFile } from "@/lib/imageUpload";
+import { ALLOWED_ACCEPT, isAllowedImageFile, isAllowedImageName } from "@/lib/imageUpload";
 import { readActiveUploadLock, requestActiveUploadCancel, type ActiveUploadLock } from "@/lib/activeUploadLock";
 import {
   activeUploadCount,
   cancelUpload,
   dismissUpload,
   enqueueGalleryUpload,
-  getServerUploadsSnapshot,
   getUploadsSnapshot,
   onGalleryPhoto,
   otherTabUpload,
@@ -99,6 +98,8 @@ import {
   subscribeUploads,
   UNREADABLE_FILE,
   uploadKey,
+  useUploadValue,
+  type GalleryUploadItem,
 } from "@/lib/galleryUploads";
 import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
@@ -238,14 +239,15 @@ export default function GalleryManageView({
   const [deleteFolderConfirm, setDeleteFolderConfirm] = useState<GalleryFolderRow | null>(null);
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  // The last upload stopped because the browser couldn't read the files: the error offers picking
+  // the folder instead of dragging it.
+  const [uploadHalted, setUploadHalted] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [mgrAspectRatios, setMgrAspectRatios] = useState<Record<string, number>>({});
   // Loads every visible thumbnail behind the scenes and reveals the whole grid together once
   // they're all in (or after a timeout, so one slow/broken image can't hold the rest hostage
   // forever) — replaces the previous one-by-one pop-in with a single moment where the gallery just
   // appears, which is what was actually asked for ("all photos at once, not a waterfall").
-  const [thumbsReady, setThumbsReady] = useState(false);
-  const loadedThumbIdsRef = useRef<Set<string>>(new Set());
   const fullImagePrefetchedIdsRef = useRef<Set<string>>(new Set());
   // Only the photo being opened/closed carries a view-transition-name: naming every thumbnail made
   // the browser snapshot all of them on each open, which froze or crashed big galleries on phones.
@@ -387,16 +389,19 @@ export default function GalleryManageView({
   // This gallery's photo upload, from the shared upload engine (lib/galleryUploads.ts, owner
   // 2026-10-09): it keeps running after the photographer leaves the page ("המשך ברקע"), several
   // galleries can upload at once, and photos dropped in while it runs join it (the total grows).
-  const uploads = useSyncExternalStore(subscribeUploads, getUploadsSnapshot, getServerUploadsSnapshot);
+  // Only its phase and whether it went to the background: the counts change many times a second,
+  // and this page (every photo in the grid) would redraw with them (owner, 2026-10-17: smooth with
+  // 2000+ photos). The counts are drawn by UploadCount and UploadPct, which redraw alone.
   const photoUploadKey = uploadKey("photos", gallery.id);
-  const upload = uploads.find((u) => u.key === photoUploadKey) ?? null;
-  const uploadActive = !!upload && (upload.phase === "queued" || upload.phase === "uploading");
-  const uploading: string | null = upload && uploadActive ? `${t("מעלה תמונות...")} (${upload.done}/${upload.total})` : null;
+  const uploadStatus = useUploadValue((list) => {
+    const u = list.find((x) => x.key === photoUploadKey);
+    return u ? `${u.phase}:${u.background ? 1 : 0}` : "";
+  });
+  const [uploadPhase, uploadBg] = uploadStatus.split(":");
+  const uploadActive = uploadPhase === "queued" || uploadPhase === "uploading";
   // This gallery's uploads running on another device or tab (owner, 2026-10-16: the computer's
   // upload didn't show on the phone), lib/remoteUploads.ts.
   const remoteUploads = useRemoteUploads(gallery.id);
-  // 0..100 while it runs: drives the bottle-green fill on the drop zone. null when nothing uploads.
-  const uploadProgressPct: number | null = upload && uploadActive ? upload.pct : null;
   const [copied, setCopied] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [justPublished, setJustPublished] = useState(false);
@@ -2180,9 +2185,10 @@ export default function GalleryManageView({
   };
 
   // True when the upload started (or joined this gallery's running one).
-  const uploadResolvedFiles = async (items: { file: File; folderId: string | null }[]): Promise<boolean> => {
+  const uploadResolvedFiles = async (items: GalleryUploadItem[]): Promise<boolean> => {
     if (items.length === 0) return false;
     setError(null);
+    setUploadHalted(false);
     // Photos still on their way in this gallery's running upload count toward the limit too.
     const existing = photos.length + activeUploadCount(gallery.id);
     if (existing + items.length > MAX_GALLERY_PHOTOS) {
@@ -2225,13 +2231,35 @@ export default function GalleryManageView({
   };
 
   // This gallery's new photos appear as they land, also after leaving the page and coming back.
-  useEffect(
-    () =>
-      onGalleryPhoto(gallery.id, (row, file) => {
-        setPhotos((prev) => (prev.some((p) => p.id === row.id) ? prev : [...prev, { ...row, url: URL.createObjectURL(file) }]));
-      }),
-    [gallery.id]
-  );
+  // They join the grid in batches, not one redraw of the whole page per photo, and show the
+  // server's small preview (made right after the upload), not the original from the computer:
+  // hundreds of full-size originals decoding on screen stalled the page (owner, 2026-10-17: smooth
+  // with 2000+ photos).
+  useEffect(() => {
+    let pending: PhotoWithUrl[] = [];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      timer = null;
+      const batch = pending;
+      pending = [];
+      startTransition(() =>
+        setPhotos((prev) => {
+          const have = new Set(prev.map((p) => p.id));
+          const fresh = batch.filter((p) => !have.has(p.id));
+          return fresh.length > 0 ? [...prev, ...fresh] : prev;
+        })
+      );
+    };
+    const off = onGalleryPhoto(gallery.id, (row) => {
+      const preview = `/api/galleries/${gallery.id}/photos/${row.id}/preview`;
+      pending.push({ ...row, url: preview, previewUrl: preview });
+      if (!timer) timer = setTimeout(flush, 800);
+    });
+    return () => {
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, [gallery.id]);
 
   // When this gallery's upload ends: the files that didn't make it, the "upload complete" toast for
   // one that ran in the background, and the prompt to tell the client about the new photos. Then
@@ -2256,6 +2284,7 @@ export default function GalleryManageView({
             : t("אין חיבור לאינטרנט, ההעלאה לא התחילה. יש לבדוק את החיבור לרשת ולנסות שוב.")
         );
       } else if (u.halted) {
+        setUploadHalted(u.halted.reason === UNREADABLE_FILE);
         setError(
           `${t("ההעלאה נעצרה: {n} התמונות הראשונות לא עלו, ולכן {left} התמונות האחרות לא נשלחו. הסיבה: {reason}.", {
             n: u.failed.length,
@@ -2263,7 +2292,7 @@ export default function GalleryManageView({
             reason: t(u.halted.reason),
           })} ${
             u.halted.reason === UNREADABLE_FILE
-              ? t("הדפדפן לא מצליח לקרוא את הקבצים מהמחשב. אם התיקייה נמצאת ב-Google Drive, ב-iCloud או ב-OneDrive, יש להוריד אותה למחשב קודם. אם היא בכונן חיצוני, לוודא שהוא מחובר. אחר כך לגרור שוב.")
+              ? t("הדפדפן לא מצליח לקרוא את הקבצים מהמחשב. אפשר לבחור את התיקייה בכפתור כאן למטה, במקום לגרור. אם גם זה לא עובד: תיקייה ב-iCloud, ב-Google Drive או ב-OneDrive צריך קודם להוריד למחשב (ב-Mac: לחיצה ימנית על התיקייה ב-Finder, ואז \"הורדה עכשיו\"). תיקייה בכונן חיצוני: לוודא שהוא מחובר.")
               : t("כדאי לבדוק את החיבור לאינטרנט ולנסות שוב. אם זה חוזר, שלחו לנו את ההודעה הזו.")
           }`
         );
@@ -2296,10 +2325,10 @@ export default function GalleryManageView({
     };
   }, [gallery.id, gallery.published, router, t]);
 
-  const reportRejectedFormats = (rejected: File[]) => {
+  const reportRejectedFormats = (rejected: string[]) => {
     if (rejected.length === 0) return;
     const note = t("הגלריה תומכת רק בקבצי JPG, JPEG, PNG, GIF ו-BMP. הקבצים הבאים לא הועלו: {files}", {
-      files: rejected.map((f) => f.name).join(", "),
+      files: rejected.join(", "),
     });
     setError((prev) => (prev ? `${prev}\n${note}` : note));
   };
@@ -2314,7 +2343,7 @@ export default function GalleryManageView({
     const rejected = all.filter((f) => !isAllowedImageFile(f));
     const items = allowed.map((file) => ({ file, folderId: activeFolderId }));
     await uploadResolvedFiles(items);
-    reportRejectedFormats(rejected);
+    reportRejectedFormats(rejected.map((f) => f.name));
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -2332,21 +2361,24 @@ export default function GalleryManageView({
       items.push({ file, folderId });
     }
     if (await uploadResolvedFiles(items)) showUploadTab(items);
-    reportRejectedFormats(rejected);
+    reportRejectedFormats(rejected.map((f) => f.name));
     if (directoryInputRef.current) directoryInputRef.current.value = "";
   };
 
+  // Dropped files are passed by their entries and read only when the upload gets to each one
+  // (lib/fileDrop.ts, readDroppedEntries).
   const handleDroppedItems = async (items: DataTransferItemList) => {
-    const dropped = await readDataTransferItems(items);
+    const dropped = await readDroppedEntries(items);
     if (dropped.length === 0) return;
-    const allowed = dropped.filter((d) => isAllowedImageFile(d.file));
-    const rejected = dropped.filter((d) => !isAllowedImageFile(d.file)).map((d) => d.file);
+    const allowed = dropped.filter((d) => isAllowedImageName(d.name));
+    const rejected = dropped.filter((d) => !isAllowedImageName(d.name)).map((d) => d.name);
     const cache = new Map(folders.map((f) => [f.name, f.id]));
-    const resolved: { file: File; folderId: string | null }[] = [];
-    for (const { file, relativePath } of allowed) {
-      const folderName = folderNameFromPath(relativePath);
+    const resolved: GalleryUploadItem[] = [];
+    for (const d of allowed) {
+      const folderName = folderNameFromPath(d.relativePath);
       const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
-      resolved.push({ file, folderId });
+      if (d.entry) resolved.push({ entry: d.entry, name: d.name, folderId });
+      else if (d.file) resolved.push({ file: d.file, folderId });
     }
     if (await uploadResolvedFiles(resolved)) showUploadTab(resolved);
     reportRejectedFormats(rejected);
@@ -2938,23 +2970,6 @@ export default function GalleryManageView({
   // hover on a mouse so the grid reads as photos, and stay visible on touch screens.
   const tileRound = premiumTheme ? "" : "rounded-lg";
 
-  // Resets the "all thumbnails in, reveal together" gate whenever the visible photo SET changes
-  // (folder switch, favorites filter, etc) — for a set that's already browser-cached this settles
-  // within a frame or two anyway, so it doesn't reintroduce a wait on repeat views. The timeout is
-  // a safety net so one slow or broken image can't hold the whole grid hidden indefinitely.
-  const visiblePhotoIdsKey = visiblePhotos.map((p) => p.id).join(",");
-  useEffect(() => {
-    loadedThumbIdsRef.current = new Set();
-    setThumbsReady(visiblePhotoIdsKey.length === 0);
-    const timeout = setTimeout(() => setThumbsReady(true), 2500);
-    return () => clearTimeout(timeout);
-  }, [visiblePhotoIdsKey]);
-
-  const markThumbLoaded = (photoId: string) => {
-    loadedThumbIdsRef.current.add(photoId);
-    if (loadedThumbIdsRef.current.size >= visiblePhotos.length) setThumbsReady(true);
-  };
-
   // Opening a photo warms the cache for a few photos on each side only, so the next/previous one
   // is instant. This used to load EVERY visible photo's full-size preview at once (thousands in a
   // big gallery), which ran a phone out of memory: the tab crashed and reloaded on the app's
@@ -2972,7 +2987,7 @@ export default function GalleryManageView({
       img.src = photo.previewUrl ?? `/api/galleries/${gallery.id}/photos/${photo.id}/preview`;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lightboxIndex, visiblePhotoIdsKey]);
+  }, [lightboxIndex, visiblePhotos.length]);
 
   // Arrow-key navigation while the lightbox is open — mapped for RTL reading direction, so the
   // visual "forward" direction (left) advances to the next photo, matching how the prev/next arrow
@@ -2999,10 +3014,10 @@ export default function GalleryManageView({
   // offers a "background" button any more, so their modal simply stays active for the whole batch.
   // The upload's progress modal, unless it was sent to the background (then the floating uploads
   // indicator shows it, UploadsIndicator).
-  const uploadOpActive = uploadActive && !upload?.background;
+  const uploadOpActive = uploadActive && uploadBg !== "1";
   const activeOp: { label: string; pct: number } | null =
     uploadOpActive
-      ? { label: t("העלאת תמונות"), pct: uploadProgressPct ?? 0 }
+      ? { label: t("העלאת תמונות"), pct: 0 }
       : detectingFaces
         ? { label: t("זיהוי פרצופים"), pct: faceProgress && faceProgress.total > 0 ? (faceProgress.done / faceProgress.total) * 100 : 0 }
         : exportingAlbumPdf
@@ -3016,7 +3031,7 @@ export default function GalleryManageView({
                 : null;
   const printHouseOpActive = sendingToPrintHouse && printHouseProgressVisible;
   // Uploads, exports and sends can't survive the update's reload: it waits for them (lib/updateResume).
-  useBusy("gallery-operation", activeOp ? activeOp.label : uploading ? t("העלאת תמונות") : null);
+  useBusy("gallery-operation", activeOp ? activeOp.label : uploadActive ? t("העלאת תמונות") : null);
 
   // Covers the whole standalone-iOS-PWA rotate round trip (see albumRotateResume.ts) with one
   // continuous spinner — this page's own normal content never has a chance to flash in between the
@@ -3139,15 +3154,13 @@ export default function GalleryManageView({
                 a full reload even though the browser already had the bytes cached. A blurred
                 LQIP sits on the button's own background (always visible, zero network cost —
                 it's inlined as a data URI) so there's real content behind the sharp image
-                instead of blank space while thumbsReady is still false. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+                instead of blank space while the thumbnail loads (GridThumb). */}
+            <GridThumb
+              photoId={photo.id}
               src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
               alt={photo.original_filename}
               className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
-              style={{ opacity: thumbsReady ? 1 : 0, ...(photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined) }}
-              onLoad={() => markThumbLoaded(photo.id)}
-              onError={() => markThumbLoaded(photo.id)}
+              style={photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
             />
             <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} />
           </button>
@@ -3177,19 +3190,22 @@ export default function GalleryManageView({
               }}
             >
               <span aria-hidden="true" className="block" style={{ paddingBottom: `${100 / ratio}%` }} />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <GridThumb
+                photoId={photo.id}
                 src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
                 alt={photo.original_filename}
                 className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
-                style={{ opacity: thumbsReady ? 1 : 0, ...(photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined) }}
-                onLoad={(e) => {
-                  const img = e.currentTarget;
-                  const r = img.naturalWidth / img.naturalHeight;
-                  setMgrAspectRatios((prev) => (prev[photo.id] ? prev : { ...prev, [photo.id]: r }));
-                  markThumbLoaded(photo.id);
-                }}
-                onError={() => markThumbLoaded(photo.id)}
+                style={photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
+                // Only a photo whose shape the server doesn't know yet needs measuring here (one
+                // redraw of the page per photo otherwise, thousands in a big gallery).
+                onLoaded={
+                  photo.preview_aspect_ratio
+                    ? undefined
+                    : (img) => {
+                        const r = img.naturalWidth / img.naturalHeight;
+                        setMgrAspectRatios((prev) => (prev[photo.id] ? prev : { ...prev, [photo.id]: r }));
+                      }
+                }
               />
               <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} />
             </button>
@@ -3223,17 +3239,13 @@ export default function GalleryManageView({
                 ...(photo.preview_blur_data_url ? { backgroundImage: `url(${photo.preview_blur_data_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <GridThumb
+                photoId={photo.id}
                 src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
                 alt={photo.original_filename}
-                onLoad={() => markThumbLoaded(photo.id)}
-                onError={() => markThumbLoaded(photo.id)}
+                fade={knownShape}
                 className={knownShape ? "absolute inset-0 w-full h-full object-cover transition-opacity duration-300" : "w-full h-auto block"}
-                style={{
-                  opacity: knownShape ? (thumbsReady ? 1 : 0) : 1,
-                  ...(photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : {}),
-                }}
+                style={photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
               />
               <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} offset={framed ? 8 : 4} quiet={premiumTheme} />
             </button>
@@ -3409,9 +3421,11 @@ export default function GalleryManageView({
       {premiumTheme && renderPremiumHeader()}
       <div className={`max-w-2xl sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 ${premiumTheme ? "pt-6" : "pt-7"} pb-10 w-full`}>
       {activeOp && (
+        <UploadPct uploadKey={photoUploadKey} live={uploadOpActive} fallback={activeOp.pct}>
+        {(pct) => (
         <ProgressModal
           label={activeOp.label}
-          pct={activeOp.pct}
+          pct={pct}
           onCancel={() => {
             if (printHouseOpActive) {
               if (currentPrintHouseJobIdRef.current) cancelExportJob(currentPrintHouseJobIdRef.current);
@@ -3446,6 +3460,8 @@ export default function GalleryManageView({
                 : undefined
           }
         />
+        )}
+        </UploadPct>
       )}
       {blockedByOtherUpload && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: "rgba(28, 27, 25, 0.55)" }}>
@@ -3811,7 +3827,7 @@ export default function GalleryManageView({
               htmlFor={`gallery-upload-${gallery.id}`}
               className={`w-full flex items-center justify-center px-6 text-base font-semibold cursor-pointer text-ink text-center ${BTN_PRESS}`}
             >
-              {uploading ?? (isDragging ? t("שחררו כאן להעלאה") : t("העלאת תמונות, או גררו לכאן תמונות ותיקיות"))}
+              {uploadActive ? <UploadCount uploadKey={photoUploadKey} /> : isDragging ? t("שחררו כאן להעלאה") : t("העלאת תמונות, או גררו לכאן תמונות ותיקיות")}
             </label>
           </div>
           <label
@@ -3825,9 +3841,9 @@ export default function GalleryManageView({
       ) : (
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mb-3 text-[11px] text-ink-soft text-center">
           <label htmlFor={`gallery-upload-${gallery.id}`} className="cursor-pointer font-semibold text-ink underline underline-offset-2">
-            {uploading ?? t("העלאת תמונות")}
+            {uploadActive ? <UploadCount uploadKey={photoUploadKey} /> : t("העלאת תמונות")}
           </label>
-          {!uploading && (
+          {!uploadActive && (
             <>
               <span>· {t("אפשר גם לגרור תמונות ותיקיות לכל מקום בעמוד")}</span>
               <label htmlFor={`gallery-upload-dir-${gallery.id}`} className="cursor-pointer font-semibold underline underline-offset-2">
@@ -3974,8 +3990,9 @@ export default function GalleryManageView({
             htmlFor={`gallery-upload-${gallery.id}`}
             className={`w-full flex items-center justify-center px-6 text-base font-semibold cursor-pointer text-ink text-center ${BTN_PRESS}`}
           >
-            {uploading ??
-              (isDragging
+            {uploadActive ? (
+              <UploadCount uploadKey={photoUploadKey} />
+            ) : (isDragging
                 ? t("שחררו כאן להעלאה")
                 : (
                   <span>
@@ -4037,6 +4054,16 @@ export default function GalleryManageView({
       />
 
       {error && <p className="text-xs text-rose mt-2 whitespace-pre-line">{error}</p>}
+      {error && uploadHalted && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <label htmlFor={`gallery-upload-dir-${gallery.id}`} className={`cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold bg-ink text-white ${BTN_PRESS}`}>
+            {t("בחירת התיקייה מהמחשב")}
+          </label>
+          <label htmlFor={`gallery-upload-${gallery.id}`} className={`cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold bg-white border border-line text-ink ${BTN_PRESS}`}>
+            {t("בחירת תמונות")}
+          </label>
+        </div>
+      )}
 
       <div className="mt-3 space-y-2">
         {!gallery.published && (
@@ -6896,5 +6923,76 @@ function GridStylePreview({ photos, gridStyle }: { photos: PhotoWithUrl[]; gridS
         </div>
       ))}
     </div>
+  );
+}
+
+// "מעלה תמונות... (120/2000)": redraws by itself as the count moves, not the whole gallery page.
+function UploadCount({ uploadKey: key }: { uploadKey: string }) {
+  const t = useT();
+  const count = useUploadValue((list) => {
+    const u = list.find((x) => x.key === key);
+    return u ? `${u.done}/${u.total}` : "";
+  });
+  return <>{`${t("מעלה תמונות...")} (${count})`}</>;
+}
+
+// The upload's percent for the progress modal, read here so only the modal redraws as it moves.
+// `live` false (another operation's modal): `fallback`.
+function UploadPct({ uploadKey: key, live, fallback, children }: { uploadKey: string; live: boolean; fallback: number; children: (pct: number) => ReactNode }) {
+  const pct = useUploadValue((list) => {
+    if (!live) return -1;
+    const u = list.find((x) => x.key === key);
+    return u ? Math.round(u.pct) : 0;
+  });
+  return <>{children(live ? pct : fallback)}</>;
+}
+
+// Thumbnails already shown on this page, by photo id: they appear at once when the grid redraws or
+// a tab is opened again, instead of fading in again.
+const shownThumbs = new Set<string>();
+
+// A grid thumbnail. It loads when it gets near the screen, and fades in on its own as it arrives.
+// The grid used to keep every thumbnail hidden until all of them had loaded, and loaded all of them
+// at once: thousands in a big gallery before anything showed (owner, 2026-10-17).
+function GridThumb({
+  photoId,
+  src,
+  alt,
+  className,
+  style,
+  fade = true,
+  onLoaded,
+}: {
+  photoId: string;
+  src: string;
+  alt: string;
+  className: string;
+  style?: CSSProperties;
+  fade?: boolean;
+  onLoaded?: (img: HTMLImageElement) => void;
+}) {
+  const show = (img: HTMLImageElement) => {
+    shownThumbs.add(photoId);
+    img.style.opacity = "1";
+  };
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      ref={(img) => {
+        // Already in the browser's cache: complete before React could listen for its load.
+        if (img && img.complete && img.naturalWidth > 0 && !shownThumbs.has(photoId)) show(img);
+      }}
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      className={className}
+      style={{ opacity: !fade || shownThumbs.has(photoId) ? 1 : 0, ...style }}
+      onLoad={(e) => {
+        show(e.currentTarget);
+        onLoaded?.(e.currentTarget);
+      }}
+      onError={(e) => show(e.currentTarget)}
+    />
   );
 }

@@ -59,3 +59,42 @@ export function folderNameFromPath(relativePath: string): string | null {
   if (parts.length <= 1) return null;
   return parts[parts.length - 2];
 }
+
+// A dropped file, read lazily (owner, 2026-10-17: a folder dragged into a gallery in Safari failed
+// on every photo). The File is taken from its entry only when the upload gets to it, so a drop of
+// thousands of photos doesn't hold thousands of open files, and a file that changed after the drop
+// (a cloud folder downloading it) is read as it is now. `file` is set when there's no entry.
+export type DroppedEntry = { name: string; relativePath: string; entry?: FileSystemFileEntry; file?: File };
+
+async function readEntryTree(entry: FileSystemEntry, path: string): Promise<DroppedEntry[]> {
+  if (isHiddenFileName(entry.name)) return [];
+  if (entry.isFile) return [{ name: entry.name, relativePath: `${path}${entry.name}`, entry: entry as FileSystemFileEntry }];
+  if (!entry.isDirectory) return [];
+  const reader = (entry as FileSystemDirectoryEntry).createReader();
+  const all: FileSystemEntry[] = [];
+  // readEntries returns a batch at a time (100 in Chrome) until an empty one.
+  for (;;) {
+    const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject));
+    if (batch.length === 0) break;
+    all.push(...batch);
+  }
+  const nested = await Promise.all(all.map((e) => readEntryTree(e, `${path}${entry.name}/`)));
+  return nested.flat();
+}
+
+export async function readDroppedEntries(items: DataTransferItemList): Promise<DroppedEntry[]> {
+  // Both are read now, while the drop event still holds them.
+  const list = Array.from(items).filter((item) => item.kind === "file");
+  const roots = list.map((item) => ({ entry: item.webkitGetAsEntry?.() ?? null, file: item.getAsFile() }));
+  const results = await Promise.all(
+    roots.map(({ entry, file }) =>
+      entry ? readEntryTree(entry, "") : Promise.resolve(file && !isHiddenFileName(file.name) ? [{ name: file.name, relativePath: file.name, file }] : [])
+    )
+  );
+  return results.flat();
+}
+
+// The File behind a dropped entry, read now.
+export function fileOfEntry(entry: FileSystemFileEntry): Promise<File> {
+  return new Promise<File>((resolve, reject) => entry.file(resolve, reject));
+}

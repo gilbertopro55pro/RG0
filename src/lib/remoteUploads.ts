@@ -90,6 +90,8 @@ export function reportRemoteUploads(tabId: string, jobs: { state: GalleryUpload;
       pct: Math.round(state.pct),
       phase: state.phase === "queued" ? "uploading" : state.phase,
       updated_at: new Date(now).toISOString(),
+      // Why it stopped, for diagnosis (migration 0182).
+      note: state.halted ? [state.halted.reason, state.halted.detail, navigator.userAgent].filter(Boolean).join(" | ").slice(0, 500) : null,
     }))
     // An upload that ended is written once; one still running is refreshed every time (it's the
     // heartbeat another device reads).
@@ -162,12 +164,12 @@ export function useRemoteUploads(galleryId?: string): RemoteUpload[] {
       const { data } = await q.returns<Row[]>();
       if (cancelled) return;
       const now = Date.now();
-      setRows(
-        (data ?? [])
-          .filter((r) => !r.id.startsWith(`${ownTabId}:`))
-          .map((r) => toRemote(r, now))
-          .filter((r): r is RemoteUpload => !!r)
-      );
+      const next = (data ?? [])
+        .filter((r) => !r.id.startsWith(`${ownTabId}:`))
+        .map((r) => toRemote(r, now))
+        .filter((r): r is RemoteUpload => !!r);
+      // The gallery page is big: it redraws only when something here changed, not every 8 seconds.
+      setRows((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
     };
     void load();
     const timer = setInterval(load, 8_000);
