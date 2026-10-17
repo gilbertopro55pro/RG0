@@ -51,7 +51,7 @@ export default function UploadsIndicator() {
     label = t("עיצוב האלבום של {title} הועלה, לשליחה ללקוח", { title: albumReady.title });
     href = albumReady.href;
   } else if (troubled) {
-    label = t("חלק מהקבצים לא הועלו, לפרטים");
+    label = troubled.halted ? t("ההעלאה נעצרה, לפרטים") : t("חלק מהקבצים לא הועלו, לפרטים");
     href = troubled.href;
   } else {
     label = onlyPhotos(visible) ? t("העלאת התמונות הסתיימה") : t("ההעלאה הסתיימה");

@@ -363,13 +363,15 @@ function UploadLine({ upload }: { upload: GalleryUpload }) {
         ? t("מעלה {done} מתוך {total}", { done: upload.done, total: upload.total })
         : upload.phase === "offline"
           ? t("ההעלאה נעצרה, אין חיבור לאינטרנט")
-          : upload.phase === "cancelled"
-            ? t("ההעלאה בוטלה")
-            : upload.failed.length > 0
-              ? t("הועלו {ok} מתוך {total}, {n} לא הועלו", { ok: upload.succeeded, total: upload.total, n: upload.failed.length })
-              : videos
-                ? t("הועלו {n} סרטונים", { n: upload.succeeded })
-                : t("הועלו {n} תמונות", { n: upload.succeeded });
+          : upload.halted
+            ? t("ההעלאה נעצרה, אף תמונה לא עלתה")
+            : upload.phase === "cancelled"
+              ? t("ההעלאה בוטלה")
+              : upload.failed.length > 0
+                ? t("הועלו {ok} מתוך {total}, {n} לא הועלו", { ok: upload.succeeded, total: upload.total, n: upload.failed.length })
+                : videos
+                  ? t("הועלו {n} סרטונים", { n: upload.succeeded })
+                  : t("הועלו {n} תמונות", { n: upload.succeeded });
   const good = upload.phase === "done" && upload.failed.length === 0;
   return (
     <div className="mt-1.5" aria-live="polite">
