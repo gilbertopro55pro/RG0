@@ -615,7 +615,8 @@ async function worker() {
             }
             uploaded = true;
           } catch (e) {
-            reason = e instanceof Error ? e.message : "שגיאת רשת";
+            // fetch's own network failure ("Failed to fetch", "Load failed") is a TypeError.
+            reason = e instanceof TypeError || !(e instanceof Error) ? NETWORK_ERROR : e.message;
           }
         }
         if (!uploaded) {
@@ -623,7 +624,7 @@ async function worker() {
           failure = job.state.phase === "offline" || job.cancel ? null : reason;
           // A file the browser can't read (in a cloud folder that isn't on the computer, on a drive
           // that was unplugged, moved after the drop) fails its upload as a plain network error.
-          if (failure === NETWORK_ERROR && !(await readable(file))) failure = UNREADABLE_FILE;
+          if (failure && !(await readable(file))) failure = UNREADABLE_FILE;
         } else {
           const result = await save(job, item, file);
           if (result.ok) saved = result.value;
