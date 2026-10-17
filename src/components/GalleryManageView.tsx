@@ -2251,8 +2251,13 @@ export default function GalleryManageView({
       );
     };
     const off = onGalleryPhoto(gallery.id, (row) => {
-      const preview = `/api/galleries/${gallery.id}/photos/${row.id}/preview`;
-      pending.push({ ...row, url: preview, previewUrl: preview });
+      // `url` is what the rest of the page (slideshow, cover, album) draws: the same-origin image
+      // route, so a canvas can read it, like the local copy it replaces.
+      pending.push({
+        ...row,
+        url: `/api/galleries/${gallery.id}/photos/${row.id}/image?size=2000`,
+        previewUrl: `/api/galleries/${gallery.id}/photos/${row.id}/preview`,
+      });
       if (!timer) timer = setTimeout(flush, 800);
     });
     return () => {
