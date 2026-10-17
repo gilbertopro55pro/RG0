@@ -731,8 +731,11 @@ function finish(job: Job, phase: UploadPhase) {
   job.state.phase = phase;
   if (job.state.halted) job.state.halted.left = job.state.total - job.state.succeeded - job.state.failed.length;
   job.state.finishedAt = Date.now();
-  emit();
+  // Reported before the screens hear of it: the gallery page dismisses an upload that ended right
+  // away (inside emit), and its final state then never reached the other devices, which showed it
+  // as stopped midway (found 2026-10-17).
   reportRemote(true);
+  emit();
   writeLock();
   // The photographer gets an email and a phone notification when they weren't watching it end:
   // the upload went to the background, they left its screen, or the app was hidden. The album PDF
