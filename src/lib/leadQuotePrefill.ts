@@ -47,7 +47,7 @@ export type LeadQuotePrefill = {
     at: string; // ISO, when it was sent
     mode: "event" | "freelance";
     hours: number | null; // a freelance quote's hours; an event quote's come from its times
-    shootPrice: number | null; // the "צילום אירוע" line, so the rate gives the same price
+    shootPrice: number | null; // a freelance quote's "צילום אירוע" line, so the rate gives the same price
     taxStatus: "exempt" | "licensed";
     notes: string;
     discount: { type: QuoteDiscountType; value: number } | null;
@@ -339,8 +339,10 @@ export function buildPrefillFromSentQuote(input: {
     eventLocation: (q.eventLocation ?? "").trim(),
     startTime,
     endTime,
+    // An event quote's priced shoot line (hours × rate, before the builder stopped pricing hours
+    // outside freelance mode) comes back as a row with its price, so the total stays as it went out.
     vendorRows: q.items
-      .filter((it) => it.item !== SHOOT_ITEM)
+      .filter((it) => it.item !== SHOOT_ITEM || (mode === "event" && it.price > 0))
       .map((it) => {
         const s = suppliers.find((sup) => sup.name === it.item);
         return s
@@ -354,7 +356,7 @@ export function buildPrefillFromSentQuote(input: {
       at: q.createdAt,
       mode,
       hours: freelanceHours ? Number(freelanceHours[1]) : null,
-      shootPrice: shoot ? shoot.price : null,
+      shootPrice: mode === "freelance" && shoot ? shoot.price : null,
       taxStatus: q.showVat ? "licensed" : "exempt",
       notes: q.notes ?? "",
       discount: readQuoteDiscount(q.discount),

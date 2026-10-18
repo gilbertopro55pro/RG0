@@ -276,8 +276,9 @@ export default function EventPricingCalculator({
     setDiscountValue(savedDiscount?.value ?? 0);
     // Matches the quote's saved item names back against the current supplier list — a supplier
     // renamed or removed since this quote was built simply becomes a free-text row, which is the
-    // safest fallback (no silently-wrong price tied to the wrong current supplier).
-    const vendorItems = q.items.filter((it) => it.item !== "צילום אירוע");
+    // safest fallback (no silently-wrong price tied to the wrong current supplier). A priced shoot
+    // line (hours × rate, from before the event mode stopped pricing hours) comes back as a row.
+    const vendorItems = q.items.filter((it) => it.item !== "צילום אירוע" || it.price > 0);
     setQuoteVendorRows(vendorItems.map((it) => rowFromItem(it, supplierList)));
   };
 
@@ -288,7 +289,7 @@ export default function EventPricingCalculator({
     setSelectedTemplateId(id);
     const tmpl = templates.find((tpl) => tpl.id === id);
     if (!tmpl) return;
-    setQuoteVendorRows(tmpl.items.filter((it) => it.item !== "צילום אירוע").map((it) => rowFromItem(it, supplierList)));
+    setQuoteVendorRows(tmpl.items.filter((it) => it.item !== "צילום אירוע" || it.price > 0).map((it) => rowFromItem(it, supplierList)));
   };
 
   const addVendorRow = () => setQuoteVendorRows((prev) => [...prev, { id: makeId(), supplierId: "", customName: "", note: "", price: 0 }]);
@@ -386,12 +387,16 @@ export default function EventPricingCalculator({
   // possible without touching that supplier's account-wide default.
   const vendorRowPrice = (row: QuoteVendorRow): number => Number(row.price) || 0;
 
+  // The shoot priced by the hour is a freelance quote's only line. In the event and standard modes
+  // the hours and rate aren't on screen, so they price nothing: the rate typed in freelance (saved
+  // as the next quote's rate) was silently adding hours × rate to event quotes (owner, 2026-10-18).
+  const shootCost = mode === "freelance" ? hours * rate : 0;
+
   // subtotal: after the discount, before VAT. itemsSum: before the discount.
   const { itemsSum, discountAmount, subtotal, vatAmount, total } = useMemo(() => {
-    const shootCost = hours * rate;
     const suppliersCost = mode === "freelance" ? 0 : quoteVendorRows.reduce((sum, r) => sum + vendorRowPrice(r), 0);
     return quoteTotals(shootCost + suppliersCost, { type: discountType, value: discountValue }, isExempt ? 0 : VAT_RATE);
-  }, [hours, rate, mode, quoteVendorRows, supplierList, isExempt, vendorRowPrice, discountType, discountValue]);
+  }, [shootCost, mode, quoteVendorRows, supplierList, isExempt, vendorRowPrice, discountType, discountValue]);
   const discount = toQuoteDiscount(discountType, discountValue, discountAmount);
   const discountLabel = discountType === "percent" ? t("הנחה {n}%", { n: discountValue }) : t("הנחה");
 
@@ -428,7 +433,7 @@ export default function EventPricingCalculator({
     }
     const target = eligibleRows.reduce((max, r) => (vendorRowPrice(r) > vendorRowPrice(max) ? r : max));
     const everythingElse =
-      hours * rate + quoteVendorRows.filter((r) => r.id !== target.id).reduce((sum, r) => sum + vendorRowPrice(r), 0);
+      shootCost + quoteVendorRows.filter((r) => r.id !== target.id).reduce((sum, r) => sum + vendorRowPrice(r), 0);
     // The items' sum that lands on the total after the discount: a percent scales it, shekels add back.
     const beforeVat = desiredTotal / (1 + VAT_RATE);
     const neededSum = discountValue > 0 ? (discountType === "percent" ? beforeVat / (1 - Math.min(discountValue, 99) / 100) : beforeVat + discountValue) : beforeVat;
@@ -447,7 +452,7 @@ export default function EventPricingCalculator({
   };
 
   const quoteItems = useMemo((): PriceQuoteItem[] => {
-    const shootItem: PriceQuoteItem = { item: "צילום אירוע", details: shootDetails, price: hours * rate };
+    const shootItem: PriceQuoteItem = { item: "צילום אירוע", details: shootDetails, price: shootCost };
     if (mode === "freelance") return [shootItem];
     const supplierItems: PriceQuoteItem[] = quoteVendorRows
       .map((r) => {
@@ -456,7 +461,7 @@ export default function EventPricingCalculator({
       })
       .filter((it): it is PriceQuoteItem => it !== null);
     return [shootItem, ...supplierItems];
-  }, [quoteVendorRows, supplierList, hours, rate, mode, shootDetails, vendorRowPrice]);
+  }, [quoteVendorRows, supplierList, shootCost, mode, shootDetails, vendorRowPrice]);
   const notesValue = !quoteExtras ? quoteNotes : notesTouched ? withoutStaleDeliveryLines(quoteNotes, quoteItems) : deliveryNotes(quoteItems);
 
   const openQuoteForm = () => {
