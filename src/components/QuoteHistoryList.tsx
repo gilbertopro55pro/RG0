@@ -203,7 +203,7 @@ export default function QuoteHistoryList({ signature }: { signature: string | nu
                   </span>
                 ) : linkMessage ? (
                   <a href={buildWaMeLink(phone, linkMessage)} target="_blank" rel="noopener noreferrer" className={`${btn} bg-ink border-ink text-white`}>
-                    {t("שליחה ללקוח בוואטסאפ")}
+                    {t("שליחה בוואטסאפ")}
                   </a>
                 ) : send?.kind === "ready" ? (
                   <a
@@ -218,7 +218,7 @@ export default function QuoteHistoryList({ signature }: { signature: string | nu
                   </a>
                 ) : (
                   <button onClick={() => void preparePdfLink(r)} disabled={send?.kind === "preparing"} className={`${btn} bg-ink border-ink text-white`}>
-                    {send?.kind === "preparing" ? t("מכין קישור...") : send?.kind === "error" ? t("נכשל, לנסות שוב") : t("שליחה ללקוח בוואטסאפ")}
+                    {send?.kind === "preparing" ? t("מכין קישור...") : send?.kind === "error" ? t("נכשל, לנסות שוב") : t("שליחה בוואטסאפ")}
                   </button>
                 )}
               </div>
