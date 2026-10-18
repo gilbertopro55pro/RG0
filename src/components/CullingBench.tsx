@@ -7,6 +7,7 @@ import { useT } from "@/i18n/client";
 import { FLAGS, LABEL_COLUMNS, LABEL_VERSION, NO_FLAGS, fromRow, saveCullingLabel, toRow, type LabelRow, type PhotoLabel } from "@/lib/culling/labels";
 import { ENGINE_VERSION, analyzePhoto, isCurrentResult, loadCullingModels } from "@/lib/culling/engine";
 import {
+  DEFAULT_THRESHOLDS,
   benchReport,
   decide,
   mistakeKinds,
@@ -376,11 +377,17 @@ export default function CullingBench({
                 <Stat label={t("לא בפוקוס: נתפסו")} rate={report.blurRecall} target={85} />
                 <Stat label={t("לא בפוקוס: דיוק")} rate={report.blurPrecision} target={80} />
                 <Stat label={t("עיניים עצומות: נתפסו")} rate={report.eyesRecall} target={null} />
-                <Stat label={t("מבט לא למצלמה: דיוק")} rate={report.lookPrecision} target={null} />
-                <Stat label={t("מבט לא למצלמה: נתפסו")} rate={report.lookRecall} target={null} />
+                {DEFAULT_THRESHOLDS.lookJudged && (
+                  <>
+                    <Stat label={t("מבט לא למצלמה: דיוק")} rate={report.lookPrecision} target={null} />
+                    <Stat label={t("מבט לא למצלמה: נתפסו")} rate={report.lookRecall} target={null} />
+                  </>
+                )}
               </div>
               <p className="text-xs text-ink-soft mb-1 leading-relaxed">
-                {t("מבט לא למצלמה נבדק רק בתמונות מבוימות: שני פרצופים או יותר, ולפחות חצי מהם מסתכלים למצלמה. בתמונה עם פרצוף אחד המבט לא נבדק.")}
+                {DEFAULT_THRESHOLDS.lookJudged
+                  ? t("מבט לא למצלמה נבדק רק בתמונות מבוימות: שני פרצופים או יותר, ולפחות חצי מהם מסתכלים למצלמה. בתמונה עם פרצוף אחד המבט לא נבדק.")
+                  : t("מבט לא למצלמה: המנוע לא מחליט על זה כרגע. בסימונים שבדקת, אף מדידה של כיוון הראש או האישונים לא הבדילה בין תמונה מבוימת שמישהו בה לא מסתכל לבין תמונה תקינה. המדידות והסימונים נשמרים לשלב הבא.")}
               </p>
               {report.lookUnchecked > 0 && (
                 <p className="text-xs text-rose mb-1 leading-relaxed">
@@ -596,7 +603,7 @@ function MistakeCard({
       <p className="text-xs mt-2 leading-relaxed">
         {t("המנוע:")} <b>{t(VERDICT_TEXT[d.verdict])}</b>
         {d.look !== "none" && ` · ${t(LOOK_TEXT[d.look])}`}
-        {d.look === "none" && SCENE_TEXT[d.lookScene] && ` · ${t(SCENE_TEXT[d.lookScene])}`}
+        {DEFAULT_THRESHOLDS.lookJudged && d.look === "none" && SCENE_TEXT[d.lookScene] && ` · ${t(SCENE_TEXT[d.lookScene])}`}
       </p>
       <p className="text-[11px] text-ink-soft font-data leading-relaxed">
         {d.focusFrom === "face"
