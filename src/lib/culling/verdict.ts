@@ -77,46 +77,64 @@ export const BLENDSHAPE_NAMES = [
   "mouthStretchLeft", "mouthStretchRight", "mouthUpperUpLeft", "mouthUpperUpRight", "noseSneerLeft", "noseSneerRight",
 ] as const;
 
-export type CullThresholds = LookThresholds & {
-  // A face counts for "eyes closed" when it's at least this share of the main face's area.
-  prominentFace: number;
-  // Both eyes' blink (the lower of the two) at or above: closed. Between unsure and closed: review.
-  blinkClosed: number;
-  blinkUnsure: number;
-  // Or both eyes' aspect ratio from MediaPipe's landmarks (the higher of the two) at or below.
-  // In the first test it separated more clearly than the blink: 0.05 closed against 0.28 open.
-  earClosed: number;
-  earUnsure: number;
-  // Focus on the main face: eyeNorm.lapN at or below: out of focus; up to unsure: review.
-  eyeSharpBad: number;
-  eyeSharpUnsure: number;
-  // Without faces: the sharpest tile's lapN at full resolution.
+// Round 1 (2026-10-18): each problem is one score per photo, fitted on the owner's first 1,483
+// labels (labeled_v 2). The thresholds are where the score sits on those labels; a lower or higher
+// one trades photos caught against photos flagged by mistake.
+export type CullThresholds = {
+  // Eyes closed, on each face of at least eyesFace of the main face's area: both eyes' blink
+  // (average) plus 0.45 × both eyes looking down (a lowered gaze reads as half-closed, to MediaPipe
+  // and in the labels). The most closed face decides. At or above eyesClosed: closed; from
+  // eyesUnsure: review. On the labels: 0.6 is 57% right and catches 55%; 0.45–0.6 is half and half.
+  eyesFace: number;
+  eyesClosed: number;
+  eyesUnsure: number;
+  // Focus on the main face (focusScore): at or below focusBad: out of focus; up to focusUnsure:
+  // review. Weak on the labels: about a third of the photos it flags are really blurry.
+  focusBad: number;
+  focusUnsure: number;
+  // Without faces: the sharpest tile's lapN at full resolution (untested: 34 labelled photos).
   sceneSharpBad: number;
   sceneSharpUnsure: number;
+  // Looking away, averaged over the faces of at least lookFace of the main face's area: head turn
+  // over 25° plus the irises off-centre over 0.2 (lookScore). At or above lookAway: away; from
+  // lookUnsure: review. On the labels: 1.0 is 76% right and catches 59%.
+  lookFace: number;
+  lookAway: number;
+  lookUnsure: number;
 };
 
-// Looking away, per prominent face: the head turned (yaw) or tilted (pitch) past these degrees, or
-// the irises off-centre past gazeAway. Between unsure and away: review.
-type LookThresholds = { yawAway: number; yawUnsure: number; pitchAway: number; gazeAway: number; gazeUnsure: number };
-
-// First guesses from a handful of test images, to be tuned against the owner's labels (round 1's
-// whole point).
 export const DEFAULT_THRESHOLDS: CullThresholds = {
-  prominentFace: 0.35,
-  blinkClosed: 0.5,
-  blinkUnsure: 0.35,
-  earClosed: 0.12,
-  earUnsure: 0.18,
-  yawAway: 28,
-  yawUnsure: 18,
-  pitchAway: 25,
-  gazeAway: 0.18,
-  gazeUnsure: 0.12,
-  eyeSharpBad: 0.04,
-  eyeSharpUnsure: 0.08,
+  eyesFace: 0.5,
+  eyesClosed: 0.6,
+  eyesUnsure: 0.45,
+  focusBad: -2.9,
+  focusUnsure: -1.6,
   sceneSharpBad: 0.03,
   sceneSharpUnsure: 0.06,
+  lookFace: 0.35,
+  lookAway: 1.0,
+  lookUnsure: 0.7,
 };
+
+const EYE_LOOK_DOWN_L = BLENDSHAPE_NAMES.indexOf("eyeLookDownLeft");
+const EYE_LOOK_DOWN_R = BLENDSHAPE_NAMES.indexOf("eyeLookDownRight");
+
+// How closed one face's eyes look (null when MediaPipe found no face in its crop). Engine 1 kept no
+// blendshapes, so there the lowered gaze counts as 0.
+export function eyesScore(face: FaceFeatures): { score: number; blink: number; down: number } | null {
+  const m = face.mp;
+  if (!m) return null;
+  const blink = (m.blinkL + m.blinkR) / 2;
+  const down = m.shapes ? ((m.shapes[EYE_LOOK_DOWN_L] ?? 0) + (m.shapes[EYE_LOOK_DOWN_R] ?? 0)) / 2 : 0;
+  return { score: blink + 0.45 * down, blink, down };
+}
+
+// Focus of a face: its sharpness at a fixed face width and around the eyes (log), plus 0.7 × the log
+// of its eye distance in pixels. The size term is from the labels (it lifted the agreement from 0.81
+// to 0.89 AUC): a soft small face is a missed shot more often than a soft large one is.
+export function focusScore(face: FaceFeatures): number {
+  return Math.log(Math.max(face.faceNorm.lapN, 1e-4)) + 0.7 * Math.log(Math.max(face.iod, 1)) + 0.5 * Math.log(Math.max(face.eyeNorm.lapN, 1e-4));
+}
 
 export type FocusCall = "ok" | "bad" | "unsure";
 export type LookCall = "at" | "away" | "unsure" | "none";
@@ -129,14 +147,19 @@ export type CullDecision = {
   verdict: CullVerdict;
   // The numbers the decision rests on, for the reason shown on screen.
   focusValue: number | null;
-  focusFrom: "eyes" | "scene";
-  // The most closed prominent face: its blink (lower eye) and aspect ratio (higher eye).
+  focusFrom: "face" | "scene";
+  // The most closed face counted (index in features.faces, -1 none): its score, blink and look down.
+  eyesFace: number;
+  eyesValue: number | null;
   blinkValue: number | null;
-  earValue: number | null;
-  // Looking at the camera (engine 2): the prominent face that looks furthest away, and by how much.
+  downValue: number | null;
+  // Looking at the camera (engine 2): the score, and the average head turn and iris offset behind it.
   look: LookCall;
+  lookValue: number | null;
   yawValue: number | null;
   gazeValue: number | null;
+  // The faces the eyes and look calls counted.
+  counted: number[];
 };
 
 export function decide(f: CullFeatures, th: CullThresholds = DEFAULT_THRESHOLDS): CullDecision {
@@ -144,11 +167,11 @@ export function decide(f: CullFeatures, th: CullThresholds = DEFAULT_THRESHOLDS)
 
   let focus: FocusCall;
   let focusValue: number | null;
-  let focusFrom: "eyes" | "scene";
+  let focusFrom: "face" | "scene";
   if (main) {
-    focusFrom = "eyes";
-    focusValue = main.eyeNorm.lapN;
-    focus = focusValue <= th.eyeSharpBad ? "bad" : focusValue <= th.eyeSharpUnsure ? "unsure" : "ok";
+    focusFrom = "face";
+    focusValue = focusScore(main);
+    focus = focusValue <= th.focusBad ? "bad" : focusValue <= th.focusUnsure ? "unsure" : "ok";
   } else {
     focusFrom = "scene";
     focusValue = f.scene.best.lapN;
@@ -156,52 +179,77 @@ export function decide(f: CullFeatures, th: CullThresholds = DEFAULT_THRESHOLDS)
   }
 
   let eyes: EyesCall = "none";
+  let eyesFace = -1;
+  let eyesValue: number | null = null;
   let blinkValue: number | null = null;
-  let earValue: number | null = null;
+  let downValue: number | null = null;
+  const counted = new Set<number>();
   if (main) {
-    const rank = (c: EyesCall) => ({ none: 0, open: 1, unsure: 2, closed: 3 })[c];
-    for (const face of f.faces) {
-      if (face.area < th.prominentFace * main.area || !face.mp) continue;
-      const blink = Math.min(face.mp.blinkL, face.mp.blinkR);
-      const ear = Math.max(face.mp.earL, face.mp.earR);
-      const call: EyesCall =
-        blink >= th.blinkClosed || ear <= th.earClosed ? "closed" : blink >= th.blinkUnsure || ear <= th.earUnsure ? "unsure" : "open";
-      if (rank(call) > rank(eyes) || (rank(call) === rank(eyes) && blinkValue !== null && blink > blinkValue)) {
-        eyes = call;
-        blinkValue = blink;
-        earValue = ear;
+    for (let i = 0; i < f.faces.length; i++) {
+      const face = f.faces[i];
+      const e = face.area >= th.eyesFace * main.area ? eyesScore(face) : null;
+      if (!e) continue;
+      counted.add(i);
+      if (eyesValue === null || e.score > eyesValue) {
+        eyesFace = i;
+        eyesValue = e.score;
+        blinkValue = e.blink;
+        downValue = e.down;
       }
     }
+    if (eyesValue !== null) eyes = eyesValue >= th.eyesClosed ? "closed" : eyesValue >= th.eyesUnsure ? "unsure" : "open";
   }
 
   const bad = focus === "bad";
   const closed = eyes === "closed";
   const verdict: CullVerdict =
     bad && closed ? "both" : bad ? "blurry" : closed ? "eyes_closed" : focus === "unsure" || eyes === "unsure" ? "review" : "ok";
-  // Looking at the camera. The first rule, to be tuned: any prominent face turned or looking away.
-  // Whether the photo was posed (where looking away is a problem at all) is for the labels to show.
+
+  // Looking at the camera, averaged over the faces counted: one guest turned away in a group of
+  // four looking is a smaller miss than the couple both looking aside. Whether the photo was posed
+  // isn't known to the engine; the owner's labels so far mark looking away in candid photos too.
   let look: LookCall = "none";
+  let lookValue: number | null = null;
   let yawValue: number | null = null;
   let gazeValue: number | null = null;
   if (main) {
-    const rank = (c: LookCall) => ({ none: 0, at: 1, unsure: 2, away: 3 })[c];
-    for (const face of f.faces) {
+    let yaw = 0;
+    let gaze = 0;
+    let n = 0;
+    for (let i = 0; i < f.faces.length; i++) {
+      const face = f.faces[i];
       const m = face.mp;
-      if (face.area < th.prominentFace * main.area || !m || m.yaw == null) continue;
-      const yaw = Math.abs(m.yaw);
-      const pitch = Math.abs(m.pitch ?? 0);
-      const gaze = Math.abs(m.gazeH ?? 0);
-      const call: LookCall =
-        yaw >= th.yawAway || pitch >= th.pitchAway || gaze >= th.gazeAway ? "away" : yaw >= th.yawUnsure || gaze >= th.gazeUnsure ? "unsure" : "at";
-      if (rank(call) > rank(look) || (rank(call) === rank(look) && yawValue !== null && yaw > yawValue)) {
-        look = call;
-        yawValue = yaw;
-        gazeValue = gaze;
-      }
+      if (face.area < th.lookFace * main.area || !m || m.yaw == null) continue;
+      counted.add(i);
+      yaw += Math.abs(m.yaw);
+      // Past 0.5 the iris landmarks missed (45 of 3,778 faces in the labelled photos, up to 3.5).
+      gaze += Math.min(Math.abs(m.gazeH ?? 0), 0.5);
+      n++;
+    }
+    if (n) {
+      yawValue = yaw / n;
+      gazeValue = gaze / n;
+      lookValue = yawValue / 25 + gazeValue / 0.2;
+      look = lookValue >= th.lookAway ? "away" : lookValue >= th.lookUnsure ? "unsure" : "at";
     }
   }
 
-  return { focus, eyes, verdict, focusValue, focusFrom, blinkValue, earValue, look, yawValue, gazeValue };
+  return {
+    focus,
+    eyes,
+    verdict,
+    focusValue,
+    focusFrom,
+    eyesFace,
+    eyesValue,
+    blinkValue,
+    downValue,
+    look,
+    lookValue,
+    yawValue,
+    gazeValue,
+    counted: [...counted].sort((a, b) => a - b),
+  };
 }
 
 // --- Measuring the engine against the owner's labels ---

@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import { useT } from "@/i18n/client";
-import { LABEL_COLUMNS, LABEL_VERSION, type LabelRow } from "@/lib/culling/labels";
-import { ENGINE_VERSION, analyzePhoto, loadCullingModels } from "@/lib/culling/engine";
+import { FLAGS, LABEL_COLUMNS, LABEL_VERSION, NO_FLAGS, fromRow, saveCullingLabel, toRow, type LabelRow, type PhotoLabel } from "@/lib/culling/labels";
+import { ENGINE_VERSION, analyzePhoto, isCurrentResult, loadCullingModels } from "@/lib/culling/engine";
 import {
   benchReport,
   decide,
@@ -21,7 +21,8 @@ import {
 // on the test gallery in this browser and measures it against the owner's labels. Only the numbers
 // are saved (culling_results, migration 0179); the decision is recomputed from them on every render,
 // so a threshold change re-scores everything without running again. A run resumes where it stopped:
-// photos already measured with this engine version are skipped.
+// photos already measured with this engine version (or an earlier one that measures them the same)
+// are skipped. A label can be corrected from the photo's card, and the numbers follow at once.
 
 type Photo = { id: string; folder_id: string | null; original_filename: string; storage_path: string };
 type Result = { features: CullFeatures | null; error: string | null; version: string };
@@ -30,6 +31,8 @@ type Progress = { done: number; total: number; ms: number[]; errors: number; uns
 
 type WakeLockSentinelLike = { release: () => Promise<void> };
 type WakeLockNavigator = Navigator & { wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> } };
+
+const LOOK_TEXT = { at: "מסתכלים למצלמה", away: "מבט לא למצלמה", unsure: "מבט: לבדיקה", none: "" } as const;
 
 const VERDICT_TEXT: Record<CullVerdict, string> = {
   ok: "תקינה",
@@ -49,6 +52,10 @@ const MISTAKE_TEXT: Record<MistakeKind, string> = {
 };
 
 const pct = (r: Rate) => (r.of ? Math.round((r.hit / r.of) * 100) : null);
+// A measured number inside a Hebrew line: isolated, so a minus stays in front of it.
+const num = (v: number, digits = 2) => `\u2066${v.toFixed(digits)}\u2069`;
+// The face behind the eyes call, by what it says: closed, review, open.
+const EYES_COLOR = { closed: "rose", unsure: "amber-deep", open: "sage", none: "sage" } as const;
 
 export default function CullingBench({
   userId,
@@ -71,6 +78,9 @@ export default function CullingBench({
   const [models, setModels] = useState<"idle" | "loading" | "ready" | "failed">("idle");
   const [runError, setRunError] = useState<string | null>(null);
   const [filter, setFilter] = useState<MistakeKind>("missedBlur");
+  // Cards whose label was corrected while this group is shown: they stay in place (and say they're
+  // no longer a mistake) until another group is picked, instead of jumping out from under the click.
+  const [kept, setKept] = useState<Set<string>>(new Set());
   const cancelRef = useRef(false);
 
   useEffect(() => {
@@ -109,7 +119,9 @@ export default function CullingBench({
   }, [galleryId, supabase]);
 
   const inScope = useMemo(() => (scope === "labeled" ? photos.filter((p) => labels.has(p.id) && labels.get(p.id)!.label !== "skip") : photos), [photos, labels, scope]);
-  const pending = useMemo(() => inScope.filter((p) => results.get(p.id)?.version !== ENGINE_VERSION || !results.get(p.id)?.features), [inScope, results]);
+  const pending = useMemo(() => inScope.filter((p) => !isCurrentResult(results.get(p.id)?.version, results.get(p.id)?.features)), [inScope, results]);
+  // Of those, measured before by an earlier engine (the photos with 6 faces or more, for engine 3).
+  const remeasure = useMemo(() => pending.filter((p) => results.get(p.id)?.features).length, [pending, results]);
 
   async function download(p: Photo): Promise<{ blob: Blob; source: CullFeatures["source"]; ms: number }> {
     const t0 = performance.now();
@@ -217,14 +229,16 @@ export default function CullingBench({
     for (const p of photos) {
       const row = labels.get(p.id);
       const f = results.get(p.id)?.features;
-      if (!row || row.label === "skip" || !f || f.v !== ENGINE_VERSION) continue;
+      // Measurements from an earlier engine count until the photo is measured again: the decision
+      // is computed the same way from both.
+      if (!row || row.label === "skip" || !f) continue;
       out.push({ photoId: p.id, label: row.label, notLooking: row.not_looking, unflattering: row.unflattering, v: row.labeled_v, decision: decide(f) });
     }
     return out;
   }, [photos, labels, results]);
   const report = useMemo(() => benchReport(items), [items]);
 
-  const measured = useMemo(() => photos.filter((p) => results.get(p.id)?.features?.v === ENGINE_VERSION), [photos, results]);
+  const measured = useMemo(() => photos.filter((p) => results.get(p.id)?.features), [photos, results]);
   const timing = useMemo(() => {
     const ms = measured.map((p) => results.get(p.id)!.features!.ms.total).sort((a, b) => a - b);
     const dl = measured.map((p) => results.get(p.id)!.features!.ms.download);
@@ -242,13 +256,24 @@ export default function CullingBench({
     return c;
   }, [measured, results]);
 
-  const mistakes = useMemo(() => items.filter((it) => mistakeKinds(it).includes(filter)), [items, filter]);
+  const mistakes = useMemo(() => items.filter((it) => kept.has(it.photoId) || mistakeKinds(it).includes(filter)), [items, filter, kept]);
   const mistakeCounts = useMemo(() => {
     const c: Record<MistakeKind, number> = { missedBlur: 0, falseBlur: 0, missedEyes: 0, falseEyes: 0, missedLook: 0, falseLook: 0, review: 0 };
     for (const it of items) for (const k of mistakeKinds(it)) c[k]++;
     return c;
   }, [items]);
-  const errors = useMemo(() => photos.filter((p) => results.get(p.id)?.version === ENGINE_VERSION && results.get(p.id)?.error).length, [photos, results]);
+  const errors = useMemo(() => photos.filter((p) => !results.get(p.id)?.features && results.get(p.id)?.error).length, [photos, results]);
+
+  // A label corrected from a card: saved as a full label (all four problems on screen), and the
+  // report and groups recomputed from it.
+  async function relabel(photoId: string, label: PhotoLabel): Promise<boolean> {
+    if (!galleryId) return false;
+    const ok = await saveCullingLabel(supabase, { photoId, userId, galleryId, label });
+    if (!ok) return false;
+    setLabels((cur) => new Map(cur).set(photoId, { photo_id: photoId, ...toRow(label), labeled_v: LABEL_VERSION }));
+    setKept((cur) => new Set(cur).add(photoId));
+    return true;
+  }
 
   const eta = progress && progress.ms.length ? ((progress.total - progress.done) * (progress.ms.reduce((s, v) => s + v, 0) / progress.ms.length + timing.download * 0.2)) / 1000 : null;
 
@@ -323,6 +348,11 @@ export default function CullingBench({
                   {t("נמדדו {n} מתוך {total} בהיקף הזה", { n: inScope.length - pending.length, total: inScope.length })}
                   {errors > 0 && ` · ${t("{n} שגיאות", { n: errors })}`}
                 </span>
+                {remeasure > 0 && (
+                  <p className="basis-full text-xs text-ink-soft leading-relaxed">
+                    {t("{n} מהן כבר נמדדו, ויימדדו שוב: המנוע בודק עכשיו את כל הפרצופים בתמונה ולא רק את 6 הגדולים. עד אז הן נספרות לפי המדידה הקודמת.", { n: remeasure })}
+                  </p>
+                )}
               </div>
             )}
             {runError && <p className="text-xs text-rose mt-2 break-all">{t("טעינת המודלים נכשלה:")} {runError}</p>}
@@ -394,7 +424,10 @@ export default function CullingBench({
                     {(Object.keys(MISTAKE_TEXT) as MistakeKind[]).map((k) => (
                       <button
                         key={k}
-                        onClick={() => setFilter(k)}
+                        onClick={() => {
+                          setFilter(k);
+                          setKept(new Set());
+                        }}
                         className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${filter === k ? "bg-ink text-white border-ink" : "bg-white border-line text-ink-soft"}`}
                       >
                         {t(MISTAKE_TEXT[k])} ({mistakeCounts[k]})
@@ -404,11 +437,25 @@ export default function CullingBench({
                   {mistakes.length === 0 ? (
                     <p className="text-sm text-ink-soft">{t("אין תמונות בקבוצה הזו.")}</p>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {mistakes.slice(0, 60).map((it) => (
-                        <MistakeCard key={it.photoId} galleryId={galleryId} item={it} features={results.get(it.photoId)!.features!} />
-                      ))}
-                    </div>
+                    <>
+                      <p className="text-xs text-ink-soft mb-2 leading-relaxed">
+                        {t("אם הסימון שלך בתמונה לא נכון, אפשר לתקן אותו כאן בכרטיס. התיקון נשמר מיד, והמספרים למעלה מתעדכנים.")}
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {mistakes.slice(0, 60).map((it) => (
+                          <MistakeCard
+                            key={it.photoId}
+                            galleryId={galleryId}
+                            item={it}
+                            features={results.get(it.photoId)!.features!}
+                            label={fromRow(labels.get(it.photoId)!)}
+                            stillMistake={mistakeKinds(it).includes(filter)}
+                            onRelabel={(l) => relabel(it.photoId, l)}
+                          />
+                        ))}
+                      </div>
+                      {mistakes.length > 60 && <p className="text-xs text-ink-soft mt-2">{t("מוצגות 60 מתוך {n}", { n: mistakes.length })}</p>}
+                    </>
                   )}
                 </>
               )}
@@ -436,49 +483,123 @@ function Stat({ label, rate, target }: { label: string; rate: Rate; target: numb
   );
 }
 
-// One photo the engine got wrong: the photo with the main face and the measured eye region marked,
-// the eyes up close, and the numbers the decision rested on.
-function MistakeCard({ galleryId, item, features }: { galleryId: string; item: BenchItem; features: CullFeatures }) {
+// One photo the engine got wrong. Every face found is outlined: the faces the decision counted in
+// amber, the rest faint, and the face behind the eyes call with its score (red when it says closed). Below, that face's
+// eyes up close, the numbers, and the owner's label, which can be corrected here.
+function MistakeCard({
+  galleryId,
+  item,
+  features,
+  label,
+  stillMistake,
+  onRelabel,
+}: {
+  galleryId: string;
+  item: BenchItem;
+  features: CullFeatures;
+  label: PhotoLabel;
+  stillMistake: boolean;
+  onRelabel: (label: PhotoLabel) => Promise<boolean>;
+}) {
   const t = useT();
-  const main = features.main >= 0 ? features.faces[features.main] : null;
-  const src = `/api/galleries/${galleryId}/photos/${item.photoId}/image?size=2000`;
+  const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const d = item.decision;
-  const box = (b: [number, number, number, number], cls: string) => (
-    <span className={`absolute border-2 ${cls}`} style={{ left: `${b[0] * 100}%`, top: `${b[1] * 100}%`, width: `${b[2] * 100}%`, height: `${b[3] * 100}%` }} />
+  const main = features.main >= 0 ? features.faces[features.main] : null;
+  const eyesFace = d.eyesFace >= 0 ? features.faces[d.eyesFace] : null;
+  const zoomFace = eyesFace ?? main;
+  const src = `/api/galleries/${galleryId}/photos/${item.photoId}/image?size=2000`;
+  const box = (b: [number, number, number, number], cls: string, key?: number) => (
+    <span key={key} className={`absolute ${cls}`} style={{ left: `${b[0] * 100}%`, top: `${b[1] * 100}%`, width: `${b[2] * 100}%`, height: `${b[3] * 100}%` }} />
   );
+  const set = async (next: PhotoLabel) => {
+    setSaving("saving");
+    setSaving((await onRelabel(next)) ? "saved" : "failed");
+  };
+  const fine = !label.skip && !FLAGS.some((f) => label.flags[f.key]);
+  const chip = (on: boolean) =>
+    `px-2.5 py-1 rounded-full text-[11px] font-semibold border disabled:opacity-50 ${on ? "bg-ink text-white border-ink" : "bg-white border-line text-ink-soft"}`;
   return (
     <div className="rounded-2xl bg-card p-3">
       <div className="relative bg-black/90 rounded-lg overflow-hidden" style={{ aspectRatio: `${features.w} / ${features.h}` }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={src} alt="" loading="lazy" className="absolute inset-0 w-full h-full" />
-        {main && box(main.box, "border-amber-deep")}
-        {main && box(main.eyes, "border-sage")}
-        {!main && box(features.scene.bestBox, "border-sage border-dashed")}
+        {features.faces.map((f, i) =>
+          i === d.eyesFace ? null : box(f.box, d.counted.includes(i) ? "border-2 border-amber-deep" : "border border-white/50", i)
+        )}
+        {eyesFace && (
+          <span
+            className="absolute border-[3px]"
+            style={{
+              left: `${eyesFace.box[0] * 100}%`,
+              top: `${eyesFace.box[1] * 100}%`,
+              width: `${eyesFace.box[2] * 100}%`,
+              height: `${eyesFace.box[3] * 100}%`,
+              borderColor: `var(--color-${EYES_COLOR[d.eyes]})`,
+            }}
+          >
+            {d.eyesValue !== null && (
+              <span
+                className="absolute top-0 start-0 text-white text-[10px] font-data px-1 rounded-sm whitespace-nowrap"
+                style={{ background: `var(--color-${EYES_COLOR[d.eyes]})` }}
+              >
+                {d.eyesValue.toFixed(2)}
+              </span>
+            )}
+          </span>
+        )}
+        {!main && box(features.scene.bestBox, "border-2 border-sage border-dashed")}
       </div>
-      {main && (
-        <div className="relative mt-2 rounded-lg overflow-hidden bg-black" style={{ aspectRatio: `${(main.eyes[2] * features.w) / (main.eyes[3] * features.h)}` }}>
+      {zoomFace && (
+        <div className="relative mt-2 rounded-lg overflow-hidden bg-black" style={{ aspectRatio: `${(zoomFace.eyes[2] * features.w) / (zoomFace.eyes[3] * features.h)}` }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={src}
             alt=""
             loading="lazy"
             className="absolute max-w-none"
-            style={{ width: `${100 / main.eyes[2]}%`, left: `${(-main.eyes[0] / main.eyes[2]) * 100}%`, top: `${(-main.eyes[1] / main.eyes[3]) * 100}%` }}
+            style={{ width: `${100 / zoomFace.eyes[2]}%`, left: `${(-zoomFace.eyes[0] / zoomFace.eyes[2]) * 100}%`, top: `${(-zoomFace.eyes[1] / zoomFace.eyes[3]) * 100}%` }}
           />
         </div>
       )}
       <p className="text-xs mt-2 leading-relaxed">
-        {t("סימנת:")} <b>{t(VERDICT_TEXT[item.label as CullVerdict])}</b> · {t("המנוע:")} <b>{t(VERDICT_TEXT[d.verdict])}</b>
+        {t("המנוע:")} <b>{t(VERDICT_TEXT[d.verdict])}</b>
+        {d.look !== "none" && ` · ${t(LOOK_TEXT[d.look])}`}
       </p>
       <p className="text-[11px] text-ink-soft font-data leading-relaxed">
-        {d.focusFrom === "eyes" ? t("חדות העיניים {v}", { v: d.focusValue ?? "—" }) : t("בלי פרצוף, חדות הסצנה {v}", { v: d.focusValue ?? "—" })}
-        {d.blinkValue !== null && ` · ${t("עצימת עיניים {v}", { v: d.blinkValue.toFixed(2) })}`}
-        {d.earValue !== null && ` · ${t("פתיחת העין {v}", { v: d.earValue.toFixed(2) })}`}
-        {d.yawValue !== null && ` · ${t("סיבוב הראש {v}°", { v: Math.round(d.yawValue) })}`}
-        {d.gazeValue !== null && ` · ${t("מבט הצידה {v}", { v: d.gazeValue.toFixed(2) })}`}
+        {d.focusFrom === "face"
+          ? t("חדות הפרצוף הראשי {v}", { v: d.focusValue === null ? "—" : num(d.focusValue) })
+          : t("בלי פרצוף, חדות הסצנה {v}", { v: d.focusValue ?? "—" })}
+        {d.eyesValue !== null &&
+          ` · ${t("עיניים {v} (עצימה {b}, מבט למטה {down})", { v: num(d.eyesValue), b: num(d.blinkValue ?? 0), down: num(d.downValue ?? 0) })}`}
+        {d.lookValue !== null &&
+          ` · ${t("מבט {v} (ראש {yaw}°, אישונים {gaze})", { v: num(d.lookValue), yaw: Math.round(d.yawValue ?? 0), gaze: num(d.gazeValue ?? 0) })}`}
         {` · ${t("{n} פרצופים", { n: features.faces.length })}`}
         {main && ` · ${t("מרחק עיניים {n}px", { n: main.iod })}`}
       </p>
+      <div className="mt-2 pt-2 border-t border-line">
+        <p className="text-[11px] text-ink-soft mb-1.5">
+          {t("הסימון שלך:")}
+          {saving === "saving" && ` ${t("שומר...")}`}
+          {saving === "saved" && ` ${t("נשמר")}`}
+          {saving === "failed" && <span className="text-rose"> {t("שמירת הסימון נכשלה, נסו שוב.")}</span>}
+          {!stillMistake && <span className="text-sage font-semibold"> · {t("כבר לא טעות בקבוצה הזו")}</span>}
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <button disabled={saving === "saving"} onClick={() => void set({ skip: false, flags: { ...NO_FLAGS }, v: LABEL_VERSION })} className={chip(fine)}>
+            {t("תקינה")}
+          </button>
+          {FLAGS.map((f) => (
+            <button
+              key={f.key}
+              disabled={saving === "saving"}
+              onClick={() => void set({ skip: false, flags: { ...(label.skip ? NO_FLAGS : label.flags), [f.key]: !label.flags[f.key] }, v: LABEL_VERSION })}
+              className={chip(!label.skip && label.flags[f.key])}
+            >
+              {t(f.text)}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

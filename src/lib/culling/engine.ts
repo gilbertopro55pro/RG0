@@ -16,10 +16,12 @@ import type { CullFeatures, FaceFeatures } from "@/lib/culling/verdict";
 
 // 2 (2026-10-16): head pose, iris gaze and all 52 expression blendshapes per face, for "מבט לא
 // למצלמה" and, later, "לא מחמיא"; a larger crop for MediaPipe (448px), so the iris is resolved.
-export const ENGINE_VERSION = "2";
+// 3 (2026-10-18): every face the detector finds (up to 20), not the 6 largest: a fifth of the
+// labelled photos had 6 or more, and closed eyes past the sixth face weren't looked at.
+export const ENGINE_VERSION = "3";
 
 const DETECT_EDGE = 1280;
-const MAX_FACES = 6;
+const MAX_FACES = 20;
 // A face under 1.5% of the photo's shorter side is a distant guest, never the subject.
 const MIN_FACE_SIDE = 0.015;
 // Served from our own domain: the WASM is copied from node_modules at build time
@@ -30,6 +32,13 @@ const MP_FILESET = {
 };
 const MP_MODEL = "/models/mediapipe/face_landmarker.task";
 const MP_CROP = 448;
+
+// Engine 2 differs only in keeping at most 6 faces, so its measurement of a photo with fewer is what
+// engine 3 measures: only the photos that reached that cap need measuring again.
+export function isCurrentResult(version: string | undefined, features: CullFeatures | null | undefined): boolean {
+  if (!features) return false;
+  return version === ENGINE_VERSION || (version === "2" && features.faces.length < 6);
+}
 
 type FaceApi = typeof import("@vladmandic/face-api");
 let modelsPromise: Promise<{ faceapi: FaceApi; landmarker: FaceLandmarker }> | null = null;
