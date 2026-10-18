@@ -62,7 +62,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "חדש",
   contacted: "יצרתי קשר",
   quoted: "נשלחה הצעת מחיר",
-  won: "הפך ללקוח",
+  won: "הומר לאירוע",
   lost: "לא התקדם",
 };
 

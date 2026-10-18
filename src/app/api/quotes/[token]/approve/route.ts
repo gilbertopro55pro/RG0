@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type { LeadRow } from "@/lib/types";
 import type { LeadQuoteDetails } from "@/lib/leadQuote";
 import { findDateConflict } from "@/lib/dateConflict";
+import { cancelLeadFollowUps } from "@/lib/leadFollowUp";
 import { notifyDateTaken } from "@/lib/dateTakenNotify";
 import { photographerLang } from "@/lib/clientLang";
 import { messagesFor } from "@/i18n/dict";
@@ -49,17 +50,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     }
   }
 
-  const { error } = await supabase.from("leads").update({ quote_approved_at: new Date().toISOString() }).eq("id", lead.id);
+  // An approved quote is a booked event (owner, 2026-10-18): the lead reads "הומר לאירוע" (status
+  // won) right away, before the questionnaire creates the event itself.
+  const { error } = await supabase.from("leads").update({ quote_approved_at: new Date().toISOString(), status: "won" }).eq("id", lead.id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  // No "the quote is still open" nudge after the client approved it.
-  await supabase
-    .from("scheduled_messages")
-    .update({ status: "canceled" })
-    .eq("lead_id", lead.id)
-    .eq("kind", "lead_quote_followup")
-    .eq("status", "pending");
+  // No more nudges once the client approved it.
+  await cancelLeadFollowUps(supabase, lead.id);
 
   // To the photographer, in their own language (photographers.ui_lang).
   const t = makeT(messagesFor(photographerLang(lead.photographers?.ui_lang)));
