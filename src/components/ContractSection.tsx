@@ -25,7 +25,28 @@ export default function ContractSection({
   const [showEdit, setShowEdit] = useState(false);
   const [editText, setEditText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [pdfState, setPdfState] = useState<"idle" | "busy" | "failed">("idle");
   const previewEntered = useModalEntered();
+
+  // The signed contract as a PDF, to send to the client (owner, 2026-10-18).
+  const downloadPdf = async () => {
+    setPdfState("busy");
+    try {
+      const res = await fetch(`/api/events/${eventId}/contract/pdf`);
+      if (!res.ok) throw new Error();
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `חוזה-${(contract?.signer_name ?? "").trim() || "חתום"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setPdfState("idle");
+    } catch {
+      setPdfState("failed");
+    }
+  };
 
   const openEdit = () => {
     if (!contract) return;
@@ -130,12 +151,21 @@ export default function ContractSection({
             // eslint-disable-next-line @next/next/no-img-element -- a stored data URL, no benefit from next/image's remote optimization
             <img src={contract.signature_data_url} alt={t("חתימת הלקוח")} className="h-16 rounded-lg border border-line bg-white" />
           )}
-          <button
-            onClick={() => setShowPreview(true)}
-            className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
-          >
-            {t("תצוגה מקדימה")}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => void downloadPdf()}
+              disabled={pdfState === "busy"}
+              className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+            >
+              {pdfState === "busy" ? t("מכין PDF...") : pdfState === "failed" ? t("נכשל, לנסות שוב") : t("הורדת החוזה החתום (PDF)")}
+            </button>
+            <button
+              onClick={() => setShowPreview(true)}
+              className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
+            >
+              {t("תצוגה מקדימה")}
+            </button>
+          </div>
         </div>
       )}
 

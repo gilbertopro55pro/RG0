@@ -30,6 +30,7 @@ const nextConfig: NextConfig = {
     "/api/galleries/\\[id\\]/album/export-pdf": ["src/assets/fonts/**/*"],
     "/api/galleries/\\[id\\]/album/export-jpg": ["src/assets/fonts/**/*"],
     "/api/galleries/\\[id\\]/album/export-psd": ["src/assets/fonts/**/*"],
+    "/api/events/\\[id\\]/contract/pdf": ["src/assets/fonts/Rubik-Bold.ttf", "src/assets/fonts/Rubik-Regular.ttf"],
   },
 };
 

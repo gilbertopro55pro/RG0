@@ -35,6 +35,8 @@ export function generateContractText({
   depositAmount,
   balanceAmount,
   balanceDueDate,
+  workHours,
+  includes,
 }: {
   photographerName: string;
   photographerPhone: string;
@@ -50,11 +52,17 @@ export function generateContractText({
   depositAmount: number;
   balanceAmount: number;
   balanceDueDate: string | null;
+  // What the client booked (owner, 2026-10-18: a contract went out without either): the working
+  // hours ("13:00-00:30") and the quote's lines, from contractBookingDetails (lib/quoteContract.ts).
+  workHours?: string | null;
+  includes?: string[];
 }): string {
   const formattedDate = new Date(eventDate).toLocaleDateString("he-IL");
   const total = depositAmount + balanceAmount;
   const formattedDueDate = balanceDueDate ? new Date(balanceDueDate).toLocaleDateString("he-IL") : "מועד האירוע";
   const termsBody = customTerms?.trim() || defaultContractTerms(photographerName);
+  const hoursLine = workHours ? `\nשעות עבודה: ${workHours}` : "";
+  const includesBlock = includes?.length ? `\n\nההזמנה כוללת:\n${includes.map((line) => `• ${line}`).join("\n")}` : "";
 
   return `הסכם הזמנת שירותי צילום
 
@@ -63,8 +71,8 @@ export function generateContractText({
 
 1. פרטי האירוע
 תאריך האירוע: ${formattedDate}
-מיקום: ${eventLocation || "יעודכן"}
-חבילה: ${packageLabelText}
+מיקום: ${eventLocation || "יעודכן"}${hoursLine}
+חבילה: ${packageLabelText}${includesBlock}
 
 2. תמורה ותשלומים
 סכום כולל: ₪${total}
