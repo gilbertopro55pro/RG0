@@ -101,6 +101,12 @@ export type CullThresholds = {
   // with two faces or more and at least half of them looking; then the face furthest from the
   // camera decides: from lookAway away, from lookUnsure review. One face or none: not judged (a
   // portrait looking aside is often on purpose, and a lone face doesn't show whether it was posed).
+  // lookJudged: off since round 2 (2026-10-18). On the owner's checked labels (94 posed photos with
+  // someone not looking, out of 1,483) nothing the engine measures tells them apart: in photos most
+  // faces look at, the furthest face's score has AUC 0.50 (head turn, iris offset, MediaPipe's gaze
+  // blendshapes and small background faces all tried, none above 0.6), and this rule flagged 98
+  // photos of which 8 were marked. The measurements are still made and shown; the call isn't.
+  lookJudged: boolean;
   lookFace: number;
   lookAt: number;
   lookAway: number;
@@ -115,6 +121,7 @@ export const DEFAULT_THRESHOLDS: CullThresholds = {
   focusUnsure: -1.6,
   sceneSharpBad: 0.03,
   sceneSharpUnsure: 0.06,
+  lookJudged: false,
   lookFace: 0.35,
   lookAt: 0.6,
   lookAway: 1.5,
@@ -254,7 +261,7 @@ export function decide(f: CullFeatures, th: CullThresholds = DEFAULT_THRESHOLDS)
       }
     }
     lookScene = lookFaces === 0 ? "none" : lookFaces === 1 ? "single" : lookingFaces * 2 >= lookFaces ? "posed" : "candid";
-    if (lookScene === "posed" && lookValue !== null) look = lookValue >= th.lookAway ? "away" : lookValue >= th.lookUnsure ? "unsure" : "at";
+    if (th.lookJudged && lookScene === "posed" && lookValue !== null) look = lookValue >= th.lookAway ? "away" : lookValue >= th.lookUnsure ? "unsure" : "at";
   }
 
   return {
