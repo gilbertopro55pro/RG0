@@ -4,15 +4,18 @@ import { useState } from "react";
 import type { EventContractRow } from "@/lib/types";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import BodyPortal from "@/components/BodyPortal";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
 import { shortClientUrl } from "@/lib/shortLinks";
 
 export default function ContractSection({
   eventId,
+  clientName,
   initialContract,
 }: {
   eventId: string;
+  clientName: string;
   initialContract: EventContractRow | null;
 }) {
   const t = useT();
@@ -28,25 +31,64 @@ export default function ContractSection({
   const [pdfState, setPdfState] = useState<"idle" | "busy" | "failed">("idle");
   const previewEntered = useModalEntered();
 
-  // The signed contract as a PDF, to send to the client (owner, 2026-10-18).
+  // The file once made, for the share button on a phone (WhatsApp and the like). A new or edited
+  // contract drops it.
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const showContract = (c: EventContractRow) => {
+    setContract(c);
+    setPdfFile(null);
+  };
+
+  // The contract as a PDF, to save or send to the client (owner, 2026-10-18): signed, with the
+  // client's signature; before that, with lines to sign on.
   const downloadPdf = async () => {
     setPdfState("busy");
     try {
       const res = await fetch(`/api/events/${eventId}/contract/pdf`);
       if (!res.ok) throw new Error();
-      const url = URL.createObjectURL(await res.blob());
+      const name = `חוזה-${clientName.trim() || "הזמנה"}.pdf`;
+      const file = new File([await res.blob()], name, { type: "application/pdf" });
+      const url = URL.createObjectURL(file);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `חוזה-${(contract?.signer_name ?? "").trim() || "חתום"}.pdf`;
+      a.download = name;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      // Sharing has to start from a tap, so it's a button of its own once the file is ready.
+      setPdfFile(typeof navigator.canShare === "function" && navigator.canShare({ files: [file] }) ? file : null);
       setPdfState("idle");
     } catch {
       setPdfState("failed");
     }
   };
+
+  const sharePdf = async () => {
+    if (!pdfFile) return;
+    try {
+      await navigator.share({ files: [pdfFile], title: pdfFile.name });
+    } catch {
+      // Closed without sharing.
+    }
+  };
+
+  const pdfButtons = (signed: boolean) => (
+    <>
+      <button
+        onClick={() => void downloadPdf()}
+        disabled={pdfState === "busy"}
+        className={`w-full rounded-lg py-2.5 text-sm font-semibold disabled:opacity-60 ${signed ? "bg-ink text-white" : "bg-white border border-line text-ink"}`}
+      >
+        {pdfState === "busy" ? t("מכין PDF...") : pdfState === "failed" ? t("נכשל, לנסות שוב") : signed ? t("הורדת החוזה החתום (PDF)") : t("הורדה כ-PDF")}
+      </button>
+      {pdfFile && (
+        <button onClick={() => void sharePdf()} className="w-full rounded-lg py-2.5 text-sm font-semibold text-white" style={{ background: "var(--color-sage)" }}>
+          {t("שליחת הקובץ בוואטסאפ או שיתוף")}
+        </button>
+      )}
+    </>
+  );
 
   const openEdit = () => {
     if (!contract) return;
@@ -69,7 +111,7 @@ export default function ContractSection({
       setError(data.error ? t(data.error) : t("שגיאה בשמירת החוזה"));
       return;
     }
-    setContract(data.contract);
+    showContract(data.contract);
     setShowEdit(false);
   };
 
@@ -83,7 +125,7 @@ export default function ContractSection({
       setError(data.error ? t(data.error) : t("שגיאה ביצירת החוזה"));
       return;
     }
-    setContract(data.contract);
+    showContract(data.contract);
   };
 
   const copyLink = async () => {
@@ -135,6 +177,7 @@ export default function ContractSection({
           >
             {copied ? t("הקישור הועתק ✓") : t("העתקת קישור לחתימה")}
           </button>
+          {pdfButtons(false)}
           <button onClick={generate} disabled={generating} className="w-full text-xs text-ink-soft underline">
             {generating ? t("מרענן...") : t("יצירת חוזה מעודכן (מחליף את הקיים)")}
           </button>
@@ -151,103 +194,105 @@ export default function ContractSection({
             // eslint-disable-next-line @next/next/no-img-element -- a stored data URL, no benefit from next/image's remote optimization
             <img src={contract.signature_data_url} alt={t("חתימת הלקוח")} className="h-16 rounded-lg border border-line bg-white" />
           )}
-          <div className="flex gap-2">
-            <button
-              onClick={() => void downloadPdf()}
-              disabled={pdfState === "busy"}
-              className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-            >
-              {pdfState === "busy" ? t("מכין PDF...") : pdfState === "failed" ? t("נכשל, לנסות שוב") : t("הורדת החוזה החתום (PDF)")}
-            </button>
-            <button
-              onClick={() => setShowPreview(true)}
-              className="flex-1 rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
-            >
-              {t("תצוגה מקדימה")}
-            </button>
-          </div>
+          {pdfButtons(true)}
+          <button
+            onClick={() => setShowPreview(true)}
+            className="w-full rounded-lg py-2.5 text-sm font-semibold bg-white border border-line text-ink"
+          >
+            {t("תצוגה מקדימה")}
+          </button>
         </div>
       )}
 
       {error && <p className="text-xs text-rose mt-2">{error}</p>}
 
+      {/* Both sheets go to <body>: inside this glass card (.bg-card, backdrop-filter) a fixed sheet
+          is laid out against the card, not the screen, and on a phone it opened half under the top
+          bar with its close button out of reach (owner, 2026-10-18). */}
       {showPreview && contract && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{
-            background: "rgba(28, 27, 25, 0.45)",
-            backdropFilter: previewEntered ? "blur(16px)" : "blur(0px)",
-            WebkitBackdropFilter: previewEntered ? "blur(16px)" : "blur(0px)",
-            transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
-          }}
-          onClick={() => setShowPreview(false)}
-        >
+        <BodyPortal>
           <div
-            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-end justify-center"
+            style={{
+              background: "rgba(28, 27, 25, 0.45)",
+              backdropFilter: previewEntered ? "blur(16px)" : "blur(0px)",
+              WebkitBackdropFilter: previewEntered ? "blur(16px)" : "blur(0px)",
+              transition: "backdrop-filter 280ms ease, -webkit-backdrop-filter 280ms ease",
+            }}
+            onClick={() => setShowPreview(false)}
           >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold font-display">{t("תצוגה מקדימה: חוזה הזמנה")}</h2>
-              <button
-                onClick={() => setShowPreview(false)}
-                className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
-                aria-label={t("סגירה")}
-              >
-                <IconClose className="h-4 w-4" />
-              </button>
-            </div>
-            <div dir="rtl" className="text-sm whitespace-pre-wrap leading-relaxed rounded-xl p-3.5 bg-chip">
-              {contract.contract_text}
+            {/* The title and close button stay put; only the contract scrolls under them. */}
+            <div
+              className="w-full max-w-md rounded-t-3xl bg-paper shadow-sheet max-h-[85vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 p-5 pb-3 shrink-0">
+                <h2 className="text-lg font-bold font-display">{t("תצוגה מקדימה: חוזה הזמנה")}</h2>
+                <button
+                  onClick={() => setShowPreview(false)}
+                  className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center bg-white border border-line"
+                  aria-label={t("סגירה")}
+                >
+                  <IconClose className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="overflow-y-auto overscroll-contain px-5 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+                <div dir="rtl" className="text-sm whitespace-pre-wrap leading-relaxed rounded-xl p-3.5 bg-chip">
+                  {contract.contract_text}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </BodyPortal>
       )}
 
       {showEdit && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(28, 27, 25, 0.45)" }}
-          onClick={() => setShowEdit(false)}
-        >
+        <BodyPortal>
           <div
-            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto flex flex-col"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-end justify-center"
+            style={{ background: "rgba(28, 27, 25, 0.45)" }}
+            onClick={() => setShowEdit(false)}
           >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold font-display">{t("עריכת החוזה")}</h2>
-              <button
-                onClick={() => setShowEdit(false)}
-                className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
-                aria-label={t("סגירה")}
-              >
-                <IconClose className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-xs text-ink-soft mb-2.5">{t("שינויים כאן נשמרים ישירות על החוזה, ולא נוצרים מחדש מהפרטים של האירוע.")}</p>
-            <textarea
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              rows={16}
-              className="w-full flex-1 rounded-xl p-3.5 text-sm border border-line bg-white font-data leading-relaxed resize-none"
-              dir="rtl"
-            />
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={saveEdit}
-                disabled={saving}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-              >
-                {saving ? t("שומר...") : t("שמירת שינויים")}
-              </button>
-              <button
-                onClick={() => setShowEdit(false)}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
-              >
-                {t("ביטול")}
-              </button>
+            <div
+              className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold font-display">{t("עריכת החוזה")}</h2>
+                <button
+                  onClick={() => setShowEdit(false)}
+                  className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line"
+                  aria-label={t("סגירה")}
+                >
+                  <IconClose className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-xs text-ink-soft mb-2.5">{t("שינויים כאן נשמרים ישירות על החוזה, ולא נוצרים מחדש מהפרטים של האירוע.")}</p>
+              <textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                rows={16}
+                className="w-full flex-1 rounded-xl p-3.5 text-sm border border-line bg-white font-data leading-relaxed resize-none"
+                dir="rtl"
+              />
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={saveEdit}
+                  disabled={saving}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
+                >
+                  {saving ? t("שומר...") : t("שמירת שינויים")}
+                </button>
+                <button
+                  onClick={() => setShowEdit(false)}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+                >
+                  {t("ביטול")}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </BodyPortal>
       )}
     </div>
   );

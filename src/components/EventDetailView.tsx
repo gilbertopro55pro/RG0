@@ -1440,7 +1440,7 @@ export default function EventDetailView({
         />
       )}
 
-      {isOwner && <ContractSection eventId={event.id} initialContract={initialContract} />}
+      {isOwner && <ContractSection eventId={event.id} clientName={event.client_name} initialContract={initialContract} />}
 
       {isOwner && teamMembers.length > 0 && (
         <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">

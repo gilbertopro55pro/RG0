@@ -6,8 +6,9 @@ import type { EventContractRow, EventRow, Photographer } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-// The event's signed contract as a PDF (ContractSection's download button), for the photographer to
-// send to the client. RLS keeps the event, its contract and the photographer row to their owner.
+// The event's contract as a PDF (ContractSection's download button), for the photographer to save or
+// send to the client: signed, with the client's signature; before that, with lines to sign on. RLS
+// keeps the event, its contract and the photographer row to their owner.
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
   const supabase = await createClient();
@@ -21,7 +22,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     supabase.from("event_contracts").select("*").eq("event_id", eventId).order("created_at", { ascending: false }).limit(1).maybeSingle<EventContractRow>(),
   ]);
   if (!event || !contract) return NextResponse.json({ error: "החוזה לא נמצא" }, { status: 404 });
-  if (contract.status !== "signed") return NextResponse.json({ error: "החוזה עוד לא נחתם" }, { status: 409 });
 
   // The studio is the event's owner (a team member downloading it sees the owner's name and logo).
   const { data: owner } = await supabase
