@@ -33,6 +33,9 @@ type WakeLockSentinelLike = { release: () => Promise<void> };
 type WakeLockNavigator = Navigator & { wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> } };
 
 const LOOK_TEXT = { at: "מסתכלים למצלמה", away: "מבט לא למצלמה", unsure: "מבט: לבדיקה", none: "" } as const;
+// Why the look wasn't judged (posed photos only, owner 2026-10-18).
+const SCENE_TEXT = { posed: "", candid: "ספונטנית, המבט לא נבדק", single: "פרצוף אחד, המבט לא נבדק", none: "" } as const;
+const LOOK_COLOR = { away: "rose", unsure: "amber-deep" } as const;
 
 const VERDICT_TEXT: Record<CullVerdict, string> = {
   ok: "תקינה",
@@ -232,7 +235,15 @@ export default function CullingBench({
       // Measurements from an earlier engine count until the photo is measured again: the decision
       // is computed the same way from both.
       if (!row || row.label === "skip" || !f) continue;
-      out.push({ photoId: p.id, label: row.label, notLooking: row.not_looking, unflattering: row.unflattering, v: row.labeled_v, decision: decide(f) });
+      out.push({
+        photoId: p.id,
+        label: row.label,
+        notLooking: row.not_looking,
+        lookChecked: !!row.look_checked_at,
+        unflattering: row.unflattering,
+        v: row.labeled_v,
+        decision: decide(f),
+      });
     }
     return out;
   }, [photos, labels, results]);
@@ -270,7 +281,7 @@ export default function CullingBench({
     if (!galleryId) return false;
     const ok = await saveCullingLabel(supabase, { photoId, userId, galleryId, label });
     if (!ok) return false;
-    setLabels((cur) => new Map(cur).set(photoId, { photo_id: photoId, ...toRow(label), labeled_v: LABEL_VERSION }));
+    setLabels((cur) => new Map(cur).set(photoId, { photo_id: photoId, ...toRow(label), labeled_v: LABEL_VERSION, look_checked_at: new Date().toISOString() }));
     setKept((cur) => new Set(cur).add(photoId));
     return true;
   }
@@ -368,6 +379,14 @@ export default function CullingBench({
                 <Stat label={t("מבט לא למצלמה: דיוק")} rate={report.lookPrecision} target={null} />
                 <Stat label={t("מבט לא למצלמה: נתפסו")} rate={report.lookRecall} target={null} />
               </div>
+              <p className="text-xs text-ink-soft mb-1 leading-relaxed">
+                {t("מבט לא למצלמה נבדק רק בתמונות מבוימות: שני פרצופים או יותר, ולפחות חצי מהם מסתכלים למצלמה. בתמונה עם פרצוף אחד המבט לא נבדק.")}
+              </p>
+              {report.lookUnchecked > 0 && (
+                <p className="text-xs text-rose mb-1 leading-relaxed">
+                  {t("{n} סימונים של מבט לא למצלמה מלפני ההגדרה החדשה מחכים לבדיקה בלשונית \"סימון\". עד שהבדיקה תסתיים, הם לא נספרים, והמספרים של המבט חלקיים.", { n: report.lookUnchecked })}
+                </p>
+              )}
               <p className="text-xs text-ink-soft mb-1 leading-relaxed">
                 {t("{n} תמונות מסומנות נמדדו. לבדיקה: {review}. זמן עיבוד לתמונה: {avg} שניות בממוצע, {p90} ב-90% מהתמונות (בלי ההורדה, {dl} שניות).", {
                   n: report.n,
@@ -484,7 +503,8 @@ function Stat({ label, rate, target }: { label: string; rate: Rate; target: numb
 }
 
 // One photo the engine got wrong. Every face found is outlined: the faces the decision counted in
-// amber, the rest faint, and the face behind the eyes call with its score (red when it says closed). Below, that face's
+// amber, the rest faint, and the face behind the eyes call with its score (red when it says closed).
+// In a posed photo looking away, the face furthest from the camera is dashed. Below, the eyes face's
 // eyes up close, the numbers, and the owner's label, which can be corrected here.
 function MistakeCard({
   galleryId,
@@ -526,6 +546,18 @@ function MistakeCard({
         {features.faces.map((f, i) =>
           i === d.eyesFace ? null : box(f.box, d.counted.includes(i) ? "border-2 border-amber-deep" : "border border-white/50", i)
         )}
+        {d.lookFace >= 0 && (d.look === "away" || d.look === "unsure") && (
+          <span
+            className="absolute border-[3px] border-dashed"
+            style={{
+              left: `${features.faces[d.lookFace].box[0] * 100}%`,
+              top: `${features.faces[d.lookFace].box[1] * 100}%`,
+              width: `${features.faces[d.lookFace].box[2] * 100}%`,
+              height: `${features.faces[d.lookFace].box[3] * 100}%`,
+              borderColor: `var(--color-${LOOK_COLOR[d.look]})`,
+            }}
+          />
+        )}
         {eyesFace && (
           <span
             className="absolute border-[3px]"
@@ -564,6 +596,7 @@ function MistakeCard({
       <p className="text-xs mt-2 leading-relaxed">
         {t("המנוע:")} <b>{t(VERDICT_TEXT[d.verdict])}</b>
         {d.look !== "none" && ` · ${t(LOOK_TEXT[d.look])}`}
+        {d.look === "none" && SCENE_TEXT[d.lookScene] && ` · ${t(SCENE_TEXT[d.lookScene])}`}
       </p>
       <p className="text-[11px] text-ink-soft font-data leading-relaxed">
         {d.focusFrom === "face"
@@ -572,7 +605,13 @@ function MistakeCard({
         {d.eyesValue !== null &&
           ` · ${t("עיניים {v} (עצימה {b}, מבט למטה {down})", { v: num(d.eyesValue), b: num(d.blinkValue ?? 0), down: num(d.downValue ?? 0) })}`}
         {d.lookValue !== null &&
-          ` · ${t("מבט {v} (ראש {yaw}°, אישונים {gaze})", { v: num(d.lookValue), yaw: Math.round(d.yawValue ?? 0), gaze: num(d.gazeValue ?? 0) })}`}
+          ` · ${t("מבט {v} בפרצוף הכי רחוק מהמצלמה (ראש {yaw}°, אישונים {gaze}), {looking} מתוך {faces} מסתכלים", {
+            v: num(d.lookValue),
+            yaw: Math.round(d.yawValue ?? 0),
+            gaze: num(d.gazeValue ?? 0),
+            looking: d.lookingFaces,
+            faces: d.lookFaces,
+          })}`}
         {` · ${t("{n} פרצופים", { n: features.faces.length })}`}
         {main && ` · ${t("מרחק עיניים {n}px", { n: main.iod })}`}
       </p>

@@ -4,14 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/paginatedFetch";
 import CullingLabelModal from "@/components/CullingLabelModal";
+import CullingLookReview from "@/components/CullingLookReview";
 import { useT } from "@/i18n/client";
-import { FLAGS, LABEL_COLUMNS, fromRow, isDone, type LabelRow, type PhotoLabel } from "@/lib/culling/labels";
+import { FLAGS, LABEL_COLUMNS, fromRow, isDone, lookCheckPending, type LabelRow, type PhotoLabel } from "@/lib/culling/labels";
 
 // Photo culling, round 0 (owner, 2026-10-16; app/admin/culling): labelling a test gallery by hand.
 // This page is the start screen: the gallery and event, how far the labelling got, what each problem
 // means (labels are only worth anything if they're consistent), and the button that opens the
 // full-screen labelling (CullingLabelModal, the same screen a gallery opens). The order mixes the
 // events evenly, so the first ~300 labels cover all of them. Labels: culling_labels (0178, 0180).
+// Above the definitions, while any are left: the one-time check of the "not looking" marks made
+// before it was clear they count only in posed photos (CullingLookReview, 0184).
 
 type Photo = { id: string; folder_id: string | null; original_filename: string; storage_path: string };
 type Folder = { id: string; name: string; sort_order: number };
@@ -59,6 +62,8 @@ export default function CullingLabeler({
   const [folderFilter, setFolderFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  // The photos in the look check, fixed when it opens (the list shrinks as pages are saved).
+  const [review, setReview] = useState<Photo[] | null>(null);
 
   useEffect(() => {
     if (!galleryId) return;
@@ -87,6 +92,8 @@ export default function CullingLabeler({
   }, [galleryId, supabase]);
 
   const order = useMemo(() => mixedOrder(folderFilter ? photos.filter((p) => p.folder_id === folderFilter) : photos), [photos, folderFilter]);
+
+  const lookPending = useMemo(() => order.filter((p) => lookCheckPending(labels.get(p.id))), [order, labels]);
 
   const counts = useMemo(() => {
     const c = { done: 0, fine: 0, skip: 0, blurry: 0, eyes: 0, notLooking: 0, unflattering: 0 };
@@ -161,6 +168,18 @@ export default function CullingLabeler({
             </button>
           </div>
 
+          {lookPending.length > 0 && (
+            <div className="rounded-2xl bg-card p-4 mb-4 border border-amber-deep/40">
+              <p className="text-sm font-semibold mb-1">{t("בדיקה חוזרת: מבט לא למצלמה")}</p>
+              <p className="text-xs text-ink-soft leading-relaxed">
+                {t("מבט לא למצלמה נספר רק בתמונה מבוימת. {n} תמונות סומנו כך לפני שההגדרה הובהרה, וחלק גדול מהן ספונטניות. עוברים עליהן ברשת של 12, ולוחצים על הספונטניות כדי להסיר מהן את הסימון. עד שהבדיקה תסתיים, אי אפשר למדוד את המנוע על מבט.", { n: lookPending.length })}
+              </p>
+              <button onClick={() => setReview(lookPending)} className="mt-3 w-full sm:w-auto h-12 px-6 rounded-xl text-sm font-semibold bg-ink text-white">
+                {t("בדיקת {n} התמונות", { n: lookPending.length })}
+              </button>
+            </div>
+          )}
+
           <div className="rounded-2xl bg-card p-4">
             <p className="text-sm font-semibold mb-2">{t("מה מסמנים")}</p>
             <ul className="text-xs text-ink-soft space-y-1.5 leading-relaxed">
@@ -194,6 +213,26 @@ export default function CullingLabeler({
             })
           }
           onClose={() => setOpen(false)}
+        />
+      )}
+
+      {review && galleryId && (
+        <CullingLookReview
+          photos={review}
+          galleryId={galleryId}
+          onChecked={(candid, posed) =>
+            setLabels((cur) => {
+              const next = new Map(cur);
+              for (const [ids, notLooking] of [[candid, false], [posed, true]] as const) {
+                for (const id of ids) {
+                  const l = next.get(id);
+                  if (l) next.set(id, { ...l, flags: { ...l.flags, notLooking }, lookChecked: true });
+                }
+              }
+              return next;
+            })
+          }
+          onClose={() => setReview(null)}
         />
       )}
     </div>

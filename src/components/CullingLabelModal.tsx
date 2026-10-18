@@ -137,9 +137,9 @@ export default function CullingLabelModal({
     },
     [photo]
   );
-  const saveDraft = useCallback(() => void commit({ skip: false, flags, v: 2 }), [commit, flags]);
-  const markFine = useCallback(() => void commit({ skip: false, flags: NO_FLAGS, v: 2 }), [commit]);
-  const skip = useCallback(() => void commit({ skip: true, flags: NO_FLAGS, v: 2 }), [commit]);
+  const saveDraft = useCallback(() => void commit({ skip: false, flags, v: 2, lookChecked: true }), [commit, flags]);
+  const markFine = useCallback(() => void commit({ skip: false, flags: NO_FLAGS, v: 2, lookChecked: true }), [commit]);
+  const skip = useCallback(() => void commit({ skip: true, flags: NO_FLAGS, v: 2, lookChecked: true }), [commit]);
 
   // Visual "forward" is left in a right-to-left page (the same as the gallery's own lightbox).
   useEffect(() => {
