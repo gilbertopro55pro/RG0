@@ -10,7 +10,7 @@ import { clientLangFor } from "@/lib/clientLang";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 import { quoteShareCaption } from "@/lib/quoteDefaults";
-import { readQuoteDiscount } from "@/lib/quoteDiscount";
+import { quoteTotals, readQuoteDiscount } from "@/lib/quoteDiscount";
 import { recordQuoteHistory } from "@/lib/quoteHistory";
 
 export const runtime = "nodejs";
@@ -38,9 +38,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("name, phone, email, logo_storage_path, business_id")
+    .select("name, phone, email, logo_storage_path, business_id, business_tax_status")
     .eq("id", user.id)
-    .single<Pick<Photographer, "name" | "phone" | "email" | "logo_storage_path" | "business_id">>();
+    .single<Pick<Photographer, "name" | "phone" | "email" | "logo_storage_path" | "business_id" | "business_tax_status">>();
   if (!photographer) {
     return NextResponse.json({ error: "לא נמצא פרופיל צלם" }, { status: 404 });
   }
@@ -56,6 +56,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     ? await downloadObjectBuffer("logos", photographer.logo_storage_path)
     : null;
 
+  // VAT follows the business status in Settings at the time of sending (owner, 2026-10-17): a quote
+  // saved with VAT goes out without it from an exempt business, and the other way round. subtotal
+  // is the price before VAT (after any discount), whichever way the quote was saved.
+  const showVat = photographer.business_tax_status !== "exempt";
+  const { vatAmount, total } = quoteTotals(Number(quote.subtotal), null, showVat ? 0.18 : 0);
+
   const eventDetails = quoteEventDetails(quote);
   const lang = clientLangFor(photographer.email, clientLang);
   const t = makeT(messagesFor(lang));
@@ -66,9 +72,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     logoBuffer,
     clientName: quote.client_name,
     items: quote.items,
-    subtotal: quote.subtotal,
-    vatAmount: quote.vat_amount,
-    total: quote.total,
+    subtotal: Number(quote.subtotal),
+    vatAmount,
+    total,
+    showVat,
     createdAt: new Date(quote.created_at),
     eventDetails,
     notes: quote.notes ?? undefined,
@@ -116,6 +123,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .update({
       sent_at: new Date().toISOString(),
       sent_via: method,
+      vat_amount: vatAmount,
+      total,
       ...(method === "email" ? { client_email: email!.trim() } : {}),
       ...(method === "whatsapp" ? { client_phone: phone!.trim() } : {}),
     })
@@ -134,9 +143,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     details: {
       items: sentQuote.items,
       subtotal: Number(sentQuote.subtotal),
-      vatAmount: Number(sentQuote.vat_amount),
-      total: Number(sentQuote.total),
-      showVat: true,
+      vatAmount,
+      total,
+      showVat,
       eventType: sentQuote.event_type ?? undefined,
       eventDate: sentQuote.event_date?.slice(0, 10) ?? undefined,
       eventLocation: sentQuote.event_location ?? undefined,
@@ -146,7 +155,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       discount: readQuoteDiscount(sentQuote.discount) ?? undefined,
       createdAt: new Date().toISOString(),
     },
-    total: Number(sentQuote.total),
+    total,
   });
 
   return NextResponse.json({ quote: sentQuote, whatsapp });

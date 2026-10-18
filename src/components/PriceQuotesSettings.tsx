@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
 import { openWhatsApp } from "@/lib/waLink";
 import { formatDateDMY } from "@/lib/priceQuoteFormat";
+import { quoteTotals } from "@/lib/quoteDiscount";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
@@ -37,9 +38,10 @@ function makeId(): string {
   return Math.random().toString(36).slice(2);
 }
 
-function computeTotals(items: PriceQuoteItem[]) {
+// exempt: the business status from Settings (עוסק פטור), so no VAT (owner, 2026-10-17).
+function computeTotals(items: PriceQuoteItem[], exempt = false) {
   const subtotal = items.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
-  const vatAmount = Math.round(subtotal * VAT_RATE * 100) / 100;
+  const vatAmount = exempt ? 0 : Math.round(subtotal * VAT_RATE * 100) / 100;
   const total = Math.round((subtotal + vatAmount) * 100) / 100;
   return { subtotal, vatAmount, total };
 }
@@ -149,6 +151,7 @@ export default function PriceQuotesSettings({
   initialLogoPath,
   initialLogoUrl,
   initialBusinessId,
+  taxStatus,
 }: {
   initialQuotes: PriceQuoteRow[];
   initialTemplates: PriceQuoteTemplateRow[];
@@ -156,8 +159,11 @@ export default function PriceQuotesSettings({
   initialLogoPath: string | null;
   initialLogoUrl: string | null;
   initialBusinessId: string | null;
+  // The business status from Settings: an exempt business's quotes have no VAT.
+  taxStatus: "exempt" | "licensed";
 }) {
   const supabase = createClient();
+  const exempt = taxStatus === "exempt";
   const t = useT();
   const lang = useLang();
   const loc = dateLocale(lang);
@@ -374,7 +380,7 @@ export default function PriceQuotesSettings({
     const previewWindow = window.open("", "_blank");
     try {
       const items = cleanItems(draft.items);
-      const { subtotal, vatAmount, total } = computeTotals(items);
+      const { subtotal, vatAmount, total } = computeTotals(items, exempt);
       const res = await fetch("/api/price-quotes/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -384,6 +390,7 @@ export default function PriceQuotesSettings({
           subtotal,
           vatAmount,
           total,
+          showVat: !exempt,
           eventDetails: {
             type: draft.eventType.trim() || undefined,
             date: draft.eventDate ? formatDateDMY(draft.eventDate) : undefined,
@@ -423,7 +430,7 @@ export default function PriceQuotesSettings({
       setFormError(t("יש להוסיף לפחות פריט אחד"));
       return null;
     }
-    const { subtotal, vatAmount, total } = computeTotals(items);
+    const { subtotal, vatAmount, total } = computeTotals(items, exempt);
     const row = {
       client_name: draft.clientName.trim(),
       client_phone: draft.clientPhone.trim() || null,
@@ -826,7 +833,7 @@ export default function PriceQuotesSettings({
                   <button onClick={() => startEdit(q)} className="text-start flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate">{q.quote_name || q.client_name || t("לקוח/ה ללא שם")}</div>
                     <div className="text-xs text-ink-soft font-data">
-                      {currency(q.total, loc)}, {new Date(q.created_at).toLocaleDateString(loc)}
+                      {currency(quoteTotals(Number(q.subtotal), null, exempt ? 0 : VAT_RATE).total, loc)}, {new Date(q.created_at).toLocaleDateString(loc)}
                       {q.sent_at && <span>{q.sent_via === "whatsapp" ? t(", נשלח בוואטסאפ") : t(", נשלח במייל")}</span>}
                     </div>
                   </button>
@@ -982,7 +989,7 @@ export default function PriceQuotesSettings({
             </button>
           </div>
 
-          <CostSummary items={draft.items} />
+          <CostSummary items={draft.items} exempt={exempt} />
 
           {formError && <p className="text-xs text-rose">{formError}</p>}
           {previewUrl && (
@@ -1033,10 +1040,20 @@ export default function PriceQuotesSettings({
   );
 }
 
-function CostSummary({ items }: { items: PriceQuoteItem[] }) {
+function CostSummary({ items, exempt }: { items: PriceQuoteItem[]; exempt: boolean }) {
   const t = useT();
   const loc = dateLocale(useLang());
-  const { subtotal, vatAmount, total } = computeTotals(items);
+  const { subtotal, vatAmount, total } = computeTotals(items, exempt);
+  if (exempt) {
+    return (
+      <div className="max-w-[240px] rounded-lg border border-line bg-white p-2.5">
+        <div className="flex items-center justify-between text-sm font-semibold">
+          <span>{t("סה\"כ לתשלום")}</span>
+          <span className="font-data text-amber-deep">{currency(total, loc)}</span>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="max-w-[240px] rounded-lg border border-line bg-white p-2.5 space-y-1">
       <div className="flex items-center justify-between text-xs text-ink-soft">

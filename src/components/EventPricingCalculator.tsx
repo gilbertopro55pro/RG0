@@ -148,11 +148,10 @@ export default function EventPricingCalculator({
   // Same "starts unselected" reasoning as selectedQuoteId above — picking a template is always an
   // explicit action, never something a freshly opened builder should look like it already did.
   const [selectedTemplateId, setSelectedTemplateId] = useState(prefill?.templateId ?? "");
-  // Defaults to the photographer's own business status from Settings (ProfileSettingsView.tsx),
-  // but stays a per-calculation toggle — a photographer occasionally quoting for a different
-  // business arrangement can still switch it for just this one quote without touching Settings.
-  const [taxStatus, setTaxStatus] = useState<"exempt" | "licensed">(sent?.taxStatus ?? defaultTaxStatus);
-  const isExempt = taxStatus === "exempt";
+  // Always the business status from Settings (owner, 2026-10-17): an exempt business's quotes have
+  // no VAT and a licensed one's do. It was a per-quote toggle, and a quote reopened from one sent
+  // with the other status went out with VAT from an exempt business.
+  const isExempt = defaultTaxStatus === "exempt";
   const [initialHours] = useState(() => sent?.hours ?? (prefill?.startTime && prefill.endTime ? hoursBetween(prefill.startTime, prefill.endTime) ?? 0 : 0));
   const [hours, setHours] = useState(initialHours);
   // The sent shoot line's price over its hours, so it comes back the same even if the account's
@@ -916,22 +915,9 @@ export default function EventPricingCalculator({
               </div>
             )}
 
-            <div className="flex gap-1.5 mb-3.5">
-              <button
-                onClick={() => setTaxStatus("exempt")}
-                className="flex-1 rounded-full py-1.5 text-xs font-semibold"
-                style={{ background: isExempt ? "var(--color-ink)" : "var(--color-chip)", color: isExempt ? "var(--color-paper)" : "var(--color-ink-soft)", border: isExempt ? "none" : "1px solid var(--color-line)" }}
-              >
-                {t("עוסק פטור")}
-              </button>
-              <button
-                onClick={() => setTaxStatus("licensed")}
-                className="flex-1 rounded-full py-1.5 text-xs font-semibold"
-                style={{ background: !isExempt ? "var(--color-ink)" : "var(--color-chip)", color: !isExempt ? "var(--color-paper)" : "var(--color-ink-soft)", border: !isExempt ? "none" : "1px solid var(--color-line)" }}
-              >
-                {t("עוסק מורשה")}
-              </button>
-            </div>
+            <p className="text-[11px] text-ink-soft mb-3.5">
+              {isExempt ? t("עוסק פטור לפי ההגדרות: ההצעה בלי מע״מ.") : t("עוסק מורשה לפי ההגדרות: ההצעה כוללת מע״מ 18%.")}
+            </p>
 
             {mode === "freelance" && (
               <div className="flex gap-2 mb-3.5">
@@ -1092,7 +1078,8 @@ export default function EventPricingCalculator({
                 <span>{t("הנחה")}</span>
                 <div className="flex items-center gap-1.5">
                   <input
-                    value={discountValue || ""}
+                    value={discountValue}
+                    onFocus={(e) => e.currentTarget.select()}
                     onChange={(e) => setDiscountValue(Math.min(discountType === "percent" ? 100 : Infinity, Math.max(0, Number(e.target.value) || 0)))}
                     type="number"
                     min={0}

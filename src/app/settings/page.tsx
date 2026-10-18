@@ -151,6 +151,7 @@ export default async function SettingsPage({
                 initialLogoPath={photographer.logo_storage_path}
                 initialLogoUrl={logoUrl}
                 initialBusinessId={photographer.business_id}
+                taxStatus={photographer.business_tax_status}
               />
             ),
           },

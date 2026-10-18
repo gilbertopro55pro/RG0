@@ -89,6 +89,8 @@ const dict: AreaDict = {
     "בונה הצעות מחיר": "Price quote builder",
     // Quote builder: discount and the history tab (QuoteHistoryList), 2026-10-17
     "הצעה חדשה": "New quote",
+    "עוסק פטור לפי ההגדרות: ההצעה בלי מע״מ.": "VAT-exempt business (per Settings): the quote has no VAT.",
+    "עוסק מורשה לפי ההגדרות: ההצעה כוללת מע״מ 18%.": "VAT-registered business (per Settings): the quote includes 18% VAT.",
     "היסטוריית הצעות": "Quote history",
     "סכום ההנחה": "Discount amount",
     "סוג ההנחה": "Discount type",
@@ -452,6 +454,8 @@ const dict: AreaDict = {
     "בונה הצעות מחיר": "Конструктор ценовых предложений",
     // Quote builder: discount and the history tab (QuoteHistoryList), 2026-10-17
     "הצעה חדשה": "Новое предложение",
+    "עוסק פטור לפי ההגדרות: ההצעה בלי מע״מ.": "Освобождённый от НДС бизнес (по настройкам): предложение без НДС.",
+    "עוסק מורשה לפי ההגדרות: ההצעה כוללת מע״מ 18%.": "Плательщик НДС (по настройкам): предложение включает НДС 18%.",
     "היסטוריית הצעות": "История предложений",
     "סכום ההנחה": "Размер скидки",
     "סוג ההנחה": "Тип скидки",
