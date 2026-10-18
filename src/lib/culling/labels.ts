@@ -7,22 +7,25 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // A photo is fine, or has one or more problems, or is skipped (not sure). In the table `label`
 // keeps meaning focus and eyes (ok / blurry / eyes_closed / both / skip), and the two problems added
 // later are flags beside it. labeled_v = 2 marks a label saved with all four problems on screen.
+// look_checked_at (migration 0184): the "not looking" mark was decided with "posed photos only" in
+// mind. Every label saved from now on is; the marks from before are checked once in a grid
+// (CullingLookReview), since many of them were made in candid photos.
 
 export type Label = "ok" | "blurry" | "eyes_closed" | "both" | "skip";
 
 export type LabelFlags = { blurry: boolean; eyes: boolean; notLooking: boolean; unflattering: boolean };
-export type PhotoLabel = { skip: boolean; flags: LabelFlags; v: number | null };
-export type LabelRow = { photo_id: string; label: Label; unflattering: boolean; not_looking: boolean; labeled_v: number | null };
+export type PhotoLabel = { skip: boolean; flags: LabelFlags; v: number | null; lookChecked?: boolean };
+export type LabelRow = { photo_id: string; label: Label; unflattering: boolean; not_looking: boolean; labeled_v: number | null; look_checked_at: string | null };
 
 export const LABEL_VERSION = 2;
-export const LABEL_COLUMNS = "photo_id, label, unflattering, not_looking, labeled_v";
+export const LABEL_COLUMNS = "photo_id, label, unflattering, not_looking, labeled_v, look_checked_at";
 export const NO_FLAGS: LabelFlags = { blurry: false, eyes: false, notLooking: false, unflattering: false };
 
 // The problems, in the order of their buttons and keys (1 is "fine", 0 is skip).
 export const FLAGS: { key: keyof LabelFlags; text: string; hotkey: string; hint: string }[] = [
   { key: "blurry", text: "לא בפוקוס", hotkey: "2", hint: "הדמות הראשית לא חדה, גם אם הרקע חד. גם תמונה מרוחה מתנועה." },
   { key: "eyes", text: "עיניים עצומות", hotkey: "3", hint: "פרצוף בולט בתמונה, לא ברקע, עם עיניים עצומות או חצי עצומות." },
-  { key: "notLooking", text: "מבט לא למצלמה", hotkey: "4", hint: "תמונה מבוימת (משפחתית, קבוצתית, פורטרט) שמישהו בה לא מסתכל למצלמה. בתמונה ספונטנית לא מסמנים." },
+  { key: "notLooking", text: "מבט לא למצלמה", hotkey: "4", hint: "רק בתמונה מבוימת (משפחתית, קבוצתית, פורטרט), שבה כולם אמורים להסתכל למצלמה ומישהו לא מסתכל. בתמונה ספונטנית (ריקודים, רגעים, אורחים מדברים) לא מסמנים, גם כשאף אחד לא מסתכל." },
   { key: "unflattering", text: "לא מחמיא", hint: "רגע שלא היית מוסר ללקוח: באמצע מילה או לעיסה, הבעה מעוותת, זווית לא מחמיאה.", hotkey: "5" },
 ];
 
@@ -36,6 +39,7 @@ export function fromRow(r: LabelRow): PhotoLabel {
       unflattering: r.unflattering,
     },
     v: r.labeled_v,
+    lookChecked: !!r.look_checked_at,
   };
 }
 
@@ -67,6 +71,7 @@ export async function saveCullingLabel(
   supabase: SupabaseClient,
   row: { photoId: string; userId: string; galleryId: string; label: PhotoLabel }
 ): Promise<boolean> {
+  const now = new Date().toISOString();
   const { error } = await supabase.from("culling_labels").upsert(
     {
       photo_id: row.photoId,
@@ -74,12 +79,28 @@ export async function saveCullingLabel(
       gallery_id: row.galleryId,
       ...toRow(row.label),
       labeled_v: LABEL_VERSION,
-      updated_at: new Date().toISOString(),
+      look_checked_at: now,
+      updated_at: now,
     },
     { onConflict: "photo_id" }
   );
   return !error;
 }
+
+// The check of the earlier "not looking" marks: `candid` lose the mark, `posed` keep it (set again,
+// for a page opened again after saving), and both are marked as checked. Only the look columns
+// change; the other problems stay as labelled.
+export async function saveLookCheck(supabase: SupabaseClient, row: { candid: string[]; posed: string[] }): Promise<boolean> {
+  const now = new Date().toISOString();
+  const writes = [];
+  if (row.candid.length) writes.push(supabase.from("culling_labels").update({ not_looking: false, look_checked_at: now, updated_at: now }).in("photo_id", row.candid));
+  if (row.posed.length) writes.push(supabase.from("culling_labels").update({ not_looking: true, look_checked_at: now, updated_at: now }).in("photo_id", row.posed));
+  const results = await Promise.all(writes);
+  return results.every((r) => !r.error);
+}
+
+// The marks from before the check, still waiting for it.
+export const lookCheckPending = (l: PhotoLabel | undefined) => isDone(l) && !l!.skip && l!.flags.notLooking && !l!.lookChecked;
 
 // The next photo still to label after `from`, or simply the next one when the rest are done.
 export function nextOpen(ids: string[], from: number, labels: Map<string, PhotoLabel>): number {

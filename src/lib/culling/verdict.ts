@@ -95,10 +95,14 @@ export type CullThresholds = {
   // Without faces: the sharpest tile's lapN at full resolution (untested: 34 labelled photos).
   sceneSharpBad: number;
   sceneSharpUnsure: number;
-  // Looking away, averaged over the faces of at least lookFace of the main face's area: head turn
-  // over 25° plus the irises off-centre over 0.2 (lookScore). At or above lookAway: away; from
-  // lookUnsure: review. On the labels: 1.0 is 76% right and catches 59%.
+  // Looking away, only in posed photos (owner, 2026-10-18: "רק בתמונות המבוימות ולא בספונטניות").
+  // Each face of at least lookFace of the main face's area gets lookScore: head turn over 25° plus
+  // the irises off-centre over 0.2. Below lookAt it looks at the camera. The photo counts as posed
+  // with two faces or more and at least half of them looking; then the face furthest from the
+  // camera decides: from lookAway away, from lookUnsure review. One face or none: not judged (a
+  // portrait looking aside is often on purpose, and a lone face doesn't show whether it was posed).
   lookFace: number;
+  lookAt: number;
   lookAway: number;
   lookUnsure: number;
 };
@@ -112,8 +116,9 @@ export const DEFAULT_THRESHOLDS: CullThresholds = {
   sceneSharpBad: 0.03,
   sceneSharpUnsure: 0.06,
   lookFace: 0.35,
-  lookAway: 1.0,
-  lookUnsure: 0.7,
+  lookAt: 0.6,
+  lookAway: 1.5,
+  lookUnsure: 1.0,
 };
 
 const EYE_LOOK_DOWN_L = BLENDSHAPE_NAMES.indexOf("eyeLookDownLeft");
@@ -136,8 +141,21 @@ export function focusScore(face: FaceFeatures): number {
   return Math.log(Math.max(face.faceNorm.lapN, 1e-4)) + 0.7 * Math.log(Math.max(face.iod, 1)) + 0.5 * Math.log(Math.max(face.eyeNorm.lapN, 1e-4));
 }
 
+// How far one face looks from the camera (null without a head pose).
+export function lookScore(face: FaceFeatures): { score: number; yaw: number; gaze: number } | null {
+  const m = face.mp;
+  if (!m || m.yaw == null) return null;
+  const yaw = Math.abs(m.yaw);
+  // Past 0.5 the iris landmarks missed (45 of 3,778 faces in the labelled photos, up to 3.5).
+  const gaze = Math.min(Math.abs(m.gazeH ?? 0), 0.5);
+  return { score: yaw / 25 + gaze / 0.2, yaw, gaze };
+}
+
 export type FocusCall = "ok" | "bad" | "unsure";
 export type LookCall = "at" | "away" | "unsure" | "none";
+// Why the look was or wasn't judged: posed (judged), candid (most faces look elsewhere), single
+// (one face), none (no face with a head pose).
+export type LookScene = "posed" | "candid" | "single" | "none";
 export type EyesCall = "open" | "closed" | "unsure" | "none";
 export type CullVerdict = "ok" | "blurry" | "eyes_closed" | "both" | "review";
 
@@ -153,11 +171,16 @@ export type CullDecision = {
   eyesValue: number | null;
   blinkValue: number | null;
   downValue: number | null;
-  // Looking at the camera (engine 2): the score, and the average head turn and iris offset behind it.
+  // Looking at the camera (engine 2), posed photos only: the face furthest from the camera (index,
+  // -1 none), its score, head turn and iris offset, and how many of the faces counted look.
   look: LookCall;
+  lookScene: LookScene;
+  lookFace: number;
   lookValue: number | null;
   yawValue: number | null;
   gazeValue: number | null;
+  lookingFaces: number;
+  lookFaces: number;
   // The faces the eyes and look calls counted.
   counted: number[];
 };
@@ -205,33 +228,33 @@ export function decide(f: CullFeatures, th: CullThresholds = DEFAULT_THRESHOLDS)
   const verdict: CullVerdict =
     bad && closed ? "both" : bad ? "blurry" : closed ? "eyes_closed" : focus === "unsure" || eyes === "unsure" ? "review" : "ok";
 
-  // Looking at the camera, averaged over the faces counted: one guest turned away in a group of
-  // four looking is a smaller miss than the couple both looking aside. Whether the photo was posed
-  // isn't known to the engine; the owner's labels so far mark looking away in candid photos too.
+  // Looking at the camera, in posed photos only: a family photo where one guest looks aside is the
+  // miss; a dance floor where nobody looks is just a candid photo.
   let look: LookCall = "none";
+  let lookScene: LookScene = "none";
+  let lookFace = -1;
   let lookValue: number | null = null;
   let yawValue: number | null = null;
   let gazeValue: number | null = null;
+  let lookingFaces = 0;
+  let lookFaces = 0;
   if (main) {
-    let yaw = 0;
-    let gaze = 0;
-    let n = 0;
     for (let i = 0; i < f.faces.length; i++) {
       const face = f.faces[i];
-      const m = face.mp;
-      if (face.area < th.lookFace * main.area || !m || m.yaw == null) continue;
+      const s = face.area >= th.lookFace * main.area ? lookScore(face) : null;
+      if (!s) continue;
       counted.add(i);
-      yaw += Math.abs(m.yaw);
-      // Past 0.5 the iris landmarks missed (45 of 3,778 faces in the labelled photos, up to 3.5).
-      gaze += Math.min(Math.abs(m.gazeH ?? 0), 0.5);
-      n++;
+      lookFaces++;
+      if (s.score < th.lookAt) lookingFaces++;
+      if (lookValue === null || s.score > lookValue) {
+        lookFace = i;
+        lookValue = s.score;
+        yawValue = s.yaw;
+        gazeValue = s.gaze;
+      }
     }
-    if (n) {
-      yawValue = yaw / n;
-      gazeValue = gaze / n;
-      lookValue = yawValue / 25 + gazeValue / 0.2;
-      look = lookValue >= th.lookAway ? "away" : lookValue >= th.lookUnsure ? "unsure" : "at";
-    }
+    lookScene = lookFaces === 0 ? "none" : lookFaces === 1 ? "single" : lookingFaces * 2 >= lookFaces ? "posed" : "candid";
+    if (lookScene === "posed" && lookValue !== null) look = lookValue >= th.lookAway ? "away" : lookValue >= th.lookUnsure ? "unsure" : "at";
   }
 
   return {
@@ -245,9 +268,13 @@ export function decide(f: CullFeatures, th: CullThresholds = DEFAULT_THRESHOLDS)
     blinkValue,
     downValue,
     look,
+    lookScene,
+    lookFace,
     lookValue,
     yawValue,
     gazeValue,
+    lookingFaces,
+    lookFaces,
     counted: [...counted].sort((a, b) => a - b),
   };
 }
@@ -257,8 +284,22 @@ export function decide(f: CullFeatures, th: CullThresholds = DEFAULT_THRESHOLDS)
 export type CullLabel = "ok" | "blurry" | "eyes_closed" | "both" | "skip";
 
 // label: focus and eyes (as culling_labels.label); notLooking / unflattering: the problems added
-// later, only asked about on labels of version 2 (`v`).
-export type BenchItem = { photoId: string; label: CullLabel; notLooking: boolean; unflattering: boolean; v: number | null; decision: CullDecision };
+// later, only asked about on labels of version 2 (`v`). lookChecked: the look mark was decided with
+// "posed photos only" in mind (culling_labels.look_checked_at, migration 0184).
+export type BenchItem = {
+  photoId: string;
+  label: CullLabel;
+  notLooking: boolean;
+  lookChecked: boolean;
+  unflattering: boolean;
+  v: number | null;
+  decision: CullDecision;
+};
+
+// Whether the look mark can be measured against. The first 756 marks (2026-10-16–18) were made in
+// candid photos too, so a mark counts only once it was checked against the posed-only definition;
+// no mark is taken as it is (the owner marked liberally, so a missing one rarely hides a miss).
+export const lookLabelTrusted = (it: BenchItem) => it.v === 2 && (!it.notLooking || it.lookChecked);
 
 export type Rate = { hit: number; of: number };
 
@@ -274,9 +315,11 @@ export type BenchReport = {
   blurPrecision: Rate;
   review: number;
   // Not looking at the camera: of the photos the engine calls away, how many you marked, and of the
-  // ones you marked, how many it caught. Only labels saved with the new problems on screen (v2).
+  // ones you marked, how many it caught. Only trusted labels (lookLabelTrusted); lookUnchecked marks
+  // still wait for the check.
   lookPrecision: Rate;
   lookRecall: Rate;
+  lookUnchecked: number;
   // "לא מחמיא" isn't measured yet: how many there are to learn from.
   unflattering: number;
   // Label (rows) × verdict (columns).
@@ -299,6 +342,7 @@ export function benchReport(items: BenchItem[]): BenchReport {
     review: 0,
     lookPrecision: { hit: 0, of: 0 },
     lookRecall: { hit: 0, of: 0 },
+    lookUnchecked: 0,
     unflattering: 0,
     matrix,
   };
@@ -325,8 +369,9 @@ export function benchReport(items: BenchItem[]): BenchReport {
       r.blurRecall.of++;
       if (saysBlurry) r.blurRecall.hit++;
     }
-    if (it.v === 2) {
-      if (it.unflattering) r.unflattering++;
+    if (it.v === 2 && it.unflattering) r.unflattering++;
+    if (it.v === 2 && !lookLabelTrusted(it)) r.lookUnchecked++;
+    if (lookLabelTrusted(it)) {
       const saysAway = it.decision.look === "away";
       if (saysAway) {
         r.lookPrecision.of++;
@@ -352,8 +397,8 @@ export function mistakeKinds(it: BenchItem): MistakeKind[] {
   if (!isBlurry(it.label) && saysBlurry) out.push("falseBlur");
   if (isClosed(it.label) && !saysClosed) out.push("missedEyes");
   if (!isClosed(it.label) && saysClosed) out.push("falseEyes");
-  if (it.v === 2 && it.notLooking && it.decision.look !== "away") out.push("missedLook");
-  if (it.v === 2 && !it.notLooking && it.decision.look === "away") out.push("falseLook");
+  if (lookLabelTrusted(it) && it.notLooking && it.decision.look !== "away") out.push("missedLook");
+  if (lookLabelTrusted(it) && !it.notLooking && it.decision.look === "away") out.push("falseLook");
   if (it.decision.verdict === "review") out.push("review");
   return out;
 }
