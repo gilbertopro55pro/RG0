@@ -25,7 +25,11 @@ import {
 
 type Photo = { id: string; folder_id: string | null; original_filename: string; storage_path: string };
 type Result = { features: CullFeatures | null; error: string | null; version: string };
-type Progress = { done: number; total: number; ms: number[]; errors: number; current: string };
+// unsaved: measured but the write failed; the next run measures those again (it skips only what's saved).
+type Progress = { done: number; total: number; ms: number[]; errors: number; unsaved: number; current: string };
+
+type WakeLockSentinelLike = { release: () => Promise<void> };
+type WakeLockNavigator = Navigator & { wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> } };
 
 const VERDICT_TEXT: Record<CullVerdict, string> = {
   ok: "תקינה",
@@ -145,8 +149,24 @@ export default function CullingBench({
       return;
     }
     const queue = [...pending];
-    const state: Progress = { done: 0, total: queue.length, ms: [], errors: 0, current: "" };
+    const state: Progress = { done: 0, total: queue.length, ms: [], errors: 0, unsaved: 0, current: "" };
     setProgress({ ...state });
+    // A run of 1,500 photos takes over an hour (owner, 2026-10-18): keep the screen, and so the
+    // computer, awake for it. The browser drops the lock when the tab is hidden, so it's taken again
+    // when the tab is back.
+    let wakeLock: WakeLockSentinelLike | null = null;
+    const lockScreen = async () => {
+      try {
+        wakeLock = (await (navigator as WakeLockNavigator).wakeLock?.request("screen")) ?? null;
+      } catch {
+        // Not supported, or refused (battery saver): the run goes on without it.
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void lockScreen();
+    };
+    await lockScreen();
+    document.addEventListener("visibilitychange", onVisible);
     // The next photo downloads while this one is measured.
     let next = queue.length ? download(queue[0]) : null;
     for (let i = 0; i < queue.length && !cancelRef.current; i++) {
@@ -166,22 +186,29 @@ export default function CullingBench({
         state.errors++;
         row = { features: null, error: String(e).slice(0, 300), version: ENGINE_VERSION };
       }
-      await supabase.from("culling_results").upsert(
-        {
-          photo_id: p.id,
-          photographer_id: userId,
-          gallery_id: galleryId,
-          engine_version: ENGINE_VERSION,
-          features: row.features,
-          error: row.error,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "photo_id" }
-      );
-      setResults((cur) => new Map(cur).set(p.id, row));
+      const record = {
+        photo_id: p.id,
+        photographer_id: userId,
+        gallery_id: galleryId,
+        engine_version: ENGINE_VERSION,
+        features: row.features,
+        error: row.error,
+        updated_at: new Date().toISOString(),
+      };
+      // One more try on a passing network error; a write that still fails isn't shown as measured.
+      let saved = false;
+      for (let attempt = 0; attempt < 2 && !saved; attempt++) {
+        const { error } = await supabase.from("culling_results").upsert(record, { onConflict: "photo_id" });
+        saved = !error;
+        if (!saved && attempt === 0) await new Promise((r) => setTimeout(r, 1500));
+      }
+      if (saved) setResults((cur) => new Map(cur).set(p.id, row));
+      else state.unsaved++;
       state.done++;
       setProgress({ ...state });
     }
+    document.removeEventListener("visibilitychange", onVisible);
+    await (wakeLock as WakeLockSentinelLike | null)?.release().catch(() => {});
     setProgress(null);
   }
 
@@ -279,7 +306,9 @@ export default function CullingBench({
                   {progress.current}
                   {eta !== null && ` · ${t("נשארו כ-{min} דקות", { min: Math.max(1, Math.round(eta / 60)) })}`}
                   {progress.errors > 0 && ` · ${t("{n} שגיאות", { n: progress.errors })}`}
+                  {progress.unsaved > 0 && ` · ${t("{n} לא נשמרו ויימדדו שוב בהרצה הבאה", { n: progress.unsaved })}`}
                 </p>
+                <p className="text-[11px] text-ink-soft mt-1">{t("המסך לא ייכבה בזמן ההרצה. אם עוצרים או סוגרים, ההרצה הבאה ממשיכה מאותה נקודה.")}</p>
               </>
             ) : (
               <div className="flex flex-wrap items-center gap-3">
