@@ -5,9 +5,10 @@ import fontkit from "@pdf-lib/fontkit";
 import { drawAlignedBidiText } from "@/lib/pdfText";
 import type { EventContractRow } from "@/lib/types";
 
-// A signed contract as a PDF (owner, 2026-10-18): the photographer downloads it from the event page
-// and sends it to the client. The contract's own text as signed, then the client's signature: name,
-// the drawn signature, when, and from which address. Same look as the price quote
+// A contract as a PDF (owner, 2026-10-18): the photographer downloads it from the event page and
+// sends it to the client. The contract's own text, then the client's signature: once signed, the
+// name, the drawn signature, when, and from which address; before that, empty lines to sign on
+// paper. Same look as the price quote
 // (priceQuotePdf.ts): Rubik, a navy header band with a brass rule. The contract is always Hebrew
 // (its terms are never translated), so the document is right-to-left.
 
@@ -101,7 +102,8 @@ export async function buildContractPdf(params: {
   const bandH = 112;
   page.drawRectangle({ x: 0, y: PAGE_HEIGHT - bandH, width: PAGE_WIDTH, height: bandH, color: NAVY });
   page.drawRectangle({ x: 0, y: PAGE_HEIGHT - bandH - 3, width: PAGE_WIDTH, height: 3, color: BRASS });
-  text("חוזה הזמנה חתום", { x: MARGIN, width: CONTENT_W, y: PAGE_HEIGHT - 42, size: 11, font: bold, color: BRASS_LIGHT });
+  const isSigned = !!contract.signed_at;
+  text(isSigned ? "חוזה הזמנה חתום" : "חוזה הזמנה", { x: MARGIN, width: CONTENT_W, y: PAGE_HEIGHT - 42, size: 11, font: bold, color: BRASS_LIGHT });
   text(clean(studio), { x: MARGIN + CONTENT_W * 0.3, width: CONTENT_W * 0.7, y: PAGE_HEIGHT - 70, size: 20, font: bold, color: WHITE });
   const eventLine = [clean(clientName), eventDate ? `האירוע: ${new Date(eventDate).toLocaleDateString("he-IL")}` : null].filter(Boolean).join(" · ");
   text(eventLine, { x: MARGIN + CONTENT_W * 0.3, width: CONTENT_W * 0.7, y: PAGE_HEIGHT - 92, size: 10, font: regular, color: ON_NAVY_SOFT });
@@ -169,7 +171,8 @@ export async function buildContractPdf(params: {
   }
 
   // ── The client's signature: a grey card with a brass rail. Name, when (Israel time) and the
-  // address it was signed from on the right, the drawn signature on the left.
+  // address it was signed from on the right, the drawn signature on the left. Not signed yet: a
+  // line for the name and the date, and an empty box to sign in.
   const sigImage = contract.signature_data_url?.startsWith("data:image/png;base64,")
     ? await embedImageAuto(pdfDoc, new Uint8Array(Buffer.from(contract.signature_data_url.slice("data:image/png;base64,".length), "base64")))
     : null;
@@ -183,15 +186,21 @@ export async function buildContractPdf(params: {
   const infoW = CONTENT_W * 0.52;
   const infoX = PAGE_WIDTH - MARGIN - 18 - infoW;
   const signed = contract.signed_at ? israelTime(contract.signed_at) : null;
-  const info: [string, string][] = [
-    ["שם החותם/ת", clean(contract.signer_name ?? "")],
-    ["תאריך ושעת החתימה", signed ? `${signed.date}, ${signed.time} (שעון ישראל)` : ""],
-    ["נחתם מכתובת", clean(contract.signer_ip ?? "")],
-  ];
+  const info: [string, string][] = isSigned
+    ? [
+        ["שם החותם/ת", clean(contract.signer_name ?? "")],
+        ["תאריך ושעת החתימה", signed ? `${signed.date}, ${signed.time} (שעון ישראל)` : ""],
+        ["נחתם מכתובת", clean(contract.signer_ip ?? "")],
+      ]
+    : [
+        ["שם מלא", ""],
+        ["תאריך", ""],
+      ];
   info.forEach(([label, value], i) => {
     const top = y - 16 - i * 32;
     text(label, { x: infoX, width: infoW, y: top - 6, size: 8.5, font: regular, color: INK_SOFT });
-    text(value || "—", { x: infoX, width: infoW, y: top - 20, size: 10.5, font: bold, color: NAVY });
+    if (isSigned) text(value || "—", { x: infoX, width: infoW, y: top - 20, size: 10.5, font: bold, color: NAVY });
+    else page.drawLine({ start: { x: infoX + infoW * 0.25, y: top - 22 }, end: { x: infoX + infoW, y: top - 22 }, thickness: 0.8, color: INK_SOFT });
   });
   // The drawn signature, on white, fitted into the left part of the card.
   const sigBoxW = CONTENT_W * 0.38;
@@ -204,8 +213,16 @@ export async function buildContractPdf(params: {
     const h = sigImage.height * scale;
     page.drawImage(sigImage, { x: sigBoxX + (sigBoxW - w) / 2, y: y - 12 - sigBoxH + (sigBoxH - h) / 2, width: w, height: h });
   }
+  if (!isSigned) text("חתימה", { x: sigBoxX + 8, width: sigBoxW - 16, y: y - 12 - sigBoxH + 8, size: 8, font: regular, color: INK_SOFT });
   y -= cardH + 14;
-  text("החוזה נחתם בחתימה אלקטרונית, לפי חוק חתימה אלקטרונית, התשס\"א-2001.", { x: MARGIN, width: CONTENT_W, y: y - 9, size: 8.5, font: regular, color: INK_SOFT });
+  text(isSigned ? "החוזה נחתם בחתימה אלקטרונית, לפי חוק חתימה אלקטרונית, התשס\"א-2001." : "החוזה עוד לא נחתם. אפשר לחתום עליו בקישור לחתימה שנשלח.", {
+    x: MARGIN,
+    width: CONTENT_W,
+    y: y - 9,
+    size: 8.5,
+    font: regular,
+    color: INK_SOFT,
+  });
 
   // ── Page numbers.
   const pages = pdfDoc.getPages();
