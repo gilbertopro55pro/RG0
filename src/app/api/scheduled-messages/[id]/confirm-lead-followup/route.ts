@@ -107,6 +107,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     lead_id: message.lead_id,
     text: `נשלחה תזכורת מעקב ל-${lead.phone}`,
   });
+  // The same reminder the leads page sends ("שליחת תזכורת", lib/leadReminder.ts): its button waits
+  // two more days from here.
+  const { data: counted } = await supabase.from("leads").select("reminder_count").eq("id", message.lead_id).maybeSingle<{ reminder_count: number | null }>();
+  await supabase
+    .from("leads")
+    .update({ reminder_sent_at: new Date().toISOString(), reminder_count: (counted?.reminder_count ?? 0) + 1 })
+    .eq("id", message.lead_id);
 
   return NextResponse.json({ ok: true, sent: true, clientPhone: lead.phone, message: message_text });
 }
