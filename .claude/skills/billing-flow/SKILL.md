@@ -306,6 +306,19 @@ from photographers where id = '<id>';
 - A missing receipt: the `receipt_status/receipt_error` of that transaction. On `failed`, issue
   one manually in Finbot.
 
+## Links in the cron's emails (fixed 2026-10-19)
+
+- **The bug:** `subscription-lifecycle` built its links from the request's origin. Vercel runs the cron on
+  the deployment's own `*.vercel.app` address, and the project protects every deployment address except
+  the custom domains (Vercel login, `ssoProtection: all_except_custom_domains`).
+  - The trial reminder linked to a login wall instead of `/billing`. The first one (2026-10-19) went to a
+    QA account; no real customer got one.
+  - A plan switch's new checkout would also have handed PayPlus a callback and return address there,
+    so the payment's webhook would have hit the login wall too.
+- **Now:** `SITE_URL` (`NEXT_PUBLIC_APP_URL`, else `https://myframeflow.com`) for every link and every
+  PayPlus address the cron makes. Any new cron or server-triggered email must do the same:
+  `new URL(request.url).origin` is only right for a request a person made on the site.
+
 ## Trial data retention (30 days, since 2026-09-25)
 
 Owner's decision: an account whose trial ended without a payment is **deleted 30 days after the

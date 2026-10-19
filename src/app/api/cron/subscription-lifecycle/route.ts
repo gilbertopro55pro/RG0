@@ -11,6 +11,12 @@ import { photographerLang } from "@/lib/clientLang";
 import { planSwitchEmail, renewalReminderEmail, trialDeletionFinalWarningEmail, trialDeletionWarningEmail, trialEndingEmail } from "@/lib/billingEmails";
 import { deleteExpiredTrialAccount, isTrialDeletionCandidate, trialDeletionDate, TRIAL_RETENTION_DAYS, WARN_DAYS_BEFORE } from "@/lib/accountDeletion";
 
+// The public site, for every link this cron puts in an email or hands to PayPlus. Not the request's
+// origin: Vercel runs the cron on the deployment's own *.vercel.app address, which is behind Vercel
+// login, so the trial reminder linked customers to a login wall (2026-10-19), and a plan switch's
+// checkout would have sent PayPlus's callback there too (same fix as retry-stuck-zip-jobs).
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://myframeflow.com";
+
 const ANNUAL_REMINDER_DAYS_BEFORE = 30;
 const MONTHLY_REMINDER_DAYS_BEFORE = 7;
 
@@ -98,7 +104,7 @@ export async function GET(request: NextRequest) {
   // cleared regardless of whether they ever complete that checkout: subscription_status stays
   // "active" either way, matching this system's existing (not further-automated) handling of a
   // lapsed recurring charge in general.
-  const baseUrl = new URL(request.url).origin;
+  const baseUrl = SITE_URL;
   const { data: dueSwitches } = await supabase
     .from("photographers")
     .select("*")
@@ -185,7 +191,7 @@ export async function GET(request: NextRequest) {
     .returns<Pick<Photographer, "id" | "name" | "email" | "trial_ends_at" | "ui_lang">[]>();
 
   let trialRemindedCount = 0;
-  const siteUrl = new URL(request.url).origin;
+  const siteUrl = SITE_URL;
   for (const photographer of trialsEnding ?? []) {
     try {
       await sendEmail({
