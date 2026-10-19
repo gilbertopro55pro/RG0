@@ -1,9 +1,10 @@
 import { dateLocale, type Lang } from "@/i18n/config";
 
-// "תזכורת תשלום" from the dashboard's open balances (owner, 2026-10-19, admin only for now): the
-// reminder for one client, in the client's language. The wording is the home screen's payment
-// reminder (api/scheduled-messages/[id]/confirm), with the amount actually still open (deposit and
-// balance, after partial payments) and the photographer's signature, or their name without one.
+// The payment reminder to a client, in the client's language: from the dashboard's open balances
+// (owner, 2026-10-19, admin only for now) and from the home screen's prompt
+// (api/scheduled-messages/[id]/confirm). The amount actually still open (deposit and balance, after
+// partial payments, lib/openBalances.ts), the portal link, and the photographer's signature, or
+// their name without one. Plain, without "תזכורת ידידותית" (owner: it sounds apologetic).
 // Client-safe: built on the tap that opens WhatsApp.
 
 export const PAYMENT_REMINDER_CHANNELS = ["whatsapp", "sms", "email", "copy"] as const;
@@ -14,15 +15,15 @@ export const PAYMENT_REMINDER_LOG_MARK = "תזכורת תשלום";
 
 const TEXT: Record<Lang, { body: string; subject: string }> = {
   he: {
-    body: "שלום {name},\nתזכורת ידידותית, נשארה יתרה של {amount} לתשלום עבור האירוע שלכם.\n\nלצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n{link}",
+    body: "שלום {name},\nנשארה יתרה של {amount} לתשלום עבור האירוע שלכם.\n\nלצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n{link}",
     subject: "תזכורת תשלום",
   },
   en: {
-    body: "Hi {name},\nA friendly reminder: a balance of {amount} is still due for your event.\n\nYou can see the payment details in your personal portal:\n{link}",
+    body: "Hi {name},\nA balance of {amount} is still due for your event.\n\nYou can see the payment details in your personal portal:\n{link}",
     subject: "Payment reminder",
   },
   ru: {
-    body: "Здравствуйте, {name}!\nДружеское напоминание: по вашему мероприятию остаётся к оплате {amount}.\n\nПодробности оплаты — в вашем личном кабинете:\n{link}",
+    body: "Здравствуйте, {name}!\nПо вашему мероприятию остаётся к оплате {amount}.\n\nПодробности оплаты — в вашем личном кабинете:\n{link}",
     subject: "Напоминание об оплате",
   },
 };

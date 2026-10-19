@@ -16,8 +16,6 @@ const dict: AreaDict = {
     "שלום {name},\n\nרצינו להזכיר שההצעת מחיר ששלחנו לכם עדיין פתוחה, ונשמח לעמוד לרשותכם לכל שאלה או לתיאום.":
       "Hello {name},\n\nWe just wanted to remind you that the price quote we sent you is still open. We'd be happy to help with any questions or to set things up.",
     // WhatsApp texts prepared by the scheduled-messages confirm routes.
-    "שלום {name},\nתזכורת ידידותית, נשארה יתרה של ₪{amount} לתשלום עבור האירוע שלכם.\n\nלצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n{link}":
-      "Hello {name},\nJust a friendly reminder that a balance of ₪{amount} is still due for your event.\n\nYou can see the payment details in your personal portal:\n{link}",
     "שלום {name},\nתודה שבחרתם בנו! נשמח מאוד אם תוכלו להשאיר לנו כמה מילים וביקורת 🙏\n\n{link}":
       "Hello {name},\nThank you for choosing us! We'd really appreciate it if you could leave us a few words and a review 🙏\n\n{link}",
     "שלום {name},\nשלחתי אלייך הצעת מחיר ואשמח לשמוע אם יש שאלות או שתרצו לתאם את תאריך האירוע.":
@@ -46,8 +44,6 @@ const dict: AreaDict = {
     "רק מזכירים את ההצעה שלנו": "Напоминаем о нашем предложении",
     "שלום {name},\n\nרצינו להזכיר שההצעת מחיר ששלחנו לכם עדיין פתוחה, ונשמח לעמוד לרשותכם לכל שאלה או לתיאום.":
       "Здравствуйте, {name}!\n\nХотим напомнить, что ценовое предложение, которое мы вам отправили, всё ещё в силе. Будем рады ответить на любые вопросы или обо всём договориться.",
-    "שלום {name},\nתזכורת ידידותית, נשארה יתרה של ₪{amount} לתשלום עבור האירוע שלכם.\n\nלצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n{link}":
-      "Здравствуйте, {name}!\nДружеское напоминание: за ваше мероприятие осталось оплатить ₪{amount}.\n\nПодробности оплаты можно посмотреть в вашем личном кабинете:\n{link}",
     "שלום {name},\nתודה שבחרתם בנו! נשמח מאוד אם תוכלו להשאיר לנו כמה מילים וביקורת 🙏\n\n{link}":
       "Здравствуйте, {name}!\nСпасибо, что выбрали нас! Будем очень благодарны, если вы оставите нам пару слов и отзыв 🙏\n\n{link}",
     "שלום {name},\nשלחתי אלייך הצעת מחיר ואשמח לשמוע אם יש שאלות או שתרצו לתאם את תאריך האירוע.":

@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { clientLangFor } from "@/lib/clientLang";
-import { dateLocale } from "@/i18n/config";
-import { messagesFor } from "@/i18n/dict";
-import { makeT } from "@/i18n/translate";
 import { shortClientUrl } from "@/lib/shortLinks";
+import { openAmount } from "@/lib/openBalances";
+import { paymentReminderMessage } from "@/lib/paymentReminder";
+import type { EventPaymentRow } from "@/lib/types";
+
+type Payment = Pick<EventPaymentRow, "deposit_amount" | "deposit_paid" | "deposit_paid_amount" | "balance_amount" | "balance_paid" | "balance_paid_amount">;
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,10 +31,36 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "התזכורת כבר טופלה או לא נמצאה" }, { status: 404 });
   }
 
+  const [{ data: event }, { data: payment }, { data: photographer }] = await Promise.all([
+    supabase
+      .from("events")
+      .select("client_name, client_phone, client_access_token, client_lang, closed_at, closed_balance_month")
+      .eq("id", message.event_id)
+      .single<{
+        client_name: string;
+        client_phone: string | null;
+        client_access_token: string;
+        client_lang: string | null;
+        closed_at: string | null;
+        closed_balance_month: string | null;
+      }>(),
+    supabase
+      .from("event_payments")
+      .select("deposit_amount, deposit_paid, deposit_paid_amount, balance_amount, balance_paid, balance_paid_amount")
+      .eq("event_id", message.event_id)
+      .maybeSingle<Payment>(),
+    supabase.from("photographers").select("whatsapp_signature, name").eq("id", user.id).maybeSingle<{ whatsapp_signature: string | null; name: string | null }>(),
+  ]);
+  // What the client still owes after partial payments (the same amount as the dashboard's open
+  // balances): the prompt asks about it, and the reminder asks for it.
+  const open = payment ? openAmount(payment, Boolean(event?.closed_at && event.closed_balance_month)) : { deposit: 0, balance: 0, total: 0 };
+
   if (paid) {
+    const now = new Date().toISOString();
+    // "Paid" answers for the whole amount the prompt showed, so a deposit still open is paid too.
     await supabase
       .from("event_payments")
-      .update({ balance_paid: true, balance_paid_at: new Date().toISOString() })
+      .update(open.deposit > 0 ? { balance_paid: true, balance_paid_at: now, deposit_paid: true, deposit_paid_at: now } : { balance_paid: true, balance_paid_at: now })
       .eq("event_id", message.event_id);
     await supabase.from("scheduled_messages").update({ status: "canceled" }).eq("id", message.id);
     await supabase.from("event_notifications").insert({
@@ -42,16 +70,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ ok: true, sent: false });
   }
 
-  const { data: event } = await supabase
-    .from("events")
-    .select("client_name, client_phone, client_access_token, client_lang")
-    .eq("id", message.event_id)
-    .single<{ client_name: string; client_phone: string | null; client_access_token: string; client_lang: string | null }>();
-  const { data: payment } = await supabase
-    .from("event_payments")
-    .select("balance_amount")
-    .eq("event_id", message.event_id)
-    .single<{ balance_amount: number }>();
+  // Paid in full since the prompt came up (partial payments, or the event closed): nothing to ask for.
+  if (open.total <= 0) {
+    if (!dryRun) await supabase.from("scheduled_messages").update({ status: "canceled" }).eq("id", message.id);
+    return NextResponse.json({ error: "היתרה כבר שולמה" }, { status: 409 });
+  }
 
   if (!event?.client_phone) {
     await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", message.id);
@@ -62,15 +85,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // themselves — see PaymentReminderPrompts.tsx). This just builds the message and marks the
   // reminder handled; there's no server callback to confirm the tap actually happened, same
   // as the other interactive wa.me flows.
-  const portalLink = shortClientUrl(new URL(request.url).origin, "portal", event.client_access_token);
-  // In the client's language (UI languages phase 3); "he" for every non-admin account, where the
-  // amount stays unformatted exactly as before.
-  const lang = clientLangFor(user.email, event.client_lang);
-  const balance = payment?.balance_amount ?? 0;
-  const message_text = makeT(messagesFor(lang))(
-    "שלום {name},\nתזכורת ידידותית, נשארה יתרה של ₪{amount} לתשלום עבור האירוע שלכם.\n\nלצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n{link}",
-    { name: event.client_name, amount: lang === "he" ? balance : Number(balance).toLocaleString(dateLocale(lang)), link: portalLink }
-  );
+  // The same message as the dashboard's reminder (lib/paymentReminder.ts), in the client's language.
+  const message_text = paymentReminderMessage({
+    clientName: event.client_name,
+    amount: open.total,
+    portalUrl: shortClientUrl(new URL(request.url).origin, "portal", event.client_access_token),
+    signature: photographer?.whatsapp_signature,
+    senderName: photographer?.name,
+    lang: clientLangFor(user.email, event.client_lang),
+  });
 
   // A preview (dryRun): the prompt fetches the message when it shows, so the send button opens
   // WhatsApp right in the tap (iPhone blocks it after a request) and only then records the send.
