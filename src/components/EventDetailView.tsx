@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { amountToDocument, RECEIPT_PAYMENT_METHODS, type ReceiptPaymentMethod } from "@/lib/paymentDocuments";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -39,6 +39,7 @@ import type {
 } from "@/lib/types";
 import { clipSongLines } from "@/lib/clipSongs";
 import SendUpdateButton from "@/components/SendUpdateButton";
+import BodyPortal from "@/components/BodyPortal";
 import ContractSection from "@/components/ContractSection";
 import PortalLinkSection from "@/components/PortalLinkSection";
 import GallerySection from "@/components/GallerySection";
@@ -185,6 +186,8 @@ function parseStageKey(key: string): { stageKey: string | null; customStageId: s
     : { stageKey: key, customStageId: null };
 }
 
+const noSubscribe = () => () => {};
+
 export default function EventDetailView({
   event,
   initialStages,
@@ -201,6 +204,7 @@ export default function EventDetailView({
   customPackageName,
   messageTemplates,
   whatsappSignature,
+  senderName = null,
   canChooseClientLang = false,
   clientMessageLang = "he",
 }: {
@@ -219,6 +223,8 @@ export default function EventDetailView({
   customPackageName: string | null;
   messageTemplates: Record<string, string>;
   whatsappSignature: string | null;
+  // The owner's name: the messages are signed with it when there's no WhatsApp signature.
+  senderName?: string | null;
   // The client-language picker in the edit form (admin only for now, lib/clientLang.ts).
   canChooseClientLang?: boolean;
   // The language of the WhatsApp updates to this client (clientLangFor on the server page).
@@ -439,8 +445,10 @@ export default function EventDetailView({
       arrivalTime: event.arrival_time,
       depositAmount: payments ? payments.deposit_amount : null,
       balanceAmount: payments ? payments.balance_amount : null,
-      linkUrl: galleryLink ?? shortClientUrl(window.location.origin, "portal", event.client_access_token),
+      // The booking confirmation always links to the portal (owner, 2026-10-19).
+      linkUrl: (key !== "event_closing" && galleryLink) || shortClientUrl(window.location.origin, "portal", event.client_access_token),
       whatsappSignature,
+      senderName,
       lang: clientMessageLang,
     });
   };
@@ -531,7 +539,34 @@ export default function EventDetailView({
   const sendEventClosingUpdate = async () => {
     const text = buildClientUpdateMessage("event_closing", "סגירת האירוע");
     await notifyClientByWhatsApp("סגירת האירוע", text);
-    await setStageDone("event_closing", true);
+    // Sent again from the ?closing=1 prompt when a signed contract already marked the stage: only the send is logged.
+    if (stages.find((s) => s.stage_key === "event_closing")?.done) await refreshNotifications();
+    else await setStageDone("event_closing", true);
+  };
+
+  // Arriving from the "new event" email or phone notification (a client approved a quote and sent
+  // the questionnaire, api/quotes/[token]/submit-questionnaire) or the contract-signed email:
+  // ?closing=1 opens the booking-confirmation message ready to send (owner, 2026-10-19). Opened
+  // after mount, since the message's link needs `window`; the param comes off the address at once,
+  // so a refresh doesn't open it again. Shown even when the stage is already done (a signed
+  // contract marks it), with a note when the message was already sent.
+  const [closingOpen, setClosingOpen] = useState(() => searchParams.get("closing") === "1" && isOwner && !!event.client_phone);
+  const inBrowser = useSyncExternalStore(noSubscribe, () => true, () => false);
+  const closingPrompt = closingOpen && inBrowser ? buildClientUpdateMessage("event_closing", "סגירת האירוע") : null;
+  useEffect(() => {
+    if (searchParams.get("closing") !== "1") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("closing");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // The booking confirmation already sent: from here, or from the new-event screen (NewEventModal).
+  const closingSent = notifications.find(
+    (n) => n.text.startsWith("נשלחה הודעת וואטסאפ") && (n.text.includes('"סגירת האירוע"') || n.text.includes("אישור הזמנה")),
+  );
+  const sendClosingFromPrompt = () => {
+    setClosingOpen(false);
+    void sendEventClosingUpdate();
   };
 
   const uploadAlbumDesign = async (key: string, file: File) => {
@@ -1061,6 +1096,52 @@ export default function EventDetailView({
             )}
           </div>
         </div>
+      )}
+      {closingPrompt && (
+        <BodyPortal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(28, 27, 25, 0.45)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("שליחת הודעת סגירת האירוע")}
+          >
+            <div className="w-full max-w-md max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl p-5 bg-paper shadow-sheet">
+              <h2 className="text-lg font-bold mb-1 font-display">{t("שליחת הודעת סגירת האירוע")}</h2>
+              <p className="text-sm text-ink-soft mb-3">
+                {t("ההודעה ל{name} מוכנה. לחיצה תפתח את הוואטסאפ שלך עם ההודעה, ותישאר/י לבדוק ולשלוח בעצמך.", { name: event.client_name })}
+              </p>
+              {closingSent && (
+                <p className="text-xs mb-3 rounded-lg px-3 py-2" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
+                  {t("ההודעה כבר נשלחה ב-{date}.", {
+                    date: new Date(closingSent.created_at).toLocaleString(locale, { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }),
+                  })}
+                </p>
+              )}
+              <div
+                dir={clientMessageLang === "he" ? "rtl" : "ltr"}
+                className="min-h-0 overflow-y-auto whitespace-pre-wrap break-words rounded-2xl bg-white border border-line px-3.5 py-3 text-[13px] leading-relaxed mb-4"
+              >
+                {closingPrompt}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={sendClosingFromPrompt}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold text-white"
+                  style={{ background: "var(--color-sage)" }}
+                >
+                  {t("שליחה בוואטסאפ")}
+                </button>
+                <button
+                  onClick={() => setClosingOpen(false)}
+                  className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
+                >
+                  {t("לא עכשיו")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </BodyPortal>
       )}
       <div className="flex items-start gap-2 mb-0.5">
         <h1 className="text-[28px] leading-tight font-extrabold font-display">{event.client_name}</h1>

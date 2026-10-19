@@ -8,7 +8,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 // sent to the browser). A week's expiry matches Supabase's own default confirmation link
 // lifetime — long enough that a slow reader doesn't get a dead link, short enough that a link
 // sitting in an old, unopened email eventually stops being usable.
-const TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function sign(uid: string, ts: string): string {
   return createHmac("sha256", process.env.SUPABASE_SERVICE_ROLE_KEY!).update(`${uid}.${ts}`).digest("hex");

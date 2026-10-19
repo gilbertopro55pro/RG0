@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { authenticateGalleryRequest } from "@/lib/desktopAuth";
 import { sendEmail } from "@/lib/resend";
+import { shortPageUrl, PAGE_LINK_TTL } from "@/lib/shortFileLinks";
+import { SITE_URL } from "@/lib/siteUrl";
 import { sendPushToPhotographer } from "@/lib/push";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { GalleryRow, Photographer } from "@/lib/types";
@@ -39,7 +41,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .maybeSingle<Pick<Photographer, "email" | "ui_lang">>();
     if (!photographer) return NextResponse.json({ ok: true });
 
-    const origin = new URL(request.url).origin;
     // In the photographer's own language (photographers.ui_lang); Hebrew when unset.
     const t = makeT(messagesFor(photographerLang(photographer.ui_lang)));
     const counted = succeededCount != null && totalCount != null;
@@ -77,12 +78,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
                   : t("העלאת התמונות לגלריה \"{title}\" הסתיימה.", vars),
                 link: t("לצפייה בגלריה:"),
               };
+    // The settings page is already a short address; a gallery's own (a long id) goes through /l.
+    const link = message.path.startsWith("/galleries/")
+      ? await shortPageUrl(message.path, { photographerId: gallery.photographer_id, ttlSeconds: PAGE_LINK_TTL })
+      : `${SITE_URL}${message.path}`;
     await Promise.all([
       photographer.email
         ? sendEmail({
             to: notificationEmailFor(photographer.email),
             subject: message.subject,
-            text: `${t("שלום,")}\n\n${message.done}\n\n${message.link}\n${origin}${message.path}`,
+            text: `${t("שלום,")}\n\n${message.done}\n\n${message.link}\n${link}`,
           })
         : null,
       sendPushToPhotographer(gallery.photographer_id, {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
+import { shortPageUrl, PAGE_LINK_TTL } from "@/lib/shortFileLinks";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import type { EventRow, GalleryRow, Photographer } from "@/lib/types";
 import { photographerLang } from "@/lib/clientLang";
@@ -8,7 +9,7 @@ import { dateLocale } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 
-export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function POST(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const supabase = createServiceRoleClient();
 
@@ -82,8 +83,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const lang = photographerLang(photographer.ui_lang);
     const t = makeT(messagesFor(lang));
     const formattedDate = dateValue ? new Date(dateValue).toLocaleDateString(dateLocale(lang)) : "";
-    const origin = new URL(request.url).origin;
-    const favoritesLink = `${origin}/galleries/${gallery.id}?favorites=1`;
+    const favoritesLink = await shortPageUrl(`/galleries/${gallery.id}?favorites=1`, { photographerId: gallery.photographer_id, ttlSeconds: PAGE_LINK_TTL });
     try {
       await sendEmail({
         to: notificationEmailFor(photographer.email),

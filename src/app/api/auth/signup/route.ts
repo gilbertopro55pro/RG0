@@ -2,7 +2,8 @@ import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import { TRIAL_DAYS, TRIAL_PLAN } from "@/lib/subscription";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { createEmailConfirmToken } from "@/lib/emailConfirmToken";
+import { createEmailConfirmToken, TOKEN_MAX_AGE_MS } from "@/lib/emailConfirmToken";
+import { shortPageUrl } from "@/lib/shortFileLinks";
 import { sendEmail } from "@/lib/resend";
 import { sendPushToPhotographer } from "@/lib/push";
 import { ADMIN_EMAIL } from "@/lib/admin";
@@ -90,8 +91,11 @@ export async function POST(request: NextRequest) {
   const { ts, sig } = createEmailConfirmToken(uid);
   // lang rides along so the confirm link lands on /login in the same language (the signature
   // covers uid+ts only, so the extra param doesn't affect verification).
-  const confirmUrl =
-    `${request.nextUrl.origin}/api/auth/confirm-email?uid=${uid}&ts=${ts}&sig=${sig}` + (lang === "he" ? "" : `&lang=${lang}`);
+  // A short link (lib/shortFileLinks.ts) that lasts as long as the token itself.
+  const confirmUrl = await shortPageUrl(`/api/auth/confirm-email?uid=${uid}&ts=${ts}&sig=${sig}` + (lang === "he" ? "" : `&lang=${lang}`), {
+    photographerId: uid,
+    ttlSeconds: TOKEN_MAX_AGE_MS / 1000,
+  });
   const mail = signupEmails(t, { name, email, confirmUrl });
 
   try {
