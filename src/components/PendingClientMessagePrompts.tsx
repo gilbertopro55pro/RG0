@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useModalEntered } from "@/lib/useModalEntered";
 import ReminderDateTimeField from "@/components/ReminderDateTimeField";
 import { openWhatsApp } from "@/lib/waLink";
-import { useT } from "@/i18n/client";
+import { useLang, useT } from "@/i18n/client";
+import { dateLocale } from "@/i18n/config";
 
 // A translated sentence with the client/lead name in bold: the {name} placeholder is left in by
 // t() (it isn't in vars) and swapped for the bold span here.
@@ -86,6 +87,7 @@ export default function PendingClientMessagePrompts({
   clientReminders?: PendingClientReminder[];
 }) {
   const t = useT();
+  const lang = useLang();
   const [queue, setQueue] = useState<PendingItem[]>([...paymentReminders, ...reviewRequests, ...leadFollowUps, ...clientReminders]);
   const [busy, setBusy] = useState(false);
   // The WhatsApp message of the prompt on screen, fetched when it shows (dryRun), so the send button
@@ -200,7 +202,7 @@ export default function PendingClientMessagePrompts({
           <>
             <h2 className="text-lg font-bold mb-2 font-display">{t("תזכורת תשלום")}</h2>
             <p className="text-sm text-ink-soft mb-5">
-              {withBoldName(t("היתרה של {name} (₪{amount}) שולמה?", { amount: current.balanceAmount }), current.clientName)}
+              {withBoldName(t("היתרה של {name} (₪{amount}) שולמה?", { amount: current.balanceAmount.toLocaleString(dateLocale(lang)) }), current.clientName)}
             </p>
             <div className="flex gap-2">
               <button

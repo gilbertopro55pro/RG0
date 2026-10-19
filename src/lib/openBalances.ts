@@ -21,6 +21,18 @@ export type OpenBalanceRow = {
 
 type EventLike = { id: string; client_name: string; event_date: string };
 
+// What one event's client still owes: the deposit and the balance left after partial payments, the
+// balance counting as paid once it was recognized at the closing. Also the amount of the home
+// screen's payment reminder (api/scheduled-messages/[id]/confirm), so both say the same.
+export function openAmount(
+  p: Pick<EventPaymentRow, "deposit_amount" | "deposit_paid" | "deposit_paid_amount" | "balance_amount" | "balance_paid" | "balance_paid_amount">,
+  recognized: boolean
+): { deposit: number; balance: number; total: number } {
+  const deposit = p.deposit_paid ? 0 : Math.max(0, Number(p.deposit_amount) - Number(p.deposit_paid_amount ?? 0));
+  const balance = recognized ? 0 : remainingBalance(p);
+  return { deposit, balance, total: deposit + balance };
+}
+
 export function openBalances(
   events: EventLike[],
   payments: EventPaymentRow[],
@@ -32,9 +44,7 @@ export function openBalances(
   for (const p of payments) {
     const event = eventById.get(p.event_id);
     if (!event) continue;
-    const deposit = p.deposit_paid ? 0 : Math.max(0, Number(p.deposit_amount) - Number(p.deposit_paid_amount ?? 0));
-    const balance = recognizedEventIds.has(p.event_id) ? 0 : remainingBalance(p);
-    const total = deposit + balance;
+    const { deposit, balance, total } = openAmount(p, recognizedEventIds.has(p.event_id));
     if (total <= 0) continue;
     const eventDate = event.event_date.slice(0, 10);
     rows.push({ eventId: event.id, clientName: event.client_name, eventDate, deposit, balance, total, dueDate: p.balance_due_date, held: eventDate < today });

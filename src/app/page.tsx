@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { closingRecognitions, monthKeyIsrael } from "@/lib/closeEvent";
+import { openAmount } from "@/lib/openBalances";
 import { timeOfDayGreeting } from "@/lib/greeting";
 import { STAGE_LABELS } from "@/lib/stages";
 import { designToolsAllowed } from "@/lib/designTools";
@@ -342,9 +343,11 @@ export default async function DashboardPage() {
     };
   }
 
-  // Balance amounts come straight out of the `payments` batch already fetched above instead of
-  // a further round trip keyed by reminder event ids.
-  const balanceByEvent = new Map((payments ?? []).map((p) => [p.event_id, p.balance_amount]));
+  // The amount still open after partial payments (lib/openBalances.ts, the same as the dashboard's
+  // open balances and the reminder itself), out of the `payments` batch already fetched above. A
+  // reminder whose client has paid it all since doesn't come up.
+  const reminderRecognized = new Set(closingRecognitions(events ?? [], payments ?? []).map((r) => r.eventId));
+  const openByEvent = new Map((payments ?? []).map((p) => [p.event_id, openAmount(p, reminderRecognized.has(p.event_id)).total]));
   const pendingReminders: PendingPaymentReminder[] = photographer
     ? (scheduledReminders ?? [])
         .filter((s) => s.kind === "payment_reminder")
@@ -352,8 +355,9 @@ export default async function DashboardPage() {
           type: "payment" as const,
           id: s.id,
           clientName: s.events?.client_name ?? t("לקוח"),
-          balanceAmount: (s.event_id ? balanceByEvent.get(s.event_id) : undefined) ?? 0,
+          balanceAmount: (s.event_id ? openByEvent.get(s.event_id) : undefined) ?? 0,
         }))
+        .filter((r) => r.balanceAmount > 0)
     : [];
   const pendingReviewRequests: PendingReviewRequest[] = photographer
     ? (scheduledReminders ?? [])
