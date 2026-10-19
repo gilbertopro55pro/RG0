@@ -85,10 +85,11 @@ export function extraHoursNotice(slot: DaySlotKind, start: string, end: string):
   return null;
 }
 
-// Morning or evening, from what's known: the assistant's eventSlot, else the quote's start hour
-// (before 15:00 = morning), else evening.
+// Morning or evening, from what's known: the assistant's eventSlot (an afternoon event goes by the
+// morning's 4-hour package), else the quote's start hour (before 15:00 = morning), else evening.
 export function slotFor(eventSlot: string | null | undefined, startTime?: string): DaySlotKind {
   if (eventSlot === "morning" || eventSlot === "evening") return eventSlot;
+  if (eventSlot === "afternoon") return "morning";
   const s = startTime ? toMin(startTime) : null;
   if (s !== null) return s < 15 * 60 ? "morning" : "evening";
   return "evening";

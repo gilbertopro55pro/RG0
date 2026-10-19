@@ -11,6 +11,19 @@ export { changesFor, type ChangelogEntry } from "@/lib/changelogEntry";
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.6",
+    date: "2026-10-19",
+    changes: [
+      "בעוזר הפניות אפשר עכשיו לקבוע את השעות של אירוע בוקר, אירוע צהריים ואירוע ערב (הגדרות › אוטומציה, \"אירוע בוקר, צהריים וערב באותו יום\"). העוזר בודק אם התאריך פנוי רק בחלק ביום שהלקוח מבקש, לפי השעות שלכם. כל עוד לא משנים, השעות הן בוקר 07:30 עד 15:00, צהריים 12:00 עד 16:00 וערב 18:00 עד 00:00",
+    ],
+    en: [
+      "In the intake assistant you can now set the hours of a morning, an afternoon and an evening event (Settings › Automation, \"Morning, afternoon and evening events on the same day\"). The assistant checks whether the date is free only in the part of the day the client asks for, by your hours. Until you change them, the hours are morning 07:30 to 15:00, afternoon 12:00 to 16:00 and evening 18:00 to 00:00",
+    ],
+    ru: [
+      "В ассистенте заявок теперь можно задать часы утреннего, дневного и вечернего мероприятия (Настройки › Автоматизация, «Утреннее, дневное и вечернее мероприятие в один день»). Ассистент проверяет, свободна ли дата, только в той части дня, о которой просит клиент, по вашим часам. Пока вы их не измените, часы такие: утро с 07:30 до 15:00, день с 12:00 до 16:00, вечер с 18:00 до 00:00",
+    ],
+  },
+  {
     version: "2.12.5",
     date: "2026-10-12",
     changes: [

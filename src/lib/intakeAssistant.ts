@@ -6,7 +6,7 @@ import { buildIntakeTranscriptPdf } from "@/lib/intakeTranscriptPdf";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { findLeadsByPhone } from "@/lib/leadDuplicates";
-import { SLOT_LABELS, blocksSlot, shabbatClosure, type DaySlot } from "@/lib/daySlots";
+import { FRIDAY_LAST_END, SLOT_LABELS, blocksSlot, isDaySlot, openOnFriday, shabbatClosure, slotHours, type DaySlot } from "@/lib/daySlots";
 import { googleBusyOnDate } from "@/lib/calendarBusy";
 import { SUBSCRIPTION_PLANS, type SubscriptionTier } from "@/lib/stages";
 import type { IntakeDetails, IntakeFaqItem, Photographer } from "@/lib/types";
@@ -45,7 +45,7 @@ const isMitzvah = (d: IntakeDetails) => /(בר|בת)[\s-]*מצו/.test(d.eventTy
 
 export type IntakePhotographer = Pick<
   Photographer,
-  "id" | "name" | "email" | "plan" | "ui_lang" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day" | "intake_shabbat_closed" | "google_calendar_import_color_id" | "google_calendar_color_id"
+  "id" | "name" | "email" | "plan" | "ui_lang" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_allow_split_day" | "intake_shabbat_closed" | "intake_day_slots" | "google_calendar_import_color_id" | "google_calendar_color_id"
 >;
 
 export type IntakeConversation = {
@@ -77,9 +77,9 @@ export function missingDetails(d: IntakeDetails): string[] {
   const hasDate = !!d.eventDate || (!!d.dateUndecided && !!d.approxDate?.trim());
   const missing = REQUIRED.filter((r) => (r.key === "eventDate" ? !hasDate : !String(d[r.key] ?? "").trim())).map((r) => r.label);
   // Conditional details (owner, 2026-09-29): with video, whether a separate videographer is needed;
-  // for a bar/bat mitzvah, morning (עלייה לתורה) or evening.
+  // for a bar/bat mitzvah, morning (עלייה לתורה), afternoon or evening.
   if (wantsVideo(d) && !d.videoCrew?.trim()) missing.push("האם צריך צלם וידאו נוסף");
-  if (isMitzvah(d) && !d.eventSlot) missing.push("אירוע בוקר או ערב");
+  if (isMitzvah(d) && !d.eventSlot) missing.push("אירוע בוקר, צהריים או ערב");
   return missing;
 }
 
@@ -168,6 +168,10 @@ function buildSystem(p: IntakePhotographer, channel: IntakeChannel, lang: Lang |
   const name = studioName(p);
   const faq = (p.intake_bot_faq ?? []).filter((f) => f.q?.trim() && f.a?.trim());
   const faqText = faq.length ? faq.map((f: IntakeFaqItem) => `ש: ${f.q.trim()}\nת: ${f.a.trim()}`).join("\n\n") : "(אין)";
+  // The photographer's hours for each part of the day (lib/daySlots.ts); an afternoon that ends by
+  // 16:00 is open on Friday too.
+  const hours = slotHours(p.intake_day_slots);
+  const fridayAfternoon = openOnFriday("afternoon", hours);
   return `זהו העוזר האוטומטי של ${name}, צלם אירועים. לקוחות פונים אליו דרך ${channel.kind === "whatsapp" ? "וואטסאפ" : "צ'אט באתר"}.
 
 התפקיד: לענות בנעימות, לבדוק אם התאריך פנוי, ולאסוף את פרטי האירוע כדי ש${name} יחזור ללקוח עם הצעת מחיר אישית.
@@ -199,8 +203,8 @@ ${lang ? languageRule(lang) : `- רק עברית ובאותיות עבריות, 
 - פרטי חובה: ${REQUIRED.map((r) => r.label).join(", ")}. פרטים נוספים שכדאי לשאול: שעות האירוע, ומה חשוב ללקוח במיוחד.${p.intake_bot_extra_question?.trim() ? `\n- שאלה נוספת ש${name} ביקש לשאול: "${p.intake_bot_extra_question.trim()}"` : ""}
 - כששואלים על התאריך, לא שואלים "איזה תאריך אתם חושבים עליו?". שואלים בנוסח כמו "כבר חשבתם על תאריך לאירוע? אשמח לבדוק אם הוא פנוי", כך שגם מי שעוד לא סגר תאריך ירגיש בנוח (בעל העסק ביקש, 2026-09-28).
 - אם עוד אין תאריך, לא לוחצים: שואלים בערך מתי (חודש, עונה או שנה), שומרים עם save_details (dateUndecided=true ו-approxDate), וממשיכים לשאר הפרטים. אומרים שכשיהיה תאריך, ${name} יבדוק שהוא פנוי. אם הלקוח מתלבט בין כמה תאריכים, בודקים כל אחד ב-check_availability ושומרים אותם ב-approxDate.
-${p.intake_allow_split_day ? `- ${name} יכול לצלם באותו יום גם אירוע בוקר וגם אירוע ערב. עלייה לתורה היא אירוע בוקר (slot="morning", 07:30 עד 15:00). אירועי ערב (חתונה, מסיבת בר או בת מצווה, חינה, אירוע ערב אחר) הם slot="evening" (18:00 עד 00:00). כשבודקים תאריך, שולחים ל-check_availability את ה-slot לפי סוג האירוע. אם סוג האירוע עוד לא ידוע, קודם שואלים עליו.
-` : ""}${p.intake_shabbat_closed ? `- ${name} לא מצלם בשבת: ביום שישי אפשר רק אירוע בוקר (עד 16:00), שישי בערב ושבת במשך היום לא זמינים, ובמוצאי שבת (ערב, אחרי צאת השבת) כן אפשר. לאירוע במוצאי שבת בודקים עם slot="evening", ואומרים שהאירוע יתחיל אחרי צאת השבת. כש-check_availability מחזיר closedReason, אומרים את זה ללקוח בפשטות, לא מציעים רשימת המתנה, ומציעים תאריך אחר או מוצאי שבת.
+${p.intake_allow_split_day ? `- ${name} יכול לצלם באותו יום אירוע בוקר, אירוע צהריים ואירוע ערב. השעות של ${name}: בוקר ${hours.morning.start} עד ${hours.morning.end} (slot="morning", למשל עלייה לתורה), צהריים ${hours.afternoon.start} עד ${hours.afternoon.end} (slot="afternoon", אירוע צהריים), ערב ${hours.evening.start} עד ${hours.evening.end} (slot="evening": חתונה, מסיבת בר או בת מצווה, חינה, אירוע ערב אחר). כשבודקים תאריך, שולחים ל-check_availability את ה-slot לפי השעה שהלקוח אמר, ואם אין שעה, לפי סוג האירוע. אם לא ברור באיזה חלק של היום האירוע, קודם שואלים.
+` : ""}${p.intake_shabbat_closed ? `- ${name} לא מצלם בשבת: ביום שישי אפשר רק אירוע שמסתיים עד ${FRIDAY_LAST_END} (${fridayAfternoon ? "אירוע בוקר או אירוע צהריים" : "אירוע בוקר"}), שישי בערב ושבת במשך היום לא זמינים, ובמוצאי שבת (ערב, אחרי צאת השבת) כן אפשר. לאירוע במוצאי שבת בודקים עם slot="evening", ואומרים שהאירוע יתחיל אחרי צאת השבת. כש-check_availability מחזיר closedReason, אומרים את זה ללקוח בפשטות, לא מציעים רשימת המתנה, ומציעים תאריך אחר או מוצאי שבת.
 ` : ""}- ברגע שיש תאריך, קוראים ל-check_availability. אם התאריך תפוס, אומרים את זה בעדינות ומציעים להיכנס לרשימת ההמתנה (אחרי שיש שם וטלפון, קוראים ל-join_waitlist).
 - אחרי ש-join_waitlist החזיר ok, מסיימים בתודה ובהסבר ש${name} יעדכן אם התאריך יתפנה. לא ממשיכים לאסוף פרטים ולא מציעים הצעת מחיר לתאריך תפוס.
 - בכל פעם שהלקוח נותן פרט, קוראים ל-save_details עם מה שנאמר.
@@ -212,7 +216,7 @@ ${p.intake_allow_split_day ? `- ${name} יכול לצלם באותו יום גם
   - לא מזכירים מפה, חיפוש או בדיקה.
 - מה הצילום יכלול: שואלים מה הם רוצים שהצילום יכלול. אם שואלים מה האפשרויות: תמונות, וידאו, מגנטים ואלבום דיגיטלי מעוצב. שומרים ב-save_details בשדה coverage.
 - אם רוצים וידאו: שואלים אם צריך צלם וידאו נוסף, כלומר שני אנשי צוות (צלם סטילס, ${name}, וצלם וידאו). אם בשאלות הנפוצות יש מידע על צלם וידאו או צלם שני, עונים לפיו. שומרים בשדה videoCrew.
-- בר מצווה או בת מצווה: מוודאים אם זה אירוע בוקר (עלייה לתורה) או אירוע ערב, כי יש שקוראים לעלייה לתורה "בר מצווה". שומרים ב-save_details בשדה eventSlot (ובבדיקת התאריך שולחים את ה-slot המתאים).
+- בר מצווה או בת מצווה: מוודאים אם זה אירוע בוקר (עלייה לתורה), אירוע צהריים או אירוע ערב, כי יש שקוראים לעלייה לתורה "בר מצווה". שומרים ב-save_details בשדה eventSlot (ובבדיקת התאריך שולחים את ה-slot המתאים).
 - השאלה הנוספת ש${name} ביקש לשאול (אם יש) נשאלת לפני שהפנייה מועברת.
 - לפני שמעבירים את הפנייה: כשכל הפרטים נאספו, שואלים אם יש עוד משהו שחשוב לדעת על האירוע. רק אחרי שהלקוח ענה, קוראים ל-save_details עם nothingElse=true (ועם מה שהוסיף, בשדה wishes). רק אז הפנייה מועברת (handedOff=true). אם save_details עוד לא העביר, קוראים ל-complete_intake.
 - אחרי שהפנייה הועברה, מסכמים ללקוח בקצרה את מה שהועבר, אומרים שהצעת מחיר מ${name} תגיע תוך ${p.intake_bot_reply_hours} שעות, ומודים. לא שואלים יותר שאלות אחרי ההעברה.
@@ -231,7 +235,7 @@ const TOOLS: Anthropic.Tool[] = [
       type: "object",
       properties: {
         date: { type: "string", description: "YYYY-MM-DD" },
-        slot: { type: "string", enum: ["morning", "evening"], description: "בוקר (עלייה לתורה) או ערב, כשהצלם מאפשר שני אירועים באותו יום" },
+        slot: { type: "string", enum: ["morning", "afternoon", "evening"], description: "בוקר (עלייה לתורה), צהריים או ערב, כשהצלם מאפשר כמה אירועים באותו יום" },
       },
       required: ["date"],
     },
@@ -263,7 +267,7 @@ const TOOLS: Anthropic.Tool[] = [
         wishes: { type: "string", description: "מה חשוב ללקוח / בקשות מיוחדות / פרטים נוספים על האירוע" },
         coverage: { type: "string", description: "מה הצילום יכלול: תמונות, וידאו, מגנטים, אלבום דיגיטלי מעוצב (מה שהלקוח בחר)" },
         videoCrew: { type: "string", description: "כשרוצים וידאו: האם צריך צלם וידאו נוסף (שני אנשי צוות), במילים של הלקוח" },
-        eventSlot: { type: "string", enum: ["morning", "evening"], description: "בר/בת מצווה: אירוע בוקר (עלייה לתורה) או אירוע ערב" },
+        eventSlot: { type: "string", enum: ["morning", "afternoon", "evening"], description: "בר/בת מצווה: אירוע בוקר (עלייה לתורה), אירוע צהריים או אירוע ערב" },
         nothingElse: { type: "boolean", description: "true רק אחרי ששאלת אם יש עוד משהו שחשוב לדעת על האירוע והלקוח ענה" },
         clientName: { type: "string" },
         phone: { type: "string" },
@@ -532,11 +536,12 @@ async function runTool(
     // The app's events plus bookings written only in the photographer's Google Calendar (by color).
     const calendar = await googleBusyOnDate(supabase, conv.photographer_id, [p.google_calendar_import_color_id, p.google_calendar_color_id], date);
     const list = [...(events ?? []), ...calendar];
-    const slot: DaySlot | undefined = p.intake_allow_split_day && (input.slot === "morning" || input.slot === "evening") ? input.slot : undefined;
-    // Split day: only events overlapping the requested part of the day count. Otherwise any event
-    // on the date makes it taken.
-    const closedReason = p.intake_shabbat_closed ? shabbatClosure(date, input.slot === "morning" || input.slot === "evening" ? input.slot : undefined) : null;
-    const available = closedReason ? false : slot ? !list.some((e) => blocksSlot(e, slot)) : list.length === 0;
+    const slot: DaySlot | undefined = p.intake_allow_split_day && isDaySlot(input.slot) ? input.slot : undefined;
+    // Split day: only events overlapping the requested part of the day (in the photographer's hours,
+    // intake_day_slots) count. Otherwise any event on the date makes it taken.
+    const hours = slotHours(p.intake_day_slots);
+    const closedReason = p.intake_shabbat_closed ? shabbatClosure(date, isDaySlot(input.slot) ? input.slot : undefined, hours) : null;
+    const available = closedReason ? false : slot ? !list.some((e) => blocksSlot(e, slot, hours)) : list.length === 0;
     conv.collected = { ...conv.collected, eventDate: date, dateAvailable: available, ...(slot ? { eventSlot: slot } : {}) };
     return JSON.stringify({
       date,
@@ -544,7 +549,7 @@ async function runTool(
       hebrewDate: hebrewDate(date),
       ...(slot ? { slot: SLOT_LABELS[slot] } : {}),
       // Not a booked date: the photographer doesn't work then. No waitlist, ask for another date.
-      ...(closedReason ? { closedReason: closedReason === "saturday" ? "שבת במשך היום (במוצאי שבת, אחרי צאת השבת, אפשר)" : "שישי בערב (בשישי רק אירוע בוקר עד 16:00)" } : {}),
+      ...(closedReason ? { closedReason: closedReason === "saturday" ? "שבת במשך היום (במוצאי שבת, אחרי צאת השבת, אפשר)" : `שישי בערב (בשישי רק אירוע שמסתיים עד ${FRIDAY_LAST_END})` } : {}),
     });
   }
 
@@ -559,7 +564,7 @@ async function runTool(
     if (input.dateUndecided === true && !patch.eventDate) patch.dateUndecided = true;
     if (patch.eventDate) patch.dateUndecided = false;
     if (patch.eventDate && patch.eventDate !== conv.collected.eventDate) delete conv.collected.dateAvailable;
-    if (input.eventSlot === "morning" || input.eventSlot === "evening") patch.eventSlot = input.eventSlot;
+    if (isDaySlot(input.eventSlot)) patch.eventSlot = input.eventSlot;
     // A place saved from a clear match clears the flag; one kept as the client wrote it sets it.
     if (patch.location) patch.locationUnverified = input.locationUnverified === true;
     if (input.nothingElse === true) patch.nothingElse = true;
@@ -795,7 +800,7 @@ export function transcriptOf(messages: Anthropic.MessageParam[]): { role: "clien
 export const IDLE_MINUTES = 20;
 
 const PHOTOGRAPHER_FIELDS =
-  "id, name, email, plan, ui_lang, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, google_calendar_import_color_id, google_calendar_color_id";
+  "id, name, email, plan, ui_lang, intake_bot_enabled, intake_bot_faq, intake_bot_reply_hours, intake_bot_extra_question, intake_allow_split_day, intake_shabbat_closed, intake_day_slots, google_calendar_import_color_id, google_calendar_color_id";
 
 export async function finalizeIdleConversations(supabase: ServiceClient, siteUrl: string): Promise<{ completed: number; partial: number }> {
   const now = Date.now();

@@ -132,12 +132,22 @@ lead's name, status, source and the photographer's own notes. `POST /api/leads` 
 lead form warns once.
 
 **Split day (2026-09-26, migration 0135, owner's decision):** with `photographers.intake_allow_split_day`
-(on for the admin), `check_availability` takes `slot` morning/evening (the prompt maps עלייה לתורה to
-morning, evening events to evening) and only events overlapping that window count: morning
-07:30-15:00, evening 18:00-24:00 (owner's hours), span = min(arrival, start) to end (no end: +4h before 14:00, else
-midnight; 00:00 = midnight; no start = whole day), `lib/daySlots.ts`. Off = any event takes the day.
+(on for the admin), `check_availability` takes `slot` morning/afternoon/evening (the prompt maps by
+the hour the client gave, else by event type: עלייה לתורה to morning, a lunch event to afternoon,
+evening events to evening) and only events overlapping that window count. Span = min(arrival,
+start) to end (no end: +4h before 14:00, else midnight; 00:00 = midnight; no start = whole day),
+`lib/daySlots.ts`. Off = any event takes the day.
+- **The photographer's own hours (2026-10-19, owner's request, "עדכון ללא" 2.12.6):** settings ›
+  אוטומציה, under "אירוע בוקר, צהריים וערב באותו יום", has from/until times for each part
+  (`photographers.intake_day_slots`, jsonb, migration 0187; null = defaults). Defaults: morning
+  07:30-15:00 and evening 18:00-00:00 (the owner's hours since 09-26), afternoon 12:00-16:00 (new
+  part, my default). `slotHours` reads it, falling back per part when missing or invalid (start
+  must be before end; 00:00 end = midnight). Parts may overlap: the check is the existing event's
+  span against the requested window, not slot against slot. The prompt states the hours.
+- An afternoon `eventSlot` goes by the morning's 4-hour package on the quote page (`slotFor`).
 **Shabbat (migration 0136, owner's decision):** `photographers.intake_shabbat_closed` (on for the
-admin): Friday only a morning slot (until 16:00), Friday evening and Saturday daytime closed,
+admin): Friday only until 16:00 (`FRIDAY_LAST_END`): the morning slot, or the afternoon slot when
+its hours end by 16:00 (`openOnFriday`); Friday evening and Saturday daytime closed,
 Saturday evening (motzei Shabbat) open (owner, 2026-09-26)
 (`shabbatClosure` in `lib/daySlots.ts`); `check_availability` returns `closedReason`, the prompt says
 so, offers no waitlist and asks for another date. Only a full-day wedding takes a whole day; old
