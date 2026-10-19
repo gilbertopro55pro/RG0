@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { IntakeFaqItem, Photographer } from "@/lib/types";
 import { GREETING_MAX_CHARS, chatLinkFor, defaultWhatsAppGreeting } from "@/lib/intakeGreeting";
 import { SOURCE_LINKS } from "@/lib/leadSource";
+import { DAY_SLOTS, DEFAULT_SLOT_HOURS, SLOT_LABELS, slotHours, slotWindow, type DaySlot, type DaySlotHours } from "@/lib/daySlots";
 import { useT } from "@/i18n/client";
 
 const MAX_FAQ = 15;
@@ -21,7 +22,7 @@ export default function BotSettings({
   canBuyPacks = false,
   chatPath,
 }: {
-  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_whatsapp_greeting" | "meta_pixel_id" | "intake_allow_split_day" | "intake_shabbat_closed" | "intake_chat_title">;
+  photographer: Pick<Photographer, "id" | "name" | "intake_bot_enabled" | "intake_bot_faq" | "intake_bot_reply_hours" | "intake_bot_extra_question" | "intake_whatsapp_greeting" | "meta_pixel_id" | "intake_allow_split_day" | "intake_shabbat_closed" | "intake_day_slots" | "intake_chat_title">;
   cap: number;
   usedThisMonth: number;
   // Bought conversations left (used after the monthly cap, never expire).
@@ -41,6 +42,10 @@ export default function BotSettings({
   const [pixelId, setPixelId] = useState(photographer.meta_pixel_id ?? "");
   const [splitDay, setSplitDay] = useState(!!photographer.intake_allow_split_day);
   const [shabbatClosed, setShabbatClosed] = useState(!!photographer.intake_shabbat_closed);
+  // The hours of each part of the day for the date check (lib/daySlots.ts); the defaults until changed.
+  const [dayHours, setDayHours] = useState<DaySlotHours>(() => slotHours(photographer.intake_day_slots));
+  const hoursAreDefault = DAY_SLOTS.every((s) => dayHours[s].start === DEFAULT_SLOT_HOURS[s].start && dayHours[s].end === DEFAULT_SLOT_HOURS[s].end);
+  const setSlotTime = (slot: DaySlot, key: "start" | "end", value: string) => setDayHours((h) => ({ ...h, [slot]: { ...h[slot], [key]: value } }));
   const [chatTitle, setChatTitle] = useState(photographer.intake_chat_title ?? "");
   const [copiedSource, setCopiedSource] = useState<string | null>(null);
   const defaultGreeting = defaultWhatsAppGreeting(photographer.name, chatPath);
@@ -70,6 +75,10 @@ export default function BotSettings({
   }
 
   const save = async (patch?: { intake_bot_enabled?: boolean }) => {
+    if (splitDay && DAY_SLOTS.some((s) => !slotWindow(dayHours[s]))) {
+      setStatus("בשעות של חלקי היום, שעת ההתחלה צריכה להיות לפני שעת הסיום");
+      return;
+    }
     setSaving(true);
     setStatus(null);
     const cleanFaq = faq
@@ -86,6 +95,7 @@ export default function BotSettings({
         meta_pixel_id: /^\d{8,20}$/.test(pixelId.trim()) ? pixelId.trim() : null,
         intake_allow_split_day: splitDay,
         intake_shabbat_closed: shabbatClosed,
+        ...(splitDay ? { intake_day_slots: hoursAreDefault ? null : dayHours } : {}),
         intake_chat_title: chatTitle.trim().slice(0, 80) || null,
       })
       .eq("id", photographer.id);
@@ -349,17 +359,48 @@ export default function BotSettings({
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={splitDay} onChange={(e) => setSplitDay(e.target.checked)} className="mt-1" />
           <span>
-            {t("אירוע בוקר ואירוע ערב באותו יום")}
+            {t("אירוע בוקר, צהריים וערב באותו יום")}
             <span className="block text-xs text-ink-soft">
-              {t("אירוע בוקר (07:30 עד 15:00, למשל עלייה לתורה) ואירוע ערב (18:00 עד 00:00) לא חוסמים זה את זה בבדיקת התאריך. אירוע בלי שעות, או אירוע שנמשך כל היום, חוסם את כל היום.")}
+              {t("העוזר בודק רק את החלק ביום שהלקוח מבקש, לפי השעות שקבעת כאן. אירוע שכבר קיים תופס רק את החלקים שהשעות שלו חופפות. אירוע בלי שעות, או אירוע שנמשך כל היום, חוסם את כל היום.")}
             </span>
           </span>
         </label>
+        {splitDay && (
+          <div className="ms-6 space-y-2">
+            {DAY_SLOTS.map((slot) => (
+              <div key={slot} className="flex items-center gap-2 text-sm">
+                <span className="w-16 shrink-0">{t(SLOT_LABELS[slot])}</span>
+                <input
+                  type="time"
+                  value={dayHours[slot].start}
+                  onChange={(e) => setSlotTime(slot, "start", e.target.value)}
+                  aria-label={t("{part}: משעה", { part: t(SLOT_LABELS[slot]) })}
+                  className="rounded-lg px-2 py-1.5 border border-line"
+                  style={{ background: "var(--color-input-bg)" }}
+                />
+                <span className="text-ink-soft">{t("עד")}</span>
+                <input
+                  type="time"
+                  value={dayHours[slot].end}
+                  onChange={(e) => setSlotTime(slot, "end", e.target.value)}
+                  aria-label={t("{part}: עד שעה", { part: t(SLOT_LABELS[slot]) })}
+                  className="rounded-lg px-2 py-1.5 border border-line"
+                  style={{ background: "var(--color-input-bg)" }}
+                />
+              </div>
+            ))}
+            {!hoursAreDefault && (
+              <button type="button" onClick={() => setDayHours(DEFAULT_SLOT_HOURS)} className="text-xs text-ink-soft underline">
+                {t("חזרה לשעות ברירת המחדל")}
+              </button>
+            )}
+          </div>
+        )}
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={shabbatClosed} onChange={(e) => setShabbatClosed(e.target.checked)} className="mt-1" />
           <span>
             {t("לא מצלם בשבת")}
-            <span className="block text-xs text-ink-soft">{t("ביום שישי רק אירוע בוקר (עד 16:00). שישי בערב ושבת במשך היום לא זמינים, מוצאי שבת זמין.")}</span>
+            <span className="block text-xs text-ink-soft">{t("ביום שישי רק אירוע שמסתיים עד 16:00. שישי בערב ושבת במשך היום לא זמינים, מוצאי שבת זמין.")}</span>
           </span>
         </label>
         <details className="rounded-xl border border-line" style={{ background: "var(--color-input-bg)" }}>

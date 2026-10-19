@@ -292,7 +292,7 @@ export function buildLeadQuotePrefill(input: {
   }
 
   const hints: string[] = [];
-  if (d.eventSlot) hints.push(d.eventSlot === "morning" ? "אירוע בוקר" : "אירוע ערב");
+  if (d.eventSlot) hints.push(d.eventSlot === "morning" ? "אירוע בוקר" : d.eventSlot === "afternoon" ? "אירוע צהריים" : "אירוע ערב");
   if (d.guests?.trim()) hints.push(`${d.guests.trim()} מוזמנים`);
   if (d.dateUndecided && d.approxDate?.trim()) hints.push(`תאריך משוער: ${d.approxDate.trim()}`);
   if (d.coverage?.trim()) hints.push(`ביקשו: ${d.coverage.trim()}`);

@@ -57,6 +57,7 @@ const dict: AreaDict = {
 
     // Intake assistant: lead details (labels, also the conversation PDF)
     "בוקר": "Morning",
+    "צהריים": "Afternoon",
     "ערב": "Evening",
     "מקום": "Location",
     "אורחים": "Guests",
@@ -66,7 +67,7 @@ const dict: AreaDict = {
     "חשוב להם": "What matters to them",
     "מספר אורחים משוער": "Approximate number of guests",
     "האם צריך צלם וידאו נוסף": "Whether a separate videographer is needed",
-    "אירוע בוקר או ערב": "Morning or evening event",
+    "אירוע בוקר, צהריים או ערב": "Morning, afternoon or evening event",
     "בדיקת התאריך": "the date check",
     "(תפוס)": "(taken)",
     "טרם נקבע": "Not set yet",
@@ -245,6 +246,7 @@ const dict: AreaDict = {
 
     // Intake assistant: lead details
     "בוקר": "Утро",
+    "צהריים": "День",
     "ערב": "Вечер",
     "מקום": "Место",
     "אורחים": "Гости",
@@ -254,7 +256,7 @@ const dict: AreaDict = {
     "חשוב להם": "Для них важно",
     "מספר אורחים משוער": "Примерное число гостей",
     "האם צריך צלם וידאו נוסף": "Нужен ли отдельный видеооператор",
-    "אירוע בוקר או ערב": "Утреннее или вечернее мероприятие",
+    "אירוע בוקר, צהריים או ערב": "Утреннее, дневное или вечернее мероприятие",
     "בדיקת התאריך": "проверка даты",
     "(תפוס)": "(занято)",
     "טרם נקבע": "Ещё не назначена",

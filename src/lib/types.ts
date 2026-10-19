@@ -28,8 +28,11 @@ export type Photographer = {
   intake_bot_faq: IntakeFaqItem[];
   intake_bot_reply_hours: number;
   intake_bot_extra_question: string | null;
-  // A morning and an evening event may share a date in the assistant's check (migration 0135).
+  // A morning, an afternoon and an evening event may share a date in the assistant's check
+  // (migration 0135), in the photographer's hours for each part (migration 0187; null = the
+  // defaults). Read through slotHours in lib/daySlots.ts.
   intake_allow_split_day: boolean;
+  intake_day_slots: Record<string, { start: string; end: string }> | null;
   // No work on Shabbat: Friday morning only, Saturday closed (migration 0136).
   intake_shabbat_closed: boolean;
   // Heading on the public chat page, e.g. "רועי גלברט - צילום אירועים" (migration 0137). Null = name.
@@ -360,8 +363,9 @@ export type IntakeDetails = {
   eventType?: string;
   eventDate?: string; // YYYY-MM-DD
   dateAvailable?: boolean;
-  // Morning (bar mitzvah) or evening, when the photographer allows both on one date (lib/daySlots.ts).
-  eventSlot?: "morning" | "evening";
+  // Morning (bar mitzvah), afternoon or evening, when the photographer allows several on one date
+  // (lib/daySlots.ts).
+  eventSlot?: "morning" | "afternoon" | "evening";
   // The client hasn't set a date yet — then approxDate ("קיץ 2027", "מרץ") stands in for it.
   dateUndecided?: boolean;
   approxDate?: string;
