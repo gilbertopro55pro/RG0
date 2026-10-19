@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 import { PACKAGE_LABELS } from "@/lib/stages";
 import type { EventPaymentRow } from "@/lib/types";
@@ -10,6 +11,7 @@ import { closingRecognitions } from "@/lib/closeEvent";
 import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
+import { openBalances } from "@/lib/openBalances";
 
 const HEBREW_MONTHS = [
   "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
@@ -32,11 +34,16 @@ export default function AnalyticsView({
   payments,
   initialYear,
   initialMonth,
+  today,
+  initialTab = "overview",
 }: {
   events: AnalyticsEvent[];
   payments: EventPaymentRow[];
   initialYear: number;
   initialMonth: number;
+  // YYYY-MM-DD, Israel date, from the server.
+  today: string;
+  initialTab?: "overview" | "balances";
 }) {
   const t = useT();
   const lang = useLang();
@@ -49,6 +56,13 @@ export default function AnalyticsView({
   // mattering. Independent of the 12-months trend chart further down, which always shows a
   // trailing 12-month history regardless of this toggle.
   const [scope, setScope] = useState<"month" | "year">("month");
+  // "יתרות פתוחות" (owner, 2026-10-19): each client's open balance and the total of them all
+  // (lib/openBalances.ts). The tab is kept in the address (?tab=balances) so it can be linked to.
+  const [tab, setTab] = useState<"overview" | "balances">(initialTab);
+  const switchTab = (next: "overview" | "balances") => {
+    setTab(next);
+    window.history.replaceState(null, "", next === "balances" ? "?tab=balances" : window.location.pathname);
+  };
   const [shareOpen, setShareOpen] = useState(false);
   const [shareStep, setShareStep] = useState<"options" | "email">("options");
   const [emailValue, setEmailValue] = useState("");
@@ -272,6 +286,7 @@ export default function AnalyticsView({
   }, [payments, eventById, recognizedEventIds]);
 
   const upcomingTotal = upcoming.reduce((sum, r) => sum + r.amount, 0);
+  const balances = useMemo(() => openBalances(events, payments, recognizedEventIds, today), [events, payments, recognizedEventIds, today]);
 
   const packageCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -304,6 +319,31 @@ export default function AnalyticsView({
         blurb={t("כאן רואים תמונה עסקית מלאה, הכנסות לפי חודש, תשלומים שממתינים, והתפלגות לפי סוגי חבילות.")}
       />
 
+      <div role="tablist" aria-label={t("ניתוח עסקי")} className="flex rounded-xl border border-line bg-white p-1 mb-4">
+        {(
+          [
+            ["overview", t("סקירה")],
+            ["balances", t("יתרות פתוחות")],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => switchTab(key)}
+            className="flex-1 rounded-lg px-3 py-2 text-sm font-semibold"
+            style={{ background: tab === key ? "var(--color-ink)" : "transparent", color: tab === key ? "#fff" : "var(--color-ink-soft)" }}
+          >
+            {label}
+            {key === "balances" && balances.rows.length > 0 && <span className="font-data opacity-80"> ({balances.rows.length})</span>}
+          </button>
+        ))}
+      </div>
+
+      {tab === "balances" ? (
+        <OpenBalancesTab balances={balances} today={today} money={money} />
+      ) : (
+      <>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <div className="flex rounded-lg border border-line bg-white p-0.5 shrink-0">
           <button
@@ -395,13 +435,18 @@ export default function AnalyticsView({
         </div>
       </section>
 
-      <div className="rounded-2xl p-4 mb-5 bg-card flex items-center justify-between gap-3">
+      <button
+        onClick={() => switchTab("balances")}
+        className="w-full text-start rounded-2xl p-4 mb-5 bg-card flex items-center justify-between gap-3"
+      >
         <div className="min-w-0">
           <div className="text-[13px] text-ink-soft">{t("ממתין לתשלום, בכל התאריכים")}</div>
-          <div className="text-xs text-ink-soft">{t("{n} תשלומים פתוחים", { n: upcoming.length })}</div>
+          <div className="text-xs text-ink-soft">
+            {t("{n} תשלומים פתוחים", { n: upcoming.length })} · <span className="underline">{t("לפירוט לפי לקוח")}</span>
+          </div>
         </div>
         <div className="text-[22px] font-extrabold font-data">{money(upcomingTotal)}</div>
-      </div>
+      </button>
 
       <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
         <div className="text-sm font-semibold mb-3.5">{t("הכנסות: 12 חודשים אחרונים")}</div>
@@ -498,6 +543,9 @@ export default function AnalyticsView({
         </div>
       )}
 
+      </>
+      )}
+
       {shareOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
@@ -580,5 +628,89 @@ export default function AnalyticsView({
         </div>
       )}
     </div>
+  );
+}
+
+// The "יתרות פתוחות" tab: the total up front, then one row per client, linked to the event. Events
+// that already took place come first, since that money is due now.
+function OpenBalancesTab({
+  balances,
+  today,
+  money,
+}: {
+  balances: ReturnType<typeof openBalances>;
+  today: string;
+  money: (n: number) => string;
+}) {
+  const t = useT();
+  const lang = useLang();
+  const day = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString(dateLocale(lang));
+  if (balances.rows.length === 0) {
+    return (
+      <div className="rounded-2xl p-6 bg-card border border-line text-center">
+        <div className="text-base font-semibold mb-1">{t("אין יתרות פתוחות")}</div>
+        <div className="text-sm text-ink-soft">{t("כל התשלומים שהוגדרו באירועים התקבלו.")}</div>
+      </div>
+    );
+  }
+  return (
+    <>
+      <section aria-label={t("סה״כ יתרות פתוחות")} className="surface-hero p-[18px] mb-4">
+        <div className="text-sm text-ink-soft mb-1.5">{t("סה״כ יתרות פתוחות")}</div>
+        <div className="text-[40px] leading-none font-extrabold font-data">{money(balances.total)}</div>
+        <div className="text-[13px] text-ink-soft mt-3">
+          {t("{n} לקוחות", { n: balances.rows.length })}
+          {balances.heldTotal > 0 && (
+            <>
+              {" · "}
+              <span style={{ color: "var(--color-rose)" }}>{t("{amount} מאירועים שכבר התקיימו", { amount: money(balances.heldTotal) })}</span>
+            </>
+          )}
+        </div>
+      </section>
+
+      <div className="rounded-2xl bg-card border border-line shadow-card overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-ink-soft border-b border-line">
+          <span>{t("לקוח")}</span>
+          <span>{t("יתרה פתוחה")}</span>
+        </div>
+        <ul>
+          {balances.rows.map((r) => {
+            const overdue = !!r.dueDate && r.dueDate.slice(0, 10) < today;
+            return (
+              <li key={r.eventId} className="border-b border-line last:border-b-0">
+                <Link href={`/events/${r.eventId}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-chip">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold truncate">{r.clientName}</div>
+                    <div className="text-[11.5px] text-ink-soft">
+                      {r.held ? t("האירוע התקיים ב-{date}", { date: day(r.eventDate) }) : t("אירוע ב-{date}", { date: day(r.eventDate) })}
+                      {r.dueDate && (
+                        <span style={overdue ? { color: "var(--color-rose)" } : undefined}>
+                          {" · "}
+                          {overdue ? t("מועד התשלום עבר ({date})", { date: day(r.dueDate) }) : t("לתשלום עד {date}", { date: day(r.dueDate) })}
+                        </span>
+                      )}
+                    </div>
+                    {r.deposit > 0 && r.balance > 0 && (
+                      <div className="text-[11px] text-ink-soft font-data">
+                        {t("מקדמה {deposit} · יתרה {balance}", { deposit: money(r.deposit), balance: money(r.balance) })}
+                      </div>
+                    )}
+                    {r.deposit > 0 && r.balance === 0 && <div className="text-[11px] text-ink-soft">{t("מקדמה שלא שולמה")}</div>}
+                  </div>
+                  <div className="text-base font-bold font-data shrink-0" style={r.held ? { color: "var(--color-rose)" } : undefined}>
+                    {money(r.total)}
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="flex items-center justify-between px-4 py-3 bg-chip text-sm font-bold">
+          <span>{t("סה״כ")}</span>
+          <span className="font-data">{money(balances.total)}</span>
+        </div>
+      </div>
+    </>
   );
 }

@@ -14,7 +14,8 @@ export type AnalyticsEvent = {
   closed_balance_month: string | null;
 };
 
-export default async function AnalyticsPage() {
+export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -31,6 +32,8 @@ export default async function AnalyticsPage() {
   // Computed once, server-side, and passed down rather than each side calling `new Date()`
   // independently — otherwise a server/client timezone difference causes a hydration mismatch.
   const now = new Date();
+  // "Today" for which events already took place (the open-balances tab), on the Israel calendar.
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(now);
 
   return (
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
@@ -39,6 +42,8 @@ export default async function AnalyticsPage() {
         payments={payments ?? []}
         initialYear={now.getFullYear()}
         initialMonth={now.getMonth() + 1}
+        today={today}
+        initialTab={tab === "balances" ? "balances" : "overview"}
       />
     </div>
   );
