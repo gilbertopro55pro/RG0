@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSignedDownloadUrl } from "@/lib/storage";
+import { shortFileUrl } from "@/lib/shortFileLinks";
 import type { EventRow } from "@/lib/types";
 import { clientLangFor } from "@/lib/clientLang";
 import { messagesFor } from "@/i18n/dict";
@@ -52,11 +53,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   let notify: { text: string; downloadUrl: string; message: string } | null = null;
 
   if (event.client_phone) {
-    const signedUrl = await getSignedDownloadUrl(
-      "album-designs",
-      albumDesignPdfPath,
-      60 * 60 * 24 * 7,
-      albumDesignPdfFilename ?? "album-design.pdf"
+    const filename = albumDesignPdfFilename ?? "album-design.pdf";
+    const ttl = 60 * 60 * 24 * 7;
+    const signedUrl = await shortFileUrl(
+      { bucket: "album-designs", path: albumDesignPdfPath, filename, photographerId: user.id, ttlSeconds: ttl },
+      () => getSignedDownloadUrl("album-designs", albumDesignPdfPath, ttl, filename),
     );
     if (signedUrl) {
       const t = makeT(messagesFor(clientLangFor(user.email, event.client_lang)));

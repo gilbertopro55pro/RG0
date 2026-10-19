@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { STAGE_LABELS, STAGE_NOTIFY_CLIENT, type StageKey } from "@/lib/stages";
 import { getSignedDownloadUrl } from "@/lib/storage";
+import { shortFileUrl } from "@/lib/shortFileLinks";
 import type { CustomPackageStageRow } from "@/lib/types";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -127,11 +128,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (event?.client_phone) {
       let downloadUrl: string | null = null;
       if (isAlbumSend) {
-        downloadUrl = await getSignedDownloadUrl(
-          "album-designs",
-          albumDesignPdfPath!,
-          60 * 60 * 24 * 7,
-          albumDesignPdfFilename ?? "album-design.pdf"
+        const filename = albumDesignPdfFilename ?? "album-design.pdf";
+        const ttl = 60 * 60 * 24 * 7;
+        downloadUrl = await shortFileUrl(
+          { bucket: "album-designs", path: albumDesignPdfPath!, filename, photographerId: user.id, ttlSeconds: ttl },
+          () => getSignedDownloadUrl("album-designs", albumDesignPdfPath!, ttl, filename),
         );
       }
       notify = { text: notifyText!, downloadUrl };

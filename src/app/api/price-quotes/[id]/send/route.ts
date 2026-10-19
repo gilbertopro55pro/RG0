@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { downloadObjectBuffer, uploadObject, getSignedDownloadUrl } from "@/lib/storage";
+import { shortFileUrl } from "@/lib/shortFileLinks";
 import { buildPriceQuotePdf } from "@/lib/priceQuotePdf";
 import { formatWorkHours, quoteEventDetails } from "@/lib/priceQuoteFormat";
 import { sendEmail } from "@/lib/resend";
@@ -105,7 +106,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // pattern as the other client-facing links in the app (portal/gallery).
     const path = `${user.id}/${quote.id}-${Date.now()}.pdf`;
     await uploadObject("price-quotes", path, Buffer.from(pdfBytes), "application/pdf");
-    const url = await getSignedDownloadUrl("price-quotes", path, 60 * 60 * 24 * 7, fileName);
+    const ttl = 60 * 60 * 24 * 7;
+    const url = await shortFileUrl({ bucket: "price-quotes", path, filename: fileName, photographerId: user.id, ttlSeconds: ttl }, () =>
+      getSignedDownloadUrl("price-quotes", path, ttl, fileName),
+    );
     const intro =
       lang !== "he"
         ? quoteShareCaption("", eventDetails.type ?? "", eventDetails.date ?? "", lang, quote.event_date?.slice(0, 10))

@@ -66,6 +66,9 @@ export function buildClientMessageText(params: {
   // the caller (see EventDetailView.tsx's buildClientUpdateMessage) before reaching this function.
   linkUrl: string;
   whatsappSignature: string | null;
+  // Signed with the photographer's name when they have no WhatsApp signature (owner, 2026-10-19:
+  // the signature, or else the name, never both).
+  senderName?: string | null;
   // The client's language (events.client_lang through clientLangFor, resolved on the server).
   // Default Hebrew = exactly the text this always produced. `savedTemplate` must be the saved row
   // for this same language (clientTemplateKey).
@@ -98,6 +101,13 @@ export function buildClientMessageText(params: {
     .split("{{מקדמה}}").join(params.depositAmount != null ? currency(params.depositAmount) : "")
     .split("{{יתרה}}").join(params.balanceAmount != null ? currency(params.balanceAmount) : "")
     .split(marker).join(`${marker} ${params.linkUrl}`);
-  if (params.whatsappSignature?.trim()) text += `\n\n${params.whatsappSignature.trim()}`;
+  // The booking confirmation always opens with the client's name and carries the portal link
+  // (owner, 2026-10-19), even when a saved template left out the {{שם}} token or the link line.
+  if (params.stageKey === "event_closing") {
+    if (!template.includes("{{שם}}")) text = `${params.clientName},\n${text}`;
+    if (!template.includes(marker)) text = `${text.trimEnd()}\n${marker} ${params.linkUrl}`;
+  }
+  const signature = params.whatsappSignature?.trim() || params.senderName?.trim();
+  if (signature) text += `\n\n${signature}`;
   return text;
 }

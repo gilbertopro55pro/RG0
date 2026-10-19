@@ -44,6 +44,8 @@ const PUBLIC_PATHS = [
   "/r",
   // A short client link (lib/shortLinks.ts): redirects to the portal, gallery, quote or contract.
   "/s",
+  // A short link to a file or a page (lib/shortFileLinks.ts), its code being the access.
+  "/l",
   // The print house's download page for album files (a tracked link, token-authenticated).
   "/print",
   "/api/print",

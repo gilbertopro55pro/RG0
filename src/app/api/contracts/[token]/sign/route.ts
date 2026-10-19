@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sendPushToPhotographer } from "@/lib/push";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { sendEmail } from "@/lib/resend";
+import { shortPageUrl, PAGE_LINK_TTL } from "@/lib/shortFileLinks";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { packageLabel } from "@/lib/stages";
 import type { EventContractRow, EventRow, Photographer } from "@/lib/types";
@@ -103,7 +104,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         .eq("stage_key", "event_closing")
         .eq("done", false);
 
-      const eventUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://myframeflow.com"}/events/${event.id}`;
+      // Opens the event with the booking-confirmation message ready to send (EventDetailView, ?closing=1).
+      const eventUrl = await shortPageUrl(`/events/${event.id}?closing=1`, { photographerId: event.photographer_id, ttlSeconds: PAGE_LINK_TTL });
       await sendEmail({
         to: notificationEmailFor(photographer.email),
         subject: t("החוזה עם {name} נחתם", { name: event.client_name }),

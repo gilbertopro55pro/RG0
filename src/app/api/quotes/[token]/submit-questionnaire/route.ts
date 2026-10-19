@@ -4,6 +4,8 @@ import { createEventWithSideEffects } from "@/lib/createEvent";
 import { notifyDateTaken } from "@/lib/dateTakenNotify";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { sendEmail } from "@/lib/resend";
+import { sendPushToPhotographer } from "@/lib/push";
+import { shortPageUrl, PAGE_LINK_TTL } from "@/lib/shortFileLinks";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { packageLabel, type PackageType } from "@/lib/stages";
 import type { LeadRow, Photographer } from "@/lib/types";
@@ -155,10 +157,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       });
     }
 
+    // The email and the phone notification open the new event with the booking-confirmation
+    // message ready to send (owner, 2026-10-19: the event page, not the leads page; EventDetailView,
+    // ?closing=1). The notification has the approval's tag, so it replaces the "approved the quote"
+    // one (api/quotes/[token]/approve) on the phone instead of adding a second.
+    const eventPath = `/events/${result.event.id}?closing=1`;
+    const notifyT = makeT(messagesFor(photographerLang(lead.photographers?.ui_lang)));
+    await sendPushToPhotographer(lead.photographer_id, {
+      title: notifyT("האירוע של {name} נוצר", { name: result.event.client_name }),
+      body: notifyT("לחצו לשליחת הודעת סגירת האירוע ללקוח/ה"),
+      url: eventPath,
+      tag: `quote-${lead.id}`,
+    });
+
     if (lead.photographers?.email) {
       // To the photographer, in their own language (photographers.ui_lang); Hebrew when unset.
       const lang = photographerLang(lead.photographers.ui_lang);
       const t = makeT(messagesFor(lang));
+      const eventUrl = await shortPageUrl(eventPath, { photographerId: lead.photographer_id, ttlSeconds: PAGE_LINK_TTL });
       const money = (n: number | null) => (lang === "he" ? `₪${n}` : `₪${(n ?? 0).toLocaleString(dateLocale(lang))}`);
       const eventDateStr = new Date(result.event.event_date).toLocaleDateString(dateLocale(lang));
       try {
@@ -177,7 +193,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
             `${t("מקדמה: {deposit} · יתרה לתשלום: {balance}", { deposit: money(0), balance: money(lead.quoted_amount) })}` +
             `${pkgFromItems ? `\n${t("(החבילה נבחרה לפי פריטי ההצעה. אפשר לשנות אותה בעמוד האירוע.)")}` : ""}${hoursNotice ? `\n${hoursNotice}` : ""}\n\n` +
             `${contract ? `\n${t("החוזה הוצג ללקוח/ה לחתימה כשלב האחרון בשאלון. כשייחתם, שלב סגירת האירוע יסומן כבוצע ותקבל/י עדכון.")}\n` : ""}\n` +
-            t("ניתן לעדכן את פרטי המקדמה/יתרה ולעקוב אחרי האירוע בעמוד האירוע במערכת."),
+            `${t("ניתן לעדכן את פרטי המקדמה/יתרה ולעקוב אחרי האירוע בעמוד האירוע במערכת.")}\n\n` +
+            `${t("לעמוד האירוע ולשליחת הודעת סגירת האירוע ללקוח/ה:")}\n${eventUrl}`,
         });
       } catch (e) {
         console.error("[submit-questionnaire] failed to send new-event email", e);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { uploadObject, getSignedDownloadUrl } from "@/lib/storage";
+import { shortFileUrl } from "@/lib/shortFileLinks";
 import { conversationPdf, conversationPdfName, studioName, type IntakeConversation, type IntakePhotographer } from "@/lib/intakeAssistant";
 
 export const runtime = "nodejs";
@@ -40,7 +41,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const path = `${user.id}/conversation-${lead.id}-${Date.now()}.pdf`;
   await uploadObject("price-quotes", path, Buffer.from(pdf), "application/pdf");
-  const url = await getSignedDownloadUrl("price-quotes", path, 60 * 60 * 24 * 7, conversationPdfName(details, photographer));
+  const filename = conversationPdfName(details, photographer);
+  const ttl = 60 * 60 * 24 * 7;
+  const url = await shortFileUrl({ bucket: "price-quotes", path, filename, photographerId: user.id, ttlSeconds: ttl }, () =>
+    getSignedDownloadUrl("price-quotes", path, ttl, filename),
+  );
   const first = (details.clientName ?? "").trim().split(/\s+/)[0];
   const message = `${first ? `היי ${first}, ` : "היי, "}מצורף סיכום השיחה שלנו עם כל פרטי האירוע:\n${url}\n\n${studioName(photographer)}`;
   return NextResponse.json({ url, message, phone: lead.phone ?? details.phone ?? null });

@@ -54,10 +54,11 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   const serviceRole = createServiceRoleClient();
   const { data: photographerSignatureRow } = await serviceRole
     .from("photographers")
-    .select("email, whatsapp_signature, subscription_status, trial_ends_at")
+    .select("name, email, whatsapp_signature, subscription_status, trial_ends_at")
     .eq("id", event.photographer_id)
-    .maybeSingle<{ email: string | null; whatsapp_signature: string | null } & Pick<Photographer, "subscription_status" | "trial_ends_at">>();
+    .maybeSingle<{ name: string | null; email: string | null; whatsapp_signature: string | null } & Pick<Photographer, "subscription_status" | "trial_ends_at">>();
   const whatsappSignature = photographerSignatureRow?.whatsapp_signature ?? null;
+  const senderName = photographerSignatureRow?.name ?? null;
   // The language of the client update messages (UI languages phase 3): the event owner's account
   // decides, so a team member sends the same language the owner would.
   const clientMessageLang = clientLangFor(photographerSignatureRow?.email, event.client_lang);
@@ -158,6 +159,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
         customPackageName={customPackageName}
         messageTemplates={messageTemplateMap}
         whatsappSignature={whatsappSignature}
+        senderName={senderName}
         clientMessageLang={clientMessageLang}
         canChooseClientLang={isOwner && canChooseClientLang(user!.email)}
       />

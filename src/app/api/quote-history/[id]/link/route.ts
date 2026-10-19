@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { quoteHistoryPdf } from "@/lib/quoteHistoryPdf";
 import { quoteDateDMY } from "@/lib/quoteHistory";
 import { getSignedDownloadUrl, uploadObject } from "@/lib/storage";
+import { shortFileUrl } from "@/lib/shortFileLinks";
 import { quoteShareCaption } from "@/lib/quoteDefaults";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
@@ -31,7 +32,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   } catch {
     return NextResponse.json({ error: "העלאת הקובץ נכשלה, נסו שוב" }, { status: 502 });
   }
-  const url = await getSignedDownloadUrl("price-quotes", path, 60 * 60 * 24 * 7, t("הצעת-מחיר.pdf"));
+  const filename = t("הצעת-מחיר.pdf");
+  const ttl = 60 * 60 * 24 * 7;
+  const url = await shortFileUrl({ bucket: "price-quotes", path, filename, photographerId: user.id, ttlSeconds: ttl }, () =>
+    getSignedDownloadUrl("price-quotes", path, ttl, filename),
+  );
   const d = pdf.row.details;
   const message = [
     quoteShareCaption(pdf.row.client_name, d.eventType ?? "", quoteDateDMY(d.eventDate) ?? "", pdf.lang, d.eventDate),
