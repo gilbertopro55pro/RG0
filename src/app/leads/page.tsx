@@ -60,6 +60,8 @@ export default async function LeadsPage() {
         eventTypes={eventTypes ?? []}
         prices={prices ?? []}
         isAdmin={photographer.email === ADMIN_EMAIL}
+        signature={photographer.whatsapp_signature}
+        senderName={photographer.name}
         quoteBuilder={{
           hourlyRate: photographer.hourly_shoot_rate,
           suppliers: photographer.pricing_suppliers ?? [],

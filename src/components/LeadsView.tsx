@@ -23,6 +23,10 @@ import { useT, useLang } from "@/i18n/client";
 import { dateLocale, isLang, LANG_LABELS, LANGS, type Lang } from "@/i18n/config";
 import type { TFn } from "@/i18n/translate";
 import { shortClientUrl } from "@/lib/shortLinks";
+import { leadReminderDue, leadReminderKind, leadReminderMessage, leadReminderSubject, type LeadReminderChannel, type LeadReminderFields } from "@/lib/leadReminder";
+
+// A lead with the reminder columns (migration 0186), which LeadRow leaves out (lib/leadReminder.ts).
+type Lead = LeadRow & LeadReminderFields;
 
 const CREATE_CUSTOM_PACKAGE_VALUE = "__create_custom__";
 
@@ -84,6 +88,8 @@ export default function LeadsView({
   prices: initialPrices,
   isAdmin,
   quoteBuilder,
+  signature = null,
+  senderName = null,
 }: {
   initialLeads: LeadRow[];
   // Idle leads the daily retention job moved out of the list (lib/leadRetention.ts).
@@ -93,10 +99,13 @@ export default function LeadsView({
   prices: PackagePriceRow[];
   isAdmin: boolean;
   quoteBuilder: LeadsQuoteBuilderData;
+  // The reminder message ends with the WhatsApp signature, or the photographer's name without one.
+  signature?: string | null;
+  senderName?: string | null;
 }) {
   const t = useT();
   const lang = useLang();
-  const [leads, setLeads] = useState(initialLeads);
+  const [leads, setLeads] = useState<Lead[]>(initialLeads);
   // "Now" for the days-since-quote counters, fixed when the page opens.
   const [now] = useState(() => Date.now());
   // Start of the "sources in the last 30 days" window, fixed when the page opens.
@@ -149,7 +158,7 @@ export default function LeadsView({
     setLeads((prev) => [{ ...lead, ...data, archived_at: null }, ...prev.filter((l) => l.id !== lead.id)]);
   };
 
-  const updateLead = (id: string, patch: Partial<LeadRow>) => {
+  const updateLead = (id: string, patch: Partial<Lead>) => {
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   };
 
@@ -201,6 +210,8 @@ export default function LeadsView({
 
   // Tapping a lead's phone asks how to reach them: WhatsApp or a call (owner, 2026-10-16).
   const [phoneLead, setPhoneLead] = useState<LeadRow | null>(null);
+  // "שליחת תזכורת" (lib/leadReminder.ts): the lead whose reminder sheet is open.
+  const [reminderLead, setReminderLead] = useState<Lead | null>(null);
   // "מחיקת הליד" sits next to the language picker and asks once before deleting.
   const [deleteAskId, setDeleteAskId] = useState<string | null>(null);
   // The photographer's own note (leads.photographer_note), added and edited from the "⋯" menu.
@@ -350,6 +361,13 @@ export default function LeadsView({
                   </div>
                 )}
                 {lead.quote_sent_at && <QuoteSentAge sentAt={lead.quote_sent_at} closed={lead.status === "won" || lead.status === "lost"} now={now} />}
+                {lead.reminder_sent_at && leadReminderKind(lead) && (
+                  <div className="text-[10.5px] text-ink-soft leading-tight">
+                    {t("תזכורת נשלחה: {date}", {
+                      date: new Date(lead.reminder_sent_at).toLocaleDateString(dateLocale(lang), { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric" }),
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -388,6 +406,15 @@ export default function LeadsView({
             )}
 
             <div className="flex flex-wrap items-center gap-2 mt-2.5">
+              {leadReminderDue(lead, now) && (
+                <button
+                  onClick={() => setReminderLead(lead)}
+                  className="text-[13px] font-bold h-9 px-3 rounded-lg"
+                  style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}
+                >
+                  {t("שליחת תזכורת")}
+                </button>
+              )}
               {!lead.converted_event_id && (
                 <button
                   onClick={() => setConvertLead(lead)}
@@ -701,6 +728,17 @@ export default function LeadsView({
         </BodyPortal>
       )}
 
+      {reminderLead && (
+        <LeadReminderSheet
+          lead={reminderLead}
+          signature={signature}
+          senderName={senderName}
+          now={now}
+          onSent={(patch) => updateLead(reminderLead.id, patch)}
+          onClose={() => setReminderLead(null)}
+        />
+      )}
+
       {contactAsk && (
         <ContactReminderDialog
           title={t("לקבוע תזכורת ליצירת קשר?")}
@@ -786,6 +824,141 @@ function QuotePdfButton({ lead }: { lead: LeadRow }) {
     <button onClick={download} disabled={busy} className="text-[13px] font-bold h-9 px-3 rounded-lg bg-white border border-line text-ink disabled:opacity-60">
       {busy ? t("מכין PDF...") : failed ? t("נכשל, לנסות שוב") : t("הורדת PDF")}
     </button>
+  );
+}
+
+// "שליחת תזכורת" (owner, 2026-10-19; lib/leadReminder.ts): the reminder, ready and editable, and the
+// ways to send it. Each one opens on the tap itself (iPhone blocks opening an app after waiting on the
+// server), and the send is recorded on the way out (api/leads/[id]/reminder), so the button waits
+// two more days.
+function LeadReminderSheet({
+  lead,
+  signature,
+  senderName,
+  now,
+  onSent,
+  onClose,
+}: {
+  lead: Lead;
+  signature: string | null;
+  senderName: string | null;
+  now: number;
+  onSent: (patch: Partial<Lead>) => void;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const lang = useLang();
+  const kind = leadReminderKind(lead) ?? "contact";
+  const clientLang: Lang = isLang(lead.client_lang) ? lead.client_lang : "he";
+  const [text, setText] = useState(() =>
+    leadReminderMessage({
+      lead,
+      kind,
+      // The quote's page works once it has an amount (the same link "העתקת קישור" copies).
+      quoteUrl: lead.quoted_amount ? shortClientUrl(window.location.origin, "quote", lead.quote_token) : null,
+      signature,
+      senderName,
+      lang: clientLang,
+    })
+  );
+  const [copied, setCopied] = useState(false);
+  const since = kind === "quote" ? lead.quote_sent_at : lead.contacted_at;
+  const day = (ms: number) => new Date(ms).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  const days = since ? Math.max(0, Math.round((Date.parse(day(now)) - Date.parse(day(Date.parse(since)))) / 86_400_000)) : 0;
+
+  const record = (channel: LeadReminderChannel) => {
+    onSent({ reminder_sent_at: new Date().toISOString(), reminder_count: (lead.reminder_count ?? 0) + 1 });
+    void fetch(`/api/leads/${lead.id}/reminder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel }),
+      keepalive: true,
+    }).catch(() => {});
+  };
+  const sendVia = (channel: LeadReminderChannel) => () => {
+    record(channel);
+    onClose();
+  };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      return;
+    }
+    setCopied(true);
+    record("copy");
+    setTimeout(onClose, 900);
+  };
+  const subject = leadReminderSubject(kind, senderName, clientLang);
+  const btn = "h-11 rounded-xl text-sm font-semibold flex items-center justify-center";
+
+  return (
+    <BodyPortal>
+      <div
+        className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+        style={{ background: "rgba(28, 27, 25, 0.45)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("שליחת תזכורת ל{name}", { name: lead.name })}
+        onClick={onClose}
+      >
+        <div className="w-full max-w-sm max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+          <h2 className="text-lg font-bold font-display">{t("שליחת תזכורת ל{name}", { name: lead.name })}</h2>
+          <p className="text-sm text-ink-soft mt-1 mb-3">
+            {kind === "quote"
+              ? days === 2
+                ? t("עברו יומיים מאז שנשלחה הצעת המחיר. אפשר לערוך את ההודעה לפני השליחה.")
+                : t("עברו {n} ימים מאז שנשלחה הצעת המחיר. אפשר לערוך את ההודעה לפני השליחה.", { n: days })
+              : days === 2
+                ? t("עברו יומיים מאז יצירת הקשר. אפשר לערוך את ההודעה לפני השליחה.")
+                : t("עברו {n} ימים מאז יצירת הקשר. אפשר לערוך את ההודעה לפני השליחה.", { n: days })}
+            {lead.reminder_sent_at && (
+              <>
+                {" "}
+                {t("תזכורת קודמת נשלחה ב-{date}.", {
+                  date: new Date(lead.reminder_sent_at).toLocaleDateString(dateLocale(lang), { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric" }),
+                })}
+              </>
+            )}
+          </p>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            dir={clientLang === "he" ? "rtl" : "ltr"}
+            rows={9}
+            aria-label={t("הודעת התזכורת")}
+            className="min-h-0 w-full rounded-2xl bg-white border border-line px-3.5 py-3 text-[13px] leading-relaxed mb-4 resize-none"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            {lead.phone && (
+              <a href={buildWaMeLink(lead.phone, text)} target="_blank" rel="noopener noreferrer" onClick={sendVia("whatsapp")} className={`${btn} col-span-2 bg-sage text-white`}>
+                {t("וואטסאפ")}
+              </a>
+            )}
+            {lead.phone && (
+              <a href={`sms:${lead.phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(text)}`} onClick={sendVia("sms")} className={`${btn} bg-white border border-line text-ink`}>
+                {t("הודעת SMS")}
+              </a>
+            )}
+            {lead.email && (
+              <a
+                href={`mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`}
+                onClick={sendVia("email")}
+                className={`${btn} bg-white border border-line text-ink`}
+              >
+                {t("מייל")}
+              </a>
+            )}
+            <button onClick={copy} className={`${btn} bg-white border border-line text-ink ${lead.phone && lead.email ? "col-span-2" : ""}`}>
+              {copied ? t("ההודעה הועתקה ✓") : t("העתקת ההודעה")}
+            </button>
+          </div>
+          <button onClick={onClose} className="h-10 mt-2 rounded-xl text-sm font-semibold text-ink-soft">
+            {t("ביטול")}
+          </button>
+        </div>
+      </div>
+    </BodyPortal>
   );
 }
 
