@@ -10,8 +10,15 @@ import PageGuide from "@/components/PageGuide";
 import { closingRecognitions } from "@/lib/closeEvent";
 import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
-import { dateLocale } from "@/i18n/config";
 import { openBalances } from "@/lib/openBalances";
+import { paymentReminderMessage, paymentReminderSubject, type PaymentReminderChannel } from "@/lib/paymentReminder";
+import { shortClientUrl } from "@/lib/shortLinks";
+import { buildWaMeLink } from "@/lib/waLink";
+import { dateLocale, isLang, type Lang } from "@/i18n/config";
+import BodyPortal from "@/components/BodyPortal";
+
+// The collection tools in the open balances tab (admin only for now, owner 2026-10-19).
+type Collection = { lastReminders: Record<string, string>; signature: string | null; senderName: string | null };
 
 const HEBREW_MONTHS = [
   "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
@@ -36,6 +43,7 @@ export default function AnalyticsView({
   initialMonth,
   today,
   initialTab = "overview",
+  collection = null,
 }: {
   events: AnalyticsEvent[];
   payments: EventPaymentRow[];
@@ -44,6 +52,7 @@ export default function AnalyticsView({
   // YYYY-MM-DD, Israel date, from the server.
   today: string;
   initialTab?: "overview" | "balances";
+  collection?: Collection | null;
 }) {
   const t = useT();
   const lang = useLang();
@@ -341,7 +350,7 @@ export default function AnalyticsView({
       </div>
 
       {tab === "balances" ? (
-        <OpenBalancesTab balances={balances} today={today} money={money} />
+        <OpenBalancesTab balances={balances} today={today} money={money} eventById={eventById} collection={collection} />
       ) : (
       <>
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -637,14 +646,22 @@ function OpenBalancesTab({
   balances,
   today,
   money,
+  eventById,
+  collection,
 }: {
   balances: ReturnType<typeof openBalances>;
   today: string;
   money: (n: number) => string;
+  eventById: Map<string, AnalyticsEvent>;
+  collection: Collection | null;
 }) {
   const t = useT();
   const lang = useLang();
   const day = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString(dateLocale(lang));
+  // Reminders sent here since the page opened, on top of the ones from the event log.
+  const [sentNow, setSentNow] = useState<Record<string, string>>({});
+  const [reminding, setReminding] = useState<{ eventId: string; amount: number } | null>(null);
+  const lastReminder = (eventId: string) => sentNow[eventId] ?? collection?.lastReminders[eventId] ?? null;
   if (balances.rows.length === 0) {
     return (
       <div className="rounded-2xl p-6 bg-card border border-line text-center">
@@ -702,6 +719,28 @@ function OpenBalancesTab({
                     {money(r.total)}
                   </div>
                 </Link>
+                {collection && (
+                  <div className="flex items-center justify-between gap-3 px-4 pb-3 -mt-1">
+                    <span className="text-[11px] text-ink-soft">
+                      {lastReminder(r.eventId)
+                        ? t("תזכורת תשלום נשלחה: {date}", {
+                            date: new Date(lastReminder(r.eventId)!).toLocaleDateString(dateLocale(lang), { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric" }),
+                          })
+                        : ""}
+                    </span>
+                    {eventById.get(r.eventId)?.client_phone || eventById.get(r.eventId)?.client_email ? (
+                      <button
+                        onClick={() => setReminding({ eventId: r.eventId, amount: r.total })}
+                        className="shrink-0 text-[12px] font-bold h-8 px-3 rounded-lg"
+                        style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}
+                      >
+                        {t("תזכורת תשלום")}
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-ink-soft">{t("אין טלפון או מייל ללקוח")}</span>
+                    )}
+                  </div>
+                )}
               </li>
             );
           })}
@@ -711,6 +750,126 @@ function OpenBalancesTab({
           <span className="font-data">{money(balances.total)}</span>
         </div>
       </div>
+
+      {collection && reminding && eventById.get(reminding.eventId) && (
+        <PaymentReminderSheet
+          event={eventById.get(reminding.eventId)!}
+          amount={reminding.amount}
+          collection={collection}
+          onSent={(at) => setSentNow((cur) => ({ ...cur, [reminding.eventId]: at }))}
+          onClose={() => setReminding(null)}
+        />
+      )}
     </>
+  );
+}
+
+// The payment reminder, ready and editable, and the ways to send it (lib/paymentReminder.ts). Each
+// opens on the tap itself (iPhone blocks opening an app after waiting on the server), and the send
+// is recorded on the way out (api/events/[id]/payment-reminder).
+function PaymentReminderSheet({
+  event,
+  amount,
+  collection,
+  onSent,
+  onClose,
+}: {
+  event: AnalyticsEvent;
+  amount: number;
+  collection: Collection;
+  onSent: (at: string) => void;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const clientLang: Lang = isLang(event.client_lang) ? event.client_lang : "he";
+  const [text, setText] = useState(() =>
+    paymentReminderMessage({
+      clientName: event.client_name,
+      amount,
+      portalUrl: shortClientUrl(window.location.origin, "portal", event.client_access_token),
+      signature: collection.signature,
+      senderName: collection.senderName,
+      lang: clientLang,
+    })
+  );
+  const [copied, setCopied] = useState(false);
+  const record = (channel: PaymentReminderChannel) => {
+    onSent(new Date().toISOString());
+    void fetch(`/api/events/${event.id}/payment-reminder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel }),
+      keepalive: true,
+    }).catch(() => {});
+  };
+  const sendVia = (channel: PaymentReminderChannel) => () => {
+    record(channel);
+    onClose();
+  };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      return;
+    }
+    setCopied(true);
+    record("copy");
+    setTimeout(onClose, 900);
+  };
+  const btn = "h-11 rounded-xl text-sm font-semibold flex items-center justify-center";
+  const phone = event.client_phone;
+  const email = event.client_email;
+
+  return (
+    <BodyPortal>
+      <div
+        className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+        style={{ background: "rgba(28, 27, 25, 0.45)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("תזכורת תשלום ל{name}", { name: event.client_name })}
+        onClick={onClose}
+      >
+        <div className="w-full max-w-sm max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
+          <h2 className="text-lg font-bold font-display">{t("תזכורת תשלום ל{name}", { name: event.client_name })}</h2>
+          <p className="text-sm text-ink-soft mt-1 mb-3">{t("אפשר לערוך את ההודעה לפני השליחה.")}</p>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            dir={clientLang === "he" ? "rtl" : "ltr"}
+            rows={9}
+            aria-label={t("הודעת התזכורת")}
+            className="min-h-0 w-full rounded-2xl bg-white border border-line px-3.5 py-3 text-[13px] leading-relaxed mb-4 resize-none"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            {phone && (
+              <a href={buildWaMeLink(phone, text)} target="_blank" rel="noopener noreferrer" onClick={sendVia("whatsapp")} className={`${btn} col-span-2 bg-sage text-white`}>
+                {t("וואטסאפ")}
+              </a>
+            )}
+            {phone && (
+              <a href={`sms:${phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(text)}`} onClick={sendVia("sms")} className={`${btn} bg-white border border-line text-ink`}>
+                {t("הודעת SMS")}
+              </a>
+            )}
+            {email && (
+              <a
+                href={`mailto:${email}?subject=${encodeURIComponent(paymentReminderSubject(clientLang))}&body=${encodeURIComponent(text)}`}
+                onClick={sendVia("email")}
+                className={`${btn} bg-white border border-line text-ink`}
+              >
+                {t("מייל")}
+              </a>
+            )}
+            <button onClick={copy} className={`${btn} bg-white border border-line text-ink ${phone && email ? "col-span-2" : ""}`}>
+              {copied ? t("ההודעה הועתקה ✓") : t("העתקת ההודעה")}
+            </button>
+          </div>
+          <button onClick={onClose} className="h-10 mt-2 rounded-xl text-sm font-semibold text-ink-soft">
+            {t("ביטול")}
+          </button>
+        </div>
+      </div>
+    </BodyPortal>
   );
 }
