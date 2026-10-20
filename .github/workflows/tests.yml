@@ -1,0 +1,33 @@
+# Automated tests and the typecheck on every PR and every push to main, so a change that breaks
+# money, billing, dates or the album rules is caught before it's merged (owner, 2026-10-20).
+# Lint isn't here yet: the repo has existing lint errors to clear first.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Tests
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck

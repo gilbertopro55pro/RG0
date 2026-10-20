@@ -202,7 +202,7 @@ export default function PendingClientMessagePrompts({
           <>
             <h2 className="text-lg font-bold mb-2 font-display">{t("תזכורת תשלום")}</h2>
             <p className="text-sm text-ink-soft mb-5">
-              {withBoldName(t("היתרה של {name} (₪{amount}) שולמה?", { amount: current.balanceAmount.toLocaleString(dateLocale(lang)) }), current.clientName)}
+              {withBoldName(t("היתרה של {name} (₪{amount}) שולמה?", { amount: current.balanceAmount.toLocaleString(dateLocale(lang), Number.isInteger(current.balanceAmount) ? undefined : { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }), current.clientName)}
             </p>
             <div className="flex gap-2">
               <button

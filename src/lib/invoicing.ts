@@ -44,6 +44,10 @@ export async function issueClientDocument({
   // when the provider has no payment type of its own for it.
   paymentMethodLabel?: string;
 }): Promise<{ documentLink: string }> {
+  // Without the photographer's own keys, Finbot's client falls back to the platform's key
+  // (FINBOT_API_KEY), which would issue the client's receipt under the platform's account. The
+  // route checks this first; this keeps it true for any other caller.
+  if (!isInvoiceProviderConnected(provider, photographer)) throw new Error("Invoice provider not connected");
   if (provider === "green_invoice") {
     return issueGreenInvoiceDocument({
       apiId: photographer.green_invoice_api_id ?? undefined,

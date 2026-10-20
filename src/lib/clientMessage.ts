@@ -89,7 +89,8 @@ export function buildClientMessageText(params: {
   let text = template
     .split("{{שם}}").join(params.clientName)
     .split("{{שלב}}").join(stageLabel)
-    .split("{{תאריך}}").join(new Date(params.eventDateIso).toLocaleDateString(locale))
+    // A bare date at noon: as UTC midnight it showed the day before on a device west of UTC.
+    .split("{{תאריך}}").join(new Date(/^\d{4}-\d{2}-\d{2}$/.test(params.eventDateIso) ? `${params.eventDateIso}T12:00:00` : params.eventDateIso).toLocaleDateString(locale))
     .split("{{מיקום}}").join(params.eventLocation ?? "")
     .split("{{חבילה}}").join(packageText)
     .split("{{שעות}}").join(hoursRange)

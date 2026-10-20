@@ -39,10 +39,10 @@ function makeId(): string {
 }
 
 // exempt: the business status from Settings (עוסק פטור), so no VAT (owner, 2026-10-17).
+// The same math the send route uses (quoteTotals), so the preview is what goes out.
 function computeTotals(items: PriceQuoteItem[], exempt = false) {
   const subtotal = items.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
-  const vatAmount = exempt ? 0 : Math.round(subtotal * VAT_RATE * 100) / 100;
-  const total = Math.round((subtotal + vatAmount) * 100) / 100;
+  const { vatAmount, total } = quoteTotals(subtotal, null, exempt ? 0 : VAT_RATE);
   return { subtotal, vatAmount, total };
 }
 

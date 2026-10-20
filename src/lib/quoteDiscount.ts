@@ -7,7 +7,11 @@ export type QuoteDiscountType = "amount" | "percent";
 // amount: the shekels taken off (before VAT), stored so every reader shows the same number.
 export type QuoteDiscount = { type: QuoteDiscountType; value: number; amount: number };
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+// To the agora, half up. In floating point n * 100 can land a hair under .5 (274.725 * 100 is
+// 27472.499999999996), which Math.round alone takes down a whole agora; 12 significant digits clear
+// that noise first.
+export const roundAgorot = (n: number) => Math.round(Number((n * 100).toPrecision(12))) / 100;
+const round2 = roundAgorot;
 
 // Never more than the items' sum: a quote can't go below zero.
 export function discountAmount(itemsSum: number, type: QuoteDiscountType, value: number): number {
