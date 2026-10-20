@@ -378,11 +378,11 @@ export function currentStageIndex(orderedStages: { done: boolean }[]): number {
 // 1200 = 10×120), divided by 12 and rounded, same as pricePerMonth already is for the real prices.
 export const SUBSCRIPTION_PLANS = {
   basic_monthly: { label: "פרו סטארט · חודשי", tierName: "פרו סטארט", pricePerMonth: 25, regularPricePerMonth: 32, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "basic" as const, cycleMonths: 1, annualAmount: null as number | null },
-  basic_annual: { label: "פרו סטארט · שנתי", tierName: "פרו סטארט", pricePerMonth: 19, regularPricePerMonth: 25, note: "חיוב שנתי של ₪228 · חוסך 3 חודשים", badge: "הכי זול" as string | undefined, tier: "basic" as const, cycleMonths: 12, annualAmount: 228 },
+  basic_annual: { label: "פרו סטארט · שנתי", tierName: "פרו סטארט", pricePerMonth: 19, regularPricePerMonth: 25, note: "חיוב שנתי של ₪228 · חוסך ₪72 בשנה", badge: "הכי זול" as string | undefined, tier: "basic" as const, cycleMonths: 12, annualAmount: 228 },
   monthly: { label: "פרו · חודשי", tierName: "פרו", pricePerMonth: 59, regularPricePerMonth: 70, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "standard" as const, cycleMonths: 1, annualAmount: null as number | null },
-  annual: { label: "פרו · שנתי", tierName: "פרו", pricePerMonth: 42, regularPricePerMonth: 58, note: "חיוב שנתי של ₪500 · חוסך 2 חודשים", badge: "הכי משתלם" as string | undefined, tier: "standard" as const, cycleMonths: 12, annualAmount: 500 },
+  annual: { label: "פרו · שנתי", tierName: "פרו", pricePerMonth: 42, regularPricePerMonth: 58, note: "חיוב שנתי של ₪500 · חוסך ₪208 בשנה", badge: "הכי משתלם" as string | undefined, tier: "standard" as const, cycleMonths: 12, annualAmount: 500 },
   studio_pro_monthly: { label: "פרו+ · חודשי", tierName: "פרו+", pricePerMonth: 119, regularPricePerMonth: 145, note: "חיוב כל חודש, אפשר לבטל בכל עת", badge: undefined as string | undefined, tier: "studio_pro" as const, cycleMonths: 1, annualAmount: null as number | null },
-  studio_pro_annual: { label: "פרו+ · שנתי", tierName: "פרו+", pricePerMonth: 83, regularPricePerMonth: 100, note: "חיוב שנתי של ₪990 · חוסך 2 חודשים", badge: "המסלול המלא" as string | undefined, tier: "studio_pro" as const, cycleMonths: 12, annualAmount: 990 },
+  studio_pro_annual: { label: "פרו+ · שנתי", tierName: "פרו+", pricePerMonth: 83, regularPricePerMonth: 100, note: "חיוב שנתי של ₪990 · חוסך ₪438 בשנה", badge: "המסלול המלא" as string | undefined, tier: "studio_pro" as const, cycleMonths: 12, annualAmount: 990 },
 } as const;
 
 export type SubscriptionPlan = keyof typeof SUBSCRIPTION_PLANS;
