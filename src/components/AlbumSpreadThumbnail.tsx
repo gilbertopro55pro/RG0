@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { GalleryAlbumSpreadRow } from "@/lib/types";
-import { boxShadowFor, cssFilterFor, computePhotoFraming, ALBUM_BLUR_MAX_PX, type PhotoWithUrl } from "@/lib/albumRender";
+import { boxShadowFor, cssFilterFor, computePhotoFraming, textEffectsCss, ALBUM_BLUR_MAX_PX, type PhotoWithUrl } from "@/lib/albumRender";
+import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { maskCssUrl, findMask } from "@/lib/albumMasks";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsSvgFilter } from "@/lib/albumAdjustments";
@@ -20,6 +21,7 @@ export default function AlbumSpreadThumbnail({
   customOrnaments,
   onClick,
   className,
+  exactText = false,
 }: {
   spread: GalleryAlbumSpreadRow;
   album: { width_cm: number; height_cm: number };
@@ -27,6 +29,12 @@ export default function AlbumSpreadThumbnail({
   customOrnaments?: { id: string; url: string }[];
   onClick?: () => void;
   className?: string;
+  // Text drawn exactly like the free editor draws it: its font, its size relative to the page
+  // (fontSize is in points on the 1600pt reference canvas, so it shrinks with the thumbnail), its
+  // box, alignment, shadow/glow and outline. Without it a 60pt title stayed 60 screen pixels on a
+  // 200px thumbnail and was cut off (owner 2026-10-20: the cover's text didn't show "כמו שהוא מופיע
+  // בדף כשנכנסים לעיצוב החופשי"). Admin only for now, like the rest of that round.
+  exactText?: boolean;
 }) {
   const [photoAspects, setPhotoAspects] = useState<Record<string, number>>({});
   const photo1 = photos.find((p) => p.id === spread.photo_id_1);
@@ -71,7 +79,11 @@ export default function AlbumSpreadThumbnail({
   }
 
   return (
-    <button onClick={onClick} className={`relative block w-full bg-line overflow-hidden ${className ?? ""}`} style={{ aspectRatio: pageAspectRatio }}>
+    <button
+      onClick={onClick}
+      className={`relative block w-full bg-line overflow-hidden ${exactText ? ALBUM_FONT_CLASS_NAMES : ""} ${className ?? ""}`}
+      style={{ aspectRatio: pageAspectRatio, containerType: exactText ? "inline-size" : undefined }}
+    >
       {spread.background_photo_id &&
         (() => {
           const bgPhoto = photos.find((p) => p.id === spread.background_photo_id);
@@ -102,6 +114,30 @@ export default function AlbumSpreadThumbnail({
           ))}
       </svg>
       {spread.elements.map((el) => {
+        if (el.type === "text" && exactText) {
+          return (
+            <div
+              key={el.id}
+              className="absolute flex items-center overflow-visible"
+              style={{
+                left: `${el.xPct}%`,
+                top: `${el.yPct}%`,
+                width: `${el.widthPct}%`,
+                height: `${el.heightPct ?? 15}%`,
+                padding: "0 0.25cqw",
+                justifyContent: el.align === "right" ? "flex-end" : el.align === "left" ? "flex-start" : "center",
+                textAlign: el.align,
+                color: el.color,
+                fontSize: `calc(${el.fontSize} / 1600 * 100cqw)`,
+                fontFamily: albumFontFamilyCss(el.fontFamily),
+                fontWeight: 700,
+                ...textEffectsCss(el),
+              }}
+            >
+              <span>{el.text}</span>
+            </div>
+          );
+        }
         const photo = el.type === "photo" ? photos.find((p) => p.id === el.photoId) : null;
         const hasBorderShadow = el.type === "photo" || el.type === "ornament" || el.type === "shape";
         return (

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
-import { downloadObjectBuffer } from "@/lib/storage";
+import { downloadObjectBuffer, getPublicPreviewUrl } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -22,18 +22,42 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const { data: photo } = await supabase
     .from("gallery_photos")
-    .select("storage_path")
+    .select("storage_path, preview_storage_path")
     .eq("id", photoId)
     .eq("gallery_id", galleryId)
-    .maybeSingle<{ storage_path: string }>();
+    .maybeSingle<{ storage_path: string; preview_storage_path: string | null }>();
   if (!photo) {
     return NextResponse.json({ error: "התמונה לא נמצאה" }, { status: 404 });
   }
 
   // ?size= (600-2000, default 900): the auto album designer asks for more pixels, since a face in a
   // group shot is only a few dozen pixels at 900 and its recognition descriptor gets unreliable.
-  const requested = Number(new URL(request.url).searchParams.get("size"));
+  const searchParams = new URL(request.url).searchParams;
+  const requested = Number(searchParams.get("size"));
   const size = Number.isFinite(requested) && requested > 0 ? Math.min(2000, Math.max(600, Math.round(requested))) : 900;
+
+  // ?fast=1 (the album's photo swap, which only needs where the faces are): the photo's own small
+  // preview (up to 1200px, a few hundred KB) as it is, instead of downloading the whole camera file
+  // and resizing it — that took seconds per photo. Falls back to the original without a preview.
+  if (searchParams.get("fast") === "1" && size <= 1200 && photo.preview_storage_path) {
+    const path = photo.preview_storage_path;
+    let preview: Buffer | null = null;
+    try {
+      if (path.endsWith(".webp")) {
+        const res = await fetch(getPublicPreviewUrl(path));
+        if (res.ok) preview = Buffer.from(await res.arrayBuffer());
+      } else {
+        preview = await downloadObjectBuffer("galleries", path);
+      }
+    } catch {
+      // No preview after all: the original below.
+    }
+    if (preview) {
+      return new Response(new Uint8Array(preview), {
+        headers: { "Content-Type": path.endsWith(".webp") ? "image/webp" : "image/jpeg", "Cache-Control": "private, max-age=3600" },
+      });
+    }
+  }
 
   const buffer = await downloadObjectBuffer("galleries", photo.storage_path);
   if (!buffer) {

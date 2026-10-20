@@ -36,7 +36,8 @@ import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor, type A
 import { takeResumeState, useBusy, useResumeState } from "@/lib/updateResume";
 import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAutoDesigner";
 import { hasAutoDesignSession } from "@/lib/albumAuto/session";
-import { fitPhotoInFrame, swapPhotoPatches, type FaceRect, type SwapPick } from "@/lib/albumAuto/swapPhotos";
+import { fitPhotoInFrame, swapPhotoPatches, type FaceRect, type SwapFit, type SwapPick } from "@/lib/albumAuto/swapPhotos";
+import { createFaceCache, createSerialQueue, refitAfterFaces } from "@/lib/albumAuto/swapFaces";
 import { frameElements, rankTemplates, templatesForCount } from "@/lib/albumAuto/templateFill";
 import { layoutSpread } from "@/lib/albumAuto/layouts";
 import { generateTemplateFrames } from "@/lib/albumTemplateBank";
@@ -1414,40 +1415,110 @@ export default function GalleryManageView({
   const [photoSwapPick, setPhotoSwapPick] = useState<{ spreadId: string; elId: string } | null>(null);
   const [photoSwapping, setPhotoSwapping] = useState(false);
   // The admin's swap (owner, 2026-10-20) fits each photo into its new frame without cutting a head:
-  // fitPhotoInFrame, with the photo's faces (detected once per photo, here in the browser).
-  const swapFacesRef = useRef(new Map<string, FaceRect[]>());
-  const facesOf = async (photoId: string): Promise<FaceRect[]> => {
-    const known = swapFacesRef.current.get(photoId);
-    if (known) return known;
-    try {
-      const { detectFacesInImageUrl } = await import("@/lib/faceRecognition");
-      const faces = (await detectFacesInImageUrl(`/api/galleries/${gallery.id}/photos/${photoId}/image?size=900`)).map((f) => f.box);
-      swapFacesRef.current.set(photoId, faces);
-      return faces;
-    } catch {
-      return [];
-    }
+  // fitPhotoInFrame, with the photo's faces. And it has to be instant (owner: "עובדת אבל לאט מאוד,
+  // זה צריך להיות מהיר מאוד"): the faces come from the gallery's stored face detection when there is
+  // one, otherwise from a boxes-only detector on the photo's small preview, started as soon as a
+  // photo is pointed at; the detector loads when swap mode opens; and the swap shows at once and
+  // saves in the background, in order. A photo whose faces aren't known yet goes in centred and its
+  // crop follows the faces a moment later.
+  const albumSpreadsRef = useRef(albumSpreads);
+  useEffect(() => {
+    albumSpreadsRef.current = albumSpreads;
+  }, [albumSpreads]);
+  const [swapFaces] = useState(() =>
+    createFaceCache(async (photoId) => {
+      const { detectFaceBoxes } = await import("@/lib/faceRecognition");
+      return detectFaceBoxes(`/api/galleries/${gallery.id}/photos/${photoId}/image?size=640&fast=1`);
+    })
+  );
+  const photoIdAt = (pick: SwapPick) => {
+    const el = albumSpreadsRef.current.find((sp) => sp.id === pick.spreadId)?.elements?.find((x) => x.id === pick.elId);
+    return el?.type === "photo" ? el.photoId : null;
+  };
+  useEffect(() => {
+    if (!photoSwapMode || photographerEmail !== ADMIN_EMAIL) return;
+    void import("@/lib/faceRecognition").then((m) => m.warmFaceBoxDetector()).catch(() => {});
+    const ids = [...new Set(albumSpreadsRef.current.flatMap((sp) => (sp.elements ?? []).flatMap((el) => (el.type === "photo" && el.photoId ? [el.photoId] : []))))].filter(
+      (id) => !swapFaces.known(id)
+    );
+    void (async () => {
+      for (let i = 0; i < ids.length; i += 80) {
+        const { data } = await supabase
+          .from("gallery_photo_faces")
+          .select("photo_id, box_x, box_y, box_width, box_height")
+          .eq("gallery_id", gallery.id)
+          .in("photo_id", ids.slice(i, i + 80))
+          .returns<{ photo_id: string; box_x: number; box_y: number; box_width: number; box_height: number }[]>();
+        const byPhoto = new Map<string, FaceRect[]>();
+        for (const r of data ?? []) byPhoto.set(r.photo_id, [...(byPhoto.get(r.photo_id) ?? []), { x: r.box_x, y: r.box_y, width: r.box_width, height: r.box_height }]);
+        for (const [id, faces] of byPhoto) swapFaces.seed(id, faces);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per opening of swap mode
+  }, [photoSwapMode]);
+  const fitForSwap = (faces: Map<string, FaceRect[]>): SwapFit => (el, spreadId, photoId) => {
+    const sp = albumSpreadsRef.current.find((x) => x.id === spreadId);
+    const page = { widthCm: sp?.width_cm ?? album!.width_cm, heightCm: sp?.height_cm ?? album!.height_cm };
+    const aspect = photos.find((p) => p.id === photoId)?.preview_aspect_ratio ?? 0;
+    // A frame shaped by its design keeps its shape: a mask (the fade), a tilt, or a bleed off the page.
+    const bleeds = el.xPct <= 0.5 || el.yPct <= 0.5 || el.xPct + el.widthPct >= 99.5 || el.yPct + el.heightPct >= 99.5;
+    return fitPhotoInFrame(el, page, aspect, faces.get(photoId) ?? [], !el.maskId && !el.rotation && !bleeds);
+  };
+  // Swap saves, one after another so a later swap of the same page never lands before an earlier one.
+  const [enqueueSwapSave] = useState(createSerialQueue);
+  const queueSpreadSave = (patches: Map<string, Partial<GalleryAlbumSpreadRow>>) => {
+    void enqueueSwapSave(async () => {
+      try {
+        const results = await Promise.all([...patches].map(([id, patch]) => supabase.from("gallery_album_spreads").update(patch).eq("id", id)));
+        if (results.some((r) => r.error)) throw new Error("save failed");
+        for (const id of patches.keys()) fetch(`/api/album-spreads/${id}/render-preview`, { method: "POST" }).catch(() => {});
+      } catch {
+        // Later swaps were built on this one, so the pages come back from the server as they are saved.
+        if (album) {
+          const { data } = await supabase.from("gallery_album_spreads").select("*").eq("album_id", album.id).order("sort_order").returns<GalleryAlbumSpreadRow[]>();
+          if (data) setAlbumSpreads(data);
+        }
+        alert(t("ההחלפה לא נשמרה, נסו שוב"));
+      }
+    });
   };
   const swapPhotos = async (a: SwapPick, b: SwapPick) => {
-    const isAdmin = photographerEmail === ADMIN_EMAIL;
-    setPhotoSwapping(true);
-    let fit: Parameters<typeof swapPhotoPatches>[3];
-    if (isAdmin && album) {
-      const ids = [a, b]
-        .map((pick) => albumSpreads.find((sp) => sp.id === pick.spreadId)?.elements?.find((el) => el.id === pick.elId))
-        .map((el) => (el?.type === "photo" ? el.photoId : null))
-        .filter((id): id is string => !!id);
-      const faces = new Map(await Promise.all(ids.map(async (id) => [id, await facesOf(id)] as const)));
-      fit = (el, spreadId, photoId) => {
-        const sp = albumSpreads.find((x) => x.id === spreadId);
-        const page = { widthCm: sp?.width_cm ?? album.width_cm, heightCm: sp?.height_cm ?? album.height_cm };
-        const aspect = photos.find((p) => p.id === photoId)?.preview_aspect_ratio ?? 0;
-        // A frame shaped by its design keeps its shape: a mask (the fade), a tilt, or a bleed off the page.
-        const bleeds = el.xPct <= 0.5 || el.yPct <= 0.5 || el.xPct + el.widthPct >= 99.5 || el.yPct + el.heightPct >= 99.5;
-        return fitPhotoInFrame(el, page, aspect, faces.get(photoId) ?? [], !el.maskId && !el.rotation && !bleeds);
-      };
+    if (photographerEmail === ADMIN_EMAIL && album) {
+      const ids = [photoIdAt(a), photoIdAt(b)].filter((id): id is string => !!id);
+      // Faces still being found get a short moment (usually done by then, since detection starts
+      // the moment a photo is pointed at), then the swap goes ahead without them.
+      const faces = new Map<string, FaceRect[]>();
+      await Promise.all(
+        ids.map(async (id) => {
+          const found = await swapFaces.within(id, 250);
+          if (found) faces.set(id, found);
+        })
+      );
+      const patches = swapPhotoPatches(albumSpreadsRef.current, a, b, fitForSwap(faces));
+      if (!patches) return;
+      albumSpreadsRef.current = albumSpreadsRef.current.map((sp) => (patches.has(sp.id) ? { ...sp, ...patches.get(sp.id) } : sp));
+      setAlbumSpreads(albumSpreadsRef.current);
+      queueSpreadSave(patches);
+      // Each photo whose faces weren't in yet: refit it when they are, if its frame hasn't changed since.
+      for (const [photoId, pick] of [
+        [photoIdAt(b), b],
+        [photoIdAt(a), a],
+      ] as const) {
+        if (!photoId || faces.has(photoId)) continue;
+        const placed = albumSpreadsRef.current.find((sp) => sp.id === pick.spreadId)?.elements?.find((x) => x.id === pick.elId);
+        void swapFaces.facesOf(photoId).then((found) => {
+          if (!found?.length) return;
+          const elements = refitAfterFaces(albumSpreadsRef.current, pick, photoId, placed, fitForSwap(new Map([[photoId, found]])));
+          if (!elements) return;
+          albumSpreadsRef.current = albumSpreadsRef.current.map((x) => (x.id === pick.spreadId ? { ...x, elements } : x));
+          setAlbumSpreads(albumSpreadsRef.current);
+          queueSpreadSave(new Map([[pick.spreadId, { elements }]]));
+        });
+      }
+      return;
     }
-    const patches = swapPhotoPatches(albumSpreads, a, b, fit);
+    setPhotoSwapping(true);
+    const patches = swapPhotoPatches(albumSpreads, a, b);
     if (!patches) {
       setPhotoSwapping(false);
       return;
@@ -5655,6 +5726,7 @@ export default function GalleryManageView({
                             album={ownSize ? { ...album, ...ownSize } : album}
                             photos={photos}
                             customOrnaments={customOrnaments}
+                            exactText={photographerEmail === ADMIN_EMAIL}
                             onClick={() => {
                               if (!photoSwapMode) setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" });
                             }}
@@ -5671,6 +5743,10 @@ export default function GalleryManageView({
                                       type="button"
                                       disabled={photoSwapping}
                                       aria-label={picked ? t("התמונה שנבחרה להחלפה") : t("בחירת תמונה להחלפה")}
+                                      // The admin's swap finds this photo's faces while the pointer is
+                                      // still on its way to the click, so the swap doesn't wait for them.
+                                      onPointerEnter={photographerEmail === ADMIN_EMAIL && el.photoId ? () => void swapFaces.facesOf(el.photoId!) : undefined}
+                                      onPointerDown={photographerEmail === ADMIN_EMAIL && el.photoId ? () => void swapFaces.facesOf(el.photoId!) : undefined}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (picked) return setPhotoSwapPick(null);

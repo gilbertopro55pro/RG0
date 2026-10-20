@@ -179,3 +179,168 @@ export function clampGroupDelta(bounds: PctBox, dx: number, dy: number): { dx: n
 export function pageSizeOf(spread: { width_cm: number | null; height_cm: number | null }, book: PageSize): PageSize {
   return spread.width_cm && spread.height_cm ? { width_cm: spread.width_cm, height_cm: spread.height_cm } : book;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Resizing (owner 2026-10-20: "ברגע שמתחתי את קצה הקנבס המתיחה תיעצר שם", and snapping to the green
+// frame while stretching a selection "לאורך, רוחב או באלכסון").
+
+export type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+function handleAxes(handle: ResizeHandle): { h: "w" | "e" | ""; v: "n" | "s" | "" } {
+  return {
+    h: handle.includes("w") ? "w" : handle.includes("e") ? "e" : "",
+    v: handle.includes("n") ? "n" : handle.includes("s") ? "s" : "",
+  };
+}
+
+// A box resized from one of its 8 handles. The opposite edge (or corner) never moves, and the
+// dragged edge stops at the page edge: a drag past the edge leaves the box touching it instead of
+// pushing the anchored side out the other way. With `symmetric` (Alt) both edges on the dragged
+// axis move around the box's center, and stop together when the nearer one reaches the page edge.
+// With `lockAspect` a corner drag keeps the box's proportions, also at the page edge. A box that
+// already reaches past an edge is never forced back in, only kept from growing further out.
+export function resizeWithinPage(
+  handle: ResizeHandle,
+  start: PctBox,
+  dx: number,
+  dy: number,
+  opts: { lockAspect?: boolean; symmetric?: boolean; minW?: number; minH?: number } = {}
+): PctBox {
+  const { lockAspect = false, symmetric = false, minW = 8, minH = 6 } = opts;
+  const { h, v } = handleAxes(handle);
+  const mult = symmetric ? 2 : 1;
+  let w = start.widthPct;
+  let hgt = start.heightPct;
+  if (h === "e") w += dx * mult;
+  else if (h === "w") w -= dx * mult;
+  if (v === "s") hgt += dy * mult;
+  else if (v === "n") hgt -= dy * mult;
+
+  const right = start.xPct + start.widthPct;
+  const bottom = start.yPct + start.heightPct;
+  const cx = start.xPct + start.widthPct / 2;
+  const cy = start.yPct + start.heightPct / 2;
+  const roomW = h === "" ? start.widthPct : symmetric ? 2 * Math.min(cx, 100 - cx) : h === "e" ? 100 - start.xPct : right;
+  const roomH = v === "" ? start.heightPct : symmetric ? 2 * Math.min(cy, 100 - cy) : v === "s" ? 100 - start.yPct : bottom;
+  const maxW = Math.max(roomW, start.widthPct, minW);
+  const maxH = Math.max(roomH, start.heightPct, minH);
+
+  if (lockAspect && h !== "" && v !== "" && start.widthPct > 0 && start.heightPct > 0) {
+    const ratio = start.widthPct / start.heightPct;
+    if (Math.abs(w / start.widthPct - 1) >= Math.abs(hgt / start.heightPct - 1)) hgt = w / ratio;
+    else w = hgt * ratio;
+    if (w > maxW) {
+      w = maxW;
+      hgt = w / ratio;
+    }
+    if (hgt > maxH) {
+      hgt = maxH;
+      w = hgt * ratio;
+    }
+  }
+  w = Math.min(Math.max(minW, w), maxW);
+  hgt = Math.min(Math.max(minH, hgt), maxH);
+
+  const xPct = h === "" ? start.xPct : symmetric ? cx - w / 2 : h === "w" ? right - w : start.xPct;
+  const yPct = v === "" ? start.yPct : symmetric ? cy - hgt / 2 : v === "n" ? bottom - hgt : start.yPct;
+  return { xPct, yPct, widthPct: w, heightPct: hgt };
+}
+
+// The lines a resized box's moving edges can snap onto: the page edges and center, the green
+// print-safe frame, and every other element's edges (the ones not being resized).
+export function resizeSnapTargets(others: AlbumElement[], margin: { x: number; y: number } | null): { x: number[]; y: number[] } {
+  const x = [0, 50, 100];
+  const y = [0, 50, 100];
+  if (margin) {
+    x.push(margin.x, 100 - margin.x);
+    y.push(margin.y, 100 - margin.y);
+  }
+  for (const o of others) {
+    const b = layerBox(o);
+    x.push(b.left, b.right);
+    y.push(b.top, b.bottom);
+  }
+  return { x, y };
+}
+
+// Snaps the moving edge(s) of a box being resized from `handle` onto the nearest target line
+// within `threshold`, each axis on its own; the anchored edges stay put. With `lockAspect` on a
+// corner the nearer of the two snaps wins and the other side follows the proportions, so the box
+// never loses its shape to a snap. A snap that would take the box off the page, or below the
+// minimum size, is skipped. Not used with a symmetric (Alt) resize.
+export function snapResizeBox(
+  handle: ResizeHandle,
+  box: PctBox,
+  targets: { x: number[]; y: number[] },
+  threshold: number,
+  opts: { lockAspect?: boolean; minW?: number; minH?: number } = {}
+): { box: PctBox; guides: SnapGuide[]; hitX?: number; hitY?: number } {
+  const { lockAspect = false, minW = 8, minH = 6 } = opts;
+  const { h, v } = handleAxes(handle);
+  const left = box.xPct;
+  const right = box.xPct + box.widthPct;
+  const top = box.yPct;
+  const bottom = box.yPct + box.heightPct;
+  const nearest = (edge: number, lines: number[]) => {
+    let best: number | undefined;
+    for (const t of lines) if (Math.abs(t - edge) < threshold && (best === undefined || Math.abs(t - edge) < Math.abs(best - edge))) best = t;
+    return best;
+  };
+  const onPage = (b: PctBox) => b.xPct >= -1e-6 && b.yPct >= -1e-6 && b.xPct + b.widthPct <= 100 + 1e-6 && b.yPct + b.heightPct <= 100 + 1e-6 && b.widthPct >= minW - 1e-6 && b.heightPct >= minH - 1e-6;
+
+  // The box with its moving horizontal edge on line `t` (or vertical, below).
+  const withX = (b: PctBox, t: number): PctBox => (h === "e" ? { ...b, widthPct: t - b.xPct } : { ...b, xPct: t, widthPct: b.xPct + b.widthPct - t });
+  const withY = (b: PctBox, t: number): PctBox => (v === "s" ? { ...b, heightPct: t - b.yPct } : { ...b, yPct: t, heightPct: b.yPct + b.heightPct - t });
+  const hitX = h === "" ? undefined : nearest(h === "e" ? right : left, targets.x);
+  const hitY = v === "" ? undefined : nearest(v === "s" ? bottom : top, targets.y);
+
+  if (lockAspect && h !== "" && v !== "" && box.heightPct > 0) {
+    const ratio = box.widthPct / box.heightPct;
+    const dX = hitX === undefined ? Infinity : Math.abs(hitX - (h === "e" ? right : left));
+    const dY = hitY === undefined ? Infinity : Math.abs(hitY - (v === "s" ? bottom : top));
+    if (dX === Infinity && dY === Infinity) return { box, guides: [] };
+    let out: PctBox;
+    if (dX <= dY) {
+      out = withX(box, hitX!);
+      const nh = out.widthPct / ratio;
+      out = v === "s" ? { ...out, heightPct: nh } : { ...out, yPct: bottom - nh, heightPct: nh };
+    } else {
+      out = withY(box, hitY!);
+      const nw = out.heightPct * ratio;
+      out = h === "e" ? { ...out, widthPct: nw } : { ...out, xPct: right - nw, widthPct: nw };
+    }
+    if (!onPage(out)) return { box, guides: [] };
+    const guides: SnapGuide[] = [];
+    const outRight = out.xPct + out.widthPct;
+    const outBottom = out.yPct + out.heightPct;
+    const gx = h === "e" ? outRight : out.xPct;
+    const gy = v === "s" ? outBottom : out.yPct;
+    const lineX = targets.x.find((t) => Math.abs(t - gx) < 1e-6);
+    const lineY = targets.y.find((t) => Math.abs(t - gy) < 1e-6);
+    if (lineX !== undefined) guides.push({ axis: "v", pos: lineX });
+    if (lineY !== undefined) guides.push({ axis: "h", pos: lineY });
+    return { box: out, guides, hitX: lineX, hitY: lineY };
+  }
+
+  let out = box;
+  const guides: SnapGuide[] = [];
+  let usedX: number | undefined;
+  let usedY: number | undefined;
+  if (hitX !== undefined) {
+    const next = withX(out, hitX);
+    if (onPage(next)) {
+      out = next;
+      usedX = hitX;
+      guides.push({ axis: "v", pos: hitX });
+    }
+  }
+  if (hitY !== undefined) {
+    const next = withY(out, hitY);
+    if (onPage(next)) {
+      out = next;
+      usedY = hitY;
+      guides.push({ axis: "h", pos: hitY });
+    }
+  }
+  return { box: out, guides, hitX: usedX, hitY: usedY };
+}

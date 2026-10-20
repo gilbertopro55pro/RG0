@@ -21,6 +21,50 @@ async function loadFaceModels(): Promise<void> {
   return modelsLoadPromise;
 }
 
+// Just the detector, for callers that only need where the faces are (the album's photo swap): no
+// landmark or recognition net (5.6MB to load instead of 12.4MB), and no per-face descriptor pass on
+// every photo. Warming it up also runs one detection on a blank canvas, which compiles the GPU
+// shaders, so the first real photo doesn't pay for that either.
+let boxDetectorPromise: Promise<void> | null = null;
+
+export function warmFaceBoxDetector(): Promise<void> {
+  if (!boxDetectorPromise) {
+    boxDetectorPromise = (async () => {
+      const faceapi = await import("@vladmandic/face-api");
+      if (!faceapi.nets.ssdMobilenetv1.isLoaded) await faceapi.nets.ssdMobilenetv1.loadFromUri("/models");
+      const blank = document.createElement("canvas");
+      blank.width = 64;
+      blank.height = 64;
+      await faceapi.detectAllFaces(blank, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }));
+    })().catch((err) => {
+      boxDetectorPromise = null;
+      throw err;
+    });
+  }
+  return boxDetectorPromise;
+}
+
+// The faces' boxes in the image at `imageUrl` (same-origin), as fractions of the image — the same
+// confidence and minimum size as detectFacesInImageUrl, without the descriptors. Throws when the
+// image can't be read, so a caller caching the result doesn't cache a failure as "no faces".
+export async function detectFaceBoxes(imageUrl: string): Promise<FaceBox[]> {
+  await warmFaceBoxDetector();
+  const faceapi = await import("@vladmandic/face-api");
+  const res = await fetch(imageUrl);
+  if (!res.ok) throw new Error(`image ${res.status}`);
+  const objectUrl = URL.createObjectURL(await res.blob());
+  try {
+    const img = await loadImageElement(objectUrl);
+    const detections = await faceapi.detectAllFaces(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }));
+    const shorterSide = Math.min(img.naturalWidth, img.naturalHeight);
+    return detections
+      .filter((d) => Math.min(d.box.width, d.box.height) / shorterSide >= 0.03)
+      .map((d) => ({ x: d.box.x / img.naturalWidth, y: d.box.y / img.naturalHeight, width: d.box.width / img.naturalWidth, height: d.box.height / img.naturalHeight }));
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function loadImageElement(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
