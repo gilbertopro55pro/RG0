@@ -5824,6 +5824,7 @@ export default function GalleryManageView({
               onSidePanelOffsetChange={setAlbumSidePanelOffset}
               draft={canvasDraftRef.current?.spreadId === spread.id ? canvasDraftRef.current : null}
               isAdmin={photographerEmail === ADMIN_EMAIL}
+              bookSize={{ width_cm: album.width_cm, height_cm: album.height_cm }}
             />
           );
         })()}

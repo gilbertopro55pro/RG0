@@ -14,7 +14,8 @@ import type {
 } from "./types";
 
 // Auto album planner: decides which photo goes on which spread, in the owner's book order
-// (owners → parents → siblings → grandparents → the event in shooting order). Pure and
+// (owners → parents → siblings → grandparents → the event in shooting order; a "בוק" photo
+// session: shooting order only, opts.kind). Pure and
 // deterministic — the same input always yields the same plan, so re-running the designer doesn't
 // shuffle the book.
 
@@ -23,25 +24,66 @@ import type {
 // ---------------------------------------------------------------------------------------------
 
 function normalizeText(s: string): string {
-  // Hebrew maqaf, hyphens and underscores all act as spaces ("בר-מצווה", "בר־מצווה", "bar_mitzvah").
-  return s.toLowerCase().replace(/[־\-_–—]/g, " ").replace(/\s+/g, " ").trim();
+  // Niqqud and cantillation marks go; Hebrew maqaf, hyphens and underscores all act as spaces
+  // ("בר-מצווה", "בר־מצווה", "bar_mitzvah").
+  return s
+    .toLowerCase()
+    .replace(/[\u0591-\u05BD\u05BF-\u05C7]/g, "")
+    .replace(/[־\-_–—]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-export function detectEventKind(title: string, eventType?: string | null): EventKind {
-  const text = ` ${normalizeText(`${eventType ?? ""} ${title ?? ""}`)} `;
-  // Order matters: the more specific kinds first (henna titles sometimes also mention the wedding;
-  // "בת מצווה" must not fall through to a "בת 60" birthday match).
-  if (/חינה|henna|hina/.test(text)) return "henna";
-  if (/חתונה|wedding/.test(text)) return "wedding";
-  if (/בת מצו(ו)?ה|bat mitz?vah|bat mitsvah/.test(text)) return "bat_mitzvah";
-  if (/בר מצו(ו)?ה|bar mitz?vah|bar mitsvah|עלי(י)?ה לתורה|הנחת תפילין|aliyah/.test(text)) return "bar_mitzvah";
-  if (/יום הולדת|יומהולדת|יום ההולדת|חוגג|חוגגת|birthday|bday/.test(text)) return "birthday";
+// A Hebrew word as a whole word: not glued to other letters, except a one-letter preposition
+// (ו, ב, ל, מ, ש, כ) and the article (ה) in front ("לבר המצווה", "החתונה", "בחינה"). So "בוק"
+// matches "הבוק" but never "בוקר", and "חינה" never matches inside "מבחינה". (No lookbehind: older
+// Safari can't parse it.)
+const HEB = "א-ת";
+const hebrewWord = (body: string) => `(?:^|[^${HEB}])[ובלמשכ]?ה?(?:${body})(?![${HEB}])`;
+
+// Checked in this order: the more specific kinds first. A "בוק בת מצווה" is a book, not the bat
+// mitzvah; henna titles sometimes also mention the wedding; "בת מצווה" must not fall through to a
+// "בת 60" birthday match.
+const KIND_PATTERNS: [EventKind, RegExp][] = [
+  ["book", new RegExp(hebrewWord("בוק|בוקים"))],
+  ["henna", new RegExp(`${hebrewWord("חינה|חינאה")}|\\bhenn?a\\b|\\bhina\\b`)],
+  // "חתונה", "חתונת דנה", "החתונה", "חתונות"; "חופה" is the ceremony.
+  ["wedding", new RegExp(`${hebrewWord(`חתונ[${HEB}]*|חופה|חופת`)}|\\bwedding`)],
+  // "בת מצווה", "בת-מצוה", "בת המצווה", "לבת המצווה", "בתמצווה", "בת מיצווה".
+  ["bat_mitzvah", new RegExp(`${hebrewWord("בת ה?מי?צוו?ה|בתמי?צוו?ה")}|\\bbat ?mi(?:t?z|ts)vah?\\b`)],
+  // "בר מצווה" in the same spellings, "עלייה / עליה לתורה", "הנחת תפילין".
+  ["bar_mitzvah", new RegExp(`${hebrewWord("בר ה?מי?צוו?ה|ברמי?צוו?ה|עלי?יה לתורה|הנחת תפילין|תפילין")}|\\bbar ?mi(?:t?z|ts)vah?\\b|\\baliyah?\\b`)],
+  ["birthday", /יום הולדת|יומהולדת|יום ההולדת|חוגג|חוגגת|birthday|bday/],
   // "יוסי בן 60", "בת 40"
-  if (/(^|\s)(בן|בת|גיל)\s?\d{1,3}(\s|$)/.test(text)) return "birthday";
+  ["birthday", /(^|\s)(בן|בת|גיל)\s?\d{1,3}(\s|$)/],
   // Last resort: a lone round age like "שרה 60" (no date separators around it, so "12/05" or
   // "30.5" don't count).
-  if (/(^|\s)[1-9]0(\s|$)/.test(text)) return "birthday";
+  ["birthday", /(^|\s)[1-9]0(\s|$)/],
+];
+
+function kindOfText(raw: string | null | undefined): EventKind {
+  const text = normalizeText(raw ?? "");
+  if (!text) return "other";
+  for (const [kind, re] of KIND_PATTERNS) if (re.test(text)) return kind;
   return "other";
+}
+
+// The event type's name first (the photographer picked it on the event), then the gallery title.
+// A "בוק" in either one wins: a photo-book session is often filed under the bar/bat mitzvah event
+// type, with "בוק" only in the gallery's title.
+export function detectEventKind(title: string, eventType?: string | null): EventKind {
+  const fromType = kindOfText(eventType);
+  const fromTitle = kindOfText(title);
+  if (fromType === "book" || fromTitle === "book") return "book";
+  return fromType !== "other" ? fromType : fromTitle;
+}
+
+// How many people the owners' cell holds for the kind, when the photographer didn't write their
+// names: one bar/bat mitzvah child, a couple at a wedding or henna. Unknown otherwise.
+export function ownersCountFor(kind: EventKind): number | undefined {
+  if (kind === "wedding" || kind === "henna") return 2;
+  if (kind === "bar_mitzvah" || kind === "bat_mitzvah") return 1;
+  return undefined;
 }
 
 // The UI shows the cells in this order (1 parents, 2 owners, 3 siblings, 4 grandparents). The book
@@ -94,8 +136,11 @@ export function countNames(names: string): number {
 }
 
 // The reference photo's faces that belong to the cell: the largest N (N = number of names), or,
-// with no names, every face at least a quarter the size of the largest (drops background people).
-export function pickCellFaces(faces: { descriptor: number[]; area: number }[], names: string): number[][] {
+// with no names, every face at least a quarter the size of the largest (drops background people),
+// but never more than `maxPeople` when the cell's head count is known (the owners' cell: one bar
+// mitzvah child, a couple — so the parents standing behind the child in the owners' reference
+// photo don't become "owners" too).
+export function pickCellFaces(faces: { descriptor: number[]; area: number }[], names: string, maxPeople?: number): number[][] {
   if (!faces || faces.length === 0) return [];
   const sorted = faces
     .map((f, i) => ({ f, i }))
@@ -104,7 +149,53 @@ export function pickCellFaces(faces: { descriptor: number[]; area: number }[], n
   const n = countNames(names);
   if (n > 0) return sorted.slice(0, n).map((f) => f.descriptor);
   const largest = sorted[0].area;
-  return sorted.filter((f) => f.area >= largest * 0.25).map((f) => f.descriptor);
+  const big = sorted.filter((f) => f.area >= largest * 0.25);
+  return (maxPeople && maxPeople > 0 ? big.slice(0, maxPeople) : big).map((f) => f.descriptor);
+}
+
+export type CellReference = { id: FamilyCellId; faces: { descriptor: number[]; area: number }[]; names: string };
+
+// Every filled cell's people, from its reference photo, the cells in book order (owners first). A
+// reference photo often shows people of an earlier cell too: the parents with the bar mitzvah boy
+// standing in front, the grandparents with the couple. Picking the cell's largest faces would then
+// make the boy one of "the parents", and his own shots would leave the owners' pages. So each person
+// already known is first matched to their own face in the photo (closest pairs first, one face per
+// person, within the same-person distance), and those faces are left out — only the surplus over
+// the names the photographer wrote, when there are names, so a cell's own named people always stay.
+// The owners' cell takes at most the kind's head count when it has no names (ownersCountFor).
+export function cellPeopleFromReferences(refs: CellReference[], kind?: EventKind): CellPeople[] {
+  const out: CellPeople[] = [];
+  const known: number[][] = [];
+  for (const cell of SECTION_PRIORITY) {
+    const ref = refs.find((r) => r.id === cell);
+    if (!ref || !ref.faces || ref.faces.length === 0) continue;
+    const named = countNames(ref.names);
+    const maxDrop = named > 0 ? Math.max(0, ref.faces.length - named) : ref.faces.length;
+    const pairs: { k: number; f: number; d: number }[] = [];
+    known.forEach((k, ki) =>
+      ref.faces.forEach((face, fi) => {
+        const d = euclidean(k, face.descriptor);
+        if (d < FACE_MATCH_THRESHOLD) pairs.push({ k: ki, f: fi, d });
+      })
+    );
+    pairs.sort((a, b) => a.d - b.d || a.k - b.k || a.f - b.f);
+    const dropped = new Set<number>();
+    const matched = new Set<number>();
+    for (const p of pairs) {
+      if (dropped.size >= maxDrop) break;
+      if (dropped.has(p.f) || matched.has(p.k)) continue;
+      dropped.add(p.f);
+      matched.add(p.k);
+    }
+    const rest = ref.faces.filter((_, i) => !dropped.has(i));
+    const descriptors = pickCellFaces(rest, ref.names, cell === "owners" && kind ? ownersCountFor(kind) : undefined).filter(
+      (d) => Array.isArray(d) && d.length > 0
+    );
+    if (descriptors.length === 0) continue;
+    out.push({ id: cell, descriptors });
+    known.push(...descriptors);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -208,6 +299,7 @@ type PhotoInfo = {
   cells: Set<FamilyCellId>; // cells with at least one person in the photo (ambiguous faces add both)
   cellArea: Record<FamilyCellId, number>; // summed face area per cell
   identifiedArea: number;
+  owners: number[]; // the owners' people (indices into the people list) matched in the photo
 };
 
 type Person = { cell: FamilyCellId; refs: number[][] };
@@ -272,6 +364,7 @@ function analyzeFaces(faces: PhotoFaces["faces"], people: Person[]): PhotoInfo {
     cells: new Set(),
     cellArea: { owners: 0, parents: 0, siblings: 0, grandparents: 0 },
     identifiedArea: 0,
+    owners: [],
   };
   if (people.length === 0) return info;
   const pairs: { f: number; p: number; d: number }[] = [];
@@ -295,37 +388,108 @@ function analyzeFaces(faces: PhotoFaces["faces"], people: Person[]): PhotoInfo {
     info.cells.add(cell);
     info.cellArea[cell] += face.area;
     info.identifiedArea += face.area;
+    if (cell === "owners") info.owners.push(p);
     // Look-alike from another cell within the margin: the face counts for that cell too.
     for (const q of pairs) {
       if (q.f === f && people[q.p].cell !== cell && q.d - d < MARGIN) info.cells.add(people[q.p].cell);
     }
   }
+  info.owners.sort((a, b) => a - b);
   return info;
 }
 
-// A family section's photos over at most `slots` pages, never a page short of photos: as many
-// pages as the section's minimum per page allows, two pages split 60:40 (owner, 2026-09-30), more
-// pages as even as possible. Pages keep consecutive runs, so the section stays in shooting order.
-function splitSection(ids: string[], slots: number, b: Bounds): string[][] {
+// A family section's photos over at most `caps.length` pages (the section's page slots), page i
+// holding at most caps[i] photos (the page cap of its position in the book and the style's maximum,
+// see familyCaps). As many pages as the section's minimum per page allows, and more when the caps
+// need them; two pages split 60:40 (owner, 2026-09-30), more pages as even as possible. Never a
+// single-photo page (n ≥ 2). Pages keep consecutive runs, so the section keeps its order. The
+// caller never passes more photos than the caps hold (the last page takes any excess, defensively).
+export function splitSection(ids: string[], caps: number[], min: number): string[][] {
   const n = ids.length;
-  if (n === 0) return [];
-  const pages = Math.max(1, Math.min(slots, Math.floor(n / b.min), Math.ceil(n / 2)));
+  if (n === 0 || caps.length === 0) return n === 0 ? [] : [ids.slice()];
+  const slots = caps.length;
+  let byCaps = 1;
+  for (let room = caps[0]; room < n && byCaps < slots; byCaps++) room += caps[byCaps];
+  const byMin = Math.max(1, Math.min(slots, Math.floor(n / Math.max(2, min))));
+  const pages = Math.max(1, Math.min(slots, Math.max(byCaps, byMin), Math.floor(n / 2) || 1));
   let sizes: number[];
   if (pages === 1) sizes = [n];
   else if (pages === 2) {
-    const first = Math.ceil(n * 0.6);
+    // 60:40, as close as the caps allow and never a lone photo on the second page.
+    const lo = Math.max(2, n - caps[1]);
+    const hi = Math.min(caps[0], n - 2);
+    const first = Math.max(lo, Math.min(hi, Math.round(n * 0.6)));
     sizes = [first, n - first];
   } else {
-    const base = Math.floor(n / pages);
-    sizes = Array.from({ length: pages }, (_, i) => base + (i < n % pages ? 1 : 0));
+    // One photo at a time to the emptiest page that still has room (the earlier page on a tie):
+    // as even as possible, the extra photos on the first pages, every page within its cap.
+    sizes = new Array(pages).fill(0);
+    for (let k = 0; k < n; k++) {
+      let best = -1;
+      for (let i = 0; i < pages; i++) if (sizes[i] < caps[i] && (best < 0 || sizes[i] < sizes[best])) best = i;
+      sizes[best < 0 ? pages - 1 : best]++;
+    }
   }
   const out: string[][] = [];
   let pos = 0;
-  for (const size of sizes) {
-    out.push(ids.slice(pos, pos + size));
+  sizes.forEach((size, i) => {
+    out.push(ids.slice(pos, i === sizes.length - 1 ? n : pos + size));
     pos += size;
-  }
+  });
   return out;
+}
+
+// The most photos each of a family section's page slots may hold: the page cap of the slot's
+// position in the book (pageCap, 1-based, the cover not counted) and the style's maximum for the
+// section.
+export function familyCaps(firstPos: number, slots: number, max: number): number[] {
+  return Array.from({ length: Math.max(0, slots) }, (_, i) => Math.min(pageCap(firstPos + i), max));
+}
+
+// The owners' group of shots with two owners or more in the frame (see mixOwnersShots). Each owner
+// alone is the group of their person index (≥ 0).
+export const TOGETHER = -1;
+
+// The owners' section (owner, 2026-10-20: "the groom and the bride, each alone and together"): the
+// owners' shots fall into groups, together (TOGETHER) and each owner alone. `ranked` is the
+// candidates closest first. The pick takes the closest shot of each group in turn (together first),
+// so a group with many close shots can't crowd the others out of the section's `room`. The order
+// then spreads each group's shots (in shooting order) evenly through the section, a together shot
+// first, so every page mixes them. With a single group (one owner, a bar/bat mitzvah child) this is
+// simply the closest `room` shots in shooting order.
+export function mixOwnersShots(ranked: string[], room: number, groupOf: (id: string) => number, order: (id: string) => number): string[] {
+  if (room <= 0 || ranked.length === 0) return [];
+  const groups = new Map<number, string[]>();
+  for (const id of ranked) {
+    const g = groupOf(id);
+    const list = groups.get(g);
+    if (list) list.push(id);
+    else groups.set(g, [id]);
+  }
+  const keys = [...groups.keys()].sort((a, b) => (a === TOGETHER ? -1 : b === TOGETHER ? 1 : a - b));
+  const picked = new Map<number, string[]>(keys.map((k) => [k, []]));
+  let left = room;
+  for (let round = 0; left > 0; round++) {
+    let took = false;
+    for (const k of keys) {
+      const list = groups.get(k) as string[];
+      if (left > 0 && round < list.length) {
+        (picked.get(k) as string[]).push(list[round]);
+        left--;
+        took = true;
+      }
+    }
+    if (!took) break;
+  }
+  // Group k's i-th shot (of n) sits at (i + ½) / n of the section; together shots at i / n, so the
+  // section opens with one.
+  const placed: { id: string; at: number; g: number; o: number }[] = [];
+  keys.forEach((k, g) => {
+    const list = (picked.get(k) as string[]).sort((a, b) => order(a) - order(b));
+    list.forEach((id, i) => placed.push({ id, at: (i + (k === TOGETHER ? 0 : 0.5)) / list.length, g, o: order(id) }));
+  });
+  placed.sort((a, b) => a.at - b.at || a.g - b.g || a.o - b.o);
+  return placed.map((p) => p.id);
 }
 
 // Deterministic variety: consecutive spreads cycle through different sizes inside the bounds.
@@ -607,10 +771,16 @@ export function planAlbum(
   ordered.forEach((p, i) => orderIdx.set(p.id, i));
   const byId = new Map(allPhotos.map((p) => [p.id, p] as const));
 
+  // A photo-book session (בוק בר/בת מצווה, owner 2026-10-20): no family sections at all. The cells
+  // and their reference photos are ignored, and the whole book runs in shooting order.
+  const isBook = opts.kind === "book";
+  const familyCells = isBook ? [] : cells;
+  const refs = isBook ? undefined : referencePhotos;
+
   // Cell people.
   let people: Person[] = [];
   const cellSize: Record<FamilyCellId, number> = { owners: 0, parents: 0, siblings: 0, grandparents: 0 };
-  for (const c of cells) {
+  for (const c of familyCells) {
     for (const d of c.descriptors ?? []) {
       if (!Array.isArray(d) || d.length === 0) continue;
       people.push({ cell: c.id, refs: [d] });
@@ -626,6 +796,8 @@ export function planAlbum(
 
   // 2. Family sections, in priority order. Which other cells may share the frame: owners only with
   // themselves; parents with the owners; siblings with owners/parents; grandparents with anyone.
+  // So the owner with a parent is a parents' photo, a family shot with the siblings is a siblings'
+  // photo, and the grandparents with anyone of the family are the grandparents'.
   // "Few strangers": at most one unidentified face beyond the identified ones (a guest walking
   // behind is fine; a crowd shot belongs to the event).
   const allowed: Record<FamilyCellId, FamilyCellId[]> = {
@@ -634,91 +806,119 @@ export function planAlbum(
     siblings: ["owners", "parents", "siblings"],
     grandparents: ["owners", "parents", "siblings", "grandparents"],
   };
+  const isCandidate = (p: AutoPhoto, cell: FamilyCellId): boolean => {
+    const fi = info.get(p.id) as PhotoInfo;
+    if (!fi.cells.has(cell)) return false;
+    for (const c of fi.cells) if (!allowed[cell].includes(c)) return false;
+    // Owners: portrait-like shots — no more faces than the owners and one more, and of those at most
+    // one stranger (the bride with two bridesmaids is not an owners-only photo).
+    if (cell === "owners") return fi.faceCount <= cellSize.owners + 1 && fi.faceCount - fi.identified <= 1;
+    return fi.faceCount <= fi.identified + 1;
+  };
+  const shotOrder = (id: string) => orderIdx.get(id) as number;
+  // Owners' groups (mixOwnersShots): together = two owners or more in the frame, else the one owner.
+  const ownersGroup = (id: string): number => {
+    const o = (info.get(id) as PhotoInfo).owners;
+    return o.length >= 2 ? TOGETHER : (o[0] ?? TOGETHER);
+  };
   // Spreads the book may have: the pages (typed count, capped at 30; else 30) minus the cover.
   const typed = opts.targetSpreads && opts.targetSpreads > 0 ? Math.min(AUTO_MAX_PAGES, Math.floor(opts.targetSpreads)) : null;
   const maxSpreads = Math.max(1, (typed ?? AUTO_MAX_PAGES) - (opts.hasCover === false ? 0 : 1));
-  // Section slots, trimmed to fit the book: the family pages never squeeze the rest of the event
-  // past the hard per-page ceiling (a short typed count with many photos). The section with the
-  // most slots gives one up first, the later section on a tie; then the selection runs again.
+
+  type FamilyPage = { section: FamilyCellId; ids: string[] };
   const used = new Set<string>();
   const sectionPhotos: Record<FamilyCellId, string[]> = { owners: [], parents: [], siblings: [], grandparents: [] };
   const refIds: Record<FamilyCellId, string | null> = { owners: null, parents: null, siblings: null, grandparents: null };
   const slots = { ...SECTION_SLOTS };
-  let familyBudget = Math.max(0, maxSpreads - 1);
-  for (let round = 0; round < 20; round++) {
-    for (let guard = 0; guard < 20 && SECTION_PRIORITY.reduce((a, c) => a + slots[c], 0) > familyBudget; guard++) {
-      const c = [...SECTION_PRIORITY].reverse().reduce((m, x) => (slots[x] > slots[m] ? x : m), "grandparents" as FamilyCellId);
-      slots[c]--;
-    }
+  // Selects each section's photos and splits them into pages, one section after the other, so every
+  // page knows its position in the book and keeps that position's page cap (owner, 2026-09-29:
+  // pages 1–5 up to 6 photos, 6–10 up to 8, …) and the style's maximum. Until 2026-10-20 the family
+  // pages ignored the caps (a parents' page could hold 10). A section takes only as many of its
+  // photos as its page slots hold at their positions; the rest stay in the event part, in shooting
+  // order. A section left with a single photo never makes a one-photo page: that photo moves on to
+  // lead the next section that has photos of its own (never the owners'), else the event part.
+  const buildFamily = (): { pages: FamilyPage[]; leftover: string[] } => {
     used.clear();
     for (const c of SECTION_PRIORITY) {
       sectionPhotos[c] = [];
       refIds[c] = null;
     }
-
     // 1. Reference photos open their sections (owners' reference wins if one photo is marked twice).
     for (const cell of SECTION_PRIORITY) {
-      const ref = referencePhotos?.find((r) => r.id === cell)?.photoId;
+      const ref = refs?.find((r) => r.id === cell)?.photoId;
       if (ref && slots[cell] > 0 && byId.has(ref) && !used.has(ref)) {
         used.add(ref);
         refIds[cell] = ref;
-        sectionPhotos[cell].push(ref);
       }
     }
-
+    const pages: FamilyPage[] = [];
+    const carry: string[] = [];
     for (const cell of SECTION_PRIORITY) {
-      if (cellSize[cell] === 0) continue; // unfilled cell → empty section (its reference photo aside)
-      const capByShape = slots[cell] * bounds[groupOf(cell)].max;
-      const room = capByShape - sectionPhotos[cell].length;
-      if (room <= 0) continue;
-      const candidates = allPhotos.filter((p) => {
-        if (used.has(p.id)) return false;
-        const fi = info.get(p.id) as PhotoInfo;
-        if (!fi.cells.has(cell)) return false;
-        for (const c of fi.cells) if (!allowed[cell].includes(c)) return false;
-        if (cell === "owners") return fi.faceCount <= cellSize.owners + 1; // portrait-like shots
-        return fi.faceCount <= fi.identified + 1;
-      });
-      // Closer (bigger face) first; shooting order breaks ties.
-      candidates.sort(
-        (a, b) =>
-          (info.get(b.id) as PhotoInfo).cellArea[cell] - (info.get(a.id) as PhotoInfo).cellArea[cell] ||
-          (orderIdx.get(a.id) as number) - (orderIdx.get(b.id) as number)
-      );
-      const picked = candidates.slice(0, room);
-      // Inside a section the chosen photos run in shooting order (keeps outfits/locations together),
-      // with the reference photo leading.
-      picked.sort((a, b) => (orderIdx.get(a.id) as number) - (orderIdx.get(b.id) as number));
-      for (const p of picked) {
-        used.add(p.id);
-        sectionPhotos[cell].push(p.id);
+      if (slots[cell] <= 0) continue;
+      const b = bounds[groupOf(cell)];
+      const caps = familyCaps(pages.length + 1, slots[cell], b.max);
+      const capacity = caps.reduce((a, c) => a + c, 0);
+      const own: string[] = refIds[cell] ? [refIds[cell] as string] : [];
+      const room = capacity - own.length;
+      // An unfilled cell → no photos of its own (its reference photo aside).
+      if (cellSize[cell] > 0 && room > 0) {
+        // Closer (bigger face) first; shooting order breaks ties.
+        const ranked = allPhotos
+          .filter((p) => !used.has(p.id) && isCandidate(p, cell))
+          .sort((a, b) => (info.get(b.id) as PhotoInfo).cellArea[cell] - (info.get(a.id) as PhotoInfo).cellArea[cell] || shotOrder(a.id) - shotOrder(b.id))
+          .map((p) => p.id);
+        // Inside a section the chosen photos run in shooting order (keeps outfits/locations
+        // together), with the reference photo leading. The owners' section mixes a couple's
+        // together and alone shots (mixOwnersShots); with one owner it is the same shooting order.
+        const picked =
+          cell === "owners" ? mixOwnersShots(ranked, room, ownersGroup, shotOrder) : ranked.slice(0, room).sort((a, b) => shotOrder(a) - shotOrder(b));
+        for (const id of picked) {
+          used.add(id);
+          own.push(id);
+        }
       }
+      if (own.length === 0) continue; // a waiting lone photo passes on
+      const ids = [...carry.splice(0, Math.max(0, capacity - own.length)), ...own];
+      sectionPhotos[cell] = ids;
+      if (ids.length === 1) {
+        carry.push(ids[0]);
+        continue;
+      }
+      for (const pg of splitSection(ids, caps, b.min)) pages.push({ section: cell, ids: pg });
     }
+    return { pages, leftover: carry };
+  };
 
-    const familyPages = SECTION_PRIORITY.reduce((a, c) => a + splitSection(sectionPhotos[c], Math.max(1, slots[c]), bounds[groupOf(c)]).length, 0);
-    const eventLeft = allPhotos.length - used.size;
-    if (familyBudget === 0 || eventLeft === 0 || (maxSpreads - familyPages) * HARD_MAX_PER_SPREAD >= eventLeft) break;
-    familyBudget = Math.min(familyBudget, familyPages) - 1;
+  // Section slots, trimmed to fit the book: the family pages never squeeze the rest of the event
+  // past the hard per-page ceiling (a short typed count with many photos). The section with the
+  // most slots gives one up first, the later section on a tie; then the selection runs again.
+  let family: { pages: FamilyPage[]; leftover: string[] } = { pages: [], leftover: [] };
+  let familyBudget = Math.max(0, maxSpreads - 1);
+  for (let round = 0; round < 20; round++) {
+    for (let guard = 0; guard < 20 && SECTION_PRIORITY.reduce((a, c) => a + slots[c], 0) > familyBudget; guard++) {
+      const c = [...SECTION_PRIORITY].reverse().reduce((m, x) => (slots[x] > slots[m] ? x : m), "grandparents" as FamilyCellId);
+      if (slots[c] <= 0) break;
+      slots[c]--;
+    }
+    family = buildFamily();
+    const eventLeft = allPhotos.length - used.size + family.leftover.length;
+    if (familyBudget <= 0 || eventLeft === 0 || (maxSpreads - family.pages.length) * HARD_MAX_PER_SPREAD >= eventLeft) break;
+    familyBudget = Math.min(familyBudget, family.pages.length) - 1;
   }
 
-  // 3. Everything else is the event, in shooting order.
-  const eventIds = ordered.filter((p) => !used.has(p.id)).map((p) => p.id);
+  // 3. Everything else is the event, in shooting order, led by any lone family photo.
+  const eventIds = [...family.leftover, ...ordered.filter((p) => !used.has(p.id)).map((p) => p.id)];
 
-  // Spreads for the family sections.
-  const spreads: PlannedSpread[] = [];
-  let seed = 0;
+  // Spreads for the family sections: exactly as sectioned (no single-photo page, every page within
+  // its cap).
   const heroByFaces = (ids: string[]): string =>
     ids.reduce((best, id) =>
       (info.get(id) as PhotoInfo).identifiedArea > (info.get(best) as PhotoInfo).identifiedArea ? id : best
     );
-  for (const cell of SECTION_PRIORITY) {
-    const ids = sectionPhotos[cell];
-    if (ids.length === 0) continue;
-    for (const c of splitSection(ids, Math.max(1, slots[cell]), bounds[groupOf(cell)])) {
-      spreads.push({ section: cell, photoIds: c, heroId: heroByFaces(c) });
-      seed++;
-    }
-  }
+  const familySpreads: PlannedSpread[] = family.pages.map((pg) => ({ section: pg.section, photoIds: pg.ids, heroId: heroByFaces(pg.ids) }));
+  const famCount = familySpreads.length;
+  const heroFor = (section: SectionKind, ids: string[]) =>
+    section === "event" ? (ids.find((id) => isLandscape(byId.get(id))) ?? ids[0]) : heroByFaces(ids);
 
   // Event spreads: target-aware bounds, breaking at stage gaps when times are known. With no
   // target, the style's natural sizes are used unless they'd go past the page limit.
@@ -726,30 +926,43 @@ export function planAlbum(
     ? (i: number) =>
         i + 1 < eventIds.length ? (time.get(eventIds[i + 1]) as number) - (time.get(eventIds[i]) as number) : 0
     : undefined;
-  const familySpreads = spreads.length;
+  const seed = famCount;
   let eventBounds = bounds.event;
   if (typed) {
-    eventBounds = targetEventBounds(bounds.event, eventIds.length, Math.max(1, maxSpreads - familySpreads));
-  } else if (familySpreads + chunk(eventIds, bounds.event, seed, gapAfter).length > maxSpreads) {
-    eventBounds = targetEventBounds(bounds.event, eventIds.length, Math.max(1, maxSpreads - familySpreads));
+    eventBounds = targetEventBounds(bounds.event, eventIds.length, Math.max(1, maxSpreads - famCount));
+  } else if (famCount + chunk(eventIds, bounds.event, seed, gapAfter).length > maxSpreads) {
+    eventBounds = targetEventBounds(bounds.event, eventIds.length, Math.max(1, maxSpreads - famCount));
   }
   const eventChunks = chunk(eventIds, eventBounds, seed, gapAfter);
   if (time) separateBursts(eventChunks, time);
-  for (const c of eventChunks) {
-    const hero = c.find((id) => isLandscape(byId.get(id))) ?? c[0];
-    spreads.push({ section: "event", photoIds: c, heroId: hero });
-    seed++;
+  const eventSpreads: PlannedSpread[] = eventChunks.map((c) => ({ section: "event", photoIds: c, heroId: heroFor("event", c) }));
+  mergeSingles(eventSpreads, byId);
+
+  let spreads: PlannedSpread[];
+  if (eventIds.length === 1 && famCount > 0) {
+    // A single event photo can't be a page of its own: it joins the last family page when that
+    // page isn't the owners' and has room; else that page's last photo keeps it company on an
+    // event page; else (an owners' page of two) the three share one event page.
+    const id = eventIds[0];
+    const last = familySpreads[famCount - 1];
+    const cap = familyCaps(famCount, 1, bounds[groupOf(last.section)].max)[0];
+    if (last.section !== "owners" && last.photoIds.length < cap) {
+      last.photoIds.push(id);
+      last.heroId = heroByFaces(last.photoIds);
+      spreads = familySpreads;
+    } else if (last.photoIds.length >= 3) {
+      const moved = last.photoIds.pop() as string;
+      last.heroId = heroByFaces(last.photoIds);
+      spreads = [...familySpreads, { section: "event", photoIds: [moved, id], heroId: heroFor("event", [moved, id]) }];
+    } else {
+      const ids = [...last.photoIds, id];
+      spreads = [...familySpreads.slice(0, -1), { section: "event", photoIds: ids, heroId: heroFor("event", ids) }];
+    }
+  } else {
+    // Only the event part is re-fitted to the limits, from the book position right after the
+    // family pages.
+    spreads = eventSpreads.length > 0 ? [...familySpreads, ...fitPages(eventSpreads, Math.max(1, maxSpreads - famCount), time, heroFor, famCount)] : familySpreads;
   }
-  mergeSingles(spreads, byId);
-  const heroFor = (section: SectionKind, ids: string[]) =>
-    section === "event" ? (ids.find((id) => isLandscape(byId.get(id))) ?? ids[0]) : heroByFaces(ids);
-  // The family pages stay exactly as sectioned; only the event part is re-fitted to the limits,
-  // from the book position right after them.
-  const famCount = spreads.findIndex((sp) => sp.section === "event");
-  const head = famCount < 0 ? spreads.slice() : spreads.slice(0, famCount);
-  const tail = famCount < 0 ? [] : spreads.slice(famCount);
-  const book = tail.length > 0 ? [...head, ...fitPages(tail, Math.max(1, maxSpreads - head.length), time, heroFor, head.length)] : head;
-  spreads.splice(0, spreads.length, ...book);
 
   // Cover: the closest owners shot (a slight preference for portrait — covers are single pages).
   let coverPhotoId: string | null = null;

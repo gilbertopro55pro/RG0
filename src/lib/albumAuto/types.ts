@@ -19,8 +19,11 @@ export const AUTO_STYLES: { id: AutoStyleId; name: string; description: string }
   { id: "modern", name: "מודרני", description: "רקע כהה, תמונות צמודות בלי מסגרות וקווים זהובים דקים" },
 ];
 
-// What kind of event: decides the cell labels (who "the owners" are).
-export type EventKind = "wedding" | "henna" | "bar_mitzvah" | "bat_mitzvah" | "birthday" | "other";
+// What kind of event: decides the cell labels (who "the owners" are) and the book's order (owner,
+// 2026-10-20): a wedding / henna, a bar mitzvah (incl. עלייה לתורה) and a bat mitzvah run owners →
+// parents → siblings → grandparents → the rest by shooting time; a "book" (בוק בר/בת מצווה, a photo
+// session) has no family sections at all, only shooting time.
+export type EventKind = "wedding" | "henna" | "bar_mitzvah" | "bat_mitzvah" | "book" | "birthday" | "other";
 
 // The four cells the photographer fills before designing. Each is optional.
 export type FamilyCellId = "parents" | "owners" | "siblings" | "grandparents";
@@ -65,6 +68,9 @@ export type PlanOptions = {
   targetSpreads: number | null;
   // Whether the book has a cover (it then takes one of the pages). Default true.
   hasCover?: boolean;
+  // The event kind (detectEventKind, or the photographer's choice). "book" ignores the family cells
+  // and orders the whole book by shooting time. Other kinds (and undefined) keep the family order.
+  kind?: EventKind;
 };
 
 // A photo as the layouts see it. faces: face boxes as fractions of the photo (0-1, x/y = top-left),
