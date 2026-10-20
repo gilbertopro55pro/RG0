@@ -20,7 +20,9 @@ export function parseHomeEventsView(value: unknown): HomeEventsView {
 }
 
 // "The coming week": today through 7 days from today, by the Israeli date ("YYYY-MM-DD" bounds).
+// Seven calendar days, not 168 hours: across a clock change the hours land a day off.
 export function comingWeekRange(now = new Date()): { from: string; to: string } {
-  const fmt = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
-  return { from: fmt(now), to: fmt(new Date(now.getTime() + 7 * 86_400_000)) };
+  const from = now.toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  const [y, m, d] = from.split("-").map(Number);
+  return { from, to: new Date(Date.UTC(y, m - 1, d + 7)).toISOString().slice(0, 10) };
 }

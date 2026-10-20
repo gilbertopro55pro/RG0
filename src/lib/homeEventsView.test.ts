@@ -81,3 +81,14 @@ describe("comingWeekRange", () => {
     expect(comingWeekRange()).toEqual({ from: "2026-10-20", to: "2026-10-27" });
   });
 });
+
+describe("comingWeekRange across a clock change (found by the tests, 2026-10-20)", () => {
+  it("ends 7 calendar days later, not 168 hours later", () => {
+    // 00:30 in Israel on Oct 21, 2026, four days before the clocks go back.
+    expect(comingWeekRange(new Date("2026-10-20T21:30:00Z"))).toEqual({ from: "2026-10-21", to: "2026-10-28" });
+    // 23:30 in Israel on Mar 20, 2026, a week before the clocks go forward.
+    expect(comingWeekRange(new Date("2026-03-20T21:30:00Z"))).toEqual({ from: "2026-03-20", to: "2026-03-27" });
+    // Month and year rollover.
+    expect(comingWeekRange(new Date("2026-12-28T10:00:00Z"))).toEqual({ from: "2026-12-28", to: "2027-01-04" });
+  });
+});

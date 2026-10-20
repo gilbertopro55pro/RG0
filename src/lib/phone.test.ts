@@ -71,3 +71,16 @@ describe("buildWaMeLink", () => {
     );
   });
 });
+
+describe("normalizeIsraeliPhone with international prefixes (found by the tests, 2026-10-20)", () => {
+  it("drops the 00 prefix and a trunk 0 after the country code", () => {
+    for (const fn of [normalizeIsraeliPhone, normalizeServer]) {
+      expect(fn("00972 50-123-4567")).toBe("972501234567");
+      expect(fn("+972 (0)50-123-4567")).toBe("972501234567");
+      expect(fn("972-050-1234567")).toBe("972501234567");
+      expect(fn("+972 50-123-4567")).toBe("972501234567");
+      expect(fn("050-1234567")).toBe("972501234567");
+      expect(fn("001 212 555 0100")).toBe("12125550100");
+    }
+  });
+});

@@ -116,7 +116,9 @@ describe("leadQuoteFollowUpMessage", () => {
 });
 
 describe("scheduling the follow-ups", () => {
-  const NOW = new Date("2026-10-01T09:00:00.000Z");
+  // Mid-January: no daylight-saving change in any timezone over the next 10 days, so the local
+  // date arithmetic gives whole 24-hour days wherever the tests run.
+  const NOW = new Date("2027-01-10T09:00:00.000Z");
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
@@ -130,9 +132,9 @@ describe("scheduling the follow-ups", () => {
     await scheduleLeadFollowUps(client, "lead1", "ph1");
     const insert = calls.find((c) => c.table === "scheduled_messages")!.ops.find(([op]) => op === "insert")!;
     expect(insert[1]).toEqual([
-      { lead_id: "lead1", kind: "lead_follow_up", sequence_step: 1, send_at: "2026-10-03T09:00:00.000Z" },
-      { lead_id: "lead1", kind: "lead_follow_up", sequence_step: 2, send_at: "2026-10-06T09:00:00.000Z" },
-      { lead_id: "lead1", kind: "lead_follow_up", sequence_step: 3, send_at: "2026-10-11T09:00:00.000Z" },
+      { lead_id: "lead1", kind: "lead_follow_up", sequence_step: 1, send_at: "2027-01-12T09:00:00.000Z" },
+      { lead_id: "lead1", kind: "lead_follow_up", sequence_step: 2, send_at: "2027-01-15T09:00:00.000Z" },
+      { lead_id: "lead1", kind: "lead_follow_up", sequence_step: 3, send_at: "2027-01-20T09:00:00.000Z" },
     ]);
   });
 
@@ -154,7 +156,7 @@ describe("scheduling the follow-ups", () => {
       ["eq", "kind", "lead_quote_followup"],
       ["eq", "status", "pending"],
     ]);
-    expect(calls[1].ops).toEqual([["insert", { lead_id: "lead1", kind: "lead_quote_followup", send_at: "2026-10-03T09:00:00.000Z" }]]);
+    expect(calls[1].ops).toEqual([["insert", { lead_id: "lead1", kind: "lead_quote_followup", send_at: "2027-01-12T09:00:00.000Z" }]]);
   });
 
   it("cancels both kinds of pending follow-up for a lead", async () => {

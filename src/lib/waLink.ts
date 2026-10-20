@@ -6,7 +6,11 @@
 // no Business API, no template approval, no 24h-window rule; the photographer just taps send.
 
 export function normalizeIsraeliPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
+  let digits = phone.replace(/\D/g, "");
+  // The international prefix (00972…), and the trunk 0 some write after the country code
+  // (+972 (0)50…, 972-050…).
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("9720")) digits = `972${digits.slice(4)}`;
   if (digits.startsWith("972")) return digits;
   if (digits.startsWith("0")) return `972${digits.slice(1)}`;
   return digits;

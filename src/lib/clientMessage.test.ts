@@ -10,7 +10,8 @@ const params = (over: Partial<Params> = {}): Params => ({
   stageLabel: "סגירת האירוע",
   savedTemplate: undefined,
   clientName: "דנה",
-  eventDateIso: "2026-12-03",
+  // Local noon; a bare date is covered at the end of the file.
+  eventDateIso: "2026-12-03T12:00:00",
   eventLocation: "אולמי הגן",
   packageLabelText: "חבילה מלאה",
   eventStartTime: "19:00:00",
@@ -195,6 +196,19 @@ describe("buildStageNoticeText", () => {
     for (const key of Object.keys(STAGE_NOTIFY_CLIENT) as (keyof typeof STAGE_NOTIFY_CLIENT)[]) {
       expect(STAGE_NOTIFY_CLIENT_I18N.en[key]).toBeTruthy();
       expect(STAGE_NOTIFY_CLIENT_I18N.ru[key]).toBeTruthy();
+    }
+  });
+});
+
+describe("{{תאריך}} on a device west of UTC (found by the tests, 2026-10-20)", () => {
+  it("shows the event's own date for a bare YYYY-MM-DD", () => {
+    const tz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      const text = buildClientMessageText(params({ eventDateIso: "2026-12-03", savedTemplate: "{{תאריך}}" }));
+      expect(text).toContain("3.12.2026");
+    } finally {
+      process.env.TZ = tz;
     }
   });
 });
