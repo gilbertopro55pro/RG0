@@ -9,7 +9,10 @@ import {
   layerBox,
   moveShapeAroundPhotos,
   pageSizeOf,
+  resizeSnapTargets,
+  resizeWithinPage,
   shapeBehindPhotos,
+  snapResizeBox,
 } from "@/lib/albumEditorGeometry";
 import type { AlbumElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement } from "@/lib/types";
 
@@ -236,5 +239,108 @@ describe("pageSizeOf", () => {
   it("gives every other page the album's size", () => {
     expect(pageSizeOf({ width_cm: null, height_cm: null }, book)).toBe(book);
     expect(pageSizeOf({ width_cm: 32, height_cm: null }, book)).toBe(book);
+  });
+});
+
+describe("resizeWithinPage", () => {
+  const box = { xPct: 40, yPct: 20, widthPct: 30, heightPct: 40 };
+
+  it("keeps the opposite corner fixed", () => {
+    const r = resizeWithinPage("ne", box, 5, -5);
+    expect(r).toEqual({ xPct: 40, yPct: 15, widthPct: 35, heightPct: 45 });
+    expect(r.yPct + r.heightPct).toBe(60);
+  });
+
+  it("stops a top-right corner at the page edge without stretching the bottom (the owner's bug)", () => {
+    const r = resizeWithinPage("ne", box, 80, -80);
+    expect(r.yPct).toBe(0);
+    expect(r.yPct + r.heightPct).toBe(60);
+    expect(r.xPct).toBe(40);
+    expect(r.xPct + r.widthPct).toBe(100);
+  });
+
+  it("stops a left edge at the page edge with the right edge fixed", () => {
+    const r = resizeWithinPage("w", box, -90, 0);
+    expect(r.xPct).toBe(0);
+    expect(r.xPct + r.widthPct).toBe(70);
+    expect(r.heightPct).toBe(40);
+  });
+
+  it("keeps the proportions at the page edge when the aspect is locked", () => {
+    const r = resizeWithinPage("se", box, 0, 90, { lockAspect: true });
+    expect(r.yPct + r.heightPct).toBeCloseTo(100);
+    expect(r.widthPct / r.heightPct).toBeCloseTo(30 / 40);
+    expect(r.xPct).toBe(40);
+    expect(r.yPct).toBe(20);
+  });
+
+  it("locks the aspect against the nearer edge too", () => {
+    // Growing the bottom-right: the right edge (30% of room) runs out before the bottom does.
+    const r = resizeWithinPage("se", { xPct: 60, yPct: 10, widthPct: 20, heightPct: 20 }, 50, 50, { lockAspect: true });
+    expect(r.xPct + r.widthPct).toBeCloseTo(100);
+    expect(r.widthPct).toBeCloseTo(r.heightPct);
+  });
+
+  it("grows around the center with Alt and stops when the nearer side reaches the edge", () => {
+    const r = resizeWithinPage("e", box, 50, 0, { symmetric: true });
+    // center 55: the right side has 45% of room, the left 55%.
+    expect(r.xPct + r.widthPct / 2).toBeCloseTo(55);
+    expect(r.xPct + r.widthPct).toBeCloseTo(100);
+  });
+
+  it("never shrinks below the minimum", () => {
+    expect(resizeWithinPage("se", box, -100, -100)).toMatchObject({ xPct: 40, yPct: 20, widthPct: 8, heightPct: 6 });
+  });
+
+  it("never yanks a box that already reaches past an edge back in", () => {
+    const bled = { xPct: -2, yPct: 0, widthPct: 52, heightPct: 100 };
+    const r = resizeWithinPage("w", bled, -5, 0);
+    expect(r).toEqual(bled);
+    expect(resizeWithinPage("w", bled, 10, 0).xPct).toBe(8);
+  });
+});
+
+describe("snapResizeBox", () => {
+  const margin = { x: 2, y: 4 };
+  const targets = resizeSnapTargets([photo("n", 75, 10, 20, 30)], margin);
+
+  it("snaps a stretched edge onto the green frame", () => {
+    const r = snapResizeBox("e", { xPct: 40, yPct: 20, widthPct: 57.5, heightPct: 40 }, targets, 1.2);
+    expect(r.box.xPct + r.box.widthPct).toBe(98);
+    expect(r.box.xPct).toBe(40);
+    expect(r.hitX).toBe(98);
+    expect(r.guides).toEqual([{ axis: "v", pos: 98 }]);
+  });
+
+  it("snaps both edges of a diagonal drag, each on its own", () => {
+    const r = snapResizeBox("nw", { xPct: 2.8, yPct: 3.5, widthPct: 37.2, heightPct: 56.5 }, targets, 1.2);
+    expect(r.box).toEqual({ xPct: 2, yPct: 4, widthPct: 38, heightPct: 56 });
+    expect(r.hitX).toBe(2);
+    expect(r.hitY).toBe(4);
+  });
+
+  it("snaps onto a neighbour's edge", () => {
+    const r = snapResizeBox("e", { xPct: 40, yPct: 50, widthPct: 34.4, heightPct: 20 }, targets, 1.2);
+    expect(r.box.xPct + r.box.widthPct).toBe(75);
+  });
+
+  it("takes the nearest line, not the first", () => {
+    const t = { x: [50, 51], y: [] };
+    const r = snapResizeBox("e", { xPct: 10, yPct: 10, widthPct: 40.8, heightPct: 10 }, t, 1.2);
+    expect(r.box.xPct + r.box.widthPct).toBe(51);
+  });
+
+  it("keeps the proportions with a locked aspect: the nearer snap wins and the other side follows", () => {
+    const b = { xPct: 40, yPct: 20, widthPct: 57.6, heightPct: 43.2 };
+    const r = snapResizeBox("se", b, targets, 1.2, { lockAspect: true });
+    expect(r.box.xPct + r.box.widthPct).toBeCloseTo(98);
+    expect(r.box.widthPct / r.box.heightPct).toBeCloseTo(57.6 / 43.2);
+    expect(r.box.xPct).toBe(40);
+    expect(r.box.yPct).toBe(20);
+  });
+
+  it("leaves the box alone with nothing in reach", () => {
+    const b = { xPct: 30, yPct: 30, widthPct: 20.1, heightPct: 20.2 };
+    expect(snapResizeBox("se", b, { x: [0, 100], y: [0, 100] }, 1.2)).toEqual({ box: b, guides: [], hitX: undefined, hitY: undefined });
   });
 });

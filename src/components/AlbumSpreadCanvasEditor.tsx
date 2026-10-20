@@ -17,7 +17,7 @@ import { useT } from "@/i18n/client";
 import type { TFn } from "@/i18n/translate";
 import { ALBUM_BLUR_MAX_PX, computePhotoFraming, cssFilterFor, boxShadowFor, textEffectsCss, type PhotoWithUrl } from "@/lib/albumRender";
 import { textHeightPctForFontSize, MAX_TEXT_HEIGHT_OVERSIZE_RATIO } from "@/lib/albumTextSizing";
-import { clampGroupDelta, computeMoveAlignment, freeLayerId, groupBounds, layerBox, moveShapeAroundPhotos, pageSizeOf, shapeBehindPhotos } from "@/lib/albumEditorGeometry";
+import { clampGroupDelta, computeMoveAlignment, freeLayerId, groupBounds, layerBox, moveShapeAroundPhotos, pageSizeOf, resizeSnapTargets, resizeWithinPage, shapeBehindPhotos, snapResizeBox } from "@/lib/albumEditorGeometry";
 
 export type { PhotoWithUrl };
 
@@ -3741,6 +3741,55 @@ export default function AlbumSpreadCanvasEditor({
       const handle = drag.resizeHandle ?? "se";
       const isSingleResize = Object.keys(drag.groupStart).length === 1;
 
+      if (isAdmin && !allowOverflow) {
+        // Admin only ("עדכון אדמין" 2026-10-20, owner: "ברגע שמתחתי את קצה הקנבס המתיחה תיעצר שם",
+        // and snapping to the green frame while stretching a selection "לאורך, רוחב או באלכסון").
+        // One photo or a whole selection resizes as one box: the anchored side never moves, the
+        // dragged edge stops at the page edge (computeResize clamped the position but kept the new
+        // size, so a corner pulled past the top pushed the bottom down instead), and the moving
+        // edges snap to the green frame, the page center/edges and the photos outside the selection.
+        const ids = Object.keys(drag.groupStart);
+        const startBox = groupBounds(Object.values(drag.groupStart));
+        // The box's minimum keeps its smallest member at the usual 8% × 6%.
+        const starts = Object.values(drag.groupStart);
+        const opts = {
+          lockAspect,
+          minW: Math.min(startBox.widthPct, (startBox.widthPct * 8) / Math.max(0.01, Math.min(...starts.map((g) => g.widthPct)))),
+          minH: Math.min(startBox.heightPct, (startBox.heightPct * 6) / Math.max(0.01, Math.min(...starts.map((g) => g.heightPct)))),
+        };
+        let box = resizeWithinPage(handle, startBox, dxPct, dyPct, { ...opts, symmetric: e.altKey });
+        let snapGuides: { axis: "v" | "h"; pos: number }[] = [];
+        let marginHit = { x: false, y: false };
+        if (!e.altKey) {
+          const idSet = new Set(ids);
+          const snapped = snapResizeBox(handle, box, resizeSnapTargets(elements.filter((x) => !idSet.has(x.id)), marginInsetPct), SNAP_THRESHOLD, opts);
+          box = snapped.box;
+          snapGuides = snapped.guides;
+          marginHit = {
+            x: !!marginInsetPct && snapped.hitX !== undefined && (Math.abs(snapped.hitX - marginInsetPct.x) < 1e-6 || Math.abs(snapped.hitX - (100 - marginInsetPct.x)) < 1e-6),
+            y: !!marginInsetPct && snapped.hitY !== undefined && (Math.abs(snapped.hitY - marginInsetPct.y) < 1e-6 || Math.abs(snapped.hitY - (100 - marginInsetPct.y)) < 1e-6),
+          };
+        }
+        setGuides(snapGuides);
+        setMarginSnap(marginHit);
+        const sx = startBox.widthPct > 0 ? box.widthPct / startBox.widthPct : 1;
+        const sy = startBox.heightPct > 0 ? box.heightPct / startBox.heightPct : 1;
+        setElements((prev) =>
+          prev.map((e2) => {
+            const gs = drag.groupStart[e2.id];
+            if (!gs) return e2;
+            return {
+              ...e2,
+              xPct: box.xPct + (gs.xPct - startBox.xPct) * sx,
+              yPct: box.yPct + (gs.yPct - startBox.yPct) * sy,
+              widthPct: gs.widthPct * sx,
+              heightPct: gs.heightPct * sy,
+            };
+          })
+        );
+        return;
+      }
+
       if (isSingleResize) {
         let primaryResult = computeResize(handle, primaryStart, dxPct, dyPct, lockAspect, allowOverflow, e.altKey);
         const others = elements.filter((x) => x.id !== drag.id);
@@ -5648,6 +5697,7 @@ export default function AlbumSpreadCanvasEditor({
                       album={pageSize}
                       photos={photos}
                       customOrnaments={customOrnaments}
+                      exactText={isAdmin}
                       onClick={isCurrent ? undefined : () => void switchToSpread(s.id)}
                     />
                     {/* The frame is an overlay ON TOP of the thumbnail (an outline on this box gets painted
