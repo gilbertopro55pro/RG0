@@ -7,12 +7,13 @@ import PortfolioVideoUploadPanel from "@/components/PortfolioVideoUploadPanel";
 import PortfolioManagePanel from "@/components/PortfolioManagePanel";
 import PortfolioFeaturedPicker from "@/components/PortfolioFeaturedPicker";
 import BodyPortal from "@/components/BodyPortal";
+import { shareCodeFor } from "@/lib/portfolioShareCode";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import type { Photographer } from "@/lib/types";
 import { useT } from "@/i18n/client";
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,48}[a-z0-9])?$/;
-// Must match NO_CATEGORY_TAB in src/app/p/[slug]/page.tsx — the sentinel a curated share link uses
+// Must match NO_CATEGORY_TAB in src/lib/portfolio.ts — the sentinel a curated share link uses
 // for "uncategorized photos", since the `tabs` query param can't carry an actual null.
 const NO_CATEGORY_TAB = "__none__";
 type ShareTab = { key: string; label: string };
@@ -90,12 +91,16 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
     });
   };
 
-  // Only appends `?tabs=...` when the photographer actually narrowed the selection — leaving
-  // everything checked (or there being 0-1 tabs to begin with) hands out the plain, full link.
+  // Only narrows the link when the photographer actually narrowed the selection — leaving
+  // everything checked (or there being 0-1 tabs to begin with) hands out the plain, full link. A
+  // narrowed one is short, /p/<slug>/<code> (lib/portfolioShareCode.ts); `?tabs=` with the names is
+  // left only for the rare tabs the code can't tell apart.
   const buildShareUrl = (base: string) => {
     if (availableTabs.length < 2 || selectedTabs.size === availableTabs.length) return base;
-    const chosen = availableTabs.filter((t) => selectedTabs.has(t.key)).map((t) => encodeURIComponent(t.key));
-    return `${base}?tabs=${chosen.join(",")}`;
+    const chosen = availableTabs.filter((t) => selectedTabs.has(t.key)).map((t) => t.key);
+    const code = shareCodeFor(chosen, availableTabs.map((t) => t.key));
+    if (code) return `${base}/${code}`;
+    return `${base}?tabs=${chosen.map(encodeURIComponent).join(",")}`;
   };
 
   const save = async () => {
