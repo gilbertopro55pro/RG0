@@ -13,9 +13,8 @@ import { useT, useLang } from "@/i18n/client";
 import { openBalances } from "@/lib/openBalances";
 import { paymentReminderMessage, paymentReminderSubject, type PaymentReminderChannel } from "@/lib/paymentReminder";
 import { shortClientUrl } from "@/lib/shortLinks";
-import { buildWaMeLink } from "@/lib/waLink";
 import { dateLocale, isLang, type Lang } from "@/i18n/config";
-import BodyPortal from "@/components/BodyPortal";
+import ClientMessageSheet from "@/components/ClientMessageSheet";
 
 // The collection tools in the open balances tab (admin only for now, owner 2026-10-19).
 type Collection = { lastReminders: Record<string, string>; signature: string | null; senderName: string | null };
@@ -764,9 +763,8 @@ function OpenBalancesTab({
   );
 }
 
-// The payment reminder, ready and editable, and the ways to send it (lib/paymentReminder.ts). Each
-// opens on the tap itself (iPhone blocks opening an app after waiting on the server), and the send
-// is recorded on the way out (api/events/[id]/payment-reminder).
+// The payment reminder (lib/paymentReminder.ts) in ClientMessageSheet. The send is recorded on the
+// way out (api/events/[id]/payment-reminder).
 function PaymentReminderSheet({
   event,
   amount,
@@ -782,7 +780,7 @@ function PaymentReminderSheet({
 }) {
   const t = useT();
   const clientLang: Lang = isLang(event.client_lang) ? event.client_lang : "he";
-  const [text, setText] = useState(() =>
+  const [initialText] = useState(() =>
     paymentReminderMessage({
       clientName: event.client_name,
       amount,
@@ -792,7 +790,6 @@ function PaymentReminderSheet({
       lang: clientLang,
     })
   );
-  const [copied, setCopied] = useState(false);
   const record = (channel: PaymentReminderChannel) => {
     onSent(new Date().toISOString());
     void fetch(`/api/events/${event.id}/payment-reminder`, {
@@ -802,74 +799,18 @@ function PaymentReminderSheet({
       keepalive: true,
     }).catch(() => {});
   };
-  const sendVia = (channel: PaymentReminderChannel) => () => {
-    record(channel);
-    onClose();
-  };
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      return;
-    }
-    setCopied(true);
-    record("copy");
-    setTimeout(onClose, 900);
-  };
-  const btn = "h-11 rounded-xl text-sm font-semibold flex items-center justify-center";
-  const phone = event.client_phone;
-  const email = event.client_email;
 
   return (
-    <BodyPortal>
-      <div
-        className="fixed inset-0 z-[80] flex items-center justify-center p-4"
-        style={{ background: "rgba(28, 27, 25, 0.45)" }}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("תזכורת תשלום ל{name}", { name: event.client_name })}
-        onClick={onClose}
-      >
-        <div className="w-full max-w-sm max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-          <h2 className="text-lg font-bold font-display">{t("תזכורת תשלום ל{name}", { name: event.client_name })}</h2>
-          <p className="text-sm text-ink-soft mt-1 mb-3">{t("אפשר לערוך את ההודעה לפני השליחה.")}</p>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            dir={clientLang === "he" ? "rtl" : "ltr"}
-            rows={9}
-            aria-label={t("הודעת התזכורת")}
-            className="min-h-0 w-full rounded-2xl bg-white border border-line px-3.5 py-3 text-[13px] leading-relaxed mb-4 resize-none"
-          />
-          <div className="grid grid-cols-2 gap-2">
-            {phone && (
-              <a href={buildWaMeLink(phone, text)} target="_blank" rel="noopener noreferrer" onClick={sendVia("whatsapp")} className={`${btn} col-span-2 bg-sage text-white`}>
-                {t("וואטסאפ")}
-              </a>
-            )}
-            {phone && (
-              <a href={`sms:${phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(text)}`} onClick={sendVia("sms")} className={`${btn} bg-white border border-line text-ink`}>
-                {t("הודעת SMS")}
-              </a>
-            )}
-            {email && (
-              <a
-                href={`mailto:${email}?subject=${encodeURIComponent(paymentReminderSubject(clientLang))}&body=${encodeURIComponent(text)}`}
-                onClick={sendVia("email")}
-                className={`${btn} bg-white border border-line text-ink`}
-              >
-                {t("מייל")}
-              </a>
-            )}
-            <button onClick={copy} className={`${btn} bg-white border border-line text-ink ${phone && email ? "col-span-2" : ""}`}>
-              {copied ? t("ההודעה הועתקה ✓") : t("העתקת ההודעה")}
-            </button>
-          </div>
-          <button onClick={onClose} className="h-10 mt-2 rounded-xl text-sm font-semibold text-ink-soft">
-            {t("ביטול")}
-          </button>
-        </div>
-      </div>
-    </BodyPortal>
+    <ClientMessageSheet
+      title={t("תזכורת תשלום ל{name}", { name: event.client_name })}
+      intro={t("אפשר לערוך את ההודעה לפני השליחה.")}
+      initialText={initialText}
+      lang={clientLang}
+      phone={event.client_phone}
+      email={event.client_email}
+      subject={paymentReminderSubject(clientLang)}
+      onSend={record}
+      onClose={onClose}
+    />
   );
 }

@@ -18,6 +18,7 @@ import { daysUntilPurge } from "@/lib/leadRetention";
 import { createClient } from "@/lib/supabase/client";
 import ContactReminderDialog from "@/components/ContactReminderDialog";
 import BodyPortal from "@/components/BodyPortal";
+import ClientMessageSheet from "@/components/ClientMessageSheet";
 import { announceContactReminder, onContactReminderChange } from "@/lib/contactReminderSync";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, isLang, LANG_LABELS, LANGS, type Lang } from "@/i18n/config";
@@ -827,10 +828,8 @@ function QuotePdfButton({ lead }: { lead: LeadRow }) {
   );
 }
 
-// "שליחת תזכורת" (owner, 2026-10-19; lib/leadReminder.ts): the reminder, ready and editable, and the
-// ways to send it. Each one opens on the tap itself (iPhone blocks opening an app after waiting on the
-// server), and the send is recorded on the way out (api/leads/[id]/reminder), so the button waits
-// two more days.
+// "שליחת תזכורת" (owner, 2026-10-19; lib/leadReminder.ts): the reminder in ClientMessageSheet. The
+// send is recorded on the way out (api/leads/[id]/reminder), so the button waits two more days.
 function LeadReminderSheet({
   lead,
   signature,
@@ -850,7 +849,7 @@ function LeadReminderSheet({
   const lang = useLang();
   const kind = leadReminderKind(lead) ?? "contact";
   const clientLang: Lang = isLang(lead.client_lang) ? lead.client_lang : "he";
-  const [text, setText] = useState(() =>
+  const [initialText] = useState(() =>
     leadReminderMessage({
       lead,
       kind,
@@ -861,7 +860,6 @@ function LeadReminderSheet({
       lang: clientLang,
     })
   );
-  const [copied, setCopied] = useState(false);
   const since = kind === "quote" ? lead.quote_sent_at : lead.contacted_at;
   const day = (ms: number) => new Date(ms).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
   const days = since ? Math.max(0, Math.round((Date.parse(day(now)) - Date.parse(day(Date.parse(since)))) / 86_400_000)) : 0;
@@ -875,90 +873,37 @@ function LeadReminderSheet({
       keepalive: true,
     }).catch(() => {});
   };
-  const sendVia = (channel: LeadReminderChannel) => () => {
-    record(channel);
-    onClose();
-  };
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      return;
-    }
-    setCopied(true);
-    record("copy");
-    setTimeout(onClose, 900);
-  };
-  const subject = leadReminderSubject(kind, senderName, clientLang);
-  const btn = "h-11 rounded-xl text-sm font-semibold flex items-center justify-center";
 
   return (
-    <BodyPortal>
-      <div
-        className="fixed inset-0 z-[80] flex items-center justify-center p-4"
-        style={{ background: "rgba(28, 27, 25, 0.45)" }}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("שליחת תזכורת ל{name}", { name: lead.name })}
-        onClick={onClose}
-      >
-        <div className="w-full max-w-sm max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl p-5 bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
-          <h2 className="text-lg font-bold font-display">{t("שליחת תזכורת ל{name}", { name: lead.name })}</h2>
-          <p className="text-sm text-ink-soft mt-1 mb-3">
-            {kind === "quote"
-              ? days === 2
-                ? t("עברו יומיים מאז שנשלחה הצעת המחיר. אפשר לערוך את ההודעה לפני השליחה.")
-                : t("עברו {n} ימים מאז שנשלחה הצעת המחיר. אפשר לערוך את ההודעה לפני השליחה.", { n: days })
-              : days === 2
-                ? t("עברו יומיים מאז יצירת הקשר. אפשר לערוך את ההודעה לפני השליחה.")
-                : t("עברו {n} ימים מאז יצירת הקשר. אפשר לערוך את ההודעה לפני השליחה.", { n: days })}
-            {lead.reminder_sent_at && (
-              <>
-                {" "}
-                {t("תזכורת קודמת נשלחה ב-{date}.", {
-                  date: new Date(lead.reminder_sent_at).toLocaleDateString(dateLocale(lang), { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric" }),
-                })}
-              </>
-            )}
-          </p>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            dir={clientLang === "he" ? "rtl" : "ltr"}
-            rows={9}
-            aria-label={t("הודעת התזכורת")}
-            className="min-h-0 w-full rounded-2xl bg-white border border-line px-3.5 py-3 text-[13px] leading-relaxed mb-4 resize-none"
-          />
-          <div className="grid grid-cols-2 gap-2">
-            {lead.phone && (
-              <a href={buildWaMeLink(lead.phone, text)} target="_blank" rel="noopener noreferrer" onClick={sendVia("whatsapp")} className={`${btn} col-span-2 bg-sage text-white`}>
-                {t("וואטסאפ")}
-              </a>
-            )}
-            {lead.phone && (
-              <a href={`sms:${lead.phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(text)}`} onClick={sendVia("sms")} className={`${btn} bg-white border border-line text-ink`}>
-                {t("הודעת SMS")}
-              </a>
-            )}
-            {lead.email && (
-              <a
-                href={`mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`}
-                onClick={sendVia("email")}
-                className={`${btn} bg-white border border-line text-ink`}
-              >
-                {t("מייל")}
-              </a>
-            )}
-            <button onClick={copy} className={`${btn} bg-white border border-line text-ink ${lead.phone && lead.email ? "col-span-2" : ""}`}>
-              {copied ? t("ההודעה הועתקה ✓") : t("העתקת ההודעה")}
-            </button>
-          </div>
-          <button onClick={onClose} className="h-10 mt-2 rounded-xl text-sm font-semibold text-ink-soft">
-            {t("ביטול")}
-          </button>
-        </div>
-      </div>
-    </BodyPortal>
+    <ClientMessageSheet
+      title={t("שליחת תזכורת ל{name}", { name: lead.name })}
+      intro={
+        <>
+          {kind === "quote"
+            ? days === 2
+              ? t("עברו יומיים מאז שנשלחה הצעת המחיר. אפשר לערוך את ההודעה לפני השליחה.")
+              : t("עברו {n} ימים מאז שנשלחה הצעת המחיר. אפשר לערוך את ההודעה לפני השליחה.", { n: days })
+            : days === 2
+              ? t("עברו יומיים מאז יצירת הקשר. אפשר לערוך את ההודעה לפני השליחה.")
+              : t("עברו {n} ימים מאז יצירת הקשר. אפשר לערוך את ההודעה לפני השליחה.", { n: days })}
+          {lead.reminder_sent_at && (
+            <>
+              {" "}
+              {t("תזכורת קודמת נשלחה ב-{date}.", {
+                date: new Date(lead.reminder_sent_at).toLocaleDateString(dateLocale(lang), { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric" }),
+              })}
+            </>
+          )}
+        </>
+      }
+      initialText={initialText}
+      lang={clientLang}
+      phone={lead.phone}
+      email={lead.email}
+      subject={leadReminderSubject(kind, senderName, clientLang)}
+      onSend={record}
+      onClose={onClose}
+    />
   );
 }
 
