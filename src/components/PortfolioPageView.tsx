@@ -1,0 +1,231 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { galleryFont } from "@/lib/galleryTheme";
+import { getSignedDownloadUrl } from "@/lib/storage";
+import PortfolioBrowser from "@/components/PortfolioBrowser";
+import {
+  loadPortfolio,
+  scopePortfolioPhotos,
+  scopePortfolioVideos,
+  signPortfolioPhotos,
+  signPortfolioVideos,
+  portfolioSubTabs,
+  sampleHeroPhotos,
+  PORTFOLIO_PAGE_SIZE,
+  PORTFOLIO_FEATURED_MAX,
+  type PortfolioPhoto,
+} from "@/lib/portfolio";
+
+// A dark, editorial shell distinct from the rest of the app's own (light, admin-panel) design
+// system — this is a public showcase page a photographer hands to potential clients, not a
+// workspace screen, so it gets its own visual identity instead of inheriting bg-card/bg-chip/etc.
+// Colors are hardcoded rather than reading the shared --color-* tokens: this page's look shouldn't
+// change based on a visitor's OS light/dark preference the way the rest of the app does.
+const INK = "#0b0b0d";
+const TEXT_SOFT = "#b7b7bd";
+const BRASS = "#c9a24b"; // the app's existing --color-brass, used here as the one deliberate
+// "premium" accent — see the 2026-09-23 brand critique's recommendation to lean on it as THE
+// accent instead of spreading attention across many decorative pastels.
+
+// A local copy rather than importing src/lib/waLink.ts — that file is marked "use client" (it
+// also exports a window.open-based helper), and a Server Component importing it crashes at
+// runtime in production the moment this function is actually called, even though it's pure and
+// has no client-only dependency itself. Keep this in sync with normalizeIsraeliPhone if it changes.
+function buildWaMeLink(phone: string, text: string): string {
+  const digits = phone.replace(/\D/g, "");
+  const normalized = digits.startsWith("972") ? digits : digits.startsWith("0") ? `972${digits.slice(1)}` : digits;
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(text)}`;
+}
+
+export async function portfolioMetadata(slug: string): Promise<Metadata> {
+  const data = await loadPortfolio(slug);
+  if (!data) return {};
+  const title = `${data.photographer.name} | תיק עבודות`;
+  return {
+    title,
+    description: data.photographer.portfolio_bio || "תיק עבודות צילום",
+    openGraph: { title, siteName: "גילברטו" },
+  };
+}
+
+// The public portfolio page, for both of its addresses: /p/<slug> (with `?tabs=` from links made
+// before the short ones) and /p/<slug>/<code>, the short link to some of the tabs
+// (lib/portfolioShareCode.ts). `tabsParam`: curated-share restriction — see scopePortfolioPhotos in
+// src/lib/portfolio.ts. `basePath`: the address the tabs' own links build on, so a short link stays
+// short while the visitor moves between its tabs.
+export default async function PortfolioPageView({
+  slug,
+  data,
+  tabsParam,
+  activeCategory,
+  subParam,
+  basePath,
+}: {
+  slug: string;
+  data: Awaited<ReturnType<typeof loadPortfolio>>;
+  tabsParam: string | undefined;
+  activeCategory: string | undefined;
+  subParam: string | undefined;
+  basePath?: string;
+}) {
+  const activeSub = activeCategory ? subParam : undefined;
+
+  if (!data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: INK, color: TEXT_SOFT }}>
+        <p className="text-sm">תיק העבודות לא נמצא.</p>
+      </div>
+    );
+  }
+
+  const { photographer, photos: allPhotos, videos: allVideos } = data;
+
+  const { scopedPhotos, gridPhotos } = scopePortfolioPhotos(allPhotos, tabsParam, activeCategory, activeSub);
+  // Videos go to the browser whole (they're few) and it picks the open tab's; only the `tabs` scope applies here.
+  const scopedVideos = scopePortfolioVideos(allVideos, tabsParam);
+  const subTabs = portfolioSubTabs([...scopedPhotos, ...scopedVideos]);
+
+  // The tabs with photos in their order, then any tab that only has videos.
+  const photoCategories = new Set(scopedPhotos.map((p) => p.portfolio_category).filter((c): c is string => !!c));
+  const categories = Array.from(
+    new Set([...photoCategories, ...scopedVideos.map((v) => v.portfolio_category).filter((c): c is string => !!c)])
+  );
+  // Sub-tabs that have photos, per tab — the rest only have videos, and the browser neither waits
+  // for a photo strip nor fetches a photo grid there.
+  const photoSubs = new Map<string, Set<string>>();
+  for (const p of scopedPhotos) {
+    if (!p.portfolio_category || !p.portfolio_subcategory) continue;
+    let subs = photoSubs.get(p.portfolio_category);
+    if (!subs) photoSubs.set(p.portfolio_category, (subs = new Set()));
+    subs.add(p.portfolio_subcategory);
+  }
+
+  // One representative photo per category tile: the cover the photographer picked for that tab
+  // (Settings › פורטפוליו, photographers.portfolio_category_covers) while it's still in that tab,
+  // otherwise the most recent tagged with it (scopedPhotos is already ordered newest-first).
+  const covers = photographer.portfolio_category_covers ?? {};
+  const categoryRepresentative = new Map<string, PortfolioPhoto>();
+  for (const p of scopedPhotos) {
+    const c = p.portfolio_category;
+    if (c && (!categoryRepresentative.has(c) || covers[c] === p.id)) categoryRepresentative.set(c, p);
+  }
+  // Hero strip on "הכל" = only the photos the photographer starred (PortfolioFeaturedPicker.tsx),
+  // still within this link's `tabs` scope; none starred → no strip there, rather than a random
+  // pick. Inside a tab (owner, 2026-10-10) it's a random mix of that tab, landscape and portrait.
+  const starredSource = scopedPhotos.filter((p) => p.portfolio_featured).slice(0, PORTFOLIO_FEATURED_MAX);
+  const heroSource = activeCategory ? sampleHeroPhotos(gridPhotos) : starredSource;
+  // Only the first grid page is rendered (and signed) here — PortfolioGrid.tsx loads the rest
+  // from /api/portfolio/[slug]/photos as the visitor scrolls.
+  const firstPage = gridPhotos.slice(0, PORTFOLIO_PAGE_SIZE);
+
+  const needed = new Map<string, PortfolioPhoto>();
+  for (const p of [...firstPage, ...categoryRepresentative.values(), ...starredSource, ...heroSource]) needed.set(p.id, p);
+  const [urlById, videoUrlById] = await Promise.all([signPortfolioPhotos(Array.from(needed.values())), signPortfolioVideos(scopedVideos)]);
+
+  const gridInitial = firstPage.map((p) => ({ id: p.id, url: urlById.get(p.id)! }));
+  const categoryThumb = new Map(Array.from(categoryRepresentative.entries()).map(([cat, p]) => [cat, urlById.get(p.id)!]));
+  const toHero = (p: PortfolioPhoto) => ({ id: p.id, url: urlById.get(p.id)!, aspect: p.preview_aspect_ratio });
+  const videos = scopedVideos.map((v) => ({
+    id: v.id,
+    url: videoUrlById.get(v.id)!,
+    // The file's name without its extension ("חתונה - קליפ.mp4" → "חתונה - קליפ").
+    name: v.original_filename.replace(/\.[^.]+$/, "") || v.original_filename,
+    category: v.portfolio_category,
+    sub: v.portfolio_subcategory,
+  }));
+
+  const logoUrl = photographer.logo_storage_path
+    ? await getSignedDownloadUrl("logos", photographer.logo_storage_path, 60 * 60 * 24)
+    : null;
+
+  const contactHref = photographer.phone
+    ? buildWaMeLink(photographer.phone, `שלום ${photographer.name}, ראיתי את תיק העבודות שלך ואשמח לשמוע פרטים`)
+    : null;
+
+  return (
+    <div className={`${galleryFont.variable} min-h-screen w-full`} style={{ background: INK }}>
+      {/* Nav strip — logo/name on the right (RTL start), contact CTA on the left. Deliberately
+          minimal chrome, matching a real photography portfolio site rather than the app's own
+          admin-panel header. */}
+      <header className="flex items-center justify-between px-4 sm:px-8 py-4">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoUrl} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
+          )}
+          <span className="text-sm font-semibold truncate" style={{ color: "#f2f2ee" }}>
+            {photographer.name}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+        {/* The intake assistant's chat (עוזר פניות) — the page falls back to a plain inquiry
+            form by itself if the assistant is unavailable, so the button is safe to show. */}
+        {photographer.intake_bot_enabled && (
+          <a
+            href={`/chat/${slug}?src=portfolio`}
+            className="shrink-0 rounded-full px-4 py-2 text-xs font-semibold border"
+            style={{ borderColor: BRASS, color: BRASS }}
+          >
+            בדיקת תאריך
+          </a>
+        )}
+        {contactHref && (
+          <a
+            href={contactHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded-full px-4 py-2 text-xs font-semibold"
+            style={{ background: BRASS, color: "#1a1408" }}
+          >
+            יצירת קשר
+          </a>
+        )}
+        </div>
+      </header>
+
+      {/* The strip, the intro, the tab tiles, sub-tabs and the grid: tabs switch in place, without
+          reloading the page, and the strip follows the open tab. */}
+      <PortfolioBrowser
+        slug={slug}
+        tabs={tabsParam}
+        basePath={basePath}
+        categories={categories.map((c) => ({
+          name: c,
+          thumb: categoryThumb.get(c) ?? null,
+          videoOnly: !photoCategories.has(c),
+          videoOnlySubs: (subTabs[c] ?? []).filter((s) => !photoSubs.get(c)?.has(s)),
+        }))}
+        subTabs={subTabs}
+        videos={videos}
+        initialCategory={activeCategory}
+        initialSub={activeSub}
+        initialPhotos={gridInitial}
+        initialHasMore={gridPhotos.length > firstPage.length}
+        starredHero={starredSource.map(toHero)}
+        initialHero={heroSource.map(toHero)}
+        intro={
+          // "Get to know me" — populated from portfolio_bio (the "טקסט פתיחה" field in
+          // PortfolioSettings.tsx). Full-bleed dark band rather than a floating card, so it reads as
+          // part of the same editorial page instead of a bolted-on admin-style panel.
+          photographer.portfolio_bio ? (
+            <div className="px-6 py-14 text-center" style={{ background: INK }}>
+              <h2 className="text-2xl mb-4" style={{ fontFamily: "var(--font-gallery-serif)", color: "#f2f2ee" }}>
+                {photographer.name}
+              </h2>
+              <p className="max-w-xl mx-auto text-sm leading-relaxed whitespace-pre-line" style={{ color: TEXT_SOFT }}>
+                {photographer.portfolio_bio}
+              </p>
+            </div>
+          ) : null
+        }
+      />
+
+      <p className="text-center text-[11px] py-8" style={{ background: INK, color: TEXT_SOFT }}>
+        תיק עבודות שנבנה עם{" "}
+        <Link href="/" className="underline">
+          גילברטו
+        </Link>
+      </p>
+    </div>
+  );
+}

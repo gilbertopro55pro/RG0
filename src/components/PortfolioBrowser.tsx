@@ -24,6 +24,7 @@ const scopeKey = (category?: string, sub?: string) => `${category ?? ""}|${sub ?
 export default function PortfolioBrowser({
   slug,
   tabs,
+  basePath,
   categories,
   subTabs,
   videos,
@@ -37,6 +38,9 @@ export default function PortfolioBrowser({
 }: {
   slug: string;
   tabs?: string;
+  // A short link's own address (/p/<slug>/<code>): the tabs' links build on it, so the visitor's
+  // address stays short. Without it they build on /p/<slug> and carry `tabs` in the query.
+  basePath?: string;
   // `videoOnly`: a tab with videos and no photos (no thumbnail, a play icon instead);
   // `videoOnlySubs`: its sub-tabs that have no photos.
   categories: { name: string; thumb: string | null; videoOnly?: boolean; videoOnlySubs?: string[] }[];
@@ -74,9 +78,9 @@ export default function PortfolioBrowser({
     const qs = new URLSearchParams();
     if (category) qs.set("category", category);
     if (category && subTab) qs.set("sub", subTab);
-    if (tabs) qs.set("tabs", tabs);
+    if (tabs && !basePath) qs.set("tabs", tabs);
     const query = qs.toString();
-    return `/p/${slug}${query ? `?${query}` : ""}`;
+    return `${basePath ?? `/p/${slug}`}${query ? `?${query}` : ""}`;
   };
   // A plain link stays (open in a new tab works); a normal tap switches in place.
   const select = (e: React.MouseEvent, category?: string, subTab?: string) => {
