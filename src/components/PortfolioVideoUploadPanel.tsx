@@ -20,6 +20,7 @@ import { droppedFromFileList, getOrCreatePortfolioGallery, portfolioVideos } fro
 import { sortSubTabs, subTabLabel } from "@/lib/portfolioNames";
 import { PORTFOLIO_VIDEO_MAX_BYTES } from "@/lib/stages";
 import { useT } from "@/i18n/client";
+import { captureVideoPoster } from "@/lib/videoPoster";
 
 // Videos straight to the public portfolio (owner, 2026-10-16), under "העלאת תמונות ישירות
 // לפורטפוליו". פרו and פרו+ (this screen's portfolio section is closed to the entry tier), up to
@@ -28,7 +29,7 @@ import { useT } from "@/i18n/client";
 // (lib/portfolioUploads.ts). The videos live in the hidden portfolio gallery (gallery_videos with
 // in_portfolio) and upload in the background engine, like a gallery's videos.
 
-type Video = GalleryVideoUploadRow & { portfolio_category: string | null; portfolio_subcategory: string | null };
+type Video = GalleryVideoUploadRow & { portfolio_category: string | null; portfolio_subcategory: string | null; poster_path?: string | null };
 
 const MAX_MB = Math.round(PORTFOLIO_VIDEO_MAX_BYTES / (1024 * 1024));
 const NO_TAB = "";
@@ -69,7 +70,7 @@ export default function PortfolioVideoUploadPanel({ photographerId }: { photogra
       setGalleryId(gallery.id);
       const { data } = await supabase
         .from("gallery_videos")
-        .select("id, storage_path, original_filename, file_size_bytes, portfolio_category, portfolio_subcategory")
+        .select("id, storage_path, original_filename, file_size_bytes, portfolio_category, portfolio_subcategory, poster_path")
         .eq("gallery_id", gallery.id)
         .eq("in_portfolio", true)
         .order("created_at", { ascending: true })
@@ -80,6 +81,28 @@ export default function PortfolioVideoUploadPanel({ photographerId }: { photogra
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photographerId]);
+
+  // Each video's still frame, the cover on the preview card of a link to its tab (app/p/[slug]/og):
+  // made here in the background for any video without one yet, a new upload included. One try per
+  // video per visit; one that fails (a codec this browser doesn't play) is tried again next time.
+  const posterTriedRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!galleryId) return;
+    const todo = videos.filter((v) => !v.poster_path && !posterTriedRef.current.has(v.id));
+    if (todo.length === 0) return;
+    for (const v of todo) posterTriedRef.current.add(v.id);
+    void (async () => {
+      for (const v of todo) {
+        const res = await fetch(`/api/galleries/${galleryId}/videos/${v.id}/url`).catch(() => null);
+        const url: string | null = res?.ok ? ((await res.json()) as { url?: string }).url ?? null : null;
+        const blob = url ? await captureVideoPoster(url) : null;
+        if (!blob) continue;
+        const saved = await fetch(`/api/galleries/${galleryId}/videos/${v.id}/poster`, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob }).catch(() => null);
+        const posterPath = saved?.ok ? ((await saved.json()) as { posterPath?: string }).posterPath : undefined;
+        if (posterPath) setVideos((prev) => prev.map((x) => (x.id === v.id ? { ...x, poster_path: posterPath } : x)));
+      }
+    })();
+  }, [galleryId, videos]);
 
   const key = galleryId ? uploadKey("videos", galleryId) : "";
   const job = useUpload(key);
@@ -233,7 +256,7 @@ export default function PortfolioVideoUploadPanel({ photographerId }: { photogra
     await fetch("/api/storage/remove", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bucket: "galleries", paths: [video.storage_path] }),
+      body: JSON.stringify({ bucket: "galleries", paths: [video.storage_path], previewPaths: video.poster_path ? [video.poster_path] : [] }),
     }).catch(() => {});
   };
 

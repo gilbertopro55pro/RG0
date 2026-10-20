@@ -31,6 +31,8 @@ export type PortfolioVideo = {
   portfolio_category: string | null;
   portfolio_subcategory: string | null;
   created_at: string;
+  // A still frame (previews bucket, migration 0188): the cover of a tab that only has videos.
+  poster_path: string | null;
 };
 
 // Sentinel for "uncategorized" inside the `tabs` param — mirrors PortfolioManagePanel's own
@@ -74,7 +76,7 @@ export async function loadPortfolio(slug: string) {
   // Few compared with photos (each is a whole clip), so all of them, newest first.
   const { data: videoRows } = await supabase
     .from("gallery_videos")
-    .select("id, storage_path, original_filename, portfolio_category, portfolio_subcategory, created_at")
+    .select("id, storage_path, original_filename, portfolio_category, portfolio_subcategory, created_at, poster_path")
     .eq("photographer_id", photographer.id)
     .eq("in_portfolio", true)
     .order("created_at", { ascending: false })
@@ -89,6 +91,27 @@ export function scopePortfolioVideos(allVideos: PortfolioVideo[], tabsParam: str
   if (!tabsParam) return allVideos;
   const allowedTabs = new Set(tabsParam.split(",").map((t) => decodeURIComponent(t)));
   return allVideos.filter((v) => allowedTabs.has(v.portfolio_category ?? NO_CATEGORY_TAB));
+}
+
+// Every tab the portfolio has, photos' and videos' (NO_CATEGORY_TAB for the untagged ones): what a
+// short share link's code is matched against (lib/portfolioShareCode.ts).
+export function portfolioTabNames(photos: Pick<PortfolioPhoto, "portfolio_category">[], videos: Pick<PortfolioVideo, "portfolio_category">[]): string[] {
+  return [...new Set([...photos, ...videos].map((x) => x.portfolio_category ?? NO_CATEGORY_TAB))];
+}
+
+// A tab's cover: the photo the photographer picked for it (photographers.portfolio_category_covers)
+// while it's still in that tab, otherwise its newest photo (`photos` come newest first). The page's
+// tab tiles use the same rule. null for a tab with only videos.
+export function tabCoverPhoto<T extends Pick<PortfolioPhoto, "id" | "portfolio_category">>(photos: T[], covers: Record<string, string> | null | undefined, tab: string): T | null {
+  const inTab = photos.filter((p) => (p.portfolio_category ?? NO_CATEGORY_TAB) === tab);
+  const picked = covers?.[tab];
+  return inTab.find((p) => p.id === picked) ?? inTab[0] ?? null;
+}
+
+// The cover of a tab that only has videos: its newest video's still frame (`videos` come newest
+// first). null when none has one yet (they're made in the photographer's settings screen).
+export function tabCoverVideo<T extends Pick<PortfolioVideo, "portfolio_category" | "poster_path">>(videos: T[], tab: string): T | null {
+  return videos.find((v) => (v.portfolio_category ?? NO_CATEGORY_TAB) === tab && !!v.poster_path) ?? null;
 }
 
 // Signed playback URLs (a day, like the photos'); R2's signed GETs take range requests, so seeking works.

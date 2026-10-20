@@ -3,6 +3,8 @@ import Link from "next/link";
 import { galleryFont } from "@/lib/galleryTheme";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import PortfolioBrowser from "@/components/PortfolioBrowser";
+import { tabCode } from "@/lib/portfolioShareCode";
+import { STUDIO_LOGO_SIZE } from "@/lib/studioLogoImage";
 import {
   loadPortfolio,
   scopePortfolioPhotos,
@@ -11,6 +13,8 @@ import {
   signPortfolioVideos,
   portfolioSubTabs,
   sampleHeroPhotos,
+  tabCoverPhoto,
+  tabCoverVideo,
   PORTFOLIO_PAGE_SIZE,
   PORTFOLIO_FEATURED_MAX,
   type PortfolioPhoto,
@@ -37,14 +41,24 @@ function buildWaMeLink(phone: string, text: string): string {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(text)}`;
 }
 
-export async function portfolioMetadata(slug: string): Promise<Metadata> {
+// The link's preview card (owner, 2026-10-20): a link to one tab shows that tab's cover photo, large;
+// the whole portfolio or a few tabs, the studio's logo, small (app/p/[slug]/og). `tabs`: the tabs
+// this link shows, null for all of them.
+export async function portfolioMetadata(slug: string, tabs: string[] | null = null): Promise<Metadata> {
   const data = await loadPortfolio(slug);
   if (!data) return {};
   const title = `${data.photographer.name} | תיק עבודות`;
+  const description = data.photographer.portfolio_bio || "תיק עבודות צילום";
+  const oneTab =
+    tabs?.length === 1 && (tabCoverPhoto(data.photos, data.photographer.portfolio_category_covers, tabs[0]) || tabCoverVideo(data.videos, tabs[0])) ? tabs[0] : null;
+  const image = oneTab
+    ? { url: `/p/${slug}/og?t=${tabCode(oneTab)}`, width: 1200, height: 630 }
+    : { url: `/p/${slug}/og`, width: STUDIO_LOGO_SIZE, height: STUDIO_LOGO_SIZE };
   return {
     title,
-    description: data.photographer.portfolio_bio || "תיק עבודות צילום",
-    openGraph: { title, siteName: "גילברטו" },
+    description,
+    openGraph: { title, description, siteName: "גילברטו", images: [image] },
+    twitter: { card: oneTab ? "summary_large_image" : "summary", title, description, images: [image.url] },
   };
 }
 

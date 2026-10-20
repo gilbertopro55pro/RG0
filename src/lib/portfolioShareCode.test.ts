@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SHARE_CODE_RE, shareCodeFor, tabCode, tabsForShareCode } from "@/lib/portfolioShareCode";
+import { SHARE_CODE_RE, portfolioShareMessage, shareCodeFor, tabCode, tabsForShareCode } from "@/lib/portfolioShareCode";
 
 // The short link to some of the portfolio's tabs (owner 2026-10-20: "קצרים ונעימים לעין").
 
@@ -64,5 +64,25 @@ describe("shareCodeFor / tabsForShareCode", () => {
     expect(tabsForShareCode("ab", TABS)).toEqual([]);
     expect(tabsForShareCode("ab!", TABS)).toEqual([]);
     expect(tabsForShareCode("", TABS)).toEqual([]);
+  });
+});
+
+describe("portfolioShareMessage", () => {
+  const url = "https://myframeflow.com/p/gilberto/Oeb";
+
+  it("signs with the saved signature", () => {
+    expect(portfolioShareMessage(url, "רועי גלברט\n050-0000000", "רועי גלברט - צילום אירועים 📸")).toBe(
+      `היי, אשמח שתעיפו מבט בתיק העבודות שלי 📸\n${url}\n\nרועי גלברט\n050-0000000`
+    );
+  });
+
+  it("signs with the name alone without a signature, and never adds \"- צילום אירועים\" (the owner's bug)", () => {
+    const msg = portfolioShareMessage(url, "  ", "רועי גלברט - צילום אירועים 📸");
+    expect(msg.endsWith("\n\nרועי גלברט - צילום אירועים 📸")).toBe(true);
+    expect(msg.match(/צילום אירועים/g)).toHaveLength(1);
+  });
+
+  it("leaves the signature line out when there's neither", () => {
+    expect(portfolioShareMessage(url, null, null)).toBe(`היי, אשמח שתעיפו מבט בתיק העבודות שלי 📸\n${url}`);
   });
 });

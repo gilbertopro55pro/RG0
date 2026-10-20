@@ -44,3 +44,11 @@ export function tabsForShareCode(code: string, allTabs: string[]): string[] {
   const codes = new Set(code.match(/.{3}/g) ?? []);
   return allTabs.filter((t) => codes.has(tabCode(t)));
 }
+
+// The message the share sheet sends with the link: signed with the photographer's saved signature,
+// or else their name, never both (owner, 2026-10-20, like every message to a client). It used to add
+// "<name> - צילום אירועים", which doubled up when the name already says it.
+export function portfolioShareMessage(url: string, signature: string | null | undefined, name: string | null | undefined): string {
+  const sign = signature?.trim() || name?.trim();
+  return `היי, אשמח שתעיפו מבט בתיק העבודות שלי 📸\n${url}${sign ? `\n\n${sign}` : ""}`;
+}
