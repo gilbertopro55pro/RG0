@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { swapPhotoPatches } from "@/lib/albumAuto/swapPhotos";
+import { fitPhotoInFrame, swapPhotoPatches } from "@/lib/albumAuto/swapPhotos";
 import type { AlbumElement, AlbumPhotoElement, AlbumTextElement } from "@/lib/types";
 
 // Swapping two photos between pages in the album preview (CLAUDE.md, "החלפת תמונות בין עמודים"):
@@ -103,5 +103,74 @@ describe("swapPhotoPatches", () => {
     // A page with no elements yet.
     const empty = [...spreads, { id: "s5", elements: null, background_photo_id: null }];
     expect(swapPhotoPatches(empty, { spreadId: "s5", elId: "a" }, { spreadId: "s2", elId: "c" })).toBeNull();
+  });
+});
+
+describe("fitPhotoInFrame (the admin's swap, 2026-10-20)", () => {
+  // A 60×30 spread: 1% across is 0.6 cm, 1% down is 0.3 cm.
+  const page = { widthCm: 60, heightCm: 30 };
+  // 20% × 60% of the spread = 12 × 18 cm, a portrait frame (aspect 2/3).
+  const portrait = { xPct: 10, yPct: 20, widthPct: 20, heightPct: 60 };
+
+  it("shrinks the frame to a landscape photo's shape, centred, so nothing is cut", () => {
+    const out = fitPhotoInFrame(portrait, page, 1.5, [], true);
+    // 12 cm wide → 8 cm tall at 3:2 = 26.67% of 30 cm, centred in the old 60%.
+    expect(out.widthPct).toBe(20);
+    expect(out.heightPct).toBeCloseTo(26.67, 2);
+    expect(out.yPct).toBeCloseTo(20 + (60 - 80 / 3) / 2, 1);
+    expect(out.xPct).toBe(10);
+    expect([out.focalX, out.focalY, out.zoom]).toEqual([50, 50, 100]);
+  });
+
+  it("shrinks a wide frame to a portrait photo's shape, centred across", () => {
+    // 60% × 60% = 36 × 18 cm (aspect 2) holding a 2:3 portrait.
+    const out = fitPhotoInFrame({ xPct: 20, yPct: 20, widthPct: 60, heightPct: 60 }, page, 2 / 3, [], true);
+    // 18 cm tall → 12 cm wide = 20% of 60 cm, centred in the old 60%.
+    expect(out.widthPct).toBeCloseTo(20, 2);
+    expect(out.xPct).toBeCloseTo(40, 2);
+    expect(out.heightPct).toBe(60);
+  });
+
+  it("keeps a frame that can't change shape, and follows the faces across", () => {
+    // A landscape photo in the portrait frame: only 2/3 ÷ 1.5 = 44% of its width shows.
+    const face = { x: 0.7, y: 0.3, width: 0.1, height: 0.15 };
+    const out = fitPhotoInFrame(portrait, page, 1.5, [face], false);
+    expect(out.widthPct).toBe(20);
+    expect(out.heightPct).toBe(60);
+    const visible = (2 / 3) / 1.5;
+    const start = (out.focalX / 100) * (1 - visible);
+    // The face is fully inside the visible part.
+    expect(start).toBeLessThanOrEqual(face.x);
+    expect(start + visible).toBeGreaterThanOrEqual(face.x + face.width);
+  });
+
+  it("never cuts a head off the top when the photo is cropped top and bottom", () => {
+    // A portrait photo (2:3) in a slightly wider frame (aspect 0.72): crop 1.08, under the limit.
+    const frame = { xPct: 10, yPct: 10, widthPct: 24, heightPct: 66.67 };
+    const faces = [{ x: 0.4, y: 0.05, width: 0.2, height: 0.12 }];
+    const out = fitPhotoInFrame(frame, page, 2 / 3, faces, true);
+    expect(out.heightPct).toBe(66.67);
+    const visible = (2 / 3) / ((24 * 60) / (66.67 * 30));
+    const start = (out.focalY / 100) * (1 - visible);
+    // The top of the head (face top less ~35% of its height for hair) is visible.
+    expect(start).toBeLessThanOrEqual(Math.max(0, 0.05 - 0.35 * 0.12) + 1e-9);
+  });
+
+  it("without faces, shows the centre a little above the middle", () => {
+    const out = fitPhotoInFrame({ xPct: 10, yPct: 10, widthPct: 24, heightPct: 66.67 }, page, 2 / 3, [], false);
+    expect(out.focalX).toBe(50);
+    expect(out.focalY).toBe(40);
+  });
+
+  it("is used by swapPhotoPatches when given, instead of the crop reset", () => {
+    const spreads = [
+      { id: "s1", background_photo_id: null, elements: [photo("a", "pA")] },
+      { id: "s2", background_photo_id: null, elements: [photo("b", "pB")] },
+    ];
+    const patches = swapPhotoPatches(spreads, { spreadId: "s1", elId: "a" }, { spreadId: "s2", elId: "b" }, (el, spreadId, photoId) => ({ focalX: photoId === "pB" ? 11 : 22, focalY: spreadId === "s1" ? 33 : 44 }));
+    const a = patches!.get("s1")!.elements[0] as { photoId: string; focalX: number; focalY: number };
+    const b = patches!.get("s2")!.elements[0] as { photoId: string; focalX: number; focalY: number };
+    expect([a.photoId, a.focalX, a.focalY]).toEqual(["pB", 11, 33]);
+    expect([b.photoId, b.focalX, b.focalY]).toEqual(["pA", 22, 44]);
   });
 });
