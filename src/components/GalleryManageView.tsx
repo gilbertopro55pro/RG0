@@ -36,7 +36,7 @@ import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor, type A
 import { takeResumeState, useBusy, useResumeState } from "@/lib/updateResume";
 import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAutoDesigner";
 import { hasAutoDesignSession } from "@/lib/albumAuto/session";
-import { swapPhotoPatches, type SwapPick } from "@/lib/albumAuto/swapPhotos";
+import { fitPhotoInFrame, swapPhotoPatches, type FaceRect, type SwapPick } from "@/lib/albumAuto/swapPhotos";
 import { frameElements, rankTemplates, templatesForCount } from "@/lib/albumAuto/templateFill";
 import { layoutSpread } from "@/lib/albumAuto/layouts";
 import { generateTemplateFrames } from "@/lib/albumTemplateBank";
@@ -1413,11 +1413,46 @@ export default function GalleryManageView({
   const [photoSwapMode, setPhotoSwapMode] = useState(false);
   const [photoSwapPick, setPhotoSwapPick] = useState<{ spreadId: string; elId: string } | null>(null);
   const [photoSwapping, setPhotoSwapping] = useState(false);
+  // The admin's swap (owner, 2026-10-20) fits each photo into its new frame without cutting a head:
+  // fitPhotoInFrame, with the photo's faces (detected once per photo, here in the browser).
+  const swapFacesRef = useRef(new Map<string, FaceRect[]>());
+  const facesOf = async (photoId: string): Promise<FaceRect[]> => {
+    const known = swapFacesRef.current.get(photoId);
+    if (known) return known;
+    try {
+      const { detectFacesInImageUrl } = await import("@/lib/faceRecognition");
+      const faces = (await detectFacesInImageUrl(`/api/galleries/${gallery.id}/photos/${photoId}/image?size=900`)).map((f) => f.box);
+      swapFacesRef.current.set(photoId, faces);
+      return faces;
+    } catch {
+      return [];
+    }
+  };
   const swapPhotos = async (a: SwapPick, b: SwapPick) => {
-    const patches = swapPhotoPatches(albumSpreads, a, b);
-    if (!patches) return;
-    const targets = albumSpreads.filter((sp) => patches.has(sp.id));
+    const isAdmin = photographerEmail === ADMIN_EMAIL;
     setPhotoSwapping(true);
+    let fit: Parameters<typeof swapPhotoPatches>[3];
+    if (isAdmin && album) {
+      const ids = [a, b]
+        .map((pick) => albumSpreads.find((sp) => sp.id === pick.spreadId)?.elements?.find((el) => el.id === pick.elId))
+        .map((el) => (el?.type === "photo" ? el.photoId : null))
+        .filter((id): id is string => !!id);
+      const faces = new Map(await Promise.all(ids.map(async (id) => [id, await facesOf(id)] as const)));
+      fit = (el, spreadId, photoId) => {
+        const sp = albumSpreads.find((x) => x.id === spreadId);
+        const page = { widthCm: sp?.width_cm ?? album.width_cm, heightCm: sp?.height_cm ?? album.height_cm };
+        const aspect = photos.find((p) => p.id === photoId)?.preview_aspect_ratio ?? 0;
+        // A frame shaped by its design keeps its shape: a mask (the fade), a tilt, or a bleed off the page.
+        const bleeds = el.xPct <= 0.5 || el.yPct <= 0.5 || el.xPct + el.widthPct >= 99.5 || el.yPct + el.heightPct >= 99.5;
+        return fitPhotoInFrame(el, page, aspect, faces.get(photoId) ?? [], !el.maskId && !el.rotation && !bleeds);
+      };
+    }
+    const patches = swapPhotoPatches(albumSpreads, a, b, fit);
+    if (!patches) {
+      setPhotoSwapping(false);
+      return;
+    }
+    const targets = albumSpreads.filter((sp) => patches.has(sp.id));
     setAlbumSpreads((prev) => prev.map((sp) => (patches.has(sp.id) ? { ...sp, ...patches.get(sp.id) } : sp)));
     try {
       const results = await Promise.all([...patches].map(([id, patch]) => supabase.from("gallery_album_spreads").update(patch).eq("id", id)));
@@ -5607,10 +5642,17 @@ export default function GalleryManageView({
                               any thumbnail (legacy layouts included, auto-seeded into editable
                               elements by seedElementsFromPreset) drops straight into the full-screen
                               free-design editor, which already covers every one of those. */}
-                          <div className="relative">
+                          {/* A page with its own size (the cover, e.g. 32×32 in a 60×30 album) shows in
+                              its own shape, at the same height as the other pages (admin, owner
+                              2026-10-20; everyone else still sees it in the album's shape). */}
+                          {(() => {
+                            const ownSize = photographerEmail === ADMIN_EMAIL && spread.width_cm && spread.height_cm ? { width_cm: spread.width_cm, height_cm: spread.height_cm } : null;
+                            const widthShare = ownSize ? Math.min(1, ownSize.width_cm / ownSize.height_cm / (album.width_cm / album.height_cm)) : 1;
+                            return (
+                          <div className="relative mx-auto" style={widthShare < 1 ? { width: `${widthShare * 100}%` } : undefined}>
                           <AlbumSpreadThumbnail
                             spread={spread}
-                            album={album}
+                            album={ownSize ? { ...album, ...ownSize } : album}
                             photos={photos}
                             customOrnaments={customOrnaments}
                             onClick={() => {
@@ -5645,6 +5687,8 @@ export default function GalleryManageView({
                             </div>
                           )}
                           </div>
+                            );
+                          })()}
                           <span className="absolute top-1 right-1 h-5 min-w-5 px-1 rounded-full bg-black/60 text-white text-[9px] font-semibold flex items-center justify-center pointer-events-none">
                             {i + 1}
                           </span>
@@ -5779,6 +5823,8 @@ export default function GalleryManageView({
               sidePanelOffset={albumSidePanelOffset}
               onSidePanelOffsetChange={setAlbumSidePanelOffset}
               draft={canvasDraftRef.current?.spreadId === spread.id ? canvasDraftRef.current : null}
+              isAdmin={photographerEmail === ADMIN_EMAIL}
+              bookSize={{ width_cm: album.width_cm, height_cm: album.height_cm }}
             />
           );
         })()}

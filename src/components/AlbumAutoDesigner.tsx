@@ -6,10 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
-import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
+import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type EventKind, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
 import { bleedIdsOf, bookPagesWithoutCover, fillBookTemplate, frameElements, ownTemplatePlan } from "@/lib/albumAuto/templateFill";
 import type { AlbumBookTemplateRow, AlbumTemplateRow } from "@/lib/types";
-import { CELL_ORDER, cellLabel, countNames, detectEventKind, pickCellFaces, planAlbum } from "@/lib/albumAuto/planner";
+import { CELL_ORDER, cellLabel, cellPeopleFromReferences, countNames, detectEventKind, ownersCountFor, planAlbum } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
 import { endAutoDesignSession, getAutoDesignSession, mountAutoDesigner, useSessionState, waitForAutoDesigner } from "@/lib/albumAuto/session";
 import type { AlbumElement } from "@/lib/types";
@@ -78,6 +78,19 @@ const PHASE_SPAN: Record<Phase, [number, number]> = {
 // get more than the gallery's 900px default so faces in group shots stay recognizable.
 const CELL_IMAGE_SIZE = 1600;
 const PHOTO_IMAGE_SIZE = 1280;
+
+// The event kinds the photographer can pick when the detected one (from the event type and the
+// gallery title) is wrong. The kind sets the owners' label and the book order: a "בוק" (photo
+// session) has no family sections, only shooting time (owner, 2026-10-20).
+const KIND_OPTIONS: { id: EventKind; label: string }[] = [
+  { id: "wedding", label: "חתונה" },
+  { id: "henna", label: "חינה" },
+  { id: "bar_mitzvah", label: "בר מצווה / עלייה לתורה" },
+  { id: "bat_mitzvah", label: "בת מצווה" },
+  { id: "book", label: "בוק בר/בת מצווה" },
+  { id: "birthday", label: "יום הולדת" },
+  { id: "other", label: "אחר" },
+];
 
 const PICKER_PAGE = 120;
 const PAGE_SIZE = 1000;
@@ -161,7 +174,12 @@ export default function AlbumAutoDesigner({
   const [runError, setRunError] = useSessionState<string | null>(session, "runError", null);
   const { cancelRef, skipFacesRef } = session;
 
-  const eventKind = useMemo(() => detectEventKind(galleryTitle, eventType), [galleryTitle, eventType]);
+  const detectedKind = useMemo(() => detectEventKind(galleryTitle, eventType), [galleryTitle, eventType]);
+  // The photographer's own choice, when the detected kind is wrong (null = the detected one).
+  const [kindChoice, setKindChoice] = useSessionState<EventKind | null>(session, "kind", null);
+  const eventKind = kindChoice ?? detectedKind;
+  // A photo-book session: no family cells, the whole book by shooting time.
+  const isBook = eventKind === "book";
   const favorites = useMemo(() => photos.filter((p) => p.is_favorite), [photos]);
   const candidates = favorites.length > 0 ? favorites : photos;
   const hasUnfiled = folders.length > 0 && photos.some((p) => !p.folder_id);
@@ -224,7 +242,7 @@ export default function AlbumAutoDesigner({
       // (0) Faces in the cells' reference photos, one cell after another (already detected ones —
       // from an earlier run — are kept). A cell whose detection fails is left out of the design.
       const cellFaces = new Map<FamilyCellId, DetectedFace[]>();
-      const toDetect = CELL_ORDER.filter((id) => cells[id].photoId);
+      const toDetect = isBook ? [] : CELL_ORDER.filter((id) => cells[id].photoId);
       setProgress("cells", 0, toDetect.length ? t("{n} מתוך {total} תאים", { n: 0, total: toDetect.length }) : "");
       for (let i = 0; i < toDetect.length; i++) {
         checkCancel();
@@ -284,18 +302,16 @@ export default function AlbumAutoDesigner({
       }
       checkCancel();
 
-      // Reference people per cell.
-      const cellPeople: CellPeople[] = [];
-      for (const id of CELL_ORDER) {
-        const cell = cells[id];
-        const faces = cellFaces.get(id);
-        if (!cell.photoId || !faces || faces.length === 0) continue;
-        const descriptors = pickCellFaces(
-          faces.map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })),
-          cell.names
-        ).filter((d) => d.length > 0);
-        if (descriptors.length > 0) cellPeople.push({ id, descriptors });
-      }
+      // Reference people per cell (an earlier cell's people in a later cell's reference photo are
+      // left out of it — see cellPeopleFromReferences).
+      const cellPeople: CellPeople[] = cellPeopleFromReferences(
+        CELL_ORDER.filter((id) => cells[id].photoId && (cellFaces.get(id)?.length ?? 0) > 0).map((id) => ({
+          id,
+          faces: (cellFaces.get(id) as DetectedFace[]).map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })),
+          names: cells[id].names,
+        })),
+        eventKind
+      );
 
       // (b) Faces in the candidate photos: the gallery's cached detection first, then detect the
       // rest in memory only (gallery_photo_faces' clusters drive the face filter, so never write).
@@ -363,12 +379,12 @@ export default function AlbumAutoDesigner({
       }));
       const photoFaces: PhotoFaces[] = [...facesByPhoto.entries()].map(([photoId, faces]) => ({ photoId, faces }));
       const target = parseInt(spreadCount, 10);
-      const referencePhotos = CELL_ORDER.filter((id) => cells[id].photoId).map((id) => ({ id, photoId: cells[id].photoId }));
+      const referencePhotos = isBook ? [] : CELL_ORDER.filter((id) => cells[id].photoId).map((id) => ({ id, photoId: cells[id].photoId }));
       const plan = planAlbum(
         autoPhotos,
         photoFaces,
         cellPeople,
-        { style, targetSpreads: Number.isFinite(target) && target > 0 ? Math.min(30, target) : null, hasCover: coverMode === "on" },
+        { style, targetSpreads: Number.isFinite(target) && target > 0 ? Math.min(30, target) : null, hasCover: coverMode === "on", kind: eventKind },
         referencePhotos
       );
       if (plan.spreads.length === 0) throw new Error("empty");
@@ -465,7 +481,7 @@ export default function AlbumAutoDesigner({
     }
   };
 
-  const filledCells = CELL_ORDER.filter((id) => cells[id].photoId).length;
+  const filledCells = isBook ? 0 : CELL_ORDER.filter((id) => cells[id].photoId).length;
 
   return (
     <div className="space-y-4">
@@ -721,6 +737,29 @@ export default function AlbumAutoDesigner({
 
       {step === 2 && !pickerFor && (
         <>
+          <section className="rounded-lg border border-line bg-white p-3.5 space-y-2">
+            <label className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold">{t("סוג האירוע")}</span>
+              <select
+                value={eventKind}
+                onChange={(e) => setKindChoice(e.target.value as EventKind)}
+                className="min-w-0 rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
+              >
+                {KIND_OPTIONS.map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {t(k.label)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="text-xs text-ink-soft leading-relaxed">
+              {isBook
+                ? t("בבוק אין חלקי משפחה: כל התמונות נכנסות לאלבום לפי שעת הצילום.")
+                : t("סדר האלבום: {owners}, ההורים, אחים ואחיות, סבא וסבתא, ואז שאר התמונות לפי שעת הצילום.", { owners: t(cellLabel("owners", eventKind)) })}
+            </p>
+          </section>
+          {!isBook && (
+          <>
           <p className="text-xs text-ink-soft leading-relaxed">
             {t("סמנו לכל תא תמונה אחת שבה רואים את האנשים, וכתבו מי בתמונה. כל התאים לא חובה, אבל ככל שתמלאו יותר תאים, סדר האלבום יהיה מדויק יותר.")}
           </p>
@@ -757,7 +796,7 @@ export default function AlbumAutoDesigner({
                         placeholder={t("מי בתמונה? (למשל: אמא רחל, אבא דוד)")}
                         className="w-full resize-none rounded-lg border border-line px-2.5 py-2 text-sm leading-snug bg-white"
                       />
-                      <FaceHint cell={cell} />
+                      <FaceHint cell={cell} maxPeople={id === "owners" ? ownersCountFor(eventKind) : undefined} />
                       {photo && (
                         <button
                           type="button"
@@ -778,6 +817,8 @@ export default function AlbumAutoDesigner({
               {t("הפרצופים בתאים מזוהים אוטומטית בשלב הראשון של העיצוב, תא אחרי תא.")}
             </p>
           )}
+          </>
+          )}
           {runError && <p className="text-xs text-rose">{runError}</p>}
           <div className="flex gap-2">
             <button
@@ -786,7 +827,7 @@ export default function AlbumAutoDesigner({
               disabled={running}
               className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
             >
-              {filledCells === 0 ? t("התחלת עיצוב (בלי תאי משפחה)") : t("התחלת עיצוב")}
+              {filledCells === 0 && !isBook ? t("התחלת עיצוב (בלי תאי משפחה)") : t("התחלת עיצוב")}
             </button>
             <button type="button" onClick={() => setStep(1)} className="rounded-lg px-4 py-3 text-sm font-semibold bg-white border border-line text-ink-soft">
               {t("חזרה")}
@@ -878,7 +919,7 @@ export default function AlbumAutoDesigner({
   );
 }
 
-function FaceHint({ cell }: { cell: CellState }) {
+function FaceHint({ cell, maxPeople }: { cell: CellState; maxPeople?: number }) {
   const t = useT();
   if (!cell.photoId) return null;
   if (cell.detecting) return <p className="text-[11px] text-ink-soft">{t("מזהה פרצופים...")}</p>;
@@ -890,6 +931,8 @@ function FaceHint({ cell }: { cell: CellState }) {
   let extra = "";
   if (names > 0 && names < found) extra = t(", ישמשו {n} הפרצופים הגדולים בתמונה", { n: names });
   else if (names > found) extra = t(", אבל כתבתם {n} שמות", { n: names });
+  // No names: the owners' cell uses at most the kind's head count (pickCellFaces).
+  else if (names === 0 && maxPeople && maxPeople < found) extra = t(", ישמשו {n} הפרצופים הגדולים בתמונה", { n: maxPeople });
   return (
     <p className="text-[11px] text-ink-soft">
       {found === 1 ? t("זוהה פרצוף אחד") : t("זוהו {n} פרצופים", { n: found })}

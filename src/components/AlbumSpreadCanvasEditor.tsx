@@ -17,6 +17,7 @@ import { useT } from "@/i18n/client";
 import type { TFn } from "@/i18n/translate";
 import { ALBUM_BLUR_MAX_PX, computePhotoFraming, cssFilterFor, boxShadowFor, textEffectsCss, type PhotoWithUrl } from "@/lib/albumRender";
 import { textHeightPctForFontSize, MAX_TEXT_HEIGHT_OVERSIZE_RATIO } from "@/lib/albumTextSizing";
+import { clampGroupDelta, computeMoveAlignment, freeLayerId, groupBounds, layerBox, moveShapeAroundPhotos, pageSizeOf, shapeBehindPhotos } from "@/lib/albumEditorGeometry";
 
 export type { PhotoWithUrl };
 
@@ -302,6 +303,17 @@ function IconToBack() {
       <rect x={9.5} y={9.5} width={11} height={11} rx={1.5} opacity={0.4} />
       <rect x={3.5} y={3.5} width={11} height={11} rx={1.5} />
       <path d="M2.3 1.3V7M0.6 5.2L2.3 7L4 5.2" />
+    </MenuIconBase>
+  );
+}
+// "צורה מאחורי התמונות" — a soft-filled dashed rectangle behind two small photo frames.
+function IconShapeBehind() {
+  return (
+    <MenuIconBase>
+      <rect x={2.5} y={4.5} width={19} height={15} rx={1.5} fill="currentColor" opacity={0.18} stroke="none" />
+      <rect x={2.5} y={4.5} width={19} height={15} rx={1.5} strokeDasharray="2 2" />
+      <rect x={6} y={8} width={5} height={8} rx={0.8} />
+      <rect x={13} y={8} width={5} height={8} rx={0.8} />
     </MenuIconBase>
   );
 }
@@ -736,6 +748,7 @@ function PhotoFloatingMenu({
   onToggleShadowPanel,
   photoAdjustPanelOpen,
   onTogglePhotoAdjustPanel,
+  onAddShapeBehind,
 }: {
   el: AlbumPhotoElement;
   // Computed by photoMenuPositionStyle() from the group's own topmost-selected photo, not
@@ -770,6 +783,10 @@ function PhotoFloatingMenu({
   // opens/closes it manually instead, same lifted-to-the-parent pattern as shadowPanelOpen above.
   photoAdjustPanelOpen: boolean;
   onTogglePhotoAdjustPanel: () => void;
+  // "צורה מאחורי התמונות" (admin only for now, "עדכון אדמין" 2026-10-20): a white 35% rectangle
+  // under the selected photos. Omitted → no button (the parent then also counts one button fewer
+  // in its phone/tablet size budget, see circleMenuButtonCount).
+  onAddShapeBehind?: () => void;
 }) {
   const t = useT();
   const [openPanel, setOpenPanel] = useState<null | "opacity" | "blur" | "rotation">(null);
@@ -866,6 +883,11 @@ function PhotoFloatingMenu({
       <CircleButton scale={buttonScale} label={t("הורדת שכבה אחת")} onClick={onSendToBack}>
         <IconToBack />
       </CircleButton>
+      {onAddShapeBehind && (
+        <CircleButton scale={buttonScale} label={t("צורה מאחורי התמונות: מלבן לבן בשקיפות 35% מאחורי התמונות שנבחרו")} onClick={onAddShapeBehind}>
+          <IconShapeBehind />
+        </CircleButton>
+      )}
       <CircleButton scale={buttonScale} label={t("מחיקת התמונה/ות שנבחרו")} danger onClick={onDeleteSelected}>
         <IconX />
       </CircleButton>
@@ -1114,6 +1136,7 @@ function ShapeFloatingMenu({
   onDeleteSelected,
   onBringToFront,
   onSendToBack,
+  photoLayer,
 }: {
   el: AlbumShapeElement;
   albumHeightCm: number;
@@ -1121,6 +1144,11 @@ function ShapeFloatingMenu({
   onDeleteSelected: () => void;
   onBringToFront: () => void;
   onSendToBack: () => void;
+  // "העברה מתחת לתמונות" / "העברה מעל התמונות" (admin only for now, "עדכון אדמין" 2026-10-20):
+  // moves the shape under, or over, every photo it overlaps in one click — see
+  // moveShapeAroundPhotos. A button is disabled when the shape is already there. Omitted → no
+  // buttons.
+  photoLayer?: { onBelow: () => void; onAbove: () => void; canBelow: boolean; canAbove: boolean };
 }) {
   const t = useT();
   const isLine = el.shapeStyle === "line";
@@ -1186,6 +1214,26 @@ function ShapeFloatingMenu({
           ))}
         </div>
       )}
+      {photoLayer && (
+        <div className="space-y-1">
+          <button
+            onClick={photoLayer.onBelow}
+            disabled={!photoLayer.canBelow}
+            className="w-full h-7 rounded-lg bg-chip flex items-center justify-center gap-1 text-[10px] font-semibold text-ink-soft disabled:opacity-50"
+          >
+            <IconToBack />
+            {t("העברה מתחת לתמונות")}
+          </button>
+          <button
+            onClick={photoLayer.onAbove}
+            disabled={!photoLayer.canAbove}
+            className="w-full h-7 rounded-lg bg-chip flex items-center justify-center gap-1 text-[10px] font-semibold text-ink-soft disabled:opacity-50"
+          >
+            <IconToFront />
+            {t("העברה מעל התמונות")}
+          </button>
+        </div>
+      )}
       <div className="flex items-center gap-1">
         <button onClick={onBringToFront} title={t("העלאת שכבה אחת")} className="flex-1 h-7 rounded-lg bg-chip flex items-center justify-center text-ink-soft">
           <IconToFront />
@@ -1230,6 +1278,7 @@ function TextFloatingMenu({
   onUpdate,
   onDeleteSelected,
   maxHeightPx,
+  widthPx,
 }: {
   el: AlbumTextElement;
   album: { width_cm: number; height_cm: number };
@@ -1238,12 +1287,19 @@ function TextFloatingMenu({
   // The canvas's own height: the panel never runs past it, and scrolls inside instead (owner,
   // 2026-10-07).
   maxHeightPx?: number;
+  // The width of the photo-picker area the panel opens over, for the admin ("עדכון אדמין"
+  // 2026-10-20, see textDockRect in the parent). Omitted → the usual 150px.
+  widthPx?: number;
 }) {
   const t = useT();
   return (
     <div
-      className="w-[150px] rounded-xl border border-line bg-white p-2.5 shadow-sheet space-y-2"
-      style={maxHeightPx != null ? { maxHeight: `${maxHeightPx}px`, overflowY: "auto" } : undefined}
+      className={`${widthPx != null ? "" : "w-[150px]"} rounded-xl border border-line bg-white p-2.5 shadow-sheet space-y-2`}
+      style={
+        maxHeightPx != null || widthPx != null
+          ? { ...(widthPx != null ? { width: `${widthPx}px` } : null), ...(maxHeightPx != null ? { maxHeight: `${maxHeightPx}px`, overflowY: "auto" as const } : null) }
+          : undefined
+      }
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
@@ -1695,17 +1751,9 @@ function renderResizeHandles(el: AlbumElement, startDrag: (e: React.PointerEvent
 
 const SNAP_THRESHOLD = 1.2; // % of canvas
 
-function elementBox(el: AlbumElement): { left: number; top: number; right: number; bottom: number; centerX: number; centerY: number } {
-  const height = el.type === "photo" ? el.heightPct : (el.heightPct ?? 15);
-  return {
-    left: el.xPct,
-    top: el.yPct,
-    right: el.xPct + el.widthPct,
-    bottom: el.yPct + height,
-    centerX: el.xPct + el.widthPct / 2,
-    centerY: el.yPct + height / 2,
-  };
-}
+// An element's edges and center (a text box without a stored height counts as 15% tall) — shared
+// with lib/albumEditorGeometry, whose snapping/layer helpers measure elements the same way.
+const elementBox = layerBox;
 
 // While dragging an element, checks its candidate position against the page center and every
 // other element's edges/center on the same page — returns guide lines to draw plus a snapped
@@ -2103,6 +2151,8 @@ export default function AlbumSpreadCanvasEditor({
   sidePanelOffset,
   onSidePanelOffsetChange,
   draft,
+  isAdmin = false,
+  bookSize,
 }: {
   spread: GalleryAlbumSpreadRow;
   // Physical print dimensions plus the album's own configured safe-margin (cm) — used to size the
@@ -2152,6 +2202,14 @@ export default function AlbumSpreadCanvasEditor({
   onSidePanelOffsetChange: (offset: { x: number; y: number }) => void;
   // Unsaved work on this page from before an update's reload (see AlbumCanvasDraft).
   draft?: AlbumCanvasDraft | null;
+  // The admin account ("עדכון אדמין"): editor additions still being polished show only for it.
+  isAdmin?: boolean;
+  // The album's own page size. `album` above is the size of the page being edited, which differs
+  // from the album's on a cover made at its own size (e.g. 32×32 in a 60×30 album) — the admin's
+  // page strip needs this to draw the OTHER pages at the album's size while that cover is open.
+  // Omitted-safe: while a page with its own size is open, the other pages then fall back to its
+  // size, as the strip always did.
+  bookSize?: { width_cm: number; height_cm: number };
 }) {
   const t = useT();
   // This editor's whole layout below (two columns, canvas sizing, sidebar, page switcher) is the
@@ -2508,10 +2566,15 @@ export default function AlbumSpreadCanvasEditor({
   // to the selected text (TextCircleButton below) — same manual-toggle pattern as
   // photoAdjustPanelOpen, not ornament/shape's always-open one, so a stray click on the canvas
   // doesn't repeatedly pop the panel open every time a text box is merely selected.
+  // For the admin ("עדכון אדמין" 2026-10-20, owner: "תפריט שכבת טקסט ייפתח באופן אוטומטי ללא צורך
+  // בלחיצה על אייקון T") the panel opens by itself whenever a text layer is added or selected — still
+  // closed by Escape (then a second Escape deselects) or by deselecting, and still toggled by the T
+  // button; it opens over the photo-picker area instead of the canvas (see textDockRect below).
+  const selectedTextId = selectedText?.id;
   const [textPanelOpen, setTextPanelOpen] = useState(false);
   useEffect(() => {
-    setTextPanelOpen(false);
-  }, [selectedText?.id]);
+    setTextPanelOpen(isAdmin && !!selectedTextId);
+  }, [selectedTextId, isAdmin]);
   const sidePanelOpen = !!selectedOrnament || !!selectedShape || (!!anchorPhoto && photoAdjustPanelOpen) || (!!selectedText && textPanelOpen);
   // Keeps the side panel's last content around through its own fade-out — without this,
   // deselecting would unmount the panel instantly (React removes it from the DOM the same render,
@@ -2551,6 +2614,30 @@ export default function AlbumSpreadCanvasEditor({
     return () => window.removeEventListener("resize", measure);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Admin only ("עדכון אדמין" 2026-10-20, owner: "הפאנל ייפתח מעל איזור בחירת התמונות"): the text
+  // panel opens ON TOP of the favorites photo-picker area (.gf-album-dragpanel, beside the canvas on
+  // desktop and on phone alike) at that area's own width, so it never covers the page being
+  // designed — the picker isn't needed while styling text. Measured the same way as canvasRestRect
+  // (at rest, when the panel opens, and on resize). Stays null without a picker (the text-only
+  // "overlay" mode), or when less than 160px of the picker is on screen (a tablet-width layout puts
+  // it under the canvas), where the panel keeps its usual spot on the canvas. Only the on-screen part
+  // of the picker counts as its height. Its drag offset is its own (textDockDrag), not the shared
+  // sidePanelDrag that the photo panel's position is kept in — that offset would push a docked panel
+  // off the picker area.
+  const dragPanelRef = useRef<HTMLDivElement>(null);
+  const [textDockRect, setTextDockRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  useEffect(() => {
+    if (!isAdmin || !textPanelOpen) return;
+    const measure = () => {
+      const r = dragPanelRef.current?.getBoundingClientRect();
+      const visibleHeight = r ? Math.min(r.height, window.innerHeight - r.top - 8) : 0;
+      setTextDockRect(r && r.width > 0 && visibleHeight >= 160 ? { top: r.top, left: r.left, width: r.width, height: visibleHeight } : null);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [isAdmin, textPanelOpen]);
+  const textDockDrag = useDraggablePanelOffset(lastSideSelection?.type === "text" ? lastSideSelection.el.id : null);
   // Fixed DEFAULT size for the photo-adjustments panel — was 16cm long (tall) × 7cm wide, per
   // explicit request ("מידות ברירת המחדל של הפאנל אורך 16 ס״מ רוחב 7 ס״מ"), superseding every
   // earlier attempt at deriving the panel's size from the selected photo's own dimensions — the
@@ -2786,13 +2873,15 @@ export default function AlbumSpreadCanvasEditor({
   // phone/tablet only (isCompact), same fixed 0.42–0.68 range this always used before the brief
   // desktop generalization. No scroll fallback any more (per explicit "no scrolling at all"
   // request) — this scale plus the canvas-bound position clamp are what keep the menu on-page now.
+  // The admin's menu has one more button, "צורה מאחורי התמונות" (see PhotoFloatingMenu).
+  const circleMenuButtonCount = CIRCLE_MENU_BUTTON_COUNT + (isAdmin ? 1 : 0);
   const menuButtonScale = (() => {
     if (!isCompact) return 1;
     const MIN_SCALE = 0.42;
     const MAX_SCALE = 0.68;
     if (circleMenuScaleBudgetPx == null) return MAX_SCALE;
-    const totalGap = (CIRCLE_MENU_BUTTON_COUNT - 1) * CIRCLE_MENU_GAP_PX;
-    const perButton = (circleMenuScaleBudgetPx - totalGap) / CIRCLE_MENU_BUTTON_COUNT;
+    const totalGap = (circleMenuButtonCount - 1) * CIRCLE_MENU_GAP_PX;
+    const perButton = (circleMenuScaleBudgetPx - totalGap) / circleMenuButtonCount;
     const solved = perButton / 28;
     return Math.min(MAX_SCALE, Math.max(MIN_SCALE, solved));
   })();
@@ -3101,6 +3190,22 @@ export default function AlbumSpreadCanvasEditor({
     ]);
     setSelectedIds(new Set([id]));
     closeShapesPicker();
+  };
+
+  // Admin only ("עדכון אדמין" 2026-10-20): "צורה מאחורי התמונות" in the photo circle menu — a white
+  // 35% rectangle around the selected photos plus ~0.7cm on every side, slotted in just under the
+  // lowest of them (shapeBehindPhotos). It's an ordinary shape from then on, selected right away so
+  // its color/opacity/shadow can be tuned in the shape panel, moved, resized or deleted.
+  const addShapeBehindSelectedPhotos = () => {
+    const id = freeLayerId(elements, "shape-behind");
+    const next = shapeBehindPhotos(elements, selectedPhotos.map((p) => p.id), album, id);
+    if (!next) return;
+    setElements(next);
+    setSelectedIds(new Set([id]));
+  };
+  // Admin only: the shape panel's "העברה מתחת לתמונות" / "העברה מעל התמונות" (moveShapeAroundPhotos).
+  const moveShapeUnderOrOverPhotos = (id: string, where: "below" | "above") => {
+    setElements((prev) => moveShapeAroundPhotos(prev, id, where));
   };
 
   const openPickerForNewPhoto = () => {
@@ -3717,6 +3822,40 @@ export default function AlbumSpreadCanvasEditor({
     }
 
     const groupIds = Object.keys(drag.groupStart);
+    if (groupIds.length > 1 && isAdmin) {
+      // Admin only ("עדכון אדמין" 2026-10-20, owner: "אפקט נעיצה במסגרת הירוקה ובגבולות תמונות
+      // סמוכות כאשר מסומנות תמונה או תמונות יחד"). The whole selection is one rigid block: ONE delta
+      // for every member, clamped so the block's bounding box stays on the page — the branch below
+      // clamps each member on its own (and offsets the snap by the primary element's clamp), so a
+      // member reaching the page edge stops while the rest carry on and the group's spacing changes.
+      // The block's box snaps like a single element does: page center lines, the green print-safe
+      // frame, and every other element's edges — lined up with them or sitting flush against them
+      // (computeMoveAlignment), same threshold, same guide lines, same margin flash, same spacing.
+      const startBounds = groupBounds(Object.values(drag.groupStart));
+      const free = clampGroupDelta(startBounds, dxPct, dyPct);
+      const groupBox = { ...startBounds, xPct: startBounds.xPct + free.dx, yPct: startBounds.yPct + free.dy };
+      const groupOthers = elements.filter((x) => !drag.groupStart[x.id]);
+      const { guides: gAlignGuides, snapXPct: gaSnapX, snapYPct: gaSnapY } = computeMoveAlignment(groupBox, groupOthers, SNAP_THRESHOLD);
+      const { snapXPct: gmSnapX, snapYPct: gmSnapY } = computeMarginMoveSnap(groupBox, marginInsetPct);
+      const { guides: gSpacingGuides, snapXPct: gsSnapX, snapYPct: gsSnapY } = computeSpacingGuides(groupBox, groupOthers);
+      const gSnapX = gaSnapX ?? gmSnapX ?? gsSnapX;
+      const gSnapY = gaSnapY ?? gmSnapY ?? gsSnapY;
+      setGuides(gAlignGuides);
+      setSpacingGuides(gaSnapX !== undefined || gaSnapY !== undefined ? [] : gSpacingGuides);
+      setMarginSnap({ x: gaSnapX === undefined && gmSnapX !== undefined, y: gaSnapY === undefined && gmSnapY !== undefined });
+      const { dx, dy } = clampGroupDelta(
+        startBounds,
+        gSnapX !== undefined ? gSnapX - startBounds.xPct : free.dx,
+        gSnapY !== undefined ? gSnapY - startBounds.yPct : free.dy
+      );
+      setElements((prev) =>
+        prev.map((e2) => {
+          const gs = drag.groupStart[e2.id];
+          return gs ? { ...e2, xPct: gs.xPct + dx, yPct: gs.yPct + dy } : e2;
+        })
+      );
+      return;
+    }
     if (groupIds.length > 1) {
       // Multiple selected elements move together by the same delta. Guides/snapping are computed
       // from the selection's bounding box against everything NOT in the group — the resulting
@@ -3770,7 +3909,11 @@ export default function AlbumSpreadCanvasEditor({
     const candidateY = Math.max(0, Math.min(100 - primaryStart.heightPct, primaryStart.yPct + dyPct));
     const others = elements.filter((x) => x.id !== drag.id);
     const candidateBox = { xPct: candidateX, yPct: candidateY, widthPct: primaryStart.widthPct, heightPct: primaryStart.heightPct };
-    const { guides: nextGuides, snapXPct: aSnapX, snapYPct: aSnapY } = computeAlignment(candidateBox, others);
+    // The admin's version also snaps an edge flush against a neighbour's opposite edge (the
+    // borders of adjacent photos), nearest line first — see the admin group branch above.
+    const { guides: nextGuides, snapXPct: aSnapX, snapYPct: aSnapY } = isAdmin
+      ? computeMoveAlignment(candidateBox, others, SNAP_THRESHOLD)
+      : computeAlignment(candidateBox, others);
     const { guides: nextSpacingGuides, snapXPct: sSnapX, snapYPct: sSnapY } = computeSpacingGuides(candidateBox, others);
     const { snapXPct: mSnapX, snapYPct: mSnapY } = computeMarginMoveSnap(candidateBox, marginInsetPct);
     setGuides(nextGuides);
@@ -4723,21 +4866,30 @@ export default function AlbumSpreadCanvasEditor({
                 <defs key={`sharpen-${el.id}`} dangerouslySetInnerHTML={{ __html: sharpenSvgFilter(el.id, el.sharpness) }} />
               ))}
           </svg>
-          {backgroundPhoto && (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={backgroundPhoto.previewUrl ?? backgroundPhoto.url}
-              alt=""
-              className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-              style={{
-                opacity: backgroundOpacity / 100,
-                filter: backgroundBlur ? `blur(${(backgroundBlur / 100) * ALBUM_BLUR_MAX_PX}px)` : undefined,
-                // Same 100-400 "extra scale on top of the object-fit:cover baseline" convention as
-                // a regular photo element's own zoom — see AlbumPhotoElement.zoom's own comment.
-                transform: backgroundZoom !== 100 ? `scale(${backgroundZoom / 100})` : undefined,
-              }}
-            />
-          )}
+          {backgroundPhoto &&
+            (() => {
+              const backgroundImg = (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={backgroundPhoto.previewUrl ?? backgroundPhoto.url}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                  style={{
+                    opacity: backgroundOpacity / 100,
+                    filter: backgroundBlur ? `blur(${(backgroundBlur / 100) * ALBUM_BLUR_MAX_PX}px)` : undefined,
+                    // Same 100-400 "extra scale on top of the object-fit:cover baseline" convention as
+                    // a regular photo element's own zoom — see AlbumPhotoElement.zoom's own comment.
+                    transform: backgroundZoom !== 100 ? `scale(${backgroundZoom / 100})` : undefined,
+                  }}
+                />
+              );
+              // The canvas itself can't clip (outline shapes may bleed past the page, see its own
+              // comment), so a zoomed background spilled over the grey area around the page. For the
+              // admin ("עדכון אדמין" 2026-10-20, owner: "זום יגדיל את התמונה בתוך שטח הקנבס ולא
+              // יחרוג ממנו") it sits in its own page-sized clipping layer — zoom and blur stay inside
+              // the page, as in the page thumbnails and every export (all crop to the page).
+              return isAdmin ? <div className="absolute inset-0 overflow-hidden pointer-events-none">{backgroundImg}</div> : backgroundImg;
+            })()}
           {mode === "overlay" && (
             <div className={`absolute inset-0 flex ${spread.layout === "stack" ? "flex-col" : "flex-row"} gap-0.5 pointer-events-none`}>
               {photo1 && (
@@ -5276,6 +5428,7 @@ export default function AlbumSpreadCanvasEditor({
               setPhotoShadowPanelOpen(false);
               setPhotoAdjustPanelOpen((v) => !v);
             }}
+            onAddShapeBehind={isAdmin ? addShapeBehindSelectedPhotos : undefined}
           />
           );
         })()}
@@ -5323,12 +5476,16 @@ export default function AlbumSpreadCanvasEditor({
           // dragged past the canvas's own top/bottom edges from here. Ornament/shape/text
           // selections keep the older canvas-centered fallback.
           const centerY = canvasRestRect.top + canvasRestRect.height / 2;
-          const panelTopPx = lastSideSelection.type === "photo" ? canvasRestRect.top : centerY;
+          // Admin only: the text panel docks over the photo-picker area, top-anchored at its own
+          // width, with its own drag offset (see textDockRect / textDockDrag).
+          const textDock = isAdmin && lastSideSelection.type === "text" ? textDockRect : null;
+          const panelDrag = textDock ? textDockDrag : sidePanelDrag;
+          const panelTopPx = textDock ? textDock.top : lastSideSelection.type === "photo" ? canvasRestRect.top : centerY;
           // Suspends the open/close transition during EITHER a live drag OR a live resize — both
           // change this element's own size/position every pointermove, and a CSS transition on
           // those same properties would otherwise fight the real-time updates the exact same way
           // the drag-vs-transition bug did (see sidePanelDrag.isDragging's own history above).
-          const suspendTransition = sidePanelDrag.isDragging || photoPanelSize.isResizing;
+          const suspendTransition = panelDrag.isDragging || photoPanelSize.isResizing;
           return (
           <div
             className="fixed z-20"
@@ -5340,7 +5497,9 @@ export default function AlbumSpreadCanvasEditor({
               // used to land there, and since this z-20 layer is BELOW that row's z-35, rendered
               // hidden behind it rather than on top). Ornament/shape/text panels stay unclamped.
               top: panelTopPx,
-              left: openOnLeft
+              left: textDock
+                ? textDock.left
+                : openOnLeft
                 ? Math.max(8, canvasRestRect.left + 8 - (lastSideSelection.type === "photo" ? panelLeftShiftPx : 0))
                 : Math.max(canvasRestRect.left + 8, Math.min(canvasRestRect.left + canvasRestRect.width - panelWidth - 8, window.innerWidth - panelWidth - 16)),
               // The open/close slide-in transform composes with the free drag offset (see
@@ -5348,16 +5507,16 @@ export default function AlbumSpreadCanvasEditor({
               // translate()s additively, so the panel still opens/closes with its usual animation
               // AND stays wherever the photographer last dragged it to.
               transform: `${
-                photoAdjustMaxHeightPx != null
+                photoAdjustMaxHeightPx != null || textDock
                   ? sidePanelOpen ? "translateX(0)" : "translateX(10px)"
                   : sidePanelOpen ? "translateY(-50%) translateX(0)" : "translateY(-50%) translateX(10px)"
-              } translate(${sidePanelDrag.offset.x}px, ${sidePanelDrag.offset.y}px)`,
+              } translate(${panelDrag.offset.x}px, ${panelDrag.offset.y}px)`,
               opacity: sidePanelOpen ? 1 : 0,
               pointerEvents: sidePanelOpen ? "auto" : "none",
               transition: suspendTransition ? "none" : "opacity 220ms ease, transform 220ms ease",
             }}
           >
-            <PanelDragGrip handlers={sidePanelDrag.gripHandlers} />
+            <PanelDragGrip handlers={panelDrag.gripHandlers} />
             {lastSideSelection.type === "photo" && <PanelResizeHandle handlers={photoPanelSize.resizeHandlers} />}
             {lastSideSelection.type === "ornament" ? (
               <OrnamentFloatingMenu
@@ -5375,6 +5534,16 @@ export default function AlbumSpreadCanvasEditor({
                 onDeleteSelected={removeSelected}
                 onBringToFront={() => bringToFront(lastSideSelection.el.id)}
                 onSendToBack={() => sendToBack(lastSideSelection.el.id)}
+                photoLayer={
+                  isAdmin
+                    ? {
+                        onBelow: () => moveShapeUnderOrOverPhotos(lastSideSelection.el.id, "below"),
+                        onAbove: () => moveShapeUnderOrOverPhotos(lastSideSelection.el.id, "above"),
+                        canBelow: moveShapeAroundPhotos(elements, lastSideSelection.el.id, "below") !== elements,
+                        canAbove: moveShapeAroundPhotos(elements, lastSideSelection.el.id, "above") !== elements,
+                      }
+                    : undefined
+                }
               />
             ) : lastSideSelection.type === "text" ? (
               <TextFloatingMenu
@@ -5382,7 +5551,9 @@ export default function AlbumSpreadCanvasEditor({
                 album={album}
                 onUpdate={(patch) => applyToSelectedTexts(lastSideSelection.el.id, patch)}
                 onDeleteSelected={removeSelected}
-                maxHeightPx={Math.max(160, canvasRestRect.height - 36)}
+                // Docked (admin): as tall as the picker area, less the drag grip above the panel.
+                maxHeightPx={textDock ? Math.max(160, textDock.height - 24) : Math.max(160, canvasRestRect.height - 36)}
+                widthPx={textDock ? textDock.width : undefined}
               />
             ) : (
               <PhotoAdjustFloatingMenu
@@ -5453,6 +5624,13 @@ export default function AlbumSpreadCanvasEditor({
                 const isCurrent = s.id === spread.id;
                 const isTarget = s.id === switchingToSpreadId;
                 const thumbH = isPhone ? 34 : 64;
+                // Admin only ("עדכון אדמין" 2026-10-20): each page at its OWN size — a 32×32 cover in
+                // a 60×30 album shows square, and the inside pages stay 60×30 while that cover is
+                // open. `album` is the size of the page being edited; the album's own size comes
+                // from bookSize, or is `album` itself when this page has no size of its own (without
+                // bookSize, a page with its own size being edited still lends it to the others).
+                const pageSize = isAdmin ? pageSizeOf(s, bookSize ?? album) : album;
+                const pageRatio = isAdmin && pageSize.width_cm > 0 && pageSize.height_cm > 0 ? pageSize.width_cm / pageSize.height_cm : canvasRatio;
                 return (
                   <div
                     key={s.id}
@@ -5460,14 +5638,14 @@ export default function AlbumSpreadCanvasEditor({
                     title={isCurrent ? t("עמוד {n} (העמוד הנוכחי)", { n: i + 1 }) : t("מעבר לעמוד {n}", { n: i + 1 })}
                     className="relative shrink-0 rounded-md overflow-hidden bg-white"
                     style={{
-                      width: Math.round(thumbH * canvasRatio),
+                      width: Math.round(thumbH * pageRatio),
                       cursor: isCurrent ? "default" : switchingToSpreadId ? "wait" : "pointer",
                       opacity: switchingToSpreadId && !isTarget && !isCurrent ? 0.6 : 1,
                     }}
                   >
                     <AlbumSpreadThumbnail
                       spread={s}
-                      album={album}
+                      album={pageSize}
                       photos={photos}
                       customOrnaments={customOrnaments}
                       onClick={isCurrent ? undefined : () => void switchToSpread(s.id)}
@@ -5498,7 +5676,7 @@ export default function AlbumSpreadCanvasEditor({
             .gf-album-dragpanel's grid-column/grid-row rules above — those rules are no-ops on any
             element that isn't a direct child of this grid container, which the sidebar isn't. */}
         {mode === "custom" && (
-          <div className="gf-album-dragpanel mt-3 pt-3 border-t border-line">
+          <div ref={dragPanelRef} className="gf-album-dragpanel mt-3 pt-3 border-t border-line">
           <div className="gf-album-dragpanel-sticky-header">
             {/* flex-wrap unconditionally now (used to be phone-only) — the desktop column is a
                 fixed 380px now too (previously it had the full main-content width to work with),
