@@ -230,3 +230,14 @@ describe("renewalPaymentDue", () => {
     }
   });
 });
+
+describe("annual plan notes", () => {
+  it("state the real saving: 12 months of the same tier's monthly plan, less the annual charge", () => {
+    const monthlyOf = { basic: "basic_monthly", standard: "monthly", studio_pro: "studio_pro_monthly" } as const;
+    for (const key of ["basic_annual", "annual", "studio_pro_annual"] as const) {
+      const plan = SUBSCRIPTION_PLANS[key];
+      const saving = SUBSCRIPTION_PLANS[monthlyOf[plan.tier]].pricePerMonth * 12 - plan.annualAmount;
+      expect(plan.note).toBe(`חיוב שנתי של ₪${plan.annualAmount} · חוסך ₪${saving} בשנה`);
+    }
+  });
+});
