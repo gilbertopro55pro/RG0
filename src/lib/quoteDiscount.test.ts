@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { discountAmount, quoteTotals, readQuoteDiscount, toQuoteDiscount } from "@/lib/quoteDiscount";
+import { discountAmount, quoteTotals, readQuoteDiscount, roundAgorot, toQuoteDiscount } from "@/lib/quoteDiscount";
 
 // The builder's VAT rate for a licensed business (עוסק מורשה). An exempt one (עוסק פטור) passes 0.
 const VAT = 0.18;
@@ -134,5 +134,24 @@ describe("readQuoteDiscount", () => {
     const { discountAmount: amount } = quoteTotals(3200, { type: "percent", value: 5 }, VAT);
     const saved = toQuoteDiscount("percent", 5, amount);
     expect(readQuoteDiscount(JSON.parse(JSON.stringify(saved)))).toEqual({ type: "percent", value: 5, amount: 160 });
+  });
+});
+
+describe("roundAgorot", () => {
+  it("rounds half an agora up, even when floating point lands a hair under it", () => {
+    // 274.725 * 100 is 27472.499999999996 in floating point: plain Math.round gave 274.72.
+    expect(roundAgorot(274.725)).toBe(274.73);
+    expect(roundAgorot(465.255)).toBe(465.26);
+    expect(roundAgorot(1.005)).toBe(1.01);
+    expect(roundAgorot(10.004)).toBe(10);
+    expect(roundAgorot(3050)).toBe(3050);
+  });
+
+  it("charges VAT half up on a discounted quote (found by the tests, 2026-10-20)", () => {
+    // 1,650 less 7.5% = 1,526.25; VAT 18% = 274.725 → 274.73, total 1,800.98.
+    const t = quoteTotals(1650, { type: "percent", value: 7.5 }, VAT);
+    expect(t.subtotal).toBe(1526.25);
+    expect(t.vatAmount).toBe(274.73);
+    expect(t.total).toBe(1800.98);
   });
 });

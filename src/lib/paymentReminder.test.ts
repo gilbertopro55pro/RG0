@@ -20,6 +20,11 @@ describe("paymentReminderMessage", () => {
     );
   });
 
+  it("writes agorot as two digits, and whole shekels without any", () => {
+    expect(paymentReminderMessage({ ...base, amount: 1234.5 })).toContain("₪1,234.50 ");
+    expect(paymentReminderMessage({ ...base, amount: 1234 })).toContain("₪1,234 ");
+  });
+
   it("never says 'תזכורת ידידותית' (owner: it sounds apologetic), in any language", () => {
     for (const lang of LANGS) {
       const msg = paymentReminderMessage({ ...base, lang });

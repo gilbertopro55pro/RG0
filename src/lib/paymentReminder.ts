@@ -36,7 +36,8 @@ export function paymentReminderMessage(p: {
   senderName: string | null | undefined;
   lang: Lang;
 }): string {
-  const amount = `₪${p.amount.toLocaleString(dateLocale(p.lang))}`;
+  // Agorot, when there are any, always as two digits (₪1,234.50, not ₪1,234.5).
+  const amount = `₪${p.amount.toLocaleString(dateLocale(p.lang), Number.isInteger(p.amount) ? undefined : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const body = TEXT[p.lang].body.replace("{name}", p.clientName.trim()).replace("{amount}", amount).replace("{link}", p.portalUrl);
   const signature = p.signature?.trim() || p.senderName?.trim();
   return signature ? `${body}\n\n${signature}` : body;
