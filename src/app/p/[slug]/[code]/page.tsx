@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import PortfolioPageView, { portfolioMetadata } from "@/components/PortfolioPageView";
-import { loadPortfolio, NO_CATEGORY_TAB } from "@/lib/portfolio";
+import { loadPortfolio, portfolioTabNames } from "@/lib/portfolio";
 import { SHARE_CODE_RE, tabsForShareCode } from "@/lib/portfolioShareCode";
 
 // The short link to some of the portfolio's tabs: /p/<slug>/<code> (lib/portfolioShareCode.ts). The
@@ -9,7 +9,10 @@ import { SHARE_CODE_RE, tabsForShareCode } from "@/lib/portfolioShareCode";
 // removed since), the whole portfolio shows rather than an empty page — it's public at /p/<slug>
 // anyway.
 export async function generateMetadata({ params }: { params: Promise<{ slug: string; code: string }> }): Promise<Metadata> {
-  return portfolioMetadata((await params).slug);
+  const { slug, code } = await params;
+  const data = await loadPortfolio(slug);
+  const tabs = data ? tabsForShareCode(code, portfolioTabNames(data.photos, data.videos)) : [];
+  return portfolioMetadata(slug, tabs.length ? tabs : null);
 }
 
 export default async function PortfolioShareCodePage({
@@ -23,10 +26,7 @@ export default async function PortfolioShareCodePage({
   if (!SHARE_CODE_RE.test(code)) notFound();
   const { category, sub } = await searchParams;
   const data = await loadPortfolio(slug);
-  const allTabs = data
-    ? [...new Set([...data.photos.map((p) => p.portfolio_category ?? NO_CATEGORY_TAB), ...data.videos.map((v) => v.portfolio_category ?? NO_CATEGORY_TAB)])]
-    : [];
-  const tabs = tabsForShareCode(code, allTabs);
+  const tabs = data ? tabsForShareCode(code, portfolioTabNames(data.photos, data.videos)) : [];
   return (
     <PortfolioPageView
       slug={slug}

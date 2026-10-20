@@ -7,7 +7,7 @@ import PortfolioVideoUploadPanel from "@/components/PortfolioVideoUploadPanel";
 import PortfolioManagePanel from "@/components/PortfolioManagePanel";
 import PortfolioFeaturedPicker from "@/components/PortfolioFeaturedPicker";
 import BodyPortal from "@/components/BodyPortal";
-import { shareCodeFor } from "@/lib/portfolioShareCode";
+import { portfolioShareMessage, shareCodeFor } from "@/lib/portfolioShareCode";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import type { Photographer } from "@/lib/types";
 import { useT } from "@/i18n/client";
@@ -146,8 +146,7 @@ export default function PortfolioSettings({ photographer }: { photographer: Phot
     }
   };
 
-  const shareMessage = (url: string) =>
-    `היי, אשמח שתעיפו מבט בתיק העבודות שלי 📸\n${url}${photographer.name ? `\n\n${photographer.name} - צילום אירועים` : ""}`;
+  const shareMessage = (url: string) => portfolioShareMessage(url, photographer.whatsapp_signature, photographer.name);
 
   const shareViaWhatsapp = () => {
     if (!liveUrl) return;
