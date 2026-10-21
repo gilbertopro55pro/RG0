@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { AdminPhotographerRow } from "@/app/admin/page";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import AdminPaymentLocks from "@/components/AdminPaymentLocks";
+import ToneTag from "@/components/ToneTag";
+import { subscriptionStatusTone } from "@/lib/statusTones";
 import { getT, getLang } from "@/i18n/server";
 import { dateLocale } from "@/i18n/config";
 
@@ -69,13 +71,14 @@ export default async function AdminDashboardView({ photographers }: { photograph
         <div className="text-sm font-semibold mb-3">{t("סטטוס מנויים")}</div>
         <div className="flex flex-wrap gap-2">
           {Object.entries(statusCounts).map(([status, count]) => (
-            <span
+            <ToneTag
               key={status}
-              className="rounded-full px-3 py-1 text-xs font-semibold"
-              style={{ background: "rgba(255,255,255,0.5)", color: STATUS_COLORS[status] ?? "var(--color-ink-soft)" }}
+              tone={subscriptionStatusTone(status)}
+              legacyClassName="rounded-full px-3 py-1 text-xs font-semibold"
+              legacyStyle={{ background: "rgba(255,255,255,0.5)", color: STATUS_COLORS[status] ?? "var(--color-ink-soft)" }}
             >
-              {STATUS_LABELS[status] ? t(STATUS_LABELS[status]) : status}: {count}
-            </span>
+              {`${STATUS_LABELS[status] ? t(STATUS_LABELS[status]) : status}: ${count}`}
+            </ToneTag>
           ))}
         </div>
       </div>
@@ -96,12 +99,14 @@ export default async function AdminDashboardView({ photographers }: { photograph
               <div key={p.id} className="rounded-xl px-3.5 py-2.5 bg-chip">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <span className="text-sm font-semibold">{p.name}</span>
-                  <span
-                    className="text-xs font-semibold shrink-0"
-                    style={{ color: STATUS_COLORS[p.subscription_status] ?? "var(--color-ink-soft)" }}
+                  <ToneTag
+                    tone={subscriptionStatusTone(p.subscription_status)}
+                    className="shrink-0"
+                    legacyClassName="text-xs font-semibold shrink-0"
+                    legacyStyle={{ color: STATUS_COLORS[p.subscription_status] ?? "var(--color-ink-soft)" }}
                   >
                     {STATUS_LABELS[p.subscription_status] ? t(STATUS_LABELS[p.subscription_status]) : p.subscription_status}
-                  </span>
+                  </ToneTag>
                 </div>
                 <div className="text-xs text-ink-soft break-all mb-1">{p.email}</div>
                 <div className="flex items-center justify-between text-xs text-ink-soft">
@@ -133,9 +138,12 @@ export default async function AdminDashboardView({ photographers }: { photograph
                     <td className="py-2 text-ink-soft">{p.email}</td>
                     <td className="py-2">{t(SUBSCRIPTION_PLANS[p.plan].label)}</td>
                     <td className="py-2">
-                      <span style={{ color: STATUS_COLORS[p.subscription_status] ?? "var(--color-ink-soft)" }}>
+                      <ToneTag
+                        tone={subscriptionStatusTone(p.subscription_status)}
+                        legacyStyle={{ color: STATUS_COLORS[p.subscription_status] ?? "var(--color-ink-soft)" }}
+                      >
                         {STATUS_LABELS[p.subscription_status] ? t(STATUS_LABELS[p.subscription_status]) : p.subscription_status}
-                      </span>
+                      </ToneTag>
                     </td>
                     <td className="py-2 text-ink-soft">{new Date(p.created_at).toLocaleDateString(loc)}</td>
                   </tr>

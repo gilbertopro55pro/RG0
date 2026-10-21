@@ -6,6 +6,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import type { Photographer, SubscriptionStatus } from "@/lib/types";
+import ToneTag from "@/components/ToneTag";
+import { subscriptionStatusTone } from "@/lib/statusTones";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
 
@@ -146,9 +148,9 @@ export default function BillingSettings({ photographer }: { photographer: Photog
         <span>
           {t("מסלול {plan}, ₪{price}/חודש", { plan: t(plan.label), price: plan.pricePerMonth })}
         </span>
-        <span style={{ color: isActive ? "var(--color-sage)" : "var(--color-rose)", fontWeight: 600 }}>
+        <ToneTag tone={subscriptionStatusTone(status)} className="shrink-0" legacyStyle={{ color: isActive ? "var(--color-sage)" : "var(--color-rose)", fontWeight: 600 }}>
           {t(STATUS_LABELS[status])}
-        </span>
+        </ToneTag>
       </div>
 
       {isActive && (

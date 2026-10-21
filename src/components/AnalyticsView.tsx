@@ -15,6 +15,8 @@ import { paymentReminderMessage, paymentReminderSubject, type PaymentReminderCha
 import { shortClientUrl } from "@/lib/shortLinks";
 import { dateLocale, isLang, type Lang } from "@/i18n/config";
 import ClientMessageSheet from "@/components/ClientMessageSheet";
+import ToneTag from "@/components/ToneTag";
+import { useVivid } from "@/components/VividProvider";
 
 // The collection tools in the open balances tab (admin only for now, owner 2026-10-19).
 type Collection = { lastReminders: Record<string, string>; signature: string | null; senderName: string | null };
@@ -656,6 +658,7 @@ function OpenBalancesTab({
 }) {
   const t = useT();
   const lang = useLang();
+  const vivid = useVivid();
   const day = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString(dateLocale(lang));
   // Reminders sent here since the page opened, on top of the ones from the event log.
   const [sentNow, setSentNow] = useState<Record<string, string>>({});
@@ -700,7 +703,7 @@ function OpenBalancesTab({
                     <div className="text-sm font-semibold truncate">{r.clientName}</div>
                     <div className="text-[11.5px] text-ink-soft">
                       {r.held ? t("האירוע התקיים ב-{date}", { date: day(r.eventDate) }) : t("אירוע ב-{date}", { date: day(r.eventDate) })}
-                      {r.dueDate && (
+                      {r.dueDate && !(vivid && overdue) && (
                         <span style={overdue ? { color: "var(--color-rose)" } : undefined}>
                           {" · "}
                           {overdue ? t("מועד התשלום עבר ({date})", { date: day(r.dueDate) }) : t("לתשלום עד {date}", { date: day(r.dueDate) })}
@@ -712,7 +715,15 @@ function OpenBalancesTab({
                         {t("מקדמה {deposit} · יתרה {balance}", { deposit: money(r.deposit), balance: money(r.balance) })}
                       </div>
                     )}
-                    {r.deposit > 0 && r.balance === 0 && <div className="text-[11px] text-ink-soft">{t("מקדמה שלא שולמה")}</div>}
+                    {/* Vivid (admin): an overdue payment needs the photographer, an unpaid deposit
+                        waits on the client: each as a tag in its tone. */}
+                    {vivid && (overdue || (r.deposit > 0 && r.balance === 0)) && (
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {overdue && r.dueDate && <ToneTag tone="attention">{t("מועד התשלום עבר ({date})", { date: day(r.dueDate) })}</ToneTag>}
+                        {r.deposit > 0 && r.balance === 0 && <ToneTag tone="pending">{t("מקדמה שלא שולמה")}</ToneTag>}
+                      </div>
+                    )}
+                    {!vivid && r.deposit > 0 && r.balance === 0 && <div className="text-[11px] text-ink-soft">{t("מקדמה שלא שולמה")}</div>}
                   </div>
                   <div className="text-base font-bold font-data shrink-0" style={r.held ? { color: "var(--color-rose)" } : undefined}>
                     {money(r.total)}

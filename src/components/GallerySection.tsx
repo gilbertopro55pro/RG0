@@ -8,6 +8,7 @@ import type { GalleryRow } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import NewGalleryModal from "@/components/NewGalleryModal";
 import LinkExistingGalleryModal from "@/components/LinkExistingGalleryModal";
+import ToneTag from "@/components/ToneTag";
 import { useT } from "@/i18n/client";
 
 export default function GallerySection({
@@ -70,11 +71,17 @@ export default function GallerySection({
             <div className="flex-1">
               <div className="text-sm font-medium">
                 {isArchived ? (
-                  <span className="text-rose">{t("בארכיון")}</span>
+                  <ToneTag tone="neutral" legacyClassName="text-rose">
+                    {t("בארכיון")}
+                  </ToneTag>
                 ) : gallery.published ? (
-                  <span className="text-sage">{t("פורסמה ✓")}</span>
+                  <ToneTag tone="creative" legacyClassName="text-sage">
+                    {t("פורסמה ✓")}
+                  </ToneTag>
                 ) : (
-                  <span className="text-ink-soft">{t("טיוטה. עדיין לא פורסמה")}</span>
+                  <ToneTag tone="neutral" legacyClassName="text-ink-soft">
+                    {t("טיוטה. עדיין לא פורסמה")}
+                  </ToneTag>
                 )}
               </div>
               <div className="text-xs text-amber-deep underline mt-0.5">{t("ניהול גלריה")} <span className="inline-block ltr:rotate-180">←</span></div>

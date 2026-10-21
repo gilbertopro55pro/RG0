@@ -40,6 +40,8 @@ import type {
 import { clipSongLines } from "@/lib/clipSongs";
 import SendUpdateButton from "@/components/SendUpdateButton";
 import BodyPortal from "@/components/BodyPortal";
+import ToneTag from "@/components/ToneTag";
+import { useVivid } from "@/components/VividProvider";
 import ContractSection from "@/components/ContractSection";
 import PortalLinkSection from "@/components/PortalLinkSection";
 import GallerySection from "@/components/GallerySection";
@@ -1154,9 +1156,13 @@ export default function EventDetailView({
       </div>
       {closedAt && isOwner && (
         <div className="flex items-center gap-2 flex-wrap mb-4">
-          <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
+          <ToneTag
+            tone="paid"
+            legacyClassName="text-xs px-2.5 py-1 rounded-full font-semibold"
+            legacyStyle={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}
+          >
             {t("האירוע סגור")}
-          </span>
+          </ToneTag>
           <button
             onClick={() => restoreEvent()}
             disabled={closingEvent}
@@ -1720,9 +1726,9 @@ function PaymentLegRow({
         </span>
         <span className="text-base font-extrabold font-data">{ils(amount)}</span>
         {paid ? (
-          <span className="text-xs font-bold rounded-full px-2.5 py-1" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
+          <ToneTag tone="paid" legacyClassName="text-xs font-bold rounded-full px-2.5 py-1" legacyStyle={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
             {t("שולם")}
-          </span>
+          </ToneTag>
         ) : (
           <span className="text-xs font-bold rounded-lg px-2.5 py-1.5 border border-line" style={{ background: "var(--color-input-bg)" }}>
             {t("סימון תשלום")}
@@ -1842,6 +1848,7 @@ function FilmStrip({
 }) {
   const t = useT();
   const locale = dateLocale(useLang());
+  const vivid = useVivid();
   const byKey = new Map(stages.map((s) => [s.stage_key ?? `custom:${s.custom_stage_id}`, s]));
 
   return (
@@ -1909,11 +1916,18 @@ function FilmStrip({
             </button>
             {requiresAlbumPdf && !st.done && (
               <div className="border-t border-line px-3.5 py-3 bg-white album-upload-panel">
-                {albumPdfAttached && !uploadingAlbumDesign && (
-                  <p className="text-[11px] mb-1.5 text-center" style={{ color: "var(--color-sage)" }}>
-                    {t("{file}, נשלח, ממתין לאישור הלקוח", { file: albumDesignFilename ?? "" })}
-                  </p>
-                )}
+                {albumPdfAttached && !uploadingAlbumDesign &&
+                  (vivid ? (
+                    <p className="mb-1.5 text-center">
+                      <ToneTag tone="pending" className="max-w-full [overflow-wrap:anywhere]">
+                        {t("{file}, נשלח, ממתין לאישור הלקוח", { file: albumDesignFilename ?? "" })}
+                      </ToneTag>
+                    </p>
+                  ) : (
+                    <p className="text-[11px] mb-1.5 text-center" style={{ color: "var(--color-sage)" }}>
+                      {t("{file}, נשלח, ממתין לאישור הלקוח", { file: albumDesignFilename ?? "" })}
+                    </p>
+                  ))}
                 <label
                   className="flex items-center justify-center gap-1.5 text-xs font-medium py-2.5 rounded-lg cursor-pointer"
                   style={{

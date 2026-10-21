@@ -12,6 +12,8 @@ import BackLink from "@/components/BackLink";
 import { getUploadsSnapshot, subscribeUploads, useGalleryUploads, type GalleryUpload } from "@/lib/galleryUploads";
 import { useRemoteUploads } from "@/lib/remoteUploads";
 import RemoteUploadLine from "@/components/RemoteUploadLine";
+import ToneTag from "@/components/ToneTag";
+import { useVivid } from "@/components/VividProvider";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, type Lang } from "@/i18n/config";
 import { shortClientUrl } from "@/lib/shortLinks";
@@ -53,6 +55,7 @@ export default function GalleriesListView({
 }) {
   const t = useT();
   const lang = useLang();
+  const vivid = useVivid();
   const router = useRouter();
   // See src/lib/albumRotateResume.ts — a standalone-iOS-PWA-only workaround for the album tool
   // mistapping after rotation. This page is just the bounce point of that round trip: land here,
@@ -270,9 +273,13 @@ export default function GalleriesListView({
                   </div>
                   <div className="text-[11px] mt-1">
                     {item.published ? (
-                      <span className="text-sage">{t("פורסמה")}</span>
+                      <ToneTag tone="creative" legacyClassName="text-sage">
+                        {t("פורסמה")}
+                      </ToneTag>
                     ) : (
-                      <span className="text-ink-soft">{t("טיוטה")}</span>
+                      <ToneTag tone="neutral" legacyClassName="text-ink-soft">
+                        {t("טיוטה")}
+                      </ToneTag>
                     )}
                   </div>
                   {uploadByGallery.get(item.id) ? (
@@ -322,11 +329,24 @@ export default function GalleriesListView({
                     <div className="text-xs text-ink-soft font-data">
                       {item.eventDate && new Date(item.eventDate).toLocaleDateString(dateLocale(lang))}, {t("{n} תמונות", { n: item.photoCount })}
                     </div>
-                    <div className="text-[11px] mt-1 text-rose">
-                      {item.archiveReason === "manual" ? t("נמחקה ידנית") : t("פג תוקף")}
-                      {item.permanentDeleteAt &&
-                        `, ${t("מחיקה סופית ב-{date}", { date: new Date(item.permanentDeleteAt).toLocaleDateString(dateLocale(lang)) })}`}
-                    </div>
+                    {vivid ? (
+                      // Vivid (admin): expired or deleted is archived (neutral); the final deletion
+                      // date stays in the warning color.
+                      <div className="text-[11px] mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                        <ToneTag tone="neutral">{item.archiveReason === "manual" ? t("נמחקה ידנית") : t("פג תוקף")}</ToneTag>
+                        {item.permanentDeleteAt && (
+                          <span style={{ color: "var(--tone-attention-ink)" }}>
+                            {t("מחיקה סופית ב-{date}", { date: new Date(item.permanentDeleteAt).toLocaleDateString(dateLocale(lang)) })}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] mt-1 text-rose">
+                        {item.archiveReason === "manual" ? t("נמחקה ידנית") : t("פג תוקף")}
+                        {item.permanentDeleteAt &&
+                          `, ${t("מחיקה סופית ב-{date}", { date: new Date(item.permanentDeleteAt).toLocaleDateString(dateLocale(lang)) })}`}
+                      </div>
+                    )}
                   </div>
                 </Link>
               ))}
