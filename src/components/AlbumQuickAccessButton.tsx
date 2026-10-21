@@ -11,6 +11,8 @@ import { createClient } from "@/lib/supabase/client";
 import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
 import PrintHouseSendsHistory from "@/components/PrintHouseSendsHistory";
 import type { PrintHouseEmailRow } from "@/lib/types";
+import { useVivid } from "@/components/VividProvider";
+import { VIVID_ICON_BOX, vividIconStyle } from "@/components/homeVividStyles";
 
 type GalleryOption = { id: string; title: string; published: boolean; hasActiveAlbum: boolean };
 
@@ -38,6 +40,7 @@ const FORMAT_FILENAME: Record<ExportFormat, string> = { pdf: "album.pdf", jpg: "
 export default function AlbumQuickAccessButton({ galleries }: { galleries: GalleryOption[] }) {
   const router = useRouter();
   const t = useT();
+  const vivid = useVivid();
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(galleries[0]?.id ?? "");
   const [navigating, setNavigating] = useState(false);
@@ -283,12 +286,19 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
         className="flex-1 min-w-0 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl p-3 sm:p-4 bg-card border border-line shadow-card text-start"
       >
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <span className="flex w-6 shrink-0 items-center justify-center" style={{ color: "var(--color-brass)" }}>
+          {vivid ? (
+            // The vivid look (lib/tones.ts, admin only for now): the icon in a creative-tone square.
+            <span className={VIVID_ICON_BOX} style={vividIconStyle("creative")}>
+              <IconAlbum className="h-[18px] w-[18px]" />
+            </span>
+          ) : (
+            <span className="flex w-6 shrink-0 items-center justify-center" style={{ color: "var(--color-brass)" }}>
               <IconAlbum className="h-5 w-5" />
             </span>
+          )}
           <div className="min-w-0">
             <div className="text-sm font-semibold leading-snug">{t("עיצוב אלבום")}</div>
-            <div className="text-xs text-ink-soft leading-snug mt-0.5">{t("גישה מהירה לפי גלריה")}</div>
+            <div className="text-xs text-ink-soft leading-snug mt-0.5">{vivid ? t("פתיחה מגלריה") : t("גישה מהירה לפי גלריה")}</div>
           </div>
         </div>
         <span className="hidden sm:inline text-ink-soft shrink-0 ltr:rotate-180">←</span>

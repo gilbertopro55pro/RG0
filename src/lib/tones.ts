@@ -29,12 +29,11 @@ export function stageProgress(stages: readonly { done: boolean }[] | null | unde
   return { done, total, pct: Math.round((done / total) * 100) };
 }
 
-// The color of an event's date tile in the list: done (closed) green, a freelance job purple, one
-// that needs the photographer (open balance, unpaid deposit, unsigned contract, imported and not
-// filled in) red, everything else upcoming blue.
-export function eventDateTone(e: { closed: boolean; freelance: boolean; needsAttention: boolean }): Tone {
+// The color of an event's date tile in the list: done (closed) green, a freelance job purple,
+// everything else upcoming blue. What needs the photographer (open balance, unsigned contract...)
+// is said by the row's tags, not the tile: with it on the tile too, half the list came out red.
+export function eventDateTone(e: { closed: boolean; freelance: boolean }): Tone {
   if (e.closed) return "paid";
-  if (e.needsAttention) return "attention";
   if (e.freelance) return "creative";
   return "upcoming";
 }

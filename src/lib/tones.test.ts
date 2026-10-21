@@ -27,10 +27,9 @@ describe("stageProgress", () => {
 });
 
 describe("eventDateTone", () => {
-  it("closed wins, then what needs the photographer, then freelance, else upcoming", () => {
-    expect(eventDateTone({ closed: true, freelance: true, needsAttention: true })).toBe("paid");
-    expect(eventDateTone({ closed: false, freelance: true, needsAttention: true })).toBe("attention");
-    expect(eventDateTone({ closed: false, freelance: true, needsAttention: false })).toBe("creative");
-    expect(eventDateTone({ closed: false, freelance: false, needsAttention: false })).toBe("upcoming");
+  it("closed wins, then freelance, else upcoming (attention is the tags' job)", () => {
+    expect(eventDateTone({ closed: true, freelance: true })).toBe("paid");
+    expect(eventDateTone({ closed: false, freelance: true })).toBe("creative");
+    expect(eventDateTone({ closed: false, freelance: false })).toBe("upcoming");
   });
 });

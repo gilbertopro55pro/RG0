@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { IconSettings } from "@/components/icons/NavIcons";
 import { useT } from "@/i18n/client";
+import { useVivid } from "@/components/VividProvider";
+import { VIVID_HEADER_BUTTON, VIVID_HEADER_BUTTON_STYLE } from "@/components/homeVividStyles";
 
 // Moved out of the quick-actions grid to sit right next to the "האירועים שלי" heading instead —
 // same unseen-changelog dot it always had, just relocated.
 // The version comes from the server (lib/changelog.ts is ~270KB and must not ship with every page).
 export default function SettingsGearLink({ currentVersion: CURRENT_VERSION }: { currentVersion: string }) {
   const t = useT();
+  const vivid = useVivid();
   const [hasUnseenUpdate, setHasUnseenUpdate] = useState(false);
 
   useEffect(() => {
@@ -24,7 +27,12 @@ export default function SettingsGearLink({ currentVersion: CURRENT_VERSION }: { 
   }, []);
 
   return (
-    <Link href="/settings" className="relative shrink-0 h-10 w-10 rounded-xl flex items-center justify-center bg-card text-ink" aria-label={t("הגדרות")}>
+    <Link
+      href="/settings"
+      className={vivid ? VIVID_HEADER_BUTTON : "relative shrink-0 h-10 w-10 rounded-xl flex items-center justify-center bg-card text-ink"}
+      style={vivid ? VIVID_HEADER_BUTTON_STYLE : undefined}
+      aria-label={t("הגדרות")}
+    >
       {hasUnseenUpdate && (
         <span className="absolute top-2 end-2 h-2 w-2 rounded-full" style={{ background: "var(--color-brass)" }} />
       )}
