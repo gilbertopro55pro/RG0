@@ -31,15 +31,20 @@ export type EventKind = "wedding" | "henna" | "bar_mitzvah" | "bat_mitzvah" | "b
 // room. The atmosphere tab ("אוירה") closes the book, on the last page. The family cells then only
 // order the family tab (parents, siblings, grandparents). Without tabs, the order above.
 
-// The four cells the photographer fills before designing. Each is optional.
-export type FamilyCellId = "parents" | "owners" | "siblings" | "grandparents";
+// The cells the photographer fills before designing. Each is optional. At a wedding or a henna the
+// groom's parents (parents) and the bride's parents (parents2) are two cells, and every kind has the
+// grandparents of both sides (grandparents, grandparents2: the groom's and the bride's at a wedding,
+// the father's and the mother's otherwise) — owner, 2026-10-21.
+export type FamilyCellId = "parents" | "parents2" | "owners" | "siblings" | "grandparents" | "grandparents2";
 
 export type FamilyCell = {
   id: FamilyCellId;
   // The reference photo the photographer marked for this cell (a gallery photo id).
   photoId: string | null;
-  // Who is in it, free text ("אמא רחל, אבא דוד"). The number of names is used as a hint for how
-  // many faces in the reference photo belong to this cell (the largest N faces).
+  // Who is in it, free text ("אמא רחל, אבא דוד"), written in the order they stand in the photo:
+  // right to left in Hebrew ("מימין לשמאל:" opens the field), left to right in English and Russian.
+  // The number of names tells how many faces in the reference photo belong to the cell (the largest
+  // N), and the order tells which face is which name (see cellFaceUses in planner.ts).
   names: string;
 };
 
@@ -62,7 +67,7 @@ export type PhotoFaces = { photoId: string; faces: { descriptor: number[]; area:
 // Each cell's reference people, after picking the right faces from its reference photo.
 export type CellPeople = { id: FamilyCellId; descriptors: number[][] };
 
-export type SectionKind = "owners" | "parents" | "siblings" | "grandparents" | "event";
+export type SectionKind = "owners" | "parents" | "parents2" | "siblings" | "grandparents" | "grandparents2" | "event";
 
 // One spread (a full double page) of the plan. heroId, when set, is the photo the layout should
 // make the largest on that spread.

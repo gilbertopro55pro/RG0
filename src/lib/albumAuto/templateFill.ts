@@ -19,17 +19,28 @@ function safeAspect(a: number): number {
   return a > 0.05 && Number.isFinite(a) ? a : 1.5;
 }
 
+// A frame's shape as printed: the album fits every frame into the page's safe margin except the ones
+// that bleed off it (fitAutoElements, bleedIdsOf), which squeezes a 60×30 spread's frames 3% more in
+// height than in width. The quality check found a photographer's template cropping 1.86 past the
+// 1.8 limit below, measured before that fit (2026-10-21).
+function printedAspect(f: AlbumFrame, W: number, H: number, marginCm: number): number {
+  const bleeds = !f.borderWidth && (f.xPct <= 0.5 || f.yPct <= 0.5 || f.xPct + f.widthPct >= 99.5 || f.yPct + f.heightPct >= 99.5);
+  return marginCm > 0 && !bleeds && W > 2 * marginCm && H > 2 * marginCm ? frameAspect(f, W - 2 * marginCm, H - 2 * marginCm) : frameAspect(f, W, H);
+}
+
 // Photos to frames: the widest photo into the widest frame, and so on (reading order on ties), which
 // minimises cropping and keeps portraits in portrait frames. cost = mean log crop, worst = max crop.
-export function assignToFrames(frames: AlbumFrame[], photos: LayoutPhoto[], W: number, H: number) {
-  const fOrder = frames.map((_, i) => i).sort((a, b) => frameAspect(frames[a], W, H) - frameAspect(frames[b], W, H) || a - b);
+// `marginCm`: the album's safe margin, to measure the crop on the frames as printed (printedAspect).
+export function assignToFrames(frames: AlbumFrame[], photos: LayoutPhoto[], W: number, H: number, marginCm = 0) {
+  const aspect = (f: AlbumFrame) => printedAspect(f, W, H, marginCm);
+  const fOrder = frames.map((_, i) => i).sort((a, b) => aspect(frames[a]) - aspect(frames[b]) || a - b);
   const pOrder = photos.map((_, i) => i).sort((a, b) => safeAspect(photos[a].aspect) - safeAspect(photos[b].aspect) || a - b);
   let cost = 0;
   let worst = 1;
   const pairs = fOrder.map((fi, j) => {
     const frame = frames[fi];
     const photo = photos[pOrder[j]];
-    const fa = frameAspect(frame, W, H);
+    const fa = aspect(frame);
     const pa = safeAspect(photo.aspect);
     const crop = Math.max(fa / pa, pa / fa);
     cost += Math.log(crop);
@@ -195,7 +206,13 @@ const OWN_TEMPLATE_MAX_CROP = 1.8;
  * least so far and never the previous page's), so own pages spread evenly through the book. A count
  * with no own template stays with the style's layout and the next pages catch up.
  */
-export function ownTemplatePlan(pages: LayoutPhoto[][], own: AlbumFrame[][], W: number, H: number, share = 0.7): (AlbumFrame[] | null)[] {
+export function ownTemplatePlan(
+  pages: LayoutPhoto[][],
+  own: AlbumFrame[][],
+  W: number,
+  H: number,
+  { share = 0.7, marginCm = 0 }: { share?: number; marginCm?: number } = {}
+): (AlbumFrame[] | null)[] {
   const uses = new Map<AlbumFrame[], number>();
   let used = 0;
   let prev: AlbumFrame[] | null = null;
@@ -204,7 +221,7 @@ export function ownTemplatePlan(pages: LayoutPhoto[][], own: AlbumFrame[][], W: 
     if (photos.length > 1 && used < Math.round(share * (i + 1))) {
       const fits = own
         .filter((f) => f.length === photos.length && f !== prev)
-        .map((frames) => ({ frames, ...assignToFrames(frames, photos, W, H) }))
+        .map((frames) => ({ frames, ...assignToFrames(frames, photos, W, H, marginCm) }))
         .filter((c) => c.worst <= OWN_TEMPLATE_MAX_CROP)
         .sort((a, b) => (uses.get(a.frames) ?? 0) - (uses.get(b.frames) ?? 0) || a.cost - b.cost);
       pick = fits[0]?.frames ?? null;

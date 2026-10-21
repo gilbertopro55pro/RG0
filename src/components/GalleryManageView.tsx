@@ -38,6 +38,7 @@ import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAuto
 import { hasAutoDesignSession } from "@/lib/albumAuto/session";
 import { fitPhotoInFrame, swapPhotoPatches, type FaceRect, type SwapFit, type SwapPick } from "@/lib/albumAuto/swapPhotos";
 import { createFaceCache, createSerialQueue, refitAfterFaces } from "@/lib/albumAuto/swapFaces";
+import { elementBox, qualityFixPatches, type QualityIssue } from "@/lib/albumAuto/qualityCheck";
 import { frameElements, rankTemplates, templatesForCount } from "@/lib/albumAuto/templateFill";
 import { layoutSpread } from "@/lib/albumAuto/layouts";
 import { generateTemplateFrames } from "@/lib/albumTemplateBank";
@@ -111,6 +112,7 @@ import { GallerySettingsModal } from "@/components/galleryManage/GallerySettings
 import { UploadCount, UploadPct } from "@/components/galleryManage/UploadProgress";
 import { GridThumb } from "@/components/galleryManage/GridThumb";
 import { DeleteFolderConfirmModal } from "@/components/galleryManage/DeleteFolderConfirmModal";
+import AlbumQualityCheck, { QualityHighlight, QualityPageBadge, useAlbumQualityCheck } from "@/components/galleryManage/AlbumQualityCheck";
 
 // The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
 const ReelBuilder = dynamic(() => import("@/components/ReelBuilder"), { ssr: false });
@@ -1435,25 +1437,28 @@ export default function GalleryManageView({
     const el = albumSpreadsRef.current.find((sp) => sp.id === pick.spreadId)?.elements?.find((x) => x.id === pick.elId);
     return el?.type === "photo" ? el.photoId : null;
   };
+  // The gallery's stored face detection for these photos, into the shared face cache (the swap and
+  // the quality check).
+  const seedStoredFaces = async (ids: string[]) => {
+    for (let i = 0; i < ids.length; i += 80) {
+      const { data } = await supabase
+        .from("gallery_photo_faces")
+        .select("photo_id, box_x, box_y, box_width, box_height")
+        .eq("gallery_id", gallery.id)
+        .in("photo_id", ids.slice(i, i + 80))
+        .returns<{ photo_id: string; box_x: number; box_y: number; box_width: number; box_height: number }[]>();
+      const byPhoto = new Map<string, FaceRect[]>();
+      for (const r of data ?? []) byPhoto.set(r.photo_id, [...(byPhoto.get(r.photo_id) ?? []), { x: r.box_x, y: r.box_y, width: r.box_width, height: r.box_height }]);
+      for (const [id, faces] of byPhoto) swapFaces.seed(id, faces);
+    }
+  };
   useEffect(() => {
     if (!photoSwapMode || photographerEmail !== ADMIN_EMAIL) return;
     void import("@/lib/faceRecognition").then((m) => m.warmFaceBoxDetector()).catch(() => {});
     const ids = [...new Set(albumSpreadsRef.current.flatMap((sp) => (sp.elements ?? []).flatMap((el) => (el.type === "photo" && el.photoId ? [el.photoId] : []))))].filter(
       (id) => !swapFaces.known(id)
     );
-    void (async () => {
-      for (let i = 0; i < ids.length; i += 80) {
-        const { data } = await supabase
-          .from("gallery_photo_faces")
-          .select("photo_id, box_x, box_y, box_width, box_height")
-          .eq("gallery_id", gallery.id)
-          .in("photo_id", ids.slice(i, i + 80))
-          .returns<{ photo_id: string; box_x: number; box_y: number; box_width: number; box_height: number }[]>();
-        const byPhoto = new Map<string, FaceRect[]>();
-        for (const r of data ?? []) byPhoto.set(r.photo_id, [...(byPhoto.get(r.photo_id) ?? []), { x: r.box_x, y: r.box_y, width: r.box_width, height: r.box_height }]);
-        for (const [id, faces] of byPhoto) swapFaces.seed(id, faces);
-      }
-    })();
+    void seedStoredFaces(ids);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per opening of swap mode
   }, [photoSwapMode]);
   const fitForSwap = (faces: Map<string, FaceRect[]>): SwapFit => (el, spreadId, photoId) => {
@@ -1466,7 +1471,7 @@ export default function GalleryManageView({
   };
   // Swap saves, one after another so a later swap of the same page never lands before an earlier one.
   const [enqueueSwapSave] = useState(createSerialQueue);
-  const queueSpreadSave = (patches: Map<string, Partial<GalleryAlbumSpreadRow>>) => {
+  const queueSpreadSave = (patches: Map<string, Partial<GalleryAlbumSpreadRow>>, failMessage = t("ההחלפה לא נשמרה, נסו שוב")) => {
     void enqueueSwapSave(async () => {
       try {
         const results = await Promise.all([...patches].map(([id, patch]) => supabase.from("gallery_album_spreads").update(patch).eq("id", id)));
@@ -1478,9 +1483,29 @@ export default function GalleryManageView({
           const { data } = await supabase.from("gallery_album_spreads").select("*").eq("album_id", album.id).order("sort_order").returns<GalleryAlbumSpreadRow[]>();
           if (data) setAlbumSpreads(data);
         }
-        alert(t("ההחלפה לא נשמרה, נסו שוב"));
+        alert(failMessage);
       }
     });
+  };
+  // The album's quality check (admin, 2026-10-21; components/galleryManage/AlbumQualityCheck): it
+  // shares the swap's face cache, and its fixes save like the swap does, one after another.
+  const albumQuality = useAlbumQualityCheck({ album, spreads: albumSpreads, photos, faceCache: swapFaces, loadStoredFaces: seedStoredFaces });
+  const [qualityFocus, setQualityFocus] = useState<{ spreadId: string; elementId?: string } | null>(null);
+  const qualityFocusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const applyQualityFixes = (issueIds: string[]) => {
+    // Recomputed on the latest pages, so a fix never lands on a frame that changed since the list was drawn.
+    const wanted = new Set(issueIds);
+    const patches = qualityFixPatches(albumSpreadsRef.current, albumQuality.issuesFor(albumSpreadsRef.current).filter((i) => wanted.has(i.id)));
+    if (!patches.size) return;
+    albumSpreadsRef.current = albumSpreadsRef.current.map((sp) => (patches.has(sp.id) ? { ...sp, elements: patches.get(sp.id)! } : sp));
+    setAlbumSpreads(albumSpreadsRef.current);
+    queueSpreadSave(new Map([...patches].map(([id, elements]) => [id, { elements }])), t("התיקון לא נשמר, נסו שוב"));
+  };
+  const showQualityIssue = (issue: QualityIssue) => {
+    setQualityFocus({ spreadId: issue.spreadId, elementId: issue.elementId });
+    document.getElementById(`album-page-${issue.spreadId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (qualityFocusTimer.current) clearTimeout(qualityFocusTimer.current);
+    qualityFocusTimer.current = setTimeout(() => setQualityFocus(null), 5000);
   };
   const swapPhotos = async (a: SwapPick, b: SwapPick) => {
     if (photographerEmail === ADMIN_EMAIL && album) {
@@ -5671,17 +5696,30 @@ export default function GalleryManageView({
                   <>
                     <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                       <p className="text-xs font-bold text-ink-soft">{t("תצוגה מקדימה")}</p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPhotoSwapMode((v) => !v);
-                          setPhotoSwapPick(null);
-                        }}
-                        className={`rounded-full px-3 py-1.5 text-xs font-semibold border ${photoSwapMode ? "bg-amber-deep text-white border-amber-deep" : "bg-white text-ink border-line"}`}
-                      >
-                        {photoSwapMode ? t("סיום החלפת תמונות") : t("⇄ החלפת תמונות בין עמודים")}
-                      </button>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {/* Admin only for now, like the other album precision tools (2026-10-21). */}
+                        {photographerEmail === ADMIN_EMAIL && (
+                          <button
+                            type="button"
+                            onClick={albumQuality.toggle}
+                            className={`rounded-full px-3 py-1.5 text-xs font-semibold border ${albumQuality.open ? "bg-ink text-white border-ink" : "bg-white text-ink border-line"}`}
+                          >
+                            {albumQuality.open ? t("סיום בדיקת האיכות") : t("בדיקת איכות")}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPhotoSwapMode((v) => !v);
+                            setPhotoSwapPick(null);
+                          }}
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold border ${photoSwapMode ? "bg-amber-deep text-white border-amber-deep" : "bg-white text-ink border-line"}`}
+                        >
+                          {photoSwapMode ? t("סיום החלפת תמונות") : t("⇄ החלפת תמונות בין עמודים")}
+                        </button>
+                      </div>
                     </div>
+                    {photographerEmail === ADMIN_EMAIL && albumQuality.open && <AlbumQualityCheck quality={albumQuality} onShow={showQualityIssue} onFix={applyQualityFixes} />}
                     {photoSwapMode && (
                       <p className="text-xs text-ink mb-2 rounded-lg bg-amber-bg px-3 py-2">
                         {photoSwapping
@@ -5697,6 +5735,7 @@ export default function GalleryManageView({
                       return (
                         <div
                           key={spread.id}
+                          id={`album-page-${spread.id}`}
                           draggable={!photoSwapMode}
                           onDragStart={() => setDraggedSpreadId(spread.id)}
                           onDragOver={(e) => e.preventDefault()}
@@ -5731,6 +5770,16 @@ export default function GalleryManageView({
                               if (!photoSwapMode) setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" });
                             }}
                           />
+                          {photographerEmail === ADMIN_EMAIL && albumQuality.open && (
+                            <>
+                              <QualityPageBadge counts={albumQuality.byPage.get(spread.id)} />
+                              {qualityFocus?.spreadId === spread.id &&
+                                (() => {
+                                  const el = qualityFocus.elementId ? spread.elements?.find((x) => x.id === qualityFocus.elementId) : undefined;
+                                  return <QualityHighlight box={el ? elementBox(el) : { xPct: 0, yPct: 0, widthPct: 100, heightPct: 100 }} />;
+                                })()}
+                            </>
+                          )}
                           {photoSwapMode && (
                             <div className="absolute inset-0 z-[1]">
                               {(spread.elements ?? [])

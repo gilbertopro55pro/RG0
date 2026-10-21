@@ -86,23 +86,38 @@ export function ownersCountFor(kind: EventKind): number | undefined {
   return undefined;
 }
 
-// The UI shows the cells in this order (1 parents, 2 owners, 3 siblings, 4 grandparents). The book
-// order is different (owners first) — see SECTION_PRIORITY below.
-export const CELL_ORDER: FamilyCellId[] = ["parents", "owners", "siblings", "grandparents"];
+// The UI shows the cells in this order (parents, the bride's parents at a wedding, owners, siblings,
+// the grandparents of both sides). The book order is different (owners first) — see SECTION_PRIORITY
+// below.
+export const CELL_ORDER: FamilyCellId[] = ["parents", "parents2", "owners", "siblings", "grandparents", "grandparents2"];
+
+const isCouple = (kind: EventKind) => kind === "wedding" || kind === "henna";
+
+// The cells the photographer sees for the kind: two parents' cells only at a wedding or a henna (the
+// groom's and the bride's, owner 2026-10-21), the grandparents of both sides at every kind, none in a
+// photo-book session.
+export function cellsFor(kind: EventKind): FamilyCellId[] {
+  if (kind === "book") return [];
+  return CELL_ORDER.filter((c) => c !== "parents2" || isCouple(kind));
+}
 
 export function cellLabel(cell: FamilyCellId, kind: EventKind): string {
   switch (cell) {
     case "owners":
-      if (kind === "wedding" || kind === "henna") return "חתן וכלה";
+      if (isCouple(kind)) return "חתן וכלה";
       if (kind === "bar_mitzvah") return "חתן בר המצווה";
       if (kind === "bat_mitzvah") return "כלת בת המצווה";
       return "בעלי השמחה";
     case "parents":
-      return "ההורים";
+      return isCouple(kind) ? "הורי החתן" : "ההורים";
+    case "parents2":
+      return "הורי הכלה";
     case "siblings":
       return "אחים ואחיות";
     case "grandparents":
-      return "סבא וסבתא";
+      return isCouple(kind) ? "סבא וסבתא מצד החתן" : "סבא וסבתא מצד אבא";
+    case "grandparents2":
+      return isCouple(kind) ? "סבא וסבתא מצד הכלה" : "סבא וסבתא מצד אמא";
   }
 }
 
@@ -110,29 +125,54 @@ export function cellLabel(cell: FamilyCellId, kind: EventKind): string {
 // Names & reference faces
 // ---------------------------------------------------------------------------------------------
 
-// How many people the free text names. Separators: commas, newlines, ";", "&", "+", "/", " and ",
-// a standalone "ו", and "ו" as a word prefix joining names ("רחל ודוד" = 2, "אמא ואבא" = 2).
-// Multi-word names ("סבתא שושנה", "אמא רחל") count as one.
-export function countNames(names: string): number {
-  const text = (names ?? "").trim();
-  if (!text) return 0;
-  // A bare number ("3") is taken literally.
-  if (/^\d{1,2}$/.test(text)) return Number(text);
-  const segments = text
-    .split(/[,،;\n\r&+/|]|\s+and\s+|\s+ו\s+/i)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  let count = 0;
-  for (const seg of segments) {
-    const words = seg.split(/\s+/).filter(Boolean);
-    let n = words.length > 0 ? 1 : 0;
-    // Each later word that starts with "ו" + at least two letters opens a new name.
-    for (let i = 1; i < words.length; i++) {
-      if (/^ו[א-ת]{2,}/.test(words[i])) n++;
-    }
-    count += n;
+// The order the names are written in, as the people stand in the photo: right to left in Hebrew
+// (the field opens with "מימין לשמאל:", owner 2026-10-21), left to right in English and Russian.
+export type NamesOrder = "rtl" | "ltr";
+
+// A direction the photographer typed at the start themselves wins over the field's.
+const LEADING_ORDER: [RegExp, NamesOrder][] = [
+  [/^\s*(?:מ)?ימין\s+לשמאל\s*[:：-]?/, "rtl"],
+  [/^\s*(?:מ)?שמאל\s+לימין\s*[:：-]?/, "ltr"],
+  [/^\s*(?:from\s+)?right\s+to\s+left\s*[:-]?/i, "rtl"],
+  [/^\s*(?:from\s+)?left\s+to\s+right\s*[:-]?/i, "ltr"],
+  [/^\s*справа\s+налево\s*[:-]?/i, "rtl"],
+  [/^\s*слева\s+направо\s*[:-]?/i, "ltr"],
+];
+
+function readNames(names: string, order: NamesOrder): { text: string; order: NamesOrder } {
+  const text = names ?? "";
+  for (const [re, o] of LEADING_ORDER) if (re.test(text)) return { text: text.replace(re, ""), order: o };
+  return { text, order };
+}
+
+// The names, in the order they were written. Separators: commas, newlines, ";", "&", "+", "/",
+// " and ", a standalone "ו", and "ו" as a word prefix joining names ("רחל ודוד", "אמא ואבא").
+// Multi-word names ("סבתא שושנה", "אמא רחל") are one name. A bare number names nobody.
+export function nameList(names: string): string[] {
+  const text = readNames(names, "rtl").text.trim();
+  if (!text || /^\d{1,2}$/.test(text)) return [];
+  const out: string[] = [];
+  for (const seg of text.split(/[,،;\n\r&+/|]|\s+and\s+|\s+ו\s+/i)) {
+    const words = seg.trim().split(/\s+/).filter(Boolean);
+    let cur: string[] = [];
+    words.forEach((w, i) => {
+      // Each later word that starts with "ו" + at least two letters opens a new name.
+      if (i > 0 && /^ו[א-ת]{2,}/.test(w)) {
+        out.push(cur.join(" "));
+        cur = [w.slice(1)];
+      } else cur.push(w);
+    });
+    if (cur.length) out.push(cur.join(" "));
   }
-  return count;
+  return out;
+}
+
+// How many people the free text names ("רחל ודוד" = 2, "אמא רחל, אבא דוד" = 2). A bare number ("3")
+// is taken literally.
+export function countNames(names: string): number {
+  const text = readNames(names, "rtl").text.trim();
+  if (/^\d{1,2}$/.test(text)) return Number(text);
+  return nameList(names).length;
 }
 
 // The reference photo's faces that belong to the cell: the largest N (N = number of names), or,
@@ -141,59 +181,167 @@ export function countNames(names: string): number {
 // mitzvah child, a couple — so the parents standing behind the child in the owners' reference
 // photo don't become "owners" too).
 export function pickCellFaces(faces: { descriptor: number[]; area: number }[], names: string, maxPeople?: number): number[][] {
+  return pickFaceIndices(faces, countNames(names), maxPeople).map((i) => faces[i].descriptor);
+}
+
+function pickFaceIndices(faces: { area: number }[], named: number, maxPeople?: number): number[] {
   if (!faces || faces.length === 0) return [];
   const sorted = faces
     .map((f, i) => ({ f, i }))
-    .sort((a, b) => b.f.area - a.f.area || a.i - b.i)
-    .map((x) => x.f);
-  const n = countNames(names);
-  if (n > 0) return sorted.slice(0, n).map((f) => f.descriptor);
-  const largest = sorted[0].area;
-  const big = sorted.filter((f) => f.area >= largest * 0.25);
-  return (maxPeople && maxPeople > 0 ? big.slice(0, maxPeople) : big).map((f) => f.descriptor);
+    .sort((a, b) => b.f.area - a.f.area || a.i - b.i);
+  if (named > 0) return sorted.slice(0, named).map((x) => x.i);
+  const largest = sorted[0].f.area;
+  const big = sorted.filter((x) => x.f.area >= largest * 0.25);
+  return (maxPeople && maxPeople > 0 ? big.slice(0, maxPeople) : big).map((x) => x.i);
 }
 
-export type CellReference = { id: FamilyCellId; faces: { descriptor: number[]; area: number }[]; names: string };
+// A name that already belongs to an earlier cell, so its face in this photo is that person and not
+// one of this cell's (the boy "אורי" or "הילד" in the parents' photo, "אבא" in the grandparents').
+// Titles alone ("אבא", "סבתא") never match another cell's names: a bride's parents written "אבא,
+// אמא" are not the groom's parents written the same way.
+const normName = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[\u0591-\u05BD\u05BF-\u05C7]/g, "")
+    .replace(/[.,:;!?()"'״׳`־\-–—]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+const OWNER_WORDS = new Set(["חתן", "החתן", "כלה", "הכלה", "כלת", "ילד", "הילד", "ילדה", "הילדה", "groom", "bride", "жених", "невеста"]);
+const OWNER_PHRASE = /(?:^|\s)ה?(?:בר|בת)\s+ה?מי?צוו?ה(?:\s|$)|בעל(?:ת|י)?\s+השמחה/;
+const PARENT_WORDS = new Set(["אבא", "אמא", "הורים", "ההורים", "dad", "mom", "father", "mother", "parents", "папа", "мама", "родители"]);
+const GRANDPARENT_WORDS = new Set(["סבא", "סבתא", "grandpa", "grandma", "grandfather", "grandmother", "дедушка", "бабушка"]);
+// "X של החתן" is someone of the groom's, not the groom.
+const OF_WORDS = new Set(["של", "of", "у"]);
+const TITLE_WORDS = new Set([
+  ...OWNER_WORDS,
+  ...PARENT_WORDS,
+  ...GRANDPARENT_WORDS,
+  ...OF_WORDS,
+  "אח", "אחות", "האח", "האחות", "אחי", "אחותי", "בר", "בת", "מצווה", "המצווה", "מצוה", "המצוה", "בעל", "בעלת", "בעלי", "השמחה",
+  "brother", "sister", "the", "брат", "сестра",
+]);
 
-// Every filled cell's people, from its reference photo, the cells in book order (owners first). A
-// reference photo often shows people of an earlier cell too: the parents with the bar mitzvah boy
-// standing in front, the grandparents with the couple. Picking the cell's largest faces would then
-// make the boy one of "the parents", and his own shots would leave the owners' pages. So each person
-// already known is first matched to their own face in the photo (closest pairs first, one face per
-// person, within the same-person distance), and those faces are left out — only the surplus over
-// the names the photographer wrote, when there are names, so a cell's own named people always stay.
+function nameKey(name: string): Set<string> {
+  return new Set(normName(name).filter((w) => !TITLE_WORDS.has(w)));
+}
+
+function isOwnerTitle(name: string): boolean {
+  const words = normName(name);
+  if (words.some((w) => OF_WORDS.has(w) || PARENT_WORDS.has(w) || GRANDPARENT_WORDS.has(w))) return false;
+  return words.some((w) => OWNER_WORDS.has(w)) || OWNER_PHRASE.test(words.join(" "));
+}
+
+function isParentTitle(name: string): boolean {
+  const words = normName(name);
+  return words.some((w) => PARENT_WORDS.has(w)) && !words.some((w) => GRANDPARENT_WORDS.has(w));
+}
+
+function sameName(a: Set<string>, b: Set<string>): boolean {
+  if (a.size === 0 || b.size === 0) return false;
+  const [small, big] = a.size <= b.size ? [a, b] : [b, a];
+  for (const w of small) if (!big.has(w)) return false;
+  return true;
+}
+
+function earlierPerson(name: string, cell: FamilyCellId, earlier: { cell: FamilyCellId; key: Set<string> }[]): FamilyCellId | null {
+  const key = nameKey(name);
+  const byName = earlier.find((e) => sameName(e.key, key));
+  if (byName) return byName.cell;
+  if (cell !== "owners" && isOwnerTitle(name)) return "owners";
+  if ((cell === "siblings" || cell === "grandparents" || cell === "grandparents2") && isParentTitle(name)) return "parents";
+  return null;
+}
+
+// `x`: the face's centre across the photo (0 left, 1 right), so the names can be matched to the faces
+// by the order they were written in. Without it the names only count.
+export type CellReference = { id: FamilyCellId; faces: { descriptor: number[]; area: number; x?: number }[]; names: string };
+
+// What became of each face of a cell's reference photo: one of the cell's people (`cell`), a person of
+// an earlier cell (`known`, with that cell), or left out (`unused`: a background face beyond the
+// names). `name`: the name written for it, when the names could be matched to the faces.
+export type CellFaceUse = { status: "cell" | "known" | "unused"; name: string | null; knownCell: FamilyCellId | null };
+
+// Every filled cell's faces, the cells in book order (owners first). A reference photo often shows
+// people of an earlier cell too: the parents with the bar mitzvah boy standing in front, the
+// grandparents with the couple. Picking the cell's largest faces would then make the boy one of "the
+// parents", and his own shots would leave the owners' pages. Two ways keep him out:
+// - By the names (owner, 2026-10-21): the names are written in the order the people stand ("מימין
+//   לשמאל: אבא, אורי, אמא"), so each of the cell's faces, taken in that order across the photo, gets
+//   its name. A name an earlier cell already has ("אורי" in the owners' cell), or a title of an earlier
+//   cell ("הילד", "החתן"; "אבא" among the grandparents), marks that face as the earlier person.
+// - By the faces: each person already known is matched to their own face in the photo (closest pairs
+//   first, one face per person, within the same-person distance), and those faces are left out — only
+//   the surplus over the names written, when there are names, so a cell's own named people stay. When
+//   the names already account for an earlier person, the names decide and this is skipped.
 // The owners' cell takes at most the kind's head count when it has no names (ownersCountFor).
-export function cellPeopleFromReferences(refs: CellReference[], kind?: EventKind): CellPeople[] {
-  const out: CellPeople[] = [];
-  const known: number[][] = [];
+export function cellFaceUses(refs: CellReference[], kind?: EventKind, order: NamesOrder = "rtl"): { id: FamilyCellId; faces: CellFaceUse[] }[] {
+  const out: { id: FamilyCellId; faces: CellFaceUse[] }[] = [];
+  const known: { cell: FamilyCellId; descriptor: number[] }[] = [];
+  const earlierNames: { cell: FamilyCellId; key: Set<string> }[] = [];
   for (const cell of SECTION_PRIORITY) {
     const ref = refs.find((r) => r.id === cell);
     if (!ref || !ref.faces || ref.faces.length === 0) continue;
+    const { order: dir } = readNames(ref.names, order);
+    const names = nameList(ref.names);
     const named = countNames(ref.names);
-    const maxDrop = named > 0 ? Math.max(0, ref.faces.length - named) : ref.faces.length;
+    const owner = names.map((n) => earlierPerson(n, cell, earlierNames));
+    const uses: CellFaceUse[] = ref.faces.map(() => ({ status: "unused", name: null, knownCell: null }));
+
+    // By the faces: an earlier person's own face, up to the surplus over the names. Names that can
+    // be matched to the faces and already name an earlier person decide instead.
+    const canMatch = names.length > 0 && ref.faces.length >= names.length && ref.faces.every((f) => typeof f.x === "number");
+    const maxDrop = canMatch && owner.some(Boolean) ? 0 : named > 0 ? Math.max(0, ref.faces.length - named) : ref.faces.length;
     const pairs: { k: number; f: number; d: number }[] = [];
     known.forEach((k, ki) =>
       ref.faces.forEach((face, fi) => {
-        const d = euclidean(k, face.descriptor);
+        const d = euclidean(k.descriptor, face.descriptor);
         if (d < FACE_MATCH_THRESHOLD) pairs.push({ k: ki, f: fi, d });
       })
     );
     pairs.sort((a, b) => a.d - b.d || a.k - b.k || a.f - b.f);
-    const dropped = new Set<number>();
     const matched = new Set<number>();
+    let dropped = 0;
     for (const p of pairs) {
-      if (dropped.size >= maxDrop) break;
-      if (dropped.has(p.f) || matched.has(p.k)) continue;
-      dropped.add(p.f);
+      if (dropped >= maxDrop) break;
+      if (uses[p.f].status === "known" || matched.has(p.k)) continue;
+      uses[p.f] = { status: "known", name: null, knownCell: known[p.k].cell };
       matched.add(p.k);
+      dropped++;
     }
-    const rest = ref.faces.filter((_, i) => !dropped.has(i));
-    const descriptors = pickCellFaces(rest, ref.names, cell === "owners" && kind ? ownersCountFor(kind) : undefined).filter(
-      (d) => Array.isArray(d) && d.length > 0
-    );
-    if (descriptors.length === 0) continue;
-    out.push({ id: cell, descriptors });
-    known.push(...descriptors);
+
+    // The cell's faces among the rest, then the names over them in the order they were written.
+    const rest = ref.faces.map((f, i) => ({ ...f, i })).filter((f) => uses[f.i].status !== "known");
+    const chosen = pickFaceIndices(rest, named, cell === "owners" && kind ? ownersCountFor(kind) : undefined).map((j) => rest[j].i);
+    for (const i of chosen) if (ref.faces[i].descriptor?.length) uses[i] = { status: "cell", name: null, knownCell: null };
+    const positioned = chosen.filter((i) => uses[i].status === "cell" && typeof ref.faces[i].x === "number");
+    if (names.length > 0 && positioned.length === names.length) {
+      positioned.sort((a, b) => (dir === "rtl" ? (ref.faces[b].x as number) - (ref.faces[a].x as number) : (ref.faces[a].x as number) - (ref.faces[b].x as number)));
+      positioned.forEach((i, n) => {
+        uses[i] = owner[n] ? { status: "known", name: names[n], knownCell: owner[n] } : { status: "cell", name: names[n], knownCell: null };
+      });
+    }
+    names.forEach((n, k) => {
+      if (!owner[k]) earlierNames.push({ cell, key: nameKey(n) });
+    });
+    out.push({ id: cell, faces: uses });
+    ref.faces.forEach((f, i) => {
+      if (uses[i].status !== "unused" && f.descriptor?.length) known.push({ cell: uses[i].status === "cell" ? cell : (uses[i].knownCell as FamilyCellId), descriptor: f.descriptor });
+    });
+  }
+  return out;
+}
+
+// Every filled cell's people (see cellFaceUses), the largest face first.
+export function cellPeopleFromReferences(refs: CellReference[], kind?: EventKind, order: NamesOrder = "rtl"): CellPeople[] {
+  const out: CellPeople[] = [];
+  for (const { id, faces } of cellFaceUses(refs, kind, order)) {
+    const ref = refs.find((r) => r.id === id) as CellReference;
+    const descriptors = ref.faces
+      .map((f, i) => ({ f, i }))
+      .filter((x) => faces[x.i].status === "cell" && Array.isArray(x.f.descriptor) && x.f.descriptor.length > 0)
+      .sort((a, b) => b.f.area - a.f.area || a.i - b.i)
+      .map((x) => x.f.descriptor);
+    if (descriptors.length > 0) out.push({ id, descriptors });
   }
   return out;
 }
@@ -225,13 +373,21 @@ const BURST_MS = 3000;
 const HARD_MAX_PER_SPREAD = 20;
 // A gap this long between consecutive shots usually means a new stage of the event.
 const STAGE_GAP_MS = 15 * 60 * 1000;
-// Book order (differs from the UI's CELL_ORDER).
-const SECTION_PRIORITY: FamilyCellId[] = ["owners", "parents", "siblings", "grandparents"];
+// Book order (differs from the UI's CELL_ORDER): the groom's side before the bride's, the father's
+// before the mother's.
+const SECTION_PRIORITY: FamilyCellId[] = ["owners", "parents", "parents2", "siblings", "grandparents", "grandparents2"];
+const cellRecord = <T,>(v: () => T): Record<FamilyCellId, T> =>
+  ({ owners: v(), parents: v(), parents2: v(), siblings: v(), grandparents: v(), grandparents2: v() });
 // Owner's book structure (2026-09-30), when the photographer filled the family cells: the pages
 // after the cover run owners (1-3), parents (4-5), siblings (6-8), grandparents (9-11), then the rest
 // of the event in shooting order. These are each section's page SLOTS: a section with fewer photos
 // takes fewer pages (never an empty page or a page short of photos), and the next one moves up.
-const SECTION_SLOTS: Record<FamilyCellId, number> = { owners: 3, parents: 2, siblings: 3, grandparents: 3 };
+// Two sides (owner, 2026-10-21): the bride's parents get 2 slots of their own after the groom's; the
+// grandparents' 3 slots become 2 for each side when both sides are filled.
+function sectionSlots(cellSize: Record<FamilyCellId, number>): Record<FamilyCellId, number> {
+  const bothGrand = cellSize.grandparents > 0 && cellSize.grandparents2 > 0;
+  return { owners: 3, parents: 2, parents2: 2, siblings: 3, grandparents: bothGrand ? 2 : 3, grandparents2: bothGrand ? 2 : 3 };
+}
 
 function groupOf(section: SectionKind): SectionGroup {
   if (section === "owners") return "owners";
@@ -362,7 +518,7 @@ function analyzeFaces(faces: PhotoFaces["faces"], people: Person[]): PhotoInfo {
     faceCount: faces.length,
     identified: 0,
     cells: new Set(),
-    cellArea: { owners: 0, parents: 0, siblings: 0, grandparents: 0 },
+    cellArea: cellRecord(() => 0),
     identifiedArea: 0,
     owners: [],
   };
@@ -854,7 +1010,7 @@ export function planAlbum(
 
   // Cell people.
   let people: Person[] = [];
-  const cellSize: Record<FamilyCellId, number> = { owners: 0, parents: 0, siblings: 0, grandparents: 0 };
+  const cellSize = cellRecord(() => 0);
   for (const c of familyCells) {
     for (const d of c.descriptors ?? []) {
       if (!Array.isArray(d) || d.length === 0) continue;
@@ -872,17 +1028,14 @@ export function planAlbum(
   if (!isBook && followsTabs(allPhotos)) return planByTabs(allPhotos, info, cellSize, orderIdx, time, bounds, opts, refs);
 
   // 2. Family sections, in priority order. Which other cells may share the frame: owners only with
-  // themselves; parents with the owners; siblings with owners/parents; grandparents with anyone.
-  // So the owner with a parent is a parents' photo, a family shot with the siblings is a siblings'
-  // photo, and the grandparents with anyone of the family are the grandparents'.
+  // themselves; the groom's parents with the owners; the bride's parents with the owners and the
+  // groom's parents (both families together are the bride's parents' photo); siblings with
+  // owners/parents; each side's grandparents with anyone before them. So the owner with a parent is
+  // a parents' photo, a family shot with the siblings is a siblings' photo, and the grandparents with
+  // anyone of the family are the grandparents'.
   // "Few strangers": at most one unidentified face beyond the identified ones (a guest walking
   // behind is fine; a crowd shot belongs to the event).
-  const allowed: Record<FamilyCellId, FamilyCellId[]> = {
-    owners: ["owners"],
-    parents: ["owners", "parents"],
-    siblings: ["owners", "parents", "siblings"],
-    grandparents: ["owners", "parents", "siblings", "grandparents"],
-  };
+  const allowed = Object.fromEntries(SECTION_PRIORITY.map((c, i) => [c, SECTION_PRIORITY.slice(0, i + 1)])) as Record<FamilyCellId, FamilyCellId[]>;
   const isCandidate = (p: AutoPhoto, cell: FamilyCellId): boolean => {
     const fi = info.get(p.id) as PhotoInfo;
     if (!fi.cells.has(cell)) return false;
@@ -904,9 +1057,9 @@ export function planAlbum(
 
   type FamilyPage = { section: FamilyCellId; ids: string[] };
   const used = new Set<string>();
-  const sectionPhotos: Record<FamilyCellId, string[]> = { owners: [], parents: [], siblings: [], grandparents: [] };
-  const refIds: Record<FamilyCellId, string | null> = { owners: null, parents: null, siblings: null, grandparents: null };
-  const slots = { ...SECTION_SLOTS };
+  const sectionPhotos = cellRecord<string[]>(() => []);
+  const refIds = cellRecord<string | null>(() => null);
+  const slots = sectionSlots(cellSize);
   // Selects each section's photos and splits them into pages, one section after the other, so every
   // page knows its position in the book and keeps that position's page cap (owner, 2026-09-29:
   // pages 1–5 up to 6 photos, 6–10 up to 8, …) and the style's maximum. Until 2026-10-20 the family
@@ -973,7 +1126,7 @@ export function planAlbum(
   let familyBudget = Math.max(0, maxSpreads - 1);
   for (let round = 0; round < 20; round++) {
     for (let guard = 0; guard < 20 && SECTION_PRIORITY.reduce((a, c) => a + slots[c], 0) > familyBudget; guard++) {
-      const c = [...SECTION_PRIORITY].reverse().reduce((m, x) => (slots[x] > slots[m] ? x : m), "grandparents" as FamilyCellId);
+      const c = [...SECTION_PRIORITY].reverse().reduce((m, x) => (slots[x] > slots[m] ? x : m));
       if (slots[c] <= 0) break;
       slots[c]--;
     }
@@ -1096,12 +1249,15 @@ function planByTabs(
   const roleOf = new Map(tabs.map((t, i) => [t.key, roles[i]] as const));
   const sectionOf = (role: TabRole): SectionKind => (role === "owners" ? "owners" : role === "family" ? "parents" : "event");
 
-  // Inside a tab: shooting order; the family tab by family cell first when the cells were filled.
+  // Inside a tab: shooting order; the family tab by family cell first when the cells were filled
+  // (the latest cell in the frame decides, as on the family pages: the grandparents with the couple
+  // are the grandparents'), the photos with nobody known last.
   const familyRank = (id: string): number => {
     const cells = (info.get(id) as PhotoInfo).cells;
-    return cells.has("grandparents") ? 2 : cells.has("siblings") ? 1 : cells.has("parents") || cells.has("owners") ? 0 : 3;
+    for (let r = SECTION_PRIORITY.length - 1; r >= 1; r--) if (cells.has(SECTION_PRIORITY[r])) return r;
+    return cells.has("owners") ? 1 : SECTION_PRIORITY.length;
   };
-  const familyCellsFilled = cellSize.parents + cellSize.siblings + cellSize.grandparents > 0;
+  const familyCellsFilled = SECTION_PRIORITY.some((c) => c !== "owners" && cellSize[c] > 0);
   for (const t of ordered) {
     t.ids.sort((a, b) => (roleOf.get(t.key) === "family" && familyCellsFilled ? familyRank(a) - familyRank(b) : 0) || shot(a) - shot(b));
   }

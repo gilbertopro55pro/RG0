@@ -1,7 +1,7 @@
 "use client";
 
 import { useBusy } from "@/lib/updateResume";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
@@ -9,11 +9,27 @@ import LiquidProgressBar from "@/components/LiquidProgressBar";
 import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type EventKind, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
 import { bleedIdsOf, bookPagesWithoutCover, fillBookTemplate, frameElements, ownTemplatePlan } from "@/lib/albumAuto/templateFill";
 import type { AlbumBookTemplateRow, AlbumTemplateRow } from "@/lib/types";
-import { CELL_ORDER, cellLabel, cellPeopleFromReferences, countNames, detectEventKind, followsTabs, ownersCountFor, planAlbum, tabLabel, tabRoles } from "@/lib/albumAuto/planner";
+import {
+  CELL_ORDER,
+  cellFaceUses,
+  cellLabel,
+  cellPeopleFromReferences,
+  cellsFor,
+  countNames,
+  detectEventKind,
+  followsTabs,
+  ownersCountFor,
+  planAlbum,
+  tabLabel,
+  tabRoles,
+  type CellFaceUse,
+  type CellReference,
+  type NamesOrder,
+} from "@/lib/albumAuto/planner";
 import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
 import { endAutoDesignSession, getAutoDesignSession, mountAutoDesigner, useSessionState, waitForAutoDesigner } from "@/lib/albumAuto/session";
 import type { AlbumElement } from "@/lib/types";
-import { useT } from "@/i18n/client";
+import { useLang, useT } from "@/i18n/client";
 
 // Auto album design (admin only while it's being polished, 2026-09-29): the photographer picks the
 // album + cover size and a style, marks up to four family reference photos, and the whole book is
@@ -97,6 +113,24 @@ const PAGE_SIZE = 1000;
 
 const emptyCell = (): CellState => ({ photoId: null, names: "", faces: null, detecting: false, error: null });
 
+// A reference photo's faces are found once, from the moment it's chosen (owner, 2026-10-21: the cell
+// then shows each face with the name written for it), and the design's first step waits for any
+// still on the way. Kept by photo across designer sessions: the same photo always has the same faces.
+const cellFaceJobs = new Map<string, Promise<DetectedFace[]>>();
+function cellFacesOf(galleryId: string, photoId: string): Promise<DetectedFace[]> {
+  const key = `${galleryId}:${photoId}`;
+  let job = cellFaceJobs.get(key);
+  if (!job) {
+    job = detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${photoId}/image?size=${CELL_IMAGE_SIZE}`);
+    job.catch(() => cellFaceJobs.delete(key));
+    cellFaceJobs.set(key, job);
+  }
+  return job;
+}
+
+// A reference face as the planner reads it: its centre across the photo tells the names' order.
+const refFace = (f: DetectedFace) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height, x: f.box.x + f.box.width / 2 });
+
 class CancelledError extends Error {}
 
 export default function AlbumAutoDesigner({
@@ -154,12 +188,16 @@ export default function AlbumAutoDesigner({
   }, []);
   const chosenTemplate = choice.startsWith("tpl:") ? bookTemplates.find((tpl) => tpl.id === choice.slice(4)) ?? null : null;
   const [spreadCount, setSpreadCount] = useSessionState(session, "spreadCount", "");
-  const [cells, setCells] = useSessionState<Record<FamilyCellId, CellState>>(session, "cells", () => ({
-    parents: emptyCell(),
-    owners: emptyCell(),
-    siblings: emptyCell(),
-    grandparents: emptyCell(),
-  }));
+  const [cellStates, setCells] = useSessionState<Record<FamilyCellId, CellState>>(
+    session,
+    "cells",
+    () => Object.fromEntries(CELL_ORDER.map((id) => [id, emptyCell()])) as Record<FamilyCellId, CellState>
+  );
+  const cells = useMemo(() => {
+    const all = { ...cellStates };
+    for (const id of CELL_ORDER) all[id] ??= emptyCell();
+    return all;
+  }, [cellStates]);
   const [pickerFor, setPickerFor] = useState<FamilyCellId | null>(null);
   const [pickerLimit, setPickerLimit] = useState(PICKER_PAGE);
   // The picker shows the gallery as it is: its own order, split by its tabs (folders) when it has them.
@@ -180,6 +218,20 @@ export default function AlbumAutoDesigner({
   const eventKind = kindChoice ?? detectedKind;
   // A photo-book session: no family cells, the whole book by shooting time.
   const isBook = eventKind === "book";
+  // The cells shown for the kind (two parents' cells at a wedding, none in a book): only these count.
+  const shownCells = useMemo(() => cellsFor(eventKind), [eventKind]);
+  // The names are written in the order the people stand: right to left in Hebrew, left to right in
+  // English and Russian.
+  const lang = useLang();
+  const namesOrder: NamesOrder = lang === "he" ? "rtl" : "ltr";
+  const cellRefs = (ids: FamilyCellId[]): CellReference[] =>
+    ids.filter((id) => cells[id].photoId && (cells[id].faces?.length ?? 0) > 0).map((id) => ({ id, faces: (cells[id].faces as DetectedFace[]).map(refFace), names: cells[id].names }));
+  // What became of each face in the cells (the same reading the design uses), for the cells' faces row.
+  const faceUses = useMemo(
+    () => new Map(cellFaceUses(cellRefs(shownCells), eventKind, namesOrder).map((c) => [c.id, c.faces] as const)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cellRefs reads only these
+    [cells, shownCells, eventKind, namesOrder]
+  );
   const favorites = useMemo(() => photos.filter((p) => p.is_favorite), [photos]);
   const candidates = favorites.length > 0 ? favorites : photos;
   const hasUnfiled = folders.length > 0 && photos.some((p) => !p.folder_id);
@@ -226,13 +278,31 @@ export default function AlbumAutoDesigner({
     if (!coverTouched) setCoverSize(singlePageOf(next));
   };
 
-  const updateCell = (id: FamilyCellId, patch: Partial<CellState>) => setCells((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  const updateCell = (id: FamilyCellId, patch: Partial<CellState>) => setCells((prev) => ({ ...prev, [id]: { ...(prev[id] ?? emptyCell()), ...patch } }));
 
-  // Choosing a photo only marks it; the cells' faces are detected when the design starts, the
-  // first step of run() (owner's request, 2026-09-29: one button instead of a separate one).
+  // Finds a cell's faces (once per photo, see cellFacesOf) and keeps them on the cell while it still
+  // holds that photo. Resolves to null when detection failed.
+  const detectCell = async (cellId: FamilyCellId, photoId: string): Promise<DetectedFace[] | null> => {
+    updateCell(cellId, { detecting: true, error: null });
+    try {
+      const faces = await cellFacesOf(galleryId, photoId);
+      setCells((prev) => (prev[cellId]?.photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], faces, detecting: false } } : prev));
+      return faces;
+    } catch {
+      setCells((prev) =>
+        prev[cellId]?.photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], detecting: false, error: "לא הצלחנו לזהות פרצופים בתמונה הזו" } } : prev
+      );
+      return null;
+    }
+  };
+
+  // There's still no separate face button (owner, 2026-09-29: one button): choosing a photo starts
+  // finding its faces in the background, so the cell can show who is who, and the design's first
+  // step only waits for what isn't in yet.
   const choosePhoto = (cellId: FamilyCellId, photoId: string) => {
     setPickerFor(null);
     updateCell(cellId, { photoId, faces: null, detecting: false, error: null });
+    void detectCell(cellId, photoId);
   };
 
   const sizeValid = size.width > 0 && size.height > 0 && (coverMode === "none" || (coverSize.width > 0 && coverSize.height > 0));
@@ -259,26 +329,14 @@ export default function AlbumAutoDesigner({
       // (0) Faces in the cells' reference photos, one cell after another (already detected ones —
       // from an earlier run — are kept). A cell whose detection fails is left out of the design.
       const cellFaces = new Map<FamilyCellId, DetectedFace[]>();
-      const toDetect = isBook ? [] : CELL_ORDER.filter((id) => cells[id].photoId);
+      const toDetect = shownCells.filter((id) => cells[id].photoId);
       setProgress("cells", 0, toDetect.length ? t("{n} מתוך {total} תאים", { n: 0, total: toDetect.length }) : "");
       for (let i = 0; i < toDetect.length; i++) {
         checkCancel();
         const cellId = toDetect[i];
         const cell = cells[cellId];
-        const photoId = cell.photoId as string;
-        if (cell.faces) cellFaces.set(cellId, cell.faces);
-        else {
-          updateCell(cellId, { detecting: true, error: null });
-          try {
-            const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${photoId}/image?size=${CELL_IMAGE_SIZE}`);
-            cellFaces.set(cellId, faces);
-            setCells((prev) => (prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], faces, detecting: false } } : prev));
-          } catch {
-            setCells((prev) =>
-              prev[cellId].photoId === photoId ? { ...prev, [cellId]: { ...prev[cellId], detecting: false, error: "לא הצלחנו לזהות פרצופים בתמונה הזו" } } : prev
-            );
-          }
-        }
+        const faces = cell.faces ?? (await detectCell(cellId, cell.photoId as string));
+        if (faces) cellFaces.set(cellId, faces);
         setProgress("cells", (i + 1) / toDetect.length, t("{n} מתוך {total} תאים", { n: i + 1, total: toDetect.length }));
       }
       checkCancel();
@@ -322,12 +380,13 @@ export default function AlbumAutoDesigner({
       // Reference people per cell (an earlier cell's people in a later cell's reference photo are
       // left out of it — see cellPeopleFromReferences).
       const cellPeople: CellPeople[] = cellPeopleFromReferences(
-        CELL_ORDER.filter((id) => cells[id].photoId && (cellFaces.get(id)?.length ?? 0) > 0).map((id) => ({
+        shownCells.filter((id) => cells[id].photoId && (cellFaces.get(id)?.length ?? 0) > 0).map((id) => ({
           id,
-          faces: (cellFaces.get(id) as DetectedFace[]).map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })),
+          faces: (cellFaces.get(id) as DetectedFace[]).map(refFace),
           names: cells[id].names,
         })),
-        eventKind
+        eventKind,
+        namesOrder
       );
 
       // (b) Faces in the candidate photos: the gallery's cached detection first, then detect the
@@ -380,9 +439,10 @@ export default function AlbumAutoDesigner({
       setProgress("faces", 1);
       checkCancel();
 
-      for (const id of CELL_ORDER) {
+      for (const id of shownCells) {
         const cell = cells[id];
-        if (cell.photoId && cell.faces && !boxesByPhoto.has(cell.photoId)) for (const f of cell.faces) addBox(cell.photoId, f.box);
+        const faces = cellFaces.get(id);
+        if (cell.photoId && faces && !boxesByPhoto.has(cell.photoId)) for (const f of faces) addBox(cell.photoId, f.box);
       }
 
       // (c) The plan.
@@ -397,7 +457,7 @@ export default function AlbumAutoDesigner({
       }));
       const photoFaces: PhotoFaces[] = [...facesByPhoto.entries()].map(([photoId, faces]) => ({ photoId, faces }));
       const target = parseInt(spreadCount, 10);
-      const referencePhotos = isBook ? [] : CELL_ORDER.filter((id) => cells[id].photoId).map((id) => ({ id, photoId: cells[id].photoId }));
+      const referencePhotos = shownCells.filter((id) => cells[id].photoId).map((id) => ({ id, photoId: cells[id].photoId }));
       const plan = planAlbum(
         autoPhotos,
         photoFaces,
@@ -430,7 +490,8 @@ export default function AlbumAutoDesigner({
               plan.spreads.map((s) => [...new Set(s.photoIds)].map(layoutPhoto)),
               pageTemplates.map((tpl) => tpl.frames).filter((f) => Array.isArray(f) && f.length > 0),
               size.width,
-              size.height
+              size.height,
+              { marginCm: size.margin }
             );
             return plan.spreads.map((s, i) => {
               const out = layoutSpread({
@@ -499,7 +560,7 @@ export default function AlbumAutoDesigner({
     }
   };
 
-  const filledCells = isBook ? 0 : CELL_ORDER.filter((id) => cells[id].photoId).length;
+  const filledCells = shownCells.filter((id) => cells[id].photoId).length;
 
   return (
     <div className="space-y-4">
@@ -694,7 +755,7 @@ export default function AlbumAutoDesigner({
         <section className="rounded-lg border border-line bg-white p-3.5 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-semibold">
-              {t("תמונה לתא {n}: {label}", { n: CELL_ORDER.indexOf(pickerFor) + 1, label: t(cellLabel(pickerFor, eventKind)) })}
+              {t("תמונה לתא {n}: {label}", { n: shownCells.indexOf(pickerFor) + 1, label: t(cellLabel(pickerFor, eventKind)) })}
             </p>
             <button type="button" onClick={() => setPickerFor(null)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-white border border-line text-ink-soft">
               {t("ביטול")}
@@ -785,10 +846,13 @@ export default function AlbumAutoDesigner({
           {!isBook && (
           <>
           <p className="text-xs text-ink-soft leading-relaxed">
-            {t("סמנו לכל תא תמונה אחת שבה רואים את האנשים, וכתבו מי בתמונה. כל התאים לא חובה, אבל ככל שתמלאו יותר תאים, סדר האלבום יהיה מדויק יותר.")}
+            {t("סמנו לכל תא תמונה אחת שבה רואים את האנשים, וכתבו מי בתמונה. כל התאים לא חובה, אבל ככל שתמלאו יותר תאים, סדר האלבום יהיה מדויק יותר.")}{" "}
+            {namesOrder === "rtl"
+              ? t("כתבו את השמות לפי הסדר שבו האנשים עומדים בתמונה, מימין לשמאל, וכך כל פרצוף מקבל את השם שלו. מי שכבר בתא קודם (השם שכתבתם שם, או \"הילד\", \"החתן\") לא נספר בתא הזה.")
+              : t("כתבו את השמות לפי הסדר שבו האנשים עומדים בתמונה, משמאל לימין, וכך כל פרצוף מקבל את השם שלו. מי שכבר בתא קודם (השם שכתבתם שם, או \"הילד\", \"החתן\") לא נספר בתא הזה.")}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {CELL_ORDER.map((id, i) => {
+            {shownCells.map((id, i) => {
               const cell = cells[id];
               const photo = cell.photoId ? photoById.get(cell.photoId) : undefined;
               return (
@@ -813,14 +877,21 @@ export default function AlbumAutoDesigner({
                       )}
                     </button>
                     <div className="flex-1 min-w-0 space-y-1.5">
-                      <textarea
-                        rows={2}
+                      <NamesField
                         value={cell.names}
-                        onChange={(e) => updateCell(id, { names: e.target.value })}
-                        placeholder={t("מי בתמונה? (למשל: אמא רחל, אבא דוד)")}
-                        className="w-full resize-none rounded-lg border border-line px-2.5 py-2 text-sm leading-snug bg-white"
+                        onChange={(names) => updateCell(id, { names })}
+                        prefix={namesOrder === "rtl" ? t("מימין לשמאל:") : t("משמאל לימין:")}
+                        placeholder={t("אמא רחל, אבא דוד")}
                       />
-                      <FaceHint cell={cell} maxPeople={id === "owners" ? ownersCountFor(eventKind) : undefined} />
+                      <FaceHint
+                        cell={cell}
+                        maxPeople={id === "owners" ? ownersCountFor(eventKind) : undefined}
+                        uses={faceUses.get(id)}
+                        order={namesOrder}
+                        imageUrl={cell.photoId ? `/api/galleries/${galleryId}/photos/${cell.photoId}/image?size=640&fast=1` : null}
+                        aspect={photo?.preview_aspect_ratio ?? null}
+                        labelOf={(c) => t(cellLabel(c, eventKind))}
+                      />
                       {photo && (
                         <button
                           type="button"
@@ -838,7 +909,7 @@ export default function AlbumAutoDesigner({
           </div>
           {filledCells > 0 && (
             <p className="rounded-lg bg-chip p-3 text-xs text-ink-soft leading-relaxed">
-              {t("הפרצופים בתאים מזוהים אוטומטית בשלב הראשון של העיצוב, תא אחרי תא.")}
+              {t("הפרצופים בכל תא מזוהים מיד כשבוחרים את התמונה, ומתחת לתמונה רואים איזה שם קיבל כל פרצוף. פרצוף שקוף לא נספר בתא.")}
             </p>
           )}
           </>
@@ -943,7 +1014,60 @@ export default function AlbumAutoDesigner({
   );
 }
 
-function FaceHint({ cell, maxPeople }: { cell: CellState; maxPeople?: number }) {
+// The names field: opens with the order the names are written in ("מימין לשמאל:", owner 2026-10-21),
+// so the photographer describes the people as they stand and each face gets its name. The prefix
+// isn't part of the value: the first line is indented by its width.
+function NamesField({ value, onChange, prefix, placeholder }: { value: string; onChange: (v: string) => void; prefix: string; placeholder: string }) {
+  const [indent, setIndent] = useState(0);
+  const prefixRef = useRef<HTMLSpanElement>(null);
+  // Measured, and again when its width changes (the font loading, another language).
+  useEffect(() => {
+    const el = prefixRef.current;
+    if (!el) return;
+    const measure = () => setIndent(el.offsetWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div className="relative">
+      <span
+        ref={prefixRef}
+        className="pointer-events-none absolute top-2 start-2.5 text-sm leading-snug font-semibold text-ink-soft"
+      >
+        {prefix}
+      </span>
+      <textarea
+        rows={2}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={prefix}
+        style={{ textIndent: indent ? indent + 5 : undefined }}
+        className="w-full resize-none rounded-lg border border-line px-2.5 py-2 text-sm leading-snug bg-white"
+      />
+    </div>
+  );
+}
+
+function FaceHint({
+  cell,
+  maxPeople,
+  uses,
+  order,
+  imageUrl,
+  aspect,
+  labelOf,
+}: {
+  cell: CellState;
+  maxPeople?: number;
+  uses?: CellFaceUse[];
+  order: NamesOrder;
+  imageUrl: string | null;
+  aspect: number | null;
+  labelOf: (cell: FamilyCellId) => string;
+}) {
   const t = useT();
   if (!cell.photoId) return null;
   if (cell.detecting) return <p className="text-[11px] text-ink-soft">{t("מזהה פרצופים...")}</p>;
@@ -953,15 +1077,61 @@ function FaceHint({ cell, maxPeople }: { cell: CellState; maxPeople?: number }) 
   if (found === 0) return <p className="text-[11px] text-rose">{t("לא זוהו פרצופים בתמונה הזו, כדאי לבחור תמונה אחרת")}</p>;
   const names = countNames(cell.names);
   let extra = "";
-  if (names > 0 && names < found) extra = t(", ישמשו {n} הפרצופים הגדולים בתמונה", { n: names });
-  else if (names > found) extra = t(", אבל כתבתם {n} שמות", { n: names });
+  if (names > found) extra = t(", אבל כתבתם {n} שמות", { n: names });
+  else if (!uses && names > 0 && names < found) extra = t(", ישמשו {n} הפרצופים הגדולים בתמונה", { n: names });
   // No names: the owners' cell uses at most the kind's head count (pickCellFaces).
-  else if (names === 0 && maxPeople && maxPeople < found) extra = t(", ישמשו {n} הפרצופים הגדולים בתמונה", { n: maxPeople });
+  else if (!uses && names === 0 && maxPeople && maxPeople < found) extra = t(", ישמשו {n} הפרצופים הגדולים בתמונה", { n: maxPeople });
+  // The faces in the order the names are written (the row's own direction lays them out as they stand).
+  const faces = cell.faces
+    .map((f, i) => ({ f, use: uses?.[i] }))
+    .sort((a, b) => (order === "rtl" ? b.f.box.x - a.f.box.x : a.f.box.x - b.f.box.x))
+    .slice(0, 10);
   return (
-    <p className="text-[11px] text-ink-soft">
-      {found === 1 ? t("זוהה פרצוף אחד") : t("זוהו {n} פרצופים", { n: found })}
-      {extra}
-    </p>
+    <div className="space-y-1">
+      <p className="text-[11px] text-ink-soft">
+        {found === 1 ? t("זוהה פרצוף אחד") : t("זוהו {n} פרצופים", { n: found })}
+        {extra}
+      </p>
+      {uses && imageUrl && (
+        <div className="flex flex-wrap gap-1.5">
+          {faces.map(({ f, use }, k) => {
+            const status = use?.status ?? "unused";
+            const label =
+              status === "known" ? (use?.name ? use.name : labelOf(use?.knownCell as FamilyCellId)) : status === "unused" ? t("לא בתא") : (use?.name ?? "");
+            const title =
+              status === "known"
+                ? t("{name}: כבר בתא \"{cell}\", לא נספר כאן", { name: use?.name ?? t("פרצוף"), cell: labelOf(use?.knownCell as FamilyCellId) })
+                : status === "unused"
+                  ? t("פרצוף ברקע, לא נספר בתא")
+                  : (use?.name ?? "");
+            return (
+              <div key={k} className="w-12 flex flex-col items-center gap-0.5" title={title}>
+                <FaceCrop url={imageUrl} box={f.box} aspect={aspect} className={status === "cell" ? "ring-2 ring-ink" : status === "known" ? "ring-1 ring-ink-soft opacity-50" : "opacity-30"} />
+                <span className={`w-full truncate text-center text-[10px] leading-tight ${status === "cell" ? "text-ink font-semibold" : "text-ink-soft line-through"}`}>{label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One face of a reference photo, cropped from the small preview into a circle.
+function FaceCrop({ url, box, aspect, className }: { url: string; box: DetectedFace["box"]; aspect: number | null; className: string }) {
+  const SIZE = 36;
+  const a = aspect && aspect > 0 ? aspect : 1.5;
+  // The face (with a little room around it) fills the circle.
+  const side = Math.max(box.width, box.height / a) * 1.35;
+  const w = SIZE / side;
+  const h = w / a;
+  const left = SIZE / 2 - (box.x + box.width / 2) * w;
+  const top = SIZE / 2 - (box.y + box.height / 2) * h;
+  return (
+    <div className={`relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-chip ${className}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="" loading="lazy" className="absolute max-w-none" style={{ width: w, height: h, left, top }} />
+    </div>
   );
 }
 

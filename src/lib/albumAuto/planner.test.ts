@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  cellFaceUses,
   cellLabel,
   cellPeopleFromReferences,
+  cellsFor,
   countNames,
   detectEventKind,
   familyCaps,
   followsTabs,
   mixOwnersShots,
+  nameList,
   ownersCountFor,
   pageCap,
   pickCellFaces,
@@ -47,7 +50,7 @@ function expectEveryPhotoOnce(plan: AlbumPlan, photos: AutoPhoto[]) {
 // --- Family fixture --------------------------------------------------------------------------
 // One-hot face descriptors: every person is √2 away from every other, far past the match
 // threshold, and each photo's faces are that person's exact descriptor.
-const face = (person: number) => Array.from({ length: 8 }, (_, k) => (k === person ? 1 : 0));
+const face = (person: number) => Array.from({ length: 12 }, (_, k) => (k === person ? 1 : 0));
 const GROOM = 0;
 const BRIDE = 1;
 const MOTHER = 2;
@@ -56,6 +59,11 @@ const SISTER = 4;
 const GRANDMA = 5;
 const STRANGER_A = 6;
 const STRANGER_B = 7;
+// The bride's side (owner 2026-10-21: two parents' cells at a wedding, grandparents of both sides).
+const MOTHER2 = 8;
+const FATHER2 = 9;
+const GRANDMA2 = 10;
+const GRANDPA = 11;
 
 const CELLS: CellPeople[] = [
   { id: "owners", descriptors: [face(GROOM), face(BRIDE)] },
@@ -345,7 +353,7 @@ function build(runs: Run[]) {
   return { photos, faces, byRun };
 }
 
-const RANK: Record<SectionKind, number> = { owners: 0, parents: 1, siblings: 2, grandparents: 3, event: 4 };
+const RANK: Record<SectionKind, number> = { owners: 0, parents: 1, parents2: 2, siblings: 3, grandparents: 4, grandparents2: 5, event: 6 };
 const STYLE_MAX: Record<AutoStyleId, { owners: number; family: number }> = {
   clean: { owners: 5, family: 8 },
   catalog: { owners: 4, family: 6 },
@@ -877,9 +885,8 @@ describe("detectEventKind and cell labels", () => {
     expect(cellLabel("owners", "bat_mitzvah")).toBe("כלת בת המצווה");
     expect(cellLabel("owners", "birthday")).toBe("בעלי השמחה");
     expect(cellLabel("owners", "book")).toBe("בעלי השמחה");
-    expect(cellLabel("parents", "wedding")).toBe("ההורים");
+    expect(cellLabel("parents", "bar_mitzvah")).toBe("ההורים");
     expect(cellLabel("siblings", "bat_mitzvah")).toBe("אחים ואחיות");
-    expect(cellLabel("grandparents", "wedding")).toBe("סבא וסבתא");
     // The detected kind of the known misses gets the right label.
     expect(cellLabel("owners", detectEventKind("חתונת דנה ויוסי"))).toBe("חתן וכלה");
     expect(cellLabel("owners", detectEventKind("בר המצווה של יוסי"))).toBe("חתן בר המצווה");
@@ -893,6 +900,176 @@ describe("detectEventKind and cell labels", () => {
     expect(ownersCountFor("bat_mitzvah")).toBe(1);
     expect(ownersCountFor("birthday")).toBeUndefined();
     expect(ownersCountFor("book")).toBeUndefined();
+  });
+});
+
+describe("the cells of both sides (owner 2026-10-21)", () => {
+  it("shows two parents' cells only at a wedding or a henna, the grandparents of both sides always", () => {
+    expect(cellsFor("wedding")).toEqual(["parents", "parents2", "owners", "siblings", "grandparents", "grandparents2"]);
+    expect(cellsFor("henna")).toContain("parents2");
+    for (const kind of ["bar_mitzvah", "bat_mitzvah", "birthday", "other"] as EventKind[]) {
+      expect(cellsFor(kind)).toEqual(["parents", "owners", "siblings", "grandparents", "grandparents2"]);
+    }
+    expect(cellsFor("book")).toEqual([]);
+  });
+
+  it("names the sides: the groom's and the bride's at a wedding, the father's and the mother's otherwise", () => {
+    expect(cellLabel("parents", "wedding")).toBe("הורי החתן");
+    expect(cellLabel("parents2", "wedding")).toBe("הורי הכלה");
+    expect(cellLabel("parents", "henna")).toBe("הורי החתן");
+    expect(cellLabel("grandparents", "wedding")).toBe("סבא וסבתא מצד החתן");
+    expect(cellLabel("grandparents2", "henna")).toBe("סבא וסבתא מצד הכלה");
+    expect(cellLabel("grandparents", "bar_mitzvah")).toBe("סבא וסבתא מצד אבא");
+    expect(cellLabel("grandparents2", "bat_mitzvah")).toBe("סבא וסבתא מצד אמא");
+  });
+
+  const WEDDING_CELLS: CellPeople[] = [
+    { id: "owners", descriptors: [face(GROOM), face(BRIDE)] },
+    { id: "parents", descriptors: [face(MOTHER), face(FATHER)] },
+    { id: "parents2", descriptors: [face(MOTHER2), face(FATHER2)] },
+    { id: "siblings", descriptors: [face(SISTER)] },
+    { id: "grandparents", descriptors: [face(GRANDMA)] },
+    { id: "grandparents2", descriptors: [face(GRANDMA2), face(GRANDPA)] },
+  ];
+
+  it("runs owners → the groom's parents → the bride's parents → siblings → each side's grandparents → event", () => {
+    const { photos, faces, byRun } = build([
+      { prefix: "o", n: 10, people: [GROOM, BRIDE] },
+      { prefix: "gp", n: 6, people: [GROOM, BRIDE, MOTHER, FATHER] },
+      { prefix: "bp", n: 6, people: [GROOM, BRIDE, MOTHER2, FATHER2] },
+      // Both families with the couple: the bride's parents' photo (the later section takes it).
+      { prefix: "both", n: 2, people: [GROOM, BRIDE, MOTHER, FATHER, MOTHER2, FATHER2] },
+      { prefix: "s", n: 5, people: [BRIDE, SISTER] },
+      { prefix: "g1", n: 6, people: [GROOM, GRANDMA] },
+      { prefix: "g2", n: 6, people: [BRIDE, GRANDMA2, GRANDPA] },
+      { prefix: "e", n: 40, people: [] },
+    ]);
+    const plan = planAlbum(photos, faces, WEDDING_CELLS, { ...CLEAN, kind: "wedding" });
+    const sectionOf = (id: string) => plan.spreads.find((sp) => sp.photoIds.includes(id))?.section;
+    for (const p of byRun.gp) expect(sectionOf(p.id)).toBe("parents");
+    for (const p of [...byRun.bp, ...byRun.both]) expect(sectionOf(p.id)).toBe("parents2");
+    for (const p of byRun.g1) expect(sectionOf(p.id)).toBe("grandparents");
+    for (const p of byRun.g2) expect(sectionOf(p.id)).toBe("grandparents2");
+    const order = sectionsOf(plan).filter((sec, i, all) => i === 0 || all[i - 1] !== sec);
+    expect(order).toEqual(["owners", "parents", "parents2", "siblings", "grandparents", "grandparents2", "event"]);
+    expectEveryPhotoOnce(plan, photos);
+  });
+
+  it("gives each side's grandparents 2 pages when both are filled, and one side alone its 3", () => {
+    const runs = (withSecond: boolean) =>
+      build([
+        { prefix: "o", n: 6, people: [GROOM, BRIDE] },
+        { prefix: "g1", n: 30, people: [GRANDMA] },
+        ...(withSecond ? [{ prefix: "g2", n: 30, people: [GRANDMA2] }] : []),
+        { prefix: "e", n: 40, people: [] },
+      ]);
+    const both = runs(true);
+    const planBoth = planAlbum(both.photos, both.faces, WEDDING_CELLS, { ...CLEAN, kind: "wedding" });
+    expect(countSection(planBoth, "grandparents")).toBe(2);
+    expect(countSection(planBoth, "grandparents2")).toBe(2);
+    const one = runs(false);
+    const planOne = planAlbum(one.photos, one.faces, WEDDING_CELLS.filter((c) => c.id !== "grandparents2"), { ...CLEAN, kind: "wedding" });
+    expect(countSection(planOne, "grandparents")).toBe(3);
+  });
+
+  it("orders the family tab by both sides when the book follows the tabs", () => {
+    const tabbed = (prefix: string, n: number, tab: { key: string; name: string; order: number }) => shots(prefix, 1, n).map((p) => ({ ...p, tab }));
+    const owners = { key: "t2", name: "2.חתן וכלה", order: 0 };
+    const family = { key: "t3", name: "3.משפחה", order: 1 };
+    const event = { key: "t4", name: "4.ריקודים", order: 2 };
+    const photos = [
+      ...tabbed("o", 8, owners),
+      // In shooting order the bride's side comes first; the tab still runs the groom's side first.
+      ...tabbed("gb", 3, family),
+      ...tabbed("bp", 3, family),
+      ...tabbed("gp", 3, family),
+      ...tabbed("e", 20, event),
+    ].map((p, i) => ({ ...p, filename: `IMG_${String(i).padStart(4, "0")}.jpg` }));
+    const people: Record<string, number[]> = { o: [GROOM, BRIDE], gb: [BRIDE, GRANDMA2], bp: [BRIDE, MOTHER2, FATHER2], gp: [GROOM, MOTHER, FATHER] };
+    const faces = photos.flatMap((p) => {
+      const who = people[p.id.replace(/\d+$/, "")];
+      return who ? [{ photoId: p.id, faces: who.map((w) => ({ descriptor: face(w), area: 0.05 })) }] : [];
+    });
+    const plan = planAlbum(photos, faces, WEDDING_CELLS, { ...CLEAN, kind: "wedding" });
+    const familyIds = plan.spreads.filter((sp) => sp.tab === "t3").flatMap((sp) => sp.photoIds);
+    expect(familyIds.map((id) => id.replace(/\d+$/, ""))).toEqual(["gp", "gp", "gp", "bp", "bp", "bp", "gb", "gb", "gb"]);
+  });
+});
+
+describe("names written right to left (owner 2026-10-21)", () => {
+  const f = (person: number, area: number, x: number) => ({ descriptor: face(person), area, x });
+  const useOf = (refs: Parameters<typeof cellFaceUses>[0], kind: EventKind, order: "rtl" | "ltr" = "rtl") =>
+    Object.fromEntries(cellFaceUses(refs, kind, order).map((c) => [c.id, c.faces.map((u) => `${u.status}:${u.name ?? ""}${u.knownCell ? `@${u.knownCell}` : ""}`)]));
+
+  it("reads the names in order, with the field's opening words left out", () => {
+    expect(nameList("מימין לשמאל: אבא, אורי, אמא")).toEqual(["אבא", "אורי", "אמא"]);
+    expect(nameList("אמא רחל ואבא דוד")).toEqual(["אמא רחל", "אבא דוד"]);
+    expect(nameList("סבתא שושנה")).toEqual(["סבתא שושנה"]);
+    expect(nameList("3")).toEqual([]);
+    expect(countNames("מימין לשמאל:")).toBe(0);
+    expect(countNames("מימין לשמאל: רחל ודוד")).toBe(2);
+  });
+
+  it("gives each face its name, right to left across the photo", () => {
+    // Mom at the right, dad at the left (x is the face's centre, 0 = left).
+    const uses = useOf([{ id: "parents", faces: [f(FATHER, 0.04, 0.2), f(MOTHER, 0.05, 0.8)], names: "אמא רחל, אבא דוד" }], "bar_mitzvah");
+    expect(uses.parents).toEqual(["cell:אבא דוד", "cell:אמא רחל"]);
+  });
+
+  it("left to right in English and Russian", () => {
+    const uses = useOf([{ id: "parents", faces: [f(FATHER, 0.04, 0.2), f(MOTHER, 0.05, 0.8)], names: "Dad, Mom" }], "bar_mitzvah", "ltr");
+    expect(uses.parents).toEqual(["cell:Dad", "cell:Mom"]);
+  });
+
+  it("leaves out the face of someone named in an earlier cell, even when he's the largest face", () => {
+    // The boy stands between his parents, the largest face: "אבא, אורי, אמא", and "אורי" is the owners' cell.
+    const refs = [
+      { id: "owners" as const, faces: [f(GROOM, 0.08, 0.5)], names: "אורי" },
+      { id: "parents" as const, faces: [f(GROOM, 0.09, 0.5), f(FATHER, 0.05, 0.8), f(MOTHER, 0.04, 0.2)], names: "מימין לשמאל: אבא, אורי, אמא" },
+    ];
+    expect(useOf(refs, "bar_mitzvah").parents).toEqual(["known:אורי@owners", "cell:אבא", "cell:אמא"]);
+    expect(cellPeopleFromReferences(refs, "bar_mitzvah")[1]).toEqual({ id: "parents", descriptors: [face(FATHER), face(MOTHER)] });
+  });
+
+  it("knows the owners by title too, and the parents in the grandparents' photo", () => {
+    // Faces that look like nobody known: only the names can tell.
+    const kid = Array.from({ length: 12 }, (_, k) => (k === GROOM ? 0.5 : k === STRANGER_A ? 0.5 : 0));
+    const dad = Array.from({ length: 12 }, (_, k) => (k === FATHER ? 0.5 : k === STRANGER_B ? 0.5 : 0));
+    const refs = [
+      { id: "parents" as const, faces: [{ descriptor: kid, area: 0.09, x: 0.5 }, f(FATHER, 0.05, 0.8), f(MOTHER, 0.04, 0.2)], names: "אבא, הילד, אמא" },
+      { id: "grandparents" as const, faces: [f(GRANDMA, 0.05, 0.8), { descriptor: dad, area: 0.05, x: 0.5 }, f(GRANDPA, 0.05, 0.2)], names: "סבתא, אבא, סבא" },
+    ];
+    const uses = useOf(refs, "bar_mitzvah");
+    expect(uses.parents).toEqual(["known:הילד@owners", "cell:אבא", "cell:אמא"]);
+    expect(uses.grandparents).toEqual(["cell:סבתא", "known:אבא@parents", "cell:סבא"]);
+  });
+
+  it("never takes the bride's parents for the groom's because both are written 'אבא, אמא'", () => {
+    const refs = [
+      { id: "parents" as const, faces: [f(FATHER, 0.05, 0.8), f(MOTHER, 0.05, 0.2)], names: "אבא, אמא" },
+      { id: "parents2" as const, faces: [f(FATHER2, 0.05, 0.8), f(MOTHER2, 0.05, 0.2)], names: "אבא, אמא" },
+    ];
+    expect(useOf(refs, "wedding").parents2).toEqual(["cell:אבא", "cell:אמא"]);
+  });
+
+  it("doesn't take someone of the groom's ('אבא של החתן') for the groom", () => {
+    const refs = [{ id: "siblings" as const, faces: [f(SISTER, 0.05, 0.8), f(FATHER, 0.05, 0.2)], names: "האחות, אבא של החתן" }];
+    expect(useOf(refs, "wedding").siblings).toEqual(["cell:האחות", "known:אבא של החתן@parents"]);
+  });
+
+  it("puts no names on the faces when fewer faces than names were found, and still counts them", () => {
+    const uses = useOf([{ id: "parents", faces: [f(MOTHER, 0.05, 0.8)], names: "אמא, אבא" }], "bar_mitzvah");
+    expect(uses.parents).toEqual(["cell:"]);
+  });
+
+  it("lets a direction typed at the start win", () => {
+    const uses = useOf([{ id: "parents", faces: [f(FATHER, 0.04, 0.2), f(MOTHER, 0.05, 0.8)], names: "משמאל לימין: אבא, אמא" }], "bar_mitzvah");
+    expect(uses.parents).toEqual(["cell:אבא", "cell:אמא"]);
+  });
+
+  it("marks the background faces beyond the names as unused", () => {
+    const uses = useOf([{ id: "parents", faces: [f(MOTHER, 0.05, 0.7), f(STRANGER_A, 0.005, 0.95), f(FATHER, 0.05, 0.3)], names: "אמא, אבא" }], "bar_mitzvah");
+    expect(uses.parents).toEqual(["cell:אמא", "unused:", "cell:אבא"]);
   });
 });
 
