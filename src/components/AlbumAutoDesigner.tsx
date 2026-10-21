@@ -9,7 +9,7 @@ import LiquidProgressBar from "@/components/LiquidProgressBar";
 import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type EventKind, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
 import { bleedIdsOf, bookPagesWithoutCover, fillBookTemplate, frameElements, ownTemplatePlan } from "@/lib/albumAuto/templateFill";
 import type { AlbumBookTemplateRow, AlbumTemplateRow } from "@/lib/types";
-import { CELL_ORDER, cellLabel, cellPeopleFromReferences, countNames, detectEventKind, ownersCountFor, planAlbum } from "@/lib/albumAuto/planner";
+import { CELL_ORDER, cellLabel, cellPeopleFromReferences, countNames, detectEventKind, followsTabs, ownersCountFor, planAlbum, tabLabel, tabRoles } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
 import { endAutoDesignSession, getAutoDesignSession, mountAutoDesigner, useSessionState, waitForAutoDesigner } from "@/lib/albumAuto/session";
 import type { AlbumElement } from "@/lib/types";
@@ -188,6 +188,23 @@ export default function AlbumAutoDesigner({
     [photos, pickerTab]
   );
   const photoById = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos]);
+  // Each photo's gallery tab, for the planner: the book follows the tabs when the photos are sorted
+  // into them (owner, 2026-10-21; see followsTabs in planner.ts).
+  const tabOf = useMemo(() => {
+    const byId = new Map(folders.map((f, i) => [f.id, { key: f.id, name: f.name, order: i }] as const));
+    return (p: AutoDesignerPhoto) => (p.folder_id ? (byId.get(p.folder_id) ?? null) : null);
+  }, [folders]);
+  // The tabs the book will follow, in its order (the atmosphere last), or null when it won't.
+  const tabOrder = useMemo(() => {
+    const auto = candidates.map((p) => ({ id: p.id, aspect: 1.5, takenAt: null, filename: "", tab: tabOf(p) }));
+    if (!followsTabs(auto)) return null;
+    const used = folders.filter((f) => candidates.some((p) => p.folder_id === f.id));
+    const roles = tabRoles(used.map((f) => f.name));
+    return {
+      main: used.filter((_, i) => roles[i] !== "atmosphere").map((f) => tabLabel(f.name)),
+      last: used.filter((_, i) => roles[i] === "atmosphere").map((f) => tabLabel(f.name)),
+    };
+  }, [candidates, folders, tabOf]);
 
   const singlePage = singlePageOf(size);
   const coverPresets = useMemo(() => {
@@ -376,6 +393,7 @@ export default function AlbumAutoDesigner({
         aspect: p.preview_aspect_ratio && p.preview_aspect_ratio > 0 ? p.preview_aspect_ratio : 1.5,
         takenAt: takenAt.get(p.id) ?? null,
         filename: p.original_filename ?? "",
+        tab: tabOf(p),
       }));
       const photoFaces: PhotoFaces[] = [...facesByPhoto.entries()].map(([photoId, faces]) => ({ photoId, faces }));
       const target = parseInt(spreadCount, 10);
@@ -755,8 +773,14 @@ export default function AlbumAutoDesigner({
             <p className="text-xs text-ink-soft leading-relaxed">
               {isBook
                 ? t("בבוק אין חלקי משפחה: כל התמונות נכנסות לאלבום לפי שעת הצילום.")
-                : t("סדר האלבום: {owners}, ההורים, אחים ואחיות, סבא וסבתא, ואז שאר התמונות לפי שעת הצילום.", { owners: t(cellLabel("owners", eventKind)) })}
+                : tabOrder
+                  ? t("האלבום נבנה לפי הלשוניות בגלריה, בסדר שלהן: {tabs}. בכל לשונית התמונות לפי שעת הצילום.", { tabs: tabOrder.main.join(", ") })
+                  : t("סדר האלבום: {owners}, ההורים, אחים ואחיות, סבא וסבתא, ואז שאר התמונות לפי שעת הצילום.", { owners: t(cellLabel("owners", eventKind)) })}
+              {!isBook && tabOrder && tabOrder.last.length > 0 && <> {t("{tabs} בדף האחרון.", { tabs: tabOrder.last.join(", ") })}</>}
             </p>
+            {!isBook && tabOrder && (
+              <p className="text-xs text-ink-soft leading-relaxed">{t("עם לשוניות, התאים למטה רק מסדרים את לשונית המשפחה: הורים, אחים ואחיות, ואז סבא וסבתא.")}</p>
+            )}
           </section>
           {!isBook && (
           <>

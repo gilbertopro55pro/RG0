@@ -5,12 +5,15 @@ import {
   countNames,
   detectEventKind,
   familyCaps,
+  followsTabs,
   mixOwnersShots,
   ownersCountFor,
   pageCap,
   pickCellFaces,
   planAlbum,
   splitSection,
+  tabLabel,
+  tabRoles,
   TOGETHER,
 } from "@/lib/albumAuto/planner";
 import type { AlbumPlan, AutoPhoto, AutoStyleId, CellPeople, EventKind, PhotoFaces, PlanOptions, SectionKind } from "@/lib/albumAuto/types";
@@ -902,5 +905,147 @@ describe("countNames", () => {
     expect(countNames("אמא ואבא")).toBe(2);
     expect(countNames("אמא רחל, אבא דוד")).toBe(2);
     expect(countNames("Dana and Yossi")).toBe(2);
+  });
+});
+
+// --- The book by the gallery's tabs (owner, 2026-10-21) ----------------------------------------
+// The owner's hand-made albums run tab by tab ("2.חתן", "3.משפחה", "4.תפילה", "5.ארוחה"), with the
+// atmosphere tab on the last page (the owner's choice).
+
+type TabSpec = { name: string; n: number; aspect?: number };
+// A gallery sorted into tabs: each tab's photos in shooting order, the tabs one after the other.
+// `shuffleTime`: shooting times that interleave the tabs, as they do at a real event (the family
+// photos are taken between the prayer shots), so only the tabs can keep them apart.
+function tabbedGallery(specs: TabSpec[], opts: { shuffleTime?: boolean } = {}) {
+  const photos: AutoPhoto[] = [];
+  let k = 0;
+  specs.forEach((t, order) => {
+    for (let i = 0; i < t.n; i++, k++) {
+      photos.push({
+        id: `${order}-${i}`,
+        aspect: t.aspect ?? 1.5,
+        takenAt: opts.shuffleTime ? Date.UTC(2026, 9, 1, 18) + ((k * 7919) % 997) * 20_000 : Date.UTC(2026, 9, 1, 18) + k * 20_000,
+        filename: `IMG_${String(k).padStart(4, "0")}.jpg`,
+        tab: { key: `tab${order}`, name: t.name, order },
+      });
+    }
+  });
+  return photos;
+}
+const tabOfId = (id: string) => Number(id.split("-")[0]);
+const tabsOfPage = (plan: AlbumPlan) => plan.spreads.map((s) => [...new Set(s.photoIds.map(tabOfId))]);
+
+describe("tabLabel and tabRoles", () => {
+  it("drops the order number in front of a tab's name", () => {
+    expect(tabLabel("3.משפחה")).toBe("משפחה");
+    expect(tabLabel("03 - חופה")).toBe("חופה");
+    expect(tabLabel("ריקודים")).toBe("ריקודים");
+  });
+
+  it("finds the atmosphere, the owners, the family and the stages", () => {
+    expect(tabRoles(["1.אוירה", "2.חתן", "3.משפחה", "4.תפילה", "5.ארוחה"])).toEqual(["atmosphere", "owners", "family", "stage", "stage"]);
+    expect(tabRoles(["1.אוירה", "2.הזוג", "3.משפחה", "4.ריקודים", "5.טקס חינה"])).toEqual(["atmosphere", "owners", "family", "stage", "stage"]);
+    expect(tabRoles(["1.חתן", "2.משפחה", "3.תפילה", "4.ארוחה ואורחים"])).toEqual(["owners", "family", "stage", "stage"]);
+    // Named for the bat mitzvah girl: the owners, since the family's tab comes right after.
+    expect(tabRoles(["1.אוירה", "2.נטע", "3.משפחה", "4.אורחים"])).toEqual(["atmosphere", "owners", "family", "stage"]);
+    expect(tabRoles(["3.משפחה", "4.משפחה מורחבת"])).toEqual(["family", "family"]);
+    expect(tabRoles(["טקס", "קבלת פנים", "ריקודים"])).toEqual(["stage", "stage", "stage"]);
+  });
+});
+
+describe("planAlbum: the book by the gallery's tabs", () => {
+  const ORTAL: TabSpec[] = [
+    { name: "1.אוירה", n: 2 },
+    { name: "2.חתן", n: 7 },
+    { name: "3.משפחה", n: 18 },
+    { name: "4.תפילה", n: 133 },
+    { name: "5.ארוחה", n: 10 },
+  ];
+
+  it("follows the tabs: their order, one tab a page, the small atmosphere tab on the last page", () => {
+    const photos = tabbedGallery(ORTAL, { shuffleTime: true });
+    const plan = planAlbum(photos, [], [], { style: "clean", targetSpreads: 19 });
+    expectEveryPhotoOnce(plan, photos);
+    expect(plan.spreads).toHaveLength(18);
+    const pages = tabsOfPage(plan);
+    // Owners, family, prayer, meal, and the atmosphere's 2 photos join the meal's last page.
+    expect(pages.slice(0, -1).every((t) => t.length === 1)).toBe(true);
+    expect(pages[pages.length - 1].sort()).toEqual([0, 4]);
+    const order = pages.map((t) => t.find((x) => x !== 0) ?? 0);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order[0]).toBe(1);
+    expect(sectionsOf(plan)[0]).toBe("owners");
+    expect(plan.spreads.filter((s) => s.section === "parents").every((s) => s.photoIds.every((id) => tabOfId(id) === 2))).toBe(true);
+  });
+
+  it("keeps the photos of each tab in shooting order", () => {
+    const photos = tabbedGallery(ORTAL, { shuffleTime: true });
+    const plan = planAlbum(photos, [], [], { style: "clean", targetSpreads: 19 });
+    const prayer = plan.spreads.flatMap((s) => s.photoIds).filter((id) => tabOfId(id) === 3);
+    const times = prayer.map((id) => photos.find((p) => p.id === id)!.takenAt as number);
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+  });
+
+  it("gives a big atmosphere tab its own last page", () => {
+    const photos = tabbedGallery([{ name: "1.אוירה", n: 9 }, { name: "2.חתן", n: 8 }, { name: "3.משפחה", n: 12 }, { name: "4.ריקודים", n: 40 }]);
+    const plan = planAlbum(photos, [], [], CLEAN);
+    const pages = tabsOfPage(plan);
+    expect(pages[pages.length - 1]).toEqual([0]);
+    expect(pages.slice(0, -1).flat()).not.toContain(0);
+  });
+
+  it("takes the cover from the owners' tab, a portrait one first", () => {
+    const photos = tabbedGallery([{ name: "1.אוירה", n: 2 }, { name: "2.חתן", n: 6 }, { name: "3.משפחה", n: 10 }, { name: "4.תפילה", n: 40 }]);
+    photos.find((p) => p.id === "1-3")!.aspect = 0.67;
+    const plan = planAlbum(photos, [], [], CLEAN);
+    expect(plan.coverPhotoId).toBe("1-3");
+  });
+
+  it("orders the family tab parents, siblings, grandparents when the cells are filled", () => {
+    const photos = tabbedGallery([{ name: "1.חתן", n: 6 }, { name: "2.משפחה", n: 12 }, { name: "3.תפילה", n: 30 }]);
+    // In the family tab, in shooting order: grandma, sister, parents, four of each.
+    const who = [GRANDMA, SISTER, MOTHER];
+    const faces: PhotoFaces[] = photos
+      .filter((p) => tabOfId(p.id) === 1)
+      .map((p, i) => ({ photoId: p.id, faces: [{ descriptor: face(GROOM), area: 0.05 }, { descriptor: face(who[Math.floor(i / 4)]), area: 0.05 }] }));
+    const plan = planAlbum(photos, faces, CELLS, CLEAN);
+    const family = plan.spreads.flatMap((s) => s.photoIds).filter((id) => tabOfId(id) === 1);
+    const rank = (id: string) => Math.floor(Number(id.split("-")[1]) / 4);
+    expect(family.map(rank)).toEqual([2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0]);
+  });
+
+  it("keeps the page limits: at most 30 pages, the caps by position, never a lone photo or a dropped one", () => {
+    const specs: TabSpec[] = [
+      { name: "1.אוירה", n: 3 },
+      { name: "2.הזוג", n: 30 },
+      { name: "3.משפחה", n: 45 },
+      { name: "4.חופה", n: 50 },
+      { name: "5.ריקודים", n: 110 },
+      { name: "6.אורחים", n: 12 },
+    ];
+    for (const target of [null, 12, 20, 30]) {
+      const photos = tabbedGallery(specs, { shuffleTime: true });
+      const plan = planAlbum(photos, [], [], { style: "clean", targetSpreads: target });
+      expectEveryPhotoOnce(plan, photos);
+      expect(plan.spreads.length).toBeLessThanOrEqual((target ?? 30) - 1);
+      plan.spreads.forEach((s) => expect(s.photoIds.length).toBeGreaterThanOrEqual(2));
+      if (target === null || target === 30) plan.spreads.forEach((s, i) => expect(s.photoIds.length).toBeLessThanOrEqual(pageCap(i + 1)));
+    }
+  });
+
+  it("doesn't follow the tabs with a single tab, or with many photos outside the tabs", () => {
+    const one = tabbedGallery([{ name: "ריקודים", n: 30 }]);
+    expect(followsTabs(one)).toBe(false);
+    const loose = tabbedGallery([{ name: "1.חתן", n: 10 }, { name: "2.משפחה", n: 10 }]);
+    for (let i = 0; i < 6; i++) loose[i].tab = null;
+    expect(followsTabs(loose)).toBe(false);
+    expect(planAlbum(one, [], [], CLEAN).spreads.every((s) => !s.tab)).toBe(true);
+  });
+
+  it("orders a photo book session by shooting time even with tabs", () => {
+    const photos = tabbedGallery([{ name: "1.אוירה", n: 4 }, { name: "2.חוף", n: 10 }, { name: "3.סטודיו", n: 10 }], { shuffleTime: true });
+    const plan = planAlbum(photos, [], [], { ...CLEAN, kind: "book" });
+    const times = plan.spreads.flatMap((s) => s.photoIds).map((id) => photos.find((p) => p.id === id)!.takenAt as number);
+    expect(times).toEqual([...times].sort((a, b) => a - b));
   });
 });
