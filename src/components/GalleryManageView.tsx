@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -38,7 +38,7 @@ import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAuto
 import { hasAutoDesignSession } from "@/lib/albumAuto/session";
 import { fitPhotoInFrame, swapPhotoPatches, type FaceRect, type SwapFit, type SwapPick } from "@/lib/albumAuto/swapPhotos";
 import { createFaceCache, createSerialQueue, refitAfterFaces } from "@/lib/albumAuto/swapFaces";
-import { elementBox, qualityFixPatches, type QualityIssue } from "@/lib/albumAuto/qualityCheck";
+import { applyUndo, elementBox, qualityFixPatches, undoRecord, type QualityIssue, type QualityUndo } from "@/lib/albumAuto/qualityCheck";
 import { frameElements, rankTemplates, templatesForCount } from "@/lib/albumAuto/templateFill";
 import { layoutSpread } from "@/lib/albumAuto/layouts";
 import { generateTemplateFrames } from "@/lib/albumTemplateBank";
@@ -1492,14 +1492,52 @@ export default function GalleryManageView({
   const albumQuality = useAlbumQualityCheck({ album, spreads: albumSpreads, photos, faceCache: swapFaces, loadStoredFaces: seedStoredFaces });
   const [qualityFocus, setQualityFocus] = useState<{ spreadId: string; elementId?: string } | null>(null);
   const qualityFocusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Every batch of fixes can be undone (owner, 2026-10-21), also after a reload: the frames as they
+  // were are kept in this browser, per album (the last 10 batches).
+  const qualityUndoKey = album ? `album-quality-undo:${album.id}` : null;
+  const storedQualityUndo = useMemo(() => {
+    if (!qualityUndoKey) return [];
+    try {
+      const raw = localStorage.getItem(qualityUndoKey);
+      return raw ? (JSON.parse(raw) as QualityUndo[]) : [];
+    } catch {
+      return [];
+    }
+  }, [qualityUndoKey]);
+  const [qualityUndoState, setQualityUndoState] = useState<{ key: string | null; stack: QualityUndo[] } | null>(null);
+  const qualityUndo = qualityUndoState && qualityUndoState.key === qualityUndoKey ? qualityUndoState.stack : storedQualityUndo;
+  const keepQualityUndo = (stack: QualityUndo[]) => {
+    const kept = stack.slice(-10);
+    setQualityUndoState({ key: qualityUndoKey, stack: kept });
+    if (!qualityUndoKey) return;
+    try {
+      if (kept.length) localStorage.setItem(qualityUndoKey, JSON.stringify(kept));
+      else localStorage.removeItem(qualityUndoKey);
+    } catch {
+      // No storage (a private window): the undo still works until the page reloads.
+    }
+  };
+  const savePatchedSpreads = (patches: Map<string, AlbumElement[]>, failMessage: string) => {
+    albumSpreadsRef.current = albumSpreadsRef.current.map((sp) => (patches.has(sp.id) ? { ...sp, elements: patches.get(sp.id)! } : sp));
+    setAlbumSpreads(albumSpreadsRef.current);
+    queueSpreadSave(new Map([...patches].map(([id, elements]) => [id, { elements }])), failMessage);
+  };
   const applyQualityFixes = (issueIds: string[]) => {
     // Recomputed on the latest pages, so a fix never lands on a frame that changed since the list was drawn.
     const wanted = new Set(issueIds);
     const patches = qualityFixPatches(albumSpreadsRef.current, albumQuality.issuesFor(albumSpreadsRef.current).filter((i) => wanted.has(i.id)));
     if (!patches.size) return;
-    albumSpreadsRef.current = albumSpreadsRef.current.map((sp) => (patches.has(sp.id) ? { ...sp, elements: patches.get(sp.id)! } : sp));
-    setAlbumSpreads(albumSpreadsRef.current);
-    queueSpreadSave(new Map([...patches].map(([id, elements]) => [id, { elements }])), t("התיקון לא נשמר, נסו שוב"));
+    const record = undoRecord(albumSpreadsRef.current, patches, Date.now());
+    if (record.frames.length) keepQualityUndo([...qualityUndo, record]);
+    savePatchedSpreads(patches, t("התיקון לא נשמר, נסו שוב"));
+  };
+  const undoQualityFixes = () => {
+    const last = qualityUndo[qualityUndo.length - 1];
+    if (!last) return;
+    const { patched, kept } = applyUndo(albumSpreadsRef.current, last);
+    keepQualityUndo(qualityUndo.slice(0, -1));
+    if (patched.size) savePatchedSpreads(patched, t("הביטול לא נשמר, נסו שוב"));
+    if (kept) alert(t("{n} מסגרות נערכו אחרי התיקון, ולכן נשארו כמו שהן.", { n: kept }));
   };
   const showQualityIssue = (issue: QualityIssue) => {
     setQualityFocus({ spreadId: issue.spreadId, elementId: issue.elementId });
@@ -5719,7 +5757,14 @@ export default function GalleryManageView({
                         </button>
                       </div>
                     </div>
-                    {photographerEmail === ADMIN_EMAIL && albumQuality.open && <AlbumQualityCheck quality={albumQuality} onShow={showQualityIssue} onFix={applyQualityFixes} />}
+                    {photographerEmail === ADMIN_EMAIL && albumQuality.open && (
+                      <AlbumQualityCheck
+                        quality={albumQuality}
+                        onShow={showQualityIssue}
+                        onFix={applyQualityFixes}
+                        undo={qualityUndo.length ? { frames: qualityUndo[qualityUndo.length - 1].frames.length, onUndo: undoQualityFixes } : null}
+                      />
+                    )}
                     {photoSwapMode && (
                       <p className="text-xs text-ink mb-2 rounded-lg bg-amber-bg px-3 py-2">
                         {photoSwapping
