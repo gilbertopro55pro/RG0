@@ -615,14 +615,20 @@ function fitPages(
   time: Map<string, number> | null,
   heroFor: (section: SectionKind, ids: string[]) => string,
   // Book position of the first spread here (the family pages before the event take the first ones).
-  offset = 0
+  offset = 0,
+  // The cost of two sections sharing a page. The book by the gallery's tabs raises it, so a page
+  // mixes two tabs only when the page limits leave no other way.
+  mixPenalty = 6
 ): PlannedSpread[] {
   const pageCap = (pos: number) => pageCapAt(pos + offset);
   const fits = spreads.length <= maxSpreads && spreads.every((s, i) => s.photoIds.length <= pageCap(i + 1) && (s.photoIds.length >= 2 || spreads.length === 1));
   const ids = spreads.flatMap((s) => s.photoIds);
   const P = ids.length;
   if (fits || P < 4) return spreads;
-  const sec = spreads.flatMap((s) => s.photoIds.map(() => s.section));
+  // Section boundaries: each gallery tab is its own section when the book follows the tabs (two
+  // stage tabs are both "event" spreads but must not share a page), else the section kind.
+  const sec = spreads.flatMap((s) => s.photoIds.map(() => s.tab ?? s.section));
+  const kindOf = new Map(spreads.map((s) => [s.tab ?? s.section, s.section] as const));
   // Where the plan already cut (its stage-aware chunking): kept when the sizes allow.
   const planCut = new Set<number>();
   spreads.reduce((pos, s) => (planCut.add(pos + s.photoIds.length), pos + s.photoIds.length), 0);
@@ -676,7 +682,7 @@ function fitPages(
       if (best[i][a] === INF) continue;
       for (let size = 2; size <= caps[i] && a + size <= P; size++) {
         const b = a + size;
-        const c = best[i][a] + (size - want[i]) ** 2 + 6 * inside(secCh, a, b) + 2 * inside(burst, a, b) - cutBonus(b);
+        const c = best[i][a] + (size - want[i]) ** 2 + mixPenalty * inside(secCh, a, b) + 2 * inside(burst, a, b) - cutBonus(b);
         if (c < best[i + 1][b]) {
           best[i + 1][b] = c;
           from[i + 1][b] = a;
@@ -694,7 +700,8 @@ function fitPages(
     b = a;
   }
   const chunks = cuts.map(([a, b]) => ids.slice(a, b));
-  const sections = cuts.map(([a]) => sec[a]);
+  const keys = cuts.map(([a]) => sec[a]);
+  const sections = keys.map((k) => kindOf.get(k) as SectionKind);
   // Bursts that still share a spread swap apart inside runs of event spreads (sizes stay the same).
   if (time) {
     for (let i = 0; i < chunks.length; ) {
@@ -708,7 +715,7 @@ function fitPages(
       i = j;
     }
   }
-  return chunks.map((c, i) => ({ section: sections[i], photoIds: c, heroId: heroFor(sections[i], c) }));
+  return chunks.map((c, i) => ({ section: sections[i], photoIds: c, heroId: heroFor(sections[i], c), ...(keys[i] !== sections[i] ? { tab: keys[i] } : {}) }));
 }
 
 // A spread with one photo is never allowed (owner's rule): it joins its neighbour — the previous
@@ -722,7 +729,9 @@ function mergeSingles(spreads: PlannedSpread[], byId: Map<string, AutoPhoto>): v
     // The owners' pages hold only the owners (owner, 2026-09-30): another section's single photo
     // never joins them.
     const ok = (t: PlannedSpread | undefined) => !!t && (t.section !== "owners" || s.section === "owners");
-    const target = prev && prev.section === s.section ? prev : ok(next) ? next : ok(prev) ? prev : next ?? prev;
+    // Same section: the same gallery tab when the book follows the tabs.
+    const same = (t: PlannedSpread | undefined) => !!t && (t.tab ?? t.section) === (s.tab ?? s.section);
+    const target = same(prev) ? prev : same(next) ? next : prev && prev.section === s.section ? prev : ok(next) ? next : ok(prev) ? prev : next ?? prev;
     if (!target) continue;
     if (target === prev) target.photoIds.push(...s.photoIds);
     else target.photoIds.unshift(...s.photoIds);
@@ -742,6 +751,72 @@ function targetEventBounds(base: Bounds, photos: number, spreads: number): Bound
   const min = Math.min(HARD_MAX_PER_SPREAD, Math.max(base.min, Math.floor(avg) - 1));
   const max = Math.min(HARD_MAX_PER_SPREAD, Math.max(min, Math.ceil(avg) + 1));
   return { min, max };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The book by the gallery's tabs (owner, 2026-10-21; see types.ts). Every album the owner designed
+// by hand runs tab by tab in the tabs' numbered order ("1.אוירה", "2.חתן", "3.משפחה", "4.תפילה",
+// "5.ארוחה"), so the photographer's own sorting decides the sections instead of face recognition.
+
+// A tab's name without the number the photographer put in front of it for its order ("3.משפחה" →
+// "משפחה").
+export function tabLabel(name: string): string {
+  return name.replace(/^\s*\d+\s*[.\-_)]?\s*/, "").trim() || name.trim();
+}
+
+export type TabRole = "atmosphere" | "owners" | "family" | "stage";
+
+const ATMOSPHERE_RE = /(אוו?ירה|עיצוב|דקור)/;
+const FAMILY_RE = /משפח/;
+const OWNERS_RE = /(חתן|כלה|הזוג|בעלי השמחה)/;
+
+// What each tab is, in the tabs' order: the atmosphere (decor, the venue), the owners (the couple,
+// the bar/bat mitzvah child: a tab named for them, or else the first tab right before the family's,
+// like "2.נטע" before "3.משפחה"), the family, and the event stages (everything else).
+export function tabRoles(names: string[]): TabRole[] {
+  const labels = names.map(tabLabel);
+  const roles: TabRole[] = labels.map((l) => (ATMOSPHERE_RE.test(l) ? "atmosphere" : FAMILY_RE.test(l) ? "family" : "stage"));
+  const firstPeople = roles.findIndex((r) => r !== "atmosphere");
+  const named = labels.findIndex((l, i) => roles[i] === "stage" && OWNERS_RE.test(l));
+  if (named >= 0) roles[named] = "owners";
+  else if (firstPeople >= 0 && roles[firstPeople] === "stage" && roles.slice(firstPeople + 1).find((r) => r !== "atmosphere") === "family") roles[firstPeople] = "owners";
+  return roles;
+}
+
+// Whether the book follows the tabs: the photos are sorted into two tabs or more, nearly all of them
+// (a few photos left outside the tabs go after the stages).
+export function followsTabs(photos: AutoPhoto[]): boolean {
+  const tabbed = photos.filter((p) => p.tab);
+  return new Set(tabbed.map((p) => p.tab!.key)).size >= 2 && tabbed.length >= photos.length * 0.8;
+}
+
+const UNTABBED = "__untabbed__";
+// A page that mixes two tabs costs more than any unevenness in page sizes the limits could force.
+const TAB_MIX_PENALTY = 400;
+
+// `ids` over at least `minPages` pages from book position `pos`, and more when needed to hold them
+// within each position's page cap (pageCap), as even as the caps allow; consecutive runs, so the
+// order stays. Never a one-photo page while there are two photos or more.
+export function splitWithinCaps(ids: string[], pos: number, minPages = 1): string[][] {
+  const n = ids.length;
+  if (n <= 1) return n ? [ids.slice()] : [];
+  let k = Math.max(1, Math.min(minPages, Math.floor(n / 2)));
+  const capOf = (i: number) => pageCap(pos + i);
+  while (Array.from({ length: k }, (_, i) => capOf(i)).reduce((a, c) => a + c, 0) < n && k < Math.floor(n / 2)) k++;
+  const caps = Array.from({ length: k }, (_, i) => capOf(i));
+  const sizes = new Array(k).fill(0);
+  for (let j = 0; j < n; j++) {
+    let best = -1;
+    for (let i = 0; i < k; i++) if (sizes[i] < caps[i] && (best < 0 || sizes[i] < sizes[best])) best = i;
+    sizes[best < 0 ? k - 1 : best]++;
+  }
+  const out: string[][] = [];
+  let at = 0;
+  for (const size of sizes) {
+    out.push(ids.slice(at, at + size));
+    at += size;
+  }
+  return out;
 }
 
 function isLandscape(p: AutoPhoto | undefined): boolean {
@@ -793,6 +868,8 @@ export function planAlbum(
   const facesById = new Map(faces.map((f) => [f.photoId, f.faces] as const));
   const info = new Map<string, PhotoInfo>();
   for (const p of allPhotos) info.set(p.id, analyzeFaces(facesById.get(p.id) ?? [], people));
+
+  if (!isBook && followsTabs(allPhotos)) return planByTabs(allPhotos, info, cellSize, orderIdx, time, bounds, opts, refs);
 
   // 2. Family sections, in priority order. Which other cells may share the frame: owners only with
   // themselves; parents with the owners; siblings with owners/parents; grandparents with anyone.
@@ -977,5 +1054,128 @@ export function planAlbum(
   }
   if (!coverPhotoId) coverPhotoId = refIds.owners ?? spreads[0]?.photoIds[0] ?? null;
 
+  return { coverPhotoId, spreads };
+}
+
+// The book by the gallery's tabs (see followsTabs): one section per tab in the tabs' order, the
+// atmosphere tab last. Inside a tab the photos run in shooting order; the family tab, when the
+// family cells were filled, runs parents, siblings, grandparents, then the rest of it. Each tab is
+// split into pages on its own (a page holds one tab), at the style's sizes for its role; then the
+// same last pass as the face-based book holds the page caps and the page limit (fitPages), keeping
+// the tabs apart unless the limit can't. The atmosphere joins the last page (owner, 2026-10-21: "בדף
+// האחרון"), or makes the last page itself when it has a page's worth of photos.
+function planByTabs(
+  allPhotos: AutoPhoto[],
+  info: Map<string, PhotoInfo>,
+  cellSize: Record<FamilyCellId, number>,
+  orderIdx: Map<string, number>,
+  time: Map<string, number> | null,
+  bounds: Record<SectionGroup, Bounds>,
+  opts: PlanOptions,
+  refs?: Pick<FamilyCell, "id" | "photoId">[]
+): AlbumPlan {
+  const byId = new Map(allPhotos.map((p) => [p.id, p] as const));
+  const shot = (id: string) => orderIdx.get(id) as number;
+  const typed = opts.targetSpreads && opts.targetSpreads > 0 ? Math.min(AUTO_MAX_PAGES, Math.floor(opts.targetSpreads)) : null;
+  const maxSpreads = Math.max(1, (typed ?? AUTO_MAX_PAGES) - (opts.hasCover === false ? 0 : 1));
+
+  // The tabs in their order, each with its role and its photos.
+  const tabMap = new Map<string, { key: string; name: string; order: number; ids: string[] }>();
+  for (const p of allPhotos) {
+    const key = p.tab?.key ?? UNTABBED;
+    let t = tabMap.get(key);
+    if (!t) tabMap.set(key, (t = { key, name: p.tab?.name ?? "", order: p.tab ? p.tab.order : Number.MAX_SAFE_INTEGER, ids: [] }));
+    t.ids.push(p.id);
+  }
+  const tabs = [...tabMap.values()].sort((a, b) => a.order - b.order);
+  const roles = tabRoles(tabs.map((t) => (t.key === UNTABBED ? "" : t.name)));
+  const ordered = [
+    ...tabs.filter((_, i) => roles[i] !== "atmosphere"),
+    ...tabs.filter((_, i) => roles[i] === "atmosphere"),
+  ];
+  const roleOf = new Map(tabs.map((t, i) => [t.key, roles[i]] as const));
+  const sectionOf = (role: TabRole): SectionKind => (role === "owners" ? "owners" : role === "family" ? "parents" : "event");
+
+  // Inside a tab: shooting order; the family tab by family cell first when the cells were filled.
+  const familyRank = (id: string): number => {
+    const cells = (info.get(id) as PhotoInfo).cells;
+    return cells.has("grandparents") ? 2 : cells.has("siblings") ? 1 : cells.has("parents") || cells.has("owners") ? 0 : 3;
+  };
+  const familyCellsFilled = cellSize.parents + cellSize.siblings + cellSize.grandparents > 0;
+  for (const t of ordered) {
+    t.ids.sort((a, b) => (roleOf.get(t.key) === "family" && familyCellsFilled ? familyRank(a) - familyRank(b) : 0) || shot(a) - shot(b));
+  }
+
+  const heroByFaces = (ids: string[]): string =>
+    ids.reduce((best, id) => ((info.get(id) as PhotoInfo).identifiedArea > (info.get(best) as PhotoInfo).identifiedArea ? id : best));
+  const heroFor = (section: SectionKind, ids: string[]) =>
+    section === "event" ? (ids.find((id) => isLandscape(byId.get(id))) ?? ids[0]) : heroByFaces(ids);
+  const gapIn = (ids: string[]) =>
+    time ? (i: number) => (i + 1 < ids.length ? (time.get(ids[i + 1]) as number) - (time.get(ids[i]) as number) : 0) : undefined;
+
+  // The atmosphere: a page of its own only with a page's worth of photos; otherwise it joins the last page.
+  const atmosphere = ordered.filter((t) => roleOf.get(t.key) === "atmosphere");
+  const atmosphereIds = atmosphere.flatMap((t) => t.ids);
+  const atmosphereOwnPage = atmosphereIds.length >= bounds.event.min;
+  let sections = atmosphereOwnPage ? ordered : ordered.filter((t) => roleOf.get(t.key) !== "atmosphere");
+  if (sections.length === 0) sections = atmosphere; // only atmosphere photos: one section after all
+  else if (!atmosphereOwnPage && atmosphereIds.length > 0) {
+    // The atmosphere's few photos close the last section's last page (a copy, the tab list stays).
+    const last = sections[sections.length - 1];
+    sections = [...sections.slice(0, -1), { ...last, ids: [...last.ids, ...atmosphereIds] }];
+  }
+
+  // Event bounds aimed at the page limit, like the face-based book.
+  const peoplePages = (group: SectionGroup) =>
+    sections
+      .filter((t) => groupOf(sectionOf(roleOf.get(t.key) as TabRole)) === group)
+      .reduce((n, t) => n + Math.max(1, Math.ceil(t.ids.length / bounds[group].max)), 0);
+  const nonEvent = peoplePages("owners") + peoplePages("family");
+  const eventCount = sections.filter((t) => sectionOf(roleOf.get(t.key) as TabRole) === "event").reduce((n, t) => n + t.ids.length, 0);
+  let eventBounds = bounds.event;
+  const naturalEvent = sections
+    .filter((t) => sectionOf(roleOf.get(t.key) as TabRole) === "event")
+    .reduce((n, t) => n + Math.max(1, Math.ceil(t.ids.length / bounds.event.max)), 0);
+  if (eventCount > 0 && (typed || nonEvent + naturalEvent > maxSpreads)) {
+    eventBounds = targetEventBounds(bounds.event, eventCount, Math.max(1, maxSpreads - nonEvent));
+  }
+
+  // Each tab on its own pages, from where the previous tab ended: the style's sizes for its role
+  // (breaking at stage gaps inside a long tab), or, when a page would go past the cap of its
+  // position in the book, as many pages again (more if the caps need them), as even as they allow.
+  let spreads: PlannedSpread[] = [];
+  sections.forEach((t, k) => {
+    const section = sectionOf(roleOf.get(t.key) as TabRole);
+    const b = section === "event" ? eventBounds : bounds[groupOf(section)];
+    const pos = spreads.length + 1;
+    let pages = chunk(t.ids, b, spreads.length + k, gapIn(t.ids));
+    if (pages.some((pg, i) => pg.length > pageCap(pos + i))) pages = splitWithinCaps(t.ids, pos, pages.length);
+    for (const ids of pages) spreads.push({ section, photoIds: ids, heroId: heroFor(section, ids), tab: t.key });
+  });
+  mergeSingles(spreads, byId);
+  // Only a book past the page limit (or a merged single past a cap) goes through the last pass,
+  // which then keeps the tabs apart wherever the limits let it.
+  spreads = fitPages(spreads, maxSpreads, time, heroFor, 0, TAB_MIX_PENALTY);
+
+  // Cover: from the owners' tab — the owners' reference photo when it's there, else the closest
+  // owners shot (faces known), else its first portrait shot; without an owners' tab, the first photo.
+  const ownersTab = tabs.find((t) => roleOf.get(t.key) === "owners");
+  let coverPhotoId: string | null = null;
+  if (ownersTab) {
+    const ref = refs?.find((r) => r.id === "owners")?.photoId;
+    if (ref && ownersTab.ids.includes(ref)) coverPhotoId = ref;
+    else {
+      let best = 0;
+      for (const id of ownersTab.ids) {
+        const score = (info.get(id) as PhotoInfo).cellArea.owners * ((byId.get(id) as AutoPhoto).aspect < 1 ? 1.15 : 1);
+        if (score > best) {
+          best = score;
+          coverPhotoId = id;
+        }
+      }
+      coverPhotoId ??= ownersTab.ids.find((id) => (byId.get(id) as AutoPhoto).aspect < 1) ?? ownersTab.ids[0] ?? null;
+    }
+  }
+  coverPhotoId ??= spreads[0]?.photoIds[0] ?? null;
   return { coverPhotoId, spreads };
 }

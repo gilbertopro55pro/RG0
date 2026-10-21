@@ -25,6 +25,12 @@ export const AUTO_STYLES: { id: AutoStyleId; name: string; description: string }
 // session) has no family sections at all, only shooting time.
 export type EventKind = "wedding" | "henna" | "bar_mitzvah" | "bat_mitzvah" | "book" | "birthday" | "other";
 
+// The book follows the gallery's tabs when the photos are sorted into them (owner, 2026-10-21: every
+// album the owner designed by hand runs tab by tab, "2.חתן", "3.משפחה", "4.תפילה", "5.ארוחה"): each
+// tab is a section, in the tabs' order, and a page never mixes two tabs when the page limits leave
+// room. The atmosphere tab ("אוירה") closes the book, on the last page. The family cells then only
+// order the family tab (parents, siblings, grandparents). Without tabs, the order above.
+
 // The four cells the photographer fills before designing. Each is optional.
 export type FamilyCellId = "parents" | "owners" | "siblings" | "grandparents";
 
@@ -43,6 +49,10 @@ export type AutoPhoto = {
   aspect: number; // width / height (gallery_photos.preview_aspect_ratio, 1.5 if unknown)
   takenAt: number | null; // ms since epoch, from EXIF; null when unknown
   filename: string; // original_filename, for the natural-order fallback ("RG-2" before "RG-10")
+  // The gallery tab (folder) the photo is in: its id, name ("3.משפחה") and position among the
+  // gallery's tabs. When the photos are sorted into tabs, the book follows them (planner.ts, owner
+  // 2026-10-21).
+  tab?: { key: string; name: string; order: number } | null;
 };
 
 // Faces found in one photo: 128-d descriptors (see lib/faceRecognition.ts) with their box area as a
@@ -56,7 +66,8 @@ export type SectionKind = "owners" | "parents" | "siblings" | "grandparents" | "
 
 // One spread (a full double page) of the plan. heroId, when set, is the photo the layout should
 // make the largest on that spread.
-export type PlannedSpread = { section: SectionKind; photoIds: string[]; heroId?: string };
+// `tab`: the gallery tab the spread belongs to, when the book follows the tabs.
+export type PlannedSpread = { section: SectionKind; photoIds: string[]; heroId?: string; tab?: string };
 
 export type AlbumPlan = { coverPhotoId: string | null; spreads: PlannedSpread[] };
 
