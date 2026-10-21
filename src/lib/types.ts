@@ -767,6 +767,14 @@ export type AlbumTextElement = {
   color: string;
   align: "right" | "center" | "left";
   shadow?: number; // 0-100 drop-shadow intensity, default 0 — same 0-100 scale as AlbumPhotoElement.shadow
+  // The drop shadow's color and distance (owner, 2026-10-21: "אפשרות לבחירת צבע הצל ומרחק הצל"),
+  // read only by textShadowSpecs (albumRender.ts), so every renderer follows. shadowColor is a
+  // "#rrggbb" from TEXT_COLOR_PALETTE; missing or unreadable = black. shadowDistance is in points of
+  // the 1600pt reference canvas (like strokeWidth, NOT the 0-100 scale of the photo's own
+  // shadowDistance), applied on both x and y (the same down-right 45° as always); missing = the
+  // offset derived from `shadow`, so text saved before these existed renders exactly as it did.
+  shadowColor?: string;
+  shadowDistance?: number;
   glow?: number; // 0-100 outer-glow intensity (soft white halo, for light text over busy photos), default 0
   // Outline around the letters, in points on the 1600pt reference canvas (like fontSize); 0/missing
   // = none. strokeColor defaults to black.

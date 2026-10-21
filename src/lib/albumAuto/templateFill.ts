@@ -234,3 +234,112 @@ export function ownTemplatePlan(
     return pick;
   });
 }
+
+// The owner's corrections to an auto album built mostly from their own templates ("עלייה לתורה -
+// אורי", 2026-10-21; their own layouts were mostly kept, 9 of the 12 template pages were edited).
+// Two that hold on every page and touch none they kept, applied to a template before it's filled:
+// - the frames beside the tall ones (under 85% of the height) are one block, centred top to bottom:
+//   page 12 sat 3% from the top and 17% from the bottom, the owner moved it 7.2% down. Not when
+//   another frame isn't full height (a wide photo across the top holds the block where it is) or
+//   the move would put a frame over one it was clear of;
+// - an edge of the block's outline that misses it by 0.3–1.6% lines up with it, outwards, when
+//   nothing lies beyond it and nothing would overlap: a left edge at 3.0 under one at 1.5 (page 12),
+//   a bottom at 93.4 beside 94.2 (page 20). A wider miss is left alone, as a deliberate inset.
+const TALL_FRAME = 85;
+const CENTER_FROM = 1.5;
+const SNAP_MIN = 0.3;
+const SNAP_MAX = 1.6;
+
+type Side = "left" | "right" | "top" | "bottom";
+const SIDES: Side[] = ["left", "right", "top", "bottom"];
+
+function edgeOf(f: AlbumFrame, side: Side): number {
+  if (side === "left") return f.xPct;
+  if (side === "right") return f.xPct + f.widthPct;
+  if (side === "top") return f.yPct;
+  return f.yPct + f.heightPct;
+}
+
+// The frame with one side moved to `at`, the opposite side where it was.
+function withEdge(f: AlbumFrame, side: Side, at: number): AlbumFrame {
+  if (side === "left") return { ...f, xPct: at, widthPct: f.xPct + f.widthPct - at };
+  if (side === "right") return { ...f, widthPct: at - f.xPct };
+  if (side === "top") return { ...f, yPct: at, heightPct: f.yPct + f.heightPct - at };
+  return { ...f, heightPct: at - f.yPct };
+}
+
+const EPS = 0.05;
+
+function overlaps(a: AlbumFrame, b: AlbumFrame): boolean {
+  return a.xPct < b.xPct + b.widthPct - EPS && b.xPct < a.xPct + a.widthPct - EPS && a.yPct < b.yPct + b.heightPct - EPS && b.yPct < a.yPct + a.heightPct - EPS;
+}
+
+// Another frame past this side of `f`, across from it (beside it on the other axis).
+function somethingBeyond(f: AlbumFrame, side: Side, others: AlbumFrame[]): boolean {
+  const horizontal = side === "left" || side === "right";
+  return others.some((o) => {
+    const across = horizontal
+      ? o.yPct < f.yPct + f.heightPct - EPS && f.yPct < o.yPct + o.heightPct - EPS
+      : o.xPct < f.xPct + f.widthPct - EPS && f.xPct < o.xPct + o.widthPct - EPS;
+    if (!across) return false;
+    if (side === "left") return o.xPct < f.xPct - EPS;
+    if (side === "right") return o.xPct + o.widthPct > f.xPct + f.widthPct + EPS;
+    if (side === "top") return o.yPct < f.yPct - EPS;
+    return o.yPct + o.heightPct > f.yPct + f.heightPct + EPS;
+  });
+}
+
+export function tidyOwnFrames(frames: AlbumFrame[]): AlbumFrame[] {
+  const out = frames.map((f) => ({ ...f }));
+  const inBlock = (f: AlbumFrame) => !f.rotation && f.heightPct < TALL_FRAME && f.widthPct < TALL_FRAME;
+  const block = out.map((f, i) => (inBlock(f) ? i : -1)).filter((i) => i >= 0);
+  if (block.length === 0) return out;
+
+  const top = Math.min(...block.map((i) => out[i].yPct));
+  const bottom = Math.max(...block.map((i) => out[i].yPct + out[i].heightPct));
+  const shift = (100 - bottom - top) / 2;
+  const outside = out.filter((_, j) => !block.includes(j));
+  if (Math.abs(shift) > CENTER_FROM && outside.every((o) => o.heightPct >= TALL_FRAME)) {
+    const shifted = block.map((i) => ({ ...out[i], yPct: out[i].yPct + shift }));
+    if (!shifted.some((f, k) => outside.some((o) => overlaps(f, o) && !overlaps(out[block[k]], o)))) block.forEach((i, k) => (out[i] = shifted[k]));
+  }
+
+  const outward = (side: Side, from: number, to: number) => (side === "left" || side === "top" ? from - to : to - from);
+  for (const i of block) {
+    for (const side of SIDES) {
+      const f = out[i];
+      const others = out.filter((_, j) => j !== i);
+      if (somethingBeyond(f, side, others)) continue;
+      const here = edgeOf(f, side);
+      // The block's outline on this side.
+      const edges = block.map((j) => edgeOf(out[j], side));
+      const at = side === "left" || side === "top" ? Math.min(...edges) : Math.max(...edges);
+      const miss = outward(side, here, at);
+      if (miss < SNAP_MIN || miss > SNAP_MAX) continue;
+      const moved = withEdge(f, side, at);
+      if (!others.some((o) => overlaps(moved, o))) out[i] = moved;
+    }
+  }
+  return out;
+}
+
+// A main photo of a template — full height, run off the left or the right edge — whose inner edge
+// ends just at the frames beside it (they start at most 2% over it, or past it) gets the clean style's
+// fade toward them (owner, 2026-10-21: pages 2 and 5, at 1.3% and 2.0%). One that the frames sit well
+// over (5.6–7.9% on pages 11, 14 and 17, and 2.3% on a page the owner kept) stays as it is.
+const FADE_UPTO = 2.1;
+
+export function fadeOwnHeroes(elements: AlbumPhotoElement[]): AlbumPhotoElement[] {
+  const isHero = (e: AlbumPhotoElement) =>
+    !e.borderWidth && !e.rotation && !e.maskId && e.heightPct >= 99 && e.widthPct < 90 && (e.xPct <= 0.5) !== (e.xPct + e.widthPct >= 99.5);
+  const rest = elements.filter((e) => !(e.heightPct >= 99 && (e.xPct <= 0.5 || e.xPct + e.widthPct >= 99.5)));
+  return elements.map((e) => {
+    if (!isHero(e)) return e;
+    const left = e.xPct <= 0.5;
+    const inner = left ? e.xPct + e.widthPct : e.xPct;
+    const past = rest.filter((g) => (left ? g.xPct + g.widthPct > inner + 0.5 : g.xPct < inner - 0.5));
+    if (past.length === 0) return e;
+    const over = left ? inner - Math.min(...past.map((g) => g.xPct)) : Math.max(...past.map((g) => g.xPct + g.widthPct)) - inner;
+    return over <= FADE_UPTO ? { ...e, maskId: left ? "fade-right-25" : "fade-left-25" } : e;
+  });
+}
