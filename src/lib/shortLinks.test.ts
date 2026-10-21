@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SHORT_LINK_PATH, parseShortCode, shortClientUrl, type ShortLinkKind } from "@/lib/shortLinks";
+import { SHORT_LINK_PATH, forwardedSearch, galleryShareSearch, parseShortCode, shortClientUrl, type ShortLinkKind } from "@/lib/shortLinks";
 
 const ORIGIN = "https://myframeflow.com";
 const TOKEN = "3f2a9c1e-7b4d-4e8f-9a01-23456789abcd";
@@ -136,5 +136,35 @@ describe("parseShortCode", () => {
       n /= BigInt(62);
     }
     expect(parseShortCode(`p${s}`)).toBeNull();
+  });
+});
+
+// The gallery link sent right after publishing came out as ".../s/<code>?folders=" (2026-10-21):
+// the tab picker hadn't been opened, so nothing was chosen.
+describe("galleryShareSearch", () => {
+  const tabs = ["a", "b", "none"];
+
+  it("sends the plain link for the whole gallery, and when nothing was chosen yet", () => {
+    expect(galleryShareSearch(tabs, new Set(tabs), "full")).toBe("");
+    expect(galleryShareSearch(tabs, new Set(), "full")).toBe("");
+    expect(galleryShareSearch(null, new Set(), "full")).toBe("");
+  });
+
+  it("names the chosen tabs when they're only some of them", () => {
+    expect(galleryShareSearch(tabs, new Set(["a", "none"]), "full")).toBe("?folders=a%2Cnone");
+  });
+
+  it("adds the web quality, with or without tabs", () => {
+    expect(galleryShareSearch(tabs, new Set(), "web")).toBe("?quality=web");
+    expect(galleryShareSearch(tabs, new Set(["b"]), "web")).toBe("?folders=b&quality=web");
+  });
+});
+
+describe("forwardedSearch", () => {
+  it("drops empty parameters and keeps the rest", () => {
+    expect(forwardedSearch("?folders=")).toBe("");
+    expect(forwardedSearch("")).toBe("");
+    expect(forwardedSearch("?folders=&quality=web")).toBe("?quality=web");
+    expect(forwardedSearch("?folders=a%2Cb")).toBe("?folders=a%2Cb");
   });
 });

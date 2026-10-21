@@ -103,7 +103,7 @@ import { useT, useLang } from "@/i18n/client";
 import dynamic from "next/dynamic";
 import { dateLocale, type Lang } from "@/i18n/config";
 import { buildGalleryShareMessage, buildGalleryPhotosUploadedMessage, buildExportReadyMessage, galleryShareTitle } from "@/components/GalleryShareModal";
-import { shortClientUrl } from "@/lib/shortLinks";
+import { galleryShareSearch, shortClientUrl } from "@/lib/shortLinks";
 import type { PhotoWithUrl, ZipJobPart, ZipBatchState } from "@/components/galleryManage/types";
 import { CLOSE_ANIMATION_MS } from "@/components/galleryManage/constants";
 import { triggerZipAnchorDownload, addDays, fitAutoElements } from "@/components/galleryManage/helpers";
@@ -2941,17 +2941,8 @@ export default function GalleryManageView({
   const showFolderPicker = folders.length > 0;
   const shareDisabled = showFolderPicker && shareSelectedFolders.size === 0;
 
-  const buildShareUrl = () => {
-    const base = shortClientUrl(window.location.origin, "gallery", gallery.access_token);
-    const params = new URLSearchParams();
-    if (showFolderPicker) {
-      const allSelected = allShareOptionKeys.every((k) => shareSelectedFolders.has(k));
-      if (!allSelected) params.set("folders", [...shareSelectedFolders].join(","));
-    }
-    if (shareQuality === "web") params.set("quality", "web");
-    const qs = params.toString();
-    return qs ? `${base}?${qs}` : base;
-  };
+  const buildShareUrl = () =>
+    shortClientUrl(window.location.origin, "gallery", gallery.access_token, galleryShareSearch(showFolderPicker ? allShareOptionKeys : null, shareSelectedFolders, shareQuality));
 
   // The text itself lives in GalleryShareModal (shared with the galleries list's quick share): one
   // specific account's own wording, a generic one for everyone else, in the client's language.

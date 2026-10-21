@@ -57,3 +57,24 @@ export function parseShortCode(code: string): { kind: ShortLinkKind; from: strin
   const head = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}`;
   return { kind, from: `${head}-0000-000000000000`, to: `${head}-ffff-ffffffffffff` };
 }
+
+// The query of a gallery link the photographer sends: the chosen tabs when they're only some of
+// them, and the web quality. An empty choice is the whole gallery, never "?folders=" with nothing
+// after it: the "send to the client" button right after publishing builds the link before the tab
+// picker was ever opened, and sent ".../s/<code>?folders=" (2026-10-21).
+export function galleryShareSearch(tabKeys: string[] | null, chosen: ReadonlySet<string>, quality: "full" | "web"): string {
+  const params = new URLSearchParams();
+  if (tabKeys && tabKeys.length > 0 && chosen.size > 0 && !tabKeys.every((k) => chosen.has(k))) params.set("folders", [...chosen].join(","));
+  if (quality === "web") params.set("quality", "web");
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+// A short link's query as forwarded to the full page, without empty parameters (links already sent
+// with "?folders=" open as the plain link).
+export function forwardedSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  for (const key of [...new Set(params.keys())]) if (params.getAll(key).every((v) => v === "")) params.delete(key);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}

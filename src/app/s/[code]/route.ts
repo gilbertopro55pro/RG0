@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveShortLink } from "@/lib/shortLinkTarget";
+import { forwardedSearch } from "@/lib/shortLinks";
 import { PREVIEW_BOTS } from "@/lib/previewBots";
 import { appOrigin } from "@/lib/receiptLinks";
 import { makeT } from "@/i18n/translate";
@@ -30,7 +31,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
     return new NextResponse(t("הקישור לא נמצא"), { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", ...NO_STORE } });
   }
 
-  const dest = new URL(`${target.path}${url.search}`, url.origin);
+  const dest = new URL(`${target.path}${forwardedSearch(url.search)}`, url.origin);
   if (target.kind === "gallery" || !PREVIEW_BOTS.test(request.headers.get("user-agent") ?? "")) {
     return NextResponse.redirect(dest, { status: 307, headers: NO_STORE });
   }
