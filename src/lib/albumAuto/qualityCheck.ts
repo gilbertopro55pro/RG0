@@ -25,7 +25,11 @@ export type QualityIssueKind =
 
 export type QualitySeverity = "error" | "warning";
 
-export type QualityFix = { elementId: string; patch: Partial<AlbumPhotoElement> };
+// A fix never changes the page's layout (owner, 2026-10-21: the first version reshaped frames to
+// their photo, which broke the rows and left holes, "העיצוב המקורי היה נכון וטוב יותר"). It moves
+// the crop inside a frame, or swaps two photos between frames of the same page, so each frame and
+// the page around it stay exactly as designed.
+export type QualityFix = { patches: { elementId: string; patch: Partial<AlbumPhotoElement> }[] };
 
 export type QualityIssue = {
   id: string;
@@ -86,8 +90,11 @@ export const MARGIN_FACE_SHARE = 0.1;
 // a face on the fold).
 export const FOLD_FACE_MIN_CM = 1.5;
 export const FOLD_SIDE_SHARE = 0.15;
-// Crop of a photo in its frame (CLAUDE.md: in a grid cell up to ~1.35).
-export const HEAVY_CROP_WARNING = 1.35;
+// Crop of a photo in its frame. The owner's own templates crop up to ~1.55 and he called that album
+// right (2026-10-21), so 1.35 (the engine's own grid rule) only made noise: a warning from 1.6, when
+// over a third of the photo is cut away; an error past 1.8, the limit the engine keeps for his
+// templates (ownTemplatePlan).
+export const HEAVY_CROP_WARNING = 1.6;
 export const HEAVY_CROP_ERROR = 1.8;
 // A proxy for "not sharp in print": the pixel size of a photo isn't stored, its file size is. An
 // original under 600 KB in a frame 15 cm or more on its long side is very likely a small or heavily
@@ -155,13 +162,11 @@ export function elementBox(el: AlbumElement): { xPct: number; yPct: number; widt
   return { xPct: el.xPct, yPct: el.yPct, widthPct: el.widthPct, heightPct: el.type === "text" ? (el.heightPct ?? 15) : el.heightPct };
 }
 
-// How much the photo is cropped in its frame: the share of it that's cut away by the shape
-// (cover-fit), times the zoom on top of that. 1 = all of the photo shows.
-export function cropOf(el: AlbumPhotoElement, page: PageSize, imgAspect: number): number {
+// How much the frame's shape crops the photo (cover-fit). 1 = all of it shows. A zoom is left out:
+// someone set it on purpose, in the editor.
+export function cropOf(el: Pick<AlbumPhotoElement, "widthPct" | "heightPct">, page: PageSize, imgAspect: number): number {
   const frameAspect = (el.widthPct * page.widthCm) / (el.heightPct * page.heightCm) || 1;
-  const shape = imgAspect >= frameAspect ? imgAspect / frameAspect : frameAspect / imgAspect;
-  const zoom = el.zoom && el.zoom > 100 ? el.zoom / 100 : 1;
-  return shape * zoom;
+  return imgAspect >= frameAspect ? imgAspect / frameAspect : frameAspect / imgAspect;
 }
 
 // What part of the photo shows (fractions of the image) and where an image point lands on the
@@ -348,14 +353,8 @@ export function checkAlbumQuality(input: QualityInput): QualityIssue[] {
       const crop = cropOf(el, page, aspect);
       if (!el.maskId && crop > HEAVY_CROP_WARNING) {
         const issue: QualityIssue = { ...ref, id: `heavy-crop:${spread.id}:${el.id}`, kind: "heavy-crop", severity: crop > HEAVY_CROP_ERROR ? "error" : "warning", params: { crop: Math.round(crop * 100) / 100 } };
-        // The fix gives the frame the photo's shape inside its old box (fitPhotoInFrame,
-        // resizable), which only a free frame can take: not tilted, not running off the page,
-        // not locked in place, nothing drawn over it. Any other frame can still drop its zoom
-        // (the same fit, its shape kept), when that alone brings the crop down.
-        const resizable = !el.rotation && !el.locked && !bleedsOffPage(el) && !coveredAbove(el, spread.elements ?? []);
-        const fitted = fitPhotoInFrame(elementBox(el), page, aspect, mainFaces(faces(photoId) ?? []), resizable);
-        const patch: Partial<AlbumPhotoElement> = resizable ? fitted : { focalX: fitted.focalX, focalY: fitted.focalY, zoom: fitted.zoom };
-        if (cropOf({ ...el, ...patch }, page, aspect) <= HEAVY_CROP_WARNING) issue.fix = { elementId: el.id, patch };
+        const swap = bestSwap(el, spread.elements ?? [], page, photos, faces);
+        if (swap) issue.fix = swap;
         issues.push(issue);
       }
 
@@ -374,7 +373,7 @@ export function checkAlbumQuality(input: QualityInput): QualityIssue[] {
           const patch = { focalX: fitted.focalX, focalY: fitted.focalY, zoom: fitted.zoom };
           const after = facesFindings({ ...el, ...patch }, page, aspect, known, opts);
           const solved = after.every((a) => a.kind !== finding.kind && SEVERITY_RANK[a.severity] <= (before.get(a.kind) ?? 0));
-          if (solved) issue.fix = { elementId: el.id, patch };
+          if (solved) issue.fix = { patches: [{ elementId: el.id, patch }] };
         }
         issues.push(issue);
       }
@@ -386,28 +385,113 @@ export function checkAlbumQuality(input: QualityInput): QualityIssue[] {
   );
 }
 
-// The pages' new elements once the given fixes are applied, one fix per photo: a frame that gets
-// the photo's shape (heavy crop) shows all of it, which also settles a cut head, so that fix wins;
-// otherwise the first. A fix whose element is gone is skipped.
+// A heavy crop's fix, when the page has one: swapping the photo with another frame's on the same
+// page, the frame where it fits and a photo that fits this frame (a portrait in a wide cell and a
+// landscape in a tall one trade places). Taken only when both frames end up within the warning and
+// the worse of the two crops comes down; the frames themselves stay. Each photo is placed as the
+// admin's swap places it (fitPhotoInFrame, faces whole). Masked, locked or empty frames don't take part.
+function bestSwap(el: AlbumPhotoElement, elements: AlbumElement[], page: PageSize, photos: ReadonlyMap<string, QualityPhoto>, faces: QualityInput["faces"]): QualityFix | null {
+  const aspectOf = (id: string | null) => {
+    const a = id ? photos.get(id)?.aspect : null;
+    return a && a > 0 ? a : null;
+  };
+  const mine = aspectOf(el.photoId);
+  if (!mine || !el.photoId || el.locked) return null;
+  const now = cropOf(el, page, mine);
+  let best: { other: AlbumPhotoElement; worst: number } | null = null;
+  for (const other of elements) {
+    if (other.type !== "photo" || other.id === el.id || other.maskId || other.locked || !other.photoId || other.photoId === el.photoId) continue;
+    const theirs = aspectOf(other.photoId);
+    if (!theirs) continue;
+    const worst = Math.max(cropOf(el, page, theirs), cropOf(other, page, mine));
+    if (worst > HEAVY_CROP_WARNING || worst >= Math.max(now, cropOf(other, page, theirs))) continue;
+    if (!best || worst < best.worst) best = { other, worst };
+  }
+  if (!best) return null;
+  const place = (frame: AlbumPhotoElement, photoId: string, aspect: number) => {
+    const fitted = fitPhotoInFrame(frame, page, aspect, mainFaces(faces(photoId) ?? []), false);
+    return { photoId, focalX: fitted.focalX, focalY: fitted.focalY, zoom: 100 };
+  };
+  const other = best.other;
+  return {
+    patches: [
+      { elementId: el.id, patch: place(el, other.photoId as string, aspectOf(other.photoId) as number) },
+      { elementId: other.id, patch: place(other, el.photoId, mine) },
+    ],
+  };
+}
+
+// The pages' new elements once the given fixes are applied. A frame takes one fix: the swaps go
+// first (a swap brings in another photo, so a crop moved for the old one no longer applies), and a
+// fix that touches a frame already taken is left out whole. A fix whose frame is gone is skipped.
 export function qualityFixPatches(spreads: QualitySpread[], issues: QualityIssue[]): Map<string, AlbumElement[]> {
-  const chosen = new Map<string, QualityFix>(); // `${spreadId}:${elementId}` → fix
-  for (const issue of issues) {
-    if (!issue.fix) continue;
-    const key = `${issue.spreadId}:${issue.fix.elementId}`;
-    if (!chosen.has(key) || issue.kind === "heavy-crop") chosen.set(key, issue.fix);
+  const chosen = new Map<string, Partial<AlbumPhotoElement>>(); // `${spreadId}:${elementId}` → patch
+  const ordered = issues.filter((i) => i.fix).sort((a, b) => (b.fix!.patches.length > 1 ? 1 : 0) - (a.fix!.patches.length > 1 ? 1 : 0));
+  for (const issue of ordered) {
+    const keys = issue.fix!.patches.map((p) => `${issue.spreadId}:${p.elementId}`);
+    if (keys.some((k) => chosen.has(k))) continue;
+    issue.fix!.patches.forEach((p, i) => chosen.set(keys[i], p.patch));
   }
   const out = new Map<string, AlbumElement[]>();
   for (const spread of spreads) {
     let changed = false;
     const elements = (spread.elements ?? []).map((el) => {
-      const fix = el.type === "photo" ? chosen.get(`${spread.id}:${el.id}`) : undefined;
-      if (!fix) return el;
+      const patch = el.type === "photo" ? chosen.get(`${spread.id}:${el.id}`) : undefined;
+      if (!patch) return el;
       changed = true;
-      return { ...el, ...fix.patch } as AlbumElement;
+      return { ...el, ...patch } as AlbumElement;
     });
     if (changed) out.set(spread.id, elements);
   }
   return out;
+}
+
+// ── Undo ─────────────────────────────────────────────────────────────────────────────────────
+// Every batch of fixes can be undone (owner, 2026-10-21: "תוסיף אפשרות לביטול השינויים"): the
+// record keeps each changed frame as it was and as the fix left it. Undo puts back only the frames
+// still as the fix left them, so an edit made since (a swap, the editor) is never thrown away.
+
+export type QualityUndo = { at: number; frames: { spreadId: string; before: AlbumElement; after: AlbumElement }[] };
+
+export function undoRecord(spreads: QualitySpread[], patched: Map<string, AlbumElement[]>, at: number): QualityUndo {
+  const frames: QualityUndo["frames"] = [];
+  for (const spread of spreads) {
+    const next = patched.get(spread.id);
+    if (!next) continue;
+    const old = new Map((spread.elements ?? []).map((el) => [el.id, el] as const));
+    for (const el of next) {
+      const before = old.get(el.id);
+      if (before && before !== el && JSON.stringify(before) !== JSON.stringify(el)) frames.push({ spreadId: spread.id, before, after: el });
+    }
+  }
+  return { at, frames };
+}
+
+// The pages' elements with the record undone, and how many frames were left because they changed
+// since the fix.
+export function applyUndo(spreads: QualitySpread[], record: QualityUndo): { patched: Map<string, AlbumElement[]>; restored: number; kept: number } {
+  const patched = new Map<string, AlbumElement[]>();
+  let restored = 0;
+  let kept = 0;
+  for (const spread of spreads) {
+    const mine = record.frames.filter((f) => f.spreadId === spread.id);
+    if (!mine.length) continue;
+    let changed = false;
+    const elements = (spread.elements ?? []).map((el) => {
+      const f = mine.find((x) => x.after.id === el.id);
+      if (!f) return el;
+      if (JSON.stringify(el) !== JSON.stringify(f.after)) {
+        kept++;
+        return el;
+      }
+      restored++;
+      changed = true;
+      return f.before;
+    });
+    if (changed) patched.set(spread.id, elements);
+  }
+  kept += record.frames.filter((f) => !spreads.some((s) => s.id === f.spreadId && (s.elements ?? []).some((el) => el.id === f.after.id))).length;
+  return { patched, restored, kept };
 }
 
 // Count of problems per page, for the badge on its thumbnail.

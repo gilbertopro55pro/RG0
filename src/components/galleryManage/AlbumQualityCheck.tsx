@@ -145,11 +145,14 @@ export default function AlbumQualityCheck({
   quality,
   onShow,
   onFix,
+  undo,
 }: {
   quality: AlbumQuality;
   onShow: (issue: QualityIssue) => void;
   // Applies these problems' fixes (by id; the caller recomputes them on the latest pages).
   onFix: (issueIds: string[]) => void;
+  // The last batch of fixes, while there's one to undo (the frames it changed).
+  undo: { frames: number; onUndo: () => void } | null;
 }) {
   const t = useT();
   const { issues, detection, stopped, failed } = quality;
@@ -205,7 +208,17 @@ export default function AlbumQualityCheck({
           </button>
         )}
       </div>
-      <p className="mt-1 text-[11px] text-ink-soft">{t("הבדיקה מתעדכנת לבד אחרי כל תיקון, החלפה או עריכה.")}</p>
+      <p className="mt-1 text-[11px] text-ink-soft">{t("תיקון לא משנה את הפריסה: הוא מזיז את התמונה בתוך המסגרת, או מחליף בין שתי תמונות באותו עמוד. אפשר לבטל כל תיקון.")}</p>
+      {undo && (
+        <div className="mt-2 flex items-center gap-2 flex-wrap rounded-lg bg-chip px-3 py-2">
+          <p className="flex-1 min-w-0 text-[11px] text-ink">
+            {undo.frames === 1 ? t("התיקון האחרון שינה מסגרת אחת.") : t("התיקון האחרון שינה {n} מסגרות.", { n: undo.frames })}
+          </p>
+          <button type="button" onClick={undo.onUndo} className="min-h-9 rounded-full px-3 text-xs font-semibold border border-line bg-white text-ink">
+            {t("ביטול התיקון")}
+          </button>
+        </div>
+      )}
 
       {detection && (
         <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -242,7 +255,12 @@ export default function AlbumQualityCheck({
                     role="img"
                     aria-label={issue.severity === "error" ? t("שגיאה") : t("אזהרה")}
                   />
-                  <span className="flex-1 min-w-[8rem] text-xs break-words">{qualityIssueMessage(t, issue)}</span>
+                  <span className="flex-1 min-w-[8rem] text-xs break-words">
+                    {qualityIssueMessage(t, issue)}
+                    {issue.kind === "heavy-crop" && !issue.fix && (
+                      <span className="block text-[11px] text-ink-soft">{t("אין בעמוד תמונה שמתאימה יותר למסגרת הזו. אפשר לנסות \"עיצוב מחדש\" לעמוד.")}</span>
+                    )}
+                  </span>
                   <span className="flex gap-1.5 shrink-0">
                     <button type="button" onClick={() => onShow(issue)} className="min-h-9 rounded-full px-3 text-xs font-semibold border border-line bg-white text-ink">
                       {t("הצגה")}

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   checkAlbumQuality,
   cropOf,
+  applyUndo,
   issuesByPage,
   photoWindow,
   qualityFixPatches,
+  undoRecord,
   type QualityInput,
   type QualityIssue,
   type QualityPhoto,
@@ -12,7 +14,7 @@ import {
 } from "@/lib/albumAuto/qualityCheck";
 import { computePhotoFraming } from "@/lib/albumRender";
 import { fitPhotoInFrame, type FaceRect } from "@/lib/albumAuto/swapPhotos";
-import type { AlbumElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement } from "@/lib/types";
+import type { AlbumElement, AlbumPhotoElement, AlbumTextElement } from "@/lib/types";
 
 // The album's quality check (admin, 2026-10-21): what would come out wrong in print, page by page,
 // with a safe fix where there is one. Album 60×30 with a 0.9 cm safe margin (the owner's album
@@ -85,11 +87,9 @@ describe("photoWindow (what shows of the photo, matching computePhotoFraming)", 
     expect(window.x1).toBeCloseTo(1, 6);
   });
 
-  it("measures the crop as shape × zoom", () => {
+  it("measures the crop by the frame's shape alone (a zoom is set on purpose)", () => {
     expect(cropOf(photoEl("a", "p", [10, 10, 30, 60]), PAGE, 1.5)).toBeCloseTo(1.5, 6);
-    expect(cropOf(photoEl("a", "p", [10, 10, 30, 60], { zoom: 120 }), PAGE, 1)).toBeCloseTo(1.2, 6);
-    // Below 100% the renderers don't shrink the photo either.
-    expect(cropOf(photoEl("a", "p", [10, 10, 30, 60], { zoom: 80 }), PAGE, 1)).toBeCloseTo(1, 6);
+    expect(cropOf(photoEl("a", "p", [10, 10, 30, 60], { zoom: 120 }), PAGE, 1)).toBeCloseTo(1, 6);
   });
 });
 
@@ -113,7 +113,7 @@ describe("heads cut", () => {
     const cut = only(issues, "head-cut");
     expect(cut).toHaveLength(1);
     expect(cut[0]).toMatchObject({ severity: "error", elementId: "a", photoId: "p", params: { faces: 1, outside: 40 } });
-    expect(cut[0].fix?.patch).toEqual({ focalX: 50, focalY: 0, zoom: 100 });
+    expect(cut[0].fix?.patches).toEqual([{ elementId: "a", patch: { focalX: 50, focalY: 0, zoom: 100 } }]);
     // After the fix the head is whole.
     const fixed = qualityFixPatches([spread("s1", [photoEl("a", "p", box, { focalY: 100 })])], cut);
     expect(only(run([spread("s1", fixed.get("s1")!)], { p: { aspect: 1 } }, { p: [face] }), "head-cut")).toEqual([]);
@@ -254,63 +254,59 @@ describe("faces on the fold", () => {
 });
 
 describe("heavy crops", () => {
-  it("warns above 1.35 and errs above 1.8", () => {
+  it("warns above 1.6 and errs above 1.8; the owner's own templates (up to ~1.55) pass", () => {
     const issues = run(
       [
         spread("s1", [
-          photoEl("ok", "a", [10, 10, 30, 60]), // 1.5 photo in a square: 1.5
+          photoEl("tpl", "a", [10, 10, 30, 60]), // 1.5 photo in a square: 1.5
           photoEl("mid", "b", [50, 10, 40, 60]), // 24×18 (1.33) for a portrait: 2.0
-          photoEl("fine", "c", [10, 75, 15, 20]), // 9×6 for 3:2: 1
+          photoEl("warn", "c", [10, 75, 20, 20]), // 12×6 (2) for 1.2: 1.67
         ]),
       ],
-      { a: { aspect: 1.5 }, b: { aspect: 2 / 3 }, c: { aspect: 1.5 } }
+      { a: { aspect: 1.5 }, b: { aspect: 2 / 3 }, c: { aspect: 1.2 } }
     );
     expect(issues.map((i) => [i.elementId, i.severity, i.params.crop])).toEqual([
       ["mid", "error", 2],
-      ["ok", "warning", 1.5],
+      ["warn", "warning", 1.67],
     ]);
   });
 
-  it("fixes a free frame by giving it the photo's shape inside its old box", () => {
-    const el = photoEl("a", "p", [10, 10, 30, 60], { borderWidth: 3 });
-    const [issue] = run([spread("s1", [el])], { p: { aspect: 1.5 } });
-    // The square 18×18 becomes 18×12, centred where it was.
-    expect(issue.fix?.patch).toEqual({ xPct: 10, yPct: 20, widthPct: 30, heightPct: 40, focalX: 50, focalY: 50, zoom: 100 });
-    const fixed = qualityFixPatches([spread("s1", [el])], [issue]).get("s1")!;
-    expect(fixed[0]).toEqual({ ...el, yPct: 20, heightPct: 40 });
-    expect(run([spread("s1", fixed)], { p: { aspect: 1.5 } })).toEqual([]);
+  it("leaves the zoom out: someone set it on purpose", () => {
+    expect(run([spread("s1", [photoEl("a", "p", [10, 10, 30, 40], { zoom: 250 })])], { p: { aspect: 1.5 } })).toEqual([]);
+    expect(cropOf({ widthPct: 30, heightPct: 40 }, PAGE, 1.5)).toBe(1);
   });
 
-  it("counts the zoom, and fixes a zoom-only crop by dropping the zoom, the frame kept", () => {
-    const el = photoEl("a", "p", [0, 0, 50, 100], { zoom: 150 }); // a hero off the page, the photo its shape
-    const [issue] = run([spread("s1", [el])], { p: { aspect: 1 } });
-    expect(issue).toMatchObject({ kind: "heavy-crop", params: { crop: 1.5 } });
-    expect(issue.fix?.patch).toEqual({ focalX: 50, focalY: 50, zoom: 100 });
+  it("never changes a frame: the fix swaps the photo with another frame's on the same page", () => {
+    // A portrait in a wide cell, a landscape in a tall one: they trade places, the frames stay.
+    const wide = photoEl("wide", "portrait", [10, 10, 40, 40], { borderWidth: 3 }); // 24×12
+    const tall = photoEl("tall", "landscape", [60, 10, 15, 60], { borderWidth: 3 }); // 9×18
+    const page = [wide, tall];
+    const photos = { portrait: { aspect: 2 / 3 }, landscape: { aspect: 1.5 } };
+    const issues = run([spread("s1", page)], photos);
+    expect(issues.map((i) => i.elementId)).toEqual(["wide", "tall"]);
+    const fix = issues[0].fix!;
+    expect(fix.patches.map((p) => [p.elementId, p.patch.photoId])).toEqual([
+      ["wide", "landscape"],
+      ["tall", "portrait"],
+    ]);
+    const fixed = qualityFixPatches([spread("s1", page)], issues).get("s1")!;
+    // Same box, border and everything else: only the photo and where it sits in the frame change.
+    const frameOf = (el: AlbumElement) => Object.fromEntries(Object.entries(el).filter(([k]) => !["photoId", "focalX", "focalY", "zoom"].includes(k)));
+    fixed.forEach((el, i) => expect(frameOf(el)).toEqual(frameOf(page[i])));
+    expect(run([spread("s1", fixed)], photos)).toEqual([]);
   });
 
-  it("leaves faded heroes alone, and won't reshape a frame that runs off the page, is tilted, locked, or has the cover's band and title over it", () => {
+  it("swaps only when both frames end within the warning, and never with a faded hero or a locked frame", () => {
+    const wide = photoEl("wide", "portrait", [10, 10, 40, 40]);
+    // The only other photo is a portrait too: swapping fixes nothing.
+    expect(run([spread("s1", [wide, photoEl("b", "p2", [60, 10, 15, 60])])], { portrait: { aspect: 2 / 3 }, p2: { aspect: 2 / 3 } })[0].fix).toBeUndefined();
+    const photos = { portrait: { aspect: 2 / 3 }, landscape: { aspect: 1.5 } };
+    expect(run([spread("s1", [wide, photoEl("hero", "landscape", [55, 0, 45, 100], { maskId: "fade-left-25" })])], photos)[0].fix).toBeUndefined();
+    expect(run([spread("s1", [wide, photoEl("b", "landscape", [60, 10, 15, 60], { locked: true })])], photos)[0].fix).toBeUndefined();
+  });
+
+  it("leaves faded heroes alone", () => {
     expect(run([spread("s1", [photoEl("a", "p", [55, 0, 45, 100], { maskId: "fade-left-25" })])], { p: { aspect: 0.5 } })).toEqual([]);
-    const cases: AlbumElement[][] = [
-      [photoEl("a", "p", [0, 10, 30, 60])],
-      [photoEl("a", "p", [10, 10, 30, 60], { rotation: 4 })],
-      [photoEl("a", "p", [10, 10, 30, 60], { locked: true })],
-      [
-        photoEl("a", "p", [5.6, 5.6, 88.7, 88.7]),
-        { id: "band", type: "shape", xPct: 5.6, yPct: 70.8, widthPct: 88.7, heightPct: 23.6, color: "#fff", opacity: 45 } as AlbumShapeElement,
-        textEl("title", "עלייה לתורה - אורי", [10.4, 77.9, 79.3, 6.4]),
-      ],
-    ];
-    for (const elements of cases) {
-      const issue = only(run([spread("s1", elements, elements.length > 1 ? { width_cm: 32, height_cm: 32 } : {})], { p: { aspect: 1.5 } }), "heavy-crop")[0];
-      expect(issue, elements[0].id).toBeDefined();
-      expect(issue.fix, JSON.stringify(elements[0])).toBeUndefined();
-    }
-  });
-
-  it("still reshapes a frame with the clean line's panel behind it", () => {
-    const panel = { id: "panel", type: "shape", xPct: 0, yPct: 16, widthPct: 100, heightPct: 67, color: "#fff", opacity: 45 } as AlbumShapeElement;
-    const [issue] = run([spread("s1", [panel, photoEl("a", "p", [10, 10, 30, 60])])], { p: { aspect: 1.5 } });
-    expect(issue.fix?.patch.heightPct).toBe(40);
   });
 });
 
@@ -388,7 +384,7 @@ describe("the list", () => {
   it("orders by page, then errors first", () => {
     const issues = run(
       [spread("s1", [photoEl("w", "a", [10, 10, 30, 60]), photoEl("e", null, [50, 10, 30, 60])]), spread("s2", [photoEl("x", null, [10, 10, 30, 60])])],
-      { a: { aspect: 1.5 } }
+      { a: { aspect: 1.7 } }
     );
     expect(issues.map((i) => [i.pageIndex, i.kind, i.severity])).toEqual([
       [0, "empty-frame", "error"],
@@ -403,17 +399,59 @@ describe("the list", () => {
 });
 
 describe("qualityFixPatches", () => {
-  it("applies one fix per photo, the reshaping one first, and only on the pages it changes", () => {
-    const el = photoEl("a", "p", [10, 10, 30, 60], { focalY: 100 });
-    const spreads = [spread("s1", [el, textEl("t", "x", [60, 10, 10, 10])]), spread("s2", [photoEl("b", "q", [10, 10, 30, 40])])];
+  it("applies the swaps first, a frame takes one fix, and only the pages it changes", () => {
+    const a = photoEl("a", "p", [10, 10, 30, 60], { focalY: 100 });
+    const b = photoEl("b", "q", [50, 10, 30, 60]);
+    const spreads = [spread("s1", [a, b, textEl("t", "x", [60, 10, 10, 10])]), spread("s2", [photoEl("c", "r", [10, 10, 30, 40])])];
     const issues: QualityIssue[] = [
-      { id: "h", kind: "head-cut", severity: "error", spreadId: "s1", pageIndex: 0, elementId: "a", params: {}, fix: { elementId: "a", patch: { focalY: 0 } } },
-      { id: "c", kind: "heavy-crop", severity: "warning", spreadId: "s1", pageIndex: 0, elementId: "a", params: {}, fix: { elementId: "a", patch: { yPct: 20, heightPct: 40, focalY: 50 } } },
-      { id: "gone", kind: "head-cut", severity: "error", spreadId: "s1", pageIndex: 0, elementId: "zz", params: {}, fix: { elementId: "zz", patch: { focalY: 0 } } },
+      { id: "h", kind: "head-cut", severity: "error", spreadId: "s1", pageIndex: 0, elementId: "a", params: {}, fix: { patches: [{ elementId: "a", patch: { focalY: 0 } }] } },
+      {
+        id: "c",
+        kind: "heavy-crop",
+        severity: "warning",
+        spreadId: "s1",
+        pageIndex: 0,
+        elementId: "a",
+        params: {},
+        fix: { patches: [{ elementId: "a", patch: { photoId: "q", focalY: 40 } }, { elementId: "b", patch: { photoId: "p", focalY: 40 } }] },
+      },
+      { id: "gone", kind: "head-cut", severity: "error", spreadId: "s1", pageIndex: 0, elementId: "zz", params: {}, fix: { patches: [{ elementId: "zz", patch: { focalY: 0 } }] } },
     ];
     const out = qualityFixPatches(spreads, issues);
     expect([...out.keys()]).toEqual(["s1"]);
-    expect(out.get("s1")![0]).toEqual({ ...el, yPct: 20, heightPct: 40, focalY: 50 });
-    expect(out.get("s1")![1]).toBe(spreads[0].elements![1]);
+    expect(out.get("s1")![0]).toEqual({ ...a, photoId: "q", focalY: 40 });
+    expect(out.get("s1")![1]).toEqual({ ...b, photoId: "p", focalY: 40 });
+    expect(out.get("s1")![2]).toBe(spreads[0].elements![2]);
+  });
+});
+
+describe("undo (owner 2026-10-21: \"תוסיף אפשרות לביטול השינויים\")", () => {
+  const a = photoEl("a", "p", [10, 10, 30, 60], { focalY: 100 });
+  const b = photoEl("b", "q", [50, 10, 30, 60]);
+  const before = [spread("s1", [a, b]), spread("s2", [photoEl("c", "r", [10, 10, 30, 40])])];
+  const patched = new Map([["s1", [{ ...a, focalY: 0 }, { ...b, photoId: "z" }]]]);
+  const after = [spread("s1", patched.get("s1")!), before[1]];
+
+  it("puts back every frame the fixes changed", () => {
+    const record = undoRecord(before, patched, 1);
+    expect(record.frames.map((f) => f.after.id)).toEqual(["a", "b"]);
+    const { patched: undone, restored, kept } = applyUndo(after, record);
+    expect(undone.get("s1")).toEqual([a, b]);
+    expect([restored, kept]).toEqual([2, 0]);
+  });
+
+  it("keeps a frame edited since the fix, and undoes the rest", () => {
+    const record = undoRecord(before, patched, 1);
+    const edited = [spread("s1", [{ ...a, focalY: 0, xPct: 12 }, { ...b, photoId: "z" }]), before[1]];
+    const { patched: undone, restored, kept } = applyUndo(edited, record);
+    expect(undone.get("s1")).toEqual([{ ...a, focalY: 0, xPct: 12 }, b]);
+    expect([restored, kept]).toEqual([1, 1]);
+  });
+
+  it("counts a frame deleted since as kept, and changes nothing when there's nothing to undo", () => {
+    const record = undoRecord(before, patched, 1);
+    const { patched: undone, restored, kept } = applyUndo([spread("s1", []), before[1]], record);
+    expect(undone.size).toBe(0);
+    expect([restored, kept]).toEqual([0, 2]);
   });
 });
