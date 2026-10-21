@@ -490,7 +490,8 @@ export default function AlbumAutoDesigner({
               plan.spreads.map((s) => [...new Set(s.photoIds)].map(layoutPhoto)),
               pageTemplates.map((tpl) => tpl.frames).filter((f) => Array.isArray(f) && f.length > 0),
               size.width,
-              size.height
+              size.height,
+              { marginCm: size.margin }
             );
             return plan.spreads.map((s, i) => {
               const out = layoutSpread({

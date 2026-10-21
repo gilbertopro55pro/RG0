@@ -22,13 +22,14 @@ import billingNotify from "@/i18n/dict/billingNotify";
 import reels from "@/i18n/dict/reels";
 import reelsTransitions from "@/i18n/dict/reelsTransitions";
 import campaigns from "@/i18n/dict/campaigns";
+import albumQuality from "@/i18n/dict/albumQuality";
 
 // One dictionary per area of the app, merged here (common first, so an area can override).
 const AREAS: AreaDict[] = [
   common, home, galleries, album, leads, settings, settingsAdmin,
   clientChat, clientQuote, clientPortal, clientGallery,
   clientMessages, clientQuoteSend, clientEmails,
-  landing, auth, photographerNotify, whatsNew, billingNotify, reels, reelsTransitions, campaigns,
+  landing, auth, photographerNotify, whatsNew, billingNotify, reels, reelsTransitions, campaigns, albumQuality,
 ];
 
 const cache: Partial<Record<Lang, Messages>> = {};
