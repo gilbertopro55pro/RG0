@@ -26,6 +26,8 @@ import { getLang } from "@/i18n/server";
 import { headers } from "next/headers";
 import { dirOf } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
+import { VividProvider } from "@/components/VividProvider";
+import { vividForRequest } from "@/lib/vivid";
 
 // One family: Rubik, a print sans with slightly rounded corners (design round 3, 2026-09-28,
 // the owner's pick: "כתב דפוס אבל מעוגל מעט"; replaces Heebo, same face as the landing page). No
@@ -108,6 +110,8 @@ export default async function RootLayout({
   // /en and /ru (the landing page in English/Russian) are in their own language for every visitor.
   const path = (await headers()).get("x-ui-path") ?? "";
   const lang = path === "/en" ? "en" : path === "/ru" ? "ru" : cookieLang;
+  // The vivid look (lib/tones.ts): admin only for now, never on a page a client sees.
+  const vivid = await vividForRequest(path);
   return (
     <html
       lang={lang}
@@ -318,9 +322,11 @@ export default async function RootLayout({
           <GlobalLoadingBar />
           <PremiumScope />
           <TopNav currentVersion={CURRENT_VERSION} />
-          <PageTransition>
-            <LangScope>{children}</LangScope>
-          </PageTransition>
+          <VividProvider value={vivid}>
+            <PageTransition>
+              <LangScope>{children}</LangScope>
+            </PageTransition>
+          </VividProvider>
           <InstallPrompt />
           <UploadsIndicator />
           <ChangelogModal latest={CHANGELOG[0]} />

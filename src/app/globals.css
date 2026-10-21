@@ -46,6 +46,31 @@
   --hero-edge: rgba(255, 255, 255, 0.9);
   --hero-shadow-a: 0.1;
   --shadow-tint: 28, 27, 25;
+  /* Vivid (lib/tones.ts, admin only for now): one fixed meaning per tone, all at the same muted
+     strength. -ink is the text on -bg (4.5:1 or more); the solid is for dots and bars. */
+  --tone-paid: #3c7353;
+  --tone-paid-ink: #2f6b4f;
+  --tone-paid-bg: #e2efe7;
+  --tone-upcoming: #3b6296;
+  --tone-upcoming-ink: #2d4f7c;
+  --tone-upcoming-bg: #e3e9f3;
+  --tone-attention: #c2413a;
+  --tone-attention-ink: #a63a32;
+  --tone-attention-bg: #f6e3e0;
+  --tone-pending: #c9902f;
+  --tone-pending-ink: #85540f;
+  --tone-pending-bg: #f6ead4;
+  --tone-creative: #85609a;
+  --tone-creative-ink: #6b4a7a;
+  --tone-creative-bg: #ede6f0;
+  --tone-neutral: #6d7782;
+  --tone-neutral-ink: #46525e;
+  --tone-neutral-bg: #e6eaed;
+  /* The leading card (the next shoot): dark with gold, in both themes. */
+  --vivid-hero-a: #2b261f;
+  --vivid-hero-b: #191613;
+  --vivid-foil: #d8b878;
+  --vivid-foil-text: #e6c98f;
 }
 
 /* Dark: the same warm glass at night — near-black warm ground, brass accent lightened for
@@ -84,6 +109,26 @@
   --hero-edge: rgba(255, 255, 255, 0.12);
   --hero-shadow-a: 0.45;
   --shadow-tint: 0, 0, 0;
+  --tone-paid: #7cc29a;
+  --tone-paid-ink: #92d1ad;
+  --tone-paid-bg: rgba(124, 194, 154, 0.14);
+  --tone-upcoming: #7fa3d6;
+  --tone-upcoming-ink: #a3bfe6;
+  --tone-upcoming-bg: rgba(127, 163, 214, 0.15);
+  --tone-attention: #e5695c;
+  --tone-attention-ink: #f29a8f;
+  --tone-attention-bg: rgba(229, 105, 92, 0.15);
+  --tone-pending: #e0a85a;
+  --tone-pending-ink: #ecc185;
+  --tone-pending-bg: rgba(224, 168, 90, 0.14);
+  --tone-creative: #b493c6;
+  --tone-creative-ink: #cbb1d9;
+  --tone-creative-bg: rgba(180, 147, 198, 0.15);
+  --tone-neutral: #a8a297;
+  --tone-neutral-ink: #c9c3b8;
+  --tone-neutral-bg: rgba(255, 255, 255, 0.07);
+  --vivid-hero-a: #2a251e;
+  --vivid-hero-b: #15130f;
 }
 
 /* Landing page only — a warmer, quieter, more editorial palette than the rest of the app's

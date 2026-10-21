@@ -6,6 +6,7 @@ import { buildWaMeLink } from "@/lib/waLink";
 import { quoteLinkMessage, quoteShareCaption } from "@/lib/quoteDefaults";
 import { shortClientUrl } from "@/lib/shortLinks";
 import { quoteDateDMY, type QuoteHistoryRow } from "@/lib/quoteHistory";
+import ToneTag from "@/components/ToneTag";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale, isLang } from "@/i18n/config";
 
@@ -187,9 +188,14 @@ export default function QuoteHistoryList({ signature }: { signature: string | nu
                 <div className="text-end shrink-0">
                   <div className="text-sm font-semibold font-data text-amber-deep">{`${Math.round(Number(r.total)).toLocaleString(locale)} ₪`}</div>
                   {lead?.quote_approved_at && (
-                    <span className="inline-block mt-0.5 rounded-full px-1.5 py-px text-[10px] font-semibold" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
+                    <ToneTag
+                      tone="paid"
+                      className="mt-0.5"
+                      legacyClassName="inline-block mt-0.5 rounded-full px-1.5 py-px text-[10px] font-semibold"
+                      legacyStyle={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}
+                    >
                       {t("אושרה")}
-                    </span>
+                    </ToneTag>
                   )}
                 </div>
               </div>

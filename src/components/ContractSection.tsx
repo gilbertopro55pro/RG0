@@ -5,6 +5,8 @@ import type { EventContractRow } from "@/lib/types";
 import { useModalEntered } from "@/lib/useModalEntered";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import BodyPortal from "@/components/BodyPortal";
+import ToneTag from "@/components/ToneTag";
+import { useVivid } from "@/components/VividProvider";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
 import { shortClientUrl } from "@/lib/shortLinks";
@@ -19,6 +21,7 @@ export default function ContractSection({
   initialContract: EventContractRow | null;
 }) {
   const t = useT();
+  const vivid = useVivid();
   const lang = useLang();
   const [contract, setContract] = useState(initialContract);
   const [generating, setGenerating] = useState(false);
@@ -154,9 +157,15 @@ export default function ContractSection({
 
       {contract && contract.status !== "signed" && (
         <div className="space-y-2.5">
-          <div className="rounded-xl px-3.5 py-2.5 text-sm bg-chip-tint text-amber-deep font-medium">
-            {t("ממתין לחתימת הלקוח/ה")}
-          </div>
+          {vivid ? (
+            <div>
+              <ToneTag tone="pending">{t("ממתין לחתימת הלקוח/ה")}</ToneTag>
+            </div>
+          ) : (
+            <div className="rounded-xl px-3.5 py-2.5 text-sm bg-chip-tint text-amber-deep font-medium">
+              {t("ממתין לחתימת הלקוח/ה")}
+            </div>
+          )}
           <div className="flex gap-2">
             <button
               onClick={() => setShowPreview(true)}
@@ -186,10 +195,20 @@ export default function ContractSection({
 
       {contract && contract.status === "signed" && (
         <div className="space-y-2.5">
-          <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
-            {t("נחתם על ידי {name}", { name: contract.signer_name ?? "" })}
-            {contract.signed_at && `, ${new Date(contract.signed_at).toLocaleDateString(dateLocale(lang))}`}
-          </div>
+          {vivid ? (
+            <div>
+              {/* One string: ToneTag lays its children out with a gap. */}
+              <ToneTag tone="paid">
+                {t("נחתם על ידי {name}", { name: contract.signer_name ?? "" }) +
+                  (contract.signed_at ? `, ${new Date(contract.signed_at).toLocaleDateString(dateLocale(lang))}` : "")}
+              </ToneTag>
+            </div>
+          ) : (
+            <div className="rounded-xl px-3.5 py-2.5 text-sm bg-sage-bg text-sage font-medium">
+              {t("נחתם על ידי {name}", { name: contract.signer_name ?? "" })}
+              {contract.signed_at && `, ${new Date(contract.signed_at).toLocaleDateString(dateLocale(lang))}`}
+            </div>
+          )}
           {contract.signature_data_url && (
             // eslint-disable-next-line @next/next/no-img-element -- a stored data URL, no benefit from next/image's remote optimization
             <img src={contract.signature_data_url} alt={t("חתימת הלקוח")} className="h-16 rounded-lg border border-line bg-white" />

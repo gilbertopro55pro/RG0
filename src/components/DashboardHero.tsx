@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { getLang, getT } from "@/i18n/server";
 import { dateLocale } from "@/i18n/config";
+import { revenueSplit } from "@/lib/homeVivid";
 
 export default async function DashboardHero({
   monthLabel,
   monthTotal,
   monthForecast,
   registeredUsersCount,
+  vivid = false,
 }: {
   monthLabel: string;
   monthTotal: number;
@@ -20,6 +22,9 @@ export default async function DashboardHero({
   // Admin-only — see src/lib/admin.ts. null for every other account, so the layout below never
   // reserves space for it and the forecast bar keeps the full row.
   registeredUsersCount?: number | null;
+  // The vivid look (lib/tones.ts, admin only for now): a glass card with the received / still
+  // expected split.
+  vivid?: boolean;
 }) {
   // No forecast at all (nothing received, nothing due) used to draw a FULL bar next to ₪0 —
   // an empty month now reads as an empty bar.
@@ -27,6 +32,50 @@ export default async function DashboardHero({
   const loc = dateLocale(await getLang());
   const forecastRatio = monthForecast > 0 ? Math.min(1, monthTotal / monthForecast) : 0;
   const stillDue = Math.max(0, monthForecast - monthTotal);
+
+  if (vivid) {
+    const split = revenueSplit(monthTotal, monthForecast);
+    return (
+      <div className="mb-5 rounded-2xl p-4 bg-card">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-ink-soft">{t("הכנסות ב{month}", { month: monthLabel })}</span>
+          {registeredUsersCount != null && (
+            <Link href="/admin" className="text-xs font-semibold shrink-0" style={{ color: "var(--color-amber-deep)" }} title={t("מעבר ללוח הבקרה")}>
+              <span className="font-data">{registeredUsersCount.toLocaleString(loc)}</span> {t("משתמשים")}{" "}
+              <span aria-hidden="true" className="inline-block ltr:rotate-180">
+                ←
+              </span>
+            </Link>
+          )}
+        </div>
+        <div className="text-[32px] leading-[1.1] font-extrabold font-data mt-1">₪{monthTotal.toLocaleString(loc)}</div>
+        <div className="h-2 rounded-full overflow-hidden mt-3 mb-2.5" style={{ background: "var(--color-chip)" }}>
+          <div className="gf-grow flex h-full w-full">
+            <div className="h-full" style={{ width: `${split.receivedPct}%`, background: "var(--tone-paid)" }} />
+            <div className="h-full" style={{ width: `${split.expectedPct}%`, background: "color-mix(in srgb, var(--tone-pending) 45%, transparent)" }} />
+          </div>
+        </div>
+        {monthForecast > 0 ? (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold">
+            <span className="inline-flex items-center gap-1.5" style={{ color: "var(--tone-paid-ink)" }}>
+              <span aria-hidden className="h-2 w-2 rounded-full shrink-0" style={{ background: "var(--tone-paid)" }} />
+              <span className="font-data">{t("התקבל {amount}", { amount: `₪${monthTotal.toLocaleString(loc)}` })}</span>
+            </span>
+            {split.stillDue > 0 ? (
+              <span className="inline-flex items-center gap-1.5" style={{ color: "var(--tone-pending-ink)" }}>
+                <span aria-hidden className="h-2 w-2 rounded-full shrink-0" style={{ background: "var(--tone-pending)" }} />
+                <span className="font-data">{t("צפוי עוד {amount}", { amount: `₪${split.stillDue.toLocaleString(loc)}` })}</span>
+              </span>
+            ) : (
+              <span className="text-ink-soft font-normal">{t("כל הצפי לחודש התקבל")}</span>
+            )}
+          </div>
+        ) : (
+          <div className="text-xs text-ink-soft">{t("אין עדיין תשלומים צפויים החודש")}</div>
+        )}
+      </div>
+    );
+  }
 
   // Design stage 5: no longer the screen's lead (the next event is) — a single flat line under
   // it. The "big number + small label + bar" card was the generic dashboard treatment.

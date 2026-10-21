@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminPhotographerRow } from "@/app/admin/page";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
+import ToneTag from "@/components/ToneTag";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
 
@@ -32,7 +33,11 @@ function Row({ p, now, onToggle, busy }: { p: AdminPhotographerRow; now: number;
       <div className="min-w-0">
         <div className="text-sm font-semibold">
           {p.name}
-          {locked && <span className="text-xs font-semibold text-rose ms-2">{t("נעול")}</span>}
+          {locked && (
+            <ToneTag tone="attention" className="ms-2 align-middle" legacyClassName="text-xs font-semibold text-rose ms-2">
+              {t("נעול")}
+            </ToneTag>
+          )}
         </div>
         <div className="text-xs text-ink-soft break-all">{p.email}</div>
         <div className="text-xs text-ink-soft mt-0.5">

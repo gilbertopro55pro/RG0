@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import BackLink from "@/components/BackLink";
+import ToneTag from "@/components/ToneTag";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
 import type { TFn } from "@/i18n/translate";
@@ -708,9 +709,14 @@ function RowCard({
           {title}
         </div>
         {paid && spend > 0 && r.leads === 0 && (
-          <span className="shrink-0 text-[10.5px] font-semibold rounded-full px-2 py-0.5" style={{ background: "var(--color-rose-bg)", color: "var(--color-rose)" }}>
+          <ToneTag
+            tone="attention"
+            className="shrink-0"
+            legacyClassName="shrink-0 text-[10.5px] font-semibold rounded-full px-2 py-0.5"
+            legacyStyle={{ background: "var(--color-rose-bg)", color: "var(--color-rose)" }}
+          >
             {t("הוצאה בלי פניות")}
-          </span>
+          </ToneTag>
         )}
       </div>
 

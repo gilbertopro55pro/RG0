@@ -48,6 +48,10 @@ import LandingPage from "@/components/LandingPage";
 import SettingsGearLink from "@/components/SettingsGearLink";
 import AlbumQuickAccessButton from "@/components/AlbumQuickAccessButton";
 import { FOLLOW_UP_LEAD_COLUMNS, quoteFollowUpHandled, type FollowUpLeadState } from "@/lib/leadFollowUp";
+import { vividForEmail } from "@/lib/vivid";
+import { homeHeaderCounts, onlyNewLeads, stageTrack } from "@/lib/homeVivid";
+import HomeVividPills from "@/components/HomeVividPills";
+import { VIVID_ICON_BOX, vividIconStyle } from "@/components/homeVividStyles";
 
 const HEBREW_MONTHS = [
   "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
@@ -151,6 +155,22 @@ export default async function DashboardPage() {
   if (photographer && !photographer.onboarding_completed) {
     redirect("/onboarding");
   }
+
+  // The vivid look (lib/tones.ts): admin only for now ("עדכון אדמין", 2026-10-21). What only it
+  // shows is fetched only for it, so other accounts pay nothing. The new-leads count starts now and
+  // runs alongside the album queries below.
+  const vivid = vividForEmail(photographer?.email);
+  const newLeadsCountPromise: Promise<number> =
+    vivid && photographer
+      ? (async () => {
+          try {
+            const { count } = await onlyNewLeads(supabase.from("leads").select("id", { count: "exact", head: true }));
+            return count ?? 0;
+          } catch {
+            return 0;
+          }
+        })()
+      : Promise.resolve(0);
 
   // Visible only to the admin account, on their own dashboard — total signups across every
   // photographer, bypassing the per-photographer RLS that normally scopes this table to one row.
@@ -287,6 +307,7 @@ export default async function DashboardPage() {
         daysUntil,
         amountDue: Math.max(0, due),
         nextStage: nextStageByEvent[upcoming.id] ?? null,
+        ...(vivid ? { startTime: upcoming.event_start_time, track: stageTrack(upcoming.event_stages) } : {}),
       };
     }
   }
@@ -389,21 +410,32 @@ export default async function DashboardPage() {
         }))
     : [];
 
+  const headerCounts = vivid && photographer ? homeHeaderCounts(events ?? [], attentionByEvent) : null;
+  const newLeadsCount = await newLeadsCountPromise;
+
   return (
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-24 w-full">
       {/* Going back to this screen shows the router's saved copy; this reloads it (see the component). */}
       <RefreshWhenStale renderId={randomUUID()} />
-      <div className="flex items-start justify-between gap-3 mb-5">
+      <div className={vivid ? "flex items-start justify-between gap-3 mb-[18px]" : "flex items-start justify-between gap-3 mb-5"}>
         <div className="min-w-0">
           <div className="text-[13px] text-ink-soft flex items-center gap-2">
+            {vivid && <span aria-hidden className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: "var(--vivid-foil)" }} />}
             <span className="truncate">
               {t(timeOfDayGreeting())}, {displayName}
             </span>
             <LogoutButton />
           </div>
-          <h1 className="text-[28px] leading-tight font-bold font-display mt-0.5">
+          <h1
+            className={
+              vivid
+                ? "text-[30px] leading-[1.15] font-extrabold tracking-[-0.3px] font-display mt-0.5"
+                : "text-[28px] leading-tight font-bold font-display mt-0.5"
+            }
+          >
             {isPhotographer ? t("האירועים שלי") : t("האירועים שהוקצו לי")}
           </h1>
+          {headerCounts && <HomeVividPills week={headerCounts.week} attention={headerCounts.attention} />}
         </div>
         {isPhotographer && (
           <div className="flex items-center gap-2 shrink-0 mt-1">
@@ -421,7 +453,7 @@ export default async function DashboardPage() {
         <NewEventButton customPackages={customPackages ?? []} eventTypes={eventTypes ?? []} prices={prices ?? []} />
       )}
 
-      {isPhotographer && nextEvent && <NextEventHero event={nextEvent} />}
+      {isPhotographer && nextEvent && <NextEventHero event={nextEvent} vivid={vivid} />}
 
       {isPhotographer && heroData && (
         <DashboardHero
@@ -429,6 +461,7 @@ export default async function DashboardPage() {
           monthTotal={heroData.monthTotal}
           monthForecast={heroData.monthForecast}
           registeredUsersCount={registeredUsersCount}
+          vivid={vivid}
         />
       )}
 
@@ -444,6 +477,7 @@ export default async function DashboardPage() {
           quoteExtras={quoteExtrasFor(photographer.email)}
           clientLangPicker={canChooseClientLang(photographer.email)}
           cullingLink={photographer.email === ADMIN_EMAIL}
+          newLeadsCount={newLeadsCount}
         />
       )}
 
@@ -457,12 +491,19 @@ export default async function DashboardPage() {
             className="flex-1 min-w-0 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl p-3 sm:p-4 bg-card border border-line shadow-card"
           >
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <span className="flex w-6 shrink-0 items-center justify-center" style={{ color: "var(--color-brass)" }}>
-              <IconMagnetFrame className="h-5 w-5" />
-            </span>
+              {vivid ? (
+                <span className={VIVID_ICON_BOX} style={vividIconStyle("brass")}>
+                  <IconMagnetFrame className="h-[18px] w-[18px]" />
+                </span>
+              ) : (
+                <span className="flex w-6 shrink-0 items-center justify-center" style={{ color: "var(--color-brass)" }}>
+                  <IconMagnetFrame className="h-5 w-5" />
+                </span>
+              )}
               <div className="min-w-0">
-                <div className="text-sm font-semibold leading-snug">{t("עיצוב מסגרת מגנט")}</div>
-                <div className="text-xs text-ink-soft leading-snug mt-0.5">{t("בסיס לבן, טקסט ואלמנטים חופשי")}</div>
+                {/* The vivid look uses the sketch's shorter copy, so it fits beside the larger icon. */}
+                <div className="text-sm font-semibold leading-snug">{vivid ? t("מסגרת מגנט") : t("עיצוב מסגרת מגנט")}</div>
+                <div className="text-xs text-ink-soft leading-snug mt-0.5">{vivid ? t("עיצוב והורדה") : t("בסיס לבן, טקסט ואלמנטים חופשי")}</div>
               </div>
             </div>
             <span className="hidden sm:inline-block ltr:rotate-180 text-ink-soft shrink-0">←</span>

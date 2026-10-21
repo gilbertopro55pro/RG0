@@ -18,6 +18,10 @@ import { daysUntilPurge } from "@/lib/leadRetention";
 import { createClient } from "@/lib/supabase/client";
 import ContactReminderDialog from "@/components/ContactReminderDialog";
 import BodyPortal from "@/components/BodyPortal";
+import ToneTag from "@/components/ToneTag";
+import { useVivid } from "@/components/VividProvider";
+import { toneStyle, toneVars } from "@/lib/tones";
+import { leadStatusTone } from "@/lib/statusTones";
 import ClientMessageSheet from "@/components/ClientMessageSheet";
 import { announceContactReminder, onContactReminderChange } from "@/lib/contactReminderSync";
 import { useT, useLang } from "@/i18n/client";
@@ -106,6 +110,7 @@ export default function LeadsView({
 }) {
   const t = useT();
   const lang = useLang();
+  const vivid = useVivid();
   const [leads, setLeads] = useState<Lead[]>(initialLeads);
   // "Now" for the days-since-quote counters, fixed when the page opens.
   const [now] = useState(() => Date.now());
@@ -300,21 +305,35 @@ export default function LeadsView({
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-bold text-[15px]">{lead.name}</span>
+                  {/* Where the lead came from isn't a state, so in the vivid look it's neutral (amber
+                      there means "waiting on someone"). */}
                   {lead.source === "assistant" && (
-                    <span className="text-[10.5px] font-semibold rounded-full px-2 py-0.5" style={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}>
+                    <ToneTag
+                      tone="neutral"
+                      legacyClassName="text-[10.5px] font-semibold rounded-full px-2 py-0.5"
+                      legacyStyle={{ background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }}
+                    >
                       {t("מהעוזר")}
-                    </span>
+                    </ToneTag>
                   )}
                   {lead.source === "form" && (
-                    <span className="text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-chip text-ink-soft">{t("מטופס הפנייה")}</span>
+                    <ToneTag tone="neutral" legacyClassName="text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-chip text-ink-soft">
+                      {t("מטופס הפנייה")}
+                    </ToneTag>
                   )}
                   {sourceLabel(lead.referral_source) && (
-                    <span className="text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-chip text-ink-soft">{t("מקור: {source}", { source: t(sourceLabel(lead.referral_source)!) })}</span>
+                    <ToneTag tone="neutral" legacyClassName="text-[10.5px] font-semibold rounded-full px-2 py-0.5 bg-chip text-ink-soft">
+                      {t("מקור: {source}", { source: t(sourceLabel(lead.referral_source)!) })}
+                    </ToneTag>
                   )}
                   {lead.needs_details && (
-                    <span className="text-[10.5px] font-semibold rounded-full px-2 py-0.5" style={{ background: "var(--color-rose-bg)", color: "var(--color-rose)" }}>
+                    <ToneTag
+                      tone="attention"
+                      legacyClassName="text-[10.5px] font-semibold rounded-full px-2 py-0.5"
+                      legacyStyle={{ background: "var(--color-rose-bg)", color: "var(--color-rose)" }}
+                    >
                       {t("חסרים פרטים")}
-                    </span>
+                    </ToneTag>
                   )}
                 </div>
                 {(lead.event_date_interest || resolveLeadPackageLabel(lead.package_interest, customPackages)) && (
@@ -340,18 +359,41 @@ export default function LeadsView({
                 )}
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
-                <select
-                  value={lead.status}
-                  onChange={(e) => setStatus(lead.id, e.target.value as LeadStatus)}
-                  className="text-[11px] px-2 py-1 rounded-full font-medium border-none"
-                  style={{ background: STATUS_COLORS[lead.status].bg, color: STATUS_COLORS[lead.status].text }}
-                >
-                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {t(label)}
-                    </option>
-                  ))}
-                </select>
+                {vivid ? (
+                  // Vivid (admin): the status is a tag in its tone (lib/statusTones.ts), with the
+                  // dot, and the select sits on it so it still changes the status.
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full ps-2.5 pe-1"
+                    style={toneStyle(leadStatusTone(lead.status))}
+                  >
+                    <span aria-hidden className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: toneVars(leadStatusTone(lead.status)).solid }} />
+                    <select
+                      value={lead.status}
+                      onChange={(e) => setStatus(lead.id, e.target.value as LeadStatus)}
+                      className="text-[11.5px] font-semibold py-0.5 border-none bg-transparent"
+                      style={{ color: "inherit" }}
+                    >
+                      {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {t(label)}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                ) : (
+                  <select
+                    value={lead.status}
+                    onChange={(e) => setStatus(lead.id, e.target.value as LeadStatus)}
+                    className="text-[11px] px-2 py-1 rounded-full font-medium border-none"
+                    style={{ background: STATUS_COLORS[lead.status].bg, color: STATUS_COLORS[lead.status].text }}
+                  >
+                    {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {t(label)}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <div className="text-[10.5px] text-ink-soft leading-tight">{createdLabel(lead.created_at, t, lang)}</div>
                 {lead.contact_remind_at && lead.status !== "won" && lead.status !== "lost" && (
                   <div className="text-[10.5px] leading-tight flex items-center gap-1" style={{ color: "var(--color-amber-deep)" }}>
@@ -392,18 +434,28 @@ export default function LeadsView({
                 this account, so showing its pipeline state to any other photographer would just
                 be confusing (their clients still see the old call-us-to-confirm page). */}
             {isAdmin && lead.quoted_amount && !lead.converted_event_id && (
-              <div
-                className="text-xs mb-2.5 rounded-lg px-2.5 py-1.5 inline-block"
-                style={
-                  lead.quote_approved_at
-                    ? { background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }
-                    : { background: "#F1EFE9", color: "var(--color-ink-soft)" }
-                }
-              >
-                {lead.quote_approved_at
-                  ? t("ההצעה אושרה ע\"י הלקוח/ה: ממתין למילוי שאלון פרטי האירוע")
-                  : t("ממתין לאישור ההצעה ע\"י הלקוח/ה")}
-              </div>
+              vivid ? (
+                <div className="mb-2.5">
+                  <ToneTag tone={lead.quote_approved_at ? "paid" : "pending"}>
+                    {lead.quote_approved_at
+                      ? t("ההצעה אושרה ע\"י הלקוח/ה: ממתין למילוי שאלון פרטי האירוע")
+                      : t("ממתין לאישור ההצעה ע\"י הלקוח/ה")}
+                  </ToneTag>
+                </div>
+              ) : (
+                <div
+                  className="text-xs mb-2.5 rounded-lg px-2.5 py-1.5 inline-block"
+                  style={
+                    lead.quote_approved_at
+                      ? { background: "var(--color-amber-bg)", color: "var(--color-amber-deep)" }
+                      : { background: "#F1EFE9", color: "var(--color-ink-soft)" }
+                  }
+                >
+                  {lead.quote_approved_at
+                    ? t("ההצעה אושרה ע\"י הלקוח/ה: ממתין למילוי שאלון פרטי האירוע")
+                    : t("ממתין לאישור ההצעה ע\"י הלקוח/ה")}
+                </div>
+              )
             )}
 
             <div className="flex flex-wrap items-center gap-2 mt-2.5">

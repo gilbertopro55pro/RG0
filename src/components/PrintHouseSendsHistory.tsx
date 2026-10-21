@@ -4,12 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import type { PrintSend } from "@/app/api/galleries/[id]/album/print-sends/route";
 import { formatPrintDate, formatPrintDay } from "@/lib/printHouseLinks";
 import { useT } from "@/i18n/client";
+import ToneTag from "@/components/ToneTag";
+import { useVivid } from "@/components/VividProvider";
+import { printSendTone } from "@/lib/statusTones";
 
 // Previous print-house sends for one gallery, with whether the print house downloaded the files
 // (tracked through /print/<token>, migration 0140). Renews an expired link while the file still
 // exists, or sends the album again once the file was deleted.
 export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { galleryId: string; refreshKey?: number }) {
   const t = useT();
+  const vivid = useVivid();
   const [sends, setSends] = useState<PrintSend[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -116,7 +120,15 @@ export default function PrintHouseSendsHistory({ galleryId, refreshKey = 0 }: { 
                 </span>
                 <span className="text-[11px] text-ink-soft shrink-0">{formatPrintDate(s.createdAt)}</span>
               </div>
-              <div className={`text-xs mt-1 ${tone}`}>{status}</div>
+              {vivid ? (
+                <div className="mt-1">
+                  <ToneTag tone={printSendTone(s)} className="max-w-full">
+                    {status}
+                  </ToneTag>
+                </div>
+              ) : (
+                <div className={`text-xs mt-1 ${tone}`}>{status}</div>
+              )}
               {!preparing && !failed && s.linkExpiresAt && (
                 <div className="text-[11px] text-ink-soft mt-0.5">
                   {expired
