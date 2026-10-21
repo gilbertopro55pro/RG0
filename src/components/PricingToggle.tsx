@@ -40,6 +40,13 @@ export default function PricingToggle() {
   const lang = useLang();
   const signupHref = lang === "he" ? "/signup" : `/signup?lang=${lang}`;
 
+  // The monthly plan of each annual card's tier, for the "instead of ₪X monthly" line.
+  const MONTHLY_OF: Partial<Record<SubscriptionPlan, SubscriptionPlan>> = {
+    basic_annual: "basic_monthly",
+    annual: "monthly",
+    studio_pro_annual: "studio_pro_monthly",
+  };
+
   const cards: Card[] = [
     {
       key: annual ? "basic_annual" : "basic_monthly",
@@ -100,6 +107,7 @@ export default function PricingToggle() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
         {cards.map(({ key, featured, features }) => {
           const plan = SUBSCRIPTION_PLANS[key];
+          const monthlyKey = MONTHLY_OF[key];
           return (
             <div
               key={key}
@@ -123,8 +131,13 @@ export default function PricingToggle() {
                   ₪{plan.pricePerMonth}
                 </span>
                 <span className="text-[15px] sm:text-[17px] opacity-70">{t("לחודש")}</span>
-                {plan.regularPricePerMonth != null && (
-                  <span className="text-[15px] sm:text-[17px] opacity-50 line-through">₪{plan.regularPricePerMonth}</span>
+                {/* Annual is compared with the same tier's real monthly price, never with
+                    regularPricePerMonth: nobody was ever billed that figure, and a struck-through
+                    price nobody paid reads as a fake sale (trust pass, 2026-10-21). */}
+                {monthlyKey && (
+                  <span className="text-[15px] sm:text-[17px] opacity-60">
+                    {t("במקום ₪{price} בתשלום חודשי", { price: SUBSCRIPTION_PLANS[monthlyKey].pricePerMonth })}
+                  </span>
                 )}
               </div>
 

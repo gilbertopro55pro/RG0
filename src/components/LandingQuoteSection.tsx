@@ -20,10 +20,6 @@ export default function LandingQuoteSection({ lang = "he" }: { lang?: Lang }) {
     <section id="quotes" className="bg-[var(--l-bg-alt)] scroll-mt-4">
       <div className={`${LANDING_CONTAINER} py-16 lg:py-28 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-12 lg:gap-20`}>
         <div className="flex flex-col gap-6 lg:gap-7 lg:max-w-[620px]">
-          <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-ink-soft)]">
-            <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
-            {t("הצעת מחיר, חוזה ואירוע")}
-          </div>
           <h2 className="font-display m-0 text-4xl lg:text-[56px] leading-[1.05] font-bold tracking-[-0.03em] text-balance">
             {t("מהצעת מחיר לאירוע סגור, בקישור אחד.")}
           </h2>
@@ -48,6 +44,7 @@ export default function LandingQuoteSection({ lang = "he" }: { lang?: Lang }) {
           <div className="rounded-[44px] p-3 bg-[#060a14] border border-[#2a3650] shadow-[0_40px_90px_rgba(11,18,32,0.35)]">
             <video
               src="/guides/quote-flow.mp4"
+              poster="/guides/quote-flow-poster.jpg"
               autoPlay
               muted
               loop

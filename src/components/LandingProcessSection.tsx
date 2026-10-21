@@ -26,7 +26,6 @@ export default function LandingProcessSection({ lang = "he" }: { lang?: Lang }) 
     <section className="bg-[var(--l-bg-alt)]">
       <div className={`${LANDING_CONTAINER} py-16 lg:py-28`}>
         <div className="flex flex-col gap-3 max-w-[760px]">
-          <span className="text-sm font-bold text-[var(--l-accent)]">{t("מהפנייה הראשונה ועד המסירה")}</span>
           <h2 className="font-display m-0 text-[30px] lg:text-5xl leading-[1.12] font-bold tracking-[-0.025em] text-balance">
             {t("מערכת שמתאימה את עצמה לתהליך שלכם")}
           </h2>

@@ -36,10 +36,6 @@ export default function LandingMagnetSection({ lang = "he" }: { lang?: Lang }) {
     <section id="magnets" className="bg-[var(--l-bg-alt)] scroll-mt-4">
       <div className={`${LANDING_CONTAINER} py-16 lg:py-28 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-10 lg:gap-20`}>
         <div className="flex flex-col gap-5 lg:gap-6 lg:max-w-[560px]">
-          <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-ink-soft)]">
-            <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
-            {t("עיצוב מסגרת מגנט")}
-          </div>
           <h2 className="font-display m-0 text-4xl lg:text-[56px] leading-[1.05] font-bold tracking-[-0.03em] text-balance">
             {t("מסגרת מגנט משלכם, מוכנה להדפסה.")}
           </h2>

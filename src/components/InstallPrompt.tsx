@@ -35,6 +35,10 @@ export default function InstallPrompt() {
     const ua = navigator.userAgent;
     const macSafari = /Macintosh/.test(ua) && /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Firefox|Edg|OPR/.test(ua) && navigator.maxTouchPoints <= 1;
     if (macSafari) return;
+    // The landing pages ("/" for a visitor, /en, /ru, /go/*) are for people who haven't signed up
+    // yet: an install nudge there covers the signup button. "/" is also the signed-in home, so the
+    // page is recognized by its own wrapper rather than by the path.
+    if (document.querySelector(".landing-2026")) return;
 
     setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
     setVisible(true);

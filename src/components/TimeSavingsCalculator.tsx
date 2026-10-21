@@ -52,7 +52,6 @@ export default function TimeSavingsCalculator() {
     <section id="calc" className="bg-[var(--l-navy)] text-[var(--l-on-navy)] scroll-mt-4">
       <div className={`${LANDING_CONTAINER} py-16 lg:py-28`}>
         <div className="flex flex-col gap-3 max-w-[760px]">
-          <span className="text-sm font-bold text-[var(--l-accent-light)]">{t("מחשבון")}</span>
           <h2 className="font-display m-0 text-[30px] lg:text-5xl leading-[1.12] font-bold tracking-[-0.025em] text-white text-balance">
             {t("כמה זמן וכסף העבודה המנהלית עולה לכם?")}
           </h2>

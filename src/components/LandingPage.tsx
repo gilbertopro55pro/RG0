@@ -26,21 +26,12 @@ import { makeT, type TFn } from "@/i18n/translate";
 // translate with makeT(messagesFor(lang)); the client sections (FAQ, pricing, calculator) read the
 // same lang from the ClientLangScope this page wraps itself in, never from the ui_lang cookie.
 
-// The hero's tiles: what the product does, one line each (landing sketch 2, 2026-10-11).
-const HERO_TILES = [
-  { icon: "M4 5h16v11H8l-4 4zM9 9h6M9 12h4", text: "עוזר חכם שמשיב ללקוחות גם בלילה" },
-  { icon: "M6 3h9l3 3v15H6zM9 13l2 2 4-4", text: "הצעת מחיר וחוזה בקישור אחד" },
-  { icon: "M4 6h10M4 12h16M4 18h7M17 4v4M13 16v4", text: "תהליך עבודה לפי השיטה שלכם" },
-  { icon: "M12 3v2M5 10a7 7 0 0 1 14 0v5l2 3H3l2-3zM10 21h4", text: "תזכורות תשלום וקבלות" },
-  { icon: "M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6", text: "גלריה ועיצוב אלבום אוטומטי" },
-  { icon: "M4 6h16v14H4zM4 10h16M9 3v4M15 3v4", text: "סנכרון עם יומן Google ו-Apple" },
-];
-
-// What waits on the phone after a wedding: the pain, in the clients' own words.
-const NIGHT_MESSAGES = [
-  { text: "היי, ה-14.12 עדיין פנוי? מחפשים צלם לבר מצווה", meta: "פנייה חדשה, לפני שעתיים" },
-  { text: "אפשר לקבל את הצעת המחיר שוב? לא מוצאת אותה", meta: "לקוחה, אתמול" },
-  { text: "מתי הגלריה מהחינה מוכנה? 🙏", meta: "לקוחה, לפני 3 ימים" },
+// Photos from the founder's own events beside his quote (landing trust pass, 2026-10-21): the page
+// is a photographer's product for photographers, and real work is what a template can't fake.
+const WORK_PHOTOS = [
+  { src: "/landing/work-1.jpg", alt: "בר מצווה, תקיעה בשופר מול הים" },
+  { src: "/landing/work-2.jpg", alt: "אמא מנשקת את בת המצווה" },
+  { src: "/landing/work-3.jpg", alt: "שולחן המתוקים באירוע" },
 ];
 
 const MORE = [
@@ -62,19 +53,6 @@ function Icon({ d, size = 24, className = "", strokeWidth = 1.9 }: { d: string; 
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
       <path d={d} />
     </svg>
-  );
-}
-
-// "**x**" in a translated line is set in the accent color, so the translations keep the emphasis.
-function emphasized(text: string) {
-  return text.split("**").map((part, i) =>
-    i % 2 === 1 ? (
-      <b key={i} className="font-semibold text-[var(--l-accent-light)]">
-        {part}
-      </b>
-    ) : (
-      part
-    )
   );
 }
 
@@ -173,8 +151,9 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
           </header>
 
           {/* Landing sketch 2 (owner, 2026-10-11), the first of its three headlines: the photographer
-              shoots, the system takes the management. The founder's quote and a night of client
-              messages sit beside it (the product tour video moved out with that sketch). */}
+              shoots, the system takes the management. Trust pass (2026-10-21): one short line before
+              the button, and the founder with photos from his own events beside it, instead of the
+              tile grid and the staged night messages. */}
           <div className="pt-10 pb-14 lg:pt-16 lg:pb-24 grid gap-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:gap-14 lg:items-start">
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-on-navy-soft)]">
@@ -184,18 +163,9 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
               <h1 className="font-display mt-5 mb-0 text-[40px] sm:text-6xl lg:text-[70px] leading-[1.06] font-bold tracking-[-0.03em] text-white text-balance">
                 {t("צלמים, אתם מתמקדים בצילום,")} <span className="text-[var(--l-accent-light)]">{t("ואת הניהול אנחנו לוקחים על עצמנו.")}</span>
               </h1>
-              <div className="mt-5 lg:mt-6 flex flex-col gap-3 text-[17px] lg:text-xl leading-[1.6] lg:max-w-[640px]">
-                <p className="m-0 font-semibold text-white">
-                  {t("הפכתם לצלמים מתוך אהבה לצילום ומתוך כישרון אמיתי, ולא כדי להעביר את הערבים בהודעות וואטסאפ, בחוזים ובתזכורות תשלום.")}
-                </p>
-                <p className="m-0 text-[var(--l-on-navy-soft)]">
-                  {emphasized(
-                    t(
-                      "אך מאחורי כל אירוע מסתתרות **כארבע וחצי שעות של עבודה מנהלית**, מהפנייה הראשונה ועד מסירת האלבום. צלם שמצלם שישה אירועים בחודש מאבד כך **יותר מ-40 ימי עבודה בשנה**. גילברטו לוקחת על עצמה את רוב העבודה הזו, כדי שתוכלו לחזור לעיסוק שבשבילו פתחתם את העסק."
-                    )
-                  )}
-                </p>
-              </div>
+              <p className="mt-5 lg:mt-6 mb-0 text-[17px] lg:text-xl leading-[1.6] lg:max-w-[600px] text-[var(--l-on-navy-soft)]">
+                {t("מאחורי כל אירוע יש כארבע וחצי שעות של הודעות, חוזים ותזכורות תשלום, מהפנייה הראשונה ועד מסירת האלבום. גילברטו עושה את רובן בשבילכם.")}
+              </p>
               <div className="mt-7 flex flex-col sm:flex-row sm:flex-wrap gap-2.5 sm:gap-3">
                 <PrimaryCta lang={lang} t={t} />
                 <a
@@ -206,41 +176,42 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
                 </a>
               </div>
               <p className="mt-3 mb-0 text-sm text-[var(--l-on-navy-mute)]">
-                {t("ללא כרטיס אשראי. החישוב: כ-270 דקות של עבודה מנהלית לאירוע (הפירוט בהמשך העמוד), שישה אירועים בחודש ויום עבודה בן שמונה שעות.")}
+                {t("ללא כרטיס אשראי. הפירוט של ארבע וחצי השעות בהמשך העמוד.")}
               </p>
 
-              <ul aria-label={t("מה המערכת עושה")} className="mt-7 mb-0 p-0 list-none grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                {HERO_TILES.map((tile) => (
-                  <li key={tile.text} className="min-w-0 flex flex-col gap-2 rounded-[12px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-3">
-                    <Icon d={tile.icon} size={22} className="text-[var(--l-accent-light)]" />
-                    <span className="text-[13.5px] font-semibold leading-snug">{t(tile.text)}</span>
-                  </li>
-                ))}
-              </ul>
             </div>
 
             <div className="flex flex-col gap-4 min-w-0">
-              <figure className="m-0 flex gap-4 items-start rounded-[14px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/landing/founder.jpg" alt="" className="w-20 h-[94px] shrink-0 object-cover rounded-[2px] border border-[var(--l-navy-border)]" />
-                <div className="min-w-0">
-                  <blockquote className="m-0 text-lg leading-normal font-semibold text-white">
-                    {lang === "he" ? "״" : lang === "ru" ? "«" : "“"}
-                    {t("פיתחתי את גילברטו משום שאחרי כל אירוע חיכו לי עוד שעות ארוכות של הודעות, קבצים ותזכורות. היום כל אלה מסודרים ומוכנים מראש, ואני מתפנה לצלם.")}
-                    {lang === "he" ? "״" : lang === "ru" ? "»" : "”"}
-                  </blockquote>
-                  <figcaption className="mt-2.5 text-sm text-[var(--l-on-navy-soft)]">{t("רועי גלברט, צלם אירועים ומייסד גילברטו")}</figcaption>
+              <figure className="m-0 rounded-[14px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-5 lg:p-6">
+                <div className="flex gap-4 lg:gap-5 items-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/landing/founder.jpg" alt="" className="w-24 h-[112px] lg:w-28 lg:h-[132px] shrink-0 object-cover rounded-[2px] border border-[var(--l-navy-border)]" />
+                  <figcaption className="min-w-0 flex flex-col gap-1">
+                    <span className="font-display text-xl lg:text-2xl font-bold text-white">{t("רועי גלברט")}</span>
+                    <span className="text-sm lg:text-[15px] text-[var(--l-on-navy-soft)]">{t("צלם אירועים, ומי שבנה את גילברטו")}</span>
+                  </figcaption>
                 </div>
+                <blockquote className="m-0 mt-4 text-lg lg:text-[19px] leading-normal font-semibold text-white">
+                  {lang === "he" ? "״" : lang === "ru" ? "«" : "“"}
+                  {t("פיתחתי את גילברטו משום שאחרי כל אירוע חיכו לי עוד שעות ארוכות של הודעות, קבצים ותזכורות. היום כל אלה מסודרים ומוכנים מראש, ואני מתפנה לצלם.")}
+                  {lang === "he" ? "״" : lang === "ru" ? "»" : "”"}
+                </blockquote>
               </figure>
-              <div role="group" aria-label={t("דוגמה להודעות שמחכות אחרי אירוע")} className="flex flex-col gap-2 rounded-[14px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-4">
-                <span className="text-xs text-[var(--l-on-navy-mute)]">{t("01:12, בדרך הביתה מחתונה")}</span>
-                {NIGHT_MESSAGES.map((m) => (
-                  <div key={m.text} className="max-w-[92%] rounded-[10px] rounded-ee-[2px] bg-[#1d2a40] px-3 py-2 text-sm text-[#e9edf5]">
-                    {t(m.text)}
-                    <small className="block mt-0.5 text-[11.5px] text-[var(--l-on-navy-mute)]">{t(m.meta)}</small>
-                  </div>
-                ))}
-              </div>
+              <figure className="m-0 flex flex-col gap-2">
+                <div className="grid grid-cols-2 gap-2">
+                  {WORK_PHOTOS.map((photo, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={photo.src}
+                      src={photo.src}
+                      alt={t(photo.alt)}
+                      loading={i === 0 ? "eager" : "lazy"}
+                      className={`w-full object-cover rounded-[2px] ${i === 0 ? "col-span-2 aspect-[3/2]" : "aspect-[3/2]"}`}
+                    />
+                  ))}
+                </div>
+                <figcaption className="text-xs text-[var(--l-on-navy-mute)]">{t("מהאירועים שצילמתי")}</figcaption>
+              </figure>
             </div>
           </div>
         </div>
@@ -267,10 +238,6 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
       <section id="assistant" className="bg-[var(--l-navy)] text-[var(--l-on-navy)] scroll-mt-4">
         <div className={`${CONTAINER} py-16 lg:py-28 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-12 lg:gap-20`}>
           <div className="flex flex-col gap-6 lg:gap-7 lg:max-w-[640px]">
-            <div className="flex items-center gap-2.5 text-sm lg:text-[15px] text-[var(--l-on-navy-soft)]">
-              <span className="w-2 h-2 rounded-[2px] bg-[var(--l-accent)]" />
-              {t("עוזר פניות חכם")}
-            </div>
             <h2 className="font-display m-0 text-4xl lg:text-[56px] leading-[1.05] font-bold tracking-[-0.03em] text-white text-balance">
               {t("לקוח כותב בשתיים בלילה. מישהו כבר עונה לו.")}
             </h2>
@@ -320,6 +287,7 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
             <div className="rounded-[44px] p-3 bg-[#060a14] border border-[#2a3650] shadow-[0_40px_90px_rgba(0,0,0,0.5)]">
               <video
                 src="/guides/intake-demo.mp4"
+                poster="/guides/intake-demo-poster.jpg"
                 autoPlay
                 muted
                 loop
