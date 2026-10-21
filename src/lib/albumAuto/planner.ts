@@ -78,6 +78,27 @@ export function detectEventKind(title: string, eventType?: string | null): Event
   return fromType !== "other" ? fromType : fromTitle;
 }
 
+// The photo cover's two lines (owner, 2026-10-21, the corrected cover of "עלייה לתורה - אורי"): the
+// name large and "event | date" small under it — "אורי" and "עלייה לתורה | 5.10.2026". A title in
+// two parts ("עלייה לתורה - אורי", "דנה ואורי | חתונה") splits on the dash or bar, and the part that
+// names the event kind goes to the small line; a title in one part stays whole, with the date alone
+// under it. `date` is the event's day (YYYY-MM-DD), written as on the owner's cover, day first.
+export function coverTitleLines(title: string, date?: string | null): { main: string; sub: string | null } {
+  const parts = title.split(/\s+[-–—|]\s+/).map((p) => p.trim()).filter(Boolean);
+  let main = title.trim();
+  let kind: string | null = null;
+  if (parts.length >= 2) {
+    const k = parts.findIndex((p) => kindOfText(p) !== "other");
+    const at = k >= 0 && parts.some((p, i) => i !== k && kindOfText(p) === "other") ? k : -1;
+    main = at >= 0 ? parts.filter((_, i) => i !== at).join(" ") : parts[0];
+    kind = at >= 0 ? parts[at] : parts.slice(1).join(" ");
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date ?? "");
+  const day = m ? `${Number(m[3])}.${Number(m[2])}.${m[1]}` : null;
+  const sub = [kind, day].filter(Boolean).join(" | ");
+  return { main, sub: sub || null };
+}
+
 // How many people the owners' cell holds for the kind, when the photographer didn't write their
 // names: one bar/bat mitzvah child, a couple at a wedding or henna. Unknown otherwise.
 export function ownersCountFor(kind: EventKind): number | undefined {

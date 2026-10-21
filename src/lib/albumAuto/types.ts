@@ -123,6 +123,9 @@ export type CoverInput = {
   style: AutoStyleId;
   photo: LayoutPhoto | null;
   title: string; // the event / gallery name
+  // The title as the owner set it on the photo cover (2026-10-21): the name large, the event and date
+  // in a small line under it (coverTitleLines). Missing = the title on one line.
+  lines?: { main: string; sub: string | null };
   widthCm: number;
   heightCm: number;
 };

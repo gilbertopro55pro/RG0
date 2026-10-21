@@ -273,6 +273,8 @@ type ResolvedText = {
   align: "right" | "center" | "left";
   fontFamily?: string;
   shadow?: number;
+  shadowColor?: string;
+  shadowDistance?: number;
   glow?: number;
   strokeWidth?: number;
   strokeColor?: string;
@@ -338,6 +340,8 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
       align: el.align,
       fontFamily: el.fontFamily,
       shadow: el.shadow,
+      shadowColor: el.shadowColor,
+      shadowDistance: el.shadowDistance,
       glow: el.glow,
       strokeWidth: el.strokeWidth,
       strokeColor: el.strokeColor,
@@ -436,6 +440,8 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
         align: el.align,
         fontFamily: el.fontFamily,
         shadow: el.shadow,
+        shadowColor: el.shadowColor,
+        shadowDistance: el.shadowDistance,
         glow: el.glow,
         strokeWidth: el.strokeWidth,
         strokeColor: el.strokeColor,

@@ -15,7 +15,16 @@ import AlbumEditorGuideModal from "@/components/AlbumEditorGuideModal";
 import AlbumSpreadThumbnail from "@/components/AlbumSpreadThumbnail";
 import { useT } from "@/i18n/client";
 import type { TFn } from "@/i18n/translate";
-import { ALBUM_BLUR_MAX_PX, computePhotoFraming, cssFilterFor, boxShadowFor, textEffectsCss, type PhotoWithUrl } from "@/lib/albumRender";
+import {
+  ALBUM_BLUR_MAX_PX,
+  computePhotoFraming,
+  cssFilterFor,
+  boxShadowFor,
+  textEffectsCss,
+  textShadowDistance,
+  TEXT_SHADOW_MAX_DISTANCE,
+  type PhotoWithUrl,
+} from "@/lib/albumRender";
 import { textHeightPctForFontSize, MAX_TEXT_HEIGHT_OVERSIZE_RATIO } from "@/lib/albumTextSizing";
 import { clampGroupDelta, computeMoveAlignment, freeLayerId, groupBounds, layerBox, moveShapeAroundPhotos, pageSizeOf, resizeSnapTargets, resizeWithinPage, shapeBehindPhotos, snapResizeBox } from "@/lib/albumEditorGeometry";
 
@@ -1268,6 +1277,28 @@ function ShapeFloatingMenu({
 // at, not a separate guess. Lives in src/lib/albumTextSizing.ts (imported above), shared with every
 // export renderer — see that file's own comment for why this can't be a second local copy.
 
+// One row of TEXT_COLOR_PALETTE swatches for the text panel's secondary colors (the outline, and the
+// admin's shadow color), so both pick from the same colors as the text itself.
+function TextPaletteSwatches({ value, onPick }: { value: string; onPick: (color: string) => void }) {
+  const t = useT();
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {TEXT_COLOR_PALETTE.map(({ value: color, label }) => (
+        <button
+          key={color}
+          onClick={() => onPick(color)}
+          title={t(label)}
+          className="h-5 w-5 rounded-full"
+          style={{
+            background: color,
+            boxShadow: value === color ? "0 0 0 2px #fff, 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 // Text controls — floating side panel (same pattern as Ornament/Shape/PhotoAdjust), toggled by its
 // own circle-menu "T" button now on both phone and desktop (see textPanelOpen near the top of the
 // parent component for the full history — this used to be phone-only, with desktop keeping a
@@ -1279,6 +1310,7 @@ function TextFloatingMenu({
   onDeleteSelected,
   maxHeightPx,
   widthPx,
+  isAdmin = false,
 }: {
   el: AlbumTextElement;
   album: { width_cm: number; height_cm: number };
@@ -1290,6 +1322,8 @@ function TextFloatingMenu({
   // The width of the photo-picker area the panel opens over, for the admin ("עדכון אדמין"
   // 2026-10-20, see textDockRect in the parent). Omitted → the usual 150px.
   widthPx?: number;
+  // The shadow's color and distance, admin only for now ("עדכון אדמין" 2026-10-21).
+  isAdmin?: boolean;
 }) {
   const t = useT();
   return (
@@ -1389,23 +1423,25 @@ function TextFloatingMenu({
       {/* Shadow and outline (owner, 2026-10-06), drawn the same in every export (textEffectsCss /
           textShadowSpecs). */}
       <MiniSlider label={t("עוצמת צל")} value={el.shadow ?? 0} min={0} max={100} unit="%" onChange={(v) => onUpdate({ shadow: v })} />
-      <MiniSlider label={t("קו מתאר")} value={el.strokeWidth ?? 0} min={0} max={20} unit="pt" onChange={(v) => onUpdate({ strokeWidth: v })} />
-      {!!el.strokeWidth && (
-        <div className="flex flex-wrap gap-1.5">
-          {TEXT_COLOR_PALETTE.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => onUpdate({ strokeColor: value })}
-              title={label}
-              className="h-5 w-5 rounded-full"
-              style={{
-                background: value,
-                boxShadow: (el.strokeColor ?? "#000000") === value ? "0 0 0 2px #fff, 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)",
-              }}
-            />
-          ))}
-        </div>
+      {/* The shadow's color and distance (owner, 2026-10-21), shown while there is a shadow, like
+          the outline's color below. Until the distance is moved it follows the intensity
+          (textShadowDistance), so the slider opens where the shadow already is. */}
+      {isAdmin && !!el.shadow && (
+        <>
+          <p className="text-[10px] font-semibold text-ink-soft">{t("צבע הצל")}</p>
+          <TextPaletteSwatches value={el.shadowColor ?? "#000000"} onPick={(c) => onUpdate({ shadowColor: c })} />
+          <MiniSlider
+            label={t("מרחק הצל")}
+            value={Math.round(textShadowDistance(el))}
+            min={0}
+            max={TEXT_SHADOW_MAX_DISTANCE}
+            unit="pt"
+            onChange={(v) => onUpdate({ shadowDistance: v })}
+          />
+        </>
       )}
+      <MiniSlider label={t("קו מתאר")} value={el.strokeWidth ?? 0} min={0} max={20} unit="pt" onChange={(v) => onUpdate({ strokeWidth: v })} />
+      {!!el.strokeWidth && <TextPaletteSwatches value={el.strokeColor ?? "#000000"} onPick={(c) => onUpdate({ strokeColor: c })} />}
       <div className="flex items-center gap-1">
         <button
           onClick={() => onUpdate({ locked: !el.locked })}
@@ -5603,6 +5639,7 @@ export default function AlbumSpreadCanvasEditor({
                 // Docked (admin): as tall as the picker area, less the drag grip above the panel.
                 maxHeightPx={textDock ? Math.max(160, textDock.height - 24) : Math.max(160, canvasRestRect.height - 36)}
                 widthPx={textDock ? textDock.width : undefined}
+                isAdmin={isAdmin}
               />
             ) : (
               <PhotoAdjustFloatingMenu

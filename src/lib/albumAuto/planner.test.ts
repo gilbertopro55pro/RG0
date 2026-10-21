@@ -4,6 +4,7 @@ import {
   cellLabel,
   cellPeopleFromReferences,
   cellsFor,
+  coverTitleLines,
   countNames,
   detectEventKind,
   familyCaps,
@@ -1224,5 +1225,26 @@ describe("planAlbum: the book by the gallery's tabs", () => {
     const plan = planAlbum(photos, [], [], { ...CLEAN, kind: "book" });
     const times = plan.spreads.flatMap((s) => s.photoIds).map((id) => photos.find((p) => p.id === id)!.takenAt as number);
     expect(times).toEqual([...times].sort((a, b) => a - b));
+  });
+});
+
+// The photo cover's two lines, as the owner set them on "עלייה לתורה - אורי" (2026-10-21).
+describe("coverTitleLines", () => {
+  it("puts the name large and the event with its date under it", () => {
+    expect(coverTitleLines("עלייה לתורה - אורי", "2026-10-05")).toEqual({ main: "אורי", sub: "עלייה לתורה | 5.10.2026" });
+    expect(coverTitleLines("דנה ואורי | חתונה", "2027-01-15")).toEqual({ main: "דנה ואורי", sub: "חתונה | 15.1.2027" });
+  });
+
+  it("keeps a title in one part whole, with the date alone under it", () => {
+    expect(coverTitleLines("חתונת דנה ואורי", "2026-06-30")).toEqual({ main: "חתונת דנה ואורי", sub: "30.6.2026" });
+    expect(coverTitleLines("אורי", null)).toEqual({ main: "אורי", sub: null });
+  });
+
+  it("splits on the first part when neither names an event kind", () => {
+    expect(coverTitleLines("דנה – אורי", null)).toEqual({ main: "דנה", sub: "אורי" });
+  });
+
+  it("doesn't split a hyphen inside a word, and reads the date without a time zone", () => {
+    expect(coverTitleLines("בת-מצווה של נועה", "2026-03-01T00:00:00Z")).toEqual({ main: "בת-מצווה של נועה", sub: "1.3.2026" });
   });
 });

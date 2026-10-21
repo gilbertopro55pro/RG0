@@ -5367,6 +5367,7 @@ export default function GalleryManageView({
                   galleryId={gallery.id}
                   galleryTitle={gallery.title}
                   eventType={autoDesignEventType}
+                  eventDate={eventDate || gallery.shoot_date}
                   photos={photos}
                   folders={folders}
                   defaultSize={albumSizeDraft}

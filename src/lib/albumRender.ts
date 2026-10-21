@@ -95,14 +95,17 @@ export function boxShadowFor(shadowPct: number | undefined, distancePct?: number
 // instead of needing two properties or two DOM layers.
 // The text effects every renderer draws the same way (editor, client proofing, JPG/PSD/PDF), in
 // points on the 1600pt reference canvas so they scale with the page like fontSize does. No shadow
-// or glow set = the soft contrast shadow the editor always showed by default.
+// or glow set = the soft contrast shadow the editor always showed by default. The drop shadow falls
+// down-right; its color and distance are the element's own when set (2026-10-21, see
+// shadowColorRgb / textShadowDistance below), black and the intensity's own offset otherwise.
 export type TextShadowSpec = { dx: number; dy: number; blur: number; rgb: [number, number, number]; alpha: number };
-export function textShadowSpecs(el: { color: string; shadow?: number; glow?: number }): TextShadowSpec[] {
+export function textShadowSpecs(el: { color: string; shadow?: number; shadowColor?: string; shadowDistance?: number; glow?: number }): TextShadowSpec[] {
   const out: TextShadowSpec[] = [];
   if (el.shadow || el.glow) {
     if (el.shadow) {
       const s = el.shadow / 100;
-      out.push({ dx: s * 6, dy: s * 6, blur: s * 15, rgb: [0, 0, 0], alpha: 0.2 + s * 0.5 });
+      const d = textShadowDistance(el);
+      out.push({ dx: d, dy: d, blur: s * 15, rgb: shadowColorRgb(el.shadowColor), alpha: 0.2 + s * 0.5 });
     }
     if (el.glow) {
       const g = el.glow / 100;
@@ -115,8 +118,39 @@ export function textShadowSpecs(el: { color: string; shadow?: number; glow?: num
   return out;
 }
 
+// The largest text shadow distance the editor offers, in points of the 1600pt canvas (2.5% of the
+// page width): far enough for a clearly detached shadow, short of reading as a second copy of the
+// text.
+export const TEXT_SHADOW_MAX_DISTANCE = 40;
+
+// The shadow distance a text element renders with: its own shadowDistance, or (before the
+// photographer sets one) the offset that comes with the intensity, so the slider starts where the
+// shadow already is.
+export function textShadowDistance(el: { shadow?: number; shadowDistance?: number }): number {
+  if (el.shadowDistance != null && Number.isFinite(el.shadowDistance)) return Math.max(0, el.shadowDistance);
+  return ((el.shadow ?? 0) / 100) * 6;
+}
+
+// A text shadow color as RGB 0-255. Strict on purpose: "#rgb" / "#rrggbb" only, anything else is
+// black (the shadow's color before it could be chosen). textColorRgb01 isn't reused here because it
+// falls back to white per channel, which would turn a bad value into a glowing shadow.
+export function shadowColorRgb(color: string | undefined): [number, number, number] {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((color ?? "").trim());
+  if (!m) return [0, 0, 0];
+  const hex = m[1].length === 3 ? m[1].replace(/./g, (c) => c + c) : m[1];
+  return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+}
+
 // CSS for the same effects inside a container-query canvas (cqw = 1% of the canvas width).
-export function textEffectsCss(el: { color: string; shadow?: number; glow?: number; strokeWidth?: number; strokeColor?: string }): {
+export function textEffectsCss(el: {
+  color: string;
+  shadow?: number;
+  shadowColor?: string;
+  shadowDistance?: number;
+  glow?: number;
+  strokeWidth?: number;
+  strokeColor?: string;
+}): {
   textShadow: string;
   WebkitTextStroke?: string;
   paintOrder?: string;

@@ -2235,6 +2235,10 @@ const COVER_TYPE: Record<AutoStyleId, CoverStyle> = {
   modern: { font: "bellefair", color: "#ffffff", maxFs: 96 },
 };
 
+// The translucent band across the photo cover's lower part (clean, modern), in fractions of the height.
+const BAND_Y = 0.72;
+const BAND_H = 0.25;
+
 export function layoutCover(input: CoverInput): LayoutOutput {
   const geo = geoFor(input.widthCm, input.heightCm);
   const { W, H } = geo;
@@ -2275,8 +2279,24 @@ export function layoutCover(input: CoverInput): LayoutOutput {
     const c = faceCropFocal(photo.aspect, r.w / r.h, validFaces(input.photo ?? undefined), { y0: 0.03, y1: 0.68 });
     const fallback = c.fits ? c : faceCropFocal(photo.aspect, r.w / r.h, validFaces(input.photo ?? undefined));
     els.push(photoEl("auto-cover-photo", photo.id, r, geo, { focalX: fallback.focalX, focalY: fallback.focalY, zoom: 100, shadow: 30 }));
-    els.push(shapeEl("auto-cover-band", { x: ix, y: 0.72 * H, w: W - 2 * ix, h: 0.25 * H }, geo, "#ffffff", { opacity: 25 }));
-    els.push(text(fsFor(ts.maxFs), 83, "#ffffff", ts.font, { shadow: 60 }));
+    // The band and the title as the owner corrected the first auto album ("עלייה לתורה - אורי",
+    // 2026-10-21): the band at 45%, the name large in Bodoni Moda (Hebrew falls back to Heebo bold,
+    // in the editor and in every export alike) in the band's upper part, and "event | date" small
+    // under it. The name was 187pt on a 32×32 cover; it shrinks to the band's height and the width.
+    els.push(shapeEl("auto-cover-band", { x: ix, y: BAND_Y * H, w: W - 2 * ix, h: BAND_H * H }, geo, "#ffffff", { opacity: 45 }));
+    const lines = input.lines ?? { main: title, sub: null };
+    const main = lines.main.trim() || title;
+    const sub = lines.sub?.trim() || null;
+    const perPt = textHeightPctForFontSize(1, album);
+    const fit = (s: string, maxFs: number, heightPct: number) =>
+      Math.round(Math.max(24, Math.min(maxFs, heightPct / perPt, (0.8 * 1600) / (Math.max(3, [...s].length) * 0.62))));
+    const mainFs = fit(main, 187, (sub ? 0.66 : 0.8) * BAND_H * 100);
+    const bandAt = (frac: number) => (BAND_Y + frac * BAND_H) * 100;
+    els.push(text(mainFs, bandAt(sub ? 0.355 : 0.5), "#ffffff", "bodoni-moda", { text: main, shadow: 50 }));
+    if (sub) {
+      const subFs = fit(sub, Math.min(50, Math.max(28, Math.round(mainFs * 0.27))), 0.25 * BAND_H * 100);
+      els.push(text(subFs, bandAt(0.735), "#ffffff", "bodoni-moda", { id: "auto-cover-subtitle", text: sub, shadow: 50 }));
+    }
     return { elements: els, background: { photoId: photo.id, blur: 40, opacity: 60 } };
   }
 
