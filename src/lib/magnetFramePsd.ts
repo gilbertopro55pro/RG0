@@ -9,6 +9,7 @@ import {
 } from "@/lib/magnetFrame";
 import { MAGNET_FRAME_DPI, MAGNET_TEXT_SHADOW_ALPHA, hexToRgbTriple, magnetExportDimensions, magnetExportScale } from "@/lib/magnetFrameShared";
 import type { LoadedMagnetDesign } from "@/lib/magnetFrameLoad";
+import { magnetQrUrl, type MagnetQrContext } from "@/lib/magnetQr";
 import { getAlbumFontDef } from "@/lib/albumFontFiles";
 import type { FrameOrientation, MagnetFrameElement } from "@/lib/types";
 
@@ -137,6 +138,7 @@ function typeLayerData(el: Extract<MagnetFrameElement, { type: "text" }>, widthP
 
 function elementName(el: MagnetFrameElement, index: number): string {
   if (el.type === "text") return (el.text.trim() || "טקסט").replace(/\s+/g, " ").slice(0, 40);
+  if (el.type === "qr") return "QR";
   if (el.floralId?.startsWith("digit-")) return `ספרה ${index + 1}`;
   return `אלמנט ${index + 1}`;
 }
@@ -149,11 +151,16 @@ function elementName(el: MagnetFrameElement, index: number): string {
 //   shows inside the window, like the PNG's shadow).
 // - "טקסטורה": clipped to the mat, opacity already in the pixels.
 // - One layer per text and element, in the editor's order. A text's shadow is a live Drop Shadow in
-//   its color, and its outline a live Stroke outside the letters.
+//   its color, and its outline a live Stroke outside the letters. A QR code is a pixel layer "QR"
+//   (left out while it has nothing to open, like in the PNG).
 // Each text is an editable type layer (see typeLayerData), with a hidden picture of it as a backup.
 // The frame's size is the design's (settings.sizeKey), at 300 DPI.
-export async function renderMagnetFramePsd(orientation: FrameOrientation, design: Omit<LoadedMagnetDesign, "orientation">): Promise<Buffer> {
+export async function renderMagnetFramePsd(
+  orientation: FrameOrientation,
+  design: Omit<LoadedMagnetDesign, "orientation" | "qrContext"> & { qrContext?: MagnetQrContext }
+): Promise<Buffer> {
   const { elements, settings, customTextureImage, customElementBuffers } = design;
+  const qrContext: MagnetQrContext = design.qrContext ?? { eventId: null, portfolioSlug: null };
   const sizeKey = settings.sizeKey;
   const { widthPx, heightPx } = magnetExportDimensions(orientation, sizeKey);
   const S = magnetExportScale(sizeKey);
@@ -189,8 +196,9 @@ export async function renderMagnetFramePsd(orientation: FrameOrientation, design
 
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i];
+    if (el.type === "qr" && !magnetQrUrl(el, qrContext)) continue;
     if (el.type !== "text") {
-      const layer = await trimmedLayer(await composeMagnetFrameElements([el], orientation, sizeKey, customElementBuffers), elementName(el, i));
+      const layer = await trimmedLayer(await composeMagnetFrameElements([el], orientation, sizeKey, customElementBuffers, qrContext), elementName(el, i));
       if (layer) children.push(layer);
       continue;
     }
@@ -225,7 +233,7 @@ export async function renderMagnetFramePsd(orientation: FrameOrientation, design
   // The flattened image too, so previews (Finder, Bridge, the browser) show the real design.
   // The texture layer above is reused: rendering a texture at 300 DPI takes seconds.
   const matWithShadow = settings.shadowEnabled ? await renderMagnetFrameBase(orientation, settings) : mat;
-  const allElements = await composeMagnetFrameElements(elements, orientation, sizeKey, customElementBuffers);
+  const allElements = await composeMagnetFrameElements(elements, orientation, sizeKey, customElementBuffers, qrContext);
   const composite = await sharp(matWithShadow)
     .composite([...(texture ? [{ input: texture, left: 0, top: 0 }] : []), { input: allElements, left: 0, top: 0 }])
     .png()

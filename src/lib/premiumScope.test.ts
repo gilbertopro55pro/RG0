@@ -12,6 +12,7 @@ describe("isClientFacingPath", () => {
       "/chat/key",
       "/p/studio-or",
       "/print/job",
+      "/m/AbC123xYz09/info",
     ]) {
       expect(isClientFacingPath(p), p).toBe(true);
     }
@@ -41,7 +42,7 @@ describe("isClientFacingPath", () => {
   });
 
   it("gives the photographer's own pages the premium look", () => {
-    for (const p of ["/events", "/events/123", "/galleries", "/galleries/abc", "/settings", "/leads", "/leads/campaigns", "/billing", "/analytics"]) {
+    for (const p of ["/events", "/events/123", "/galleries", "/galleries/abc", "/settings", "/leads", "/leads/campaigns", "/billing", "/analytics", "/magnet-frames", "/magnet-frames/abc"]) {
       expect(isClientFacingPath(p), p).toBe(false);
     }
   });

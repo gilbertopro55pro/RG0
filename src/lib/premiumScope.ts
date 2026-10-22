@@ -5,6 +5,8 @@ const CLIENT_FACING_PREFIXES = [
   "/gallery/",
   "/quotes/",
   "/r/",
+  // A magnet's QR for the event's guests (app/m/[code]).
+  "/m/",
   "/contracts/",
   "/portal/",
   "/chat/",

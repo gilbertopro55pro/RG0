@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { ALBUM_ORNAMENTS, ornamentDataUrl } from "@/lib/albumOrnaments";
@@ -22,6 +22,7 @@ import {
   canMoveLayer,
   duplicateElement,
   frameSnapLines,
+  freeTextSpot,
   historyCommit,
   historyRedo,
   historyStart,
@@ -44,6 +45,10 @@ import type {
   MagnetFrameCustomElementRow,
 } from "@/lib/types";
 import MagnetFramePreview, { magnetTextStyle, type MagnetFramePreviewHandle } from "@/components/magnetFrame/MagnetFramePreview";
+import QrPanel from "@/components/magnetFrame/QrPanel";
+import InvitationPalette from "@/components/magnetFrame/InvitationPalette";
+import ClientApprovalBar from "@/components/magnetFrame/ClientApprovalBar";
+import { qrMinSizePct } from "@/lib/magnetQr";
 import { IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight } from "@/components/icons/NavIcons";
 import { IconRotateDevice } from "@/components/icons/AlbumIcons";
 import { createClient } from "@/lib/supabase/client";
@@ -72,7 +77,7 @@ const ELEMENT_TABS: { key: ElementTabKey; label: string }[] = [
 ];
 
 // The panels on the editor's side, one open at a time (the owner's "solo" request, 2026-10-05).
-type PanelKey = "text" | "elements" | "digits" | "texture" | "settings";
+type PanelKey = "text" | "elements" | "digits" | "qr" | "texture" | "settings";
 
 // A size like "20×15" inside Hebrew text is laid out right-to-left and reads "15×20" (the owner saw
 // the landscape button as "(15X20)"). Isolating it left-to-right keeps width × height in order.
@@ -116,8 +121,8 @@ function clamp(n: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, n));
 }
 
-// yPct: the vertical center of the bottom mat (see addText), so a new text starts ON the mat
-// instead of half over the photo window.
+// yPct: a spot on the mat (see newTextAt), so a new text starts ON the mat instead of half over the
+// photo window.
 function newTextElement(yPct: number): MagnetFrameTextElement {
   return {
     id: crypto.randomUUID(),
@@ -148,10 +153,15 @@ function FreeColorPicker({ value, onChange }: { value: string; onChange: (hex: s
   );
 }
 
+// The invitation's colors (frame_settings.palette), offered after the fixed swatches in every color
+// row of the editor.
+const InvitationColors = createContext<string[]>([]);
+
 function ColorRow({ value, onChange, swatches = COLOR_SWATCHES }: { value: string | undefined; onChange: (hex: string) => void; swatches?: { label: string; value: string }[] }) {
   const t = useT();
+  const extra = useContext(InvitationColors).filter((c) => !swatches.some((s) => s.value.toLowerCase() === c.toLowerCase()));
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       {swatches.map((c) => (
         <button
           key={c.value}
@@ -160,6 +170,17 @@ function ColorRow({ value, onChange, swatches = COLOR_SWATCHES }: { value: strin
           onClick={() => onChange(c.value)}
           className="h-6 w-6 rounded-full border-2"
           style={{ background: c.value, borderColor: value === c.value ? "var(--color-sage)" : "var(--color-line)" }}
+        />
+      ))}
+      {extra.length > 0 && <span className="h-4 w-px bg-line mx-0.5" aria-hidden />}
+      {extra.map((c) => (
+        <button
+          key={c}
+          type="button"
+          title={t("מההזמנה")}
+          onClick={() => onChange(c)}
+          className="h-6 w-6 rounded-full border-2"
+          style={{ background: c, borderColor: value?.toLowerCase() === c.toLowerCase() ? "var(--color-sage)" : "var(--color-line)" }}
         />
       ))}
       <FreeColorPicker value={value ?? "#000000"} onChange={onChange} />
@@ -362,7 +383,16 @@ const SAMPLE_PHOTO_KEY = (designId: string) => `magnet-sample-photo:${designId}`
 // lists them). Two steps: 1 = the landscape frame; 2 = the portrait frame, already filled with
 // everything from step 1, where only positions get adjusted. A square size has one frame. Every
 // change saves by itself a moment later, and can be undone.
-export default function MagnetFrameEditor({ designId, events = [] }: { designId: string; events?: { id: string; label: string }[] }) {
+export default function MagnetFrameEditor({
+  designId,
+  events = [],
+  portfolioSlug = null,
+}: {
+  designId: string;
+  events?: { id: string; label: string }[];
+  // For a QR that opens the photographer's portfolio.
+  portfolioSlug?: string | null;
+}) {
   const t = useT();
   const [loaded, setLoaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -736,15 +766,24 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
     setElements((prev) => prev.map((el) => (el.id === id ? { ...el, xPct: clamp(el.xPct + dx * stepX), yPct: clamp(el.yPct + dy * stepY) } : el)));
   };
 
+  // A QR can't shrink below what still scans when printed (qrMinSizePct); other elements keep the
+  // decoration range.
+  const minSizePctOf = (el: MagnetFrameElement) => (el.type === "qr" ? Math.max(MAGNET_DECORATION_SIZE_RANGE.min, qrMinSizePct(frameSettings.sizeKey)) : MAGNET_DECORATION_SIZE_RANGE.min);
+
   const addElement = (el: MagnetFrameElement) => {
     setElements((prev) => [...prev, el]);
     setSelectedId(el.id);
   };
 
-  const addText = () => addElement(newTextElement(100 - matInset.bottomPct / 2));
+  // A clear spot on the mat, so a text added to a template doesn't land on its names.
+  const newTextAt = () => {
+    const spot = freeTextSpot(matInset, elements, landscapeDims.heightPx / landscapeDims.widthPx);
+    return { ...newTextElement(spot.yPct), xPct: spot.xPct };
+  };
+  const addText = () => addElement(newTextAt());
 
   const addDigit = (digit: string, style: (typeof DIGIT_STYLES)[number]) =>
-    addElement({ ...newTextElement(100 - matInset.bottomPct / 2), text: digit, fontKey: style.fontKey, fontSizePx: 140, color: decorationColor, bold: style.bold, italic: style.italic });
+    addElement({ ...newTextAt(), text: digit, fontKey: style.fontKey, fontSizePx: 140, color: decorationColor, bold: style.bold, italic: style.italic });
 
   const addDecoration = (ornamentId: string) => addElement({ id: crypto.randomUUID(), type: "decoration", ornamentId, xPct: 24, yPct: 24, sizePct: 16, color: decorationColor });
   const addCustomElement = (customElementAssetId: string) =>
@@ -859,6 +898,7 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
     setSelectedId(el.id);
     if (latest.current.step === 1) {
       if (el.type === "text") selectPanel("text");
+      else if (el.type === "qr") selectPanel("qr");
       else selectPanel(openPanel === "digits" && el.floralId?.startsWith("digit-") ? "digits" : "elements");
     }
     if (latest.current.editingTextId === el.id) return;
@@ -926,7 +966,7 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
     if (it.kind === "resize") {
       const dist = Math.hypot(e.clientX - it.cx, e.clientY - it.cy);
       if (el.type === "text") apply({ fontSizePx: Math.round(resizeFromDrag(it.startSize, it.startDist, dist, MAGNET_TEXT_SIZE_RANGE.min, MAGNET_TEXT_SIZE_RANGE.max)) });
-      else apply({ sizePct: resizeFromDrag(it.startSize, it.startDist, dist, MAGNET_DECORATION_SIZE_RANGE.min, MAGNET_DECORATION_SIZE_RANGE.max) });
+      else apply({ sizePct: resizeFromDrag(it.startSize, it.startDist, dist, minSizePctOf(el), MAGNET_DECORATION_SIZE_RANGE.max) });
       return;
     }
     const angle = pointerAngleDeg(it.cx, it.cy, e.clientX, e.clientY);
@@ -1063,6 +1103,22 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
     if (square && step === 2) setStep(1);
   }, [square, step]);
 
+  // "התאמת המסגרת לצבעי ההזמנה": the mat in the invitation's paper color, the texts in its text
+  // color and the recolorable ornaments in its accent. One undo step.
+  const applyInvitationColors = (colors: { mat: string; text: string; accent: string }) => {
+    setFrameSettings((prev) => ({ ...prev, frameColor: colors.mat, frameColorOpacity: 100 }));
+    setElements((prev) =>
+      prev.map((el) =>
+        el.type === "text"
+          ? { ...el, color: colors.text }
+          : el.type === "decoration" && el.ornamentId && !el.floralId && !el.customElementAssetId
+            ? { ...el, color: colors.accent }
+            : el
+      )
+    );
+    setDecorationColor(colors.accent);
+  };
+
   const changeSize = (key: MagnetFrameSettings["sizeKey"]) => {
     setFrameSettings((prev) => ({ ...prev, sizeKey: key }));
     // Hand-placed portrait positions belong to the old shape.
@@ -1099,6 +1155,7 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
         customTextureUrl={customTextureUrl}
         customElementUrls={customElementUrls}
         photoUrl={samplePhoto?.url ?? null}
+        qrContext={{ eventId, portfolioSlug }}
         emptyTextLabel={t("טקסט ריק")}
         className={`touch-none shadow-card ${interactive ? "" : "pointer-events-none"}`}
         onWidth={orientation === "landscape" ? setLandscapeWidth : undefined}
@@ -1223,7 +1280,13 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
   };
 
   const elementLabel = (el: MagnetFrameElement, i: number) =>
-    el.type === "text" ? el.text.trim() || t("טקסט ריק") : el.floralId?.startsWith("digit-") ? `${t("ספרה")} ${i + 1}` : `${t("אלמנט")} ${i + 1}`;
+    el.type === "text"
+      ? el.text.trim() || t("טקסט ריק")
+      : el.type === "qr"
+        ? t("קוד QR")
+        : el.floralId?.startsWith("digit-")
+          ? `${t("ספרה")} ${i + 1}`
+          : `${t("אלמנט")} ${i + 1}`;
 
   // Step 2: only placement — pick an item (on the frame or from the list) and nudge, resize, turn it,
   // or send it back to its automatic place.
@@ -1254,7 +1317,7 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
             {sel.type === "text" ? (
               <SliderRow label={t("גודל")} value={sel.fontSizePx} min={MAGNET_TEXT_SIZE_RANGE.min} max={MAGNET_TEXT_SIZE_RANGE.max} onChange={(v) => setPortraitPlacement(sel.id, { fontSizePx: v })} />
             ) : (
-              <SliderRow label={t("גודל")} value={sel.sizePct} min={MAGNET_DECORATION_SIZE_RANGE.min} max={MAGNET_DECORATION_SIZE_RANGE.max} onChange={(v) => setPortraitPlacement(sel.id, { sizePct: v })} />
+              <SliderRow label={t("גודל")} value={sel.sizePct} min={minSizePctOf(sel)} max={MAGNET_DECORATION_SIZE_RANGE.max} onChange={(v) => setPortraitPlacement(sel.id, { sizePct: v })} />
             )}
             <RotationControl value={sel.rotation ?? 0} onChange={(deg) => setPortraitPlacement(sel.id, { rotation: deg })} />
             <div className="flex items-center justify-between gap-2">
@@ -1284,6 +1347,7 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
     { key: "text", label: "טקסט" },
     { key: "elements", label: "אלמנטים" },
     { key: "digits", label: "ספרות" },
+    { key: "qr", label: "קוד QR" },
     { key: "texture", label: "טקסטורה" },
     { key: "settings", label: "הגדרות מסגרת" },
   ];
@@ -1601,6 +1665,20 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
         </>
       );
     }
+    if (key === "qr")
+      return (
+        <QrPanel
+          selected={selected && selected.type === "qr" ? selected : null}
+          eventId={eventId}
+          portfolioSlug={portfolioSlug}
+          sizeKey={sizeKey}
+          orientation="landscape"
+          mat={frameSettings}
+          onAdd={addElement}
+          onChange={(id, patch) => updateElement(id, patch)}
+          actions={selected && selected.type === "qr" ? selectionActions(selected, t("מחיקת הקוד")) : null}
+        />
+      );
     if (key === "texture")
       return (
         <div className="space-y-2.5">
@@ -1736,6 +1814,13 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
           <ColorRow value={frameSettings.frameColor} onChange={(hex) => setFrameSettings((prev) => ({ ...prev, frameColor: hex }))} />
           <SliderRow label={t("שקיפות הצבע")} value={frameSettings.frameColorOpacity} min={0} max={100} onChange={(v) => setFrameSettings((prev) => ({ ...prev, frameColorOpacity: v }))} />
         </div>
+        <div className="pt-1.5 border-t border-line">
+          <InvitationPalette
+            palette={frameSettings.palette}
+            onPalette={(colors) => setFrameSettings((prev) => ({ ...prev, palette: colors }))}
+            onApply={applyInvitationColors}
+          />
+        </div>
         <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer pt-1.5 border-t border-line">
           <input type="checkbox" checked={frameSettings.shadowEnabled} onChange={(e) => setFrameSettings((prev) => ({ ...prev, shadowEnabled: e.target.checked }))} />
           {t("הצללה בחלק הפנימי של המסגרת")}
@@ -1809,7 +1894,7 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
   // Two sides (owner's design, 2026-10-05): the panels on the right (65%), and on the left (35%)
   // the frames as they will be exported, so a misplaced element shows up before downloading.
   return (
-    <>
+    <InvitationColors.Provider value={frameSettings.palette ?? []}>
       {/* A phone held upright gets this instead of the editor: the two sides need the width of a
           phone held sideways (owner, 2026-10-05). The editor stays mounted underneath, so turning
           the phone back and forth keeps everything as it was. */}
@@ -1860,6 +1945,7 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
               </div>
             )}
           </div>
+          <ClientApprovalBar designId={designId} eventId={eventId} />
           <div className="ms-auto flex items-center gap-1.5">
             <button onClick={undo} disabled={!canUndo} className={toolBtn} title={t("ביטול (Ctrl+Z)")} aria-label={t("ביטול")}>
               <ToolIcon d={ICON.undo} />
@@ -2012,7 +2098,7 @@ export default function MagnetFrameEditor({ designId, events = [] }: { designId:
           </aside>
         </div>
       </div>
-    </>
+    </InvitationColors.Provider>
   );
 }
 

@@ -3,6 +3,8 @@ import { PACKAGE_FLOWS, PACKAGE_LABELS, STAGE_LABELS, STAGE_TYPE, currentStageIn
 import { normalizeIsraeliPhone } from "@/lib/whatsapp";
 import type { CustomPackageStageRow, EventPaymentRow, EventRow, EventStageRow, GalleryRow } from "@/lib/types";
 import PortalStageActions from "@/components/PortalStageActions";
+import PortalMagnetFrames from "@/components/PortalMagnetFrames";
+import { loadPortalMagnetFrames } from "@/lib/portalMagnetFrames";
 import { stageRole } from "@/lib/clientReminders";
 import { isWeddingEvent } from "@/lib/clipSongs";
 import { getSignedDownloadUrl } from "@/lib/storage";
@@ -39,7 +41,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
   const t = makeT(messagesFor(lang));
   const locale = dateLocale(lang);
 
-  const [{ data: stages }, { data: payments }, { data: customStagesData }, { data: customPackageData }, { data: gallery }] =
+  const [{ data: stages }, { data: payments }, { data: customStagesData }, { data: customPackageData }, { data: gallery }, magnets] =
     await Promise.all([
       supabase
         .from("event_stages")
@@ -64,6 +66,8 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
         .select("access_token, published, archived_at")
         .eq("event_id", event.id)
         .maybeSingle<Pick<GalleryRow, "access_token" | "published" | "archived_at">>(),
+      // The magnet frames the photographer shared with the client for approval (stage 3).
+      loadPortalMagnetFrames(supabase, { id: event.id, photographer_id: event.photographer_id }),
     ]);
 
   const galleryLink = gallery && gallery.published && !gallery.archived_at ? `/gallery/${gallery.access_token}` : null;
@@ -152,6 +156,9 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           clipSongs={event.clip_songs ?? null}
         />
       </div>
+
+      {/* Rendered only with frames, so the frame drawing's code loads only for those clients. */}
+      {magnets.frames.length > 0 && <PortalMagnetFrames eventToken={token} frames={magnets.frames} qrContext={magnets.qrContext} />}
 
       {/* Freelance bookings are a single flat rate for raw work, not the deposit/balance split
           real events have — showing this section there would just be confusing/irrelevant. */}

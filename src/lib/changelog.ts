@@ -11,6 +11,34 @@ export { changesFor, type ChangelogEntry } from "@/lib/changelogEntry";
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.7",
+    date: "2026-10-22",
+    changes: [
+      "עיצוב מסגרות מגנט התחדש: אפשר לשמור כמה מסגרות, לשייך מסגרת לאירוע (גם מכרטיס האירוע), ולהתחיל מ-13 עיצובים מוכנים לפי סוג האירוע, שמתמלאים לבד בשמות ובתאריך",
+      "5 גדלים להדפסה, כולל הגדלים של תוכנות המגנטים, בקובץ PNG או PSD ב-300 DPI",
+      "בעורך: שמירה אוטומטית, ביטול ושחזור (Ctrl+Z), ידיות לשינוי גודל ולסיבוב, הצמדה עם קווי עזר, עריכת טקסט בלחיצה כפולה, שכפול ונעילה. לטקסט יש עכשיו קו מתאר, צבע לצל וריווח אותיות, ואפשר לראות תמונה לדוגמה בחלון",
+      "קוד QR על המגנט: האורחים סורקים ומגיעים לתמונות מהאירוע, לצפייה בלבד. עד שהגלריה עולה הם רואים שהתמונות בדרך",
+      "הלקוח מאשר את עיצוב המגנט בפורטל או משאיר הערה, ואתם רואים את זה ברשימת המסגרות ובעורך",
+      "צבעים מההזמנה: מעלים תמונה של ההזמנה, ומתאימים את המסגרת לצבעים שלה בלחיצה",
+    ],
+    en: [
+      "Magnet frame design is renewed: save several frames, link a frame to an event (also from the event card), and start from 13 ready-made designs by event type, filled in with the names and the date",
+      "5 print sizes, including the sizes magnet printing software uses, as a PNG or PSD file at 300 DPI",
+      "In the editor: autosave, undo and redo (Ctrl+Z), handles to resize and rotate, snapping with guide lines, editing text with a double-click, duplicate and lock. Text now has an outline, a shadow color and letter spacing, and you can preview a sample photo in the window",
+      "A QR code on the magnet: guests scan it and reach the event photos, view only. Until the gallery is up, they see that the photos are on the way",
+      "The client approves the magnet design in the portal or leaves a comment, and you see it in the frames list and in the editor",
+      "Colors from the invitation: upload an image of the invitation and match the frame to its colors in one click",
+    ],
+    ru: [
+      "Дизайн рамок для магнитов обновлён: можно сохранять несколько рамок, привязывать рамку к мероприятию (в том числе из карточки мероприятия) и начинать с 13 готовых дизайнов по типу мероприятия, с уже подставленными именами и датой",
+      "5 размеров для печати, включая размеры программ для печати магнитов, в файле PNG или PSD с разрешением 300 DPI",
+      "В редакторе: автосохранение, отмена и повтор (Ctrl+Z), маркеры для изменения размера и поворота, привязка с направляющими, редактирование текста двойным нажатием, дублирование и закрепление. У текста теперь есть обводка, цвет тени и межбуквенный интервал, а в окне можно посмотреть пример фото",
+      "QR-код на магните: гости сканируют его и попадают к фото с мероприятия, только для просмотра. Пока галерея не готова, они видят, что фото скоро появятся",
+      "Клиент утверждает дизайн магнита в портале или оставляет комментарий, и вы видите это в списке рамок и в редакторе",
+      "Цвета из приглашения: загрузите изображение приглашения и подберите рамку под его цвета одним нажатием",
+    ],
+  },
+  {
     version: "2.12.6",
     date: "2026-10-19",
     changes: [

@@ -101,7 +101,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     isOwner && photographerSignatureRow && designToolsAllowed({ email: photographerSignatureRow.email ?? "", plan: photographerSignatureRow.plan })
       ? supabase
           .from("magnet_frame_designs")
-          .select("id, name, updated_at")
+          .select("id, name, updated_at, client_shared_at, client_approved_at, client_comment, client_comment_at")
           .eq("event_id", id)
           .order("updated_at", { ascending: false })
           .returns<EventMagnetFrame[]>()

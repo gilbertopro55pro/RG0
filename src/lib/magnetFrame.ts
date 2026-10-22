@@ -7,7 +7,8 @@ import { findOrnament } from "@/lib/albumOrnaments";
 import { findMagnetFrameTexture } from "@/lib/magnetFrameTextures";
 import { findMagnetFrameFloral } from "@/lib/magnetFrameFlorals";
 import { MAGNET_FRAME_DPI, MAGNET_TEXT_SHADOW_ALPHA, hexToRgbTriple, magnetExportDimensions, magnetExportScale } from "@/lib/magnetFrameShared";
-import type { FrameOrientation, MagnetFrameElement, MagnetFrameSettings, MagnetFrameSizeKey } from "@/lib/types";
+import { QR_QUIET_ZONE_MODULES, magnetQrUrl, qrMatrix, qrSquareModules, type MagnetQrContext } from "@/lib/magnetQr";
+import type { FrameOrientation, MagnetFrameElement, MagnetFrameQrElement, MagnetFrameSettings, MagnetFrameSizeKey } from "@/lib/types";
 
 // Every function here renders at the print size of the design's sizeKey (settings.sizeKey, missing
 // = 20×15): the canvas is magnetExportDimensions, and every design-px value (font sizes, shadows,
@@ -285,22 +286,72 @@ async function composeDecorationElement(base: Buffer, el: Extract<MagnetFrameEle
   return sharp(base).composite([{ input: layer, left: 0, top: 0 }]).png().toBuffer();
 }
 
-// Paints every element (text and decorations, IN ORDER, so later elements land on top of earlier
-// ones — matching what the editor shows) onto a blank TRANSPARENT widthPx x heightPx canvas — the
-// unpadded, native coordinate space every xPct/yPct is defined in. customElementBuffers resolves
-// any customElementAssetId decorations to their real image bytes (the caller looks these up via
-// the DB + storage — this function has no DB access of its own).
+// A QR code as a sizePx×sizePx RGBA image: its bgColor square (the quiet zone included) with the
+// dark modules in `color`. Drawn pixel by pixel at the exact print size, each pixel taking the
+// module it falls in, so every module edge is sharp (no scaling or blur); modules differ by at most
+// one pixel. The same qrMatrix the editor draws.
+export function qrPixels(text: string, sizePx: number, color: string, bgColor: string): { data: Buffer; size: number } {
+  const matrix = qrMatrix(text);
+  const n = qrSquareModules(matrix);
+  const q = QR_QUIET_ZONE_MODULES;
+  const dark = hexToRgbTriple(color, [17, 17, 17]);
+  const light = hexToRgbTriple(bgColor, [255, 255, 255]);
+  // Module index of every pixel column (and row: the square is symmetric).
+  const moduleAt = new Int32Array(sizePx);
+  for (let i = 0; i < sizePx; i++) moduleAt[i] = Math.min(n - 1, Math.floor(((i + 0.5) * n) / sizePx)) - q;
+  const data = Buffer.alloc(sizePx * sizePx * 4);
+  for (let y = 0; y < sizePx; y++) {
+    const r = moduleAt[y];
+    const rowInside = r >= 0 && r < matrix.size;
+    for (let x = 0; x < sizePx; x++) {
+      const c = moduleAt[x];
+      const on = rowInside && c >= 0 && c < matrix.size && matrix.data[r * matrix.size + c] === 1;
+      const rgb = on ? dark : light;
+      const o = (y * sizePx + x) * 4;
+      data[o] = rgb[0];
+      data[o + 1] = rgb[1];
+      data[o + 2] = rgb[2];
+      data[o + 3] = 255;
+    }
+  }
+  return { data, size: sizePx };
+}
+
+// A QR element at its place: sizePct of the shorter side, centered on (xPct, yPct), turned around
+// its center like a decoration. Left out when it has nothing to open (magnetQrUrl is null).
+async function composeQrElement(base: Buffer, el: MagnetFrameQrElement, widthPx: number, heightPx: number, ctx: MagnetQrContext): Promise<Buffer> {
+  const url = magnetQrUrl(el, ctx);
+  if (!url) return base;
+  const sizePx = Math.max(21, Math.round((el.sizePct / 100) * Math.min(widthPx, heightPx)));
+  const { data } = qrPixels(url, sizePx, el.color, el.bgColor);
+  const image = await sharp(data, { raw: { width: sizePx, height: sizePx, channels: 4 } }).png().toBuffer();
+  const turned = el.rotation && Math.abs(el.rotation % 360) >= 0.01 ? await sharp(image).rotate(el.rotation, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer({ resolveWithObject: true }) : null;
+  const layer = await placeCentered(turned ? turned.data : image, turned ? turned.info.width : sizePx, turned ? turned.info.height : sizePx, (el.xPct / 100) * widthPx, (el.yPct / 100) * heightPx, widthPx, heightPx);
+  return sharp(base).composite([{ input: layer, left: 0, top: 0 }]).png().toBuffer();
+}
+
+const NO_QR_CONTEXT: MagnetQrContext = { eventId: null, portfolioSlug: null };
+
+// Paints every element (text, decorations and QR codes, IN ORDER, so later elements land on top of
+// earlier ones — matching what the editor shows) onto a blank TRANSPARENT widthPx x heightPx
+// canvas — the unpadded, native coordinate space every xPct/yPct is defined in.
+// customElementBuffers resolves any customElementAssetId decorations to their real image bytes (the
+// caller looks these up via the DB + storage — this function has no DB access of its own), and
+// qrContext is what a QR opens (the frame's event, the photographer's portfolio).
 export async function composeMagnetFrameElements(
   elements: MagnetFrameElement[],
   orientation: FrameOrientation,
   sizeKey: MagnetFrameSizeKey | null | undefined,
-  customElementBuffers: Map<string, Buffer> = new Map()
+  customElementBuffers: Map<string, Buffer> = new Map(),
+  qrContext: MagnetQrContext = NO_QR_CONTEXT
 ): Promise<Buffer> {
   const { widthPx, heightPx } = magnetExportDimensions(orientation, sizeKey);
   const S = magnetExportScale(sizeKey);
   let buffer: Buffer = await transparentCanvas(widthPx, heightPx).png().toBuffer();
   for (const el of elements) {
-    buffer = el.type === "text" ? await composeTextElement(buffer, el, widthPx, heightPx, S) : await composeDecorationElement(buffer, el, widthPx, heightPx, customElementBuffers);
+    if (el.type === "text") buffer = await composeTextElement(buffer, el, widthPx, heightPx, S);
+    else if (el.type === "qr") buffer = await composeQrElement(buffer, el, widthPx, heightPx, qrContext);
+    else buffer = await composeDecorationElement(buffer, el, widthPx, heightPx, customElementBuffers);
   }
   return buffer;
 }
@@ -309,11 +360,11 @@ export async function composeMagnetFrameElements(
 // 300 DPI and stamped with it, so it opens at its real size in centimeters.
 export async function renderMagnetFramePng(
   orientation: FrameOrientation,
-  design: { elements: MagnetFrameElement[]; settings: MagnetFrameSettings; customTextureImage: Buffer | null; customElementBuffers: Map<string, Buffer> }
+  design: { elements: MagnetFrameElement[]; settings: MagnetFrameSettings; customTextureImage: Buffer | null; customElementBuffers: Map<string, Buffer>; qrContext?: MagnetQrContext }
 ): Promise<Buffer> {
-  const { elements, settings, customTextureImage, customElementBuffers } = design;
+  const { elements, settings, customTextureImage, customElementBuffers, qrContext } = design;
   let base = await renderMagnetFrameBase(orientation, settings);
   base = await composeMagnetFrameTexture(base, settings, orientation, customTextureImage);
-  const elementsLayer = await composeMagnetFrameElements(elements, orientation, settings.sizeKey, customElementBuffers);
+  const elementsLayer = await composeMagnetFrameElements(elements, orientation, settings.sizeKey, customElementBuffers, qrContext);
   return sharp(base).composite([{ input: elementsLayer, left: 0, top: 0 }]).withMetadata({ density: MAGNET_FRAME_DPI }).png().toBuffer();
 }

@@ -4,16 +4,18 @@ import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 
 // Landing section for the magnet frame designer (/magnet-frames), its own place on the page (owner,
-// 2026-09-30). Every line is something the tool does today (see .claude/skills/magnet-frame-export):
-// one design for both orientations, text/elements/textures incl. uploads, 300 DPI PNG with a
-// transparent photo window. Plan: Pro and up (designToolsAllowed).
+// 2026-09-30). Every line is something the tool does today (see .claude/skills/magnet-frame-export,
+// updated with stages 1–3 on 2026-10-22): templates, text effects, elements and uploads, a QR to the
+// event photos, client approval in the portal, 5 sizes as 300 DPI PNG/PSD. Plan: Pro and up
+// (designToolsAllowed).
 
 const FEATURES = [
-  { icon: "M4 7V5h16v2M12 5v14M9 19h6", text: "טקסט חופשי בפונטים שונים, עם צבע, הדגשה וצל" },
-  { icon: "M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z", text: "ספריית אלמנטים וטקסטורות, כולל ספרות מעוצבות" },
-  { icon: "M12 16V4M7 9l5-5 5 5M4 20h16", text: "מעלים את הלוגו, האלמנטים והטקסטורות שלכם" },
-  { icon: "M4 6h11v12H4zM15 9h5v9h-5", text: "עיצוב אחד לשני הכיוונים: 20×15 לרוחב ו-15×20 לאורך" },
-  { icon: "M12 4v11M7 10l5 5 5-5M4 20h16", text: "קובץ PNG מוכן להדפסה ברזולוציה 300 DPI, עם חלון שקוף לתמונה" },
+  { icon: "M4 4h16v16H4zM4 9h16M9 9v11", text: "13 עיצובים מוכנים לפי סוג אירוע, שמתמלאים לבד בשמות ובתאריך" },
+  { icon: "M4 7V5h16v2M12 5v14M9 19h6", text: "טקסט בפונטים שונים, עם קו מתאר, צל צבעוני וריווח אותיות" },
+  { icon: "M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z", text: "ספריית אלמנטים וטקסטורות, וגם הלוגו והאלמנטים שלכם" },
+  { icon: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM18 14h2M14 18v2", text: "קוד QR שמוביל את האורחים לתמונות מהאירוע" },
+  { icon: "M5 12l4 4L19 6", text: "הלקוח מאשר את העיצוב בפורטל, לפני האירוע" },
+  { icon: "M12 4v11M7 10l5 5 5-5M4 20h16", text: "5 גדלים להדפסה, קובץ PNG או PSD ב-300 DPI עם חלון שקוף לתמונה" },
 ];
 
 function Icon({ d }: { d: string }) {
@@ -44,7 +46,7 @@ export default function LandingMagnetSection({ lang = "he" }: { lang?: Lang }) {
             {t("מסגרת מגנט משלכם, מוכנה להדפסה.")}
           </h2>
           <p className="m-0 text-[17px] lg:text-[19px] leading-relaxed text-[var(--l-ink-soft)]">
-            {t("מעצבים פעם אחת את המסגרת של עמדת המגנטים, עם השמות, התאריך והלוגו, ומורידים קובץ שנכנס ישר למדפסת. בלי תוכנת עיצוב ובלי להתעסק עם מידות.")}
+            {t("מעצבים מסגרת לכל אירוע, עם השמות, התאריך והלוגו, ומורידים קובץ שנכנס ישר לתוכנת ההדפסה. בלי תוכנת עיצוב ובלי להתעסק עם מידות.")}
           </p>
           <p className="m-0 text-sm text-[var(--l-ink-soft)]">{t("במסלולי פרו ופרו+. בזמן הניסיון החינמי זה פתוח לכם.")}</p>
         </div>

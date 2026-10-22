@@ -44,6 +44,7 @@ vi.mock("@/i18n/server", () => ({
 import { GET as listGET, POST } from "@/app/api/magnet-frames/route";
 import { DELETE, GET, PATCH } from "@/app/api/magnet-frames/[id]/route";
 import { POST as DUPLICATE } from "@/app/api/magnet-frames/[id]/duplicate/route";
+import { GET as CLIENT } from "@/app/api/magnet-frames/[id]/client/route";
 import { DEFAULT_MAGNET_FRAME_SETTINGS } from "@/lib/magnetFrameShared";
 
 const USER = "11111111-1111-4111-8111-111111111111";
@@ -131,9 +132,10 @@ describe("magnet frames API", () => {
     await PATCH(json({ eventId: EVENT }, "PATCH"), params(DESIGN));
     expect(writes()[0].payload).toEqual({ event_id: EVENT });
 
+    // Unlinking (or moving to another event) also ends the sharing with the old event's client.
     ops = [];
     await PATCH(json({ eventId: null, name: "" }, "PATCH"), params(DESIGN));
-    expect(writes()[0].payload).toEqual({ name: null, event_id: null });
+    expect(writes()[0].payload).toEqual({ name: null, event_id: null, client_shared_at: null, client_approved_at: null, client_comment: null, client_comment_at: null });
 
     ops = [];
     expect((await PATCH(json({}, "PATCH"), params(DESIGN))).status).toBe(400);
@@ -169,5 +171,83 @@ describe("magnet frames API", () => {
     ops = [];
     await DUPLICATE(new Request("http://x"), params(DESIGN));
     expect(writes()[0].payload).toMatchObject({ name: "מסגרת (עותק)", event_id: null });
+  });
+  it("shares the frame with the client, and stops", async () => {
+    const res = await PATCH(json({ shareWithClient: true }, "PATCH"), params(DESIGN));
+    expect(res.status).toBe(200);
+    const [share] = writes();
+    expect(Object.keys(share.payload!)).toEqual(["client_shared_at"]);
+    expect(Date.parse(share.payload!.client_shared_at as string)).toBeGreaterThan(Date.now() - 5000);
+    expect(share.filters).toEqual([
+      ["id", DESIGN],
+      ["photographer_id", USER],
+    ]);
+
+    ops = [];
+    await PATCH(json({ shareWithClient: false }, "PATCH"), params(DESIGN));
+    expect(writes()[0].payload).toEqual({ client_shared_at: null });
+  });
+
+  it("asks for a new approval when a frame changed after the client approved it is sent again", async () => {
+    respond = ((base) => (op: Op) =>
+      op.op === "select" && op.table === "magnet_frame_designs"
+        ? { data: { event_id: EVENT, updated_at: "2026-10-21T13:00:00Z", client_shared_at: "2026-10-21T09:00:00Z", client_approved_at: "2026-10-21T12:00:00Z", client_comment: null, client_comment_at: null }, error: null }
+        : base(op))(respond);
+    await PATCH(json({ shareWithClient: true }, "PATCH"), params(DESIGN));
+    expect(writes()[0].payload).toMatchObject({ client_approved_at: null });
+  });
+
+  it("won't share a frame with no event, or a bad value", async () => {
+    respond = ((base) => (op: Op) => (op.op === "select" && op.table === "magnet_frame_designs" && op.filters.some(([k, v]) => k === "id" && v === DESIGN) ? { data: { event_id: null, updated_at: "2026-10-21T13:00:00Z", client_shared_at: null, client_approved_at: null, client_comment: null, client_comment_at: null }, error: null } : base(op)))(respond);
+    expect((await PATCH(json({ shareWithClient: true }, "PATCH"), params(DESIGN))).status).toBe(400);
+    expect((await PATCH(json({ shareWithClient: "yes" }, "PATCH"), params(DESIGN))).status).toBe(400);
+    // Unlinking and sharing in one request: no event to share with.
+    expect((await PATCH(json({ eventId: null, shareWithClient: true }, "PATCH"), params(DESIGN))).status).toBe(400);
+    expect(writes()).toEqual([]);
+    // Another photographer's frame.
+    expect((await PATCH(json({ shareWithClient: true }, "PATCH"), params("55555555-5555-4555-8555-555555555555"))).status).toBe(404);
+  });
+
+  it("gives the editor the client's status, contact and a ready message", async () => {
+    const TOKEN = "0f1e2d3c-4b5a-4968-8776-655443322110";
+    respond = ((base) => (op: Op) => {
+      if (op.table === "magnet_frame_designs")
+        return op.filters.some(([k, v]) => k === "id" && v === DESIGN)
+          ? { data: { id: DESIGN, event_id: EVENT, updated_at: "2026-10-20T10:00:00Z", client_shared_at: "2026-10-21T09:00:00Z", client_approved_at: null, client_comment: "להגדיל את השם", client_comment_at: "2026-10-21T11:00:00Z" }, error: null }
+          : { data: null, error: null };
+      if (op.table === "events") return { data: { id: EVENT, client_name: "דנה כהן", client_phone: "050-1234567", client_email: " ", client_lang: "he", client_access_token: TOKEN }, error: null };
+      if (op.table === "photographers") return { data: { name: "אור", email: "or@example.com", whatsapp_signature: null }, error: null };
+      return base(op);
+    })(respond);
+    const res = await CLIENT(new Request("http://x"), params(DESIGN));
+    expect(res.status).toBe(200);
+    const info = await res.json();
+    expect(info).toMatchObject({
+      status: "comment",
+      comment: "להגדיל את השם",
+      client: { eventId: EVENT, name: "דנה כהן", firstName: "דנה", phone: "050-1234567", email: null, lang: "he" },
+      subject: "עיצוב המגנטים לאירוע",
+    });
+    expect(info.portalUrl).toMatch(/^https?:\/\/[^/]+\/s\/p[0-9A-Za-z]{11}#magnets$/);
+    expect(info.message).toBe(`שלום דנה,\nעיצוב המגנטים לאירוע מוכן. אפשר לראות ולאשר אותו כאן:\n${info.portalUrl}\n\nאור`);
+    // Only the photographer's own frame and event.
+    expect(ops.find((o) => o.table === "magnet_frame_designs")!.filters).toContainEqual(["photographer_id", USER]);
+    expect(ops.find((o) => o.table === "events")!.filters).toContainEqual(["photographer_id", USER]);
+
+    expect((await CLIENT(new Request("http://x"), params("55555555-5555-4555-8555-555555555555"))).status).toBe(404);
+    auth.value = null;
+    expect((await CLIENT(new Request("http://x"), params(DESIGN))).status).toBe(403);
+  });
+
+  it("has no client and no message for a frame with no event", async () => {
+    respond = ((base) => (op: Op) =>
+      op.table === "magnet_frame_designs"
+        ? { data: { id: DESIGN, event_id: null, updated_at: "2026-10-20T10:00:00Z", client_shared_at: null, client_approved_at: null, client_comment: null, client_comment_at: null }, error: null }
+        : op.table === "photographers"
+          ? { data: { name: "אור", email: null, whatsapp_signature: null }, error: null }
+          : base(op))(respond);
+    const info = await (await CLIENT(new Request("http://x"), params(DESIGN))).json();
+    expect(info).toMatchObject({ status: "not_shared", client: null, portalUrl: null, message: null });
+    expect(ops.some((o) => o.table === "events")).toBe(false);
   });
 });

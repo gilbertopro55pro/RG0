@@ -46,6 +46,8 @@ const PUBLIC_PATHS = [
   "/s",
   // A short link to a file or a page (lib/shortFileLinks.ts), its code being the access.
   "/l",
+  // A magnet's QR for the event's guests (lib/magnetQr.ts, app/m/[code]): the gallery, view only.
+  "/m",
   // The print house's download page for album files (a tracked link, token-authenticated).
   "/print",
   "/api/print",

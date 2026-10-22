@@ -4,6 +4,7 @@ import {
   canMoveLayer,
   duplicateElement,
   frameSnapLines,
+  freeTextSpot,
   historyCommit,
   historyRedo,
   historyStart,
@@ -58,6 +59,40 @@ describe("snapping", () => {
     expect(snapValue(88.4, lines.y, 1.2)).toEqual({ value: 89, line: 89 });
     expect(snapValue(87, lines.y, 1.2)).toEqual({ value: 87, line: null });
     expect(snapValue(49.4, [50, 49], 1.2).value).toBe(49);
+  });
+});
+
+describe("where a new text goes", () => {
+  const inset = { xPct: 9, topPct: 9, bottomPct: 22 };
+  const aspect = 0.75;
+
+  it("an empty frame: the middle of the bottom mat", () => {
+    expect(freeTextSpot(inset, [], aspect)).toEqual({ xPct: 50, yPct: 89 });
+  });
+
+  it("a template with names and a date on the bottom mat: the top mat", () => {
+    const template = [
+      { xPct: 50, yPct: 86 },
+      { xPct: 50, yPct: 94 },
+    ];
+    expect(freeTextSpot(inset, template, aspect)).toEqual({ xPct: 50, yPct: 4.5 });
+  });
+
+  it("only a corner ornament: still the bottom mat's middle", () => {
+    expect(freeTextSpot(inset, [{ xPct: 12, yPct: 12 }], aspect)).toEqual({ xPct: 50, yPct: 89 });
+  });
+
+  it("nothing is clear: the spot farthest from everything", () => {
+    // Something on every candidate, except near the bottom mat's right side.
+    const crowded = [
+      { xPct: 50, yPct: 89 },
+      { xPct: 50, yPct: 84.6 },
+      { xPct: 50, yPct: 93.4 },
+      { xPct: 50, yPct: 4.5 },
+      { xPct: 28, yPct: 89 },
+      { xPct: 67, yPct: 89 },
+    ];
+    expect(freeTextSpot(inset, crowded, aspect)).toEqual({ xPct: 72, yPct: 89 });
   });
 });
 

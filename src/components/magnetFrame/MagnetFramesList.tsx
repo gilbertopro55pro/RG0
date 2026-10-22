@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BodyPortal from "@/components/BodyPortal";
 import MagnetFramePreview from "@/components/magnetFrame/MagnetFramePreview";
+import type { MagnetQrContext } from "@/lib/magnetQr";
+import MagnetApprovalChip from "@/components/magnetFrame/MagnetApprovalChip";
+import SendForApprovalSheet, { canSendForApproval } from "@/components/magnetFrame/SendForApprovalSheet";
+import { magnetApprovalStatus, type MagnetClientInfo } from "@/lib/magnetApproval";
 import { ALBUM_FONT_CLASS_NAMES } from "@/lib/albumFonts";
 import { DEFAULT_MAGNET_FRAME_SETTINGS, DEFAULT_MAGNET_SIZE, MAGNET_FRAME_SIZES, magnetDesignDimensions, magnetSizeLabel } from "@/lib/magnetFrameShared";
 import { BLANK_TEMPLATE_KEY, MAGNET_FRAME_TEMPLATES, findMagnetFrameTemplate, instantiateTemplate, templateKinds, type MagnetTemplateKind } from "@/lib/magnetFrameTemplates";
@@ -100,12 +104,15 @@ function FrameThumb({
   elements,
   customTextureUrl,
   customElementUrls,
+  qrContext,
   padding = "p-3 sm:p-4",
 }: {
   settings: MagnetFrameSettings;
   elements: MagnetFrameElement[];
   customTextureUrl?: string | null;
   customElementUrls?: Record<string, string | null>;
+  // What a QR on the frame opens (a frame's own event and the portfolio).
+  qrContext?: MagnetQrContext;
   padding?: string;
 }) {
   const { widthPx, heightPx } = magnetDesignDimensions("landscape", settings.sizeKey);
@@ -114,7 +121,7 @@ function FrameThumb({
     <div className={`rounded-xl ${padding}`} style={{ background: "var(--color-chip)" }}>
       <div className="aspect-[4/3] flex items-center justify-center">
         <div style={{ width: `${widthShare}%`, boxShadow: "0 1px 2px rgba(0,0,0,0.12), 0 4px 14px rgba(0,0,0,0.14)" }}>
-          <MagnetFramePreview orientation="landscape" settings={settings} elements={elements} customTextureUrl={customTextureUrl} customElementUrls={customElementUrls} />
+          <MagnetFramePreview orientation="landscape" settings={settings} elements={elements} customTextureUrl={customTextureUrl} customElementUrls={customElementUrls} qrContext={qrContext} />
         </div>
       </div>
     </div>
@@ -440,15 +447,21 @@ const menuItemClass = "block w-full text-start px-3.5 py-2 hover:bg-chip";
 export default function MagnetFramesList({
   initialDesigns,
   events,
+  contactEventIds = [],
   today,
   openNewForEvent,
+  portfolioSlug = null,
 }: {
   initialDesigns: MagnetFrameListItem[];
   events: MagnetFrameEventOption[];
+  // The events whose client has a phone or an email: a frame of one can be sent for approval.
+  contactEventIds?: string[];
   // Israel's date ("YYYY-MM-DD"): frames of events from today on come first.
   today: string;
   // From `?new=1&event=<id>`: open the new-frame dialog ("" = with no event), or null.
   openNewForEvent: string | null;
+  // The photographer's public portfolio, for a QR that opens it (magnetPortfolioSlug).
+  portfolioSlug?: string | null;
 }) {
   const t = useT();
   const lang = useLang();
@@ -465,6 +478,9 @@ export default function MagnetFramesList({
     openNewForEvent !== null ? { eventId: openNewForEvent, templateKey: BLANK_TEMPLATE_KEY } : null
   );
   const assets = useCustomAssets(designs);
+  const hasContact = useMemo(() => new Set(contactEventIds), [contactEventIds]);
+  // "שליחה ללקוח לאישור": the message and the client, read when the item is tapped.
+  const [sending, setSending] = useState<{ designId: string; info: MagnetClientInfo & { client: NonNullable<MagnetClientInfo["client"]>; message: string } } | null>(null);
 
   // The dialog opened from the event page's link: drop the query so a refresh doesn't reopen it.
   useEffect(() => {
@@ -514,6 +530,29 @@ export default function MagnetFramesList({
     }
   };
 
+  const sendToClient = async (d: MagnetFrameListItem) => {
+    setMenuId(null);
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/magnet-frames/${d.id}/client`, { cache: "no-store" });
+      const info: MagnetClientInfo | null = res.ok ? await res.json() : null;
+      if (!info?.client) throw new Error();
+      if (canSendForApproval(info)) setSending({ designId: d.id, info });
+      else setError(t("אין טלפון או מייל ללקוח"));
+    } catch {
+      setError(t("לא הצלחנו לטעון את פרטי הלקוח. נסו שוב"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stopSharing = async (id: string) => {
+    setMenuId(null);
+    const data = await call<{ design: MagnetFrameListItem }>(`/api/magnet-frames/${id}`, { method: "PATCH", body: JSON.stringify({ shareWithClient: false }) });
+    if (data) replace(data.design);
+  };
+
   const remove = async () => {
     if (!deleting) return;
     const data = await call<{ ok: true }>(`/api/magnet-frames/${deleting.id}`, { method: "DELETE" });
@@ -544,6 +583,7 @@ export default function MagnetFramesList({
     const settings = d.frame_settings ?? DEFAULT_MAGNET_FRAME_SETTINGS;
     const name = d.name || t("מסגרת ללא שם");
     const open = menuId === d.id;
+    const approval = magnetApprovalStatus(d);
     return (
       // Raised while its menu is open: the card is a glass layer of its own, so the menu would
       // otherwise slide under the next card.
@@ -554,6 +594,7 @@ export default function MagnetFramesList({
             elements={d.landscape_elements ?? []}
             customTextureUrl={settings.customTextureAssetId ? assets.textures[settings.customTextureAssetId] : null}
             customElementUrls={assets.elements}
+            qrContext={{ eventId: d.event_id, portfolioSlug }}
           />
         </Link>
         <div className="flex items-start gap-2 mt-3 px-0.5">
@@ -604,6 +645,16 @@ export default function MagnetFramesList({
                 </span>
               </div>
             )}
+            {approval !== "not_shared" && (
+              <div className="mt-1.5">
+                <MagnetApprovalChip status={approval} />
+                {approval === "comment" && d.client_comment && (
+                  <p dir="auto" title={d.client_comment} className="text-xs text-ink mt-1 line-clamp-2 [overflow-wrap:anywhere]">
+                    &quot;{d.client_comment}&quot;
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <div className="relative shrink-0">
             <button
@@ -645,6 +696,22 @@ export default function MagnetFramesList({
                 >
                   {t("שיוך לאירוע")}
                 </button>
+                {d.event_id &&
+                  (hasContact.has(d.event_id) ? (
+                    <button role="menuitem" className={menuItemClass} disabled={busy} onClick={() => sendToClient(d)}>
+                      {approval === "not_shared" ? t("שליחה ללקוח לאישור") : t("שליחה שוב ללקוח")}
+                    </button>
+                  ) : (
+                    <div role="menuitem" aria-disabled="true" className="px-3.5 py-2 text-ink-soft">
+                      {t("שליחה ללקוח לאישור")}
+                      <div className="text-[11px]">{t("אין טלפון או מייל ללקוח")}</div>
+                    </div>
+                  ))}
+                {approval !== "not_shared" && (
+                  <button role="menuitem" className={menuItemClass} disabled={busy} onClick={() => stopSharing(d.id)}>
+                    {t("הפסקת השיתוף")}
+                  </button>
+                )}
                 <button
                   role="menuitem"
                   className={menuItemClass}
@@ -715,6 +782,15 @@ export default function MagnetFramesList({
             </section>
           )}
         </>
+      )}
+
+      {sending && (
+        <SendForApprovalSheet
+          designId={sending.designId}
+          info={sending.info}
+          onShared={(design) => replace(design)}
+          onClose={() => setSending(null)}
+        />
       )}
 
       {newDialog && <NewFrameDialog events={events} initialEventId={newDialog.eventId} initialTemplateKey={newDialog.templateKey} onClose={() => setNewDialog(null)} />}

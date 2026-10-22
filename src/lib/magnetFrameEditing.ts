@@ -56,6 +56,34 @@ export function snapValue(raw: number, lines: readonly number[], threshold: numb
   return best === null ? { value: raw, line: null } : { value: best, line: best };
 }
 
+// Where a new text goes: a spot on the mat that's clear of what's already there (owner,
+// 2026-10-22: a text added to a template landed on the template's names). Candidates in order of
+// preference: the bottom mat's middle, its upper and lower thirds, the top mat's middle, then the
+// bottom mat's sides. The first one at least `clearPct` from every other element's center wins;
+// when none is, the one farthest from them. Distances are in % of the frame's width (`aspect` =
+// height / width converts the vertical ones).
+export function freeTextSpot(
+  inset: { xPct: number; topPct: number; bottomPct: number },
+  others: readonly { xPct: number; yPct: number }[],
+  aspect: number,
+  clearPct = 12
+): { xPct: number; yPct: number } {
+  const bottom = inset.bottomPct;
+  const candidates = [
+    { xPct: 50, yPct: 100 - bottom / 2 },
+    { xPct: 50, yPct: 100 - bottom * 0.7 },
+    { xPct: 50, yPct: 100 - bottom * 0.3 },
+    { xPct: 50, yPct: inset.topPct / 2 },
+    { xPct: 28, yPct: 100 - bottom / 2 },
+    { xPct: 72, yPct: 100 - bottom / 2 },
+  ];
+  if (others.length === 0) return candidates[0];
+  const clearance = (c: { xPct: number; yPct: number }) => Math.min(...others.map((o) => Math.hypot(o.xPct - c.xPct, (o.yPct - c.yPct) * aspect)));
+  const free = candidates.find((c) => clearance(c) >= clearPct);
+  if (free) return free;
+  return candidates.reduce((best, c) => (clearance(c) > clearance(best) ? c : best));
+}
+
 // --- Rotation ---
 // The angle of the pointer around the element's center, in degrees clockwise from "up" (screen
 // coordinates, y down), and a rotation snapped to 45° steps when within `catchDeg` of one, or to

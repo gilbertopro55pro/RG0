@@ -74,6 +74,39 @@ API returns 403.
   photographer's printing software, which places them; bleed would change the file size it expects,
   and a sheet needs the photos.
 
+### Stage 3 (2026-10-22, later the same day)
+
+- **QR code element** (`type: "qr"`, `lib/magnetQr.ts`, `QrPanel`, drawn by `MagnetFramePreview` and
+  the export from the same `qrMatrix`, EC "M", 2-module quiet zone on a `bgColor` square). Targets:
+  - "gallery": `myframeflow.com/m/<code>`, a stable link per EVENT (`magnetGuestUrl`, first 64 bits of
+    the event id), so a magnet printed before the gallery exists works later. `app/m/[code]/route.ts`
+    (`magnetGuestState` in `lib/magnetGuest.ts`): live only while one of the event's frames has a
+    gallery QR; then the newest published, non-archived gallery → a view-only share link
+    (`gallery_share_links.purpose = 'magnet_guests'`, all tabs, web quality, migration 0191) → 307.
+    No gallery yet: `/m/<code>/info` ("התמונות יעלו לכאן בקרוב", studio logo, portfolio link, client
+    language). The client's own `access_token` is never used.
+  - "portfolio": `/p/<slug>`, only when the portfolio is on (`magnetPortfolioSlug`; the editor, list,
+    portal and export all use it). "url": a typed http(s) link (`normalizeQrUrl`).
+  - A QR without a link is a dashed placeholder on screen and left out of the files.
+  - Size: hard minimum 2 cm, warning under 2.5 cm (`qrMinSizePct`). jsQR (devDependency) decodes the
+    exported PNG in `magnetFrame.test.ts` (10×7 and 20×15 at 2 cm, rotated, over black and white).
+- **Client approval in the portal** (`lib/magnetApproval.ts`, `PortalMagnetFrames`, migration 0191
+  columns `client_shared_at / client_approved_at / client_comment / client_comment_at`):
+  - Photographer: "שליחה ללקוח לאישור" in the card menu and the editor bar (`ClientApprovalBar`)
+    opens `ClientMessageSheet` with the portal short link (`#magnets`) and sets `client_shared_at`
+    (PATCH `shareWithClient`). Status chips: waiting / approved / comment / changed after approval.
+  - Client: a "המגנטים לאירוע" card in the portal with the frames, "אישור העיצוב" and "יש לי הערה"
+    (`POST /api/portal/<token>/magnet-frames/<id>`). A comment clears the approval. The photographer
+    gets an event-log line and an email. **No push notification** (a new push type needs the owner).
+  - Changing a frame's event clears the four client columns.
+- **Colors from the invitation** (`lib/magnetPalette.ts`, `InvitationPalette` in הגדרות מסגרת): the
+  image stays in the browser; median-cut palette → `frame_settings.palette`, shown after the fixed
+  swatches in every color row; "התאמת המסגרת לצבעי ההזמנה" sets the mat (100%), the texts and the
+  recolorable ornaments. Fonts from the invitation: not done (no reliable way to recognize a font).
+- **A new text goes to a clear spot** (`freeTextSpot`): the bottom mat's middle, else its thirds, the
+  top mat, the bottom corners, away from existing elements (a text added to a template used to land
+  on its names).
+
 ### Before 2026-10-22
 
 - **Layout (since 2026-10-05, the owner's design):** two sides. Right (65% on desktop): accordion
