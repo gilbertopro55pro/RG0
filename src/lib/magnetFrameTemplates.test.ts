@@ -120,6 +120,9 @@ describe("magnet frame templates", () => {
           // One weight per font in the editor; the export would thicken or slant it on its own.
           expect(el.bold || el.italic).toBe(false);
         } else {
+          // Templates carry no QR: it needs a target the photographer chooses.
+          expect(el.type).toBe("decoration");
+          if (el.type !== "decoration") continue;
           const sources = [el.ornamentId, el.floralId, el.customElementAssetId].filter(Boolean);
           expect(sources).toHaveLength(1);
           expect(el.customElementAssetId).toBeUndefined();

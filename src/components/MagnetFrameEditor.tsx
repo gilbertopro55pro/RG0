@@ -768,7 +768,7 @@ export default function MagnetFrameEditor({
 
   // A QR can't shrink below what still scans when printed (qrMinSizePct); other elements keep the
   // decoration range.
-  const minSizePctOf = (el: MagnetFrameElement) => (el.type === "qr" ? Math.max(MAGNET_DECORATION_SIZE_RANGE.min, qrMinSizePct(latest.current.frameSettings.sizeKey)) : MAGNET_DECORATION_SIZE_RANGE.min);
+  const minSizePctOf = (el: MagnetFrameElement) => (el.type === "qr" ? Math.max(MAGNET_DECORATION_SIZE_RANGE.min, qrMinSizePct(frameSettings.sizeKey)) : MAGNET_DECORATION_SIZE_RANGE.min);
 
   const addElement = (el: MagnetFrameElement) => {
     setElements((prev) => [...prev, el]);
@@ -1673,6 +1673,7 @@ export default function MagnetFrameEditor({
           portfolioSlug={portfolioSlug}
           sizeKey={sizeKey}
           orientation="landscape"
+          mat={frameSettings}
           onAdd={addElement}
           onChange={(id, patch) => updateElement(id, patch)}
           actions={selected && selected.type === "qr" ? selectionActions(selected, t("מחיקת הקוד")) : null}

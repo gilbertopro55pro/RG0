@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { designToolsAllowed } from "@/lib/designTools";
+import { magnetPortfolioSlug } from "@/lib/magnetQr";
 import { hasAppAccess } from "@/lib/subscription";
 import { addDaysIso, israelTodayIso } from "@/lib/shootDayReminder";
 import type { EventRow, Photographer } from "@/lib/types";
@@ -65,7 +66,7 @@ export default async function MagnetFrameEditorPage({ params }: { params: Promis
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-5 [@media(max-height:500px)]:pt-2 pb-4 w-full">
       {/* On a short screen (a phone held sideways) the editor's title row carries its own back arrow. */}
       <BackLink href="/magnet-frames" label={t("לכל המסגרות")} className="mb-3 [@media(max-height:500px)]:hidden" />
-      <MagnetFrameEditor designId={id} events={events} portfolioSlug={photographer.portfolio_slug ?? null} />
+      <MagnetFrameEditor designId={id} events={events} portfolioSlug={magnetPortfolioSlug(photographer)} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_MAGNET_FRAME_SETTINGS, isSquareMagnetSize } from "@/lib/magnetFrameShared";
 import { downloadObjectBuffer } from "@/lib/storage";
+import { magnetPortfolioSlug, type MagnetQrContext } from "@/lib/magnetQr";
 import type { FrameOrientation, MagnetFrameCustomElementRow, MagnetFrameCustomTextureRow, MagnetFrameDesignRow, MagnetFrameElement, MagnetFrameSettings } from "@/lib/types";
 
 export type LoadedMagnetDesign = {
@@ -11,6 +12,9 @@ export type LoadedMagnetDesign = {
   settings: MagnetFrameSettings;
   customTextureImage: Buffer | null;
   customElementBuffers: Map<string, Buffer>;
+  // What a QR code opens: the frame's linked event (the guests' gallery link) and the
+  // photographer's public portfolio, when it's on.
+  qrContext: MagnetQrContext;
 };
 
 // Everything one orientation of a saved design needs to render (PNG or PSD): its elements, the
@@ -59,5 +63,17 @@ export async function loadMagnetDesign(supabase: SupabaseClient, userId: string,
     }
   }
 
-  return { orientation: rendered, elements, settings, customTextureImage, customElementBuffers };
+  // The portfolio only when a QR opens it (one query less for every other frame).
+  let portfolioSlug: string | null = null;
+  if (elements.some((el) => el.type === "qr" && el.target === "portfolio")) {
+    const { data: photographer } = await supabase
+      .from("photographers")
+      .select("portfolio_slug, portfolio_enabled")
+      .eq("id", userId)
+      .maybeSingle<{ portfolio_slug: string | null; portfolio_enabled: boolean | null }>();
+    portfolioSlug = magnetPortfolioSlug(photographer);
+  }
+  const qrContext: MagnetQrContext = { eventId: design.event_id ?? null, portfolioSlug };
+
+  return { orientation: rendered, elements, settings, customTextureImage, customElementBuffers, qrContext };
 }

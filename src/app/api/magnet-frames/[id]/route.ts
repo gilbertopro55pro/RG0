@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireDesignToolsUser } from "@/lib/designTools";
 import { removeObjects } from "@/lib/storage";
+import { CLEARED_CLIENT_APPROVAL, shareWithClientPatch, type MagnetApprovalFields } from "@/lib/magnetApproval";
 import type { MagnetFrameDesignRow } from "@/lib/types";
 
 const DESIGN_SELECT = "*, event:events(id, client_name, event_date)";
@@ -24,8 +25,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return NextResponse.json({ design });
 }
 
-// Renames the frame or links it to an event (eventId null unlinks). The elements are saved by
-// POST /api/magnet-frames, so this doesn't move updated_at.
+// Renames the frame, links it to an event (eventId null unlinks), or shares it with the event's
+// client in the portal (shareWithClient, stage 3: true when the photographer sends the link, false
+// stops it). The elements are saved by POST /api/magnet-frames, so this doesn't move updated_at.
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const auth = await requireDesignToolsUser();
@@ -33,7 +35,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { supabase, userId } = auth;
   if (!UUID.test(id)) return NextResponse.json({ error: "העיצוב לא נמצא" }, { status: 404 });
 
-  let body: { name?: string | null; eventId?: string | null };
+  let body: { name?: string | null; eventId?: string | null; shareWithClient?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -41,12 +43,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   if (!body || typeof body !== "object") return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
 
-  const patch: { name?: string | null; event_id?: string | null } = {};
+  const patch: Record<string, unknown> = {};
   if ("name" in body) {
     if (body.name != null && typeof body.name !== "string") return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
     patch.name = (body.name ?? "").trim().slice(0, 80).trim() || null;
   }
-  if ("eventId" in body) {
+  const hasEvent = "eventId" in body;
+  const hasShare = "shareWithClient" in body;
+  if (hasShare && typeof body.shareWithClient !== "boolean") return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
+  if (hasEvent) {
     if (body.eventId != null && (typeof body.eventId !== "string" || !UUID.test(body.eventId))) return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
     const eventId = body.eventId ?? null;
     // RLS checks the event belongs to the photographer too; this gives the clear answer.
@@ -56,7 +61,33 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     patch.event_id = eventId;
   }
-  if (Object.keys(patch).length === 0) return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
+  if (Object.keys(patch).length === 0 && !hasShare) return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
+
+  // The client approval columns depend on the row as it is: a frame that moves to another event
+  // (or leaves its event) isn't shared with anyone any more, and a share needs an event.
+  if (hasEvent || hasShare) {
+    const { data: current } = await supabase
+      .from("magnet_frame_designs")
+      .select("event_id, updated_at, client_shared_at, client_approved_at, client_comment, client_comment_at")
+      .eq("id", id)
+      .eq("photographer_id", userId)
+      .maybeSingle<MagnetApprovalFields & { event_id: string | null }>();
+    if (!current) return NextResponse.json({ error: "העיצוב לא נמצא" }, { status: 404 });
+    let approval: MagnetApprovalFields = current;
+    if (hasEvent && patch.event_id !== current.event_id) {
+      Object.assign(patch, CLEARED_CLIENT_APPROVAL);
+      approval = { ...current, ...CLEARED_CLIENT_APPROVAL };
+    }
+    if (hasShare) {
+      const eventId = hasEvent ? (patch.event_id as string | null) : current.event_id;
+      if (body.shareWithClient) {
+        if (!eventId) return NextResponse.json({ error: "המסגרת לא משויכת לאירוע" }, { status: 400 });
+        Object.assign(patch, shareWithClientPatch(approval, new Date().toISOString()));
+      } else {
+        patch.client_shared_at = null;
+      }
+    }
+  }
 
   const { data: design, error } = await supabase
     .from("magnet_frame_designs")

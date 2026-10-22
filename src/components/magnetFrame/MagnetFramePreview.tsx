@@ -1,16 +1,17 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { albumFontFamilyCss } from "@/lib/albumFonts";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { findMagnetFrameTexture, textureDataUrl } from "@/lib/magnetFrameTextures";
 import { findMagnetFrameFloral } from "@/lib/magnetFrameFlorals";
 import { getCutoutRadiusPx, getMatInsetPct, magnetDesignDimensions, magnetTextShadowRgba } from "@/lib/magnetFrameShared";
-import type { FrameOrientation, MagnetFrameElement, MagnetFrameSettings, MagnetFrameTextElement } from "@/lib/types";
+import { magnetQrUrl, qrMatrix, qrPath, qrSquareModules, type MagnetQrContext } from "@/lib/magnetQr";
+import type { FrameOrientation, MagnetFrameElement, MagnetFrameQrElement, MagnetFrameSettings, MagnetFrameTextElement } from "@/lib/types";
 
 // One magnet frame as it will be exported (owner's tool, magnetFrame.ts renders the same thing at
 // 300 DPI): the mat with its color and texture, the photo window (a checker, or a sample photo to
-// judge the design against), and the elements in order. Shared by the editor, which adds its own
+// judge the design against), and the elements in order (texts, decorations, QR codes). Shared by the editor, which adds its own
 // interaction through the element props and overlays, and by the frames list and the template
 // picker, which show it as is.
 
@@ -79,6 +80,33 @@ export function decorationSrc(el: Extract<MagnetFrameElement, { type: "decoratio
   return ornament ? ornamentDataUrl(ornament, el.color) : null;
 }
 
+// A QR code as drawn on the frame: its bgColor square (the quiet zone included) and the dark
+// modules, from the same qrMatrix the export rasterizes. Without a link yet (no linked event, no
+// portfolio, an empty link), a dashed "QR" square shows where it is; the export leaves it out.
+export function MagnetQrGraphic({ el, url }: { el: Pick<MagnetFrameQrElement, "color" | "bgColor">; url: string | null }) {
+  const drawn = useMemo(() => {
+    if (!url) return null;
+    const matrix = qrMatrix(url);
+    return { n: qrSquareModules(matrix), d: qrPath(matrix) };
+  }, [url]);
+  if (!drawn) {
+    return (
+      <svg viewBox="0 0 100 100" className="w-full h-full pointer-events-none block" aria-hidden="true">
+        <rect x={2} y={2} width={96} height={96} rx={6} fill="rgba(255,255,255,0.82)" stroke="#7a7a7a" strokeWidth={3} strokeDasharray="9 7" />
+        <text x={50} y={50} textAnchor="middle" dominantBaseline="central" fontSize={26} fontWeight={700} fill="#7a7a7a" style={{ fontFamily: "Arial, sans-serif" }} direction="ltr">
+          QR
+        </text>
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox={`0 0 ${drawn.n} ${drawn.n}`} className="w-full h-full pointer-events-none block" shapeRendering="crispEdges" aria-hidden="true">
+      <rect width={drawn.n} height={drawn.n} fill={el.bgColor} />
+      <path d={drawn.d} fill={el.color} />
+    </svg>
+  );
+}
+
 export type MagnetFramePreviewHandle = { element: HTMLDivElement | null };
 
 type Props = {
@@ -105,10 +133,15 @@ type Props = {
   children?: (scale: number) => ReactNode;
   // Shown for a text element with no text yet (the editor's "טקסט ריק").
   emptyTextLabel?: string;
+  // What a QR element opens (magnetQrUrl): the frame's linked event and the photographer's
+  // portfolio. Without it, a gallery or portfolio QR shows its placeholder.
+  qrContext?: MagnetQrContext;
 } & Omit<React.HTMLAttributes<HTMLDivElement>, "children" | "style" | "className">;
 
+const NO_QR_CONTEXT: MagnetQrContext = { eventId: null, portfolioSlug: null };
+
 const MagnetFramePreview = forwardRef<MagnetFramePreviewHandle, Props>(function MagnetFramePreview(
-  { orientation, settings, elements, customTextureUrl, customElementUrls = {}, photoUrl, className, style, animate, elementProps, elementExtras, textRef, onWidth, children, emptyTextLabel, ...rest },
+  { orientation, settings, elements, customTextureUrl, customElementUrls = {}, photoUrl, className, style, animate, elementProps, elementExtras, textRef, onWidth, children, emptyTextLabel, qrContext = NO_QR_CONTEXT, ...rest },
   ref
 ) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -204,6 +237,32 @@ const MagnetFramePreview = forwardRef<MagnetFramePreviewHandle, Props>(function 
                 onClick={props.onPointerDown ? (e) => e.stopPropagation() : undefined}
               >
                 {el.text || emptyTextLabel || "\u00a0"}
+                {elementExtras?.(el, scale)}
+              </div>
+            );
+          }
+          if (el.type === "qr") {
+            const sizePx = (el.sizePct / 100) * shorterDisplaySide;
+            return (
+              <div
+                key={el.id}
+                className="absolute"
+                style={{
+                  left: `${el.xPct}%`,
+                  top: `${el.yPct}%`,
+                  width: sizePx,
+                  height: sizePx,
+                  transform: `translate(-50%, -50%) rotate(${el.rotation ?? 0}deg)`,
+                  outline,
+                  outlineOffset: 3,
+                  cursor: props.cursor,
+                  transition: smooth ? "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease" : "none",
+                }}
+                onPointerDown={props.onPointerDown}
+                onDoubleClick={props.onDoubleClick}
+                onClick={props.onPointerDown ? (e) => e.stopPropagation() : undefined}
+              >
+                <MagnetQrGraphic el={el} url={magnetQrUrl(el, qrContext)} />
                 {elementExtras?.(el, scale)}
               </div>
             );

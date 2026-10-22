@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { amountToDocument, RECEIPT_PAYMENT_METHODS, type ReceiptPaymentMethod } from "@/lib/paymentDocuments";
 import Link from "next/link";
+import MagnetApprovalChip from "@/components/magnetFrame/MagnetApprovalChip";
+import { magnetApprovalStatus, type MagnetApprovalFields } from "@/lib/magnetApproval";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -194,8 +196,12 @@ function parseStageKey(key: string): { stageKey: string | null; customStageId: s
 
 const noSubscribe = () => () => {};
 
-// A magnet frame linked to the event (the card under the contract; /magnet-frames).
-export type EventMagnetFrame = { id: string; name: string | null; updated_at: string };
+// A magnet frame linked to the event (the card under the contract; /magnet-frames), with where it
+// stands with the client (stage 3, lib/magnetApproval.ts).
+export type EventMagnetFrame = { id: string; name: string | null; updated_at: string } & Pick<
+  MagnetApprovalFields,
+  "client_shared_at" | "client_approved_at" | "client_comment" | "client_comment_at"
+>;
 
 export default function EventDetailView({
   event,
@@ -1576,19 +1582,29 @@ export default function EventDetailView({
             </div>
             {magnetFrames.length > 0 && (
               <div className="space-y-2 mb-2.5">
-                {magnetFrames.map((f) => (
-                  <Link
-                    key={f.id}
-                    href={`/magnet-frames/${f.id}`}
-                    className="w-full flex items-center justify-between gap-3 text-sm rounded-xl px-3.5 py-2.5"
-                    style={{ background: "var(--color-chip)" }}
-                  >
-                    <span className="truncate font-medium">{f.name || t("מסגרת ללא שם")}</span>
-                    <span className="shrink-0 text-xs text-ink-soft">
-                      {t("עודכן {date}", { date: new Date(f.updated_at).toLocaleDateString(locale, { day: "numeric", month: "numeric", year: "numeric" }) })}
-                    </span>
-                  </Link>
-                ))}
+                {magnetFrames.map((f) => {
+                  const approval = magnetApprovalStatus(f);
+                  return (
+                    <Link key={f.id} href={`/magnet-frames/${f.id}`} className="block w-full text-sm rounded-xl px-3.5 py-2.5" style={{ background: "var(--color-chip)" }}>
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="truncate font-medium">{f.name || t("מסגרת ללא שם")}</span>
+                        <span className="shrink-0 text-xs text-ink-soft">
+                          {t("עודכן {date}", { date: new Date(f.updated_at).toLocaleDateString(locale, { day: "numeric", month: "numeric", year: "numeric" }) })}
+                        </span>
+                      </span>
+                      {approval !== "not_shared" && (
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 min-w-0">
+                          <MagnetApprovalChip status={approval} />
+                          {approval === "comment" && f.client_comment && (
+                            <span dir="auto" title={f.client_comment} className="min-w-0 max-w-full truncate text-xs text-ink">
+                              &quot;{f.client_comment}&quot;
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
               </div>
             )}
             <Link

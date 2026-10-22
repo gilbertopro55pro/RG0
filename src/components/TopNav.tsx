@@ -27,7 +27,7 @@ const NAV_ITEMS = [
 // marketing page for every logged-out visitor hitting "/".
 // "/p" (the public portfolio, /p/[slug]) added 2026-09-23 — it had been showing the photographer's
 // own dashboard nav to every potential client who opened a shared portfolio link.
-export const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/r", "/billing", "/landing", "/en", "/ru", "/p", "/chat", "/print", "/terms", "/privacy", "/cookies", "/cancellation-policy", "/accessibility", "/business-info"];
+export const HIDDEN_PREFIXES = ["/login", "/signup", "/gallery", "/contracts", "/portal", "/quotes", "/r", "/m", "/billing", "/landing", "/en", "/ru", "/p", "/chat", "/print", "/terms", "/privacy", "/cookies", "/cancellation-policy", "/accessibility", "/business-info"];
 
 // The version comes from the server (lib/changelog.ts is ~270KB and must not ship with every page).
 export default function TopNav({ currentVersion: CURRENT_VERSION }: { currentVersion: string }) {

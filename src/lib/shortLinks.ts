@@ -23,8 +23,11 @@ const CODE_LEN = 11;
 const B62 = BigInt(62);
 const MAX = BigInt(1) << BigInt(64);
 
-function shortCode(kind: ShortLinkKind, token: string): string | null {
-  const hex = token.replace(/-/g, "").toLowerCase();
+// A UUID's first 16 hex digits (64 bits, 60 of them random in a v4 UUID) as 11 base-62
+// characters, or null for a string that isn't a UUID. Also the magnet guest link's code
+// (lib/magnetQr.ts), made from the event's id.
+export function uuidPrefixCode(uuid: string): string | null {
+  const hex = uuid.replace(/-/g, "").toLowerCase();
   if (!/^[0-9a-f]{32}$/.test(hex)) return null;
   let n = BigInt(`0x${hex.slice(0, 16)}`);
   let out = "";
@@ -32,7 +35,28 @@ function shortCode(kind: ShortLinkKind, token: string): string | null {
     out = ALPHABET[Number(n % B62)] + out;
     n /= B62;
   }
-  return KIND_CHAR[kind] + out;
+  return out;
+}
+
+// The UUIDs a uuidPrefixCode stands for: every one starting with its 16 hex digits, as a range for
+// a query on a uuid column. Null for a code uuidPrefixCode never made.
+export function uuidPrefixRange(code: string): { from: string; to: string } | null {
+  if (code.length !== CODE_LEN) return null;
+  let n = BigInt(0);
+  for (const ch of code) {
+    const v = ALPHABET.indexOf(ch);
+    if (v < 0) return null;
+    n = n * B62 + BigInt(v);
+  }
+  if (n >= MAX) return null;
+  const h = n.toString(16).padStart(16, "0");
+  const head = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}`;
+  return { from: `${head}-0000-000000000000`, to: `${head}-ffff-ffffffffffff` };
+}
+
+function shortCode(kind: ShortLinkKind, token: string): string | null {
+  const code = uuidPrefixCode(token);
+  return code ? KIND_CHAR[kind] + code : null;
 }
 
 // The link to send. `search` ("?folders=…") is kept as is; a token that isn't a UUID keeps the long form.
@@ -46,16 +70,8 @@ export function parseShortCode(code: string): { kind: ShortLinkKind; from: strin
   if (code.length !== CODE_LEN + 1) return null;
   const kind = (Object.keys(KIND_CHAR) as ShortLinkKind[]).find((k) => KIND_CHAR[k] === code[0]);
   if (!kind) return null;
-  let n = BigInt(0);
-  for (const ch of code.slice(1)) {
-    const v = ALPHABET.indexOf(ch);
-    if (v < 0) return null;
-    n = n * B62 + BigInt(v);
-  }
-  if (n >= MAX) return null;
-  const h = n.toString(16).padStart(16, "0");
-  const head = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}`;
-  return { kind, from: `${head}-0000-000000000000`, to: `${head}-ffff-ffffffffffff` };
+  const range = uuidPrefixRange(code.slice(1));
+  return range ? { kind, ...range } : null;
 }
 
 // The query of a gallery link the photographer sends: the chosen tabs when they're only some of

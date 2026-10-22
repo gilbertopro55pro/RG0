@@ -1,7 +1,11 @@
 import sharp from "sharp";
+import jsQR from "jsqr";
+import { readPsd } from "ag-psd";
 import { describe, expect, it, vi } from "vitest";
-import { composeMagnetFrameElements, magnetTextEffects, renderMagnetFrameBase, renderMagnetFramePng } from "@/lib/magnetFrame";
+import { composeMagnetFrameElements, magnetTextEffects, qrPixels, renderMagnetFrameBase, renderMagnetFramePng } from "@/lib/magnetFrame";
+import { renderMagnetFramePsd } from "@/lib/magnetFramePsd";
 import { loadMagnetDesign } from "@/lib/magnetFrameLoad";
+import { QR_QUIET_ZONE_MODULES, magnetGuestUrl, newQrElement, qrMatrix, qrMinSizePct, qrSquareModules } from "@/lib/magnetQr";
 import {
   DEFAULT_MAGNET_FRAME_SETTINGS,
   MAGNET_FRAME_SIZES,
@@ -10,7 +14,7 @@ import {
   magnetExportDimensions,
   magnetExportScale,
 } from "@/lib/magnetFrameShared";
-import type { MagnetFrameElement, MagnetFrameSettings, MagnetFrameSizeKey } from "@/lib/types";
+import type { MagnetFrameElement, MagnetFrameQrElement, MagnetFrameSettings, MagnetFrameSizeKey } from "@/lib/types";
 
 vi.mock("@/lib/storage", () => ({ downloadObjectBuffer: vi.fn(async () => null) }));
 
@@ -164,10 +168,117 @@ describe("magnet frame render", () => {
   }, 20000);
 });
 
+describe("magnet frame QR code", () => {
+  const EVENT = "3f2a9c1e-7b4d-4e8f-9a01-23456789abcd";
+  const qrContext = { eventId: EVENT, portfolioSlug: "gilberto" };
+  const settings = (sizeKey: MagnetFrameSizeKey): MagnetFrameSettings => ({ ...DEFAULT_MAGNET_FRAME_SETTINGS, sizeKey, textureId: null });
+
+  // The frame as printed: over a photo (here flat white, or black for the worst case behind the
+  // code's corner), read back like a phone would.
+  async function decode(png: Buffer, background = "#ffffff"): Promise<string | null> {
+    const { data, info } = await sharp(png).flatten({ background }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    return jsQR(new Uint8ClampedArray(data.buffer, data.byteOffset, data.length), info.width, info.height)?.data ?? null;
+  }
+
+  const minQr = (sizeKey: MagnetFrameSizeKey, over: Partial<MagnetFrameQrElement> = {}): MagnetFrameQrElement => ({
+    ...newQrElement("gallery", { sizeKey, orientation: "landscape", id: "qr" }),
+    sizePct: qrMinSizePct(sizeKey),
+    ...over,
+  });
+
+  it.each(["10x7", "20x15"] as const)("a %s frame with a QR at the minimum size (2 cm) scans to the event's guest link", async (sizeKey) => {
+    const png = await renderMagnetFramePng("landscape", { elements: [minQr(sizeKey)], settings: settings(sizeKey), customTextureImage: null, customElementBuffers: new Map(), qrContext });
+    expect(await decode(png)).toBe(magnetGuestUrl(EVENT));
+    expect(await decode(png, "#000000")).toBe(magnetGuestUrl(EVENT));
+  }, 30000);
+
+  it("on a dark mat, turned, in the portrait frame, it still scans", async () => {
+    const s = { ...settings("10x7.5"), frameColor: "#1c2a4a", frameColorOpacity: 100 };
+    const el = { ...minQr("10x7.5", { rotation: 12, target: "url", url: "instagram.com/gilberto.studio" }), ...{ xPct: 50, yPct: 80 } };
+    const png = await renderMagnetFramePng("portrait", { elements: [el], settings: s, customTextureImage: null, customElementBuffers: new Map(), qrContext });
+    expect(await decode(png)).toBe("https://instagram.com/gilberto.studio");
+  }, 30000);
+
+  it("draws sharp modules: only the two colors, each module whole pixels at 300 DPI", () => {
+    const url = magnetGuestUrl(EVENT)!;
+    const sizePx = 236; // 2 cm at 300 DPI
+    const { data } = qrPixels(url, sizePx, "#1c2a4a", "#f5efe6");
+    const colors = new Set<string>();
+    for (let i = 0; i < data.length; i += 4) colors.add(`${data[i]},${data[i + 1]},${data[i + 2]},${data[i + 3]}`);
+    expect([...colors].sort()).toEqual(["245,239,230,255", "28,42,74,255"]);
+    // The top-left finder pattern starts right after the quiet zone, and every module is 7 or 8 px.
+    const n = qrSquareModules(qrMatrix(url));
+    const start = Math.ceil((QR_QUIET_ZONE_MODULES * sizePx) / n - 0.5);
+    const at = (x: number, y: number) => data[(y * sizePx + x) * 4];
+    expect(at(start, start)).toBe(28);
+    expect(at(start - 1, start)).toBe(245);
+    let run = 0;
+    for (let x = start; at(x, start) === 28; x++) run++;
+    // The finder's top row is 7 dark modules.
+    expect(run).toBeGreaterThanOrEqual(7 * 7);
+    expect(run).toBeLessThanOrEqual(7 * 8);
+  });
+
+  it("is left out of the file while it has nothing to open", async () => {
+    const [noEvent, empty] = await Promise.all([
+      composeMagnetFrameElements([minQr("10x7")], "landscape", "10x7", new Map(), { eventId: null, portfolioSlug: null }),
+      composeMagnetFrameElements([minQr("10x7", { target: "url", url: "" })], "landscape", "10x7", new Map(), qrContext),
+    ]);
+    for (const png of [noEvent, empty]) {
+      const { data } = await rgba(png);
+      expect(data.some((v, i) => i % 4 === 3 && v > 0)).toBe(false);
+    }
+  }, 20000);
+
+  it("is centered where the editor puts it, at its size", async () => {
+    const el = minQr("15x10", { xPct: 30, yPct: 70, sizePct: 25 });
+    const png = await composeMagnetFrameElements([el], "landscape", "15x10", new Map(), qrContext);
+    const { width, height, alpha } = await rgba(png);
+    const side = Math.round(0.25 * Math.min(width, height));
+    const cx = 0.3 * width;
+    const cy = 0.7 * height;
+    expect(alpha(cx - side / 2 + 1, cy)).toBe(255);
+    expect(alpha(cx + side / 2 - 1, cy)).toBe(255);
+    expect(alpha(cx - side / 2 - 2, cy)).toBe(0);
+    expect(alpha(cx, cy + side / 2 + 2)).toBe(0);
+  }, 20000);
+
+  it("the PSD has the code as its own pixel layer named QR", async () => {
+    const psd = await renderMagnetFramePsd("landscape", {
+      elements: [textEl({ yPct: 95, fontSizePx: 60 }), minQr("10x7")],
+      settings: settings("10x7"),
+      customTextureImage: null,
+      customElementBuffers: new Map(),
+      qrContext,
+    });
+    const doc = readPsd(psd, { skipLayerImageData: true, skipCompositeImageData: true, skipThumbnail: true });
+    const qrLayers = (doc.children ?? []).filter((l) => l.name === "QR");
+    expect(qrLayers).toHaveLength(1);
+    const side = qrLayers[0].right! - qrLayers[0].left!;
+    expect(Math.abs(side - Math.round((2 / 2.54) * 300))).toBeLessThanOrEqual(2);
+    expect(qrLayers[0].text).toBeUndefined();
+  }, 30000);
+
+  it("the PSD leaves out a QR with nothing to open", async () => {
+    const psd = await renderMagnetFramePsd("landscape", {
+      elements: [minQr("10x7")],
+      settings: settings("10x7"),
+      customTextureImage: null,
+      customElementBuffers: new Map(),
+      qrContext: { eventId: null, portfolioSlug: null },
+    });
+    const doc = readPsd(psd, { skipLayerImageData: true, skipCompositeImageData: true, skipThumbnail: true });
+    expect((doc.children ?? []).some((l) => l.name === "QR")).toBe(false);
+  }, 30000);
+});
+
 describe("loadMagnetDesign", () => {
-  function fakeSupabase(row: Record<string, unknown>) {
-    const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: row }) };
-    return { from: () => chain } as never;
+  function fakeSupabase(row: Record<string, unknown>, photographer: Record<string, unknown> | null = null) {
+    const chain = (data: unknown) => {
+      const c = { select: () => c, eq: () => c, maybeSingle: async () => ({ data }) };
+      return c;
+    };
+    return { from: (table: string) => chain(table === "photographers" ? photographer : row) } as never;
   }
   const row = (frame_settings: Partial<MagnetFrameSettings>) => ({
     id: "d",
@@ -190,5 +301,16 @@ describe("loadMagnetDesign", () => {
     expect(design?.orientation).toBe("portrait");
     expect(design?.elements.map((e) => e.id)).toEqual(["port"]);
     expect(design?.settings.sizeKey).toBe("20x15");
+  });
+
+  it("gives a QR its context: the frame's event, and the portfolio only when it's on", async () => {
+    const qr = newQrElement("portfolio", { sizeKey: "20x15", orientation: "landscape", id: "q" });
+    const design = { ...row({}), event_id: "e1", landscape_elements: [qr] };
+    const on = await loadMagnetDesign(fakeSupabase(design, { portfolio_slug: "studio", portfolio_enabled: true }), "u", "d", "landscape");
+    expect(on?.qrContext).toEqual({ eventId: "e1", portfolioSlug: "studio" });
+    const off = await loadMagnetDesign(fakeSupabase(design, { portfolio_slug: "studio", portfolio_enabled: false }), "u", "d", "landscape");
+    expect(off?.qrContext).toEqual({ eventId: "e1", portfolioSlug: null });
+    const noQr = await loadMagnetDesign(fakeSupabase({ ...row({}), event_id: null }, { portfolio_slug: "studio", portfolio_enabled: true }), "u", "d", "landscape");
+    expect(noQr?.qrContext).toEqual({ eventId: null, portfolioSlug: null });
   });
 });
