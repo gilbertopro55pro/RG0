@@ -3,7 +3,8 @@
 import { useState } from "react";
 import type { StageKey } from "@/lib/stages";
 import { useT } from "@/i18n/client";
-import { clipSongLines, CLIP_SONG_MAX, type ClipSongs } from "@/lib/clipSongs";
+import { clipSongLines, type ClipSongs } from "@/lib/clipSongs";
+import ClipSongsFields, { type ClipSongsInput } from "@/components/ClipSongsFields";
 
 type ClientStage = {
   key: string;
@@ -45,15 +46,10 @@ export default function PortalStageActions({
   const t = useT();
   const [submitting, setSubmitting] = useState<string | null>(null);
   // The clip songs (owner, 2026-10-13): written here instead of sent on WhatsApp.
-  const [oneSong, setOneSong] = useState(!twoSongs);
-  const [single, setSingle] = useState("");
-  const [calm, setCalm] = useState("");
-  const [upbeat, setUpbeat] = useState("");
   const [chosen, setChosen] = useState<ClipSongs | null>(clipSongs);
   const [songError, setSongError] = useState<string | null>(null);
-  const songsReady = oneSong ? !!single.trim() : !!calm.trim() && !!upbeat.trim();
 
-  const markDone = async (stageKey: string, songs?: { oneSong: boolean; single: string; calm: string; upbeat: string }) => {
+  const markDone = async (stageKey: string, songs?: ClipSongsInput) => {
     if (submitting) return;
     setSubmitting(stageKey);
     setSongError(null);
@@ -76,19 +72,6 @@ export default function PortalStageActions({
       setSubmitting(null);
     }
   };
-  const songField = (label: string, value: string, set: (v: string) => void, placeholder: string) => (
-    <label className="block">
-      <span className="block text-xs font-semibold text-ink mb-1">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => set(e.target.value)}
-        maxLength={CLIP_SONG_MAX}
-        dir="auto"
-        placeholder={placeholder}
-        className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white"
-      />
-    </label>
-  );
 
   return (
     <div className="space-y-1.5">
@@ -132,34 +115,14 @@ export default function PortalStageActions({
             )}
 
             {isSongs && !done && (
-              <div className="mt-2 ms-9 space-y-2.5">
-                <p className="text-xs leading-relaxed text-ink-soft">
-                  {oneSong
-                    ? t("כתבו את שם השיר לקליפ, או הדביקו קישור מיוטיוב.")
-                    : t("כתבו את שמות השירים לקליפ ההיילייטס, או הדביקו קישורים מיוטיוב: שיר רגוע ושיר קצבי.")}
-                </p>
-                {twoSongs && (
-                  <label className="flex items-center gap-2 text-xs text-ink">
-                    <input type="checkbox" checked={oneSong} onChange={(e) => setOneSong(e.target.checked)} className="h-4 w-4" />
-                    {t("מעדיפים שיר אחד לקליפ")}
-                  </label>
-                )}
-                {oneSong ? (
-                  songField(t("השיר לקליפ"), single, setSingle, t("שם השיר או קישור ליוטיוב"))
-                ) : (
-                  <>
-                    {songField(t("שיר רגוע"), calm, setCalm, t("שם השיר או קישור ליוטיוב"))}
-                    {songField(t("שיר קצבי"), upbeat, setUpbeat, t("שם השיר או קישור ליוטיוב"))}
-                  </>
-                )}
-                {songError && <p className="text-xs text-rose">{songError}</p>}
-                <button
-                  onClick={() => markDone(key, { oneSong, single, calm, upbeat })}
-                  disabled={!songsReady || submitting === key}
-                  className="block rounded-lg px-3.5 py-2 text-xs font-semibold bg-ink text-white disabled:opacity-50"
-                >
-                  {submitting === key ? t("שומר...") : oneSong ? t("אישור השיר") : t("אישור השירים")}
-                </button>
+              <div className="mt-2 ms-9">
+                <ClipSongsFields
+                  twoSongs={twoSongs}
+                  submitLabel={(one) => (one ? t("אישור השיר") : t("אישור השירים"))}
+                  busy={submitting === key}
+                  error={songError}
+                  onSubmit={(songs) => markDone(key, songs)}
+                />
               </div>
             )}
 

@@ -37,7 +37,9 @@ import type {
   GalleryRow,
   TeamMember,
 } from "@/lib/types";
-import { clipSongLines } from "@/lib/clipSongs";
+import { clipSongLines, isWeddingEvent, type ClipSongs } from "@/lib/clipSongs";
+import { stageRole } from "@/lib/clientReminders";
+import ClipSongsStagePanel from "@/components/ClipSongsStagePanel";
 import SendUpdateButton from "@/components/SendUpdateButton";
 import BodyPortal from "@/components/BodyPortal";
 import ToneTag from "@/components/ToneTag";
@@ -416,6 +418,17 @@ export default function EventDetailView({
         return cs ? [{ key: `custom:${cs.id}`, label: cs.name, isCheckpoint: cs.notify_client, requiresAlbumPdf: cs.requires_album_pdf }] : [];
       })
     : PACKAGE_FLOWS[event.package!].map(builtInDescriptor);
+
+  // The clip songs (lib/clipSongs.ts): chosen by the client in the portal, or filled here for the
+  // client under the song-selection stage (ClipSongsStagePanel, owner 2026-10-22).
+  const [savedSongs, setClipSongs] = useState<ClipSongs | null>(null);
+  const clipSongs = savedSongs ?? event.clip_songs ?? null;
+  const songStageKey =
+    stageDescriptors.find((d) =>
+      d.key.startsWith("custom:")
+        ? stageRole(null, { name: d.label, requires_album_pdf: d.requiresAlbumPdf }) === "client_song_selection"
+        : stageRole(d.key) === "client_song_selection"
+    )?.key ?? null;
 
   // Resolves the photographer's own saved template (Settings → הודעות ללקוח/ה) for a stage and
   // substitutes every token — shared by the manual "שליחת עדכון" button AND (for the admin
@@ -1568,6 +1581,30 @@ export default function EventDetailView({
         albumUploadProgress={albumUploadProgress}
         onUploadAlbumDesign={uploadAlbumDesign}
         pendingStageKeys={pendingStageKeys}
+        stagePanel={
+          songStageKey
+            ? {
+                key: songStageKey,
+                panel: (
+                  <ClipSongsStagePanel
+                    eventId={event.id}
+                    stageKey={songStageKey}
+                    twoSongs={isWeddingEvent(event.event_type)}
+                    songs={clipSongs}
+                    onSaved={(songs, doneAt) => {
+                      setClipSongs(songs);
+                      if (doneAt) {
+                        setStages((prev) =>
+                          prev.map((s) => ((s.stage_key ?? `custom:${s.custom_stage_id}`) === songStageKey ? { ...s, done: true, done_at: doneAt } : s))
+                        );
+                      }
+                      void refreshNotifications();
+                    }}
+                  />
+                ),
+              }
+            : null
+        }
       />
 
       {isOwner && (
@@ -1592,12 +1629,13 @@ export default function EventDetailView({
       )}
 
 
-      {/* The clip songs the client chose in the portal (owner, 2026-10-13; lib/clipSongs.ts). */}
-      {clipSongLines(event.clip_songs).length > 0 && (
+      {/* The clip songs the client chose in the portal (owner, 2026-10-13; lib/clipSongs.ts), when
+          the package has no song stage to show them under (ClipSongsStagePanel). */}
+      {!songStageKey && clipSongLines(clipSongs).length > 0 && (
         <div className="mt-7 rounded-2xl p-4 bg-card border border-line shadow-card">
           <div className="text-sm font-semibold mb-2">{t("השירים לקליפ")}</div>
           <ul className="space-y-1.5 text-sm">
-            {clipSongLines(event.clip_songs).map((l) => (
+            {clipSongLines(clipSongs).map((l) => (
               <li key={l.label} className="[overflow-wrap:anywhere]">
                 <span className="text-ink-soft">{t(l.label)}: </span>
                 {l.value.split(/(https?:\/\/\S+)/g).map((part, i) =>
@@ -1833,7 +1871,10 @@ function FilmStrip({
   albumUploadProgress,
   onUploadAlbumDesign,
   pendingStageKeys,
+  stagePanel,
 }: {
+  // A panel under one stage's row (the clip songs under the song-selection stage).
+  stagePanel?: { key: string; panel: React.ReactNode } | null;
   stageDescriptors: StageDescriptor[];
   stages: EventStageRow[];
   curIdx: number;
@@ -1971,6 +2012,7 @@ function FilmStrip({
                 </p>
               </div>
             )}
+            {stagePanel?.key === d.key && stagePanel.panel}
             {st.done && (
               <div className="flex border-t border-line">
                 <div className="flex-1">
