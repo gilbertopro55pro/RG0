@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useModalEntered } from "@/lib/useModalEntered";
 import ReminderDateTimeField from "@/components/ReminderDateTimeField";
 import { openWhatsApp } from "@/lib/waLink";
 import { useLang, useT } from "@/i18n/client";
-import { dateLocale } from "@/i18n/config";
+import { dateLocale, type Lang } from "@/i18n/config";
+import ClientMessageSheet, { type ClientMessageChannel } from "@/components/ClientMessageSheet";
 
 // A translated sentence with the client/lead name in bold: the {name} placeholder is left in by
 // t() (it isn't in vars) and swapped for the bold span here.
@@ -64,7 +65,21 @@ export type PendingClientReminder = {
   clientName: string;
 };
 
-type PendingItem = PendingPaymentReminder | PendingReviewRequest | PendingLeadFollowUp | PendingClientReminder;
+// 1–3 days before the event: the "יום הצילום" message from the client messages settings, ready to
+// send (lib/shootDayReminder.ts, owner 2026-10-22). Shown in ClientMessageSheet: edit, send by
+// WhatsApp / SMS / email / copy, or cancel.
+export type PendingShootDayReminder = {
+  type: "shoot_day";
+  id: string;
+  clientName: string;
+  daysUntil: number;
+  message: string;
+  phone: string;
+  email: string | null;
+  lang: Lang;
+};
+
+type PendingItem = PendingPaymentReminder | PendingReviewRequest | PendingLeadFollowUp | PendingClientReminder | PendingShootDayReminder;
 
 function isClientReminder(item: PendingItem): item is PendingClientReminder {
   return item.type === "album_reminder" || item.type === "song_reminder";
@@ -80,15 +95,19 @@ export default function PendingClientMessagePrompts({
   reviewRequests,
   leadFollowUps,
   clientReminders = [],
+  shootDayReminders = [],
 }: {
   paymentReminders: PendingPaymentReminder[];
   reviewRequests: PendingReviewRequest[];
   leadFollowUps: PendingLeadFollowUp[];
   clientReminders?: PendingClientReminder[];
+  shootDayReminders?: PendingShootDayReminder[];
 }) {
   const t = useT();
   const lang = useLang();
-  const [queue, setQueue] = useState<PendingItem[]>([...paymentReminders, ...reviewRequests, ...leadFollowUps, ...clientReminders]);
+  const [queue, setQueue] = useState<PendingItem[]>([...shootDayReminders, ...paymentReminders, ...reviewRequests, ...leadFollowUps, ...clientReminders]);
+  // The shoot-day window: whether its message went out, so closing it after a send isn't a cancel.
+  const shootDaySent = useRef(false);
   const [busy, setBusy] = useState(false);
   // The WhatsApp message of the prompt on screen, fetched when it shows (dryRun), so the send button
   // opens WhatsApp right in the tap. iPhone blocks opening it after a request, and the reminder was
@@ -102,7 +121,9 @@ export default function PendingClientMessagePrompts({
   const [custom, setCustom] = useState<{ value: string; min: string; error: boolean } | null>(null);
 
   const urlFor = (item: PendingItem) =>
-    item.type === "payment"
+    item.type === "shoot_day"
+      ? `/api/scheduled-messages/${item.id}/confirm-shoot-day`
+      : item.type === "payment"
       ? `/api/scheduled-messages/${item.id}/confirm`
       : item.type === "review"
         ? `/api/scheduled-messages/${item.id}/confirm-review`
@@ -113,7 +134,7 @@ export default function PendingClientMessagePrompts({
   const sendBody = (item: PendingItem) => (item.type === "payment" ? { paid: false } : { send: true });
 
   useEffect(() => {
-    if (!current) return;
+    if (!current || current.type === "shoot_day") return;
     let cancelled = false;
     fetch(urlFor(current), {
       method: "POST",
@@ -132,6 +153,44 @@ export default function PendingClientMessagePrompts({
   }, [current?.id]);
 
   if (!current) return null;
+
+  if (current.type === "shoot_day") {
+    const record = (body: { send: boolean; channel?: ClientMessageChannel }) =>
+      fetch(urlFor(current), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        keepalive: true,
+      }).catch(() => null);
+    return (
+      <ClientMessageSheet
+        key={current.id}
+        title={t("הודעה לפני יום הצילום")}
+        intro={
+          current.daysUntil === 1
+            ? t("מחר הצילום של {name}. זו הודעת יום הצילום מההודעות ללקוח, ואפשר לערוך אותה לפני השליחה.", { name: current.clientName })
+            : t("בעוד {days} ימים הצילום של {name}. זו הודעת יום הצילום מההודעות ללקוח, ואפשר לערוך אותה לפני השליחה.", {
+                days: current.daysUntil,
+                name: current.clientName,
+              })
+        }
+        initialText={current.message}
+        lang={current.lang}
+        phone={current.phone}
+        email={current.email}
+        subject={t("יום הצילום")}
+        onSend={(channel) => {
+          shootDaySent.current = true;
+          void record({ send: true, channel });
+        }}
+        onClose={() => {
+          if (!shootDaySent.current) void record({ send: false });
+          shootDaySent.current = false;
+          setQueue((prev) => prev.slice(1));
+        }}
+      />
+    );
+  }
 
   const respond = async (paidOrSend: boolean) => {
     const sends = current.type === "payment" ? !paidOrSend : paidOrSend;

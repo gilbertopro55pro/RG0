@@ -99,7 +99,7 @@ export const RECOMMENDED_CLIENT_MESSAGE_TEMPLATES: Partial<Record<StageKey, stri
   event_closing:
     "שלום {{שם}},\nהאירוע שלכם רשמית סגור אצלנו ביומן 🎉 נרגשים לצלם אתכם!\nבהמשך נעדכן אתכם כאן בכל שלב חשוב לקראת האירוע.\nקישור: ",
   shoot_day:
-    "שלום {{שם}},\nהיום היום הגדול! מחכה לצלם אתכם ולתעד את הרגעים הכי משמעותיים שלכם 📸\nנתראה בקרוב!\nקישור: ",
+    "שלום {{שם}},\nהיום הגדול מתקרב! מחכה לצלם אתכם ולתעד את הרגעים הכי משמעותיים שלכם 📸\nנתראה ב-{{תאריך}}.\nקישור: ",
   gallery_upload:
     "שלום {{שם}},\nהגלריה מהאירוע שלכם עלתה ומוכנה לצפייה! אפשר להיכנס עכשיו ולבחור את התמונות האהובות עליכם.\nקישור: ",
   client_song_selection:
@@ -124,7 +124,7 @@ export const RECOMMENDED_CLIENT_MESSAGE_TEMPLATES_I18N: Record<"en" | "ru", Part
     event_closing:
       "Hi {{שם}},\nYour event is officially booked in our calendar 🎉 We can't wait to photograph you!\nWe'll keep you posted here on every important step along the way.\nLink: ",
     shoot_day:
-      "Hi {{שם}},\nToday's the big day! I can't wait to photograph you and capture your most meaningful moments 📸\nSee you soon!\nLink: ",
+      "Hi {{שם}},\nThe big day is almost here! I can't wait to photograph you and capture your most meaningful moments 📸\nSee you on {{תאריך}}.\nLink: ",
     gallery_upload:
       "Hi {{שם}},\nThe gallery from your event is up and ready to view! You can go in now and pick your favorite photos.\nLink: ",
     client_song_selection:
@@ -136,7 +136,7 @@ export const RECOMMENDED_CLIENT_MESSAGE_TEMPLATES_I18N: Record<"en" | "ru", Part
     event_closing:
       "Здравствуйте, {{שם}}!\nВаше мероприятие официально у нас в календаре 🎉 Мы с нетерпением ждём съёмки!\nЗдесь мы будем сообщать вам о каждом важном этапе подготовки.\nСсылка: ",
     shoot_day:
-      "Здравствуйте, {{שם}}!\nСегодня тот самый день! Жду встречи, чтобы запечатлеть ваши самые важные моменты 📸\nДо скорой встречи!\nСсылка: ",
+      "Здравствуйте, {{שם}}!\nБольшой день уже совсем скоро! Жду встречи, чтобы запечатлеть ваши самые важные моменты 📸\nДо встречи {{תאריך}}.\nСсылка: ",
     gallery_upload:
       "Здравствуйте, {{שם}}!\nГалерея с вашего мероприятия готова к просмотру! Вы уже можете зайти и выбрать любимые фотографии.\nСсылка: ",
     client_song_selection:
