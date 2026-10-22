@@ -284,7 +284,26 @@ export type MagnetFrameDecorationElement = {
   locked?: boolean;
 };
 
-export type MagnetFrameElement = MagnetFrameTextElement | MagnetFrameDecorationElement;
+// A QR code on the magnet (stage 3, 2026-10-22). What it opens: "gallery" = the linked event's
+// gallery for guests, view only (a stable /m/<code> link per event, so a magnet printed before the
+// gallery exists still works later); "portfolio" = the photographer's public portfolio; "url" =
+// a link the photographer types. Drawn as `color` modules on a `bgColor` square that includes the
+// quiet zone, so it scans on any mat. sizePct is of the canvas's shorter side, like decorations.
+export type MagnetFrameQrElement = {
+  id: string;
+  type: "qr";
+  target: "gallery" | "portfolio" | "url";
+  url?: string;
+  xPct: number;
+  yPct: number;
+  sizePct: number;
+  color: string;
+  bgColor: string;
+  rotation?: number;
+  locked?: boolean;
+};
+
+export type MagnetFrameElement = MagnetFrameTextElement | MagnetFrameDecorationElement | MagnetFrameQrElement;
 
 // A photographer-uploaded decorative element image — kept across every future design (not scoped
 // to one), same pattern as MagnetFrameCustomTextureRow.
@@ -327,6 +346,8 @@ export type MagnetFrameSettings = {
   // The frame's print size (MAGNET_FRAME_SIZES in magnetFrameShared.ts). Missing = "20x15", the only
   // size before 2026-10-22.
   sizeKey?: MagnetFrameSizeKey;
+  // Colors taken from the event's invitation (stage 3), offered next to the fixed swatches.
+  palette?: string[];
 };
 
 // Print sizes, landscape width × height in cm. "9x9" is square and has a single frame.
@@ -343,6 +364,12 @@ export type MagnetFrameDesignRow = {
   landscape_elements: MagnetFrameElement[];
   portrait_elements: MagnetFrameElement[];
   frame_settings: MagnetFrameSettings;
+  // Client approval in the portal (stage 3, migration 0191): when the photographer shared the frame
+  // with the client, when the client approved it, and the client's latest comment.
+  client_shared_at: string | null;
+  client_approved_at: string | null;
+  client_comment: string | null;
+  client_comment_at: string | null;
   created_at: string;
   updated_at: string;
 };
