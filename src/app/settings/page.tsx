@@ -24,6 +24,7 @@ import ContractTemplateLibrarySettings from "@/components/ContractTemplateLibrar
 import PortfolioSettings from "@/components/PortfolioSettings";
 import AppearanceSettings from "@/components/AppearanceSettings";
 import PushNotificationsSettings from "@/components/PushNotificationsSettings";
+import ShootDayReminderSettings from "@/components/ShootDayReminderSettings";
 import GuidesSettings from "@/components/GuidesSettings";
 import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
@@ -161,6 +162,10 @@ export default async function SettingsPage({
             content: (
               <>
               <PushNotificationsSettings />
+              <ShootDayReminderSettings
+                photographerId={photographer.id}
+                initialEnabled={(photographer as { shoot_day_reminder?: boolean }).shoot_day_reminder ?? true}
+              />
               <IntakeGuide />
               <BotSettings
                 photographer={photographer}

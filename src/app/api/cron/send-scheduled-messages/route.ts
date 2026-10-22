@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isLockedOut, type AccessRow } from "@/lib/appAccess";
+import { ACCESS_COLUMNS, isLockedOut, type AccessRow } from "@/lib/appAccess";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { LEAD_FOLLOW_UP_TEMPLATES } from "@/lib/stages";
@@ -12,12 +12,13 @@ import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 import { reminderStillNeeded, type ClientReminderKind } from "@/lib/clientReminders";
 import { sendPushToPhotographer } from "@/lib/push";
+import { SHOOT_DAY_REMINDER_DAYS, addDaysIso, daysBetweenIso, israelTodayIso, shootDayReminderDue, type ShootDayCandidate } from "@/lib/shootDayReminder";
 
 type ScheduledMessage = {
   id: string;
   event_id: string | null;
   lead_id: string | null;
-  kind: "review_request" | "payment_reminder" | "lead_follow_up" | "lead_quote_followup" | ClientReminderKind;
+  kind: "review_request" | "payment_reminder" | "lead_follow_up" | "lead_quote_followup" | "shoot_day_reminder" | ClientReminderKind;
   sequence_step: number | null;
 };
 
@@ -77,7 +78,92 @@ export async function GET(request: NextRequest) {
     results.push({ id: message.id, status: "awaiting_confirmation" });
   }
 
-  return NextResponse.json({ processed: results.length, results });
+  const shootDay = await processShootDayReminders(supabase).catch((e) => {
+    console.error("Shoot day reminders failed:", e);
+    return { error: e instanceof Error ? e.message : "unknown" };
+  });
+
+  return NextResponse.json({ processed: results.length, results, shootDay });
+}
+
+type ShootDayEvent = ShootDayCandidate & {
+  id: string;
+  client_name: string;
+  photographer_id: string;
+  photographers: (AccessRow & { shoot_day_reminder: boolean; ui_lang: string | null }) | null;
+};
+
+// 1–3 days before an event (lib/shootDayReminder.ts): a reminder to send the client the "יום הצילום"
+// message saved in the client messages settings (owner, 2026-10-22). The row waits for the
+// photographer (awaiting_confirmation) with a phone notification; the home screen opens the message
+// window. A reminder left unanswered after its event day is closed.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function processShootDayReminders(supabase: SupabaseClient<any>) {
+  const today = israelTodayIso();
+  const { data: stale } = await supabase
+    .from("scheduled_messages")
+    .select("id, events!inner(event_date)")
+    .eq("kind", "shoot_day_reminder")
+    .eq("status", "awaiting_confirmation")
+    .lt("events.event_date", today)
+    .returns<{ id: string }[]>();
+  if (stale?.length) await supabase.from("scheduled_messages").update({ status: "canceled" }).in("id", stale.map((r) => r.id));
+
+  const { data: events } = await supabase
+    .from("events")
+    .select(`id, client_name, client_phone, event_date, is_freelance, needs_review, closed_at, photographer_id, event_stages(stage_key, done), photographers!inner(${ACCESS_COLUMNS}, shoot_day_reminder, ui_lang)`)
+    .gte("event_date", addDaysIso(today, 1))
+    .lte("event_date", addDaysIso(today, SHOOT_DAY_REMINDER_DAYS))
+    .eq("photographers.shoot_day_reminder", true)
+    .not("client_phone", "is", null)
+    .returns<ShootDayEvent[]>();
+  const candidates = (events ?? []).filter((e) => !isLockedOut(e.photographers));
+  if (!candidates.length) return { created: 0, stale: stale?.length ?? 0 };
+  const ids = candidates.map((e) => e.id);
+
+  const [{ data: earlier }, { data: sentByHand }] = await Promise.all([
+    supabase.from("scheduled_messages").select("event_id, send_at").eq("kind", "shoot_day_reminder").in("event_id", ids).returns<{ event_id: string; send_at: string }[]>(),
+    // The event page's send logs `בנוגע לשלב "יום הצילום"` (api/events/[id]/notify).
+    supabase
+      .from("event_notifications")
+      .select("event_id")
+      .in("event_id", ids)
+      .like("text", '%בנוגע לשלב "יום הצילום"%')
+      .gte("created_at", new Date(Date.now() - 7 * 86_400_000).toISOString())
+      .returns<{ event_id: string }[]>(),
+  ]);
+  const handSent = new Set((sentByHand ?? []).map((n) => n.event_id));
+
+  let created = 0;
+  for (const event of candidates) {
+    const before = (earlier ?? []).filter((r) => r.event_id === event.id).map((r) => r.send_at);
+    if (!shootDayReminderDue(event, today, before, handSent.has(event.id))) continue;
+    const { error } = await supabase
+      .from("scheduled_messages")
+      .insert({ event_id: event.id, kind: "shoot_day_reminder", status: "awaiting_confirmation", send_at: new Date().toISOString() });
+    if (error) {
+      console.error("Shoot day reminder insert failed:", error.message);
+      continue;
+    }
+    created++;
+    const days = daysBetweenIso(today, event.event_date);
+    // Activity log (stored, Hebrew like every other log line).
+    await supabase.from("event_notifications").insert({
+      event_id: event.id,
+      text: `בעוד ${days} ימים יום הצילום. ממתין לאישורך לשליחת הודעת יום הצילום ללקוח`,
+    });
+    const t = makeT(messagesFor(photographerLang(event.photographers?.ui_lang)));
+    await sendPushToPhotographer(event.photographer_id, {
+      title:
+        days === 1
+          ? t("מחר הצילום של {name}", { name: event.client_name })
+          : t("בעוד {days} ימים הצילום של {name}", { days, name: event.client_name }),
+      body: t("לחצו לשליחת הודעת יום הצילום ללקוח"),
+      url: "/",
+      tag: `shoot_day_reminder-${event.id}`,
+    });
+  }
+  return { created, stale: stale?.length ?? 0 };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

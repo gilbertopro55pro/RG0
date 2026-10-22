@@ -14,6 +14,7 @@ import { openAmount } from "@/lib/openBalances";
 import { timeOfDayGreeting } from "@/lib/greeting";
 import { STAGE_LABELS, packageLabel } from "@/lib/stages";
 import { heroStageAction } from "@/lib/heroStageAction";
+import { daysBetweenIso, israelTodayIso } from "@/lib/shootDayReminder";
 import { buildClientMessageText, clientTemplateKey } from "@/lib/clientMessage";
 import { shortClientUrl } from "@/lib/shortLinks";
 import { SITE_URL } from "@/lib/siteUrl";
@@ -43,6 +44,7 @@ import PendingClientMessagePrompts, {
   type PendingReviewRequest,
   type PendingLeadFollowUp,
   type PendingClientReminder,
+  type PendingShootDayReminder,
 } from "@/components/PendingClientMessagePrompts";
 import DashboardHero from "@/components/DashboardHero";
 import NextEventHero, { type NextEventHeroData } from "@/components/NextEventHero";
@@ -116,14 +118,14 @@ export default async function DashboardPage() {
     supabase
       .from("scheduled_messages")
       .select(`id, event_id, lead_id, kind, remind_at, remind_set_at, events(client_name), leads(name, phone, quoted_amount, ${FOLLOW_UP_LEAD_COLUMNS})`)
-      .in("kind", ["payment_reminder", "review_request", "lead_quote_followup", "album_approval_reminder", "song_selection_reminder"])
+      .in("kind", ["payment_reminder", "review_request", "lead_quote_followup", "album_approval_reminder", "song_selection_reminder", "shoot_day_reminder"])
       .eq("status", "awaiting_confirmation")
       .returns<
         {
           id: string;
           event_id: string | null;
           lead_id: string | null;
-          kind: "payment_reminder" | "review_request" | "lead_quote_followup" | "album_approval_reminder" | "song_selection_reminder";
+          kind: "payment_reminder" | "review_request" | "lead_quote_followup" | "album_approval_reminder" | "song_selection_reminder" | "shoot_day_reminder";
           remind_at: string | null;
           remind_set_at: string | null;
           events: { client_name: string } | null;
@@ -281,10 +283,50 @@ export default async function DashboardPage() {
     });
   }
 
+  // A stage's client message, built from the photographer's own template exactly as the event page
+  // builds it (the gallery link once it's published, else the portal).
+  const clientStageMessage = async (
+    e: NonNullable<typeof events>[number],
+    p: EventPaymentRow | null,
+    stage: { key: string; label: string },
+    lang: ReturnType<typeof clientLangFor>
+  ): Promise<string | null> => {
+    if (!photographer) return null;
+    const templateKey = clientTemplateKey(stage.key, lang);
+    const [{ data: template }, { data: gallery }] = await Promise.all([
+      supabase.from("client_message_templates").select("body").eq("stage_key", templateKey).maybeSingle<{ body: string }>(),
+      supabase
+        .from("galleries")
+        .select("access_token, published, archived_at")
+        .eq("event_id", e.id)
+        .maybeSingle<{ access_token: string; published: boolean; archived_at: string | null }>(),
+    ]);
+    return buildClientMessageText({
+      stageKey: stage.key,
+      stageLabel: stage.label,
+      savedTemplate: template?.body,
+      clientName: e.client_name,
+      eventDateIso: e.event_date,
+      eventLocation: e.event_location,
+      packageLabelText: packageLabel(e.package, e.custom_packages?.name ?? null),
+      eventStartTime: e.event_start_time,
+      eventEndTime: e.event_end_time,
+      arrivalTime: e.arrival_time,
+      depositAmount: p ? p.deposit_amount : null,
+      balanceAmount: p ? p.balance_amount : null,
+      linkUrl:
+        gallery?.published && !gallery.archived_at
+          ? shortClientUrl(SITE_URL, "gallery", gallery.access_token)
+          : shortClientUrl(SITE_URL, "portal", e.client_access_token),
+      whatsappSignature: photographer.whatsapp_signature ?? null,
+      senderName: photographer.name ?? null,
+      lang,
+    });
+  };
+
   // The next-shoot card's stage button (vivid only, owner 2026-10-22): the current stage, and the
-  // client update its marking sends, built from the photographer's own template exactly as the event
-  // page builds it (the gallery link once it's published, else the portal). Templates and the gallery
-  // are read only when the stage sends one and the client has a phone.
+  // client update its marking sends. The template and the gallery are read only when the stage
+  // sends one and the client has a phone.
   const heroStageButton = async (
     e: NonNullable<typeof events>[number],
     p: EventPaymentRow | null
@@ -294,39 +336,7 @@ export default async function DashboardPage() {
     const action = heroStageAction(e.event_stages, custom, !!e.album_design_pdf_path);
     if (!action) return null;
     const lang = clientLangFor(photographer.email, e.client_lang);
-    let message: string | null = null;
-    if (action.canMark && action.notifies && e.client_phone) {
-      const templateKey = clientTemplateKey(action.key, lang);
-      const [{ data: template }, { data: gallery }] = await Promise.all([
-        supabase.from("client_message_templates").select("body").eq("stage_key", templateKey).maybeSingle<{ body: string }>(),
-        supabase
-          .from("galleries")
-          .select("access_token, published, archived_at")
-          .eq("event_id", e.id)
-          .maybeSingle<{ access_token: string; published: boolean; archived_at: string | null }>(),
-      ]);
-      message = buildClientMessageText({
-        stageKey: action.key,
-        stageLabel: action.label,
-        savedTemplate: template?.body,
-        clientName: e.client_name,
-        eventDateIso: e.event_date,
-        eventLocation: e.event_location,
-        packageLabelText: packageLabel(e.package, e.custom_packages?.name ?? null),
-        eventStartTime: e.event_start_time,
-        eventEndTime: e.event_end_time,
-        arrivalTime: e.arrival_time,
-        depositAmount: p ? p.deposit_amount : null,
-        balanceAmount: p ? p.balance_amount : null,
-        linkUrl:
-          gallery?.published && !gallery.archived_at
-            ? shortClientUrl(SITE_URL, "gallery", gallery.access_token)
-            : shortClientUrl(SITE_URL, "portal", e.client_access_token),
-        whatsappSignature: photographer.whatsapp_signature ?? null,
-        senderName: photographer.name ?? null,
-        lang,
-      });
-    }
+    const message = action.canMark && action.notifies && e.client_phone ? await clientStageMessage(e, p, action, lang) : null;
     return { ...action, message, phone: e.client_phone, email: e.client_email ?? null, lang };
   };
 
@@ -451,6 +461,31 @@ export default async function DashboardPage() {
           clientName: s.events?.client_name ?? t("לקוח"),
         }))
     : [];
+  // The shoot-day reminder (lib/shootDayReminder.ts): the "יום הצילום" message from the client
+  // messages settings, ready in the window. Only while the event is still ahead (the cron closes
+  // the rest).
+  const reminderToday = israelTodayIso();
+  const pendingShootDayReminders: PendingShootDayReminder[] = [];
+  if (photographer) {
+    for (const s of (scheduledReminders ?? []).filter((r) => r.kind === "shoot_day_reminder")) {
+      const e = (events ?? []).find((ev) => ev.id === s.event_id);
+      if (!e?.client_phone || e.event_date < reminderToday) continue;
+      const lang = clientLangFor(photographer.email, e.client_lang);
+      const p = (payments ?? []).find((x) => x.event_id === e.id) ?? null;
+      const message = await clientStageMessage(e, p, { key: "shoot_day", label: STAGE_LABELS.shoot_day }, lang);
+      if (!message) continue;
+      pendingShootDayReminders.push({
+        type: "shoot_day",
+        id: s.id,
+        clientName: e.client_name,
+        daysUntil: daysBetweenIso(reminderToday, e.event_date),
+        message,
+        phone: e.client_phone,
+        email: e.client_email ?? null,
+        lang,
+      });
+    }
+  }
   // A follow-up put off with "תזכורת" waits until its time, and is gone if the lead was handled
   // since (lib/leadFollowUp.ts; the reminders cron then closes it).
   const nowMs = new Date().getTime();
@@ -586,6 +621,7 @@ export default async function DashboardPage() {
         reviewRequests={pendingReviewRequests}
         leadFollowUps={pendingLeadFollowUps}
         clientReminders={pendingClientReminders}
+        shootDayReminders={pendingShootDayReminders}
       />
     </div>
   );
