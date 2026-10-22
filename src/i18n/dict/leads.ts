@@ -3,6 +3,16 @@ import type { AreaDict } from "@/i18n/types";
 // Area "leads" (see src/i18n/dict/index.ts). Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "לידים": "Leads",
+    "הצעת המחיר": "The quote",
+    "אושרה {date}": "Approved {date}",
+    "סה״כ כולל מע״מ": "Total incl. VAT",
+    "שליחת הקישור להצעה בוואטסאפ": "Send the quote link on WhatsApp",
+    "הורדת הצעת המחיר (PDF)": "Download the quote (PDF)",
+    "פתיחת וואטסאפ עם ה-PDF": "Open WhatsApp with the PDF",
+    "שליחת ה-PDF ללקוח בוואטסאפ": "Send the PDF to the client on WhatsApp",
+    "אין טלפון ללקוח באירוע, ולכן אין שליחה בוואטסאפ.": "The event has no client phone, so there's no WhatsApp send.",
+    "לאירוע": "To the event",
     "נוצר ב-{date}, {time}": "Created {date}, {time}",
     "המחיקה נכשלה, נסו שוב": "Delete failed, please try again",
     "+ ליד חדש": "+ New lead",
@@ -400,6 +410,16 @@ const dict: AreaDict = {
     "תזכורת ליצירת קשר: {when}": "Get-in-touch reminder: {when}",
   },
   ru: {
+    "לידים": "Лиды",
+    "הצעת המחיר": "Ценовое предложение",
+    "אושרה {date}": "Подтверждено {date}",
+    "סה״כ כולל מע״מ": "Итого с НДС",
+    "שליחת הקישור להצעה בוואטסאפ": "Отправить ссылку на предложение в WhatsApp",
+    "הורדת הצעת המחיר (PDF)": "Скачать предложение (PDF)",
+    "פתיחת וואטסאפ עם ה-PDF": "Открыть WhatsApp с PDF",
+    "שליחת ה-PDF ללקוח בוואטסאפ": "Отправить PDF клиенту в WhatsApp",
+    "אין טלפון ללקוח באירוע, ולכן אין שליחה בוואטסאפ.": "У мероприятия нет телефона клиента, поэтому отправка в WhatsApp недоступна.",
+    "לאירוע": "К мероприятию",
     "נוצר ב-{date}, {time}": "Создано {date}, {time}",
     "המחיקה נכשלה, נסו שוב": "Не удалось удалить, попробуйте ещё раз",
     "+ ליד חדש": "+ Новая заявка",

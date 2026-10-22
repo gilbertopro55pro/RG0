@@ -69,14 +69,23 @@ function localDate(isoDate: string, lang: Lang): string | null {
 // caption, the /quotes/<token> link, and the photographer's signature from Settings when set.
 // withContract: the quote page ends with signing the contract, so the message says so.
 // lang: the client's language (UI languages phase 3); the signature stays as the photographer wrote it.
-export function quoteLinkMessage(caption: string, url: string, signature: string | null | undefined, withContract = false, lang: Lang = "he"): string {
+// approved: sent again from the event page after the client approved it (owner, 2026-10-22), so
+// it asks to view the quote, not to approve it.
+export function quoteLinkMessage(
+  caption: string,
+  url: string,
+  signature: string | null | undefined,
+  withContract = false,
+  lang: Lang = "he",
+  approved = false
+): string {
   const t = makeT(messagesFor(lang));
   return [
     caption,
     "",
     t("קישור להצעת המחיר: {url}", { url }),
-    t("יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר."),
-    withContract ? t("אחרי האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור.") : null,
+    approved ? t("יש ללחוץ על הקישור לצפייה בהצעת המחיר.") : t("יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר."),
+    withContract && !approved ? t("אחרי האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור.") : null,
     signature?.trim() || null,
   ]
     .filter((l) => l !== null)

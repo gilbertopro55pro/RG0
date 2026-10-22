@@ -19,6 +19,8 @@ import EventDetailView from "@/components/EventDetailView";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { hasAppAccess } from "@/lib/subscription";
 import { canChooseClientLang, clientLangFor } from "@/lib/clientLang";
+import { eventQuoteHistoryId, type EventQuote } from "@/lib/eventQuote";
+import type { LeadQuoteDetails } from "@/lib/leadQuote";
 
 export default async function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -99,6 +101,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   let gallery: GalleryRow | null = null;
   let galleryPhotoCount = 0;
   let galleryCoverUrl: string | null = null;
+  let eventQuote: EventQuote | null = null;
   if (isOwner) {
     const [{ data: allTeamMembers }, { data: assignees }, { data: paymentsRow }, { data: contractRow }, { data: galleryRow }] =
       await Promise.all([
@@ -120,6 +123,37 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
           .eq("event_id", id)
           .maybeSingle<GalleryRow & { gallery_photos: Pick<GalleryPhotoRow, "id" | "storage_path" | "sort_order">[] }>(),
       ]);
+    // The quote the event was booked from (owner, 2026-10-22): the lead that closed into it.
+    const { data: quoteLead } = await supabase
+      .from("leads")
+      .select("id, quote_token, quote_details, quoted_amount, quote_sent_at, quote_approved_at")
+      .eq("converted_event_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{
+        id: string;
+        quote_token: string | null;
+        quote_details: LeadQuoteDetails | null;
+        quoted_amount: number | null;
+        quote_sent_at: string | null;
+        quote_approved_at: string | null;
+      }>();
+    if (quoteLead && (quoteLead.quote_details || quoteLead.quote_sent_at)) {
+      const { data: historyRows } = await supabase
+        .from("quote_history")
+        .select("id, created_at, details")
+        .eq("lead_id", quoteLead.id)
+        .returns<{ id: string; created_at: string; details: { createdAt?: string } | null }[]>();
+      eventQuote = {
+        leadId: quoteLead.id,
+        token: quoteLead.quote_token,
+        details: quoteLead.quote_details,
+        amount: quoteLead.quoted_amount,
+        sentAt: quoteLead.quote_sent_at,
+        approvedAt: quoteLead.quote_approved_at,
+        historyId: eventQuoteHistoryId(historyRows ?? [], quoteLead.quote_details),
+      };
+    }
     teamMembers = allTeamMembers ?? [];
     assignedTeamMemberIds = assignees?.map((a) => a.team_member_id) ?? [];
     payments = paymentsRow;
@@ -152,6 +186,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
         initialAssignedTeamMemberIds={assignedTeamMemberIds}
         initialPayments={payments}
         initialContract={contract}
+        eventQuote={eventQuote}
         initialGallery={gallery}
         galleryPhotoCount={galleryPhotoCount}
         galleryCoverUrl={galleryCoverUrl}
