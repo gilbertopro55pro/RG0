@@ -96,9 +96,9 @@ describe("magnet frame sizes", () => {
 });
 
 describe("magnet text effects", () => {
-  it("maps the shadow color, its 55% alpha and today's blur (sigma = blur)", () => {
+  it("maps the shadow color, its 55% alpha and the editor's blur (a CSS radius, sigma = blur / 2)", () => {
     const fx = magnetTextEffects(textEl({ shadowEnabled: true, shadowColor: "#e63946", shadowDistancePx: 6, shadowBlurPx: 4 }), 2);
-    expect(fx.shadows).toEqual([{ dx: 6, dy: 6, blur: 8, rgb: [230, 57, 70], alpha: 0.55 }]);
+    expect(fx.shadows).toEqual([{ dx: 6, dy: 6, blur: 4, rgb: [230, 57, 70], alpha: 0.55 }]);
     expect(fx.unitPx).toBe(2);
   });
 

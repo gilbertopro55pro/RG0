@@ -158,7 +158,7 @@ export const MAGNET_FRAME_TEMPLATES: MagnetFrameTemplate[] = [
     settings: { borderRatioPct: 6, bottomBorderRatioPct: 25, frameColor: "#f3f6fa", frameColorOpacity: 100, shadowEnabled: true, shadowOpacity: 20, shadowBlurPx: 18, shadowDistancePx: 5, textureId: null },
     elements: [
       deco("digit", { floralId: "digit-barmitzva-13" }, 38, 87.6, 23),
-      text("kicker", "בר מצווה", 58, 80.9, "ibm-plex-sans-hebrew", 32, "#5b6b88", { letterSpacing: 12 }),
+      text("kicker", "בר מצווה", 58, 80.9, "ibm-plex-sans-hebrew", 32, "#5b6b88", { letterSpacing: 6 }),
       text("title", "אורי", 58, 88, "karantina", 132, "#1c3461"),
       text("date", TEMPLATE_DATE_TEXT, 58, 95.2, "julius-sans-one", 28, "#5b6b88", { letterSpacing: 8 }),
     ],
@@ -197,7 +197,7 @@ export const MAGNET_FRAME_TEMPLATES: MagnetFrameTemplate[] = [
     elements: [
       deco("sprig-r", { floralId: "wc2-sprig-blue" }, 89, 85, 25, "#000000", 12),
       deco("sprig-l", { floralId: "wc2-sprig-blue" }, 11, 85, 25, "#000000", -12),
-      text("kicker", "ברית מילה", 50, 80.9, "varela-round", 34, "#6c8db0", { letterSpacing: 8 }),
+      text("kicker", "ברית מילה", 50, 80.9, "varela-round", 34, "#6c8db0", { letterSpacing: 5 }),
       text("title", "איתן", 50, 87.9, "varela-round", 104, "#3a6890"),
       text("date", TEMPLATE_DATE_TEXT, 50, 95.2, "quicksand", 30, "#6c8db0", { letterSpacing: 4 }),
     ],

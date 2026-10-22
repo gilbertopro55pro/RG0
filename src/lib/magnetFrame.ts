@@ -209,7 +209,7 @@ async function placeCentered(img: Buffer, w: number, h: number, cx: number, cy: 
 // is drawn under the letters at twice its width, so strokeWidth shows outside them.
 export function magnetTextEffects(el: Extract<MagnetFrameElement, { type: "text" }>, S: number) {
   const shadows: TextShadowSpec[] = el.shadowEnabled
-    ? [{ dx: el.shadowDistancePx, dy: el.shadowDistancePx, blur: el.shadowBlurPx * 2, rgb: hexToRgbTriple(el.shadowColor), alpha: MAGNET_TEXT_SHADOW_ALPHA }]
+    ? [{ dx: el.shadowDistancePx, dy: el.shadowDistancePx, blur: el.shadowBlurPx, rgb: hexToRgbTriple(el.shadowColor), alpha: MAGNET_TEXT_SHADOW_ALPHA }]
     : [];
   const strokeWidth = el.strokeWidth && el.strokeWidth > 0 ? el.strokeWidth : undefined;
   return { shadows, strokeWidth, strokeColor: el.strokeColor ?? "#000000", unitPx: S };
@@ -227,6 +227,9 @@ async function composeTextElement(base: Buffer, el: Extract<MagnetFrameElement, 
   const layer = await svgTextLayer(text, {
     xPx: (el.xPct / 100) * widthPx - boxWidth / 2,
     yPx: (el.yPct / 100) * heightPx - fontSizePx / 2,
+    // A one-line box centered on the anchor, the way the editor's CSS centers the line (until
+    // 2026-10-22 the baseline sat half a size below the anchor, ~0.18em lower than on screen).
+    heightPx: fontSizePx,
     widthPx: boxWidth,
     fontSizePx,
     color: el.color,

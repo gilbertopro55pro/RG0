@@ -200,9 +200,9 @@ export async function renderMagnetFramePsd(orientation: FrameOrientation, design
     const layer = await trimmedLayer(pictured, name);
     if (!layer) continue;
     // Same look as the PNG: the shadow there is offset by distance on each axis and blurred with
-    // sigma = blur; Photoshop's Size is roughly 2.5 sigma.
+    // sigma = blur / 2 (a CSS blur radius, as in the editor); Photoshop's Size is roughly 2.5 sigma.
     const shadow = el.shadowEnabled
-      ? dropShadow({ angle: 135, distancePx: el.shadowDistancePx * S * Math.SQRT2, sizePx: el.shadowBlurPx * S * 2.5, opacity: MAGNET_TEXT_SHADOW_ALPHA, color: el.shadowColor })
+      ? dropShadow({ angle: 135, distancePx: el.shadowDistancePx * S * Math.SQRT2, sizePx: el.shadowBlurPx * S * 1.25, opacity: MAGNET_TEXT_SHADOW_ALPHA, color: el.shadowColor })
       : undefined;
     // Text (owner, 2026-10-06): a real, editable Photoshop type layer carrying our own rendering as
     // its pixels, so it looks right the moment the file opens. Photoshop asks to "Update" type
