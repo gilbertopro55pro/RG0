@@ -66,6 +66,10 @@ API returns 403.
   `heightPx` in `svgTextLayer`), and the shadow was twice as blurry (sigma = blur; now blur/2, a CSS
   radius). Checked against Chromium's CSS: Heebo matches to the pixel, Montserrat within 7 px at
   300 DPI (0.6 mm).
+- **Verified live 2026-10-22** (`export-test.js`, test account, after deploy 251d3a8): created from
+  "קלאסי אלגנטי" at 20×15 → autosave 200 → PNG 2362×1772 / 1772×2362 and PSD (~7.5MB each) for
+  both orientations, 300 DPI, transparent window, opaque mat; then 9×9 → one frame, PNG 1063×1063.
+  Both test frames deleted (DELETE 200). The file matched the editor on screen.
 - **Not done, on purpose:** bleed and a print sheet of several magnets. The files go to the
   photographer's printing software, which places them; bleed would change the file size it expects,
   and a sheet needs the photos.
