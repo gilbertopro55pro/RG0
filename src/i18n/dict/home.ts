@@ -511,6 +511,10 @@ const dict: AreaDict = {
     "מסגרת מגנט": "Magnet frame",
     "עיצוב והורדה": "Design and download",
     "פתיחה מגלריה": "Open from a gallery",
+    "{amount} לגבות": "{amount} to collect",
+    "להעלאת עיצוב האלבום": "Upload the album design",
+    "סומן כבוצע: {stage} · {client}": "Marked done: {stage} · {client}",
+    "השלב \"{stage}\" סומן כבוצע. אפשר לערוך את ההודעה לפני השליחה.": "\"{stage}\" is marked done. You can edit the message before sending it.",
   },
   ru: {
     "קבלה ללקוח/ה": "Квитанция клиенту",
@@ -1019,6 +1023,10 @@ const dict: AreaDict = {
     "מסגרת מגנט": "Рамка для магнита",
     "עיצוב והורדה": "Дизайн и скачивание",
     "פתיחה מגלריה": "Открыть из галереи",
+    "{amount} לגבות": "Получить {amount}",
+    "להעלאת עיצוב האלבום": "Загрузить дизайн альбома",
+    "סומן כבוצע: {stage} · {client}": "Выполнено: {stage} · {client}",
+    "השלב \"{stage}\" סומן כבוצע. אפשר לערוך את ההודעה לפני השליחה.": "Этап «{stage}» отмечен как выполненный. Сообщение можно изменить перед отправкой.",
   },
 };
 export default dict;

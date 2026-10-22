@@ -4,7 +4,7 @@ import { CURRENT_VERSION } from "@/lib/changelog";
 import { randomUUID } from "node:crypto";
 import { compareEventsChronologically } from "@/lib/eventOrder";
 import { quoteExtrasFor } from "@/lib/quoteDefaults";
-import { canChooseClientLang } from "@/lib/clientLang";
+import { canChooseClientLang, clientLangFor } from "@/lib/clientLang";
 import { IconMagnetFrame } from "@/components/icons/NavIcons";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
@@ -12,7 +12,12 @@ import { ADMIN_EMAIL } from "@/lib/admin";
 import { closingRecognitions, monthKeyIsrael } from "@/lib/closeEvent";
 import { openAmount } from "@/lib/openBalances";
 import { timeOfDayGreeting } from "@/lib/greeting";
-import { STAGE_LABELS } from "@/lib/stages";
+import { STAGE_LABELS, packageLabel } from "@/lib/stages";
+import { heroStageAction } from "@/lib/heroStageAction";
+import { buildClientMessageText, clientTemplateKey } from "@/lib/clientMessage";
+import { shortClientUrl } from "@/lib/shortLinks";
+import { SITE_URL } from "@/lib/siteUrl";
+import { HeroStageToasts, type HeroStageButtonData } from "@/components/NextStageButton";
 import { designToolsAllowed } from "@/lib/designTools";
 import { hasAppAccess, isInTrial, trialDaysLeft, TRIAL_BANNER_DAYS_LEFT } from "@/lib/subscription";
 import TrialBanner from "@/components/TrialBanner";
@@ -143,7 +148,10 @@ export default async function DashboardPage() {
       .returns<{ event_id: string; status: "draft" | "sent" | "signed"; created_at: string }[]>(),
     // Names for custom-package stages, so the event list and the next-event hero can say which
     // stage comes next instead of a bare "3/14".
-    supabase.from("custom_package_stages").select("id, name").returns<{ id: string; name: string }[]>(),
+    supabase
+      .from("custom_package_stages")
+      .select("id, name, requires_album_pdf, notify_client")
+      .returns<{ id: string; name: string; requires_album_pdf: boolean; notify_client: boolean }[]>(),
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
@@ -273,6 +281,55 @@ export default async function DashboardPage() {
     });
   }
 
+  // The next-shoot card's stage button (vivid only, owner 2026-10-22): the current stage, and the
+  // client update its marking sends, built from the photographer's own template exactly as the event
+  // page builds it (the gallery link once it's published, else the portal). Templates and the gallery
+  // are read only when the stage sends one and the client has a phone.
+  const heroStageButton = async (
+    e: NonNullable<typeof events>[number],
+    p: EventPaymentRow | null
+  ): Promise<HeroStageButtonData | null> => {
+    if (!photographer) return null;
+    const custom = new Map((customStageNames ?? []).map((s) => [s.id, s]));
+    const action = heroStageAction(e.event_stages, custom, !!e.album_design_pdf_path);
+    if (!action) return null;
+    const lang = clientLangFor(photographer.email, e.client_lang);
+    let message: string | null = null;
+    if (action.canMark && action.notifies && e.client_phone) {
+      const templateKey = clientTemplateKey(action.key, lang);
+      const [{ data: template }, { data: gallery }] = await Promise.all([
+        supabase.from("client_message_templates").select("body").eq("stage_key", templateKey).maybeSingle<{ body: string }>(),
+        supabase
+          .from("galleries")
+          .select("access_token, published, archived_at")
+          .eq("event_id", e.id)
+          .maybeSingle<{ access_token: string; published: boolean; archived_at: string | null }>(),
+      ]);
+      message = buildClientMessageText({
+        stageKey: action.key,
+        stageLabel: action.label,
+        savedTemplate: template?.body,
+        clientName: e.client_name,
+        eventDateIso: e.event_date,
+        eventLocation: e.event_location,
+        packageLabelText: packageLabel(e.package, e.custom_packages?.name ?? null),
+        eventStartTime: e.event_start_time,
+        eventEndTime: e.event_end_time,
+        arrivalTime: e.arrival_time,
+        depositAmount: p ? p.deposit_amount : null,
+        balanceAmount: p ? p.balance_amount : null,
+        linkUrl:
+          gallery?.published && !gallery.archived_at
+            ? shortClientUrl(SITE_URL, "gallery", gallery.access_token)
+            : shortClientUrl(SITE_URL, "portal", e.client_access_token),
+        whatsappSignature: photographer.whatsapp_signature ?? null,
+        senderName: photographer.name ?? null,
+        lang,
+      });
+    }
+    return { ...action, message, phone: e.client_phone, email: e.client_email ?? null, lang };
+  };
+
   // The next shoot — the first open event from today on. Leads the home screen: when, where, how
   // much is still to collect and what the next step is. A shoot that already happened today doesn't
   // count (owner's report, 2026-10-05: a morning event stayed "הצילום הבא, היום" all day): its
@@ -307,7 +364,7 @@ export default async function DashboardPage() {
         daysUntil,
         amountDue: Math.max(0, due),
         nextStage: nextStageByEvent[upcoming.id] ?? null,
-        ...(vivid ? { startTime: upcoming.event_start_time, track: stageTrack(upcoming.event_stages) } : {}),
+        ...(vivid ? { startTime: upcoming.event_start_time, track: stageTrack(upcoming.event_stages), action: await heroStageButton(upcoming, p ?? null) } : {}),
       };
     }
   }
@@ -454,6 +511,7 @@ export default async function DashboardPage() {
       )}
 
       {isPhotographer && nextEvent && <NextEventHero event={nextEvent} vivid={vivid} />}
+      {isPhotographer && vivid && <HeroStageToasts />}
 
       {isPhotographer && heroData && (
         <DashboardHero
