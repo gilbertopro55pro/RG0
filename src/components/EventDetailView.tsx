@@ -45,6 +45,8 @@ import BodyPortal from "@/components/BodyPortal";
 import ToneTag from "@/components/ToneTag";
 import { useVivid } from "@/components/VividProvider";
 import ContractSection from "@/components/ContractSection";
+import EventQuoteSection from "@/components/EventQuoteSection";
+import type { EventQuote } from "@/lib/eventQuote";
 import PortalLinkSection from "@/components/PortalLinkSection";
 import GallerySection from "@/components/GallerySection";
 import { useModalEntered } from "@/lib/useModalEntered";
@@ -201,6 +203,7 @@ export default function EventDetailView({
   initialAssignedTeamMemberIds,
   initialPayments,
   initialContract,
+  eventQuote = null,
   initialGallery,
   galleryPhotoCount,
   galleryCoverUrl,
@@ -220,6 +223,8 @@ export default function EventDetailView({
   initialAssignedTeamMemberIds: string[];
   initialPayments: EventPaymentRow | null;
   initialContract: EventContractRow | null;
+  // The quote the event was booked from, when it came from a lead (EventQuoteSection).
+  eventQuote?: EventQuote | null;
   initialGallery: GalleryRow | null;
   galleryPhotoCount: number;
   galleryCoverUrl: string | null;
@@ -1537,6 +1542,16 @@ export default function EventDetailView({
           clientName={event.client_name}
           clientPhone={event.client_phone ?? ""}
           eventDate={event.event_date}
+        />
+      )}
+
+      {isOwner && eventQuote && (
+        <EventQuoteSection
+          quote={eventQuote}
+          clientName={event.client_name}
+          clientPhone={event.client_phone}
+          signature={whatsappSignature}
+          clientLang={clientMessageLang}
         />
       )}
 

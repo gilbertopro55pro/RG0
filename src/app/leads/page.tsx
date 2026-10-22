@@ -7,7 +7,8 @@ import LeadsView from "@/components/LeadsView";
 import { hasAppAccess } from "@/lib/subscription";
 import { canChooseClientLang } from "@/lib/clientLang";
 
-export default async function LeadsPage() {
+export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -55,6 +56,7 @@ export default async function LeadsPage() {
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <LeadsView
         initialLeads={active}
+        initialTab={tab === "quotes" ? "quotes" : "leads"}
         archivedLeads={archived}
         customPackages={customPackages ?? []}
         eventTypes={eventTypes ?? []}

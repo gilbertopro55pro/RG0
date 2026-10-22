@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { buildWaMeLink } from "@/lib/waLink";
 import { quoteLinkMessage, quoteShareCaption } from "@/lib/quoteDefaults";
@@ -10,7 +11,13 @@ import ToneTag from "@/components/ToneTag";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale, isLang } from "@/i18n/config";
 
-type LeadLink = { id: string; quote_token: string | null; quote_approved_at: string | null; quote_details: { createdAt?: string } | null };
+type LeadLink = {
+  id: string;
+  quote_token: string | null;
+  quote_approved_at: string | null;
+  quote_details: { createdAt?: string } | null;
+  converted_event_id: string | null;
+};
 type SendState = { kind: "preparing" } | { kind: "ready"; message: string } | { kind: "error" };
 
 const MAX_ROWS = 300;
@@ -59,7 +66,7 @@ export default function QuoteHistoryList({ signature }: { signature: string | nu
       const leadIds = [...new Set(data.map((r) => r.lead_id).filter((id): id is string => !!id))];
       const map = new Map<string, LeadLink>();
       if (leadIds.length > 0) {
-        const { data: leadRows } = await supabase.from("leads").select("id, quote_token, quote_approved_at, quote_details").in("id", leadIds).returns<LeadLink[]>();
+        const { data: leadRows } = await supabase.from("leads").select("id, quote_token, quote_approved_at, quote_details, converted_event_id").in("id", leadIds).returns<LeadLink[]>();
         for (const l of leadRows ?? []) map.set(l.id, l);
       }
       if (!alive) return;
@@ -162,6 +169,8 @@ export default function QuoteHistoryList({ signature }: { signature: string | nu
         {shown.map((r) => {
           const d = r.details;
           const lead = liveLead(r);
+          // The event this quote's lead closed into (owner, 2026-10-22: the quote is on its page too).
+          const eventId = r.lead_id ? leads.get(r.lead_id)?.converted_event_id ?? null : null;
           const phone = (r.client_phone ?? "").trim();
           const clientLang = isLang(r.client_lang) ? r.client_lang : "he";
           const eventDate = quoteDateDMY(d.eventDate);
@@ -196,6 +205,11 @@ export default function QuoteHistoryList({ signature }: { signature: string | nu
                     >
                       {t("אושרה")}
                     </ToneTag>
+                  )}
+                  {eventId && (
+                    <Link href={`/events/${eventId}`} className="block mt-0.5 text-[11px] font-semibold underline underline-offset-2 text-ink">
+                      {t("לאירוע")}
+                    </Link>
                   )}
                 </div>
               </div>

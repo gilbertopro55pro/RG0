@@ -19,6 +19,7 @@ import { createClient } from "@/lib/supabase/client";
 import ContactReminderDialog from "@/components/ContactReminderDialog";
 import BodyPortal from "@/components/BodyPortal";
 import ToneTag from "@/components/ToneTag";
+import QuoteHistoryList from "@/components/QuoteHistoryList";
 import { useVivid } from "@/components/VividProvider";
 import { toneStyle, toneVars } from "@/lib/tones";
 import { leadStatusTone } from "@/lib/statusTones";
@@ -95,6 +96,7 @@ export default function LeadsView({
   quoteBuilder,
   signature = null,
   senderName = null,
+  initialTab = "leads",
 }: {
   initialLeads: LeadRow[];
   // Idle leads the daily retention job moved out of the list (lib/leadRetention.ts).
@@ -107,6 +109,8 @@ export default function LeadsView({
   // The reminder message ends with the WhatsApp signature, or the photographer's name without one.
   signature?: string | null;
   senderName?: string | null;
+  // "?tab=quotes" opens the quote history.
+  initialTab?: "leads" | "quotes";
 }) {
   const t = useT();
   const lang = useLang();
@@ -128,6 +132,17 @@ export default function LeadsView({
   const [convertLead, setConvertLead] = useState<LeadRow | null>(null);
   const [archived, setArchived] = useState(archivedLeads);
   const [showArchive, setShowArchive] = useState(false);
+  // The leads, or the history of every quote that went out (owner, 2026-10-22): the same list as the
+  // quote builder's "היסטוריית הצעות" tab (QuoteHistoryList), from leads and from the quote tool alike.
+  const [tab, setTab] = useState<"leads" | "quotes">(initialTab);
+  const switchTab = (next: "leads" | "quotes") => {
+    setTab(next);
+    // Kept in the address, so a refresh or the back button lands on the same tab.
+    const url = new URL(window.location.href);
+    if (next === "quotes") url.searchParams.set("tab", "quotes");
+    else url.searchParams.delete("tab");
+    window.history.replaceState(window.history.state, "", url);
+  };
   // Archived lead whose "delete for good" is waiting for the second tap, and a failed delete's message.
   const [purgeConfirmId, setPurgeConfirmId] = useState<string | null>(null);
   const [purgingId, setPurgingId] = useState<string | null>(null);
@@ -256,6 +271,28 @@ export default function LeadsView({
         pageKey="leads"
         blurb={t("כל פנייה חדשה מתחילה כאן כליד. שולחים ללקוח/ה הצעת מחיר, ואחרי שהיא מאושרת אפשר להפוך אותה לאירוע סגור בלחיצה.")}
       />
+
+      <div className="flex border-b border-line mb-4" role="tablist">
+        {([
+          ["leads", "לידים"],
+          ["quotes", "היסטוריית הצעות"],
+        ] as const).map(([k, label]) => (
+          <button
+            key={k}
+            role="tab"
+            aria-selected={tab === k}
+            onClick={() => switchTab(k)}
+            className={`flex-1 sm:flex-none sm:px-6 pb-2 -mb-px text-sm font-semibold border-b-2 ${tab === k ? "border-ink text-ink" : "border-transparent text-ink-soft"}`}
+          >
+            {t(label)}
+          </button>
+        ))}
+      </div>
+
+      {tab === "quotes" && <QuoteHistoryList signature={signature} />}
+
+      {tab === "leads" && (
+      <>
 
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-3">
         {(() => {
@@ -684,6 +721,8 @@ export default function LeadsView({
             </div>
           )}
         </div>
+      )}
+      </>
       )}
 
       {showAdd && (
