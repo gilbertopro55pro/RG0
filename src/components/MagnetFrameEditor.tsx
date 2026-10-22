@@ -1,16 +1,52 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
-import { ALBUM_ORNAMENTS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
-import { MAGNET_FRAME_TEXTURES, findMagnetFrameTexture, textureDataUrl } from "@/lib/magnetFrameTextures";
-import { MAGNET_FRAME_FLORALS, findMagnetFrameFloral } from "@/lib/magnetFrameFlorals";
+import { ALBUM_ORNAMENTS, ornamentDataUrl } from "@/lib/albumOrnaments";
+import { MAGNET_FRAME_TEXTURES, textureDataUrl } from "@/lib/magnetFrameTextures";
+import { MAGNET_FRAME_FLORALS } from "@/lib/magnetFrameFlorals";
 import { MAGNET_DIGIT_STYLES, magnetDigitId, magnetDigitUrl } from "@/lib/magnetFrameDigits";
-import { MAGNET_FRAME_DIMENSIONS, DEFAULT_MAGNET_FRAME_SETTINGS, getMatInsetPct, getCutoutRadiusPx } from "@/lib/magnetFrameShared";
-import type { MagnetFrameElement, MagnetFrameTextElement, MagnetFrameDesignRow, MagnetFrameSettings, MagnetFrameCustomTextureRow, MagnetFrameCustomElementRow } from "@/lib/types";
+import {
+  DEFAULT_MAGNET_FRAME_SETTINGS,
+  MAGNET_DECORATION_SIZE_RANGE,
+  MAGNET_FRAME_SIZES,
+  MAGNET_TEXT_SIZE_RANGE,
+  getMatInsetPct,
+  isSquareMagnetSize,
+  magnetDesignDimensions,
+  magnetSafeMarginPct,
+  magnetSizeLabel,
+} from "@/lib/magnetFrameShared";
+import {
+  canMoveLayer,
+  duplicateElement,
+  frameSnapLines,
+  historyCommit,
+  historyRedo,
+  historyStart,
+  historyUndo,
+  moveLayer,
+  pointerAngleDeg,
+  resizeFromDrag,
+  snapRotation,
+  snapValue,
+  type History,
+  type LayerMove,
+} from "@/lib/magnetFrameEditing";
+import type {
+  FrameOrientation,
+  MagnetFrameElement,
+  MagnetFrameTextElement,
+  MagnetFrameDesignRow,
+  MagnetFrameSettings,
+  MagnetFrameCustomTextureRow,
+  MagnetFrameCustomElementRow,
+} from "@/lib/types";
+import MagnetFramePreview, { magnetTextStyle, type MagnetFramePreviewHandle } from "@/components/magnetFrame/MagnetFramePreview";
 import { IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight } from "@/components/icons/NavIcons";
 import { IconRotateDevice } from "@/components/icons/AlbumIcons";
+import { createClient } from "@/lib/supabase/client";
 import { useT } from "@/i18n/client";
 import { takeResumeState, useBusy, useResumeState } from "@/lib/updateResume";
 
@@ -37,7 +73,6 @@ const ELEMENT_TABS: { key: ElementTabKey; label: string }[] = [
 
 // The panels on the editor's side, one open at a time (the owner's "solo" request, 2026-10-05).
 type PanelKey = "text" | "elements" | "digits" | "texture" | "settings";
-type FrameOrientation = "landscape" | "portrait";
 
 // A size like "20×15" inside Hebrew text is laid out right-to-left and reads "15×20" (the owner saw
 // the landscape button as "(15X20)"). Isolating it left-to-right keeps width × height in order.
@@ -83,7 +118,7 @@ function clamp(n: number, min = 0, max = 100) {
 
 // yPct: the vertical center of the bottom mat (see addText), so a new text starts ON the mat
 // instead of half over the photo window.
-function newTextElement(yPct: number): MagnetFrameElement {
+function newTextElement(yPct: number): MagnetFrameTextElement {
   return {
     id: crypto.randomUUID(),
     type: "text",
@@ -102,52 +137,6 @@ function newTextElement(yPct: number): MagnetFrameElement {
   };
 }
 
-// The outer card edge stays crisp — no shadow of its own — matching renderMagnetFrameBase, which
-// never bleeds anything past the card's own square boundary. The mat's own fill color is a plain
-// white/frameColor mix (an inline backgroundColor), not a separate overlay div — one flat color is
-// all a card needs either way.
-function matCardStyle(settings: MagnetFrameSettings): React.CSSProperties {
-  const ratio = Math.max(0, Math.min(1, settings.frameColorOpacity / 100));
-  if (ratio <= 0) return { background: "#ffffff" };
-  const hex = settings.frameColor.replace("#", "");
-  const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
-  const r = parseInt(full.slice(0, 2), 16) || 255;
-  const g = parseInt(full.slice(2, 4), 16) || 255;
-  const b = parseInt(full.slice(4, 6), 16) || 255;
-  const mix = (channel: number) => Math.round(255 + (channel - 255) * ratio);
-  return { background: `rgb(${mix(r)},${mix(g)},${mix(b)})` };
-}
-
-// The INNER shadow lives on the cutout div as an `inset` box-shadow only, matching
-// renderMagnetFrameBase's blurred boundary stroke masked to keep only the half that falls INSIDE
-// the cutout — the photo side. The mat itself must stay perfectly crisp/unshadowed (confirmed: the
-// effect belongs entirely on the photo side of the seam, like the mat's raised edge casting a
-// shadow down onto the photo beneath it, never onto its own surface), so there is deliberately no
-// plain (outward) box-shadow here anymore. `scale` keeps the on-screen blur/spread proportional to
-// the tiny preview canvas vs. the export's full 1600px-wide render.
-function cutoutShadowStyle(settings: MagnetFrameSettings, scale: number): React.CSSProperties {
-  if (!settings.shadowEnabled) return {};
-  const alpha = Math.max(0, Math.min(1, settings.shadowOpacity / 100));
-  const blurDisp = settings.shadowBlurPx * scale;
-  const spreadDisp = settings.shadowDistancePx * scale;
-  return {
-    boxShadow: `inset 0 0 ${blurDisp}px ${spreadDisp}px rgba(0,0,0,${alpha})`,
-    transition: "box-shadow 0.2s ease",
-  };
-}
-
-// White under the squares: without it the texture layer (painted over the whole card) showed
-// through the clear squares inside the photo window.
-function transparentCheckerStyle(): React.CSSProperties {
-  return {
-    backgroundColor: "#ffffff",
-    backgroundImage:
-      "linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%)",
-    backgroundSize: "14px 14px",
-    backgroundPosition: "0 0, 0 7px, 7px -7px, -7px 0px",
-  };
-}
-
 // A free (native) color picker alongside the fixed swatches — the swatches stay for one-click
 // common choices, this covers everything else.
 function FreeColorPicker({ value, onChange }: { value: string; onChange: (hex: string) => void }) {
@@ -159,14 +148,49 @@ function FreeColorPicker({ value, onChange }: { value: string; onChange: (hex: s
   );
 }
 
-// A precise no-drag alternative for nudging the selected element — placed beside its delete button.
-// Forced `dir="ltr"` on the row keeps these buttons in a fixed left-to-right order (up, down,
-// left, right) regardless of page direction — the app shell is RTL (see layout.tsx), and RTL
-// mirrors a plain flex row's child order too. The icons themselves are plain SVG geometry now
-// (previously raw "←"/"→" characters, which — unlike an SVG path — sit in Unicode's bidi-mirrored
-// set and would get visually flipped by the browser inside an RTL container, exactly backwards
-// from what pressing them actually does to the element's position), so they always point at their
-// real canvas direction without needing any mirroring behavior to reason about.
+function ColorRow({ value, onChange, swatches = COLOR_SWATCHES }: { value: string | undefined; onChange: (hex: string) => void; swatches?: { label: string; value: string }[] }) {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-1.5">
+      {swatches.map((c) => (
+        <button
+          key={c.value}
+          type="button"
+          title={t(c.label)}
+          onClick={() => onChange(c.value)}
+          className="h-6 w-6 rounded-full border-2"
+          style={{ background: c.value, borderColor: value === c.value ? "var(--color-sage)" : "var(--color-line)" }}
+        />
+      ))}
+      <FreeColorPicker value={value ?? "#000000"} onChange={onChange} />
+    </div>
+  );
+}
+
+// A labeled slider with the value typed beside it.
+function SliderRow({ label, value, min, max, step = 1, onChange, suffix }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void; suffix?: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
+      <span className="text-[10px] text-ink-soft whitespace-nowrap w-16 shrink-0">{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full" />
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={Math.round(value * 10) / 10}
+        onChange={(e) => onChange(Math.min(max, Math.max(min, Number(e.target.value) || 0)))}
+        className="w-14 shrink-0 rounded-md px-1.5 py-0.5 text-xs text-center border border-line bg-white text-ink"
+        aria-label={label}
+      />
+      {suffix}
+    </div>
+  );
+}
+
+// A precise no-drag alternative for nudging the selected element. Forced `dir="ltr"` keeps the
+// buttons in a fixed up/down/left/right order, and the icons are plain SVG so they always point at
+// their real canvas direction.
 function NudgeButtons({ onNudge }: { onNudge: (dx: -1 | 0 | 1, dy: -1 | 0 | 1) => void }) {
   const t = useT();
   const btn = "h-7 w-7 rounded-full border border-line bg-card text-ink-soft flex items-center justify-center hover:bg-chip active:scale-95 transition";
@@ -212,6 +236,80 @@ function RotationControl({ value, onChange }: { value: number; onChange: (deg: n
   );
 }
 
+function ToolIcon({ d }: { d: string }) {
+  return (
+    <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+
+const ICON = {
+  undo: "M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
+  redo: "M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13",
+  duplicate: "M8 8h11v11H8zM5 16V5h11",
+  forward: "M12 19V5M5 12l7-7 7 7",
+  backward: "M12 5v14M19 12l-7 7-7-7",
+  lock: "M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3",
+  unlock: "M6 11h12v9H6zM8 11V8a4 4 0 0 1 7.5-1.9",
+  trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
+};
+
+// The selected element's actions: duplicate, layer order, lock, delete, nudge.
+function SelectionActions({
+  locked,
+  canForward,
+  canBackward,
+  onDuplicate,
+  onLayer,
+  onToggleLock,
+  onDelete,
+  onNudge,
+  deleteLabel,
+}: {
+  locked: boolean;
+  canForward: boolean;
+  canBackward: boolean;
+  onDuplicate: () => void;
+  onLayer: (move: LayerMove) => void;
+  onToggleLock: () => void;
+  onDelete: () => void;
+  onNudge: (dx: -1 | 0 | 1, dy: -1 | 0 | 1) => void;
+  deleteLabel: string;
+}) {
+  const t = useT();
+  const btn = "h-8 w-8 rounded-lg border border-line bg-card text-ink flex items-center justify-center disabled:opacity-40";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5">
+        <button type="button" onClick={onDuplicate} className={btn} title={t("שכפול (Ctrl+D)")} aria-label={t("שכפול")}>
+          <ToolIcon d={ICON.duplicate} />
+        </button>
+        <button type="button" onClick={() => onLayer("forward")} disabled={!canForward} className={btn} title={t("קדימה (מעל אלמנטים אחרים)")} aria-label={t("קדימה")}>
+          <ToolIcon d={ICON.forward} />
+        </button>
+        <button type="button" onClick={() => onLayer("backward")} disabled={!canBackward} className={btn} title={t("אחורה (מתחת לאלמנטים אחרים)")} aria-label={t("אחורה")}>
+          <ToolIcon d={ICON.backward} />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleLock}
+          className={btn}
+          title={locked ? t("ביטול הנעילה") : t("נעילה במקום")}
+          aria-label={locked ? t("ביטול הנעילה") : t("נעילה במקום")}
+          style={locked ? { background: "var(--color-amber-bg)", color: "var(--color-amber-deep)", borderColor: "var(--color-amber-deep)" } : undefined}
+        >
+          <ToolIcon d={locked ? ICON.lock : ICON.unlock} />
+        </button>
+        <button type="button" onClick={onDelete} disabled={locked} className={`${btn} text-rose`} title={deleteLabel} aria-label={deleteLabel}>
+          <ToolIcon d={ICON.trash} />
+        </button>
+      </div>
+      {!locked && <NudgeButtons onNudge={onNudge} />}
+    </div>
+  );
+}
+
 // What the editor keeps across an update's reload (see lib/updateResume.ts).
 type MagnetResumeState = {
   designId: string | null;
@@ -242,20 +340,39 @@ function mapAxis(v: number, a0: number, a1: number, b0: number, b1: number): num
   return b0 + ((v - a0) / (a1 - a0)) * (b1 - b0);
 }
 
-// The photographer edits ONE canvas (the 20x15cm "width" frame) — saving derives the 15x20cm
-// "length" companion automatically (see the POST handler in api/magnet-frames/route.ts), since
-// xPct/yPct/sizePct already carry over as-is between the two aspect ratios.
-export default function MagnetFrameEditor() {
+// The state the undo history and the autosave follow.
+type Snapshot = { elements: MagnetFrameElement[]; frameSettings: MagnetFrameSettings; portraitOverrides: Record<string, PortraitPlacement> };
+const sameSnapshot = (a: Snapshot, b: Snapshot) => JSON.stringify(a) === JSON.stringify(b);
+
+// A drag in progress on a frame: moving an element, resizing it from its corner handle, or turning
+// it from its top handle. Positions are measured against the frame the drag started on.
+type Interaction =
+  | { kind: "move"; id: string; frame: FrameOrientation; offsetX: number; offsetY: number }
+  | { kind: "resize"; id: string; frame: FrameOrientation; cx: number; cy: number; startDist: number; startSize: number }
+  | { kind: "rotate"; id: string; frame: FrameOrientation; cx: number; cy: number; startAngle: number; startRotation: number };
+
+type SaveState = "saved" | "dirty" | "saving" | "error";
+
+// A sample photo in the photo window, to judge the design against a real picture. Never saved
+// with the design or exported.
+type SamplePhoto = { url: string; local: boolean } | null;
+const SAMPLE_PHOTO_KEY = (designId: string) => `magnet-sample-photo:${designId}`;
+
+// The editor for one saved frame (owner, 2026-10-22: several frames per account, /magnet-frames
+// lists them). Two steps: 1 = the landscape frame; 2 = the portrait frame, already filled with
+// everything from step 1, where only positions get adjusted. A square size has one frame. Every
+// change saves by itself a moment later, and can be undone.
+export default function MagnetFrameEditor({ designId, events = [] }: { designId: string; events?: { id: string; label: string }[] }) {
   const t = useT();
   const [loaded, setLoaded] = useState(false);
-  const [designId, setDesignId] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const [name, setName] = useState("");
+  const [eventId, setEventId] = useState<string | null>(null);
   const [elements, setElements] = useState<MagnetFrameElement[]>([]);
   // Chosen color per illustrated-digit style that has color variants (the 3D digits).
   const [digitColors, setDigitColors] = useState<Record<string, string>>({});
   const [frameSettings, setFrameSettings] = useState<MagnetFrameSettings>(DEFAULT_MAGNET_FRAME_SETTINGS);
   const [openPanel, setOpenPanel] = useState<PanelKey | null>("text");
-  // Two steps (owner, 2026-10-06): 1 = design the landscape frame; 2 = the portrait frame, already
-  // filled with everything from step 1, where only positions get adjusted.
   const [step, setStep] = useState<1 | 2>(1);
   const [portraitOverrides, setPortraitOverrides] = useState<Record<string, PortraitPlacement>>({});
   // Each landscape text's width in design pixels, measured from the preview, so step 2 can shrink a
@@ -265,19 +382,20 @@ export default function MagnetFrameEditor() {
   // Each panel's last scroll position, so reopening a panel returns to where it was left.
   const panelScroll = useRef<Partial<Record<PanelKey, number>>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  // Which of the two previews the drag started on: both edit the same xPct/yPct.
-  const [dragFrame, setDragFrame] = useState<FrameOrientation>("landscape");
-  const [snapGuide, setSnapGuide] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [guides, setGuides] = useState<{ frame: FrameOrientation; x: number | null; y: number | null } | null>(null);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const editingOriginal = useRef<string>("");
   const [elementTab, setElementTab] = useState<ElementTabKey>("symbols");
   const [decorationColor, setDecorationColor] = useState("#2e3142");
-  const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("saved");
   const [error, setError] = useState<string | null>(null);
-  const [savedOnce, setSavedOnce] = useState(false);
   const [exportBusy, setExportBusy] = useState<`${FrameOrientation}-${"png" | "psd"}` | null>(null);
-  const landscapeRef = useRef<HTMLDivElement>(null);
-  const portraitRef = useRef<HTMLDivElement>(null);
-  const [canvasWidths, setCanvasWidths] = useState<Record<FrameOrientation, number>>({ landscape: 0, portrait: 0 });
+  const [showPrintGuides, setShowPrintGuides] = useState(false);
+  const [samplePhoto, setSamplePhoto] = useState<SamplePhoto>(null);
+  const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
+  const frameRefs = { landscape: useRef<MagnetFramePreviewHandle>(null), portrait: useRef<MagnetFramePreviewHandle>(null) };
+  const [landscapeWidth, setLandscapeWidth] = useState(0);
   const [textureTab, setTextureTab] = useState<"builtin" | "custom">("builtin");
   const [customTextures, setCustomTextures] = useState<(MagnetFrameCustomTextureRow & { url: string | null })[]>([]);
   const [customTexturesLoaded, setCustomTexturesLoaded] = useState(false);
@@ -286,45 +404,57 @@ export default function MagnetFrameEditor() {
   const [customElementsLoaded, setCustomElementsLoaded] = useState(false);
   const [uploadingElement, setUploadingElement] = useState(false);
 
+  // The design as last saved on the server (JSON of the snapshot), and the drag in progress.
+  const lastSavedKey = useRef<string | null>(null);
+  const interaction = useRef<Interaction | null>(null);
+
+  const sizeKey = frameSettings.sizeKey;
+  const square = isSquareMagnetSize(sizeKey);
+  const landscapeDims = magnetDesignDimensions("landscape", sizeKey);
+  const portraitDims = magnetDesignDimensions("portrait", sizeKey);
+  const matInset = getMatInsetPct("landscape", sizeKey, frameSettings.borderRatioPct, frameSettings.bottomBorderRatioPct);
+  const portraitInset = getMatInsetPct("portrait", sizeKey, frameSettings.borderRatioPct, frameSettings.bottomBorderRatioPct);
+
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
-        const res = await fetch("/api/magnet-frames");
-        if (res.ok) {
-          const data: { design: MagnetFrameDesignRow | null } = await res.json();
-          if (data.design) {
-            setDesignId(data.design.id);
-            // Older saved designs predate the bold/italic/underline fields — default a missing
-            // `bold` to true (matching the fixed always-bold look every text element rendered with
-            // before the toggle existed) so an untouched old design still looks the same; italic/
-            // underline default to off either way since neither existed before at all.
-            setElements(
-              (data.design.landscape_elements ?? []).map((el) =>
-                el.type === "text" ? { ...el, bold: el.bold ?? true, italic: el.italic ?? false, underline: el.underline ?? false } : el
-              )
-            );
-            setFrameSettings({ ...DEFAULT_MAGNET_FRAME_SETTINGS, ...data.design.frame_settings });
-            // Portrait positions that differ from the landscape ones were set by hand in step 2.
-            // Designs saved before the two steps have an identical copy, so step 2 fits them anew.
-            const landscapeById = new Map((data.design.landscape_elements ?? []).map((el) => [el.id, el]));
-            const overrides: Record<string, PortraitPlacement> = {};
-            for (const p of data.design.portrait_elements ?? []) {
-              const l = landscapeById.get(p.id);
-              if (!l) continue;
-              const a = placementOf(l);
-              const b = placementOf(p);
-              if (a.xPct !== b.xPct || a.yPct !== b.yPct || (a.rotation ?? 0) !== (b.rotation ?? 0) || a.sizePct !== b.sizePct || a.fontSizePx !== b.fontSizePx) {
-                overrides[p.id] = b;
-              }
-            }
-            setPortraitOverrides(overrides);
-            setSavedOnce(true);
+        const res = await fetch(`/api/magnet-frames/${designId}`);
+        if (!res.ok) {
+          if (alive) setNotFound(true);
+          return;
+        }
+        const data: { design: MagnetFrameDesignRow } = await res.json();
+        if (!alive) return;
+        const design = data.design;
+        setName(design.name ?? "");
+        setEventId(design.event_id);
+        // Older saved designs predate the bold/italic/underline fields — a missing `bold` is true
+        // (the fixed always-bold look before the toggle existed).
+        const loadedElements = (design.landscape_elements ?? []).map((el) =>
+          el.type === "text" ? { ...el, bold: el.bold ?? true, italic: el.italic ?? false, underline: el.underline ?? false } : el
+        );
+        const loadedSettings = { ...DEFAULT_MAGNET_FRAME_SETTINGS, ...design.frame_settings };
+        setElements(loadedElements);
+        setFrameSettings(loadedSettings);
+        // Portrait positions that differ from the landscape ones were set by hand in step 2.
+        // Designs saved before the two steps have an identical copy, so step 2 fits them anew.
+        const landscapeById = new Map((design.landscape_elements ?? []).map((el) => [el.id, el]));
+        const overrides: Record<string, PortraitPlacement> = {};
+        for (const p of design.portrait_elements ?? []) {
+          const l = landscapeById.get(p.id);
+          if (!l) continue;
+          const a = placementOf(l);
+          const b = placementOf(p);
+          if (a.xPct !== b.xPct || a.yPct !== b.yPct || (a.rotation ?? 0) !== (b.rotation ?? 0) || a.sizePct !== b.sizePct || a.fontSizePx !== b.fontSizePx) {
+            overrides[p.id] = b;
           }
         }
+        setPortraitOverrides(overrides);
+        lastSavedKey.current = JSON.stringify({ elements: loadedElements, frameSettings: loadedSettings, portraitOverrides: overrides });
         // Unsaved work from before an update's reload wins over the saved design (lib/updateResume).
         const resumed = takeResumeState<MagnetResumeState>("magnet-editor");
-        if (resumed) {
-          if (resumed.designId) setDesignId(resumed.designId);
+        if (resumed && resumed.designId === designId) {
           setElements(resumed.elements);
           setFrameSettings(resumed.frameSettings);
           setPortraitOverrides(resumed.portraitOverrides ?? {});
@@ -333,75 +463,84 @@ export default function MagnetFrameEditor() {
           if (resumed.elementTab) setElementTab(resumed.elementTab);
           if (resumed.digitColors) setDigitColors(resumed.digitColors);
         }
+        try {
+          const stored = localStorage.getItem(SAMPLE_PHOTO_KEY(designId));
+          if (stored) setSamplePhoto({ url: stored, local: false });
+        } catch {
+          // Storage unavailable: no remembered sample photo.
+        }
+      } catch {
+        if (alive) setNotFound(true);
       } finally {
-        setLoaded(true);
+        if (alive) setLoaded(true);
       }
     })();
-  }, []);
+    return () => {
+      alive = false;
+    };
+  }, [designId]);
 
-  // Depends on `loaded`, not just []: the two canvas divs (landscapeRef / portraitRef) don't exist in the DOM
-  // until the "!loaded return null" gate above lifts, which happens on a LATER render than this
-  // component's first commit — a plain mount-only effect would fire once while the refs are still null,
-  // bail out immediately, and (with an empty dep array) never get a second chance.
+  // Thumbnails and the design itself need the uploaded textures/elements: load them once when the
+  // design uses any.
+  const loadCustomTextures = useCallback(async () => {
+    if (customTexturesLoaded) return;
+    setCustomTexturesLoaded(true);
+    try {
+      const res = await fetch("/api/magnet-frames/textures");
+      if (!res.ok) return;
+      const data: { textures: (MagnetFrameCustomTextureRow & { url: string | null })[] } = await res.json();
+      setCustomTextures(data.textures);
+    } catch {
+      // A failed load shouldn't block the built-in texture tab.
+    }
+  }, [customTexturesLoaded]);
+  const loadCustomElements = useCallback(async () => {
+    if (customElementsLoaded) return;
+    setCustomElementsLoaded(true);
+    try {
+      const res = await fetch("/api/magnet-frames/elements");
+      if (!res.ok) return;
+      const data: { elements: (MagnetFrameCustomElementRow & { url: string | null })[] } = await res.json();
+      setCustomElements(data.elements);
+    } catch {
+      // A failed load shouldn't block the built-in element tabs.
+    }
+  }, [customElementsLoaded]);
+  const usesCustomTexture = !!frameSettings.customTextureAssetId;
+  const usesCustomElement = elements.some((el) => el.type === "decoration" && el.customElementAssetId);
   useEffect(() => {
-    const l = landscapeRef.current;
-    const p = portraitRef.current;
-    if (!l || !p) return;
-    const update = () => setCanvasWidths({ landscape: l.clientWidth, portrait: p.clientWidth });
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(l);
-    ro.observe(p);
-    return () => ro.disconnect();
-  }, [loaded]);
+    if (!loaded) return;
+    // A fetch kicked off by what the loaded design contains.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (usesCustomTexture) void loadCustomTextures();
+    if (usesCustomElement) void loadCustomElements();
+  }, [loaded, usesCustomTexture, usesCustomElement, loadCustomTextures, loadCustomElements]);
 
-  const dims = MAGNET_FRAME_DIMENSIONS.landscape;
-  const matInset = getMatInsetPct("landscape", frameSettings.borderRatioPct, frameSettings.bottomBorderRatioPct);
-
-  // The custom upload (when picked) always wins over a built-in id — same "one active, selecting
-  // one clears the other" rule the settings themselves follow. The cutout div's own overflow, plus
-  // the checker placeholder painted on top of it in the DOM, keeps this texture layer contained to
-  // the mat without any extra clipping here — see the comment above matCardStyle.
-  const activeCustomTexture = frameSettings.customTextureAssetId ? customTextures.find((tex) => tex.id === frameSettings.customTextureAssetId) : null;
-  const activeBuiltinTexture = !frameSettings.customTextureAssetId ? findMagnetFrameTexture(frameSettings.textureId ?? undefined) : undefined;
-  // CSS's unquoted url(...) closes at the FIRST unescaped ")" — and encodeURIComponent (used by
-  // textureDataUrl) deliberately leaves "(" and ")" unescaped (they're in its unreserved set), so
-  // every texture's own rgba(...)/rotate(...) values would truncate an unquoted url() right there,
-  // silently dropping the whole background-image. Quoting it sidesteps that entirely: the encoded
-  // string never contains a literal '"' (encodeURIComponent does escape those), so url("...") has
-  // nothing left inside it that could prematurely end the string.
-  const textureStyle: React.CSSProperties | null =
-    activeCustomTexture?.url
-      ? { backgroundImage: `url("${activeCustomTexture.url}")`, backgroundSize: "150px 150px", backgroundRepeat: "repeat", opacity: frameSettings.textureOpacity / 100 }
-      : activeBuiltinTexture
-        ? {
-            backgroundImage: `url("${textureDataUrl(activeBuiltinTexture)}")`,
-            backgroundSize: `${activeBuiltinTexture.tileSizePx}px ${activeBuiltinTexture.tileSizePx}px`,
-            backgroundRepeat: "repeat",
-            opacity: frameSettings.textureOpacity / 100,
-          }
-        : null;
+  const customTextureUrl = frameSettings.customTextureAssetId ? customTextures.find((tex) => tex.id === frameSettings.customTextureAssetId)?.url ?? null : null;
+  const customElementUrls = useMemo(() => Object.fromEntries(customElements.map((c) => [c.id, c.url])), [customElements]);
 
   // Step 2's starting point: each element mapped region by region into the portrait frame (see
   // mapAxis), a text too wide for it scaled down, then whatever the photographer adjusted there.
-  const portraitInset = getMatInsetPct("portrait", frameSettings.borderRatioPct, frameSettings.bottomBorderRatioPct);
-  const PORTRAIT_TEXT_MAX_W = MAGNET_FRAME_DIMENSIONS.portrait.widthPx * 0.9;
-  const portraitElements: MagnetFrameElement[] = elements.map((el) => {
-    const fitted = {
-      ...el,
-      xPct: mapAxis(el.xPct, matInset.xPct, 100 - matInset.xPct, portraitInset.xPct, 100 - portraitInset.xPct),
-      yPct: mapAxis(el.yPct, matInset.topPct, 100 - matInset.bottomPct, portraitInset.topPct, 100 - portraitInset.bottomPct),
-    } as MagnetFrameElement;
-    if (fitted.type === "text") {
-      const w = textWidths[el.id];
-      if (w && w > PORTRAIT_TEXT_MAX_W) fitted.fontSizePx = Math.max(10, Math.round((fitted.fontSizePx * PORTRAIT_TEXT_MAX_W) / w));
-    }
-    const override = portraitOverrides[el.id];
-    return (override ? { ...fitted, ...Object.fromEntries(Object.entries(override).filter(([, v]) => v !== undefined)) } : fitted) as MagnetFrameElement;
-  });
+  // A square size has no second frame: the portrait copy is the landscape one.
+  const PORTRAIT_TEXT_MAX_W = portraitDims.widthPx * 0.9;
+  const portraitElements: MagnetFrameElement[] = square
+    ? elements
+    : elements.map((el) => {
+        const fitted = {
+          ...el,
+          xPct: mapAxis(el.xPct, matInset.xPct, 100 - matInset.xPct, portraitInset.xPct, 100 - portraitInset.xPct),
+          yPct: mapAxis(el.yPct, matInset.topPct, 100 - matInset.bottomPct, portraitInset.topPct, 100 - portraitInset.bottomPct),
+        } as MagnetFrameElement;
+        if (fitted.type === "text") {
+          const w = textWidths[el.id];
+          if (w && w > PORTRAIT_TEXT_MAX_W) fitted.fontSizePx = Math.max(10, Math.round((fitted.fontSizePx * PORTRAIT_TEXT_MAX_W) / w));
+        }
+        const override = portraitOverrides[el.id];
+        return (override ? { ...fitted, ...Object.fromEntries(Object.entries(override).filter(([, v]) => v !== undefined)) } : fitted) as MagnetFrameElement;
+      });
 
   useLayoutEffect(() => {
-    const scaleL = canvasWidths.landscape / MAGNET_FRAME_DIMENSIONS.landscape.widthPx;
+    const scaleL = landscapeWidth / landscapeDims.widthPx;
     if (!scaleL) return;
     const next: Record<string, number> = {};
     textNodes.current.forEach((node, id) => {
@@ -414,8 +553,165 @@ export default function MagnetFrameEditor() {
     if (!same) setTextWidths(next);
   });
 
+  // --- Latest state, for handlers that run outside React's render (autosave, keys, pointer) ---
+  const latest = useRef({ elements, frameSettings, portraitOverrides, portraitElements, selectedId, step, editingTextId });
+  const snapshot = useMemo<Snapshot>(() => ({ elements, frameSettings, portraitOverrides }), [elements, frameSettings, portraitOverrides]);
+  const snapshotRef = useRef(snapshot);
+  useLayoutEffect(() => {
+    latest.current = { elements, frameSettings, portraitOverrides, portraitElements, selectedId, step, editingTextId };
+    snapshotRef.current = snapshot;
+  });
+
+  // --- Undo / redo ---
+  // One step per settled change: changes less than 450ms apart (a slider drag, typing) and
+  // everything during one pointer drag join the same step.
+  const historyRef = useRef<History<Snapshot> | null>(null);
+  const applyingHistory = useRef(false);
+  const lastChangeAt = useRef(0);
+  const dragStepOpen = useRef(false);
+  const [historyDepth, setHistoryDepth] = useState({ past: 0, future: 0 });
+  const syncHistoryDepth = () => setHistoryDepth({ past: historyRef.current?.past.length ?? 0, future: historyRef.current?.future.length ?? 0 });
+  useEffect(() => {
+    if (!loaded) return;
+    const h = historyRef.current;
+    if (!h) {
+      historyRef.current = historyStart(snapshot);
+      return;
+    }
+    if (applyingHistory.current) {
+      applyingHistory.current = false;
+      return;
+    }
+    if (sameSnapshot(h.present, snapshot)) return;
+    const now = Date.now();
+    const dragging = interaction.current !== null;
+    const join = h.past.length > 0 && h.future.length === 0 && (dragging ? dragStepOpen.current : now - lastChangeAt.current < 450);
+    historyRef.current = join ? { ...h, present: snapshot } : historyCommit(h, snapshot, sameSnapshot);
+    lastChangeAt.current = now;
+    if (dragging) dragStepOpen.current = true;
+    // The undo buttons follow the history kept in the ref.
+    syncHistoryDepth();
+  }, [snapshot, loaded]);
+  const applySnapshot = (s: Snapshot) => {
+    applyingHistory.current = true;
+    lastChangeAt.current = 0;
+    setElements(s.elements);
+    setFrameSettings(s.frameSettings);
+    setPortraitOverrides(s.portraitOverrides);
+    setEditingTextId(null);
+    if (latest.current.selectedId && !s.elements.some((el) => el.id === latest.current.selectedId)) setSelectedId(null);
+    syncHistoryDepth();
+  };
+  const undo = () => {
+    const h = historyRef.current;
+    if (!h || h.past.length === 0) return;
+    historyRef.current = historyUndo(h);
+    applySnapshot(historyRef.current.present);
+  };
+  const redo = () => {
+    const h = historyRef.current;
+    if (!h || h.future.length === 0) return;
+    historyRef.current = historyRedo(h);
+    applySnapshot(historyRef.current.present);
+  };
+  const canUndo = historyDepth.past > 0;
+  const canRedo = historyDepth.future > 0;
+
+  // --- Autosave ---
+  // A second after the last change the design saves by itself; "נשמר" says it's on the server.
+  // Downloads wait for the save, so the file always matches the screen.
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveChain = useRef<Promise<boolean>>(Promise.resolve(true));
+  const snapshotKey = JSON.stringify(snapshot);
+  const doSave = async (): Promise<boolean> => {
+    const key = JSON.stringify({ elements: latest.current.elements, frameSettings: latest.current.frameSettings, portraitOverrides: latest.current.portraitOverrides });
+    if (key === lastSavedKey.current) return true;
+    setSaveState("saving");
+    try {
+      const res = await fetch("/api/magnet-frames", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: designId, elements: latest.current.elements, portraitElements: latest.current.portraitElements, frameSettings: latest.current.frameSettings }),
+      });
+      if (!res.ok) throw new Error();
+      lastSavedKey.current = key;
+      const now = JSON.stringify(snapshotRef.current);
+      setSaveState(now === key ? "saved" : "dirty");
+      return true;
+    } catch {
+      setSaveState("error");
+      return false;
+    }
+  };
+  const save = (): Promise<boolean> => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    saveChain.current = saveChain.current.then(doSave, doSave);
+    return saveChain.current;
+  };
+  useEffect(() => {
+    if (!loaded || notFound || lastSavedKey.current === null) return;
+    if (snapshotKey === lastSavedKey.current) return;
+    setSaveState("dirty");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => void save(), 1000);
+    // save reads refs only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshotKey, loaded, notFound]);
+  // Leaving the page with an unsaved change: the browser asks before closing the tab, and an
+  // in-app navigation sends what's left on its way out.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (lastSavedKey.current !== null && JSON.stringify(snapshotRef.current) !== lastSavedKey.current) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      if (lastSavedKey.current !== null && JSON.stringify(snapshotRef.current) !== lastSavedKey.current) {
+        fetch("/api/magnet-frames", {
+          method: "POST",
+          keepalive: true,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: designId, elements: latest.current.elements, portraitElements: latest.current.portraitElements, frameSettings: latest.current.frameSettings }),
+        }).catch(() => {});
+      }
+    };
+  }, [designId]);
+
+  // The name and the linked event save on their own (PATCH), the name a moment after typing stops.
+  const nameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const patchDesign = async (patch: { name?: string; eventId?: string | null }) => {
+    try {
+      const res = await fetch(`/api/magnet-frames/${designId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      if (!res.ok) throw new Error();
+    } catch {
+      setError(t("שגיאה בשמירה"));
+    }
+  };
+  const changeName = (value: string) => {
+    setName(value);
+    if (nameTimer.current) clearTimeout(nameTimer.current);
+    nameTimer.current = setTimeout(() => void patchDesign({ name: value }), 700);
+  };
+  const changeEvent = (value: string | null) => {
+    setEventId(value);
+    void patchDesign({ eventId: value });
+  };
+
+  useResumeState("magnet-editor", (): MagnetResumeState | null =>
+    loaded ? { designId, elements, frameSettings, portraitOverrides, step, openPanel, elementTab, digitColors } : null
+  );
+  useBusy("magnet-export", saveState === "saving" || exportBusy ? t("הורדת המסגרת") : null);
+
+  // --- Editing ---
+  const selected = elements.find((e) => e.id === selectedId) ?? null;
+
+  const updateElement = (id: string, patch: Partial<MagnetFrameElement>) => {
+    setElements((prev) => prev.map((el) => (el.id === id ? ({ ...el, ...patch } as MagnetFrameElement) : el)));
+  };
+
   const setPortraitPlacement = (id: string, patch: Partial<PortraitPlacement>) => {
-    const current = portraitElements.find((e) => e.id === id);
+    const current = latest.current.portraitElements.find((e) => e.id === id);
     setPortraitOverrides((prev) => ({ ...prev, [id]: { ...(prev[id] ?? (current ? placementOf(current) : { xPct: 50, yPct: 50 })), ...patch } }));
   };
   const resetPortraitPlacement = (id: string) =>
@@ -424,82 +720,36 @@ export default function MagnetFrameEditor() {
       delete next[id];
       return next;
     });
-  const PORTRAIT_NUDGE_X = (14 / MAGNET_FRAME_DIMENSIONS.portrait.widthPx) * 100;
-  const PORTRAIT_NUDGE_Y = (14 / MAGNET_FRAME_DIMENSIONS.portrait.heightPx) * 100;
-  const nudgePortrait = (id: string, dx: -1 | 0 | 1, dy: -1 | 0 | 1) => {
-    const el = portraitElements.find((e) => e.id === id);
-    if (!el) return;
-    setPortraitPlacement(id, { xPct: clamp(el.xPct + dx * PORTRAIT_NUDGE_X), yPct: clamp(el.yPct + dy * PORTRAIT_NUDGE_Y) });
+
+  // A precise, no-drag alternative to dragging — each press nudges the element by 14 design px
+  // (×4 with Shift on the keyboard), whatever the preview's zoom.
+  const nudge = (id: string, dx: number, dy: number) => {
+    const portrait = latest.current.step === 2;
+    const fd = portrait ? portraitDims : landscapeDims;
+    const stepX = (14 / fd.widthPx) * 100;
+    const stepY = (14 / fd.heightPx) * 100;
+    if (portrait) {
+      const el = latest.current.portraitElements.find((e) => e.id === id);
+      if (el) setPortraitPlacement(id, { xPct: clamp(el.xPct + dx * stepX), yPct: clamp(el.yPct + dy * stepY) });
+      return;
+    }
+    setElements((prev) => prev.map((el) => (el.id === id ? { ...el, xPct: clamp(el.xPct + dx * stepX), yPct: clamp(el.yPct + dy * stepY) } : el)));
   };
 
-  const goToStep = (n: 1 | 2) => {
-    setSelectedId(null);
-    setStep(n);
-  };
-
-  useResumeState("magnet-editor", (): MagnetResumeState | null =>
-    loaded ? { designId, elements, frameSettings, portraitOverrides, step, openPanel, elementTab, digitColors } : null
-  );
-  useBusy("magnet-export", saving || exportBusy ? t("הורדת המסגרת") : null);
-
-  const selected = elements.find((e) => e.id === selectedId) ?? null;
-
-  const updateElement = (id: string, patch: Partial<MagnetFrameElement>) => {
-    setElements((prev) => prev.map((el) => (el.id === id ? ({ ...el, ...patch } as MagnetFrameElement) : el)));
-  };
-
-  // A precise, no-drag alternative to dragging — each press nudges the element by exactly 14px of
-  // the actual 1600x1200 export canvas (converted to the xPct/yPct percentage space every element
-  // is positioned in), regardless of how zoomed in/out the on-screen preview currently is.
-  const NUDGE_STEP_X_PCT = (14 / dims.widthPx) * 100;
-  const NUDGE_STEP_Y_PCT = (14 / dims.heightPx) * 100;
-  const nudgeElement = (id: string, dx: -1 | 0 | 1, dy: -1 | 0 | 1) => {
-    setElements((prev) =>
-      prev.map((el) =>
-        el.id === id
-          ? { ...el, xPct: clamp(el.xPct + dx * NUDGE_STEP_X_PCT), yPct: clamp(el.yPct + dy * NUDGE_STEP_Y_PCT) }
-          : el
-      )
-    );
-  };
-
-  const addText = () => {
-    const el = newTextElement(100 - matInset.bottomPct / 2);
+  const addElement = (el: MagnetFrameElement) => {
     setElements((prev) => [...prev, el]);
     setSelectedId(el.id);
   };
 
-  const addDigit = (digit: string, style: (typeof DIGIT_STYLES)[number]) => {
-    const el: MagnetFrameTextElement = {
-      ...(newTextElement(100 - matInset.bottomPct / 2) as MagnetFrameTextElement),
-      text: digit,
-      fontKey: style.fontKey,
-      fontSizePx: 140,
-      color: decorationColor,
-      bold: style.bold,
-      italic: style.italic,
-    };
-    setElements((prev) => [...prev, el]);
-    setSelectedId(el.id);
-  };
+  const addText = () => addElement(newTextElement(100 - matInset.bottomPct / 2));
 
-  const addDecoration = (ornamentId: string) => {
-    const el: MagnetFrameElement = { id: crypto.randomUUID(), type: "decoration", ornamentId, xPct: 24, yPct: 24, sizePct: 16, color: decorationColor };
-    setElements((prev) => [...prev, el]);
-    setSelectedId(el.id);
-  };
+  const addDigit = (digit: string, style: (typeof DIGIT_STYLES)[number]) =>
+    addElement({ ...newTextElement(100 - matInset.bottomPct / 2), text: digit, fontKey: style.fontKey, fontSizePx: 140, color: decorationColor, bold: style.bold, italic: style.italic });
 
-  const addCustomElement = (customElementAssetId: string) => {
-    const el: MagnetFrameElement = { id: crypto.randomUUID(), type: "decoration", customElementAssetId, xPct: 24, yPct: 24, sizePct: 16, color: decorationColor };
-    setElements((prev) => [...prev, el]);
-    setSelectedId(el.id);
-  };
-
-  const addFloral = (floralId: string, sizePct = 28) => {
-    const el: MagnetFrameElement = { id: crypto.randomUUID(), type: "decoration", floralId, xPct: 24, yPct: 24, sizePct, color: decorationColor };
-    setElements((prev) => [...prev, el]);
-    setSelectedId(el.id);
-  };
+  const addDecoration = (ornamentId: string) => addElement({ id: crypto.randomUUID(), type: "decoration", ornamentId, xPct: 24, yPct: 24, sizePct: 16, color: decorationColor });
+  const addCustomElement = (customElementAssetId: string) =>
+    addElement({ id: crypto.randomUUID(), type: "decoration", customElementAssetId, xPct: 24, yPct: 24, sizePct: 16, color: decorationColor });
+  const addFloral = (floralId: string, sizePct = 28) => addElement({ id: crypto.randomUUID(), type: "decoration", floralId, xPct: 24, yPct: 24, sizePct, color: decorationColor });
 
   const removeElement = (id: string) => {
     setElements((prev) => prev.filter((el) => el.id !== id));
@@ -508,21 +758,41 @@ export default function MagnetFrameEditor() {
       delete next[id];
       return next;
     });
-    if (selectedId === id) setSelectedId(null);
+    if (latest.current.selectedId === id) setSelectedId(null);
+    if (latest.current.editingTextId === id) setEditingTextId(null);
   };
 
-  const loadCustomTextures = async () => {
-    if (customTexturesLoaded) return;
-    setCustomTexturesLoaded(true);
-    try {
-      const res = await fetch("/api/magnet-frames/textures");
-      if (!res.ok) return;
-      const data: { textures: (MagnetFrameCustomTextureRow & { url: string | null })[] } = await res.json();
-      setCustomTextures(data.textures);
-    } catch {
-      // A failed load shouldn't block the built-in texture tab.
-    }
+  const duplicate = (id: string) => {
+    const el = latest.current.elements.find((e) => e.id === id);
+    if (!el) return;
+    const copy = duplicateElement(el, crypto.randomUUID());
+    setElements((prev) => {
+      const i = prev.findIndex((e) => e.id === id);
+      const next = [...prev];
+      next.splice(i + 1, 0, copy);
+      return next;
+    });
+    setSelectedId(copy.id);
   };
+  const changeLayer = (id: string, move: LayerMove) => setElements((prev) => moveLayer(prev, id, move));
+  const toggleLock = (id: string) => {
+    const el = latest.current.elements.find((e) => e.id === id);
+    if (el) updateElement(id, { locked: !el.locked });
+  };
+
+  const selectionActions = (el: MagnetFrameElement, deleteLabel: string) => (
+    <SelectionActions
+      locked={!!el.locked}
+      canForward={canMoveLayer(elements, el.id, "forward")}
+      canBackward={canMoveLayer(elements, el.id, "backward")}
+      onDuplicate={() => duplicate(el.id)}
+      onLayer={(move) => changeLayer(el.id, move)}
+      onToggleLock={() => toggleLock(el.id)}
+      onDelete={() => removeElement(el.id)}
+      onNudge={(dx, dy) => nudge(el.id, dx, dy)}
+      deleteLabel={deleteLabel}
+    />
+  );
 
   const uploadTextureFile = async (file: File) => {
     setUploadingTexture(true);
@@ -549,19 +819,6 @@ export default function MagnetFrameEditor() {
   const selectCustomTexture = (id: string) => setFrameSettings((prev) => ({ ...prev, customTextureAssetId: id, textureId: null }));
   const clearTexture = () => setFrameSettings((prev) => ({ ...prev, textureId: null, customTextureAssetId: null }));
 
-  const loadCustomElements = async () => {
-    if (customElementsLoaded) return;
-    setCustomElementsLoaded(true);
-    try {
-      const res = await fetch("/api/magnet-frames/elements");
-      if (!res.ok) return;
-      const data: { elements: (MagnetFrameCustomElementRow & { url: string | null })[] } = await res.json();
-      setCustomElements(data.elements);
-    } catch {
-      // A failed load shouldn't block the built-in element tabs.
-    }
-  };
-
   const uploadElementFile = async (file: File) => {
     setUploadingElement(true);
     setError(null);
@@ -584,68 +841,177 @@ export default function MagnetFrameEditor() {
 
   const selectElementTab = (key: (typeof ELEMENT_TABS)[number]["key"]) => {
     setElementTab(key);
-    if (key === "custom") loadCustomElements();
+    if (key === "custom") void loadCustomElements();
   };
 
-  // Snapping to the exact center (not just showing a guide near it) is what lets the photographer
-  // feel the frame's middle rather than eyeball it — a few-percent catch radius around 50 that
-  // pulls the element to precisely 50 once inside it, same idea as most design tools' object snap.
-  const SNAP_THRESHOLD_PCT = 2;
-  const handlePointerMove = (e: React.PointerEvent) => {
-    const frameEl = (dragFrame === "portrait" ? portraitRef : landscapeRef).current;
-    if (!draggingId || !frameEl) return;
-    const rect = frameEl.getBoundingClientRect();
-    const rawX = clamp(((e.clientX - rect.left) / rect.width) * 100);
-    const rawY = clamp(((e.clientY - rect.top) / rect.height) * 100);
-    const snapX = Math.abs(rawX - 50) <= SNAP_THRESHOLD_PCT;
-    const snapY = Math.abs(rawY - 50) <= SNAP_THRESHOLD_PCT;
-    setSnapGuide({ x: snapX, y: snapY });
-    const pos = { xPct: snapX ? 50 : rawX, yPct: snapY ? 50 : rawY };
-    if (dragFrame === "portrait") setPortraitPlacement(draggingId, pos);
-    else updateElement(draggingId, pos);
+  // --- Dragging on the frames: move, resize from the corner handle, turn from the top handle ---
+  const SNAP_THRESHOLD_PCT = 1.2;
+  const frameRect = (frame: FrameOrientation) => frameRefs[frame].current?.element?.getBoundingClientRect() ?? null;
+  const listFor = (frame: FrameOrientation) => (frame === "portrait" ? latest.current.portraitElements : latest.current.elements);
+  const elementCenterPx = (frame: FrameOrientation, el: MagnetFrameElement) => {
+    const rect = frameRect(frame);
+    if (!rect) return null;
+    return { x: rect.left + (el.xPct / 100) * rect.width, y: rect.top + (el.yPct / 100) * rect.height, rect };
   };
 
-  // Returns the saved design's id (null on failure), so a download can save first and then export
-  // exactly what's on screen.
-  const save = async (): Promise<string | null> => {
-    if (saving) return null;
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/magnet-frames", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: designId, elements, portraitElements, frameSettings }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? t("שגיאה בשמירה"));
-        return null;
-      }
-      setDesignId(data.design.id);
-      setSavedOnce(true);
-      return data.design.id as string;
-    } catch {
-      setError(t("שגיאה בשמירה"));
-      return null;
-    } finally {
-      setSaving(false);
+  const startMove = (frame: FrameOrientation, el: MagnetFrameElement, e: React.PointerEvent) => {
+    e.stopPropagation();
+    setSelectedId(el.id);
+    if (latest.current.step === 1) {
+      if (el.type === "text") selectPanel("text");
+      else selectPanel(openPanel === "digits" && el.floralId?.startsWith("digit-") ? "digits" : "elements");
+    }
+    if (latest.current.editingTextId === el.id) return;
+    // Captured even when locked: the click that ends the press then lands on the element and
+    // keeps it selected, instead of on the frame (which lets go of the selection).
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (el.locked) return;
+    const c = elementCenterPx(frame, el);
+    if (!c) return;
+    dragStepOpen.current = false;
+    interaction.current = {
+      kind: "move",
+      id: el.id,
+      frame,
+      offsetX: ((e.clientX - c.x) / c.rect.width) * 100,
+      offsetY: ((e.clientY - c.y) / c.rect.height) * 100,
+    };
+    setActiveId(el.id);
+  };
+
+  const startHandle = (kind: "resize" | "rotate", frame: FrameOrientation, el: MagnetFrameElement, e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const c = elementCenterPx(frame, el);
+    if (!c) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragStepOpen.current = false;
+    if (kind === "resize") {
+      interaction.current = {
+        kind,
+        id: el.id,
+        frame,
+        cx: c.x,
+        cy: c.y,
+        startDist: Math.hypot(e.clientX - c.x, e.clientY - c.y),
+        startSize: el.type === "text" ? el.fontSizePx : el.sizePct,
+      };
+    } else {
+      interaction.current = { kind, id: el.id, frame, cx: c.x, cy: c.y, startAngle: pointerAngleDeg(c.x, c.y, e.clientX, e.clientY), startRotation: el.rotation ?? 0 };
+    }
+    setActiveId(el.id);
+  };
+
+  const onFramePointerMove = (e: React.PointerEvent) => {
+    const it = interaction.current;
+    if (!it) return;
+    const portrait = it.frame === "portrait";
+    const apply = (patch: Partial<PortraitPlacement> & Record<string, unknown>) =>
+      portrait ? setPortraitPlacement(it.id, patch) : updateElement(it.id, patch as Partial<MagnetFrameElement>);
+    if (it.kind === "move") {
+      const rect = frameRect(it.frame);
+      if (!rect) return;
+      const rawX = clamp(((e.clientX - rect.left) / rect.width) * 100 - it.offsetX);
+      const rawY = clamp(((e.clientY - rect.top) / rect.height) * 100 - it.offsetY);
+      // Alt turns snapping off for a free placement.
+      const lines = frameSnapLines(portrait ? portraitInset : matInset, listFor(it.frame).filter((o) => o.id !== it.id));
+      const sx = e.altKey ? { value: rawX, line: null } : snapValue(rawX, lines.x, SNAP_THRESHOLD_PCT);
+      const sy = e.altKey ? { value: rawY, line: null } : snapValue(rawY, lines.y, SNAP_THRESHOLD_PCT);
+      setGuides({ frame: it.frame, x: sx.line, y: sy.line });
+      apply({ xPct: sx.value, yPct: sy.value });
+      return;
+    }
+    const el = listFor(it.frame).find((o) => o.id === it.id);
+    if (!el) return;
+    if (it.kind === "resize") {
+      const dist = Math.hypot(e.clientX - it.cx, e.clientY - it.cy);
+      if (el.type === "text") apply({ fontSizePx: Math.round(resizeFromDrag(it.startSize, it.startDist, dist, MAGNET_TEXT_SIZE_RANGE.min, MAGNET_TEXT_SIZE_RANGE.max)) });
+      else apply({ sizePct: resizeFromDrag(it.startSize, it.startDist, dist, MAGNET_DECORATION_SIZE_RANGE.min, MAGNET_DECORATION_SIZE_RANGE.max) });
+      return;
+    }
+    const angle = pointerAngleDeg(it.cx, it.cy, e.clientX, e.clientY);
+    apply({ rotation: snapRotation(it.startRotation + angle - it.startAngle, e.shiftKey ? 15 : undefined) });
+  };
+
+  const endInteraction = () => {
+    interaction.current = null;
+    dragStepOpen.current = false;
+    setActiveId(null);
+    setGuides(null);
+  };
+
+  // --- Keyboard ---
+  // Ctrl/⌘+Z undo, Ctrl/⌘+Shift+Z or Ctrl+Y redo, Delete removes, arrows nudge (Shift ×4),
+  // Ctrl/⌘+D duplicates, Esc lets go of the selection. Not while typing in a field.
+  const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
+  const onKeyDown = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+    const mod = e.metaKey || e.ctrlKey;
+    const key = e.key.toLowerCase();
+    if (mod && key === "z") {
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (mod && key === "y") {
+      e.preventDefault();
+      redo();
+      return;
+    }
+    const id = latest.current.selectedId;
+    if (e.key === "Escape") {
+      setSelectedId(null);
+      return;
+    }
+    if (!id) return;
+    const el = latest.current.elements.find((x) => x.id === id);
+    if (!el) return;
+    if (mod && key === "d") {
+      e.preventDefault();
+      if (latest.current.step === 1) duplicate(id);
+      return;
+    }
+    if (el.locked) return;
+    if ((e.key === "Delete" || e.key === "Backspace") && latest.current.step === 1) {
+      e.preventDefault();
+      removeElement(id);
+      return;
+    }
+    const arrows: Record<string, [number, number]> = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+    const dir = arrows[e.key];
+    if (dir) {
+      e.preventDefault();
+      const k = e.shiftKey ? 4 : 1;
+      nudge(id, dir[0] * k, dir[1] * k);
     }
   };
+  useLayoutEffect(() => {
+    keyHandler.current = onKeyDown;
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyHandler.current(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
-  // Saves first (owner's request, 2026-09-28): the export renders the design stored on the server,
-  // so an edit made after the last save used to be missing from the downloaded file.
+  // --- Downloads ---
+  // Saves first: the export renders the design stored on the server.
   // format "psd": the layered Photoshop file (see magnetFramePsd.ts), same save-first flow.
   const download = async (orientation: FrameOrientation, format: "png" | "psd" = "png") => {
-    if (exportBusy || saving) return;
+    if (exportBusy) return;
     setExportBusy(`${orientation}-${format}`);
     setError(null);
     try {
-      const id = await save();
-      if (!id) return;
+      const ok = await save();
+      if (!ok) {
+        setError(t("שגיאה בשמירה"));
+        return;
+      }
       if (format === "psd") {
         // The server stores the file and answers with a signed link that downloads it.
-        const res = await fetch(`/api/magnet-frames/${id}/psd?orientation=${orientation}`);
+        const res = await fetch(`/api/magnet-frames/${designId}/psd?orientation=${orientation}`);
         if (!res.ok) throw new Error();
         const { url } = (await res.json()) as { url: string };
         const a = document.createElement("a");
@@ -655,13 +1021,14 @@ export default function MagnetFrameEditor() {
         a.remove();
         return;
       }
-      const res = await fetch(`/api/magnet-frames/${id}/export?orientation=${orientation}`);
+      const res = await fetch(`/api/magnet-frames/${designId}/export?orientation=${orientation}`);
       if (!res.ok) throw new Error();
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `מגנט-${orientation === "landscape" ? "לרוחב" : "לאורך"}.png`;
+      const size = magnetSizeLabel(sizeKey, orientation).replace("×", "x");
+      a.download = square ? `מגנט-${size}.png` : `מגנט-${orientation === "landscape" ? "לרוחב" : "לאורך"}-${size}.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -685,143 +1052,173 @@ export default function MagnetFrameEditor() {
     if (panelScrollRef.current && openPanel) panelScrollRef.current.scrollTop = panelScroll.current[openPanel] ?? 0;
   }, [openPanel]);
 
-  // Picking an element on a preview opens the panel that edits it.
-  const selectOnCanvas = (el: MagnetFrameElement) => {
-    setSelectedId(el.id);
-    if (step === 2) return;
-    if (el.type === "text") selectPanel("text");
-    else selectPanel(openPanel === "digits" && el.floralId?.startsWith("digit-") ? "digits" : "elements");
+  const goToStep = (n: 1 | 2) => {
+    setSelectedId(null);
+    setEditingTextId(null);
+    setStep(n);
+  };
+  // A square frame has no second step.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (square && step === 2) setStep(1);
+  }, [square, step]);
+
+  const changeSize = (key: MagnetFrameSettings["sizeKey"]) => {
+    setFrameSettings((prev) => ({ ...prev, sizeKey: key }));
+    // Hand-placed portrait positions belong to the old shape.
+    setPortraitOverrides({});
   };
 
+  // --- The sample photo in the window ---
+  const chooseSamplePhoto = (photo: SamplePhoto) => {
+    setSamplePhoto((prev) => {
+      if (prev?.local) URL.revokeObjectURL(prev.url);
+      return photo;
+    });
+    setPhotoPickerOpen(false);
+    try {
+      if (photo && !photo.local) localStorage.setItem(SAMPLE_PHOTO_KEY(designId), photo.url);
+      else localStorage.removeItem(SAMPLE_PHOTO_KEY(designId));
+    } catch {
+      // Storage unavailable: the choice lasts until the page closes.
+    }
+  };
+
+  // --- Rendering a frame ---
   const renderFrame = (orientation: FrameOrientation) => {
-    const fd = MAGNET_FRAME_DIMENSIONS[orientation];
-    const widthPx = canvasWidths[orientation];
-    const scale = widthPx > 0 ? widthPx / fd.widthPx : 0;
-    const shorterDisplaySide = Math.min(widthPx || 1, widthPx * (fd.heightPx / fd.widthPx) || 1);
-    const inset = getMatInsetPct(orientation, frameSettings.borderRatioPct, frameSettings.bottomBorderRatioPct);
-    const cutoutRadiusPx = getCutoutRadiusPx(orientation, frameSettings, widthPx);
-    // Only the step's own frame is edited; the other one is a live preview.
     const interactive = (step === 1) === (orientation === "landscape");
     const list = orientation === "portrait" ? portraitElements : elements;
+    const safe = magnetSafeMarginPct(orientation, sizeKey);
+    const handle = "absolute h-3.5 w-3.5 rounded-full border-2 bg-white shadow";
     return (
-    <div
-      ref={orientation === "portrait" ? portraitRef : landscapeRef}
-      className={`relative w-full overflow-hidden touch-none select-none shadow-card ${interactive ? "" : "pointer-events-none"}`}
-      style={{ aspectRatio: `${fd.widthPx} / ${fd.heightPx}`, ...matCardStyle(frameSettings) }}
-      onPointerMove={handlePointerMove}
-      onPointerUp={() => {
-        setDraggingId(null);
-        setSnapGuide({ x: false, y: false });
-      }}
-      onPointerLeave={() => {
-        setDraggingId(null);
-        setSnapGuide({ x: false, y: false });
-      }}
-      onClick={() => setSelectedId(null)}
-    >
-      {textureStyle && <div className="absolute inset-0" style={textureStyle} />}
-      {draggingId && dragFrame === orientation && snapGuide.x && (
-        <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: "50%", width: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
-      )}
-      {draggingId && dragFrame === orientation && snapGuide.y && (
-        <div className="absolute left-0 right-0 pointer-events-none" style={{ top: "50%", height: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
-      )}
-      <div
-        className="absolute overflow-hidden"
-        style={{
-          left: `${inset.xPct}%`,
-          top: `${inset.topPct}%`,
-          right: `${inset.xPct}%`,
-          bottom: `${inset.bottomPct}%`,
-          borderRadius: cutoutRadiusPx,
-          transition: "border-radius 0.2s ease",
-          ...cutoutShadowStyle(frameSettings, scale),
-          ...transparentCheckerStyle(),
-        }}
-      />
-      {list.map((el) => {
-        const isSelected = interactive && selectedId === el.id;
-        if (el.type === "text") {
-          const fontSizeDisp = el.fontSizePx * scale;
-          const shadow = el.shadowEnabled ? `${el.shadowDistancePx * scale}px ${el.shadowDistancePx * scale}px ${el.shadowBlurPx * scale}px rgba(0,0,0,0.55)` : undefined;
-          // Every LAYER of text (each its own independent element, with its own font/color/
-          // shadow) gets a smooth animated transition when a property changes or it settles into
-          // a new dropped position — except while it's actively being dragged, where a transition
-          // would lag the pointer instead of tracking it 1:1.
-          const smooth = draggingId !== el.id;
-          return (
-            <div
-              key={el.id}
-              ref={(node) => {
-                if (orientation !== "landscape") return;
-                if (node) textNodes.current.set(el.id, node);
-                else textNodes.current.delete(el.id);
-              }}
-              className="absolute whitespace-nowrap cursor-grab"
-              style={{
-                left: `${el.xPct}%`,
-                top: `${el.yPct}%`,
-                transform: `translate(-50%, -50%) rotate(${el.rotation ?? 0}deg)`,
-                fontSize: fontSizeDisp,
-                color: el.color,
-                fontFamily: albumFontFamilyCss(el.fontKey),
-                fontWeight: el.bold ? 700 : 400,
-                fontStyle: el.italic ? "italic" : "normal",
-                textDecoration: el.underline ? "underline" : "none",
-                textShadow: shadow,
-                outline: isSelected ? "2px dashed var(--color-amber-deep)" : "none",
-                outlineOffset: 4,
-                padding: 2,
-                transition: smooth ? "left 0.18s ease, top 0.18s ease, font-size 0.18s ease, color 0.18s ease, text-shadow 0.18s ease" : "none",
-              }}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                setDragFrame(orientation);
-                setDraggingId(el.id);
-                selectOnCanvas(el);
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {el.text || t("טקסט ריק")}
-            </div>
-          );
+      <MagnetFramePreview
+        ref={frameRefs[orientation]}
+        orientation={orientation}
+        settings={frameSettings}
+        elements={list}
+        customTextureUrl={customTextureUrl}
+        customElementUrls={customElementUrls}
+        photoUrl={samplePhoto?.url ?? null}
+        emptyTextLabel={t("טקסט ריק")}
+        className={`touch-none shadow-card ${interactive ? "" : "pointer-events-none"}`}
+        onWidth={orientation === "landscape" ? setLandscapeWidth : undefined}
+        textRef={
+          orientation === "landscape"
+            ? (id, node) => {
+                if (node) textNodes.current.set(id, node);
+                else textNodes.current.delete(id);
+              }
+            : undefined
         }
-        const ornament = el.ornamentId ? findOrnament(el.ornamentId) : undefined;
-        const customUrl = el.customElementAssetId ? customElements.find((c) => c.id === el.customElementAssetId)?.url ?? undefined : undefined;
-        const floral = el.floralId ? findMagnetFrameFloral(el.floralId) : undefined;
-        if (!ornament && !customUrl && !floral) return null;
-        const sizePx = (el.sizePct / 100) * shorterDisplaySide;
-        const smoothDeco = draggingId !== el.id;
-        return (
-          <div
-            key={el.id}
-            className="absolute"
-            style={{
-              left: `${el.xPct}%`,
-              top: `${el.yPct}%`,
-              width: sizePx,
-              height: sizePx,
-              transform: `translate(-50%, -50%) rotate(${el.rotation ?? 0}deg)`,
-              outline: isSelected ? "2px dashed var(--color-amber-deep)" : "none",
-              outlineOffset: 3,
-              transition: smoothDeco ? "left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease" : "none",
-            }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              (e.target as HTMLElement).setPointerCapture(e.pointerId);
-              setDragFrame(orientation);
-              setDraggingId(el.id);
-              selectOnCanvas(el);
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={ornament ? ornamentDataUrl(ornament, el.color) : floral ? floral.url : customUrl} className="w-full h-full" style={{ objectFit: "contain", cursor: "grab" }} draggable={false} alt="" />
-          </div>
-        );
-      })}
-    </div>
+        animate={(el) => activeId !== el.id}
+        elementProps={(el) =>
+          interactive
+            ? {
+                selected: selectedId === el.id,
+                cursor: el.locked ? "pointer" : "grab",
+                onPointerDown: (e) => startMove(orientation, el, e),
+                onDoubleClick:
+                  el.type === "text" && step === 1 && !el.locked
+                    ? (e) => {
+                        e.stopPropagation();
+                        editingOriginal.current = el.text;
+                        setEditingTextId(el.id);
+                      }
+                    : undefined,
+              }
+            : {}
+        }
+        elementExtras={(el) =>
+          interactive && selectedId === el.id && !el.locked && editingTextId !== el.id ? (
+            <>
+              <span
+                aria-hidden
+                className="absolute left-1/2 w-px pointer-events-none"
+                style={{ top: -22, height: 18, background: "var(--color-amber-deep)", transform: "translateX(-50%)" }}
+              />
+              <span
+                role="button"
+                aria-label={t("סיבוב")}
+                title={t("סיבוב (Shift: בקפיצות של 15°)")}
+                className={`${handle} left-1/2 cursor-grab`}
+                style={{ top: -30, transform: "translateX(-50%)", borderColor: "var(--color-amber-deep)" }}
+                onPointerDown={(e) => startHandle("rotate", orientation, el, e)}
+              />
+              <span
+                role="button"
+                aria-label={t("שינוי גודל")}
+                title={t("שינוי גודל")}
+                className={`${handle} cursor-nwse-resize`}
+                style={{ right: -9, bottom: -9, borderColor: "var(--color-amber-deep)" }}
+                onPointerDown={(e) => startHandle("resize", orientation, el, e)}
+              />
+            </>
+          ) : null
+        }
+        onPointerMove={onFramePointerMove}
+        onPointerUp={endInteraction}
+        onPointerCancel={endInteraction}
+        onClick={() => {
+          setSelectedId(null);
+          setEditingTextId(null);
+        }}
+      >
+        {(scale) => (
+          <>
+            {guides && guides.frame === orientation && guides.x !== null && (
+              <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: `${guides.x}%`, width: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
+            )}
+            {guides && guides.frame === orientation && guides.y !== null && (
+              <div className="absolute left-0 right-0 pointer-events-none" style={{ top: `${guides.y}%`, height: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
+            )}
+            {showPrintGuides && (
+              <div
+                className="absolute pointer-events-none"
+                style={{ left: `${safe.xPct}%`, right: `${safe.xPct}%`, top: `${safe.yPct}%`, bottom: `${safe.yPct}%`, border: "1px dashed rgba(122,31,43,0.75)", zIndex: 19 }}
+              />
+            )}
+            {interactive &&
+              editingTextId &&
+              (() => {
+                const el = list.find((x) => x.id === editingTextId);
+                if (!el || el.type !== "text") return null;
+                const style = magnetTextStyle(el, scale);
+                return (
+                  <input
+                    autoFocus
+                    dir="auto"
+                    value={el.text}
+                    onChange={(e) => updateElement(el.id, { text: e.target.value })}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") setEditingTextId(null);
+                      if (e.key === "Escape") {
+                        updateElement(el.id, { text: editingOriginal.current });
+                        setEditingTextId(null);
+                      }
+                    }}
+                    onBlur={() => setEditingTextId(null)}
+                    className="absolute rounded-md border-2 text-center bg-white/90 outline-none"
+                    style={{
+                      left: `${el.xPct}%`,
+                      top: `${el.yPct}%`,
+                      transform: "translate(-50%, -50%)",
+                      width: "78%",
+                      fontSize: style.fontSize,
+                      fontFamily: style.fontFamily,
+                      fontWeight: style.fontWeight,
+                      fontStyle: style.fontStyle,
+                      color: el.color === "#ffffff" ? "#111111" : el.color,
+                      borderColor: "var(--color-amber-deep)",
+                      zIndex: 30,
+                    }}
+                  />
+                );
+              })()}
+          </>
+        )}
+      </MagnetFramePreview>
     );
   };
 
@@ -854,14 +1251,11 @@ export default function MagnetFrameEditor() {
         </div>
         {sel ? (
           <div className="rounded-xl p-3 bg-chip space-y-2.5">
-            <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-              <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
-              {sel.type === "text" ? (
-                <input type="range" min={10} max={200} value={sel.fontSizePx} onChange={(e) => setPortraitPlacement(sel.id, { fontSizePx: Number(e.target.value) })} className="w-full" />
-              ) : (
-                <input type="range" min={5} max={45} value={sel.sizePct} onChange={(e) => setPortraitPlacement(sel.id, { sizePct: Number(e.target.value) })} className="w-full" />
-              )}
-            </div>
+            {sel.type === "text" ? (
+              <SliderRow label={t("גודל")} value={sel.fontSizePx} min={MAGNET_TEXT_SIZE_RANGE.min} max={MAGNET_TEXT_SIZE_RANGE.max} onChange={(v) => setPortraitPlacement(sel.id, { fontSizePx: v })} />
+            ) : (
+              <SliderRow label={t("גודל")} value={sel.sizePct} min={MAGNET_DECORATION_SIZE_RANGE.min} max={MAGNET_DECORATION_SIZE_RANGE.max} onChange={(v) => setPortraitPlacement(sel.id, { sizePct: v })} />
+            )}
             <RotationControl value={sel.rotation ?? 0} onChange={(deg) => setPortraitPlacement(sel.id, { rotation: deg })} />
             <div className="flex items-center justify-between gap-2">
               <button
@@ -871,7 +1265,7 @@ export default function MagnetFrameEditor() {
               >
                 {t("החזרה למיקום האוטומטי")}
               </button>
-              <NudgeButtons onNudge={(dx, dy) => nudgePortrait(sel.id, dx, dy)} />
+              {!sel.locked && <NudgeButtons onNudge={(dx, dy) => nudge(sel.id, dx, dy)} />}
             </div>
           </div>
         ) : (
@@ -893,6 +1287,30 @@ export default function MagnetFrameEditor() {
     { key: "texture", label: "טקסטורה" },
     { key: "settings", label: "הגדרות מסגרת" },
   ];
+
+  const SHADOW_SWATCHES = [
+    { label: "שחור", value: "#000000" },
+    { label: "לבן", value: "#ffffff" },
+    { label: "זהב", value: "#c9a84c" },
+    { label: "בורדו", value: "#7a1f2b" },
+    { label: "כחול כהה", value: "#1c2a4a" },
+  ];
+
+  const decorationEditor = (el: Extract<MagnetFrameElement, { type: "decoration" }>) => (
+    <div className="rounded-xl p-3 bg-chip space-y-2.5 mb-3" onClick={(e) => e.stopPropagation()}>
+      <div className="text-[11px] font-semibold text-ink-soft">{t("האלמנט שנבחר")}</div>
+      <SliderRow label={t("גודל")} value={el.sizePct} min={MAGNET_DECORATION_SIZE_RANGE.min} max={MAGNET_DECORATION_SIZE_RANGE.max} onChange={(v) => updateElement(el.id, { sizePct: v })} />
+      {!el.customElementAssetId && !el.floralId && (
+        <ColorRow
+          value={el.color}
+          onChange={(hex) => updateElement(el.id, { color: hex })}
+          swatches={["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((value) => ({ label: value, value }))}
+        />
+      )}
+      <RotationControl value={el.rotation ?? 0} onChange={(deg) => updateElement(el.id, { rotation: deg })} />
+      {selectionActions(el, t("מחיקת האלמנט"))}
+    </div>
+  );
 
   const renderPanelContent = (key: PanelKey) => {
     if (key === "text") {
@@ -917,6 +1335,7 @@ export default function MagnetFrameEditor() {
                       color: "var(--color-ink)",
                     }}
                   >
+                    {el.locked ? "🔒 " : ""}
                     {el.text || t("טקסט ריק")}
                   </button>
                 ))}
@@ -932,584 +1351,403 @@ export default function MagnetFrameEditor() {
                 className="w-full rounded-lg px-3 py-2 text-sm bg-card border border-line text-ink resize-none"
                 placeholder={t("לדוגמה: רותם & דניאל · 12.6.2026")}
               />
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={selected.fontKey}
-                  onChange={(e) => updateElement(selected.id, { fontKey: e.target.value })}
-                  className="rounded-lg px-2.5 py-2 text-xs bg-card border border-line text-ink"
-                >
-                  <optgroup label={t("עברית")}>
-                    {ALBUM_FONTS.filter((f) => f.category === "hebrew").map((f) => (
-                      <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label={t("אנגלית")}>
-                    {ALBUM_FONTS.filter((f) => f.category === "latin").map((f) => (
-                      <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-                <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                  <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
-                  <input
-                    type="range"
-                    min={20}
-                    max={200}
-                    value={selected.fontSizePx}
-                    onChange={(e) => updateElement(selected.id, { fontSizePx: Number(e.target.value) })}
-                    className="w-full"
-                  />
-                </div>
-              </div>
+              <p className="text-[10px] text-ink-soft">{t("אפשר גם ללחוץ פעמיים על הטקסט במסגרת כדי לערוך אותו שם.")}</p>
+              <select
+                value={selected.fontKey}
+                onChange={(e) => updateElement(selected.id, { fontKey: e.target.value })}
+                className="w-full rounded-lg px-2.5 py-2 text-xs bg-card border border-line text-ink"
+              >
+                <optgroup label={t("עברית")}>
+                  {ALBUM_FONTS.filter((f) => f.category === "hebrew").map((f) => (
+                    <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
+                      {f.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label={t("אנגלית")}>
+                  {ALBUM_FONTS.filter((f) => f.category === "latin").map((f) => (
+                    <option key={f.key} value={f.key} style={{ fontFamily: albumFontFamilyCss(f.key) }}>
+                      {f.label}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <SliderRow label={t("גודל")} value={selected.fontSizePx} min={MAGNET_TEXT_SIZE_RANGE.min} max={MAGNET_TEXT_SIZE_RANGE.max} onChange={(v) => updateElement(selected.id, { fontSizePx: v })} />
+              <SliderRow
+                label={t("ריווח אותיות")}
+                value={selected.letterSpacing ?? 0}
+                min={-4}
+                max={40}
+                step={0.5}
+                onChange={(v) => updateElement(selected.id, { letterSpacing: v })}
+              />
+              <ColorRow value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
               <div className="flex items-center gap-1.5">
-                {COLOR_SWATCHES.map((c) => (
+                {(
+                  [
+                    ["bold", "B", "מודגש", "font-bold"],
+                    ["italic", "I", "נטוי", "italic"],
+                    ["underline", "U", "קו תחתון", "underline"],
+                  ] as const
+                ).map(([field, glyph, label, cls]) => (
                   <button
-                    key={c.value}
+                    key={field}
                     type="button"
-                    title={t(c.label)}
-                    onClick={() => updateElement(selected.id, { color: c.value })}
-                    className="h-6 w-6 rounded-full border-2"
-                    style={{ background: c.value, borderColor: selected.color === c.value ? "var(--color-sage)" : "var(--color-line)" }}
-                  />
+                    onClick={() => updateElement(selected.id, { [field]: !selected[field] })}
+                    title={t(label)}
+                    className={`h-8 w-8 rounded-lg border text-sm ${cls}`}
+                    style={{
+                      borderColor: selected[field] ? "var(--color-sage)" : "var(--color-line)",
+                      background: selected[field] ? "var(--color-sage-bg)" : "var(--color-card)",
+                      color: "var(--color-ink)",
+                    }}
+                  >
+                    {glyph}
+                  </button>
                 ))}
-                <FreeColorPicker value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => updateElement(selected.id, { bold: !selected.bold })}
-                  title={t("מודגש")}
-                  className="h-8 w-8 rounded-lg border font-bold text-sm"
-                  style={{
-                    borderColor: selected.bold ? "var(--color-sage)" : "var(--color-line)",
-                    background: selected.bold ? "var(--color-sage-bg)" : "var(--color-card)",
-                    color: "var(--color-ink)",
-                  }}
-                >
-                  B
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateElement(selected.id, { italic: !selected.italic })}
-                  title={t("נטוי")}
-                  className="h-8 w-8 rounded-lg border italic text-sm"
-                  style={{
-                    borderColor: selected.italic ? "var(--color-sage)" : "var(--color-line)",
-                    background: selected.italic ? "var(--color-sage-bg)" : "var(--color-card)",
-                    color: "var(--color-ink)",
-                  }}
-                >
-                  I
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateElement(selected.id, { underline: !selected.underline })}
-                  title={t("קו תחתון")}
-                  className="h-8 w-8 rounded-lg border underline text-sm"
-                  style={{
-                    borderColor: selected.underline ? "var(--color-sage)" : "var(--color-line)",
-                    background: selected.underline ? "var(--color-sage-bg)" : "var(--color-card)",
-                    color: "var(--color-ink)",
-                  }}
-                >
-                  U
-                </button>
               </div>
               <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
                 <input type="checkbox" checked={selected.shadowEnabled} onChange={(e) => updateElement(selected.id, { shadowEnabled: e.target.checked })} />
                 {t("צל לטקסט")}
               </label>
               {selected.shadowEnabled && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                    <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("טשטוש")}</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={20}
-                      value={selected.shadowBlurPx}
-                      onChange={(e) => updateElement(selected.id, { shadowBlurPx: Number(e.target.value) })}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                    <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("מרחק")}</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={15}
-                      value={selected.shadowDistancePx}
-                      onChange={(e) => updateElement(selected.id, { shadowDistancePx: Number(e.target.value) })}
-                      className="w-full"
-                    />
-                  </div>
+                <div className="space-y-2 ps-5">
+                  <SliderRow label={t("טשטוש")} value={selected.shadowBlurPx} min={0} max={20} onChange={(v) => updateElement(selected.id, { shadowBlurPx: v })} />
+                  <SliderRow label={t("מרחק")} value={selected.shadowDistancePx} min={0} max={15} onChange={(v) => updateElement(selected.id, { shadowDistancePx: v })} />
+                  <ColorRow value={selected.shadowColor ?? "#000000"} onChange={(hex) => updateElement(selected.id, { shadowColor: hex })} swatches={SHADOW_SWATCHES} />
+                </div>
+              )}
+              <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={(selected.strokeWidth ?? 0) > 0}
+                  onChange={(e) => updateElement(selected.id, e.target.checked ? { strokeWidth: 2, strokeColor: selected.strokeColor ?? "#ffffff" } : { strokeWidth: 0 })}
+                />
+                {t("קו מתאר")}
+              </label>
+              {(selected.strokeWidth ?? 0) > 0 && (
+                <div className="space-y-2 ps-5">
+                  <SliderRow label={t("עובי")} value={selected.strokeWidth ?? 0} min={0.5} max={12} step={0.5} onChange={(v) => updateElement(selected.id, { strokeWidth: v })} />
+                  <ColorRow value={selected.strokeColor ?? "#000000"} onChange={(hex) => updateElement(selected.id, { strokeColor: hex })} swatches={SHADOW_SWATCHES} />
                 </div>
               )}
               <RotationControl value={selected.rotation ?? 0} onChange={(deg) => updateElement(selected.id, { rotation: deg })} />
-              <div className="flex items-center justify-between gap-2">
-                <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
-                  {t("מחיקת הטקסט")}
-                </button>
-                <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
-              </div>
+              {selectionActions(selected, t("מחיקת הטקסט"))}
             </div>
           )}
-          {!(selected && selected.type === "text") && (
-            <p className="text-xs text-ink-soft">{t("בחרו טקסט על המסגרת כדי לערוך אותו, או הוסיפו טקסט חדש.")}</p>
-          )}
+          {!(selected && selected.type === "text") && <p className="text-xs text-ink-soft">{t("בחרו טקסט על המסגרת כדי לערוך אותו, או הוסיפו טקסט חדש.")}</p>}
         </div>
       );
     }
     if (key === "elements") {
       return (
         <>
-          {selected && selected.type === "decoration" && (
-            <div className="rounded-xl p-3 bg-chip space-y-2.5 mb-3" onClick={(e) => e.stopPropagation()}>
-              <div className="text-[11px] font-semibold text-ink-soft">{t("האלמנט שנבחר")}</div>
-              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
-                <input
-                  type="range"
-                  min={5}
-                  max={45}
-                  value={selected.sizePct}
-                  onChange={(e) => updateElement(selected.id, { sizePct: Number(e.target.value) })}
-                  className="w-full"
-                />
-              </div>
-              {!selected.customElementAssetId && !selected.floralId && (
-                <div className="flex items-center gap-1.5">
-                  {["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => updateElement(selected.id, { color: c })}
-                      className="h-6 w-6 rounded-full border-2"
-                      style={{ background: c, borderColor: selected.color === c ? "var(--color-sage)" : "var(--color-line)" }}
-                    />
-                  ))}
-                  <FreeColorPicker value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
-                </div>
-              )}
-              <RotationControl value={selected.rotation ?? 0} onChange={(deg) => updateElement(selected.id, { rotation: deg })} />
-              <div className="flex items-center justify-between gap-2">
-                <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
-                  {t("מחיקת האלמנט")}
+          {selected && selected.type === "decoration" && decorationEditor(selected)}
+          <div>
+            <div className="flex flex-wrap gap-1 mb-2">
+              {ELEMENT_TABS.filter((tab) => tab.key !== "digits").map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => selectElementTab(tab.key)}
+                  className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
+                  style={{
+                    background: elementTab === tab.key ? "var(--color-amber-deep)" : "var(--color-chip)",
+                    color: elementTab === tab.key ? "#fff" : "var(--color-ink-soft)",
+                  }}
+                >
+                  {t(tab.label)}
                 </button>
-                <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
-              </div>
+              ))}
             </div>
-          )}
-            <div>
-              <div className="flex flex-wrap gap-1 mb-2">
-                {ELEMENT_TABS.filter((tab) => tab.key !== "digits").map((tab) => (
+            {elementTab !== "watercolor" && elementTab !== "custom" && (
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-[10px] text-ink-soft">{t("צבע")}</span>
+                {["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((c) => (
                   <button
-                    key={tab.key}
-                    onClick={() => selectElementTab(tab.key)}
-                    className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                    style={{
-                      background: elementTab === tab.key ? "var(--color-amber-deep)" : "var(--color-chip)",
-                      color: elementTab === tab.key ? "#fff" : "var(--color-ink-soft)",
+                    key={c}
+                    onClick={() => setDecorationColor(c)}
+                    className="h-5 w-5 rounded-full border"
+                    style={{ background: c, borderColor: decorationColor === c ? "var(--color-amber-deep)" : "var(--color-line)" }}
+                  />
+                ))}
+                <FreeColorPicker value={decorationColor} onChange={setDecorationColor} />
+              </div>
+            )}
+            {elementTab === "custom" ? (
+              <div className="space-y-2">
+                <label className="flex items-center justify-center rounded-lg border border-dashed border-line p-3 text-center bg-card cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={uploadingElement}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) void uploadElementFile(file);
                     }}
-                  >
-                    {t(tab.label)}
+                  />
+                  <span className="text-xs font-semibold text-ink-soft">{uploadingElement ? t("מעלה...") : t("+ העלאת אלמנט משלי")}</span>
+                </label>
+                <p className="text-[10px] text-ink-soft">{t("האלמנטים שמעלים כאן נשמרים ונשארים זמינים גם בעיצובים הבאים.")}</p>
+                {customElements.length > 0 && (
+                  <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
+                    {customElements.map(
+                      (ce) =>
+                        ce.url && (
+                          <button
+                            key={ce.id}
+                            onClick={() => addCustomElement(ce.id)}
+                            title={ce.original_filename}
+                            className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={ce.url} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
+                          </button>
+                        )
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : elementTab === "watercolor" ? (
+              <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
+                {MAGNET_FRAME_FLORALS.map((f) => (
+                  <button key={f.id} onClick={() => addFloral(f.id)} title={f.label} className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={f.url} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
                   </button>
                 ))}
               </div>
-              {elementTab !== "watercolor" && elementTab !== "custom" && (
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="text-[10px] text-ink-soft">{t("צבע")}</span>
-                  {["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setDecorationColor(c)}
-                      className="h-5 w-5 rounded-full border"
-                      style={{ background: c, borderColor: decorationColor === c ? "var(--color-amber-deep)" : "var(--color-line)" }}
-                    />
-                  ))}
-                  <FreeColorPicker value={decorationColor} onChange={setDecorationColor} />
-                </div>
-              )}
-              {elementTab === "custom" ? (
-                <div className="space-y-2">
-                  <label className="flex items-center justify-center rounded-lg border border-dashed border-line p-3 text-center bg-card cursor-pointer">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      disabled={uploadingElement}
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = "";
-                        if (file) uploadElementFile(file);
-                      }}
-                    />
-                    <span className="text-xs font-semibold text-ink-soft">{uploadingElement ? t("מעלה...") : t("+ העלאת אלמנט משלי")}</span>
-                  </label>
-                  <p className="text-[10px] text-ink-soft">{t("האלמנטים שמעלים כאן נשמרים ונשארים זמינים גם בעיצובים הבאים.")}</p>
-                  {customElements.length > 0 && (
-                    <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
-                      {customElements.map(
-                        (ce) =>
-                          ce.url && (
-                            <button
-                              key={ce.id}
-                              onClick={() => addCustomElement(ce.id)}
-                              title={ce.original_filename}
-                              className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={ce.url} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
-                            </button>
-                          )
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : elementTab === "watercolor" ? (
-                <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
-                  {MAGNET_FRAME_FLORALS.map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => addFloral(f.id)}
-                      title={f.label}
-                      className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={f.url} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
-                  {ALBUM_ORNAMENTS.filter((o) => o.category === elementTab).map((o) => (
-                    <button
-                      key={o.id}
-                      onClick={() => addDecoration(o.id)}
-                      title={o.label}
-                      className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={ornamentDataUrl(o, decorationColor)} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            ) : (
+              <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
+                {ALBUM_ORNAMENTS.filter((o) => o.category === elementTab).map((o) => (
+                  <button key={o.id} onClick={() => addDecoration(o.id)} title={o.label} className="rounded-lg border border-line p-1 bg-chip aspect-square flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={ornamentDataUrl(o, decorationColor)} className="w-full h-full" style={{ objectFit: "contain" }} alt="" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       );
     }
     if (key === "digits") {
       return (
         <>
-          {selected && selected.type === "decoration" && (
-            <div className="rounded-xl p-3 bg-chip space-y-2.5 mb-3" onClick={(e) => e.stopPropagation()}>
-              <div className="text-[11px] font-semibold text-ink-soft">{t("האלמנט שנבחר")}</div>
-              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap">{t("גודל")}</span>
-                <input
-                  type="range"
-                  min={5}
-                  max={45}
-                  value={selected.sizePct}
-                  onChange={(e) => updateElement(selected.id, { sizePct: Number(e.target.value) })}
-                  className="w-full"
-                />
-              </div>
-              {!selected.customElementAssetId && !selected.floralId && (
-                <div className="flex items-center gap-1.5">
-                  {["#2e3142", "#c9a84c", "#ffffff", "#7a1f2b", "#52c98f"].map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => updateElement(selected.id, { color: c })}
-                      className="h-6 w-6 rounded-full border-2"
-                      style={{ background: c, borderColor: selected.color === c ? "var(--color-sage)" : "var(--color-line)" }}
-                    />
-                  ))}
-                  <FreeColorPicker value={selected.color} onChange={(hex) => updateElement(selected.id, { color: hex })} />
-                </div>
-              )}
-              <RotationControl value={selected.rotation ?? 0} onChange={(deg) => updateElement(selected.id, { rotation: deg })} />
-              <div className="flex items-center justify-between gap-2">
-                <button onClick={() => removeElement(selected.id)} className="rounded-lg px-3 py-1.5 text-xs font-semibold bg-rose-bg text-rose shrink-0">
-                  {t("מחיקת האלמנט")}
-                </button>
-                <NudgeButtons onNudge={(dx, dy) => nudgeElement(selected.id, dx, dy)} />
-              </div>
-            </div>
-          )}
-                <div className="space-y-2.5">
-                  {MAGNET_DIGIT_STYLES.map((style) => {
-                    const color = style.colors ? (style.colors.find((c) => c.key === digitColors[style.key]) ?? style.colors[0]) : undefined;
-                    return (
-                      <div key={style.key}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="text-[10px] font-semibold text-ink-soft">{t(style.label)}</div>
-                          {style.colors && (
-                            <div className="flex items-center gap-1">
-                              {style.colors.map((c) => (
-                                <button
-                                  key={c.key}
-                                  onClick={() => setDigitColors((prev) => ({ ...prev, [style.key]: c.key }))}
-                                  title={t(c.label)}
-                                  aria-label={t(c.label)}
-                                  className="w-4 h-4 rounded-full border-2"
-                                  style={{ background: c.swatch, borderColor: color?.key === c.key ? "var(--color-amber-deep)" : "transparent" }}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-7 sm:grid-cols-13 gap-1.5" dir="ltr">
-                          {style.numbers.map((n) => (
-                            <button
-                              key={n}
-                              onClick={() => addFloral(magnetDigitId(style.key, n, color?.key), 22)}
-                              title={[t(style.label), color ? t(color.label) : "", n].filter(Boolean).join(" ")}
-                              className="rounded-lg border border-line p-0.5 bg-chip aspect-square flex items-center justify-center"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={magnetDigitUrl(style.key, n, color?.key)} loading="lazy" className="w-full h-full" style={{ objectFit: "contain" }} alt={n} />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {DIGIT_STYLES.map((style) => (
-                    <div key={style.key}>
-                      <div className="text-[10px] font-semibold text-ink-soft mb-1">{t(style.label)}</div>
-                      <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5" dir="ltr">
-                        {DIGITS.map((digit) => (
+          {selected && selected.type === "decoration" && decorationEditor(selected)}
+          <div className="space-y-2.5">
+            {MAGNET_DIGIT_STYLES.map((style) => {
+              const color = style.colors ? (style.colors.find((c) => c.key === digitColors[style.key]) ?? style.colors[0]) : undefined;
+              return (
+                <div key={style.key}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="text-[10px] font-semibold text-ink-soft">{t(style.label)}</div>
+                    {style.colors && (
+                      <div className="flex items-center gap-1">
+                        {style.colors.map((c) => (
                           <button
-                            key={digit}
-                            onClick={() => addDigit(digit, style)}
-                            title={`${t(style.label)} ${digit}`}
-                            className="rounded-lg border border-line bg-chip aspect-square flex items-center justify-center text-xl leading-none"
-                            style={{
-                              fontFamily: albumFontFamilyCss(style.fontKey),
-                              fontWeight: style.bold ? 700 : 400,
-                              fontStyle: style.italic ? "italic" : "normal",
-                              color: decorationColor === "#ffffff" ? "var(--color-ink)" : decorationColor,
-                            }}
-                          >
-                            {digit}
-                          </button>
+                            key={c.key}
+                            onClick={() => setDigitColors((prev) => ({ ...prev, [style.key]: c.key }))}
+                            title={t(c.label)}
+                            aria-label={t(c.label)}
+                            className="w-4 h-4 rounded-full border-2"
+                            style={{ background: c.swatch, borderColor: color?.key === c.key ? "var(--color-amber-deep)" : "transparent" }}
+                          />
                         ))}
                       </div>
-                    </div>
-                  ))}
+                    )}
+                  </div>
+                  <div className="grid grid-cols-7 sm:grid-cols-13 gap-1.5" dir="ltr">
+                    {style.numbers.map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => addFloral(magnetDigitId(style.key, n, color?.key), 22)}
+                        title={[t(style.label), color ? t(color.label) : "", n].filter(Boolean).join(" ")}
+                        className="rounded-lg border border-line p-0.5 bg-chip aspect-square flex items-center justify-center"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={magnetDigitUrl(style.key, n, color?.key)} loading="lazy" className="w-full h-full" style={{ objectFit: "contain" }} alt={n} />
+                      </button>
+                    ))}
+                  </div>
                 </div>
-        </>
-      );
-    }
-    if (key === "texture") return (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setTextureTab("builtin")}
-                    className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                    style={{ background: textureTab === "builtin" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "builtin" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
-                  >
-                    {t("40 טקסטורות")}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTextureTab("custom");
-                      loadCustomTextures();
-                    }}
-                    className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                    style={{ background: textureTab === "custom" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "custom" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
-                  >
-                    {t("הטקסטורות שלי")}
-                  </button>
-                </div>
-                {(frameSettings.textureId || frameSettings.customTextureAssetId) && (
-                  <button onClick={clearTexture} className="text-[11px] text-ink-soft underline shrink-0">
-                    {t("ללא טקסטורה")}
-                  </button>
-                )}
-              </div>
-              {(frameSettings.textureId || frameSettings.customTextureAssetId) && (
-                <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 bg-card border border-line">
-                  <span className="text-xs text-ink-soft whitespace-nowrap">{t("שקיפות")}</span>
-                  <input
-                    type="range"
-                    min={5}
-                    max={100}
-                    value={frameSettings.textureOpacity}
-                    onChange={(e) => setFrameSettings((prev) => ({ ...prev, textureOpacity: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                </div>
-              )}
-              {textureTab === "builtin" ? (
-                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                  {MAGNET_FRAME_TEXTURES.map((tex) => (
+              );
+            })}
+            {DIGIT_STYLES.map((style) => (
+              <div key={style.key}>
+                <div className="text-[10px] font-semibold text-ink-soft mb-1">{t(style.label)}</div>
+                <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5" dir="ltr">
+                  {DIGITS.map((digit) => (
                     <button
-                      key={tex.id}
-                      onClick={() => selectBuiltinTexture(tex.id)}
-                      title={tex.label}
-                      className="rounded-lg border-2 aspect-square overflow-hidden bg-white"
-                      style={{ borderColor: frameSettings.textureId === tex.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
+                      key={digit}
+                      onClick={() => addDigit(digit, style)}
+                      title={`${t(style.label)} ${digit}`}
+                      className="rounded-lg border border-line bg-chip aspect-square flex items-center justify-center text-xl leading-none"
+                      style={{
+                        fontFamily: albumFontFamilyCss(style.fontKey),
+                        fontWeight: style.bold ? 700 : 400,
+                        fontStyle: style.italic ? "italic" : "normal",
+                        color: decorationColor === "#ffffff" ? "var(--color-ink)" : decorationColor,
+                      }}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={textureDataUrl(tex)} alt={tex.label} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
+                      {digit}
                     </button>
                   ))}
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <label className="flex items-center justify-center rounded-lg border border-dashed border-line p-3 text-center bg-card cursor-pointer">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      disabled={uploadingTexture}
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = "";
-                        if (file) uploadTextureFile(file);
-                      }}
-                    />
-                    <span className="text-xs font-semibold text-ink-soft">{uploadingTexture ? t("מעלה...") : t("+ העלאת טקסטורה משלי")}</span>
-                  </label>
-                  {customTextures.length > 0 && (
-                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                      {customTextures.map(
-                        (tex) =>
-                          tex.url && (
-                            <button
-                              key={tex.id}
-                              onClick={() => selectCustomTexture(tex.id)}
-                              title={tex.original_filename}
-                              className="rounded-lg border-2 aspect-square overflow-hidden bg-white"
-                              style={{ borderColor: frameSettings.customTextureAssetId === tex.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={tex.url} alt={tex.original_filename} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
-                            </button>
-                          )
-                      )}
-                    </div>
+              </div>
+            ))}
+          </div>
+        </>
+      );
+    }
+    if (key === "texture")
+      return (
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-1">
+              <button
+                onClick={() => setTextureTab("builtin")}
+                className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                style={{ background: textureTab === "builtin" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "builtin" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
+              >
+                {t("40 טקסטורות")}
+              </button>
+              <button
+                onClick={() => {
+                  setTextureTab("custom");
+                  void loadCustomTextures();
+                }}
+                className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                style={{ background: textureTab === "custom" ? "var(--color-amber-deep)" : "var(--color-chip)", color: textureTab === "custom" ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
+              >
+                {t("הטקסטורות שלי")}
+              </button>
+            </div>
+            {(frameSettings.textureId || frameSettings.customTextureAssetId) && (
+              <button onClick={clearTexture} className="text-[11px] text-ink-soft underline shrink-0">
+                {t("ללא טקסטורה")}
+              </button>
+            )}
+          </div>
+          {(frameSettings.textureId || frameSettings.customTextureAssetId) && (
+            <SliderRow label={t("שקיפות")} value={frameSettings.textureOpacity} min={5} max={100} onChange={(v) => setFrameSettings((prev) => ({ ...prev, textureOpacity: v }))} />
+          )}
+          {textureTab === "builtin" ? (
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+              {MAGNET_FRAME_TEXTURES.map((tex) => (
+                <button
+                  key={tex.id}
+                  onClick={() => selectBuiltinTexture(tex.id)}
+                  title={tex.label}
+                  className="rounded-lg border-2 aspect-square overflow-hidden bg-white"
+                  style={{ borderColor: frameSettings.textureId === tex.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={textureDataUrl(tex)} alt={tex.label} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="flex items-center justify-center rounded-lg border border-dashed border-line p-3 text-center bg-card cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={uploadingTexture}
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) void uploadTextureFile(file);
+                  }}
+                />
+                <span className="text-xs font-semibold text-ink-soft">{uploadingTexture ? t("מעלה...") : t("+ העלאת טקסטורה משלי")}</span>
+              </label>
+              {customTextures.length > 0 && (
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                  {customTextures.map(
+                    (tex) =>
+                      tex.url && (
+                        <button
+                          key={tex.id}
+                          onClick={() => selectCustomTexture(tex.id)}
+                          title={tex.original_filename}
+                          className="rounded-lg border-2 aspect-square overflow-hidden bg-white"
+                          style={{ borderColor: frameSettings.customTextureAssetId === tex.id ? "var(--color-amber-deep)" : "var(--color-line)" }}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={tex.url} alt={tex.original_filename} className="w-full h-full" style={{ objectFit: "cover" }} draggable={false} />
+                        </button>
+                      )
                   )}
                 </div>
               )}
             </div>
-    );
+          )}
+        </div>
+      );
     return (
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("עובי מסגרת")}</span>
-                <input
-                  type="range"
-                  min={4}
-                  max={25}
-                  value={frameSettings.borderRatioPct}
-                  onChange={(e) => setFrameSettings((prev) => ({ ...prev, borderRatioPct: Number(e.target.value) }))}
-                  className="w-full"
-                />
-              </div>
-              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("עובי צלע תחתונה")}</span>
-                <input
-                  type="range"
-                  min={4}
-                  max={35}
-                  value={frameSettings.bottomBorderRatioPct}
-                  onChange={(e) => setFrameSettings((prev) => ({ ...prev, bottomBorderRatioPct: Number(e.target.value) }))}
-                  className="w-full"
-                />
-              </div>
-              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("עיגול פינות")}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={frameSettings.cornerRadiusPct}
-                  onChange={(e) => setFrameSettings((prev) => ({ ...prev, cornerRadiusPct: Number(e.target.value) }))}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="pt-1.5 border-t border-line space-y-1.5">
-                <span className="text-xs font-semibold">{t("צבע המסגרת")}</span>
-                <div className="flex items-center gap-1.5">
-                  {COLOR_SWATCHES.map((c) => (
-                    <button
-                      key={c.value}
-                      title={t(c.label)}
-                      onClick={() => setFrameSettings((prev) => ({ ...prev, frameColor: c.value }))}
-                      className="h-6 w-6 rounded-full border-2"
-                      style={{ background: c.value, borderColor: frameSettings.frameColor === c.value ? "var(--color-sage)" : "var(--color-line)" }}
-                    />
-                  ))}
-                  <FreeColorPicker value={frameSettings.frameColor} onChange={(hex) => setFrameSettings((prev) => ({ ...prev, frameColor: hex }))} />
-                </div>
-                <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                  <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("שקיפות הצבע")}</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={frameSettings.frameColorOpacity}
-                    onChange={(e) => setFrameSettings((prev) => ({ ...prev, frameColorOpacity: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-
-              <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer pt-1.5 border-t border-line">
-                <input
-                  type="checkbox"
-                  checked={frameSettings.shadowEnabled}
-                  onChange={(e) => setFrameSettings((prev) => ({ ...prev, shadowEnabled: e.target.checked }))}
-                />
-                {t("הצללה בחלק הפנימי של המסגרת")}
-              </label>
-              {frameSettings.shadowEnabled && (
-                <>
-                  <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                    <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("עוצמה")}</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={80}
-                      value={frameSettings.shadowOpacity}
-                      onChange={(e) => setFrameSettings((prev) => ({ ...prev, shadowOpacity: Number(e.target.value) }))}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                    <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("טשטוש")}</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={40}
-                      value={frameSettings.shadowBlurPx}
-                      onChange={(e) => setFrameSettings((prev) => ({ ...prev, shadowBlurPx: Number(e.target.value) }))}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 rounded-lg px-2.5 py-1 bg-card border border-line">
-                    <span className="text-[10px] text-ink-soft whitespace-nowrap w-20 shrink-0">{t("מרחק")}</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={30}
-                      value={frameSettings.shadowDistancePx}
-                      onChange={(e) => setFrameSettings((prev) => ({ ...prev, shadowDistancePx: Number(e.target.value) }))}
-                      className="w-full"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
+      <div className="space-y-2.5">
+        <div className="space-y-1.5">
+          <span className="text-xs font-semibold">{t("גודל המסגרת")}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {MAGNET_FRAME_SIZES.map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => changeSize(s.key)}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold border"
+                style={{
+                  borderColor: (sizeKey ?? "20x15") === s.key ? "var(--color-amber-deep)" : "var(--color-line)",
+                  background: (sizeKey ?? "20x15") === s.key ? "var(--color-amber-bg)" : "var(--color-card)",
+                  color: "var(--color-ink)",
+                }}
+              >
+                <Dim>{s.label}</Dim> {t("ס״מ")}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-ink-soft leading-relaxed">{t("הפריסה נשמרת ביחס למסגרת, כך שאפשר לעבור בין גדלים. בגודל מרובע יש מסגרת אחת בלבד.")}</p>
+        </div>
+        <div className="space-y-1.5 pt-1.5 border-t border-line">
+          <span className="text-xs font-semibold">{t("שיוך לאירוע")}</span>
+          <select
+            value={eventId ?? ""}
+            onChange={(e) => changeEvent(e.target.value || null)}
+            className="w-full rounded-lg px-2.5 py-2 text-xs bg-card border border-line text-ink"
+          >
+            <option value="">{t("ללא אירוע")}</option>
+            {eventId && !events.some((ev) => ev.id === eventId) && <option value={eventId}>{t("האירוע המשויך")}</option>}
+            {events.map((ev) => (
+              <option key={ev.id} value={ev.id}>
+                {ev.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="pt-1.5 border-t border-line space-y-2.5">
+          <SliderRow label={t("עובי מסגרת")} value={frameSettings.borderRatioPct} min={4} max={25} onChange={(v) => setFrameSettings((prev) => ({ ...prev, borderRatioPct: v }))} />
+          <SliderRow label={t("עובי צלע תחתונה")} value={frameSettings.bottomBorderRatioPct} min={4} max={35} onChange={(v) => setFrameSettings((prev) => ({ ...prev, bottomBorderRatioPct: v }))} />
+          <SliderRow label={t("עיגול פינות")} value={frameSettings.cornerRadiusPct} min={0} max={100} onChange={(v) => setFrameSettings((prev) => ({ ...prev, cornerRadiusPct: v }))} />
+        </div>
+        <div className="pt-1.5 border-t border-line space-y-1.5">
+          <span className="text-xs font-semibold">{t("צבע המסגרת")}</span>
+          <ColorRow value={frameSettings.frameColor} onChange={(hex) => setFrameSettings((prev) => ({ ...prev, frameColor: hex }))} />
+          <SliderRow label={t("שקיפות הצבע")} value={frameSettings.frameColorOpacity} min={0} max={100} onChange={(v) => setFrameSettings((prev) => ({ ...prev, frameColorOpacity: v }))} />
+        </div>
+        <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer pt-1.5 border-t border-line">
+          <input type="checkbox" checked={frameSettings.shadowEnabled} onChange={(e) => setFrameSettings((prev) => ({ ...prev, shadowEnabled: e.target.checked }))} />
+          {t("הצללה בחלק הפנימי של המסגרת")}
+        </label>
+        {frameSettings.shadowEnabled && (
+          <>
+            <SliderRow label={t("עוצמה")} value={frameSettings.shadowOpacity} min={0} max={80} onChange={(v) => setFrameSettings((prev) => ({ ...prev, shadowOpacity: v }))} />
+            <SliderRow label={t("טשטוש")} value={frameSettings.shadowBlurPx} min={0} max={40} onChange={(v) => setFrameSettings((prev) => ({ ...prev, shadowBlurPx: v }))} />
+            <SliderRow label={t("מרחק")} value={frameSettings.shadowDistancePx} min={0} max={30} onChange={(v) => setFrameSettings((prev) => ({ ...prev, shadowDistancePx: v }))} />
+          </>
+        )}
+      </div>
     );
   };
 
@@ -1535,182 +1773,337 @@ export default function MagnetFrameEditor() {
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, [loaded]);
-  // Widest the previews column may get and still fit fitHeight: stacked (tall screen) the two frames
-  // take about 1.55× its width plus labels and buttons; side by side, the landscape frame is 16/25
-  // of it at 3:4.
-  const previewsMaxWidth = fitHeight ? Math.max(200, tallScreen ? (fitHeight - 170) / 1.55 : (fitHeight - 130) / 0.48) : undefined;
+  // The landscape frame's height per width (0.75 for 20×15). Side by side, the two frames share the
+  // column so their heights match: the landscape one takes 1/(1+r²) of it. Stacked (a tall screen),
+  // the portrait frame is 60% wide under the landscape one.
+  const r = landscapeDims.heightPx / landscapeDims.widthPx;
+  const landscapeShare = square ? 1 : 1 / (1 + r * r);
+  const previewsMaxWidth = fitHeight
+    ? Math.max(
+        200,
+        square ? (fitHeight - 150) / 1 : tallScreen ? (fitHeight - 170) / (r + 0.6 / r) : (fitHeight - 130) / (landscapeShare * r)
+      )
+    : undefined;
 
   if (!loaded) return null;
+  if (notFound) {
+    return (
+      <div className="rounded-2xl p-8 text-center bg-card border border-line shadow-card space-y-3">
+        <p className="text-sm text-ink">{t("המסגרת לא נמצאה.")}</p>
+        <Link href="/magnet-frames" className="inline-block rounded-lg px-4 py-2 text-sm font-semibold bg-ink text-white">
+          {t("לכל המסגרות")}
+        </Link>
+      </div>
+    );
+  }
+
+  const saveLabel =
+    saveState === "saving" ? t("שומר...") : saveState === "dirty" ? t("שינויים לא שמורים") : saveState === "error" ? t("השמירה נכשלה · ניסיון חוזר") : t("נשמר");
+  const orientations: FrameOrientation[] = square ? ["landscape"] : ["landscape", "portrait"];
+  const frameTitle = (o: FrameOrientation) =>
+    square
+      ? withDims(t("מסגרת {size}"), { size: magnetSizeLabel(sizeKey, o) })
+      : withDims(o === "landscape" ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: magnetSizeLabel(sizeKey, o) });
+  const toolBtn = "h-9 w-9 shrink-0 rounded-lg border border-line bg-card text-ink flex items-center justify-center disabled:opacity-40";
 
   // Two sides (owner's design, 2026-10-05): the panels on the right (65%), and on the left (35%)
-  // both frames as they will be exported, so a misplaced element shows up before downloading.
+  // the frames as they will be exported, so a misplaced element shows up before downloading.
   return (
     <>
-    {/* A phone held upright gets this instead of the editor: the two sides need the width of a
-        phone held sideways (owner, 2026-10-05). The editor stays mounted underneath, so turning
-        the phone back and forth keeps everything as it was. */}
-    <div className="hidden [@media(pointer:coarse)_and_(orientation:portrait)_and_(max-width:767px)]:flex flex-col items-center gap-4 rounded-2xl p-8 text-center bg-card border border-line shadow-card">
-      <div className="w-16 h-16 rounded-full bg-chip flex items-center justify-center" style={{ color: "var(--color-amber-deep)" }}>
-        <IconRotateDevice size={28} />
-      </div>
-      <p className="text-lg font-bold font-display">{t("סובבו את המכשיר למצב אופקי")}</p>
-      <p className="text-sm text-ink-soft">{t("כלי עיצוב המגנטים עובד במצב אופקי: המסגרות מצד אחד והפאנלים מהצד השני. סובבו את הטלפון כדי להמשיך.")}</p>
-    </div>
-    <div className={`[@media(pointer:coarse)_and_(orientation:portrait)_and_(max-width:767px)]:hidden ${ALBUM_FONT_CLASS_NAMES}`}>
-      <div className="flex items-center gap-2 mb-4 [@media(max-height:500px)]:mb-2">
-        <Link
-          href="/"
-          aria-label={t("חזרה לדף הבית")}
-          className="hidden [@media(max-height:500px)]:flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line bg-card text-ink-soft"
-        >
-          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="ltr:rotate-180">
-            <path d="M9 6l6 6-6 6" />
-          </svg>
-        </Link>
-        <h1 className="text-[26px] [@media(max-height:500px)]:text-lg font-bold font-display">{t("עיצוב מסגרת מגנט")}</h1>
-        <div className="relative">
-          <button
-            onClick={() => setHelpOpen((v) => !v)}
-            aria-label={t("הסבר")}
-            aria-expanded={helpOpen}
-            className="h-7 w-7 rounded-full border border-line bg-card text-sm font-bold text-ink-soft flex items-center justify-center"
-          >
-            ?
-          </button>
-          {helpOpen && (
-            <div
-              role="dialog"
-              className="absolute start-0 top-9 z-30 w-[min(360px,80vw)] rounded-xl p-3.5 bg-card border border-line shadow-sheet text-xs leading-relaxed text-ink-soft"
-              onClick={() => setHelpOpen(false)}
-            >
-              {withDims(
-                t("בסיס לבן פשוט במידה {landscape} ס״מ, עם שטח שקוף באמצע שבו תוכנס תמונת האירוע בהמשך. הוסיפו טקסט וגררו אלמנטים חופשי על המסגרת, בשמירה תיווצר אוטומטית גם מסגרת תואמת לאורך ({portrait}) עם אותו הטקסט והאלמנטים."),
-                { landscape: "20×15", portrait: "15×20" }
-              )}
-            </div>
-          )}
+      {/* A phone held upright gets this instead of the editor: the two sides need the width of a
+          phone held sideways (owner, 2026-10-05). The editor stays mounted underneath, so turning
+          the phone back and forth keeps everything as it was. */}
+      <div className="hidden [@media(pointer:coarse)_and_(orientation:portrait)_and_(max-width:767px)]:flex flex-col items-center gap-4 rounded-2xl p-8 text-center bg-card border border-line shadow-card">
+        <div className="w-16 h-16 rounded-full bg-chip flex items-center justify-center" style={{ color: "var(--color-amber-deep)" }}>
+          <IconRotateDevice size={28} />
         </div>
-        <button
-          onClick={() => void save()}
-          disabled={saving || !!exportBusy}
-          className="ms-auto shrink-0 rounded-xl px-7 py-3 [@media(max-height:500px)]:py-1.5 [@media(max-height:500px)]:px-5 text-base font-bold bg-ink text-white shadow-card disabled:opacity-60"
-        >
-          {saving && !exportBusy ? t("שומר...") : t("שמירה")}
-        </button>
+        <p className="text-lg font-bold font-display">{t("סובבו את המכשיר למצב אופקי")}</p>
+        <p className="text-sm text-ink-soft">{t("כלי עיצוב המגנטים עובד במצב אופקי: המסגרות מצד אחד והפאנלים מהצד השני. סובבו את הטלפון כדי להמשיך.")}</p>
       </div>
-
-      <div
-        ref={gridRef}
-        className="grid gap-4 sm:gap-5 sm:grid-cols-[minmax(0,65fr)_minmax(0,35fr)] items-start"
-        style={fitHeight ? { height: fitHeight } : undefined}
-      >
-        <section className="rounded-2xl bg-card border border-line shadow-card overflow-hidden flex flex-col sm:h-full">
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-3 py-2.5 [@media(max-height:500px)]:py-1.5">
-            {([1, 2] as const).map((n) => (
-              <button
-                key={n}
-                onClick={() => goToStep(n)}
-                aria-current={step === n ? "step" : undefined}
-                className="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors"
-                style={{ background: step === n ? "var(--color-ink)" : "var(--color-chip)", color: step === n ? "#fff" : "var(--color-ink-soft)" }}
-              >
-                <span className="flex h-5 w-5 items-center justify-center rounded-full text-[11px]" style={{ background: step === n ? "rgba(255,255,255,0.2)" : "var(--color-card)" }}>
-                  {n}
-                </span>
-                {withDims(n === 1 ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: n === 1 ? "20×15" : "15×20" })}
-              </button>
-            ))}
+      <div className={`[@media(pointer:coarse)_and_(orientation:portrait)_and_(max-width:767px)]:hidden ${ALBUM_FONT_CLASS_NAMES}`}>
+        <div className="flex flex-wrap items-center gap-2 mb-4 [@media(max-height:500px)]:mb-2">
+          <Link
+            href="/magnet-frames"
+            aria-label={t("לכל המסגרות")}
+            className="hidden [@media(max-height:500px)]:flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line bg-card text-ink-soft"
+          >
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="ltr:rotate-180">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </Link>
+          <input
+            value={name}
+            onChange={(e) => changeName(e.target.value)}
+            placeholder={t("מסגרת ללא שם")}
+            maxLength={80}
+            aria-label={t("שם המסגרת")}
+            className="min-w-0 flex-1 sm:flex-none sm:w-[min(420px,40vw)] rounded-lg px-2 py-1 text-[24px] [@media(max-height:500px)]:text-lg font-bold font-display bg-transparent border border-transparent hover:border-line focus:border-line focus:bg-card"
+          />
+          <div className="relative">
             <button
-              onClick={() => goToStep(step === 1 ? 2 : 1)}
-              className="ms-auto rounded-lg px-3.5 py-1.5 text-sm font-bold"
-              style={{ background: step === 1 ? "var(--color-amber-deep)" : "transparent", color: step === 1 ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
+              onClick={() => setHelpOpen((v) => !v)}
+              aria-label={t("הסבר")}
+              aria-expanded={helpOpen}
+              className="h-7 w-7 rounded-full border border-line bg-card text-sm font-bold text-ink-soft flex items-center justify-center"
             >
-              {step === 1 ? t("המשך למסגרת לאורך ←") : t("→ חזרה למסגרת לרוחב")}
+              ?
+            </button>
+            {helpOpen && (
+              <div
+                role="dialog"
+                className="absolute start-0 top-9 z-30 w-[min(380px,80vw)] rounded-xl p-3.5 bg-card border border-line shadow-sheet text-xs leading-relaxed text-ink-soft space-y-2"
+                onClick={() => setHelpOpen(false)}
+              >
+                <p>{t("מסגרת עם חלון שקוף באמצע, שבו תוכנס תמונת האירוע. מוסיפים טקסט ואלמנטים וגוררים אותם על המסגרת. כל שינוי נשמר לבד.")}</p>
+                <p>{t("על אלמנט שנבחר: הידית בפינה משנה גודל, והידית למעלה מסובבת. לחיצה כפולה על טקסט עורכת אותו במקום. Alt בזמן גרירה מבטל את ההצמדה.")}</p>
+                <p>{t("קיצורים: Ctrl+Z ביטול, Ctrl+Shift+Z שחזור, Ctrl+D שכפול, Delete מחיקה, חיצים להזזה (Shift להזזה גדולה), Esc לביטול הבחירה.")}</p>
+              </div>
+            )}
+          </div>
+          <div className="ms-auto flex items-center gap-1.5">
+            <button onClick={undo} disabled={!canUndo} className={toolBtn} title={t("ביטול (Ctrl+Z)")} aria-label={t("ביטול")}>
+              <ToolIcon d={ICON.undo} />
+            </button>
+            <button onClick={redo} disabled={!canRedo} className={toolBtn} title={t("שחזור (Ctrl+Shift+Z)")} aria-label={t("שחזור")}>
+              <ToolIcon d={ICON.redo} />
+            </button>
+            <button
+              onClick={() => (saveState === "error" || saveState === "dirty" ? void save() : undefined)}
+              className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold border"
+              style={
+                saveState === "error"
+                  ? { borderColor: "var(--color-rose)", color: "var(--color-rose)", background: "var(--color-rose-bg)" }
+                  : saveState === "saved"
+                    ? { borderColor: "transparent", color: "var(--color-sage)", background: "var(--color-sage-bg)" }
+                    : { borderColor: "var(--color-line)", color: "var(--color-ink-soft)", background: "var(--color-card)" }
+              }
+              aria-live="polite"
+            >
+              {saveState === "saved" ? "✓ " : ""}
+              {saveLabel}
             </button>
           </div>
-          {step === 2 ? (
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 [@media(max-height:500px)]:p-3">{renderPortraitPanel()}</div>
-          ) : (
-          <>
-          <div role="tablist" className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:[@media(max-height:500px)]:py-2">
-            {PANELS.map((panel) => {
-              const open = openPanel === panel.key;
-              return (
-                <button
-                  key={panel.key}
-                  role="tab"
-                  aria-selected={open}
-                  onClick={() => selectPanel(panel.key)}
-                  className="shrink-0 whitespace-nowrap px-3.5 py-3 text-sm font-semibold transition-colors"
-                  style={{
-                    color: open ? "var(--color-ink)" : "var(--color-ink-soft)",
-                    boxShadow: open ? "inset 0 -2px 0 var(--color-amber-deep)" : undefined,
-                  }}
-                >
-                  {t(panel.label)}
-                </button>
-              );
-            })}
-          </div>
-          <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 [@media(max-height:500px)]:p-3">
-            {openPanel && renderPanelContent(openPanel)}
-          </div>
-          </>
-          )}
-        </section>
+        </div>
 
-        {/* Side by side when the screen is short (a phone held sideways), stacked on a tall one. */}
-        <aside className="order-first sm:order-none sm:h-full sm:overflow-hidden">
-          <div className="mx-auto w-full" style={previewsMaxWidth ? { maxWidth: previewsMaxWidth } : undefined}>
-            <div className="grid grid-cols-[16fr_9fr] items-start gap-2 sm:gap-3 [@media(min-width:1024px)_and_(min-height:700px)]:grid-cols-1 [@media(min-width:1024px)_and_(min-height:700px)]:gap-4">
-              {(["landscape", "portrait"] as const).map((o) => (
-                <div key={o} className={o === "portrait" ? "[@media(min-width:1024px)_and_(min-height:700px)]:w-[60%] [@media(min-width:1024px)_and_(min-height:700px)]:mx-auto w-full" : "w-full"}>
-                  <div className="mb-1.5 text-[11px] font-semibold text-ink-soft text-center">
-                    {withDims(o === "landscape" ? t("מסגרת לרוחב {size}") : t("מסגרת לאורך {size}"), { size: o === "landscape" ? "20×15" : "15×20" })}
-                    {(step === 1) === (o === "landscape") && (
-                      <span className="ms-1.5 rounded-full px-1.5 py-px text-[10px] text-white" style={{ background: "var(--color-amber-deep)" }}>
-                        {t("בעריכה")}
-                      </span>
-                    )}
-                  </div>
-                  {renderFrame(o)}
-                  {/* Wraps to two rows in a narrow column (the portrait frame on a phone held sideways). */}
-                  <div className="mt-2 flex flex-wrap gap-1.5 [&>button]:basis-[56px]">
-                    <button
-                      onClick={() => download(o)}
-                      disabled={!!exportBusy || saving}
-                      title={o === "landscape" ? t("הורדת מסגרת רוחב ({size})", { size: "20×15" }) : t("הורדת מסגרת אורך ({size})", { size: "15×20" })}
-                      className="flex-1 min-w-0 rounded-lg px-1.5 py-2 text-[11px] sm:text-xs font-semibold bg-chip text-ink disabled:opacity-60 flex items-center justify-center gap-1"
-                    >
-                      {exportBusy === `${o}-png` ? (saving ? t("שומר...") : t("מוריד...")) : (
-                        <>
-                          <DownloadGlyph /> PNG
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => download(o, "psd")}
-                      disabled={!!exportBusy || saving}
-                      title={t("קובץ פוטושופ עם שכבות: המסגרת, הטקסטורה, כל טקסט ואלמנט בשכבה משלו, והצללות כ-Layer Style")}
-                      className="flex-1 min-w-0 rounded-lg px-1.5 py-2 text-[11px] sm:text-xs font-semibold border border-line bg-card text-ink disabled:opacity-60 flex items-center justify-center gap-1"
-                    >
-                      {exportBusy === `${o}-psd` ? (saving ? t("שומר...") : t("מכין PSD...")) : (
-                        <>
-                          <DownloadGlyph /> PSD
-                        </>
-                      )}
-                    </button>
-                  </div>
+        <div ref={gridRef} className="grid gap-4 sm:gap-5 sm:grid-cols-[minmax(0,65fr)_minmax(0,35fr)] items-start" style={fitHeight ? { height: fitHeight } : undefined}>
+          <section className="rounded-2xl bg-card border border-line shadow-card overflow-hidden flex flex-col sm:h-full">
+            {!square && (
+              <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-3 py-2.5 [@media(max-height:500px)]:py-1.5">
+                {([1, 2] as const).map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => goToStep(n)}
+                    aria-current={step === n ? "step" : undefined}
+                    className="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors"
+                    style={{ background: step === n ? "var(--color-ink)" : "var(--color-chip)", color: step === n ? "#fff" : "var(--color-ink-soft)" }}
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full text-[11px]" style={{ background: step === n ? "rgba(255,255,255,0.2)" : "var(--color-card)" }}>
+                      {n}
+                    </span>
+                    {frameTitle(n === 1 ? "landscape" : "portrait")}
+                  </button>
+                ))}
+                <button
+                  onClick={() => goToStep(step === 1 ? 2 : 1)}
+                  className="ms-auto rounded-lg px-3.5 py-1.5 text-sm font-bold"
+                  style={{ background: step === 1 ? "var(--color-amber-deep)" : "transparent", color: step === 1 ? "var(--color-on-accent)" : "var(--color-ink-soft)" }}
+                >
+                  {step === 1 ? t("המשך למסגרת לאורך ←") : t("→ חזרה למסגרת לרוחב")}
+                </button>
+              </div>
+            )}
+            {step === 2 && !square ? (
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 [@media(max-height:500px)]:p-3">{renderPortraitPanel()}</div>
+            ) : (
+              <>
+                <div role="tablist" className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:[@media(max-height:500px)]:py-2">
+                  {PANELS.map((panel) => {
+                    const open = openPanel === panel.key;
+                    return (
+                      <button
+                        key={panel.key}
+                        role="tab"
+                        aria-selected={open}
+                        onClick={() => selectPanel(panel.key)}
+                        className="shrink-0 whitespace-nowrap px-3.5 py-3 text-sm font-semibold transition-colors"
+                        style={{ color: open ? "var(--color-ink)" : "var(--color-ink-soft)", boxShadow: open ? "inset 0 -2px 0 var(--color-amber-deep)" : undefined }}
+                      >
+                        {t(panel.label)}
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
+                <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 [@media(max-height:500px)]:p-3">
+                  {openPanel && renderPanelContent(openPanel)}
+                </div>
+              </>
+            )}
+          </section>
+
+          {/* Side by side when the screen is short (a phone held sideways), stacked on a tall one. */}
+          <aside className="order-first sm:order-none sm:h-full sm:overflow-y-auto sm:overflow-x-hidden">
+            <div className="mx-auto w-full pt-5 px-3" style={previewsMaxWidth ? { maxWidth: previewsMaxWidth + 24 } : undefined}>
+              <div
+                className={`grid items-start gap-x-3 gap-y-8 ${square ? "grid-cols-1" : "[@media(min-width:1024px)_and_(min-height:700px)]:grid-cols-1"}`}
+                style={square ? undefined : { gridTemplateColumns: tallScreen ? undefined : `${landscapeShare}fr ${1 - landscapeShare}fr` }}
+              >
+                {orientations.map((o) => (
+                  <div key={o} className={o === "portrait" ? "[@media(min-width:1024px)_and_(min-height:700px)]:w-[60%] [@media(min-width:1024px)_and_(min-height:700px)]:mx-auto w-full" : "w-full"}>
+                    <div className="mb-1.5 text-[11px] font-semibold text-ink-soft text-center">
+                      {frameTitle(o)}
+                      {!square && (step === 1) === (o === "landscape") && (
+                        <span className="ms-1.5 rounded-full px-1.5 py-px text-[10px] text-white" style={{ background: "var(--color-amber-deep)" }}>
+                          {t("בעריכה")}
+                        </span>
+                      )}
+                    </div>
+                    {renderFrame(o)}
+                    {/* Wraps to two rows in a narrow column (the portrait frame on a phone held sideways). */}
+                    <div className="mt-2 flex flex-wrap gap-1.5 [&>button]:basis-[56px]">
+                      <button
+                        onClick={() => download(o)}
+                        disabled={!!exportBusy}
+                        title={t("הורדת המסגרת כ-PNG ({size})", { size: magnetSizeLabel(sizeKey, o) })}
+                        className="flex-1 min-w-0 rounded-lg px-1.5 py-2 text-[11px] sm:text-xs font-semibold bg-chip text-ink disabled:opacity-60 flex items-center justify-center gap-1"
+                      >
+                        {exportBusy === `${o}-png` ? t("מוריד...") : (
+                          <>
+                            <DownloadGlyph /> PNG
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => download(o, "psd")}
+                        disabled={!!exportBusy}
+                        title={t("קובץ פוטושופ עם שכבות: המסגרת, הטקסטורה, כל טקסט ואלמנט בשכבה משלו, והצללות כ-Layer Style")}
+                        className="flex-1 min-w-0 rounded-lg px-1.5 py-2 text-[11px] sm:text-xs font-semibold border border-line bg-card text-ink disabled:opacity-60 flex items-center justify-center gap-1"
+                      >
+                        {exportBusy === `${o}-psd` ? t("מכין PSD...") : (
+                          <>
+                            <DownloadGlyph /> PSD
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 space-y-2 text-[11px] text-ink-soft">
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5">
+                  <button type="button" onClick={() => setPhotoPickerOpen((v) => !v)} className="font-semibold underline underline-offset-2 text-ink">
+                    {samplePhoto ? t("החלפת התמונה בחלון") : t("תמונה לדוגמה בחלון")}
+                  </button>
+                  {samplePhoto && (
+                    <button type="button" onClick={() => chooseSamplePhoto(null)} className="underline underline-offset-2">
+                      {t("הסרת התמונה")}
+                    </button>
+                  )}
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" checked={showPrintGuides} onChange={(e) => setShowPrintGuides(e.target.checked)} />
+                    {t("אזור בטוח להדפסה")}
+                  </label>
+                </div>
+                {photoPickerOpen && <SamplePhotoPicker eventId={eventId} onChoose={chooseSamplePhoto} onClose={() => setPhotoPickerOpen(false)} />}
+                {showPrintGuides && <p className="text-center leading-relaxed">{t("הקו המקווקו מסמן 3 מ״מ מהקצה. טקסט ואלמנטים חשובים כדאי להשאיר בתוכו.")}</p>}
+                {!square && <p className="text-center leading-relaxed">{t("שתי המסגרות מתעדכנות יחד. אפשר לגרור אלמנטים בכל אחת מהן.")}</p>}
+              </div>
+              {error && <p className="mt-2 text-xs text-rose text-center">{error}</p>}
             </div>
-            <p className="mt-3 text-[11px] leading-relaxed text-ink-soft text-center">{t("שתי המסגרות מתעדכנות יחד. אפשר לגרור אלמנטים בכל אחת מהן.")}</p>
-            {error && <p className="mt-2 text-xs text-rose text-center">{error}</p>}
-            {savedOnce && !designId && <p className="mt-1 text-[11px] text-ink-soft text-center">{t("השמירה נכשלה. נסו שוב.")}</p>}
-          </div>
-        </aside>
+          </aside>
+        </div>
       </div>
-    </div>
     </>
+  );
+}
+
+// Choosing the sample photo: from the device (stays in this browser only), or from a gallery — the
+// linked event's first, else the latest galleries.
+function SamplePhotoPicker({ eventId, onChoose, onClose }: { eventId: string | null; onChoose: (p: SamplePhoto) => void; onClose: () => void }) {
+  const t = useT();
+  const [galleries, setGalleries] = useState<{ id: string; title: string }[] | null>(null);
+  const [galleryId, setGalleryId] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const supabase = createClient();
+      const { data } = await supabase.from("galleries").select("id, title, event_id, created_at").order("created_at", { ascending: false }).limit(30);
+      if (!alive) return;
+      const rows = (data ?? []) as { id: string; title: string; event_id: string | null }[];
+      const ordered = [...rows.filter((g) => eventId && g.event_id === eventId), ...rows.filter((g) => !eventId || g.event_id !== eventId)];
+      setGalleries(ordered.map((g) => ({ id: g.id, title: g.title })));
+      setGalleryId(ordered[0]?.id ?? null);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [eventId]);
+
+  useEffect(() => {
+    if (!galleryId) return;
+    let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPhotos(null);
+    void (async () => {
+      const { data } = await createClient().from("gallery_photos").select("id").eq("gallery_id", galleryId).order("sort_order", { ascending: true }).limit(24);
+      if (alive) setPhotos(((data ?? []) as { id: string }[]).map((p) => p.id));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [galleryId]);
+
+  return (
+    <div className="rounded-xl border border-line bg-card p-3 space-y-2.5 text-start">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-ink">{t("תמונה לדוגמה בחלון")}</span>
+        <button type="button" onClick={onClose} className="text-ink-soft" aria-label={t("סגירה")}>
+          ✕
+        </button>
+      </div>
+      <p className="text-[10px] leading-relaxed">{t("רק לתצוגה בעורך, כדי לראות איך המסגרת נראית עם תמונה. היא לא נשמרת בקובץ.")}</p>
+      <label className="flex items-center justify-center rounded-lg border border-dashed border-line p-2 text-center cursor-pointer text-xs font-semibold text-ink-soft">
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) onChoose({ url: URL.createObjectURL(file), local: true });
+          }}
+        />
+        {t("בחירת תמונה מהמכשיר")}
+      </label>
+      {galleries && galleries.length > 0 && (
+        <>
+          <select value={galleryId ?? ""} onChange={(e) => setGalleryId(e.target.value)} className="w-full rounded-lg px-2 py-1.5 text-xs bg-white border border-line text-ink">
+            {galleries.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.title}
+              </option>
+            ))}
+          </select>
+          {photos === null ? (
+            <p className="text-[10px]">{t("טוען...")}</p>
+          ) : photos.length === 0 ? (
+            <p className="text-[10px]">{t("אין תמונות בגלריה הזו.")}</p>
+          ) : (
+            <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto">
+              {photos.map((pid) => {
+                const url = `/api/galleries/${galleryId}/photos/${pid}/image?size=640&fast=1`;
+                return (
+                  <button key={pid} type="button" onClick={() => onChoose({ url, local: false })} className="aspect-square overflow-hidden rounded-md bg-chip">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }

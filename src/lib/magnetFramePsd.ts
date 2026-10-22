@@ -7,7 +7,7 @@ import {
   renderMagnetFrameWindow,
   composeMagnetFrameElements,
 } from "@/lib/magnetFrame";
-import { MAGNET_FRAME_DPI, MAGNET_EXPORT_SCALE as S, magnetExportDimensions } from "@/lib/magnetFrameShared";
+import { MAGNET_FRAME_DPI, MAGNET_TEXT_SHADOW_ALPHA, hexToRgbTriple, magnetExportDimensions, magnetExportScale } from "@/lib/magnetFrameShared";
 import type { LoadedMagnetDesign } from "@/lib/magnetFrameLoad";
 import { getAlbumFontDef } from "@/lib/albumFontFiles";
 import type { FrameOrientation, MagnetFrameElement } from "@/lib/types";
@@ -31,7 +31,8 @@ const LINEAR_CONTOUR = { name: "Linear", curve: [{ x: 0, y: 0 }, { x: 255, y: 25
 
 // A live Photoshop Drop Shadow, with the full descriptor real Photoshop writes (see albumPsd.ts).
 // angle is Photoshop's light direction: 135 = light from the top left, shadow down and right.
-function dropShadow(opts: { angle: number; distancePx: number; sizePx: number; opacity: number }): LayerEffectsInfo {
+function dropShadow(opts: { angle: number; distancePx: number; sizePx: number; opacity: number; color?: string }): LayerEffectsInfo {
+  const [r, g, b] = hexToRgbTriple(opts.color);
   return {
     dropShadow: [
       {
@@ -43,7 +44,7 @@ function dropShadow(opts: { angle: number; distancePx: number; sizePx: number; o
         distance: { units: "Pixels", value: Math.max(0, Math.round(opts.distancePx)) },
         choke: { units: "Pixels", value: 0 },
         size: { units: "Pixels", value: Math.max(0, Math.round(opts.sizePx)) },
-        color: { r: 0, g: 0, b: 0 },
+        color: { r, g, b },
         opacity: Math.max(0, Math.min(1, opts.opacity)),
         blendMode: "multiply",
         antialiased: false,
@@ -52,6 +53,26 @@ function dropShadow(opts: { angle: number; distancePx: number; sizePx: number; o
       },
     ],
   };
+}
+
+// A text's outline as a live Stroke outside the letters: the same Stroke descriptor albumPsd.ts
+// verified in real Photoshop, positioned outside. Photoshop takes whole pixels, up to 250.
+function outlineStroke(sizePx: number, color: string | undefined): NonNullable<LayerEffectsInfo["stroke"]> {
+  const [r, g, b] = hexToRgbTriple(color);
+  return [
+    {
+      enabled: true,
+      present: true,
+      showInDialog: true,
+      position: "outside",
+      fillType: "color",
+      color: { r, g, b },
+      opacity: 1,
+      blendMode: "normal",
+      size: { units: "Pixels", value: Math.max(1, Math.min(250, Math.round(sizePx))) },
+      overprint: false,
+    },
+  ];
 }
 
 // A full-canvas transparent PNG cut down to its visible pixels, as a positioned PSD layer. Null
@@ -78,7 +99,7 @@ async function trimmedLayer(png: Buffer, name: string, extra: Partial<Layer> = {
 const SINGLE_STYLE_FONTS = new Set(["secular-one", "suez-one", "great-vibes", "pacifico", "permanent-marker", "gveret-levin", "alef"]);
 const HEBREW_RE = /[\u0590-\u05FF]/;
 
-function typeLayerData(el: Extract<MagnetFrameElement, { type: "text" }>, widthPx: number, heightPx: number): NonNullable<Layer["text"]> {
+function typeLayerData(el: Extract<MagnetFrameElement, { type: "text" }>, widthPx: number, heightPx: number, S: number): NonNullable<Layer["text"]> {
   const text = el.text.trim();
   // A Latin-only font with Hebrew text renders the Hebrew in Heebo, here as in the PNG.
   const def = HEBREW_RE.test(text) && getAlbumFontDef(el.fontKey).category === "latin" ? getAlbumFontDef("heebo") : getAlbumFontDef(el.fontKey);
@@ -94,6 +115,8 @@ function typeLayerData(el: Extract<MagnetFrameElement, { type: "text" }>, widthP
   const color = el.color.replace("#", "");
   const full = color.length === 3 ? color.split("").map((c) => c + c).join("") : color;
   const n = parseInt(full, 16);
+  // Letter spacing as Photoshop tracking, in thousandths of an em.
+  const tracking = el.letterSpacing ? Math.max(-1000, Math.min(10000, Math.round((el.letterSpacing / el.fontSizePx) * 1000))) : 0;
   return {
     text,
     transform: [Math.cos(rad), Math.sin(rad), -Math.sin(rad), Math.cos(rad), cx, cy],
@@ -106,6 +129,7 @@ function typeLayerData(el: Extract<MagnetFrameElement, { type: "text" }>, widthP
       fauxBold: single && el.bold,
       fauxItalic: single && el.italic,
       underline: el.underline,
+      ...(tracking ? { tracking } : {}),
     },
     paragraphStyle: { justification: "center" },
   };
@@ -124,11 +148,15 @@ function elementName(el: MagnetFrameElement, index: number): string {
 // - "מסגרת": the mat, with the inner shadow as a live Drop Shadow layer style (under the mat it only
 //   shows inside the window, like the PNG's shadow).
 // - "טקסטורה": clipped to the mat, opacity already in the pixels.
-// - One layer per text and element, in the editor's order. A text's shadow is a live Drop Shadow.
+// - One layer per text and element, in the editor's order. A text's shadow is a live Drop Shadow in
+//   its color, and its outline a live Stroke outside the letters.
 // Each text is an editable type layer (see typeLayerData), with a hidden picture of it as a backup.
-export async function renderMagnetFramePsd(orientation: FrameOrientation, design: LoadedMagnetDesign): Promise<Buffer> {
-  const { widthPx, heightPx } = magnetExportDimensions(orientation);
+// The frame's size is the design's (settings.sizeKey), at 300 DPI.
+export async function renderMagnetFramePsd(orientation: FrameOrientation, design: Omit<LoadedMagnetDesign, "orientation">): Promise<Buffer> {
   const { elements, settings, customTextureImage, customElementBuffers } = design;
+  const sizeKey = settings.sizeKey;
+  const { widthPx, heightPx } = magnetExportDimensions(orientation, sizeKey);
+  const S = magnetExportScale(sizeKey);
   const children: Layer[] = [];
 
   const windowLayer = await trimmedLayer(await renderMagnetFrameWindow(orientation, settings), "מקום לתמונה", { hidden: true });
@@ -161,34 +189,43 @@ export async function renderMagnetFramePsd(orientation: FrameOrientation, design
 
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i];
-    const plain = el.type === "text" ? { ...el, shadowEnabled: false } : el;
-    const png = await composeMagnetFrameElements([plain], orientation, customElementBuffers);
-    // Same look as the PNG: the shadow there is offset by distance on each axis and blurred with
-    // sigma = blur; Photoshop's Size is roughly 2.5 sigma.
-    const effects =
-      el.type === "text" && el.shadowEnabled
-        ? dropShadow({ angle: 135, distancePx: el.shadowDistancePx * S * Math.SQRT2, sizePx: el.shadowBlurPx * S * 2.5, opacity: 0.55 })
-        : undefined;
-    const layer = await trimmedLayer(png, elementName(el, i), effects ? { effects } : {});
-    if (!layer) continue;
     if (el.type !== "text") {
-      children.push(layer);
+      const layer = await trimmedLayer(await composeMagnetFrameElements([el], orientation, sizeKey, customElementBuffers), elementName(el, i));
+      if (layer) children.push(layer);
       continue;
     }
+    // The picture of the text with its outline (the shadow is a live effect, not pixels).
+    const pictured = await composeMagnetFrameElements([{ ...el, shadowEnabled: false }], orientation, sizeKey, customElementBuffers);
+    const name = elementName(el, i);
+    const layer = await trimmedLayer(pictured, name);
+    if (!layer) continue;
+    // Same look as the PNG: the shadow there is offset by distance on each axis and blurred with
+    // sigma = blur; Photoshop's Size is roughly 2.5 sigma.
+    const shadow = el.shadowEnabled
+      ? dropShadow({ angle: 135, distancePx: el.shadowDistancePx * S * Math.SQRT2, sizePx: el.shadowBlurPx * S * 2.5, opacity: MAGNET_TEXT_SHADOW_ALPHA, color: el.shadowColor })
+      : undefined;
     // Text (owner, 2026-10-06): a real, editable Photoshop type layer carrying our own rendering as
     // its pixels, so it looks right the moment the file opens. Photoshop asks to "Update" type
     // layers written this way; after updating it redraws them with its own engine and the
     // photographer's installed font. A hidden picture of the same text stays underneath as a
     // backup, in case that redraw comes out different (a missing font, or Hebrew in a Photoshop
     // without Middle Eastern features turned on).
-    children.push({ ...layer, name: `${layer.name} (תמונה, גיבוי)`, hidden: true, effects: undefined });
-    children.push({ ...layer, text: typeLayerData(el, widthPx, heightPx) });
+    children.push({ ...layer, name: `${name} (תמונה, גיבוי)`, hidden: true });
+    // An outline is a live Stroke on the type layer, so it survives Photoshop's redraw; the type
+    // layer's own pixels are then the letters without it, or the outline would show twice.
+    const outlined = !!el.strokeWidth && el.strokeWidth > 0;
+    const typePixels = outlined
+      ? await trimmedLayer(await composeMagnetFrameElements([{ ...el, shadowEnabled: false, strokeWidth: 0 }], orientation, sizeKey, customElementBuffers), name)
+      : layer;
+    if (!typePixels) continue;
+    const effects: LayerEffectsInfo = { ...shadow, ...(outlined ? { stroke: outlineStroke(el.strokeWidth! * S, el.strokeColor) } : {}) };
+    children.push({ ...typePixels, text: typeLayerData(el, widthPx, heightPx, S), ...(Object.keys(effects).length > 0 ? { effects } : {}) });
   }
 
   // The flattened image too, so previews (Finder, Bridge, the browser) show the real design.
   // The texture layer above is reused: rendering a texture at 300 DPI takes seconds.
   const matWithShadow = settings.shadowEnabled ? await renderMagnetFrameBase(orientation, settings) : mat;
-  const allElements = await composeMagnetFrameElements(elements, orientation, customElementBuffers);
+  const allElements = await composeMagnetFrameElements(elements, orientation, sizeKey, customElementBuffers);
   const composite = await sharp(matWithShadow)
     .composite([...(texture ? [{ input: texture, left: 0, top: 0 }] : []), { input: allElements, left: 0, top: 0 }])
     .png()
