@@ -17,6 +17,11 @@ export function eventNeedsAttention(
   return !!(attention?.openBalance || attention?.depositDue || attention?.contractPending || event.needs_review);
 }
 
+// A tap on one of the header pills (HomeVividPills) asks the events list below to show those
+// events (owner, 2026-10-22): a window event, since the two sit apart on the page.
+export const HOME_LIST_FILTER_EVENT = "gf:home-list-filter";
+export type HomeListFilterRequest = "week" | "attention";
+
 // The two pills under the heading: events of the coming week (today through 7 days from today by
 // the Israeli date, whatever their status: the same events the list's "השבוע הקרוב" shows), and
 // events that need the photographer.

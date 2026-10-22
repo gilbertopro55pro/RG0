@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CloseEventConfirmModal from "@/components/CloseEventConfirmModal";
@@ -14,11 +14,14 @@ import { comingWeekRange, DEFAULT_HOME_VIEW, type HomeEventsView, type HomeSortO
 import { useVivid } from "@/components/VividProvider";
 import ToneTag from "@/components/ToneTag";
 import { eventDateTone, stageProgress, toneStyle } from "@/lib/tones";
+import { HOME_LIST_FILTER_EVENT, eventNeedsAttention, type HomeListFilterRequest } from "@/lib/homeVivid";
 
 // event_stages: embedded by page.tsx's events query; only the vivid look reads it (the thin
 // progress bar under each row).
 type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | null; event_stages?: readonly { done: boolean }[] };
-type StatusFilter = HomeStatusFilter;
+// "attention" (vivid look only): the events that need the photographer, from the header pill. A
+// passing filter, never saved as the account's view.
+type StatusFilter = HomeStatusFilter | "attention";
 type SortOrder = HomeSortOrder;
 const PAGE_SIZE = 10;
 
@@ -97,11 +100,11 @@ export default function EventsListView({
 
   // The chosen view is saved on the account, so it's the same after logging out and on any device
   // (owner, 2026-10-13). A failed save only means the next visit opens on the previous view.
-  const changeView = (next: HomeEventsView) => {
+  const changeView = (next: { status: StatusFilter; sort: SortOrder }) => {
     setStatusFilter(next.status);
     setSortOrder(next.sort);
     setVisibleCount(PAGE_SIZE);
-    if (!saveView) return;
+    if (!saveView || next.status === "attention") return;
     fetch("/api/preferences/home-view", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -110,6 +113,26 @@ export default function EventsListView({
     }).catch(() => {});
   };
   const week = comingWeekRange();
+
+  // The header pills (HomeVividPills, vivid look): show this week's events or the ones that need
+  // the photographer, exactly the events the pill counted (no search, nearest first), and scroll
+  // to the list. The view before "attention" comes back when its pill is cleared.
+  const listRef = useRef<HTMLDivElement>(null);
+  const viewBeforeAttention = useRef<HomeEventsView>(initialView);
+  useEffect(() => {
+    if (!vivid) return;
+    const onRequest = (e: Event) => {
+      const show = (e as CustomEvent<HomeListFilterRequest>).detail;
+      if (show === "attention" && statusFilter !== "attention") viewBeforeAttention.current = { status: statusFilter, sort: sortOrder };
+      setQuery("");
+      changeView({ status: show, sort: "asc" });
+      requestAnimationFrame(() => listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    };
+    window.addEventListener(HOME_LIST_FILTER_EVENT, onRequest);
+    return () => window.removeEventListener(HOME_LIST_FILTER_EVENT, onRequest);
+    // changeView only sets state and saves; it reads nothing that changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vivid, statusFilter, sortOrder]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -123,6 +146,7 @@ export default function EventsListView({
       if (statusFilter === "duplicates" && !event.resolution_note && !isFreelanceEvent(event)) return false;
       // The coming week: every event dated today through a week from today, whatever its status.
       if (statusFilter === "week" && (event.event_date < week.from || event.event_date > week.to)) return false;
+      if (statusFilter === "attention" && !eventNeedsAttention(event, attentionByEvent[event.id])) return false;
       if (statusFilter === "upcoming" || statusFilter === "completed") {
         const done = isEventDone(event);
         if (statusFilter === "upcoming" && done) return false;
@@ -138,7 +162,7 @@ export default function EventsListView({
       return compareEventsChronologically(a, b);
     });
     return result;
-  }, [events, query, statusFilter, sortOrder, selectedMonth, selectedDate, rangeFrom, rangeTo, week.from, week.to]);
+  }, [events, query, statusFilter, sortOrder, selectedMonth, selectedDate, rangeFrom, rangeTo, week.from, week.to, attentionByEvent]);
 
   const visible = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visible.length;
@@ -149,7 +173,7 @@ export default function EventsListView({
   if (vivid) {
     const extraFilterActive = statusFilter === "duplicates" || sortOrder !== "asc";
     return (
-      <div>
+      <div ref={listRef} className="scroll-mt-4">
         <div className="flex items-center justify-between mb-2.5 px-0.5">
           <h2 className="text-lg font-bold">{t("אירועים")}</h2>
           <span
@@ -175,6 +199,13 @@ export default function EventsListView({
                   {t(p.label)}
                 </VividPill>
               ))}
+              {statusFilter === "attention" && (
+                <VividPill active onClick={() => changeView(viewBeforeAttention.current)}>
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: "var(--tone-attention)" }} />
+                  {t("דורשים טיפול")}
+                  <span aria-hidden className="opacity-70">✕</span>
+                </VividPill>
+              )}
             </div>
 
             {/* Search, with the rest of the filters (sort, month / date / range, duplicates) behind
@@ -332,8 +363,10 @@ export default function EventsListView({
                 : t("עדיין לא הוקצו לך אירועים")
               : statusFilter === "week" && !query.trim()
                 ? t("אין אירועים בשבוע הקרוב")
-                : t("לא נמצאו אירועים תואמים")}
-            {events.length > 0 && statusFilter === "week" && (
+                : statusFilter === "attention" && !query.trim()
+                  ? t("אין אירועים שדורשים טיפול")
+                  : t("לא נמצאו אירועים תואמים")}
+            {events.length > 0 && (statusFilter === "week" || statusFilter === "attention") && (
               <button onClick={() => changeView({ status: "all", sort: sortOrder })} className="block mx-auto mt-3 text-sm font-semibold underline underline-offset-2 text-ink">
                 {t("הצגת כל האירועים")}
               </button>
