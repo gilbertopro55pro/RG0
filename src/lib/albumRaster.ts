@@ -105,10 +105,13 @@ function splitByFontCoverage(text: string, hebrewFont: FontkitFont, latinFont: F
 // is exactly what rendered as backwards text (confirmed 2026-09-16 by rendering a real album
 // spread's real text both ways and comparing). PSD reuses this exact function (svgTextLayer is
 // shared via albumPsd.ts's own import).
+// letterSpacingPx is added after every glyph, the last one too, like CSS letter-spacing (the magnet
+// frame editor's), so a centered line sits where the browser puts it. Album text passes none.
 async function layoutTextAsSvgPaths(
   text: string,
   fontFamily: string | undefined,
-  fontSizePx: number
+  fontSizePx: number,
+  letterSpacingPx = 0
 ): Promise<{ pathsSvg: string; width: number; ascentPx: number; descentPx: number }> {
   const { hebrewFile, latinFile } = getAlbumFontFiles(fontFamily);
   const [hebrewFont, latinFont] = await Promise.all([loadFontkitFont(hebrewFile), loadFontkitFont(latinFile)]);
@@ -144,6 +147,8 @@ async function layoutTextAsSvgPaths(
         parts.push(`<path d="${d}" transform="translate(${gx},${gy}) scale(${scale},${-scale})" />`);
       }
       cursorX += pos.xAdvance * scale;
+      // Not after a zero-width mark (niqqud): CSS spaces whole characters.
+      if (letterSpacingPx && pos.xAdvance !== 0) cursorX += letterSpacingPx;
     }
   }
   // hebrewFont's own metrics stand in for "this line's" ascent/descent regardless of which font
@@ -183,9 +188,11 @@ async function svgTextLayer(
     // Album text effects (see textShadowSpecs in albumRender.ts), with `unitPx` = this page's pixels
     // per point of the 1600pt reference canvas.
     effects?: { shadows: TextShadowSpec[]; strokeWidth?: number; strokeColor?: string; unitPx: number };
+    // Extra px after every letter (see layoutTextAsSvgPaths). Album text has none.
+    letterSpacingPx?: number;
   }
 ): Promise<Buffer> {
-  const { pathsSvg, width, ascentPx, descentPx } = await layoutTextAsSvgPaths(text, opts.fontFamily, opts.fontSizePx);
+  const { pathsSvg, width, ascentPx, descentPx } = await layoutTextAsSvgPaths(text, opts.fontFamily, opts.fontSizePx, opts.letterSpacingPx);
   const startX = opts.align === "right" ? opts.xPx + opts.widthPx - width : opts.align === "left" ? opts.xPx : opts.xPx + (opts.widthPx - width) / 2;
   // Centered within the box when heightPx is known (see the opts.heightPx comment above) — a
   // one-line box's vertical center sits at boxTop + boxHeight/2, and the baseline sits

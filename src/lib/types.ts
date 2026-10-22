@@ -251,6 +251,15 @@ export type MagnetFrameTextElement = {
   shadowDistancePx: number;
   // Degrees, clockwise, around the element's center. Missing on designs saved before rotation.
   rotation?: number;
+  // Text effects (owner, 2026-10-22, like the album editor's): the shadow's color (black when
+  // missing), an outline outside the letters in design px with its color, and extra space between
+  // letters in design px. All optional: designs saved before them render as before.
+  shadowColor?: string;
+  strokeWidth?: number;
+  strokeColor?: string;
+  letterSpacing?: number;
+  // Can't be dragged, resized or deleted from the frame until unlocked.
+  locked?: boolean;
 };
 
 // A dropped decorative element — a built-in ALBUM_ORNAMENTS entry (ornamentId, recolorable via
@@ -272,6 +281,7 @@ export type MagnetFrameDecorationElement = {
   sizePct: number;
   color: string;
   rotation?: number;
+  locked?: boolean;
 };
 
 export type MagnetFrameElement = MagnetFrameTextElement | MagnetFrameDecorationElement;
@@ -314,7 +324,13 @@ export type MagnetFrameSettings = {
   textureId: string | null;
   textureOpacity: number;
   customTextureAssetId: string | null;
+  // The frame's print size (MAGNET_FRAME_SIZES in magnetFrameShared.ts). Missing = "20x15", the only
+  // size before 2026-10-22.
+  sizeKey?: MagnetFrameSizeKey;
 };
+
+// Print sizes, landscape width × height in cm. "9x9" is square and has a single frame.
+export type MagnetFrameSizeKey = "20x15" | "15x10" | "10x7.5" | "10x7" | "9x9";
 
 // One saved design. landscape_elements (20x15cm) is what the photographer edits directly;
 // portrait_elements (15x20cm) is auto-derived at save time — see MagnetFrameEditor.tsx.
@@ -322,6 +338,8 @@ export type MagnetFrameDesignRow = {
   id: string;
   photographer_id: string;
   event_id: string | null;
+  // The photographer's name for the frame (several frames per account since 2026-10-22).
+  name: string | null;
   landscape_elements: MagnetFrameElement[];
   portrait_elements: MagnetFrameElement[];
   frame_settings: MagnetFrameSettings;

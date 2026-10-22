@@ -1,9 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DEFAULT_MAGNET_FRAME_SETTINGS } from "@/lib/magnetFrameShared";
+import { DEFAULT_MAGNET_FRAME_SETTINGS, isSquareMagnetSize } from "@/lib/magnetFrameShared";
 import { downloadObjectBuffer } from "@/lib/storage";
 import type { FrameOrientation, MagnetFrameCustomElementRow, MagnetFrameCustomTextureRow, MagnetFrameDesignRow, MagnetFrameElement, MagnetFrameSettings } from "@/lib/types";
 
 export type LoadedMagnetDesign = {
+  // The orientation the elements are for: the one asked for, or landscape for a square size,
+  // which has a single frame.
+  orientation: FrameOrientation;
   elements: MagnetFrameElement[];
   settings: MagnetFrameSettings;
   customTextureImage: Buffer | null;
@@ -12,7 +15,8 @@ export type LoadedMagnetDesign = {
 
 // Everything one orientation of a saved design needs to render (PNG or PSD): its elements, the
 // merged settings, and the photographer's own uploaded texture/elements fetched from storage.
-// Null when the design isn't this photographer's.
+// Null when the design isn't this photographer's. The print size is settings.sizeKey (missing =
+// 20×15); a square size returns its one (landscape) frame for either orientation.
 export async function loadMagnetDesign(supabase: SupabaseClient, userId: string, id: string, orientation: FrameOrientation): Promise<LoadedMagnetDesign | null> {
   const { data: design } = await supabase
     .from("magnet_frame_designs")
@@ -22,8 +26,10 @@ export async function loadMagnetDesign(supabase: SupabaseClient, userId: string,
     .maybeSingle<MagnetFrameDesignRow>();
   if (!design) return null;
 
-  const elements = orientation === "landscape" ? design.landscape_elements : design.portrait_elements;
-  const settings = { ...DEFAULT_MAGNET_FRAME_SETTINGS, ...design.frame_settings };
+  // Designs saved before sizes have no sizeKey in frame_settings and get the default, 20×15.
+  const settings: MagnetFrameSettings = { ...DEFAULT_MAGNET_FRAME_SETTINGS, ...design.frame_settings };
+  const rendered: FrameOrientation = isSquareMagnetSize(settings.sizeKey) ? "landscape" : orientation;
+  const elements = (rendered === "landscape" ? design.landscape_elements : design.portrait_elements) ?? [];
 
   let customTextureImage: Buffer | null = null;
   if (settings.customTextureAssetId) {
@@ -53,5 +59,5 @@ export async function loadMagnetDesign(supabase: SupabaseClient, userId: string,
     }
   }
 
-  return { elements, settings, customTextureImage, customElementBuffers };
+  return { orientation: rendered, elements, settings, customTextureImage, customElementBuffers };
 }

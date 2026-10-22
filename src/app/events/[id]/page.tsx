@@ -15,9 +15,10 @@ import type {
   GalleryRow,
   TeamMember,
 } from "@/lib/types";
-import EventDetailView from "@/components/EventDetailView";
+import EventDetailView, { type EventMagnetFrame } from "@/components/EventDetailView";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { hasAppAccess } from "@/lib/subscription";
+import { designToolsAllowed } from "@/lib/designTools";
 import { canChooseClientLang, clientLangFor } from "@/lib/clientLang";
 import { eventQuoteHistoryId, type EventQuote } from "@/lib/eventQuote";
 import type { LeadQuoteDetails } from "@/lib/leadQuote";
@@ -56,9 +57,9 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   const serviceRole = createServiceRoleClient();
   const { data: photographerSignatureRow } = await serviceRole
     .from("photographers")
-    .select("name, email, whatsapp_signature, subscription_status, trial_ends_at")
+    .select("name, email, plan, whatsapp_signature, subscription_status, trial_ends_at")
     .eq("id", event.photographer_id)
-    .maybeSingle<{ name: string | null; email: string | null; whatsapp_signature: string | null } & Pick<Photographer, "subscription_status" | "trial_ends_at">>();
+    .maybeSingle<{ name: string | null; email: string | null; whatsapp_signature: string | null } & Pick<Photographer, "plan" | "subscription_status" | "trial_ends_at">>();
   const whatsappSignature = photographerSignatureRow?.whatsapp_signature ?? null;
   const senderName = photographerSignatureRow?.name ?? null;
   // The language of the client update messages (UI languages phase 3): the event owner's account
@@ -93,6 +94,19 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   }
 
   const isOwner = event.photographer_id === user!.id;
+
+  // The magnet frames linked to this event (פרו / פרו+ only, like the tool itself). Started here so
+  // it runs alongside the owner queries below.
+  const magnetFramesLoad =
+    isOwner && photographerSignatureRow && designToolsAllowed({ email: photographerSignatureRow.email ?? "", plan: photographerSignatureRow.plan })
+      ? supabase
+          .from("magnet_frame_designs")
+          .select("id, name, updated_at")
+          .eq("event_id", id)
+          .order("updated_at", { ascending: false })
+          .returns<EventMagnetFrame[]>()
+          .then((res) => res.data ?? [])
+      : null;
 
   let teamMembers: TeamMember[] = [];
   let assignedTeamMemberIds: string[] = [];
@@ -172,6 +186,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     }
   }
 
+  const magnetFrames = magnetFramesLoad ? await magnetFramesLoad : null;
+
   const messageTemplateMap: Record<string, string> = {};
   for (const row of messageTemplates ?? []) messageTemplateMap[row.stage_key] = row.body;
 
@@ -187,6 +203,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
         initialPayments={payments}
         initialContract={contract}
         eventQuote={eventQuote}
+        magnetFrames={magnetFrames}
         initialGallery={gallery}
         galleryPhotoCount={galleryPhotoCount}
         galleryCoverUrl={galleryCoverUrl}
