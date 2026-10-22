@@ -1,6 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { authenticateGalleryRequest } from "@/lib/desktopAuth";
+import { activeAlbumJob, PRINT_HOUSE_SEND_RUNNING } from "@/lib/activeAlbumJob";
 import { countExportPages, findActiveExportJob, triggerAlbumExportProcessing } from "@/lib/albumExportJobs";
 import type { GalleryAlbumRow, GalleryRow } from "@/lib/types";
 
@@ -31,7 +32,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // One active export at a time per PHOTOGRAPHER, regardless of which gallery/format/screen
     // asked — see findActiveExportJob's own comment for why this lives here instead of only as
     // client state.
-    const active = await findActiveExportJob(supabase, gallery.photographer_id);
+    const active = await activeAlbumJob(supabase, gallery.photographer_id);
+    if (active?.printHouse) return NextResponse.json({ error: PRINT_HOUSE_SEND_RUNNING }, { status: 409 });
     if (active) return NextResponse.json({ jobId: active.id, alreadyActive: true, format: active.format, galleryId: active.galleryId });
 
     const body: { from?: number; to?: number } = await request.json().catch(() => ({}));

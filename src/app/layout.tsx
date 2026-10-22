@@ -15,6 +15,7 @@ import GlobalLoadingBar from "@/components/GlobalLoadingBar";
 import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
 import UploadsIndicator from "@/components/UploadsIndicator";
+import AlbumExportsLayer from "@/components/AlbumExportsLayer";
 import AssistantLeadPopup from "@/components/AssistantLeadPopup";
 import ContactReminderPopup from "@/components/ContactReminderPopup";
 import PremiumScope from "@/components/PremiumScope";
@@ -329,6 +330,7 @@ export default async function RootLayout({
           </VividProvider>
           <InstallPrompt />
           <UploadsIndicator />
+          <AlbumExportsLayer />
           <ChangelogModal latest={CHANGELOG[0]} />
           <ContactReminderPopup />
           <AssistantLeadPopup />
