@@ -2,7 +2,9 @@
 // 2026-10-13): a song name or a YouTube link per field, instead of sending them on WhatsApp. A
 // wedding's highlights clip asks for a calm song and an upbeat one, unless the client prefers one
 // song; any other event asks for one. Stored on events.clip_songs (migration 0161).
-export type ClipSongs = { single?: string; calm?: string; upbeat?: string; chosenAt: string };
+// by "photographer": filled on the event page for the client (ClipSongsStagePanel, owner
+// 2026-10-22); none: the client's own choice in the portal.
+export type ClipSongs = { single?: string; calm?: string; upbeat?: string; chosenAt: string; by?: "photographer" };
 
 export const CLIP_SONG_MAX = 500;
 
