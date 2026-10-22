@@ -5,6 +5,7 @@ import type { MagnetFrameDesignRow } from "@/lib/types";
 
 const DESIGN_SELECT = "*, event:events(id, client_name, event_date)";
 type DesignWithEvent = MagnetFrameDesignRow & { event: { id: string; client_name: string; event_date: string } | null };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // A copy of a frame, for the same event: "<name> (עותק)" in the photographer's language.
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -12,6 +13,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   const auth = await requireDesignToolsUser();
   if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
   const { supabase, userId } = auth;
+  if (!UUID.test(id)) return NextResponse.json({ error: "העיצוב לא נמצא" }, { status: 404 });
 
   const { data: source } = await supabase
     .from("magnet_frame_designs")

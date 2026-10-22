@@ -5,12 +5,14 @@ import type { MagnetFrameDesignRow } from "@/lib/types";
 
 const DESIGN_SELECT = "*, event:events(id, client_name, event_date)";
 type DesignWithEvent = MagnetFrameDesignRow & { event: { id: string; client_name: string; event_date: string } | null };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const auth = await requireDesignToolsUser();
   if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
   const { supabase, userId } = auth;
+  if (!UUID.test(id)) return NextResponse.json({ error: "העיצוב לא נמצא" }, { status: 404 });
 
   const { data: design } = await supabase
     .from("magnet_frame_designs")
@@ -29,6 +31,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const auth = await requireDesignToolsUser();
   if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
   const { supabase, userId } = auth;
+  if (!UUID.test(id)) return NextResponse.json({ error: "העיצוב לא נמצא" }, { status: 404 });
 
   let body: { name?: string | null; eventId?: string | null };
   try {
@@ -44,7 +47,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     patch.name = (body.name ?? "").trim().slice(0, 80).trim() || null;
   }
   if ("eventId" in body) {
-    if (body.eventId != null && (typeof body.eventId !== "string" || !body.eventId)) return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
+    if (body.eventId != null && (typeof body.eventId !== "string" || !UUID.test(body.eventId))) return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
     const eventId = body.eventId ?? null;
     // RLS checks the event belongs to the photographer too; this gives the clear answer.
     if (eventId) {
@@ -72,6 +75,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const auth = await requireDesignToolsUser();
   if (!auth) return NextResponse.json({ error: "אין הרשאה" }, { status: 403 });
   const { supabase, userId } = auth;
+  if (!UUID.test(id)) return NextResponse.json({ error: "העיצוב לא נמצא" }, { status: 404 });
 
   const { data: deleted, error } = await supabase
     .from("magnet_frame_designs")

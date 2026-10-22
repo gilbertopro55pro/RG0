@@ -31,8 +31,9 @@ export type MagnetFrameTemplate = {
   settings: Partial<MagnetFrameSettings>;
   elements: MagnetFrameElement[];
   // The text element holding the couple's / family's names, which a frame made for an event takes
-  // from the event's client name.
+  // from the event's client name, and the widest it may get there (% of the frame; default 85).
   namesId?: string;
+  namesMaxWidthPct?: number;
 };
 
 // The date every template shows; a frame made for an event shows the event's date instead.
@@ -91,6 +92,8 @@ export const MAGNET_FRAME_TEMPLATES: MagnetFrameTemplate[] = [
     kind: "wedding",
     settings: { borderRatioPct: 5, bottomBorderRatioPct: 17, frameColor: "#ffffff", frameColorOpacity: 0, shadowEnabled: true, shadowOpacity: 18, shadowBlurPx: 16, shadowDistancePx: 4, textureId: null },
     namesId: "names",
+    // The right side, clear of the dotted line and the date.
+    namesMaxWidthPct: 36,
     elements: [
       text("names", "רותם & דניאל", 76.5, 91.5, "ibm-plex-sans-hebrew", 66, "#161616", { letterSpacing: 1 }),
       deco("line", { ornamentId: "geo-dots-2" }, 48, 91.5, 18, "#a3a3a3"),
@@ -103,6 +106,8 @@ export const MAGNET_FRAME_TEMPLATES: MagnetFrameTemplate[] = [
     kind: "wedding",
     settings: { borderRatioPct: 8, bottomBorderRatioPct: 23, frameColor: "#ffffff", frameColorOpacity: 0, shadowEnabled: true, shadowOpacity: 20, shadowBlurPx: 18, shadowDistancePx: 5, textureId: null },
     namesId: "names",
+    // Clear of the flowers in the corner.
+    namesMaxWidthPct: 46,
     elements: [
       deco("flowers-bottom", { floralId: "wc2-corner-blush" }, 12, 80, 42),
       deco("flowers-top", { floralId: "wc2-corner-blush" }, 88.5, 18.5, 36, "#000000", 180),
@@ -117,6 +122,8 @@ export const MAGNET_FRAME_TEMPLATES: MagnetFrameTemplate[] = [
     kind: "henna",
     settings: { borderRatioPct: 7, bottomBorderRatioPct: 25, frameColor: "#6e1a1f", frameColorOpacity: 100, shadowEnabled: true, shadowOpacity: 40, shadowBlurPx: 22, shadowDistancePx: 6, textureId: "damask-tile", textureOpacity: 22 },
     namesId: "names",
+    // Between the two mandalas.
+    namesMaxWidthPct: 54,
     elements: [
       deco("mandala-r", { ornamentId: "mandala-outline" }, 85.5, 87.5, 17, "#d4a84f"),
       deco("mandala-l", { ornamentId: "mandala-outline" }, 14.5, 87.5, 17, "#d4a84f"),
@@ -130,6 +137,8 @@ export const MAGNET_FRAME_TEMPLATES: MagnetFrameTemplate[] = [
     kind: "henna",
     settings: { borderRatioPct: 10, bottomBorderRatioPct: 24, frameColor: "#f4e4cc", frameColorOpacity: 100, shadowEnabled: true, shadowOpacity: 25, shadowBlurPx: 18, shadowDistancePx: 5, textureId: "arabesque-mini", textureOpacity: 16 },
     namesId: "names",
+    // Between the two hamsas.
+    namesMaxWidthPct: 54,
     elements: [
       text("title", "חינה", 50, 5.5, "suez-one", 48, "#9b2c1f", { letterSpacing: 12 }),
       deco("hamsa-r", { ornamentId: "hamsa-outline" }, 85, 88, 15, "#c4581f"),
@@ -233,6 +242,8 @@ export const MAGNET_FRAME_TEMPLATES: MagnetFrameTemplate[] = [
     kind: "general",
     settings: { borderRatioPct: 6, bottomBorderRatioPct: 21, frameColor: "#141414", frameColorOpacity: 100, shadowEnabled: true, shadowOpacity: 50, shadowBlurPx: 20, shadowDistancePx: 6, textureId: "gold-fleck", textureOpacity: 55 },
     namesId: "names",
+    // Between the two sparkles.
+    namesMaxWidthPct: 36,
     elements: [
       deco("sparkle-r", { ornamentId: "sym-sparkle-3" }, 73, 87.2, 10, "#d4af62"),
       deco("sparkle-l", { ornamentId: "sym-sparkle-3" }, 27, 87.2, 10, "#d4af62"),
@@ -294,13 +305,18 @@ function sizeFit(tpl: MagnetFrameTemplate, sizeKey: MagnetFrameSizeKey) {
   const topBand = (inset.topPct - safe) / (inset.topPct - base);
   return {
     widthPx,
+    safeXPct: magnetSafeMarginPct("landscape", sizeKey).xPct,
     // Text on the bottom mat, the top mat, or elsewhere: its new y and the factor for its size.
-    text(yPct: number): { yPct: number; factor: number } {
+    // Where an element on a mat goes: its new y, and the band's factor for its size.
+    place(yPct: number): { yPct: number; band: number } {
       const band = yPct > windowBottom ? bottomBand : yPct < inset.topPct ? topBand : 1;
       const y = yPct > windowBottom ? windowBottom + (yPct - windowBottom) * band : yPct < inset.topPct ? inset.topPct - (inset.topPct - yPct) * band : yPct;
-      return { yPct: roundTo(y, 0.01), factor: Math.min(1, (heightPx / 1200) * band) };
+      return { yPct: roundTo(y, 0.01), band };
     },
-    decoFactor: Math.min(1, (widthPx / heightPx) / (4 / 3)),
+    // Text sizes are in design px, drawn for a frame 1200 px tall.
+    textFactor: (band: number) => Math.min(1, (heightPx / 1200) * band),
+    // Decoration sizes are a share of the frame's shorter side; on the square frame 3/4 of it.
+    decoFactor: (band: number) => Math.min(1, widthPx / heightPx / (4 / 3)) * band,
   };
 }
 
@@ -321,12 +337,16 @@ export function instantiateTemplate(
   const date = fill?.date ? templateDateText(fill.date) : null;
 
   const elements = tpl.elements.map((el): MagnetFrameElement => {
-    // A decoration on a mat moves with the text around it (a divider between two lines).
-    if (el.type !== "text") return { ...el, id: crypto.randomUUID(), yPct: fit.text(el.yPct).yPct, sizePct: roundTo(el.sizePct * fit.decoFactor, 0.1) };
+    // A decoration on a mat moves and shrinks with the text around it (a divider between two lines).
+    if (el.type !== "text") {
+      const { yPct, band } = fit.place(el.yPct);
+      return { ...el, id: crypto.randomUUID(), yPct, sizePct: roundTo(el.sizePct * fit.decoFactor(band), 0.1) };
+    }
     let value = el.text;
     if (names && el.id === tpl.namesId) value = names;
     if (date) value = value.replace(TEMPLATE_DATE_TEXT, date);
-    const { yPct, factor } = fit.text(el.yPct);
+    const { yPct, band } = fit.place(el.yPct);
+    const factor = fit.textFactor(band);
     const sized: MagnetFrameTextElement = {
       ...el,
       id: crypto.randomUUID(),
@@ -338,9 +358,16 @@ export function instantiateTemplate(
       ...(el.letterSpacing ? { letterSpacing: roundTo(el.letterSpacing * factor, 0.1) } : {}),
       ...(el.strokeWidth ? { strokeWidth: roundTo(el.strokeWidth * factor, 0.1) } : {}),
     };
-    const maxWidth = (MAX_LINE_WIDTH_PCT / 100) * fit.widthPx;
+    // A filled-in line shrinks to fit: within its template's width, and around its own center
+    // inside the safe margin.
+    const maxPct = Math.min(el.id === tpl.namesId ? (tpl.namesMaxWidthPct ?? MAX_LINE_WIDTH_PCT) : MAX_LINE_WIDTH_PCT, 2 * (el.xPct - fit.safeXPct), 2 * (100 - fit.safeXPct - el.xPct));
+    const maxWidth = (maxPct / 100) * fit.widthPx;
     const width = estimateTextWidthPx(sized);
-    if (value !== el.text && width > maxWidth) sized.fontSizePx = Math.max(10, Math.floor((sized.fontSizePx * maxWidth) / width));
+    if (value !== el.text && width > maxWidth) {
+      const k = maxWidth / width;
+      sized.fontSizePx = Math.max(10, Math.floor(sized.fontSizePx * k));
+      if (sized.letterSpacing) sized.letterSpacing = roundTo(sized.letterSpacing * k, 0.1);
+    }
     return sized;
   });
   return { frameSettings, elements };

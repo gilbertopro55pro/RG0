@@ -194,6 +194,9 @@ function parseStageKey(key: string): { stageKey: string | null; customStageId: s
 
 const noSubscribe = () => () => {};
 
+// A magnet frame linked to the event (the card under the contract; /magnet-frames).
+export type EventMagnetFrame = { id: string; name: string | null; updated_at: string };
+
 export default function EventDetailView({
   event,
   initialStages,
@@ -204,6 +207,7 @@ export default function EventDetailView({
   initialPayments,
   initialContract,
   eventQuote = null,
+  magnetFrames = null,
   initialGallery,
   galleryPhotoCount,
   galleryCoverUrl,
@@ -225,6 +229,8 @@ export default function EventDetailView({
   initialContract: EventContractRow | null;
   // The quote the event was booked from, when it came from a lead (EventQuoteSection).
   eventQuote?: EventQuote | null;
+  // The event's magnet frames; null when the account has no magnet tool (פרו סטארט).
+  magnetFrames?: EventMagnetFrame[] | null;
   initialGallery: GalleryRow | null;
   galleryPhotoCount: number;
   galleryCoverUrl: string | null;
@@ -1556,6 +1562,43 @@ export default function EventDetailView({
       )}
 
       {isOwner && <ContractSection eventId={event.id} clientName={event.client_name} initialContract={initialContract} />}
+
+      {/* Magnet frames: the ones linked to the event, or a start when the package or the quote has magnets. */}
+      {isOwner &&
+        magnetFrames &&
+        (magnetFrames.length > 0 ||
+          [packageLabel(event.package, customPackageName), event.event_type ?? "", ...(eventQuote?.details?.items ?? []).map((i) => `${i.item} ${i.details}`)].some((s) =>
+            s.includes("מגנט")
+          )) && (
+          <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
+            <div className="flex items-center gap-2 mb-3.5">
+              <span className="text-sm font-semibold">{t("מסגרות מגנט")}</span>
+            </div>
+            {magnetFrames.length > 0 && (
+              <div className="space-y-2 mb-2.5">
+                {magnetFrames.map((f) => (
+                  <Link
+                    key={f.id}
+                    href={`/magnet-frames/${f.id}`}
+                    className="w-full flex items-center justify-between gap-3 text-sm rounded-xl px-3.5 py-2.5"
+                    style={{ background: "var(--color-chip)" }}
+                  >
+                    <span className="truncate font-medium">{f.name || t("מסגרת ללא שם")}</span>
+                    <span className="shrink-0 text-xs text-ink-soft">
+                      {t("עודכן {date}", { date: new Date(f.updated_at).toLocaleDateString(locale, { day: "numeric", month: "numeric", year: "numeric" }) })}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+            <Link
+              href={`/magnet-frames?new=1&event=${event.id}`}
+              className={`block w-full text-center rounded-lg py-2.5 text-sm font-semibold ${magnetFrames.length > 0 ? "bg-white border border-line text-ink" : "bg-ink text-white"}`}
+            >
+              {t("עיצוב מסגרת לאירוע")}
+            </Link>
+          </div>
+        )}
 
       {isOwner && teamMembers.length > 0 && (
         <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">

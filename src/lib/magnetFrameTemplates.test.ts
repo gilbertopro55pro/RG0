@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import fontkit from "@pdf-lib/fontkit";
-import { describe, expect, it } from "vitest";
+import sharp from "sharp";
+import { beforeAll, describe, expect, it } from "vitest";
 import { ALBUM_FONT_DEFS } from "@/lib/albumFontFiles";
 import { findOrnament } from "@/lib/albumOrnaments";
 import { findMagnetFrameFloral } from "@/lib/magnetFrameFlorals";
@@ -17,9 +18,10 @@ import {
   templateDateText,
   templateKinds,
 } from "@/lib/magnetFrameTemplates";
-import type { MagnetFrameSizeKey, MagnetFrameTextElement } from "@/lib/types";
+import type { MagnetFrameDecorationElement, MagnetFrameSizeKey, MagnetFrameTextElement } from "@/lib/types";
 
 const FONT_DIR = fileURLToPath(new URL("../assets/fonts/", import.meta.url));
+const PUBLIC_DIR = fileURLToPath(new URL("../../public/", import.meta.url));
 const fontFiles = new Map(ALBUM_FONT_DEFS.map((d) => [d.key, d.file]));
 const fontCache = new Map<string, { hasGlyphForCodePoint(cp: number): boolean }>();
 function fontFor(key: string) {
@@ -27,6 +29,7 @@ function fontFor(key: string) {
   return fontCache.get(key)!;
 }
 
+const LONG_NAMES = "משפחת בן־אבו־רוזנבלום ומשפחת אלמוג־שטרנברג";
 const texts = (els: { type: string }[]) => els.filter((el): el is MagnetFrameTextElement => el.type === "text");
 const SIZES = MAGNET_FRAME_SIZES.map((s) => s.key);
 
@@ -36,6 +39,49 @@ function textBox(el: MagnetFrameTextElement, sizeKey: MagnetFrameSizeKey) {
   const halfW = (estimateTextWidthPx(el) / widthPx) * 50;
   const halfH = (estimateTextHeightPx(el) / heightPx) * 50;
   return { left: el.xPct - halfW, right: el.xPct + halfW, top: el.yPct - halfH, bottom: el.yPct + halfH };
+}
+
+// Where a decoration's ink is inside its square box (0–1 each way), measured from the image the
+// export draws: the PNG for florals and digits (contained in the square, like the editor and the
+// export), the rendered SVG for ornaments.
+type Ink = { left: number; top: number; right: number; bottom: number };
+const inkById = new Map<string, Ink>();
+const decoKey = (el: MagnetFrameDecorationElement) => el.floralId ?? el.ornamentId ?? "";
+
+beforeAll(async () => {
+  const decos = MAGNET_FRAME_TEMPLATES.flatMap((t) => t.elements).filter((el): el is MagnetFrameDecorationElement => el.type === "decoration");
+  for (const el of decos) {
+    const key = decoKey(el);
+    if (inkById.has(key)) continue;
+    const input = el.floralId
+      ? readFileSync(PUBLIC_DIR + findMagnetFrameFloral(el.floralId)!.url.slice(1))
+      : await sharp(Buffer.from(findOrnament(el.ornamentId)!.svg.replace(/currentColor/g, "#000")), { density: 300 }).resize(400, 400).png().toBuffer();
+    const { width, height } = await sharp(input).metadata();
+    const { info } = await sharp(input).trim({ threshold: 1 }).toBuffer({ resolveWithObject: true });
+    const side = Math.max(width!, height!);
+    const left = ((side - width!) / 2 - (info.trimOffsetLeft ?? 0)) / side;
+    const top = ((side - height!) / 2 - (info.trimOffsetTop ?? 0)) / side;
+    inkById.set(key, { left, top, right: left + info.width / side, bottom: top + info.height / side });
+  }
+});
+
+// A decoration's ink in % of the landscape frame of a size, turned with the element.
+function decorationInk(el: MagnetFrameDecorationElement, sizeKey: MagnetFrameSizeKey) {
+  const { widthPx, heightPx } = magnetDesignDimensions("landscape", sizeKey);
+  const sidePx = (el.sizePct / 100) * Math.min(widthPx, heightPx);
+  const ink = inkById.get(decoKey(el))!;
+  const a = ((el.rotation ?? 0) * Math.PI) / 180;
+  const corners = [
+    [ink.left, ink.top],
+    [ink.right, ink.top],
+    [ink.left, ink.bottom],
+    [ink.right, ink.bottom],
+  ].map(([x, y]) => {
+    const dx = (x - 0.5) * sidePx;
+    const dy = (y - 0.5) * sidePx;
+    return [el.xPct + ((dx * Math.cos(a) - dy * Math.sin(a)) / widthPx) * 100, el.yPct + ((dx * Math.sin(a) + dy * Math.cos(a)) / heightPx) * 100];
+  });
+  return { left: Math.min(...corners.map((c) => c[0])), right: Math.max(...corners.map((c) => c[0])), top: Math.min(...corners.map((c) => c[1])), bottom: Math.max(...corners.map((c) => c[1])) };
 }
 
 describe("magnet frame templates", () => {
@@ -92,8 +138,9 @@ describe("magnet frame templates", () => {
       }
     });
 
-    it.each(SIZES)("keeps every text on the mat and inside the safe margin at %s", (sizeKey) => {
-      const { frameSettings, elements } = instantiateTemplate(tpl.key, sizeKey);
+    // Also with a long client name filled in for an event.
+    it.each(SIZES.flatMap((size) => [[size, null] as const, [size, LONG_NAMES] as const]))("keeps every text on the mat and inside the safe margin at %s (names: %s)", (sizeKey, names) => {
+      const { frameSettings, elements } = instantiateTemplate(tpl.key, sizeKey, names ? { names, date: "2026-12-31" } : undefined);
       const inset = getMatInsetPct("landscape", sizeKey, frameSettings.borderRatioPct, frameSettings.bottomBorderRatioPct);
       const safe = magnetSafeMarginPct("landscape", sizeKey);
       for (const el of texts(elements)) {
@@ -106,6 +153,13 @@ describe("magnet frame templates", () => {
         expect(box.bottom, `${el.text} bottom`).toBeLessThanOrEqual(100 - safe.yPct);
         // A line stays within ~85% of the frame's width.
         expect(box.right - box.left, `${el.text} width`).toBeLessThanOrEqual(85);
+        // ...and clear of the decorations' ink.
+        for (const deco of elements) {
+          if (deco.type !== "decoration") continue;
+          const d = decorationInk(deco, sizeKey);
+          const overlaps = box.right > d.left && box.left < d.right && box.bottom > d.top && box.top < d.bottom;
+          expect(overlaps, `${el.text} over ${deco.ornamentId ?? deco.floralId}`).toBe(false);
+        }
       }
     });
   });
@@ -146,8 +200,7 @@ describe("magnet frame templates", () => {
     expect(all).toContain("03.09.2026");
     expect(all).not.toContain(TEMPLATE_DATE_TEXT);
 
-    const long = "משפחת בן־אבו־רוזנבלום ומשפחת אלמוג־שטרנברג";
-    const filled = texts(instantiateTemplate(tpl.key, "10x7", { names: long }).elements).find((el) => el.text === long)!;
+    const filled = texts(instantiateTemplate(tpl.key, "10x7", { names: LONG_NAMES }).elements).find((el) => el.text === LONG_NAMES)!;
     expect(estimateTextWidthPx(filled)).toBeLessThanOrEqual(0.85 * magnetDesignDimensions("landscape", "10x7").widthPx + 1);
 
     // A date inside a longer line is replaced in place.

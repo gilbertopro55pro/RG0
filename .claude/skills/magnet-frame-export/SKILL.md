@@ -1,6 +1,6 @@
 ---
 name: magnet-frame-export
-description: Magnet frame designer (עיצוב מסגרת מגנט, /magnet-frames) on myframeflow.com — saving a design and downloading the landscape 20×15 / portrait 15×20 PNG. Use whenever a user downloads a magnet frame, reports a download that failed or came out wrong, or before shipping any change to the magnet tool (MagnetFrameEditor, magnetFrame.ts, magnetFrameShared.ts, api/magnet-frames). Holds the verified working procedure, how to test it live, and how to diagnose a failure.
+description: Magnet frame designer (עיצוב מסגרת מגנט, /magnet-frames) on myframeflow.com — the frames list and templates, the editor, and downloading each frame's PNG/PSD in 5 print sizes (20×15, 15×10, 10×7.5, 10×7, 9×9). Use whenever a user downloads a magnet frame, reports a download that failed or came out wrong, or before shipping any change to the magnet tool (MagnetFrameEditor, magnetFrame.ts, magnetFrameShared.ts, api/magnet-frames). Holds the verified working procedure, how to test it live, and how to diagnose a failure.
 ---
 
 # Magnet frame export (ייצוא מסגרת מגנט)
@@ -22,6 +22,55 @@ Verified: on a פרו סטארט account the card is hidden, `/magnet-frames` re
 API returns 403.
 
 ## How it works
+
+### Since 2026-10-22 (the owner: "מעולה ונח לתפעול", stages 1–2 of the improvement plan)
+
+- **Several frames per account.** `/magnet-frames` is a list (`MagnetFramesList`): upcoming events'
+  frames first, then the rest by last edit; menu per card: open, rename, duplicate, link to an
+  event, delete. `/magnet-frames/<id>` is the editor. `magnet_frame_designs.name` (migration 0190);
+  the write policy also checks that `event_id` is the photographer's own event. API:
+  `GET/POST /api/magnet-frames` (list / create, or save with `id`), `GET/PATCH/DELETE
+  /api/magnet-frames/<id>`, `POST …/<id>/duplicate`. DELETE also removes that frame's PSDs.
+- **A frame per event:** the event page has a "מסגרות מגנט" card (when the event has frames, or its
+  package/type/quote mentions magnets) with `?new=1&event=<id>`.
+- **"מסגרת חדשה":** name, event, size, and 13 templates by event kind (`lib/magnetFrameTemplates.ts`,
+  `instantiateTemplate(key, sizeKey, {names, date})`), filled with the event's names and date and
+  fitted to the size. A test checks every template at every size: no text over the window, inside
+  the 3 mm margin, no overlap with decorations, every glyph in the export's font.
+- **Sizes** (`MAGNET_FRAME_SIZES` in `magnetFrameShared.ts`, `frame_settings.sizeKey`, missing =
+  20x15): 20×15, 15×10, 10×7.5, 10×7, 9×9. Design units keep the long side at 1600 px for every
+  size (`magnetDesignDimensions`), so a layout keeps its proportions when the size changes. The
+  export is the size at 300 DPI (`magnetExportDimensions`, `magnetExportScale`). 9×9 has a single
+  frame: no step 2, and the export ignores the orientation (`loadMagnetDesign` returns landscape).
+- **Editor tools** (`MagnetFrameEditor`, pure helpers in `lib/magnetFrameEditing.ts`, the frame
+  drawing in `magnetFrame/MagnetFramePreview.tsx`):
+  - Autosave a second after the last change, with a "נשמר / שומר... / השמירה נכשלה · ניסיון חוזר"
+    chip; downloads await the save. No "שמירה" button any more.
+  - Undo/redo (buttons, Ctrl/⌘+Z, Ctrl+Shift+Z / Ctrl+Y): changes under 450ms apart and one pointer
+    drag are one step.
+  - Snapping while dragging: the frame's middle, the window's edges and middle, the middle of each
+    mat strip, other elements' centers; gold guide lines. Alt turns it off.
+  - On the selected element: a corner handle resizes, a top handle rotates (snaps to 45°, Shift =
+    15° steps). Double-click a text edits it in place.
+  - Duplicate, forward/backward, lock (a locked element doesn't move and can't be deleted), delete.
+    Keys: Delete, arrows (Shift ×4), Ctrl+D, Esc.
+  - Text: outline (width, color), shadow color, letter spacing, size 10–320.
+  - A sample photo in the window (from the device, or from a gallery — the linked event's first);
+    never saved or exported. "אזור בטוח להדפסה" draws the 3 mm margin.
+- **Export changes:** the text's shadow color, outline (`strokeWidth`/`strokeColor`) and letter
+  spacing (`letterSpacingPx` in `svgTextLayer`, default 0, album output unchanged) in the PNG and
+  the PSD (live Stroke "outside", tracking). PSD name: `magnet-frame-<size>.psd` (ASCII: Chromium
+  drops a Hebrew `filename*`).
+- **The file now matches the editor (fixed 2026-10-22, both were older gaps):** the text sat
+  ~0.18em lower in the file (baseline at anchor + 0.5em; now the line box is centered like CSS,
+  `heightPx` in `svgTextLayer`), and the shadow was twice as blurry (sigma = blur; now blur/2, a CSS
+  radius). Checked against Chromium's CSS: Heebo matches to the pixel, Montserrat within 7 px at
+  300 DPI (0.6 mm).
+- **Not done, on purpose:** bleed and a print sheet of several magnets. The files go to the
+  photographer's printing software, which places them; bleed would change the file size it expects,
+  and a sheet needs the photos.
+
+### Before 2026-10-22
 
 - **Layout (since 2026-10-05, the owner's design):** two sides. Right (65% on desktop): accordion
   panels, one open at a time (טקסט, אלמנטים, ספרות, טקסטורה, הגדרות מסגרת). Opening one closes the
@@ -52,9 +101,8 @@ API returns 403.
 - The portrait preview is the point of the layout: a text centered on the landscape bottom mat can
   sit partly over the photo window in portrait (the portrait mat is a smaller share of the height).
 
-- One design per photographer: `magnet_frame_designs` (the latest row). "שמירה" POSTs
-  `/api/magnet-frames` with the landscape elements; the portrait layout is a deep copy (positions
-  are percentages, so they carry over).
+- Until 2026-10-22: one design per photographer (the latest row) and a "שמירה" button. Now
+  several frames and autosave (see above).
 - The download buttons ("הורדת מסגרת רוחב (20×15)" / "הורדת מסגרת אורך (15×20)") are always shown
   and **save first** (since 2026-09-28): `download()` awaits `save()` and exports the returned id, so
   the file always matches the screen (before that, an edit after the last save was missing from the
@@ -125,15 +173,17 @@ API returns 403.
 
 ## Testing live (the procedure that passed)
 
-Run tests on the test account only: saving overwrites the account's design.
+Run tests on the test account only.
 1. `GF_STATE=<scratchpad>/qa-state.json` (same session file as the guide-video and album-export
    skills). `NODE_PATH` must contain `playwright-core`. In the cloud environment, don't use the
    script's `ignoreHTTPSErrors`: route requests through Node's fetch (`ctx.route`) instead, which
    keeps TLS verification on.
-2. `GF_STATE=… node export-test.js <outDir>`: closes the "install the app" card (it covers the
-   editor buttons), adds a text and the first element, saves, then downloads both orientations.
-   Pass = `save: 200` and two `download:` lines.
-3. Check the files with Pillow: size 2362×1772 / 1772×2362, `info['dpi'] ≈ (300, 300)`,
+2. `GF_STATE=… [GF_SIZE=9x9] [GF_PSD=1] node export-test.js <outDir>`: from the list, creates a frame
+   ("מסגרת חדשה", size, template "קלאסי אלגנטי"), adds a text and the first element, waits for the
+   autosave, downloads each orientation (one for 9×9), then deletes the frame (`GF_KEEP=1` keeps it).
+   Pass = `created:`, `autosave: 200`, a `download:` line per orientation, `deleted test frame: 200`.
+3. Check the files with Pillow: size 2362×1772 / 1772×2362 (15×10: 1772×1181, 10×7.5: 1181×886,
+   10×7: 1181×827, 9×9: 1063×1063), `info['dpi'] ≈ (300, 300)`,
    alpha 0 in the center (photo window) and 255 at the edge (mat). Look at them over a colored
    background.
 4. Access check: switch the test account to `basic_monthly` for a moment (SQL on `photographers.plan`),

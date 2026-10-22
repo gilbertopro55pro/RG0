@@ -7,6 +7,7 @@ import type { MagnetFrameDesignRow, MagnetFrameElement, MagnetFrameSettings } fr
 // response carries the linked event, so the list can show it without a second query.
 const DESIGN_SELECT = "*, event:events(id, client_name, event_date)";
 type DesignWithEvent = MagnetFrameDesignRow & { event: { id: string; client_name: string; event_date: string } | null };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // The frame's name as stored: trimmed, at most 80 characters, empty = no name.
 function cleanName(value: unknown): string | null {
@@ -59,8 +60,9 @@ export async function POST(request: Request) {
 
   const hasName = "name" in body;
   const hasEvent = "eventId" in body;
-  const eventId = typeof body.eventId === "string" && body.eventId ? body.eventId : null;
+  const eventId = typeof body.eventId === "string" && UUID.test(body.eventId) ? body.eventId : null;
   if (hasEvent && body.eventId != null && !eventId) return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
+  if (id != null && (typeof id !== "string" || !UUID.test(id))) return NextResponse.json({ error: "העיצוב לא נמצא" }, { status: 404 });
   // RLS checks the event belongs to the photographer too; this gives the clear answer.
   if (eventId) {
     const { data: event } = await supabase.from("events").select("id").eq("id", eventId).eq("photographer_id", userId).maybeSingle();

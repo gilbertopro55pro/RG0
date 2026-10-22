@@ -5,7 +5,7 @@ import { ADMIN_EMAIL } from "@/lib/admin";
 import { designToolsAllowed } from "@/lib/designTools";
 import { hasAppAccess } from "@/lib/subscription";
 import { addDaysIso, israelTodayIso } from "@/lib/shootDayReminder";
-import type { EventRow, MagnetFrameDesignRow, Photographer } from "@/lib/types";
+import type { EventRow, Photographer } from "@/lib/types";
 import MagnetFramesList, { type MagnetFrameEventOption, type MagnetFrameListItem } from "@/components/magnetFrame/MagnetFramesList";
 import BackLink from "@/components/BackLink";
 import { getT } from "@/i18n/server";
@@ -73,7 +73,7 @@ export default async function MagnetFramesPage({ searchParams }: { searchParams:
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
       <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-5" />
       <MagnetFramesList
-        initialDesigns={(designs ?? []) as (MagnetFrameDesignRow & MagnetFrameListItem)[]}
+        initialDesigns={designs ?? []}
         events={events}
         today={today}
         openNewForEvent={openNew === "1" ? (events.some((e) => e.id === newEventId) ? newEventId! : "") : null}
