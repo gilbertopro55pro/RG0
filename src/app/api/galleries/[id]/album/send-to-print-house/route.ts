@@ -1,6 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { authenticateGalleryRequest } from "@/lib/desktopAuth";
+import { activeAlbumJob, EXPORT_RUNNING, PRINT_HOUSE_ALREADY_SENDING } from "@/lib/activeAlbumJob";
 import { countExportPages, triggerAlbumExportProcessing } from "@/lib/albumExportJobs";
 import { PRINT_FILE_DAYS, PRINT_LINK_DAYS, daysFromNow } from "@/lib/printHouseLinks";
 import { newPrintToken } from "@/lib/printHouseJob";
@@ -39,6 +40,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!album) {
     return NextResponse.json({ error: "לא נמצא אלבום לגלריה זו" }, { status: 404 });
   }
+
+  // One album job at a time per photographer (migration 0115): an export going on in the background
+  // gets a clear answer instead of the unique index's raw error.
+  const active = await activeAlbumJob(supabase, gallery.photographer_id);
+  if (active) return NextResponse.json({ error: active.printHouse ? PRINT_HOUSE_ALREADY_SENDING : EXPORT_RUNNING }, { status: 409 });
 
   const fromPage = body.from ?? 1;
   const toPage = body.to ?? fromPage;

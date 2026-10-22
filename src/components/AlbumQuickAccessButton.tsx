@@ -4,9 +4,8 @@ import { IconAlbum } from "@/components/icons/NavIcons";
 import { useT } from "@/i18n/client";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { downloadBlob } from "@/lib/downloadBlob";
 import { ProgressModal } from "@/components/ProgressModal";
-import { pdfBandedPct } from "@/lib/pdfBandedPct";
+import { startAlbumExport } from "@/lib/albumExports";
 import { createClient } from "@/lib/supabase/client";
 import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
 import PrintHouseSendsHistory from "@/components/PrintHouseSendsHistory";
@@ -19,9 +18,6 @@ type GalleryOption = { id: string; title: string; published: boolean; hasActiveA
 type ExportFormat = "pdf" | "jpg" | "psd";
 
 const FORMAT_LABEL: Record<ExportFormat, string> = { pdf: "PDF", jpg: "JPG", psd: "PSD" };
-const FORMAT_ROUTE: Record<ExportFormat, string> = { pdf: "export-pdf", jpg: "export-jpg", psd: "export-psd" };
-const FORMAT_MIME: Record<ExportFormat, string> = { pdf: "application/pdf", jpg: "application/zip", psd: "application/zip" };
-const FORMAT_FILENAME: Record<ExportFormat, string> = { pdf: "album.pdf", jpg: "album-jpg.zip", psd: "album-psd.zip" };
 
 // Dashboard shortcut into the album design tool without going through a specific gallery's own
 // page first — picks a gallery from a dropdown (published or still draft, both valid — an album
@@ -30,13 +26,9 @@ const FORMAT_FILENAME: Record<ExportFormat, string> = { pdf: "album.pdf", jpg: "
 // when the selected gallery already HAS an album (hasActiveAlbum), three export buttons ALSO
 // appear so the whole album (every page) can be exported right from this dialog, per explicit
 // request — no navigation into the album tool at all for the common "just get me the file" case.
-// Shares GalleryManageView's own ProgressModal (real spinner + progress ring, per explicit
-// follow-up request — a plain disabled button with "מייצא..." text wasn't enough) and
-// pdfBandedPct (so a PDF quality-step retry doesn't visibly reset to 0% here either).
-// No "המשך ברקע" option (removed per explicit request — see ProgressModal's own onCancel-only
-// usage below) and no WhatsApp share either — that richer completion toast is specific to
-// GalleryManageView's own album tool, not part of this quick shortcut's deliberately minimal
-// export flow. The modal stays open and blocking until the export finishes or is cancelled.
+// An export goes through the same store as the album tool's (lib/albumExports.ts): its progress
+// window, "המשך ברקע" and the download card are AlbumExportsLayer's, so this dialog closes once the
+// export starts. The print-house send keeps its own progress window here.
 export default function AlbumQuickAccessButton({ galleries }: { galleries: GalleryOption[] }) {
   const router = useRouter();
   const t = useT();
@@ -45,16 +37,8 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
   const [selectedId, setSelectedId] = useState(galleries[0]?.id ?? "");
   const [navigating, setNavigating] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  // The finished file's signed link, shown as a button when the automatic download didn't go through.
-  const [readyLink, setReadyLink] = useState<string | null>(null);
-  // Holds whichever job is currently being polled — a freshly created one, OR a pre-existing one
-  // returned by findActiveExportJob (albumExportJobs.ts) when this gallery already has an export
-  // running from somewhere else (the real album tool, another tab, or an earlier click here).
-  // alreadyActive only changes the label text ("כבר פעיל" vs a plain export label); the actual
-  // blocking behavior (full-screen modal, no other action reachable until cancel/done) is
-  // identical either way — ProgressModal itself is what enforces "only cancelling lets a new
-  // export start," not any separate guard in this component.
-  const [currentJob, setCurrentJob] = useState<{ id: string; format: ExportFormat; alreadyActive: boolean } | null>(null);
+  // The print-house send being followed (its progress window blocks until it's done or cancelled).
+  const [currentJob, setCurrentJob] = useState<{ id: string } | null>(null);
   const [progressPct, setProgressPct] = useState(0);
   const cancelledRef = useRef(false);
   // "שליחה לבית דפוס" from here too (owner's request, 2026-09-28): same print-house emails and notes
@@ -71,87 +55,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
     router.push(`/galleries/${selectedId}?openAlbum=1`);
   };
 
-  const pollAndDownload = async (jobId: string, format: ExportFormat) => {
-    let downloadUrl: string | null = null;
-    let filename = FORMAT_FILENAME[format];
-    // A single failed poll (a network blip, a cold-start hiccup) used to abort the whole thing
-    // immediately, even for a PDF export that can legitimately take several minutes — one bad tick
-    // in the middle of that shouldn't throw away everything already rendered server-side. Only
-    // gives up after several IN A ROW fail, same tolerance spirit as the main upload flow's retry.
-    let consecutiveFailures = 0;
-    while (true) {
-      if (cancelledRef.current) return;
-      let res: Response;
-      try {
-        res = await fetch(`/api/galleries/${selectedId}/album/export-jobs/${jobId}`);
-      } catch {
-        consecutiveFailures++;
-        if (consecutiveFailures >= 5) {
-          setExportError(t("שגיאה בבדיקת התקדמות הייצוא. נסו לרענן את העמוד"));
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        continue;
-      }
-      if (!res.ok) {
-        consecutiveFailures++;
-        if (consecutiveFailures >= 5) {
-          setExportError(t("שגיאה בבדיקת התקדמות הייצוא. נסו לרענן את העמוד"));
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        continue;
-      }
-      consecutiveFailures = 0;
-      const data: {
-        status: string;
-        processedCount: number;
-        totalCount: number;
-        qualityStepIndex: number;
-        errorMessage: string | null;
-        downloadUrl: string | null;
-        filename: string | null;
-      } = await res.json();
-      setProgressPct(
-        format === "pdf"
-          ? pdfBandedPct(data.qualityStepIndex, data.processedCount, data.totalCount)
-          : data.totalCount > 0
-            ? (data.processedCount / data.totalCount) * 100
-            : 0
-      );
-      if (data.status === "ready") {
-        downloadUrl = data.downloadUrl;
-        if (data.filename) filename = data.filename;
-        break;
-      }
-      if (data.status === "failed" || data.status === "cancelled") {
-        if (data.status === "failed") setExportError(data.errorMessage ?? t("שגיאה בייצוא הקבצים"));
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-    }
-    setProgressPct(100);
-    if (cancelledRef.current || !downloadUrl) return;
-    // The export job itself already succeeded by this point (status "ready") — a failure in just
-    // this last step (fetching the file / triggering the browser download) is NOT the same as the
-    // export having failed, and saying so was misleading: found live 2026-09-05, a report of
-    // "שגיאה בייצוא הקבצים" that turned out to be a fully "ready" job in the DB, so whatever threw
-    // was downstream of that. The export-ready EMAIL (sent server-side the moment the job finished,
-    // independent of this) still has a working link regardless, which is why it's worth mentioning
-    // here instead of just a bare error.
-    try {
-      const fileRes = await fetch(downloadUrl);
-      const blob = await fileRes.blob();
-      await downloadBlob(blob, filename, FORMAT_MIME[format]);
-    } catch {
-      // Found live 2026-09-26 on iPhone: after a long export the share sheet no longer counts as
-      // the user's tap and the automatic download fails. A tap on a plain link to the same signed
-      // URL (what the email does) always works, so offer that instead of a dead end.
-      setReadyLink(downloadUrl);
-    }
-  };
-
-  const quickExport = async (format: ExportFormat) => {
+  const quickExport = (format: ExportFormat) => {
     if (!selectedId || currentJob) return;
     // Running inside the desktop app's embedded browser view (see photographer-flow-desktop's
     // BrowserView preload script, which sets this global) — hand off to the native editor's own
@@ -167,32 +71,13 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       setOpen(false);
       return;
     }
+    // to: 9999 rather than a real page count (not available to this lightweight component) — the
+    // create route clamps it down to the album's actual last page itself, so this reliably means
+    // "the whole album" regardless of how many pages it actually has.
+    const gallery = galleries.find((g) => g.id === selectedId);
+    startAlbumExport({ galleryId: selectedId, galleryTitle: gallery?.title ?? null, format, from: 1, to: 9999 });
     setExportError(null);
-    setReadyLink(null);
-    cancelledRef.current = false;
-    setProgressPct(0);
-    try {
-      // to: 9999 rather than a real page count (not available to this lightweight component) —
-      // the create route clamps it down to the album's actual last page itself, so this reliably
-      // means "the whole album" regardless of how many pages it actually has.
-      const createRes = await fetch(`/api/galleries/${selectedId}/album/${FORMAT_ROUTE[format]}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ from: 1, to: 9999, quality: "web" }),
-      });
-      const createData: { jobId?: string; alreadyActive?: boolean; format?: ExportFormat; error?: string } = await createRes.json().catch(() => ({}));
-      if (!createRes.ok || !createData.jobId) {
-        setExportError(createData.error ?? t("שגיאה בייצוא הקבצים"));
-        return;
-      }
-      const actualFormat = createData.format ?? format;
-      setCurrentJob({ id: createData.jobId, format: actualFormat, alreadyActive: !!createData.alreadyActive });
-      await pollAndDownload(createData.jobId, actualFormat);
-    } catch {
-      setExportError(t("שגיאה בייצוא הקבצים"));
-    } finally {
-      setCurrentJob(null);
-    }
+    setOpen(false);
   };
 
   const openPrintHouse = async () => {
@@ -228,10 +113,10 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
       });
       const createData: { jobId?: string; error?: string } = await createRes.json().catch(() => ({}));
       if (!createRes.ok || !createData.jobId) {
-        setExportError(createData.error ?? t("שליחה לבית הדפוס נכשלה"));
+        setExportError(createData.error ? t(createData.error) : t("שליחה לבית הדפוס נכשלה"));
         return;
       }
-      setCurrentJob({ id: createData.jobId, format: "jpg", alreadyActive: false });
+      setCurrentJob({ id: createData.jobId });
       let failures = 0;
       while (!cancelledRef.current) {
         const res = await fetch(`/api/galleries/${selectedId}/album/export-jobs/${createData.jobId}`).catch(() => null);
@@ -306,7 +191,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
 
       {currentJob && (
         <ProgressModal
-          label={printHouseOpen ? t("שליחה לבית דפוס") : currentJob.alreadyActive ? t("ייצוא {format} (כבר פעיל)", { format: FORMAT_LABEL[currentJob.format] }) : t("ייצוא {format}", { format: FORMAT_LABEL[currentJob.format] })}
+          label={t("שליחה לבית דפוס")}
           pct={progressPct}
           onCancel={cancelCurrentJob}
         />
@@ -330,7 +215,6 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                 onChange={(e) => {
                   setSelectedId(e.target.value);
                   setExportError(null);
-                  setReadyLink(null);
                   setPrintHouseSent(null);
                 }}
                 className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-4"
@@ -404,19 +288,6 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                 )}
                 {printHouseSent && <p className="text-xs text-sage font-semibold mt-2">{printHouseSent}</p>}
                 {exportError && <p className="text-xs text-rose mt-2">{exportError}</p>}
-                {readyLink && (
-                  <div className="mt-3 rounded-xl border border-line bg-white p-3">
-                    <p className="text-xs text-ink-soft mb-2">{t("הקובץ מוכן. ההורדה האוטומטית לא עבדה במכשיר הזה, אפשר להוריד מכאן:")}</p>
-                    <a
-                      href={readyLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex h-10 items-center justify-center rounded-xl bg-ink text-white text-sm font-semibold"
-                    >
-                      {t("הורדת הקובץ")}
-                    </a>
-                  </div>
-                )}
               </div>
             )}
 

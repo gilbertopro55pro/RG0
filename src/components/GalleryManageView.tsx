@@ -59,7 +59,7 @@ import {
   galleryFont,
 } from "@/lib/galleryTheme";
 import { openWhatsApp } from "@/lib/waLink";
-import { downloadBlob } from "@/lib/downloadBlob";
+import { isAlbumExportRunning, showAlbumExport, startAlbumExport, useAlbumExports } from "@/lib/albumExports";
 import { ProgressModal } from "@/components/ProgressModal";
 import { IndeterminateProgressCard } from "@/components/IndeterminateProgressCard";
 import { pdfBandedPct } from "@/lib/pdfBandedPct";
@@ -102,7 +102,7 @@ import BackLink from "@/components/BackLink";
 import { useT, useLang } from "@/i18n/client";
 import dynamic from "next/dynamic";
 import { dateLocale, type Lang } from "@/i18n/config";
-import { buildGalleryShareMessage, buildGalleryPhotosUploadedMessage, buildExportReadyMessage, galleryShareTitle } from "@/components/GalleryShareModal";
+import { buildGalleryShareMessage, buildGalleryPhotosUploadedMessage, galleryShareTitle } from "@/components/GalleryShareModal";
 import { galleryShareSearch, shortClientUrl } from "@/lib/shortLinks";
 import type { PhotoWithUrl, ZipJobPart, ZipBatchState } from "@/components/galleryManage/types";
 import { CLOSE_ANIMATION_MS } from "@/components/galleryManage/constants";
@@ -210,26 +210,11 @@ export default function GalleryManageView({
   // the browser snapshot all of them on each open, which froze or crashed big galleries on phones.
   const [transitionPhotoId, setTransitionPhotoId] = useState<string | null>(null);
 
-  // Shared across upload/face-detection/export — only one of those can be running at a time (the
-  // ProgressModal itself blocks starting a second), so one flag + one AbortController is enough.
-  // The loop-based operations (upload, face detection) poll the flag between items and stop
-  // starting new ones; export is a single request, so it's aborted directly instead.
+  // Shared across upload and face detection — only one of those can be running at a time (the
+  // ProgressModal itself blocks starting a second). Both poll the flag between items and stop
+  // starting new ones. Album exports run in their own store (lib/albumExports.ts).
   const cancelRequestedRef = useRef(false);
-  const exportAbortControllerRef = useRef<AbortController | null>(null);
-  // The currently in-flight export/print-house job's id, if any — lets the cancel button actually
-  // stop the job SERVER-SIDE (see the DELETE handler on export-jobs/[jobId]/route.ts), not just
-  // abort this tab's own polling loop. Aborting the poll alone used to leave the job running (or,
-  // for the PDF path's page-batched retries, getting endlessly picked back up by the retry-stuck-
-  // jobs cron) with nothing ever telling it the photographer walked away — confirmed live
-  // 2026-09-02 as the reason old, abandoned jobs kept competing for the same gallery's resources
-  // against a real export days later.
-  const currentExportJobIdRef = useRef<string | null>(null);
   const currentPrintHouseJobIdRef = useRef<string | null>(null);
-  // Rendered as a floating "export ready" toast (see the return statement below) alongside the
-  // normal auto-download every completed export already gets, per explicit request that a finished
-  // export always offers a WhatsApp share option too, not only the file itself.
-  const [completedExportToast, setCompletedExportToast] = useState<{ downloadUrl: string; filename: string; mimeType: string; label: string; allowSaveDialog: boolean; linkOnly?: boolean } | null>(null);
-  const [downloadingCompletedToast, setDownloadingCompletedToast] = useState(false);
   // A photo upload that ran in the background ("המשך ברקע", lib/galleryUploads.ts) ends with this
   // toast when the photographer is on the gallery page; the engine itself emails and pushes a
   // notification when they weren't watching it end.
@@ -530,17 +515,15 @@ export default function GalleryManageView({
   const [confirmNewAlbumOpen, setConfirmNewAlbumOpen] = useState(false);
   const [creatingSpread, setCreatingSpread] = useState(false);
   const [draggedSpreadId, setDraggedSpreadId] = useState<string | null>(null);
-  const [exportingAlbumPdf, setExportingAlbumPdf] = useState(false);
-  const [exportingAlbumJpg, setExportingAlbumJpg] = useState(false);
-  const [exportingAlbumPsd, setExportingAlbumPsd] = useState(false);
-  const [exportProgressPdf, setExportProgressPdf] = useState<number | null>(null);
-  const [exportProgressJpg, setExportProgressJpg] = useState<number | null>(null);
-  const [exportProgressPsd, setExportProgressPsd] = useState<number | null>(null);
-  // PDF export is the one format that runs on the separate Fly.io worker (see checkRenderWorkerHealth
-  // in export-pdf/route.ts) — true only while that pre-flight check is being retried, so the
-  // ProgressModal can say "מכינים את השרת" instead of sitting on "ייצוא PDF" with 0% while nothing
-  // outwardly seems to be happening yet.
-  const [preparingPdfServer, setPreparingPdfServer] = useState(false);
+  // The album export running for this photographer, from any screen (lib/albumExports.ts: it goes
+  // on in the background, "המשך ברקע", owner 2026-10-22). Its buttons here show its progress when
+  // it's this gallery's.
+  const runningExport = useAlbumExports().find(isAlbumExportRunning);
+  const ownExport = runningExport?.galleryId === gallery.id ? runningExport : undefined;
+  const exportingAlbumPdf = ownExport?.format === "pdf";
+  const exportingAlbumJpg = ownExport?.format === "jpg";
+  const exportingAlbumPsd = ownExport?.format === "psd";
+  const exportProgress = ownExport?.pct ?? 0;
   const [exportRangeFormat, setExportRangeFormat] = useState<"pdf" | "jpg" | "psd" | null>(null);
   const [exportRangeFrom, setExportRangeFrom] = useState(1);
   const [exportRangeTo, setExportRangeTo] = useState(1);
@@ -1931,175 +1914,18 @@ export default function GalleryManageView({
     setSavingAlbum(false);
   };
 
-  // Shared by all three export formats. Creates a background export job (see albumExportJobs.ts —
-  // same proven pattern as the gallery zip-download system) and polls it for REAL page-by-page
-  // progress instead of a client-side timer with no idea how far the actual server-side render is
-  // — the export routes now return a job id almost instantly, and every page rendered bumps the
-  // job's processed_count, which this reads straight off instead of guessing.
-  const downloadFromRoute = async (
-    path: string,
-    fallbackName: string,
-    mimeType: string,
-    setBusy: (v: boolean) => void,
-    setProgress: (v: number | null) => void,
-    body: { from: number; to: number; quality?: "high" | "web" },
-    allowSaveDialog = false,
-    label = "ייצוא הקבצים"
-  ) => {
-    setBusy(true);
-    setProgress(0);
-    const isPdf = path === "export-pdf";
-    const controller = new AbortController();
-    exportAbortControllerRef.current = controller;
-    try {
-      // PDF's job-create route blocks with a 503 when the Fly worker hasn't caught up to a fresh
-      // deploy yet (checkRenderWorkerHealth) — normally a matter of the worker's own redeploy
-      // still finishing, seconds to at most a couple minutes, not a real failure. Retrying quietly
-      // behind the ProgressModal (already visible from setBusy(true) above) turns that window into
-      // "מכינים את השרת" instead of an abrupt error the moment the photographer clicks export —
-      // per explicit request: the export screen should show right away and only start the real
-      // work once the server's confirmed ready, so it reads as the system working on the request,
-      // not stalling. Only 503 is retried; any other error (missing album, bad request, etc.) is a
-      // real failure and surfaces immediately like before.
-      const WORKER_NOT_READY_DEADLINE_MS = 120_000;
-      const WORKER_NOT_READY_POLL_MS = 4_000;
-      const deadline = Date.now() + WORKER_NOT_READY_DEADLINE_MS;
-      let createRes: Response;
-      let createData: { jobId?: string; error?: string } | null;
-      while (true) {
-        createRes = await fetch(`/api/galleries/${gallery.id}/album/${path}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-        createData = await createRes.json().catch(() => null);
-        if (createRes.ok && createData?.jobId) break;
-        if (isPdf && createRes.status === 503 && Date.now() < deadline) {
-          setPreparingPdfServer(true);
-          // Abort-aware sleep — without this, cancelling mid-wait would sit through up to a full
-          // extra WORKER_NOT_READY_POLL_MS before the next fetch() even had a chance to notice the
-          // signal was aborted, instead of stopping the instant the photographer clicks cancel.
-          await new Promise<void>((resolve) => {
-            const t = setTimeout(resolve, WORKER_NOT_READY_POLL_MS);
-            controller.signal.addEventListener("abort", () => {
-              clearTimeout(t);
-              resolve();
-            });
-          });
-          if (controller.signal.aborted) throw new DOMException("aborted", "AbortError");
-          continue;
-        }
-        setError(createData?.error ?? t("שגיאה בייצוא הקבצים"));
-        return;
-      }
-      setPreparingPdfServer(false);
-      const jobId: string = createData.jobId;
-      currentExportJobIdRef.current = jobId;
-
-      let downloadUrl: string | null = null;
-      let filename = fallbackName;
-      // Polls every 1.2s until the job reaches a final state — album exports render far fewer
-      // pages than a gallery zip has photos, so a snappier interval than the zip system's 3s still
-      // shows smooth, frequent movement without hammering the poll endpoint.
-      while (true) {
-        if (controller.signal.aborted) return;
-        const res = await fetch(`/api/galleries/${gallery.id}/album/export-jobs/${jobId}`, { signal: controller.signal });
-        if (!res.ok) {
-          setError(t("שגיאה בייצוא הקבצים"));
-          return;
-        }
-        const data: {
-          status: string;
-          processedCount: number;
-          totalCount: number;
-          qualityStepIndex: number;
-          errorMessage: string | null;
-          downloadUrl: string | null;
-          filename: string | null;
-        } = await res.json();
-        // Unrounded on purpose — ProgressModal formats this to two decimal places itself, per
-        // explicit request, so the readout climbs smoothly instead of jumping between integers.
-        // PDF specifically goes through pdfBandedPct (see its own comment) so a quality-step retry
-        // never visibly resets the number back to 0% — every other format has no retry concept, so
-        // its raw processedCount/totalCount ratio already climbs from 0% to 100% in one pass.
-        setProgress(
-          isPdf ? pdfBandedPct(data.qualityStepIndex, data.processedCount, data.totalCount) : data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0
-        );
-        if (data.status === "ready") {
-          downloadUrl = data.downloadUrl;
-          if (data.filename) filename = data.filename;
-          break;
-        }
-        if (data.status === "failed") {
-          setError(data.errorMessage ?? t("שגיאה בייצוא הקבצים"));
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-      }
-
-      if (!downloadUrl) {
-        setError(t("שגיאה בייצוא הקבצים"));
-        return;
-      }
-      setProgress(100);
-      // Album exports no longer offer a "המשך ברקע" button (removed per explicit request — see
-      // ProgressModal's own onBackground usage below), so the modal is always still open and
-      // visible by the time a job reaches here; the auto-download always fires.
-      try {
-        const fileRes = await fetch(downloadUrl, { signal: controller.signal });
-        const blob = await fileRes.blob();
-        await downloadBlob(blob, filename, mimeType, allowSaveDialog);
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") throw e;
-        // The export is done; only the automatic download failed (iPhone after a long export: the
-        // share sheet no longer counts as the user's tap). The toast offers a plain link instead.
-        setCompletedExportToast({ downloadUrl, filename, mimeType, label, allowSaveDialog, linkOnly: true });
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      // Also shown alongside the auto-download — per explicit request that a completed export
-      // should immediately offer a WhatsApp share option too, not only a download. The toast's own
-      // download button is then redundant with the auto-download but harmless (a re-download).
-      setCompletedExportToast({ downloadUrl, filename, mimeType, label, allowSaveDialog });
-    } catch (e) {
-      // A user-initiated cancel aborts the same fetch a real network failure would throw from —
-      // quietly stop for the former, surface the latter like any other export error.
-      if (!(e instanceof DOMException && e.name === "AbortError")) {
-        setError(t("שגיאה בייצוא הקבצים"));
-      }
-    } finally {
-      setBusy(false);
-      setProgress(null);
-      setPreparingPdfServer(false);
-      exportAbortControllerRef.current = null;
-      currentExportJobIdRef.current = null;
-    }
-  };
-
-  // allowSaveDialog: PDF only, per explicit request — lets the photographer pick exactly where it
-  // lands (e.g. straight into a client's folder) instead of always going to Downloads. JPG/PSD
-  // stay plain auto-downloads.
-  const exportAlbumPdf = (range: { from: number; to: number; quality: "high" | "web" }) =>
-    downloadFromRoute("export-pdf", "album.pdf", "application/pdf", setExportingAlbumPdf, setExportProgressPdf, range, true, "ייצוא PDF");
-  const exportAlbumJpg = (range: { from: number; to: number }) =>
-    downloadFromRoute("export-jpg", "album-jpg.zip", "application/zip", setExportingAlbumJpg, setExportProgressJpg, range, false, "ייצוא JPG");
-  const exportAlbumPsd = (range: { from: number; to: number }) =>
-    downloadFromRoute("export-psd", "album-psd.zip", "application/zip", setExportingAlbumPsd, setExportProgressPsd, range, false, "ייצוא PSD");
-
   // Total exportable pages, matching how the export routes number them: the cover (if the album
   // has one) counts as page 1, then each spread follows in sort order.
   const albumTotalPages = (album?.cover_photo_id ? 1 : 0) + albumSpreads.length;
 
   const openExportRangeModal = (format: "pdf" | "jpg" | "psd") => {
-    // An export already running used to leave every export button still clickable — nothing
-    // stopped a SECOND export from starting on top of it, which is exactly the resource-contention
-    // bug found live 2026-09-02 (several abandoned exports competing for the same R2/render
-    // resources and visibly slowing each other down). Per explicit request: clicking any export
-    // button while one is already in flight (its progress modal is already up — see activeOp above,
-    // which now has no way to be hidden mid-export) does nothing new — the only way to start a
-    // genuinely new export is to cancel the running one first (the modal's own cancel button).
-    if (exportingAlbumPdf || exportingAlbumJpg || exportingAlbumPsd) return;
+    // One export at a time (several abandoned exports competing for the same render resources was
+    // a real bug, 2026-09-02): any export button while one runs, here or in the background, brings
+    // that one's progress window back instead of starting another.
+    if (runningExport) {
+      showAlbumExport(runningExport.id);
+      return;
+    }
     setExportRangeFormat(format);
     setExportRangeFrom(1);
     setExportRangeTo(albumTotalPages);
@@ -2117,9 +1943,17 @@ export default function GalleryManageView({
     // 80MB (was 5MB) that goes with dropping "high" — a generous target now, not the "keep it
     // mobile-tiny" one "web" originally had, so the export's own first quality-step pass almost
     // always fits on the first try instead of needing several full re-render retries.
-    if (exportRangeFormat === "pdf") exportAlbumPdf({ ...range, quality: "web" });
-    else if (exportRangeFormat === "jpg") exportAlbumJpg(range);
-    else exportAlbumPsd(range);
+    // allowSaveDialog: PDF only, per explicit request — lets the photographer pick exactly where it
+    // lands (e.g. straight into a client's folder) instead of always going to Downloads.
+    startAlbumExport({
+      galleryId: gallery.id,
+      galleryTitle: gallery.title,
+      format: exportRangeFormat,
+      ...range,
+      allowSaveDialog: exportRangeFormat === "pdf",
+      clientPhone: gallery.client_phone,
+      clientLang,
+    });
   };
 
   const openPrintHouseModal = async () => {
@@ -2166,7 +2000,7 @@ export default function GalleryManageView({
       });
       const createData = await createRes.json().catch(() => null);
       if (!createRes.ok || !createData?.jobId) {
-        setPrintHouseToast(createData?.error ?? t("שליחה לבית הדפוס נכשלה"));
+        setPrintHouseToast(createData?.error ? t(createData.error) : t("שליחה לבית הדפוס נכשלה"));
         return;
       }
       const jobId: string = createData.jobId;
@@ -3159,27 +2993,18 @@ export default function GalleryManageView({
 
   // Drives the single blocking ProgressModal below — only one of these is ever true at a time in
   // practice (the modal itself blocks starting a second heavy operation while one is showing), but
-  // this priority order is the tie-break if that ever changes.
-  const exportOpActive = exportingAlbumPdf || exportingAlbumJpg || exportingAlbumPsd;
-  // No visibility gate on uploads or exports here (unlike the print-house flag below) — neither
-  // offers a "background" button any more, so their modal simply stays active for the whole batch.
-  // The upload's progress modal, unless it was sent to the background (then the floating uploads
-  // indicator shows it, UploadsIndicator).
+  // this priority order is the tie-break if that ever changes. Album exports have their own window
+  // (AlbumExportsLayer). The upload's progress modal shows unless it was sent to the background
+  // (then the floating uploads indicator shows it, UploadsIndicator).
   const uploadOpActive = uploadActive && uploadBg !== "1";
   const activeOp: { label: string; pct: number } | null =
     uploadOpActive
       ? { label: t("העלאת תמונות"), pct: 0 }
       : detectingFaces
         ? { label: t("זיהוי פרצופים"), pct: faceProgress && faceProgress.total > 0 ? (faceProgress.done / faceProgress.total) * 100 : 0 }
-        : exportingAlbumPdf
-          ? { label: preparingPdfServer ? t("מכינים את השרת") : t("ייצוא PDF"), pct: exportProgressPdf ?? 0 }
-          : exportingAlbumJpg
-            ? { label: t("ייצוא JPG"), pct: exportProgressJpg ?? 0 }
-            : exportingAlbumPsd
-              ? { label: t("ייצוא PSD"), pct: exportProgressPsd ?? 0 }
-              : sendingToPrintHouse && printHouseProgressVisible
-                ? { label: t("שליחה לבית דפוס"), pct: printHouseSendProgress ?? 0 }
-                : null;
+        : sendingToPrintHouse && printHouseProgressVisible
+          ? { label: t("שליחה לבית דפוס"), pct: printHouseSendProgress ?? 0 }
+          : null;
   const printHouseOpActive = sendingToPrintHouse && printHouseProgressVisible;
   // Uploads, exports and sends can't survive the update's reload: it waits for them (lib/updateResume).
   useBusy("gallery-operation", activeOp ? activeOp.label : uploadActive ? t("העלאת תמונות") : null);
@@ -3589,17 +3414,8 @@ export default function GalleryManageView({
             }
             cancelRequestedRef.current = true;
             faceCancelRef.current?.();
-            if (currentExportJobIdRef.current) cancelExportJob(currentExportJobIdRef.current);
-            exportAbortControllerRef.current?.abort();
           }}
-          // Per explicit request, album exports (JPG/PDF/PSD) no longer offer "המשך ברקע" — the
-          // progress screen now stays up, genuinely blocking, until the export finishes or is
-          // cancelled, matching ProgressModal's own original stated design (see its top comment) and
-          // making the "one active export at a time" server-side rule (findActiveExportJob in
-          // albumExportJobs.ts) impossible to sidestep by hiding the modal and clicking another
-          // export button. Print-house sending is a distinct action (not "export") and keeps its own
-          // backgrounding unchanged.
-          // Photo uploads can go to the background too (owner, 2026-10-09): they keep running while the
+          // Print-house sending goes to the background with its own toast. Photo uploads can go to the background too (owner, 2026-10-09): they keep running while the
           // photographer moves on, and the galleries list shows each one's progress.
           onBackground={
             printHouseOpActive
@@ -3665,80 +3481,6 @@ export default function GalleryManageView({
                   {t("ביטול ההעלאה האחרת")}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {completedExportToast && (
-        <div className="fixed inset-x-0 top-4 z-[120] flex justify-center px-4 pointer-events-none">
-          <div className="pointer-events-auto w-full max-w-md rounded-2xl p-4 bg-ink text-white shadow-sheet">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-sage/20 flex items-center justify-center shrink-0" style={{ color: "var(--color-sage)" }}>
-                <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6L9 17l-5-5" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold">{t("{label} הושלם", { label: t(completedExportToast.label) })}</p>
-                <p className="text-xs opacity-70 truncate">{completedExportToast.filename}</p>
-              </div>
-              <button onClick={() => setCompletedExportToast(null)} aria-label={t("סגירה")} className="shrink-0 text-white/60">
-                <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                  <path d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-            </div>
-            {completedExportToast.linkOnly && (
-              <p className="text-xs opacity-70 mt-2">{t("ההורדה האוטומטית לא עבדה במכשיר הזה, אפשר להוריד בכפתור.")}</p>
-            )}
-            <div className="flex items-center gap-2 mt-3">
-              {completedExportToast.linkOnly ? (
-                <a
-                  href={completedExportToast.downloadUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold bg-white text-ink text-center"
-                >
-                  {t("הורדה")}
-                </a>
-              ) : (
-              <button
-                onClick={async () => {
-                  setDownloadingCompletedToast(true);
-                  try {
-                    const res = await fetch(completedExportToast.downloadUrl);
-                    const blob = await res.blob();
-                    await downloadBlob(blob, completedExportToast.filename, completedExportToast.mimeType, completedExportToast.allowSaveDialog);
-                  } catch {
-                    setCompletedExportToast({ ...completedExportToast, linkOnly: true });
-                  } finally {
-                    setDownloadingCompletedToast(false);
-                  }
-                }}
-                disabled={downloadingCompletedToast}
-                className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold bg-white text-ink disabled:opacity-60"
-              >
-                {downloadingCompletedToast ? t("מוריד...") : t("הורדה")}
-              </button>
-              )}
-              {/* Straight to the client's own WhatsApp chat, matching the exact "send update"
-                  pattern already used for gallery-published/photos-uploaded notifications — per
-                  explicit request that a completed export should offer to share it immediately,
-                  not just download it. Omitted entirely (not disabled) when no client phone is on
-                  file, same as those other buttons' own silent-noop guard, since a visibly
-                  disabled-forever button here would just be confusing clutter. */}
-              {gallery.client_phone && (
-                <button
-                  onClick={() => {
-                    openWhatsApp(gallery.client_phone!, buildExportReadyMessage({ label: completedExportToast.label, url: completedExportToast.downloadUrl, lang: clientLang }));
-                    setCompletedExportToast(null);
-                  }}
-                  className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold text-white"
-                  style={{ background: "#25D366" }}
-                >
-                  {t("שיתוף בוואטסאפ")}
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -5255,11 +4997,11 @@ export default function GalleryManageView({
                 {album && (
                   <button
                     onClick={() => openExportRangeModal("pdf")}
-                    disabled={exportingAlbumPdf || albumSpreads.length === 0}
+                    disabled={albumSpreads.length === 0}
                     className={`relative overflow-hidden ${isAlbumPhone ? "text-[13px] font-semibold px-3.5 py-2" : "text-xs font-semibold px-3 py-1.5"} rounded-full bg-white border border-line text-ink disabled:opacity-60`}
                   >
                     {exportingAlbumPdf && (
-                      <LiquidProgressBar pct={exportProgressPdf ?? 0} style={{ position: "absolute", inset: 0, borderRadius: 9999 }} />
+                      <LiquidProgressBar pct={exportProgress} style={{ position: "absolute", inset: 0, borderRadius: 9999 }} />
                     )}
                     <span className="relative z-10 flex items-center gap-1">
                       <IconPdf size={12} />
@@ -5270,11 +5012,11 @@ export default function GalleryManageView({
                 {album && (
                   <button
                     onClick={() => openExportRangeModal("jpg")}
-                    disabled={exportingAlbumJpg || albumSpreads.length === 0}
+                    disabled={albumSpreads.length === 0}
                     className={`relative overflow-hidden ${isAlbumPhone ? "text-[13px] font-semibold px-3.5 py-2" : "text-xs font-semibold px-3 py-1.5"} rounded-full bg-white border border-line text-ink disabled:opacity-60`}
                   >
                     {exportingAlbumJpg && (
-                      <LiquidProgressBar pct={exportProgressJpg ?? 0} style={{ position: "absolute", inset: 0, borderRadius: 9999 }} />
+                      <LiquidProgressBar pct={exportProgress} style={{ position: "absolute", inset: 0, borderRadius: 9999 }} />
                     )}
                     <span className="relative z-10 flex items-center gap-1">
                       <IconImage size={12} />
@@ -5295,11 +5037,11 @@ export default function GalleryManageView({
                 {album && (
                   <button
                     onClick={() => openExportRangeModal("psd")}
-                    disabled={exportingAlbumPsd || albumSpreads.length === 0}
+                    disabled={albumSpreads.length === 0}
                     className={`relative overflow-hidden ${isAlbumPhone ? "text-[13px] font-semibold px-3.5 py-2" : "text-xs font-semibold px-3 py-1.5"} rounded-full bg-white border border-line text-ink disabled:opacity-60`}
                   >
                     {exportingAlbumPsd && (
-                      <LiquidProgressBar pct={exportProgressPsd ?? 0} style={{ position: "absolute", inset: 0, borderRadius: 9999 }} />
+                      <LiquidProgressBar pct={exportProgress} style={{ position: "absolute", inset: 0, borderRadius: 9999 }} />
                     )}
                     <span className="relative z-10 flex items-center gap-1">
                       <IconPalette size={12} />

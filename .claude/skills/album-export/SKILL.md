@@ -117,6 +117,31 @@ one `event_notifications` row (`is_client_action`, so it's a red badge on the ev
 
 Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs left `pending`.
 
+### In the background (since 2026-10-22, owner: "ייצוא PDF מתבצע ללא אפשרות של פעולה ברקע")
+
+- The tab's side of an export lives in a store outside any screen, `lib/albumExports.ts`
+  (`startAlbumExport`). It creates the job (and waits through the PDF worker's 503 as
+  "מכינים את השרת"), polls it, and keeps the finished file. Both the album tool
+  (`GalleryManageView`) and the home quick export (`AlbumQuickAccessButton`) only call it.
+- The screens are `AlbumExportsLayer` in the layout: the progress window with "המשך ברקע" and
+  cancel, the done/failed card at the top (download, and WhatsApp when the gallery has a client
+  phone), and `AlbumExportPill` in the floating stack of `UploadsIndicator`. Tapping the pill, or any
+  export button while an export runs, brings the window back.
+- An export watched to the end downloads by itself, as before. One sent to the background waits on
+  its card (no surprise download, and iPhone needs the tap anyway). The email link still goes out
+  for every export.
+- A reload picks a running export back up from `sessionStorage` (`gf_album_exports`), in the
+  background. While one runs, the "יש עדכון חדש" reload waits for it (`setBusyLabel`).
+- **Print house and exports share the one-job rule.** With exports in the background, a print-house
+  send can be asked for while an export runs, and the other way round. `lib/activeAlbumJob.ts`:
+  the export routes answer 409 when the running job is a print-house send (before, the export
+  "followed" the print job and downloaded its files), and the print-house route answers 409 when
+  anything runs (before, the insert hit the unique index of 0115 and returned the raw error).
+- Tests: `albumExports.test.ts`. Checked in Chromium on the real album tool with a mocked API
+  (desktop and a landscape phone): background, pill, back to front, card download, foreground
+  auto-download, cancel (DELETE). In headless Chrome the PDF download waits on the save-file
+  picker (`allowSaveDialog`), so the check ran without it.
+
 ### Known behavior (not bugs, but know them before you answer a user)
 
 - **PDF page = the album's real size** (since 2026-09-24). Pages are drawn 1600 "design points"
