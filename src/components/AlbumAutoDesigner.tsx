@@ -803,8 +803,10 @@ export default function AlbumAutoDesigner({
                 onClick={() => choosePhoto(pickerFor, p.id)}
                 className={`relative block w-full pt-[100%] rounded-md overflow-hidden bg-chip ${cells[pickerFor].photoId === p.id ? "ring-2 ring-ink" : ""}`}
               >
+                {/* The whole photo, not a square crop: a crop of a portrait photo cut the heads off,
+                    and the point of the pick is seeing the faces (owner, 2026-10-22). */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={thumbOf(p)} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+                <img src={thumbOf(p)} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-contain" />
                 {p.is_favorite && (
                   <span className="absolute top-1 right-1 h-5 w-5 rounded-full bg-white/90 flex items-center justify-center text-[11px] text-rose" aria-hidden>
                     ♥
@@ -883,7 +885,7 @@ export default function AlbumAutoDesigner({
                     >
                       {photo ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={thumbOf(photo)} alt="" className="h-full w-full object-cover" />
+                        <img src={thumbOf(photo)} alt="" className="h-full w-full object-contain" />
                       ) : (
                         <span className="px-1 text-center leading-snug">{t("בחירת תמונה")}</span>
                       )}

@@ -60,21 +60,24 @@ export function fitPhotoInFrame(
   resizable: boolean
 ): { xPct: number; yPct: number; widthPct: number; heightPct: number; focalX: number; focalY: number; zoom: number } {
   const round = (n: number) => Math.round(n * 100) / 100;
+  // Only the box: the caller passes a whole frame element, and a spread of it would carry its old
+  // photoId over the photo the swap just placed (the bug that made the admin's swap move nothing).
+  const box = { xPct: frame.xPct, yPct: frame.yPct, widthPct: frame.widthPct, heightPct: frame.heightPct };
   const frameAspect = (frame.widthPct * page.widthCm) / (frame.heightPct * page.heightCm) || 1;
   const img = imgAspect > 0 ? imgAspect : frameAspect;
   const crop = img >= frameAspect ? img / frameAspect : frameAspect / img;
   if (resizable && crop > SWAP_MAX_CROP) {
     if (img > frameAspect) {
       const heightPct = (frame.widthPct * page.widthCm) / img / page.heightCm;
-      return { ...frame, yPct: round(frame.yPct + (frame.heightPct - heightPct) / 2), heightPct: round(heightPct), focalX: 50, focalY: 50, zoom: 100 };
+      return { ...box, yPct: round(frame.yPct + (frame.heightPct - heightPct) / 2), heightPct: round(heightPct), focalX: 50, focalY: 50, zoom: 100 };
     }
     const widthPct = (frame.heightPct * page.heightCm * img) / page.widthCm;
-    return { ...frame, xPct: round(frame.xPct + (frame.widthPct - widthPct) / 2), widthPct: round(widthPct), focalX: 50, focalY: 50, zoom: 100 };
+    return { ...box, xPct: round(frame.xPct + (frame.widthPct - widthPct) / 2), widthPct: round(widthPct), focalX: 50, focalY: 50, zoom: 100 };
   }
   // The share of the photo that shows across and down (1 = all of it).
   const vx = img > frameAspect ? frameAspect / img : 1;
   const vy = img > frameAspect ? 1 : img / frameAspect;
-  if (!faces.length) return { ...frame, focalX: 50, focalY: vy < 1 ? 40 : 50, zoom: 100 };
+  if (!faces.length) return { ...box, focalX: 50, focalY: vy < 1 ? 40 : 50, zoom: 100 };
   const left = Math.min(...faces.map((f) => f.x));
   const right = Math.max(...faces.map((f) => f.x + f.width));
   const faceH = Math.max(...faces.map((f) => f.height));
@@ -94,5 +97,5 @@ export function fitPhotoInFrame(
     const start = clamp(span <= vy ? top - (vy - span) / 3 : top, 1 - vy);
     focalY = (start / (1 - vy)) * 100;
   }
-  return { ...frame, focalX: round(focalX), focalY: round(focalY), zoom: 100 };
+  return { ...box, focalX: round(focalX), focalY: round(focalY), zoom: 100 };
 }
