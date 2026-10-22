@@ -174,3 +174,34 @@ describe("fitPhotoInFrame (the admin's swap, 2026-10-20)", () => {
     expect([b.photoId, b.focalX, b.focalY]).toEqual(["pA", 22, 44]);
   });
 });
+
+// The admin's swap fits each photo with fitPhotoInFrame, called with the whole frame element. The
+// fit used to hand back the frame's every field, its old photoId too, so the swap put each photo
+// back in its own frame and only the crop changed (owner, 2026-10-22: "לא עובדת בכלל").
+describe("the admin's swap with its fit", () => {
+  const page = { widthCm: 60, heightCm: 30 };
+  const aspects: Record<string, number> = { "photo-A": 1.5, "photo-B": 0.667, "photo-C": 1.5, "photo-D": 1.5, "photo-E": 1.5 };
+  const fit = (frame: AlbumPhotoElement, _spreadId: string, photoId: string) => fitPhotoInFrame(frame, page, aspects[photoId], [], true);
+
+  it("moves the photos, whichever way the fit goes (crop, or the frame takes the photo's shape)", () => {
+    // a ↔ c: landscape for landscape (the crop). b ↔ d: a portrait into a landscape frame (the frame changes shape).
+    for (const [x, y] of [
+      [{ spreadId: "s1", elId: "a" }, { spreadId: "s2", elId: "c" }],
+      [{ spreadId: "s1", elId: "b" }, { spreadId: "s2", elId: "d" }],
+    ]) {
+      const spreads = book();
+      const before = { x: el(spreads.find((s) => s.id === x.spreadId)!.elements, x.elId).photoId, y: el(spreads.find((s) => s.id === y.spreadId)!.elements, y.elId).photoId };
+      const out = swapPhotoPatches(spreads, x, y, fit)!;
+      expect(el(out.get(x.spreadId)!.elements, x.elId).photoId).toBe(before.y);
+      expect(el(out.get(y.spreadId)!.elements, y.elId).photoId).toBe(before.x);
+    }
+  });
+
+  it("returns only the box and the crop, never another field of the frame", () => {
+    const frame = photo("a", "photo-A", { xPct: 10, widthPct: 40, heightPct: 40, borderWidth: 3, maskId: undefined });
+    for (const [aspect, resizable] of [[1.5, true], [0.5, true], [0.5, false]] as const) {
+      const out = fitPhotoInFrame(frame, page, aspect, [], resizable);
+      expect(Object.keys(out).sort()).toEqual(["focalX", "focalY", "heightPct", "widthPct", "xPct", "yPct", "zoom"]);
+    }
+  });
+});
