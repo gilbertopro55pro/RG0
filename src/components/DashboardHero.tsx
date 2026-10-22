@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getLang, getT } from "@/i18n/server";
 import { dateLocale } from "@/i18n/config";
 import { revenueSplit } from "@/lib/homeVivid";
+import CountUp from "@/components/CountUp";
 
 export default async function DashboardHero({
   monthLabel,
@@ -48,7 +49,9 @@ export default async function DashboardHero({
             </Link>
           )}
         </div>
-        <div className="text-[32px] leading-[1.1] font-extrabold font-data mt-1">₪{monthTotal.toLocaleString(loc)}</div>
+        <div className="text-[32px] leading-[1.1] font-extrabold font-data mt-1">
+          <CountUp value={monthTotal} locale={loc} prefix="₪" />
+        </div>
         <div className="h-2 rounded-full overflow-hidden mt-3 mb-2.5" style={{ background: "var(--color-chip)" }}>
           <div className="gf-grow flex h-full w-full">
             <div className="h-full" style={{ width: `${split.receivedPct}%`, background: "var(--tone-paid)" }} />
