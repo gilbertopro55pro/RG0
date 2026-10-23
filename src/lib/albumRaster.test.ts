@@ -142,3 +142,62 @@ describe("resolvePageElements carries a text's turn", () => {
     expect((upright as { rotation?: number }).rotation).toBeUndefined();
   });
 });
+
+// The photographer's own line breaks (2026-10-23): a long text wrapped into two lines in the editor
+// and came out as one line in the exports. Now lines break only at "\n", everywhere.
+describe("svgTextLayer lines", () => {
+  const ml = { ...base, multiline: true };
+
+  it("a text without a break is the exact same layer, with or without multiline", async () => {
+    expect((await svgTextLayer("שלום עולם", ml)).equals(await svgTextLayer("שלום עולם", base))).toBe(true);
+  });
+
+  it("two lines: the one-line ink half a line height above and below, centered as a block", async () => {
+    // Line height 1.2 × 60px = 72px: each line sits 36px from where the one line sits.
+    const one = await ink(await svgTextLayer("Hi", ml));
+    const two = await ink(await svgTextLayer("Hi\nHi", ml));
+    expect(two.y0).toBeCloseTo(one.y0 - 36, -0.5);
+    expect(two.y1).toBeCloseTo(one.y1 + 36, -0.5);
+    expect(two.cx).toBeCloseTo(one.cx, 0);
+    expect(two.cy).toBeCloseTo(one.cy, 0);
+  });
+
+  it("each line is aligned in the box on its own", async () => {
+    for (const align of ["right", "left", "center"] as const) {
+      const png = await svgTextLayer("Hello World\nHi", { ...ml, align });
+      const top = await ink(png, (p) => p.a > 128);
+      const img = await pixels(png);
+      // The short second line: the ink below the block's middle (250).
+      let x0 = Infinity;
+      let x1 = -1;
+      for (let y = 251; y < img.height; y++) for (let x = 0; x < img.width; x++) if (img.at(x, y).a > 128) [x0, x1] = [Math.min(x0, x), Math.max(x1, x)];
+      if (align === "right") expect(Math.abs(x1 - top.x1)).toBeLessThanOrEqual(4);
+      if (align === "left") expect(Math.abs(x0 - top.x0)).toBeLessThanOrEqual(4);
+      if (align === "center") expect(Math.abs((x0 + x1) / 2 - 400)).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it("an empty line keeps its place", async () => {
+    const two = await ink(await svgTextLayer("Hi\n\nHi", ml));
+    const one = await ink(await svgTextLayer("Hi", ml));
+    expect(two.y0).toBeCloseTo(one.y0 - 72, -0.5);
+    expect(two.y1).toBeCloseTo(one.y1 + 72, -0.5);
+  });
+
+  it("without multiline (the magnet export) or a box height (the cover title), a break is not a new line", async () => {
+    const magnet = await ink(await svgTextLayer("Hi\nHi", base));
+    const one = await ink(await svgTextLayer("Hi", base));
+    // One row (the break itself draws as the font's missing-glyph box, as it always has), not two.
+    expect(magnet.h).toBeLessThan(one.h + 30);
+    const band = { ...ml, heightPx: undefined };
+    expect((await svgTextLayer("Hi\nHi", band)).equals(await svgTextLayer("Hi\nHi", { ...band, multiline: false }))).toBe(true);
+  });
+
+  it("a turned two-line text turns as one block around the box's center", async () => {
+    const turned = await ink(await svgTextLayer("Hello World\nHello World", { ...ml, rotationDeg: 90 }));
+    expect(turned.cx).toBeCloseTo(400, -1);
+    expect(turned.cy).toBeCloseTo(250, -1);
+    expect(turned.w).toBeGreaterThan(100);
+    expect(turned.h).toBeGreaterThan(turned.w);
+  });
+});

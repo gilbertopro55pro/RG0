@@ -12,6 +12,7 @@ import { textRotationTransform } from "@/lib/albumTextRotation";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { useLang, useT } from "@/i18n/client";
 import { dirOf } from "@/i18n/config";
+import AlbumTextLines, { albumTextBoxAlign } from "@/components/AlbumTextLines";
 
 type SpreadPhoto = { id: string; url: string };
 type SpreadLayout = "split" | "feature" | "stack" | "custom";
@@ -168,19 +169,18 @@ function BackgroundLayer({ background }: { background: SpreadBackground }) {
 }
 
 function TextOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "text" }> }) {
-  // Album geometry is physical and authored in the (RTL) builder: pinned to rtl so a client page
-  // in English/Russian lays the text out exactly as the photographer designed it.
+  // Album geometry is physical: each line carries its own reading direction and the box places
+  // them on its physical right/left (albumTextBoxAlign), so a client page in English/Russian lays
+  // the text out exactly as the photographer designed it.
   return (
     <div
-      dir="rtl"
-      className="absolute px-1 font-bold flex items-center"
+      className="absolute font-bold flex items-center"
       style={{
         left: `${el.xPct}%`,
         top: `${el.yPct}%`,
         width: `${el.widthPct}%`,
         height: `${el.heightPct ?? 15}%`,
-        justifyContent: el.align === "right" ? "flex-end" : el.align === "left" ? "flex-start" : "center",
-        textAlign: el.align,
+        ...albumTextBoxAlign(el.align),
         color: el.color,
         fontSize: `calc(${el.fontSize} / 1600 * 100cqw)`,
         fontFamily: albumFontFamilyCss(el.fontFamily),
@@ -190,7 +190,7 @@ function TextOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "text" }>
         transform: textRotationTransform(el),
       }}
     >
-      <span>{el.text}</span>
+      <AlbumTextLines text={el.text} />
     </div>
   );
 }

@@ -215,6 +215,7 @@ export async function renderAlbumPagePsd({
         effects: albumTextEffects(el, pageWidthPx),
         // A full-page layer, so the turn is baked into its pixels, like the JPG.
         rotationDeg: el.rotation,
+        multiline: true,
       });
       const rgba = await pngToRawRgba(png);
       children.push({ name: "טקסט", top: 0, left: 0, bottom: rgba.height, right: rgba.width, imageData: { data: rgba.data, width: rgba.width, height: rgba.height } });

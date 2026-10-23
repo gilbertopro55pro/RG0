@@ -25,7 +25,8 @@ import {
   TEXT_SHADOW_MAX_DISTANCE,
   type PhotoWithUrl,
 } from "@/lib/albumRender";
-import { textHeightPctForFontSize, MAX_TEXT_HEIGHT_OVERSIZE_RATIO } from "@/lib/albumTextSizing";
+import { textHeightPctForFontSize, textHeightPctForLines, grownTextBox, albumTextLines, ALBUM_TEXT_LINE_HEIGHT, MAX_TEXT_HEIGHT_OVERSIZE_RATIO } from "@/lib/albumTextSizing";
+import AlbumTextLines, { albumTextBoxAlign } from "@/components/AlbumTextLines";
 import {
   clampGroupDelta,
   computeMoveAlignment,
@@ -1357,7 +1358,7 @@ function TextFloatingMenu({
           double-click editing on the canvas. */}
       <textarea
         value={el.text}
-        onChange={(e) => onUpdate({ text: e.target.value })}
+        onChange={(e) => onUpdate({ text: e.target.value, ...grownTextBox(el, e.target.value, album) })}
         rows={2}
         dir="auto"
         aria-label={t("עריכת הטקסט")}
@@ -1432,7 +1433,7 @@ function TextFloatingMenu({
         // it, away from wherever it was placed — this keeps that drift bounded to something
         // unnoticeable while still leaving real, moderate manual enlargement alone.
         onChange={(v) => {
-          const natural = textHeightPctForFontSize(v, album);
+          const natural = textHeightPctForLines(v, album, albumTextLines(el.text).length);
           onUpdate({ fontSize: v, heightPct: Math.min(Math.max(el.heightPct ?? 0, natural), natural * MAX_TEXT_HEIGHT_OVERSIZE_RATIO) });
         }}
       />
@@ -5336,14 +5337,13 @@ export default function AlbumSpreadCanvasEditor({
                     e.stopPropagation();
                     startEditingText(el);
                   }}
-                  className="absolute cursor-move px-1 flex items-center overflow-visible"
+                  className="absolute cursor-move flex items-center overflow-visible"
                   style={{
                     left: `${el.xPct}%`,
                     top: `${el.yPct}%`,
                     width: `${el.widthPct}%`,
                     height: `${el.heightPct ?? 15}%`,
-                    justifyContent: el.align === "right" ? "flex-end" : el.align === "left" ? "flex-start" : "center",
-                    textAlign: el.align,
+                    ...albumTextBoxAlign(el.align),
                     color: el.color,
                     // fontSize is stored in points on the album's fixed 1600pt PDF reference canvas
                     // (matches PAGE_WIDTH in albumPdf.ts) — cqw here is "% of this canvas's own
@@ -5383,15 +5383,19 @@ export default function AlbumSpreadCanvasEditor({
                       }}
                       onBlur={(e) => {
                         const value = e.currentTarget.value.trim();
-                        if (editingTextId === el.id && value) updateElement(el.id, { text: value });
+                        // A text with more lines than its box holds grows the box about its middle.
+                        if (editingTextId === el.id && value) updateElement(el.id, { text: value, ...grownTextBox(el, value, album) });
                         setEditingTextId(null);
                       }}
-                      rows={Math.max(1, el.text.split("\n").length)}
+                      rows={Math.max(1, albumTextLines(el.text).length)}
+                      // Lines break only at Shift+Enter, as on the page and in every export.
+                      wrap="off"
+                      dir="auto"
                       className="w-full resize-none bg-white/70 outline-none"
-                      style={{ font: "inherit", color: "inherit", textAlign: "inherit", textShadow: "none", WebkitTextStroke: "0", lineHeight: 1.15 }}
+                      style={{ font: "inherit", color: "inherit", textAlign: "inherit", textShadow: "none", WebkitTextStroke: "0", lineHeight: ALBUM_TEXT_LINE_HEIGHT }}
                     />
                   ) : (
-                    <span>{el.text}</span>
+                    <AlbumTextLines text={el.text} />
                   )}
                   {/* The four corner controls (owner, 2026-10-23): delete, "+1", turn and size.
                       Only on a single selected text: with several layers selected a press drags

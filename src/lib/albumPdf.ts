@@ -24,6 +24,7 @@ import { textColorRgb01 } from "@/lib/textColor";
 import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
 import { textRotationDeg } from "@/lib/albumTextRotation";
+import { albumLineBaselines, albumTextLines } from "@/lib/albumTextSizing";
 import { ALBUM_BLUR_MAX_PX, coverCropRaw, applyMaskToRaw, ornamentLayerRaw, composeShapeTile } from "@/lib/albumRaster";
 import { findOrnament } from "@/lib/albumOrnaments";
 import { hasAdjustments, applyAdjustmentsToRgba, type PhotoAdjustments } from "@/lib/albumAdjustments";
@@ -281,21 +282,29 @@ function drawTextElement(
   // Center the text's line box within the editor's own box, same "boxTop + H/2 + (ascent-descent)/2
   // below the top" formula as svgTextLayer in albumRaster.ts uses (see its own comment for the
   // derivation) — just flipped for PDF's y-up axis, so "below the top" is a SUBTRACTION here.
-  const y = boxTopY - boxHeight / 2 - (ascent - descent) / 2;
+  // Several lines (the photographer's own line breaks, albumTextSizing.ts): the block of lines is
+  // centered the same way, each line aligned in the box on its own. One line: exactly as before.
+  const lines = albumTextLines(el.text);
+  const ys =
+    lines.length > 1
+      ? albumLineBaselines(lines.length, size, ascent, descent).map((b) => boxTopY - boxHeight / 2 - b)
+      : [boxTopY - boxHeight / 2 - (ascent - descent) / 2];
   const mainColor = rgb(...textColorRgb01(el.color));
   const unit = pageWidth / 1600;
   const draw = (dx: number, dy: number, color: RGB, opacity?: number) =>
-    drawAlignedBidiText(page, el.text, {
-      boxX: boxX + dx,
-      boxWidth,
-      y: y + dy,
-      size,
-      align: el.align,
-      color,
-      opacity,
-      hebrewFont: fonts.hebrewFont,
-      latinFont: fonts.latinFont,
-    });
+    lines.forEach((line, i) =>
+      drawAlignedBidiText(page, line, {
+        boxX: boxX + dx,
+        boxWidth,
+        y: ys[i] + dy,
+        size,
+        align: el.align,
+        color,
+        opacity,
+        hebrewFont: fonts.hebrewFont,
+        latinFont: fonts.latinFont,
+      })
+    );
   // pdf-lib has no blur or text stroke, so the shared effects (textShadowSpecs, as in the editor and
   // the JPG/PSD) are approximated with copies: a shadow is its offset copy, softened into a ring of
   // faint copies when blurred; an outline is a ring of copies in the outline color. PDF's y axis

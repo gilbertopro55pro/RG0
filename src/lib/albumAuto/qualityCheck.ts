@@ -1,5 +1,6 @@
 import type { AlbumElement, AlbumPhotoElement, AlbumTextElement } from "@/lib/types";
 import { rotatedBounds, textRotationDeg } from "@/lib/albumTextRotation";
+import { ALBUM_TEXT_LINE_HEIGHT, albumTextLines } from "@/lib/albumTextSizing";
 import { computePhotoFraming } from "@/lib/albumRender";
 import { fitPhotoInFrame, type FaceRect } from "@/lib/albumAuto/swapPhotos";
 
@@ -277,22 +278,21 @@ export function facesFindings(el: AlbumPhotoElement, page: PageSize, imgAspect: 
   return out;
 }
 
-// The printed extent of a text element (% of the page), estimated: the box's width or the
-// estimated width of its longest line, whichever is narrower, placed by its alignment; its lines
-// one em each, centred in the box's height like every renderer does (albumTextSizing.ts). A turned
-// text (el.rotation) gives the bounds of that ink turned around the box's center, the pivot every
-// renderer uses, turned in cm since % of the width and of the height are different lengths.
+// The printed extent of a text element (% of the page), estimated: the estimated width of its
+// longest line, placed by its alignment (a line wider than the box runs past it: text never wraps,
+// it breaks only at the photographer's own line breaks), and its lines ALBUM_TEXT_LINE_HEIGHT apart,
+// one em for the ink of the first and last, centred in the box's height like every renderer does
+// (albumTextSizing.ts). A turned text (el.rotation) gives the bounds of that ink turned around the
+// box's center, the pivot every renderer uses, turned in cm since % of the width and of the height
+// are different lengths.
 export function textInkBox(el: AlbumTextElement, page: PageSize): Box | null {
-  const lines = el.text.split("\n").filter((l) => l.trim());
-  if (!lines.length) return null;
+  const lines = albumTextLines(el.text);
+  if (!lines.some((l) => l.trim())) return null;
   const emX = (el.fontSize / 1600) * 100; // one em, in % of the page width
   const emY = emX * (page.widthCm / page.heightCm); // the same em, in % of the page height
   const box = elementBox(el);
-  const widths = lines.map((l) => l.trim().length * TEXT_GLYPH_EM * emX);
-  // A line wider than the box wraps.
-  const rows = widths.reduce((n, w) => n + Math.max(1, Math.ceil(w / box.widthPct)), 0);
-  const inkW = Math.min(box.widthPct, Math.max(...widths));
-  const inkH = rows * emY;
+  const inkW = Math.max(...lines.map((l) => l.trim().length * TEXT_GLYPH_EM * emX));
+  const inkH = ((lines.length - 1) * ALBUM_TEXT_LINE_HEIGHT + 1) * emY;
   const x0 = el.align === "right" ? box.xPct + box.widthPct - inkW : el.align === "left" ? box.xPct : box.xPct + (box.widthPct - inkW) / 2;
   const y0 = box.yPct + (box.heightPct - inkH) / 2;
   const ink = { x0, y0, x1: x0 + inkW, y1: y0 + inkH };

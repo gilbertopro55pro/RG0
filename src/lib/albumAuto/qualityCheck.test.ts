@@ -363,10 +363,28 @@ describe("text outside the safe margin", () => {
     expect(run([spread("cover", [cover], { width_cm: 32, height_cm: 32 })], {})).toEqual([]);
   });
 
-  it("wraps a line longer than its box onto more lines (taller text)", () => {
-    // 60 letters in a 20%-wide box at 40pt: ~4 lines of 2.5% em × 2 (page aspect) = 20% high, in a 6% box at 4%.
-    const long = textEl("t", "א".repeat(60), [30, 4, 20, 6], { align: "center" });
+  it("never wraps a line longer than its box: it runs past the box's sides, as every renderer draws it", () => {
+    // 60 letters at 40pt: 60 × 0.6 × 2.5% = 90% wide, centred on the box's 40%: from -5% to 85%.
+    const long = textEl("t", "א".repeat(60), [30, 40, 20, 6], { align: "center" });
+    const ink = textInkBox(long, { widthCm: 60, heightCm: 30 })!;
+    expect(ink.x0).toBeCloseTo(-5, 6);
+    expect(ink.x1).toBeCloseTo(85, 6);
     expect(run([spread("s1", [long])], {}).map((i) => i.params)).toEqual([{ fold: 0 }]);
+  });
+
+  it("stacks the photographer's own lines: taller, as wide as the longest line", () => {
+    // 40pt on 60×30: one em is 2.5% of the width, 5% of the height. Three lines: 2 × 1.2 + 1 = 3.4 em.
+    const page = { widthCm: 60, heightCm: 30 };
+    const one = textInkBox(textEl("t", "אאאא", [10, 40, 30, 20]), page)!;
+    const three = textInkBox(textEl("t", "אא\nאאאא\nא", [10, 40, 30, 20]), page)!;
+    expect(three.x1 - three.x0).toBeCloseTo(one.x1 - one.x0, 6);
+    expect(one.y1 - one.y0).toBeCloseTo(5, 6);
+    expect(three.y1 - three.y0).toBeCloseTo(17, 6);
+    // Centred on the box's middle (50%).
+    expect((three.y0 + three.y1) / 2).toBeCloseTo(50, 6);
+    // Two lines in a 6%-high box at the top margin's edge spill into it, one doesn't.
+    expect(run([spread("s1", [textEl("t", "דנה", [10, 3, 30, 6])])], {})).toEqual([]);
+    expect(run([spread("s1", [textEl("t", "דנה\nויוסי", [10, 3, 30, 6])])], {}).map((i) => i.params)).toEqual([{ fold: 0 }]);
   });
 
   it("checks a turned text by its turned extent", () => {
