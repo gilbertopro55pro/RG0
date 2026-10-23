@@ -3,6 +3,21 @@ import type { AreaDict } from "@/i18n/types";
 // Area "settingsAdmin" (see src/i18n/dict/index.ts). Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "מחיקת חשבון": "Delete account",
+    "לא הצלחנו לטעון את החשבון": "We couldn't load the account",
+    "המחיקה נכשלה": "Deletion failed",
+    "מחיקת החשבון של {name}": "Delete {name}'s account",
+    "החשבון והקבצים שלו נמחקו.": "The account and its files were deleted.",
+    "מחיקת החשבון לצמיתות": "Delete the account permanently",
+    "לאישור, הקלידו את האימייל של החשבון": "To confirm, type the account's email",
+    "המחיקה סופית: החשבון, כל הנתונים שלו וכל הקבצים באחסון נמחקים, ואין דרך לשחזר. גם חברי הצוות שלו לא יוכלו להתחבר.":
+      "This is final: the account, all its data and all its stored files are deleted, with no way to restore them. Its team members can no longer sign in either.",
+    "זה חשבון המנהל, ואותו אי אפשר למחוק.": "This is the admin account, and it can't be deleted.",
+    "זה חשבון בדיקה ששמור במערכת (keep_account), ולכן לא נמחק.": "This is a test account kept in the system (keep_account), so it isn't deleted.",
+    "יש לחשבון הוראת קבע פעילה ב-PayPlus. קודם מבטלים אותה, ורק אז מוחקים.":
+      "The account has an active standing order in PayPlus. Cancel it first, then delete.",
+    "החשבון שילם בעבר. חשבון ששילם לא נמחק מכאן, כדי לשמור את רשומות התשלום.":
+      "The account has paid in the past. A paying account isn't deleted from here, to keep its payment records.",
     "שלב קבוע": "Fixed stage",
     "\"סגירת האירוע\" ו\"יום הצילום\" כבר קבועים בתחילת כל חבילה": "\"Event closing\" and \"Shoot day\" are already the fixed first stages of every package",
     "מחירון לפי סוג אירוע": "Price list by event type",
@@ -279,6 +294,21 @@ const dict: AreaDict = {
     "מבט לא למצלמה: המנוע לא מחליט על זה כרגע. בסימונים שבדקת, אף מדידה של כיוון הראש או האישונים לא הבדילה בין תמונה מבוימת שמישהו בה לא מסתכל לבין תמונה תקינה. המדידות והסימונים נשמרים לשלב הבא.": "Not looking at the camera: the engine doesn't decide this for now. In the labels you checked, no measure of head direction or irises told a posed photo where someone isn't looking apart from a fine one. The measurements and labels are kept for the next step.",
   },
   ru: {
+    "מחיקת חשבון": "Удалить аккаунт",
+    "לא הצלחנו לטעון את החשבון": "Не удалось загрузить аккаунт",
+    "המחיקה נכשלה": "Не удалось удалить",
+    "מחיקת החשבון של {name}": "Удаление аккаунта {name}",
+    "החשבון והקבצים שלו נמחקו.": "Аккаунт и его файлы удалены.",
+    "מחיקת החשבון לצמיתות": "Удалить аккаунт навсегда",
+    "לאישור, הקלידו את האימייל של החשבון": "Для подтверждения введите email аккаунта",
+    "המחיקה סופית: החשבון, כל הנתונים שלו וכל הקבצים באחסון נמחקים, ואין דרך לשחזר. גם חברי הצוות שלו לא יוכלו להתחבר.":
+      "Удаление окончательное: аккаунт, все его данные и все файлы в хранилище удаляются без возможности восстановления. Участники его команды тоже больше не смогут войти.",
+    "זה חשבון המנהל, ואותו אי אפשר למחוק.": "Это аккаунт администратора, его нельзя удалить.",
+    "זה חשבון בדיקה ששמור במערכת (keep_account), ולכן לא נמחק.": "Это тестовый аккаунт, который хранится в системе (keep_account), поэтому он не удаляется.",
+    "יש לחשבון הוראת קבע פעילה ב-PayPlus. קודם מבטלים אותה, ורק אז מוחקים.":
+      "У аккаунта есть активный регулярный платёж в PayPlus. Сначала отмените его, затем удаляйте.",
+    "החשבון שילם בעבר. חשבון ששילם לא נמחק מכאן, כדי לשמור את רשומות התשלום.":
+      "Аккаунт уже платил раньше. Платящий аккаунт отсюда не удаляется, чтобы сохранить записи о платежах.",
     "שלב קבוע": "Постоянный этап",
     "\"סגירת האירוע\" ו\"יום הצילום\" כבר קבועים בתחילת כל חבילה": "«Закрытие мероприятия» и «День съёмки» уже являются постоянными первыми этапами каждого пакета",
     "מחירון לפי סוג אירוע": "Прайс-лист по типу мероприятия",
