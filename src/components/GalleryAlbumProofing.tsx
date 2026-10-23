@@ -8,6 +8,7 @@ import { maskCssUrl, findMask } from "@/lib/albumMasks";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsFilterId, adjustmentsSvgFilter, type PhotoAdjustments } from "@/lib/albumAdjustments";
 import { sharpenFilterId, sharpenSvgFilter } from "@/lib/albumSharpen";
+import { textRotationTransform } from "@/lib/albumTextRotation";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { useLang, useT } from "@/i18n/client";
 import { dirOf } from "@/i18n/config";
@@ -66,6 +67,7 @@ export type ClientAlbumElement =
       glow?: number;
       strokeWidth?: number;
       strokeColor?: string;
+      rotation?: number;
     }
   | {
       id: string;
@@ -184,6 +186,8 @@ function TextOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "text" }>
         fontFamily: albumFontFamilyCss(el.fontFamily),
         // Shadow, glow and outline exactly as in the editor and the exports.
         ...textEffectsCss(el),
+        // Turned around the box's center (the default origin), like the editor and the exports.
+        transform: textRotationTransform(el),
       }}
     >
       <span>{el.text}</span>

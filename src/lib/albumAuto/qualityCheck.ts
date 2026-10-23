@@ -1,4 +1,5 @@
 import type { AlbumElement, AlbumPhotoElement, AlbumTextElement } from "@/lib/types";
+import { rotatedBounds, textRotationDeg } from "@/lib/albumTextRotation";
 import { computePhotoFraming } from "@/lib/albumRender";
 import { fitPhotoInFrame, type FaceRect } from "@/lib/albumAuto/swapPhotos";
 
@@ -278,7 +279,9 @@ export function facesFindings(el: AlbumPhotoElement, page: PageSize, imgAspect: 
 
 // The printed extent of a text element (% of the page), estimated: the box's width or the
 // estimated width of its longest line, whichever is narrower, placed by its alignment; its lines
-// one em each, centred in the box's height like every renderer does (albumTextSizing.ts).
+// one em each, centred in the box's height like every renderer does (albumTextSizing.ts). A turned
+// text (el.rotation) gives the bounds of that ink turned around the box's center, the pivot every
+// renderer uses, turned in cm since % of the width and of the height are different lengths.
 export function textInkBox(el: AlbumTextElement, page: PageSize): Box | null {
   const lines = el.text.split("\n").filter((l) => l.trim());
   if (!lines.length) return null;
@@ -292,7 +295,17 @@ export function textInkBox(el: AlbumTextElement, page: PageSize): Box | null {
   const inkH = rows * emY;
   const x0 = el.align === "right" ? box.xPct + box.widthPct - inkW : el.align === "left" ? box.xPct : box.xPct + (box.widthPct - inkW) / 2;
   const y0 = box.yPct + (box.heightPct - inkH) / 2;
-  return { x0, y0, x1: x0 + inkW, y1: y0 + inkH };
+  const ink = { x0, y0, x1: x0 + inkW, y1: y0 + inkH };
+  const deg = textRotationDeg(el);
+  if (!deg) return ink;
+  const cmX = page.widthCm / 100;
+  const cmY = page.heightCm / 100;
+  const turned = rotatedBounds(
+    { x0: ink.x0 * cmX, y0: ink.y0 * cmY, x1: ink.x1 * cmX, y1: ink.y1 * cmY },
+    { x: (box.xPct + box.widthPct / 2) * cmX, y: (box.yPct + box.heightPct / 2) * cmY },
+    deg
+  );
+  return { x0: turned.x0 / cmX, y0: turned.y0 / cmY, x1: turned.x1 / cmX, y1: turned.y1 / cmY };
 }
 
 // ── The check ────────────────────────────────────────────────────────────────────────────────

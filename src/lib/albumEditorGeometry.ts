@@ -344,3 +344,33 @@ export function snapResizeBox(
   }
   return { box: out, guides, hitX: usedX, hitY: usedY };
 }
+
+// ---------------------------------------------------------------------------------------------
+// The corner controls of a selected text (owner, 2026-10-23, LayerControls.tsx): "+1" and the
+// size control.
+
+// The letters' size range, the same as the text panel's slider.
+export const TEXT_FONT_SIZE_RANGE = { min: 2, max: 250 };
+
+// A text made bigger or smaller from its size control: the letters and the box grow together by
+// the same factor around the box's center, so the text keeps its place, its line breaks and its
+// turn. `fontSize` is the new size the drag asked for; it's held to the slider's range and the box
+// follows whatever size was kept.
+export function scaleTextBox(start: PctBox & { fontSize: number }, fontSize: number): PctBox & { fontSize: number } {
+  const size = Math.round(Math.min(TEXT_FONT_SIZE_RANGE.max, Math.max(TEXT_FONT_SIZE_RANGE.min, fontSize)) * 10) / 10;
+  const ratio = start.fontSize > 0 ? size / start.fontSize : 1;
+  const widthPct = start.widthPct * ratio;
+  const heightPct = start.heightPct * ratio;
+  const cx = start.xPct + start.widthPct / 2;
+  const cy = start.yPct + start.heightPct / 2;
+  return { xPct: cx - widthPct / 2, yPct: cy - heightPct / 2, widthPct, heightPct, fontSize: size };
+}
+
+// "+1": a copy of a text a little down and to the side (so it doesn't hide exactly behind the
+// original), kept on the page, unlocked.
+export function duplicatedText<T extends AlbumElement & { type: "text" }>(el: T, id: string, offsetPct = 3): T {
+  const height = el.heightPct ?? 15;
+  const x = Math.min(Math.max(0, 100 - el.widthPct), el.xPct + offsetPct);
+  const y = Math.min(Math.max(0, 100 - height), el.yPct + offsetPct);
+  return { ...el, id, xPct: x, yPct: y, locked: false };
+}

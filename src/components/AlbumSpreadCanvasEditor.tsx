@@ -26,7 +26,23 @@ import {
   type PhotoWithUrl,
 } from "@/lib/albumRender";
 import { textHeightPctForFontSize, MAX_TEXT_HEIGHT_OVERSIZE_RATIO } from "@/lib/albumTextSizing";
-import { clampGroupDelta, computeMoveAlignment, freeLayerId, groupBounds, layerBox, moveShapeAroundPhotos, pageSizeOf, resizeSnapTargets, resizeWithinPage, shapeBehindPhotos, snapResizeBox } from "@/lib/albumEditorGeometry";
+import {
+  clampGroupDelta,
+  computeMoveAlignment,
+  duplicatedText,
+  freeLayerId,
+  groupBounds,
+  layerBox,
+  moveShapeAroundPhotos,
+  pageSizeOf,
+  resizeSnapTargets,
+  resizeWithinPage,
+  scaleTextBox,
+  shapeBehindPhotos,
+  snapResizeBox,
+} from "@/lib/albumEditorGeometry";
+import { pointerAngleDeg, snapRotation } from "@/lib/magnetFrameEditing";
+import LayerControls from "@/components/LayerControls";
 
 export type { PhotoWithUrl };
 
@@ -2517,8 +2533,11 @@ export default function AlbumSpreadCanvasEditor({
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     id: string;
-    kind: "move" | "resize";
+    kind: "move" | "resize" | "rotate" | "scale";
     resizeHandle?: ResizeHandle;
+    // A text's turn or size from its corner controls: the box center on screen and where the
+    // pointer started around it.
+    pivot?: { x: number; y: number; startDist: number; startAngle: number; startRotation: number; startFontSize: number };
     startClientX: number;
     startClientY: number;
     startFocalX: number;
@@ -3730,6 +3749,58 @@ export default function AlbumSpreadCanvasEditor({
     };
   };
 
+  // The turn and size controls of a selected text (owner, 2026-10-23, LayerControls): both work
+  // around the box's center, so they behave the same on a tilted text. One undo step per gesture,
+  // like startDrag.
+  const startTextHandle = (e: React.PointerEvent, el: AlbumTextElement, kind: "rotate" | "scale") => {
+    if (el.locked) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    e.stopPropagation();
+    e.preventDefault();
+    undoHistoryRef.current = [...undoHistoryRef.current, elements].slice(-MAX_UNDO_HISTORY);
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {
+      // see startDrag
+    }
+    const rect = canvas.getBoundingClientRect();
+    const height = el.heightPct ?? 15;
+    const x = rect.left + ((el.xPct + el.widthPct / 2) / 100) * rect.width;
+    const y = rect.top + ((el.yPct + height / 2) / 100) * rect.height;
+    dragRef.current = {
+      id: el.id,
+      kind,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startFocalX: 50,
+      startFocalY: 50,
+      startZoom: 100,
+      groupStart: { [el.id]: { xPct: el.xPct, yPct: el.yPct, widthPct: el.widthPct, heightPct: height } },
+      pivot: {
+        x,
+        y,
+        startDist: Math.hypot(e.clientX - x, e.clientY - y),
+        startAngle: pointerAngleDeg(x, y, e.clientX, e.clientY),
+        startRotation: el.rotation ?? 0,
+        startFontSize: el.fontSize,
+      },
+    };
+  };
+
+  // "+1" on a selected text: a copy just above it in the layer order, selected so it can be moved
+  // and edited right away.
+  const duplicateText = (el: AlbumTextElement) => {
+    const copy = duplicatedText(el, freeLayerId(elements, "text-copy"));
+    setElements((prev) => {
+      const i = prev.findIndex((x) => x.id === el.id);
+      const next = [...prev];
+      next.splice(i < 0 ? next.length : i + 1, 0, copy);
+      return next;
+    });
+    setSelectedIds(new Set([copy.id]));
+  };
+
   const onPointerMove = (e: React.PointerEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -3769,6 +3840,19 @@ export default function AlbumSpreadCanvasEditor({
     const el = elements.find((x) => x.id === drag.id);
     const primaryStart = drag.groupStart[drag.id];
     if (!primaryStart) return;
+
+    if ((drag.kind === "rotate" || drag.kind === "scale") && drag.pivot && el?.type === "text") {
+      const p = drag.pivot;
+      if (drag.kind === "rotate") {
+        // Shift: 15° steps; otherwise it settles on a multiple of 45° when close to one.
+        const rotation = snapRotation(p.startRotation + pointerAngleDeg(p.x, p.y, e.clientX, e.clientY) - p.startAngle, e.shiftKey ? 15 : undefined);
+        updateElement(drag.id, { rotation: rotation === 0 ? undefined : rotation });
+      } else if (p.startDist > 0) {
+        const dist = Math.hypot(e.clientX - p.x, e.clientY - p.y);
+        updateElement(drag.id, scaleTextBox({ ...primaryStart, fontSize: p.startFontSize }, (p.startFontSize * dist) / p.startDist));
+      }
+      return;
+    }
 
     if (drag.kind === "resize") {
       const lockAspect = el?.type === "photo" && !!el.lockAspect;
@@ -5238,8 +5322,9 @@ export default function AlbumSpreadCanvasEditor({
                     pressLayer(e, el);
                   }}
                   onPointerUp={(e) => {
-                    // A double tap on a touch screen (no dblclick there) opens the same editing.
-                    if (e.pointerType === "mouse" || editing) return;
+                    // A double tap on a touch screen (no dblclick there) opens the same editing;
+                    // two quick taps on a corner control ("+1" twice) are not one.
+                    if (e.pointerType === "mouse" || editing || (e.target as HTMLElement).closest("[data-layer-control]")) return;
                     const now = Date.now();
                     const last = lastTextTapRef.current;
                     if (last && last.id === el.id && now - last.at < 350) {
@@ -5273,6 +5358,8 @@ export default function AlbumSpreadCanvasEditor({
                     // Shadow, glow and outline as every export draws them (textEffectsCss).
                     ...textEffectsCss(el),
                     outline: isSelected ? "2px dashed var(--color-amber-deep)" : "none",
+                    // Around the box's center (the default origin), as every export turns it.
+                    transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
                   }}
                 >
                   {editing ? (
@@ -5305,10 +5392,16 @@ export default function AlbumSpreadCanvasEditor({
                   ) : (
                     <span>{el.text}</span>
                   )}
-                  {isSelected && (
-                    <span
-                      onPointerDown={(e) => startDrag(e, el, "resize")}
-                      className="absolute bottom-0.5 left-0.5 h-4 w-4 bg-amber-deep cursor-nwse-resize rounded-sm"
+                  {/* The four corner controls (owner, 2026-10-23): delete, "+1", turn and size.
+                      Only on a single selected text: with several layers selected a press drags
+                      the group, and a locked text keeps still. */}
+                  {isSelected && selectedIds.size === 1 && !el.locked && !editing && (
+                    <LayerControls
+                      onDelete={removeSelected}
+                      onDuplicate={() => duplicateText(el)}
+                      onRotateStart={(e) => startTextHandle(e, el, "rotate")}
+                      onScaleStart={(e) => startTextHandle(e, el, "scale")}
+                      upright={el.rotation ?? 0}
                     />
                   )}
                 </div>

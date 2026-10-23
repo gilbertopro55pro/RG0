@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  duplicatedText,
+  scaleTextBox,
   SHAPE_BEHIND_COLOR,
   SHAPE_BEHIND_OPACITY,
   clampGroupDelta,
@@ -342,5 +344,34 @@ describe("snapResizeBox", () => {
   it("leaves the box alone with nothing in reach", () => {
     const b = { xPct: 30, yPct: 30, widthPct: 20.1, heightPct: 20.2 };
     expect(snapResizeBox("se", b, { x: [0, 100], y: [0, 100] }, 1.2)).toEqual({ box: b, guides: [], hitX: undefined, hitY: undefined });
+  });
+});
+
+describe("text corner controls", () => {
+  const start = { xPct: 20, yPct: 40, widthPct: 40, heightPct: 10, fontSize: 40 };
+
+  it("scales the letters and the box together around the center", () => {
+    const r = scaleTextBox(start, 80);
+    expect(r).toEqual({ xPct: 0, yPct: 35, widthPct: 80, heightPct: 20, fontSize: 80 });
+    expect(r.xPct + r.widthPct / 2).toBe(40);
+    expect(r.yPct + r.heightPct / 2).toBe(45);
+  });
+
+  it("keeps the font in the slider's range and the box with it", () => {
+    const big = scaleTextBox(start, 1000);
+    expect(big.fontSize).toBe(250);
+    expect(big.widthPct).toBeCloseTo(250);
+    const small = scaleTextBox(start, 0.5);
+    expect(small.fontSize).toBe(2);
+    expect(small.heightPct).toBeCloseTo(0.5);
+  });
+
+  it("copies a text a little aside, on the page and unlocked", () => {
+    const el = { id: "t1", type: "text" as const, text: "שלום", xPct: 10, yPct: 20, widthPct: 30, heightPct: 10, fontSize: 40, color: "#000", align: "center" as const, rotation: 15, locked: true };
+    const copy = duplicatedText(el, "t2");
+    expect(copy).toMatchObject({ id: "t2", text: "שלום", xPct: 13, yPct: 23, rotation: 15, locked: false });
+    const edge = duplicatedText({ ...el, xPct: 69, yPct: 89 }, "t3");
+    expect(edge.xPct).toBe(70);
+    expect(edge.yPct).toBe(90);
   });
 });

@@ -33,6 +33,11 @@ export type QrPanelProps = {
   onAdd: (el: MagnetFrameQrElement) => void;
   onChange: (id: string, patch: Partial<MagnetFrameQrElement>) => void;
   actions: ReactNode | null; // duplicate / layers / lock / delete for the selected QR
+  // The codes already on the frame, to pick or remove one without finding it on the frame first
+  // (owner, 2026-10-23: "תאפשר הסרת קוד ה-QR מהמסגרת אם המשתמש לא מעוניין בו").
+  existing: MagnetFrameQrElement[];
+  onSelect: (id: string) => void;
+  onRemove: (id: string) => void;
   // The frame's mat, to place a new code on the bottom mat (missing = the default mat).
   mat?: Pick<MagnetFrameSettings, "borderRatioPct" | "bottomBorderRatioPct">;
 };
@@ -149,7 +154,9 @@ function UrlInput({ value, onChange }: { value: string; onChange: (v: string) =>
   );
 }
 
-export default function QrPanel({ selected, eventId, portfolioSlug, sizeKey, orientation, onAdd, onChange, actions, mat }: QrPanelProps) {
+const TARGET_LABEL: Record<Target, string> = { gallery: "לגלריה של האירוע", portfolio: "לפורטפוליו", url: "לקישור" };
+
+export default function QrPanel({ selected, eventId, portfolioSlug, sizeKey, orientation, onAdd, onChange, actions, mat, existing, onSelect, onRemove }: QrPanelProps) {
   const t = useT();
   const firstAvailable: Target = eventId ? "gallery" : portfolioSlug ? "portfolio" : "url";
   const [newTarget, setNewTarget] = useState<Target>(firstAvailable);
@@ -179,6 +186,28 @@ export default function QrPanel({ selected, eventId, portfolioSlug, sizeKey, ori
   return (
     <div className="space-y-3">
       <p className="text-xs text-ink-soft leading-relaxed">{t("האורחים סורקים את הקוד שעל המגנט בטלפון, והוא פותח את מה שבוחרים כאן.")}</p>
+
+      {!selected && existing.length > 0 && (
+        <div className="rounded-xl p-3 bg-chip space-y-2">
+          <div className="text-[11px] font-semibold text-ink-soft">{existing.length > 1 ? t("קודי QR במסגרת") : t("קוד QR במסגרת")}</div>
+          {existing.map((qr) => (
+            <div key={qr.id} className="flex items-center gap-2">
+              <span className="flex-1 min-w-0 truncate text-xs text-ink">{t("קוד QR {target}", { target: t(TARGET_LABEL[qr.target]) })}</span>
+              <button type="button" onClick={() => onSelect(qr.id)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-card border border-line text-ink">
+                {t("עריכה")}
+              </button>
+              <button
+                type="button"
+                onClick={() => onRemove(qr.id)}
+                disabled={qr.locked}
+                className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-card border border-line text-rose disabled:opacity-40"
+              >
+                {t("הסרה מהמסגרת")}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!selected && (
         <div className="space-y-2">
@@ -236,6 +265,14 @@ export default function QrPanel({ selected, eventId, portfolioSlug, sizeKey, ori
           {colorProblem === "low" && <Warning>{t("אין מספיק ניגוד בין הקוד לרקע, וייתכן שהוא לא ייסרק. כדאי קוד כהה יותר או רקע בהיר יותר.")}</Warning>}
 
           {actions}
+          <button
+            type="button"
+            onClick={() => onRemove(selected.id)}
+            disabled={selected.locked}
+            className="w-full rounded-lg px-3 py-2 text-sm font-semibold bg-card border border-line text-rose disabled:opacity-40"
+          >
+            {t("הסרת קוד ה-QR מהמסגרת")}
+          </button>
         </div>
       )}
 

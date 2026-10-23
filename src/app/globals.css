@@ -554,3 +554,15 @@ html.gf-premium:not([data-theme="dark"]) {
   --glow-warm: rgba(196, 156, 84, 0.1);
   --glow-cool: rgba(112, 132, 156, 0.08);
 }
+
+/* The round corner controls of a selected layer (LayerControls.tsx): bigger under a finger. */
+.layer-control {
+  width: 26px;
+  height: 26px;
+}
+@media (hover: none) and (pointer: coarse) {
+  .layer-control {
+    width: 32px;
+    height: 32px;
+  }
+}

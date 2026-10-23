@@ -38,6 +38,7 @@ import {
 import type {
   FrameOrientation,
   MagnetFrameElement,
+  MagnetFrameQrElement,
   MagnetFrameTextElement,
   MagnetFrameDesignRow,
   MagnetFrameSettings,
@@ -46,6 +47,7 @@ import type {
 } from "@/lib/types";
 import MagnetFramePreview, { magnetTextStyle, type MagnetFramePreviewHandle } from "@/components/magnetFrame/MagnetFramePreview";
 import QrPanel from "@/components/magnetFrame/QrPanel";
+import SelectedLayerOverlay from "@/components/magnetFrame/SelectedLayerOverlay";
 import InvitationPalette from "@/components/magnetFrame/InvitationPalette";
 import ClientApprovalBar from "@/components/magnetFrame/ClientApprovalBar";
 import { qrMinSizePct } from "@/lib/magnetQr";
@@ -1145,137 +1147,128 @@ export default function MagnetFrameEditor({
     const interactive = (step === 1) === (orientation === "landscape");
     const list = orientation === "portrait" ? portraitElements : elements;
     const safe = magnetSafeMarginPct(orientation, sizeKey);
-    const handle = "absolute h-3.5 w-3.5 rounded-full border-2 bg-white shadow";
+    const selectedEl = interactive && selectedId ? list.find((x) => x.id === selectedId) : undefined;
+    // The four corner controls (owner, 2026-10-23): delete and duplicate change the design itself,
+    // so like the Delete key they're on the first step only; the second step only places. A code
+    // isn't turned or copied: it gets delete and size.
+    const controls =
+      selectedEl && !selectedEl.locked && editingTextId !== selectedEl.id ? (
+        <SelectedLayerOverlay
+          key={selectedEl.id}
+          el={selectedEl}
+          frameRef={frameRefs[orientation]}
+          active={activeId === selectedEl.id}
+          onDelete={step === 1 ? () => removeElement(selectedEl.id) : undefined}
+          onDuplicate={step === 1 && selectedEl.type !== "qr" ? () => duplicate(selectedEl.id) : undefined}
+          onRotateStart={selectedEl.type !== "qr" ? (e) => startHandle("rotate", orientation, selectedEl, e) : undefined}
+          onScaleStart={(e) => startHandle("resize", orientation, selectedEl, e)}
+        />
+      ) : null;
     return (
-      <MagnetFramePreview
-        ref={frameRefs[orientation]}
-        orientation={orientation}
-        settings={frameSettings}
-        elements={list}
-        customTextureUrl={customTextureUrl}
-        customElementUrls={customElementUrls}
-        photoUrl={samplePhoto?.url ?? null}
-        qrContext={{ eventId, portfolioSlug }}
-        emptyTextLabel={t("טקסט ריק")}
-        className={`touch-none shadow-card ${interactive ? "" : "pointer-events-none"}`}
-        onWidth={orientation === "landscape" ? setLandscapeWidth : undefined}
-        textRef={
-          orientation === "landscape"
-            ? (id, node) => {
-                if (node) textNodes.current.set(id, node);
-                else textNodes.current.delete(id);
-              }
-            : undefined
-        }
-        animate={(el) => activeId !== el.id}
-        elementProps={(el) =>
-          interactive
-            ? {
-                selected: selectedId === el.id,
-                cursor: el.locked ? "pointer" : "grab",
-                onPointerDown: (e) => startMove(orientation, el, e),
-                onDoubleClick:
-                  el.type === "text" && step === 1 && !el.locked
-                    ? (e) => {
-                        e.stopPropagation();
-                        editingOriginal.current = el.text;
-                        setEditingTextId(el.id);
-                      }
-                    : undefined,
-              }
-            : {}
-        }
-        elementExtras={(el) =>
-          interactive && selectedId === el.id && !el.locked && editingTextId !== el.id ? (
+      // The pointer handlers sit on this wrapper, not the frame: a drag that starts on a corner
+      // control (above the frame, see SelectedLayerOverlay) moves on the control, not inside it.
+      <div className="relative" onPointerMove={onFramePointerMove} onPointerUp={endInteraction} onPointerCancel={endInteraction}>
+        <MagnetFramePreview
+          ref={frameRefs[orientation]}
+          orientation={orientation}
+          settings={frameSettings}
+          elements={list}
+          customTextureUrl={customTextureUrl}
+          customElementUrls={customElementUrls}
+          photoUrl={samplePhoto?.url ?? null}
+          qrContext={{ eventId, portfolioSlug }}
+          emptyTextLabel={t("טקסט ריק")}
+          className={`touch-none shadow-card ${interactive ? "" : "pointer-events-none"}`}
+          onWidth={orientation === "landscape" ? setLandscapeWidth : undefined}
+          textRef={
+            orientation === "landscape"
+              ? (id, node) => {
+                  if (node) textNodes.current.set(id, node);
+                  else textNodes.current.delete(id);
+                }
+              : undefined
+          }
+          animate={(el) => activeId !== el.id}
+          elementProps={(el) =>
+            interactive
+              ? {
+                  selected: selectedId === el.id,
+                  cursor: el.locked ? "pointer" : "grab",
+                  onPointerDown: (e) => startMove(orientation, el, e),
+                  onDoubleClick:
+                    el.type === "text" && step === 1 && !el.locked
+                      ? (e) => {
+                          e.stopPropagation();
+                          editingOriginal.current = el.text;
+                          setEditingTextId(el.id);
+                        }
+                      : undefined,
+                }
+              : {}
+          }
+          onClick={() => {
+            setSelectedId(null);
+            setEditingTextId(null);
+          }}
+        >
+          {(scale) => (
             <>
-              <span
-                aria-hidden
-                className="absolute left-1/2 w-px pointer-events-none"
-                style={{ top: -22, height: 18, background: "var(--color-amber-deep)", transform: "translateX(-50%)" }}
-              />
-              <span
-                role="button"
-                aria-label={t("סיבוב")}
-                title={t("סיבוב (Shift: בקפיצות של 15°)")}
-                className={`${handle} left-1/2 cursor-grab`}
-                style={{ top: -30, transform: "translateX(-50%)", borderColor: "var(--color-amber-deep)" }}
-                onPointerDown={(e) => startHandle("rotate", orientation, el, e)}
-              />
-              <span
-                role="button"
-                aria-label={t("שינוי גודל")}
-                title={t("שינוי גודל")}
-                className={`${handle} cursor-nwse-resize`}
-                style={{ right: -9, bottom: -9, borderColor: "var(--color-amber-deep)" }}
-                onPointerDown={(e) => startHandle("resize", orientation, el, e)}
-              />
+              {guides && guides.frame === orientation && guides.x !== null && (
+                <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: `${guides.x}%`, width: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
+              )}
+              {guides && guides.frame === orientation && guides.y !== null && (
+                <div className="absolute left-0 right-0 pointer-events-none" style={{ top: `${guides.y}%`, height: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
+              )}
+              {showPrintGuides && (
+                <div
+                  className="absolute pointer-events-none"
+                  style={{ left: `${safe.xPct}%`, right: `${safe.xPct}%`, top: `${safe.yPct}%`, bottom: `${safe.yPct}%`, border: "1px dashed rgba(122,31,43,0.75)", zIndex: 19 }}
+                />
+              )}
+              {interactive &&
+                editingTextId &&
+                (() => {
+                  const el = list.find((x) => x.id === editingTextId);
+                  if (!el || el.type !== "text") return null;
+                  const style = magnetTextStyle(el, scale);
+                  return (
+                    <input
+                      autoFocus
+                      dir="auto"
+                      value={el.text}
+                      onChange={(e) => updateElement(el.id, { text: e.target.value })}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") setEditingTextId(null);
+                        if (e.key === "Escape") {
+                          updateElement(el.id, { text: editingOriginal.current });
+                          setEditingTextId(null);
+                        }
+                      }}
+                      onBlur={() => setEditingTextId(null)}
+                      className="absolute rounded-md border-2 text-center bg-white/90 outline-none"
+                      style={{
+                        left: `${el.xPct}%`,
+                        top: `${el.yPct}%`,
+                        transform: "translate(-50%, -50%)",
+                        width: "78%",
+                        fontSize: style.fontSize,
+                        fontFamily: style.fontFamily,
+                        fontWeight: style.fontWeight,
+                        fontStyle: style.fontStyle,
+                        color: el.color === "#ffffff" ? "#111111" : el.color,
+                        borderColor: "var(--color-amber-deep)",
+                        zIndex: 30,
+                      }}
+                    />
+                  );
+                })()}
             </>
-          ) : null
-        }
-        onPointerMove={onFramePointerMove}
-        onPointerUp={endInteraction}
-        onPointerCancel={endInteraction}
-        onClick={() => {
-          setSelectedId(null);
-          setEditingTextId(null);
-        }}
-      >
-        {(scale) => (
-          <>
-            {guides && guides.frame === orientation && guides.x !== null && (
-              <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: `${guides.x}%`, width: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
-            )}
-            {guides && guides.frame === orientation && guides.y !== null && (
-              <div className="absolute left-0 right-0 pointer-events-none" style={{ top: `${guides.y}%`, height: 1, background: "var(--color-amber-deep)", boxShadow: "0 0 4px var(--color-amber-deep)", zIndex: 20 }} />
-            )}
-            {showPrintGuides && (
-              <div
-                className="absolute pointer-events-none"
-                style={{ left: `${safe.xPct}%`, right: `${safe.xPct}%`, top: `${safe.yPct}%`, bottom: `${safe.yPct}%`, border: "1px dashed rgba(122,31,43,0.75)", zIndex: 19 }}
-              />
-            )}
-            {interactive &&
-              editingTextId &&
-              (() => {
-                const el = list.find((x) => x.id === editingTextId);
-                if (!el || el.type !== "text") return null;
-                const style = magnetTextStyle(el, scale);
-                return (
-                  <input
-                    autoFocus
-                    dir="auto"
-                    value={el.text}
-                    onChange={(e) => updateElement(el.id, { text: e.target.value })}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") setEditingTextId(null);
-                      if (e.key === "Escape") {
-                        updateElement(el.id, { text: editingOriginal.current });
-                        setEditingTextId(null);
-                      }
-                    }}
-                    onBlur={() => setEditingTextId(null)}
-                    className="absolute rounded-md border-2 text-center bg-white/90 outline-none"
-                    style={{
-                      left: `${el.xPct}%`,
-                      top: `${el.yPct}%`,
-                      transform: "translate(-50%, -50%)",
-                      width: "78%",
-                      fontSize: style.fontSize,
-                      fontFamily: style.fontFamily,
-                      fontWeight: style.fontWeight,
-                      fontStyle: style.fontStyle,
-                      color: el.color === "#ffffff" ? "#111111" : el.color,
-                      borderColor: "var(--color-amber-deep)",
-                      zIndex: 30,
-                    }}
-                  />
-                );
-              })()}
-          </>
-        )}
-      </MagnetFramePreview>
+          )}
+        </MagnetFramePreview>
+        {controls}
+      </div>
     );
   };
 
@@ -1677,6 +1670,9 @@ export default function MagnetFrameEditor({
           onAdd={addElement}
           onChange={(id, patch) => updateElement(id, patch)}
           actions={selected && selected.type === "qr" ? selectionActions(selected, t("מחיקת הקוד")) : null}
+          existing={elements.filter((el): el is MagnetFrameQrElement => el.type === "qr")}
+          onSelect={setSelectedId}
+          onRemove={removeElement}
         />
       );
     if (key === "texture")
