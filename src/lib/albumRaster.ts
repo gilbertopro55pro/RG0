@@ -11,6 +11,7 @@ import { findOrnament } from "@/lib/albumOrnaments";
 import { applyAdjustmentsToRgba, type PhotoAdjustments } from "@/lib/albumAdjustments";
 import { sharpSharpenOptions } from "@/lib/albumSharpen";
 import { textShadowSpecs, type TextShadowSpec } from "@/lib/albumRender";
+import { albumLineBaselines, albumTextLines } from "@/lib/albumTextSizing";
 
 export const DPI = 300;
 
@@ -194,27 +195,32 @@ async function svgTextLayer(
     // like the editor's CSS rotate on the box. Needs heightPx (the box); the cover title band has
     // none and stays upright. Missing/0 = the exact SVG as before.
     rotationDeg?: number;
+    // Album text: a line break starts a new line (albumTextLines). Needs heightPx; without it, or
+    // for a text without a break, the exact SVG as before.
+    multiline?: boolean;
   }
 ): Promise<Buffer> {
-  const { pathsSvg, width, ascentPx, descentPx } = await layoutTextAsSvgPaths(text, opts.fontFamily, opts.fontSizePx, opts.letterSpacingPx);
-  const startX = opts.align === "right" ? opts.xPx + opts.widthPx - width : opts.align === "left" ? opts.xPx : opts.xPx + (opts.widthPx - width) / 2;
+  // Album text breaks into lines only at the photographer's own line breaks (opts.multiline, see
+  // albumTextSizing.ts), each laid out and aligned on its own. The cover title and the magnet export
+  // keep one line, so their SVG is exactly as before.
+  const lineTexts = opts.multiline && opts.heightPx !== undefined ? albumTextLines(text) : [text];
+  const laid = await Promise.all(lineTexts.map((line) => layoutTextAsSvgPaths(line, opts.fontFamily, opts.fontSizePx, opts.letterSpacingPx)));
   // Centered within the box when heightPx is known (see the opts.heightPx comment above) — a
   // one-line box's vertical center sits at boxTop + boxHeight/2, and the baseline sits
   // (ascent-descent)/2 below that (the classic "center the line box" formula for the same reason
   // a browser centers a single line of text inside a flex item with align-items:center). Falls
   // back to the old top-anchored baseline (one fontSize below the box top) when no box height was
-  // given at all.
-  const baselineY = opts.heightPx !== undefined ? opts.yPx + opts.heightPx / 2 + (ascentPx - descentPx) / 2 : opts.yPx + opts.fontSizePx;
+  // given at all. Several lines: the block of lines is centered the same way (albumLineBaselines).
+  const baselines =
+    laid.length > 1 && opts.heightPx !== undefined
+      ? albumLineBaselines(laid.length, opts.fontSizePx, laid[0].ascentPx, laid[0].descentPx).map((b) => opts.yPx + opts.heightPx! / 2 + b)
+      : [opts.heightPx !== undefined ? opts.yPx + opts.heightPx / 2 + (laid[0].ascentPx - laid[0].descentPx) / 2 : opts.yPx + opts.fontSizePx];
   // Faux-bold: stroke each glyph with its own fill color to thicken it uniformly — the fontkit
   // outline pipeline works from a single loaded weight per font file, not a real bold face, so
   // there's no bold glyph outline to switch to. Faux-italic: a uniform skew on the whole glyph
   // group, pivoting around the same baseline-start point the group is already translated to, same
   // reasoning (no italic face loaded to switch to).
   const strokeAttr = opts.bold ? ` stroke="${opts.color}" stroke-width="${(opts.fontSizePx * 0.035).toFixed(2)}" paint-order="stroke fill"` : "";
-  const transform = `translate(${startX},${baselineY})${opts.italic ? " skewX(-12)" : ""}`;
-  const underlineRect = opts.underline
-    ? `<rect x="${startX}" y="${baselineY + opts.fontSizePx * 0.08}" width="${width}" height="${Math.max(1, opts.fontSizePx * 0.055)}" fill="${opts.color}" />`
-    : "";
   const fx = opts.effects;
   // Outline: drawn under the fill at twice the width, so strokeWidth shows outside the letters
   // (same as the editor's -webkit-text-stroke with paint-order: stroke fill).
@@ -222,9 +228,19 @@ async function svgTextLayer(
     fx?.strokeWidth && fx.strokeWidth > 0
       ? ` stroke="${fx.strokeColor ?? "#000000"}" stroke-width="${(fx.strokeWidth * 2 * fx.unitPx).toFixed(2)}" stroke-linejoin="round" paint-order="stroke fill"`
       : strokeAttr;
-  // Each glyph path carries its own tiny font-units scale, which would shrink the outline to nothing;
-  // a non-scaling stroke keeps its width in page pixels.
-  const glyphs = outlineAttr !== strokeAttr ? pathsSvg.replace(/<path /g, '<path vector-effect="non-scaling-stroke" ') : pathsSvg;
+  const lines = laid.map(({ pathsSvg, width }, i) => {
+    const startX = opts.align === "right" ? opts.xPx + opts.widthPx - width : opts.align === "left" ? opts.xPx : opts.xPx + (opts.widthPx - width) / 2;
+    const baselineY = baselines[i];
+    return {
+      transform: `translate(${startX},${baselineY})${opts.italic ? " skewX(-12)" : ""}`,
+      underlineRect: opts.underline
+        ? `<rect x="${startX}" y="${baselineY + opts.fontSizePx * 0.08}" width="${width}" height="${Math.max(1, opts.fontSizePx * 0.055)}" fill="${opts.color}" />`
+        : "",
+      // Each glyph path carries its own tiny font-units scale, which would shrink the outline to
+      // nothing; a non-scaling stroke keeps its width in page pixels.
+      glyphs: outlineAttr !== strokeAttr ? pathsSvg.replace(/<path /g, '<path vector-effect="non-scaling-stroke" ') : pathsSvg,
+    };
+  });
   // The turn wraps everything, the shadow's offset included: a CSS transform on the box turns its
   // text-shadow with it, so a shadow that falls down-right on upright text falls along the turned
   // text's own "down-right". The blur that follows is round, so blurring after the turn is the same.
@@ -233,8 +249,13 @@ async function svgTextLayer(
   const turnClose = turnDeg ? "</g>" : "";
   const svgFor = (fill: string, fillOpacity: number, dx: number, dy: number) =>
     `<svg width="${opts.pageWidthPx}" height="${opts.pageHeightPx}" xmlns="http://www.w3.org/2000/svg">
-${turnOpen}<g transform="translate(${dx},${dy})"><g fill="${fill}" fill-opacity="${fillOpacity}"${fill === opts.color ? outlineAttr : outlineAttr.replace(/stroke="[^"]*"/, `stroke="${fill}" stroke-opacity="${fillOpacity}"`)} transform="${transform}">${glyphs}</g>
-${underlineRect.replace(`fill="${opts.color}"`, `fill="${fill}" fill-opacity="${fillOpacity}"`)}</g>${turnClose}
+${turnOpen}<g transform="translate(${dx},${dy})">${lines
+      .map(
+        ({ transform, underlineRect, glyphs }) =>
+          `<g fill="${fill}" fill-opacity="${fillOpacity}"${fill === opts.color ? outlineAttr : outlineAttr.replace(/stroke="[^"]*"/, `stroke="${fill}" stroke-opacity="${fillOpacity}"`)} transform="${transform}">${glyphs}</g>
+${underlineRect.replace(`fill="${opts.color}"`, `fill="${fill}" fill-opacity="${fillOpacity}"`)}`
+      )
+      .join("")}</g>${turnClose}
 </svg>`;
   const main = await sharp(Buffer.from(svgFor(opts.color, 1, 0, 0))).png().toBuffer();
   if (!fx || fx.shadows.length === 0) return main;
@@ -998,6 +1019,7 @@ export async function renderAlbumPageJpeg({
           fontFamily: el.fontFamily,
           effects: albumTextEffects(el, pageWidthPx),
           rotationDeg: el.rotation,
+          multiline: true,
         });
         composites.push({ input: svg, left: 0, top: 0 });
       } catch {

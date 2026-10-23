@@ -9,6 +9,7 @@ import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsSvgFilter } from "@/lib/albumAdjustments";
 import { sharpenSvgFilter } from "@/lib/albumSharpen";
 import { textRotationTransform } from "@/lib/albumTextRotation";
+import AlbumTextLines, { albumTextBoxAlign } from "@/components/AlbumTextLines";
 
 // Shared, read-only rendering of one album spread — used both in the album page grid
 // (GalleryManageView.tsx) and in the page-editor's own bottom switcher strip
@@ -125,9 +126,7 @@ export default function AlbumSpreadThumbnail({
                 top: `${el.yPct}%`,
                 width: `${el.widthPct}%`,
                 height: `${el.heightPct ?? 15}%`,
-                padding: "0 0.25cqw",
-                justifyContent: el.align === "right" ? "flex-end" : el.align === "left" ? "flex-start" : "center",
-                textAlign: el.align,
+                ...albumTextBoxAlign(el.align),
                 color: el.color,
                 fontSize: `calc(${el.fontSize} / 1600 * 100cqw)`,
                 fontFamily: albumFontFamilyCss(el.fontFamily),
@@ -137,7 +136,7 @@ export default function AlbumSpreadThumbnail({
                 transform: textRotationTransform(el),
               }}
             >
-              <span>{el.text}</span>
+              <AlbumTextLines text={el.text} />
             </div>
           );
         }
@@ -277,7 +276,7 @@ export default function AlbumSpreadThumbnail({
                   />
                 );
               })()}
-            {el.type === "text" && el.text}
+            {el.type === "text" && <span style={{ whiteSpace: "pre-line" }}>{el.text}</span>}
             {hasBorderShadow &&
               !(el.type === "shape" && (el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline")) &&
               !!el.borderWidth && (

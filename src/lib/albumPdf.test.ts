@@ -118,3 +118,20 @@ describe("album PDF text rotation", () => {
     expect(content.indexOf("Q", lastText)).toBeGreaterThan(lastText);
   }, 20000);
 });
+
+// The photographer's own line breaks (2026-10-23): one text run per line, 1.2 font sizes apart,
+// centered as a block on where the one line sits.
+describe("album PDF text lines", () => {
+  // The y of each run drawn in the text's own color (red), shadow and outline copies left out.
+  const mainYs = (content: string) =>
+    [...content.matchAll(/BT\n1 0 0 rg\n[^]*?1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm/g)].map((m) => Number(m[2]));
+
+  it("two lines: two runs 72pt apart (1.2 × 60pt), around the one line's baseline", async () => {
+    const plain = { shadow: 0, strokeWidth: 0 };
+    const [single] = mainYs(await pageContent(text({ ...plain, text: "שלום" })));
+    const ys = mainYs(await pageContent(text({ ...plain, text: "שלום\nעולם" })));
+    expect(ys).toHaveLength(2);
+    expect(ys[0] - ys[1]).toBeCloseTo(72, 4);
+    expect((ys[0] + ys[1]) / 2).toBeCloseTo(single, 4);
+  }, 20000);
+});
