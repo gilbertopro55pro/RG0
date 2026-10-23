@@ -5357,7 +5357,8 @@ export default function AlbumSpreadCanvasEditor({
                     // text would just look muddy).
                     // Shadow, glow and outline as every export draws them (textEffectsCss).
                     ...textEffectsCss(el),
-                    outline: isSelected ? "2px dashed var(--color-amber-deep)" : "none",
+                    // A hairline, as quiet as the corner controls on it (owner, 2026-10-23).
+                    outline: isSelected ? "1px solid color-mix(in srgb, var(--color-amber-deep) 60%, transparent)" : "none",
                     // Around the box's center (the default origin), as every export turns it.
                     transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
                   }}
