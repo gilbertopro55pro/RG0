@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { AdminPhotographerRow } from "@/app/admin/page";
 import { SUBSCRIPTION_PLANS } from "@/lib/stages";
 import AdminPaymentLocks from "@/components/AdminPaymentLocks";
+import AdminDeleteAccountButton from "@/components/AdminDeleteAccountButton";
+import { ADMIN_EMAIL } from "@/lib/admin";
 import ToneTag from "@/components/ToneTag";
 import { subscriptionStatusTone } from "@/lib/statusTones";
 import { getT, getLang } from "@/i18n/server";
@@ -113,6 +115,11 @@ export default async function AdminDashboardView({ photographers }: { photograph
                   <span>{t("מסלול {plan}", { plan: t(SUBSCRIPTION_PLANS[p.plan].label) })}</span>
                   <span className="font-data">{new Date(p.created_at).toLocaleDateString(loc)}</span>
                 </div>
+                {p.email !== ADMIN_EMAIL && (
+                  <div className="flex justify-end mt-2">
+                    <AdminDeleteAccountButton id={p.id} name={p.name} compact />
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -129,6 +136,7 @@ export default async function AdminDashboardView({ photographers }: { photograph
                   <th className="py-2 font-medium">{t("מסלול")}</th>
                   <th className="py-2 font-medium">{t("סטטוס")}</th>
                   <th className="py-2 font-medium">{t("נרשם בתאריך")}</th>
+                  <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -146,6 +154,7 @@ export default async function AdminDashboardView({ photographers }: { photograph
                       </ToneTag>
                     </td>
                     <td className="py-2 text-ink-soft">{new Date(p.created_at).toLocaleDateString(loc)}</td>
+                    <td className="py-2 text-end">{p.email !== ADMIN_EMAIL && <AdminDeleteAccountButton id={p.id} name={p.name} compact />}</td>
                   </tr>
                 ))}
               </tbody>

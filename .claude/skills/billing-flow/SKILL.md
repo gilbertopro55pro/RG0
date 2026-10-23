@@ -330,7 +330,9 @@ trial end**.
 - **What deletion does:**
   1. Removes every storage object under `<bucket>/<photographerId>/`.
   2. Removes the job, export and spread-preview files, and `previews/<galleryId>/` in the previews bucket.
-  3. Deletes the auth user; everything in the DB cascades from `photographers`.
+  3. Deletes the logins of the account's team members (`team_members.id` is their auth user; the
+     cascade only drops the membership), then the account's auth user. Everything in the DB
+     cascades from `photographers`.
   4. Writes a row in `deleted_accounts_log` (no personal data).
   5. Emails the admin.
   - At most 5 deletions per run.
@@ -349,3 +351,21 @@ trial end**.
   - The 4 `keep_account` accounts were untouched, and no other account was deleted or warned.
   - "QA מחיקה (אזהרה ראשונה)" will reach its final warning and deletion over the next cron runs;
     delete it by hand if that's no longer wanted.
+
+## Deleting an account by hand: admin dashboard (since 2026-10-23)
+
+- **Where:** `/admin` › "כל הצלמים", a "מחיקת חשבון" button on every account except the admin's
+  (`AdminDeleteAccountButton`, `api/admin/accounts/[id]`). No SQL Editor needed any more.
+- **The dialog** shows what the account holds (events, galleries, photos, leads, magnet frames, team
+  members). Deleting requires typing the account's email back.
+- **Refused** (`adminDeletionBlocker` in `lib/accountDeletion.ts`, checked again by the server on
+  delete, 409):
+  - the admin;
+  - `keep_account` (the QA accounts);
+  - a `payplus_recurring_uid`: cancel the standing order in PayPlus first;
+  - any `charged` webhook event: an account that ever paid is not deleted from here, so its payment
+    records stay.
+- **What it does:** the same `purgePhotographerAccount` as the 30-day cleanup (files, team members'
+  logins, auth user, `deleted_accounts_log` with `reason = 'admin_deleted'`).
+- **Events and Google Calendar:** deletion doesn't touch the photographer's Google Calendar. Fine for
+  a trial or test account; for anything else, ask the owner first.
