@@ -103,6 +103,18 @@ API returns 403.
   image stays in the browser; median-cut palette → `frame_settings.palette`, shown after the fixed
   swatches in every color row; "התאמת המסגרת לצבעי ההזמנה" sets the mat (100%), the texts and the
   recolorable ornaments. Fonts from the invitation: not done (no reliable way to recognize a font).
+- **Verified live 2026-10-22/23** (test account, deploy 71f6d60):
+  - Two frames with a gallery QR (event with a published gallery / event without one): the exported
+    20×15 PNG decodes (jsQR) to `myframeflow.com/m/<code>`.
+  - With a gallery: `/m/<code>` → 307 `/s/g…` → the gallery, through a `magnet_guests` share link
+    (web quality, all tabs; checked in SQL that it isn't the client's `access_token`).
+  - Without one: → `/m/<code>/info`, "התמונות מהאירוע יעלו לכאן בקרוב" with the studio name and the
+    portfolio link.
+  - Approval: PATCH share → the portal (390px) shows "המגנטים לאירוע" → "אישור העיצוב" → status
+    approved; then a comment → status comment, shown in the editor bar ("הערה מהלקוח").
+  - Both test frames deleted (DELETE 200). The guests' share link of the test gallery stays.
+  - In the cloud environment, Playwright needs `ctx.route` + `route.fetch` (without `maxRedirects: 0`)
+    to open the portal; a direct load timed out and `maxRedirects: 0` gave ERR_TOO_MANY_RETRIES.
 - **A new text goes to a clear spot** (`freeTextSpot`): the bottom mat's middle, else its thirds, the
   top mat, the bottom corners, away from existing elements (a text added to a template used to land
   on its names).
