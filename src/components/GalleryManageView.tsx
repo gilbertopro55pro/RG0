@@ -67,7 +67,6 @@ import SendUpdateButton from "@/components/SendUpdateButton";
 import GalleryPremiumCover from "@/components/GalleryPremiumCover";
 import GalleryCoverFocalPointModal from "@/components/GalleryCoverFocalPointModal";
 import GallerySlideshow from "@/components/GallerySlideshow";
-import { PlayIcon } from "@/components/GalleryStyleIcons";
 import FaceCircle from "@/components/FaceCircle";
 import AlbumEditorGuideModal from "@/components/AlbumEditorGuideModal";
 import AlbumSpreadThumbnail from "@/components/AlbumSpreadThumbnail";
@@ -112,10 +111,13 @@ import { GallerySettingsModal } from "@/components/galleryManage/GallerySettings
 import { UploadCount, UploadPct } from "@/components/galleryManage/UploadProgress";
 import { GridThumb } from "@/components/galleryManage/GridThumb";
 import { DeleteFolderConfirmModal } from "@/components/galleryManage/DeleteFolderConfirmModal";
+import { SlideshowManageModal } from "@/components/galleryManage/SlideshowManageModal";
 import AlbumQualityCheck, { QualityHighlight, QualityPageBadge, useAlbumQualityCheck } from "@/components/galleryManage/AlbumQualityCheck";
 
 // The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
 const ReelBuilder = dynamic(() => import("@/components/ReelBuilder"), { ssr: false });
+// The automatic collage (admin only, 2026-10-23), loaded only when opened.
+const CollageBuilder = dynamic(() => import("@/components/CollageBuilder"), { ssr: false });
 // Photo culling labels for the admin's culling-engine test (app/admin/culling), loaded only when opened.
 const CullingLabelModal = dynamic(() => import("@/components/CullingLabelModal"), { ssr: false });
 
@@ -395,6 +397,7 @@ export default function GalleryManageView({
   const [gridStyleOverride, setGridStyleOverride] = useState(initialGallery.grid_style_override);
   const [slideshowManageOpen, setSlideshowManageOpen] = useState(false);
   const [reelOpen, setReelOpen] = useState(false);
+  const [collageOpen, setCollageOpen] = useState(false);
   const [slideshowPhotoIds, setSlideshowPhotoIds] = useState<Set<string>>(new Set(initialGallery.slideshow_photo_ids));
   const [slideshowPreviewOpen, setSlideshowPreviewOpen] = useState(false);
   const [albumManageOpen, setAlbumManageOpen] = useState(false);
@@ -1187,6 +1190,13 @@ export default function GalleryManageView({
   const openAutoDesign = async () => {
     setAutoDesignOpen(true);
     if (!eventId) return;
+    const { data } = await supabase.from("events").select("event_type").eq("id", eventId).maybeSingle<{ event_type: string | null }>();
+    setAutoDesignEventType(data?.event_type ?? null);
+  };
+  // The collage decides who's in it by the event's kind, from the event type like the auto design.
+  const openCollage = async () => {
+    setCollageOpen(true);
+    if (!eventId || autoDesignEventType) return;
     const { data } = await supabase.from("events").select("event_type").eq("id", eventId).maybeSingle<{ event_type: string | null }>();
     setAutoDesignEventType(data?.event_type ?? null);
   };
@@ -3056,6 +3066,8 @@ export default function GalleryManageView({
     },
     // Reels for Instagram / TikTok / Facebook — admin only while it's polished (2026-10-07).
     ...(photographerEmail === ADMIN_EMAIL && photos.length > 0 ? [{ key: "reels", label: t("רילס"), active: reelOpen, onClick: () => setReelOpen(true) }] : []),
+    // The automatic collage of the event's main figures — admin only while it's polished (2026-10-23).
+    ...(photographerEmail === ADMIN_EMAIL && photos.length > 0 ? [{ key: "collage", label: t("קולאז'"), active: collageOpen, onClick: openCollage }] : []),
     // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
     ...(photos.length > 0 && nonBasicTierAllowed
       ? [{ key: "album", label: t("עיצוב אלבום"), active: albumManageOpen, onClick: openAlbumManage }]
@@ -4784,84 +4796,35 @@ export default function GalleryManageView({
           onClose={() => setReelOpen(false)}
         />
       )}
+      {collageOpen && (
+        <CollageBuilder
+          galleryId={gallery.id}
+          galleryTitle={gallery.title}
+          eventType={autoDesignEventType}
+          photos={photos.map((p) => ({
+            id: p.id,
+            storage_path: p.storage_path,
+            is_favorite: !!p.is_favorite,
+            preview_aspect_ratio: p.preview_aspect_ratio,
+            folder_id: p.folder_id,
+            culling_status: p.culling_status,
+            thumbUrl: p.previewUrl ?? p.url,
+          }))}
+          folders={folders}
+          onClose={() => setCollageOpen(false)}
+        />
+      )}
       {slideshowManageOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-          style={{ background: "rgba(28, 27, 25, 0.7)" }}
-          onClick={() => setSlideshowManageOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-3xl p-5 bg-paper shadow-sheet max-h-[85vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-bold font-display mb-4">{t("מצגת תמונות")}</h2>
-            <p className="text-xs text-ink-soft mb-3.5">
-              {t("בוחרים אילו תמונות ייכנסו למצגת ללקוח, היא תוצג במסך מלא עם אפקטים רנדומליים.")}
-            </p>
-
-            <div className="flex items-center justify-between mb-2.5">
-              <p className="text-xs text-ink-soft">{t("בחירת תמונות")}</p>
-              {slideshowPhotoIds.size > 0 && (
-                <button
-                  onClick={() => setSlideshowPreviewOpen(true)}
-                  aria-label={t("תצוגה מקדימה של המצגת")}
-                  title={t("תצוגה מקדימה")}
-                  className={`h-8 w-8 rounded-full flex items-center justify-center bg-amber-deep text-white ${BTN_PRESS}`}
-                >
-                  <PlayIcon />
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-4 gap-2 mb-2.5">
-              {photos.map((p) => {
-                const active = slideshowPhotoIds.has(p.id);
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => toggleSlideshowPhoto(p.id)}
-                    className="relative aspect-square rounded-lg overflow-hidden"
-                    style={{
-                      boxShadow: active
-                        ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)"
-                        : "0 0 0 1px var(--color-line)",
-                    }}
-                  >
-                    {/* A small thumbnail, never the original: 150+ full-size photos in this
-                        grid ran an iPhone out of memory, and the page reloaded on the next tap. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.previewUrl ?? optimizedImageUrl(p.url, 256)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
-                    {active && (
-                      <span
-                        className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"
-                        style={{ background: "var(--color-amber-deep)", color: "var(--color-on-accent)" }}
-                      >
-                        ✓
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-[11px] text-ink-soft mb-5">{t("{n} תמונות נבחרו", { n: slideshowPhotoIds.size })}</p>
-
-            {error && <p className="text-xs text-rose mb-2.5">{error}</p>}
-            <div className="flex gap-2">
-              <button
-                onClick={saveSlideshow}
-                disabled={savingSlideshow}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60"
-              >
-                {savingSlideshow ? t("שומר...") : t("שמירה")}
-              </button>
-              <button
-                onClick={() => setSlideshowManageOpen(false)}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft"
-              >
-                {t("ביטול")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <SlideshowManageModal
+          photos={photos}
+          selected={slideshowPhotoIds}
+          onToggle={toggleSlideshowPhoto}
+          onPreview={() => setSlideshowPreviewOpen(true)}
+          error={error}
+          saving={savingSlideshow}
+          onSave={saveSlideshow}
+          onClose={() => setSlideshowManageOpen(false)}
+        />
       )}
 
       {slideshowPreviewOpen && (

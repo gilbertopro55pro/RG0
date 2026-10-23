@@ -960,6 +960,17 @@ export function tabRoles(names: string[]): TabRole[] {
   return roles;
 }
 
+// Every tab of the event's owners, in the tabs' order: each tab named for them ("חתן", "כלה", "הזוג",
+// a wedding often has all three), or else the one tabRoles infers (the tab right before the family's).
+// Empty when no tab is theirs. The auto collage takes its photos from these (lib/collage/pick.ts).
+export function ownersTabIndexes(names: string[]): number[] {
+  const labels = names.map(tabLabel);
+  const named = labels.flatMap((l, i) => (OWNERS_RE.test(l) && !FAMILY_RE.test(l) && !ATMOSPHERE_RE.test(l) ? [i] : []));
+  if (named.length > 0) return named;
+  const inferred = tabRoles(names).indexOf("owners");
+  return inferred >= 0 ? [inferred] : [];
+}
+
 // Whether the book follows the tabs: the photos are sorted into two tabs or more, nearly all of them
 // (a few photos left outside the tabs go after the stages).
 export function followsTabs(photos: AutoPhoto[]): boolean {
