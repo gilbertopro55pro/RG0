@@ -39,12 +39,12 @@ export default function SelectedLayerOverlay({ el, frameRef, active, ...handlers
 
   if (!size) return null;
   const rotation = el.rotation ?? 0;
-  // The selection outline sits this far outside the element (MagnetFramePreview's outlineOffset),
-  // plus half its 2px width: the controls go on its corners.
+  // The selection outline sits this far outside the element (MagnetFramePreview's outlineOffset,
+  // plus its 1px line): the controls go on its corners.
   const inset = el.type === "text" ? 5 : 4;
   // A small text (a date under the names, a phone screen) keeps its controls apart and off each
   // other: the box is at least this many px on each side, around the element's center.
-  const MIN_BOX = 40;
+  const MIN_BOX = 30;
   return (
     <div
       className="absolute pointer-events-none"

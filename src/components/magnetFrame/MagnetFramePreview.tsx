@@ -214,7 +214,8 @@ const MagnetFramePreview = forwardRef<MagnetFramePreviewHandle, Props>(function 
         elements.map((el) => {
           const props = elementProps?.(el) ?? {};
           const smooth = animate ? animate(el) : false;
-          const outline = props.selected ? "2px dashed var(--color-amber-deep)" : "none";
+          // A hairline, as quiet as the corner controls on it (owner, 2026-10-23).
+          const outline = props.selected ? "1px solid color-mix(in srgb, var(--color-amber-deep) 60%, transparent)" : "none";
           if (el.type === "text") {
             return (
               <div

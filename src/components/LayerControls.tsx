@@ -86,10 +86,12 @@ function Control({
         onClick?.();
       }}
       onDoubleClick={(e) => e.stopPropagation()}
-      className="layer-control pointer-events-auto absolute z-40 flex items-center justify-center rounded-full shadow-md select-none touch-none"
-      style={{ ...style, transform: `translate(${style.left !== undefined ? "-50%" : "50%"}, ${style.top !== undefined ? "-50%" : "50%"})`, background: "var(--color-amber-deep)", color: "#fff", cursor }}
+      // Quiet on purpose (owner, 2026-10-23: "הרבה יותר עדינים ולא בולטים"): small, white, a hairline
+      // edge and a grey icon that darkens under the pointer (.layer-control in globals.css).
+      className="layer-control pointer-events-auto absolute z-40 flex items-center justify-center rounded-full select-none touch-none"
+      style={{ ...style, transform: `translate(${style.left !== undefined ? "-50%" : "50%"}, ${style.top !== undefined ? "-50%" : "50%"})`, cursor }}
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ width: "62%", height: "62%", transform: upright ? `rotate(${-upright}deg)` : undefined }}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ width: "64%", height: "64%", transform: upright ? `rotate(${-upright}deg)` : undefined }}>
         {children}
       </svg>
     </span>
