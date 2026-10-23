@@ -152,6 +152,22 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   - Thumbnails and client proofing: `textRotationTransform` (`lib/albumTextRotation.ts`).
   - Checked side by side (CSS, JPG, PSD, PDF) at 15° and 90°: same direction and pivot. Upright
     text renders byte-identical to before (`albumRaster.test.ts`, `albumPdf.test.ts`).
+- **Text lines** (since 2026-10-23, owner: a long text wrapped into two lines in the editor and
+  exported as one): a text breaks into lines only at its own "\n" (Shift+Enter in the editor), in
+  every renderer, and never by the box's width. Shared rules in `lib/albumTextSizing.ts`
+  (`albumTextLines`, `albumLineBaselines`, `ALBUM_TEXT_LINE_HEIGHT` = 1.2).
+  - Editor, thumbnails and client proofing: `AlbumTextLines` (`white-space: pre`, one block per
+    line with its own `dir`) inside a box placed by `albumTextBoxAlign`. The box is `direction:
+    ltr` on purpose: on an RTL page a flex row's `flex-end` is the LEFT side, so right-aligned text
+    showed on the left in the Hebrew editor and the portal, and on the right in every export. The
+    box has no padding (the editor's `px-1` put right/left text 4px in from the export).
+  - JPG/PSD: `svgTextLayer(..., { multiline: true })` lays out each line and centers the block;
+    the magnet export and the cover title band pass no `multiline` and stay one line. PDF:
+    `drawTextElement` draws one run per line.
+  - A text with more lines grows its box about its middle (`grownTextBox`).
+  - Checked: editor (real Heebo files) vs `svgTextLayer` at the same size, 4 texts (right, left,
+    center overflowing a narrow box, rotated 30°): every line within 1px. One-line text exports
+    byte-identical to before (JPG/PSD layer and the PDF's content stream, compared with `main`).
 - **PDF page = the album's real size** (since 2026-09-24). Pages are drawn 1600 "design points"
   wide with the height following the album's proportions, then each new page is scaled with
   `page.scale` to its physical cm size (a 30×20 album gives 30.0×20.0 cm pages). Before that,

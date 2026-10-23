@@ -11,6 +11,31 @@ export { changesFor, type ChangelogEntry } from "@/lib/changelogEntry";
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.8",
+    date: "2026-10-23",
+    changes: [
+      "בעורך המגנטים ובעורך האלבום יש עכשיו 4 פקדים קטנים בפינות של שכבה שבחרתם: מחיקה, שכפול (+1), סיבוב חלק, והגדלה או הקטנה",
+      "טקסט באלבום אפשר עכשיו לסובב. הסיבוב יוצא זהה בתצוגה ללקוח ובכל הייצואים (PDF, JPG, PSD)",
+      "טקסט באלבום יוצא בייצוא בדיוק כמו בעורך: שורה חדשה רק איפה שלחצתם Shift+Enter, וטקסט ארוך כבר לא נשבר בעורך לשתי שורות כשבקובץ הוא יוצא בשורה אחת. גם טקסט מיושר לימין או לשמאל מופיע בעורך באותו צד כמו בקובץ",
+      "אפשר להסיר קוד QR ממסגרת המגנט: בפקד X על הקוד, או בלשונית \"קוד QR\"",
+      "כשלקוח מאשר את עיצוב המגנט בפורטל או משאיר הערה, מגיעה אליכם גם התראה לטלפון",
+    ],
+    en: [
+      "In the magnet editor and the album editor, a layer you select now has 4 small controls on its corners: delete, duplicate (+1), smooth rotate, and make it bigger or smaller",
+      "You can now rotate album text. The rotation comes out the same in the client's view and in every export (PDF, JPG, PSD)",
+      "Album text exports exactly as it looks in the editor: a new line only where you pressed Shift+Enter, and long text no longer wraps onto two lines in the editor while the file shows one line. Text aligned right or left also sits on the same side in the editor as in the file",
+      "You can remove a QR code from a magnet frame: with the X control on the code, or in the \"QR code\" tab",
+      "When a client approves the magnet design in the portal or leaves a comment, you also get a phone notification",
+    ],
+    ru: [
+      "В редакторе магнитов и в редакторе альбома у выбранного слоя теперь есть 4 небольших элемента управления по углам: удаление, дублирование (+1), плавный поворот, увеличение или уменьшение",
+      "Текст в альбоме теперь можно поворачивать. Поворот выглядит одинаково в просмотре клиента и во всех экспортах (PDF, JPG, PSD)",
+      "Текст в альбоме экспортируется точно так же, как в редакторе: новая строка только там, где вы нажали Shift+Enter, и длинный текст больше не переносится в редакторе на две строки, когда в файле он выходит в одну. Текст, выровненный по правому или левому краю, тоже стоит в редакторе с той же стороны, что и в файле",
+      "QR-код можно убрать с рамки магнита: элементом X на коде или на вкладке «QR-код»",
+      "Когда клиент утверждает дизайн магнита в портале или оставляет комментарий, вы также получаете уведомление на телефон",
+    ],
+  },
+  {
     version: "2.12.7",
     date: "2026-10-22",
     changes: [

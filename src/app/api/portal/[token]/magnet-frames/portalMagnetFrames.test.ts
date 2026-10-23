@@ -36,13 +36,19 @@ function fakeSupabase() {
 
 const mocks = vi.hoisted(() => ({
   rateAllowed: true,
+  mailAllowed: true,
   sendEmail: vi.fn<(m: { to: string; subject: string; text: string }) => Promise<void>>(async () => {}),
+  sendPush: vi.fn<(id: string, p: { title: string; body: string; url: string; tag: string }) => Promise<number>>(async () => 1),
   shortPageUrl: vi.fn(async (path: string) => `https://myframeflow.com/l/abcdefghij?to=${path}`),
   getSignedDownloadUrls: vi.fn(async (bucket: string, paths: string[]) => paths.map((path) => ({ path, signedUrl: `https://r2/${bucket}/${path}?sig` }))),
 }));
 vi.mock("@/lib/supabase/serviceRole", () => ({ createServiceRoleClient: () => fakeSupabase() }));
-vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: async () => ({ allowed: mocks.rateAllowed }), clientIpFrom: () => "1.2.3.4" }));
+vi.mock("@/lib/rateLimit", () => ({
+  checkRateLimit: async (key: string) => ({ allowed: key.startsWith("magnet-approval-mail:") ? mocks.mailAllowed : mocks.rateAllowed }),
+  clientIpFrom: () => "1.2.3.4",
+}));
 vi.mock("@/lib/resend", () => ({ sendEmail: mocks.sendEmail }));
+vi.mock("@/lib/push", () => ({ sendPushToPhotographer: mocks.sendPush }));
 vi.mock("@/lib/notificationEmail", () => ({ notificationEmailFor: (e: string) => e }));
 vi.mock("@/lib/shortFileLinks", () => ({ shortPageUrl: mocks.shortPageUrl, PAGE_LINK_TTL: 1 }));
 vi.mock("@/lib/storage", () => ({ getSignedDownloadUrls: mocks.getSignedDownloadUrls }));
@@ -79,7 +85,9 @@ const has = (op: Op, k: string, v: unknown) => op.filters.some(([o, key, val]) =
 beforeEach(() => {
   ops = [];
   mocks.rateAllowed = true;
+  mocks.mailAllowed = true;
   mocks.sendEmail.mockClear();
+  mocks.sendPush.mockClear();
   mocks.shortPageUrl.mockClear();
   mocks.getSignedDownloadUrls.mockClear();
   design = { ...shared };
@@ -110,6 +118,29 @@ describe("POST /api/portal/<token>/magnet-frames/<id>", () => {
     expect(mail.to).toBe("or@example.com");
     expect(mail.subject).toBe("דנה ויוסי אישרו את עיצוב המגנטים");
     expect(mail.text).toContain(`/magnet-frames/${DESIGN}`);
+    expect(mocks.sendPush).toHaveBeenCalledWith(PHOTOGRAPHER, { title: "דנה ויוסי אישרו את עיצוב המגנטים", body: "מגנטים לחתונה", url: `/magnet-frames/${DESIGN}`, tag: `magnet-${DESIGN}` });
+  });
+
+  it("sends the phone notification in the photographer's language, the comment shortened", async () => {
+    respond = ((orig) => (op: Op) =>
+      op.table === "events" ? { data: { id: EVENT, client_name: "Dana & Yossi", photographer_id: PHOTOGRAPHER, photographers: { name: "Or", email: "or@example.com", ui_lang: "en" } }, error: null } : orig(op))(respond);
+    design = { ...shared, name: "  " };
+    await post({ action: "comment", text: "א".repeat(200) });
+    const [, push] = mocks.sendPush.mock.calls[0];
+    expect(push.title).toBe("Comment on the magnet design | Dana & Yossi");
+    expect(push.body).toBe(`${"א".repeat(140)}…`);
+    expect(push.tag).toBe(`magnet-${DESIGN}`);
+    mocks.sendPush.mockClear();
+    design = { ...shared, name: null as unknown as string };
+    await post({ action: "approve" });
+    expect(mocks.sendPush.mock.calls[0][1]).toMatchObject({ title: "Dana & Yossi approved the magnet design", body: "Untitled frame" });
+  });
+
+  it("notifies the phone on every answer, past the email limit too", async () => {
+    mocks.mailAllowed = false;
+    await post({ action: "comment", text: "להגדיל" });
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.sendPush).toHaveBeenCalledTimes(1);
   });
 
   it("does nothing on a second approval of the same design", async () => {
@@ -118,6 +149,7 @@ describe("POST /api/portal/<token>/magnet-frames/<id>", () => {
     expect(await res.json()).toMatchObject({ ok: true, status: "approved", approvedAt: "2026-10-21T12:00:00Z" });
     expect(writes()).toEqual([]);
     expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.sendPush).not.toHaveBeenCalled();
   });
 
   it("approves again a design changed after the approval", async () => {

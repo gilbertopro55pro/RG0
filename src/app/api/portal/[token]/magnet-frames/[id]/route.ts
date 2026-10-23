@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { sendEmail } from "@/lib/resend";
+import { sendPushToPhotographer } from "@/lib/push";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { photographerLang } from "@/lib/clientLang";
 import { PAGE_LINK_TTL, shortPageUrl } from "@/lib/shortFileLinks";
@@ -20,8 +21,8 @@ type DesignPick = MagnetApprovalFields & { id: string; name: string | null; even
 // The client approves a magnet frame in the portal, or leaves a comment (stage 3, owner 2026-10-22).
 // Anonymous: the event comes from the portal token, and only a frame of that event that the
 // photographer shared can be touched. A comment means changes are wanted, so it drops an approval.
-// The photographer gets a line in the event's log and an email (no phone notification: a new push
-// type needs the owner's approval).
+// The photographer gets a line in the event's log, a phone notification (owner, 2026-10-23) and an
+// email.
 export async function POST(request: Request, { params }: { params: Promise<{ token: string; id: string }> }) {
   const { token, id } = await params;
   // Each answer emails the photographer; a ceiling per device stops a flood (like album comments).
@@ -90,6 +91,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         : `${event.client_name} השאירו הערה על עיצוב המגנטים${frameName}: ${action.text.length > 300 ? `${action.text.slice(0, 300)}…` : action.text}`,
     is_client_action: true,
   });
+  // Every answer, the latest replacing the one before on the phone (one tag per frame).
+  await pushPhotographer(event, design, action.action === "approve" ? null : action.text);
   // At most 3 emails per frame in 10 minutes, however many answers come in (the log line is always written).
   const { allowed: mailAllowed } = await checkRateLimit(`magnet-approval-mail:${design.id}`, { maxRequests: 3, windowSeconds: 600 });
   if (mailAllowed) await emailPhotographer(event, design, action.action === "approve" ? null : action.text);
@@ -100,6 +103,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 function answer(f: MagnetApprovalFields) {
   const status = magnetApprovalStatus(f);
   return { ok: true, status, approvedAt: f.client_approved_at, comment: f.client_comment, commentAt: f.client_comment_at };
+}
+
+// In the photographer's language: who answered, and the frame's name or the comment. Opens the frame
+// in the editor. sendPushToPhotographer never throws.
+async function pushPhotographer(event: PortalEvent, design: DesignPick, comment: string | null) {
+  const t = makeT(messagesFor(photographerLang(event.photographers?.ui_lang)));
+  const vars = { client: event.client_name, frame: design.name?.trim() || t("מסגרת ללא שם") };
+  await sendPushToPhotographer(event.photographer_id, {
+    title: comment === null ? t("{client} אישרו את עיצוב המגנטים", vars) : t("הערה על עיצוב המגנטים | {client}", vars),
+    body: comment === null ? vars.frame : comment.length > 140 ? `${comment.slice(0, 140)}…` : comment,
+    url: `/magnet-frames/${design.id}`,
+    tag: `magnet-${design.id}`,
+  });
 }
 
 // In the photographer's language, with a short link to the frame in the editor.

@@ -102,7 +102,8 @@ API returns 403.
     (PATCH `shareWithClient`). Status chips: waiting / approved / comment / changed after approval.
   - Client: a "המגנטים לאירוע" card in the portal with the frames, "אישור העיצוב" and "יש לי הערה"
     (`POST /api/portal/<token>/magnet-frames/<id>`). A comment clears the approval. The photographer
-    gets an event-log line and an email. **No push notification** (a new push type needs the owner).
+    gets an event-log line, a phone notification (owner approved 2026-10-23: every answer, one tag
+    per frame `magnet-<id>`, opens the editor) and an email (at most 3 per frame in 10 minutes).
   - Changing a frame's event clears the four client columns.
 - **Colors from the invitation** (`lib/magnetPalette.ts`, `InvitationPalette` in הגדרות מסגרת): the
   image stays in the browser; median-cut palette → `frame_settings.palette`, shown after the fixed
