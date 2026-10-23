@@ -23,6 +23,7 @@ import { downloadObjectBuffer } from "@/lib/storage";
 import { textColorRgb01 } from "@/lib/textColor";
 import { drawAlignedBidiText, drawCenteredBidiText } from "@/lib/pdfText";
 import { getAlbumFontFiles } from "@/lib/albumFontFiles";
+import { textRotationDeg } from "@/lib/albumTextRotation";
 import { ALBUM_BLUR_MAX_PX, coverCropRaw, applyMaskToRaw, ornamentLayerRaw, composeShapeTile } from "@/lib/albumRaster";
 import { findOrnament } from "@/lib/albumOrnaments";
 import { hasAdjustments, applyAdjustmentsToRgba, type PhotoAdjustments } from "@/lib/albumAdjustments";
@@ -257,6 +258,9 @@ function drawPhotoShadow(
 // format regardless of that one page's own physical size.
 // Drawn twice — a shadow pass offset by a couple points, then the real text on top — since pdf-lib
 // has no text-shadow primitive and a flat color alone can vanish against a busy photo background.
+// A turned text (el.rotation) is drawn inside pushFrameRotation around its box, the same transform
+// the photo frames use, so its shadow copies and outline ring turn with it, as with the editor's CSS
+// rotate on the box. Upright text pushes no extra operators, so its PDF stays exactly as before.
 function drawTextElement(
   page: PDFPage,
   el: AlbumTextElement,
@@ -298,6 +302,8 @@ function drawTextElement(
   // points up, so a downward shadow is a negative dy.
   const ring = (radius: number, steps: number) =>
     Array.from({ length: steps }, (_, i) => [Math.cos((i / steps) * 2 * Math.PI) * radius, Math.sin((i / steps) * 2 * Math.PI) * radius] as const);
+  const turnDeg = textRotationDeg(el);
+  if (turnDeg) pushFrameRotation(page, { x: boxX, y: boxTopY - boxHeight, width: boxWidth, height: boxHeight }, turnDeg);
   for (const sh of [...textShadowSpecs(el)].reverse()) {
     const color = rgb(sh.rgb[0] / 255, sh.rgb[1] / 255, sh.rgb[2] / 255);
     const ox = sh.dx * unit;
@@ -312,6 +318,7 @@ function drawTextElement(
     for (const [rx, ry] of ring(radius, Math.max(12, Math.round(radius * 4)))) draw(rx, ry, strokeColor);
   }
   draw(0, 0, mainColor);
+  if (turnDeg) popFrameRotation(page);
 }
 
 export async function generateAlbumPdf({

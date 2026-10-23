@@ -6,6 +6,7 @@ import {
   issuesByPage,
   photoWindow,
   qualityFixPatches,
+  textInkBox,
   undoRecord,
   type QualityInput,
   type QualityIssue,
@@ -366,6 +367,56 @@ describe("text outside the safe margin", () => {
     // 60 letters in a 20%-wide box at 40pt: ~4 lines of 2.5% em × 2 (page aspect) = 20% high, in a 6% box at 4%.
     const long = textEl("t", "א".repeat(60), [30, 4, 20, 6], { align: "center" });
     expect(run([spread("s1", [long])], {}).map((i) => i.params)).toEqual([{ fold: 0 }]);
+  });
+
+  it("checks a turned text by its turned extent", () => {
+    // 30×20 single page, 0.5 cm margin (2.5% of the height). 20 letters at 40pt: 9 cm wide, 0.75 cm
+    // high, centred 3 cm from the top. Upright it's well inside; turned 90° it stands 9 cm tall
+    // around that same point and runs off the top.
+    const album = { width_cm: 30, height_cm: 20, safe_margin_cm: 0.5 };
+    const line = textEl("t", "א".repeat(20), [10, 10, 80, 10]);
+    expect(run([spread("s1", [line])], {}, {}, album)).toEqual([]);
+    expect(run([spread("s1", [{ ...line, rotation: 90 }])], {}, {}, album).map((i) => i.params)).toEqual([{ fold: 0 }]);
+    // A small turn keeps it inside.
+    expect(run([spread("s1", [{ ...line, rotation: 5 }])], {}, {}, album)).toEqual([]);
+  });
+});
+
+describe("textInkBox with a turn", () => {
+  const page = { widthCm: 30, heightCm: 20 };
+  const line = textEl("t", "א".repeat(20), [10, 10, 80, 10]);
+  const cm = (b: { x0: number; y0: number; x1: number; y1: number }) => ({ w: ((b.x1 - b.x0) / 100) * page.widthCm, h: ((b.y1 - b.y0) / 100) * page.heightCm });
+
+  it("no turn (missing, 0 or not a number) is the upright box", () => {
+    const upright = textInkBox(line, page);
+    expect(textInkBox({ ...line, rotation: 0 }, page)).toEqual(upright);
+    expect(textInkBox({ ...line, rotation: Number.NaN }, page)).toEqual(upright);
+  });
+
+  it("turns in cm, not in %: 90° swaps the printed width and height around the box's center", () => {
+    const upright = textInkBox(line, page)!;
+    const turned = textInkBox({ ...line, rotation: 90 }, page)!;
+    expect(cm(turned).w).toBeCloseTo(cm(upright).h, 6);
+    expect(cm(turned).h).toBeCloseTo(cm(upright).w, 6);
+    // Same center: the box's (50%, 15%).
+    expect((turned.x0 + turned.x1) / 2).toBeCloseTo(50, 6);
+    expect((turned.y0 + turned.y1) / 2).toBeCloseTo(15, 6);
+  });
+
+  it("turns clockwise around the box's center, not the ink's", () => {
+    // Left-aligned, the ink runs 3–12 cm across, 3–12 cm left of the box's center (15 cm, 3 cm). A
+    // clockwise quarter turn stands it 3–12 cm above that center: from -9 cm to 0 cm (-45% to 0%),
+    // 0.75 cm wide around x = 15 cm.
+    const left = { ...line, align: "left" as const };
+    const turned = textInkBox({ ...left, rotation: 90 }, page)!;
+    expect(turned.y0).toBeCloseTo(-45, 6);
+    expect(turned.y1).toBeCloseTo(0, 6);
+    expect(turned.x0).toBeCloseTo(50 - 1.25, 6);
+    expect(turned.x1).toBeCloseTo(50 + 1.25, 6);
+    // Counter-clockwise takes it below: 6–15 cm.
+    const back = textInkBox({ ...left, rotation: -90 }, page)!;
+    expect(back.y0).toBeCloseTo(30, 6);
+    expect(back.y1).toBeCloseTo(75, 6);
   });
 });
 

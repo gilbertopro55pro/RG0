@@ -8,6 +8,7 @@ import { maskCssUrl, findMask } from "@/lib/albumMasks";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsSvgFilter } from "@/lib/albumAdjustments";
 import { sharpenSvgFilter } from "@/lib/albumSharpen";
+import { textRotationTransform } from "@/lib/albumTextRotation";
 
 // Shared, read-only rendering of one album spread — used both in the album page grid
 // (GalleryManageView.tsx) and in the page-editor's own bottom switcher strip
@@ -132,6 +133,8 @@ export default function AlbumSpreadThumbnail({
                 fontFamily: albumFontFamilyCss(el.fontFamily),
                 fontWeight: 700,
                 ...textEffectsCss(el),
+                // Around the box's center (the default origin), like the editor.
+                transform: textRotationTransform(el),
               }}
             >
               <span>{el.text}</span>
@@ -140,6 +143,10 @@ export default function AlbumSpreadThumbnail({
         }
         const photo = el.type === "photo" ? photos.find((p) => p.id === el.photoId) : null;
         const hasBorderShadow = el.type === "photo" || el.type === "ornament" || el.type === "shape";
+        // A turned text gets the editor's box height here, so the default origin is the same pivot
+        // (the box's center) as in the editor and the exports, and shows what runs past it. Upright
+        // text keeps its old auto height.
+        const textTurn = el.type === "text" ? textRotationTransform(el) : undefined;
         return (
           <div
             key={el.id}
@@ -148,7 +155,8 @@ export default function AlbumSpreadThumbnail({
               left: `${el.xPct}%`,
               top: `${el.yPct}%`,
               width: `${el.widthPct}%`,
-              height: el.type === "text" ? undefined : `${el.heightPct}%`,
+              height: el.type === "text" ? (textTurn ? `${el.heightPct ?? 15}%` : undefined) : `${el.heightPct}%`,
+              overflow: textTurn ? "visible" : undefined,
               fontSize: el.type === "text" ? `${el.fontSize}px` : undefined,
               color: el.type === "text" ? el.color : undefined,
               textAlign: el.type === "text" ? el.align : undefined,
@@ -174,7 +182,7 @@ export default function AlbumSpreadThumbnail({
                   )
                 : undefined,
               opacity: el.type === "ornament" || el.type === "shape" ? (el.opacity ?? 100) / 100 : undefined,
-              transform: hasBorderShadow && el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+              transform: hasBorderShadow && el.rotation ? `rotate(${el.rotation}deg)` : textTurn,
             }}
           >
             {el.type === "ornament" &&

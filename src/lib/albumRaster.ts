@@ -190,6 +190,10 @@ async function svgTextLayer(
     effects?: { shadows: TextShadowSpec[]; strokeWidth?: number; strokeColor?: string; unitPx: number };
     // Extra px after every letter (see layoutTextAsSvgPaths). Album text has none.
     letterSpacingPx?: number;
+    // Album text's turn (AlbumTextElement.rotation): clockwise degrees around the box's center,
+    // like the editor's CSS rotate on the box. Needs heightPx (the box); the cover title band has
+    // none and stays upright. Missing/0 = the exact SVG as before.
+    rotationDeg?: number;
   }
 ): Promise<Buffer> {
   const { pathsSvg, width, ascentPx, descentPx } = await layoutTextAsSvgPaths(text, opts.fontFamily, opts.fontSizePx, opts.letterSpacingPx);
@@ -221,10 +225,16 @@ async function svgTextLayer(
   // Each glyph path carries its own tiny font-units scale, which would shrink the outline to nothing;
   // a non-scaling stroke keeps its width in page pixels.
   const glyphs = outlineAttr !== strokeAttr ? pathsSvg.replace(/<path /g, '<path vector-effect="non-scaling-stroke" ') : pathsSvg;
+  // The turn wraps everything, the shadow's offset included: a CSS transform on the box turns its
+  // text-shadow with it, so a shadow that falls down-right on upright text falls along the turned
+  // text's own "down-right". The blur that follows is round, so blurring after the turn is the same.
+  const turnDeg = opts.rotationDeg && Number.isFinite(opts.rotationDeg) && opts.heightPx !== undefined ? opts.rotationDeg : 0;
+  const turnOpen = turnDeg ? `<g transform="rotate(${turnDeg} ${opts.xPx + opts.widthPx / 2} ${opts.yPx + (opts.heightPx ?? 0) / 2})">` : "";
+  const turnClose = turnDeg ? "</g>" : "";
   const svgFor = (fill: string, fillOpacity: number, dx: number, dy: number) =>
     `<svg width="${opts.pageWidthPx}" height="${opts.pageHeightPx}" xmlns="http://www.w3.org/2000/svg">
-<g transform="translate(${dx},${dy})"><g fill="${fill}" fill-opacity="${fillOpacity}"${fill === opts.color ? outlineAttr : outlineAttr.replace(/stroke="[^"]*"/, `stroke="${fill}" stroke-opacity="${fillOpacity}"`)} transform="${transform}">${glyphs}</g>
-${underlineRect.replace(`fill="${opts.color}"`, `fill="${fill}" fill-opacity="${fillOpacity}"`)}</g>
+${turnOpen}<g transform="translate(${dx},${dy})"><g fill="${fill}" fill-opacity="${fillOpacity}"${fill === opts.color ? outlineAttr : outlineAttr.replace(/stroke="[^"]*"/, `stroke="${fill}" stroke-opacity="${fillOpacity}"`)} transform="${transform}">${glyphs}</g>
+${underlineRect.replace(`fill="${opts.color}"`, `fill="${fill}" fill-opacity="${fillOpacity}"`)}</g>${turnClose}
 </svg>`;
   const main = await sharp(Buffer.from(svgFor(opts.color, 1, 0, 0))).png().toBuffer();
   if (!fx || fx.shadows.length === 0) return main;
@@ -285,6 +295,7 @@ type ResolvedText = {
   glow?: number;
   strokeWidth?: number;
   strokeColor?: string;
+  rotation?: number;
 };
 type ResolvedOrnament = {
   kind: "ornament";
@@ -352,6 +363,7 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
       glow: el.glow,
       strokeWidth: el.strokeWidth,
       strokeColor: el.strokeColor,
+      rotation: el.rotation,
     }));
 
   if (spread.layout === "custom") {
@@ -452,6 +464,7 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
         glow: el.glow,
         strokeWidth: el.strokeWidth,
         strokeColor: el.strokeColor,
+        rotation: el.rotation,
       };
     });
   }
@@ -984,6 +997,7 @@ export async function renderAlbumPageJpeg({
           pageHeightPx,
           fontFamily: el.fontFamily,
           effects: albumTextEffects(el, pageWidthPx),
+          rotationDeg: el.rotation,
         });
         composites.push({ input: svg, left: 0, top: 0 });
       } catch {

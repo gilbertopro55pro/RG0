@@ -144,6 +144,14 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
 
 ### Known behavior (not bugs, but know them before you answer a user)
 
+- **Rotated text** (since 2026-10-23, `AlbumTextElement.rotation`, set with the album editor's
+  corner control): clockwise degrees around the center of the text box, the whole text with its
+  shadow and outline (as the editor's CSS `rotate` on the box).
+  - JPG/PSD: `svgTextLayer`'s `rotationDeg` wraps the SVG, the shadow's offset included.
+  - PDF: `drawTextElement` inside `pushFrameRotation`.
+  - Thumbnails and client proofing: `textRotationTransform` (`lib/albumTextRotation.ts`).
+  - Checked side by side (CSS, JPG, PSD, PDF) at 15° and 90°: same direction and pivot. Upright
+    text renders byte-identical to before (`albumRaster.test.ts`, `albumPdf.test.ts`).
 - **PDF page = the album's real size** (since 2026-09-24). Pages are drawn 1600 "design points"
   wide with the height following the album's proportions, then each new page is scaled with
   `page.scale` to its physical cm size (a 30×20 album gives 30.0×20.0 cm pages). Before that,
