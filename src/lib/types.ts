@@ -825,6 +825,10 @@ export type AlbumTextElement = {
   // = none. strokeColor defaults to black.
   strokeWidth?: number;
   strokeColor?: string;
+  // Turn in degrees, clockwise (CSS rotate), around the center of the box (xPct/yPct/widthPct/
+  // heightPct ?? 15), the whole text with its shadow and outline, like a CSS transform on the box
+  // (owner, 2026-10-23: rotate handle on a selected text). Missing/0 = upright, as before.
+  rotation?: number;
   locked?: boolean; // see AlbumPhotoElement.locked's own comment
 };
 

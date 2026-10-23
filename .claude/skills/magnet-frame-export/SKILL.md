@@ -50,8 +50,13 @@ API returns 403.
     drag are one step.
   - Snapping while dragging: the frame's middle, the window's edges and middle, the middle of each
     mat strip, other elements' centers; gold guide lines. Alt turns it off.
-  - On the selected element: a corner handle resizes, a top handle rotates (snaps to 45°, Shift =
-    15° steps). Double-click a text edits it in place.
+  - On the selected element, four round corner controls (`LayerControls`, since 2026-10-23): X
+    deletes (top-left), ⇄ resizes (top-right), ↻ rotates (bottom-right; snaps to 45°, Shift = 15°
+    steps), +1 duplicates (bottom-left). A QR code gets X and resize only; X and +1 only on step 1.
+    They're drawn above the frame (`SelectedLayerOverlay`, measured from the element's
+    `data-el-id` node), since the frame clips. Double-click a text edits it in place.
+  - QR tab: "הסרת קוד ה-QR מהמסגרת" for the selected code, and with nothing selected a list of the
+    codes on the frame with "עריכה" / "הסרה מהמסגרת".
   - Duplicate, forward/backward, lock (a locked element doesn't move and can't be deleted), delete.
     Keys: Delete, arrows (Shift ×4), Ctrl+D, Esc.
   - Text: outline (width, color), shadow color, letter spacing, size 10–320.

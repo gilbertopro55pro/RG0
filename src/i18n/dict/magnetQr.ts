@@ -4,6 +4,14 @@ import type { AreaDict } from "@/i18n/types";
 // (the editor's QR tab, QrPanel) and the guests' page it opens (app/m/[code]).
 const dict: AreaDict = {
   en: {
+    "קודי QR במסגרת": "QR codes on the frame",
+    "קוד QR במסגרת": "QR code on the frame",
+    "קוד QR {target}": "QR code {target}",
+    "לגלריה של האירוע": "to the event gallery",
+    "לפורטפוליו": "to the portfolio",
+    "לקישור": "to a link",
+    "הסרה מהמסגרת": "Remove from frame",
+    "הסרת קוד ה-QR מהמסגרת": "Remove the QR code from the frame",
     // The editor's QR tab
     "האורחים סורקים את הקוד שעל המגנט בטלפון, והוא פותח את מה שבוחרים כאן.": "Guests scan the code on the magnet with their phone, and it opens what you choose here.",
     "התמונות מהאירוע, לאורחים": "The event's photos, for guests",
@@ -39,6 +47,14 @@ const dict: AreaDict = {
     "לתיק העבודות": "See the portfolio",
   },
   ru: {
+    "קודי QR במסגרת": "QR-коды на рамке",
+    "קוד QR במסגרת": "QR-код на рамке",
+    "קוד QR {target}": "QR-код {target}",
+    "לגלריה של האירוע": "на галерею события",
+    "לפורטפוליו": "на портфолио",
+    "לקישור": "на ссылку",
+    "הסרה מהמסגרת": "Убрать с рамки",
+    "הסרת קוד ה-QR מהמסגרת": "Убрать QR-код с рамки",
     // The editor's QR tab
     "האורחים סורקים את הקוד שעל המגנט בטלפון, והוא פותח את מה שבוחרים כאן.": "Гости сканируют код на магните телефоном, и он открывает то, что вы выберете здесь.",
     "התמונות מהאירוע, לאורחים": "Фото с мероприятия, для гостей",

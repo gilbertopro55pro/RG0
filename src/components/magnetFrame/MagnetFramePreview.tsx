@@ -219,6 +219,7 @@ const MagnetFramePreview = forwardRef<MagnetFramePreviewHandle, Props>(function 
             return (
               <div
                 key={el.id}
+                data-el-id={el.id}
                 ref={textRef ? (node) => textRef(el.id, node) : undefined}
                 className="absolute whitespace-nowrap"
                 style={{
@@ -246,6 +247,7 @@ const MagnetFramePreview = forwardRef<MagnetFramePreviewHandle, Props>(function 
             return (
               <div
                 key={el.id}
+                data-el-id={el.id}
                 className="absolute"
                 style={{
                   left: `${el.xPct}%`,
@@ -273,6 +275,7 @@ const MagnetFramePreview = forwardRef<MagnetFramePreviewHandle, Props>(function 
           return (
             <div
               key={el.id}
+              data-el-id={el.id}
               className="absolute"
               style={{
                 left: `${el.xPct}%`,
