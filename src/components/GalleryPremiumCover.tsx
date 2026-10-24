@@ -1,8 +1,11 @@
+import GalleryCoverRotator from "@/components/GalleryCoverRotator";
+import type { CoverRotationPhoto } from "@/lib/galleryCoverRotation";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 
 // The "premium" theme's cover (coverStyle: "fullbleed"): the cover photo fills the first screen,
 // with the title and date set low over a soft scrim. It is the only bold moment of the page and
-// its only unprompted motion: the photo settles from a slight zoom once, on load.
+// its only unprompted motion: the photo settles from a slight zoom once, on load, and (page only,
+// 2026-10-24) dissolves into the event's main figures every few seconds (GalleryCoverRotator).
 // variant "preview" is the same composition shrunk into a box, for the design settings' preview.
 // variant "manage" is the same cover at the top of the photographer's own gallery screen, a little
 // shorter so the gallery's bar shows below it on the first screen.
@@ -19,6 +22,7 @@ export default function GalleryPremiumCover({
   variant = "page",
   textPosition = "below",
   shape = "rectangle",
+  rotation = null,
 }: {
   photoUrl: string | null;
   title: string;
@@ -38,6 +42,8 @@ export default function GalleryPremiumCover({
   // "circle" = the photo framed in that shape over a blurred copy of itself.
   textPosition?: string;
   shape?: string;
+  // The photos the page's cover takes turns with, the cover first (lib/galleryCoverRotation.ts).
+  rotation?: CoverRotationPhoto[] | null;
 }) {
   const isPage = variant === "page";
   const isManage = variant === "manage";
@@ -47,6 +53,7 @@ export default function GalleryPremiumCover({
       : undefined;
 
   const framed = shape === "square" || shape === "circle";
+  const rotates = isPage && !!rotation && rotation.length > 1;
   const isBanner = shape === "banner";
   const pos = textPosition === "above" || textPosition === "center-left" || textPosition === "center-right" ? textPosition : "below";
   const side = pos === "center-left" ? "left" : pos === "center-right" ? "right" : null;
@@ -101,7 +108,18 @@ export default function GalleryPremiumCover({
           @media (prefers-reduced-motion: reduce) { .gt-premium-cover .gt-cover-img { animation: none; } }
         `}</style>
       )}
-      {photoUrl && (
+      {photoUrl && rotates && (
+        <GalleryCoverRotator
+          photos={rotation ?? []}
+          sizes="100vw"
+          imgClassName="gt-cover-img"
+          imgStyle={framed ? { filter: "blur(26px) brightness(0.72)", transform: "scale(1.12)" } : undefined}
+          framed={framed ? { style: frameStyle, sizes: "80vh" } : null}
+          fixedOrientation={framed ? "any" : undefined}
+          priority
+        />
+      )}
+      {photoUrl && !rotates && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={photoUrl}
@@ -116,7 +134,7 @@ export default function GalleryPremiumCover({
           }}
         />
       )}
-      {photoUrl && framed && (
+      {photoUrl && framed && !rotates && (
         <div className="absolute overflow-hidden" style={frameStyle}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={photoUrl} srcSet={srcSet} sizes={srcSet ? "80vh" : undefined} alt="" className="h-full w-full object-cover" style={{ objectPosition: `${focalX}% ${focalY}%` }} />

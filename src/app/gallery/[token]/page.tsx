@@ -28,6 +28,9 @@ import { dateLocale, type Lang } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 import { photoInScope, resolveGalleryToken } from "@/lib/galleryAccess";
+import { detectEventKind } from "@/lib/albumAuto/planner";
+import { collageSource, faceSample, type PhotoFacesFound, type PickablePhoto } from "@/lib/collage/pick";
+import { coverRotationIds, ROTATION_FOCAL, type CoverRotationPhoto } from "@/lib/galleryCoverRotation";
 
 // The client's language for this gallery (UI languages phase 2): the event's client_lang, gated by
 // clientLangFor (Hebrew for every non-admin photographer). A gallery with no event stays Hebrew.
@@ -93,6 +96,53 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
   };
 }
 
+// The photos the cover takes turns with (lib/galleryCoverRotation.ts): the chosen cover, then the
+// event's main figures from what this link shows. Without an owners' tab, the gallery's saved face
+// detection of a sample tells who they are; without that, the cover stays still (null).
+async function coverRotationFor(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  gallery: GalleryRow,
+  eventType: string | null,
+  coverId: string,
+  photos: (GalleryPhotoRow & { url: string })[],
+  folders: GalleryFolderRow[]
+): Promise<CoverRotationPhoto[] | null> {
+  if (photos.length < 2) return null;
+  const pickable: PickablePhoto[] = photos.map((p) => ({ id: p.id, favorite: p.is_favorite, folderId: p.folder_id }));
+  const source = collageSource(detectEventKind(gallery.title ?? "", eventType), folders, pickable);
+  let found: PhotoFacesFound[] | null = null;
+  if (source.mode === "faces") {
+    const sample = faceSample(pickable, 60);
+    const { data } = await supabase
+      .from("gallery_photo_faces")
+      .select("photo_id, box_x, box_y, box_width, box_height, descriptor")
+      .eq("gallery_id", gallery.id)
+      .in("photo_id", sample)
+      .returns<{ photo_id: string; box_x: number; box_y: number; box_width: number; box_height: number; descriptor: number[] | null }[]>();
+    const byPhoto = new Map<string, PhotoFacesFound>();
+    for (const r of data ?? []) {
+      if (!Array.isArray(r.descriptor)) continue;
+      const entry = byPhoto.get(r.photo_id) ?? { photoId: r.photo_id, faces: [] };
+      entry.faces.push({ descriptor: r.descriptor.map(Number), box: { x: r.box_x, y: r.box_y, width: r.box_width, height: r.box_height } });
+      byPhoto.set(r.photo_id, entry);
+    }
+    // Like the collage: a saved detection counts from 20 photos with faces.
+    found = byPhoto.size >= 20 ? sample.filter((id) => byPhoto.has(id)).map((id) => byPhoto.get(id)!) : null;
+  }
+  const ids = coverRotationIds({ coverId, source, photos: pickable, folders, found });
+  if (ids.length < 2) return null;
+  const byId = new Map(photos.map((p) => [p.id, p]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((p): p is GalleryPhotoRow & { url: string } => !!p && !!p.url)
+    .map((p) => ({
+      url: p.url,
+      aspect: p.preview_aspect_ratio,
+      focalX: p.id === coverId ? gallery.cover_focal_x : ROTATION_FOCAL.x,
+      focalY: p.id === coverId ? gallery.cover_focal_y : ROTATION_FOCAL.y,
+    }));
+}
+
 export default async function PublicGalleryPage({
   params,
   searchParams,
@@ -149,7 +199,11 @@ export default async function PublicGalleryPage({
 
   const [{ data: event }, photosRaw, { data: foldersRaw }, { data: brandingPhotographer }, { data: videosRaw }] = await Promise.all([
     gallery.event_id
-      ? supabase.from("events").select("client_name, event_date").eq("id", gallery.event_id).maybeSingle<Pick<EventRow, "client_name" | "event_date">>()
+      ? supabase
+          .from("events")
+          .select("client_name, event_date, event_type")
+          .eq("id", gallery.event_id)
+          .maybeSingle<Pick<EventRow, "client_name" | "event_date" | "event_type">>()
       : Promise.resolve({ data: null }),
     // Paginated (see fetchAllRows's own comment) — a single unbounded select here would silently
     // truncate any gallery with more photos than the project's PostgREST row cap, dropping whatever
@@ -389,6 +443,7 @@ export default async function PublicGalleryPage({
   // Falls back to the first photo when the photographer hasn't explicitly chosen a cover — a
   // banner-less gallery reads as broken, and most galleries only ever need one obvious hero shot.
   const coverPhoto = (gallery.cover_photo_id ? photosWithUrls.find((p) => p.id === gallery.cover_photo_id) : null) ?? photosWithUrls[0];
+  const coverRotation = coverPhoto ? await coverRotationFor(supabase, gallery, event?.event_type ?? null, coverPhoto.id, photosWithUrls, folders) : null;
   const dateLabel = event
     ? `${event.client_name}, ${new Date(event.event_date).toLocaleDateString(dateLocale(lang))}`
     : gallery.shoot_date
@@ -468,6 +523,7 @@ export default async function PublicGalleryPage({
             scrollLabel={t("גלילה לתמונות")}
             textPosition={gallery.cover_text_position}
             shape={gallery.cover_shape}
+            rotation={coverRotation}
           />
           {galleryView}
         </div>
@@ -502,6 +558,7 @@ export default async function PublicGalleryPage({
         titleFontOverride={gallery.title_font_override}
         focalX={gallery.cover_focal_x}
         focalY={gallery.cover_focal_y}
+        rotation={coverRotation}
       />
 
       {videosBlock}
