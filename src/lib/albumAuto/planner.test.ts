@@ -18,6 +18,7 @@ import {
   splitSection,
   tabLabel,
   tabRoles,
+  ownersTabIndexes,
   TOGETHER,
 } from "@/lib/albumAuto/planner";
 import type { AlbumPlan, AutoPhoto, AutoStyleId, CellPeople, EventKind, PhotoFaces, PlanOptions, SectionKind } from "@/lib/albumAuto/types";
@@ -1128,6 +1129,11 @@ describe("tabLabel and tabRoles", () => {
     expect(tabRoles(["1.אוירה", "2.נטע", "3.משפחה", "4.אורחים"])).toEqual(["atmosphere", "owners", "family", "stage"]);
     expect(tabRoles(["3.משפחה", "4.משפחה מורחבת"])).toEqual(["family", "family"]);
     expect(tabRoles(["טקס", "קבלת פנים", "ריקודים"])).toEqual(["stage", "stage", "stage"]);
+    // "זוג" as its own word names the couple's tab; "זוגות" doesn't (2026-10-24).
+    expect(tabRoles(["הכנות", "טקס", "צילומי זוג", "מסיבה"])).toEqual(["stage", "stage", "owners", "stage"]);
+    expect(tabRoles(["1.אוירה", "2.צילומי הזוג", "3.ריקודי זוגות"])).toEqual(["atmosphere", "owners", "stage"]);
+    expect(tabRoles(["טקס", "ריקודי זוגות"])).toEqual(["stage", "stage"]);
+    expect(ownersTabIndexes(["1.Getting ready", "2.Bride", "3.Groom", "4.Couple", "5.Party"])).toEqual([1, 2, 3]);
   });
 });
 

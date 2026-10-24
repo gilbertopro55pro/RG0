@@ -1,4 +1,6 @@
+import GalleryCoverRotator from "@/components/GalleryCoverRotator";
 import GalleryPremiumCover from "@/components/GalleryPremiumCover";
+import type { CoverRotationPhoto } from "@/lib/galleryCoverRotation";
 import { coverAspectRatio, galleryTitleStyle, resolveGalleryTheme, isOverlayPosition } from "@/lib/galleryTheme";
 
 export default function GalleryCoverBanner({
@@ -11,6 +13,7 @@ export default function GalleryCoverBanner({
   titleFontOverride = null,
   focalX = 50,
   focalY = 50,
+  rotation = null,
 }: {
   photoUrl: string | null;
   title: string;
@@ -23,6 +26,8 @@ export default function GalleryCoverBanner({
   // ratio — defaults to dead-center, matching every gallery that's never had this set.
   focalX?: number;
   focalY?: number;
+  // The client page's cover takes turns with these photos, the cover first (lib/galleryCoverRotation.ts).
+  rotation?: CoverRotationPhoto[] | null;
 }) {
   const theme = resolveGalleryTheme(themeId, { titleFontOverride });
   // The premium theme's cover is a full-screen photo (rendered directly by the gallery page); this
@@ -75,8 +80,12 @@ export default function GalleryCoverBanner({
           background: "var(--gt-surface-soft)",
         }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={photoUrl} alt="" className="w-full h-full object-cover" style={{ objectPosition: `${focalX}% ${focalY}%` }} />
+        {rotation && rotation.length > 1 ? (
+          <GalleryCoverRotator photos={rotation} sizes="(min-width: 1024px) 80vw, (min-width: 640px) 85vw, 100vw" priority />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={photoUrl} alt="" className="w-full h-full object-cover" style={{ objectPosition: `${focalX}% ${focalY}%` }} />
+        )}
         {overlay && (
           <>
             <div

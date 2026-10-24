@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -112,6 +112,8 @@ import { UploadCount, UploadPct } from "@/components/galleryManage/UploadProgres
 import { GridThumb } from "@/components/galleryManage/GridThumb";
 import { DeleteFolderConfirmModal } from "@/components/galleryManage/DeleteFolderConfirmModal";
 import { SlideshowManageModal } from "@/components/galleryManage/SlideshowManageModal";
+import GalleryToolsMenu, { type GalleryToolItem } from "@/components/galleryManage/GalleryToolsMenu";
+import PhotoActionSheet from "@/components/galleryManage/PhotoActionSheet";
 import AlbumQualityCheck, { QualityHighlight, QualityPageBadge, useAlbumQualityCheck } from "@/components/galleryManage/AlbumQualityCheck";
 
 // The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
@@ -398,6 +400,8 @@ export default function GalleryManageView({
   const [slideshowManageOpen, setSlideshowManageOpen] = useState(false);
   const [reelOpen, setReelOpen] = useState(false);
   const [collageOpen, setCollageOpen] = useState(false);
+  // The "כלים" dropdown (slideshow, reels, collage, face detection): the button it opened from.
+  const [toolsAnchor, setToolsAnchor] = useState<HTMLElement | null>(null);
   const [slideshowPhotoIds, setSlideshowPhotoIds] = useState<Set<string>>(new Set(initialGallery.slideshow_photo_ids));
   const [slideshowPreviewOpen, setSlideshowPreviewOpen] = useState(false);
   const [albumManageOpen, setAlbumManageOpen] = useState(false);
@@ -3052,25 +3056,96 @@ export default function GalleryManageView({
         setSettingsOpen(true);
       },
     },
-    // Share and slideshow sit right beside the settings (owner, 2026-10-06), as labelled buttons
-    // instead of the small icons at the end of the row.
+    // Share sits right beside the settings (owner, 2026-10-06), as a labelled button.
     ...(gallery.published && !isArchived ? [{ key: "share", label: t("שיתוף"), active: shareOpen, onClick: openShare }] : []),
+    // The slideshow, reels, the collage and face detection under one dropdown (owner, 2026-10-24:
+    // "לרשימה נפתחת בשביל לחסוך מקום"). The button that opened it anchors the menu.
+    {
+      key: "tools",
+      label: `${t("כלים")} ▾`,
+      active: !!toolsAnchor || slideshowManageOpen || reelOpen || collageOpen,
+      onClick: (e?: React.MouseEvent<HTMLElement>) => {
+        const el = e?.currentTarget ?? null;
+        setToolsAnchor((open) => (open ? null : el));
+      },
+    },
+    // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
+    ...(photos.length > 0 && nonBasicTierAllowed
+      ? [{ key: "album", label: t("עיצוב אלבום"), active: albumManageOpen, onClick: openAlbumManage }]
+      : []),
+  ];
+
+  const toolIcon = (d: ReactNode) => (
+    <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      {d}
+    </svg>
+  );
+  const toolItems: GalleryToolItem[] = [
     {
       key: "slideshow",
       label: t("מצגת תמונות"),
-      active: slideshowManageOpen,
+      icon: toolIcon(
+        <>
+          <rect x={3} y={5} width={18} height={14} rx={2} />
+          <path d="M10 9.5v5l4.5-2.5z" />
+        </>
+      ),
       onClick: () => {
         setSlideshowPhotoIds(new Set(gallery.slideshow_photo_ids));
         setSlideshowManageOpen(true);
       },
     },
     // Reels for Instagram / TikTok / Facebook — admin only while it's polished (2026-10-07).
-    ...(photographerEmail === ADMIN_EMAIL && photos.length > 0 ? [{ key: "reels", label: t("רילס"), active: reelOpen, onClick: () => setReelOpen(true) }] : []),
+    ...(photographerEmail === ADMIN_EMAIL && photos.length > 0
+      ? [
+          {
+            key: "reels",
+            label: t("רילס"),
+            icon: toolIcon(
+              <>
+                <rect x={6} y={2.5} width={12} height={19} rx={2.5} />
+                <path d="M10.5 9.5v5l4-2.5z" />
+              </>
+            ),
+            onClick: () => setReelOpen(true),
+          },
+        ]
+      : []),
     // The automatic collage of the event's main figures — admin only while it's polished (2026-10-23).
-    ...(photographerEmail === ADMIN_EMAIL && photos.length > 0 ? [{ key: "collage", label: t("קולאז'"), active: collageOpen, onClick: openCollage }] : []),
-    // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
-    ...(photos.length > 0 && nonBasicTierAllowed
-      ? [{ key: "album", label: t("עיצוב אלבום"), active: albumManageOpen, onClick: openAlbumManage }]
+    ...(photographerEmail === ADMIN_EMAIL && photos.length > 0
+      ? [
+          {
+            key: "collage",
+            label: t("קולאז'"),
+            icon: toolIcon(
+              <>
+                <rect x={3} y={4} width={10} height={16} rx={1} />
+                <rect x={15} y={4} width={6} height={7} rx={1} />
+                <rect x={15} y={13} width={6} height={7} rx={1} />
+              </>
+            ),
+            onClick: openCollage,
+          },
+        ]
+      : []),
+    // Runs entirely in the browser (see src/lib/faceRecognition.ts) — no photo ever leaves the
+    // photographer's device for this except the already-cached results.
+    ...(photos.length > 0
+      ? [
+          {
+            key: "faces",
+            label: detectingFaces ? t("מזהה פרצופים...") : faceClusters.length > 0 ? t("רענון זיהוי פרצופים") : t("זיהוי פרצופים"),
+            disabled: detectingFaces,
+            icon: toolIcon(
+              <>
+                <path d="M4 8V6a2 2 0 0 1 2-2h2M4 16v2a2 2 0 0 0 2 2h2M20 8V6a2 2 0 0 0-2-2h-2M20 16v2a2 2 0 0 1-2 2h-2" />
+                <circle cx={12} cy={11} r={2.2} />
+                <path d="M8.5 16c1-1.3 2.2-1.8 3.5-1.8s2.5.5 3.5 1.8" />
+              </>
+            ),
+            onClick: runFaceDetection,
+          },
+        ]
       : []),
   ];
 
@@ -3082,26 +3157,8 @@ export default function GalleryManageView({
           : "flex items-center gap-1.5"
       }
     >
-      {/* Share and slideshow moved next to "הגדרות גלריה" (managerTabItems). */}
-      {/* Runs entirely in the browser (see src/lib/faceRecognition.ts) — no photo ever
-          leaves the photographer's device for this except the already-cached results. */}
-      <button
-        onClick={runFaceDetection}
-        disabled={detectingFaces}
-        aria-label={detectingFaces ? t("מזהה פרצופים...") : faceClusters.length > 0 ? t("רענון זיהוי פרצופים") : t("זיהוי פרצופים")}
-        title={detectingFaces ? t("מזהה פרצופים...") : faceClusters.length > 0 ? t("רענון זיהוי פרצופים") : t("זיהוי פרצופים")}
-        className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center border bg-white border-line text-ink-soft disabled:opacity-60 ${BTN_PRESS}`}
-      >
-        {detectingFaces ? (
-          <span className="h-3.5 w-3.5 rounded-full border-2 border-line border-t-ink-soft animate-spin" />
-        ) : (
-          <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 8V6a2 2 0 0 1 2-2h2M4 16v2a2 2 0 0 0 2 2h2M20 8V6a2 2 0 0 0-2-2h-2M20 16v2a2 2 0 0 1-2 2h-2" />
-            <circle cx={12} cy={11} r={2.2} />
-            <path d="M8.5 16c1-1.3 2.2-1.8 3.5-1.8s2.5.5 3.5 1.8" />
-          </svg>
-        )}
-      </button>
+      {/* Share sits next to "הגדרות גלריה", and the slideshow and face detection moved into the
+          "כלים" dropdown (managerTabItems, toolItems). */}
       <a
         href={`/gallery/${gallery.access_token}`}
         target="_blank"
@@ -3537,10 +3594,10 @@ export default function GalleryManageView({
       </div>
       )}
 
-      {/* Share, slideshow, face-detection and preview moved to icon-only buttons on the
-          favorites row below — this strip keeps only the three actions that read better as
-          named text tabs. */}
+      {/* The slideshow, reels, collage and face detection sit in the "כלים" dropdown (toolItems);
+          the preview is an icon on the favorites row below. */}
       {!premiumTheme && <GlassTabStrip className="mb-4" items={managerTabItems} />}
+      {toolsAnchor && <GalleryToolsMenu anchor={toolsAnchor} items={toolItems} onClose={() => setToolsAnchor(null)} />}
       {/* gallery.title is always accurate now — it's either the photographer's own customization,
           or kept synced to the event's client_name (see saveSettings/EditEventModal.tsx), so
           there's no need to prioritize clientName over it the way this used to. */}
@@ -4107,58 +4164,18 @@ export default function GalleryManageView({
 
       {/* Double-tap action sheet */}
       {actionSheetPhoto && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(28, 27, 25, 0.45)" }}
-          onClick={() => setActionSheetPhoto(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="space-y-2">
-              <button
-                onClick={() => downloadPhoto(actionSheetPhoto)}
-                className="w-full text-start rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
-              >
-                {t("הורדה")}
-              </button>
-              <button
-                onClick={() => sharePhoto(actionSheetPhoto)}
-                className="w-full text-start rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
-              >
-                {t("שיתוף")}
-              </button>
-              <button
-                onClick={() => setCoverPhoto(actionSheetPhoto)}
-                className="w-full text-start rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
-              >
-                {t("קביעה כשער לגלריה")}
-              </button>
-              <button
-                onClick={() => togglePortfolio(actionSheetPhoto)}
-                className="w-full text-start rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line"
-              >
-                {actionSheetPhoto.in_portfolio ? t("הסרה מהפורטפוליו הציבורי") : t("הוספה לפורטפוליו הציבורי")}
-              </button>
-              <button
-                onClick={() => {
-                  setDeleteConfirmPhoto(actionSheetPhoto);
-                  setActionSheetPhoto(null);
-                }}
-                className="w-full text-start rounded-lg py-3 px-4 text-sm font-medium bg-white border border-line text-rose"
-              >
-                {t("מחיקה")}
-              </button>
-              <button
-                onClick={() => setActionSheetPhoto(null)}
-                className="w-full text-center rounded-lg py-3 text-sm font-semibold text-ink-soft"
-              >
-                {t("ביטול")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <PhotoActionSheet
+          inPortfolio={actionSheetPhoto.in_portfolio}
+          onDownload={() => downloadPhoto(actionSheetPhoto)}
+          onShare={() => sharePhoto(actionSheetPhoto)}
+          onSetCover={() => setCoverPhoto(actionSheetPhoto)}
+          onTogglePortfolio={() => togglePortfolio(actionSheetPhoto)}
+          onDelete={() => {
+            setDeleteConfirmPhoto(actionSheetPhoto);
+            setActionSheetPhoto(null);
+          }}
+          onClose={() => setActionSheetPhoto(null)}
+        />
       )}
 
       {/* Delete confirmation */}

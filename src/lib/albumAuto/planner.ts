@@ -945,7 +945,9 @@ export type TabRole = "atmosphere" | "owners" | "family" | "stage";
 
 const ATMOSPHERE_RE = /(אוו?ירה|עיצוב|דקור)/;
 const FAMILY_RE = /משפח/;
-const OWNERS_RE = /(חתן|כלה|הזוג|בעלי השמחה)/;
+// "זוג" as a word of its own ("צילומי זוג", "צילומי הזוג", 2026-10-24), not "ריקודי זוגות"; and the
+// English names a photographer may give the tabs.
+const OWNERS_RE = /(חתן|כלה|בעלי השמחה|(?:^|[\s\-_.,])ה?זוג(?:$|[\s\-_.,])|couple|bride|groom)/i;
 
 // What each tab is, in the tabs' order: the atmosphere (decor, the venue), the owners (the couple,
 // the bar/bat mitzvah child: a tab named for them, or else the first tab right before the family's,
