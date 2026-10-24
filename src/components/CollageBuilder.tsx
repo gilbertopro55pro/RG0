@@ -33,7 +33,7 @@ import { detectFaceBoxes, detectFacesInImageUrl } from "@/lib/faceRecognition";
 import CollagePhotoPicker from "@/components/CollagePhotoPicker";
 import { useBusy } from "@/lib/updateResume";
 
-// Automatic collage from a gallery (admin, 2026-10-23, "עדכון אדמין"): the event's main figures
+// Automatic collage from a gallery (2026-10-23; for everyone since 2026-10-24): the event's main figures
 // (lib/collage/pick.ts) laid across a landscape print (lib/collage/layout.ts), previewed on a canvas
 // and exported in the browser from the original files, at 300 DPI when the device can draw that many
 // pixels. A photo is replaced by tapping it; "עיצוב אחר" and "תמונות אחרות" try again.
@@ -486,10 +486,7 @@ export default function CollageBuilder({
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-2 sm:p-4" style={{ background: "rgba(20, 18, 15, 0.78)" }} onClick={onClose}>
       <div className="w-full max-w-5xl max-h-full overflow-y-auto rounded-md bg-paper shadow-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 px-4 sm:px-6 pt-4 sm:pt-5 pb-3 border-b border-line">
-          <div>
-            <h2 className="text-xl font-semibold font-display tracking-tight">{t("קולאז' אוטומטי")}</h2>
-            <p className="text-[11px] text-ink-soft mt-0.5">{t("בטא · זמין כרגע רק בחשבון האדמין")}</p>
-          </div>
+          <h2 className="text-xl font-semibold font-display tracking-tight">{t("קולאז' אוטומטי")}</h2>
           <button onClick={onClose} className="h-9 w-9 rounded-full bg-white border border-line flex items-center justify-center text-ink-soft" aria-label={t("סגירה")}>
             ✕
           </button>
