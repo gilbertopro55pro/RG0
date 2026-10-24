@@ -8,6 +8,7 @@ import { GREETING_MAX_CHARS, chatLinkFor, defaultWhatsAppGreeting } from "@/lib/
 import { SOURCE_LINKS } from "@/lib/leadSource";
 import { DAY_SLOTS, DEFAULT_SLOT_HOURS, SLOT_LABELS, slotHours, slotWindow, type DaySlot, type DaySlotHours } from "@/lib/daySlots";
 import { useT } from "@/i18n/client";
+import { SITE_URL } from "@/lib/siteUrl";
 
 const MAX_FAQ = 15;
 
@@ -104,7 +105,9 @@ export default function BotSettings({
     if (!error) setFaq(cleanFaq);
   };
 
-  const fullLink = typeof window !== "undefined" ? `${window.location.origin}${chatPath}` : chatPath;
+  // The same on the server and in the browser: a window-based link made React discard the whole
+  // settings page it had just rendered and draw it again (hydration mismatch).
+  const fullLink = `${SITE_URL}${chatPath}`;
   const field = "w-full rounded-lg px-3 py-2 text-sm border border-line";
   // WhatsApp Business greeting (no Meta approval needed): sends every new client to the assistant.
   // The chat link shows as a preview card (public/og/chat.png).

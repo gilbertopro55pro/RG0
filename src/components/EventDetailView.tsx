@@ -1146,7 +1146,7 @@ export default function EventDetailView({
               {closingSent && (
                 <p className="text-xs mb-3 rounded-lg px-3 py-2" style={{ background: "var(--color-sage-bg)", color: "var(--color-sage)" }}>
                   {t("ההודעה כבר נשלחה ב-{date}.", {
-                    date: new Date(closingSent.created_at).toLocaleString(locale, { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }),
+                    date: new Date(closingSent.created_at).toLocaleString(locale, { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jerusalem" }),
                   })}
                 </p>
               )}
@@ -1738,7 +1738,7 @@ export default function EventDetailView({
                   pushing the row wider than the screen; URLs render as short links (below). */}
               <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{renderNotificationText(n.text, t)}</span>
               <span className="font-data shrink-0">
-                {new Date(n.created_at).toLocaleString(locale, { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
+                {new Date(n.created_at).toLocaleString(locale, { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", timeZone: "Asia/Jerusalem" })}
               </span>
             </div>
           ))}
