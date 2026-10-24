@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { quoteExtrasFor } from "@/lib/quoteDefaults";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import type { CustomPackageRow, EventTypeRow, LeadRow, PackagePriceRow, Photographer, PriceQuoteRow, PriceQuoteTemplateRow } from "@/lib/types";
 import LeadsView from "@/components/LeadsView";
@@ -10,9 +11,7 @@ import { canChooseClientLang } from "@/lib/clientLang";
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   const [
     { data: photographer },

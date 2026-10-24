@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { designToolsAllowed } from "@/lib/designTools";
 import { magnetPortfolioSlug } from "@/lib/magnetQr";
@@ -25,9 +26,7 @@ export default async function MagnetFrameEditorPage({ params }: { params: Promis
   const { id } = await params;
   const supabase = await createClient();
   const t = await getT();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/login");
 
   const { data: photographer } = await supabase.from("photographers").select("*").eq("id", user.id).maybeSingle<Photographer>();

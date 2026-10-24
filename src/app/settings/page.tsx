@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import type { ClientMessageTemplateRow, ContractTemplateRow, CustomPackageRow, CustomPackageStageRow, EventTypeRow, PackagePriceRow, Photographer, PriceQuoteRow, PriceQuoteTemplateRow, PrintHouseEmailRow, TeamMember } from "@/lib/types";
@@ -44,9 +45,7 @@ export default async function SettingsPage({
 }) {
   const { google_connected, google_error, tab } = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   // One parallel batch instead of three sequential round trips — teamMembers and the pricing
   // queries don't depend on the photographer row's value, only on the session already resolved
@@ -64,6 +63,7 @@ export default async function SettingsPage({
     { data: messageTemplates },
     { data: storageBytes },
     { data: contractTemplates },
+    { data: intakeUsage },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).single<Photographer>(),
     supabase.from("team_members").select("*").order("created_at", { ascending: true }).returns<TeamMember[]>(),
@@ -80,18 +80,18 @@ export default async function SettingsPage({
     // never fetch every gallery_photos row just to add up its file_size_bytes client-side.
     supabase.rpc("photographer_storage_bytes", { p_photographer_id: user!.id }),
     supabase.from("contract_templates").select("*").eq("photographer_id", user!.id).order("created_at", { ascending: true }).returns<ContractTemplateRow[]>(),
+    // The server-only monthly counter (intake_monthly_usage, migration 0166), readable by its owner.
+    supabase
+      .from("intake_monthly_usage")
+      .select("used")
+      .eq("photographer_id", user!.id)
+      .eq("month", monthKeyIsrael())
+      .maybeSingle<{ used: number }>(),
   ]);
 
   if (!photographer) redirect("/");
   if (!hasAppAccess(photographer)) redirect("/billing");
 
-  // The server-only monthly counter (intake_monthly_usage, migration 0166), readable by its owner.
-  const { data: intakeUsage } = await supabase
-    .from("intake_monthly_usage")
-    .select("used")
-    .eq("photographer_id", user!.id)
-    .eq("month", monthKeyIsrael())
-    .maybeSingle<{ used: number }>();
   const intakeUsedThisMonth = intakeUsage?.used ?? 0;
 
   const t = await getT();

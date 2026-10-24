@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { BTN_PRESS } from "@/lib/viewTransition";
 import CameraSetupGuide from "@/components/CameraSetupGuide";
 import { useT } from "@/i18n/client";
@@ -58,9 +59,9 @@ export default function GalleryFtpSection({ galleryId, allowed }: { galleryId: s
         <p className="text-xs text-ink-soft">
           {t("חיברו את המצלמה ישירות לגלריה בזמן האירוע, זמין במסלול פרו+.")}
         </p>
-        <a href="/settings?tab=account" className="inline-block mt-3 text-xs font-semibold text-amber-deep underline">
+        <Link href="/settings?tab=account" className="inline-block mt-3 text-xs font-semibold text-amber-deep underline">
           {t("שדרוג לפרו+")}
-        </a>
+        </Link>
       </div>
     );
   }

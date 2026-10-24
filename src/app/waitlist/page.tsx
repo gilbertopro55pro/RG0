@@ -1,14 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import type { CustomPackageRow, Photographer, WaitlistRow } from "@/lib/types";
 import WaitlistView from "@/components/WaitlistView";
 import { hasAppAccess } from "@/lib/subscription";
 
 export default async function WaitlistPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   const [{ data: photographer }, { data: entries }, { data: customPackages }] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),

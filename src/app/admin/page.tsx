@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import type { Photographer } from "@/lib/types";
@@ -11,10 +11,7 @@ export type AdminPhotographerRow = Pick<
 > & { has_recurring: boolean };
 
 export default async function AdminPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   if (!user || user.email !== ADMIN_EMAIL) redirect("/");
 

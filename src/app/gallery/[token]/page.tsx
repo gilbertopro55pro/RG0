@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import type {
   EventRow,
   GalleryAlbumCommentRow,
@@ -167,10 +167,7 @@ export default async function PublicGalleryPage({
   // opening the gallery up to anyone else before it's actually published.
   let isOwnerPreview = false;
   if (gallery && !gallery.published && !readOnly) {
-    const authedSupabase = await createClient();
-    const {
-      data: { user },
-    } = await authedSupabase.auth.getUser();
+    const user = await getSessionUser();
     isOwnerPreview = !!user && user.id === gallery.photographer_id;
   }
 

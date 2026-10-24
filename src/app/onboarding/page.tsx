@@ -1,6 +1,7 @@
 import { hasAppAccess } from "@/lib/subscription";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import type { Photographer } from "@/lib/types";
 import OnboardingView from "@/components/OnboardingView";
 
@@ -11,9 +12,7 @@ export default async function OnboardingPage({
 }) {
   const { google_connected, google_error } = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/login");
 
   const { data: photographer } = await supabase

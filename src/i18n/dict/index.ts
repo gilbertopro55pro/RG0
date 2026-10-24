@@ -28,13 +28,14 @@ import magnetEditor from "@/i18n/dict/magnetEditor";
 import magnetQr from "@/i18n/dict/magnetQr";
 import magnetApproval from "@/i18n/dict/magnetApproval";
 import collage from "@/i18n/dict/collage";
+import eventTypes from "@/i18n/dict/eventTypes";
 
 // One dictionary per area of the app, merged here (common first, so an area can override).
 const AREAS: AreaDict[] = [
   common, home, galleries, album, leads, settings, settingsAdmin,
   clientChat, clientQuote, clientPortal, clientGallery,
   clientMessages, clientQuoteSend, clientEmails,
-  landing, auth, photographerNotify, whatsNew, billingNotify, reels, reelsTransitions, campaigns, albumQuality, magnetFrames, magnetEditor, magnetQr, magnetApproval, collage,
+  landing, auth, photographerNotify, whatsNew, billingNotify, reels, reelsTransitions, campaigns, albumQuality, magnetFrames, magnetEditor, magnetQr, magnetApproval, collage, eventTypes,
 ];
 
 const cache: Partial<Record<Lang, Messages>> = {};

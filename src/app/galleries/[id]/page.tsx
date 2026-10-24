@@ -5,7 +5,7 @@ import type { EventRow, GalleryFolderRow, GalleryPhotoRow, GalleryRow, Photograp
 import GalleryManageView from "@/components/GalleryManageView";
 import { getSignedDownloadUrl, getSignedDownloadUrls, getPublicPreviewUrl } from "@/lib/storage";
 import { galleryBrandingAllowed } from "@/lib/galleryBranding";
-import { fetchAllRows } from "@/lib/paginatedFetch";
+import { fetchAllRowsCounted } from "@/lib/paginatedFetch";
 import { hasAppAccess } from "@/lib/subscription";
 import { clientLangFor } from "@/lib/clientLang";
 
@@ -17,20 +17,32 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
   // than embedded on this select — an embedded relation is still subject to the same row cap as a
   // top-level query, and PostgREST has no `.range()` equivalent for an embedded resource via this
   // client, so a gallery with more photos than the cap would silently lose its own management view.
-  // Events/folders stay embedded — neither ever approaches that row count.
+  // Its pages after the first come together (fetchAllRowsCounted), in a stable order (id breaks
+  // sort_order ties). Events, folders and the photographer stay embedded — the photographer was a
+  // query of its own after this one; same client, so the same RLS as before.
   const [{ data: gallery }, photosRaw] = await Promise.all([
     supabase
       .from("galleries")
-      .select("*, events(client_name, event_date, client_lang), gallery_folders(*)")
+      .select(
+        "*, events(client_name, event_date, client_lang), gallery_folders(*), photographers(name, email, plan, subscription_status, trial_ends_at, logo_storage_path)"
+      )
       .eq("id", id)
       .maybeSingle<
         GalleryRow & {
           events: Pick<EventRow, "client_name" | "event_date" | "client_lang"> | null;
           gallery_folders: GalleryFolderRow[];
+          photographers: Pick<Photographer, "name" | "email" | "plan" | "subscription_status" | "trial_ends_at" | "logo_storage_path"> | null;
         }
       >(),
-    fetchAllRows<GalleryPhotoRow>((from, to) =>
-      supabase.from("gallery_photos").select("*").eq("gallery_id", id).range(from, to).returns<GalleryPhotoRow[]>()
+    fetchAllRowsCounted<GalleryPhotoRow>((from, to) =>
+      supabase
+        .from("gallery_photos")
+        .select("*", { count: "exact" })
+        .eq("gallery_id", id)
+        .order("sort_order", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<GalleryPhotoRow[]>()
     ),
   ]);
   if (!gallery) notFound();
@@ -38,11 +50,7 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
   // Powers the WhatsApp share message wording (see buildShareMessage in GalleryManageView) — one
   // specific account gets its own personalized phrasing, everyone else gets a generic one signed
   // with their own name.
-  const { data: photographer } = await supabase
-    .from("photographers")
-    .select("name, email, plan, subscription_status, trial_ends_at, logo_storage_path")
-    .eq("id", gallery.photographer_id)
-    .maybeSingle<Pick<Photographer, "name" | "email" | "plan" | "subscription_status" | "trial_ends_at" | "logo_storage_path">>();
+  const { photographers: photographer, ...galleryRow } = gallery;
   if (photographer && !hasAppAccess(photographer)) redirect("/billing");
 
   const event = gallery.events;
@@ -89,7 +97,7 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
         eventId={gallery.event_id}
         clientName={event?.client_name ?? ""}
         eventDate={event?.event_date ?? null}
-        initialGallery={gallery}
+        initialGallery={galleryRow}
         initialPhotos={photosWithUrls}
         initialFolders={folders ?? []}
         photographerName={photographer?.name ?? ""}

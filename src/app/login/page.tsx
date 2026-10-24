@@ -6,7 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Spinner from "@/components/Spinner";
 import { IconClose } from "@/components/icons/AlbumIcons";
-import ClientLangScope from "@/i18n/ClientLangScope";
+import LazyLangScope from "@/i18n/LazyLangScope";
 import { useT } from "@/i18n/client";
 import type { TFn } from "@/i18n/translate";
 import type { Lang } from "@/i18n/config";
@@ -16,9 +16,9 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<Reco
   const params = use(searchParams);
   const lang = authLangFrom(params.lang);
   return (
-    <ClientLangScope lang={lang}>
+    <LazyLangScope lang={lang}>
       <LoginForm lang={lang} justConfirmed={params.confirmed === "1"} confirmError={params.confirm_error === "1"} />
-    </ClientLangScope>
+    </LazyLangScope>
   );
 }
 

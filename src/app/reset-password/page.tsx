@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import Spinner from "@/components/Spinner";
-import ClientLangScope from "@/i18n/ClientLangScope";
+import LazyLangScope from "@/i18n/LazyLangScope";
 import { useT } from "@/i18n/client";
 import { isLang, type Lang } from "@/i18n/config";
 import AuthLangSwitcher, { RESET_LANG_KEY, authLangFrom } from "@/components/AuthLangSwitcher";
@@ -18,9 +18,9 @@ export default function ResetPasswordPage({ searchParams }: { searchParams: Prom
   const stored = useSyncExternalStore(noSubscribe, readStoredResetLang, () => null);
   const lang = param ? authLangFrom(param) : (stored ?? "he");
   return (
-    <ClientLangScope lang={lang}>
+    <LazyLangScope lang={lang}>
       <ResetPasswordForm lang={lang} />
-    </ClientLangScope>
+    </LazyLangScope>
   );
 }
 
