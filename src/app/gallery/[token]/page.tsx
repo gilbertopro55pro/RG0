@@ -31,6 +31,7 @@ import { photoInScope, resolveGalleryToken } from "@/lib/galleryAccess";
 import { detectEventKind } from "@/lib/albumAuto/planner";
 import { collageSource, faceSample, type PhotoFacesFound, type PickablePhoto } from "@/lib/collage/pick";
 import { coverRotationIds, ROTATION_FOCAL, type CoverRotationPhoto } from "@/lib/galleryCoverRotation";
+import { clientOriginalUrl, clientScreenUrl } from "@/lib/galleryPhotoUrls";
 
 // The client's language for this gallery (UI languages phase 2): the event's client_lang, gated by
 // clientLangFor (Hebrew for every non-admin photographer). A gallery with no event stays Hebrew.
@@ -52,7 +53,8 @@ async function galleryLang(supabase: ReturnType<typeof createServiceRoleClient>,
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
   const { token } = await params;
   const supabase = createServiceRoleClient();
-  const gallery = (await resolveGalleryToken(supabase, token))?.gallery ?? null;
+  const metaAccess = await resolveGalleryToken(supabase, token);
+  const gallery = metaAccess?.gallery ?? null;
   // Unpublished galleries render "not found" to anyone but their own owner (see the page body
   // below) — matching that here so a link preview never leaks a photo from a gallery the client
   // isn't actually supposed to be able to see yet.
@@ -73,7 +75,9 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
       // Legacy (pre-public-preview) photo: no stable public URL exists yet, so fall back to a
       // long-lived signed one — not perfectly permanent, but far better than the 1-hour links used
       // elsewhere on this page, which would break a crawler's cached preview almost immediately.
-      imageUrl = await getSignedDownloadUrl("galleries", photo.storage_path, 60 * 60 * 24 * 7);
+      // Its old preview when it has one; the original never on a share link at web quality.
+      const path = photo.preview_storage_path ?? (metaAccess?.scope?.quality === "web" ? null : photo.storage_path);
+      if (path) imageUrl = await getSignedDownloadUrl("galleries", path, 60 * 60 * 24 * 7);
     }
   }
 
@@ -106,7 +110,7 @@ async function coverRotationFor(
   coverId: string,
   photos: (GalleryPhotoRow & { url: string })[],
   folders: GalleryFolderRow[]
-): Promise<CoverRotationPhoto[] | null> {
+): Promise<string[] | null> {
   if (photos.length < 2) return null;
   const pickable: PickablePhoto[] = photos.map((p) => ({ id: p.id, favorite: p.is_favorite, folderId: p.folder_id }));
   const source = collageSource(detectEventKind(gallery.title ?? "", eventType), folders, pickable);
@@ -130,17 +134,7 @@ async function coverRotationFor(
     found = byPhoto.size >= 20 ? sample.filter((id) => byPhoto.has(id)).map((id) => byPhoto.get(id)!) : null;
   }
   const ids = coverRotationIds({ coverId, source, photos: pickable, folders, found });
-  if (ids.length < 2) return null;
-  const byId = new Map(photos.map((p) => [p.id, p]));
-  return ids
-    .map((id) => byId.get(id))
-    .filter((p): p is GalleryPhotoRow & { url: string } => !!p && !!p.url)
-    .map((p) => ({
-      url: p.url,
-      aspect: p.preview_aspect_ratio,
-      focalX: p.id === coverId ? gallery.cover_focal_x : ROTATION_FOCAL.x,
-      focalY: p.id === coverId ? gallery.cover_focal_y : ROTATION_FOCAL.y,
-    }));
+  return ids.length < 2 ? null : ids;
 }
 
 export default async function PublicGalleryPage({
@@ -258,13 +252,15 @@ export default async function PublicGalleryPage({
   // page is ever visited, not after.
   photos = photos.filter((p) => p.culling_status !== "rejected");
 
-  // One batched request for every signed URL instead of N individual round-trips — this was the
-  // main reason gallery pages felt slow to load with a lot of photos. Downloads fetch their own
-  // freshly-named signed URL on demand instead (see /api/gallery/[token]/download).
+  // `url` (the original) is a short route that signs only the photo that's opened, under this
+  // link's rules (lib/galleryPhotoUrls.ts, api/gallery/[token]/photos/[photoId]/original): presigning
+  // every original took seconds and megabytes of page in a big gallery. At web quality the page
+  // carries no route to an original at all, only previews, so the original never reaches this page
+  // (it used to, signed, in the HTML of a web-quality share link). Downloads fetch their own
+  // freshly-named signed URL on demand (see /api/gallery/[token]/download).
+  const webOnly = restrictedQuality === "web";
   let photosWithUrls: (GalleryPhotoRow & { url: string; previewUrl: string | null })[] = [];
   if (photos && photos.length > 0) {
-    const signed = await getSignedDownloadUrls("galleries", photos.map((p) => p.storage_path), 3600);
-    const urlByPath = new Map(signed.map((s) => [s.path, s.signedUrl]));
     // .webp previews live in the public CDN bucket — a stable, unsigned URL built directly, no
     // round trip needed. Older .jpg previews (from before that bucket existed) still need signing.
     // Either way the lightbox reads previewUrl directly with zero server hop on click, instead of
@@ -273,15 +269,14 @@ export default async function PublicGalleryPage({
     const legacyPreviewPaths = photos.map((p) => p.preview_storage_path).filter((p): p is string => !!p && !p.endsWith(".webp"));
     const signedPreviews = legacyPreviewPaths.length > 0 ? await getSignedDownloadUrls("galleries", legacyPreviewPaths, 3600) : [];
     const signedPreviewUrlByPath = new Map(signedPreviews.map((s) => [s.path, s.signedUrl]));
-    photosWithUrls = photos.map((p) => ({
-      ...p,
-      url: urlByPath.get(p.storage_path) ?? "",
-      previewUrl: p.preview_storage_path
+    photosWithUrls = photos.map((p) => {
+      const previewUrl = p.preview_storage_path
         ? p.preview_storage_path.endsWith(".webp")
           ? getPublicPreviewUrl(p.preview_storage_path)
           : (signedPreviewUrlByPath.get(p.preview_storage_path) ?? null)
-        : null,
-    }));
+        : null;
+      return { ...p, previewUrl, url: webOnly ? clientScreenUrl(token, { id: p.id, previewUrl }) : clientOriginalUrl(token, p.id) };
+    });
   }
 
   // A share link limited to some tabs or photos doesn't carry the gallery's videos.
@@ -415,7 +410,9 @@ export default async function PublicGalleryPage({
       })
       .filter((s): s is NonNullable<typeof s> => s !== null);
     const coverPhotoId = album.cover_photo_id ?? spreadsRaw?.[0]?.photo_id_1 ?? null;
-    albumCoverUrl = (coverPhotoId ? photoById.get(coverPhotoId)?.url : null) ?? null;
+    // A small thumbnail: the preview (optimizedImageUrl can't resize the /original route).
+    const albumCover = coverPhotoId ? photoById.get(coverPhotoId) : null;
+    albumCoverUrl = albumCover ? clientScreenUrl(token, albumCover) : null;
   }
 
   const styleOverrides: GalleryStyleOverrides = {
@@ -440,7 +437,29 @@ export default async function PublicGalleryPage({
   // Falls back to the first photo when the photographer hasn't explicitly chosen a cover — a
   // banner-less gallery reads as broken, and most galleries only ever need one obvious hero shot.
   const coverPhoto = (gallery.cover_photo_id ? photosWithUrls.find((p) => p.id === gallery.cover_photo_id) : null) ?? photosWithUrls[0];
-  const coverRotation = coverPhoto ? await coverRotationFor(supabase, gallery, event?.event_type ?? null, coverPhoto.id, photosWithUrls, folders) : null;
+  const rotationIds = coverPhoto ? await coverRotationFor(supabase, gallery, event?.event_type ?? null, coverPhoto.id, photosWithUrls, folders) : null;
+  // The cover goes through the image optimizer, which needs a real file URL (it can't follow the
+  // /original route, so through it the cover would load the whole camera file). Only these few are
+  // signed: the original, as before, or at web quality the preview.
+  const coverPhotos = [coverPhoto, ...(rotationIds ?? []).map((id) => photosWithUrls.find((p) => p.id === id))].filter(
+    (p, i, all): p is (typeof photosWithUrls)[number] => !!p && all.findIndex((q) => q?.id === p.id) === i
+  );
+  const signedCovers = webOnly || coverPhotos.length === 0 ? [] : await getSignedDownloadUrls("galleries", coverPhotos.map((p) => p.storage_path), 3600);
+  const coverUrlById = new Map(
+    coverPhotos.map((p) => [p.id, webOnly ? clientScreenUrl(token, p) : (signedCovers.find((x) => x.path === p.storage_path)?.signedUrl ?? clientScreenUrl(token, p))])
+  );
+  const coverPhotoUrl = coverPhoto ? (coverUrlById.get(coverPhoto.id) ?? null) : null;
+  const coverRotation: CoverRotationPhoto[] | null = rotationIds
+    ? coverPhotos
+        .filter((p) => rotationIds.includes(p.id))
+        .sort((a, b) => rotationIds.indexOf(a.id) - rotationIds.indexOf(b.id))
+        .map((p) => ({
+          url: coverUrlById.get(p.id)!,
+          aspect: p.preview_aspect_ratio,
+          focalX: p.id === coverPhoto?.id ? gallery.cover_focal_x : ROTATION_FOCAL.x,
+          focalY: p.id === coverPhoto?.id ? gallery.cover_focal_y : ROTATION_FOCAL.y,
+        }))
+    : null;
   const dateLabel = event
     ? `${event.client_name}, ${new Date(event.event_date).toLocaleDateString(dateLocale(lang))}`
     : gallery.shoot_date
@@ -507,7 +526,7 @@ export default async function PublicGalleryPage({
             </div>
           )}
           <GalleryPremiumCover
-            photoUrl={coverPhoto?.url ?? null}
+            photoUrl={coverPhotoUrl}
             title={gallery.title || t("גלריית תמונות")}
             dateLabel={
               premiumDate
@@ -546,7 +565,7 @@ export default async function PublicGalleryPage({
         </div>
       )}
       <GalleryCoverBanner
-        photoUrl={coverPhoto?.url ?? null}
+        photoUrl={coverPhotoUrl}
         title={gallery.title}
         dateLabel={dateLabel}
         theme={gallery.theme}

@@ -5,8 +5,10 @@ import { optimizedImageUrl } from "@/lib/imageOptimize";
 // server CPU and ~3 MB of page for a 5,382-photo gallery, for URLs that are almost never opened
 // (the screen shows the previews). Now `url` is a short, stable same-origin route that checks
 // access and signs only the one photo that's actually opened, on the click.
-// The photographer's screen only: /api/galleries/<gallery>/photos/<photo>/original (the session).
-// The client's gallery page still signs its originals itself (its share-link and web-quality rules).
+// - The photographer's screen: /api/galleries/<gallery>/photos/<photo>/original (the session).
+// - The client's gallery: /api/gallery/<token>/photos/<photo>/original (the link's own rules: scope,
+//   and at web quality the preview, never the original). At web quality the page doesn't even
+//   carry that route: every photo's url is its preview.
 
 // The signed URL the redirect points to, and how long the browser may reuse the redirect itself:
 // shorter, so a cached redirect never leads to an expired signature.
@@ -20,6 +22,21 @@ export function photographerOriginalUrl(galleryId: string, photoId: string): str
 // The photographer's server-resized copy (600-2000px, the route clamps it).
 export function photographerImageUrl(galleryId: string, photoId: string, size: number): string {
   return `/api/galleries/${galleryId}/photos/${photoId}/image?size=${Math.round(size)}`;
+}
+
+export function clientOriginalUrl(token: string, photoId: string): string {
+  return `/api/gallery/${token}/photos/${photoId}/original`;
+}
+
+// The client's preview route: made on first request when a photo has none yet.
+export function clientPreviewUrl(token: string, photoId: string): string {
+  return `/api/gallery/${token}/photos/${photoId}/preview`;
+}
+
+// What the client's screen shows of a photo (a thumbnail, the slideshow, the favorites panel):
+// its preview, or the preview route. Never the original.
+export function clientScreenUrl(token: string, photo: { id: string; previewUrl?: string | null }): string {
+  return photo.previewUrl ?? clientPreviewUrl(token, photo.id);
 }
 
 const PHOTOGRAPHER_ORIGINAL_RE = /^\/api\/galleries\/([^/?#]+)\/photos\/([^/?#]+)\/original$/;
