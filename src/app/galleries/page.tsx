@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import type { EventRow, GalleryPhotoRow, GalleryRow, Photographer } from "@/lib/types";
 import GalleriesListView, { type GalleryListItem } from "@/components/GalleriesListView";
-import { getSignedDownloadUrl } from "@/lib/storage";
+import { getPublicPreviewUrl, getSignedDownloadUrl } from "@/lib/storage";
 import { hasAppAccess } from "@/lib/subscription";
 import { clientLangFor } from "@/lib/clientLang";
+import { GALLERIES_VIEW_COOKIE, parseGalleriesView, pickCoverPhoto } from "@/lib/galleriesView";
 
 export default async function GalleriesPage() {
   const supabase = await createClient();
@@ -32,16 +34,32 @@ export default async function GalleriesPage() {
   if (!hasAppAccess(photographer)) redirect("/billing");
 
   const photos = (galleries ?? []).flatMap((g) => g.gallery_photos);
+  const coverByGallery = new Map((galleries ?? []).map((g) => [g.id, pickCoverPhoto(g.cover_photo_id, g.gallery_photos)]));
+
+  // The covers' previews, in one query for just those photos: the cover shows whole, over a blurred
+  // copy of itself (owner, 2026-10-24: the square crop cut them). The preview on the CDN has a stable
+  // URL, so the image optimizer's resized copy is reused; the signed original changes every hour.
+  const coverIds = [...coverByGallery.values()].flatMap((p) => (p ? [p.id] : []));
+  const { data: coverPreviews } = coverIds.length
+    ? await supabase
+        .from("gallery_photos")
+        .select("id, preview_storage_path, preview_blur_data_url, preview_aspect_ratio")
+        .in("id", coverIds)
+        .returns<Pick<GalleryPhotoRow, "id" | "preview_storage_path" | "preview_blur_data_url" | "preview_aspect_ratio">[]>()
+    : { data: [] };
+  const previewById = new Map((coverPreviews ?? []).map((p) => [p.id, p]));
+  const view = parseGalleriesView((await cookies()).get(GALLERIES_VIEW_COOKIE)?.value);
 
   const items: GalleryListItem[] = await Promise.all(
     (galleries ?? []).map(async (gallery) => {
       const galleryPhotos = (photos ?? []).filter((p) => p.gallery_id === gallery.id);
-      const coverPhoto = gallery.cover_photo_id
-        ? galleryPhotos.find((p) => p.id === gallery.cover_photo_id) ?? galleryPhotos[0]
-        : galleryPhotos[0];
+      const coverPhoto = coverByGallery.get(gallery.id) ?? null;
+      const preview = coverPhoto ? previewById.get(coverPhoto.id) : undefined;
 
       let coverUrl: string | null = null;
-      if (coverPhoto) {
+      if (preview?.preview_storage_path?.endsWith(".webp")) {
+        coverUrl = getPublicPreviewUrl(preview.preview_storage_path);
+      } else if (coverPhoto) {
         coverUrl = await getSignedDownloadUrl("galleries", coverPhoto.storage_path, 3600);
       }
 
@@ -57,6 +75,8 @@ export default async function GalleriesPage() {
         permanentDeleteAt: gallery.permanent_delete_at,
         archiveReason: gallery.archive_reason,
         coverUrl,
+        coverBlur: preview?.preview_blur_data_url ?? null,
+        coverAspect: preview?.preview_aspect_ratio ?? null,
         accessToken: gallery.access_token,
         expiryDays: gallery.expiry_days,
         restoredOnce: gallery.restored_once,
@@ -67,7 +87,7 @@ export default async function GalleriesPage() {
 
   return (
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <GalleriesListView items={items} photographerName={photographer.name} photographerEmail={photographer.email} />
+      <GalleriesListView items={items} initialView={view} photographerName={photographer.name} photographerEmail={photographer.email} />
     </div>
   );
 }

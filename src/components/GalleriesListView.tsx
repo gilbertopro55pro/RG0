@@ -17,6 +17,7 @@ import { useVivid } from "@/components/VividProvider";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale, type Lang } from "@/i18n/config";
 import { shortClientUrl } from "@/lib/shortLinks";
+import { galleriesViewCookie, type GalleriesView } from "@/lib/galleriesView";
 
 export type GalleryListItem = {
   id: string;
@@ -30,6 +31,9 @@ export type GalleryListItem = {
   permanentDeleteAt: string | null;
   archiveReason: "expired" | "manual" | null;
   coverUrl: string | null;
+  // The cover's preview blur and shape, for showing it whole over a blurred copy of itself.
+  coverBlur?: string | null;
+  coverAspect?: number | null;
   accessToken: string;
   expiryDays: 7 | 14 | 30 | 90 | 180 | 365 | null;
   restoredOnce: boolean;
@@ -46,10 +50,12 @@ const DOUBLE_CLICK_WINDOW_MS = 250;
 
 export default function GalleriesListView({
   items,
+  initialView,
   photographerName,
   photographerEmail,
 }: {
   items: GalleryListItem[];
+  initialView: GalleriesView;
   photographerName: string;
   photographerEmail: string;
 }) {
@@ -106,6 +112,12 @@ export default function GalleriesListView({
   const [showNewGallery, setShowNewGallery] = useState(false);
   const [tab, setTab] = useState<"active" | "expired">("active");
   const [quickActionsItem, setQuickActionsItem] = useState<GalleryListItem | null>(null);
+  // List or blocks (owner, 2026-10-24), remembered on this device (lib/galleriesView.ts).
+  const [view, setView] = useState<GalleriesView>(initialView);
+  const changeView = (next: GalleriesView) => {
+    setView(next);
+    document.cookie = galleriesViewCookie(next);
+  };
 
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -185,14 +197,17 @@ export default function GalleriesListView({
   return (
     <div className="pb-8">
       <BackLink href="/" label={t("חזרה לדף הבית")} className="mb-5" />
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between gap-3 mb-5">
         <h1 className="text-[26px] font-bold font-display">{t("גלריות")}</h1>
-        <button
-          onClick={() => setShowNewGallery(true)}
-          className="rounded-full px-4 py-2 text-sm font-semibold bg-ink text-white"
-        >
-          + {t("גלריה חדשה")}
-        </button>
+        <div className="flex items-center gap-2">
+          <ViewToggle view={view} onChange={changeView} />
+          <button
+            onClick={() => setShowNewGallery(true)}
+            className="rounded-full px-4 py-2 text-sm font-semibold bg-ink text-white whitespace-nowrap"
+          >
+            + {t("גלריה חדשה")}
+          </button>
+        </div>
       </div>
       <PageGuide
         pageKey="galleries"
@@ -250,58 +265,81 @@ export default function GalleriesListView({
             </div>
           )}
 
-          <div className="space-y-3">
-            {filtered.map((item) => (
-              <Link
-                key={item.id}
-                href={`/galleries/${item.id}`}
-                role="button"
-                title={t("לחיצה כפולה לפעולות מהירות (פורטפוליו, שיתוף, מחיקה)")}
-                onClick={(e) => handleRowClick(e, item)}
-                onDoubleClick={(e) => handleRowDoubleClick(e, item)}
-                className="flex items-center gap-3 rounded-2xl p-3 bg-card border border-line shadow-card"
-              >
-                <div className="relative h-16 w-16 rounded-xl overflow-hidden bg-line shrink-0">
-                  {item.coverUrl && (
-                    <Image src={item.coverUrl} alt={item.clientName} fill sizes="64px" className="object-cover" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm truncate">{item.title}</div>
+          <div className={view === "grid" ? GRID_CLASS : "space-y-3"}>
+            {filtered.map((item) => {
+              const meta = (
+                <>
+                  <div className={`font-semibold text-sm ${view === "grid" ? "leading-snug line-clamp-2" : "truncate"}`}>{item.title}</div>
                   <div className="text-xs text-ink-soft font-data">
                     {item.eventDate && new Date(item.eventDate).toLocaleDateString(dateLocale(lang))}, {t("{n} תמונות", { n: item.photoCount })}
                   </div>
-                  <div className="text-[11px] mt-1">
-                    {item.published ? (
-                      <ToneTag tone="creative" legacyClassName="text-sage">
-                        {t("פורסמה")}
-                      </ToneTag>
-                    ) : (
-                      <ToneTag tone="neutral" legacyClassName="text-ink-soft">
-                        {t("טיוטה")}
-                      </ToneTag>
-                    )}
-                  </div>
-                  {uploadByGallery.get(item.id) ? (
-                    <UploadLine upload={uploadByGallery.get(item.id)!} />
+                </>
+              );
+              const status = (
+                <div className="text-[11px]">
+                  {item.published ? (
+                    <ToneTag tone="creative" legacyClassName="text-sage">
+                      {t("פורסמה")}
+                    </ToneTag>
                   ) : (
-                    remoteByGallery.get(item.id) && <RemoteUploadLine upload={remoteByGallery.get(item.id)!} />
+                    <ToneTag tone="neutral" legacyClassName="text-ink-soft">
+                      {t("טיוטה")}
+                    </ToneTag>
                   )}
                 </div>
-                {item.published && (
-                  <button
-                    onClick={(e) => copyLink(item, e)}
-                    className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold"
-                    style={{
-                      background: copiedId === item.id ? "var(--color-sage-bg)" : "var(--color-chip)",
-                      color: copiedId === item.id ? "var(--color-sage)" : "var(--color-ink-soft)",
-                    }}
-                  >
-                    {copiedId === item.id ? t("הועתק ✓") : t("העתקת קישור")}
-                  </button>
-                )}
-              </Link>
-            ))}
+              );
+              const upload = uploadByGallery.get(item.id) ? (
+                <UploadLine upload={uploadByGallery.get(item.id)!} />
+              ) : (
+                remoteByGallery.get(item.id) && <RemoteUploadLine upload={remoteByGallery.get(item.id)!} />
+              );
+              const copy = item.published && (
+                <button
+                  onClick={(e) => copyLink(item, e)}
+                  className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold"
+                  style={{
+                    background: copiedId === item.id ? "var(--color-sage-bg)" : "var(--color-chip)",
+                    color: copiedId === item.id ? "var(--color-sage)" : "var(--color-ink-soft)",
+                  }}
+                >
+                  {copiedId === item.id ? t("הועתק ✓") : t("העתקת קישור")}
+                </button>
+              );
+              const linkProps = {
+                href: `/galleries/${item.id}`,
+                role: "button",
+                title: t("לחיצה כפולה לפעולות מהירות (פורטפוליו, שיתוף, מחיקה)"),
+                onClick: (e: React.MouseEvent) => handleRowClick(e, item),
+                onDoubleClick: (e: React.MouseEvent) => handleRowDoubleClick(e, item),
+              };
+              return view === "grid" ? (
+                <Link key={item.id} {...linkProps} className={GRID_CARD_CLASS}>
+                  <div className="relative aspect-[4/5] bg-line">
+                    <GalleryCover item={item} sizes={GRID_SIZES} />
+                  </div>
+                  <div className="flex flex-1 flex-col gap-0.5 p-3 min-w-0">
+                    {meta}
+                    <div className="mt-auto flex flex-wrap items-center justify-between gap-1.5 pt-2">
+                      {status}
+                      {copy}
+                    </div>
+                    {upload}
+                  </div>
+                </Link>
+              ) : (
+                <Link key={item.id} {...linkProps} className="flex items-center gap-3 rounded-2xl p-3 bg-card border border-line shadow-card">
+                  <div className="relative h-16 w-16 rounded-xl overflow-hidden bg-line shrink-0">
+                    <GalleryCover item={item} sizes="64px" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {meta}
+                    <div className="mt-1">{status}</div>
+                    {upload}
+                  </div>
+                  {copy}
+                </Link>
+              );
+            })}
           </div>
         </>
       ) : (
@@ -311,21 +349,19 @@ export default function GalleriesListView({
               {t("אין כרגע גלריות שפג תוקפן או שנמחקו, כשגלריה פוקעת או נמחקת היא מופיעה כאן עד למחיקה הסופית")}
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className={view === "grid" ? GRID_CLASS : "space-y-3"}>
               {expiredItems.map((item) => (
                 <Link
                   key={item.id}
                   href={`/galleries/${item.id}`}
                   role="button"
-                  className="flex items-center gap-3 rounded-2xl p-3 bg-card border border-line shadow-card"
+                  className={view === "grid" ? GRID_CARD_CLASS : "flex items-center gap-3 rounded-2xl p-3 bg-card border border-line shadow-card"}
                 >
-                  <div className="relative h-16 w-16 rounded-xl overflow-hidden bg-line shrink-0 opacity-70">
-                    {item.coverUrl && (
-                      <Image src={item.coverUrl} alt={item.clientName} fill sizes="64px" className="object-cover" />
-                    )}
+                  <div className={view === "grid" ? "relative aspect-[4/5] bg-line opacity-70" : "relative h-16 w-16 rounded-xl overflow-hidden bg-line shrink-0 opacity-70"}>
+                    <GalleryCover item={item} sizes={view === "grid" ? GRID_SIZES : "64px"} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm truncate">{item.title}</div>
+                  <div className={view === "grid" ? "flex flex-1 flex-col gap-0.5 p-3 min-w-0" : "flex-1 min-w-0"}>
+                    <div className={`font-semibold text-sm ${view === "grid" ? "leading-snug line-clamp-2" : "truncate"}`}>{item.title}</div>
                     <div className="text-xs text-ink-soft font-data">
                       {item.eventDate && new Date(item.eventDate).toLocaleDateString(dateLocale(lang))}, {t("{n} תמונות", { n: item.photoCount })}
                     </div>
@@ -365,6 +401,79 @@ export default function GalleriesListView({
           onDeleted={() => setQuickActionsItem(null)}
         />
       )}
+    </div>
+  );
+}
+
+const GRID_CLASS = "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-6";
+const GRID_CARD_CLASS = "flex flex-col overflow-hidden rounded-2xl bg-card border border-line shadow-card";
+// The page is 85% (sm) or 80% (lg) of the screen wide, split into 2–6 columns.
+const GRID_SIZES = "(min-width: 1536px) 14vw, (min-width: 1024px) 16vw, (min-width: 640px) 28vw, 50vw";
+
+// The gallery's cover, whole (owner, 2026-10-24: the square crop cut heads), over a blurred copy of
+// itself that fills the rest of the box. The preview's tiny blur shows at once; without one, the same
+// image (one download) is drawn blurred behind.
+function GalleryCover({ item, sizes }: { item: GalleryListItem; sizes: string }) {
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {item.coverBlur ? (
+        <div
+          className="absolute inset-0 scale-125 blur-md"
+          style={{ backgroundImage: `url(${item.coverBlur})`, backgroundSize: "cover", backgroundPosition: "center" }}
+          aria-hidden="true"
+        />
+      ) : (
+        item.coverUrl && <Image src={item.coverUrl} alt="" aria-hidden="true" fill sizes={sizes} className="object-cover scale-125 blur-md" />
+      )}
+      {item.coverUrl && <Image src={item.coverUrl} alt={item.clientName} fill sizes={sizes} className="object-contain" />}
+    </div>
+  );
+}
+
+// Switches the page between the list and blocks.
+function ViewToggle({ view, onChange }: { view: GalleriesView; onChange: (view: GalleriesView) => void }) {
+  const t = useT();
+  const options: { value: GalleriesView; label: string; icon: React.ReactNode }[] = [
+    {
+      value: "list",
+      label: t("תצוגת רשימה"),
+      icon: (
+        <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
+          <rect x="3" y="4.5" width="5" height="5" rx="1" />
+          <rect x="3" y="14.5" width="5" height="5" rx="1" />
+          <path d="M11.5 7h9.5M11.5 17h9.5" />
+        </svg>
+      ),
+    },
+    {
+      value: "grid",
+      label: t("תצוגת בלוקים"),
+      icon: (
+        <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+          <rect x="3.5" y="3.5" width="7" height="7" rx="1" />
+          <rect x="13.5" y="3.5" width="7" height="7" rx="1" />
+          <rect x="3.5" y="13.5" width="7" height="7" rx="1" />
+          <rect x="13.5" y="13.5" width="7" height="7" rx="1" />
+        </svg>
+      ),
+    },
+  ];
+  return (
+    <div className="flex shrink-0 rounded-full border border-line bg-white p-0.5" role="group" aria-label={t("תצוגה")}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          aria-pressed={view === o.value}
+          aria-label={o.label}
+          title={o.label}
+          className="flex h-8 w-9 items-center justify-center rounded-full transition-colors"
+          style={view === o.value ? { background: "var(--color-ink)", color: "var(--color-paper)" } : { color: "var(--color-ink-soft)" }}
+        >
+          {o.icon}
+        </button>
+      ))}
     </div>
   );
 }

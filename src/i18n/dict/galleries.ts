@@ -4,6 +4,9 @@ import type { AreaDict } from "@/i18n/types";
 const dict: AreaDict = {
   en: {
     "העלאת התמונות הסתיימה": "Photo upload finished",
+    "תצוגה": "View",
+    "תצוגת רשימה": "List view",
+    "תצוגת בלוקים": "Grid view",
     "מעלה ל\"{title}\": {done} מתוך {total}": "Uploading to \"{title}\": {done} of {total}",
     "מעלה ל-{n} גלריות: {done} מתוך {total}": "Uploading to {n} galleries: {done} of {total}",
     "בתור להעלאה, {n} תמונות": "Queued for upload, {n} photos",
@@ -451,6 +454,9 @@ const dict: AreaDict = {
   },
   ru: {
     "העלאת התמונות הסתיימה": "Загрузка фото завершена",
+    "תצוגה": "Вид",
+    "תצוגת רשימה": "Списком",
+    "תצוגת בלוקים": "Плиткой",
     "מעלה ל\"{title}\": {done} מתוך {total}": "Загрузка в «{title}»: {done} из {total}",
     "מעלה ל-{n} גלריות: {done} מתוך {total}": "Загрузка в галереи ({n}): {done} из {total}",
     "בתור להעלאה, {n} תמונות": "В очереди на загрузку, фото: {n}",
