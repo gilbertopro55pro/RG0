@@ -16,6 +16,7 @@ import { dateLocale, isLang, type Lang } from "@/i18n/config";
 import { shortClientUrl } from "@/lib/shortLinks";
 import { quoteTotals, readQuoteDiscount, toQuoteDiscount, type QuoteDiscountType } from "@/lib/quoteDiscount";
 import QuoteHistoryList from "@/components/QuoteHistoryList";
+import { READ_ONLY_HEADER } from "@/lib/dataChanges";
 
 const VAT_RATE = 0.18;
 const HOURS_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1);
@@ -687,7 +688,7 @@ export default function EventPricingCalculator({
       if (!id) {
         const res = await fetch("/api/leads", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", [READ_ONLY_HEADER]: "1" },
           body: JSON.stringify({ name: quoteClientName.trim(), phone: quoteClientPhone.trim(), dryRun: true }),
         });
         const data = await res.json().catch(() => ({}));

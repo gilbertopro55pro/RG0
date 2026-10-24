@@ -28,8 +28,8 @@ function patchFetchOnce() {
     try {
       const res = await originalFetch(...args);
       if (res.ok) {
-        const { url, method } = fetchRequestOf(args[0], args[1]);
-        if (isDataChangingRequest(url, method, window.location.origin)) markDataChanged();
+        const { url, method, readOnly } = fetchRequestOf(args[0], args[1]);
+        if (isDataChangingRequest(url, method, window.location.origin, readOnly)) markDataChanged();
       }
       return res;
     } finally {

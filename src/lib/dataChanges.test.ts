@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchRequestOf, isDataChangingRequest, markDataChanged, refreshIfDataChanged, takeDataChanged } from "@/lib/dataChanges";
+import { READ_ONLY_HEADER, fetchRequestOf, isDataChangingRequest, markDataChanged, refreshIfDataChanged, takeDataChanged } from "@/lib/dataChanges";
 
 const ORIGIN = "https://myframeflow.com";
 
@@ -21,6 +21,10 @@ describe("isDataChangingRequest", () => {
     expect(isDataChangingRequest("/api/x", "HEAD", ORIGIN)).toBe(false);
   });
 
+  it("ignores a POST marked read-only (a dry run)", () => {
+    expect(isDataChangingRequest("/api/scheduled-messages/1/confirm", "POST", ORIGIN, true)).toBe(false);
+  });
+
   it("ignores what isn't our data: pages, auth, storage uploads, other sites", () => {
     expect(isDataChangingRequest("/galleries/1", "POST", ORIGIN)).toBe(false);
     expect(isDataChangingRequest("https://abc.supabase.co/auth/v1/token?grant_type=refresh_token", "POST", ORIGIN)).toBe(false);
@@ -32,10 +36,17 @@ describe("isDataChangingRequest", () => {
 
 describe("fetchRequestOf", () => {
   it("reads every form fetch() takes", () => {
-    expect(fetchRequestOf("/api/a")).toEqual({ url: "/api/a", method: "GET" });
-    expect(fetchRequestOf("/api/a", { method: "POST" })).toEqual({ url: "/api/a", method: "POST" });
-    expect(fetchRequestOf(new URL(`${ORIGIN}/api/b`), { method: "PATCH" })).toEqual({ url: `${ORIGIN}/api/b`, method: "PATCH" });
-    expect(fetchRequestOf(new Request(`${ORIGIN}/api/c`, { method: "DELETE" }))).toEqual({ url: `${ORIGIN}/api/c`, method: "DELETE" });
+    expect(fetchRequestOf("/api/a")).toEqual({ url: "/api/a", method: "GET", readOnly: false });
+    expect(fetchRequestOf("/api/a", { method: "POST" })).toEqual({ url: "/api/a", method: "POST", readOnly: false });
+    expect(fetchRequestOf(new URL(`${ORIGIN}/api/b`), { method: "PATCH" })).toEqual({ url: `${ORIGIN}/api/b`, method: "PATCH", readOnly: false });
+    expect(fetchRequestOf(new Request(`${ORIGIN}/api/c`, { method: "DELETE" }))).toEqual({ url: `${ORIGIN}/api/c`, method: "DELETE", readOnly: false });
+  });
+
+  it("reads the read-only mark from plain headers, a Headers object or a Request", () => {
+    expect(fetchRequestOf("/api/a", { method: "POST", headers: { [READ_ONLY_HEADER]: "1" } }).readOnly).toBe(true);
+    expect(fetchRequestOf("/api/a", { method: "POST", headers: new Headers({ [READ_ONLY_HEADER]: "1" }) }).readOnly).toBe(true);
+    expect(fetchRequestOf(new Request(`${ORIGIN}/api/a`, { method: "POST", headers: { [READ_ONLY_HEADER]: "1" } })).readOnly).toBe(true);
+    expect(fetchRequestOf("/api/a", { method: "POST", headers: [["Content-Type", "application/json"]] }).readOnly).toBe(false);
   });
 });
 

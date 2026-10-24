@@ -5,7 +5,12 @@
 // (supabase-js writes from the browser). The next navigation then drops every saved copy first
 // (FreshNavigation), so a list never shows what was just deleted or renamed.
 
-export function isDataChangingRequest(url: string, method: string, origin: string): boolean {
+// A POST that only reads (a dry run, a preview) sends this header, so opening a screen that makes
+// one (the home screen's message prompts) doesn't count as a change.
+export const READ_ONLY_HEADER = "x-read-only";
+
+export function isDataChangingRequest(url: string, method: string, origin: string, readOnly = false): boolean {
+  if (readOnly) return false;
   const m = method.toUpperCase();
   if (m === "GET" || m === "HEAD" || m === "OPTIONS") return false;
   let u: URL;
@@ -18,11 +23,13 @@ export function isDataChangingRequest(url: string, method: string, origin: strin
   return u.protocol === "https:" && u.hostname.endsWith(".supabase.co") && u.pathname.startsWith("/rest/v1/");
 }
 
-// The URL and method of a fetch() call, whichever form its arguments take.
-export function fetchRequestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
+// The URL, method and read-only mark of a fetch() call, whichever form its arguments take.
+export function fetchRequestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string; readOnly: boolean } {
+  const request = typeof input === "object" && !(input instanceof URL) ? input : null;
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-  const method = init?.method ?? (typeof input === "object" && !(input instanceof URL) ? input.method : "GET");
-  return { url, method };
+  const method = init?.method ?? request?.method ?? "GET";
+  const headers = new Headers(init?.headers ?? request?.headers);
+  return { url, method, readOnly: headers.get(READ_ONLY_HEADER) === "1" };
 }
 
 let changed = false;

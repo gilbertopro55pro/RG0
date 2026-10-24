@@ -7,6 +7,7 @@ import { openWhatsApp } from "@/lib/waLink";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale, type Lang } from "@/i18n/config";
 import ClientMessageSheet, { type ClientMessageChannel } from "@/components/ClientMessageSheet";
+import { READ_ONLY_HEADER } from "@/lib/dataChanges";
 
 // A translated sentence with the client/lead name in bold: the {name} placeholder is left in by
 // t() (it isn't in vars) and swapped for the bold span here.
@@ -138,7 +139,7 @@ export default function PendingClientMessagePrompts({
     let cancelled = false;
     fetch(urlFor(current), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", [READ_ONLY_HEADER]: "1" },
       body: JSON.stringify({ ...sendBody(current), dryRun: true }),
     })
       .then((res) => (res.ok ? res.json() : null))
