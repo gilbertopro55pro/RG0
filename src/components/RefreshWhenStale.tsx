@@ -9,8 +9,12 @@ import { useRouter } from "next/navigation";
 // renderId; when the same one is shown again more than a few seconds after it first appeared
 // (a saved copy), or the app comes back after a minute in the background, the page is reloaded
 // from the server. Times are this device's own clock only, so the server's clock never matters.
+// "A while" is the router's own minute (experimental.staleTimes, 2026-10-24): a copy younger than
+// that is the instant return, and a save in the app already drops it (lib/dataChanges.ts). Each
+// refresh also drops every other saved screen, so refreshing a 5-second-old copy made coming back
+// to the home screen undo the instant return everywhere else.
 const firstSeen = new Map<string, number>();
-const SAVED_COPY_MS = 5_000;
+const SAVED_COPY_MS = 60_000;
 const BACKGROUND_MS = 60_000;
 
 export default function RefreshWhenStale({ renderId }: { renderId: string }) {
