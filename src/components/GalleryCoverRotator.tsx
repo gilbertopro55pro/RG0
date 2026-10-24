@@ -5,6 +5,7 @@ import { optimizedImageUrl } from "@/lib/imageOptimize";
 import {
   COVER_DISSOLVE_MS,
   COVER_ROTATION_INTERVAL_MS,
+  coverDrawWidth,
   coverOrientation,
   rotationForBox,
   type CoverOrientation,
@@ -61,42 +62,51 @@ export default function GalleryCoverRotator({
   priority?: boolean;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
-  const [measured, setMeasured] = useState<CoverOrientation | null>(null);
-  const orientation = fixedOrientation ?? measured;
+  // The box's size, rounded to 50px (a small resize changes nothing).
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
+  const orientation = fixedOrientation ?? (box ? coverOrientation(box.w / box.h) : null);
   // Until the box is measured (and in the page's HTML), only the first photo.
   const list = useMemo(() => (orientation ? rotationForBox(photos, orientation) : photos.slice(0, 1)), [photos, orientation]);
   // `turns` counts the switches: the first photo's settle-in plays only on the page's first look.
   const [shown, setShown] = useState<{ top: number; under: number | null; turns: number }>({ top: 0, under: null, turns: 0 });
   const posRef = useRef(0);
   const framedSizes = framed?.sizes ?? null;
+  // Each photo's `sizes`: the width it's drawn at in this box (coverDrawWidth). The first photo keeps
+  // the page's own, so the file the HTML already loaded isn't fetched again; a framed cover too.
+  const photoSizes = useMemo(
+    () => list.map((p, i) => (i === 0 || framed || !box || p.aspect == null ? sizes : `${coverDrawWidth(p.aspect, box.w, box.h)}px`)),
+    [list, box, sizes, framed]
+  );
 
   useEffect(() => {
-    if (fixedOrientation) return;
-    const box = boxRef.current;
-    if (!box) return;
+    const el = boxRef.current;
+    if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
-      if (width > 0 && height > 0) setMeasured(coverOrientation(width / height));
+      if (width <= 0 || height <= 0) return;
+      const w = Math.ceil(width / 50) * 50;
+      const h = Math.ceil(height / 50) * 50;
+      setBox((b) => (b && b.w === w && b.h === h ? b : { w, h }));
     });
-    ro.observe(box);
+    ro.observe(el);
     return () => ro.disconnect();
-  }, [fixedOrientation]);
+  }, []);
 
   useEffect(() => {
-    const box = boxRef.current;
-    if (!box || list.length < 2) return;
+    const el = boxRef.current;
+    if (!el || list.length < 2) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let cancelled = false;
     let visible = true;
     const io = new IntersectionObserver(([entry]) => {
       visible = entry.isIntersecting;
     });
-    io.observe(box);
-    const preloadSizes = framedSizes ? [sizes, framedSizes] : [sizes];
+    io.observe(el);
     (async () => {
       while (!cancelled) {
         const from = posRef.current % list.length;
         const next = (from + 1) % list.length;
+        const preloadSizes = framedSizes ? [photoSizes[next], framedSizes] : [photoSizes[next]];
         await Promise.all([preload(list[next].url, preloadSizes), wait(COVER_ROTATION_INTERVAL_MS)]);
         while (!cancelled && (!visible || document.hidden)) await wait(400);
         if (cancelled) return;
@@ -108,7 +118,7 @@ export default function GalleryCoverRotator({
       cancelled = true;
       io.disconnect();
     };
-  }, [list, sizes, framedSizes]);
+  }, [list, photoSizes, framedSizes]);
 
   const top = shown.top % list.length;
   const under = shown.under == null ? null : shown.under % list.length;
@@ -140,7 +150,7 @@ export default function GalleryCoverRotator({
             <img
               src={p.url}
               srcSet={srcSet}
-              sizes={srcSet ? sizes : undefined}
+              sizes={srcSet ? photoSizes[i] : undefined}
               alt=""
               fetchPriority={priority && i === 0 ? "high" : undefined}
               className={`absolute inset-0 h-full w-full object-cover ${first && imgClassName ? imgClassName : ""}`}

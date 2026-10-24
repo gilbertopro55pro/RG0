@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { collageSource, type PhotoFacesFound, type PickablePhoto } from "@/lib/collage/pick";
-import { COVER_ROTATION_CANDIDATES, COVER_ROTATION_SHOWN, coverOrientation, coverRotationIds, rotationForBox } from "@/lib/galleryCoverRotation";
+import { COVER_ROTATION_CANDIDATES, COVER_ROTATION_SHOWN, coverDrawWidth, coverOrientation, coverRotationIds, rotationForBox } from "@/lib/galleryCoverRotation";
 
 // The client gallery's rotating cover (2026-10-24): the chosen cover first, then the main figures.
 
@@ -108,5 +108,15 @@ describe("rotationForBox", () => {
     expect(coverOrientation(16 / 9)).toBe("landscape");
     expect(coverOrientation(390 / 780)).toBe("portrait");
     expect(coverOrientation(1)).toBe("any");
+  });
+});
+
+describe("coverDrawWidth", () => {
+  it("a photo narrower than the box is drawn at the box's width", () => {
+    expect(coverDrawWidth(1.5, 1440, 900)).toBe(1450);
+    expect(coverDrawWidth(0.66, 390, 776)).toBe(550);
+  });
+  it("a landscape photo on a phone's tall cover is drawn to the cover's height", () => {
+    expect(coverDrawWidth(1.5, 390, 776)).toBe(1200);
   });
 });
