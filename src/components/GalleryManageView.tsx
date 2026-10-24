@@ -29,7 +29,8 @@ import { readDroppedEntries, folderNameFromPath, isHiddenFileName, fileOfEntry }
 import { ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
 import { STARTER_BOOK_TEMPLATES, generateStarterBookPages, type StarterTemplateId } from "@/lib/albumStarterTemplates";
 import { usePinchSize } from "@/lib/usePinchColumns";
-import { optimizedImageUrl } from "@/lib/imageOptimize";
+import { photographerOriginalUrl, resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
+import { refreshIfDataChanged } from "@/lib/dataChanges";
 import { IconGallery, IconTrash } from "@/components/icons/NavIcons";
 import { IconClose as IconAlbumClose, IconPalette, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck, IconRotateDevice } from "@/components/icons/AlbumIcons";
 import type { AlbumCanvasDraft } from "@/components/AlbumSpreadCanvasEditor";
@@ -681,10 +682,8 @@ export default function GalleryManageView({
   };
   const selectAllVisible = () => setSelectedIds(new Set(visiblePhotos.map((p) => p.id)));
   const clearSelection = () => setSelectedIds(new Set());
-  // The page-load signed URLs (photo.url) are generated in one fast batched call without a
-  // per-file download filename (that's a display-only optimization) — downloads fetch their own
-  // freshly-named signed URL on demand instead, since that only happens for the handful of
-  // photos actually being downloaded, not the whole gallery.
+  // photo.url is the /original route (lib/galleryPhotoUrls.ts), with no download filename —
+  // downloads fetch their own freshly-named signed URL on demand instead.
   const downloadPhotoNow = async (photo: PhotoWithUrl) => {
     const res = await fetch("/api/storage/download-url", {
       method: "POST",
@@ -2658,17 +2657,41 @@ export default function GalleryManageView({
     downloadPhotoNow(photo);
   };
 
+  // The page no longer carries a signed URL per photo (photo.url is the /original route, which
+  // needs the photographer's session; a photo uploaded since the page loaded has /image), so the photo's own hour-long link is fetched as soon as its
+  // action sheet opens: navigator.share has to run straight from the tap, not after a request.
+  const [photoShareLink, setPhotoShareLink] = useState<{ id: string; url: string } | null>(null);
+  useEffect(() => {
+    if (!actionSheetPhoto) return;
+    let cancelled = false;
+    fetch(`${photographerOriginalUrl(gallery.id, actionSheetPhoto.id)}?link=1`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { url?: string } | null) => {
+        if (!cancelled && data?.url) setPhotoShareLink({ id: actionSheetPhoto.id, url: data.url });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [actionSheetPhoto, gallery.id]);
+
   const sharePhoto = async (photo: PhotoWithUrl) => {
     setActionSheetPhoto(null);
+    let link = photoShareLink?.id === photo.id ? photoShareLink.url : null;
+    if (!link) {
+      const res = await fetch(`${photographerOriginalUrl(gallery.id, photo.id)}?link=1`).catch(() => null);
+      link = res?.ok ? (((await res.json()) as { url?: string }).url ?? null) : null;
+    }
+    if (!link) return;
     if (navigator.share) {
       try {
-        await navigator.share({ title: photo.original_filename, url: photo.url });
+        await navigator.share({ title: photo.original_filename, url: link });
         return;
       } catch {
         // user cancelled or share failed — fall through to clipboard copy
       }
     }
-    await navigator.clipboard.writeText(photo.url);
+    await navigator.clipboard.writeText(link);
     setShareStatus(t("הקישור הועתק ✓"));
     setTimeout(() => setShareStatus(null), 2000);
   };
@@ -2746,6 +2769,8 @@ export default function GalleryManageView({
       permanent_delete_at: permanentDeleteAt.toISOString(),
     };
     await supabase.from("galleries").update(patch).eq("id", gallery.id);
+    // The galleries list may be in the router's memory, still showing this gallery.
+    refreshIfDataChanged(router);
     router.push("/galleries");
   };
 
@@ -3205,7 +3230,7 @@ export default function GalleryManageView({
                 instead of blank space while the thumbnail loads (GridThumb). */}
             <GridThumb
               photoId={photo.id}
-              src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+              src={resizedPhotoUrl(photo, 640)}
               alt={photo.original_filename}
               className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
               style={photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
@@ -3240,7 +3265,7 @@ export default function GalleryManageView({
               <span aria-hidden="true" className="block" style={{ paddingBottom: `${100 / ratio}%` }} />
               <GridThumb
                 photoId={photo.id}
-                src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                src={resizedPhotoUrl(photo, 640)}
                 alt={photo.original_filename}
                 className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
                 style={photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
@@ -3289,7 +3314,7 @@ export default function GalleryManageView({
             >
               <GridThumb
                 photoId={photo.id}
-                src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                src={resizedPhotoUrl(photo, 640)}
                 alt={photo.original_filename}
                 fade={knownShape}
                 className={knownShape ? "absolute inset-0 w-full h-full object-cover transition-opacity duration-300" : "w-full h-auto block"}
@@ -3400,7 +3425,7 @@ export default function GalleryManageView({
         <div className="relative">
           <GalleryPremiumCover
             variant="manage"
-            photoUrl={managerCoverPhoto?.url ?? null}
+            photoUrl={managerCoverPhoto ? resizedPhotoUrl(managerCoverPhoto, 2048) : null}
             title={gallery.title}
             dateLabel={coverDate ? new Date(coverDate).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "long", year: "numeric" }) : null}
             logoUrl={brandLogoUrl}
@@ -3613,7 +3638,7 @@ export default function GalleryManageView({
             return (
               <FaceCircle
                 key={cluster.clusterId}
-                url={photo.url}
+                url={resizedPhotoUrl(photo, 1200)}
                 box={cluster.representative.box}
                 size={52}
                 selected={faceFilterClusterId === cluster.clusterId}
@@ -4649,7 +4674,7 @@ export default function GalleryManageView({
 
       {coverFocalPointTarget && (
         <GalleryCoverFocalPointModal
-          photoUrl={coverFocalPointTarget.photo.url}
+          photoUrl={resizedPhotoUrl(coverFocalPointTarget.photo, 2048)}
           initialFocalX={coverFocalPointTarget.immediate ? gallery.cover_focal_x : coverFocalX}
           initialFocalY={coverFocalPointTarget.immediate ? gallery.cover_focal_y : coverFocalY}
           theme={coverFocalPointTarget.immediate ? gallery.theme : theme}
@@ -4741,7 +4766,7 @@ export default function GalleryManageView({
             return d ? new Date(d).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "numeric", year: "numeric" }) : null;
           })()}
           studioName={photographerName || null}
-          photos={photos.map((p) => ({ id: p.id, thumbUrl: p.previewUrl ?? p.url, isFavorite: !!p.is_favorite }))}
+          photos={photos.map((p) => ({ id: p.id, thumbUrl: resizedPhotoUrl(p, 640), isFavorite: !!p.is_favorite }))}
           initialSelection={
             gallery.slideshow_photo_ids.length > 0
               ? gallery.slideshow_photo_ids
@@ -4786,7 +4811,7 @@ export default function GalleryManageView({
 
       {slideshowPreviewOpen && (
         <GallerySlideshow
-          photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: optimizedImageUrl(p.url, 1920) }))}
+          photos={photos.filter((p) => slideshowPhotoIds.has(p.id)).map((p) => ({ id: p.id, url: resizedPhotoUrl(p, 1920) }))}
           onClose={() => setSlideshowPreviewOpen(false)}
           onDownload={downloadSlideshowZip}
           downloading={zippingFavorites}

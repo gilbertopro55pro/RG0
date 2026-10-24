@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchRequestOf, isDataChangingRequest, markDataChanged } from "@/lib/dataChanges";
 
 // Patches window.fetch once to track in-flight request count, so a thin progress bar can show
 // automatically for *any* network activity — API route calls and direct Supabase client calls
 // alike (supabase-js is fetch-based under the hood) — without every component needing to wire
 // up its own loading state. This is what makes "something is happening" visible even for
 // actions that previously gave zero feedback while waiting on the server.
+// The same patch notes every successful write (lib/dataChanges.ts), so the next navigation doesn't
+// show a screen from the router's memory that the write made out of date.
 let patched = false;
 let activeCount = 0;
 const listeners = new Set<(count: number) => void>();
@@ -23,7 +26,12 @@ function patchFetchOnce() {
     activeCount++;
     notify();
     try {
-      return await originalFetch(...args);
+      const res = await originalFetch(...args);
+      if (res.ok) {
+        const { url, method } = fetchRequestOf(args[0], args[1]);
+        if (isDataChangingRequest(url, method, window.location.origin)) markDataChanged();
+      }
+      return res;
     } finally {
       activeCount = Math.max(0, activeCount - 1);
       notify();

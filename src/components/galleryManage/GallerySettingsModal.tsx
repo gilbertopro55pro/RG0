@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { BTN_PRESS } from "@/lib/viewTransition";
-import { optimizedImageUrl } from "@/lib/imageOptimize";
+import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 import { IconClose as IconAlbumClose } from "@/components/icons/AlbumIcons";
 import {
   GALLERY_THEMES,
@@ -366,7 +366,10 @@ export function GallerySettingsModal({
               }}
             >
               <GalleryCoverBanner
-                photoUrl={(photos.find((p) => p.id === coverPhotoId) ?? photos[0])?.url ?? null}
+                photoUrl={(() => {
+                  const cover = photos.find((p) => p.id === coverPhotoId) ?? photos[0];
+                  return cover ? resizedPhotoUrl(cover, 2048) : null;
+                })()}
                 title={previewTitle}
                 dateLabel={previewDateLabel}
                 theme={theme}
@@ -400,7 +403,7 @@ export function GallerySettingsModal({
                       }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.previewUrl ?? optimizedImageUrl(p.url, 256)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      <img src={resizedPhotoUrl(p, 256)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>

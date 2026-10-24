@@ -8,6 +8,8 @@ import { galleryBrandingAllowed } from "@/lib/galleryBranding";
 import { fetchAllRowsCounted } from "@/lib/paginatedFetch";
 import { hasAppAccess } from "@/lib/subscription";
 import { clientLangFor } from "@/lib/clientLang";
+import { photographerOriginalUrl } from "@/lib/galleryPhotoUrls";
+import { trimBlurPlaceholders } from "@/lib/galleryBlurPlaceholders";
 
 export default async function GalleryManagePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -57,23 +59,25 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
   const photos = [...photosRaw].sort((a, b) => a.sort_order - b.sort_order);
   const folders = [...gallery.gallery_folders].sort((a, b) => a.sort_order - b.sort_order);
 
-  // One batched request for every signed URL instead of N individual round-trips — this was the
-  // main reason gallery pages felt slow to load with a lot of photos.
+  // `url` (the original) is a short same-origin route that signs the one photo that's opened, on
+  // the click (lib/galleryPhotoUrls.ts, api/galleries/[id]/photos/[photoId]/original). Presigning
+  // every original here took ~2.8 s and ~3 MB of page for the 5,382-photo gallery, and the screen
+  // shows the previews anyway.
+  // .webp previews live in the public CDN bucket — a stable, unsigned URL built directly, no round
+  // trip needed. Older .jpg previews (from before that bucket existed, a handful) still need
+  // signing. Either way the lightbox reads previewUrl directly with zero server hop on click,
+  // instead of going through the /preview API route (DB lookup + redirect); that route still exists
+  // and is used as a fallback only for photos that haven't been processed into a preview at all yet.
+  // A big gallery keeps the blurred placeholders only for what shows first in each tab
+  // (lib/galleryBlurPlaceholders.ts).
   let photosWithUrls: (GalleryPhotoRow & { url: string; previewUrl: string | null })[] = [];
-  if (photos && photos.length > 0) {
-    const signed = await getSignedDownloadUrls("galleries", photos.map((p) => p.storage_path), 3600);
-    const urlByPath = new Map(signed.map((s) => [s.path, s.signedUrl]));
-    // .webp previews live in the public CDN bucket — a stable, unsigned URL built directly, no
-    // round trip needed. Older .jpg previews (from before that bucket existed) still need signing.
-    // Either way the lightbox reads previewUrl directly with zero server hop on click, instead of
-    // going through the /preview API route (DB lookup + redirect); that route still exists and is
-    // used as a fallback only for photos that haven't been processed into a preview at all yet.
+  if (photos.length > 0) {
     const legacyPreviewPaths = photos.map((p) => p.preview_storage_path).filter((p): p is string => !!p && !p.endsWith(".webp"));
     const signedPreviews = legacyPreviewPaths.length > 0 ? await getSignedDownloadUrls("galleries", legacyPreviewPaths, 3600) : [];
     const signedPreviewUrlByPath = new Map(signedPreviews.map((s) => [s.path, s.signedUrl]));
-    photosWithUrls = photos.map((p) => ({
+    photosWithUrls = trimBlurPlaceholders(photos).map((p) => ({
       ...p,
-      url: urlByPath.get(p.storage_path) ?? "",
+      url: photographerOriginalUrl(id, p.id),
       previewUrl: p.preview_storage_path
         ? p.preview_storage_path.endsWith(".webp")
           ? getPublicPreviewUrl(p.preview_storage_path)

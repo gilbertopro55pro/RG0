@@ -3,7 +3,7 @@
 import { useBusy } from "@/lib/updateResume";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { optimizedImageUrl } from "@/lib/imageOptimize";
+import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 import { detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
 import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type EventKind, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
@@ -1191,7 +1191,7 @@ function fmt(n: number) {
 }
 
 function thumbOf(p: AutoDesignerPhoto) {
-  return p.previewUrl ?? optimizedImageUrl(p.url, 384);
+  return resizedPhotoUrl(p, 384);
 }
 
 function nextFrame() {
