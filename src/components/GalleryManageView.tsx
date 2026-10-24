@@ -114,6 +114,7 @@ import { DeleteFolderConfirmModal } from "@/components/galleryManage/DeleteFolde
 import { SlideshowManageModal } from "@/components/galleryManage/SlideshowManageModal";
 import GalleryToolsMenu, { type GalleryToolItem } from "@/components/galleryManage/GalleryToolsMenu";
 import PhotoActionSheet from "@/components/galleryManage/PhotoActionSheet";
+import PhotoDeleteConfirm from "@/components/galleryManage/PhotoDeleteConfirm";
 import AlbumQualityCheck, { QualityHighlight, QualityPageBadge, useAlbumQualityCheck } from "@/components/galleryManage/AlbumQualityCheck";
 
 // The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
@@ -3058,21 +3059,18 @@ export default function GalleryManageView({
     },
     // Share sits right beside the settings (owner, 2026-10-06), as a labelled button.
     ...(gallery.published && !isArchived ? [{ key: "share", label: t("שיתוף"), active: shareOpen, onClick: openShare }] : []),
-    // The slideshow, reels, the collage and face detection under one dropdown (owner, 2026-10-24:
-    // "לרשימה נפתחת בשביל לחסוך מקום"). The button that opened it anchors the menu.
+    // The album designer, slideshow, reels, the collage and face detection under one dropdown (owner,
+    // 2026-10-24: "לרשימה נפתחת בשביל לחסוך מקום"; the bar keeps settings, share, + and preview). The
+    // button that opened it anchors the menu.
     {
       key: "tools",
       label: `${t("כלים")} ▾`,
-      active: !!toolsAnchor || slideshowManageOpen || reelOpen || collageOpen,
+      active: !!toolsAnchor || albumManageOpen || slideshowManageOpen || reelOpen || collageOpen,
       onClick: (e?: React.MouseEvent<HTMLElement>) => {
         const el = e?.currentTarget ?? null;
         setToolsAnchor((open) => (open ? null : el));
       },
     },
-    // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
-    ...(photos.length > 0 && nonBasicTierAllowed
-      ? [{ key: "album", label: t("עיצוב אלבום"), active: albumManageOpen, onClick: openAlbumManage }]
-      : []),
   ];
 
   const toolIcon = (d: ReactNode) => (
@@ -3081,6 +3079,22 @@ export default function GalleryManageView({
     </svg>
   );
   const toolItems: GalleryToolItem[] = [
+    // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
+    ...(photos.length > 0 && nonBasicTierAllowed
+      ? [
+          {
+            key: "album",
+            label: t("עיצוב אלבום"),
+            icon: toolIcon(
+              <>
+                <path d="M12 6.5C10.2 5.2 7.6 4.5 4 4.5v13c3.6 0 6.2.7 8 2 1.8-1.3 4.4-2 8-2v-13c-3.6 0-6.2.7-8 2z" />
+                <path d="M12 6.5v13" />
+              </>
+            ),
+            onClick: openAlbumManage,
+          },
+        ]
+      : []),
     {
       key: "slideshow",
       label: t("מצגת תמונות"),
@@ -4179,35 +4193,7 @@ export default function GalleryManageView({
       )}
 
       {/* Delete confirmation */}
-      {deleteConfirmPhoto && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(28, 27, 25, 0.45)" }}
-          onClick={() => setDeleteConfirmPhoto(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-bold mb-2 font-display">{t("למחוק את התמונה?")}</h2>
-            <p className="text-sm text-ink-soft mb-5">{t("הפעולה תמחק את התמונה לצמיתות מהגלריה ולא ניתן יהיה לשחזר אותה.")}</p>
-            <div className="flex gap-2">
-              <button
-                onClick={confirmDeletePhoto}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white"
-              >
-                {t("כן, מחק לצמיתות")}
-              </button>
-              <button
-                onClick={() => setDeleteConfirmPhoto(null)}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
-              >
-                {t("ביטול")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {deleteConfirmPhoto && <PhotoDeleteConfirm onConfirm={confirmDeletePhoto} onClose={() => setDeleteConfirmPhoto(null)} />}
 
       {/* Delete-selected confirmation */}
       {deleteSelectedConfirmOpen && (
