@@ -115,6 +115,7 @@ import { SlideshowManageModal } from "@/components/galleryManage/SlideshowManage
 import GalleryToolsMenu, { type GalleryToolItem } from "@/components/galleryManage/GalleryToolsMenu";
 import PhotoActionSheet from "@/components/galleryManage/PhotoActionSheet";
 import PhotoDeleteConfirm from "@/components/galleryManage/PhotoDeleteConfirm";
+import DeleteSelectedConfirm from "@/components/galleryManage/DeleteSelectedConfirm";
 import AlbumQualityCheck, { QualityHighlight, QualityPageBadge, useAlbumQualityCheck } from "@/components/galleryManage/AlbumQualityCheck";
 
 // The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
@@ -4197,38 +4198,12 @@ export default function GalleryManageView({
 
       {/* Delete-selected confirmation */}
       {deleteSelectedConfirmOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{
-            background: "rgba(28, 27, 25, 0.45)",
-            opacity: deleteSelectedConfirmClosing ? 0 : 1,
-            transition: `opacity ${CLOSE_ANIMATION_MS}ms ease`,
-          }}
-          onClick={cancelDeleteSelected}
-        >
-          <div
-            className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-paper shadow-sheet"
-            style={{ opacity: deleteSelectedConfirmClosing ? 0 : 1, transition: `opacity ${CLOSE_ANIMATION_MS}ms ease` }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-bold mb-2 font-display">{t("למחוק {n} תמונות?", { n: selectedIds.size })}</h2>
-            <p className="text-sm text-ink-soft mb-5">{t("הפעולה תמחק את התמונות שנבחרו לצמיתות מהגלריה ולא ניתן יהיה לשחזר אותן.")}</p>
-            <div className="flex gap-2">
-              <button
-                onClick={confirmDeleteSelectedPhotos}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white"
-              >
-                {t("כן, מחק לצמיתות")}
-              </button>
-              <button
-                onClick={cancelDeleteSelected}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-line text-ink-soft"
-              >
-                {t("ביטול")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteSelectedConfirm
+          count={selectedIds.size}
+          closing={deleteSelectedConfirmClosing}
+          onConfirm={confirmDeleteSelectedPhotos}
+          onCancel={cancelDeleteSelected}
+        />
       )}
 
       {/* Same full-screen indeterminate-spinner visual language as the calendar-scan flow
@@ -4811,7 +4786,8 @@ export default function GalleryManageView({
             preview_aspect_ratio: p.preview_aspect_ratio,
             folder_id: p.folder_id,
             culling_status: p.culling_status,
-            thumbUrl: p.previewUrl ?? p.url,
+            previewUrl: p.previewUrl ?? null,
+            blur: p.preview_blur_data_url,
           }))}
           folders={folders}
           onClose={() => setCollageOpen(false)}
