@@ -158,7 +158,7 @@ export default async function RootLayout({
             align-items: center;
             justify-content: center;
             gap: 26px;
-            background: #d5c9bb;
+            background: #ede8df;
             opacity: 1;
             visibility: visible;
             transition: opacity 0.4s ease;
