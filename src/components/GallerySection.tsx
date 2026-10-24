@@ -10,6 +10,7 @@ import NewGalleryModal from "@/components/NewGalleryModal";
 import LinkExistingGalleryModal from "@/components/LinkExistingGalleryModal";
 import ToneTag from "@/components/ToneTag";
 import { useT } from "@/i18n/client";
+import { openWhatsApp } from "@/lib/waLink";
 
 export default function GallerySection({
   eventId,
@@ -19,6 +20,9 @@ export default function GallerySection({
   clientName,
   clientPhone,
   eventDate,
+  galleryMessage,
+  galleryStageLabel,
+  onSent,
 }: {
   eventId: string;
   initialGallery: GalleryRow | null;
@@ -27,6 +31,12 @@ export default function GallerySection({
   clientName: string;
   clientPhone: string;
   eventDate: string;
+  // The gallery stage's saved message (Settings → הודעות ללקוח) with this gallery's link, built by
+  // the event page (EventDetailView's buildGalleryMessage) so it's the same text as its stage sends.
+  galleryMessage: (accessToken: string) => string;
+  galleryStageLabel: string;
+  // After a send: the event's activity log gets the new row.
+  onSent?: () => void;
 }) {
   const t = useT();
   const router = useRouter();
@@ -42,6 +52,22 @@ export default function GallerySection({
   const [unlinking, setUnlinking] = useState(false);
 
   const isArchived = !!gallery?.archived_at;
+  const phone = clientPhone || gallery?.client_phone || "";
+
+  // One tap: the photographer's own WhatsApp opens on the client's chat with the gallery message
+  // (owner, 2026-10-24), then the send is logged on the event like every other client update.
+  const sendGallery = () => {
+    if (!gallery || !phone) return;
+    openWhatsApp(phone, galleryMessage(gallery.access_token));
+    fetch(`/api/events/${eventId}/notify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: galleryStageLabel, clientPhone: phone }),
+      keepalive: true,
+    })
+      .then(() => onSent?.())
+      .catch(() => {});
+  };
 
   const unlink = async () => {
     if (!gallery) return;
@@ -87,6 +113,18 @@ export default function GallerySection({
               <div className="text-xs text-amber-deep underline mt-0.5">{t("ניהול גלריה")} <span className="inline-block ltr:rotate-180">←</span></div>
             </div>
           </Link>
+
+          {gallery.published && !isArchived && phone && (
+            <button onClick={sendGallery} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white mt-3.5">
+              {t("שליחת הגלריה ללקוח בוואטסאפ")}
+            </button>
+          )}
+          {gallery.published && !isArchived && !phone && (
+            <p className="text-[11px] text-ink-soft mt-3">{t("אין טלפון ללקוח באירוע, ולכן אין שליחה בוואטסאפ.")}</p>
+          )}
+          {!gallery.published && !isArchived && (
+            <p className="text-[11px] text-ink-soft mt-3">{t("אחרי פרסום הגלריה אפשר לשלוח אותה ללקוח בוואטסאפ מכאן.")}</p>
+          )}
 
           {unlinkStep === "idle" && (
             <button onClick={() => setUnlinkStep("confirm1")} className="text-xs text-ink-soft underline mt-3">
