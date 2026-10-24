@@ -11,6 +11,28 @@ export { changesFor, type ChangelogEntry } from "@/lib/changelogEntry";
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.9",
+    date: "2026-10-24",
+    changes: [
+      "חדש בגלריה: קולאז' אוטומטי (כלים › קולאז'). המערכת בוחרת לבד תמונות של הדמויות המרכזיות: החתן והכלה בחתונה ובחינה, חתן או כלת השמחה בבר מצווה, בבת מצווה ובעלייה לתורה, ובבוק תמונות מכל הגלריה",
+      "בוחרים כמה תמונות (8 כברירת מחדל), גודל להדפסה (30×20 עד 100×70, או גודל אחר), מרווח ורקע לבן או שחור. \"עיצוב אחר\" מחליף פריסה, ו\"תמונות אחרות\" בוחר תמונות אחרות. החיתוך שומר על הפנים",
+      "כדי להחליף תמונה, לוחצים עליה בקולאז', בוחרים תמונה אחרת מהחלון ומאשרים",
+      "הקובץ יוצא מהקבצים המקוריים, ב-JPG של 300 DPI, מוכן להדפסה. בטלפון אפשר גם לשתף אותו ישירות",
+    ],
+    en: [
+      "New in the gallery: an automatic collage (Tools › Collage). The system picks photos of the main figures for you: the bride and groom at a wedding or henna, the bar or bat mitzvah child at a bar mitzvah, bat mitzvah or aliyah, and photos from the whole gallery for a photo session",
+      "Choose how many photos (8 by default), a print size (30×20 to 100×70, or your own), the spacing and a white or black background. \"Another design\" changes the layout, and \"Other photos\" picks different photos. The crop keeps the faces",
+      "To replace a photo, tap it in the collage, pick another one in the window and confirm",
+      "The file is made from the original files, as a 300 DPI JPG ready to print. On a phone you can also share it directly",
+    ],
+    ru: [
+      "Новое в галерее: автоматический коллаж (Инструменты › Коллаж). Система сама выбирает фото главных героев: жениха и невесту на свадьбе и хне, виновника торжества на бар-мицве, бат-мицве и алие, а для фотосессии — фото со всей галереи",
+      "Выберите количество фото (по умолчанию 8), размер для печати (от 30×20 до 100×70 или свой), отступы и белый или чёрный фон. «Другой дизайн» меняет раскладку, а «Другие фото» выбирает другие снимки. Кадрирование сохраняет лица",
+      "Чтобы заменить фото, нажмите на него в коллаже, выберите другое в окне и подтвердите",
+      "Файл создаётся из оригиналов, в формате JPG 300 DPI, готовый к печати. На телефоне им можно сразу поделиться",
+    ],
+  },
+  {
     version: "2.12.8",
     date: "2026-10-23",
     changes: [

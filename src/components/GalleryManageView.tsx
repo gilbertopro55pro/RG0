@@ -116,6 +116,7 @@ import GalleryToolsMenu, { type GalleryToolItem } from "@/components/galleryMana
 import PhotoActionSheet from "@/components/galleryManage/PhotoActionSheet";
 import PhotoDeleteConfirm from "@/components/galleryManage/PhotoDeleteConfirm";
 import DeleteSelectedConfirm from "@/components/galleryManage/DeleteSelectedConfirm";
+import ScrollTopButton from "@/components/galleryManage/ScrollTopButton";
 import AlbumQualityCheck, { QualityHighlight, QualityPageBadge, useAlbumQualityCheck } from "@/components/galleryManage/AlbumQualityCheck";
 
 // The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
@@ -3126,8 +3127,9 @@ export default function GalleryManageView({
           },
         ]
       : []),
-    // The automatic collage of the event's main figures — admin only while it's polished (2026-10-23).
-    ...(photographerEmail === ADMIN_EMAIL && photos.length > 0
+    // The automatic collage of the event's main figures (2026-10-23; open to everyone since
+    // 2026-10-24, version 2.12.9).
+    ...(photos.length > 0
       ? [
           {
             key: "collage",
@@ -3592,17 +3594,7 @@ export default function GalleryManageView({
           </div>
         </div>
       )}
-      {showScrollTop && (
-        <button
-          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          aria-label={t("חזרה לראש העמוד")}
-          className={`fixed bottom-5 end-5 z-40 h-11 w-11 rounded-full flex items-center justify-center bg-ink text-white shadow-sheet ${BTN_PRESS}`}
-        >
-          <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 19V5M5 12l7-7 7 7" />
-          </svg>
-        </button>
-      )}
+      {showScrollTop && <ScrollTopButton />}
       {!premiumTheme && (
       <div className="flex items-center justify-between mb-2">
         <BackLink href="/galleries" label={t("כל הגלריות")} />
