@@ -3,6 +3,7 @@ import { hasAppAccess, isInTrial, trialEnded, trialDaysLeft, renewalPaymentDue }
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import type { Photographer } from "@/lib/types";
 import BillingPlanSelector from "@/components/BillingPlanSelector";
 import LogoutButton from "@/components/LogoutButton";
@@ -18,9 +19,7 @@ export default async function BillingPage({
   const t = await getT();
   const lang = await getLang();
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/login");
 
   const { data: photographer } = await supabase

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 
 // Powers the red badge on the settings nav tile — same underlying data as the per-event
 // badges on the dashboard (unread, client-initiated event_notifications), just summed across
@@ -7,9 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 // member's assigned events) the same way it already does on the dashboard query.
 export async function GET() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Polled from every screen: the JWT checked locally (lib/supabase/sessionUser.ts), no Auth round trip.
+  const user = await getSessionUser();
 
   if (!user) {
     return NextResponse.json({ unreadEvents: 0 });

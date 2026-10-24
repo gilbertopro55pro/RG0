@@ -27,6 +27,7 @@ import {
 } from "@/lib/albumRender";
 import { textHeightPctForFontSize, textHeightPctForLines, grownTextBox, albumTextLines, ALBUM_TEXT_LINE_HEIGHT, MAX_TEXT_HEIGHT_OVERSIZE_RATIO } from "@/lib/albumTextSizing";
 import AlbumTextLines, { albumTextBoxAlign } from "@/components/AlbumTextLines";
+import { fitFramesToSafeArea, marginInsetPctFor } from "@/lib/albumSafeArea";
 import {
   clampGroupDelta,
   computeMoveAlignment,
@@ -1569,31 +1570,9 @@ function PhotoAdjustFloatingMenu({
   );
 }
 
-// The print-safe margin is a hard constraint for anything placed AUTOMATICALLY (templates, the
-// multi-photo auto-layout) — every frame designed on a nominal 0-100 full-bleed canvas gets
-// linearly rescaled into the album's actual safe-print box, so no automatically-generated layout
-// can ever cross the green line regardless of which album size it's applied to. Manual dragging is
-// deliberately NOT clamped by this — a photographer can always drag a photo past the margin on
-// purpose; only automatic placement is constrained.
-export function marginInsetPctFor(album: { width_cm: number; height_cm: number; safe_margin_cm?: number }): { x: number; y: number } | null {
-  const marginCm = album.safe_margin_cm ?? 0.5;
-  return album.width_cm > 0 && album.height_cm > 0 ? { x: (marginCm / album.width_cm) * 100, y: (marginCm / album.height_cm) * 100 } : null;
-}
-
-export function fitFramesToSafeArea(frames: AlbumFrame[], marginInsetPct: { x: number; y: number } | null): AlbumFrame[] {
-  if (!marginInsetPct) return frames;
-  const { x: mx, y: my } = marginInsetPct;
-  const safeWidth = 100 - 2 * mx;
-  const safeHeight = 100 - 2 * my;
-  if (safeWidth <= 0 || safeHeight <= 0) return frames;
-  return frames.map((f) => ({
-    ...f,
-    xPct: mx + (f.xPct / 100) * safeWidth,
-    yPct: my + (f.yPct / 100) * safeHeight,
-    widthPct: (f.widthPct / 100) * safeWidth,
-    heightPct: (f.heightPct / 100) * safeHeight,
-  }));
-}
+// marginInsetPctFor / fitFramesToSafeArea live in lib/albumSafeArea.ts (GalleryManageView needs them
+// without loading this editor); re-exported here for existing imports.
+export { marginInsetPctFor, fitFramesToSafeArea };
 
 // The photo the circular floating menu's vertical position is measured against: the topmost
 // selected photo, so the menu never drifts down to wherever the LAST-clicked photo happens to sit.

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import { listSyncedCalendarEvents } from "@/lib/googleCalendarSync";
 import type { Photographer } from "@/lib/types";
 import CalendarView from "@/components/CalendarView";
@@ -7,9 +8,7 @@ import { hasAppAccess } from "@/lib/subscription";
 
 export default async function CalendarPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   const { data: photographer } = await supabase
     .from("photographers")

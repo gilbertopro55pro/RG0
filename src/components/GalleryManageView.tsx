@@ -32,9 +32,10 @@ import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { IconGallery, IconTrash } from "@/components/icons/NavIcons";
 import { IconClose as IconAlbumClose, IconPalette, IconChat, IconSave as IconAlbumSave, IconWarning, IconPdf, IconImage, IconCheck as IconAlbumCheck, IconRotateDevice } from "@/components/icons/AlbumIcons";
-import AlbumSpreadCanvasEditor, { fitFramesToSafeArea, marginInsetPctFor, type AlbumCanvasDraft } from "@/components/AlbumSpreadCanvasEditor";
+import type { AlbumCanvasDraft } from "@/components/AlbumSpreadCanvasEditor";
+import { fitFramesToSafeArea, marginInsetPctFor } from "@/lib/albumSafeArea";
 import { takeResumeState, useBusy, useResumeState } from "@/lib/updateResume";
-import AlbumAutoDesigner, { type AutoDesignResult } from "@/components/AlbumAutoDesigner";
+import type { AutoDesignResult } from "@/components/AlbumAutoDesigner";
 import { hasAutoDesignSession } from "@/lib/albumAuto/session";
 import { fitPhotoInFrame, swapPhotoPatches, type FaceRect, type SwapFit, type SwapPick } from "@/lib/albumAuto/swapPhotos";
 import { createFaceCache, createSerialQueue, refitAfterFaces } from "@/lib/albumAuto/swapFaces";
@@ -104,7 +105,15 @@ import { dateLocale, type Lang } from "@/i18n/config";
 import { buildGalleryShareMessage, buildGalleryPhotosUploadedMessage, galleryShareTitle } from "@/components/GalleryShareModal";
 import { galleryShareSearch, shortClientUrl } from "@/lib/shortLinks";
 import type { PhotoWithUrl, ZipJobPart, ZipBatchState } from "@/components/galleryManage/types";
-import { CLOSE_ANIMATION_MS } from "@/components/galleryManage/constants";
+import {
+  ALBUM_SIZE_PRESETS,
+  CELL_SIZE_DEFAULT,
+  CELL_SIZE_MAX,
+  CELL_SIZE_MIN,
+  CLOSE_ANIMATION_MS,
+  MAX_GALLERY_PHOTOS,
+  ZIP_NO_FOLDER_KEY,
+} from "@/components/galleryManage/constants";
 import { triggerZipAnchorDownload, addDays, fitAutoElements } from "@/components/galleryManage/helpers";
 import { MgrPhotoOverlays } from "@/components/galleryManage/MgrPhotoOverlays";
 import { GallerySettingsModal } from "@/components/galleryManage/GallerySettingsModal";
@@ -121,38 +130,15 @@ import AlbumQualityCheck, { QualityHighlight, QualityPageBadge, useAlbumQualityC
 
 // The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
 const ReelBuilder = dynamic(() => import("@/components/ReelBuilder"), { ssr: false });
+// The album editor (~400KB of source) and the auto designer load when opened, not with every
+// gallery: most visits to this screen never open either.
+const AlbumSpreadCanvasEditor = dynamic(() => import("@/components/AlbumSpreadCanvasEditor"), { ssr: false });
+const AlbumAutoDesigner = dynamic(() => import("@/components/AlbumAutoDesigner"), { ssr: false });
 // The automatic collage (admin only, 2026-10-23), loaded only when opened.
 const CollageBuilder = dynamic(() => import("@/components/CollageBuilder"), { ssr: false });
 // Photo culling labels for the admin's culling-engine test (app/admin/culling), loaded only when opened.
 const CullingLabelModal = dynamic(() => import("@/components/CullingLabelModal"), { ssr: false });
 
-const ZIP_NO_FOLDER_KEY = "none";
-
-// A gallery this size (thousands of un-virtualized DOM nodes, a single-tab sequential upload
-// session that can run for hours) is already pushing the browser tab's limits — capping it keeps
-// a runaway selection (an entire multi-day event's raw folder, say) from silently degrading into
-// a stalled or crashed upload with no resumable progress.
-const MAX_GALLERY_PHOTOS = 8000;
-
-// Common photo-album print sizes, each with a recommended safe-margin starting point — picking
-// one just prefills the width/height/margin fields below, so manual entry (typing different
-// numbers, or overriding a preset's values) always stays available on the exact same fields.
-const ALBUM_SIZE_PRESETS: { label: string; width: number; height: number; margin: number }[] = [
-  { label: "20×20", width: 20, height: 20, margin: 0.4 },
-  { label: "20×30", width: 20, height: 30, margin: 0.5 },
-  { label: "30×20", width: 30, height: 20, margin: 0.5 },
-  { label: "25×25", width: 25, height: 25, margin: 0.5 },
-  { label: "30×30", width: 30, height: 30, margin: 0.6 },
-  { label: "30×40", width: 30, height: 40, margin: 0.8 },
-  { label: "40×30", width: 40, height: 30, margin: 0.8 },
-  { label: "54×20", width: 54, height: 20, margin: 0.6 },
-  { label: "60×30", width: 60, height: 30, margin: 0.9 },
-  { label: "80×30", width: 80, height: 30, margin: 1 },
-];
-
-const CELL_SIZE_MIN = 80;
-const CELL_SIZE_MAX = 260;
-const CELL_SIZE_DEFAULT = 126;
 
 export default function GalleryManageView({
   eventId,

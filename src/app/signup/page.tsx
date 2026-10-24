@@ -4,7 +4,7 @@ import { use, useState } from "react";
 import Link from "next/link";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import Spinner from "@/components/Spinner";
-import ClientLangScope from "@/i18n/ClientLangScope";
+import LazyLangScope from "@/i18n/LazyLangScope";
 import { useT } from "@/i18n/client";
 import type { Lang } from "@/i18n/config";
 import AuthLangSwitcher, { authLangFrom, withLang } from "@/components/AuthLangSwitcher";
@@ -73,9 +73,9 @@ function SignupShell({ lang, children }: { lang: Lang; children: React.ReactNode
 export default function SignupPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const lang = authLangFrom(use(searchParams).lang);
   return (
-    <ClientLangScope lang={lang}>
+    <LazyLangScope lang={lang}>
       <SignupForm lang={lang} />
-    </ClientLangScope>
+    </LazyLangScope>
   );
 }
 

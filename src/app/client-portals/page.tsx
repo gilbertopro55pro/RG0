@@ -1,14 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import type { EventRow, Photographer } from "@/lib/types";
 import ClientPortalsView from "@/components/ClientPortalsView";
 import { hasAppAccess } from "@/lib/subscription";
 
 export default async function ClientPortalsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   const [{ data: photographer }, { data: events }] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),

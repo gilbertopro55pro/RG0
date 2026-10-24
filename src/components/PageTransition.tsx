@@ -21,7 +21,8 @@ export default function PageTransition({ children }: { children: React.ReactNode
     const el = ref.current;
     if (!el || typeof el.animate !== "function") return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    el.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 280, easing: "cubic-bezier(0.16, 1, 0.3, 1)" });
+    // Short and from half opacity: the new screen must read as already there, not as arriving.
+    el.animate([{ opacity: 0.55 }, { opacity: 1 }], { duration: 160, easing: "cubic-bezier(0.16, 1, 0.3, 1)" });
   }, [pathname]);
 
   return (

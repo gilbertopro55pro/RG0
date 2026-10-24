@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 
 // The "new lead from the assistant" popup (owner, 2026-10-01; components/AssistantLeadPopup.tsx):
 // GET lists the photographer's assistant leads not seen yet, plus those whose reminder is due
@@ -17,9 +18,8 @@ const REMIND_MINUTES = [30, 60, 180] as const;
 
 export async function GET() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Polled from every screen: the JWT checked locally (lib/supabase/sessionUser.ts), no Auth round trip.
+  const user = await getSessionUser();
   if (!user) return NextResponse.json({ leads: [] });
   const now = new Date().toISOString();
   const { data } = await supabase

@@ -1,14 +1,26 @@
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { classifyName } from "@/lib/leadQuotePrefill";
 import { dateLocale, type Lang } from "@/i18n/config";
-import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
+import type { Messages } from "@/i18n/types";
+import clientQuote from "@/i18n/dict/clientQuote";
+import clientQuoteSend from "@/i18n/dict/clientQuoteSend";
+import eventTypes from "@/i18n/dict/eventTypes";
 
 // Admin-only quote extras for now (owner, 2026-10-01, "עדכון אדמין"):
 // - the notes field starts with the delivery times, and its lines follow what the quote holds: the
 //   video line only with a video item, the magnets line only with a magnets item;
 // - the WhatsApp caption of the shared PDF names the client, the event and the date.
 // Every other account keeps an empty notes field and the plain "הצעת מחיר" caption.
+
+// Only the areas these messages need (the quote's wording and the preset event types), not the
+// merged dictionary (@/i18n/dict): this file runs in the browser too, and that import shipped every
+// area's text, ~830KB, to the event and leads pages.
+const messageCache: Partial<Record<Exclude<Lang, "he">, Messages>> = {};
+function quoteT(lang: Lang) {
+  if (lang === "he") return makeT({});
+  return makeT((messageCache[lang] ??= { ...clientQuote[lang], ...clientQuoteSend[lang], ...eventTypes[lang] }));
+}
 
 export function quoteExtrasFor(email: string | null | undefined): boolean {
   return email === ADMIN_EMAIL;
@@ -53,7 +65,7 @@ export function quoteShareCaption(clientName: string, eventType: string, dateDMY
     return [name, "הצעת מחיר", type ? `ל${type}` : null, date ? `בתאריך ${date}` : null].filter(Boolean).join(" ");
   }
   // "Price quote for Hila Shapiro – Bar Mitzvah, 22 October 2026".
-  const t = makeT(messagesFor(lang));
+  const t = quoteT(lang);
   const head = name ? t("הצעת מחיר עבור {name}", { name }) : t("הצעת מחיר");
   const tail = [type ? t(type) : null, isoDate ? localDate(isoDate, lang) ?? date : date].filter(Boolean).join(", ");
   return tail ? `${head} – ${tail}` : head;
@@ -79,7 +91,7 @@ export function quoteLinkMessage(
   lang: Lang = "he",
   approved = false
 ): string {
-  const t = makeT(messagesFor(lang));
+  const t = quoteT(lang);
   return [
     caption,
     "",

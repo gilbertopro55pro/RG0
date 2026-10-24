@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import Link from "next/link";
 import CullingLabeler from "@/components/CullingLabeler";
@@ -12,9 +13,7 @@ import { getT } from "@/i18n/server";
 // Admin only.
 export default async function CullingLabelsPage({ searchParams }: { searchParams: Promise<{ gallery?: string; tab?: string }> }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user || user.email !== ADMIN_EMAIL) redirect("/");
 
   const { gallery, tab } = await searchParams;

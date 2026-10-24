@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { parseHomeEventsView } from "@/lib/homeEventsView";
 import { CURRENT_VERSION } from "@/lib/changelog";
@@ -7,6 +8,8 @@ import { quoteExtrasFor } from "@/lib/quoteDefaults";
 import { canChooseClientLang, clientLangFor } from "@/lib/clientLang";
 import { IconMagnetFrame } from "@/components/icons/NavIcons";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
+import { albumQuickGalleriesFrom } from "@/lib/albumQuickGalleries";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { closingRecognitions, monthKeyIsrael } from "@/lib/closeEvent";
@@ -68,9 +71,7 @@ type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | n
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   // Logged-out visitors get the marketing landing page instead of a bare redirect to /login —
   // this is now the page prospective photographers actually land on from ads/social links.
@@ -78,6 +79,18 @@ export default async function DashboardPage() {
 
   const t = await getT();
   const lang = await getLang();
+
+  // The vivid look's new-leads count (admin only, lib/vivid.ts), started alongside the batch below.
+  const newLeadsCountPromise: Promise<number> = vividForEmail(user.email)
+    ? (async () => {
+        try {
+          const { count } = await onlyNewLeads(supabase.from("leads").select("id", { count: "exact", head: true }));
+          return count ?? 0;
+        } catch {
+          return 0;
+        }
+      })()
+    : Promise.resolve(0);
 
   // Every one of these is independent of the others' *values* — they only depend on user.id,
   // which we already have — so they're fired as a single parallel batch instead of five-plus
@@ -101,6 +114,8 @@ export default async function DashboardPage() {
     { data: priceQuoteTemplates },
     { data: contracts },
     { data: customStageNames },
+    { data: galleriesForAlbum },
+    { count: registeredCount },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase.from("team_members").select("*").eq("id", user!.id).maybeSingle<TeamMember>(),
@@ -154,6 +169,21 @@ export default async function DashboardPage() {
       .from("custom_package_stages")
       .select("id, name, requires_album_pdf, notify_client")
       .returns<{ id: string; name: string; requires_album_pdf: boolean; notify_client: boolean }[]>(),
+    // The album-design quick-access list below, with each gallery's album row embedded (it used to
+    // be three queries one after the other, after this batch).
+    supabase
+      .from("galleries")
+      .select("id, title, published, event_id, gallery_albums(gallery_id)")
+      .eq("photographer_id", user.id)
+      .eq("is_portfolio_only", false)
+      .is("archived_at", null)
+      .order("created_at", { ascending: false })
+      .returns<{ id: string; title: string; published: boolean; event_id: string | null; gallery_albums: { gallery_id: string } | { gallery_id: string }[] | null }[]>(),
+    // Visible only to the admin account, on their own dashboard — total signups across every
+    // photographer, bypassing the per-photographer RLS that normally scopes this table to one row.
+    user.email === ADMIN_EMAIL
+      ? createServiceRoleClient().from("photographers").select("id", { count: "exact", head: true })
+      : Promise.resolve({ count: null }),
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
@@ -170,26 +200,8 @@ export default async function DashboardPage() {
   // shows is fetched only for it, so other accounts pay nothing. The new-leads count starts now and
   // runs alongside the album queries below.
   const vivid = vividForEmail(photographer?.email);
-  const newLeadsCountPromise: Promise<number> =
-    vivid && photographer
-      ? (async () => {
-          try {
-            const { count } = await onlyNewLeads(supabase.from("leads").select("id", { count: "exact", head: true }));
-            return count ?? 0;
-          } catch {
-            return 0;
-          }
-        })()
-      : Promise.resolve(0);
-
-  // Visible only to the admin account, on their own dashboard — total signups across every
-  // photographer, bypassing the per-photographer RLS that normally scopes this table to one row.
-  let registeredUsersCount: number | null = null;
-  if (photographer?.email === ADMIN_EMAIL) {
-    const serviceRole = createServiceRoleClient();
-    const { count } = await serviceRole.from("photographers").select("id", { count: "exact", head: true });
-    registeredUsersCount = count ?? 0;
-  }
+  const newLeadsCount = vivid && photographer ? await newLeadsCountPromise : 0;
+  const registeredUsersCount: number | null = photographer?.email === ADMIN_EMAIL ? (registeredCount ?? 0) : null;
 
   // Feeds the album-design quick-access dropdown below — published and draft galleries alike (an
   // album can be designed before the client-facing gallery ever goes live), excluding the hidden
@@ -198,39 +210,9 @@ export default async function DashboardPage() {
   // already has an album so started work never disappears (owner's request, 2026-09-27).
   // Album design and magnet frames are פרו / פרו+ features (designToolsAllowed); admin always.
   const albumToolAllowed = !!photographer && designToolsAllowed(photographer);
-  let albumQuickGalleries: { id: string; title: string; published: boolean; hasActiveAlbum: boolean }[] = [];
-  if (photographer && albumToolAllowed) {
-    const { data: galleriesForAlbum } = await supabase
-      .from("galleries")
-      .select("id, title, published, event_id")
-      .eq("photographer_id", photographer.id)
-      .eq("is_portfolio_only", false)
-      .is("archived_at", null)
-      .order("created_at", { ascending: false })
-      .returns<{ id: string; title: string; published: boolean; event_id: string | null }[]>();
-    // hasActiveAlbum drives the quick-export shortcut in AlbumQuickAccessButton — a gallery only
-    // gets one of these rows once the photographer has actually started designing its album (see
-    // buildStyledAlbum/buildAlbumFromBookTemplate in GalleryManageView.tsx, both of which insert
-    // this row the moment step 1 of the album wizard completes), so its mere existence is already
-    // exactly "there's something to export," no need to also check it has real spreads/pages.
-    const galleryIds = (galleriesForAlbum ?? []).map((g) => g.id);
-    const { data: albumsForGalleries } =
-      galleryIds.length > 0
-        ? await supabase.from("gallery_albums").select("gallery_id").in("gallery_id", galleryIds).returns<{ gallery_id: string }[]>()
-        : { data: [] as { gallery_id: string }[] };
-    const galleriesWithAlbum = new Set((albumsForGalleries ?? []).map((a) => a.gallery_id));
-    const albumCustomStageIds = (customStageNames ?? []).filter((c) => c.name.includes("עיצוב אלבום")).map((c) => c.id);
-    const eventIds = [...new Set((galleriesForAlbum ?? []).map((g) => g.event_id).filter((id): id is string => !!id))];
-    const stageFilter = ["stage_key.eq.album_design", ...(albumCustomStageIds.length ? [`custom_stage_id.in.(${albumCustomStageIds.join(",")})`] : [])].join(",");
-    const { data: albumStages } =
-      eventIds.length > 0
-        ? await supabase.from("event_stages").select("event_id").in("event_id", eventIds).or(stageFilter).returns<{ event_id: string }[]>()
-        : { data: [] as { event_id: string }[] };
-    const eventsWithAlbumStage = new Set((albumStages ?? []).map((s) => s.event_id));
-    albumQuickGalleries = (galleriesForAlbum ?? [])
-      .filter((g) => galleriesWithAlbum.has(g.id) || (g.event_id !== null && eventsWithAlbumStage.has(g.event_id)))
-      .map(({ id, title, published }) => ({ id, title, published, hasActiveAlbum: galleriesWithAlbum.has(id) }));
-  }
+  // hasActiveAlbum drives the quick-export shortcut in AlbumQuickAccessButton (lib/albumQuickGalleries.ts).
+  const albumQuickGalleries =
+    photographer && albumToolAllowed ? albumQuickGalleriesFrom(galleriesForAlbum ?? [], events ?? [], customStageNames ?? []) : [];
 
   // The first stage (by order) not done yet, per event. null = every stage is done, i.e. the event
   // is ready to be closed.
@@ -503,7 +485,6 @@ export default async function DashboardPage() {
     : [];
 
   const headerCounts = vivid && photographer ? homeHeaderCounts(events ?? [], attentionByEvent) : null;
-  const newLeadsCount = await newLeadsCountPromise;
 
   return (
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-24 w-full">
@@ -579,7 +560,7 @@ export default async function DashboardPage() {
         // block-level children of this same padded container, so a plain flex row with gap-3
         // naturally lines up without any explicit width math.
         <div className="flex items-stretch gap-3 mb-5 flex-wrap">
-          <a
+          <Link
             href="/magnet-frames"
             className="flex-1 min-w-0 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl p-3 sm:p-4 bg-card border border-line shadow-card"
           >
@@ -600,7 +581,7 @@ export default async function DashboardPage() {
               </div>
             </div>
             <span className="hidden sm:inline-block ltr:rotate-180 text-ink-soft shrink-0">←</span>
-          </a>
+          </Link>
           <AlbumQuickAccessButton galleries={albumQuickGalleries} />
         </div>
       )}

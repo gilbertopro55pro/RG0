@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { metaStatus } from "@/lib/metaAds";
 import type { Photographer } from "@/lib/types";
@@ -43,9 +44,7 @@ async function fetchAll<T>(page: (from: number, to: number) => PromiseLike<{ dat
 export default async function CampaignsPage({ searchParams }: { searchParams: Promise<{ meta?: string }> }) {
   const { meta: metaResult } = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
   const { data: photographer } = await supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>();
   if (!photographer) redirect("/");

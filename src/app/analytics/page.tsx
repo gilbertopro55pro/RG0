@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/sessionUser";
 import type { EventPaymentRow, Photographer } from "@/lib/types";
 import type { PackageType } from "@/lib/stages";
 import AnalyticsView from "@/components/AnalyticsView";
@@ -24,17 +25,28 @@ export type AnalyticsEvent = {
 export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
-  const [{ data: photographer }, { data: events }, { data: payments }] = await Promise.all([
+  // The collection tools in the open balances tab: a payment reminder per client, admin only for
+  // now (owner, 2026-10-19). The last reminder per event comes from the event log, which also has
+  // the ones sent from the home screen's payment reminder prompt. Read alongside the rest.
+  const collection = user?.email === ADMIN_EMAIL;
+  const [{ data: photographer }, { data: events }, { data: payments }, { data: logged }] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase
       .from("events")
       .select("id, event_date, package, client_name, closed_at, closed_balance_month, client_phone, client_email, client_access_token, client_lang")
       .returns<AnalyticsEvent[]>(),
     supabase.from("event_payments").select("*").returns<EventPaymentRow[]>(),
+    collection
+      ? supabase
+          .from("event_notifications")
+          .select("event_id, created_at")
+          .ilike("text", `%${PAYMENT_REMINDER_LOG_MARK}%`)
+          .order("created_at", { ascending: false })
+          .limit(500)
+          .returns<{ event_id: string | null; created_at: string }[]>()
+      : Promise.resolve({ data: [] as { event_id: string | null; created_at: string }[] }),
   ]);
   if (!photographer) redirect("/");
   if (!hasAppAccess(photographer)) redirect("/billing");
@@ -45,21 +57,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   // "Today" for which events already took place (the open-balances tab), on the Israel calendar.
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(now);
 
-  // The collection tools in the open balances tab: a payment reminder per client, admin only for
-  // now (owner, 2026-10-19). The last reminder per event comes from the event log, which also has
-  // the ones sent from the home screen's payment reminder prompt.
-  const collection = photographer.email === ADMIN_EMAIL;
   const lastReminders: Record<string, string> = {};
-  if (collection) {
-    const { data: logged } = await supabase
-      .from("event_notifications")
-      .select("event_id, created_at")
-      .ilike("text", `%${PAYMENT_REMINDER_LOG_MARK}%`)
-      .order("created_at", { ascending: false })
-      .limit(500)
-      .returns<{ event_id: string | null; created_at: string }[]>();
-    for (const r of logged ?? []) if (r.event_id && !lastReminders[r.event_id]) lastReminders[r.event_id] = r.created_at;
-  }
+  for (const r of logged ?? []) if (r.event_id && !lastReminders[r.event_id]) lastReminders[r.event_id] = r.created_at;
 
   return (
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
