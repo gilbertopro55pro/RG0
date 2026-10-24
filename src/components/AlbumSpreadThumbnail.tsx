@@ -10,6 +10,7 @@ import { hasAdjustments, adjustmentsSvgFilter } from "@/lib/albumAdjustments";
 import { sharpenSvgFilter } from "@/lib/albumSharpen";
 import { textRotationTransform } from "@/lib/albumTextRotation";
 import AlbumTextLines, { albumTextBoxAlign } from "@/components/AlbumTextLines";
+import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 
 // Shared, read-only rendering of one album spread — used both in the album page grid
 // (GalleryManageView.tsx) and in the page-editor's own bottom switcher strip
@@ -244,7 +245,7 @@ export default function AlbumSpreadThumbnail({
                 return (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src={photo.previewUrl ?? photo.url}
+                    src={resizedPhotoUrl(photo, 1200)}
                     alt=""
                     className="absolute pointer-events-none"
                     onLoad={(e) => {

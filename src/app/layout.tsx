@@ -8,10 +8,12 @@ import "./globals.css";
 import PWARegister from "@/components/PWARegister";
 import UpdateReloadGate from "@/components/UpdateReloadGate";
 import PageTransition from "@/components/PageTransition";
+import BootReady from "@/components/BootReady";
 import TopNav from "@/components/TopNav";
 import GlobalButtonEffects from "@/components/GlobalButtonEffects";
 import BodyScrollLock from "@/components/BodyScrollLock";
 import GlobalLoadingBar from "@/components/GlobalLoadingBar";
+import FreshNavigation from "@/components/FreshNavigation";
 import InstallPrompt from "@/components/InstallPrompt";
 import ChangelogModal from "@/components/ChangelogModal";
 import UploadsIndicator from "@/components/UploadsIndicator";
@@ -34,10 +36,13 @@ import { vividForRequest } from "@/lib/vivid";
 // the owner's pick: "כתב דפוס אבל מעוגל מעט"; replaces Heebo, same face as the landing page). No
 // monospace for numbers: prices, dates and counters use Rubik's tabular figures via .font-data
 // (globals.css); real codes/credentials still use the system monospace via font-mono.
+// The variable face (300-900) instead of six static weights: one file per script for every weight
+// the app uses, where the static weights were up to 18 files, each one fetched (and the text
+// re-laid out) the first time a page used that weight.
 const rubik = Rubik({
   variable: "--font-rubik",
   subsets: ["latin", "hebrew", "cyrillic"],
-  weight: ["400", "500", "600", "700", "800", "900"],
+  weight: "variable",
 });
 
 // Physical-pixel splash images (public/splash) matched to CSS size + device-pixel-ratio, so iOS
@@ -167,6 +172,12 @@ export default async function RootLayout({
             opacity: 0;
             visibility: hidden;
           }
+          /* The splash stays in the DOM once hidden: stop its animations, which otherwise kept
+             restyling it 60 times a second for as long as the page was open. */
+          #boot-splash.boot-splash-out,
+          #boot-splash.boot-splash-out * {
+            animation: none !important;
+          }
           #boot-splash img {
             width: 114px;
             height: 114px;
@@ -292,7 +303,10 @@ export default async function RootLayout({
                 estimateFromResources();
               });
               var poll = setInterval(estimateFromResources, 150);
+              var hidden = false;
               function hideBootSplash() {
+                if (hidden) return;
+                hidden = true;
                 clearInterval(poll);
                 setPct(100);
                 // The quick spinner has no bar to finish filling: it goes as soon as the page is in.
@@ -302,6 +316,11 @@ export default async function RootLayout({
                   document.body.classList.add("app-content-in");
                 }, quick ? 0 : 350);
               }
+              // Ready when React has hydrated the page (BootReady calls this from its effect), not on
+              // window load: load waits for every image and font on the page, so the splash stayed up
+              // for seconds over a page that was already rendered (on a phone, up to the 6s cap).
+              // load and the timeout stay as fallbacks.
+              window.__bootReady = hideBootSplash;
               if (document.readyState === "complete") {
                 hideBootSplash();
               } else {
@@ -321,6 +340,7 @@ export default async function RootLayout({
           <GlobalButtonEffects />
           <BodyScrollLock />
           <GlobalLoadingBar />
+          <FreshNavigation />
           <PremiumScope />
           <TopNav currentVersion={CURRENT_VERSION} />
           <VividProvider value={vivid}>
@@ -334,6 +354,8 @@ export default async function RootLayout({
           <ChangelogModal latest={CHANGELOG[0]} />
           <ContactReminderPopup />
           <AssistantLeadPopup />
+          {/* Last, so its effect runs after the page's own: hides the boot splash once hydrated. */}
+          <BootReady />
         </I18nProvider>
       </body>
     </html>

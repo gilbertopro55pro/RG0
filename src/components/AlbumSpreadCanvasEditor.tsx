@@ -10,7 +10,7 @@ import { ALBUM_MASKS, maskCssUrl, findMask } from "@/lib/albumMasks";
 import { ALBUM_ORNAMENTS, ORNAMENT_TABS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsSvgFilter } from "@/lib/albumAdjustments";
 import { sharpenSvgFilter } from "@/lib/albumSharpen";
-import { optimizedImageUrl } from "@/lib/imageOptimize";
+import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 import AlbumEditorGuideModal from "@/components/AlbumEditorGuideModal";
 import AlbumSpreadThumbnail from "@/components/AlbumSpreadThumbnail";
 import { useT } from "@/i18n/client";
@@ -3299,6 +3299,8 @@ export default function AlbumSpreadCanvasEditor({
       img.onerror = () => resolve(1);
       img.src = url;
     });
+  // A resized copy is enough for the shape (lib/galleryPhotoUrls.ts), not the camera file.
+  const photoUrlForAspect = (photo: PhotoWithUrl | undefined) => (photo ? resizedPhotoUrl(photo, 640) : "");
 
   // widthPct/heightPct are percentages of the CANVAS'S OWN width/height respectively, not of a
   // shared square unit — so "36% wide, 36%/aspect tall" only comes out looking like the photo's
@@ -3357,7 +3359,7 @@ export default function AlbumSpreadCanvasEditor({
       if (!el || el.type !== "photo" || !el.photoId || album.width_cm <= 0 || album.height_cm <= 0) continue;
       const photo = photoById.get(el.photoId);
       if (!photo) continue;
-      const aspect = await loadImageAspect(photo.url);
+      const aspect = await loadImageAspect(resizedPhotoUrl(photo, 640));
       const widthCm = (el.widthPct / 100) * album.width_cm;
       const heightCm = widthCm / aspect;
       const newHeightPct = (heightCm / album.height_cm) * 100;
@@ -3416,7 +3418,7 @@ export default function AlbumSpreadCanvasEditor({
     if (ids.length === 0) return;
     setLoadingMultiLayout(true);
     const items = await Promise.all(
-      ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoById.get(id)?.url ?? "") }))
+      ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoUrlForAspect(photoById.get(id))) }))
     );
     const baseSize = 36;
     // A chosen fixed real-world size (rect 10x7.5cm / circle Ø5cm / square 5x5cm) overrides the
@@ -3463,7 +3465,7 @@ export default function AlbumSpreadCanvasEditor({
   // point on the canvas instead of a fixed corner — used when one or several favorite photos are
   // dragged straight onto the page (from the drag panel) instead of picked in the "+ תמונה" modal.
   const buildOrientedPhotoFrames = async (ids: string[], centerXPct: number, centerYPct: number): Promise<AlbumPhotoElement[]> => {
-    const items = await Promise.all(ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoById.get(id)?.url ?? "") })));
+    const items = await Promise.all(ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoUrlForAspect(photoById.get(id))) })));
     const baseSize = 36;
     return items.map((item, i) => {
       const { widthPct, heightPct } = orientedFrameSizePct(item.aspect, baseSize);
@@ -3490,7 +3492,7 @@ export default function AlbumSpreadCanvasEditor({
   // cell instead of a fixed base size. The photographer can still swap this for a different layout
   // afterward via the existing "תבניות" button, which already reuses whatever photos are placed.
   const buildCollageLayout = async (ids: string[]): Promise<AlbumPhotoElement[]> => {
-    const items = await Promise.all(ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoById.get(id)?.url ?? "") })));
+    const items = await Promise.all(ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoUrlForAspect(photoById.get(id))) })));
     const n = items.length;
     const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
     const rows = Math.max(1, Math.ceil(n / cols));
@@ -4831,7 +4833,7 @@ export default function AlbumSpreadCanvasEditor({
               e.preventDefault();
               const ids = dropped.slice(6).split(",").filter(Boolean);
               const emptyFrames = elements.filter((el): el is AlbumPhotoElement => el.type === "photo" && !el.photoId);
-              Promise.all(ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoById.get(id)?.url ?? "") }))).then(async (items) => {
+              Promise.all(ids.map(async (id) => ({ id, aspect: await loadImageAspect(photoUrlForAspect(photoById.get(id))) }))).then(async (items) => {
                 if (emptyFrames.length === 0) {
                   // 2+ photos with nothing to fill get auto-arranged into a grid collage instead
                   // of the single-photo cascade (see buildCollageLayout's own comment) — a lone
@@ -5171,7 +5173,7 @@ export default function AlbumSpreadCanvasEditor({
                         return (
                           /* eslint-disable-next-line @next/next/no-img-element */
                           <img
-                            src={photo.previewUrl ?? photo.url}
+                            src={resizedPhotoUrl(photo, 2000)}
                             alt=""
                             className="absolute pointer-events-none"
                             onLoad={(e) => {
@@ -5998,7 +6000,7 @@ export default function AlbumSpreadCanvasEditor({
                             onMouseEnter={(e) => {
                               if (!dragPanelHoverZoomEnabled) return;
                               const rect = e.currentTarget.getBoundingClientRect();
-                              const url = p.previewUrl ?? optimizedImageUrl(p.url, 480);
+                              const url = resizedPhotoUrl(p, 480);
                               const token = ++hoverPreviewTokenRef.current;
                               // Loads the real image first so the floating preview box is sized to
                               // match its actual orientation (portrait vs. landscape) instead of a
@@ -6036,7 +6038,7 @@ export default function AlbumSpreadCanvasEditor({
                             }}
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={p.previewUrl ?? optimizedImageUrl(p.url, 320)} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" />
+                            <img src={resizedPhotoUrl(p, 320)} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" />
                             {dragPanelSelectedIds.has(p.id) && (
                               <span
                                 className="absolute top-0.5 left-0.5 h-3.5 w-3.5 rounded-full flex items-center justify-center"
@@ -6475,7 +6477,7 @@ export default function AlbumSpreadCanvasEditor({
                       style={{ boxShadow: multiIdx !== -1 ? "0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)" }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.previewUrl ?? optimizedImageUrl(p.url, 320)} alt="" className="w-full h-full object-cover" />
+                      <img src={resizedPhotoUrl(p, 320)} alt="" className="w-full h-full object-cover" />
                       {multiIdx !== -1 && (
                         <span
                           className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-data"
@@ -6592,7 +6594,7 @@ export default function AlbumSpreadCanvasEditor({
           >
             <div className="relative h-20 rounded-lg overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={backgroundPhoto.url} alt="" className="w-full h-full object-cover" style={{ opacity: backgroundOpacity / 100 }} />
+              <img src={resizedPhotoUrl(backgroundPhoto, 640)} alt="" className="w-full h-full object-cover" style={{ opacity: backgroundOpacity / 100 }} />
               {/* Just closes the flyout — deliberately does NOT call removeBackground() (that used
                   to happen here too, making this look like a plain close button while secretly
                   deleting the whole background photo). Removing the background entirely already has

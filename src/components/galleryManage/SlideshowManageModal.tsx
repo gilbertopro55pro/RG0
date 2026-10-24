@@ -2,7 +2,7 @@
 
 import { useT } from "@/i18n/client";
 import { BTN_PRESS } from "@/lib/viewTransition";
-import { optimizedImageUrl } from "@/lib/imageOptimize";
+import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 import { PlayIcon } from "@/components/GalleryStyleIcons";
 
 // "מצגת תמונות" in the gallery screen: which photos go into the client's slideshow. Moved out of
@@ -72,7 +72,7 @@ export function SlideshowManageModal({
                 {/* A small thumbnail, never the original: 150+ full-size photos in this
                     grid ran an iPhone out of memory, and the page reloaded on the next tap. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.previewUrl ?? optimizedImageUrl(p.url, 256)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                <img src={resizedPhotoUrl(p, 256)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 {active && (
                   <span
                     className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px]"

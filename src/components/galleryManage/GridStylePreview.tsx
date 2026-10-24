@@ -1,4 +1,5 @@
 import type { PhotoWithUrl } from "@/components/galleryManage/types";
+import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 
 // A small live sample of the actual grid style — not a literal WYSIWYG crop, just enough real
 // photos in the real layout shape that a picked layout is visibly different from the others,
@@ -11,7 +12,7 @@ export function GridStylePreview({ photos, gridStyle }: { photos: PhotoWithUrl[]
         {sample.map((p) => (
           <div key={p.id} className="aspect-square overflow-hidden" style={{ borderRadius: "var(--gt-photo-radius)", background: "var(--gt-surface-soft)" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={p.url} alt="" className="w-full h-full object-cover" />
+            <img src={resizedPhotoUrl(p, 256)} alt="" className="w-full h-full object-cover" />
           </div>
         ))}
       </div>
@@ -27,7 +28,7 @@ export function GridStylePreview({ photos, gridStyle }: { photos: PhotoWithUrl[]
             style={{ height: 46, width: 62, flexGrow: 1, borderRadius: "var(--gt-photo-radius)", background: "var(--gt-surface-soft)" }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={p.url} alt="" className="w-full h-full object-cover" />
+            <img src={resizedPhotoUrl(p, 256)} alt="" className="w-full h-full object-cover" />
           </div>
         ))}
       </div>
@@ -50,7 +51,7 @@ export function GridStylePreview({ photos, gridStyle }: { photos: PhotoWithUrl[]
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={p.url}
+            src={resizedPhotoUrl(p, 256)}
             alt=""
             className="w-full h-full object-cover"
             style={{ borderRadius: framed ? "calc(var(--gt-photo-radius) - 3px)" : undefined }}

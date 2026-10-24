@@ -8,6 +8,12 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_ID: process.env.VERCEL_DEPLOYMENT_ID || `build-${Date.now()}`,
   },
+  // A screen visited in the last minute opens from the router's memory, instantly, instead of
+  // waiting for the server again (owner, 2026-10-24: "חזרה למסך שכבר ביקרת בו תהיה מיידית").
+  // Any save drops those copies before the next navigation (lib/dataChanges.ts, FreshNavigation).
+  experimental: {
+    staleTimes: { dynamic: 60 },
+  },
   images: {
     remotePatterns: [
       {
