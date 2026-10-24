@@ -30,6 +30,7 @@ import {
 } from "@/lib/collage/output";
 import { drawCollageCell } from "@/lib/collage/draw";
 import { detectFaceBoxes, detectFacesInImageUrl } from "@/lib/faceRecognition";
+import CollagePhotoPicker from "@/components/CollagePhotoPicker";
 import { useBusy } from "@/lib/updateResume";
 
 // Automatic collage from a gallery (admin, 2026-10-23, "עדכון אדמין"): the event's main figures
@@ -44,7 +45,10 @@ export type CollageBuilderPhoto = {
   preview_aspect_ratio: number | null;
   folder_id: string | null;
   culling_status?: string | null;
-  thumbUrl: string;
+  // The photo's small preview on the CDN (up to 1200px), null before it's made; and its tiny blurred
+  // placeholder.
+  previewUrl: string | null;
+  blur: string | null;
 };
 
 type SourceChoice = "auto" | "favorites" | "all" | `tab:${string}`;
@@ -65,7 +69,10 @@ const STYLES: { id: CollageStyle | "auto"; label: string }[] = [
   { id: "columns", label: "טורים" },
 ];
 const FACE_SAMPLE = 60;
-const previewSrc = (galleryId: string, photoId: string) => `/api/galleries/${galleryId}/photos/${photoId}/image?size=1200&fast=1`;
+// The preview canvas draws the CDN preview when there is one (fast and cached, 2026-10-24: through
+// our server every new photo took a round trip), else a copy our server makes.
+const previewSrc = (galleryId: string, p: CollageBuilderPhoto | undefined, photoId: string) =>
+  p?.previewUrl ?? `/api/galleries/${galleryId}/photos/${photoId}/image?size=1200&fast=1`;
 
 export default function CollageBuilder({
   galleryId,
@@ -215,27 +222,42 @@ export default function CollageBuilder({
   }, [picked, byId, pageAspect, gap, style, variant]);
   const layout = manual && manual.layoutKey === layoutKey ? manual.layout : computed;
 
-  // ── Faces for the crops: known from the search, else found in the photo's small preview.
+  // ── Faces for the crops: known from the search, else found in the photo's small preview. One
+  // photo at a time, always for the photos on the collage now: pressing "תמונות אחרות" again and
+  // again used to start another detection each time, all running together (2026-10-24, a phone
+  // reloaded the page while they loaded).
   const facesRef = useRef(new Map<string, CollageFace[]>());
   const [facesVersion, setFacesVersion] = useState(0);
+  const wantedFacesRef = useRef<string[]>([]);
+  const detectingRef = useRef(false);
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
   useEffect(() => {
     for (const f of found ?? []) if (!facesRef.current.has(f.photoId)) facesRef.current.set(f.photoId, f.faces.map((x) => x.box));
-    let cancelled = false;
+    wantedFacesRef.current = picked;
+    if (detectingRef.current) return;
+    detectingRef.current = true;
     (async () => {
-      for (const id of picked) {
-        if (cancelled) return;
-        if (facesRef.current.has(id)) continue;
-        try {
-          facesRef.current.set(id, await detectFaceBoxes(`/api/galleries/${galleryId}/photos/${id}/image?size=640&fast=1`));
-        } catch {
-          facesRef.current.set(id, []);
+      try {
+        for (;;) {
+          const id = wantedFacesRef.current.find((x) => !facesRef.current.has(x));
+          if (!id || !aliveRef.current) return;
+          try {
+            facesRef.current.set(id, await detectFaceBoxes(`/api/galleries/${galleryId}/photos/${id}/image?size=640&fast=1`));
+          } catch {
+            facesRef.current.set(id, []);
+          }
+          if (aliveRef.current) setFacesVersion((v) => v + 1);
         }
-        if (!cancelled) setFacesVersion((v) => v + 1);
+      } finally {
+        detectingRef.current = false;
       }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [picked, galleryId, found]);
 
   // ── The preview canvas.
@@ -249,18 +271,46 @@ export default function CollageBuilder({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  // Only the collage's own photos stay in memory: every round of "תמונות אחרות" used to keep its
+  // previews (each about 4MB once decoded) for as long as the window was open. Each cell shows its
+  // photo's blurred placeholder until the preview arrives.
   const imagesRef = useRef(new Map<string, HTMLImageElement>());
+  const blursRef = useRef(new Map<string, HTMLImageElement>());
   const [imagesVersion, setImagesVersion] = useState(0);
   useEffect(() => {
-    for (const cell of layout?.cells ?? []) {
-      if (imagesRef.current.has(cell.photoId)) continue;
+    const ids = new Set((layout?.cells ?? []).map((c) => c.photoId));
+    for (const [id, img] of imagesRef.current) {
+      if (ids.has(id)) continue;
+      img.onload = null;
+      img.src = "";
+      imagesRef.current.delete(id);
+      blursRef.current.delete(id);
+    }
+    for (const id of ids) {
+      const p = byId.get(id);
+      if (!blursRef.current.has(id) && p?.blur) {
+        const blur = new Image();
+        blur.onload = () => setImagesVersion((v) => v + 1);
+        blur.src = p.blur;
+        blursRef.current.set(id, blur);
+      }
+      if (imagesRef.current.has(id)) continue;
       const img = new Image();
       img.decoding = "async";
       img.onload = () => setImagesVersion((v) => v + 1);
-      img.src = previewSrc(galleryId, cell.photoId);
-      imagesRef.current.set(cell.photoId, img);
+      img.src = previewSrc(galleryId, p, id);
+      imagesRef.current.set(id, img);
     }
-  }, [layout, galleryId]);
+  }, [layout, galleryId, byId]);
+  useEffect(
+    () => () => {
+      for (const img of imagesRef.current.values()) {
+        img.onload = null;
+        img.src = "";
+      }
+    },
+    []
+  );
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !boxWidth) return;
@@ -276,7 +326,9 @@ export default function CollageBuilder({
     ctx.imageSmoothingQuality = "high";
     for (const cell of layout?.cells ?? []) {
       const img = imagesRef.current.get(cell.photoId);
+      const blur = blursRef.current.get(cell.photoId);
       if (img && img.complete && img.naturalWidth > 0) drawCollageCell(ctx, cell, w, h, img, img.naturalWidth, img.naturalHeight, facesRef.current.get(cell.photoId));
+      else if (blur && blur.complete && blur.naturalWidth > 0) drawCollageCell(ctx, cell, w, h, blur, blur.naturalWidth, blur.naturalHeight, facesRef.current.get(cell.photoId));
       else {
         ctx.fillStyle = background === "#ffffff" ? "#ece8e1" : "#2a2826";
         const x = Math.round(cell.x * w);
@@ -286,7 +338,7 @@ export default function CollageBuilder({
     }
   }, [layout, boxWidth, pageAspect, background, imagesVersion, facesVersion]);
 
-  // ── Replacing one photo: tap it, pick another.
+  // ── Replacing one photo: tap it, pick another in the window, confirm.
   const [replacing, setReplacing] = useState<string | null>(null);
   const [replaceFromAll, setReplaceFromAll] = useState(false);
   const onCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -314,8 +366,12 @@ export default function CollageBuilder({
   const candidates = useMemo(() => {
     const ids = replaceFromAll ? photos.filter((p) => p.culling_status !== "rejected").map((p) => p.id) : poolIds;
     const inUse = new Set(picked);
-    return ids.filter((id) => !inUse.has(id)).slice(0, 400);
-  }, [replaceFromAll, photos, poolIds, picked]);
+    return ids
+      .filter((id) => !inUse.has(id))
+      .map((id) => byId.get(id))
+      .filter((p): p is CollageBuilderPhoto => !!p)
+      .map((p) => ({ id: p.id, src: previewSrc(galleryId, p, p.id), blur: p.blur }));
+  }, [replaceFromAll, photos, poolIds, picked, byId, galleryId]);
 
   // ── The file.
   const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null);
@@ -424,7 +480,6 @@ export default function CollageBuilder({
     `px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors ${active ? "bg-ink text-white border-ink" : "bg-white border-line text-ink hover:border-amber-deep"}`;
   const sectionTitle = "font-display text-[15px] font-semibold text-ink mb-1";
   const sectionHint = "text-[11px] text-ink-soft mb-2.5 leading-relaxed";
-  const thumbOf = (id: string) => byId.get(id)?.thumbUrl ?? "";
   const fewer = groups && poolIds.length > 0 && poolIds.length < count;
 
   return (
@@ -470,28 +525,14 @@ export default function CollageBuilder({
             {layout && <p className="text-[11px] text-ink-soft">{t("לחיצה על תמונה מחליפה אותה.")}</p>}
 
             {replacing && (
-              <div className="rounded-md border border-line bg-white p-3">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <p className="text-sm font-semibold">{t("בחירת תמונה במקומה")}</p>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setReplaceFromAll((v) => !v)} className={chip(replaceFromAll)}>
-                      {t("מכל הגלריה")}
-                    </button>
-                    <button onClick={() => setReplacing(null)} className="h-7 w-7 rounded-full border border-line text-ink-soft" aria-label={t("סגירה")}>
-                      ✕
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-72 overflow-y-auto">
-                  {candidates.map((id) => (
-                    <button key={id} onClick={() => replaceWith(id)} className="relative aspect-square overflow-hidden bg-line">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={thumbOf(id)} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-contain" />
-                    </button>
-                  ))}
-                  {candidates.length === 0 && <p className="col-span-full text-xs text-ink-soft">{t("אין עוד תמונות במקור הזה.")}</p>}
-                </div>
-              </div>
+              <CollagePhotoPicker
+                photos={candidates}
+                currentSrc={previewSrc(galleryId, byId.get(replacing), replacing)}
+                fromAll={replaceFromAll}
+                onToggleFromAll={() => setReplaceFromAll((v) => !v)}
+                onConfirm={replaceWith}
+                onClose={() => setReplacing(null)}
+              />
             )}
 
             <div className="flex flex-wrap items-center gap-2">
