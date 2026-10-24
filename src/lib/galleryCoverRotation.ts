@@ -76,3 +76,11 @@ export function rotationForBox<T extends { aspect: number | null }>(photos: T[],
   const chosen = orientation === "any" || matching.length < 3 ? rest : matching;
   return [first, ...chosen.slice(0, Math.max(0, max - 1))];
 }
+
+// The width (CSS px) a photo is drawn at to cover a box (object-fit: cover): the box's width, or wider
+// for a photo wider than the box, which is drawn to the box's height (a landscape photo on a phone's
+// tall cover is drawn about three screens wide). Rounded up to 50px, so a small resize keeps it. The
+// rotating cover's `sizes`: a file sized to the screen's width came out soft there.
+export function coverDrawWidth(aspect: number, boxWidth: number, boxHeight: number): number {
+  return Math.ceil(Math.max(boxWidth, boxHeight * aspect) / 50) * 50;
+}
