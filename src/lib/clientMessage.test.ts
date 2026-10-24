@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildClientMessageText, buildStageNoticeText, clientTemplateKey, isLangTemplateKey } from "@/lib/clientMessage";
+import { buildClientMessageText, buildStageNoticeText, clientTemplateKey, galleryStageOf, isLangTemplateKey } from "@/lib/clientMessage";
 import { STAGE_NOTIFY_CLIENT, STAGE_NOTIFY_CLIENT_I18N } from "@/lib/stages";
 
 const URL_ = "https://myframeflow.com/s/p1za9SwBtHTS";
@@ -210,5 +210,54 @@ describe("{{תאריך}} on a device west of UTC (found by the tests, 2026-10-20
     } finally {
       process.env.TZ = tz;
     }
+  });
+});
+
+describe("galleryStageOf", () => {
+  it("is the built-in gallery stage when the package has it", () => {
+    const stages = [
+      { key: "event_closing", label: "סגירת האירוע" },
+      { key: "gallery_upload", label: "העלאת גלריה" },
+    ];
+    expect(galleryStageOf(stages)).toEqual({ key: "gallery_upload", label: "העלאת גלריה" });
+  });
+
+  it("is the custom stage named for the gallery, the upload one first", () => {
+    const stages = [
+      { key: "event_closing", label: "סגירת האירוע" },
+      { key: "custom:a", label: "בחירת תמונות מהגלריה" },
+      { key: "custom:b", label: "העלאת התמונות לגלריה" },
+    ];
+    expect(galleryStageOf(stages)).toEqual({ key: "custom:b", label: "העלאת התמונות לגלריה" });
+    expect(galleryStageOf(stages.slice(0, 2))).toEqual({ key: "custom:a", label: "בחירת תמונות מהגלריה" });
+  });
+
+  it("falls back to the built-in gallery message when no stage is about the gallery", () => {
+    const stages = [
+      { key: "event_closing", label: "סגירת האירוע" },
+      { key: "custom:c", label: "מסירת מגנטים" },
+    ];
+    expect(galleryStageOf(stages)).toEqual({ key: "gallery_upload", label: "העלאת גלריה" });
+  });
+
+  it("sends the saved gallery message with the gallery link in place of the link marker", () => {
+    const text = buildClientMessageText({
+      stageKey: "gallery_upload",
+      stageLabel: "העלאת גלריה",
+      savedTemplate: "היי {{שם}},\nהגלריה מוכנה.\nקישור:",
+      clientName: "דנה",
+      eventDateIso: "2026-10-20",
+      eventLocation: null,
+      packageLabelText: "",
+      eventStartTime: null,
+      eventEndTime: null,
+      arrivalTime: null,
+      depositAmount: null,
+      balanceAmount: null,
+      linkUrl: "https://myframeflow.com/s/gABC",
+      whatsappSignature: null,
+      senderName: "סטודיו אור",
+    });
+    expect(text).toBe("היי דנה,\nהגלריה מוכנה.\nקישור: https://myframeflow.com/s/gABC\n\nסטודיו אור");
   });
 });

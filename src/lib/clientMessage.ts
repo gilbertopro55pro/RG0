@@ -27,6 +27,18 @@ export function isLangTemplateKey(stageKey: string): boolean {
 
 const PACKAGE_LABEL_VALUES = new Set<string>([...Object.values(PACKAGE_LABELS), "חבילה מותאמת אישית"]);
 
+// The event's gallery stage, whose saved message (Settings → הודעות ללקוח) the gallery card on the
+// event page sends with the gallery link (owner, 2026-10-24): the built-in "gallery_upload", or a
+// custom-package stage named for the gallery ("העלאת התמונות לגלריה"), an upload stage before any
+// other gallery one. A custom package without one falls back to the built-in gallery message.
+export function galleryStageOf(stages: { key: string; label: string }[]): { key: string; label: string } {
+  const builtIn = stages.find((s) => s.key === "gallery_upload");
+  if (builtIn) return builtIn;
+  const custom = stages.filter((s) => s.key.startsWith("custom:") && /גלרי/.test(s.label));
+  const found = custom.find((s) => /העלא/.test(s.label)) ?? custom[0];
+  return found ? { key: found.key, label: found.label } : { key: "gallery_upload", label: STAGE_LABELS.gallery_upload };
+}
+
 // The short "stage ready" notice sent with a file link (the album-design upload). Hebrew: the text
 // the server returned, exactly as before.
 export function buildStageNoticeText(params: {

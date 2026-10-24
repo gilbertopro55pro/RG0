@@ -52,7 +52,7 @@ import type { EventQuote } from "@/lib/eventQuote";
 import PortalLinkSection from "@/components/PortalLinkSection";
 import GallerySection from "@/components/GallerySection";
 import { useModalEntered } from "@/lib/useModalEntered";
-import { buildClientMessageText, buildStageNoticeText, clientTemplateKey } from "@/lib/clientMessage";
+import { buildClientMessageText, buildStageNoticeText, clientTemplateKey, galleryStageOf } from "@/lib/clientMessage";
 import CompactGuideModal from "@/components/CompactGuideModal";
 import CloseEventConfirmModal from "@/components/CloseEventConfirmModal";
 import { useLang, useT } from "@/i18n/client";
@@ -453,7 +453,8 @@ export default function EventDetailView({
   // the same builder src/lib/clientMessage.ts also gives to the new-event booking-confirmation
   // message. Before this, each of the three built its own divergent text — a photographer's
   // customized wording only ever reliably reached the manual send.
-  const buildClientUpdateMessage = (key: string, label: string): string => {
+  // `linkUrl` overrides the link (the gallery card sends its own gallery's link).
+  const buildClientUpdateMessage = (key: string, label: string, linkUrl?: string): string => {
     // The gallery is what the client actually needs at almost every client-facing stage (photo
     // selection, viewing an uploaded album, etc.) — the portal is really just the fallback hub
     // page for whenever there's nothing more specific to send yet (no gallery, or one that isn't
@@ -478,12 +479,18 @@ export default function EventDetailView({
       depositAmount: payments ? payments.deposit_amount : null,
       balanceAmount: payments ? payments.balance_amount : null,
       // The booking confirmation always links to the portal (owner, 2026-10-19).
-      linkUrl: (key !== "event_closing" && galleryLink) || shortClientUrl(window.location.origin, "portal", event.client_access_token),
+      linkUrl: linkUrl ?? ((key !== "event_closing" && galleryLink) || shortClientUrl(window.location.origin, "portal", event.client_access_token)),
       whatsappSignature,
       senderName,
       lang: clientMessageLang,
     });
   };
+
+  // The gallery card's WhatsApp button (owner, 2026-10-24): the gallery stage's saved message with
+  // that gallery's link, built on tap (window.location) for whichever gallery the card shows now.
+  const galleryStage = galleryStageOf(stageDescriptors);
+  const buildGalleryMessage = (accessToken: string) =>
+    buildClientUpdateMessage(galleryStage.key, galleryStage.label, shortClientUrl(window.location.origin, "gallery", accessToken));
 
   // Opens the photographer's own WhatsApp with the client's chat pre-filled (see waLink.ts) and
   // logs that it happened — the same no-Business-API-template approach used for the initial
@@ -1554,6 +1561,9 @@ export default function EventDetailView({
           clientName={event.client_name}
           clientPhone={event.client_phone ?? ""}
           eventDate={event.event_date}
+          galleryMessage={buildGalleryMessage}
+          galleryStageLabel={galleryStage.label}
+          onSent={refreshNotifications}
         />
       )}
 
