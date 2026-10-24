@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
-import Image from "next/image";
 import type { GalleryFolderRow, GalleryPhotoRow } from "@/lib/types";
 import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
+import { clientScreenUrl } from "@/lib/galleryPhotoUrls";
 import { IconGallery } from "@/components/icons/NavIcons";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { resolveGalleryTheme } from "@/lib/galleryTheme";
@@ -1311,7 +1311,7 @@ export default function PublicGalleryView({
                 ref={(el) => {
                   if (el?.complete && el.naturalWidth > 0) el.style.opacity = "1";
                 }}
-                src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                src={clientScreenUrl(token, photo)}
                 alt={photo.original_filename}
                 loading={offset + i < 12 ? "eager" : "lazy"}
                 decoding="async"
@@ -1387,7 +1387,7 @@ export default function PublicGalleryView({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                  src={clientScreenUrl(token, photo)}
                   alt={photo.original_filename}
                   className="absolute inset-0 w-full h-full object-cover block transition-opacity duration-300"
                   style={{ opacity: thumbsReady ? 1 : 0, ...(photo.id === transitionPhotoId && lightboxIndex !== offset + i ? { viewTransitionName: `photo-${photo.id}` } : undefined) }}
@@ -1436,7 +1436,7 @@ export default function PublicGalleryView({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                  src={clientScreenUrl(token, photo)}
                   alt={photo.original_filename}
                   className="absolute inset-0 w-full h-full object-cover block transition-opacity duration-300"
                   style={{ opacity: thumbsReady ? 1 : 0, ...(photo.id === transitionPhotoId && lightboxIndex !== offset + i ? { viewTransitionName: `photo-${photo.id}` } : undefined) }}
@@ -1490,7 +1490,7 @@ export default function PublicGalleryView({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={photo.previewUrl ?? optimizedImageUrl(photo.url, 640)}
+                  src={clientScreenUrl(token, photo)}
                   alt={photo.original_filename}
                   className={knownShape ? "absolute inset-0 w-full h-full object-cover transition-opacity duration-300" : "w-full h-auto block"}
                   style={{
@@ -2017,7 +2017,9 @@ export default function PublicGalleryView({
               <div className="grid grid-cols-3 gap-1.5 mb-4">
                 {panelPhotos.map((photo) => (
                   <div key={photo.id} className="relative aspect-square overflow-hidden" style={{ background: "var(--gt-surface-soft)", borderRadius: "var(--gt-radius)" }}>
-                    <Image src={photo.url} alt={photo.original_filename} fill sizes="33vw" className="object-cover" />
+                    {/* The preview (photo.url is the /original route, or at web quality the preview itself). */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={clientScreenUrl(token, photo)} alt={photo.original_filename} loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" />
                     {/* A label-filtered view can include photos that aren't favorited yet — the
                         heart here reflects and toggles THIS photo's actual favorite state, not
                         just "remove", so tapping it on a labeled-but-unfavorited photo favorites
@@ -2600,7 +2602,7 @@ export default function PublicGalleryView({
 
       {slideshowOpen && (
         <GallerySlideshow
-          photos={slideshowPhotos}
+          photos={slideshowPhotos.map((p) => ({ id: p.id, url: clientScreenUrl(token, p) }))}
           onClose={() => setSlideshowOpen(false)}
           onDownload={allowDownloads ? () => downloadZip(slideshowPhotos.map((p) => p.id)) : undefined}
           downloading={zipping}

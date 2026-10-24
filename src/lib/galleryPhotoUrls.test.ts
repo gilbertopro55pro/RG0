@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   ORIGINAL_REDIRECT_CACHE_SECONDS,
   ORIGINAL_SIGNED_SECONDS,
+  clientOriginalUrl,
+  clientPreviewUrl,
+  clientScreenUrl,
   photographerImageUrl,
   photographerOriginalUrl,
   resizedPhotoUrl,
@@ -9,6 +12,7 @@ import {
 
 const GALLERY = "0b4c7d2e-1111-4a2b-8c3d-9e0f12345678";
 const PHOTO = "7a8b9c0d-2222-4e5f-a6b7-c8d9e0f12345";
+const TOKEN = "3f2a9c1e-7b4d-4e8f-9a01-23456789abcd";
 const CDN = "https://cdn.myframeflow.com/previews/abc/def.webp";
 const SIGNED = "https://photographer-flow.example.r2.cloudflarestorage.com/galleries/u/g/p.jpg?X-Amz-Signature=abc";
 
@@ -58,5 +62,18 @@ describe("resizedPhotoUrl", () => {
   it("doesn't mistake a longer path for an original route", () => {
     const other = `/api/galleries/${GALLERY}/photos/${PHOTO}/original/extra`;
     expect(resizedPhotoUrl({ url: other, previewUrl: null }, 640)).toBe(other);
+  });
+});
+
+describe("the client's gallery", () => {
+  it("builds the link's own routes", () => {
+    expect(clientOriginalUrl(TOKEN, PHOTO)).toBe(`/api/gallery/${TOKEN}/photos/${PHOTO}/original`);
+    expect(clientPreviewUrl(TOKEN, PHOTO)).toBe(`/api/gallery/${TOKEN}/photos/${PHOTO}/preview`);
+  });
+
+  it("shows the preview, or the preview route, never the original", () => {
+    expect(clientScreenUrl(TOKEN, { id: PHOTO, previewUrl: CDN })).toBe(CDN);
+    expect(clientScreenUrl(TOKEN, { id: PHOTO, previewUrl: null })).toBe(`/api/gallery/${TOKEN}/photos/${PHOTO}/preview`);
+    expect(clientScreenUrl(TOKEN, { id: PHOTO })).not.toContain("/original");
   });
 });
