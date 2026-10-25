@@ -42,6 +42,8 @@ import type {
 import { clipSongLines, isWeddingEvent, type ClipSongs } from "@/lib/clipSongs";
 import { stageRole } from "@/lib/clientReminders";
 import ClipSongsStagePanel from "@/components/ClipSongsStagePanel";
+import ClipNotesView from "@/components/ClipNotesView";
+import { packageHasClip, type ClipNotesFields } from "@/lib/clipNotes";
 import SendUpdateButton from "@/components/SendUpdateButton";
 import BodyPortal from "@/components/BodyPortal";
 import ToneTag from "@/components/ToneTag";
@@ -225,7 +227,8 @@ export default function EventDetailView({
   canChooseClientLang = false,
   clientMessageLang = "he",
 }: {
-  event: EventRow;
+  // clip_notes: selected with "*", outside EventRow (lib/clipNotes.ts).
+  event: EventRow & Partial<ClipNotesFields>;
   initialStages: EventStageRow[];
   initialNotifications: EventNotificationRow[];
   isOwner: boolean;
@@ -440,12 +443,12 @@ export default function EventDetailView({
   // client under the song-selection stage (ClipSongsStagePanel, owner 2026-10-22).
   const [savedSongs, setClipSongs] = useState<ClipSongs | null>(null);
   const clipSongs = savedSongs ?? event.clip_songs ?? null;
-  const songStageKey =
-    stageDescriptors.find((d) =>
-      d.key.startsWith("custom:")
-        ? stageRole(null, { name: d.label, requires_album_pdf: d.requiresAlbumPdf }) === "client_song_selection"
-        : stageRole(d.key) === "client_song_selection"
-    )?.key ?? null;
+  const descriptorRole = (d: StageDescriptor) =>
+    d.key.startsWith("custom:") ? stageRole(null, { name: d.label, requires_album_pdf: d.requiresAlbumPdf }) : stageRole(d.key);
+  const songStageKey = stageDescriptors.find((d) => descriptorRole(d) === "client_song_selection")?.key ?? null;
+  // The client's notes for the clip, from the portal (owner, 2026-10-25): to read and copy, under the
+  // song stage, or in a card of their own in a package with a clip but no song stage.
+  const hasClip = packageHasClip(stageDescriptors.map((d) => ({ role: descriptorRole(d), label: d.label })));
 
   // Resolves the photographer's own saved template (Settings → הודעות ללקוח/ה) for a stage and
   // substitutes every token — shared by the manual "שליחת עדכון" button AND (for the admin
@@ -1670,21 +1673,24 @@ export default function EventDetailView({
             ? {
                 key: songStageKey,
                 panel: (
-                  <ClipSongsStagePanel
-                    eventId={event.id}
-                    stageKey={songStageKey}
-                    twoSongs={isWeddingEvent(event.event_type)}
-                    songs={clipSongs}
-                    onSaved={(songs, doneAt) => {
-                      setClipSongs(songs);
-                      if (doneAt) {
-                        setStages((prev) =>
-                          prev.map((s) => ((s.stage_key ?? `custom:${s.custom_stage_id}`) === songStageKey ? { ...s, done: true, done_at: doneAt } : s))
-                        );
-                      }
-                      void refreshNotifications();
-                    }}
-                  />
+                  <>
+                    <ClipSongsStagePanel
+                      eventId={event.id}
+                      stageKey={songStageKey}
+                      twoSongs={isWeddingEvent(event.event_type)}
+                      songs={clipSongs}
+                      onSaved={(songs, doneAt) => {
+                        setClipSongs(songs);
+                        if (doneAt) {
+                          setStages((prev) =>
+                            prev.map((s) => ((s.stage_key ?? `custom:${s.custom_stage_id}`) === songStageKey ? { ...s, done: true, done_at: doneAt } : s))
+                          );
+                        }
+                        void refreshNotifications();
+                      }}
+                    />
+                    <ClipNotesView notes={event.clip_notes ?? null} at={event.clip_notes_at ?? null} />
+                  </>
                 ),
               }
             : null
@@ -1712,6 +1718,8 @@ export default function EventDetailView({
         </div>
       )}
 
+
+      {!songStageKey && hasClip && <ClipNotesView card notes={event.clip_notes ?? null} at={event.clip_notes_at ?? null} />}
 
       {/* The clip songs the client chose in the portal (owner, 2026-10-13; lib/clipSongs.ts), when
           the package has no song stage to show them under (ClipSongsStagePanel). */}

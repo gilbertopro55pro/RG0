@@ -18,6 +18,7 @@ import { timeOfDayGreeting } from "@/lib/greeting";
 import { STAGE_LABELS, packageLabel } from "@/lib/stages";
 import { heroStageAction } from "@/lib/heroStageAction";
 import { daysBetweenIso, israelTodayIso } from "@/lib/shootDayReminder";
+import { openSongStage, roleStages } from "@/lib/songStageReminder";
 import { buildClientMessageText, clientTemplateKey } from "@/lib/clientMessage";
 import { shortClientUrl } from "@/lib/shortLinks";
 import { SITE_URL } from "@/lib/siteUrl";
@@ -48,6 +49,7 @@ import PendingClientMessagePrompts, {
   type PendingLeadFollowUp,
   type PendingClientReminder,
   type PendingShootDayReminder,
+  type PendingSongStageReminder,
 } from "@/components/PendingClientMessagePrompts";
 import DashboardHero from "@/components/DashboardHero";
 import NextEventHero, { type NextEventHeroData } from "@/components/NextEventHero";
@@ -133,14 +135,21 @@ export default async function DashboardPage() {
     supabase
       .from("scheduled_messages")
       .select(`id, event_id, lead_id, kind, remind_at, remind_set_at, events(client_name), leads(name, phone, quoted_amount, ${FOLLOW_UP_LEAD_COLUMNS})`)
-      .in("kind", ["payment_reminder", "review_request", "lead_quote_followup", "album_approval_reminder", "song_selection_reminder", "shoot_day_reminder"])
+      .in("kind", ["payment_reminder", "review_request", "lead_quote_followup", "album_approval_reminder", "song_selection_reminder", "shoot_day_reminder", "song_stage_reminder"])
       .eq("status", "awaiting_confirmation")
       .returns<
         {
           id: string;
           event_id: string | null;
           lead_id: string | null;
-          kind: "payment_reminder" | "review_request" | "lead_quote_followup" | "album_approval_reminder" | "song_selection_reminder" | "shoot_day_reminder";
+          kind:
+            | "payment_reminder"
+            | "review_request"
+            | "lead_quote_followup"
+            | "album_approval_reminder"
+            | "song_selection_reminder"
+            | "shoot_day_reminder"
+            | "song_stage_reminder";
           remind_at: string | null;
           remind_set_at: string | null;
           events: { client_name: string } | null;
@@ -267,26 +276,39 @@ export default async function DashboardPage() {
 
   // A stage's client message, built from the photographer's own template exactly as the event page
   // builds it (the gallery link once it's published, else the portal).
+  // `songs`: the reminder to choose the clip songs (lib/songStageReminder.ts). The link is always the
+  // portal, where the client writes them, and a custom song stage without a message of its own gets
+  // the built-in song stage's.
   const clientStageMessage = async (
     e: NonNullable<typeof events>[number],
     p: EventPaymentRow | null,
     stage: { key: string; label: string },
-    lang: ReturnType<typeof clientLangFor>
+    lang: ReturnType<typeof clientLangFor>,
+    songs = false
   ): Promise<string | null> => {
     if (!photographer) return null;
     const templateKey = clientTemplateKey(stage.key, lang);
-    const [{ data: template }, { data: gallery }] = await Promise.all([
-      supabase.from("client_message_templates").select("body").eq("stage_key", templateKey).maybeSingle<{ body: string }>(),
+    const fallbackKey = songs && stage.key !== "client_song_selection" ? clientTemplateKey("client_song_selection", lang) : null;
+    const [{ data: templates }, { data: gallery }] = await Promise.all([
       supabase
-        .from("galleries")
-        .select("access_token, published, archived_at")
-        .eq("event_id", e.id)
-        .maybeSingle<{ access_token: string; published: boolean; archived_at: string | null }>(),
+        .from("client_message_templates")
+        .select("stage_key, body")
+        .in("stage_key", fallbackKey ? [templateKey, fallbackKey] : [templateKey])
+        .returns<{ stage_key: string; body: string }[]>(),
+      songs
+        ? Promise.resolve({ data: null })
+        : supabase
+            .from("galleries")
+            .select("access_token, published, archived_at")
+            .eq("event_id", e.id)
+            .maybeSingle<{ access_token: string; published: boolean; archived_at: string | null }>(),
     ]);
+    const own = templates?.find((r) => r.stage_key === templateKey);
+    const fallback = fallbackKey ? templates?.find((r) => r.stage_key === fallbackKey) : undefined;
     return buildClientMessageText({
-      stageKey: stage.key,
+      stageKey: fallbackKey && !own ? "client_song_selection" : stage.key,
       stageLabel: stage.label,
-      savedTemplate: template?.body,
+      savedTemplate: own?.body ?? fallback?.body,
       clientName: e.client_name,
       eventDateIso: e.event_date,
       eventLocation: e.event_location,
@@ -303,6 +325,7 @@ export default async function DashboardPage() {
       whatsappSignature: photographer.whatsapp_signature ?? null,
       senderName: photographer.name ?? null,
       lang,
+      alwaysLink: songs,
     });
   };
 
@@ -468,6 +491,23 @@ export default async function DashboardPage() {
       });
     }
   }
+  // The song-stage reminder (lib/songStageReminder.ts): the song stage's message, with the portal
+  // link. Only while the stage is still open (the cron closes the rest).
+  const pendingSongStageReminders: PendingSongStageReminder[] = [];
+  if (photographer) {
+    const customById = new Map((customStageNames ?? []).map((cs) => [cs.id, cs]));
+    for (const s of (scheduledReminders ?? []).filter((r) => r.kind === "song_stage_reminder")) {
+      const e = (events ?? []).find((ev) => ev.id === s.event_id);
+      if (!e?.client_phone || e.closed_at || e.songs_chosen_at) continue;
+      const song = openSongStage(roleStages(e.event_stages, customById, STAGE_LABELS));
+      if (!song) continue;
+      const lang = clientLangFor(photographer.email, e.client_lang);
+      const p = (payments ?? []).find((x) => x.event_id === e.id) ?? null;
+      const message = await clientStageMessage(e, p, { key: song.key, label: song.label }, lang, true);
+      if (!message) continue;
+      pendingSongStageReminders.push({ type: "song_stage", id: s.id, clientName: e.client_name, message, phone: e.client_phone, email: e.client_email ?? null, lang });
+    }
+  }
   // A follow-up put off with "תזכורת" waits until its time, and is gone if the lead was handled
   // since (lib/leadFollowUp.ts; the reminders cron then closes it).
   const nowMs = new Date().getTime();
@@ -603,6 +643,7 @@ export default async function DashboardPage() {
         leadFollowUps={pendingLeadFollowUps}
         clientReminders={pendingClientReminders}
         shootDayReminders={pendingShootDayReminders}
+        songStageReminders={pendingSongStageReminders}
       />
     </div>
   );

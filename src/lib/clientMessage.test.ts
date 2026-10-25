@@ -58,6 +58,28 @@ describe("buildClientMessageText: the booking confirmation (event_closing)", () 
   });
 });
 
+describe("buildClientMessageText: alwaysLink (the clip songs reminder, 2026-10-25)", () => {
+  const songs = { stageKey: "client_song_selection", stageLabel: "בחירת שיר לקליפ", alwaysLink: true };
+
+  it("adds the link line when the saved template has none, without the name line of the booking confirmation", () => {
+    expect(buildClientMessageText(params({ ...songs, savedTemplate: "הגיע הזמן לבחור שירים 🎵" }))).toBe(`הגיע הזמן לבחור שירים 🎵\nקישור: ${URL_}`);
+  });
+
+  it("keeps a template's own link line, once", () => {
+    const text = buildClientMessageText(params({ ...songs, savedTemplate: "{{שם}}, בחרו שירים\nקישור: " }));
+    expect(text).toBe(`דנה, בחרו שירים\nקישור: ${URL_} `);
+    expect(count(text, URL_)).toBe(1);
+  });
+
+  it("the built-in song template already carries the link", () => {
+    expect(count(buildClientMessageText(params(songs)), URL_)).toBe(1);
+  });
+
+  it("without it, a template with no link line stays as written", () => {
+    expect(buildClientMessageText(params({ ...songs, alwaysLink: false, savedTemplate: "בחרו שירים" }))).toBe("בחרו שירים");
+  });
+});
+
 describe("buildClientMessageText: the signature", () => {
   const tpl = { stageKey: "gallery_upload", savedTemplate: "הגלריה מוכנה" };
 
