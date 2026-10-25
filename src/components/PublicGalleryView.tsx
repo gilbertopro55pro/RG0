@@ -8,7 +8,7 @@ import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { clientScreenUrl } from "@/lib/galleryPhotoUrls";
 import { IconGallery } from "@/components/icons/NavIcons";
 import { IconClose } from "@/components/icons/AlbumIcons";
-import { resolveGalleryTheme } from "@/lib/galleryTheme";
+import { resolveGalleryTheme, titleFontFamily } from "@/lib/galleryTheme";
 import GallerySlideshow from "@/components/GallerySlideshow";
 import GalleryAlbumProofing, { type ClientAlbumElement } from "@/components/GalleryAlbumProofing";
 import { ALLOWED_ACCEPT, isAllowedImageFile, convertHeicIfNeeded } from "@/lib/imageUpload";
@@ -1209,7 +1209,7 @@ export default function PublicGalleryView({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={optimizedImageUrl(album.coverUrl, 384)} alt="" className="h-14 w-20 sm:h-16 sm:w-24 shrink-0 object-cover" />
           )}
-          <p className="min-w-0 flex-1 text-xl sm:text-2xl leading-tight" style={{ fontFamily: "var(--font-gallery-serif), serif", fontWeight: 400 }}>
+          <p className="min-w-0 flex-1 text-xl sm:text-2xl leading-tight" style={{ fontFamily: titleFontFamily(theme.titleFont), fontWeight: 400 }}>
             {album.title || t("עיצוב האלבום")}
           </p>
           <button
@@ -1233,7 +1233,7 @@ export default function PublicGalleryView({
                 <h2
                   id={`chapter-${c.key}`}
                   style={{
-                    fontFamily: "var(--font-gallery-serif), serif",
+                    fontFamily: titleFontFamily(theme.titleFont),
                     fontWeight: 300,
                     fontSize: "clamp(30px, 4.4vw, 52px)",
                     lineHeight: 1.05,

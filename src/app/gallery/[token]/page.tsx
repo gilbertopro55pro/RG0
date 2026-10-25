@@ -18,7 +18,7 @@ import GalleryPremiumCover from "@/components/GalleryPremiumCover";
 import { normalizeIsraeliPhone } from "@/lib/whatsapp";
 import { getSignedDownloadUrl, getSignedDownloadUrls, getPublicPreviewUrl } from "@/lib/storage";
 import { fetchAllRows } from "@/lib/paginatedFetch";
-import { galleryThemeById, galleryThemeVars, galleryFont } from "@/lib/galleryTheme";
+import { galleryThemeById, galleryThemeVars, galleryFont, resolveGalleryTheme } from "@/lib/galleryTheme";
 import type { GalleryStyleOverrides } from "@/lib/galleryTheme";
 import { galleryBrandingAllowed } from "@/lib/galleryBranding";
 import { isLightTextColor } from "@/lib/textColor";
@@ -526,6 +526,7 @@ export default async function PublicGalleryPage({
             </div>
           )}
           <GalleryPremiumCover
+            titleFont={resolveGalleryTheme(gallery.theme, styleOverrides).titleFont}
             photoUrl={coverPhotoUrl}
             title={gallery.title || t("גלריית תמונות")}
             dateLabel={

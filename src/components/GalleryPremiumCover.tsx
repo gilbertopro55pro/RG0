@@ -1,5 +1,6 @@
 import GalleryCoverRotator from "@/components/GalleryCoverRotator";
 import type { CoverRotationPhoto } from "@/lib/galleryCoverRotation";
+import { titleFontFamily, type TitleFont } from "@/lib/galleryTheme";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 
 // The "premium" theme's cover (coverStyle: "fullbleed"): the cover photo fills the first screen,
@@ -23,6 +24,7 @@ export default function GalleryPremiumCover({
   textPosition = "below",
   shape = "rectangle",
   rotation = null,
+  titleFont = "sans",
 }: {
   photoUrl: string | null;
   title: string;
@@ -44,6 +46,8 @@ export default function GalleryPremiumCover({
   shape?: string;
   // The photos the page's cover takes turns with, the cover first (lib/galleryCoverRotation.ts).
   rotation?: CoverRotationPhoto[] | null;
+  // The gallery's title font (its theme, or the photographer's pick in its settings).
+  titleFont?: TitleFont;
 }) {
   const isPage = variant === "page";
   const isManage = variant === "manage";
@@ -157,7 +161,7 @@ export default function GalleryPremiumCover({
         <h1
           className={side ? "" : "max-w-[16ch]"}
           style={{
-            fontFamily: "var(--font-gallery-serif), serif",
+            fontFamily: titleFontFamily(titleFont),
             fontWeight: 300,
             fontSize: big ? (side || framed ? "clamp(34px, 5.6vw, 64px)" : "clamp(40px, 7.4vw, 76px)") : side || framed ? "20px" : "26px",
             lineHeight: 1.04,

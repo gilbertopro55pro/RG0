@@ -36,7 +36,7 @@ export default function GalleryCoverBanner({
   if (theme.coverStyle === "fullbleed") {
     return (
       <div className="mb-4">
-        <GalleryPremiumCover photoUrl={photoUrl} title={title} dateLabel={dateLabel} focalX={focalX} focalY={focalY} variant="preview" textPosition={textPosition} shape={shape} />
+        <GalleryPremiumCover photoUrl={photoUrl} title={title} dateLabel={dateLabel} focalX={focalX} focalY={focalY} variant="preview" textPosition={textPosition} shape={shape} titleFont={theme.titleFont} />
       </div>
     );
   }
