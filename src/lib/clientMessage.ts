@@ -85,6 +85,9 @@ export function buildClientMessageText(params: {
   // Default Hebrew = exactly the text this always produced. `savedTemplate` must be the saved row
   // for this same language (clientTemplateKey).
   lang?: Lang;
+  // Adds the link line when the template has none: the reminder to choose the clip songs, which
+  // the client does in the portal (lib/songStageReminder.ts).
+  alwaysLink?: boolean;
 }): string {
   const lang = params.lang ?? "he";
   const template = resolveClientMessageTemplate(params.stageKey, params.savedTemplate, lang);
@@ -116,9 +119,9 @@ export function buildClientMessageText(params: {
     .split(marker).join(`${marker} ${params.linkUrl}`);
   // The booking confirmation always opens with the client's name and carries the portal link
   // (owner, 2026-10-19), even when a saved template left out the {{שם}} token or the link line.
-  if (params.stageKey === "event_closing") {
-    if (!template.includes("{{שם}}")) text = `${params.clientName},\n${text}`;
-    if (!template.includes(marker)) text = `${text.trimEnd()}\n${marker} ${params.linkUrl}`;
+  if (params.stageKey === "event_closing" && !template.includes("{{שם}}")) text = `${params.clientName},\n${text}`;
+  if ((params.stageKey === "event_closing" || params.alwaysLink) && !template.includes(marker)) {
+    text = `${text.trimEnd()}\n${marker} ${params.linkUrl}`;
   }
   const signature = params.whatsappSignature?.trim() || params.senderName?.trim();
   if (signature) text += `\n\n${signature}`;

@@ -13,12 +13,14 @@ import { makeT } from "@/i18n/translate";
 import { reminderStillNeeded, type ClientReminderKind } from "@/lib/clientReminders";
 import { sendPushToPhotographer } from "@/lib/push";
 import { SHOOT_DAY_REMINDER_DAYS, addDaysIso, daysBetweenIso, israelTodayIso, shootDayReminderDue, type ShootDayCandidate } from "@/lib/shootDayReminder";
+import { filmReminderBlocks, openSongStage, roleStages, songStageReminderDue, SONG_STAGE_REMINDER_EVERY_DAYS, type SongStageCandidate } from "@/lib/songStageReminder";
+import { STAGE_LABELS } from "@/lib/stages";
 
 type ScheduledMessage = {
   id: string;
   event_id: string | null;
   lead_id: string | null;
-  kind: "review_request" | "payment_reminder" | "lead_follow_up" | "lead_quote_followup" | "shoot_day_reminder" | ClientReminderKind;
+  kind: "review_request" | "payment_reminder" | "lead_follow_up" | "lead_quote_followup" | "shoot_day_reminder" | "song_stage_reminder" | ClientReminderKind;
   sequence_step: number | null;
 };
 
@@ -83,7 +85,110 @@ export async function GET(request: NextRequest) {
     return { error: e instanceof Error ? e.message : "unknown" };
   });
 
-  return NextResponse.json({ processed: results.length, results, shootDay });
+  const songStage = await processSongStageReminders(supabase).catch((e) => {
+    console.error("Song stage reminders failed:", e);
+    return { error: e instanceof Error ? e.message : "unknown" };
+  });
+
+  return NextResponse.json({ processed: results.length, results, shootDay, songStage });
+}
+
+type SongStageEvent = SongStageCandidate & {
+  id: string;
+  client_name: string;
+  photographer_id: string;
+  event_stages: { stage_key: string | null; custom_stage_id: string | null; done: boolean; stage_order: number }[];
+  photographers: (AccessRow & { song_stage_reminder: boolean; ui_lang: string | null }) | null;
+};
+
+// While the clip song-selection stage is the current stage or was left open (lib/songStageReminder.ts,
+// owner 2026-10-25): a reminder to the photographer to ask the client for the songs. The row waits
+// for the photographer (awaiting_confirmation) with a phone notification; the home screen opens the
+// song stage's message. A waiting reminder whose stage isn't open any more (songs chosen, stage
+// marked, event closed, reminder switched off) is closed.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function processSongStageReminders(supabase: SupabaseClient<any>) {
+  const today = israelTodayIso();
+  const { data: events } = await supabase
+    .from("events")
+    .select(`id, client_name, client_phone, needs_review, closed_at, songs_chosen_at, photographer_id, event_stages(stage_key, custom_stage_id, done, stage_order), photographers!inner(${ACCESS_COLUMNS}, song_stage_reminder, ui_lang)`)
+    .eq("photographers.song_stage_reminder", true)
+    .is("closed_at", null)
+    .is("songs_chosen_at", null)
+    .gte("event_date", addDaysIso(today, -365))
+    .lte("event_date", today)
+    .returns<SongStageEvent[]>();
+  const live = (events ?? []).filter((e) => !isLockedOut(e.photographers));
+
+  const customIds = [...new Set(live.flatMap((e) => e.event_stages.map((s) => s.custom_stage_id)).filter((id): id is string => !!id))];
+  const { data: customs } = customIds.length
+    ? await supabase.from("custom_package_stages").select("id, name, requires_album_pdf").in("id", customIds).returns<{ id: string; name: string; requires_album_pdf: boolean | null }[]>()
+    : { data: [] as { id: string; name: string; requires_album_pdf: boolean | null }[] };
+  const customById = new Map((customs ?? []).map((c) => [c.id, c]));
+  const open = live
+    .map((e) => ({ event: e, stages: roleStages(e.event_stages, customById, STAGE_LABELS) }))
+    .filter(({ stages }) => !!openSongStage(stages));
+
+  const openIds = new Set(open.map((o) => o.event.id));
+  const { data: waiting } = await supabase
+    .from("scheduled_messages")
+    .select("id, event_id")
+    .eq("kind", "song_stage_reminder")
+    .eq("status", "awaiting_confirmation")
+    .returns<{ id: string; event_id: string }[]>();
+  const stale = (waiting ?? []).filter((r) => !openIds.has(r.event_id)).map((r) => r.id);
+  if (stale.length) await supabase.from("scheduled_messages").update({ status: "canceled" }).in("id", stale);
+  if (!open.length) return { created: 0, stale: stale.length };
+
+  const ids = [...openIds];
+  const since = new Date(Date.now() - SONG_STAGE_REMINDER_EVERY_DAYS * 86_400_000).toISOString();
+  const [{ data: earlier }, { data: sentByHand }] = await Promise.all([
+    supabase
+      .from("scheduled_messages")
+      .select("event_id, kind, status, send_at")
+      .in("kind", ["song_stage_reminder", "song_selection_reminder"])
+      .in("event_id", ids)
+      .returns<{ event_id: string; kind: string; status: string; send_at: string }[]>(),
+    // The event page's send logs `בנוגע לשלב "<the stage's name>"` (api/events/[id]/notify).
+    supabase
+      .from("event_notifications")
+      .select("event_id, text")
+      .in("event_id", ids)
+      .like("text", "%בנוגע לשלב%")
+      .gte("created_at", since)
+      .returns<{ event_id: string; text: string }[]>(),
+  ]);
+
+  let created = 0;
+  for (const { event, stages } of open) {
+    const song = openSongStage(stages)!;
+    const rows = (earlier ?? []).filter((r) => r.event_id === event.id);
+    const handSent = (sentByHand ?? []).some((n) => n.event_id === event.id && n.text.includes(`בנוגע לשלב "${song.label}"`));
+    const recentlyAsked = handSent || filmReminderBlocks(rows.filter((r) => r.kind === "song_selection_reminder"));
+    const before = rows.filter((r) => r.kind === "song_stage_reminder").map((r) => r.send_at);
+    if (!songStageReminderDue(event, stages, before, recentlyAsked)) continue;
+    const { error } = await supabase
+      .from("scheduled_messages")
+      .insert({ event_id: event.id, kind: "song_stage_reminder", status: "awaiting_confirmation", send_at: new Date().toISOString() });
+    if (error) {
+      console.error("Song stage reminder insert failed:", error.message);
+      continue;
+    }
+    created++;
+    // Activity log (stored, Hebrew like every other log line).
+    await supabase.from("event_notifications").insert({
+      event_id: event.id,
+      text: "שלב בחירת השירים לקליפ פתוח. ממתין לאישורך לשליחת תזכורת ללקוח לבחור שירים",
+    });
+    const t = makeT(messagesFor(photographerLang(event.photographers?.ui_lang)));
+    await sendPushToPhotographer(event.photographer_id, {
+      title: t("{name} עוד לא בחרו שירים לקליפ", { name: event.client_name }),
+      body: t("לחצו לשליחת תזכורת ללקוח בוואטסאפ"),
+      url: "/",
+      tag: `song_stage_reminder-${event.id}`,
+    });
+  }
+  return { created, stale: stale.length };
 }
 
 type ShootDayEvent = ShootDayCandidate & {

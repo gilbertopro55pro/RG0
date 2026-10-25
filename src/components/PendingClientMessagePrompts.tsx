@@ -80,7 +80,26 @@ export type PendingShootDayReminder = {
   lang: Lang;
 };
 
-type PendingItem = PendingPaymentReminder | PendingReviewRequest | PendingLeadFollowUp | PendingClientReminder | PendingShootDayReminder;
+// While the clip song-selection stage is the current stage or was left open: the song stage's
+// message from the client messages settings, with the portal link where the client writes the
+// songs (lib/songStageReminder.ts, owner 2026-10-25). The same window as the shoot day's.
+export type PendingSongStageReminder = {
+  type: "song_stage";
+  id: string;
+  clientName: string;
+  message: string;
+  phone: string;
+  email: string | null;
+  lang: Lang;
+};
+
+type PendingItem =
+  | PendingPaymentReminder
+  | PendingReviewRequest
+  | PendingLeadFollowUp
+  | PendingClientReminder
+  | PendingShootDayReminder
+  | PendingSongStageReminder;
 
 function isClientReminder(item: PendingItem): item is PendingClientReminder {
   return item.type === "album_reminder" || item.type === "song_reminder";
@@ -97,18 +116,28 @@ export default function PendingClientMessagePrompts({
   leadFollowUps,
   clientReminders = [],
   shootDayReminders = [],
+  songStageReminders = [],
 }: {
   paymentReminders: PendingPaymentReminder[];
   reviewRequests: PendingReviewRequest[];
   leadFollowUps: PendingLeadFollowUp[];
   clientReminders?: PendingClientReminder[];
   shootDayReminders?: PendingShootDayReminder[];
+  songStageReminders?: PendingSongStageReminder[];
 }) {
   const t = useT();
   const lang = useLang();
-  const [queue, setQueue] = useState<PendingItem[]>([...shootDayReminders, ...paymentReminders, ...reviewRequests, ...leadFollowUps, ...clientReminders]);
-  // The shoot-day window: whether its message went out, so closing it after a send isn't a cancel.
-  const shootDaySent = useRef(false);
+  const [queue, setQueue] = useState<PendingItem[]>([
+    ...shootDayReminders,
+    ...paymentReminders,
+    ...reviewRequests,
+    ...leadFollowUps,
+    ...clientReminders,
+    ...songStageReminders,
+  ]);
+  // The shoot-day / song-stage window: whether its message went out, so closing it after a send
+  // isn't a cancel.
+  const windowSent = useRef(false);
   const [busy, setBusy] = useState(false);
   // The WhatsApp message of the prompt on screen, fetched when it shows (dryRun), so the send button
   // opens WhatsApp right in the tap. iPhone blocks opening it after a request, and the reminder was
@@ -124,6 +153,8 @@ export default function PendingClientMessagePrompts({
   const urlFor = (item: PendingItem) =>
     item.type === "shoot_day"
       ? `/api/scheduled-messages/${item.id}/confirm-shoot-day`
+      : item.type === "song_stage"
+      ? `/api/scheduled-messages/${item.id}/confirm-song-stage`
       : item.type === "payment"
       ? `/api/scheduled-messages/${item.id}/confirm`
       : item.type === "review"
@@ -135,7 +166,7 @@ export default function PendingClientMessagePrompts({
   const sendBody = (item: PendingItem) => (item.type === "payment" ? { paid: false } : { send: true });
 
   useEffect(() => {
-    if (!current || current.type === "shoot_day") return;
+    if (!current || current.type === "shoot_day" || current.type === "song_stage") return;
     let cancelled = false;
     fetch(urlFor(current), {
       method: "POST",
@@ -155,7 +186,7 @@ export default function PendingClientMessagePrompts({
 
   if (!current) return null;
 
-  if (current.type === "shoot_day") {
+  if (current.type === "shoot_day" || current.type === "song_stage") {
     const record = (body: { send: boolean; channel?: ClientMessageChannel }) =>
       fetch(urlFor(current), {
         method: "POST",
@@ -163,12 +194,17 @@ export default function PendingClientMessagePrompts({
         body: JSON.stringify(body),
         keepalive: true,
       }).catch(() => null);
+    const shootDay = current.type === "shoot_day";
     return (
       <ClientMessageSheet
         key={current.id}
-        title={t("הודעה לפני יום הצילום")}
+        title={shootDay ? t("הודעה לפני יום הצילום") : t("תזכורת לבחירת שירים לקליפ")}
         intro={
-          current.daysUntil === 1
+          !shootDay
+            ? t("{name} עוד לא בחרו שירים לקליפ. זו ההודעה של שלב בחירת השירים מההודעות ללקוח, עם הקישור לפורטל שבו בוחרים. אפשר לערוך אותה לפני השליחה.", {
+                name: current.clientName,
+              })
+            : current.daysUntil === 1
             ? t("מחר הצילום של {name}. זו הודעת יום הצילום מההודעות ללקוח, ואפשר לערוך אותה לפני השליחה.", { name: current.clientName })
             : t("בעוד {days} ימים הצילום של {name}. זו הודעת יום הצילום מההודעות ללקוח, ואפשר לערוך אותה לפני השליחה.", {
                 days: current.daysUntil,
@@ -179,14 +215,14 @@ export default function PendingClientMessagePrompts({
         lang={current.lang}
         phone={current.phone}
         email={current.email}
-        subject={t("יום הצילום")}
+        subject={shootDay ? t("יום הצילום") : t("השירים לקליפ")}
         onSend={(channel) => {
-          shootDaySent.current = true;
+          windowSent.current = true;
           void record({ send: true, channel });
         }}
         onClose={() => {
-          if (!shootDaySent.current) void record({ send: false });
-          shootDaySent.current = false;
+          if (!windowSent.current) void record({ send: false });
+          windowSent.current = false;
           setQueue((prev) => prev.slice(1));
         }}
       />

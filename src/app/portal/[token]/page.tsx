@@ -3,6 +3,8 @@ import { PACKAGE_FLOWS, PACKAGE_LABELS, STAGE_LABELS, STAGE_TYPE, currentStageIn
 import { normalizeIsraeliPhone } from "@/lib/whatsapp";
 import type { CustomPackageStageRow, EventPaymentRow, EventRow, EventStageRow, GalleryRow } from "@/lib/types";
 import PortalStageActions from "@/components/PortalStageActions";
+import PortalClipNotes from "@/components/PortalClipNotes";
+import { packageHasClip, type ClipNotesFields } from "@/lib/clipNotes";
 import PortalMagnetFrames from "@/components/PortalMagnetFrames";
 import { loadPortalMagnetFrames } from "@/lib/portalMagnetFrames";
 import { stageRole } from "@/lib/clientReminders";
@@ -22,7 +24,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
     .from("events")
     .select("*, photographers(name, phone, email)")
     .eq("client_access_token", token)
-    .maybeSingle<EventRow & { photographers: { name: string; phone: string; email: string } | null }>();
+    .maybeSingle<EventRow & ClipNotesFields & { photographers: { name: string; phone: string; email: string } | null }>();
 
   if (!event) {
     // No event → no photographer to read a client language from: Hebrew, as before.
@@ -112,6 +114,17 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
     : PACKAGE_FLOWS[event.package!]
         .map((key, i) => ({ key, label: t(STAGE_LABELS[key]), stage: byKey.get(key)!, index: i, role: stageRole(key) }))
         .filter(({ key }) => STAGE_TYPE[key] === "checkpoint");
+  // A package with a clip gets the clip notes field (lib/clipNotes.ts), from all its stages, not
+  // only the ones the client sees.
+  const hasClip = packageHasClip(
+    event.custom_package_id
+      ? allStages.flatMap((st) => {
+          if (st.stage_key) return [{ role: stageRole(st.stage_key), label: STAGE_LABELS[st.stage_key as StageKey] }];
+          const cs = customById.get(st.custom_stage_id ?? "");
+          return cs ? [{ role: stageRole(null, cs), label: cs.name }] : [];
+        })
+      : PACKAGE_FLOWS[event.package!].map((key) => ({ role: stageRole(key), label: STAGE_LABELS[key] }))
+  );
   // The client's own approval / song choice (lib/clientReminders.ts). A custom album stage is
   // marked done when the photographer uploads the PDF, so for it only the client's approval counts.
   const clientDone = (s: (typeof clientStages)[number]) =>
@@ -156,6 +169,15 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           clipSongs={event.clip_songs ?? null}
         />
       </div>
+
+      {hasClip && (
+        <PortalClipNotes
+          eventToken={token}
+          photographerName={event.photographers?.name ?? null}
+          initialNotes={event.clip_notes ?? null}
+          initialAt={event.clip_notes_at ?? null}
+        />
+      )}
 
       {/* Rendered only with frames, so the frame drawing's code loads only for those clients. */}
       {magnets.frames.length > 0 && <PortalMagnetFrames eventToken={token} frames={magnets.frames} qrContext={magnets.qrContext} />}

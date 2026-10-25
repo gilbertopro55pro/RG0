@@ -125,14 +125,15 @@ export async function markClientDone(supabase: SupabaseClient<any>, eventId: str
   const now = new Date().toISOString();
   if (role === "album_approval") await supabase.from("events").update({ album_approved_at: now }).eq("id", eventId).is("album_approved_at", null);
   if (role === "client_song_selection") await supabase.from("events").update({ songs_chosen_at: now }).eq("id", eventId).is("songs_chosen_at", null);
-  const kind: ClientReminderKind | null =
-    role === "album_approval" ? "album_approval_reminder" : role === "client_song_selection" ? "song_selection_reminder" : null;
-  if (kind) {
+  // The song choice also closes the reminder of an open song stage (lib/songStageReminder.ts).
+  const kinds: string[] =
+    role === "album_approval" ? ["album_approval_reminder"] : role === "client_song_selection" ? ["song_selection_reminder", "song_stage_reminder"] : [];
+  if (kinds.length) {
     await supabase
       .from("scheduled_messages")
       .update({ status: "canceled" })
       .eq("event_id", eventId)
-      .eq("kind", kind)
+      .in("kind", kinds)
       .in("status", ["pending", "awaiting_confirmation"]);
   }
 }
