@@ -59,6 +59,8 @@ import {
   galleryThemeById,
   galleryThemeVars,
   galleryFont,
+  resolveGalleryTheme,
+  titleFontFamily,
 } from "@/lib/galleryTheme";
 import { openWhatsApp } from "@/lib/waLink";
 import { isAlbumExportRunning, showAlbumExport, startAlbumExport, useAlbumExports } from "@/lib/albumExports";
@@ -3425,6 +3427,7 @@ export default function GalleryManageView({
         <div className="relative">
           <GalleryPremiumCover
             variant="manage"
+            titleFont={resolveGalleryTheme(gallery.theme, { titleFontOverride: gallery.title_font_override }).titleFont}
             photoUrl={managerCoverPhoto ? resizedPhotoUrl(managerCoverPhoto, 2048) : null}
             title={gallery.title}
             dateLabel={coverDate ? new Date(coverDate).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "long", year: "numeric" }) : null}
@@ -4032,7 +4035,7 @@ export default function GalleryManageView({
                       <h2
                         id={`mgr-chapter-${c.key}`}
                         className={galleryFont.variable}
-                        style={{ fontFamily: "var(--font-gallery-serif), serif", fontWeight: 300, fontSize: "clamp(30px, 4.4vw, 52px)", lineHeight: 1.05, letterSpacing: "-0.01em" }}
+                        style={{ fontFamily: titleFontFamily(resolveGalleryTheme(gallery.theme, { titleFontOverride: gallery.title_font_override }).titleFont), fontWeight: 300, fontSize: "clamp(30px, 4.4vw, 52px)", lineHeight: 1.05, letterSpacing: "-0.01em" }}
                       >
                         {c.name}
                       </h2>

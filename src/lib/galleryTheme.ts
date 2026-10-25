@@ -1,13 +1,15 @@
 import { Frank_Ruhl_Libre } from "next/font/google";
 
-// Scoped to gallery pages only (not the main app) — a serif display face reserved for the
-// client-facing gallery experience, where a more editorial/premium feel is worth the extra font.
-// Variable font (300-900), so every weight is available. The "hebrew" subset matters: without it
-// only the Latin face is preloaded and a Hebrew gallery title fell back to the sans.
+// The serif display face, for a gallery whose photographer picked "סריף" in its settings (and
+// the portfolio heading, the reels' serif text). Gallery titles are Rubik by default since
+// 2026-10-24 (owner: the light sans of the cover's date line), so it's no longer preloaded on every
+// page: it loads only where a title uses it. Variable font (300-900); the "hebrew" subset matters,
+// or a Hebrew title falls back to the sans.
 export const galleryFont = Frank_Ruhl_Libre({
   subsets: ["latin", "hebrew"],
   weight: "variable",
   variable: "--font-gallery-serif",
+  preload: false,
 });
 
 export type GridStyle = "masonry" | "grid" | "framed" | "justified";
@@ -64,7 +66,7 @@ export const GALLERY_THEMES: GalleryThemeTokens[] = [
     accentInk: "#FFFFFF",
     border: "#DCDBD7",
     radius: "2px",
-    titleFont: "serif",
+    titleFont: "sans",
     titleWeight: 300,
     titleTracking: "-0.01em",
     gridStyle: "justified",
@@ -91,8 +93,8 @@ export const GALLERY_THEMES: GalleryThemeTokens[] = [
     accentInk: "#ffffff",
     border: "#e8e3d9",
     radius: "16px",
-    titleFont: "serif",
-    titleWeight: 600,
+    titleFont: "sans",
+    titleWeight: 300,
     titleTracking: "0em",
     gridStyle: "masonry",
     gap: 10,
@@ -161,8 +163,8 @@ export const GALLERY_THEMES: GalleryThemeTokens[] = [
     accentInk: "#ffffff",
     border: "#e6d5bd",
     radius: "20px",
-    titleFont: "serif",
-    titleWeight: 500,
+    titleFont: "sans",
+    titleWeight: 300,
     titleTracking: "0em",
     gridStyle: "masonry",
     gap: 8,
@@ -184,8 +186,8 @@ export const GALLERY_THEMES: GalleryThemeTokens[] = [
     accentInk: "#ffffff",
     border: "#f3d9dd",
     radius: "24px",
-    titleFont: "serif",
-    titleWeight: 500,
+    titleFont: "sans",
+    titleWeight: 300,
     titleTracking: "0.01em",
     gridStyle: "framed",
     gap: 14,
@@ -241,10 +243,17 @@ export function galleryThemeVars(id: string, overrides?: GalleryStyleOverrides):
   };
 }
 
+// The CSS font of a gallery title: Rubik, the app's sans (the default of every theme since
+// 2026-10-24, owner: "בסגנון הזה", the light date line on the cover), or the serif face when the
+// photographer picked it in the gallery's settings.
+export function titleFontFamily(font: TitleFont): string {
+  return font === "serif" ? "var(--font-gallery-serif), serif" : "var(--font-sans)";
+}
+
 export function galleryTitleStyle(id: string, overrides?: GalleryStyleOverrides): Record<string, string | number> {
   const t = resolveGalleryTheme(id, overrides);
   return {
-    fontFamily: t.titleFont === "serif" ? "var(--font-gallery-serif)" : "var(--font-sans)",
+    fontFamily: titleFontFamily(t.titleFont),
     fontWeight: t.titleWeight,
     letterSpacing: t.titleTracking,
     ...(t.titleTransform ? { textTransform: t.titleTransform } : {}),
