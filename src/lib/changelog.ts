@@ -11,6 +11,28 @@ export { changesFor, type ChangelogEntry } from "@/lib/changelogEntry";
 // "מה חדש" popup.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.12.10",
+    date: "2026-10-26",
+    changes: [
+      "חדש במסך הבית: רשימת משימות יומית. כפתור \"משימות\" בראש המסך, ליד היומן, עם מספר המשימות הפתוחות להיום",
+      "כותבים משימה לכל תאריך, ואפשר להוסיף לה הערות. עוברים בין ימים בחיצים או בבחירת תאריך, ומשימה שלא הושלמה בימים קודמים מופיעה בהיום, עם \"להיום\"",
+      "סימון שהושלמה: בצ׳קבוקס או בהחלקה ימינה. מחיקה: בהחלקה שמאלה או בלחיצה כפולה, עם אפשרות ביטול. לחיצה אחת פותחת את המשימה לעריכה",
+      "אפשר לבחור תצוגה: שורה לכל משימה עם ההערות מתחת, או בלוקים",
+    ],
+    en: [
+      "New on the home screen: a daily to-do list. A \"Tasks\" button at the top, beside the calendar, with the number of open tasks for today",
+      "Write a task for any date and add notes to it if you like. Move between days with the arrows or by picking a date, and a task left undone on an earlier day shows up today, with \"To today\"",
+      "Mark it done with the checkbox or a swipe right. Delete it with a swipe left or a double tap, with undo. A single tap opens the task for editing",
+      "Choose the view: a row per task with its notes below, or blocks",
+    ],
+    ru: [
+      "Новое на главном экране: ежедневный список задач. Кнопка «Задачи» вверху, рядом с календарём, с числом открытых задач на сегодня",
+      "Запишите задачу на любую дату и при желании добавьте заметки. Переходите между днями стрелками или выбором даты, а невыполненная задача с прошлых дней появляется сегодня, с кнопкой «На сегодня»",
+      "Отметить выполненной — галочкой или смахиванием вправо. Удалить — смахиванием влево или двойным нажатием, с возможностью отмены. Одно нажатие открывает задачу для редактирования",
+      "Можно выбрать вид: строка на задачу с заметками под ней или блоки",
+    ],
+  },
+  {
     version: "2.12.9",
     date: "2026-10-24",
     changes: [
