@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useT } from "@/i18n/client";
 import { useVivid } from "@/components/VividProvider";
 import { VIVID_HEADER_BUTTON_STYLE } from "@/components/homeVividStyles";
@@ -12,11 +12,30 @@ const TasksPanel = dynamic(() => import("@/components/tasks/TasksPanel"), { ssr:
 
 // The daily to-do list's button in the home screen's header (owner, 2026-10-26, lib/tasks.ts), beside
 // the calendar and settings buttons, with the number of open tasks for today and earlier days.
-export default function TasksButton({ initialOpenCount }: { initialOpenCount: number }) {
+// ?tasks=1 (the morning notification, lib/morningDigest.ts) opens the panel; the parameter is then
+// dropped from the address so a refresh doesn't open it again.
+export default function TasksButton({
+  initialOpenCount,
+  photographerId,
+  initialMorningDigest,
+}: {
+  initialOpenCount: number;
+  photographerId: string;
+  initialMorningDigest: boolean;
+}) {
   const t = useT();
   const vivid = useVivid();
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const [open, setOpen] = useState(() => searchParams.get("tasks") === "1");
+  const [morningDigest, setMorningDigest] = useState(initialMorningDigest);
+  useEffect(() => {
+    if (searchParams.get("tasks") !== "1") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("tasks");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [count, setCount] = useState(initialOpenCount);
   const [changed, setChanged] = useState(false);
 
@@ -46,6 +65,9 @@ export default function TasksButton({ initialOpenCount }: { initialOpenCount: nu
       </button>
       {open && (
         <TasksPanel
+          photographerId={photographerId}
+          morningDigest={morningDigest}
+          onMorningDigest={setMorningDigest}
           onCount={setCount}
           onChanged={() => setChanged(true)}
           onClose={() => {

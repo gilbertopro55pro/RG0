@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
 import BodyPortal from "@/components/BodyPortal";
+import ReminderToggleSettings from "@/components/ReminderToggleSettings";
 import ViewToggle, { type ListOrGrid } from "@/components/ViewToggle";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
@@ -16,12 +18,14 @@ import {
   swipeAction,
   type TaskRow,
 } from "@/lib/tasks";
+import { currentPushStatus, type PushStatus } from "@/lib/pushStatus";
 
 // The daily to-do list (owner, 2026-10-26, lib/tasks.ts): the tasks of a day, a row each with its
 // notes on a smaller line, or blocks (the view is remembered on this device). New task at the top.
 // Tick the box or swipe right: done (again: not done). Swipe left or double-tap: delete, with undo.
 // A single tap edits the title and the notes. On today, open tasks left from earlier days come
-// after, with "to today".
+// after, with "to today". At the bottom, the switch for the morning notification with the day's
+// tasks (lib/morningDigest.ts), with a pointer to settings when phone notifications are off here.
 
 const VIEW_KEY = "tasks_view";
 const DOUBLE_TAP_MS = 260;
@@ -29,10 +33,16 @@ const DOUBLE_TAP_MS = 260;
 type Toast = { text: string; undo?: () => void };
 
 export default function TasksPanel({
+  photographerId,
+  morningDigest,
+  onMorningDigest,
   onClose,
   onCount,
   onChanged,
 }: {
+  photographerId: string;
+  morningDigest: boolean;
+  onMorningDigest: (enabled: boolean) => void;
   onClose: () => void;
   // The header button's number, whenever today's list is on screen.
   onCount: (n: number) => void;
@@ -61,6 +71,16 @@ export default function TasksPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pushStatus, setPushStatus] = useState<PushStatus>("loading");
+  useEffect(() => {
+    let cancelled = false;
+    currentPushStatus()
+      .then((s) => !cancelled && setPushStatus(s))
+      .catch(() => !cancelled && setPushStatus("unsupported"));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const showToast = useCallback((next: Toast) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -328,7 +348,19 @@ export default function TasksPanel({
                   </div>
                 )}
 
-                <p className="mt-6 text-[11px] leading-relaxed text-ink-soft">
+                <div className="mt-6">
+                  <ReminderToggleSettings photographerId={photographerId} column="morning_digest" initialEnabled={morningDigest} compact onChange={onMorningDigest} />
+                  {morningDigest && (pushStatus === "off" || pushStatus === "denied" || pushStatus === "ios-install") && (
+                    <p className="mt-1.5 text-xs text-ink-soft">
+                      {t("ההתראות לטלפון לא מופעלות במכשיר הזה.")}{" "}
+                      <Link href="/settings?tab=automation" onClick={onClose} className="font-semibold underline underline-offset-2 text-ink">
+                        {t("להפעלה בהגדרות")}
+                      </Link>
+                    </p>
+                  )}
+                </div>
+
+                <p className="mt-4 text-[11px] leading-relaxed text-ink-soft">
                   {t("לחיצה על משימה לעריכה. החלקה ימינה או הצ׳קבוקס מסמנים שהושלמה. החלקה שמאלה או לחיצה כפולה מוחקות.")}
                 </p>
               </>

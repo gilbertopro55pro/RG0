@@ -558,7 +558,11 @@ export default async function DashboardPage() {
         </div>
         {isPhotographer && (
           <div className="flex items-center gap-2 shrink-0 mt-1">
-            <TasksButton initialOpenCount={openTasksCount ?? 0} />
+            <TasksButton
+              initialOpenCount={openTasksCount ?? 0}
+              photographerId={user.id}
+              initialMorningDigest={(photographer as { morning_digest?: boolean } | null)?.morning_digest ?? true}
+            />
             <CalendarLink />
             <SettingsGearLink currentVersion={CURRENT_VERSION} />
           </div>

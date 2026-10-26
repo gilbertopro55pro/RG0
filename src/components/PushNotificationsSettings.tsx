@@ -2,37 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useT } from "@/i18n/client";
+import { VAPID_PUBLIC_KEY, currentPushStatus, type PushStatus } from "@/lib/pushStatus";
 
 // "התראות לטלפון" (Web Push, owner 2026-10-01; lib/push.ts). Per device: turning it on asks the
 // phone's permission and saves this device's subscription; the server then sends a new lead from
 // the assistant and client approvals (quote, contract, album). iPhone only gets them from the app
 // added to the home screen (iOS 16.4+, Apple's rule), so on an iPhone in Safari this explains how.
 
-type Status = "loading" | "unsupported" | "ios-install" | "denied" | "off" | "on";
-
-const PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
+type Status = PushStatus;
 
 function keyBytes(base64: string): Uint8Array {
   const pad = "=".repeat((4 - (base64.length % 4)) % 4);
   const raw = atob((base64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
-}
-
-function isIos(): boolean {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-}
-
-function isStandalone(): boolean {
-  return window.matchMedia("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true;
-}
-
-async function currentStatus(): Promise<Status> {
-  const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && !!PUBLIC_KEY;
-  if (!supported) return isIos() && !isStandalone() ? "ios-install" : "unsupported";
-  if (Notification.permission === "denied") return "denied";
-  const reg = await navigator.serviceWorker.getRegistration();
-  const sub = await reg?.pushManager.getSubscription();
-  return sub && Notification.permission === "granted" ? "on" : "off";
 }
 
 export default function PushNotificationsSettings() {
@@ -43,7 +25,7 @@ export default function PushNotificationsSettings() {
 
   useEffect(() => {
     let cancelled = false;
-    currentStatus()
+    currentPushStatus()
       .then((s) => !cancelled && setStatus(s))
       .catch(() => !cancelled && setStatus("unsupported"));
     return () => {
@@ -62,7 +44,7 @@ export default function PushNotificationsSettings() {
       }
       const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register("/sw.js"));
       await navigator.serviceWorker.ready;
-      const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(PUBLIC_KEY) as BufferSource }));
+      const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(VAPID_PUBLIC_KEY) as BufferSource }));
       const res = await fetch("/api/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub.toJSON()) });
       if (!res.ok) throw new Error("save");
       setStatus("on");
