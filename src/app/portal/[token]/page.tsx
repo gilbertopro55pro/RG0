@@ -167,6 +167,16 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           albumDesignUrl={albumDesignUrl}
           twoSongs={isWeddingEvent(event.event_type)}
           clipSongs={event.clip_songs ?? null}
+          songsWhatsApp={
+            event.photographers?.phone
+              ? {
+                  phone: event.photographers.phone,
+                  photographerName: event.photographers.name ?? null,
+                  eventName: event.client_name,
+                  eventDate: new Date(`${event.event_date.slice(0, 10)}T12:00:00`).toLocaleDateString(locale),
+                }
+              : null
+          }
         />
       </div>
 

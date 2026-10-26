@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
 import { CLIP_NOTES_MAX } from "@/lib/clipNotes";
+import { setClipNotesBridge } from "@/lib/portalClipNotesBridge";
 
 // The client's notes for the clip, in the portal of a package with a clip (owner, 2026-10-25;
 // lib/clipNotes.ts). Saved by api/portal/[token]/clip-notes; the photographer sees them on the
-// event page without an edit field.
+// event page without an edit field. The song stage's "שמירה ושליחה בוואטסאפ" puts them in its
+// message, and saves a draft typed here along with the songs (lib/portalClipNotesBridge.ts).
 export default function PortalClipNotes({
   eventToken,
   photographerName,
@@ -28,7 +30,8 @@ export default function PortalClipNotes({
   const [error, setError] = useState(false);
   const changed = text.trim() !== (saved.notes ?? "");
 
-  const save = async () => {
+  // keepalive: from the song stage's send, while WhatsApp opens.
+  const save = async (keepalive = false) => {
     setBusy(true);
     setError(false);
     try {
@@ -36,6 +39,7 @@ export default function PortalClipNotes({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: text }),
+        keepalive,
       });
       const data = (await res.json().catch(() => ({}))) as { notes?: string | null; at?: string | null };
       if (!res.ok) {
@@ -51,6 +55,23 @@ export default function PortalClipNotes({
       setBusy(false);
     }
   };
+
+  // The latest state for the bridge, which the song stage calls outside this component's render.
+  const latest = useRef({ editing, text, saved, save });
+  useEffect(() => {
+    latest.current = { editing, text, saved, save };
+  });
+  useEffect(
+    () =>
+      setClipNotesBridge({
+        current: () => (latest.current.editing ? latest.current.text.trim() : (latest.current.saved.notes ?? "")),
+        flush: () => {
+          const { editing: open, text: draft, saved: kept, save: send } = latest.current;
+          if (open && draft.trim() && draft.trim() !== (kept.notes ?? "")) void send(true);
+        },
+      }),
+    []
+  );
 
   return (
     <div className="rounded-2xl p-4 mb-5 bg-card border border-line shadow-card">
@@ -94,7 +115,7 @@ export default function PortalClipNotes({
           <div className="flex items-center gap-2 mt-2">
             <button
               type="button"
-              onClick={save}
+              onClick={() => save()}
               disabled={busy || !changed || (!saved.notes && !text.trim())}
               className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-ink text-white disabled:opacity-50"
             >
