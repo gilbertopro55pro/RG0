@@ -7,8 +7,9 @@ import { CLIP_NOTES_MAX } from "@/lib/clipNotes";
 
 export type ClipSongsInput = { oneSong: boolean; single: string; calm: string; upbeat: string };
 
-// The clip song fields (lib/clipSongs.ts): a song name or a YouTube link per field. A wedding asks
-// for a calm song and an upbeat one unless "one song" is ticked; any other event asks for one. The
+// The clip song fields (lib/clipSongs.ts): a song name or a YouTube link per field. A wedding gets a
+// "one song / two songs" switch (owner, 2026-10-26), one song by default; two songs are a calm one
+// and an upbeat one. Any other event asks for one song. The
 // client fills them in the portal (PortalStageActions), and the photographer sees the same fields
 // on the event page and can fill them for the client (ClipSongsStagePanel, owner 2026-10-22).
 // `notes` (the portal, owner 2026-10-26): the clip notes field under the songs, sent with them.
@@ -37,7 +38,7 @@ export default function ClipSongsFields({
   notes?: { initial: string; hint: string };
 }) {
   const t = useT();
-  const [oneSong, setOneSong] = useState(!twoSongs || !!initial?.single);
+  const [oneSong, setOneSong] = useState(!twoSongs || !(initial?.calm || initial?.upbeat));
   const [single, setSingle] = useState(initial?.single ?? "");
   const [calm, setCalm] = useState(initial?.calm ?? "");
   const [upbeat, setUpbeat] = useState(initial?.upbeat ?? "");
@@ -66,10 +67,24 @@ export default function ClipSongsFields({
           : t("כתבו את שמות השירים לקליפ ההיילייטס, או הדביקו קישורים מיוטיוב: שיר רגוע ושיר קצבי.")}
       </p>
       {twoSongs && (
-        <label className="flex items-center gap-2 text-xs text-ink">
-          <input type="checkbox" checked={oneSong} onChange={(e) => setOneSong(e.target.checked)} className="h-4 w-4" />
-          {t("מעדיפים שיר אחד לקליפ")}
-        </label>
+        <div className="inline-flex rounded-full border border-line bg-white p-0.5" role="radiogroup" aria-label={t("כמה שירים לקליפ")}>
+          {[
+            { one: true, label: t("שיר אחד") },
+            { one: false, label: t("שני שירים") },
+          ].map((o) => (
+            <button
+              key={String(o.one)}
+              type="button"
+              role="radio"
+              aria-checked={oneSong === o.one}
+              onClick={() => setOneSong(o.one)}
+              className="h-8 px-3.5 rounded-full text-xs font-semibold transition-colors"
+              style={oneSong === o.one ? { background: "var(--color-ink)", color: "var(--color-paper)" } : { color: "var(--color-ink-soft)" }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
       )}
       {oneSong ? (
         field(t("השיר לקליפ"), single, setSingle)
