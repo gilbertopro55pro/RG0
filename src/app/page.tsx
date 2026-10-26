@@ -60,6 +60,7 @@ import QuickActionsGrid from "@/components/QuickActionsGrid";
 import EventsListView, { type EventAttention } from "@/components/EventsListView";
 import LandingPage from "@/components/LandingPage";
 import SettingsGearLink from "@/components/SettingsGearLink";
+import TasksButton from "@/components/tasks/TasksButton";
 import AlbumQuickAccessButton from "@/components/AlbumQuickAccessButton";
 import { FOLLOW_UP_LEAD_COLUMNS, quoteFollowUpHandled, type FollowUpLeadState } from "@/lib/leadFollowUp";
 import { vividForEmail } from "@/lib/vivid";
@@ -120,6 +121,7 @@ export default async function DashboardPage() {
     { data: customStageNames },
     { data: galleriesForAlbum },
     { count: registeredCount },
+    { count: openTasksCount },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase.from("team_members").select("*").eq("id", user!.id).maybeSingle<TeamMember>(),
@@ -195,6 +197,8 @@ export default async function DashboardPage() {
     user.email === ADMIN_EMAIL
       ? createServiceRoleClient().from("photographers").select("id", { count: "exact", head: true })
       : Promise.resolve({ count: null }),
+    // The number on the to-do list's button: open tasks for today and earlier days (lib/tasks.ts).
+    supabase.from("tasks").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("done", false).lte("task_date", israelTodayIso()),
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
@@ -554,6 +558,7 @@ export default async function DashboardPage() {
         </div>
         {isPhotographer && (
           <div className="flex items-center gap-2 shrink-0 mt-1">
+            <TasksButton initialOpenCount={openTasksCount ?? 0} />
             <CalendarLink />
             <SettingsGearLink currentVersion={CURRENT_VERSION} />
           </div>
