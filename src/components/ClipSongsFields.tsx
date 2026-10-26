@@ -14,6 +14,7 @@ export default function ClipSongsFields({
   twoSongs,
   initial,
   submitLabel,
+  submitTone,
   busy,
   error,
   onSubmit,
@@ -23,6 +24,8 @@ export default function ClipSongsFields({
   // Songs already chosen, to edit.
   initial?: ClipSongs | null;
   submitLabel: (oneSong: boolean) => string;
+  // The portal's "שמירה ושליחה בוואטסאפ" (owner, 2026-10-26): in WhatsApp green.
+  submitTone?: "whatsapp";
   busy: boolean;
   error: string | null;
   onSubmit: (songs: ClipSongsInput) => void;
@@ -76,7 +79,8 @@ export default function ClipSongsFields({
           type="button"
           onClick={() => onSubmit({ oneSong, single, calm, upbeat })}
           disabled={!ready || busy}
-          className="rounded-lg px-3.5 py-2 text-xs font-semibold bg-ink text-white disabled:opacity-50"
+          className={`rounded-lg px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-50 ${submitTone === "whatsapp" ? "" : "bg-ink"}`}
+          style={submitTone === "whatsapp" ? { background: "#25D366" } : undefined}
         >
           {busy ? t("שומר...") : submitLabel(oneSong)}
         </button>

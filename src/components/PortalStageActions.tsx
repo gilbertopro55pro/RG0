@@ -4,7 +4,10 @@ import { useState } from "react";
 import type { StageKey } from "@/lib/stages";
 import { useT } from "@/i18n/client";
 import { clipSongLines, type ClipSongs } from "@/lib/clipSongs";
+import { clipSongsWhatsAppMessage } from "@/lib/clipSongsMessage";
 import ClipSongsFields, { type ClipSongsInput } from "@/components/ClipSongsFields";
+import { openWhatsApp } from "@/lib/waLink";
+import { clipNotesBridge } from "@/lib/portalClipNotesBridge";
 
 type ClientStage = {
   key: string;
@@ -31,6 +34,7 @@ export default function PortalStageActions({
   albumDesignUrl,
   twoSongs,
   clipSongs,
+  songsWhatsApp,
 }: {
   eventToken: string;
   stages: ClientStage[];
@@ -39,6 +43,10 @@ export default function PortalStageActions({
   // A wedding: a calm song and an upbeat one for the highlights clip, or one if the client prefers.
   twoSongs: boolean;
   clipSongs: ClipSongs | null;
+  // The photographer's phone and what the message names (owner, 2026-10-26): the songs' button
+  // saves them and opens WhatsApp to the photographer with the songs and the clip notes. Null
+  // without a phone: the button only saves, as before.
+  songsWhatsApp: { phone: string; photographerName: string | null; eventName: string; eventDate: string } | null;
 }) {
   const [localDone, setLocalDone] = useState<Set<string>>(
     new Set(stages.filter((s) => s.done).map((s) => s.key))
@@ -49,7 +57,8 @@ export default function PortalStageActions({
   const [chosen, setChosen] = useState<ClipSongs | null>(clipSongs);
   const [songError, setSongError] = useState<string | null>(null);
 
-  const markDone = async (stageKey: string, songs?: ClipSongsInput) => {
+  // keepalive: the save goes on while WhatsApp opens (sendSongs).
+  const markDone = async (stageKey: string, songs?: ClipSongsInput, keepalive = false) => {
     if (submitting) return;
     setSubmitting(stageKey);
     setSongError(null);
@@ -58,6 +67,7 @@ export default function PortalStageActions({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stageKey, ...(songs ? { songs } : {}) }),
+        keepalive,
       });
       if (res.ok) {
         setLocalDone((prev) => new Set(prev).add(stageKey));
@@ -71,6 +81,31 @@ export default function PortalStageActions({
     } finally {
       setSubmitting(null);
     }
+  };
+
+  // "שמירה ושליחה בוואטסאפ": WhatsApp opens first, inside the tap (iPhone blocks it after a
+  // request), with the songs and the notes on the screen; then the songs and a typed notes draft
+  // are saved.
+  const sendSongs = (stageKey: string, songs: ClipSongsInput) => {
+    if (submitting) return;
+    if (songsWhatsApp) {
+      const notes = clipNotesBridge();
+      openWhatsApp(
+        songsWhatsApp.phone,
+        clipSongsWhatsAppMessage(
+          {
+            photographerName: songsWhatsApp.photographerName,
+            eventName: songsWhatsApp.eventName,
+            eventDate: songsWhatsApp.eventDate,
+            songs,
+            notes: notes?.current() ?? "",
+          },
+          t
+        )
+      );
+      notes?.flush();
+    }
+    void markDone(stageKey, songs, !!songsWhatsApp);
   };
 
   return (
@@ -118,10 +153,11 @@ export default function PortalStageActions({
               <div className="mt-2 ms-9">
                 <ClipSongsFields
                   twoSongs={twoSongs}
-                  submitLabel={(one) => (one ? t("אישור השיר") : t("אישור השירים"))}
+                  submitLabel={(one) => (songsWhatsApp ? t("שמירה ושליחה בוואטסאפ") : one ? t("אישור השיר") : t("אישור השירים"))}
+                  submitTone={songsWhatsApp ? "whatsapp" : undefined}
                   busy={submitting === key}
                   error={songError}
-                  onSubmit={(songs) => markDone(key, songs)}
+                  onSubmit={(songs) => sendSongs(key, songs)}
                 />
               </div>
             )}
