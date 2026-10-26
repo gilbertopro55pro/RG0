@@ -85,7 +85,14 @@ describe("photoSelectionStageOf", () => {
 });
 
 describe("quickReminderBlock", () => {
-  const base = { hasPhone: true, openTotal: 500, songStage: { done: false }, songsChosen: false, photoStage: { done: false } };
+  const base = {
+    hasPhone: true,
+    openTotal: 500,
+    songStage: { done: false },
+    songsChosen: false,
+    photoStage: { done: false },
+    galleryState: "ready" as "none" | "draft" | "archived" | "ready",
+  };
 
   it("all three can go when they're open", () => {
     expect(quickReminderBlock("payment", base)).toBeNull();
@@ -110,6 +117,15 @@ describe("quickReminderBlock", () => {
   it("photos: a stage that isn't done", () => {
     expect(quickReminderBlock("photos", { ...base, photoStage: null })).toBe("אין בחירת תמונות בחבילה");
     expect(quickReminderBlock("photos", { ...base, photoStage: { done: true } })).toBe("התמונות כבר נבחרו");
+  });
+
+  it("photos: only with a published gallery, where they're chosen", () => {
+    expect(quickReminderBlock("photos", { ...base, galleryState: "none" })).toBe("אין גלריה לאירוע");
+    expect(quickReminderBlock("photos", { ...base, galleryState: "draft" })).toBe("הגלריה עוד לא פורסמה");
+    expect(quickReminderBlock("photos", { ...base, galleryState: "archived" })).toBe("הגלריה בארכיון");
+    // The other reminders don't need a gallery.
+    expect(quickReminderBlock("songs", { ...base, galleryState: "none" })).toBeNull();
+    expect(quickReminderBlock("payment", { ...base, galleryState: "none" })).toBeNull();
   });
 });
 

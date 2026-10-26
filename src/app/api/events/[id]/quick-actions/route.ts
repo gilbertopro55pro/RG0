@@ -139,7 +139,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   // A balance recognized as revenue when the event was closed isn't open any more (lib/closeEvent.ts).
   const openTotal = payment ? openAmount(payment, !!(event.closed_at && event.closed_balance_month)).total : 0;
   const hasPhone = !!event.client_phone?.trim();
-  const facts = { hasPhone, openTotal, songStage, songsChosen: !!event.songs_chosen_at, photoStage };
+  const galleryState = !gallery ? "none" : gallery.archived_at ? "archived" : gallery.published ? "ready" : "draft";
+  const facts = { hasPhone, openTotal, songStage, songsChosen: !!event.songs_chosen_at, photoStage, galleryState } as const;
 
   const reminders = Object.fromEntries(
     QUICK_REMINDER_KINDS.map((kind) => {
@@ -156,9 +157,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         });
         return [kind, { blocked: null, message: text, amount: openTotal }];
       }
-      // The songs are written in the portal; the photos are chosen in the gallery once it's up.
+      // The songs are written in the portal; the photos are chosen in the gallery (published, above).
       if (kind === "songs") return [kind, { blocked: null, message: message(songStage!, portalUrl, { fallback: "client_song_selection", alwaysLink: true }) }];
-      return [kind, { blocked: null, message: message(photoStage!, galleryUrl ?? portalUrl, { fallback: "client_photo_selection", alwaysLink: true }) }];
+      return [kind, { blocked: null, message: message(photoStage!, galleryUrl!, { fallback: "client_photo_selection", alwaysLink: true }) }];
     })
   ) as QuickActionsData["reminders"];
 
@@ -175,7 +176,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       : null,
     receipt: { connected: isInvoiceProviderConnected(photographer.invoice_provider, photographer), legs: receiptLegs(payment) },
     gallery: {
-      state: !gallery ? "none" : gallery.archived_at ? "archived" : gallery.published ? "ready" : "draft",
+      state: galleryState,
       stageLabel: galleryStage.label,
       message: galleryUrl ? message(galleryStage, galleryUrl) : null,
     },
