@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { parseHomeEventsView } from "@/lib/homeEventsView";
+import { cookies } from "next/headers";
+import { EVENTS_LAYOUT_COOKIE, parseEventsLayout } from "@/lib/eventQuickActions";
 import { CURRENT_VERSION } from "@/lib/changelog";
 import { randomUUID } from "node:crypto";
 import { compareEventsChronologically } from "@/lib/eventOrder";
@@ -635,6 +637,7 @@ export default async function DashboardPage() {
         attentionByEvent={attentionByEvent}
         initialView={parseHomeEventsView(photographer?.home_events_view)}
         saveView={!!photographer}
+        initialLayout={parseEventsLayout((await cookies()).get(EVENTS_LAYOUT_COOKIE)?.value)}
       />
       <FeedbackButton />
       <PendingClientMessagePrompts

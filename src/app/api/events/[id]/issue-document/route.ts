@@ -25,6 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     paymentMethod,
     paymentOther,
     details: detailsInput,
+    receivedOnly,
   }: {
     field: "deposit" | "balance";
     clientEmail?: string;
@@ -34,6 +35,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     paymentOther?: string;
     // What the payment was for ("צילום בר מצווה"): the receipt's item line (owner, 2026-10-08).
     details?: string;
+    // From the home screen's quick actions (owner, 2026-10-26): only for money marked as received
+    // that no receipt covers yet, never more (lib/eventQuickActions.ts).
+    receivedOnly?: boolean;
   } = await request.json();
   if (paymentMethod && !RECEIPT_PAYMENT_METHODS.some((m) => m.id === paymentMethod)) {
     return NextResponse.json({ error: "בקשה לא חוקית" }, { status: 400 });
@@ -105,6 +109,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   if (amount > leftOnLeg + 0.004) {
     return NextResponse.json({ error: "הסכום גבוה מהיתרה שעוד לא הופקה עליה קבלה" }, { status: 400 });
+  }
+  if (receivedOnly && amount > suggested + 0.004) {
+    return NextResponse.json({ error: "הסכום גבוה ממה שסומן כשולם" }, { status: 400 });
   }
   const customerName = customerNameInput?.trim() || event.client_name;
   const methodLabel = paymentMethodLabel(paymentMethod, paymentOther);

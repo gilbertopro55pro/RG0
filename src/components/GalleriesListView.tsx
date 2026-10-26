@@ -9,6 +9,7 @@ import PageGuide from "@/components/PageGuide";
 import GalleryQuickActionsMenu from "@/components/GalleryQuickActionsMenu";
 import { readAlbumRotateResume } from "@/lib/albumRotateResume";
 import BackLink from "@/components/BackLink";
+import ViewToggle from "@/components/ViewToggle";
 import { getUploadsSnapshot, subscribeUploads, useGalleryUploads, type GalleryUpload } from "@/lib/galleryUploads";
 import { useRemoteUploads } from "@/lib/remoteUploads";
 import RemoteUploadLine from "@/components/RemoteUploadLine";
@@ -426,54 +427,6 @@ function GalleryCover({ item, sizes }: { item: GalleryListItem; sizes: string })
         item.coverUrl && <Image src={item.coverUrl} alt="" aria-hidden="true" fill sizes={sizes} className="object-cover scale-125 blur-md" />
       )}
       {item.coverUrl && <Image src={item.coverUrl} alt={item.clientName} fill sizes={sizes} className="object-contain" />}
-    </div>
-  );
-}
-
-// Switches the page between the list and blocks.
-function ViewToggle({ view, onChange }: { view: GalleriesView; onChange: (view: GalleriesView) => void }) {
-  const t = useT();
-  const options: { value: GalleriesView; label: string; icon: React.ReactNode }[] = [
-    {
-      value: "list",
-      label: t("תצוגת רשימה"),
-      icon: (
-        <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
-          <rect x="3" y="4.5" width="5" height="5" rx="1" />
-          <rect x="3" y="14.5" width="5" height="5" rx="1" />
-          <path d="M11.5 7h9.5M11.5 17h9.5" />
-        </svg>
-      ),
-    },
-    {
-      value: "grid",
-      label: t("תצוגת בלוקים"),
-      icon: (
-        <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-          <rect x="3.5" y="3.5" width="7" height="7" rx="1" />
-          <rect x="13.5" y="3.5" width="7" height="7" rx="1" />
-          <rect x="3.5" y="13.5" width="7" height="7" rx="1" />
-          <rect x="13.5" y="13.5" width="7" height="7" rx="1" />
-        </svg>
-      ),
-    },
-  ];
-  return (
-    <div className="flex shrink-0 rounded-full border border-line bg-white p-0.5" role="group" aria-label={t("תצוגה")}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          aria-pressed={view === o.value}
-          aria-label={o.label}
-          title={o.label}
-          className="flex h-8 w-9 items-center justify-center rounded-full transition-colors"
-          style={view === o.value ? { background: "var(--color-ink)", color: "var(--color-paper)" } : { color: "var(--color-ink-soft)" }}
-        >
-          {o.icon}
-        </button>
-      ))}
     </div>
   );
 }

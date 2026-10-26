@@ -125,7 +125,7 @@ import { UploadCount, UploadPct } from "@/components/galleryManage/UploadProgres
 import { GridThumb } from "@/components/galleryManage/GridThumb";
 import { DeleteFolderConfirmModal } from "@/components/galleryManage/DeleteFolderConfirmModal";
 import { SlideshowManageModal } from "@/components/galleryManage/SlideshowManageModal";
-import GalleryToolsMenu, { type GalleryToolItem } from "@/components/galleryManage/GalleryToolsMenu";
+import AnchoredMenu, { type AnchoredMenuItem } from "@/components/AnchoredMenu";
 import PhotoActionSheet from "@/components/galleryManage/PhotoActionSheet";
 import PhotoDeleteConfirm from "@/components/galleryManage/PhotoDeleteConfirm";
 import DeleteSelectedConfirm from "@/components/galleryManage/DeleteSelectedConfirm";
@@ -3038,7 +3038,7 @@ export default function GalleryManageView({
       {d}
     </svg>
   );
-  const toolItems: GalleryToolItem[] = [
+  const toolItems: AnchoredMenuItem[] = [
     // פרו / פרו+ only (entry tier excluded, see nonBasicTierAllowed); admin resolves to studio_pro.
     ...(photos.length > 0 && nonBasicTierAllowed
       ? [
@@ -3556,7 +3556,7 @@ export default function GalleryManageView({
       {/* The slideshow, reels, collage and face detection sit in the "כלים" dropdown (toolItems);
           the preview is an icon on the favorites row below. */}
       {!premiumTheme && <GlassTabStrip className="mb-4" items={managerTabItems} />}
-      {toolsAnchor && <GalleryToolsMenu anchor={toolsAnchor} items={toolItems} onClose={() => setToolsAnchor(null)} />}
+      {toolsAnchor && <AnchoredMenu anchor={toolsAnchor} items={toolItems} onClose={() => setToolsAnchor(null)} />}
       {/* gallery.title is always accurate now — it's either the photographer's own customization,
           or kept synced to the event's client_name (see saveSettings/EditEventModal.tsx), so
           there's no need to prioritize clientName over it the way this used to. */}

@@ -4,6 +4,7 @@ import { dateLocale, type Lang } from "@/i18n/config";
 import type { TFn } from "@/i18n/translate";
 import type { StageSegment } from "@/lib/homeVivid";
 import NextStageButton, { type HeroStageButtonData } from "@/components/NextStageButton";
+import EventQuickActions from "@/components/EventQuickActions";
 
 export type NextEventHeroData = {
   id: string;
@@ -63,6 +64,10 @@ export default async function NextEventHero({ event, vivid = false }: { event: N
           <span className="text-[13px] font-bold mt-0.5" style={{ color: "var(--color-amber-deep)" }}>
             {whenLabel(event.daysUntil, t)}
           </span>
+        </div>
+        {/* Quick actions without opening the event (lib/eventQuickActions.ts). */}
+        <div className="shrink-0 self-start">
+          <EventQuickActions eventId={event.id} />
         </div>
       </div>
 
@@ -179,12 +184,18 @@ function VividNextEventHeroCompact({
             <span className="text-[13px] font-semibold mt-1">{monthName}</span>
           </div>
           <div className="flex-1 min-w-0 flex flex-col justify-center gap-1">
-            <span
-              className="self-start text-xs font-semibold px-2.5 py-0.5 rounded-full max-w-full truncate"
-              style={{ border: `1px solid ${FOIL_RING}`, color: "var(--vivid-foil-text)" }}
-            >
-              {whenLabel(event.daysUntil, t)}
-            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className="min-w-0 text-xs font-semibold px-2.5 py-0.5 rounded-full truncate"
+                style={{ border: `1px solid ${FOIL_RING}`, color: "var(--vivid-foil-text)" }}
+              >
+                {whenLabel(event.daysUntil, t)}
+              </span>
+              {/* Above the card's link (the content around it lets taps through to the link). */}
+              <span className="pointer-events-auto ms-auto shrink-0">
+                <EventQuickActions eventId={event.id} tone="dark" />
+              </span>
+            </div>
             <span className="text-[22px] leading-tight font-extrabold break-words [overflow-wrap:anywhere]">{event.clientName}</span>
             {meta && (
               <span className="text-sm break-words [overflow-wrap:anywhere]" style={{ color: HERO_SUB }}>
@@ -262,9 +273,12 @@ function VividNextEventHero({
         <span className="text-xs" style={{ color: HERO_SOFT }}>
           {t("הצילום הבא")}
         </span>
-        <span className="text-xs font-semibold px-2.5 py-1 rounded-full shrink-0" style={{ border: `1px solid ${FOIL_RING}`, color: "var(--vivid-foil-text)" }}>
-          {whenPill(event.daysUntil, t)}
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <EventQuickActions eventId={event.id} tone="dark" />
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full shrink-0" style={{ border: `1px solid ${FOIL_RING}`, color: "var(--vivid-foil-text)" }}>
+            {whenPill(event.daysUntil, t)}
+          </span>
+        </div>
       </div>
 
       <div className="flex items-stretch gap-4">
