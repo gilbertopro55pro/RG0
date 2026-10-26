@@ -100,6 +100,8 @@ export function quickReminderBlock(
     songStage: { done: boolean } | null;
     songsChosen: boolean;
     photoStage: { done: boolean } | null;
+    // The photos are chosen in the gallery: without a published one there's nothing to choose yet.
+    galleryState: "none" | "draft" | "archived" | "ready";
   }
 ): string | null {
   if (!e.hasPhone) return "אין טלפון ללקוח";
@@ -109,7 +111,10 @@ export function quickReminderBlock(
     return e.songStage.done || e.songsChosen ? "השירים כבר נבחרו" : null;
   }
   if (!e.photoStage) return "אין בחירת תמונות בחבילה";
-  return e.photoStage.done ? "התמונות כבר נבחרו" : null;
+  if (e.photoStage.done) return "התמונות כבר נבחרו";
+  if (e.galleryState === "none") return "אין גלריה לאירוע";
+  if (e.galleryState === "draft") return "הגלריה עוד לא פורסמה";
+  return e.galleryState === "archived" ? "הגלריה בארכיון" : null;
 }
 
 // The photos reminder when the photographer saved no message of their own for the stage: the
