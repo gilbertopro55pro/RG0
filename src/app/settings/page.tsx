@@ -26,6 +26,8 @@ import PortfolioSettings from "@/components/PortfolioSettings";
 import AppearanceSettings from "@/components/AppearanceSettings";
 import PushNotificationsSettings from "@/components/PushNotificationsSettings";
 import ReminderToggleSettings from "@/components/ReminderToggleSettings";
+import MorningDigestSettings from "@/components/MorningDigestSettings";
+import { DIGEST_DEFAULT_MINUTES } from "@/lib/morningDigest";
 import GuidesSettings from "@/components/GuidesSettings";
 import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
@@ -172,10 +174,10 @@ export default async function SettingsPage({
                 column="song_stage_reminder"
                 initialEnabled={(photographer as { song_stage_reminder?: boolean }).song_stage_reminder ?? true}
               />
-              <ReminderToggleSettings
+              <MorningDigestSettings
                 photographerId={photographer.id}
-                column="morning_digest"
                 initialEnabled={(photographer as { morning_digest?: boolean }).morning_digest ?? true}
+                initialMinutes={(photographer as { morning_digest_minutes?: number }).morning_digest_minutes ?? DIGEST_DEFAULT_MINUTES}
               />
               <IntakeGuide />
               <BotSettings

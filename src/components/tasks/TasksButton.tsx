@@ -12,7 +12,7 @@ const TasksPanel = dynamic(() => import("@/components/tasks/TasksPanel"), { ssr:
 
 // The daily to-do list's button in the home screen's header (owner, 2026-10-26, lib/tasks.ts), beside
 // the calendar and settings buttons, with the number of open tasks for today and earlier days.
-// ?tasks=1 (the morning notification, lib/morningDigest.ts) opens the panel; the parameter is then
+// ?tasks=1 (the daily tasks reminder, lib/morningDigest.ts) opens the panel; the parameter is then
 // dropped from the address so a refresh doesn't open it again.
 export default function TasksButton({
   initialOpenCount,
@@ -21,7 +21,7 @@ export default function TasksButton({
 }: {
   initialOpenCount: number;
   photographerId: string;
-  initialMorningDigest: boolean;
+  initialMorningDigest: { enabled: boolean; minutes: number };
 }) {
   const t = useT();
   const vivid = useVivid();

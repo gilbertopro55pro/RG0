@@ -4,7 +4,7 @@ import { ACCESS_COLUMNS, isLockedOut, type AccessRow } from "@/lib/appAccess";
 import { photographerLang } from "@/lib/clientLang";
 import { sendPushToPhotographer } from "@/lib/push";
 import { israelToday } from "@/lib/tasks";
-import { inMorningWindow, morningDigest, nextShoot, type DigestEvent } from "@/lib/morningDigest";
+import { digestDueWindow, israelMinutes, morningDigest, nextShoot, type DigestEvent } from "@/lib/morningDigest";
 import { dateLocale } from "@/i18n/config";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
@@ -12,20 +12,21 @@ import { makeT } from "@/i18n/translate";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// 05:00 and 06:00 UTC (vercel.json): the morning notification with the day's tasks and the next
-// shoot (lib/morningDigest.ts), at 08:00 Israel time. Only photographers with a phone registered
-// for notifications and morning_digest on; claimed with morning_digest_sent_on first, so it goes
-// out once a day even when both runs fall in the window or overlap.
+// Every half hour (vercel.json): the daily tasks reminder with the day's tasks and the next shoot
+// (lib/morningDigest.ts), to each photographer whose chosen time (morning_digest_minutes, Israel
+// time) has come. Only photographers with a phone registered for notifications and morning_digest
+// on; claimed with morning_digest_sent_on first, so it goes out once a day even when runs are late
+// or overlap.
 
-type Row = AccessRow & { id: string; ui_lang: string | null };
+type Row = AccessRow & { id: string; ui_lang: string | null; morning_digest_minutes: number };
 
 export async function GET(request: NextRequest) {
   if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const now = new Date();
-  if (!inMorningWindow(now)) return NextResponse.json({ skipped: "outside the morning window" });
   const today = israelToday(now);
+  const due = digestDueWindow(israelMinutes(now));
   const supabase = createServiceRoleClient();
 
   const { data: subs, error: subsError } = await supabase.from("push_subscriptions").select("photographer_id").returns<{ photographer_id: string }[]>();
@@ -35,9 +36,11 @@ export async function GET(request: NextRequest) {
 
   const { data: photographers, error } = await supabase
     .from("photographers")
-    .select(`id, ui_lang, ${ACCESS_COLUMNS}`)
+    .select(`id, ui_lang, morning_digest_minutes, ${ACCESS_COLUMNS}`)
     .in("id", ids)
     .eq("morning_digest", true)
+    .gte("morning_digest_minutes", due.from)
+    .lte("morning_digest_minutes", due.to)
     .or(`morning_digest_sent_on.is.null,morning_digest_sent_on.lt.${today}`)
     .returns<Row[]>();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -75,7 +78,7 @@ export async function GET(request: NextRequest) {
         .returns<DigestEvent[]>(),
     ]);
     const lang = photographerLang(p.ui_lang);
-    const message = morningDigest({ tasks: tasks ?? [], event: nextShoot(events ?? [], today), today, t: makeT(messagesFor(lang)), locale: dateLocale(lang) });
+    const message = morningDigest({ tasks: tasks ?? [], event: nextShoot(events ?? [], today), today, t: makeT(messagesFor(lang)), locale: dateLocale(lang), minutes: p.morning_digest_minutes });
     if (!message) {
       quiet++;
       continue;
