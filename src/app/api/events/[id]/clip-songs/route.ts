@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { markClientDone, stageRole } from "@/lib/clientReminders";
-import { clipSongLines, isWeddingEvent, parseClipSongs } from "@/lib/clipSongs";
+import { clipSongLines, parseClipSongs } from "@/lib/clipSongs";
+import { allowsTwoSongs } from "@/lib/clipSongChoice";
+import type { EventRow } from "@/lib/types";
 
 // The clip songs filled on the event page for the client (ClipSongsStagePanel, owner 2026-10-22):
 // the same fields and checks as the portal (api/portal/[token]/complete-stage). Saving also marks
@@ -20,12 +22,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // RLS: only the photographer's (or their team's) own event.
   const { data: event } = await supabase
     .from("events")
-    .select("id, event_type, custom_package_id")
+    .select("id, event_type, package, is_freelance, custom_package_id")
     .eq("id", eventId)
-    .maybeSingle<{ id: string; event_type: string | null; custom_package_id: string | null }>();
+    .maybeSingle<Pick<EventRow, "id" | "event_type" | "package" | "is_freelance" | "custom_package_id">>();
   if (!event) return NextResponse.json({ error: "האירוע לא נמצא" }, { status: 404 });
 
-  const parsed = parseClipSongs(input, isWeddingEvent(event.event_type));
+  const parsed = parseClipSongs(input, allowsTwoSongs(event));
   if (!parsed) return NextResponse.json({ error: "יש לכתוב שם של שיר או קישור" }, { status: 400 });
   const songs = { ...parsed, by: "photographer" as const };
 
