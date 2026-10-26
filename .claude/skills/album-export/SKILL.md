@@ -137,6 +137,19 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   the export routes answer 409 when the running job is a print-house send (before, the export
   "followed" the print job and downloaded its files), and the print-house route answers 409 when
   anything runs (before, the insert hit the unique index of 0115 and returned the raw error).
+- **Print-house sends go through the same store** (since 2026-10-26, owner: a progress bar for
+  every background export on the gallery page, the print house included). `startAlbumExport` with
+  `format: "print"` and `print: { email, target, notes }` posts to `send-to-print-house`
+  (`createBody`). Ready means the email went out (no `downloadUrl`). The card says
+  "נשלח לבית הדפוס" / "נשלח בהצלחה ל-<target>", has no download, and closes after 8 seconds.
+  Before, the album tool and the home quick access each followed the job in their own component,
+  and a send moved to the background had no progress anywhere. A send that can't start because
+  this tab runs an export or another send gets `albumJobBusyMessage()` (the server's own words).
+- **The progress line on the gallery page** (`galleryManage/GalleryExportLine`, under the upload
+  controls): the gallery's running export or send, label, % and a bar. Tapping it brings the window
+  back. While the line is in view (IntersectionObserver), `AlbumExportPill` hides for that gallery
+  (`useExportLineHost` / `useExportLineHosts`); scrolled away, or with the album tool open over the
+  page, the pill shows.
 - Tests: `albumExports.test.ts`. Checked in Chromium on the real album tool with a mocked API
   (desktop and a landscape phone): background, pill, back to front, card download, foreground
   auto-download, cancel (DELETE). In headless Chrome the PDF download waits on the save-file

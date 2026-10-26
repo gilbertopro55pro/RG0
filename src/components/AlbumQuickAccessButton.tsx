@@ -2,10 +2,9 @@
 
 import { IconAlbum } from "@/components/icons/NavIcons";
 import { useT } from "@/i18n/client";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ProgressModal } from "@/components/ProgressModal";
-import { startAlbumExport } from "@/lib/albumExports";
+import { albumJobBusyMessage, startAlbumExport } from "@/lib/albumExports";
 import { createClient } from "@/lib/supabase/client";
 import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
 import PrintHouseSendsHistory from "@/components/PrintHouseSendsHistory";
@@ -28,7 +27,8 @@ const FORMAT_LABEL: Record<ExportFormat, string> = { pdf: "PDF", jpg: "JPG", psd
 // request — no navigation into the album tool at all for the common "just get me the file" case.
 // An export goes through the same store as the album tool's (lib/albumExports.ts): its progress
 // window, "המשך ברקע" and the download card are AlbumExportsLayer's, so this dialog closes once the
-// export starts. The print-house send keeps its own progress window here.
+// export starts. The print-house send too (since 2026-10-26), so it can go to the background and
+// shows on the gallery's page.
 export default function AlbumQuickAccessButton({ galleries }: { galleries: GalleryOption[] }) {
   const router = useRouter();
   const t = useT();
@@ -37,17 +37,12 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
   const [selectedId, setSelectedId] = useState(galleries[0]?.id ?? "");
   const [navigating, setNavigating] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  // The print-house send being followed (its progress window blocks until it's done or cancelled).
-  const [currentJob, setCurrentJob] = useState<{ id: string } | null>(null);
-  const [progressPct, setProgressPct] = useState(0);
-  const cancelledRef = useRef(false);
   // "שליחה לבית דפוס" from here too (owner's request, 2026-09-28): same print-house emails and notes
   // as the album tool's own sheet (GalleryManageView), same send-to-print-house job.
   const [printHouseOpen, setPrintHouseOpen] = useState(false);
   const [printHouseEmails, setPrintHouseEmails] = useState<PrintHouseEmailRow[] | null>(null);
   const [printHouseSelectedId, setPrintHouseSelectedId] = useState<string | null>(null);
   const [printHouseNotes, setPrintHouseNotes] = useState("");
-  const [printHouseSent, setPrintHouseSent] = useState<string | null>(null);
 
   const go = () => {
     if (!selectedId) return;
@@ -56,7 +51,7 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
   };
 
   const quickExport = (format: ExportFormat) => {
-    if (!selectedId || currentJob) return;
+    if (!selectedId) return;
     // Running inside the desktop app's embedded browser view (see photographer-flow-desktop's
     // BrowserView preload script, which sets this global) — hand off to the native editor's own
     // export instead of this web job queue. Desktop already has a fast local export engine with
@@ -82,7 +77,6 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
 
   const openPrintHouse = async () => {
     setExportError(null);
-    setPrintHouseSent(null);
     if (!printHouseEmails) {
       const { data } = await createClient()
         .from("print_house_emails")
@@ -96,71 +90,30 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
     setPrintHouseOpen(true);
   };
 
-  // Same job flow as an export (create, then poll with the ProgressModal up), except the server
-  // emails the print house once the JPGs are ready instead of this tab downloading anything.
-  const sendToPrintHouse = async () => {
+  // Through the exports store like an export (lib/albumExports.ts): the server emails the print
+  // house once the JPGs are ready, and the window, pill and card are AlbumExportsLayer's.
+  const sendToPrintHouse = () => {
     const target = printHouseEmails?.find((e) => e.id === printHouseSelectedId);
-    if (!selectedId || !target || currentJob) return;
+    if (!selectedId || !target) return;
+    const busy = albumJobBusyMessage();
+    if (busy) {
+      setExportError(t(busy));
+      return;
+    }
+    const gallery = galleries.find((g) => g.id === selectedId);
+    // to: 9999 = the whole album (the route clamps it to the last page).
+    startAlbumExport({
+      galleryId: selectedId,
+      galleryTitle: gallery?.title ?? null,
+      format: "print",
+      from: 1,
+      to: 9999,
+      print: { email: target.email, target: target.label || target.email, notes: printHouseNotes },
+    });
     setExportError(null);
-    setPrintHouseSent(null);
-    cancelledRef.current = false;
-    setProgressPct(0);
-    try {
-      const createRes = await fetch(`/api/galleries/${selectedId}/album/send-to-print-house`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: target.email, from: 1, to: 9999, notes: printHouseNotes.trim() || undefined }),
-      });
-      const createData: { jobId?: string; error?: string } = await createRes.json().catch(() => ({}));
-      if (!createRes.ok || !createData.jobId) {
-        setExportError(createData.error ? t(createData.error) : t("שליחה לבית הדפוס נכשלה"));
-        return;
-      }
-      setCurrentJob({ id: createData.jobId });
-      let failures = 0;
-      while (!cancelledRef.current) {
-        const res = await fetch(`/api/galleries/${selectedId}/album/export-jobs/${createData.jobId}`).catch(() => null);
-        if (!res || !res.ok) {
-          if (++failures >= 5) {
-            setExportError(t("שגיאה בבדיקת התקדמות השליחה. נסו לרענן את העמוד"));
-            return;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-          continue;
-        }
-        failures = 0;
-        const data: { status: string; processedCount: number; totalCount: number; errorMessage: string | null } = await res.json();
-        setProgressPct(data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0);
-        if (data.status === "ready") {
-          setPrintHouseSent(t("נשלח בהצלחה ל-{to}", { to: target.label || target.email }));
-          setPrintHouseNotes("");
-          setPrintHouseOpen(false);
-          return;
-        }
-        if (data.status === "failed" || data.status === "cancelled") {
-          if (data.status === "failed") setExportError(data.errorMessage ?? t("שליחה לבית הדפוס נכשלה"));
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
-    } catch {
-      setExportError(t("שליחה לבית הדפוס נכשלה"));
-    } finally {
-      setCurrentJob(null);
-    }
-  };
-
-  const cancelCurrentJob = async () => {
-    if (!currentJob || !selectedId) return;
-    cancelledRef.current = true;
-    try {
-      await fetch(`/api/galleries/${selectedId}/album/export-jobs/${currentJob.id}`, { method: "DELETE", keepalive: true });
-    } catch {
-      // Best-effort — the poll loop already stopped locally (cancelledRef) regardless of whether
-      // the server-side cancel request itself succeeds.
-    } finally {
-      setCurrentJob(null);
-    }
+    setPrintHouseNotes("");
+    setPrintHouseOpen(false);
+    setOpen(false);
   };
 
   return (
@@ -189,14 +142,6 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
         <span className="hidden sm:inline text-ink-soft shrink-0 ltr:rotate-180">←</span>
       </button>
 
-      {currentJob && (
-        <ProgressModal
-          label={t("שליחה לבית דפוס")}
-          pct={progressPct}
-          onCancel={cancelCurrentJob}
-        />
-      )}
-
       {open && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4"
@@ -215,7 +160,6 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                 onChange={(e) => {
                   setSelectedId(e.target.value);
                   setExportError(null);
-                  setPrintHouseSent(null);
                 }}
                 className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white mb-4"
               >
@@ -286,7 +230,6 @@ export default function AlbumQuickAccessButton({ galleries }: { galleries: Galle
                     {selectedId && <PrintHouseSendsHistory galleryId={selectedId} />}
                   </div>
                 )}
-                {printHouseSent && <p className="text-xs text-sage font-semibold mt-2">{printHouseSent}</p>}
                 {exportError && <p className="text-xs text-rose mt-2">{exportError}</p>}
               </div>
             )}

@@ -63,7 +63,8 @@ import {
   titleFontFamily,
 } from "@/lib/galleryTheme";
 import { openWhatsApp } from "@/lib/waLink";
-import { isAlbumExportRunning, showAlbumExport, startAlbumExport, useAlbumExports } from "@/lib/albumExports";
+import { albumJobBusyMessage, isAlbumExportRunning, showAlbumExport, startAlbumExport, useAlbumExports } from "@/lib/albumExports";
+import GalleryExportLine from "@/components/galleryManage/GalleryExportLine";
 import { ProgressModal } from "@/components/ProgressModal";
 import { IndeterminateProgressCard } from "@/components/IndeterminateProgressCard";
 import { pdfBandedPct } from "@/lib/pdfBandedPct";
@@ -210,7 +211,6 @@ export default function GalleryManageView({
   // ProgressModal itself blocks starting a second). Both poll the flag between items and stop
   // starting new ones. Album exports run in their own store (lib/albumExports.ts).
   const cancelRequestedRef = useRef(false);
-  const currentPrintHouseJobIdRef = useRef<string | null>(null);
   // A photo upload that ran in the background ("המשך ברקע", lib/galleryUploads.ts) ends with this
   // toast when the photographer is on the gallery page; the engine itself emails and pushes a
   // notification when they weren't watching it end.
@@ -522,6 +522,7 @@ export default function GalleryManageView({
   const exportingAlbumPdf = ownExport?.format === "pdf";
   const exportingAlbumJpg = ownExport?.format === "jpg";
   const exportingAlbumPsd = ownExport?.format === "psd";
+  const sendingAlbumToPrint = ownExport?.format === "print";
   const exportProgress = ownExport?.pct ?? 0;
   const [exportRangeFormat, setExportRangeFormat] = useState<"pdf" | "jpg" | "psd" | null>(null);
   const [exportRangeFrom, setExportRangeFrom] = useState(1);
@@ -538,13 +539,9 @@ export default function GalleryManageView({
   const [printHouseFrom, setPrintHouseFrom] = useState(1);
   const [printHouseTo, setPrintHouseTo] = useState(1);
   const [printHouseConfirmOpen, setPrintHouseConfirmOpen] = useState(false);
-  const [sendingToPrintHouse, setSendingToPrintHouse] = useState(false);
-  const [printHouseSendProgress, setPrintHouseSendProgress] = useState<number | null>(null);
-  // Decoupled from `sendingToPrintHouse` on purpose — "המשך ברקע" hides the progress modal
-  // without touching the actual in-flight send, which keeps running and reports via a toast.
-  const [printHouseProgressVisible, setPrintHouseProgressVisible] = useState(false);
+  // A send that can't start because an export or another send is still running (the send itself
+  // runs in the exports store, lib/albumExports.ts, with its own window, pill and card).
   const [printHouseToast, setPrintHouseToast] = useState<string | null>(null);
-  const printHouseAbortControllerRef = useRef<AbortController | null>(null);
   const [savingAlbumSize, setSavingAlbumSize] = useState(false);
   const [canvasEditorTarget, setCanvasEditorTarget] = useState<{ spreadId: string; mode: "overlay" | "custom" } | null>(null);
   // The album editor's "עריכת תמונה" panel drag offset — owned HERE (not inside
@@ -1840,8 +1837,7 @@ export default function GalleryManageView({
   };
 
   // Loads the photographer's own custom ornament tabs the moment the canvas editor opens (not
-  // Surfaces the print-house send result even after "המשך ברקע" already closed its progress
-  // modal — self-clears so it doesn't linger indefinitely.
+  // Self-clears so it doesn't linger.
   useEffect(() => {
     if (!printHouseToast) return;
     const timer = setTimeout(() => setPrintHouseToast(null), 5000);
@@ -1899,15 +1895,6 @@ export default function GalleryManageView({
   const handleDeleteCustomOrnament = async (ornamentId: string) => {
     await deleteCustomOrnament(ornamentId);
     setCustomOrnaments((prev) => prev.filter((o) => o.id !== ornamentId));
-  };
-
-  // Best-effort — fired from the cancel button alongside aborting this tab's own polling, so the
-  // job actually stops running server-side too (see this route's DELETE handler and the export/
-  // print-house functions below for why aborting only the client-side poll wasn't enough).
-  // keepalive lets the request survive even if this component unmounts right after (e.g. the
-  // cancel also navigates away), same as a `sendBeacon` would.
-  const cancelExportJob = (jobId: string) => {
-    fetch(`/api/galleries/${gallery.id}/album/export-jobs/${jobId}`, { method: "DELETE", keepalive: true }).catch(() => {});
   };
 
   const sendAlbumToClient = async () => {
@@ -1984,65 +1971,26 @@ export default function GalleryManageView({
     to: Math.min(albumTotalPages, Math.max(printHouseFrom, printHouseTo)),
   });
 
-  const sendToPrintHouseConfirmed = async () => {
+  // The send runs in the exports store like an export (lib/albumExports.ts, owner 2026-10-26): the
+  // progress window with "המשך ברקע", the pill, the line on the gallery page and the card.
+  const sendToPrintHouseConfirmed = () => {
     const target = printHouseEmails.find((e) => e.id === printHouseSelectedId);
     if (!target) return;
     const range = printHouseRange();
     setPrintHouseConfirmOpen(false);
     setPrintHouseModalOpen(false);
-    setSendingToPrintHouse(true);
-    setPrintHouseProgressVisible(true);
-    setPrintHouseSendProgress(0);
-    const controller = new AbortController();
-    printHouseAbortControllerRef.current = controller;
-    try {
-      const createRes = await fetch(`/api/galleries/${gallery.id}/album/send-to-print-house`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: target.email, from: range.from, to: range.to, notes: printHouseNotes.trim() || undefined }),
-        signal: controller.signal,
-      });
-      const createData = await createRes.json().catch(() => null);
-      if (!createRes.ok || !createData?.jobId) {
-        setPrintHouseToast(createData?.error ? t(createData.error) : t("שליחה לבית הדפוס נכשלה"));
-        return;
-      }
-      const jobId: string = createData.jobId;
-      currentPrintHouseJobIdRef.current = jobId;
-
-      // Same real background-job polling as downloadFromRoute above — the only difference is the
-      // deliverable is an email the server sends once ready, not a file the client downloads.
-      while (true) {
-        if (controller.signal.aborted) return;
-        const res = await fetch(`/api/galleries/${gallery.id}/album/export-jobs/${jobId}`, { signal: controller.signal });
-        if (!res.ok) {
-          setPrintHouseToast(t("שליחה לבית הדפוס נכשלה"));
-          return;
-        }
-        const data: { status: string; processedCount: number; totalCount: number; errorMessage: string | null } = await res.json();
-        setPrintHouseSendProgress(data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0);
-        if (data.status === "ready") break;
-        if (data.status === "failed") {
-          setPrintHouseToast(data.errorMessage ?? t("שליחה לבית הדפוס נכשלה"));
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-      }
-
-      setPrintHouseSendProgress(100);
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      setPrintHouseToast(t("נשלח בהצלחה ל-{target}", { target: target.label || target.email }));
-    } catch (e) {
-      if (!(e instanceof DOMException && e.name === "AbortError")) {
-        setPrintHouseToast(t("שליחה לבית הדפוס נכשלה"));
-      }
-    } finally {
-      setSendingToPrintHouse(false);
-      setPrintHouseProgressVisible(false);
-      setPrintHouseSendProgress(null);
-      printHouseAbortControllerRef.current = null;
-      currentPrintHouseJobIdRef.current = null;
+    const busy = albumJobBusyMessage();
+    if (busy) {
+      setPrintHouseToast(t(busy));
+      return;
     }
+    startAlbumExport({
+      galleryId: gallery.id,
+      galleryTitle: gallery.title,
+      format: "print",
+      ...range,
+      print: { email: target.email, target: target.label || target.email, notes: printHouseNotes },
+    });
   };
 
   const updateAlbumSize = async (widthCm: number, heightCm: number) => {
@@ -3032,10 +2980,7 @@ export default function GalleryManageView({
       ? { label: t("העלאת תמונות"), pct: 0 }
       : detectingFaces
         ? { label: t("זיהוי פרצופים"), pct: faceProgress && faceProgress.total > 0 ? (faceProgress.done / faceProgress.total) * 100 : 0 }
-        : sendingToPrintHouse && printHouseProgressVisible
-          ? { label: t("שליחה לבית דפוס"), pct: printHouseSendProgress ?? 0 }
-          : null;
-  const printHouseOpActive = sendingToPrintHouse && printHouseProgressVisible;
+        : null;
   // Uploads, exports and sends can't survive the update's reload: it waits for them (lib/updateResume).
   useBusy("gallery-operation", activeOp ? activeOp.label : uploadActive ? t("העלאת תמונות") : null);
 
@@ -3503,11 +3448,6 @@ export default function GalleryManageView({
           label={activeOp.label}
           pct={pct}
           onCancel={() => {
-            if (printHouseOpActive) {
-              if (currentPrintHouseJobIdRef.current) cancelExportJob(currentPrintHouseJobIdRef.current);
-              printHouseAbortControllerRef.current?.abort();
-              return;
-            }
             if (uploadOpActive) {
               cancelUpload(photoUploadKey);
               return;
@@ -3515,16 +3455,14 @@ export default function GalleryManageView({
             cancelRequestedRef.current = true;
             faceCancelRef.current?.();
           }}
-          // Print-house sending goes to the background with its own toast. Photo uploads can go to the background too (owner, 2026-10-09): they keep running while the
+          // Photo uploads can go to the background (owner, 2026-10-09): they keep running while the
           // photographer moves on, and the galleries list shows each one's progress.
           onBackground={
-            printHouseOpActive
-              ? () => setPrintHouseProgressVisible(false)
-              : uploadOpActive
-                ? // The photographer stays on the gallery (owner, 2026-10-16): the upload line under the
-                  // tabs shows the progress, and the galleries list and the floating indicator too.
-                  () => sendUploadToBackground(photoUploadKey)
-                : undefined
+            uploadOpActive
+              ? // The photographer stays on the gallery (owner, 2026-10-16): the upload line under the
+                // tabs shows the progress, and the galleries list and the floating indicator too.
+                () => sendUploadToBackground(photoUploadKey)
+              : undefined
           }
         />
         )}
@@ -3858,6 +3796,8 @@ export default function GalleryManageView({
           )}
         </div>
       )}
+      {/* The album's export or print-house send running in the background (owner, 2026-10-26). */}
+      <GalleryExportLine galleryId={gallery.id} visible={!albumManageOpen} />
       {remoteUploads.length > 0 && (
         <div className="mb-3 rounded-xl bg-card px-3 py-1.5">
           {remoteUploads.map((r) => (
@@ -4974,12 +4914,17 @@ export default function GalleryManageView({
                 )}
                 {album && albumSpreads.length > 0 && (
                   <button
-                    onClick={openPrintHouseModal}
-                    disabled={printHouseOpActive}
-                    className={`relative overflow-hidden ${isAlbumPhone ? "text-[13px] font-semibold px-3.5 py-2" : "text-xs font-semibold px-3 py-1.5"} rounded-full bg-white border border-line text-ink disabled:opacity-60 flex items-center gap-1`}
+                    // While a send runs, the button brings its progress window back.
+                    onClick={() => (sendingAlbumToPrint && ownExport ? showAlbumExport(ownExport.id) : openPrintHouseModal())}
+                    className={`relative overflow-hidden ${isAlbumPhone ? "text-[13px] font-semibold px-3.5 py-2" : "text-xs font-semibold px-3 py-1.5"} rounded-full bg-white border border-line text-ink disabled:opacity-60`}
                   >
-                    <IconImage size={12} />
-                    {printHouseOpActive ? t("שולח...") : t("שליחה לבית דפוס")}
+                    {sendingAlbumToPrint && (
+                      <LiquidProgressBar pct={exportProgress} style={{ position: "absolute", inset: 0, borderRadius: 9999 }} />
+                    )}
+                    <span className="relative z-10 flex items-center gap-1">
+                      <IconImage size={12} />
+                      {sendingAlbumToPrint ? t("שולח...") : t("שליחה לבית דפוס")}
+                    </span>
                   </button>
                 )}
                 {album && (

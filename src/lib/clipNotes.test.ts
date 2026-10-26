@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PACKAGE_FLOWS, STAGE_LABELS, type PackageType } from "@/lib/stages";
 import { stageRole } from "@/lib/clientReminders";
-import { CLIP_NOTES_MAX, clipNotesLogText, packageHasClip, parseClipNotes } from "@/lib/clipNotes";
+import { CLIP_NOTES_MAX, CLIP_NOTES_PUSH_MAX, clipNotesLogText, clipNotesPushPreview, packageHasClip, parseClipNotes } from "@/lib/clipNotes";
 
 // The client's notes for the clip (owner, 2026-10-25).
 
@@ -62,5 +62,18 @@ describe("clipNotesLogText", () => {
     expect(clipNotesLogText("דנה ואורי", null, "הערה")).toBe("דנה ואורי כתבו הערות לקליפ");
     expect(clipNotesLogText("דנה ואורי", "ישנה", "חדשה")).toBe("דנה ואורי עדכנו את ההערות לקליפ");
     expect(clipNotesLogText("דנה ואורי", "ישנה", "")).toBe("דנה ואורי מחקו את ההערות לקליפ");
+  });
+});
+
+describe("clipNotesPushPreview (2026-10-26)", () => {
+  it("puts the notes on one line", () => {
+    expect(clipNotesPushPreview("שסבתא תופיע\n\nבלי נאומים  ")).toBe("שסבתא תופיע בלי נאומים");
+  });
+
+  it("cuts long notes with an ellipsis, at the maximum", () => {
+    const preview = clipNotesPushPreview("א ".repeat(200));
+    expect(preview.length).toBeLessThanOrEqual(CLIP_NOTES_PUSH_MAX);
+    expect(preview.endsWith("…")).toBe(true);
+    expect(clipNotesPushPreview("קצר")).toBe("קצר");
   });
 });

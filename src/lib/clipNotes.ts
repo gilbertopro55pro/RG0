@@ -35,3 +35,11 @@ export function clipNotesLogText(clientName: string, before: string | null, afte
   if (!after) return `${clientName} מחקו את ההערות לקליפ`;
   return before ? `${clientName} עדכנו את ההערות לקליפ` : `${clientName} כתבו הערות לקליפ`;
 }
+
+// The notes in the phone notification (owner, 2026-10-26): on one line, cut at a length a lock
+// screen shows.
+export const CLIP_NOTES_PUSH_MAX = 140;
+export function clipNotesPushPreview(notes: string): string {
+  const line = notes.replace(/\s+/g, " ").trim();
+  return line.length > CLIP_NOTES_PUSH_MAX ? `${line.slice(0, CLIP_NOTES_PUSH_MAX - 1).trimEnd()}…` : line;
+}

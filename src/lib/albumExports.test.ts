@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   FOLLOW_LOST_ERROR,
+  albumJobBusyMessage,
   cancelAlbumExport,
+  createBody,
   exportPct,
   getAlbumExports,
   parseStoredExports,
@@ -15,7 +17,7 @@ import {
 // follows it, and keeps the finished file for the card; no screen has to stay open for it.
 
 type Reply = { status: number; body: unknown };
-type Call = { url: string; method: string; keepalive?: boolean };
+type Call = { url: string; method: string; keepalive?: boolean; body?: unknown };
 
 let calls: Call[] = [];
 let createReplies: Reply[] = [];
@@ -35,7 +37,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (url: string, init?: RequestInit & { keepalive?: boolean }) => {
       const method = init?.method ?? "GET";
-      calls.push({ url, method, keepalive: init?.keepalive });
+      calls.push({ url, method, keepalive: init?.keepalive, body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined });
       if (init?.signal?.aborted) throw new DOMException("aborted", "AbortError");
       let reply: Reply | "network" | undefined;
       if (method === "POST") reply = createReplies.shift();
@@ -169,6 +171,75 @@ describe("following the job", () => {
   });
 });
 
+describe("print-house sends (2026-10-26)", () => {
+  const print = { email: "print@example.com", target: "דפוס הגליל", notes: "  נייר מט  " };
+
+  it("goes to the print-house route with the address, the pages and the notes", async () => {
+    createReplies = [{ status: 200, body: { jobId: "p1" } }];
+    pollReplies = [job({ processedCount: 4, totalCount: 8 })];
+    const task = start({ format: "print", from: 3, to: 7, allowSaveDialog: false, print });
+    expect(task).toMatchObject({ format: "print", printTarget: "דפוס הגליל" });
+    expect(calls[0]).toMatchObject({
+      url: "/api/galleries/g1/album/send-to-print-house",
+      method: "POST",
+      body: { email: "print@example.com", from: 3, to: 7, notes: "נייר מט" },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getAlbumExports()[0]).toMatchObject({ jobId: "p1", pct: 50, phase: "running" });
+  });
+
+  it("is done when the job is ready, with no file to download", async () => {
+    createReplies = [{ status: 200, body: { jobId: "p1" } }];
+    pollReplies = [job({ status: "ready", processedCount: 8, totalCount: 8, downloadUrl: null })];
+    start({ format: "print", print });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getAlbumExports()[0]).toMatchObject({ phase: "ready", pct: 100, downloadUrl: null, printTarget: "דפוס הגליל" });
+  });
+
+  it("shows the server's answer when another job is in the way", async () => {
+    createReplies = [{ status: 409, body: { error: "יש ייצוא אלבום שעוד לא הסתיים. אפשר לשלוח לבית הדפוס כשהוא יסתיים" } }];
+    start({ format: "print", print });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getAlbumExports()[0]).toMatchObject({ phase: "failed", error: "יש ייצוא אלבום שעוד לא הסתיים. אפשר לשלוח לבית הדפוס כשהוא יסתיים" });
+  });
+
+  it("can go to the background and be cancelled like an export", async () => {
+    createReplies = [{ status: 200, body: { jobId: "p1" } }];
+    pollReplies = [job()];
+    const task = start({ format: "print", print });
+    await vi.advanceTimersByTimeAsync(0);
+    sendAlbumExportToBackground(task.id);
+    expect(getAlbumExports()[0].background).toBe(true);
+    cancelAlbumExport(task.id);
+    expect(calls.at(-1)).toMatchObject({ url: "/api/galleries/g1/album/export-jobs/p1", method: "DELETE", keepalive: true });
+    expect(getAlbumExports()).toEqual([]);
+  });
+
+  it("says why a send can't start while this tab runs an export or another send", async () => {
+    expect(albumJobBusyMessage()).toBeNull();
+    createReplies = [{ status: 200, body: { jobId: "j1" } }];
+    pollReplies = [job()];
+    const first = start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(albumJobBusyMessage()).toBe("יש ייצוא אלבום שעוד לא הסתיים. אפשר לשלוח לבית הדפוס כשהוא יסתיים");
+    cancelAlbumExport(first.id);
+    createReplies = [{ status: 200, body: { jobId: "p1" } }];
+    start({ format: "print", print });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(albumJobBusyMessage()).toBe("יש שליחה לבית דפוס שעוד לא הסתיימה");
+  });
+
+  it("an export's request body stays the same", () => {
+    expect(createBody({ format: "jpg", from: 1, to: 20 })).toEqual({ from: 1, to: 20, quality: "web" });
+    expect(createBody({ format: "print", from: 1, to: 9999, print: { email: "a@b.co", target: "a@b.co" } })).toEqual({
+      email: "a@b.co",
+      from: 1,
+      to: 9999,
+      notes: undefined,
+    });
+  });
+});
+
 describe("exportPct", () => {
   it("never falls back to 0% on a PDF quality retry", () => {
     expect(exportPct("pdf", { qualityStepIndex: 0, processedCount: 10, totalCount: 10 })).toBe(60);
@@ -184,6 +255,12 @@ describe("parseStoredExports", () => {
 
   it("picks running exports back up after a reload", () => {
     expect(parseStoredExports(JSON.stringify([ok]), now)).toHaveLength(1);
+  });
+
+  it("a print-house send too, with where it goes", () => {
+    const sent = parseStoredExports(JSON.stringify([{ ...ok, format: "print", printTarget: "דפוס הגליל" }]), now);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ format: "print", printTarget: "דפוס הגליל" });
   });
 
   it("ignores broken, foreign or old entries", () => {

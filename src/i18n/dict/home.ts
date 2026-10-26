@@ -524,6 +524,8 @@ const dict: AreaDict = {
     "הלקוח עוד לא כתב הערות לקליפ. הוא יכול לכתוב אותן בפורטל.": "The client hasn't written notes for the clip yet. They can write them in the portal.",
     "{name} עוד לא בחרו שירים לקליפ. זו ההודעה של שלב בחירת השירים מההודעות ללקוח, עם הקישור לפורטל שבו בוחרים. אפשר לערוך אותה לפני השליחה.": "{name} haven't chosen the clip songs yet. This is the song selection stage's message from your client messages, with the link to the portal where they choose. You can edit it before sending.",
     "לחצו לשליחת תזכורת ללקוח בוואטסאפ": "Tap to send the client a reminder on WhatsApp",
+    "{name} כתבו הערות לקליפ": "{name} wrote notes for the clip",
+    "{name} עדכנו את ההערות לקליפ": "{name} updated their notes for the clip",
   },
   ru: {
     "קבלה ללקוח/ה": "Квитанция клиенту",
@@ -1045,6 +1047,8 @@ const dict: AreaDict = {
     "הלקוח עוד לא כתב הערות לקליפ. הוא יכול לכתוב אותן בפורטל.": "Клиент ещё не написал пожелания к клипу. Он может написать их на портале.",
     "{name} עוד לא בחרו שירים לקליפ. זו ההודעה של שלב בחירת השירים מההודעות ללקוח, עם הקישור לפורטל שבו בוחרים. אפשר לערוך אותה לפני השליחה.": "{name} ещё не выбрали песни для клипа. Это сообщение этапа выбора песен из сообщений клиенту, со ссылкой на портал, где их выбирают. Его можно изменить перед отправкой.",
     "לחצו לשליחת תזכורת ללקוח בוואטסאפ": "Нажмите, чтобы отправить клиенту напоминание в WhatsApp",
+    "{name} כתבו הערות לקליפ": "{name} написали пожелания к клипу",
+    "{name} עדכנו את ההערות לקליפ": "{name} обновили пожелания к клипу",
   },
 };
 export default dict;
