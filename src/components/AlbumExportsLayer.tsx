@@ -15,6 +15,7 @@ import {
   sendAlbumExportToBackground,
   showAlbumExport,
   useAlbumExports,
+  useExportLineHosts,
   type AlbumExport,
 } from "@/lib/albumExports";
 
@@ -24,6 +25,8 @@ import {
 // to the end downloads by itself, as before; one sent to the background waits on its card, since
 // a download that pops up in the middle of other work (or fails on iPhone without a tap) is worse.
 // The background pill is AlbumExportPill, in the floating indicator's stack (UploadsIndicator).
+// A print-house send (format "print") goes through the same screens; its card says where it was
+// sent instead of offering a file, and closes by itself.
 export default function AlbumExportsLayer() {
   const t = useT();
   const all = useAlbumExports();
@@ -51,7 +54,9 @@ export default function AlbumExportsLayer() {
   );
 }
 
-function exportLabel(e: AlbumExport, t: ReturnType<typeof useT>): string {
+const PRINT_SENT_CARD_MS = 8000;
+
+export function exportLabel(e: AlbumExport, t: ReturnType<typeof useT>): string {
   if (e.waitingForServer) return t("מכינים את השרת");
   const label = t(ALBUM_EXPORT_LABEL[e.format]);
   return e.alreadyActive ? t("{label} (כבר פעיל)", { label }) : label;
@@ -81,13 +86,22 @@ function ExportCard({ task }: { task: AlbumExport }) {
     }
   };
 
+  const print = task.format === "print";
+
   useEffect(() => {
-    if (task.phase !== "ready" || task.background || autoStarted.current) return;
+    if (print || task.phase !== "ready" || task.background || autoStarted.current) return;
     autoStarted.current = true;
     // The export just finished in front of the photographer: download it, as before.
     void download();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.phase, task.background]);
+
+  // A print-house send that went out: nothing to do with the card, so it goes after a few seconds.
+  useEffect(() => {
+    if (!print || task.phase !== "ready") return;
+    const timer = setTimeout(() => dismissAlbumExport(task.id), PRINT_SENT_CARD_MS);
+    return () => clearTimeout(timer);
+  }, [print, task.phase, task.id]);
 
   const failed = task.phase === "failed";
   const where = task.galleryTitle ? t("של \"{title}\"", { title: task.galleryTitle }) : null;
@@ -110,8 +124,18 @@ function ExportCard({ task }: { task: AlbumExport }) {
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold">{failed ? t("{label} נכשל", { label }) : t("{label} הושלם", { label })}</p>
-          <p className="text-xs opacity-70 truncate">{failed ? where : task.filename}</p>
+          <p className="text-sm font-semibold">
+            {print
+              ? failed
+                ? t("שליחה לבית הדפוס נכשלה")
+                : t("נשלח לבית הדפוס")
+              : failed
+                ? t("{label} נכשל", { label })
+                : t("{label} הושלם", { label })}
+          </p>
+          <p className="text-xs opacity-70 truncate">
+            {print && !failed ? t("נשלח בהצלחה ל-{target}", { target: task.printTarget ?? "" }) : failed ? where : task.filename}
+          </p>
         </div>
         <button onClick={() => dismissAlbumExport(task.id)} aria-label={t("סגירה")} className="shrink-0 text-white/60">
           <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -121,7 +145,7 @@ function ExportCard({ task }: { task: AlbumExport }) {
       </div>
       {failed ? (
         <p className="text-xs opacity-80 mt-2 leading-relaxed">{t(task.error ?? "שגיאה בייצוא הקבצים")}</p>
-      ) : (
+      ) : print ? null : (
         <>
           {linkOnly && <p className="text-xs opacity-70 mt-2">{t("ההורדה האוטומטית לא עבדה במכשיר הזה, אפשר להוריד בכפתור.")}</p>}
           <div className="flex items-center gap-2 mt-3">
@@ -165,10 +189,12 @@ function ExportCard({ task }: { task: AlbumExport }) {
 
 // The export sent to the background, in the floating indicator's stack (UploadsIndicator). Tapping
 // it brings the progress window back.
+// Not while the gallery's own page shows the same export as a line (GalleryExportLine).
 export function AlbumExportPill() {
   const t = useT();
   const task = useAlbumExports().find((e) => isAlbumExportRunning(e) && e.background);
-  if (!task) return null;
+  const lineHosts = useExportLineHosts();
+  if (!task || lineHosts.includes(task.galleryId)) return null;
   const label = exportLabel(task, t);
   return (
     <button

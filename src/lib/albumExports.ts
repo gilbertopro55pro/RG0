@@ -1,6 +1,7 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { pdfBandedPct } from "@/lib/pdfBandedPct";
 import { setBusyLabel } from "@/lib/updateResume";
+import { EXPORT_RUNNING, PRINT_HOUSE_ALREADY_SENDING } from "@/lib/activeAlbumJob";
 import type { Lang } from "@/i18n/config";
 
 // Album exports (PDF, JPG, PSD) that keep going in the background (owner, 2026-10-22: "ייצוא PDF
@@ -11,13 +12,22 @@ import type { Lang } from "@/i18n/config";
 // layout), so the gallery's album tool and the home quick export both just call startAlbumExport.
 // One export at a time per photographer (the server's rule, findActiveExportJob): starting another
 // while one runs brings the running one back to the front.
+// A print-house send ("print", owner 2026-10-26) is the same kind of job: the server renders the
+// JPGs and emails the print house instead of the tab downloading a file. It goes through here too,
+// so it gets the same "המשך ברקע", pill, progress line on the gallery page and card.
 
-export type AlbumExportFormat = "pdf" | "jpg" | "psd";
+export type AlbumExportFormat = "pdf" | "jpg" | "psd" | "print";
 
-export const ALBUM_EXPORT_LABEL: Record<AlbumExportFormat, string> = { pdf: "ייצוא PDF", jpg: "ייצוא JPG", psd: "ייצוא PSD" };
-const ROUTE: Record<AlbumExportFormat, string> = { pdf: "export-pdf", jpg: "export-jpg", psd: "export-psd" };
-const MIME: Record<AlbumExportFormat, string> = { pdf: "application/pdf", jpg: "application/zip", psd: "application/zip" };
-const FALLBACK_NAME: Record<AlbumExportFormat, string> = { pdf: "album.pdf", jpg: "album-jpg.zip", psd: "album-psd.zip" };
+export const ALBUM_EXPORT_LABEL: Record<AlbumExportFormat, string> = {
+  pdf: "ייצוא PDF",
+  jpg: "ייצוא JPG",
+  psd: "ייצוא PSD",
+  print: "שליחה לבית דפוס",
+};
+const ROUTE: Record<AlbumExportFormat, string> = { pdf: "export-pdf", jpg: "export-jpg", psd: "export-psd", print: "send-to-print-house" };
+const MIME: Record<AlbumExportFormat, string> = { pdf: "application/pdf", jpg: "application/zip", psd: "application/zip", print: "application/zip" };
+const FALLBACK_NAME: Record<AlbumExportFormat, string> = { pdf: "album.pdf", jpg: "album-jpg.zip", psd: "album-psd.zip", print: "album-print.zip" };
+const FORMATS: readonly AlbumExportFormat[] = ["pdf", "jpg", "psd", "print"];
 
 export type AlbumExport = {
   id: string;
@@ -47,6 +57,8 @@ export type AlbumExport = {
   // For "שיתוף בוואטסאפ" on the card.
   clientPhone: string | null;
   clientLang: Lang;
+  // A print-house send: where it goes (the address's label, or the address), for the card.
+  printTarget: string | null;
   startedAt: number;
 };
 
@@ -59,6 +71,8 @@ export type StartAlbumExport = {
   allowSaveDialog?: boolean;
   clientPhone?: string | null;
   clientLang?: Lang;
+  // Format "print": the print house's address, what to call it, and the notes for it.
+  print?: { email: string; target: string; notes?: string };
 };
 
 type JobStatus = {
@@ -120,6 +134,14 @@ export function runningAlbumExport(): AlbumExport | undefined {
   return exports.find(isAlbumExportRunning);
 }
 
+// Why a print-house send can't start now: an export or another send is running in this tab. The
+// same words the server answers for one running elsewhere (lib/activeAlbumJob.ts).
+export function albumJobBusyMessage(): string | null {
+  const running = runningAlbumExport();
+  if (!running) return null;
+  return running.format === "print" ? PRINT_HOUSE_ALREADY_SENDING : EXPORT_RUNNING;
+}
+
 export function getAlbumExports(): AlbumExport[] {
   return exports;
 }
@@ -165,11 +187,12 @@ export function startAlbumExport(input: StartAlbumExport): AlbumExport {
     error: null,
     clientPhone: input.clientPhone ?? null,
     clientLang: input.clientLang ?? "he",
+    printTarget: input.print?.target ?? null,
     startedAt: Date.now(),
   };
   exports = [...exports, task];
   emit();
-  void create(id, { from: input.from, to: input.to, quality: "web" });
+  void create(id, createBody(input));
   return task;
 }
 
@@ -194,6 +217,14 @@ export function dismissAlbumExport(id: string) {
   remove(id);
 }
 
+// What the create route takes: the page range, and for a print-house send the address and notes.
+export function createBody(input: Pick<StartAlbumExport, "format" | "from" | "to" | "print">): Record<string, unknown> {
+  if (input.format === "print") {
+    return { email: input.print?.email ?? "", from: input.from, to: input.to, notes: input.print?.notes?.trim() || undefined };
+  }
+  return { from: input.from, to: input.to, quality: "web" };
+}
+
 function fail(id: string, error: string) {
   controllers.delete(id);
   patch(id, { phase: "failed", error, waitingForServer: false });
@@ -210,7 +241,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-async function create(id: string, body: { from: number; to: number; quality: "web" }) {
+async function create(id: string, body: Record<string, unknown>) {
   const task = get(id);
   if (!task) return;
   const controller = new AbortController();
@@ -295,7 +326,8 @@ async function follow(id: string, signal: AbortSignal) {
     failures = 0;
     const pct = exportPct(task.format, data);
     if (data.status === "ready") {
-      if (!data.downloadUrl) {
+      // A print-house send has nothing to download: ready means the email went out.
+      if (!data.downloadUrl && task.format !== "print") {
         fail(id, EXPORT_ERROR);
         return;
       }
@@ -340,13 +372,16 @@ export async function freshDownloadUrl(task: AlbumExport): Promise<string | null
 // --- surviving a reload ---
 // A refresh (or the "יש עדכון חדש" reload) mid-export picks the job back up, in the background.
 
-type Stored = Pick<AlbumExport, "id" | "jobId" | "galleryId" | "galleryTitle" | "format" | "allowSaveDialog" | "clientPhone" | "clientLang" | "startedAt">;
+type Stored = Pick<
+  AlbumExport,
+  "id" | "jobId" | "galleryId" | "galleryTitle" | "format" | "allowSaveDialog" | "clientPhone" | "clientLang" | "printTarget" | "startedAt"
+>;
 
 function persist() {
   if (typeof window === "undefined") return;
   const stored: Stored[] = exports
     .filter((e) => e.jobId && e.phase !== "failed")
-    .map(({ id, jobId, galleryId, galleryTitle, format, allowSaveDialog, clientPhone, clientLang, startedAt }) => ({
+    .map(({ id, jobId, galleryId, galleryTitle, format, allowSaveDialog, clientPhone, clientLang, printTarget, startedAt }) => ({
       id,
       jobId,
       galleryId,
@@ -355,6 +390,7 @@ function persist() {
       allowSaveDialog,
       clientPhone,
       clientLang,
+      printTarget,
       startedAt,
     }));
   try {
@@ -376,7 +412,7 @@ export function parseStoredExports(raw: string | null, now: number): Stored[] {
         typeof s.id === "string" &&
         typeof s.jobId === "string" &&
         typeof s.galleryId === "string" &&
-        (s.format === "pdf" || s.format === "jpg" || s.format === "psd") &&
+        FORMATS.includes(s.format) &&
         typeof s.startedAt === "number" &&
         now - s.startedAt < STORED_MAX_AGE_MS
     );
@@ -413,6 +449,7 @@ function resumeStored() {
         error: null,
         clientPhone: s.clientPhone ?? null,
         clientLang: s.clientLang ?? "he",
+        printTarget: s.printTarget ?? null,
         galleryTitle: s.galleryTitle ?? null,
       })
     ),
@@ -423,6 +460,42 @@ function resumeStored() {
     controllers.set(s.id, controller);
     void follow(s.id, controller.signal);
   }
+}
+
+// --- the progress line on the gallery page ---
+// The gallery's own page shows its running export as a line (GalleryExportLine, owner 2026-10-26).
+// While that line is on screen, the floating pill for the same gallery steps aside
+// (AlbumExportPill), so the progress isn't shown twice.
+
+let lineHosts: readonly string[] = [];
+const hostListeners = new Set<() => void>();
+const NO_HOSTS: readonly string[] = [];
+
+function subscribeLineHosts(listener: () => void): () => void {
+  hostListeners.add(listener);
+  return () => hostListeners.delete(listener);
+}
+
+function setLineHosts(next: readonly string[]) {
+  lineHosts = next;
+  hostListeners.forEach((l) => l());
+}
+
+// Called by the line while it's on screen for `galleryId` (null: not shown).
+export function useExportLineHost(galleryId: string | null) {
+  useEffect(() => {
+    if (!galleryId) return;
+    setLineHosts([...lineHosts, galleryId]);
+    return () => {
+      const i = lineHosts.indexOf(galleryId);
+      if (i >= 0) setLineHosts([...lineHosts.slice(0, i), ...lineHosts.slice(i + 1)]);
+    };
+  }, [galleryId]);
+}
+
+// The galleries whose page shows the line right now.
+export function useExportLineHosts(): readonly string[] {
+  return useSyncExternalStore(subscribeLineHosts, () => lineHosts, () => NO_HOSTS);
 }
 
 // Tests only.
