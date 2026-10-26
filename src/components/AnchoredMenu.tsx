@@ -5,15 +5,17 @@ import { createPortal } from "react-dom";
 import { useLang } from "@/i18n/client";
 import { dirOf } from "@/i18n/config";
 
-export type GalleryToolItem = { key: string; label: string; onClick: () => void; disabled?: boolean; icon: ReactNode };
+// `hint`: a short line under the label, e.g. why a disabled item can't be used now.
+export type AnchoredMenuItem = { key: string; label: string; onClick: () => void; disabled?: boolean; icon: ReactNode; hint?: string };
 
 const EDGE = 8;
 
-// The gallery's "כלים" dropdown (owner, 2026-10-24: "לרשימה נפתחת בשביל לחסוך מקום"): the photo
-// slideshow, reels, the collage and face detection, under one button of the gallery's action row.
-// Portaled to <body> with fixed coordinates from the button (like RowMenu): the action row scrolls
-// sideways on a phone and its glass strip clips what leaves it.
-export default function GalleryToolsMenu({ anchor, items, onClose }: { anchor: HTMLElement; items: GalleryToolItem[]; onClose: () => void }) {
+// A dropdown under a button: the gallery's "כלים" (owner, 2026-10-24: "לרשימה נפתחת בשביל לחסוך
+// מקום": the photo slideshow, reels, the collage and face detection) and an event's quick actions
+// (EventQuickActions). Portaled to <body> with fixed coordinates from the button (like RowMenu): the
+// gallery's action row scrolls sideways on a phone and its glass strip clips what leaves it, and an
+// event row sits in a glass card.
+export default function AnchoredMenu({ anchor, items, onClose }: { anchor: HTMLElement; items: AnchoredMenuItem[]; onClose: () => void }) {
   const lang = useLang();
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -82,7 +84,10 @@ export default function GalleryToolsMenu({ anchor, items, onClose }: { anchor: H
             <span className="flex h-5 w-5 shrink-0 items-center justify-center text-ink-soft" aria-hidden="true">
               {item.icon}
             </span>
-            <span className="min-w-0 flex-1">{item.label}</span>
+            <span className="min-w-0 flex-1">
+              {item.label}
+              {item.hint && <span className="block text-[11px] text-ink-soft leading-snug mt-0.5">{item.hint}</span>}
+            </span>
           </button>
         ))}
       </div>

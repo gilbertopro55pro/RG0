@@ -15,6 +15,9 @@ import { useVivid } from "@/components/VividProvider";
 import ToneTag from "@/components/ToneTag";
 import { eventDateTone, stageProgress, toneStyle } from "@/lib/tones";
 import { HOME_LIST_FILTER_EVENT, eventNeedsAttention, type HomeListFilterRequest } from "@/lib/homeVivid";
+import EventQuickActions from "@/components/EventQuickActions";
+import ViewToggle from "@/components/ViewToggle";
+import { eventsLayoutCookie, type EventsLayout } from "@/lib/eventQuickActions";
 
 // event_stages: embedded by page.tsx's events query; only the vivid look reads it (the thin
 // progress bar under each row).
@@ -24,6 +27,8 @@ type EventWithCustomPackage = EventRow & { custom_packages: { name: string } | n
 type StatusFilter = HomeStatusFilter | "attention";
 type SortOrder = HomeSortOrder;
 const PAGE_SIZE = 10;
+// The blocks view (owner, 2026-10-26): like the galleries' blocks, 2 across on a phone.
+const EVENTS_GRID_CLASS = "grid grid-cols-2 gap-3 mb-3.5 sm:grid-cols-3 lg:grid-cols-4";
 
 // What needs the photographer's attention on an event — computed server-side in page.tsx.
 export type EventAttention = {
@@ -61,8 +66,11 @@ export default function EventsListView({
   attentionByEvent = {},
   initialView = DEFAULT_HOME_VIEW,
   saveView = false,
+  initialLayout = "list",
 }: {
   attentionByEvent?: Record<string, EventAttention>;
+  // Rows or blocks (owner, 2026-10-26), remembered on this device in a cookie the server reads.
+  initialLayout?: EventsLayout;
   // The view saved on the account (photographers.home_events_view); "the coming week" by default.
   initialView?: HomeEventsView;
   // Save every change of view on the account (a photographer; a team member has no row to save to).
@@ -92,6 +100,11 @@ export default function EventsListView({
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [layout, setLayout] = useState<EventsLayout>(initialLayout);
+  const changeLayout = (next: EventsLayout) => {
+    setLayout(next);
+    document.cookie = eventsLayoutCookie(next);
+  };
 
   // "Done" is an explicit act now — the photographer's "סגירת אירוע" + confirmation (closed_at) —
   // NOT "every stage is checked", so finishing the last stage no longer moves an event out of the
@@ -174,8 +187,9 @@ export default function EventsListView({
     const extraFilterActive = statusFilter === "duplicates" || sortOrder !== "asc";
     return (
       <div ref={listRef} className="scroll-mt-4">
-        <div className="flex items-center justify-between mb-2.5 px-0.5">
-          <h2 className="text-lg font-bold">{t("אירועים")}</h2>
+        <div className="flex items-center justify-between gap-2 mb-2.5 px-0.5">
+          <h2 className="text-lg font-bold me-auto">{t("אירועים")}</h2>
+          {events.length > 0 && <ViewToggle view={layout} onChange={changeLayout} />}
           <span
             className="text-xs font-semibold px-2.5 py-0.5 rounded-full font-data"
             style={{ background: "var(--color-chip)", color: "var(--color-ink-soft)" }}
@@ -333,19 +347,35 @@ export default function EventsListView({
 
         {visible.length > 0 ? (
           <>
-            <div className="rounded-2xl overflow-hidden bg-card mb-3.5">
-              {visible.map((event, i) => (
-                <VividEventCard
-                  first={i === 0}
-                  attention={attentionByEvent[event.id]}
-                  key={event.id}
-                  event={event}
-                  nextStage={nextStageByEvent[event.id] ?? null}
-                  unreadCount={unreadCountByEvent[event.id] ?? 0}
-                  canClose={isPhotographer}
-                />
-              ))}
-            </div>
+            {layout === "grid" ? (
+              <div className={EVENTS_GRID_CLASS}>
+                {visible.map((event) => (
+                  <EventBlock
+                    vivid
+                    attention={attentionByEvent[event.id]}
+                    key={event.id}
+                    event={event}
+                    nextStage={nextStageByEvent[event.id] ?? null}
+                    unreadCount={unreadCountByEvent[event.id] ?? 0}
+                    canClose={isPhotographer}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl overflow-hidden bg-card mb-3.5">
+                {visible.map((event, i) => (
+                  <VividEventCard
+                    first={i === 0}
+                    attention={attentionByEvent[event.id]}
+                    key={event.id}
+                    event={event}
+                    nextStage={nextStageByEvent[event.id] ?? null}
+                    unreadCount={unreadCountByEvent[event.id] ?? 0}
+                    canClose={isPhotographer}
+                  />
+                ))}
+              </div>
+            )}
             {hasMore && (
               <button
                 onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
@@ -379,8 +409,9 @@ export default function EventsListView({
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-2.5 px-0.5">
-        <h2 className="text-[17px] font-bold">{t("אירועים")}</h2>
+      <div className="flex items-center justify-between gap-2 mb-2.5 px-0.5">
+        <h2 className="text-[17px] font-bold me-auto">{t("אירועים")}</h2>
+        {events.length > 0 && <ViewToggle view={layout} onChange={changeLayout} />}
         <span className="text-[13px] text-ink-soft font-data">
           {filtered.length !== events.length
             ? t("{n} מתוך {total}", { n: filtered.length, total: events.length })
@@ -522,20 +553,37 @@ export default function EventsListView({
 
       {visible.length > 0 ? (
         <>
-          <div className="rounded-2xl overflow-hidden bg-card mb-3.5">
-          {visible.map((event, i) => (
-            <EventCard
-              first={i === 0}
-              attention={attentionByEvent[event.id]}
-              key={event.id}
-              event={event}
-              nextStage={nextStageByEvent[event.id] ?? null}
-              unreadCount={unreadCountByEvent[event.id] ?? 0}
-              needsReviewColorId={needsReviewColorId}
-              canClose={isPhotographer}
-            />
-          ))}
-          </div>
+          {layout === "grid" ? (
+            <div className={EVENTS_GRID_CLASS}>
+              {visible.map((event) => (
+                <EventBlock
+                  vivid={false}
+                  attention={attentionByEvent[event.id]}
+                  key={event.id}
+                  event={event}
+                  nextStage={nextStageByEvent[event.id] ?? null}
+                  unreadCount={unreadCountByEvent[event.id] ?? 0}
+                  needsReviewColorId={needsReviewColorId}
+                  canClose={isPhotographer}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl overflow-hidden bg-card mb-3.5">
+              {visible.map((event, i) => (
+                <EventCard
+                  first={i === 0}
+                  attention={attentionByEvent[event.id]}
+                  key={event.id}
+                  event={event}
+                  nextStage={nextStageByEvent[event.id] ?? null}
+                  unreadCount={unreadCountByEvent[event.id] ?? 0}
+                  needsReviewColorId={needsReviewColorId}
+                  canClose={isPhotographer}
+                />
+              ))}
+            </div>
+          )}
           {hasMore && (
             <button
               onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
@@ -591,7 +639,6 @@ function EventCard({
   const isFreelance = isFreelanceEvent(event);
   // Falls back to the accent tint when the photographer hasn't picked an import color yet.
   const rowTint = googleColorRgba(needsReviewColorId ?? null, 0.16) ?? "var(--color-amber-bg)";
-  const badgeTint = googleColorRgba(needsReviewColorId ?? null, 0.4) ?? "var(--color-amber-bg)";
   // needs_review wins the row tint when both apply — it's the temporary "act on this" state.
   const rowBackground = event.needs_review ? rowTint : isFreelance ? `rgba(${FREELANCE_RGB}, 0.1)` : undefined;
   const [y, m, d] = event.event_date.split("-").map(Number);
@@ -599,7 +646,6 @@ function EventCard({
   // Design stage 5: client name leads; type and place follow in plain words (no " · " chain, and
   // the package lives on the event page, not in the list).
   const meta = [event.event_type?.trim(), event.event_location?.trim()].filter(Boolean).join(", ");
-  const tag = "inline-block text-[11.5px] font-medium px-2 py-0.5 rounded-md";
 
   return (
     <>
@@ -635,36 +681,7 @@ function EventCard({
         {meta && <div className="text-[12.5px] text-ink-soft truncate mt-0.5">{meta}</div>}
         {(attention || event.needs_review || isFreelance || event.resolution_note) && (
           <div className="flex flex-wrap gap-1.5 mt-1.5">
-            {attention?.openBalance ? (
-              <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-peach)" }}>
-                {t("יתרה פתוחה")} <span className="font-data">₪{attention.openBalance.toLocaleString(dateLocale(lang))}</span>
-              </span>
-            ) : null}
-            {attention?.depositDue ? (
-              <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-peach)" }}>
-                {t("מקדמה טרם שולמה")}
-              </span>
-            ) : null}
-            {attention?.contractPending && (
-              <span className={`${tag} bg-amber-bg`} style={{ color: "var(--color-amber-deep)" }}>
-                {t("חוזה ממתין לחתימה")}
-              </span>
-            )}
-            {event.needs_review && (
-              <span className={tag} style={{ background: badgeTint, color: "var(--color-ink)" }}>
-                {t("יובא מהיומן. יש להשלים פרטים")}
-              </span>
-            )}
-            {isFreelance && (
-              <span className={tag} style={{ background: FREELANCE_BADGE_TINT, color: "var(--color-ink)" }}>
-                {t("אירוע פרילנס")}
-              </span>
-            )}
-            {event.resolution_note && (
-              <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-coral-deep)" }}>
-                {t("כפילות: {note}", { note: event.resolution_note })}
-              </span>
-            )}
+            <PlainTags event={event} attention={attention} needsReviewColorId={needsReviewColorId} />
           </div>
         )}
       </div>
@@ -693,6 +710,8 @@ function EventCard({
             {t("לסגירה")}
           </button>
         ) : null}
+        {/* Quick actions without opening the event (lib/eventQuickActions.ts), the photographer's. */}
+        {canClose && <EventQuickActions eventId={event.id} />}
       </div>
     </Link>
     {confirmOpen && (
@@ -806,16 +825,7 @@ function VividEventCard({
               {meta && <div className="text-[12.5px] text-ink-soft truncate mt-0.5">{meta}</div>}
               {hasTags && (
                 <div className="flex flex-wrap gap-1.5 mt-[7px]">
-                  {attention?.openBalance ? (
-                    <ToneTag tone="attention">
-                      {t("יתרה פתוחה")} <span className="font-data">₪{attention.openBalance.toLocaleString(dateLocale(lang))}</span>
-                    </ToneTag>
-                  ) : null}
-                  {attention?.depositDue ? <ToneTag tone="pending">{t("מקדמה טרם שולמה")}</ToneTag> : null}
-                  {attention?.contractPending && <ToneTag tone="pending">{t("חוזה ממתין לחתימה")}</ToneTag>}
-                  {event.needs_review && <ToneTag tone="attention">{t("יובא מהיומן. יש להשלים פרטים")}</ToneTag>}
-                  {isFreelance && <ToneTag tone="creative">{t("אירוע פרילנס")}</ToneTag>}
-                  {event.resolution_note && <ToneTag tone="neutral">{t("כפילות: {note}", { note: event.resolution_note })}</ToneTag>}
+                  <VividTags event={event} attention={attention} />
                 </div>
               )}
             </div>
@@ -844,6 +854,7 @@ function VividEventCard({
                   {t("לסגירה")}
                 </button>
               ) : null}
+              {canClose && <EventQuickActions eventId={event.id} />}
             </div>
           </div>
           {/* How far the event is through its stages (green once it's closed), under the text and
@@ -855,6 +866,185 @@ function VividEventCard({
           )}
         </div>
       </Link>
+      {confirmOpen && (
+        <CloseEventConfirmModal
+          eventId={event.id}
+          onClosed={() => {
+            setConfirmOpen(false);
+            router.refresh();
+          }}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// ---- Tags and the blocks view ----------------------------------------------------------------------
+
+// What the event needs, as tags: the regular look's chips.
+function PlainTags({ event, attention, needsReviewColorId }: { event: EventWithCustomPackage; attention?: EventAttention; needsReviewColorId?: string | null }) {
+  const t = useT();
+  const lang = useLang();
+  const badgeTint = googleColorRgba(needsReviewColorId ?? null, 0.4) ?? "var(--color-amber-bg)";
+  const tag = "inline-block text-[11.5px] font-medium px-2 py-0.5 rounded-md";
+  return (
+    <>
+      {attention?.openBalance ? (
+        <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-peach)" }}>
+          {t("יתרה פתוחה")} <span className="font-data">₪{attention.openBalance.toLocaleString(dateLocale(lang))}</span>
+        </span>
+      ) : null}
+      {attention?.depositDue ? (
+        <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-peach)" }}>
+          {t("מקדמה טרם שולמה")}
+        </span>
+      ) : null}
+      {attention?.contractPending && (
+        <span className={`${tag} bg-amber-bg`} style={{ color: "var(--color-amber-deep)" }}>
+          {t("חוזה ממתין לחתימה")}
+        </span>
+      )}
+      {event.needs_review && (
+        <span className={tag} style={{ background: badgeTint, color: "var(--color-ink)" }}>
+          {t("יובא מהיומן. יש להשלים פרטים")}
+        </span>
+      )}
+      {isFreelanceEvent(event) && (
+        <span className={tag} style={{ background: FREELANCE_BADGE_TINT, color: "var(--color-ink)" }}>
+          {t("אירוע פרילנס")}
+        </span>
+      )}
+      {event.resolution_note && (
+        <span className={tag} style={{ background: "var(--color-chip-tint)", color: "var(--color-coral-deep)" }}>
+          {t("כפילות: {note}", { note: event.resolution_note })}
+        </span>
+      )}
+    </>
+  );
+}
+
+// The same tags in the vivid look's tones.
+function VividTags({ event, attention }: { event: EventWithCustomPackage; attention?: EventAttention }) {
+  const t = useT();
+  const lang = useLang();
+  return (
+    <>
+      {attention?.openBalance ? (
+        <ToneTag tone="attention">
+          {t("יתרה פתוחה")} <span className="font-data">₪{attention.openBalance.toLocaleString(dateLocale(lang))}</span>
+        </ToneTag>
+      ) : null}
+      {attention?.depositDue ? <ToneTag tone="pending">{t("מקדמה טרם שולמה")}</ToneTag> : null}
+      {attention?.contractPending && <ToneTag tone="pending">{t("חוזה ממתין לחתימה")}</ToneTag>}
+      {event.needs_review && <ToneTag tone="attention">{t("יובא מהיומן. יש להשלים פרטים")}</ToneTag>}
+      {isFreelanceEvent(event) && <ToneTag tone="creative">{t("אירוע פרילנס")}</ToneTag>}
+      {event.resolution_note && <ToneTag tone="neutral">{t("כפילות: {note}", { note: event.resolution_note })}</ToneTag>}
+    </>
+  );
+}
+
+// One event as a block (owner, 2026-10-26: "כמו בגלריות"): the date, the client, the tags, the next
+// stage and the quick actions, in either look. The whole card opens the event (a link stretched under
+// it); the buttons sit above that link.
+function EventBlock({
+  event,
+  nextStage,
+  unreadCount,
+  canClose,
+  attention,
+  needsReviewColorId,
+  vivid,
+}: {
+  event: EventWithCustomPackage;
+  nextStage: string | null;
+  unreadCount: number;
+  canClose: boolean;
+  attention?: EventAttention;
+  needsReviewColorId?: string | null;
+  vivid: boolean;
+}) {
+  const router = useRouter();
+  const t = useT();
+  const lang = useLang();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const done = !!event.closed_at;
+  const isFreelance = isFreelanceEvent(event);
+  const background = event.needs_review
+    ? vivid
+      ? rowWash("attention")
+      : (googleColorRgba(needsReviewColorId ?? null, 0.16) ?? "var(--color-amber-bg)")
+    : isFreelance
+      ? vivid
+        ? rowWash("creative")
+        : `rgba(${FREELANCE_RGB}, 0.1)`
+      : undefined;
+  const progress = vivid ? stageProgress(event.event_stages) : null;
+  const [y, m, d] = event.event_date.split("-").map(Number);
+  const showYear = y !== new Date().getFullYear();
+  const meta = [event.event_type?.trim(), event.event_location?.trim()].filter(Boolean).join(", ");
+  const hasTags = !!(attention?.openBalance || attention?.depositDue || attention?.contractPending || event.needs_review || isFreelance || event.resolution_note);
+
+  return (
+    <>
+      <div className="relative flex flex-col rounded-2xl bg-card border border-line shadow-card p-3 min-w-0" style={background ? { background } : undefined}>
+        <Link href={`/events/${event.id}`} aria-label={event.client_name} data-press="tint" className="absolute inset-0 rounded-2xl" />
+        <div className="relative pointer-events-none flex items-start gap-2.5">
+          <div
+            className="min-w-[44px] h-[50px] px-1 shrink-0 rounded-xl flex flex-col items-center justify-center"
+            style={vivid ? toneStyle(eventDateTone({ closed: done, freelance: isFreelance })) : { background: "var(--color-chip)" }}
+          >
+            <div className="text-lg leading-none font-extrabold font-data">{d}</div>
+            <div className="text-[11px] font-semibold mt-[3px] whitespace-nowrap">
+              {lang === "he" ? HE_MONTHS_SHORT[m - 1] : new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(dateLocale(lang), { month: "short", timeZone: "UTC" })}
+              {showYear && <span className="font-data"> {String(y).slice(2)}</span>}
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start gap-1">
+              <span className="text-[14.5px] font-bold leading-snug line-clamp-2 [overflow-wrap:anywhere]">{event.client_name}</span>
+              {unreadCount > 0 && (
+                <span
+                  className="shrink-0 min-w-[18px] h-[18px] px-1 mt-px rounded-full text-[10px] font-bold flex items-center justify-center leading-none font-data"
+                  style={{ background: vivid ? "var(--tone-attention)" : "var(--color-rose)", color: "#ffffff" }}
+                  title={t("עדכונים חדשים מהלקוח")}
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </div>
+            {meta && <div className="text-[12px] text-ink-soft leading-snug line-clamp-2 mt-0.5">{meta}</div>}
+          </div>
+        </div>
+        {hasTags && (
+          <div className="relative pointer-events-none flex flex-wrap gap-1 mt-2">
+            {vivid ? <VividTags event={event} attention={attention} /> : <PlainTags event={event} attention={attention} needsReviewColorId={needsReviewColorId} />}
+          </div>
+        )}
+        <div className="relative pointer-events-none mt-auto pt-2.5 flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-[11.5px]" style={{ color: done ? (vivid ? "var(--tone-paid-ink)" : "var(--color-sage)") : "var(--color-ink-soft)" }} title={!done && nextStage ? t("השלב הבא") : undefined}>
+            {done ? t("נסגר") : nextStage ? t(nextStage) : ""}
+          </span>
+          <div className="pointer-events-auto shrink-0 flex items-center gap-1.5">
+            {!done && !nextStage && canClose && (
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(true)}
+                className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-bg"
+                style={{ color: "var(--color-amber-deep)" }}
+              >
+                {t("לסגירה")}
+              </button>
+            )}
+            {canClose && <EventQuickActions eventId={event.id} />}
+          </div>
+        </div>
+        {progress && (
+          <div className="relative pointer-events-none h-[3px] rounded-full overflow-hidden mt-2.5" style={{ background: "var(--color-chip)" }} aria-hidden="true">
+            <div className="h-full rounded-full" style={{ width: `${progress.pct}%`, background: done ? "var(--tone-paid)" : "var(--color-brass)" }} />
+          </div>
+        )}
+      </div>
       {confirmOpen && (
         <CloseEventConfirmModal
           eventId={event.id}
