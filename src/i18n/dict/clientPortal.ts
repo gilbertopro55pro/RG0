@@ -55,8 +55,9 @@ const dict: AreaDict = {
     "השיר: {song}": "Song: {song}",
     "השירים לקליפ:": "Songs for the clip:",
     "שיר שקט: {song}": "Calm song: {song}",
-    "שיר קיצבי: {song}": "Upbeat song: {song}",
-    "הערות לקליפ:": "Notes for the clip:",
+    "שיר קצבי: {song}": "Upbeat song: {song}",
+    "הערות לקליפ: {notes}": "Notes for the clip: {notes}",
+    "אין הערות": "No notes",
     "הוספת הערות לקליפ": "Add notes for the clip",
   },
   ru: {
@@ -111,8 +112,9 @@ const dict: AreaDict = {
     "השיר: {song}": "Песня: {song}",
     "השירים לקליפ:": "Песни для клипа:",
     "שיר שקט: {song}": "Спокойная песня: {song}",
-    "שיר קיצבי: {song}": "Ритмичная песня: {song}",
-    "הערות לקליפ:": "Пожелания к клипу:",
+    "שיר קצבי: {song}": "Ритмичная песня: {song}",
+    "הערות לקליפ: {notes}": "Пожелания к клипу: {notes}",
+    "אין הערות": "Пожеланий нет",
     "הוספת הערות לקליפ": "Добавить пожелания к клипу",
   },
 };

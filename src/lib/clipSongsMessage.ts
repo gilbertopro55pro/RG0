@@ -2,9 +2,10 @@
 // imports its type), and a change there redeploys the worker.
 
 // The WhatsApp message the client sends the photographer from the portal's song stage, with
-// "שמירה ושליחה בוואטסאפ" (owner, 2026-10-26, the wording is theirs): the event, the song (or the
-// calm and upbeat songs), and the clip notes when there are any. Translated with the portal's
-// language (t); in Hebrew it's exactly the owner's text.
+// "שמירה ושליחה בוואטסאפ" (owner, 2026-10-26, the wording and the line breaks are theirs): the
+// event, the song (or the calm and upbeat songs) right under it, an empty line, and the clip notes,
+// or "אין הערות" without any. Translated with the portal's language (t); in Hebrew it's exactly the
+// owner's text.
 export function clipSongsWhatsAppMessage(
   p: {
     photographerName: string | null;
@@ -21,16 +22,15 @@ export function clipSongsWhatsAppMessage(
     t("מצורפים הפרטים לעריכת הקליפ של האירוע:"),
     t("שם האירוע: {name}", { name: p.eventName }),
     t("תאריך: {date}", { date: p.eventDate }),
-    "",
   ];
   if (p.songs.oneSong) lines.push(t("השיר: {song}", { song: p.songs.single.trim() }));
   else
     lines.push(
       t("השירים לקליפ:"),
       t("שיר שקט: {song}", { song: p.songs.calm.trim() }),
-      t("שיר קיצבי: {song}", { song: p.songs.upbeat.trim() })
+      t("שיר קצבי: {song}", { song: p.songs.upbeat.trim() })
     );
   const notes = p.notes.trim();
-  if (notes) lines.push("", t("הערות לקליפ:"), notes);
+  lines.push("", t("הערות לקליפ: {notes}", { notes: notes || t("אין הערות") }));
   return lines.join("\n");
 }
