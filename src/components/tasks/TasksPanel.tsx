@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import BodyPortal from "@/components/BodyPortal";
-import ReminderToggleSettings from "@/components/ReminderToggleSettings";
+import MorningDigestSettings from "@/components/MorningDigestSettings";
 import ViewToggle, { type ListOrGrid } from "@/components/ViewToggle";
 import { useLang, useT } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
@@ -24,8 +24,8 @@ import { currentPushStatus, type PushStatus } from "@/lib/pushStatus";
 // notes on a smaller line, or blocks (the view is remembered on this device). New task at the top.
 // Tick the box or swipe right: done (again: not done). Swipe left or double-tap: delete, with undo.
 // A single tap edits the title and the notes. On today, open tasks left from earlier days come
-// after, with "to today". At the bottom, the switch for the morning notification with the day's
-// tasks (lib/morningDigest.ts), with a pointer to settings when phone notifications are off here.
+// after, with "to today". At the bottom, the daily tasks reminder: on/off and its time
+// (lib/morningDigest.ts), with a pointer to settings when phone notifications are off here.
 
 const VIEW_KEY = "tasks_view";
 const DOUBLE_TAP_MS = 260;
@@ -41,8 +41,8 @@ export default function TasksPanel({
   onChanged,
 }: {
   photographerId: string;
-  morningDigest: boolean;
-  onMorningDigest: (enabled: boolean) => void;
+  morningDigest: { enabled: boolean; minutes: number };
+  onMorningDigest: (next: { enabled: boolean; minutes: number }) => void;
   onClose: () => void;
   // The header button's number, whenever today's list is on screen.
   onCount: (n: number) => void;
@@ -349,8 +349,14 @@ export default function TasksPanel({
                 )}
 
                 <div className="mt-6">
-                  <ReminderToggleSettings photographerId={photographerId} column="morning_digest" initialEnabled={morningDigest} compact onChange={onMorningDigest} />
-                  {morningDigest && (pushStatus === "off" || pushStatus === "denied" || pushStatus === "ios-install") && (
+                  <MorningDigestSettings
+                    photographerId={photographerId}
+                    initialEnabled={morningDigest.enabled}
+                    initialMinutes={morningDigest.minutes}
+                    compact
+                    onChange={onMorningDigest}
+                  />
+                  {morningDigest.enabled && (pushStatus === "off" || pushStatus === "denied" || pushStatus === "ios-install") && (
                     <p className="mt-1.5 text-xs text-ink-soft">
                       {t("ההתראות לטלפון לא מופעלות במכשיר הזה.")}{" "}
                       <Link href="/settings?tab=automation" onClick={onClose} className="font-semibold underline underline-offset-2 text-ink">

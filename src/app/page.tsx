@@ -61,6 +61,7 @@ import EventsListView, { type EventAttention } from "@/components/EventsListView
 import LandingPage from "@/components/LandingPage";
 import SettingsGearLink from "@/components/SettingsGearLink";
 import TasksButton from "@/components/tasks/TasksButton";
+import { DIGEST_DEFAULT_MINUTES } from "@/lib/morningDigest";
 import AlbumQuickAccessButton from "@/components/AlbumQuickAccessButton";
 import { FOLLOW_UP_LEAD_COLUMNS, quoteFollowUpHandled, type FollowUpLeadState } from "@/lib/leadFollowUp";
 import { vividForEmail } from "@/lib/vivid";
@@ -561,7 +562,10 @@ export default async function DashboardPage() {
             <TasksButton
               initialOpenCount={openTasksCount ?? 0}
               photographerId={user.id}
-              initialMorningDigest={(photographer as { morning_digest?: boolean } | null)?.morning_digest ?? true}
+              initialMorningDigest={{
+                enabled: (photographer as { morning_digest?: boolean } | null)?.morning_digest ?? true,
+                minutes: (photographer as { morning_digest_minutes?: number } | null)?.morning_digest_minutes ?? DIGEST_DEFAULT_MINUTES,
+              }}
             />
             <CalendarLink />
             <SettingsGearLink currentVersion={CURRENT_VERSION} />

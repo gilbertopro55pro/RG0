@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inMorningWindow, israelHour, morningDigest, nextShoot, type DigestEvent } from "@/lib/morningDigest";
+import { DIGEST_TIMES, digestDue, digestTimeLabel, isDigestTime, israelMinutes, morningDigest, nextShoot, type DigestEvent } from "@/lib/morningDigest";
 import { messagesFor } from "@/i18n/dict";
 import { makeT, translate } from "@/i18n/translate";
 
@@ -9,19 +9,32 @@ const he = (key: string, vars?: Record<string, string | number>) => translate({}
 const today = "2026-10-27";
 const event = (over: Partial<DigestEvent> = {}): DigestEvent => ({ client_name: "דנה ואורי", event_date: today, event_start_time: "19:00:00", ...over });
 
-describe("the morning window", () => {
-  it("08:00 in Israel is 05:00 UTC in summer and 06:00 UTC in winter", () => {
-    expect(israelHour(new Date("2026-07-01T05:00:00Z"))).toBe(8);
-    expect(israelHour(new Date("2026-12-01T06:00:00Z"))).toBe(8);
+describe("the chosen time", () => {
+  it("half hours from 05:00 to 23:00, 08:00 among them", () => {
+    expect(DIGEST_TIMES[0]).toBe(300);
+    expect(DIGEST_TIMES.at(-1)).toBe(1380);
+    expect(DIGEST_TIMES).toHaveLength(37);
+    expect(isDigestTime(480)).toBe(true);
+    expect(isDigestTime(495)).toBe(false);
+    expect(isDigestTime(240)).toBe(false);
+    expect(digestTimeLabel(450)).toBe("07:30");
+    expect(digestTimeLabel(1380)).toBe("23:00");
   });
 
-  it("sends from 08:00 until 11:00 Israel time, so exactly one of the two runs is in it", () => {
-    // Winter: 05:00 UTC is 07:00, 06:00 UTC is 08:00.
-    expect(inMorningWindow(new Date("2026-12-01T05:00:00Z"))).toBe(false);
-    expect(inMorningWindow(new Date("2026-12-01T06:00:00Z"))).toBe(true);
-    // Summer: 05:00 UTC is 08:00 (the 06:00 run is 09:00, still in, and the date column stops it).
-    expect(inMorningWindow(new Date("2026-07-01T05:00:00Z"))).toBe(true);
-    expect(inMorningWindow(new Date("2026-07-01T08:00:00Z"))).toBe(false); // 11:00
+  it("Israel time, summer and winter, whatever the server's zone", () => {
+    expect(israelMinutes(new Date("2026-07-01T05:00:00Z"))).toBe(8 * 60); // UTC+3
+    expect(israelMinutes(new Date("2026-12-01T06:30:00Z"))).toBe(8 * 60 + 30); // UTC+2
+    expect(israelMinutes(new Date("2026-12-01T21:00:00Z"))).toBe(23 * 60);
+  });
+
+  it("the run at the chosen time sends; a late run up to three hours after still does", () => {
+    expect(digestDue(480, 480)).toBe(true);
+    expect(digestDue(480, 479)).toBe(true); // a run a moment before the half hour
+    expect(digestDue(480, 450)).toBe(false);
+    expect(digestDue(480, 600)).toBe(true);
+    expect(digestDue(480, 660)).toBe(false);
+    // A late-evening time isn't caught by the next day's early runs.
+    expect(digestDue(1380, 30)).toBe(false);
   });
 });
 
@@ -66,6 +79,12 @@ describe("morningDigest", () => {
       title: "בוקר טוב! אין משימות פתוחות להיום",
       body: "הצילום הבא: דנה ואורי, היום ב-19:00",
     });
+  });
+
+  it("the greeting follows the time it's sent at", () => {
+    const one = [{ title: "להתקשר לדנה", task_date: today }];
+    expect(morningDigest({ tasks: one, event: null, today, t: he, locale: "he-IL", minutes: 13 * 60 })?.title).toBe("צהריים טובים! משימה אחת להיום");
+    expect(morningDigest({ tasks: one, event: null, today, t: he, locale: "he-IL", minutes: 20 * 60 + 30 })?.title).toBe("ערב טוב! משימה אחת להיום");
   });
 
   it("in the photographer's language", () => {
