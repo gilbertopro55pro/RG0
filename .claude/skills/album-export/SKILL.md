@@ -150,6 +150,12 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   back. While the line is in view (IntersectionObserver), `AlbumExportPill` hides for that gallery
   (`useExportLineHost` / `useExportLineHosts`); scrolled away, or with the album tool open over the
   page, the pill shows.
+- Verified live 2026-10-26 (test account): a real print-house send from the home quick access
+  (window, job ready in 2s for the 1-page album, email out). The gallery-page line was checked with
+  long sends/JPG exports mocked in the browser only (desktop and phone): background, line with %,
+  pill hidden while the line is in view and back when scrolled away, tap → window, the print card
+  closing by itself, the JPG card with download. A premium-theme gallery puts the line under the
+  full-height cover, so the pill shows first.
 - Tests: `albumExports.test.ts`. Checked in Chromium on the real album tool with a mocked API
   (desktop and a landscape phone): background, pill, back to front, card download, foreground
   auto-download, cancel (DELETE). In headless Chrome the PDF download waits on the save-file
