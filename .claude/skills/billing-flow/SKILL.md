@@ -229,6 +229,12 @@ The platform's own subscription receipts are untouched by this and still use pay
   receipt comes out with the right "סוג תשלום", record it here.
 - **Green Invoice:** 1 cash, 4 bank transfer, 11 other. Bit and PayBox go as 11, with the method on
   the item line (its payment-app type 10 needs an `appType` whose values aren't documented).
+- **From the home screen's quick actions** (2026-10-26, `EventQuickActions` → the same `ReceiptFlow`
+  and route): only after a payment was marked, for exactly what was marked as received without a
+  receipt yet (`receiptLegs` in `lib/eventQuickActions.ts`). The amount isn't typed, and the route
+  refuses more with `receivedOnly: true` ("הסכום גבוה ממה שסומן כשולם"). **Verified live** by the
+  owner on their own account: ₪1,800 on a fully paid balance, and `balance_documented_amount` came out
+  equal to the paid amount.
 
 ## Billing hardening (audit 2026-10-13, migration 0165)
 
