@@ -7,7 +7,7 @@ import { clipSongLines, type ClipSongs } from "@/lib/clipSongs";
 import { clipSongsWhatsAppMessage } from "@/lib/clipSongsMessage";
 import ClipSongsFields, { type ClipSongsInput } from "@/components/ClipSongsFields";
 import { openWhatsApp } from "@/lib/waLink";
-import { clipNotesBridge } from "@/lib/portalClipNotesBridge";
+import PortalClipNotes from "@/components/PortalClipNotes";
 
 type ClientStage = {
   key: string;
@@ -35,6 +35,7 @@ export default function PortalStageActions({
   twoSongs,
   clipSongs,
   songsWhatsApp,
+  clipNotes,
 }: {
   eventToken: string;
   stages: ClientStage[];
@@ -47,6 +48,9 @@ export default function PortalStageActions({
   // saves them and opens WhatsApp to the photographer with the songs and the clip notes. Null
   // without a phone: the button only saves, as before.
   songsWhatsApp: { phone: string; photographerName: string | null; eventName: string; eventDate: string } | null;
+  // The clip notes (owner, 2026-10-26): a field under the song fields, saved with the songs, and
+  // under the chosen songs afterwards (lib/clipNotes.ts). Null in a package without a clip.
+  clipNotes: { notes: string | null; at: string | null; photographerName: string | null } | null;
 }) {
   const [localDone, setLocalDone] = useState<Set<string>>(
     new Set(stages.filter((s) => s.done).map((s) => s.key))
@@ -56,9 +60,12 @@ export default function PortalStageActions({
   // The clip songs (owner, 2026-10-13): written here instead of sent on WhatsApp.
   const [chosen, setChosen] = useState<ClipSongs | null>(clipSongs);
   const [songError, setSongError] = useState<string | null>(null);
+  // The notes as saved with the songs, for the field under them once they're chosen.
+  const [notesSaved, setNotesSaved] = useState(clipNotes ? { notes: clipNotes.notes, at: clipNotes.at } : null);
 
-  // keepalive: the save goes on while WhatsApp opens (sendSongs).
-  const markDone = async (stageKey: string, songs?: ClipSongsInput, keepalive = false) => {
+  // keepalive: the save goes on while WhatsApp opens (sendSongs). `notes`: the clip notes under the
+  // songs, saved with them.
+  const markDone = async (stageKey: string, songs?: ClipSongsInput, keepalive = false, notes?: string) => {
     if (submitting) return;
     setSubmitting(stageKey);
     setSongError(null);
@@ -66,7 +73,7 @@ export default function PortalStageActions({
       const res = await fetch(`/api/portal/${eventToken}/complete-stage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stageKey, ...(songs ? { songs } : {}) }),
+        body: JSON.stringify({ stageKey, ...(songs ? { songs } : {}), ...(notes !== undefined ? { notes } : {}) }),
         keepalive,
       });
       if (res.ok) {
@@ -74,6 +81,9 @@ export default function PortalStageActions({
         if (songs) {
           const at = new Date().toISOString();
           setChosen(songs.oneSong ? { single: songs.single.trim(), chosenAt: at } : { calm: songs.calm.trim(), upbeat: songs.upbeat.trim(), chosenAt: at });
+        }
+        if (notes !== undefined && notes.trim() !== (notesSaved?.notes ?? "")) {
+          setNotesSaved({ notes: notes.trim() || null, at: notes.trim() ? new Date().toISOString() : null });
         }
       } else if (songs) {
         setSongError(t("לא הצלחנו לשמור. נסו שוב."));
@@ -84,12 +94,10 @@ export default function PortalStageActions({
   };
 
   // "שמירה ושליחה בוואטסאפ": WhatsApp opens first, inside the tap (iPhone blocks it after a
-  // request), with the songs and the notes on the screen; then the songs and a typed notes draft
-  // are saved.
-  const sendSongs = (stageKey: string, songs: ClipSongsInput) => {
+  // request), with the songs and the notes typed under them; then both are saved.
+  const sendSongs = (stageKey: string, songs: ClipSongsInput, notes?: string) => {
     if (submitting) return;
     if (songsWhatsApp) {
-      const notes = clipNotesBridge();
       openWhatsApp(
         songsWhatsApp.phone,
         clipSongsWhatsAppMessage(
@@ -98,14 +106,13 @@ export default function PortalStageActions({
             eventName: songsWhatsApp.eventName,
             eventDate: songsWhatsApp.eventDate,
             songs,
-            notes: notes?.current() ?? "",
+            notes: notes?.trim() ?? "",
           },
           t
         )
       );
-      notes?.flush();
     }
-    void markDone(stageKey, songs, !!songsWhatsApp);
+    void markDone(stageKey, songs, !!songsWhatsApp, notes);
   };
 
   return (
@@ -149,6 +156,19 @@ export default function PortalStageActions({
               </ul>
             )}
 
+            {isSongs && done && clipNotes && notesSaved && (
+              <div className="ms-9">
+                <PortalClipNotes
+                  key={notesSaved.at ?? "none"}
+                  eventToken={eventToken}
+                  photographerName={clipNotes.photographerName}
+                  initialNotes={notesSaved.notes}
+                  initialAt={notesSaved.at}
+                  embedded
+                />
+              </div>
+            )}
+
             {isSongs && !done && (
               <div className="mt-2 ms-9">
                 <ClipSongsFields
@@ -157,7 +177,17 @@ export default function PortalStageActions({
                   submitTone={songsWhatsApp ? "whatsapp" : undefined}
                   busy={submitting === key}
                   error={songError}
-                  onSubmit={(songs) => sendSongs(key, songs)}
+                  onSubmit={(songs, notes) => sendSongs(key, songs, notes)}
+                  notes={
+                    clipNotes
+                      ? {
+                          initial: notesSaved?.notes ?? "",
+                          hint: clipNotes.photographerName
+                            ? t("משהו שחשוב לכם בקליפ? רגעים או אנשים שחשוב שיופיעו, או משהו שעדיף שלא. כתבו כאן, ו{name} יראו את זה.", { name: clipNotes.photographerName })
+                            : t("משהו שחשוב לכם בקליפ? רגעים או אנשים שחשוב שיופיעו, או משהו שעדיף שלא. כתבו כאן, והצלם יראה את זה."),
+                        }
+                      : undefined
+                  }
                 />
               </div>
             )}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PACKAGE_FLOWS, STAGE_LABELS, type PackageType } from "@/lib/stages";
 import { stageRole } from "@/lib/clientReminders";
-import { CLIP_NOTES_MAX, CLIP_NOTES_PUSH_MAX, clipNotesLogText, clipNotesPushPreview, packageHasClip, parseClipNotes } from "@/lib/clipNotes";
+import { CLIP_NOTES_MAX, CLIP_NOTES_PUSH_MAX, changedClipNotes, clipNotesLogText, clipNotesPushPreview, packageHasClip, parseClipNotes } from "@/lib/clipNotes";
 
 // The client's notes for the clip (owner, 2026-10-25).
 
@@ -75,5 +75,27 @@ describe("clipNotesPushPreview (2026-10-26)", () => {
     expect(preview.length).toBeLessThanOrEqual(CLIP_NOTES_PUSH_MAX);
     expect(preview.endsWith("…")).toBe(true);
     expect(clipNotesPushPreview("קצר")).toBe("קצר");
+  });
+});
+
+describe("changedClipNotes: the notes sent with the songs (2026-10-26)", () => {
+  it("new or changed notes are saved, checked", () => {
+    expect(changedClipNotes(null, "  שסבתא תופיע  ")).toBe("שסבתא תופיע");
+    expect(changedClipNotes("ישנה", "חדשה")).toBe("חדשה");
+  });
+
+  it("the same notes are not saved again", () => {
+    expect(changedClipNotes("שסבתא תופיע", " שסבתא תופיע ")).toBeNull();
+    expect(changedClipNotes(null, "")).toBeNull();
+    expect(changedClipNotes(null, "   ")).toBeNull();
+  });
+
+  it("an emptied field clears saved notes", () => {
+    expect(changedClipNotes("ישנה", "")).toBe("");
+  });
+
+  it("anything that isn't text changes nothing", () => {
+    expect(changedClipNotes("ישנה", undefined)).toBeNull();
+    expect(changedClipNotes(null, 5)).toBeNull();
   });
 });

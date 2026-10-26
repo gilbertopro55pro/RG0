@@ -125,6 +125,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
         })
       : PACKAGE_FLOWS[event.package!].map((key) => ({ role: stageRole(key), label: STAGE_LABELS[key] }))
   );
+  const songStageShown = clientStages.some((s) => s.role === "client_song_selection");
   // The client's own approval / song choice (lib/clientReminders.ts). A custom album stage is
   // marked done when the photographer uploads the PDF, so for it only the client's approval counts.
   const clientDone = (s: (typeof clientStages)[number]) =>
@@ -177,10 +178,17 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
                 }
               : null
           }
+          clipNotes={
+            hasClip && songStageShown
+              ? { notes: event.clip_notes ?? null, at: event.clip_notes_at ?? null, photographerName: event.photographers?.name ?? null }
+              : null
+          }
         />
       </div>
 
-      {hasClip && (
+      {/* The notes sit under the song fields in the song stage (owner, 2026-10-26); their own card
+          only in a package whose song stage the client doesn't see. */}
+      {hasClip && !songStageShown && (
         <PortalClipNotes
           eventToken={token}
           photographerName={event.photographers?.name ?? null}

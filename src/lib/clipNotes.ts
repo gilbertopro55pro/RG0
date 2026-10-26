@@ -1,6 +1,10 @@
 // Notes for the clip (owner, 2026-10-25, "עדכון שקוף"): in a package with a clip, the client
-// writes them in the portal (PortalClipNotes, api/portal/[token]/clip-notes), and the photographer
-// sees and copies them on the event page, with no edit field (ClipNotesView). Stored on
+// writes them in the portal, and the photographer
+// sees and copies them on the event page, with no edit field (ClipNotesView). In the portal they sit
+// under the song fields of the song stage and are saved with the songs (owner, 2026-10-26:
+// PortalStageActions → api/portal/[token]/complete-stage); once the songs are chosen, or in a
+// package without a song stage the client sees, on their own (PortalClipNotes →
+// api/portal/[token]/clip-notes). Stored on
 // events.clip_notes / clip_notes_at (migration 0192). Not in EventRow (lib/types.ts is part of the
 // PDF worker's build, and a change there redeploys it): pages that show the notes select them.
 
@@ -42,4 +46,12 @@ export const CLIP_NOTES_PUSH_MAX = 140;
 export function clipNotesPushPreview(notes: string): string {
   const line = notes.replace(/\s+/g, " ").trim();
   return line.length > CLIP_NOTES_PUSH_MAX ? `${line.slice(0, CLIP_NOTES_PUSH_MAX - 1).trimEnd()}…` : line;
+}
+
+// The notes sent with the songs (complete-stage), to save: the checked text when it differs from
+// the saved notes ("" clears them), else null (no change, or not text at all).
+export function changedClipNotes(before: string | null, input: unknown): string | null {
+  const notes = parseClipNotes(input);
+  if (notes === null || notes === (before ?? "")) return null;
+  return notes;
 }
