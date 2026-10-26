@@ -172,6 +172,11 @@ export default async function SettingsPage({
                 column="song_stage_reminder"
                 initialEnabled={(photographer as { song_stage_reminder?: boolean }).song_stage_reminder ?? true}
               />
+              <ReminderToggleSettings
+                photographerId={photographer.id}
+                column="morning_digest"
+                initialEnabled={(photographer as { morning_digest?: boolean }).morning_digest ?? true}
+              />
               <IntakeGuide />
               <BotSettings
                 photographer={photographer}
