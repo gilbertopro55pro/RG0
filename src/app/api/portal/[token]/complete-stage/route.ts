@@ -3,7 +3,8 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { STAGE_LABELS, type StageKey } from "@/lib/stages";
 import type { EventRow } from "@/lib/types";
 import { markClientDone, stageRole, type ReminderRole } from "@/lib/clientReminders";
-import { clipSongLines, isWeddingEvent, parseClipSongs, type ClipSongs } from "@/lib/clipSongs";
+import { clipSongLines, parseClipSongs, type ClipSongs } from "@/lib/clipSongs";
+import { allowsTwoSongs } from "@/lib/clipSongChoice";
 import { changedClipNotes, clipNotesLogText, clipNotesPushPreview, type ClipNotesFields } from "@/lib/clipNotes";
 import { sendPushToPhotographer } from "@/lib/push";
 import { sendEmail } from "@/lib/resend";
@@ -29,10 +30,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   const { data: event } = await supabase
     .from("events")
-    .select("id, client_name, custom_package_id, event_type, event_date, photographer_id, clip_notes, clip_notes_at, photographers(name, email, ui_lang)")
+    .select("id, client_name, custom_package_id, event_type, package, is_freelance, event_date, photographer_id, clip_notes, clip_notes_at, photographers(name, email, ui_lang)")
     .eq("client_access_token", token)
     .maybeSingle<
-      Pick<EventRow, "id" | "client_name" | "custom_package_id" | "event_type" | "event_date" | "photographer_id"> &
+      Pick<EventRow, "id" | "client_name" | "custom_package_id" | "event_type" | "package" | "is_freelance" | "event_date" | "photographer_id"> &
         ClipNotesFields & {
           photographers: { name: string; email: string | null; ui_lang: string | null } | null;
         }
@@ -70,7 +71,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   // still marks the stage, as before.
   let songs: ClipSongs | null = null;
   if (role === "client_song_selection" && songsInput !== undefined) {
-    songs = parseClipSongs(songsInput, isWeddingEvent(event.event_type));
+    songs = parseClipSongs(songsInput, allowsTwoSongs(event));
     if (!songs) return NextResponse.json({ error: "יש לכתוב שם של שיר או קישור" }, { status: 400 });
     await supabase.from("events").update({ clip_songs: songs }).eq("id", event.id);
   }

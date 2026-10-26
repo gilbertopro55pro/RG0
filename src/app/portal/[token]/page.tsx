@@ -8,7 +8,7 @@ import { packageHasClip, type ClipNotesFields } from "@/lib/clipNotes";
 import PortalMagnetFrames from "@/components/PortalMagnetFrames";
 import { loadPortalMagnetFrames } from "@/lib/portalMagnetFrames";
 import { stageRole } from "@/lib/clientReminders";
-import { isWeddingEvent } from "@/lib/clipSongs";
+import { allowsTwoSongs } from "@/lib/clipSongChoice";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { clientLangFor } from "@/lib/clientLang";
 import ClientLangScope from "@/i18n/ClientLangScope";
@@ -166,7 +166,7 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
           }))}
           galleryLink={galleryLink}
           albumDesignUrl={albumDesignUrl}
-          twoSongs={isWeddingEvent(event.event_type)}
+          twoSongs={allowsTwoSongs(event)}
           clipSongs={event.clip_songs ?? null}
           songsWhatsApp={
             event.photographers?.phone

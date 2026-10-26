@@ -7,9 +7,10 @@ import { CLIP_NOTES_MAX } from "@/lib/clipNotes";
 
 export type ClipSongsInput = { oneSong: boolean; single: string; calm: string; upbeat: string };
 
-// The clip song fields (lib/clipSongs.ts): a song name or a YouTube link per field. A wedding gets a
-// "one song / two songs" switch (owner, 2026-10-26), one song by default; two songs are a calm one
-// and an upbeat one. Any other event asks for one song. The
+// The clip song fields (lib/clipSongs.ts): a song name or a YouTube link per field. A wedding or a
+// freelance job (`twoSongs`, lib/clipSongChoice.ts) gets a "one song / two songs" switch (owner,
+// 2026-10-26), one song by default; two songs are a calm one and an upbeat one. Any other event asks
+// for one song. The
 // client fills them in the portal (PortalStageActions), and the photographer sees the same fields
 // on the event page and can fill them for the client (ClipSongsStagePanel, owner 2026-10-22).
 // `notes` (the portal, owner 2026-10-26): the clip notes field under the songs, sent with them.

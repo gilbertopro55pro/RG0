@@ -41,7 +41,8 @@ import type {
   GalleryRow,
   TeamMember,
 } from "@/lib/types";
-import { clipSongLines, isWeddingEvent, type ClipSongs } from "@/lib/clipSongs";
+import { clipSongLines, type ClipSongs } from "@/lib/clipSongs";
+import { allowsTwoSongs } from "@/lib/clipSongChoice";
 import { stageRole } from "@/lib/clientReminders";
 import ClipSongsStagePanel from "@/components/ClipSongsStagePanel";
 import ClipNotesView from "@/components/ClipNotesView";
@@ -1406,7 +1407,7 @@ export default function EventDetailView({
                     <ClipSongsStagePanel
                       eventId={event.id}
                       stageKey={songStageKey}
-                      twoSongs={isWeddingEvent(event.event_type)}
+                      twoSongs={allowsTwoSongs(event)}
                       songs={clipSongs}
                       onSaved={(songs, doneAt) => {
                         setClipSongs(songs);
