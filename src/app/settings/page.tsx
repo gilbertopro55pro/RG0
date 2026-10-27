@@ -28,6 +28,8 @@ import PushNotificationsSettings from "@/components/PushNotificationsSettings";
 import ReminderToggleSettings from "@/components/ReminderToggleSettings";
 import MorningDigestSettings from "@/components/MorningDigestSettings";
 import { DIGEST_DEFAULT_MINUTES } from "@/lib/morningDigest";
+import PrintCheckSettings from "@/components/PrintCheckSettings";
+import { PRINT_CHECK_DAYS_DEFAULT } from "@/lib/printCheck";
 import GuidesSettings from "@/components/GuidesSettings";
 import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
@@ -178,6 +180,10 @@ export default async function SettingsPage({
                 photographerId={photographer.id}
                 initialEnabled={(photographer as { morning_digest?: boolean }).morning_digest ?? true}
                 initialMinutes={(photographer as { morning_digest_minutes?: number }).morning_digest_minutes ?? DIGEST_DEFAULT_MINUTES}
+              />
+              <PrintCheckSettings
+                photographerId={photographer.id}
+                initialDays={(photographer as { print_check_days?: number }).print_check_days ?? PRINT_CHECK_DAYS_DEFAULT}
               />
               <IntakeGuide />
               <BotSettings
