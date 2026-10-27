@@ -120,10 +120,15 @@ describe("a swap of two photos that fit each other's frame", () => {
   it("swapping them back returns both pages to the photographer's, with their red dots", () => {
     const back = applyClientEdit(after, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
     if (!back.ok) throw new Error();
-    const u2 = back.updates.find((u) => u.id === S2)!;
-    // The crop the photographer set doesn't come back, so the page is still the client's.
-    expect(u2.edited).toBe(true);
-    expect(u2.client_original?.marked_frames).toEqual(["c"]);
+    // A photo back in the frame it was sent in takes back the photographer's crop (found in the live
+    // check, 2026-10-27: refitted, both pages stayed "changed", and the photographer would have been
+    // told so).
+    for (const u of back.updates) {
+      const sent = page(album(), u.id);
+      expect([u.edited, u.canOriginal, u.client_original]).toEqual([false, false, null]);
+      expect(u.elements).toEqual(sent.elements);
+      expect(u.marked_frames).toEqual(sent.marked_frames);
+    }
   });
 });
 
@@ -341,12 +346,18 @@ describe("לעיצוב המקורי: one page back to the photographer's design"
     expect(redesigned.updates[0].canOriginal).toBe(false);
   });
 
-  it("is offered again once the photos are swapped back", () => {
+  it("a page redesigned before, swapped away and back, offers its original again", () => {
+    const holding = (c: ClientEditContext, id: string, photoId: string) => (page(c, id).elements ?? []).find((el) => el.type === "photo" && el.photoId === photoId)?.id as string;
     let ctx = album();
-    ctx = saved(ctx, applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false }));
-    const back = applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
+    ctx = saved(ctx, applyClientEdit(ctx, { action: "redesign", spreadId: S1, count: -1, seen: [] }));
+    ctx = saved(ctx, applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: holding(ctx, S1, "por1") }, b: { spreadId: S2, elId: "c" }, redesign: false }));
+    expect(page(ctx, S1).client_original).not.toBeNull();
+    const back = applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: holding(ctx, S1, "por2") }, b: { spreadId: S2, elId: "c" }, redesign: false });
     if (!back.ok) throw new Error(back.error);
-    expect(back.updates.map((u) => u.canOriginal)).toEqual([true, true]);
+    expect(back.updates.map((u) => [u.id, u.edited, u.canOriginal])).toEqual([
+      [S1, true, true],
+      [S2, false, false],
+    ]);
   });
 
   it("stays after a swap within the page", () => {
@@ -397,7 +408,9 @@ describe("the red dots column", () => {
     run({ action: "original", spreadId: S1 });
     run({ action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
     run({ action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
+    run({ action: "redesign", spreadId: S2, count: -1, seen: [] });
     run({ action: "original", spreadId: S2 });
+    run({ action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
     run({ action: "reset" });
     expect(seen.length).toBeGreaterThan(6);
     expect(seen.every((m) => Array.isArray(m))).toBe(true);
