@@ -89,6 +89,10 @@ const stateOf = (sp: EditSpread): PageState => ({ elements: sp.elements ?? [], b
 const photoEl = (sp: EditSpread, elId: string) =>
   (sp.elements ?? []).find((el): el is AlbumPhotoElement & { photoId: string } => el.id === elId && el.type === "photo" && !!el.photoId);
 
+type Box = { xPct: number; yPct: number; widthPct: number; heightPct: number };
+const sameBox = (a: Box, b: Box) =>
+  Math.abs(a.xPct - b.xPct) < 0.01 && Math.abs(a.yPct - b.yPct) < 0.01 && Math.abs(a.widthPct - b.widthPct) < 0.01 && Math.abs(a.heightPct - b.heightPct) < 0.01;
+
 function pageOf(ctx: ClientEditContext, sp: EditSpread) {
   return { widthCm: Number(sp.width_cm ?? ctx.album.width_cm), heightCm: Number(sp.height_cm ?? ctx.album.height_cm) };
 }
@@ -284,7 +288,12 @@ export function applyClientEdit(ctx: ClientEditContext, req: ClientEditRequest):
   }
 
   const patches = swapPhotoPatches([sa, sb], req.a, req.b, (el, spreadId, photoId) => {
-    const fit = fitPhotoInFrame(el, pageOf(ctx, byId.get(spreadId) as EditSpread), aspectOf(ctx, photoId), ctx.photos.get(photoId)?.faces ?? [], false);
+    const sp = byId.get(spreadId) as EditSpread;
+    // A photo going back to the frame it was sent in takes back the photographer's crop, so swapping
+    // back leaves the page as sent, not "changed" by a refit the eye can't see.
+    const sent = (sp.client_original?.elements ?? sp.elements ?? []).find((x): x is AlbumPhotoElement => x.id === el.id && x.type === "photo");
+    if (sent?.photoId === photoId && sameBox(sent, el)) return { focalX: sent.focalX ?? 50, focalY: sent.focalY ?? 50, zoom: sent.zoom ?? 100 };
+    const fit = fitPhotoInFrame(el, pageOf(ctx, sp), aspectOf(ctx, photoId), ctx.photos.get(photoId)?.faces ?? [], false);
     return { focalX: fit.focalX, focalY: fit.focalY, zoom: 100 };
   });
   if (!patches) return { ok: false, status: 422, error: "ההחלפה לא אפשרית" };
