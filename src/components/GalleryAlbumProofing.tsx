@@ -1,7 +1,7 @@
 "use client";
 
 import { textEffectsCss } from "@/lib/albumRender";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { ALBUM_BLUR_MAX_PX, computePhotoFraming } from "@/lib/albumRender";
 import { maskCssUrl, findMask } from "@/lib/albumMasks";
@@ -15,6 +15,10 @@ import { dirOf } from "@/i18n/config";
 import AlbumTextLines, { albumTextBoxAlign } from "@/components/AlbumTextLines";
 import AlbumCorrectionMarks from "@/components/AlbumCorrectionMarks";
 import { pagesToPreload, spreadImageUrls } from "@/lib/albumProofingPreload";
+import { optimizedImageUrl } from "@/lib/imageOptimize";
+import { fitPhotoInFrame } from "@/lib/albumAuto/swapPhotos";
+import { swapRedesignPages } from "@/lib/albumClientEdit";
+import type { AlbumElement } from "@/lib/types";
 import {
   CORRECTION_COLORS,
   CORRECTION_LIMITS,
@@ -32,6 +36,7 @@ export type ClientAlbumElement =
   | {
       id: string;
       type: "photo";
+      photoId?: string | null;
       url: string;
       // The photo's proportions from the server (its preview's), so the frame crops right before
       // the photo arrives. Learned from the <img> when missing.
@@ -153,7 +158,7 @@ export function boxShadowFor(shadowPct: number | undefined, distancePct?: number
   return `${offsetX}px ${offsetY}px ${blurPx}px rgba(0,0,0,${alpha})`;
 }
 
-type SpreadBackground = { url: string; blur: number; opacity: number } | null;
+type SpreadBackground = { photoId?: string; url: string; blur: number; opacity: number } | null;
 
 export type ClientAlbumSpread = {
   id: string;
@@ -171,14 +176,19 @@ export type ClientAlbumSpread = {
   // the client sees it in the proportions it's printed in.
   widthCm: number;
   heightCm: number;
+  // The client's own changes (lib/albumClientEdit.ts): the cover (its own size) is never redesigned;
+  // an edited page differs from the photographer's design, and some have a design to go back to.
+  isCover: boolean;
+  edited: boolean;
+  canBack: boolean;
 };
 
-function BackgroundLayer({ background }: { background: SpreadBackground }) {
+function BackgroundLayer({ background, thumb = false }: { background: SpreadBackground; thumb?: boolean }) {
   if (!background) return null;
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
-      src={background.url}
+      src={thumb ? thumbSrc(background.url) : background.url}
       alt=""
       className="absolute inset-0 w-full h-full object-cover pointer-events-none"
       style={{ opacity: background.opacity / 100, filter: background.blur ? `blur(${(background.blur / 100) * ALBUM_BLUR_MAX_PX}px)` : undefined }}
@@ -192,7 +202,7 @@ function TextOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "text" }>
   // the text out exactly as the photographer designed it.
   return (
     <div
-      className="absolute font-bold flex items-center"
+      className="absolute font-bold flex items-center pointer-events-none"
       style={{
         left: `${el.xPct}%`,
         top: `${el.yPct}%`,
@@ -220,7 +230,7 @@ function OrnamentOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "orna
   if (!imgSrc) return null;
   return (
     <div
-      className="absolute"
+      className="absolute pointer-events-none"
       style={{
         left: `${el.xPct}%`,
         top: `${el.yPct}%`,
@@ -261,7 +271,7 @@ function ShapeOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "shape" 
   const isOutline = el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline";
   return (
     <div
-      className="absolute"
+      className="absolute pointer-events-none"
       style={{
         left: `${el.xPct}%`,
         top: `${el.yPct}%`,
@@ -334,29 +344,50 @@ function pageAspectOf(spread: ClientAlbumSpread): number {
   return Number.isFinite(a) && a > 0 ? a : 1.5;
 }
 
+// A page's thumbnail in the strip: the photo resized by the image optimizer (a few KB instead of the
+// screen-size preview), or the preview route itself when the photo has no CDN preview.
+function thumbSrc(url: string): string {
+  return optimizedImageUrl(url, 256);
+}
+
+type PhotoEl = Extract<ClientAlbumElement, { type: "photo" }>;
+const SWAP_PURPLE = "#9333ea";
+
 // One album page, drawn inside its page box (the caller sizes the box in the page's proportions).
+// A thumbnail (the page strip) draws the same page with small copies of the photos. Photos can be
+// tapped to swap them (onPhotoTap): the one picked has a purple frame, and while one is picked
+// every other photo is outlined as a place it can go.
 function ProofPage({
   spread,
   photoAspects,
   onPhotoAspect,
+  thumb = false,
+  selectedElId = null,
+  picking = false,
+  onPhotoTap,
 }: {
   spread: ClientAlbumSpread;
   photoAspects: Record<string, number>;
-  onPhotoAspect: (url: string, aspect: number) => void;
+  onPhotoAspect?: (url: string, aspect: number) => void;
+  thumb?: boolean;
+  selectedElId?: string | null;
+  picking?: boolean;
+  onPhotoTap?: (el: PhotoEl) => void;
 }) {
   const pageAspect = pageAspectOf(spread);
+  const src = (url: string) => (thumb ? thumbSrc(url) : url);
   if (spread.layout === "custom") {
     return (
       <>
-        <BackgroundLayer background={spread.background} />
+        <BackgroundLayer background={spread.background} thumb={thumb} />
         <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
           {spread.elements
-            .filter((el): el is Extract<ClientAlbumElement, { type: "photo" }> => el.type === "photo" && hasAdjustments(el))
+            .filter((el): el is PhotoEl => el.type === "photo" && hasAdjustments(el))
             .map((el) => (
               <defs key={el.id} dangerouslySetInnerHTML={{ __html: adjustmentsSvgFilter(el.id, el) }} />
             ))}
           {spread.elements
-            .filter((el): el is Extract<ClientAlbumElement, { type: "photo" }> => el.type === "photo" && !!el.sharpness)
+            .filter((el): el is PhotoEl => el.type === "photo" && !!el.sharpness)
             .map((el) => (
               <defs key={`sharpen-${el.id}`} dangerouslySetInnerHTML={{ __html: sharpenSvgFilter(el.id, el.sharpness) }} />
             ))}
@@ -365,7 +396,8 @@ function ProofPage({
           el.type === "photo" ? (
             <div
               key={el.id}
-              className="absolute overflow-hidden"
+              className={`absolute overflow-hidden ${onPhotoTap ? "cursor-pointer" : ""}`}
+              onClick={onPhotoTap ? () => onPhotoTap(el) : undefined}
               style={{
                 left: `${el.xPct}%`,
                 top: `${el.yPct}%`,
@@ -373,7 +405,7 @@ function ProofPage({
                 height: `${el.heightPct}%`,
                 // Drop shadow only — the border is a separate, later sibling below, so it paints
                 // above the photo (a full-bleed <img> child hides a parent's inset box-shadow).
-                boxShadow: boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle),
+                boxShadow: thumb ? undefined : boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle),
                 // Rotation lives on this box (not the <img>) so the outline/box-shadow rotate with the
                 // clipped photo as one rigid tile — mirrors the builder.
                 transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
@@ -388,15 +420,20 @@ function ProofPage({
                 return (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src={el.url}
+                    src={src(el.url)}
                     alt=""
                     draggable={false}
+                    loading={thumb ? "lazy" : undefined}
                     className="absolute pointer-events-none"
-                    onLoad={(e) => {
-                      const w = e.currentTarget.naturalWidth;
-                      const h = e.currentTarget.naturalHeight;
-                      if (w && h) onPhotoAspect(el.url, w / h);
-                    }}
+                    onLoad={
+                      onPhotoAspect
+                        ? (e) => {
+                            const w = e.currentTarget.naturalWidth;
+                            const h = e.currentTarget.naturalHeight;
+                            if (w && h) onPhotoAspect(el.url, w / h);
+                          }
+                        : undefined
+                    }
                     style={{
                       width: `${framing.widthPct}%`,
                       height: `${framing.heightPct}%`,
@@ -421,8 +458,19 @@ function ProofPage({
                 );
               })()}
               {!!el.borderWidth && (
-                <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: `inset 0 0 0 ${el.borderWidth}px ${el.borderColor ?? "#fff"}` }} />
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ boxShadow: `inset 0 0 0 ${thumb ? 1 : el.borderWidth}px ${el.borderColor ?? "#fff"}` }}
+                />
               )}
+              {el.id === selectedElId ? (
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ boxShadow: `inset 0 0 0 ${thumb ? 2 : 4}px ${SWAP_PURPLE}`, background: "rgba(147, 51, 234, 0.18)" }}
+                />
+              ) : picking && !thumb ? (
+                <div className="absolute inset-0 pointer-events-none" style={{ outline: `2px dashed ${SWAP_PURPLE}`, outlineOffset: "-3px" }} />
+              ) : null}
             </div>
           ) : el.type === "ornament" ? (
             <OrnamentOverlay key={el.id} el={el} />
@@ -440,12 +488,12 @@ function ProofPage({
     // what the client approves here matches what the exported PDF prints.
     return (
       <>
-        <BackgroundLayer background={spread.background} />
+        <BackgroundLayer background={spread.background} thumb={thumb} />
         <div className={`absolute inset-0 flex gap-1.5 ${spread.layout === "stack" ? "flex-col" : "flex-row"}`}>
           <div className="relative overflow-hidden rounded-sm" style={{ flex: spread.layout === "feature" ? 1.6 : 1 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={spread.photo1.url}
+              src={src(spread.photo1.url)}
               alt=""
               draggable={false}
               className="absolute inset-0 w-full h-full object-cover"
@@ -455,7 +503,7 @@ function ProofPage({
           <div className="relative overflow-hidden rounded-sm" style={{ flex: 1 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={spread.photo2.url}
+              src={src(spread.photo2.url)}
               alt=""
               draggable={false}
               className="absolute inset-0 w-full h-full object-cover"
@@ -471,9 +519,9 @@ function ProofPage({
   }
   return (
     <>
-      <BackgroundLayer background={spread.background} />
+      <BackgroundLayer background={spread.background} thumb={thumb} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={spread.photo1.url} alt="" draggable={false} className="absolute inset-0 w-full h-full object-contain" />
+      <img src={src(spread.photo1.url)} alt="" draggable={false} className="absolute inset-0 w-full h-full object-contain" />
       {spread.elements.filter((el) => el.type === "text").map((el) => (
         <TextOverlay key={el.id} el={el} />
       ))}
@@ -488,7 +536,7 @@ const COLOR_NAMES: Record<CorrectionColor, string> = { "#e5322d": "אדום", "#
 
 // The client's guide to the corrections tool, one short line per step (owner, 2026-10-27).
 const CORRECTION_GUIDE_STEPS = [
-  "עוברים בחיצים לעמוד שצריך בו תיקון.",
+  "עוברים לעמוד שצריך בו תיקון, בחיצים או ברצועת העמודים.",
   "בוחרים עיפרון או מלבן, ואת הצבע.",
   "מסמנים על העיצוב את מה שצריך לתקן.",
   "אפשר לכתוב הערה לעמוד, מתחת לעיצוב.",
@@ -496,10 +544,93 @@ const CORRECTION_GUIDE_STEPS = [
   "בסוף לוחצים \"אישור ושליחת התיקונים\".",
 ] as const;
 
-// The client's album view (/gallery/<token>): the pages in their printed proportions, and at the end
-// of the album "אישור העיצוב" or "צריך תיקונים" (owner, 2026-10-27). Corrections mode draws on the
-// pages — a pencil and an outline rectangle in 3 colours, a note per page — and sends them all at
-// once to the photographer (api/gallery/[token]/album/corrections, lib/albumCorrections.ts).
+type Status = "sent" | "approved" | "changes_requested";
+type Pick = { spreadId: string; elId: string };
+type ServerPage = { id: string; elements: AlbumElement[]; backgroundPhotoId: string | null; edited: boolean; canBack: boolean };
+type EditReply = { ok?: boolean; error?: string; code?: string; pages?: string[]; spreads?: ServerPage[]; cycles?: Record<string, Cycle> };
+type Cycle = { count: number; seen: string[] };
+type PhotoInfo = { url: string; aspect: number | null };
+
+// The pages as the client left them stay when the album view is closed and opened again on the same
+// page load (the page's own data is from before the changes).
+const sessions = new Map<string, { pages: ClientAlbumSpread[]; status: Status }>();
+// The notes and marks not sent yet stay on the device until sent, even if the album is closed.
+const notesKey = (token: string) => `album-notes:${token}`;
+
+const aspectOf = (el: PhotoEl) => (el.aspect && el.aspect > 0 ? el.aspect : 1.5);
+
+// Each photo's screen copy and proportions, from the pages as the server sent them: a swap or a
+// redesign only moves these photos around the album.
+function photoInfoOf(pages: readonly ClientAlbumSpread[]): Map<string, PhotoInfo> {
+  const out = new Map<string, PhotoInfo>();
+  for (const p of pages) {
+    for (const el of p.elements) if (el.type === "photo" && el.photoId) out.set(el.photoId, { url: el.url, aspect: el.aspect ?? null });
+    if (p.background?.photoId && !out.has(p.background.photoId)) out.set(p.background.photoId, { url: p.background.url, aspect: null });
+  }
+  return out;
+}
+
+// A page the server saved, drawn the way the gallery page draws it.
+function fromServer(prev: ClientAlbumSpread, next: ServerPage, photos: ReadonlyMap<string, PhotoInfo>): ClientAlbumSpread {
+  const prevById = new Map(prev.elements.map((el) => [el.id, el] as const));
+  const elements = next.elements.flatMap((el): ClientAlbumElement[] => {
+    if (el.type === "photo") {
+      const p = el.photoId ? photos.get(el.photoId) : undefined;
+      return p ? [{ ...el, url: p.url, aspect: p.aspect }] : [];
+    }
+    if (el.type === "ornament") {
+      const old = prevById.get(el.id);
+      if (old?.type === "ornament") return [old];
+      return el.customOrnamentId ? [] : [{ ...el, customUrl: undefined }];
+    }
+    return [el];
+  });
+  const bg = next.backgroundPhotoId ? photos.get(next.backgroundPhotoId) : undefined;
+  return {
+    ...prev,
+    layout: "custom",
+    elements,
+    background: bg && prev.background ? { ...prev.background, photoId: next.backgroundPhotoId as string, url: bg.url } : null,
+    edited: next.edited,
+    canBack: next.canBack,
+  };
+}
+
+// The swap drawn at once, while the server saves it (its crop follows the faces; this one is centred).
+function swapLocally(pages: ClientAlbumSpread[], a: Pick, b: Pick): ClientAlbumSpread[] {
+  const find = (pk: Pick) => {
+    const page = pages.find((p) => p.id === pk.spreadId);
+    const el = page?.elements.find((e): e is PhotoEl => e.id === pk.elId && e.type === "photo");
+    return page && el ? { page, el } : null;
+  };
+  const sa = find(a);
+  const sb = find(b);
+  if (!sa || !sb) return pages;
+  const put = (page: ClientAlbumSpread, frame: PhotoEl, from: PhotoEl): PhotoEl => {
+    const fit = fitPhotoInFrame(frame, page, aspectOf(from), [], false);
+    return { ...frame, photoId: from.photoId, url: from.url, aspect: from.aspect, focalX: fit.focalX, focalY: fit.focalY, zoom: 100 };
+  };
+  return pages.map((p) => {
+    if (p.id !== a.spreadId && p.id !== b.spreadId) return p;
+    const elements = p.elements.map((el) =>
+      p.id === a.spreadId && el.id === a.elId ? put(p, sa.el, sb.el) : p.id === b.spreadId && el.id === b.elId ? put(p, sb.el, sa.el) : el
+    );
+    // Between pages, a background that was the photo leaving becomes the one coming in.
+    const [left, came] = p.id === a.spreadId ? [sa.el, sb.el] : [sb.el, sa.el];
+    const background = a.spreadId !== b.spreadId && p.background && p.background.photoId === left.photoId ? { ...p.background, photoId: came.photoId ?? undefined, url: came.url } : p.background;
+    return { ...p, elements, background, edited: true };
+  });
+}
+
+// The client's album view (/gallery/<token>): the pages in their printed proportions, a strip of all
+// the pages below them, and at the end of the album "אישור העיצוב" or the corrections (owner,
+// 2026-10-27). While the album waits for approval the client can change it themselves: a tap on a
+// photo marks it in purple, a tap on another photo, on this page or another one (through the strip),
+// swaps the two (api/gallery/[token]/album/edit, lib/albumClientEdit.ts). A photo that doesn't fit
+// its new frame redesigns the page, after a confirmation; "עיצוב מחדש" shows another design and
+// "לעיצוב הקודם" goes back one, up to 3. A note per page, drawn marks included, can be added on any
+// page; the notes stay on the device until sent, all at once, to the photographer
+// (api/gallery/[token]/album/corrections, lib/albumCorrections.ts).
 export default function GalleryAlbumProofing({
   token,
   status,
@@ -507,7 +638,7 @@ export default function GalleryAlbumProofing({
   onClose,
 }: {
   token: string;
-  status: "sent" | "approved" | "changes_requested";
+  status: Status;
   spreads: ClientAlbumSpread[];
   onClose: () => void;
 }) {
@@ -516,10 +647,11 @@ export default function GalleryAlbumProofing({
   // Opens on the album's first page, its cover. There used to be a title screen before it (a photo
   // and the album's name), which clients took for the cover (owner, 2026-10-27).
   const [index, setIndex] = useState(0);
+  const [pages, setPages] = useState<ClientAlbumSpread[]>(() => sessions.get(token)?.pages ?? spreads);
   // Natural aspect ratio per photo (the client doesn't get one from the DB), learned from each
   // <img>'s own onLoad.
   const [photoAspects, setPhotoAspects] = useState<Record<string, number>>({});
-  const [currentStatus, setCurrentStatus] = useState(status);
+  const [currentStatus, setCurrentStatus] = useState<Status>(() => sessions.get(token)?.status ?? status);
   const [approving, setApproving] = useState(false);
   const [approveFailed, setApproveFailed] = useState(false);
   const [confirmApproveOpen, setConfirmApproveOpen] = useState(false);
@@ -531,14 +663,63 @@ export default function GalleryAlbumProofing({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const guideShown = useRef(false);
-  const [confirmDiscard, setConfirmDiscard] = useState<null | "close" | "exit">(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
+  // The swap: the photo picked first, a swap waiting for the client's OK to redesign, what's being saved.
+  const [selected, setSelected] = useState<Pick | null>(null);
+  const [confirmSwap, setConfirmSwap] = useState<{ a: Pick; b: Pick; pages: string[] } | null>(null);
+  const [busy, setBusy] = useState<null | "swap" | "redesign" | "back" | "reset">(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const cycles = useRef<Record<string, Cycle>>({});
+  const photoInfo = useMemo(() => photoInfoOf(spreads), [spreads]);
 
-  const spread = spreads[index] ?? null;
+  const spread = pages[index] ?? null;
   const pageAspect = spread ? pageAspectOf(spread) : 1.5;
   const { ref: stageRef, box } = useFitBox(pageAspect);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    sessions.set(token, { pages, status: currentStatus });
+  }, [token, pages, currentStatus]);
+
+  // The notes not sent yet, back from this device. Read after the first render: the album can open
+  // in the server's HTML (?album=1), which knows nothing of this device.
+  const notesLoaded = useRef(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(notesKey(token));
+      if (raw) {
+        const saved = JSON.parse(raw) as { marks?: Record<string, CorrectionMark[]>; notes?: Record<string, string> };
+        const ids = new Set(spreads.map((sp) => sp.id));
+        const keep = <T,>(o: Record<string, T> | undefined) => Object.fromEntries(Object.entries(o ?? {}).filter(([id]) => ids.has(id)));
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setMarks(keep(saved.marks));
+        setNotes(keep(saved.notes));
+      }
+    } catch {}
+    notesLoaded.current = true;
+  }, [token, spreads]);
+  useEffect(() => {
+    if (!notesLoaded.current) return;
+    try {
+      const empty = Object.values(marks).every((m) => !m.length) && Object.values(notes).every((n) => !n.trim());
+      if (empty) localStorage.removeItem(notesKey(token));
+      else localStorage.setItem(notesKey(token), JSON.stringify({ marks, notes }));
+    } catch {}
+  }, [token, marks, notes]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const id = setTimeout(() => setNotice(null), 4500);
+    return () => clearTimeout(id);
+  }, [notice]);
+
+  // The current page's thumbnail stays in view in the strip.
+  useEffect(() => {
+    stripRef.current?.querySelector<HTMLElement>(`[data-page="${index}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [index]);
 
   // The photos of the pages around this one load ahead (lib/albumProofingPreload.ts), so turning
   // the page shows it at once, from the browser's cache. Each photo is requested once; the <img> is
@@ -546,8 +727,8 @@ export default function GalleryAlbumProofing({
   const requested = useRef(new Set<string>());
   const loading = useRef(new Map<string, HTMLImageElement>());
   useEffect(() => {
-    for (const i of pagesToPreload(index, spreads.length)) {
-      const page = spreads[i];
+    for (const i of pagesToPreload(index, pages.length)) {
+      const page = pages[i];
       if (!page) continue;
       for (const url of spreadImageUrls(page)) {
         if (requested.current.has(url)) continue;
@@ -560,32 +741,157 @@ export default function GalleryAlbumProofing({
         img.src = url;
       }
     }
-  }, [index, spreads]);
+  }, [index, pages]);
 
-  if (spreads.length === 0) return null;
-  const lastIndex = spreads.length - 1;
+  if (pages.length === 0) return null;
+  const lastIndex = pages.length - 1;
   const firstIndex = 0;
   const approved = currentStatus === "approved";
+  // The client changes the design only while it waits for their approval; after corrections it
+  // waits for the photographer.
+  const editable = currentStatus === "sent";
   const marking = mode === "mark";
   const comments = spread?.comments ?? [];
   const pageMarks = spread ? (marks[spread.id] ?? []) : [];
-  const markedPages = spreads.filter((s) => (marks[s.id]?.length ?? 0) > 0 || !!notes[s.id]?.trim()).length;
+  const hasNote = (id: string) => (marks[id]?.length ?? 0) > 0 || !!notes[id]?.trim();
+  const markedPages = pages.filter((p) => hasNote(p.id)).length;
+  const editedPages = pages.filter((p) => p.edited).length;
+  const pageNumber = (id: string) => pages.findIndex((p) => p.id === id) + 1;
 
   const goTo = (i: number) => setIndex(Math.max(firstIndex, Math.min(lastIndex, i)));
   const onPhotoAspect = (url: string, aspect: number) => setPhotoAspects((prev) => (prev[url] ? prev : { ...prev, [url]: aspect }));
 
+  // --- The client's changes -------------------------------------------------------------------
+  const applyServerPages = (reply: EditReply) => {
+    const byId = new Map((reply.spreads ?? []).map((p) => [p.id, p] as const));
+    setPages((prev) => prev.map((p) => (byId.has(p.id) ? fromServer(p, byId.get(p.id) as ServerPage, photoInfo) : p)));
+    for (const [id, c] of Object.entries(reply.cycles ?? {})) cycles.current[id] = c;
+  };
+  const sendEdit = async (body: object): Promise<{ ok: boolean; status: number; reply: EditReply }> => {
+    try {
+      const res = await fetch(`/api/gallery/${token}/album/edit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      return { ok: res.ok, status: res.status, reply: ((await res.json().catch(() => ({}))) as EditReply) ?? {} };
+    } catch {
+      return { ok: false, status: 0, reply: {} };
+    }
+  };
+  const failed = (status: number, reply: EditReply) => {
+    if (status === 409 && reply.code !== "needs_redesign" && reply.code !== "no_design" && reply.code !== "no_history") {
+      // The album isn't waiting for approval any more (approved on another device, or corrections sent).
+      setNotice(t("העיצוב כבר לא פתוח לשינויים. רעננו את הדף."));
+      return;
+    }
+    setNotice(status === 429 ? t("יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.") : reply.code === "no_design" ? t("אין עיצוב אחר לעמוד הזה") : t("השינוי לא נשמר. נסו שוב"));
+  };
+
+  const photoOf = (pk: Pick) => {
+    const page = pages.find((p) => p.id === pk.spreadId);
+    const el = page?.elements.find((e): e is PhotoEl => e.id === pk.elId && e.type === "photo");
+    return page && el ? { page, el } : null;
+  };
+  const coverNotice = () => setNotice(t("התמונה הזו לא מתאימה למסגרת בכריכה. בכריכה אפשר להחליף רק בתמונה באותו כיוון (לאורך או לרוחב)."));
+
+  const runSwap = async (a: Pick, b: Pick, redesign: boolean) => {
+    setSelected(null);
+    setConfirmSwap(null);
+    const before = pages.filter((p) => p.id === a.spreadId || p.id === b.spreadId);
+    if (!redesign) setPages((prev) => swapLocally(prev, a, b));
+    setBusy(redesign ? "redesign" : "swap");
+    const { ok, status, reply } = await sendEdit({ action: "swap", a, b, redesign });
+    setBusy(null);
+    if (ok) {
+      applyServerPages(reply);
+      const redesigned = Object.keys(reply.cycles ?? {}).map(pageNumber).sort((x, y) => x - y);
+      if (redesigned.length > 1) setNotice(t("עמודים {pages} עוצבו מחדש", { pages: redesigned.join(", ") }));
+      return;
+    }
+    // Back as they were; then what the server says decides.
+    setPages((prev) => prev.map((p) => before.find((x) => x.id === p.id) ?? p));
+    if (reply.code === "needs_redesign") setConfirmSwap({ a, b, pages: reply.pages ?? [] });
+    else if (reply.code === "cover") coverNotice();
+    else failed(status, reply);
+  };
+
+  const tapPhoto = (spreadId: string, el: PhotoEl) => {
+    if (!editable || busy || marking) return;
+    if (!selected) {
+      setSelected({ spreadId, elId: el.id });
+      return;
+    }
+    if (selected.spreadId === spreadId && selected.elId === el.id) {
+      setSelected(null);
+      return;
+    }
+    const a = selected;
+    const b = { spreadId, elId: el.id };
+    const sa = photoOf(a);
+    const sb = photoOf(b);
+    if (!sa || !sb || sa.el.photoId === sb.el.photoId) {
+      setSelected(b);
+      return;
+    }
+    const need = swapRedesignPages(
+      { spreadId: sa.page.id, frame: sa.el, page: sa.page, photoAspect: aspectOf(sa.el) },
+      { spreadId: sb.page.id, frame: sb.el, page: sb.page, photoAspect: aspectOf(sb.el) }
+    );
+    if (need.some((id) => pages.find((p) => p.id === id)?.isCover)) {
+      coverNotice();
+      return;
+    }
+    if (need.length) {
+      setConfirmSwap({ a, b, pages: need });
+      return;
+    }
+    void runSwap(a, b, false);
+  };
+
+  const redesignPage = async () => {
+    if (!spread || busy) return;
+    setBusy("redesign");
+    const cycle = cycles.current[spread.id] ?? { count: -1, seen: [] };
+    const { ok, status, reply } = await sendEdit({ action: "redesign", spreadId: spread.id, count: cycle.count, seen: cycle.seen });
+    setBusy(null);
+    if (ok) applyServerPages(reply);
+    else failed(status, reply);
+  };
+  const backPage = async () => {
+    if (!spread || busy) return;
+    setBusy("back");
+    const { ok, status, reply } = await sendEdit({ action: "back", spreadId: spread.id });
+    setBusy(null);
+    if (ok) applyServerPages(reply);
+    else failed(status, reply);
+  };
+  const resetAll = async () => {
+    setConfirmReset(false);
+    setSelected(null);
+    setBusy("reset");
+    const { ok, status, reply } = await sendEdit({ action: "reset" });
+    setBusy(null);
+    if (ok) {
+      applyServerPages(reply);
+      cycles.current = {};
+      setNotice(t("העיצוב חזר להיות כמו שהצלם שלח"));
+    } else failed(status, reply);
+  };
+
+  // --- Approval and corrections ---------------------------------------------------------------
   const approve = async () => {
     setApproving(true);
     setApproveFailed(false);
     const res = await fetch(`/api/gallery/${token}/album/approve`, { method: "POST" }).catch(() => null);
     setApproving(false);
     setConfirmApproveOpen(false);
-    if (res?.ok) setCurrentStatus("approved");
-    else setApproveFailed(true);
+    if (res?.ok) {
+      setCurrentStatus("approved");
+      setSelected(null);
+      discardMarks();
+    } else setApproveFailed(true);
   };
 
   const startMarking = () => {
     setMode("mark");
+    setSelected(null);
     setJustSent(false);
     setSendError(null);
     if (!guideShown.current) {
@@ -598,8 +904,6 @@ export default function GalleryAlbumProofing({
     setNotes({});
     setDraft(null);
   };
-  const exitMarking = () => (markedPages > 0 ? setConfirmDiscard("exit") : setMode("view"));
-  const requestClose = () => (marking && markedPages > 0 ? setConfirmDiscard("close") : onClose());
 
   // Drawing: the pointer's spot as a fraction of the page box.
   const pointAt = (e: ReactPointerEvent<HTMLDivElement>): [number, number] => {
@@ -645,17 +949,17 @@ export default function GalleryAlbumProofing({
   };
 
   const submit = async () => {
-    const pages = spreads
-      .map((s) => ({ spreadId: s.id, note: notes[s.id]?.trim() || null, marks: marks[s.id] ?? [] }))
+    const sendPages = pages
+      .map((p) => ({ spreadId: p.id, note: notes[p.id]?.trim() || null, marks: marks[p.id] ?? [] }))
       .filter((p) => p.marks.length > 0 || p.note);
-    if (pages.length === 0) return;
+    if (sendPages.length === 0) return;
     setSending(true);
     setSendError(null);
     try {
       const res = await fetch(`/api/gallery/${token}/album/corrections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pages }),
+        body: JSON.stringify({ pages: sendPages }),
       });
       if (!res.ok) {
         setSendError(res.status === 429 ? t("יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.") : t("השליחה נכשלה. נסו שוב"));
@@ -663,6 +967,8 @@ export default function GalleryAlbumProofing({
       }
       discardMarks();
       setMode("view");
+      setConfirmApproveOpen(false);
+      setSelected(null);
       setCurrentStatus("changes_requested");
       setJustSent(true);
     } catch {
@@ -677,37 +983,102 @@ export default function GalleryAlbumProofing({
   // Sideways on a phone the tools sit in a narrow column beside the page: icons only, so the
   // whole panel fits next to the page without scrolling. The names stay for screen readers.
   const landscapeIconOnly = "phone-landscape:sr-only";
+  const pageBtn = "h-9 px-3 rounded-full text-[13px] font-semibold flex items-center justify-center gap-1.5 border border-line bg-white text-ink disabled:opacity-50";
+  const pageNote = spread ? notes[spread.id]?.trim() : "";
+  const busyText = busy === "redesign" ? t("מעצב את הדף מחדש…") : busy === "reset" ? t("מחזיר את העיצוב של הצלם…") : busy ? t("שומר…") : null;
 
   return (
     <div className={`fixed inset-0 z-[80] bg-black flex flex-col phone-landscape:flex-row select-none ${ALBUM_FONT_CLASS_NAMES}`}>
-      {/* The page: between the header and the panel below it, or, on a phone turned sideways, on
-          about 80% of the screen with the controls in a column beside it (owner, 2026-10-27). */}
-      <div className="order-3 flex-1 min-h-0 px-3 py-1 phone-landscape:order-1 phone-landscape:min-w-0 phone-landscape:px-2 phone-landscape:py-2">
-        <div ref={stageRef} className="h-full w-full flex items-center justify-center">
-          {spread ? (
-            <div
-              className="relative overflow-hidden shrink-0"
-              style={{
-                width: box ? `${box.w}px` : "100%",
-                height: box ? `${box.h}px` : undefined,
-                aspectRatio: box ? undefined : `${spread.widthCm} / ${spread.heightCm}`,
-                containerType: "inline-size",
-              }}
-            >
-              <ProofPage spread={spread} photoAspects={photoAspects} onPhotoAspect={onPhotoAspect} />
-              <AlbumCorrectionMarks marks={draftMark ? [...pageMarks, draftMark] : pageMarks} pageAspect={pageAspect} />
-              {marking && (
-                <div
-                  className="absolute inset-0 cursor-crosshair"
-                  style={{ touchAction: "none" }}
-                  onPointerDown={onPointerDown}
-                  onPointerMove={onPointerMove}
-                  onPointerUp={onPointerUp}
-                  onPointerCancel={() => setDraft(null)}
+      {/* The page, and the strip of all the pages below it: between the header and the panel, or, on
+          a phone turned sideways, on about 80% of the screen with the controls in a column beside it
+          (owner, 2026-10-27). */}
+      <div className="order-3 flex-1 min-h-0 flex flex-col phone-landscape:order-1 phone-landscape:min-w-0">
+        <div className="relative flex-1 min-h-0 px-3 py-1 phone-landscape:px-2 phone-landscape:pt-2 phone-landscape:pb-1">
+          <div ref={stageRef} className="h-full w-full flex items-center justify-center">
+            {spread ? (
+              <div
+                className="relative overflow-hidden shrink-0"
+                style={{
+                  width: box ? `${box.w}px` : "100%",
+                  height: box ? `${box.h}px` : undefined,
+                  aspectRatio: box ? undefined : `${spread.widthCm} / ${spread.heightCm}`,
+                  containerType: "inline-size",
+                }}
+              >
+                <ProofPage
+                  spread={spread}
+                  photoAspects={photoAspects}
+                  onPhotoAspect={onPhotoAspect}
+                  selectedElId={selected?.spreadId === spread.id ? selected.elId : null}
+                  picking={!!selected}
+                  onPhotoTap={editable && !marking ? (el) => tapPhoto(spread.id, el) : undefined}
                 />
-              )}
+                <AlbumCorrectionMarks marks={draftMark ? [...pageMarks, draftMark] : pageMarks} pageAspect={pageAspect} />
+                {marking && (
+                  <div
+                    className="absolute inset-0 cursor-crosshair"
+                    style={{ touchAction: "none" }}
+                    onPointerDown={onPointerDown}
+                    onPointerMove={onPointerMove}
+                    onPointerUp={onPointerUp}
+                    onPointerCancel={() => setDraft(null)}
+                  />
+                )}
+                {(busy === "redesign" || busy === "back" || busy === "reset") && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/35">
+                    <span className="rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-semibold text-ink flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 rounded-full border-2 border-ink/25 border-t-ink animate-spin" aria-hidden="true" />
+                      {busyText}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+          {notice && (
+            <div role="status" className="absolute inset-x-3 bottom-2 flex justify-center pointer-events-none">
+              <span className="max-w-md rounded-xl bg-white px-3.5 py-2 text-[13px] font-semibold text-ink text-center shadow-lg">{notice}</span>
             </div>
-          ) : null}
+          )}
+        </div>
+
+        {/* Every page of the album, in reading order: in Hebrew the first page is on the right, as in
+            a book. A tap opens the page; a photo picked for a swap keeps its purple mark on its page. */}
+        <div
+          ref={stripRef}
+          dir={isRtl ? "rtl" : "ltr"}
+          className="shrink-0 overflow-x-auto overflow-y-hidden [--thumb-h:52px] phone-landscape:[--thumb-h:38px]"
+          style={{ scrollbarWidth: "none" }}
+        >
+          <div className="flex gap-2 px-3 py-2 w-max phone-landscape:py-1.5">
+            {pages.map((p, i) => {
+              const current = i === index;
+              const holdsPick = selected?.spreadId === p.id;
+              return (
+                <button
+                  key={p.id}
+                  data-page={i}
+                  onClick={() => goTo(i)}
+                  aria-label={t("עמוד {n}", { n: i + 1 })}
+                  aria-current={current ? "page" : undefined}
+                  className={`relative shrink-0 overflow-hidden bg-neutral-800 transition-opacity ${current ? "opacity-100" : "opacity-60 hover:opacity-90"}`}
+                  style={{
+                    height: "var(--thumb-h)",
+                    width: `calc(var(--thumb-h) * ${pageAspectOf(p)})`,
+                    boxShadow: holdsPick ? `0 0 0 2px ${SWAP_PURPLE}` : current ? "0 0 0 2px #fff" : undefined,
+                  }}
+                >
+                  <span className="absolute inset-0" style={{ containerType: "inline-size" }}>
+                    <ProofPage spread={p} photoAspects={photoAspects} thumb selectedElId={holdsPick ? selected?.elId : null} />
+                  </span>
+                  <span dir="ltr" className="absolute bottom-0.5 start-0.5 rounded px-1 text-[10px] font-semibold leading-4 bg-black/60 text-white font-data">
+                    {i + 1}
+                  </span>
+                  {hasNote(p.id) && <span className="absolute top-1 end-1 h-2 w-2 rounded-full bg-amber-400 ring-1 ring-black/40" aria-hidden="true" />}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -715,7 +1086,7 @@ export default function GalleryAlbumProofing({
           drops out of the layout (display: contents) and they stack above and below the page. */}
       <div className="contents phone-landscape:order-2 phone-landscape:flex phone-landscape:flex-col phone-landscape:w-1/5 phone-landscape:min-w-[184px] phone-landscape:shrink-0 phone-landscape:overflow-y-auto phone-landscape:py-2">
       <div className="order-1 flex items-center justify-between gap-2 px-4 py-3 shrink-0 phone-landscape:px-2 phone-landscape:py-1">
-        <button onClick={requestClose} aria-label={t("סגירה")} className="h-10 w-10 shrink-0 rounded-full bg-white/10 text-white flex items-center justify-center text-lg">
+        <button onClick={onClose} aria-label={t("סגירה")} className="h-10 w-10 shrink-0 rounded-full bg-white/10 text-white flex items-center justify-center text-lg">
           <IconClose className="h-5 w-5" />
         </button>
         {marking && <span className="min-w-0 truncate text-sm font-semibold text-white phone-landscape:hidden">{t("סימון תיקונים")}</span>}
@@ -727,7 +1098,7 @@ export default function GalleryAlbumProofing({
             </button>
           )}
           <span dir="ltr" className="text-xs font-semibold text-white/70 font-data">
-            {`${index + 1} / ${spreads.length}`}
+            {`${index + 1} / ${pages.length}`}
           </span>
         </div>
       </div>
@@ -738,12 +1109,23 @@ export default function GalleryAlbumProofing({
           {justSent ? `✓ ${t("התיקונים נשלחו לצלם. העיצוב המעודכן יישלח אליכם שוב.")}` : t("שלחתם תיקונים לעיצוב. הצלם יעדכן אותו וישלח אליכם שוב.")}
         </div>
       )}
+      {selected && !marking && (
+        <div
+          className="order-2 mx-4 mb-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold flex items-center justify-between gap-3 text-white phone-landscape:mx-2 phone-landscape:flex-col phone-landscape:items-stretch phone-landscape:text-center"
+          style={{ background: SWAP_PURPLE }}
+        >
+          <span>{busy === "swap" ? t("שומר…") : t("בחרו תמונה להחלפה, בעמוד הזה או בעמוד אחר")}</span>
+          <button onClick={() => setSelected(null)} className="shrink-0 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold">
+            {t("ביטול")}
+          </button>
+        </div>
+      )}
 
       {/* Turning pages like a book in the reader's language: in Hebrew the next page is on the left,
           with an arrow pointing left, and the previous page on the right (owner, 2026-10-27). The
           arrows are drawn: the ‹ › characters used before get mirrored in a right-to-left line, so
           each arrow pointed at the other side. */}
-      <div dir={isRtl ? "rtl" : "ltr"} className="order-4 flex items-center justify-center gap-4 py-2 shrink-0">
+      <div dir={isRtl ? "rtl" : "ltr"} className="order-4 flex items-center justify-center gap-4 py-2 shrink-0 phone-landscape:py-1">
         <button
           onClick={() => goTo(index - 1)}
           disabled={index === firstIndex}
@@ -833,8 +1215,9 @@ export default function GalleryAlbumProofing({
               >
                 {sending ? t("שולח...") : t("אישור ושליחת התיקונים")}
               </button>
-              <button onClick={exitMarking} className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold bg-card border border-line text-ink-soft phone-landscape:py-2">
-                {t("יציאה")}
+              {/* The notes stay (on this device) until sent: back to the album keeps them. */}
+              <button onClick={() => setMode("view")} className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold bg-card border border-line text-ink-soft phone-landscape:py-2">
+                {t("חזרה לאלבום")}
               </button>
             </div>
           </>
@@ -849,22 +1232,55 @@ export default function GalleryAlbumProofing({
                 ))}
               </div>
             )}
+            {!approved && spread && (
+              <div className="mb-3">
+                {pageNote && <p className="text-[13px] rounded-lg px-3 py-2 mb-2 bg-amber-bg text-amber-deep whitespace-pre-line">{pageNote}</p>}
+                <div className="flex flex-wrap gap-2 phone-landscape:flex-col">
+                  <button onClick={startMarking} className={pageBtn}>
+                    <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M4 20l4-1 11-11-3-3L5 16l-1 4z" />
+                    </svg>
+                    {hasNote(spread.id) ? t("עריכת ההערה לעמוד") : t("הערה לעמוד")}
+                  </button>
+                  {editable && spread.edited && !spread.isCover && (
+                    <button onClick={redesignPage} disabled={!!busy} className={pageBtn}>
+                      ↻ {t("עיצוב מחדש")}
+                    </button>
+                  )}
+                  {editable && spread.canBack && (
+                    <button onClick={backPage} disabled={!!busy} className={pageBtn}>
+                      ↶ {t("לעיצוב הקודם")}
+                    </button>
+                  )}
+                </div>
+                {editable && !selected && (
+                  <p className="text-xs text-ink-soft mt-2 leading-snug phone-landscape:hidden">{t("להחלפת מקום בין תמונות: לוחצים על תמונה, ואז על תמונה אחרת בעמוד הזה או בעמוד אחר.")}</p>
+                )}
+              </div>
+            )}
             {!approved &&
               (index === lastIndex ? (
                 <>
                   <p className="text-sm font-semibold text-center mb-3">{t("זה העמוד האחרון. מה דעתכם על העיצוב?")}</p>
                   {approveFailed && <p className="text-sm text-rose text-center mb-2">{t("האישור לא נשמר. נסו שוב")}</p>}
+                  {sendError && <p className="text-sm text-rose text-center mb-2">{sendError}</p>}
                   <div className="flex gap-2 phone-landscape:flex-col">
                     {/* After corrections the design waits for the photographer's update: approving it
                         now would send the old design to print (the approval sends it by itself). */}
-                    {currentStatus !== "changes_requested" && (
-                      <button onClick={() => setConfirmApproveOpen(true)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white">
+                    {editable && (
+                      <button onClick={() => setConfirmApproveOpen(true)} disabled={!!busy} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60">
                         {t("אישור העיצוב")}
                       </button>
                     )}
-                    <button onClick={startMarking} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-ink text-ink">
-                      {t("צריך תיקונים")}
-                    </button>
+                    {markedPages > 0 ? (
+                      <button onClick={submit} disabled={sending} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-ink text-ink disabled:opacity-60">
+                        {sending ? t("שולח...") : t("שליחת התיקונים ({n})", { n: markedPages })}
+                      </button>
+                    ) : (
+                      <button onClick={startMarking} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-ink text-ink">
+                        {t("צריך תיקונים")}
+                      </button>
+                    )}
                   </div>
                 </>
               ) : (
@@ -875,6 +1291,13 @@ export default function GalleryAlbumProofing({
                   </button>
                 </div>
               ))}
+            {editable && editedPages > 0 && (
+              <div className="text-center mt-3">
+                <button onClick={() => setConfirmReset(true)} disabled={!!busy} className="text-xs font-semibold underline text-ink-soft disabled:opacity-50">
+                  {t("ביטול כל השינויים שלי")}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -899,26 +1322,41 @@ export default function GalleryAlbumProofing({
         </div>
       )}
 
-      {confirmDiscard && (
-        <div className="fixed inset-0 z-[90] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmDiscard(null)}>
-          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-white" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">{t("לצאת בלי לשלוח את התיקונים?")}</h2>
-            <p className="text-sm text-ink-soft mb-5">{t("הסימונים וההערות שלא נשלחו יימחקו.")}</p>
+      {confirmSwap && (
+        <div className="fixed inset-0 z-[90] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmSwap(null)}>
+          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-white" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2 font-display">{confirmSwap.pages.length > 1 ? t("העיצוב של שני העמודים ישתנה") : t("העיצוב של העמוד ישתנה")}</h2>
+            <p className="text-sm text-ink-soft mb-2">
+              {confirmSwap.pages.length > 1
+                ? t("התמונה לא מתאימה לצורה של המסגרת (לאורך במקום לרוחב, או להפך), ולכן עמודים {pages} יעוצבו מחדש.", {
+                    pages: confirmSwap.pages.map(pageNumber).sort((x, y) => x - y).join(", "),
+                  })
+                : t("התמונה לא מתאימה לצורה של המסגרת (לאורך במקום לרוחב, או להפך), ולכן העמוד יעוצב מחדש.")}
+            </p>
+            <p className="text-sm text-ink-soft mb-5">{t("אחר כך אפשר ללחוץ \"עיצוב מחדש\" כדי לראות עיצוב אחר, ולחזור עד 3 עיצובים אחורה.")}</p>
             <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  const closing = confirmDiscard === "close";
-                  setConfirmDiscard(null);
-                  discardMarks();
-                  setMode("view");
-                  if (closing) onClose();
-                }}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white"
-              >
-                {t("יציאה בלי שליחה")}
+              <button onClick={() => void runSwap(confirmSwap.a, confirmSwap.b, true)} className="flex-1 rounded-lg py-3 text-sm font-semibold text-white" style={{ background: SWAP_PURPLE }}>
+                {t("החלפה ועיצוב מחדש")}
               </button>
-              <button onClick={() => setConfirmDiscard(null)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft">
-                {t("חזרה לסימון")}
+              <button onClick={() => setConfirmSwap(null)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft">
+                {t("ביטול")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmReset && (
+        <div className="fixed inset-0 z-[90] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmReset(false)}>
+          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-white" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2 font-display">{t("לבטל את כל השינויים?")}</h2>
+            <p className="text-sm text-ink-soft mb-5">{t("כל העמודים ששיניתם ({n}) יחזרו לעיצוב שהצלם שלח. ההערות שכתבתם נשארות.", { n: editedPages })}</p>
+            <div className="flex gap-2">
+              <button onClick={() => void resetAll()} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white">
+                {t("ביטול השינויים")}
+              </button>
+              <button onClick={() => setConfirmReset(false)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft">
+                {t("חזרה")}
               </button>
             </div>
           </div>
@@ -927,12 +1365,25 @@ export default function GalleryAlbumProofing({
 
       {confirmApproveOpen && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmApproveOpen(false)}>
-          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-white" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-white" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-2 font-display">{t("לאשר את עיצוב האלבום?")}</h2>
-            <p className="text-sm text-ink-soft mb-5">{t("לאחר האישור העיצוב יעבור להדפסה, ואי אפשר יהיה לבטל את האישור.")}</p>
-            <div className="flex gap-2">
-              <button onClick={approve} disabled={approving} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60">
-                {approving ? t("שולח...") : t("כן, מאשר/ת")}
+            <p className="text-sm text-ink-soft mb-2">{t("לאחר האישור העיצוב יעבור להדפסה, ואי אפשר יהיה לבטל את האישור.")}</p>
+            {editedPages > 0 && <p className="text-sm text-ink-soft mb-2">{t("העמודים ששיניתם ({n}) יודפסו כמו שהם עכשיו.", { n: editedPages })}</p>}
+            {markedPages > 0 && (
+              <p className="text-sm font-semibold text-amber-deep mb-2">
+                {markedPages === 1
+                  ? t("יש לכם הערה בעמוד אחד שעוד לא נשלחה. אישור שולח את האלבום להדפסה בלי התיקון הזה.")
+                  : t("יש לכם הערות ב-{n} עמודים שעוד לא נשלחו. אישור שולח את האלבום להדפסה בלי התיקונים האלה.", { n: markedPages })}
+              </p>
+            )}
+            <div className="flex gap-2 mt-5 flex-wrap">
+              {markedPages > 0 && (
+                <button onClick={submit} disabled={sending || approving} className="w-full rounded-lg py-3 text-sm font-semibold bg-ink text-white disabled:opacity-60">
+                  {sending ? t("שולח...") : t("שליחת ההערות לצלם במקום")}
+                </button>
+              )}
+              <button onClick={approve} disabled={approving || sending} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60">
+                {approving ? t("שולח...") : markedPages > 0 ? t("אישור בלי ההערות") : t("כן, מאשר/ת")}
               </button>
               <button onClick={() => setConfirmApproveOpen(false)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft">
                 {t("חזרה")}

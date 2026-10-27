@@ -1,7 +1,8 @@
 import type { AlbumElement, AlbumFrame, AlbumPhotoElement } from "@/lib/types";
 import { fitFramesToSafeArea } from "@/lib/albumSafeArea";
 import { fitPhotoInFrame, type FaceRect } from "@/lib/albumAuto/swapPhotos";
-import { frameElements, rankTemplates, templatesForCount, type FrameFinish } from "@/lib/albumAuto/templateFill";
+import { frameElements, rankTemplates, templatesForCount } from "@/lib/albumAuto/templateFill";
+import { pageFinish } from "@/lib/albumAuto/redesign";
 import type { LayoutPhoto } from "@/lib/albumAuto/types";
 
 // The album selection (owner, 2026-10-27): inside the favorites view the photographer narrows the
@@ -139,15 +140,6 @@ export function matchSlots(
 }
 
 const pageOf = (sp: SelectionSpread, album: SelectionPlanInput["album"]) => ({ widthCm: sp.width_cm ?? album.width_cm, heightCm: sp.height_cm ?? album.height_cm });
-const bleeds = (el: AlbumPhotoElement) => el.xPct <= 0.5 || el.yPct <= 0.5 || el.xPct + el.widthPct >= 99.5 || el.yPct + el.heightPct >= 99.5;
-
-// The finish of a page's framed photos (not the ones running to the edge), as "עיצוב מחדש" keeps it.
-function pageFinish(photoEls: AlbumPhotoElement[]): FrameFinish {
-  const inner = photoEls.filter((el) => !bleeds(el));
-  const src = inner.find((el) => el.borderWidth || el.shadow) ?? inner[0];
-  if (!src) return { borderWidth: 3, borderColor: "#ffffff", shadow: 35 };
-  return { ...(src.borderWidth ? { borderWidth: src.borderWidth, borderColor: src.borderColor ?? "#ffffff" } : {}), ...(src.shadow ? { shadow: src.shadow } : {}) };
-}
 
 // A page laid out again for these photos: the library template that crops them least, inside the
 // print-safe area, with the page's frame finish. Everything that isn't a photo (text, shapes,

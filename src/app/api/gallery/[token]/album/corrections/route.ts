@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { correctedPageNumbers, parseCorrectionPages } from "@/lib/albumCorrections";
+import { clientChangedPages } from "@/lib/albumClientEdit";
 import { sendPushToPhotographer } from "@/lib/push";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
@@ -46,10 +47,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   const { data: spreads } = await supabase
     .from("gallery_album_spreads")
-    .select("id")
+    .select("id, client_edited_at")
     .eq("album_id", album.id)
     .order("sort_order", { ascending: true })
-    .returns<{ id: string }[]>();
+    .returns<{ id: string; client_edited_at: string | null }[]>();
   const spreadOrder = (spreads ?? []).map((s) => s.id);
   const pages = parseCorrectionPages(body, spreadOrder);
   if (!pages) return NextResponse.json({ error: "בקשה לא חוקית" }, { status: 400 });
@@ -74,13 +75,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   }
 
   const pageNumbers = correctedPageNumbers(pages, spreadOrder);
-  after(() => notifyPhotographer(gallery, row.id, pageNumbers).catch((e) => console.error("[album/corrections] notify failed", e)));
+  // Pages the client also changed themselves (lib/albumClientEdit.ts), which stay as they left them.
+  const changedPages = clientChangedPages(spreads ?? []);
+  after(() => notifyPhotographer(gallery, row.id, pageNumbers, changedPages).catch((e) => console.error("[album/corrections] notify failed", e)));
   return NextResponse.json({ ok: true });
 }
 
 // An email and a phone notification, in the photographer's language, with a short link to the marks.
 // Best-effort: the client's corrections are saved either way.
-async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pageNumbers: number[]) {
+async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pageNumbers: number[], changedPages: number[]) {
   const supabase = createServiceRoleClient();
   const [{ data: photographer }, { data: event }] = await Promise.all([
     supabase.from("photographers").select("name, email, ui_lang").eq("id", gallery.photographer_id).maybeSingle<{ name: string | null; email: string | null; ui_lang: string | null }>(),
@@ -109,7 +112,9 @@ async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pag
     text:
       `${t("שלום {name},", { name: photographer.name ?? "" })}\n\n` +
       `${t("{client} סימנו תיקונים בעיצוב האלבום.", { client: name })}\n` +
-      `${pagesLine}\n\n` +
+      `${pagesLine}\n` +
+      (changedPages.length ? `${t("הם גם שינו בעצמם את העיצוב בעמודים: {pages}.", { pages: changedPages.join(", ") })}\n` : "") +
+      "\n" +
       `${t("לצפייה בתיקונים:")}\n${link}`,
   });
 }

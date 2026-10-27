@@ -11,6 +11,7 @@ import { photographerLang } from "@/lib/clientLang";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 import { shortPageUrl, PAGE_LINK_TTL } from "@/lib/shortFileLinks";
+import { clientChangedPages } from "@/lib/albumClientEdit";
 
 export const runtime = "nodejs";
 
@@ -51,6 +52,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     return NextResponse.json({ error: "האלבום לא נמצא" }, { status: 404 });
   }
 
+  // The pages the client changed themselves before approving (lib/albumClientEdit.ts): they go to
+  // print as the client left them, so the photographer hears which.
+  const { data: pageRows } = await supabase
+    .from("gallery_album_spreads")
+    .select("client_edited_at")
+    .eq("album_id", album.id)
+    .order("sort_order", { ascending: true })
+    .returns<{ client_edited_at: string | null }[]>();
+  const changedPages = clientChangedPages(pageRows ?? []);
+
   const print = await autoSendApprovedAlbum(supabase, {
     galleryId: gallery.id,
     album,
@@ -69,19 +80,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       text: "הלקוח/ה אישרו את עיצוב האלבום",
       is_client_action: true,
     });
+    if (changedPages.length) {
+      await supabase.from("event_notifications").insert({
+        event_id: gallery.event_id,
+        text: `הלקוח/ה שינו בעצמם את העיצוב בעמודים ${changedPages.join(", ")} לפני האישור`,
+        is_client_action: true,
+      });
+    }
     await markAlbumApprovalStageDone(supabase, gallery.event_id).catch((e) => console.error("[album approve] stage", e));
     const printLine = autoPrintLogLine(print);
     if (printLine) await supabase.from("event_notifications").insert({ event_id: gallery.event_id, text: printLine });
     await notifyPhotographerOfAlbumActivity(supabase, gallery.event_id, "אישרו את עיצוב האלבום הסופי");
   }
 
-  await tellPhotographer(supabase, gallery, print).catch((e) => console.error("[album approve] notify failed", e));
+  await tellPhotographer(supabase, gallery, print, changedPages).catch((e) => console.error("[album approve] notify failed", e));
   return NextResponse.json({ ok: true });
 }
 
 // The photographer's email (approved, and what happened with the print house), and the phone
 // notification for a gallery without an event (an event's goes through notifyPhotographerOfAlbumActivity).
-async function tellPhotographer(supabase: ReturnType<typeof createServiceRoleClient>, gallery: GalleryRow, print: AutoPrintResult) {
+async function tellPhotographer(supabase: ReturnType<typeof createServiceRoleClient>, gallery: GalleryRow, print: AutoPrintResult, changedPages: number[]) {
   const [{ data: photographer }, { data: event }] = await Promise.all([
     supabase.from("photographers").select("name, email, ui_lang").eq("id", gallery.photographer_id).maybeSingle<{ name: string | null; email: string | null; ui_lang: string | null }>(),
     gallery.event_id
@@ -117,6 +135,7 @@ async function tellPhotographer(supabase: ReturnType<typeof createServiceRoleCli
     text:
       `${t("שלום {name},", { name: photographer.name ?? "" })}\n\n` +
       `${t("{client} אישרו את עיצוב האלבום בגלריה.", { client: name })}\n` +
+      (changedPages.length ? `${t("לפני האישור הם שינו בעצמם את העיצוב בעמודים: {pages}.", { pages: changedPages.join(", ") })}\n` : "") +
       (printText ? `${printText}\n` : "") +
       `\n${link}`,
   });

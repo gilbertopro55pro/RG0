@@ -1,4 +1,4 @@
-import type { AlbumFrame } from "@/lib/types";
+import type { AlbumElement, AlbumFrame } from "@/lib/types";
 
 // The print-safe margin is a hard constraint for anything placed AUTOMATICALLY (templates, the
 // multi-photo auto-layout) — every frame designed on a nominal 0-100 full-bleed canvas gets
@@ -24,4 +24,25 @@ export function fitFramesToSafeArea(frames: AlbumFrame[], marginInsetPct: { x: n
     widthPct: (f.widthPct / 100) * safeWidth,
     heightPct: (f.heightPct / 100) * safeHeight,
   }));
+}
+
+// Auto album design: bleed elements (a full half-page photo, a full cover photo) run to the page
+// edge on purpose, so they're left as laid out; everything else is pulled into the safe margin.
+export function fitAutoElements(elements: AlbumElement[], inset: { x: number; y: number } | null, bleedIds: string[] = []): AlbumElement[] {
+  if (!inset) return elements;
+  const safeW = 100 - 2 * inset.x;
+  const safeH = 100 - 2 * inset.y;
+  if (safeW <= 0 || safeH <= 0) return elements;
+  const bleed = new Set(bleedIds);
+  return elements.map((el) =>
+    bleed.has(el.id)
+      ? el
+      : {
+          ...el,
+          xPct: inset.x + (el.xPct / 100) * safeW,
+          yPct: inset.y + (el.yPct / 100) * safeH,
+          widthPct: (el.widthPct / 100) * safeW,
+          ...(el.heightPct !== undefined ? { heightPct: (el.heightPct / 100) * safeH } : {}),
+        }
+  ) as AlbumElement[];
 }

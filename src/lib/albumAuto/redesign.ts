@@ -1,0 +1,149 @@
+import type { AlbumElement, AlbumFrame, AlbumPhotoElement } from "@/lib/types";
+import { fitAutoElements, fitFramesToSafeArea } from "@/lib/albumSafeArea";
+import { generateTemplateFrames } from "@/lib/albumTemplateBank";
+import { layoutSpread } from "./layouts";
+import { frameElements, rankTemplates, templatesForCount, type FrameFinish } from "./templateFill";
+import type { AutoStyleId, LayoutPhoto } from "./types";
+
+// "עיצוב מחדש" for one album page: the same photos in another design. Shared by the photographer's
+// album preview (GalleryManageView) and the client's album view (api/gallery/[token]/album/edit,
+// owner 2026-10-27), so both cycle through the same designs.
+
+export type Rect = { xPct: number; yPct: number; widthPct: number; heightPct: number };
+
+// The page's shape as the eye reads it: its frames relative to their bounding box (10% steps),
+// mirror images being the same design.
+export function designShape(rects: readonly Rect[]): string {
+  if (!rects.length) return "";
+  const key = (flip: boolean) => {
+    const xs = rects.map((r) => (flip ? 100 - r.xPct - r.widthPct : r.xPct));
+    const x0 = Math.min(...xs);
+    const x1 = Math.max(...rects.map((r, i) => xs[i] + r.widthPct));
+    const y0 = Math.min(...rects.map((r) => r.yPct));
+    const y1 = Math.max(...rects.map((r) => r.yPct + r.heightPct));
+    const nx = (v: number) => Math.round(((v - x0) / Math.max(1, x1 - x0)) * 10);
+    const ny = (v: number) => Math.round(((v - y0) / Math.max(1, y1 - y0)) * 10);
+    return rects.map((r, i) => `${nx(xs[i])}:${ny(r.yPct)}:${nx(xs[i] + r.widthPct)}:${ny(r.yPct + r.heightPct)}`).sort().join("|");
+  };
+  const a = key(false);
+  const b = key(true);
+  return a < b ? a : b;
+}
+
+const bleeds = (el: Rect) => el.xPct <= 0.5 || el.yPct <= 0.5 || el.xPct + el.widthPct >= 99.5 || el.yPct + el.heightPct >= 99.5;
+
+// The page keeps its look: the finish of its photos that don't run to the edge, including none at
+// all (modern's bare photos). Only a page with nothing but edge-to-edge photos gets a white frame and
+// a shadow.
+export function pageFinish(photoEls: readonly AlbumPhotoElement[]): FrameFinish {
+  const inner = photoEls.filter((el) => !bleeds(el));
+  const src = inner.find((el) => el.borderWidth || el.shadow) ?? inner[0];
+  if (!src) return { borderWidth: 3, borderColor: "#ffffff", shadow: 35 };
+  return { ...(src.borderWidth ? { borderWidth: src.borderWidth, borderColor: src.borderColor ?? "#ffffff" } : {}), ...(src.shadow ? { shadow: src.shadow } : {}) };
+}
+
+export type EngineLayout = { els: AlbumElement[]; photos: AlbumPhotoElement[] };
+
+// The auto engine's structurally different compositions for the album's style (edge-to-edge hero,
+// faded hero over a grid, half page, band...), each holding every photo. Computing all its variants
+// takes a moment (most on a phone), so the photographer's preview caches them per page.
+export function engineLayouts(p: {
+  style: AutoStyleId;
+  photos: LayoutPhoto[];
+  pageIndex: number;
+  widthCm: number;
+  heightCm: number;
+  inset: { x: number; y: number } | null;
+}): EngineLayout[] {
+  const out: EngineLayout[] = [];
+  for (let v = 0; v < 14; v++) {
+    const res = layoutSpread({ style: p.style, photos: p.photos, section: "event", spreadIndex: p.pageIndex, widthCm: p.widthCm, heightCm: p.heightCm, variant: v });
+    const els = fitAutoElements(res.elements, p.inset, res.bleedIds ?? []).map((el) => ({ ...el, id: `${el.id}-rd${v}` })) as AlbumElement[];
+    const photos = els.filter((el): el is AlbumPhotoElement => el.type === "photo");
+    if (photos.length === p.photos.length) out.push({ els, photos });
+  }
+  return out;
+}
+
+export type RedesignDesign = { rects: Rect[]; build: () => AlbumElement[] };
+
+// Candidate designs, alternating (owner, 2026-09-30: "more varied and creative, never repeating"):
+// the engine's compositions and the library's templates (framed grids, the photographer's own
+// first). The library alone was all grids, so every click read the same. With few photos the bank's
+// 50 per tab hold only a handful of different shapes, so extra generated templates join them.
+export function redesignDesigns(p: {
+  engine: EngineLayout[];
+  photos: LayoutPhoto[];
+  userTemplates: AlbumFrame[][];
+  widthCm: number;
+  heightCm: number;
+  inset: { x: number; y: number } | null;
+  elements: readonly AlbumElement[];
+  idPrefix: string;
+}): RedesignDesign[] {
+  const n = p.photos.length;
+  const extra = Array.from({ length: 120 }, (_, k) => generateTemplateFrames(n, 104729 + k * 7919));
+  const templates = rankTemplates([...templatesForCount(n, p.userTemplates), ...extra], p.photos, p.widthCm, p.heightCm);
+  const finish = pageFinish(p.elements.filter((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId));
+  const keptNonPhoto = p.elements.filter((el) => el.type !== "photo");
+  const engine: RedesignDesign[] = p.engine.map(({ els, photos }) => ({
+    rects: photos,
+    // The engine's own page dressing (page colour, tape, lines) replaces the page's previous auto
+    // dressing; anything the photographer added (text, ornaments) stays.
+    build: () => [
+      ...els.filter((el) => el.type === "shape"),
+      ...photos,
+      ...keptNonPhoto.filter((el) => !(el.type === "shape" && el.id.startsWith("auto-"))),
+      ...els.filter((el) => el.type !== "shape" && el.type !== "photo"),
+    ],
+  }));
+  const library: RedesignDesign[] = templates.map((frames) => {
+    const fitted = fitFramesToSafeArea(frames, p.inset);
+    return {
+      rects: fitted,
+      build: () => {
+        const placed = frameElements(fitted, p.photos, p.widthCm, p.heightCm, p.idPrefix, finish);
+        return [...keptNonPhoto.filter((el) => el.type === "shape"), ...placed, ...keptNonPhoto.filter((el) => el.type !== "shape")];
+      },
+    };
+  });
+  const designs: RedesignDesign[] = [];
+  for (let i = 0; i < Math.max(engine.length, library.length); i++) {
+    if (engine[i]) designs.push(engine[i]);
+    if (library[i]) designs.push(library[i]);
+  }
+  return designs;
+}
+
+// The next design to show: one not seen on this page yet, and not the shape of a neighbouring page
+// (those come last, so two pages side by side don't look alike). When every design was seen, the
+// round starts again (anything but the current page). `count` is where the previous click stopped.
+export function chooseRedesign(
+  designs: readonly RedesignDesign[],
+  p: { current: string; seen: ReadonlySet<string>; neighbours: ReadonlySet<string>; count: number }
+): { design: RedesignDesign | null; count: number; seen: Set<string> } {
+  const seen = new Set(p.seen);
+  seen.add(p.current);
+  let count = p.count;
+  let chosen: RedesignDesign | null = null;
+  let nearNeighbour: RedesignDesign | null = null;
+  let fallback: RedesignDesign | null = null;
+  for (let attempt = 0; attempt < designs.length && !chosen; attempt++) {
+    count++;
+    const d = designs[count % designs.length];
+    const shape = designShape(d.rects);
+    if (seen.has(shape)) {
+      if (!fallback && shape !== p.current) fallback = d;
+    } else if (p.neighbours.has(shape)) {
+      if (!nearNeighbour) nearNeighbour = d;
+    } else chosen = d;
+  }
+  if (!chosen && nearNeighbour) chosen = nearNeighbour;
+  if (!chosen) {
+    chosen = fallback;
+    seen.clear();
+    seen.add(p.current);
+  }
+  if (chosen) seen.add(designShape(chosen.rects));
+  return { design: chosen, count, seen };
+}
