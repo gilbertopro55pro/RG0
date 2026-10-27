@@ -292,11 +292,11 @@ export default function LandingPage({ lang = "he" }: { lang?: Lang }) {
               ))}
             </ul>
 
-            {/* Behind the scenes: what the photographer writes in settings › אוטומציה. */}
+            {/* Behind the scenes: what the photographer writes in settings › התראות ואוטומציה. */}
             <div className="rounded-[14px] bg-[var(--l-navy-2)] border border-[var(--l-navy-line)] p-5 lg:p-6 flex flex-col gap-3.5">
               <div className="flex items-center justify-between gap-3">
                 <span className="font-display text-lg font-bold text-white">{t("מאחורי הקלעים: שאלות ותשובות משלכם")}</span>
-                <span className="text-xs text-[var(--l-on-navy-mute)] whitespace-nowrap">{t("הגדרות › אוטומציה")}</span>
+                <span className="text-xs text-[var(--l-on-navy-mute)] whitespace-nowrap">{t("הגדרות › התראות ואוטומציה")}</span>
               </div>
               <p className="m-0 text-[15px] leading-relaxed text-[var(--l-on-navy-soft)]">
                 {t("כותבים לעוזר את התשובות שלכם, והוא עונה לפיהן במקום להמציא. אפשר גם להוסיף שאלה משלכם שהוא ישאל כל לקוח.")}

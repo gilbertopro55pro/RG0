@@ -131,6 +131,11 @@ import PhotoDeleteConfirm from "@/components/galleryManage/PhotoDeleteConfirm";
 import DeleteSelectedConfirm from "@/components/galleryManage/DeleteSelectedConfirm";
 import ScrollTopButton from "@/components/galleryManage/ScrollTopButton";
 import AlbumQualityCheck, { QualityHighlight, QualityPageBadge, useAlbumQualityCheck } from "@/components/galleryManage/AlbumQualityCheck";
+import AlbumSelectionBar from "@/components/galleryManage/AlbumSelectionBar";
+import AlbumSelectionConfirm from "@/components/galleryManage/AlbumSelectionConfirm";
+import MarkedFrameDots from "@/components/galleryManage/MarkedFrameDots";
+import { useAlbumSelection } from "@/components/galleryManage/useAlbumSelection";
+import { albumPoolIds, type AlbumSelectionFields, type SpreadMarkFields } from "@/lib/albumSelection";
 
 // The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
 const ReelBuilder = dynamic(() => import("@/components/ReelBuilder"), { ssr: false });
@@ -181,6 +186,14 @@ export default function GalleryManageView({
   const directoryInputRef = useRef<HTMLInputElement>(null);
   const [gallery, setGallery] = useState(initialGallery);
   const [photos, setPhotos] = useState(initialPhotos);
+  // What the album tools offer (owner, 2026-10-27; lib/albumSelection.ts): the final selection made
+  // in the favorites view, or the favorites. The tools read it as `is_favorite`.
+  const albumSelection = (gallery as GalleryRow & AlbumSelectionFields).album_selection ?? null;
+  const albumToolPhotos = useMemo(() => {
+    if (!albumSelection) return photos;
+    const pool = new Set(albumPoolIds(photos, albumSelection));
+    return photos.map((p) => (p.is_favorite === pool.has(p.id) ? p : { ...p, is_favorite: pool.has(p.id) }));
+  }, [photos, albumSelection]);
   const [folders, setFolders] = useState(initialFolders);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [addingFolder, setAddingFolder] = useState(false);
@@ -947,6 +960,19 @@ export default function GalleryManageView({
     setAlbumLoading(false);
   };
 
+  // Narrowing the favorites down for the album, inside the favorites view (owner, 2026-10-27;
+  // galleryManage/useAlbumSelection). Confirming it can change the album, which then reloads here.
+  const albumSel = useAlbumSelection({
+    gallery: gallery as GalleryRow & AlbumSelectionFields,
+    photos,
+    onGalleryPatch: (patch) => setGallery((g) => ({ ...g, ...patch })),
+    onAlbumChanged: () => {
+      if (album || albumManageOpen) void loadAlbum();
+    },
+    t,
+  });
+  const albumFilterOn = albumSel.filtering && showFavoritesOnly;
+
   const openAlbumManage = async () => {
     // Running inside the desktop app's embedded browser view (see photographer-flow-desktop's
     // BrowserView preload script, which sets this global) — hand off to the native album editor
@@ -1038,7 +1064,7 @@ export default function GalleryManageView({
     // runs out, any remaining frames are left as empty placeholders exactly like before, rather
     // than duplicating a photo or guessing: a gallery with fewer favorites than frames still gets a
     // real, honest start.
-    const favoritePool = photos.filter((p) => p.is_favorite);
+    const favoritePool = albumToolPhotos.filter((p) => p.is_favorite);
     const photoPool = favoritePool.length > 0 ? favoritePool : photos;
     let poolIndex = 0;
     const rows = pagesFrames.map((rawFrames, i) => {
@@ -1218,7 +1244,7 @@ export default function GalleryManageView({
       .select()
       .single<GalleryAlbumRow>();
     if (albumErr || !newAlbum) throw new Error(albumErr?.message ?? "album");
-    const favoritePool = photos.filter((p) => p.is_favorite);
+    const favoritePool = albumToolPhotos.filter((p) => p.is_favorite);
     const fallbackPhotoId = (favoritePool.length > 0 ? favoritePool : photos)[0]?.id;
     const firstPhotoId = (elements: AlbumElement[]) =>
       elements.find((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId)?.photoId ?? fallbackPhotoId;
@@ -1830,7 +1856,8 @@ export default function GalleryManageView({
       background_opacity: background.opacity,
       background_zoom: background.zoom,
     };
-    const patch = mode === "custom" ? { elements, layout: "custom" as const, ...backgroundPatch } : { elements, ...backgroundPatch };
+    // Saving the page in the editor is the photographer having seen it: its red dots go (lib/albumSelection.ts).
+    const patch = mode === "custom" ? { elements, layout: "custom" as const, ...backgroundPatch, marked_frames: [] } : { elements, ...backgroundPatch, marked_frames: [] };
     setAlbumSpreads((prev) => prev.map((s) => (s.id === spreadId ? { ...s, ...patch } : s)));
     await supabase.from("gallery_album_spreads").update(patch).eq("id", spreadId);
     setCanvasEditorTarget(null);
@@ -2026,6 +2053,11 @@ export default function GalleryManageView({
       return;
     }
     if (activeTouchesRef.current >= 2) return;
+
+    if (albumFilterOn) {
+      albumSel.toggle(photo.id);
+      return;
+    }
 
     if (selectedIds.size > 0) {
       toggleSelect(photo.id);
@@ -2907,6 +2939,7 @@ export default function GalleryManageView({
   const filteredPhotos = photos
     .filter((p) => (showFavoritesOnly ? p.is_favorite : true))
     .filter((p) => (showFavoritesOnly && activeLabelFilter ? p.custom_label === activeLabelFilter : true))
+    .filter((p) => (!albumFilterOn || albumSel.view === "all" ? true : albumSel.picks.has(p.id) === (albumSel.view === "picked")))
     .filter((p) => (showRejectedOnly ? p.culling_status === "rejected" : true))
     .filter((p) => (activeFolderId ? p.folder_id === activeFolderId : true))
     .filter((p) => (activeFaceCluster ? activeFaceCluster.photoIds.has(p.id) : true));
@@ -3182,7 +3215,7 @@ export default function GalleryManageView({
               className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
               style={photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
             />
-            <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} />
+            <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} albumPick={albumFilterOn ? albumSel.picks.has(photo.id) : undefined} />
           </button>
           );
         })}
@@ -3227,7 +3260,7 @@ export default function GalleryManageView({
                       }
                 }
               />
-              <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} />
+              <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} quiet={premiumTheme} albumPick={albumFilterOn ? albumSel.picks.has(photo.id) : undefined} />
             </button>
           );
         })}
@@ -3267,7 +3300,7 @@ export default function GalleryManageView({
                 className={knownShape ? "absolute inset-0 w-full h-full object-cover transition-opacity duration-300" : "w-full h-auto block"}
                 style={photo.id === transitionPhotoId && lightboxIndex !== i ? { viewTransitionName: `mgr-photo-${photo.id}` } : undefined}
               />
-              <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} offset={framed ? 8 : 4} quiet={premiumTheme} />
+              <MgrPhotoOverlays photo={photo} isCover={gallery.cover_photo_id === photo.id} selectedIds={selectedIds} onDownload={downloadPhoto} onSetCover={setCoverPhoto} offset={framed ? 8 : 4} quiet={premiumTheme} albumPick={albumFilterOn ? albumSel.picks.has(photo.id) : undefined} />
             </button>
           );
         })}
@@ -3649,6 +3682,7 @@ export default function GalleryManageView({
                       if (v) setActiveLabelFilter(null);
                       return !v;
                     });
+                    if (showFavoritesOnly && albumSel.filtering) albumSel.stop();
                     // Switching the view is exactly the moment a photographer wants to trust
                     // what they're about to see — refresh in the background instead of making
                     // them remember to hit the separate manual refresh button first.
@@ -3705,6 +3739,38 @@ export default function GalleryManageView({
           </div>
           {!premiumTheme && photos.length > 0 && renderManagerIcons(false)}
         </div>
+      )}
+
+      {showFavoritesOnly && favoriteCount > 0 && (
+        <AlbumSelectionBar
+          filtering={albumFilterOn}
+          pickedCount={albumSel.picks.size}
+          totalCount={favoriteCount}
+          confirmedCount={albumSelection ? albumSelection.length : null}
+          view={albumSel.view}
+          onView={albumSel.setView}
+          onStart={albumSel.start}
+          onStop={albumSel.stop}
+          onPickAll={() => albumSel.pickAll(filteredPhotos.map((p) => p.id))}
+          onClearAll={() => albumSel.clearAll(filteredPhotos.map((p) => p.id))}
+          onConfirm={() => void albumSel.confirm()}
+          onClearSelection={() => {
+            if (window.confirm(t("לחזור למועדפות? כלי עיצוב האלבום יציג שוב את כל המועדפות. האלבום עצמו לא משתנה."))) void albumSel.clearSelection();
+          }}
+          busy={albumSel.busy}
+          notice={albumSel.notice}
+          onDismissNotice={albumSel.dismissNotice}
+        />
+      )}
+      {albumSel.pending && (
+        <AlbumSelectionConfirm
+          removedCount={albumSel.pending.removed.length}
+          addedCount={albumSel.pending.added.length}
+          albumShared={albumSel.pending.album.status !== "draft"}
+          busy={albumSel.busy}
+          onApply={(options) => void albumSel.apply(options)}
+          onCancel={albumSel.cancelPending}
+        />
       )}
 
       {showFavoritesOnly && usedLabels.length > 0 && (
@@ -4994,7 +5060,7 @@ export default function GalleryManageView({
                   galleryTitle={gallery.title}
                   eventType={autoDesignEventType}
                   eventDate={eventDate || gallery.shoot_date}
-                  photos={photos}
+                  photos={albumToolPhotos}
                   folders={folders}
                   defaultSize={albumSizeDraft}
                   sizePresets={ALBUM_SIZE_PRESETS}
@@ -5442,6 +5508,7 @@ export default function GalleryManageView({
                               if (!photoSwapMode) setCanvasEditorTarget({ spreadId: spread.id, mode: "custom" });
                             }}
                           />
+                          <MarkedFrameDots elements={spread.elements} marked={(spread as GalleryAlbumSpreadRow & SpreadMarkFields).marked_frames} size={8} />
                           {photographerEmail === ADMIN_EMAIL && albumQuality.open && (
                             <>
                               <QualityPageBadge counts={albumQuality.byPage.get(spread.id)} />
@@ -5591,7 +5658,9 @@ export default function GalleryManageView({
                 height_cm: spread.height_cm ?? album.height_cm,
                 safe_margin_cm: album.safe_margin_cm,
               }}
-              photos={photos}
+              photos={albumToolPhotos}
+              poolIsSelection={!!albumSelection}
+              markedFrames={(spread as GalleryAlbumSpreadRow & SpreadMarkFields).marked_frames ?? []}
               folders={folders}
               photo1={photo1}
               photo2={photo2}
