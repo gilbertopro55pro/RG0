@@ -98,9 +98,8 @@ export type ClientEditRequest =
   | { action: "swap"; a: { spreadId: string; elId: string }; b: { spreadId: string; elId: string }; redesign: boolean }
   | { action: "redesign"; spreadId: string; count: number; seen: string[] }
   | { action: "back"; spreadId: string }
-  // One page back to how the photographer sent it; `confirm` once the client agreed that pages it
-  // swapped photos with go back too.
-  | { action: "original"; spreadId: string; confirm: boolean }
+  // One page back to how the photographer sent it, while it holds the photos it was sent with.
+  | { action: "original"; spreadId: string }
   | { action: "reset" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -132,12 +131,22 @@ export function parseClientEditRequest(body: unknown): ClientEditRequest | null 
     case "back":
       return isId(o.spreadId) ? { action: "back", spreadId: o.spreadId } : null;
     case "original":
-      return isId(o.spreadId) ? { action: "original", spreadId: o.spreadId, confirm: o.confirm === true } : null;
+      return isId(o.spreadId) ? { action: "original", spreadId: o.spreadId } : null;
     case "reset":
       return { action: "reset" };
     default:
       return null;
   }
+}
+
+// Whether "לעיצוב המקורי" is offered on a page (owner, 2026-10-27): the client changed it, and it
+// still holds the photos it was sent with (redesigns, swaps within the page). A page that swapped
+// photos with another page doesn't: going back alone would show a photo twice and lose another.
+export function canReturnToOriginal(original: Pick<PageState, "elements"> | null | undefined, elements: readonly AlbumElement[] | null | undefined): boolean {
+  if (!original) return false;
+  const a = pagePhotoIds(original.elements);
+  const b = pagePhotoIds(elements ?? []);
+  return a.length === b.length && a.every((id, i) => id === b[i]);
 }
 
 // The page numbers (1-based, in the album's order) the client changed, for the photographer's

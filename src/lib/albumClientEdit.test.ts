@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CLIENT_HISTORY_MAX,
+  canReturnToOriginal,
   changedFrameIds,
   cropOf,
   fitsFrame,
@@ -105,6 +106,15 @@ describe("pagePhotoIds", () => {
   });
 });
 
+describe("canReturnToOriginal", () => {
+  const sent = { elements: [photo("a", "p1"), photo("b", "p2")] as AlbumElement[] };
+  it("only for a changed page that still holds the photos it was sent with", () => {
+    expect(canReturnToOriginal(null, sent.elements)).toBe(false);
+    expect(canReturnToOriginal(sent, [photo("x", "p2", landscapeFrame), photo("y", "p1")])).toBe(true);
+    expect(canReturnToOriginal(sent, [photo("a", "p1"), photo("b", "p9")])).toBe(false);
+  });
+});
+
 describe("parseClientEditRequest", () => {
   const id1 = "11111111-1111-4111-8111-111111111111";
   const id2 = "22222222-2222-4222-8222-222222222222";
@@ -135,8 +145,7 @@ describe("parseClientEditRequest", () => {
 
   it("reads back, original and reset", () => {
     expect(parseClientEditRequest({ action: "back", spreadId: id1 })).toEqual({ action: "back", spreadId: id1 });
-    expect(parseClientEditRequest({ action: "original", spreadId: id1 })).toEqual({ action: "original", spreadId: id1, confirm: false });
-    expect(parseClientEditRequest({ action: "original", spreadId: id1, confirm: true })).toEqual({ action: "original", spreadId: id1, confirm: true });
+    expect(parseClientEditRequest({ action: "original", spreadId: id1 })).toEqual({ action: "original", spreadId: id1 });
     expect(parseClientEditRequest({ action: "original" })).toBeNull();
     expect(parseClientEditRequest({ action: "reset" })).toEqual({ action: "reset" });
   });
