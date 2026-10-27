@@ -1,6 +1,6 @@
 // The client's album view (GalleryAlbumProofing) shows one page at a time. To make the next page
 // appear at once, the photos of the pages around the one on screen load ahead, in the background:
-// the next two, the one before, and the last page, where "מעבר לסוף העיצוב" jumps. Not the whole
+// the next two, the one before, and the last page, where "לעמוד האחרון" jumps. Not the whole
 // album: 20 pages of photos is too much on a phone's data plan.
 
 type PreloadSpread = {

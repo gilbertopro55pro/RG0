@@ -5,9 +5,11 @@ import {
   changedFrameIds,
   cropOf,
   fitsFrame,
+  pageList,
   pagePhotoIds,
   parseClientEditRequest,
   pushHistory,
+  resetPagesLine,
   samePage,
   swapRedesignPages,
 } from "@/lib/albumClientEdit";
@@ -112,6 +114,22 @@ describe("canReturnToOriginal", () => {
     expect(canReturnToOriginal(null, sent.elements)).toBe(false);
     expect(canReturnToOriginal(sent, [photo("x", "p2", landscapeFrame), photo("y", "p1")])).toBe(true);
     expect(canReturnToOriginal(sent, [photo("a", "p1"), photo("b", "p9")])).toBe(false);
+  });
+});
+
+// Page 1 is the album's cover (owner, 2026-10-27).
+describe("naming page 1 the cover", () => {
+  const t = (key: string, vars?: Record<string, string | number>) => key.replace(/\{(\w+)\}/g, (_, k) => String(vars?.[k] ?? ""));
+  it("lists it by name among the page numbers", () => {
+    expect(pageList([1, 3, 7], "הכריכה")).toBe("הכריכה, 3, 7");
+    expect(pageList([2, 3], "הכריכה")).toBe("2, 3");
+  });
+  it("says which pages undo-all returns, with the right grammar", () => {
+    expect(resetPagesLine([1], t)).toBe("הכריכה תחזור בדיוק לעיצוב שהצלם שלח.");
+    expect(resetPagesLine([1, 2], t)).toBe("הכריכה ועמוד 2 יחזרו בדיוק לעיצוב שהצלם שלח.");
+    expect(resetPagesLine([1, 2, 3], t)).toBe("הכריכה ועמודים 2, 3 יחזרו בדיוק לעיצוב שהצלם שלח.");
+    expect(resetPagesLine([4], t)).toBe("עמוד 4 יחזור בדיוק לעיצוב שהצלם שלח.");
+    expect(resetPagesLine([2, 5], t)).toBe("עמודים 2, 5 יחזרו בדיוק לעיצוב שהצלם שלח.");
   });
 });
 

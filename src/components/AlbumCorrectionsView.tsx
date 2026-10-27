@@ -68,7 +68,7 @@ export default function AlbumCorrectionsView({
       <div className="space-y-6">
         {pages.map((p) => (
           <section key={p.spread.id} className="rounded-2xl p-3 sm:p-4 bg-card border border-line shadow-card">
-            <h2 className="text-sm font-semibold mb-2">{t("עמוד {n}", { n: p.number })}</h2>
+            <h2 className="text-sm font-semibold mb-2">{p.number === 1 ? t("כריכה") : t("עמוד {n}", { n: p.number })}</h2>
             <div className="relative">
               <AlbumSpreadThumbnail spread={p.spread} album={p.size} photos={photos} customOrnaments={customOrnaments} exactText />
               <AlbumCorrectionMarks marks={p.marks} pageAspect={p.size.width_cm / p.size.height_cm} className="z-10" />

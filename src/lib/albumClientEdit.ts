@@ -1,3 +1,4 @@
+import type { TFn } from "@/i18n/translate";
 import type { AlbumElement, AlbumPhotoElement } from "@/lib/types";
 
 // The client changes the album design in the gallery's album view (owner, 2026-10-27): a tap on a
@@ -153,4 +154,24 @@ export function canReturnToOriginal(original: Pick<PageState, "elements"> | null
 // email and the event's log when the client approves or sends corrections.
 export function clientChangedPages(spreads: readonly { client_edited_at?: string | null }[]): number[] {
   return spreads.flatMap((sp, i) => (sp.client_edited_at ? [i + 1] : []));
+}
+
+// Page 1 of an album is its cover (owner, 2026-10-27), so wherever pages are listed it's named so:
+// "הכריכה, 3, 7".
+export function pageList(numbers: readonly number[], cover: string): string {
+  return numbers.map((n) => (n === 1 ? cover : String(n))).join(", ");
+}
+
+// The pages "ביטול כל השינויים שלי" returns, as a sentence.
+export function resetPagesLine(numbers: readonly number[], t: TFn): string {
+  const others = numbers.filter((n) => n !== 1);
+  if (!numbers.includes(1)) {
+    return others.length === 1
+      ? t("עמוד {n} יחזור בדיוק לעיצוב שהצלם שלח.", { n: others[0] })
+      : t("עמודים {pages} יחזרו בדיוק לעיצוב שהצלם שלח.", { pages: others.join(", ") });
+  }
+  if (!others.length) return t("הכריכה תחזור בדיוק לעיצוב שהצלם שלח.");
+  return others.length === 1
+    ? t("הכריכה ועמוד {n} יחזרו בדיוק לעיצוב שהצלם שלח.", { n: others[0] })
+    : t("הכריכה ועמודים {pages} יחזרו בדיוק לעיצוב שהצלם שלח.", { pages: others.join(", ") });
 }

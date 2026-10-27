@@ -17,7 +17,7 @@ import AlbumCorrectionMarks from "@/components/AlbumCorrectionMarks";
 import { pagesToPreload, spreadImageUrls } from "@/lib/albumProofingPreload";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { fitPhotoInFrame } from "@/lib/albumAuto/swapPhotos";
-import { swapRedesignPages } from "@/lib/albumClientEdit";
+import { resetPagesLine, swapRedesignPages } from "@/lib/albumClientEdit";
 import type { AlbumElement } from "@/lib/types";
 import {
   CORRECTION_COLORS,
@@ -808,7 +808,13 @@ export default function GalleryAlbumProofing({
     if (ok) {
       applyServerPages(reply);
       const redesigned = Object.keys(reply.cycles ?? {}).map(pageNumber).sort((x, y) => x - y);
-      if (redesigned.length > 1) setNotice(t("עמודים {pages} עוצבו מחדש", { pages: redesigned.join(", ") }));
+      if (redesigned.length > 1) {
+        // Page 1 is the album's cover (owner, 2026-10-27): the client reads it named so.
+        const others = redesigned.filter((n) => n !== 1);
+        setNotice(
+          redesigned.includes(1) ? t("הכריכה ועמוד {n} עוצבו מחדש", { n: others.join(", ") }) : t("עמודים {pages} עוצבו מחדש", { pages: redesigned.join(", ") })
+        );
+      }
       return;
     }
     // Back as they were; then what the server says decides.
@@ -1075,7 +1081,7 @@ export default function GalleryAlbumProofing({
                   key={p.id}
                   data-page={i}
                   onClick={() => goTo(i)}
-                  aria-label={t("עמוד {n}", { n: i + 1 })}
+                  aria-label={i === 0 ? t("כריכה") : t("עמוד {n}", { n: i + 1 })}
                   aria-current={current ? "page" : undefined}
                   className={`relative shrink-0 overflow-hidden bg-neutral-800 transition-opacity ${current ? "opacity-100" : "opacity-60 hover:opacity-90"}`}
                   style={{
@@ -1088,7 +1094,7 @@ export default function GalleryAlbumProofing({
                     <ProofPage spread={p} photoAspects={photoAspects} thumb selectedElId={holdsPick ? selected?.elId : null} />
                   </span>
                   <span dir="ltr" className="absolute bottom-0.5 start-0.5 rounded px-1 text-[10px] font-semibold leading-4 bg-black/60 text-white font-data">
-                    {i + 1}
+                    {i === 0 ? t("כריכה") : i + 1}
                   </span>
                   {hasNote(p.id) && <span className="absolute top-1 end-1 h-2 w-2 rounded-full bg-amber-400 ring-1 ring-black/40" aria-hidden="true" />}
                 </button>
@@ -1278,7 +1284,7 @@ export default function GalleryAlbumProofing({
                   )}
                 </div>
                 {editable && !selected && (
-                  <p className="text-xs text-ink-soft mt-2 leading-snug phone-landscape:hidden">{t("להחלפת מקום בין תמונות: לוחצים על תמונה, ואז על תמונה אחרת בעמוד הזה או בעמוד אחר.")}</p>
+                  <p className="text-xs text-ink-soft mt-2 leading-snug phone-landscape:hidden">{t("רוצים להחליף בין תמונות? לוחצים על תמונה אחת ואז על השנייה, גם בעמוד אחר.")}</p>
                 )}
               </div>
             )}
@@ -1311,7 +1317,7 @@ export default function GalleryAlbumProofing({
                 <div className="text-center">
                   <p className="text-sm text-ink-soft mb-2">{t("עברו על כל העמודים. בסוף העיצוב אפשר לאשר אותו או לבקש תיקונים.")}</p>
                   <button onClick={() => goTo(lastIndex)} className="text-sm font-semibold underline text-ink">
-                    {t("מעבר לסוף העיצוב")}
+                    {t("לעמוד האחרון")}
                   </button>
                 </div>
               ))}
@@ -1349,14 +1355,28 @@ export default function GalleryAlbumProofing({
       {confirmSwap && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmSwap(null)}>
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-white" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">{confirmSwap.pages.length > 1 ? t("העיצוב של שני העמודים ישתנה") : t("העיצוב של העמוד ישתנה")}</h2>
-            <p className="text-sm text-ink-soft mb-2">
-              {confirmSwap.pages.length > 1
-                ? t("התמונה לא מתאימה לצורה של המסגרת (לאורך במקום לרוחב, או להפך), ולכן עמודים {pages} יעוצבו מחדש.", {
-                    pages: confirmSwap.pages.map(pageNumber).sort((x, y) => x - y).join(", "),
-                  })
-                : t("התמונה לא מתאימה לצורה של המסגרת (לאורך במקום לרוחב, או להפך), ולכן העמוד יעוצב מחדש.")}
-            </p>
+            {(() => {
+              // Page 1 is the album's cover (owner, 2026-10-27).
+              const nums = confirmSwap.pages.map(pageNumber).sort((x, y) => x - y);
+              const cover = nums.includes(1);
+              const others = nums.filter((n) => n !== 1);
+              return (
+                <>
+                  <h2 className="text-lg font-bold mb-2 font-display">
+                    {nums.length > 1 ? t("העיצוב של שני העמודים ישתנה") : cover ? t("העיצוב של הכריכה ישתנה") : t("העיצוב של העמוד ישתנה")}
+                  </h2>
+                  <p className="text-sm text-ink-soft mb-2">
+                    {nums.length > 1
+                      ? cover
+                        ? t("התמונה לא מתאימה לצורה של המסגרת (לאורך במקום לרוחב, או להפך), ולכן הכריכה ועמוד {n} יעוצבו מחדש.", { n: others.join(", ") })
+                        : t("התמונה לא מתאימה לצורה של המסגרת (לאורך במקום לרוחב, או להפך), ולכן עמודים {pages} יעוצבו מחדש.", { pages: nums.join(", ") })
+                      : cover
+                        ? t("התמונה לא מתאימה לצורה של המסגרת (לאורך במקום לרוחב, או להפך), ולכן הכריכה תעוצב מחדש.")
+                        : t("התמונה לא מתאימה לצורה של המסגרת (לאורך במקום לרוחב, או להפך), ולכן העמוד יעוצב מחדש.")}
+                  </p>
+                </>
+              );
+            })()}
             <p className="text-sm text-ink-soft mb-5">{t("אחר כך אפשר ללחוץ \"עיצוב מחדש\" כדי לראות עיצוב אחר, ולחזור עד 3 עיצובים אחורה.")}</p>
             <div className="flex gap-2">
               <button onClick={() => void runSwap(confirmSwap.a, confirmSwap.b, true)} className="flex-1 rounded-lg py-3 text-sm font-semibold text-white" style={{ background: SWAP_PURPLE }}>
@@ -1377,11 +1397,7 @@ export default function GalleryAlbumProofing({
                 undone too, that it can't be undone (the "back" history goes with it), and that notes stay. */}
             <h2 className="text-lg font-bold mb-3 font-display">{t("לחזור לעיצוב שהצלם שלח?")}</h2>
             <ul className="list-disc ps-5 space-y-1.5 text-sm text-ink-soft mb-5">
-              <li>
-                {editedPages === 1
-                  ? t("עמוד {n} יחזור בדיוק לעיצוב שהצלם שלח.", { n: editedNumbers[0] })
-                  : t("עמודים {pages} יחזרו בדיוק לעיצוב שהצלם שלח.", { pages: editedNumbers.join(", ") })}
-              </li>
+              <li>{resetPagesLine(editedNumbers, t)}</li>
               <li>{t("כל ההחלפות והעיצובים שבחרתם יבוטלו, ותמונות שהעברתם בין עמודים יחזרו למקום שלהן.")}</li>
               <li className="font-semibold text-ink">{t("אי אפשר לשחזר את השינויים אחרי הביטול.")}</li>
               <li>{t("ההערות שכתבתם לעמודים נשארות.")}</li>

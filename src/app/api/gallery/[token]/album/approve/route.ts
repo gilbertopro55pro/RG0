@@ -11,7 +11,7 @@ import { photographerLang } from "@/lib/clientLang";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 import { shortPageUrl, PAGE_LINK_TTL } from "@/lib/shortFileLinks";
-import { clientChangedPages } from "@/lib/albumClientEdit";
+import { clientChangedPages, pageList } from "@/lib/albumClientEdit";
 
 export const runtime = "nodejs";
 
@@ -83,7 +83,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     if (changedPages.length) {
       await supabase.from("event_notifications").insert({
         event_id: gallery.event_id,
-        text: `הלקוח/ה שינו בעצמם את העיצוב בעמודים ${changedPages.join(", ")} לפני האישור`,
+        text: `הלקוח/ה שינו בעצמם את העיצוב לפני האישור, בעמודים: ${pageList(changedPages, "הכריכה")}`,
         is_client_action: true,
       });
     }
@@ -135,7 +135,7 @@ async function tellPhotographer(supabase: ReturnType<typeof createServiceRoleCli
     text:
       `${t("שלום {name},", { name: photographer.name ?? "" })}\n\n` +
       `${t("{client} אישרו את עיצוב האלבום בגלריה.", { client: name })}\n` +
-      (changedPages.length ? `${t("לפני האישור הם שינו בעצמם את העיצוב בעמודים: {pages}.", { pages: changedPages.join(", ") })}\n` : "") +
+      (changedPages.length ? `${t("לפני האישור הם שינו בעצמם את העיצוב בעמודים: {pages}.", { pages: pageList(changedPages, t("הכריכה")) })}\n` : "") +
       (printText ? `${printText}\n` : "") +
       `\n${link}`,
   });

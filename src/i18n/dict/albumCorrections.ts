@@ -8,6 +8,7 @@ const dict: AreaDict = {
   en: {
     "יש תיקונים לביצוע באלבום {name}": "There are changes to make in the album: {name}",
     "עמודים עם תיקונים: {pages}": "Pages with changes: {pages}",
+    "הכריכה": "the cover",
     "לחצו לצפייה בתיקונים": "Tap to see the changes",
     "{client} סימנו תיקונים בעיצוב האלבום.": "{client} marked changes on the album design.",
     "לצפייה בתיקונים:": "See the changes:",
@@ -24,6 +25,7 @@ const dict: AreaDict = {
   ru: {
     "יש תיקונים לביצוע באלבום {name}": "Есть правки в альбоме: {name}",
     "עמודים עם תיקונים: {pages}": "Страницы с правками: {pages}",
+    "הכריכה": "обложка",
     "לחצו לצפייה בתיקונים": "Нажмите, чтобы посмотреть правки",
     "{client} סימנו תיקונים בעיצוב האלבום.": "{client} отметили правки в дизайне альбома.",
     "לצפייה בתיקונים:": "Посмотреть правки:",
