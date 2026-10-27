@@ -810,9 +810,13 @@ export default function GalleryAlbumProofing({
                   <p className="text-sm font-semibold text-center mb-3">{t("זה העמוד האחרון. מה דעתכם על העיצוב?")}</p>
                   {approveFailed && <p className="text-sm text-rose text-center mb-2">{t("האישור לא נשמר. נסו שוב")}</p>}
                   <div className="flex gap-2">
-                    <button onClick={() => setConfirmApproveOpen(true)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white">
-                      {t("אישור העיצוב")}
-                    </button>
+                    {/* After corrections the design waits for the photographer's update: approving it
+                        now would send the old design to print (the approval sends it by itself). */}
+                    {currentStatus !== "changes_requested" && (
+                      <button onClick={() => setConfirmApproveOpen(true)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white">
+                        {t("אישור העיצוב")}
+                      </button>
+                    )}
                     <button onClick={startMarking} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-white border border-ink text-ink">
                       {t("צריך תיקונים")}
                     </button>

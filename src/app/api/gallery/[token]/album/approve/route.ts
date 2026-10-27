@@ -39,12 +39,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     .from("gallery_albums")
     .update({ status: "approved", approved_at: new Date().toISOString() })
     .eq("gallery_id", gallery.id)
-    .in("status", ["sent", "changes_requested"])
+    // Only the design as sent: after the client marked corrections it waits for the photographer's
+    // update, and approving the old one would send it to print.
+    .eq("status", "sent")
     .select("*")
     .maybeSingle<GalleryAlbumRow>();
   if (!album) {
     const { data: existing } = await supabase.from("gallery_albums").select("status").eq("gallery_id", gallery.id).neq("status", "draft").maybeSingle<{ status: string }>();
     if (existing?.status === "approved") return NextResponse.json({ ok: true, already: true });
+    if (existing?.status === "changes_requested") return NextResponse.json({ error: "העיצוב מחכה לעדכון של הצלם" }, { status: 409 });
     return NextResponse.json({ error: "האלבום לא נמצא" }, { status: 404 });
   }
 
