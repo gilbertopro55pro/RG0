@@ -109,7 +109,7 @@ per event and date. The home window is `ClientMessageSheet` with the photographe
 
 | Reminder | Pattern | Rules | Switch |
 | --- | --- | --- | --- |
-| Album design not approved (`album_approval_reminder`) | 1 | `lib/clientReminders.ts`, `lib/albumApproval.ts` | `album_approval_reminder` + `_days` (1–14, 3) |
+| Album design not approved (`album_approval_reminder`); live-checked 2026-10-27: scheduled 3 days ahead on send, canceled on approval | 1 | `lib/clientReminders.ts`, `lib/albumApproval.ts` | `album_approval_reminder` + `_days` (1–14, 3) |
 | Clip songs after the film (`song_selection_reminder`) | 1 | `lib/clientReminders.ts` | none (3 days) |
 | Song stage open (`song_stage_reminder`) | 2 | `lib/songStageReminder.ts` | `song_stage_reminder` |
 | Shoot day (`shoot_day_reminder`) | 2 | `lib/shootDayReminder.ts` | `shoot_day_reminder` |
