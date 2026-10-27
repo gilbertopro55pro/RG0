@@ -149,6 +149,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       backgroundPhotoId: u.background_photo_id,
       edited: u.edited,
       canBack: !!u.client_history?.length,
+      canOriginal: u.canOriginal,
     })),
     cycles: outcome.cycles,
   });

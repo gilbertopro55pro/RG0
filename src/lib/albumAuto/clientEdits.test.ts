@@ -309,7 +309,8 @@ describe("לעיצוב המקורי: one page back to the photographer's design"
       ctx = saved(ctx, out);
     }
     const lastDesign = page(ctx, S1).elements;
-    const out = applyClientEdit(ctx, { action: "original", spreadId: S1, confirm: false });
+    expect(page(ctx, S1).client_original).not.toBeNull();
+    const out = applyClientEdit(ctx, { action: "original", spreadId: S1 });
     if (!out.ok) throw new Error(out.error);
     expect(out.updates).toHaveLength(1);
     expect(out.updates[0]).toMatchObject({ edited: false, client_original: null, marked_frames: [], elements: page(single(), S1).elements });
@@ -317,22 +318,45 @@ describe("לעיצוב המקורי: one page back to the photographer's design"
     ctx = saved(ctx, out);
     const back = applyClientEdit(ctx, { action: "back", spreadId: S1 });
     if (!back.ok) throw new Error(back.error);
-    expect(back.updates[0]).toMatchObject({ edited: true, elements: lastDesign });
+    expect(back.updates[0]).toMatchObject({ edited: true, canOriginal: true, elements: lastDesign });
     expect(back.updates[0].client_original?.elements).toEqual(page(single(), S1).elements);
   });
 
-  it("a page that swapped photos with another: asks first, then both go back, the rest untouched", () => {
+  // Owner, 2026-10-27: after a swap between two pages, neither offers it; going back alone would show
+  // a photo twice and lose another. A swap within the page keeps it.
+  it("isn't offered on either page after a swap between them, and the server refuses it", () => {
+    let ctx = album();
+    const out = applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
+    if (!out.ok) throw new Error(out.error);
+    expect(out.updates.map((u) => [u.id, u.edited, u.canOriginal])).toEqual([
+      [S1, true, false],
+      [S2, true, false],
+    ]);
+    ctx = saved(ctx, out);
+    expect(applyClientEdit(ctx, { action: "original", spreadId: S1 })).toMatchObject({ ok: false, status: 409, code: "photos_moved" });
+    expect(applyClientEdit(ctx, { action: "original", spreadId: S2 })).toMatchObject({ ok: false, status: 409, code: "photos_moved" });
+    // A redesign of such a page doesn't bring it back: the photos are still another page's.
+    const redesigned = applyClientEdit(ctx, { action: "redesign", spreadId: S1, count: -1, seen: [] });
+    if (!redesigned.ok) throw new Error(redesigned.error);
+    expect(redesigned.updates[0].canOriginal).toBe(false);
+  });
+
+  it("is offered again once the photos are swapped back", () => {
     let ctx = album();
     ctx = saved(ctx, applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false }));
-    const ask = applyClientEdit(ctx, { action: "original", spreadId: S1, confirm: false });
-    expect(ask).toMatchObject({ ok: false, status: 409, code: "linked_pages", pages: [S2] });
-    const out = applyClientEdit(ctx, { action: "original", spreadId: S1, confirm: true });
+    const back = applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
+    if (!back.ok) throw new Error(back.error);
+    expect(back.updates.map((u) => u.canOriginal)).toEqual([true, true]);
+  });
+
+  it("stays after a swap within the page", () => {
+    const out = applyClientEdit(album(), { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S1, elId: "b" }, redesign: true });
     if (!out.ok) throw new Error(out.error);
-    expect(out.updates.map((u) => u.id)).toEqual([S1, S2]);
-    const after = saved(ctx, out);
-    for (const id of [S1, S2]) expect(page(after, id).elements).toEqual(page(album(), id).elements);
-    expect(page(after, COVER)).toEqual(page(album(), COVER));
-    expect(allPhotos(after)).toEqual(allPhotos(album()));
+    expect(out.updates[0]).toMatchObject({ edited: true, canOriginal: true });
+    const ctx = saved(album(), out);
+    const original = applyClientEdit(ctx, { action: "original", spreadId: S1 });
+    if (!original.ok) throw new Error(original.error);
+    expect(original.updates[0].elements).toEqual(page(album(), S1).elements);
   });
 
   it("a page whose photos stayed goes back alone, whatever other pages swapped", () => {
@@ -345,13 +369,13 @@ describe("לעיצוב המקורי: one page back to the photographer's design"
     };
     ctx = saved(ctx, applyClientEdit(ctx, { action: "swap", a: { spreadId: S2, elId: "c" }, b: { spreadId: S2, elId: "d" }, redesign: true }));
     ctx = saved(ctx, applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S3, elId: "e" }, redesign: false }));
-    const out = applyClientEdit(ctx, { action: "original", spreadId: S2, confirm: false });
+    const out = applyClientEdit(ctx, { action: "original", spreadId: S2 });
     if (!out.ok) throw new Error(out.error);
     expect(out.updates.map((u) => u.id)).toEqual([S2]);
   });
 
   it("a page as the photographer sent it has nothing to go back to", () => {
-    expect(applyClientEdit(album(), { action: "original", spreadId: S1, confirm: true })).toMatchObject({ ok: false, code: "unchanged" });
+    expect(applyClientEdit(album(), { action: "original", spreadId: S1 })).toMatchObject({ ok: false, code: "unchanged" });
   });
 });
 
@@ -370,10 +394,10 @@ describe("the red dots column", () => {
     run({ action: "redesign", spreadId: S1, count: -1, seen: [] });
     run({ action: "back", spreadId: S1 });
     run({ action: "redesign", spreadId: S1, count: -1, seen: [] });
-    run({ action: "original", spreadId: S1, confirm: false });
+    run({ action: "original", spreadId: S1 });
     run({ action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
-    run({ action: "original", spreadId: S1, confirm: true });
     run({ action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
+    run({ action: "original", spreadId: S2 });
     run({ action: "reset" });
     expect(seen.length).toBeGreaterThan(6);
     expect(seen.every((m) => Array.isArray(m))).toBe(true);

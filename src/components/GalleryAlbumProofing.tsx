@@ -181,6 +181,8 @@ export type ClientAlbumSpread = {
   isCover: boolean;
   edited: boolean;
   canBack: boolean;
+  // "לעיצוב המקורי": changed, and still holding the photos it was sent with (not after a swap with another page).
+  canOriginal: boolean;
 };
 
 function BackgroundLayer({ background, thumb = false }: { background: SpreadBackground; thumb?: boolean }) {
@@ -546,7 +548,7 @@ const CORRECTION_GUIDE_STEPS = [
 
 type Status = "sent" | "approved" | "changes_requested";
 type Pick = { spreadId: string; elId: string };
-type ServerPage = { id: string; elements: AlbumElement[]; backgroundPhotoId: string | null; edited: boolean; canBack: boolean };
+type ServerPage = { id: string; elements: AlbumElement[]; backgroundPhotoId: string | null; edited: boolean; canBack: boolean; canOriginal: boolean };
 type EditReply = { ok?: boolean; error?: string; code?: string; pages?: string[]; spreads?: ServerPage[]; cycles?: Record<string, Cycle> };
 type Cycle = { count: number; seen: string[] };
 type PhotoInfo = { url: string; aspect: number | null };
@@ -593,6 +595,7 @@ function fromServer(prev: ClientAlbumSpread, next: ServerPage, photos: ReadonlyM
     background: bg && prev.background ? { ...prev.background, photoId: next.backgroundPhotoId as string, url: bg.url } : null,
     edited: next.edited,
     canBack: next.canBack,
+    canOriginal: next.canOriginal,
   };
 }
 
@@ -618,7 +621,9 @@ function swapLocally(pages: ClientAlbumSpread[], a: Pick, b: Pick): ClientAlbumS
     // Between pages, a background that was the photo leaving becomes the one coming in.
     const [left, came] = p.id === a.spreadId ? [sa.el, sb.el] : [sb.el, sa.el];
     const background = a.spreadId !== b.spreadId && p.background && p.background.photoId === left.photoId ? { ...p.background, photoId: came.photoId ?? undefined, url: came.url } : p.background;
-    return { ...p, elements, background, edited: true };
+    // Until the server answers: a swap with another page brings in a photo the page wasn't sent with.
+    const canOriginal = a.spreadId === b.spreadId ? p.canOriginal || !p.edited : false;
+    return { ...p, elements, background, edited: true, canOriginal };
   });
 }
 
@@ -672,8 +677,6 @@ export default function GalleryAlbumProofing({
   const [busy, setBusy] = useState<null | "swap" | "redesign" | "back" | "reset">(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
-  // "לעיצוב המקורי" on a page that swapped photos with other pages: those go back too, once confirmed.
-  const [confirmOriginal, setConfirmOriginal] = useState<{ spreadId: string; pages: string[] } | null>(null);
   const cycles = useRef<Record<string, Cycle>>({});
   const photoInfo = useMemo(() => photoInfoOf(spreads), [spreads]);
 
@@ -778,7 +781,7 @@ export default function GalleryAlbumProofing({
     }
   };
   const failed = (status: number, reply: EditReply) => {
-    if (status === 409 && !["needs_redesign", "no_design", "no_history", "linked_pages", "unchanged"].includes(reply.code ?? "")) {
+    if (status === 409 && !["needs_redesign", "no_design", "no_history", "photos_moved", "unchanged"].includes(reply.code ?? "")) {
       // The album isn't waiting for approval any more (approved on another device, or corrections sent).
       setNotice(t("העיצוב כבר לא פתוח לשינויים. רעננו את הדף."));
       return;
@@ -864,22 +867,14 @@ export default function GalleryAlbumProofing({
     if (ok) applyServerPages(reply);
     else failed(status, reply);
   };
-  // One page back to the photographer's design. Pages it swapped photos with go back with it, after
-  // the client confirms (the server names them).
-  const originalPage = async (spreadId: string, confirm: boolean) => {
-    if (busy) return;
-    setConfirmOriginal(null);
+  // One page back to the photographer's design (offered only while it holds its own photos).
+  const originalPage = async () => {
+    if (!spread || busy) return;
     setSelected(null);
     setBusy("reset");
-    const { ok, status, reply } = await sendEdit({ action: "original", spreadId, confirm });
+    const { ok, status, reply } = await sendEdit({ action: "original", spreadId: spread.id });
     setBusy(null);
-    if (ok) {
-      applyServerPages(reply);
-      const others = (reply.spreads ?? []).filter((p) => p.id !== spreadId).map((p) => pageNumber(p.id)).sort((x, y) => x - y);
-      for (const p of reply.spreads ?? []) if (p.id !== spreadId) delete cycles.current[p.id];
-      if (others.length === 1) setNotice(t("גם עמוד {n} חזר לעיצוב המקורי", { n: others[0] }));
-      else if (others.length) setNotice(t("גם עמודים {pages} חזרו לעיצוב המקורי", { pages: others.join(", ") }));
-    } else if (reply.code === "linked_pages") setConfirmOriginal({ spreadId, pages: reply.pages ?? [] });
+    if (ok) applyServerPages(reply);
     else failed(status, reply);
   };
   const resetAll = async () => {
@@ -1273,8 +1268,10 @@ export default function GalleryAlbumProofing({
                       ↶ {t("לעיצוב הקודם")}
                     </button>
                   )}
-                  {editable && spread.edited && (
-                    <button onClick={() => void originalPage(spread.id, false)} disabled={!!busy} className={pageBtn}>
+                  {/* Not after a swap with another page (owner, 2026-10-27): going back alone would show a
+                      photo twice and lose another. "ביטול כל השינויים שלי" still returns everything. */}
+                  {editable && spread.canOriginal && (
+                    <button onClick={originalPage} disabled={!!busy} className={pageBtn}>
                       ⟲ {t("לעיצוב המקורי")}
                     </button>
                   )}
@@ -1383,31 +1380,6 @@ export default function GalleryAlbumProofing({
               </button>
               <button onClick={() => setConfirmReset(false)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft">
                 {t("חזרה")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmOriginal && (
-        <div className="fixed inset-0 z-[90] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmOriginal(null)}>
-          <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-white" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">
-              {confirmOriginal.pages.length === 1 ? t("גם עמוד אחר יחזור לעיצוב המקורי") : t("גם עמודים אחרים יחזרו לעיצוב המקורי")}
-            </h2>
-            <p className="text-sm text-ink-soft mb-5">
-              {confirmOriginal.pages.length === 1
-                ? t("החלפתם תמונות בין העמוד הזה לעמוד {n}, ולכן גם הוא יחזור לעיצוב שהצלם שלח.", { n: pageNumber(confirmOriginal.pages[0]) })
-                : t("החלפתם תמונות בין העמוד הזה לעמודים {pages}, ולכן גם הם יחזרו לעיצוב שהצלם שלח.", {
-                    pages: confirmOriginal.pages.map(pageNumber).sort((x, y) => x - y).join(", "),
-                  })}
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => void originalPage(confirmOriginal.spreadId, true)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-ink text-white">
-                {t("החזרה לעיצוב המקורי")}
-              </button>
-              <button onClick={() => setConfirmOriginal(null)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft">
-                {t("ביטול")}
               </button>
             </div>
           </div>

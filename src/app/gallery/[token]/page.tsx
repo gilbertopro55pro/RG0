@@ -29,7 +29,7 @@ import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 import { photoInScope, resolveGalleryToken } from "@/lib/galleryAccess";
 import { detectEventKind } from "@/lib/albumAuto/planner";
-import type { ClientEditColumns } from "@/lib/albumClientEdit";
+import { canReturnToOriginal, type ClientEditColumns } from "@/lib/albumClientEdit";
 import { collageSource, faceSample, type PhotoFacesFound, type PickablePhoto } from "@/lib/collage/pick";
 import { coverRotationIds, ROTATION_FOCAL, type CoverRotationPhoto } from "@/lib/galleryCoverRotation";
 import { clientOriginalUrl, clientScreenUrl } from "@/lib/galleryPhotoUrls";
@@ -409,6 +409,7 @@ export default async function PublicGalleryPage({
           isCover: s.width_cm != null,
           edited: !!edits.client_edited_at,
           canBack: Array.isArray(edits.client_history) && edits.client_history.length > 0,
+          canOriginal: !!edits.client_edited_at && canReturnToOriginal(edits.client_original, s.elements),
         };
       })
       .filter((s): s is NonNullable<typeof s> => s !== null);
