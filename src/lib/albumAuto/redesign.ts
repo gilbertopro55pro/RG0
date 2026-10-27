@@ -4,6 +4,7 @@ import { generateTemplateFrames } from "@/lib/albumTemplateBank";
 import { layoutSpread } from "./layouts";
 import { frameElements, rankTemplates, templatesForCount, type FrameFinish } from "./templateFill";
 import type { AutoStyleId, LayoutPhoto } from "./types";
+import { collageLayout, type CollageCell } from "@/lib/collage/layout";
 
 // "עיצוב מחדש" for one album page: the same photos in another design. Shared by the photographer's
 // album preview (GalleryManageView) and the client's album view (api/gallery/[token]/album/edit,
@@ -65,7 +66,8 @@ export function engineLayouts(p: {
   return out;
 }
 
-export type RedesignDesign = { rects: Rect[]; build: () => AlbumElement[] };
+// `engine`: the auto engine's composition (it keeps faces off a double page's fold by itself).
+export type RedesignDesign = { rects: Rect[]; build: () => AlbumElement[]; engine?: boolean };
 
 // Candidate designs, alternating (owner, 2026-09-30: "more varied and creative, never repeating"):
 // the engine's compositions and the library's templates (framed grids, the photographer's own
@@ -80,13 +82,17 @@ export function redesignDesigns(p: {
   inset: { x: number; y: number } | null;
   elements: readonly AlbumElement[];
   idPrefix: string;
+  // More frame layouts to rank with the library's (the client's redesign adds collage layouts made
+  // for these very photos, collageTemplates).
+  extraTemplates?: AlbumFrame[][];
 }): RedesignDesign[] {
   const n = p.photos.length;
   const extra = Array.from({ length: 120 }, (_, k) => generateTemplateFrames(n, 104729 + k * 7919));
-  const templates = rankTemplates([...templatesForCount(n, p.userTemplates), ...extra], p.photos, p.widthCm, p.heightCm);
+  const templates = rankTemplates([...(p.extraTemplates ?? []), ...templatesForCount(n, p.userTemplates), ...extra], p.photos, p.widthCm, p.heightCm);
   const finish = pageFinish(p.elements.filter((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId));
   const keptNonPhoto = p.elements.filter((el) => el.type !== "photo");
   const engine: RedesignDesign[] = p.engine.map(({ els, photos }) => ({
+    engine: true,
     rects: photos,
     // The engine's own page dressing (page colour, tape, lines) replaces the page's previous auto
     // dressing; anything the photographer added (text, ornaments) stays.
@@ -146,4 +152,47 @@ export function chooseRedesign(
   }
   if (chosen) seen.add(designShape(chosen.rects));
   return { design: chosen, count, seen };
+}
+
+// Frame layouts made for these photos (lib/collage/layout.ts): justified rows, columns, or a big photo
+// beside the rest, every photo cropped as little as the page allows, with an even gap. The library's
+// templates are mostly grids of one shape, so a page of portrait and landscape photos found almost
+// nothing there that didn't cut a portrait to a strip. A double page is laid out half by half, so no
+// photo sits on the fold. In the page's 0–100 box, before the safe area (fitFramesToSafeArea).
+export function collageTemplates(photos: readonly LayoutPhoto[], widthCm: number, heightCm: number, marginCm: number, gapCm = 0.7): AlbumFrame[][] {
+  if (photos.length < 2 || !(widthCm > 0) || !(heightCm > 0)) return [];
+  const safeW = widthCm - 2 * marginCm;
+  const safeH = heightCm - 2 * marginCm;
+  if (!(safeW > 0) || !(safeH > 0)) return [];
+  const toFrames = (cells: CollageCell[], x0: number, span: number, tag: string): AlbumFrame[] =>
+    cells.map((c, i) => ({ id: `${tag}-${i}`, xPct: x0 + c.x * span, yPct: c.y * 100, widthPct: c.w * span, heightPct: c.h * 100 }));
+  const out: AlbumFrame[][] = [];
+  if (widthCm / heightCm < 1.6) {
+    for (let v = 0; v < 16; v++) {
+      const l = collageLayout([...photos], { aspect: safeW / safeH, gap: gapCm / safeW, variant: v });
+      if (l) out.push(toFrames(l.cells, 0, 100, `cl${v}`));
+    }
+    return out;
+  }
+  // A double page: the photos split between its halves, each half its own collage. In their order,
+  // and grouped by shape (two portraits side by side on one half, two landscapes one above the
+  // other on the other), which is what fits a half page.
+  const halfW = safeW / 2;
+  const n = photos.length;
+  const orders = [[...photos], [...photos].sort((a, b) => a.aspect - b.aspect), [...photos].sort((a, b) => b.aspect - a.aspect)];
+  const splits = [...new Set([Math.floor(n / 2), Math.ceil(n / 2)])].filter((k) => k >= 1 && k < n);
+  const done = new Set<string>();
+  orders.forEach((order, o) => {
+    for (const k of splits) {
+      const key = `${order.slice(0, k).map((p) => p.id).sort().join(",")}|${k}`;
+      if (done.has(key)) continue;
+      done.add(key);
+      for (let v = 0; v < 4; v++) {
+        const halves = [order.slice(0, k), order.slice(k)].map((half) => collageLayout(half, { aspect: halfW / safeH, gap: gapCm / halfW, variant: v }));
+        if (!halves[0] || !halves[1]) continue;
+        out.push([...toFrames(halves[0].cells, 0, 50, `cl${o}${k}${v}a`), ...toFrames(halves[1].cells, 50, 50, `cl${o}${k}${v}b`)]);
+      }
+    }
+  });
+  return out;
 }

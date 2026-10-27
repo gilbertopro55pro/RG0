@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { applyClientEdit, type ClientEditContext, type ClientEditOutcome, type EditSpread } from "@/lib/albumAuto/clientEdits";
-import { designShape } from "@/lib/albumAuto/redesign";
+import { CLIENT_DESIGN_LIMIT_CROP, CLIENT_DESIGN_MAX_CROP, applyClientEdit, clientDesigns, worstCrop, type ClientEditContext, type ClientEditOutcome, type EditSpread } from "@/lib/albumAuto/clientEdits";
+import { collageTemplates, designShape, engineLayouts, redesignDesigns } from "@/lib/albumAuto/redesign";
+import { marginInsetPctFor } from "@/lib/albumSafeArea";
 import { pagePhotoIds } from "@/lib/albumClientEdit";
 import type { AlbumElement, AlbumPhotoElement, AlbumTextElement } from "@/lib/types";
 
@@ -168,7 +169,8 @@ describe("a portrait photo swapped with a landscape one", () => {
 
 describe("עיצוב מחדש and חזרה", () => {
   it("each click shows another design of the same photos, and back steps through them, 3 at most", () => {
-    let ctx = album();
+    // A single 30×20 page: a double page with 2 photos has only 2 designs that fit (none on the fold).
+    let ctx: ClientEditContext = { ...album(), album: { width_cm: 30, height_cm: 20, safe_margin_cm: 0.5, auto_style: "clean" } };
     let cycle = { count: -1, seen: [] as string[] };
     const shapes = [designShape(photoEls(page(ctx, S1)))];
     for (let i = 0; i < 4; i++) {
@@ -202,6 +204,94 @@ describe("עיצוב מחדש and חזרה", () => {
 
   it("the cover isn't redesigned", () => {
     expect(applyClientEdit(album(), { action: "redesign", spreadId: COVER, count: -1, seen: [] })).toMatchObject({ ok: false, code: "cover" });
+  });
+});
+
+describe("the designs a client gets", () => {
+  // Two portraits and two landscapes on a 30×20 page, as in the test album (live check, 2026-10-27):
+  // the first design put both portraits in landscape frames, cutting a head.
+  it("crop no photo past the quality check's lines, and still offer a choice", () => {
+    const four: ClientEditContext = {
+      ...album(),
+      album: { width_cm: 30, height_cm: 20, safe_margin_cm: 0.5, auto_style: "clean" },
+      spreads: [
+        {
+          ...album().spreads[1],
+          elements: [
+            photo("h", "lan1", { xPct: 0, yPct: 0, widthPct: 70, heightPct: 100 }, { maskId: "fade-right-25", borderWidth: undefined, shadow: undefined }),
+            photo("p1", "por1", { xPct: 56, yPct: 8, widthPct: 19, heightPct: 42 }),
+            photo("p2", "por2", { xPct: 76, yPct: 8, widthPct: 19, heightPct: 42 }),
+            photo("l2", "lan2", { xPct: 56, yPct: 53, widthPct: 39, heightPct: 39 }),
+          ],
+        },
+      ],
+    };
+    const page = { widthCm: 30, heightCm: 20 };
+    const aspect = (id: string) => four.photos.get(id)?.aspect ?? 1.5;
+    let ctx = four;
+    let cycle = { count: -1, seen: [] as string[] };
+    // The swap that started it: a portrait into the landscape frame. The page is laid out again for
+    // its photos, with none cropped past the warning line.
+    const swapped = applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "p1" }, b: { spreadId: S1, elId: "l2" }, redesign: true });
+    if (!swapped.ok) throw new Error(swapped.error);
+    cycle = swapped.cycles[S1];
+    ctx = saved(ctx, swapped);
+    expect(worstCrop(ctx.spreads[0].elements ?? [], page, aspect)).toBeLessThanOrEqual(CLIENT_DESIGN_MAX_CROP);
+    // Then "עיצוב מחדש": a few designs to choose from, none past the error line.
+    const shapes = new Set<string>();
+    for (let i = 0; i < 6; i++) {
+      const out = applyClientEdit(ctx, { action: "redesign", spreadId: S1, ...cycle });
+      if (!out.ok) throw new Error(out.error);
+      cycle = out.cycles[S1];
+      ctx = saved(ctx, out);
+      shapes.add(designShape(photoEls(ctx.spreads[0])));
+      expect(worstCrop(ctx.spreads[0].elements ?? [], page, aspect)).toBeLessThanOrEqual(CLIENT_DESIGN_LIMIT_CROP);
+    }
+    expect(shapes.size).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("collage layouts for a redesign", () => {
+  const mixed = [
+    { id: "a", aspect: 2 / 3 },
+    { id: "b", aspect: 3 / 2 },
+    { id: "c", aspect: 2 / 3 },
+    { id: "d", aspect: 2 / 3 },
+    { id: "e", aspect: 3 / 2 },
+    { id: "f", aspect: 3 / 2 },
+  ];
+
+  it("lay a single page out within it, every photo in a frame", () => {
+    const layouts = collageTemplates(mixed, 30, 20, 0.5);
+    expect(layouts.length).toBeGreaterThan(4);
+    for (const frames of layouts) {
+      expect(frames).toHaveLength(6);
+      for (const f of frames) {
+        expect(f.xPct).toBeGreaterThanOrEqual(0);
+        expect(f.xPct + f.widthPct).toBeLessThanOrEqual(100.001);
+        expect(f.yPct + f.heightPct).toBeLessThanOrEqual(100.001);
+      }
+    }
+  });
+
+  it("keep every photo of a double page on one half", () => {
+    for (const frames of collageTemplates(mixed, 60, 30, 0.5)) {
+      for (const f of frames) expect(f.xPct + f.widthPct <= 50.001 || f.xPct >= 49.999).toBe(true);
+    }
+  });
+
+  it("give the client designs without a framed photo on a double page's fold", () => {
+    const inset = marginInsetPctFor({ width_cm: 60, height_cm: 30, safe_margin_cm: 0.5 });
+    const engine = engineLayouts({ style: "clean", photos: mixed, pageIndex: 2, widthCm: 60, heightCm: 30, inset });
+    const all = redesignDesigns({ engine, photos: mixed, userTemplates: [], widthCm: 60, heightCm: 30, inset, elements: [], idPrefix: "x", extraTemplates: collageTemplates(mixed, 60, 30, 0.5) });
+    const designs = clientDesigns(all, { widthCm: 60, heightCm: 30 }, (id) => mixed.find((p) => p.id === id)?.aspect ?? 1.5);
+    expect(new Set(designs.map((d) => designShape(d.rects))).size).toBeGreaterThanOrEqual(4);
+    for (const d of designs.filter((x) => !x.engine)) {
+      for (const el of d.build().filter((e): e is AlbumPhotoElement => e.type === "photo")) {
+        const side = 0.15 * el.widthPct;
+        expect(el.xPct < 50 - side && el.xPct + el.widthPct > 50 + side).toBe(false);
+      }
+    }
   });
 });
 
