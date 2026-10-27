@@ -37,7 +37,8 @@ function album(): ClientEditContext {
     background_photo_id: null,
     width_cm: null,
     height_cm: null,
-    marked_frames: null,
+    // As the column holds it: never null.
+    marked_frames: [],
     client_original: null,
     client_history: null,
     ...extra,
@@ -311,7 +312,7 @@ describe("לעיצוב המקורי: one page back to the photographer's design"
     const out = applyClientEdit(ctx, { action: "original", spreadId: S1, confirm: false });
     if (!out.ok) throw new Error(out.error);
     expect(out.updates).toHaveLength(1);
-    expect(out.updates[0]).toMatchObject({ edited: false, client_original: null, marked_frames: null, elements: page(single(), S1).elements });
+    expect(out.updates[0]).toMatchObject({ edited: false, client_original: null, marked_frames: [], elements: page(single(), S1).elements });
     expect(out.updates[0].client_history).toHaveLength(3);
     ctx = saved(ctx, out);
     const back = applyClientEdit(ctx, { action: "back", spreadId: S1 });
@@ -339,7 +340,7 @@ describe("לעיצוב המקורי: one page back to the photographer's design"
     const base = album();
     let ctx: ClientEditContext = {
       ...base,
-      spreads: [...base.spreads, { ...base.spreads[2], id: S3, marked_frames: null, elements: [photo("e", "por3", portrait), photo("f", "lan3", landscape)] }],
+      spreads: [...base.spreads, { ...base.spreads[2], id: S3, marked_frames: [], elements: [photo("e", "por3", portrait), photo("f", "lan3", landscape)] }],
       photos: new Map([...base.photos, ["por3", { aspect: 2 / 3 }], ["lan3", { aspect: 3 / 2 }]]),
     };
     ctx = saved(ctx, applyClientEdit(ctx, { action: "swap", a: { spreadId: S2, elId: "c" }, b: { spreadId: S2, elId: "d" }, redesign: true }));
@@ -351,6 +352,31 @@ describe("לעיצוב המקורי: one page back to the photographer's design"
 
   it("a page as the photographer sent it has nothing to go back to", () => {
     expect(applyClientEdit(album(), { action: "original", spreadId: S1, confirm: true })).toMatchObject({ ok: false, code: "unchanged" });
+  });
+});
+
+describe("the red dots column", () => {
+  // gallery_album_spreads.marked_frames is NOT NULL: a page back to the photographer's design wrote
+  // null, and the save failed (live check, 2026-10-27).
+  it("is never written as null, whatever the client does", () => {
+    let ctx = album();
+    const seen: unknown[] = [];
+    const run = (req: Parameters<typeof applyClientEdit>[1]) => {
+      const out = applyClientEdit(ctx, req);
+      if (!out.ok) throw new Error(out.error);
+      for (const u of out.updates) seen.push(u.marked_frames);
+      ctx = saved(ctx, out);
+    };
+    run({ action: "redesign", spreadId: S1, count: -1, seen: [] });
+    run({ action: "back", spreadId: S1 });
+    run({ action: "redesign", spreadId: S1, count: -1, seen: [] });
+    run({ action: "original", spreadId: S1, confirm: false });
+    run({ action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
+    run({ action: "original", spreadId: S1, confirm: true });
+    run({ action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false });
+    run({ action: "reset" });
+    expect(seen.length).toBeGreaterThan(6);
+    expect(seen.every((m) => Array.isArray(m))).toBe(true);
   });
 });
 
