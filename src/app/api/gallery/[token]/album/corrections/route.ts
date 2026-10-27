@@ -2,7 +2,7 @@ import { NextResponse, after } from "next/server";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { correctedPageNumbers, parseCorrectionPages } from "@/lib/albumCorrections";
-import { clientChangedPages } from "@/lib/albumClientEdit";
+import { clientChangedPages, pageList } from "@/lib/albumClientEdit";
 import { sendPushToPhotographer } from "@/lib/push";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
@@ -95,7 +95,8 @@ async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pag
   const name = event?.client_name?.trim() || gallery.title?.trim() || t("האלבום");
   const path = `/album-corrections/${correctionId}`;
   const title = t("יש תיקונים לביצוע באלבום {name}", { name });
-  const pagesLine = t("עמודים עם תיקונים: {pages}", { pages: pageNumbers.join(", ") });
+  const cover = t("הכריכה");
+  const pagesLine = t("עמודים עם תיקונים: {pages}", { pages: pageList(pageNumbers, cover) });
 
   await sendPushToPhotographer(gallery.photographer_id, {
     title,
@@ -113,7 +114,7 @@ async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pag
       `${t("שלום {name},", { name: photographer.name ?? "" })}\n\n` +
       `${t("{client} סימנו תיקונים בעיצוב האלבום.", { client: name })}\n` +
       `${pagesLine}\n` +
-      (changedPages.length ? `${t("הם גם שינו בעצמם את העיצוב בעמודים: {pages}.", { pages: changedPages.join(", ") })}\n` : "") +
+      (changedPages.length ? `${t("הם גם שינו בעצמם את העיצוב בעמודים: {pages}.", { pages: pageList(changedPages, cover) })}\n` : "") +
       "\n" +
       `${t("לצפייה בתיקונים:")}\n${link}`,
   });
