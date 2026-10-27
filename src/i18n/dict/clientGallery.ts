@@ -104,6 +104,10 @@ const dict: AreaDict = {
     "סגירת מצגת": "Close slideshow",
     "הורדת כל תמונות המצגת": "Download all slideshow photos",
     "השהיה": "Pause",
+    "נבחרו {n} מתוך {target}": "{n} of {target} picked",
+    "✓ הגעתם לכמות התמונות לאלבום: {target} תמונות.": "✓ You've reached the number of photos for the album: {target}.",
+    "✓ הגעתם לכמות התמונות לאלבום ({target}). בחרתם {extra} תמונות נוספות.": "✓ You've reached the number of photos for the album ({target}). You picked {extra} more.",
+    "הגלריה לא נמצאה": "Gallery not found",
   },
   ru: {
     // Page + metadata
@@ -204,6 +208,10 @@ const dict: AreaDict = {
     "סגירת מצגת": "Закрыть слайд-шоу",
     "הורדת כל תמונות המצגת": "Скачать все фото слайд-шоу",
     "השהיה": "Пауза",
+    "נבחרו {n} מתוך {target}": "Выбрано {n} из {target}",
+    "✓ הגעתם לכמות התמונות לאלבום: {target} תמונות.": "✓ Вы выбрали нужное количество фото для альбома: {target}.",
+    "✓ הגעתם לכמות התמונות לאלבום ({target}). בחרתם {extra} תמונות נוספות.": "✓ Вы выбрали нужное количество фото для альбома ({target}). Выбрано ещё {extra}.",
+    "הגלריה לא נמצאה": "Галерея не найдена",
   },
 };
 

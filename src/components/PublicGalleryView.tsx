@@ -14,6 +14,8 @@ import GalleryAlbumProofing, { type ClientAlbumElement } from "@/components/Gall
 import { ALLOWED_ACCEPT, isAllowedImageFile, convertHeicIfNeeded } from "@/lib/imageUpload";
 import { readDataTransferItems, folderNameFromPath, isHiddenFileName } from "@/lib/fileDrop";
 import { useLang, useT } from "@/i18n/client";
+import ConfettiBurst from "@/components/ConfettiBurst";
+import { selectionTargetState, shouldCelebrate } from "@/lib/selectionTarget";
 import { dirOf } from "@/i18n/config";
 
 type PhotoWithUrl = GalleryPhotoRow & { url: string; previewUrl?: string | null };
@@ -58,6 +60,10 @@ function triggerAnchorDownload(url: string, filename?: string) {
   a.remove();
 }
 
+// The selection bar's green once the client's favorites reach the photo count for the album.
+const TARGET_GREEN = "#2f9e5b";
+const targetDone = (state: ReturnType<typeof selectionTargetState>) => state === "reached" || state === "over";
+
 export default function PublicGalleryView({
   token,
   initialPhotos,
@@ -77,6 +83,9 @@ export default function PublicGalleryView({
   brandLogoUrl = null,
   contactUrl = null,
   leadContent = null,
+  selectionTarget = null,
+  targetCelebrated = false,
+  recordCelebration = true,
 }: {
   token: string;
   initialPhotos: PhotoWithUrl[];
@@ -114,6 +123,12 @@ export default function PublicGalleryView({
   contactUrl?: string | null;
   // Shown above the photos inside the premium layout (the gallery's videos).
   leadContent?: ReactNode;
+  // The photo count the client picks for the album (lib/selectionTarget.ts): reaching it turns the
+  // selection bar green with a line saying so, and confetti falls once per gallery.
+  selectionTarget?: number | null;
+  targetCelebrated?: boolean;
+  // False in the photographer's own preview: the confetti still shows, but isn't recorded.
+  recordCelebration?: boolean;
 }) {
   const theme = resolveGalleryTheme(themeId, { titleFontOverride, gridStyleOverride });
   // The premium theme's layout: sticky action bar, chapter titles, footer, black lightbox.
@@ -423,6 +438,25 @@ export default function PublicGalleryView({
   };
 
   const favoriteCount = photos.filter((p) => p.is_favorite).length;
+  // The photo count for the album (owner, 2026-10-27): the confetti the first time the favorites
+  // climb to it, never again in this gallery (shouldCelebrate). Worked out from the count itself,
+  // so every way of picking (a heart, select all, multi-select) counts.
+  const target = readOnly ? null : selectionTarget;
+  const targetState = selectionTargetState(favoriteCount, target);
+  const [celebrated, setCelebrated] = useState(targetCelebrated);
+  const [confettiOn, setConfettiOn] = useState(false);
+  const [countSeen, setCountSeen] = useState(favoriteCount);
+  if (countSeen !== favoriteCount) {
+    setCountSeen(favoriteCount);
+    if (shouldCelebrate(countSeen, favoriteCount, target, celebrated)) {
+      setCelebrated(true);
+      setConfettiOn(true);
+    }
+  }
+  useEffect(() => {
+    if (!confettiOn || !recordCelebration) return;
+    fetch(`/api/gallery/${token}/selection-target`, { method: "POST", keepalive: true }).catch(() => {});
+  }, [confettiOn, recordCelebration, token]);
   const currentFavoriteIds = new Set(photos.filter((p) => p.is_favorite).map((p) => p.id));
   const hasUnsavedChanges =
     currentFavoriteIds.size !== savedFavoriteIds.size ||
@@ -1863,8 +1897,13 @@ export default function PublicGalleryView({
           both mobile and desktop so it can't be missed. */}
       {!readOnly && (favoriteCount > 0 || selectionMode || usedLabels.length > 0) && (pastCover || selectionMode) && (
         <div
-          className={`fixed bottom-3 right-3 left-3 md:right-auto md:left-1/2 md:-translate-x-1/2 z-40 flex flex-col gap-2 ${premium ? "rounded-[4px]" : "rounded-2xl"} px-4 py-3 md:py-3.5 md:min-w-[240px] shadow-sheet border`}
-          style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)", color: "var(--gt-ink)" }}
+          className={`fixed bottom-3 right-3 left-3 md:right-auto md:left-1/2 md:-translate-x-1/2 z-40 flex flex-col gap-2 ${premium ? "rounded-[4px]" : "rounded-2xl"} px-4 py-3 md:py-3.5 md:min-w-[240px] shadow-sheet ${targetDone(targetState) ? "border-2" : "border"}`}
+          style={{
+            background: "var(--gt-surface)",
+            borderColor: targetDone(targetState) ? TARGET_GREEN : "var(--gt-border)",
+            color: "var(--gt-ink)",
+            transition: "border-color 0.4s ease",
+          }}
         >
           <div className="flex items-center justify-between gap-2">
             <button
@@ -1872,7 +1911,7 @@ export default function PublicGalleryView({
               className={`flex items-center gap-2 text-sm md:text-base font-bold ${BTN_PRESS}`}
             >
               <HeartIcon filled size={18} />
-              {t("{n} מועדפים", { n: favoriteCount })}
+              {target ? t("נבחרו {n} מתוך {target}", { n: favoriteCount, target }) : t("{n} מועדפים", { n: favoriteCount })}
             </button>
             {!selectionMode && (
               <div className="flex items-center gap-3">
@@ -1898,6 +1937,13 @@ export default function PublicGalleryView({
             )}
           </div>
 
+          {targetDone(targetState) && target && (
+            <p role="status" className="text-sm md:text-base font-bold leading-snug" style={{ color: TARGET_GREEN }}>
+              {targetState === "reached"
+                ? t("✓ הגעתם לכמות התמונות לאלבום: {target} תמונות.", { target })
+                : t("✓ הגעתם לכמות התמונות לאלבום ({target}). בחרתם {extra} תמונות נוספות.", { target, extra: favoriteCount - target })}
+            </p>
+          )}
           {!selectionMode && !submitted && (
             <button
               onClick={() => {
@@ -1935,6 +1981,8 @@ export default function PublicGalleryView({
           )}
         </div>
       )}
+
+      {confettiOn && <ConfettiBurst onDone={() => setConfettiOn(false)} />}
 
       {/* Favorites panel */}
       {favoritesPanelOpen && (
