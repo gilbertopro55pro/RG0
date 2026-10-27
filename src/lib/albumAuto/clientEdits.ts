@@ -52,7 +52,8 @@ export type ClientEditContext = {
 
 export type SpreadUpdate = PageState & {
   id: string;
-  marked_frames: string[] | null;
+  // Never null: the column is NOT NULL (an empty list = no red dots).
+  marked_frames: string[];
   client_original: OriginalPage | null;
   client_history: PageState[] | null;
   edited: boolean;
@@ -103,7 +104,7 @@ function finalize(sp: EditSpread, next: PageState, history: PageState[] | null, 
     id: sp.id,
     elements: next.elements,
     background_photo_id: next.background_photo_id,
-    marked_frames: marks && marks.length ? marks : null,
+    marked_frames: marks ?? [],
     client_original: edited ? original : null,
     client_history: history && history.length ? history : null,
     edited,
@@ -212,7 +213,7 @@ const sameSet = (a: string[], b: string[]) => {
 // The page as the photographer sent it, the client's columns cleared.
 function restored(sp: EditSpread): SpreadUpdate {
   const o = sp.client_original as OriginalPage;
-  return { id: sp.id, elements: o.elements, background_photo_id: o.background_photo_id, marked_frames: o.marked_frames, client_original: null, client_history: null, edited: false };
+  return { id: sp.id, elements: o.elements, background_photo_id: o.background_photo_id, marked_frames: o.marked_frames ?? [], client_original: null, client_history: null, edited: false };
 }
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);

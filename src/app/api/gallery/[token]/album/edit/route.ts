@@ -107,7 +107,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         .update({
           elements: u.elements,
           background_photo_id: u.background_photo_id,
-          marked_frames: u.marked_frames,
+          marked_frames: u.marked_frames ?? [],
           client_original: u.client_original,
           client_history: u.client_history,
           client_edited_at: u.edited ? now : null,
