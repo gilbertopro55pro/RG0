@@ -98,6 +98,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .select("id, status, sent_at")
     .maybeSingle<{ id: string; status: string; sent_at: string }>();
   if (!album) return NextResponse.json({ error: "האלבום לא נמצא או שכבר אושר" }, { status: 404 });
+  // A new round with the client: what they changed so far is now part of the design that was sent,
+  // so "undo all my changes" and "back" start from this one (lib/albumClientEdit.ts).
+  await supabase
+    .from("gallery_album_spreads")
+    .update({ client_original: null, client_history: null, client_edited_at: null })
+    .eq("album_id", album.id)
+    .or("client_original.not.is.null,client_history.not.is.null,client_edited_at.not.is.null");
 
   let reminderDays: number | null = null;
   if (gallery.event_id) {

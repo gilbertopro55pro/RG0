@@ -29,6 +29,7 @@ import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 import { photoInScope, resolveGalleryToken } from "@/lib/galleryAccess";
 import { detectEventKind } from "@/lib/albumAuto/planner";
+import type { ClientEditColumns } from "@/lib/albumClientEdit";
 import { collageSource, faceSample, type PhotoFacesFound, type PickablePhoto } from "@/lib/collage/pick";
 import { coverRotationIds, ROTATION_FOCAL, type CoverRotationPhoto } from "@/lib/galleryCoverRotation";
 import { clientOriginalUrl, clientScreenUrl } from "@/lib/galleryPhotoUrls";
@@ -385,6 +386,7 @@ export default async function PublicGalleryPage({
           })
           .filter((el): el is ClientAlbumElement => el !== null);
         const backgroundPhoto = s.background_photo_id ? photoById.get(s.background_photo_id) : null;
+        const edits = s as GalleryAlbumSpreadRow & ClientEditColumns;
         return {
           id: s.id,
           photo1: { id: photo1.id, url: clientScreenUrl(token, photo1) },
@@ -395,11 +397,18 @@ export default async function PublicGalleryPage({
           focalX2: s.focal_x_2,
           focalY2: s.focal_y_2,
           elements,
-          background: backgroundPhoto ? { url: clientScreenUrl(token, backgroundPhoto), blur: s.background_blur, opacity: s.background_opacity } : null,
+          background: backgroundPhoto
+            ? { photoId: backgroundPhoto.id, url: clientScreenUrl(token, backgroundPhoto), blur: s.background_blur, opacity: s.background_opacity }
+            : null,
           comments: (commentsRaw ?? []).filter((c) => c.spread_id === s.id).map((c) => ({ id: c.id, text: c.text })),
           // The page's printed size: its own (a cover made at its own size) or the album's.
           widthCm: Number(s.width_cm ?? album.width_cm),
           heightCm: Number(s.height_cm ?? album.height_cm),
+          // The client's own changes (lib/albumClientEdit.ts): a cover (its own size) is never
+          // redesigned; "edited" pages differ from the photographer's, and some have a design to go back to.
+          isCover: s.width_cm != null,
+          edited: !!edits.client_edited_at,
+          canBack: Array.isArray(edits.client_history) && edits.client_history.length > 0,
         };
       })
       .filter((s): s is NonNullable<typeof s> => s !== null);
