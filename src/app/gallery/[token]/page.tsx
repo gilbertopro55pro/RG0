@@ -32,6 +32,7 @@ import { detectEventKind } from "@/lib/albumAuto/planner";
 import { collageSource, faceSample, type PhotoFacesFound, type PickablePhoto } from "@/lib/collage/pick";
 import { coverRotationIds, ROTATION_FOCAL, type CoverRotationPhoto } from "@/lib/galleryCoverRotation";
 import { clientOriginalUrl, clientScreenUrl } from "@/lib/galleryPhotoUrls";
+import { selectionTargetFor, type SelectionTargets } from "@/lib/selectionTarget";
 
 // The client's language for this gallery (UI languages phase 2): the event's client_lang, gated by
 // clientLangFor (Hebrew for every non-admin photographer). A gallery with no event stays Hebrew.
@@ -211,9 +212,9 @@ export default async function PublicGalleryPage({
     // Studio Pro's "full branding" perk — see BrandingSettings.tsx and the render below.
     supabase
       .from("photographers")
-      .select("plan, email, brand_color, logo_storage_path, name, phone")
+      .select("plan, email, brand_color, logo_storage_path, name, phone, photo_selection_targets")
       .eq("id", gallery.photographer_id)
-      .maybeSingle<Pick<Photographer, "plan" | "email" | "brand_color" | "logo_storage_path" | "name" | "phone">>(),
+      .maybeSingle<Pick<Photographer, "plan" | "email" | "brand_color" | "logo_storage_path" | "name" | "phone"> & { photo_selection_targets: SelectionTargets | null }>(),
     supabase
       .from("gallery_videos")
       .select("id, original_filename, storage_path")
@@ -507,6 +508,9 @@ export default async function PublicGalleryPage({
       brandLogoUrl={brandLogoUrl}
       contactUrl={brandingPhotographer?.phone ? `https://wa.me/${normalizeIsraeliPhone(brandingPhotographer.phone)}` : null}
       leadContent={theme.coverStyle === "fullbleed" ? videosBlock : null}
+      selectionTarget={selectionTargetFor({ eventType: event?.event_type ?? null, title: gallery.title, targets: brandingPhotographer?.photo_selection_targets })}
+      targetCelebrated={!!(gallery as { selection_target_celebrated_at?: string | null }).selection_target_celebrated_at}
+      recordCelebration={!isOwnerPreview}
     />
   );
 

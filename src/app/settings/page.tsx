@@ -29,6 +29,8 @@ import ReminderToggleSettings from "@/components/ReminderToggleSettings";
 import MorningDigestSettings from "@/components/MorningDigestSettings";
 import { DIGEST_DEFAULT_MINUTES } from "@/lib/morningDigest";
 import PrintCheckSettings from "@/components/PrintCheckSettings";
+import SelectionTargetsSettings from "@/components/SelectionTargetsSettings";
+import type { SelectionTargets } from "@/lib/selectionTarget";
 import { PRINT_CHECK_DAYS_DEFAULT } from "@/lib/printCheck";
 import GuidesSettings from "@/components/GuidesSettings";
 import UpdatesSettings from "@/components/UpdatesSettings";
@@ -140,6 +142,13 @@ export default async function SettingsPage({
                 <div className="mt-5">
                   <PricingSuppliersSettings
                     initialSuppliers={photographer.pricing_suppliers}
+                  />
+                </div>
+                <div className="mt-5">
+                  <SelectionTargetsSettings
+                    photographerId={photographer.id}
+                    initialTargets={(photographer as { photo_selection_targets?: SelectionTargets | null }).photo_selection_targets ?? {}}
+                    eventTypeNames={(eventTypes ?? []).map((et) => et.name)}
                   />
                 </div>
               </>
