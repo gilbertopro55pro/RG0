@@ -32,8 +32,8 @@ describe("pagesToPreload", () => {
     expect(pagesToPreload(5, 20)).toEqual([6, 7, 4, 19]);
   });
 
-  it("from the cover: the first pages and the last", () => {
-    expect(pagesToPreload(-1, 20)).toEqual([0, 1, 19]);
+  it("on the cover (the first page): the next two and the last", () => {
+    expect(pagesToPreload(0, 20)).toEqual([1, 2, 19]);
   });
 
   it("near the end: nothing past the last page, nothing twice", () => {

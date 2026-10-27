@@ -22,7 +22,7 @@ export function spreadImageUrls(spread: PreloadSpread): string[] {
   return [...new Set(urls)];
 }
 
-// The pages to load ahead while page `index` is on screen (-1 is the cover), nearest first.
+// The pages to load ahead while page `index` is on screen, nearest first.
 export function pagesToPreload(index: number, count: number): number[] {
   const pages: number[] = [];
   for (const i of [index + 1, index + 2, index - 1, count - 1]) {

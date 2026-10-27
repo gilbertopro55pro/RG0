@@ -2652,8 +2652,6 @@ export default function PublicGalleryView({
         <GalleryAlbumProofing
           token={token}
           status={album.status}
-          title={album.title}
-          coverUrl={album.coverUrl}
           spreads={albumSpreads}
           onClose={() => {
             setAlbumOpen(false);
