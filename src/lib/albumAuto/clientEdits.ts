@@ -24,6 +24,8 @@ import { AUTO_STYLES, type AutoStyleId, type LayoutPhoto } from "./types";
 //   ("redesign": true), and never the cover (its own size): a photo for it must fit its frame.
 // - "back" returns to the page's previous design. Designs of the same photos only: a swap between
 //   pages starts both pages' history over.
+// - "original" returns one page to the photographer's design, with the pages it swapped photos with
+//   (after the client confirms).
 // - Every page keeps how the photographer sent it (client_original) until the client's page is the
 //   same again; the frames the client changed get the photographer's red dot.
 
@@ -62,7 +64,7 @@ export type RedesignCycle = { count: number; seen: string[] };
 
 export type ClientEditOutcome =
   | { ok: true; updates: SpreadUpdate[]; cycles: Record<string, RedesignCycle> }
-  | { ok: false; status: number; error: string; code?: "needs_redesign" | "cover" | "no_design" | "no_history"; pages?: string[] };
+  | { ok: false; status: number; error: string; code?: "needs_redesign" | "cover" | "no_design" | "no_history" | "linked_pages" | "unchanged"; pages?: string[] };
 
 // How much a client's redesign may crop a photo: up to the album quality check's warning line
 // (qualityCheck.ts), and up to its error line only to have a few designs to choose from.
@@ -207,26 +209,58 @@ const sameSet = (a: string[], b: string[]) => {
   return x.length === y.size && x.every((id) => y.has(id));
 };
 
+// The page as the photographer sent it, the client's columns cleared.
+function restored(sp: EditSpread): SpreadUpdate {
+  const o = sp.client_original as OriginalPage;
+  return { id: sp.id, elements: o.elements, background_photo_id: o.background_photo_id, marked_frames: o.marked_frames, client_original: null, client_history: null, edited: false };
+}
+
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+// The pages that go back to the photographer's design with this one: a page that swapped photos with
+// other pages takes them along (and the pages they swapped with), or a photo would end up on two
+// pages and another on none. In the album's order.
+export function linkedPages(spreads: readonly EditSpread[], startId: string): string[] {
+  const edited = spreads.filter((sp) => sp.client_original);
+  const photosChanged = (sp: EditSpread) => !sameList(pagePhotoIds(sp.client_original?.elements ?? []), pagePhotoIds(sp.elements ?? []));
+  const photosOf = (sp: EditSpread) => new Set([...pagePhotoIds(sp.client_original?.elements ?? []), ...pagePhotoIds(sp.elements ?? [])]);
+  const start = spreads.find((sp) => sp.id === startId);
+  if (!start || !start.client_original || !photosChanged(start)) return [startId];
+  const group = new Set([startId]);
+  const queue = [start];
+  while (queue.length) {
+    const photos = photosOf(queue.shift() as EditSpread);
+    for (const sp of edited) {
+      if (group.has(sp.id) || !photosChanged(sp) || ![...photosOf(sp)].some((id) => photos.has(id))) continue;
+      group.add(sp.id);
+      queue.push(sp);
+    }
+  }
+  return spreads.filter((sp) => group.has(sp.id)).map((sp) => sp.id);
+}
+
 export function applyClientEdit(ctx: ClientEditContext, req: ClientEditRequest): ClientEditOutcome {
   const byId = new Map(ctx.spreads.map((sp) => [sp.id, sp] as const));
   const notFound: ClientEditOutcome = { ok: false, status: 404, error: "העמוד לא נמצא" };
 
   if (req.action === "reset") {
-    const updates = ctx.spreads
-      .filter((sp) => sp.client_original)
-      .map((sp): SpreadUpdate => {
-        const o = sp.client_original as OriginalPage;
-        return {
-          id: sp.id,
-          elements: o.elements,
-          background_photo_id: o.background_photo_id,
-          marked_frames: o.marked_frames,
-          client_original: null,
-          client_history: null,
-          edited: false,
-        };
-      });
-    return { ok: true, updates, cycles: {} };
+    return { ok: true, updates: ctx.spreads.filter((sp) => sp.client_original).map(restored), cycles: {} };
+  }
+
+  if (req.action === "original") {
+    const sp = byId.get(req.spreadId);
+    if (!sp) return notFound;
+    if (!sp.client_original) return { ok: false, status: 409, error: "העמוד כבר בעיצוב המקורי", code: "unchanged" };
+    const group = linkedPages(ctx.spreads, sp.id);
+    if (group.length > 1) {
+      if (!req.confirm) return { ok: false, status: 409, error: "גם עמודים אחרים יחזרו לעיצוב המקורי", code: "linked_pages", pages: group.filter((id) => id !== sp.id) };
+      return { ok: true, updates: group.map((id) => restored(byId.get(id) as EditSpread)), cycles: {} };
+    }
+    // The same photos: the original is one more design, and "back" returns from it.
+    const o = sp.client_original;
+    const samePhotos = sameList(pagePhotoIds(o.elements), pagePhotoIds(sp.elements ?? []));
+    const update = finalize(sp, { elements: o.elements, background_photo_id: o.background_photo_id }, samePhotos ? pushHistory(sp.client_history, stateOf(sp)) : null);
+    return { ok: true, updates: [update], cycles: {} };
   }
 
   if (req.action === "back") {

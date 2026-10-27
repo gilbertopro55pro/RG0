@@ -295,6 +295,65 @@ describe("collage layouts for a redesign", () => {
   });
 });
 
+describe("לעיצוב המקורי: one page back to the photographer's design", () => {
+  const single = (): ClientEditContext => ({ ...album(), album: { width_cm: 30, height_cm: 20, safe_margin_cm: 0.5, auto_style: "clean" } });
+
+  it("after redesigns: the photographer's page, and back still returns to the last design", () => {
+    let ctx = single();
+    let cycle = { count: -1, seen: [] as string[] };
+    for (let i = 0; i < 2; i++) {
+      const out = applyClientEdit(ctx, { action: "redesign", spreadId: S1, ...cycle });
+      if (!out.ok) throw new Error(out.error);
+      cycle = out.cycles[S1];
+      ctx = saved(ctx, out);
+    }
+    const lastDesign = page(ctx, S1).elements;
+    const out = applyClientEdit(ctx, { action: "original", spreadId: S1, confirm: false });
+    if (!out.ok) throw new Error(out.error);
+    expect(out.updates).toHaveLength(1);
+    expect(out.updates[0]).toMatchObject({ edited: false, client_original: null, marked_frames: null, elements: page(single(), S1).elements });
+    expect(out.updates[0].client_history).toHaveLength(3);
+    ctx = saved(ctx, out);
+    const back = applyClientEdit(ctx, { action: "back", spreadId: S1 });
+    if (!back.ok) throw new Error(back.error);
+    expect(back.updates[0]).toMatchObject({ edited: true, elements: lastDesign });
+    expect(back.updates[0].client_original?.elements).toEqual(page(single(), S1).elements);
+  });
+
+  it("a page that swapped photos with another: asks first, then both go back, the rest untouched", () => {
+    let ctx = album();
+    ctx = saved(ctx, applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false }));
+    const ask = applyClientEdit(ctx, { action: "original", spreadId: S1, confirm: false });
+    expect(ask).toMatchObject({ ok: false, status: 409, code: "linked_pages", pages: [S2] });
+    const out = applyClientEdit(ctx, { action: "original", spreadId: S1, confirm: true });
+    if (!out.ok) throw new Error(out.error);
+    expect(out.updates.map((u) => u.id)).toEqual([S1, S2]);
+    const after = saved(ctx, out);
+    for (const id of [S1, S2]) expect(page(after, id).elements).toEqual(page(album(), id).elements);
+    expect(page(after, COVER)).toEqual(page(album(), COVER));
+    expect(allPhotos(after)).toEqual(allPhotos(album()));
+  });
+
+  it("a page whose photos stayed goes back alone, whatever other pages swapped", () => {
+    const S3 = "55555555-5555-4555-8555-555555555555";
+    const base = album();
+    let ctx: ClientEditContext = {
+      ...base,
+      spreads: [...base.spreads, { ...base.spreads[2], id: S3, marked_frames: null, elements: [photo("e", "por3", portrait), photo("f", "lan3", landscape)] }],
+      photos: new Map([...base.photos, ["por3", { aspect: 2 / 3 }], ["lan3", { aspect: 3 / 2 }]]),
+    };
+    ctx = saved(ctx, applyClientEdit(ctx, { action: "swap", a: { spreadId: S2, elId: "c" }, b: { spreadId: S2, elId: "d" }, redesign: true }));
+    ctx = saved(ctx, applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S3, elId: "e" }, redesign: false }));
+    const out = applyClientEdit(ctx, { action: "original", spreadId: S2, confirm: false });
+    if (!out.ok) throw new Error(out.error);
+    expect(out.updates.map((u) => u.id)).toEqual([S2]);
+  });
+
+  it("a page as the photographer sent it has nothing to go back to", () => {
+    expect(applyClientEdit(album(), { action: "original", spreadId: S1, confirm: true })).toMatchObject({ ok: false, code: "unchanged" });
+  });
+});
+
 describe("undo all my changes", () => {
   it("returns every page the client changed to the photographer's", () => {
     let ctx = album();
