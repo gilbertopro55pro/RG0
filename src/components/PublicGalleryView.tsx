@@ -1941,7 +1941,7 @@ export default function PublicGalleryView({
             <p role="status" className="text-sm md:text-base font-bold leading-snug" style={{ color: TARGET_GREEN }}>
               {targetState === "reached"
                 ? t("✓ הגעתם לכמות התמונות לאלבום: {target} תמונות.", { target })
-                : t("✓ הגעתם לכמות התמונות לאלבום ({target}). בחרתם {extra} תמונות נוספות.", { target, extra: favoriteCount - target })}
+                : t("✓ הגעתם לכמות התמונות לאלבום ({target}). תמונות מעבר לכמות: {extra}.", { target, extra: favoriteCount - target })}
             </p>
           )}
           {!selectionMode && !submitted && (

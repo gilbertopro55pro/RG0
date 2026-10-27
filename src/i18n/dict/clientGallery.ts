@@ -106,7 +106,7 @@ const dict: AreaDict = {
     "השהיה": "Pause",
     "נבחרו {n} מתוך {target}": "{n} of {target} picked",
     "✓ הגעתם לכמות התמונות לאלבום: {target} תמונות.": "✓ You've reached the number of photos for the album: {target}.",
-    "✓ הגעתם לכמות התמונות לאלבום ({target}). בחרתם {extra} תמונות נוספות.": "✓ You've reached the number of photos for the album ({target}). You picked {extra} more.",
+    "✓ הגעתם לכמות התמונות לאלבום ({target}). תמונות מעבר לכמות: {extra}.": "✓ You've reached the number of photos for the album ({target}). Photos over the number: {extra}.",
     "הגלריה לא נמצאה": "Gallery not found",
   },
   ru: {
@@ -210,7 +210,7 @@ const dict: AreaDict = {
     "השהיה": "Пауза",
     "נבחרו {n} מתוך {target}": "Выбрано {n} из {target}",
     "✓ הגעתם לכמות התמונות לאלבום: {target} תמונות.": "✓ Вы выбрали нужное количество фото для альбома: {target}.",
-    "✓ הגעתם לכמות התמונות לאלבום ({target}). בחרתם {extra} תמונות נוספות.": "✓ Вы выбрали нужное количество фото для альбома ({target}). Выбрано ещё {extra}.",
+    "✓ הגעתם לכמות התמונות לאלבום ({target}). תמונות מעבר לכמות: {extra}.": "✓ Вы выбрали нужное количество фото для альбома ({target}). Сверх нужного: {extra}.",
     "הגלריה לא נמצאה": "Галерея не найдена",
   },
 };
