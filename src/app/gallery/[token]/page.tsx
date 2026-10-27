@@ -346,6 +346,8 @@ export default async function PublicGalleryPage({
       }
     }
 
+    // Every photo on a page is the screen-size preview (clientScreenUrl), never photo.url: that is
+    // the camera original, several MB each, and a page of 10 photos took seconds to show.
     albumSpreadsForClient = (spreadsRaw ?? [])
       .map((s) => {
         const photo1 = photoById.get(s.photo_id_1);
@@ -379,21 +381,21 @@ export default async function PublicGalleryPage({
             if (!el.photoId) return null;
             const photo = photoById.get(el.photoId);
             if (!photo) return null;
-            return { ...el, url: photo.url };
+            return { ...el, url: clientScreenUrl(token, photo), aspect: photo.preview_aspect_ratio };
           })
           .filter((el): el is ClientAlbumElement => el !== null);
         const backgroundPhoto = s.background_photo_id ? photoById.get(s.background_photo_id) : null;
         return {
           id: s.id,
-          photo1: { id: photo1.id, url: photo1.url },
-          photo2: photo2 ? { id: photo2.id, url: photo2.url } : null,
+          photo1: { id: photo1.id, url: clientScreenUrl(token, photo1) },
+          photo2: photo2 ? { id: photo2.id, url: clientScreenUrl(token, photo2) } : null,
           layout: s.layout,
           focalX1: s.focal_x_1,
           focalY1: s.focal_y_1,
           focalX2: s.focal_x_2,
           focalY2: s.focal_y_2,
           elements,
-          background: backgroundPhoto ? { url: backgroundPhoto.url, blur: s.background_blur, opacity: s.background_opacity } : null,
+          background: backgroundPhoto ? { url: clientScreenUrl(token, backgroundPhoto), blur: s.background_blur, opacity: s.background_opacity } : null,
           comments: (commentsRaw ?? []).filter((c) => c.spread_id === s.id).map((c) => ({ id: c.id, text: c.text })),
           // The page's printed size: its own (a cover made at its own size) or the album's.
           widthCm: Number(s.width_cm ?? album.width_cm),
