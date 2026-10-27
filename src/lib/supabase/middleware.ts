@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { safeNextPath } from "@/lib/safeNext";
 import { ACCESS_COLUMNS, LOCKED_ALLOWED_API, isLockedOut, isWriteMethod, lockedOutResponse, type AccessRow } from "@/lib/appAccess";
 
 const PUBLIC_PATHS = [
@@ -133,13 +134,16 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isPublicPath && !hasBearerToken) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
+    // A page opened from a link (an email, a phone notification) opens again after signing in.
+    const next = !pathname.startsWith("/api/") && request.method === "GET" ? safeNextPath(`${pathname}${request.nextUrl.search}`) : null;
+    if (next) url.searchParams.set("next", next);
     return NextResponse.redirect(url);
   }
 
   if (user && (request.nextUrl.pathname === "/login" || request.nextUrl.pathname === "/signup")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
+    const next = safeNextPath(request.nextUrl.searchParams.get("next"));
+    return NextResponse.redirect(new URL(next ?? "/", request.url));
   }
 
   // The server-side lock (lib/appAccess.ts): a photographer whose trial ended or whose subscription

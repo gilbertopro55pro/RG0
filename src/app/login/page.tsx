@@ -4,6 +4,7 @@ import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { safeNextPath } from "@/lib/safeNext";
 import Spinner from "@/components/Spinner";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import LazyLangScope from "@/i18n/LazyLangScope";
@@ -17,12 +18,12 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<Reco
   const lang = authLangFrom(params.lang);
   return (
     <LazyLangScope lang={lang}>
-      <LoginForm lang={lang} justConfirmed={params.confirmed === "1"} confirmError={params.confirm_error === "1"} />
+      <LoginForm lang={lang} justConfirmed={params.confirmed === "1"} confirmError={params.confirm_error === "1"} next={safeNextPath(params.next)} />
     </LazyLangScope>
   );
 }
 
-function LoginForm({ lang, justConfirmed, confirmError }: { lang: Lang; justConfirmed: boolean; confirmError: boolean }) {
+function LoginForm({ lang, justConfirmed, confirmError, next }: { lang: Lang; justConfirmed: boolean; confirmError: boolean; next: string | null }) {
   const t = useT();
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -57,7 +58,8 @@ function LoginForm({ lang, justConfirmed, confirmError }: { lang: Lang; justConf
         body: JSON.stringify({ lang }),
       }).catch(() => {});
     }
-    router.push("/");
+    // Back to the link that sent them here (an email, a notification), else the home screen.
+    router.push(next ?? "/");
     router.refresh();
   };
 
