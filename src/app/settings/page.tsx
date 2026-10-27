@@ -183,6 +183,7 @@ export default async function SettingsPage({
               />
               <PrintCheckSettings
                 photographerId={photographer.id}
+                initialEnabled={(photographer as { print_check?: boolean }).print_check ?? true}
                 initialDays={(photographer as { print_check_days?: number }).print_check_days ?? PRINT_CHECK_DAYS_DEFAULT}
               />
               <IntakeGuide />

@@ -358,10 +358,10 @@ export default async function DashboardPage() {
   ): Promise<HeroStageButtonData | null> => {
     if (!photographer) return null;
     const custom = new Map((customStageNames ?? []).map((s) => [s.id, s]));
-    const action = heroStageAction(e.event_stages, custom, !!e.album_design_pdf_path);
+    const action = heroStageAction(e.event_stages, custom);
     if (!action) return null;
     const lang = clientLangFor(photographer.email, e.client_lang);
-    const message = action.canMark && action.notifies && e.client_phone ? await clientStageMessage(e, p, action, lang) : null;
+    const message = action.notifies && e.client_phone ? await clientStageMessage(e, p, action, lang) : null;
     return { ...action, message, phone: e.client_phone, email: e.client_email ?? null, lang };
   };
 

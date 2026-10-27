@@ -246,7 +246,7 @@ check the Vercel→Fly leg first.
 
 ### Print sends: the reminder task and the home-screen line (2026-10-27)
 
-- When a print-house job (`send_to_email` set) turns `ready`, the trigger `gallery_album_export_jobs_print_check` (migration 0196) adds a task to the photographer's to-do list: check with the print house whether the album is ready, `photographers.print_check_days` days later (3–14, default 5, Settings › Automation). The task's id is kept in `print_check_task_id`, so one task per send. Its title is in the photographer's language (`ui_lang`).
+- When a print-house job (`send_to_email` set) turns `ready`, the trigger `gallery_album_export_jobs_print_check` (migration 0196) adds a task to the photographer's to-do list: check with the print house whether the album is ready, `photographers.print_check_days` days later (3–14, default 5, Settings › Automation). `photographers.print_check` (migration 0197, on by default, a switch in the same card) turns it off: then a finished send adds no task. The task's id is kept in `print_check_task_id`, so one task per send. Its title is in the photographer's language (`ui_lang`).
 - The home screen's event row or block shows "אלבום נשלח לדפוס בתאריך: …" from the latest `ready` print job of the event's gallery (`lib/printCheck.ts`).
 - Nothing in the worker changed for this. If a send shows no task: check `print_check_task_id` on the job, and that the status went through `ready` (not inserted as ready).
 

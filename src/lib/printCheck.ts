@@ -2,7 +2,8 @@
 // album was sent ("אלבום נשלח לדפוס בתאריך: …"), and N days after the send a task to check with the
 // print house whether the album is ready goes into the to-do list. The task is created by a
 // database trigger when the print job finishes (migration 0196); N is photographers
-// .print_check_days, 3–14, 5 by default (Settings › Automation, PrintCheckSettings).
+// .print_check_days, 3–14, 5 by default, and photographers.print_check switches the task off
+// (migration 0197; both in Settings › Automation, PrintCheckSettings).
 
 export const PRINT_CHECK_DAYS_DEFAULT = 5;
 export const PRINT_CHECK_DAY_OPTIONS: readonly number[] = Array.from({ length: 12 }, (_, i) => i + 3);
