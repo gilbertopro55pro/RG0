@@ -760,7 +760,8 @@ export default function GalleryAlbumProofing({
   const pageMarks = spread ? (marks[spread.id] ?? []) : [];
   const hasNote = (id: string) => (marks[id]?.length ?? 0) > 0 || !!notes[id]?.trim();
   const markedPages = pages.filter((p) => hasNote(p.id)).length;
-  const editedPages = pages.filter((p) => p.edited).length;
+  const editedNumbers = pages.flatMap((p, i) => (p.edited ? [i + 1] : []));
+  const editedPages = editedNumbers.length;
   const pageNumber = (id: string) => pages.findIndex((p) => p.id === id) + 1;
 
   const goTo = (i: number) => setIndex(Math.max(firstIndex, Math.min(lastIndex, i)));
@@ -1372,14 +1373,25 @@ export default function GalleryAlbumProofing({
       {confirmReset && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center" style={{ background: "rgba(28, 27, 25, 0.45)" }} onClick={() => setConfirmReset(false)}>
           <div className="w-full max-w-md rounded-t-3xl p-5 pb-8 bg-white" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-2 font-display">{t("לבטל את כל השינויים?")}</h2>
-            <p className="text-sm text-ink-soft mb-5">{t("כל העמודים ששיניתם ({n}) יחזרו לעיצוב שהצלם שלח. ההערות שכתבתם נשארות.", { n: editedPages })}</p>
+            {/* What "reset" does exactly (owner, 2026-10-27): which pages, that swaps between pages are
+                undone too, that it can't be undone (the "back" history goes with it), and that notes stay. */}
+            <h2 className="text-lg font-bold mb-3 font-display">{t("לחזור לעיצוב שהצלם שלח?")}</h2>
+            <ul className="list-disc ps-5 space-y-1.5 text-sm text-ink-soft mb-5">
+              <li>
+                {editedPages === 1
+                  ? t("עמוד {n} יחזור בדיוק לעיצוב שהצלם שלח.", { n: editedNumbers[0] })
+                  : t("עמודים {pages} יחזרו בדיוק לעיצוב שהצלם שלח.", { pages: editedNumbers.join(", ") })}
+              </li>
+              <li>{t("כל ההחלפות והעיצובים שבחרתם יבוטלו, ותמונות שהעברתם בין עמודים יחזרו למקום שלהן.")}</li>
+              <li className="font-semibold text-ink">{t("אי אפשר לשחזר את השינויים אחרי הביטול.")}</li>
+              <li>{t("ההערות שכתבתם לעמודים נשארות.")}</li>
+            </ul>
             <div className="flex gap-2">
               <button onClick={() => void resetAll()} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-rose text-white">
-                {t("ביטול השינויים")}
+                {t("כן, לבטל את השינויים")}
               </button>
               <button onClick={() => setConfirmReset(false)} className="flex-1 rounded-lg py-3 text-sm font-semibold bg-card border border-line text-ink-soft">
-                {t("חזרה")}
+                {t("השארת השינויים")}
               </button>
             </div>
           </div>
