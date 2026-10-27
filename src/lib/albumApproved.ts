@@ -51,7 +51,12 @@ export type AutoPrintResult = { kind: "sent"; email: string } | { kind: "off" } 
 // Sends the approved album to the print house by itself, unless the photographer switched it off.
 export async function autoSendApprovedAlbum(
   supabase: Db,
-  p: { galleryId: string; album: { id: string; width_cm: number | string; height_cm: number | string }; photographerId: string; origin: string }
+  p: {
+    galleryId: string;
+    album: { id: string; width_cm: number | string; height_cm: number | string; cover_photo_id: string | null };
+    photographerId: string;
+    origin: string;
+  }
 ): Promise<AutoPrintResult> {
   const [{ data: photographer }, { data: printHouses }, { data: pages }] = await Promise.all([
     supabase.from("photographers").select("album_auto_print").eq("id", p.photographerId).maybeSingle<{ album_auto_print: boolean | null }>(),
@@ -78,9 +83,9 @@ export async function autoSendApprovedAlbum(
     photographerId: p.photographerId,
     email: printHouse.email,
     notes: `${printSizeNote(p.album, pages ?? [])}\nהעיצוב אושר על ידי הלקוח/ה.`,
-    // The whole album: the range is clamped to the album's last page.
+    // The whole album: the cover photo (when there is one) is page 1, then every spread.
     from: 1,
-    to: 10_000,
+    to: Math.max(1, (p.album.cover_photo_id ? 1 : 0) + (pages ?? []).length),
     origin: p.origin,
   });
   if (result.ok) return { kind: "sent", email: printHouse.email };

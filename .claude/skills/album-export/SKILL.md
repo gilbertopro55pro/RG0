@@ -250,6 +250,17 @@ check the Vercel→Fly leg first.
 - The home screen's event row or block shows "אלבום נשלח לדפוס בתאריך: …" from the latest `ready` print job of the event's gallery (`lib/printCheck.ts`).
 - Nothing in the worker changed for this. If a send shows no task: check `print_check_task_id` on the job, and that the status went through `ready` (not inserted as ready).
 
+### The client's approval sends the album to print by itself (2026-10-27)
+
+- **When the client approves the design** in the gallery (`api/gallery/[token]/album/approve`), `autoSendApprovedAlbum` in `lib/albumApproved.ts` starts a print-house send. It's the same job as "שליחה לבית דפוס" (`enqueuePrintHouseSend` in `lib/printHouseSend.ts`, shared with `send-to-print-house`):
+  - **What it sends:** the whole album, JPG at the album's size.
+  - **Where:** the default print-house address.
+  - **The notes** carry the size (`printSizeNote`), plus "העיצוב אושר על ידי הלקוח/ה".
+- **Off switch:** `photographers.album_auto_print`.
+- **It doesn't send** without a saved address, or while another album job runs (409). The event log and the photographer's email say why.
+- **Approval happens once:** the route only moves a `sent` album to `approved`, so a second tap never sends twice.
+- **Live-checked 2026-10-27** (test account, a one-page 30×20 album): the job finished `ready`, the notes read "מידות האלבום: 30×20 ס״מ", and the log line was written.
+
 ## Testing live (the procedure that passed)
 
 Run tests on the test account only, never on a real photographer's album. The script
