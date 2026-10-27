@@ -2,6 +2,7 @@ import type { AlbumElement, AlbumFrame, AlbumPhotoElement } from "@/lib/types";
 import { marginInsetPctFor } from "@/lib/albumSafeArea";
 import {
   changedFrameIds,
+  cropOf,
   pagePhotoIds,
   pushHistory,
   samePage,
@@ -11,7 +12,7 @@ import {
   type PageState,
 } from "@/lib/albumClientEdit";
 import { fitPhotoInFrame, swapPhotoPatches, type FaceRect } from "./swapPhotos";
-import { chooseRedesign, designShape, engineLayouts, redesignDesigns } from "./redesign";
+import { chooseRedesign, collageTemplates, designShape, engineLayouts, redesignDesigns, type RedesignDesign } from "./redesign";
 import { AUTO_STYLES, type AutoStyleId, type LayoutPhoto } from "./types";
 
 // The server's side of the client's changes to the album design (lib/albumClientEdit.ts): what a
@@ -63,7 +64,21 @@ export type ClientEditOutcome =
   | { ok: true; updates: SpreadUpdate[]; cycles: Record<string, RedesignCycle> }
   | { ok: false; status: number; error: string; code?: "needs_redesign" | "cover" | "no_design" | "no_history"; pages?: string[] };
 
+// How much a client's redesign may crop a photo: up to the album quality check's warning line
+// (qualityCheck.ts), and up to its error line only to have a few designs to choose from.
+export const CLIENT_DESIGN_MAX_CROP = 1.6;
+export const CLIENT_DESIGN_LIMIT_CROP = 1.8;
+const CLIENT_DESIGN_CHOICES = 4;
+
 const isCover = (sp: EditSpread) => sp.width_cm != null;
+
+// The most any photo of a page is cropped in its frame.
+export function worstCrop(elements: readonly AlbumElement[], page: { widthCm: number; heightCm: number }, aspect: (photoId: string) => number): number {
+  return Math.max(
+    1,
+    ...elements.filter((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId).map((el) => cropOf(el, page, aspect(el.photoId as string)))
+  );
+}
 const stateOf = (sp: EditSpread): PageState => ({ elements: sp.elements ?? [], background_photo_id: sp.background_photo_id });
 const photoEl = (sp: EditSpread, elId: string) =>
   (sp.elements ?? []).find((el): el is AlbumPhotoElement & { photoId: string } => el.id === elId && el.type === "photo" && !!el.photoId);
@@ -96,7 +111,13 @@ function finalize(sp: EditSpread, next: PageState, history: PageState[] | null, 
 
 // The page's next design for its photos (lib/albumAuto/redesign.ts), as the photographer's own
 // "עיצוב מחדש" picks it.
-function redesignPage(ctx: ClientEditContext, sp: EditSpread, elements: AlbumElement[], cycle: RedesignCycle): { elements: AlbumElement[] | null } & RedesignCycle {
+function redesignPage(
+  ctx: ClientEditContext,
+  sp: EditSpread,
+  elements: AlbumElement[],
+  cycle: RedesignCycle,
+  opts: { newPhotos?: boolean } = {}
+): { elements: AlbumElement[] | null } & RedesignCycle {
   const photoEls = elements.filter((el): el is AlbumPhotoElement => el.type === "photo" && !!el.photoId);
   const ids = [...new Set(photoEls.map((el) => el.photoId as string))];
   if (ids.length === 0) return { elements: null, ...cycle };
@@ -113,7 +134,19 @@ function redesignPage(ctx: ClientEditContext, sp: EditSpread, elements: AlbumEle
     ...(ctx.album.safe_margin_cm != null ? { safe_margin_cm: Number(ctx.album.safe_margin_cm) } : {}),
   });
   const engine = engineLayouts({ style, photos, pageIndex, widthCm: page.widthCm, heightCm: page.heightCm, inset });
-  const designs = redesignDesigns({ engine, photos, userTemplates: ctx.userTemplates, widthCm: page.widthCm, heightCm: page.heightCm, inset, elements, idPrefix: ctx.idPrefix });
+  const marginCm = ctx.album.safe_margin_cm != null ? Number(ctx.album.safe_margin_cm) : 0.5;
+  const all = redesignDesigns({
+    engine,
+    photos,
+    userTemplates: ctx.userTemplates,
+    widthCm: page.widthCm,
+    heightCm: page.heightCm,
+    inset,
+    elements,
+    idPrefix: ctx.idPrefix,
+    extraTemplates: collageTemplates(photos, page.widthCm, page.heightCm, marginCm),
+  });
+  const designs = clientDesigns(all, page, (id) => aspectOf(ctx, id));
   if (designs.length === 0) return { elements: null, ...cycle };
   const at = ctx.spreads.findIndex((s) => s.id === sp.id);
   const neighbours = new Set(
@@ -121,8 +154,51 @@ function redesignPage(ctx: ClientEditContext, sp: EditSpread, elements: AlbumEle
       .filter((s): s is EditSpread => !!s)
       .map((s) => designShape((s.elements ?? []).filter((el): el is AlbumPhotoElement => el.type === "photo")))
   );
-  const choice = chooseRedesign(designs, { current: designShape(photoEls), seen: new Set(cycle.seen), neighbours, count: cycle.count });
+  // After a swap the page holds other photos than its design was made for: the same shape, laid out
+  // again for them, is a new design too.
+  const current = opts.newPhotos ? "" : designShape(photoEls);
+  const choice = chooseRedesign(designs, { current, seen: new Set(cycle.seen), neighbours, count: cycle.count });
   return { elements: choice.design ? choice.design.build() : null, count: choice.count, seen: [...choice.seen] };
+}
+
+// A double page with a framed photo across its fold (at least 15% of it on each side), where the
+// binding swallows it: the library's templates don't know about the fold. Faded photos and photos
+// running to the page's edge cross it on purpose.
+function onFold(elements: readonly AlbumElement[], page: { widthCm: number; heightCm: number }): boolean {
+  if (page.widthCm / page.heightCm < 1.6) return false;
+  return elements.some((el) => {
+    if (el.type !== "photo" || el.maskId) return false;
+    if (el.xPct <= 0.5 || el.yPct <= 0.5 || el.xPct + el.widthPct >= 99.5 || el.yPct + el.heightPct >= 99.5) return false;
+    const side = 0.15 * el.widthPct;
+    return el.xPct < 50 - side && el.xPct + el.widthPct > 50 + side;
+  });
+}
+
+// The designs a client cycles through, none with a photo on the fold. The client's page can go to
+// print without the photographer seeing it, and a portrait photo in a landscape frame cuts heads;
+// with photos of both orientations most library templates crop that much (the collage layouts and
+// the engine's designs fit). So: the designs within the warning line, in their varied order; when
+// they hold fewer than 4 different shapes, the least cropping ones up to the error line join, one per
+// new shape; when nothing is within it, the least cropping design alone.
+export function clientDesigns(all: readonly RedesignDesign[], page: { widthCm: number; heightCm: number }, aspect: (photoId: string) => number): RedesignDesign[] {
+  const scored = all
+    .map((d) => {
+      const els = d.build();
+      return { d, crop: worstCrop(els, page, aspect), fold: !d.engine && onFold(els, page) };
+    })
+    .filter((x) => !x.fold);
+  const out = scored.filter((x) => x.crop <= CLIENT_DESIGN_MAX_CROP).map((x) => x.d);
+  const shapes = new Set(out.map((d) => designShape(d.rects)));
+  const byCrop = [...scored].sort((a, b) => a.crop - b.crop);
+  for (const { d, crop } of byCrop) {
+    if (shapes.size >= CLIENT_DESIGN_CHOICES || crop > CLIENT_DESIGN_LIMIT_CROP) break;
+    if (crop <= CLIENT_DESIGN_MAX_CROP) continue;
+    const shape = designShape(d.rects);
+    if (shapes.has(shape)) continue;
+    shapes.add(shape);
+    out.push(d);
+  }
+  return out.length ? out : byCrop.slice(0, 1).map((x) => x.d);
 }
 
 const sameSet = (a: string[], b: string[]) => {
@@ -205,7 +281,7 @@ export function applyClientEdit(ctx: ClientEditContext, req: ClientEditRequest):
   for (const id of need) {
     const patch = patches.get(id);
     if (!patch) continue;
-    const next = redesignPage(ctx, byId.get(id) as EditSpread, patch.elements, { count: -1, seen: [] });
+    const next = redesignPage(ctx, byId.get(id) as EditSpread, patch.elements, { count: -1, seen: [] }, { newPhotos: true });
     if (next.elements) {
       patch.elements = next.elements;
       cycles[id] = { count: next.count, seen: next.seen };
