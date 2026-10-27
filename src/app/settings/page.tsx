@@ -29,9 +29,11 @@ import ReminderToggleSettings from "@/components/ReminderToggleSettings";
 import MorningDigestSettings from "@/components/MorningDigestSettings";
 import { DIGEST_DEFAULT_MINUTES } from "@/lib/morningDigest";
 import PrintCheckSettings from "@/components/PrintCheckSettings";
+import AlbumApprovalSettings from "@/components/AlbumApprovalSettings";
 import SelectionTargetsSettings from "@/components/SelectionTargetsSettings";
 import type { SelectionTargets } from "@/lib/selectionTarget";
 import { PRINT_CHECK_DAYS_DEFAULT } from "@/lib/printCheck";
+import { ALBUM_REMINDER_DAYS_DEFAULT } from "@/lib/albumApproval";
 import GuidesSettings from "@/components/GuidesSettings";
 import UpdatesSettings from "@/components/UpdatesSettings";
 import SettingsTabs from "@/components/SettingsTabs";
@@ -194,6 +196,14 @@ export default async function SettingsPage({
                 photographerId={photographer.id}
                 initialEnabled={(photographer as { print_check?: boolean }).print_check ?? true}
                 initialDays={(photographer as { print_check_days?: number }).print_check_days ?? PRINT_CHECK_DAYS_DEFAULT}
+              />
+              <AlbumApprovalSettings
+                photographerId={photographer.id}
+                initial={{
+                  reminder: (photographer as { album_approval_reminder?: boolean }).album_approval_reminder ?? true,
+                  days: (photographer as { album_approval_reminder_days?: number }).album_approval_reminder_days ?? ALBUM_REMINDER_DAYS_DEFAULT,
+                  autoPrint: (photographer as { album_auto_print?: boolean }).album_auto_print ?? true,
+                }}
               />
               <IntakeGuide />
               <BotSettings

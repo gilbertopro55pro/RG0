@@ -58,12 +58,15 @@ function localInputValue(d: Date) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-// 3 days after the album-design-ready / full-film-ready message, when the client still hasn't
-// approved the album / picked the clip songs (lib/clientReminders.ts).
+// Days after the album-design-ready / full-film-ready message (the album's are the photographer's,
+// 1–14), when the client still hasn't approved the album / picked the clip songs
+// (lib/clientReminders.ts).
 export type PendingClientReminder = {
   type: "album_reminder" | "song_reminder";
   id: string;
   clientName: string;
+  // When the message went out (the reminder was scheduled with it).
+  sentAt: string;
 };
 
 // 1–3 days before the event: the "יום הצילום" message from the client messages settings, ready to
@@ -347,7 +350,12 @@ export default function PendingClientMessagePrompts({
             </h2>
             <p className="text-sm text-ink-soft mb-5">
               {current.type === "album_reminder"
-                ? withBoldName(t("עברו 3 ימים מאז ששלחת ל{name} את עיצוב האלבום, והוא עוד לא אושר בפורטל. לשלוח תזכורת בוואטסאפ?"), current.clientName)
+                ? withBoldName(
+                    t("שלחת ל{name} את עיצוב האלבום ב-{date}, והוא עוד לא אושר. לשלוח תזכורת בוואטסאפ?", {
+                      date: new Date(current.sentAt).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "numeric", timeZone: "Asia/Jerusalem" }),
+                    }),
+                    current.clientName
+                  )
                 : withBoldName(t("עברו 3 ימים מאז ששלחת ל{name} שהסרט המלא מוכן, ועוד לא נבחרו שירים לקליפ. לשלוח תזכורת להוריד את הסרט ולבחור שיר שקט ושיר קצבי?"), current.clientName)}
             </p>
             <div className="flex gap-2">

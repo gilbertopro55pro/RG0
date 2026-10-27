@@ -63,6 +63,7 @@ import SettingsGearLink from "@/components/SettingsGearLink";
 import TasksButton from "@/components/tasks/TasksButton";
 import { DIGEST_DEFAULT_MINUTES } from "@/lib/morningDigest";
 import { latestPrintSendByEvent, type PrintSendRow } from "@/lib/printCheck";
+import { albumApprovalByEvent, type AlbumStateRow } from "@/lib/albumApproval";
 import AlbumQuickAccessButton from "@/components/AlbumQuickAccessButton";
 import { FOLLOW_UP_LEAD_COLUMNS, quoteFollowUpHandled, type FollowUpLeadState } from "@/lib/leadFollowUp";
 import { vividForEmail } from "@/lib/vivid";
@@ -125,6 +126,7 @@ export default async function DashboardPage() {
     { count: registeredCount },
     { count: openTasksCount },
     { data: printSends },
+    { data: albumStates },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase.from("team_members").select("*").eq("id", user!.id).maybeSingle<TeamMember>(),
@@ -141,7 +143,7 @@ export default async function DashboardPage() {
     supabase.from("event_payments").select("*").returns<EventPaymentRow[]>(),
     supabase
       .from("scheduled_messages")
-      .select(`id, event_id, lead_id, kind, remind_at, remind_set_at, events(client_name), leads(name, phone, quoted_amount, ${FOLLOW_UP_LEAD_COLUMNS})`)
+      .select(`id, event_id, lead_id, kind, created_at, remind_at, remind_set_at, events(client_name), leads(name, phone, quoted_amount, ${FOLLOW_UP_LEAD_COLUMNS})`)
       .in("kind", ["payment_reminder", "review_request", "lead_quote_followup", "album_approval_reminder", "song_selection_reminder", "shoot_day_reminder", "song_stage_reminder"])
       .eq("status", "awaiting_confirmation")
       .returns<
@@ -157,6 +159,7 @@ export default async function DashboardPage() {
             | "song_selection_reminder"
             | "shoot_day_reminder"
             | "song_stage_reminder";
+          created_at: string;
           remind_at: string | null;
           remind_set_at: string | null;
           events: { client_name: string } | null;
@@ -213,6 +216,15 @@ export default async function DashboardPage() {
       .order("created_at", { ascending: false })
       .limit(500)
       .returns<PrintSendRow[]>(),
+    // "עיצוב האלבום נשלח לאישור בתאריך" / approved / corrections on the event's row
+    // (lib/albumApproval.ts): the albums sent to clients, with their gallery's event.
+    supabase
+      .from("gallery_albums")
+      .select("status, sent_at, approved_at, gallery:galleries(event_id)")
+      .eq("photographer_id", user.id)
+      .neq("status", "draft")
+      .limit(1000)
+      .returns<AlbumStateRow[]>(),
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
@@ -484,6 +496,7 @@ export default async function DashboardPage() {
           type: s.kind === "album_approval_reminder" ? ("album_reminder" as const) : ("song_reminder" as const),
           id: s.id,
           clientName: s.events?.client_name ?? t("לקוח"),
+          sentAt: s.created_at,
         }))
     : [];
   // The shoot-day reminder (lib/shootDayReminder.ts): the "יום הצילום" message from the client
@@ -662,6 +675,7 @@ export default async function DashboardPage() {
         needsReviewColorId={photographer?.google_calendar_import_color_id}
         attentionByEvent={attentionByEvent}
         printSentByEvent={latestPrintSendByEvent(printSends ?? [])}
+        albumByEvent={albumApprovalByEvent(albumStates ?? [])}
         initialView={parseHomeEventsView(photographer?.home_events_view)}
         saveView={!!photographer}
         initialLayout={parseEventsLayout((await cookies()).get(EVENTS_LAYOUT_COOKIE)?.value)}

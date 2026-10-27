@@ -1,10 +1,7 @@
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { authenticateGalleryRequest } from "@/lib/desktopAuth";
-import { activeAlbumJob, EXPORT_RUNNING, PRINT_HOUSE_ALREADY_SENDING } from "@/lib/activeAlbumJob";
-import { countExportPages, triggerAlbumExportProcessing } from "@/lib/albumExportJobs";
-import { PRINT_FILE_DAYS, PRINT_LINK_DAYS, daysFromNow } from "@/lib/printHouseLinks";
-import { newPrintToken } from "@/lib/printHouseJob";
+import { enqueuePrintHouseSend } from "@/lib/printHouseSend";
 import type { GalleryAlbumRow, GalleryRow } from "@/lib/types";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -41,46 +38,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "לא נמצא אלבום לגלריה זו" }, { status: 404 });
   }
 
-  // One album job at a time per photographer (migration 0115): an export going on in the background
-  // gets a clear answer instead of the unique index's raw error.
-  const active = await activeAlbumJob(supabase, gallery.photographer_id);
-  if (active) return NextResponse.json({ error: active.printHouse ? PRINT_HOUSE_ALREADY_SENDING : EXPORT_RUNNING }, { status: 409 });
-
   const fromPage = body.from ?? 1;
   const toPage = body.to ?? fromPage;
+  const result = await enqueuePrintHouseSend(supabase, {
+    galleryId: gallery.id,
+    albumId: album.id,
+    photographerId: gallery.photographer_id,
+    email,
+    notes,
+    from: fromPage,
+    to: toPage,
+    origin: new URL(request.url).origin,
+  });
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
-  const totalCount = await countExportPages(galleryId, fromPage, toPage);
-  if (totalCount === null) {
-    return NextResponse.json({ error: "אין עדיין עמודים באלבום" }, { status: 400 });
-  }
-
-  const { data: job, error } = await supabase
-    .from("gallery_album_export_jobs")
-    .insert({
-      album_id: album.id,
-      gallery_id: gallery.id,
-      photographer_id: gallery.photographer_id,
-      format: "jpg",
-      from_page: fromPage,
-      to_page: toPage,
-      total_count: totalCount,
-      send_to_email: email,
-      send_notes: notes || null,
-      // The link works for a week (so it isn't a permanent, unauthenticated way to redownload a
-      // client's paid deliverable). The file is kept longer, so the photographer can renew the
-      // link from the send sheet without rendering the album again (printHouseLinks.ts).
-      share_token: newPrintToken(),
-      link_expires_at: daysFromNow(PRINT_LINK_DAYS),
-      expires_at: daysFromNow(PRINT_FILE_DAYS),
-    })
-    .select("id")
-    .single<{ id: string }>();
-  if (error || !job) {
-    return NextResponse.json({ error: error?.message ?? "שגיאה בשליחה לבית הדפוס" }, { status: 500 });
-  }
-
-  const origin = new URL(request.url).origin;
-  after(() => triggerAlbumExportProcessing(job.id, origin));
-
-  return NextResponse.json({ jobId: job.id });
+  return NextResponse.json({ jobId: result.jobId });
 }

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { STAGE_LABELS, type StageKey } from "@/lib/stages";
+import { ALBUM_REMINDER_DAYS_DEFAULT, isAlbumReminderDays } from "@/lib/albumApproval";
 
 // Reminders to the photographer to nudge a client (owner's request, 2026-10-04):
 // - album: 3 days after the "album design ready" message, if the client hasn't approved it.
@@ -8,6 +9,9 @@ import { STAGE_LABELS, type StageKey } from "@/lib/stages";
 // Sending the stage message schedules a scheduled_messages row; the send-scheduled-messages cron
 // checks again when it's due and, only if still needed, flags it for the photographer (push +
 // dashboard prompt with a ready WhatsApp message). Packages without these stages never schedule.
+// The album reminder's days (1–14, 3 by default) and its on/off switch are the photographer's
+// (photographers.album_approval_reminder_days / album_approval_reminder, owner 2026-10-27); the
+// album tool's send to the client schedules it too (scheduleAlbumApprovalReminder).
 
 export const CLIENT_REMINDER_DAYS = 3;
 
@@ -65,27 +69,63 @@ export async function scheduleReminderForStage(supabase: SupabaseClient<any>, ev
     .maybeSingle<{ album_approved_at: string | null; songs_chosen_at: string | null }>();
   if (!event) return null;
 
-  let kind: ClientReminderKind | null = null;
-  if (sent.role === "album_approval" && !event.album_approved_at) kind = "album_approval_reminder";
+  if (sent.role === "album_approval") {
+    if (event.album_approved_at) return null;
+    return (await scheduleAlbumApprovalReminder(supabase, eventId)) === null ? null : "album_approval_reminder";
+  }
   if (sent.role === "video_approval") {
     const song = roles.find((r) => r.role === "client_song_selection");
-    if (song && !song.done && !event.songs_chosen_at) kind = "song_selection_reminder";
+    if (song && !song.done && !event.songs_chosen_at) {
+      await replaceReminder(supabase, eventId, "song_selection_reminder", CLIENT_REMINDER_DAYS);
+      return "song_selection_reminder";
+    }
   }
-  if (!kind) return null;
+  return null;
+}
 
+// Replaces any waiting reminder of this kind for the event with one due in `days` (null: only
+// cancels the waiting one).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function replaceReminder(supabase: SupabaseClient<any>, eventId: string, kind: ClientReminderKind, days: number | null) {
   await supabase
     .from("scheduled_messages")
     .update({ status: "canceled" })
     .eq("event_id", eventId)
     .eq("kind", kind)
     .in("status", ["pending", "awaiting_confirmation"]);
+  if (days === null) return;
   await supabase.from("scheduled_messages").insert({
     event_id: eventId,
     kind,
     status: "pending",
-    send_at: new Date(Date.now() + CLIENT_REMINDER_DAYS * 86_400_000).toISOString(),
+    send_at: new Date(Date.now() + days * 86_400_000).toISOString(),
   });
-  return kind;
+}
+
+// The photographer's album reminder: on/off and after how many days.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function albumReminderSetting(supabase: SupabaseClient<any>, photographerId: string): Promise<{ enabled: boolean; days: number }> {
+  const { data } = await supabase
+    .from("photographers")
+    .select("album_approval_reminder, album_approval_reminder_days")
+    .eq("id", photographerId)
+    .maybeSingle<{ album_approval_reminder: boolean | null; album_approval_reminder_days: number | null }>();
+  return {
+    enabled: data?.album_approval_reminder !== false,
+    days: isAlbumReminderDays(data?.album_approval_reminder_days) ? data.album_approval_reminder_days : ALBUM_REMINDER_DAYS_DEFAULT,
+  };
+}
+
+// The album design was sent to the client (the stage message on the event page, or the album
+// tool's send): a reminder after the photographer's days, replacing a waiting one, so a send again
+// restarts the count. Switched off: any waiting one is canceled. Returns the days, or null.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function scheduleAlbumApprovalReminder(supabase: SupabaseClient<any>, eventId: string): Promise<number | null> {
+  const { data: event } = await supabase.from("events").select("photographer_id").eq("id", eventId).maybeSingle<{ photographer_id: string }>();
+  if (!event) return null;
+  const setting = await albumReminderSetting(supabase, event.photographer_id);
+  await replaceReminder(supabase, eventId, "album_approval_reminder", setting.enabled ? setting.days : null);
+  return setting.enabled ? setting.days : null;
 }
 
 // Whether the reminder is still needed (checked when it's due, and again when the photographer

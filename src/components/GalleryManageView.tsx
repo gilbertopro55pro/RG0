@@ -135,6 +135,8 @@ import AlbumSelectionBar from "@/components/galleryManage/AlbumSelectionBar";
 import AlbumSelectionConfirm from "@/components/galleryManage/AlbumSelectionConfirm";
 import MarkedFrameDots from "@/components/galleryManage/MarkedFrameDots";
 import { useAlbumSelection } from "@/components/galleryManage/useAlbumSelection";
+import AlbumSendToClient, { AlbumSendNotice, fetchAlbumClientInfo, recordAlbumSend } from "@/components/galleryManage/AlbumSendToClient";
+import type { AlbumClientInfo } from "@/lib/albumApproval";
 import { albumPoolIds, type AlbumSelectionFields, type SpreadMarkFields } from "@/lib/albumSelection";
 
 // The reel builder (admin only, 2026-10-07) loads its video encoder only when opened.
@@ -1924,12 +1926,47 @@ export default function GalleryManageView({
     setCustomOrnaments((prev) => prev.filter((o) => o.id !== ornamentId));
   };
 
+  // "שליחה לאישור הלקוח/ה" (owner, 2026-10-27): the message with the link that opens the album, in
+  // the send window (galleryManage/AlbumSendToClient). The album turns "sent" only when it goes out.
+  const [albumSendInfo, setAlbumSendInfo] = useState<AlbumClientInfo | null>(null);
+  const [albumSendNotice, setAlbumSendNotice] = useState<"unpublished" | "error" | null>(null);
+  // The client's latest marked corrections (gallery_album_corrections, the client's "צריך תיקונים"),
+  // linked from the status line while the album waits for them.
+  const [albumCorrectionId, setAlbumCorrectionId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!album || album.status !== "changes_requested") return;
+    let cancelled = false;
+    supabase
+      .from("gallery_album_corrections")
+      .select("id")
+      .eq("album_id", album.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string }>()
+      .then(({ data }) => {
+        if (!cancelled) setAlbumCorrectionId(data?.id ?? null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the album's id and status are what matter
+  }, [album?.id, album?.status]);
   const sendAlbumToClient = async () => {
     if (!album) return;
     setSavingAlbum(true);
-    await supabase.from("gallery_albums").update({ status: "sent" }).eq("id", album.id);
-    setAlbum({ ...album, status: "sent" });
-    setSavingAlbum(false);
+    try {
+      const info = await fetchAlbumClientInfo(gallery.id);
+      if (info.published) setAlbumSendInfo(info);
+      else setAlbumSendNotice("unpublished");
+    } catch {
+      setAlbumSendNotice("error");
+    } finally {
+      setSavingAlbum(false);
+    }
+  };
+  const albumSent = (channel: Parameters<typeof recordAlbumSend>[1]) => {
+    setAlbum((prev) => (prev && prev.status !== "approved" ? { ...prev, status: "sent" } : prev));
+    void recordAlbumSend(gallery.id, channel);
   };
 
   // Total exportable pages, matching how the export routes number them: the cover (if the album
@@ -4827,6 +4864,8 @@ export default function GalleryManageView({
         />
       )}
 
+      {albumSendInfo && <AlbumSendToClient info={albumSendInfo} onSend={albumSent} onClose={() => setAlbumSendInfo(null)} />}
+      {albumSendNotice && <AlbumSendNotice kind={albumSendNotice} onClose={() => setAlbumSendNotice(null)} />}
       {albumManageOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 overflow-hidden"
@@ -4892,7 +4931,7 @@ export default function GalleryManageView({
             }
           `}</style>
           <div
-            className={`gf-album-manage-card w-full max-w-sm rounded-3xl bg-paper shadow-sheet overflow-hidden flex flex-col ${
+            className={`gf-album-manage-card relative w-full max-w-sm rounded-3xl bg-paper shadow-sheet overflow-hidden flex flex-col ${
               albumManageFullscreen ? "lg:max-w-none lg:w-[95vw] lg:h-[92vh] max-h-[85vh] lg:max-h-none" : "lg:max-w-3xl max-h-[85vh]"
             }`}
             onClick={(e) => e.stopPropagation()}
@@ -4909,7 +4948,18 @@ export default function GalleryManageView({
                 item, and a SEPARATE scrolling wrapper below for the body — means the header is never
                 inside a scrolled element at all, sticky or not, so there's nothing for that class of
                 bug to attach to. */}
-            <div className="shrink-0 px-5 lg:px-7 pt-5 lg:pt-7 pb-4 mb-2 bg-paper flex items-center justify-between flex-wrap gap-2 border-b border-line">
+            {/* Closing the tool: the top-left corner in every language, white with a red outline so it's
+                easy to find (owner, 2026-10-27). The header keeps that corner clear. */}
+            <button
+              onClick={() => setAlbumManageOpen(false)}
+              aria-label={t("סגירת כלי עיצוב האלבום")}
+              title={t("סגירת כלי עיצוב האלבום")}
+              className={`absolute left-3 top-3 lg:left-4 lg:top-4 z-10 h-[34px] w-[34px] rounded-full flex items-center justify-center bg-white border-2 shadow-sm ${BTN_PRESS}`}
+              style={{ borderColor: "#e5322d", color: "#e5322d" }}
+            >
+              <IconAlbumClose size={16} />
+            </button>
+            <div className="shrink-0 pr-5 lg:pr-7 pl-14 lg:pl-16 pt-5 lg:pt-7 pb-4 mb-2 bg-paper flex items-center justify-between flex-wrap gap-2 border-b border-line">
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold font-display">{t("עיצוב אלבום")}</h2>
                 <button
@@ -5030,9 +5080,6 @@ export default function GalleryManageView({
                       <path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" />
                     )}
                   </svg>
-                </button>
-                <button onClick={() => setAlbumManageOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line">
-                  <IconAlbumClose />
                 </button>
               </div>
             </div>
@@ -5276,7 +5323,19 @@ export default function GalleryManageView({
                         {t("האלבום אושר ע\"י הלקוח/ה")}
                       </span>
                     )}
-                    {album.status === "changes_requested" && t("הלקוח/ה ביקש/ה שינויים, ראו הערות למטה")}
+                    {album.status === "changes_requested" && (
+                      <>
+                        {t("הלקוח/ה ביקש/ה שינויים, ראו הערות למטה")}
+                        {albumCorrectionId && (
+                          <>
+                            {" · "}
+                            <Link href={`/album-corrections/${albumCorrectionId}`} className="underline font-bold">
+                              {t("לצפייה בתיקונים שסומנו")}
+                            </Link>
+                          </>
+                        )}
+                      </>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-wrap" title={t("גודל האלבום להדפסה (ס״מ), לצורך ייצוא JPG / PSD")}>
                     <input
