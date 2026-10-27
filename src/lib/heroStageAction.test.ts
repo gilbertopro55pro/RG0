@@ -13,41 +13,35 @@ const none = new Map();
 describe("heroStageAction", () => {
   it("is the first open stage by order, even when the rows come unsorted", () => {
     const stages = [row(3, false, "gallery_upload"), row(1, true, "event_closing"), row(2, false, "shoot_day")];
-    expect(heroStageAction(stages, none, false)).toEqual({ key: "shoot_day", label: "יום הצילום", canMark: true, notifies: false });
-  });
-
-  it("lets event closing be marked by hand, like the event page", () => {
-    expect(heroStageAction([row(1, false, "event_closing")], none, false)?.canMark).toBe(true);
+    expect(heroStageAction(stages, none)).toEqual({ key: "shoot_day", label: "יום הצילום", notifies: false });
   });
 
   it("hands back a client update where the stages route does", () => {
-    expect(heroStageAction([row(1, false, "gallery_upload")], none, false)?.notifies).toBe(true);
-    expect(heroStageAction([row(1, false, "final_delivery")], none, false)?.notifies).toBe(false);
+    expect(heroStageAction([row(1, false, "gallery_upload")], none)?.notifies).toBe(true);
+    expect(heroStageAction([row(1, false, "final_delivery")], none)?.notifies).toBe(false);
   });
 
-  it("holds the album stage until its PDF is on the event, and it never notifies from here", () => {
-    expect(heroStageAction([row(1, false, "album_approval")], none, false)).toMatchObject({ canMark: false, notifies: false });
-    expect(heroStageAction([row(1, false, "album_approval")], none, true)).toMatchObject({ canMark: true, notifies: false });
+  it("marks the album stage without its PDF, and it never notifies from here", () => {
+    expect(heroStageAction([row(1, false, "album_approval")], none)).toEqual({ key: "album_approval", label: "אישור עיצוב אלבום", notifies: false });
   });
 
-  it("reads a custom package's stage, and sends its album stage to the event page", () => {
+  it("reads a custom package's stage; its album stage is marked without a file and without an update", () => {
     const custom = new Map([
       ["c1", { name: "עריכת קליפ", requires_album_pdf: false, notify_client: true }],
       ["c2", { name: "עיצוב אלבום", requires_album_pdf: true, notify_client: true }],
     ]);
-    expect(heroStageAction([row(1, true, "event_closing"), row(2, false, null, "c1")], custom, false)).toEqual({
+    expect(heroStageAction([row(1, true, "event_closing"), row(2, false, null, "c1")], custom)).toEqual({
       key: "custom:c1",
       label: "עריכת קליפ",
-      canMark: true,
       notifies: true,
     });
-    expect(heroStageAction([row(1, false, null, "c2")], custom, true)?.canMark).toBe(false);
+    expect(heroStageAction([row(1, false, null, "c2")], custom)).toEqual({ key: "custom:c2", label: "עיצוב אלבום", notifies: false });
   });
 
   it("is nothing when every stage is done or the stage is unknown", () => {
-    expect(heroStageAction([row(1, true, "event_closing")], none, false)).toBeNull();
-    expect(heroStageAction([row(1, false, null, "gone")], none, false)).toBeNull();
-    expect(heroStageAction([], none, false)).toBeNull();
+    expect(heroStageAction([row(1, true, "event_closing")], none)).toBeNull();
+    expect(heroStageAction([row(1, false, null, "gone")], none)).toBeNull();
+    expect(heroStageAction([], none)).toBeNull();
   });
 });
 

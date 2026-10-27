@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useT } from "@/i18n/client";
 import type { Lang } from "@/i18n/config";
@@ -19,7 +18,6 @@ import { stageKeyBody } from "@/lib/heroStageAction";
 export type HeroStageButtonData = {
   key: string;
   label: string;
-  canMark: boolean;
   // The client update for this stage, when marking it sends one and the client has a phone.
   message: string | null;
   phone: string | null;
@@ -97,17 +95,10 @@ export default function NextStageButton({
   return (
     <div className="mt-3">
       <div className="flex gap-2">
-        {action.canMark ? (
-          <button type="button" onClick={mark} disabled={busy} className={`${button} disabled:opacity-60`} style={outline}>
-            <span aria-hidden="true">✓</span>
-            {t("סימון כבוצע")}
-          </button>
-        ) : (
-          // An album stage that needs its design PDF uploaded first: that happens on the event page.
-          <Link href={`/events/${eventId}`} className={button} style={outline}>
-            {t("להעלאת עיצוב האלבום")}
-          </Link>
-        )}
+        <button type="button" onClick={mark} disabled={busy} className={`${button} disabled:opacity-60`} style={outline}>
+          <span aria-hidden="true">✓</span>
+          {t("סימון כבוצע")}
+        </button>
         {children}
       </div>
       {error && (
