@@ -133,8 +133,11 @@ describe("parseClientEditRequest", () => {
     expect(parseClientEditRequest({ action: "redesign", spreadId: id1, seen: Array.from({ length: 500 }, () => "s") })).toMatchObject({ seen: { length: 300 } });
   });
 
-  it("reads back and reset", () => {
+  it("reads back, original and reset", () => {
     expect(parseClientEditRequest({ action: "back", spreadId: id1 })).toEqual({ action: "back", spreadId: id1 });
+    expect(parseClientEditRequest({ action: "original", spreadId: id1 })).toEqual({ action: "original", spreadId: id1, confirm: false });
+    expect(parseClientEditRequest({ action: "original", spreadId: id1, confirm: true })).toEqual({ action: "original", spreadId: id1, confirm: true });
+    expect(parseClientEditRequest({ action: "original" })).toBeNull();
     expect(parseClientEditRequest({ action: "reset" })).toEqual({ action: "reset" });
   });
 });

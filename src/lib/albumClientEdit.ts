@@ -6,7 +6,9 @@ import type { AlbumElement, AlbumPhotoElement } from "@/lib/types";
 // redesigns its page, after the client confirms; "עיצוב מחדש" then shows another design and "חזרה"
 // goes back one, up to 3. Everything is saved by the server (api/gallery/[token]/album/edit,
 // lib/albumAuto/clientEdits.ts), never from what the browser sends: the request only names the
-// action. This file holds what the browser needs too, so it stays light (no layout engine).
+// action. "עיצוב מחדש" works on any page but the cover, and "לעיצוב המקורי" returns one page to the
+// photographer's design (owner, 2026-10-27). This file holds what the browser needs too, so it stays
+// light (no layout engine).
 
 // The most a photo may be cropped in the frame it moves into before its page is redesigned. A frame
 // already cropping its photo more than this keeps doing so: only worse than before counts.
@@ -96,6 +98,9 @@ export type ClientEditRequest =
   | { action: "swap"; a: { spreadId: string; elId: string }; b: { spreadId: string; elId: string }; redesign: boolean }
   | { action: "redesign"; spreadId: string; count: number; seen: string[] }
   | { action: "back"; spreadId: string }
+  // One page back to how the photographer sent it; `confirm` once the client agreed that pages it
+  // swapped photos with go back too.
+  | { action: "original"; spreadId: string; confirm: boolean }
   | { action: "reset" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -126,6 +131,8 @@ export function parseClientEditRequest(body: unknown): ClientEditRequest | null 
     }
     case "back":
       return isId(o.spreadId) ? { action: "back", spreadId: o.spreadId } : null;
+    case "original":
+      return isId(o.spreadId) ? { action: "original", spreadId: o.spreadId, confirm: o.confirm === true } : null;
     case "reset":
       return { action: "reset" };
     default:
