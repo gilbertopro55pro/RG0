@@ -18,6 +18,7 @@ import { HOME_LIST_FILTER_EVENT, eventNeedsAttention, type HomeListFilterRequest
 import EventQuickActions from "@/components/EventQuickActions";
 import ViewToggle from "@/components/ViewToggle";
 import { eventsLayoutCookie, type EventsLayout } from "@/lib/eventQuickActions";
+import { printSentDate } from "@/lib/printCheck";
 
 // event_stages: embedded by page.tsx's events query; only the vivid look reads it (the thin
 // progress bar under each row).
@@ -64,11 +65,14 @@ export default function EventsListView({
   isPhotographer,
   needsReviewColorId,
   attentionByEvent = {},
+  printSentByEvent = {},
   initialView = DEFAULT_HOME_VIEW,
   saveView = false,
   initialLayout = "list",
 }: {
   attentionByEvent?: Record<string, EventAttention>;
+  // When each event's album was last sent to the print house (lib/printCheck.ts).
+  printSentByEvent?: Record<string, string>;
   // Rows or blocks (owner, 2026-10-26), remembered on this device in a cookie the server reads.
   initialLayout?: EventsLayout;
   // The view saved on the account (photographers.home_events_view); "the coming week" by default.
@@ -356,6 +360,7 @@ export default function EventsListView({
                     key={event.id}
                     event={event}
                     nextStage={nextStageByEvent[event.id] ?? null}
+                    printSentAt={printSentByEvent[event.id] ?? null}
                     unreadCount={unreadCountByEvent[event.id] ?? 0}
                     canClose={isPhotographer}
                   />
@@ -370,6 +375,7 @@ export default function EventsListView({
                     key={event.id}
                     event={event}
                     nextStage={nextStageByEvent[event.id] ?? null}
+                    printSentAt={printSentByEvent[event.id] ?? null}
                     unreadCount={unreadCountByEvent[event.id] ?? 0}
                     canClose={isPhotographer}
                   />
@@ -562,6 +568,7 @@ export default function EventsListView({
                   key={event.id}
                   event={event}
                   nextStage={nextStageByEvent[event.id] ?? null}
+                    printSentAt={printSentByEvent[event.id] ?? null}
                   unreadCount={unreadCountByEvent[event.id] ?? 0}
                   needsReviewColorId={needsReviewColorId}
                   canClose={isPhotographer}
@@ -577,6 +584,7 @@ export default function EventsListView({
                   key={event.id}
                   event={event}
                   nextStage={nextStageByEvent[event.id] ?? null}
+                    printSentAt={printSentByEvent[event.id] ?? null}
                   unreadCount={unreadCountByEvent[event.id] ?? 0}
                   needsReviewColorId={needsReviewColorId}
                   canClose={isPhotographer}
@@ -616,6 +624,7 @@ export default function EventsListView({
 function EventCard({
   event,
   nextStage,
+  printSentAt,
   unreadCount,
   needsReviewColorId,
   canClose,
@@ -624,6 +633,7 @@ function EventCard({
 }: {
   event: EventWithCustomPackage;
   nextStage: string | null;
+  printSentAt: string | null;
   unreadCount: number;
   needsReviewColorId?: string | null;
   // Photographer only — assistants never get a close button.
@@ -684,6 +694,7 @@ function EventCard({
             <PlainTags event={event} attention={attention} needsReviewColorId={needsReviewColorId} />
           </div>
         )}
+        {printSentAt && <PrintSentLine at={printSentAt} className="mt-1.5" />}
       </div>
 
       <div className="shrink-0 self-start mt-0.5 flex flex-col items-end gap-1.5 max-w-[104px]">
@@ -762,6 +773,7 @@ const rowWash = (tone: "attention" | "creative") => `color-mix(in srgb, var(--to
 function VividEventCard({
   event,
   nextStage,
+  printSentAt,
   unreadCount,
   canClose,
   attention,
@@ -769,6 +781,7 @@ function VividEventCard({
 }: {
   event: EventWithCustomPackage;
   nextStage: string | null;
+  printSentAt: string | null;
   unreadCount: number;
   canClose: boolean;
   attention?: EventAttention;
@@ -828,6 +841,7 @@ function VividEventCard({
                   <VividTags event={event} attention={attention} />
                 </div>
               )}
+              {printSentAt && <PrintSentLine at={printSentAt} className="mt-1.5" />}
             </div>
 
             <div className="shrink-0 mt-0.5 flex flex-col items-end gap-1.5 max-w-[104px]">
@@ -947,9 +961,27 @@ function VividTags({ event, attention }: { event: EventWithCustomPackage; attent
 // One event as a block (owner, 2026-10-26: "כמו בגלריות"): the date, the client, the tags, the next
 // stage and the quick actions, in either look. The whole card opens the event (a link stretched under
 // it); the buttons sit above that link.
+// "אלבום נשלח לדפוס בתאריך: …" (lib/printCheck.ts), under the event's tags in a row or a block.
+function PrintSentLine({ at, className = "" }: { at: string; className?: string }) {
+  const t = useT();
+  const locale = dateLocale(useLang());
+  return (
+    <div className={`flex items-start gap-1 text-[11.5px] text-ink-soft leading-snug ${className}`}>
+      <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 mt-px">
+        <path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z" />
+      </svg>
+      {/* Wraps on a narrow row; the date itself never breaks. */}
+      <span className="min-w-0">
+        {t("אלבום נשלח לדפוס בתאריך:")} <span className="whitespace-nowrap font-data">{printSentDate(at, locale)}</span>
+      </span>
+    </div>
+  );
+}
+
 function EventBlock({
   event,
   nextStage,
+  printSentAt,
   unreadCount,
   canClose,
   attention,
@@ -958,6 +990,7 @@ function EventBlock({
 }: {
   event: EventWithCustomPackage;
   nextStage: string | null;
+  printSentAt: string | null;
   unreadCount: number;
   canClose: boolean;
   attention?: EventAttention;
@@ -1021,6 +1054,7 @@ function EventBlock({
             {vivid ? <VividTags event={event} attention={attention} /> : <PlainTags event={event} attention={attention} needsReviewColorId={needsReviewColorId} />}
           </div>
         )}
+        {printSentAt && <PrintSentLine at={printSentAt} className="relative pointer-events-none mt-2" />}
         <div className="relative pointer-events-none mt-auto pt-2.5 flex items-center justify-between gap-2">
           <span className="min-w-0 truncate text-[11.5px]" style={{ color: done ? (vivid ? "var(--tone-paid-ink)" : "var(--color-sage)") : "var(--color-ink-soft)" }} title={!done && nextStage ? t("השלב הבא") : undefined}>
             {done ? t("נסגר") : nextStage ? t(nextStage) : ""}

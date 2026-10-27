@@ -62,6 +62,7 @@ import LandingPage from "@/components/LandingPage";
 import SettingsGearLink from "@/components/SettingsGearLink";
 import TasksButton from "@/components/tasks/TasksButton";
 import { DIGEST_DEFAULT_MINUTES } from "@/lib/morningDigest";
+import { latestPrintSendByEvent, type PrintSendRow } from "@/lib/printCheck";
 import AlbumQuickAccessButton from "@/components/AlbumQuickAccessButton";
 import { FOLLOW_UP_LEAD_COLUMNS, quoteFollowUpHandled, type FollowUpLeadState } from "@/lib/leadFollowUp";
 import { vividForEmail } from "@/lib/vivid";
@@ -123,6 +124,7 @@ export default async function DashboardPage() {
     { data: galleriesForAlbum },
     { count: registeredCount },
     { count: openTasksCount },
+    { data: printSends },
   ] = await Promise.all([
     supabase.from("photographers").select("*").eq("id", user!.id).maybeSingle<Photographer>(),
     supabase.from("team_members").select("*").eq("id", user!.id).maybeSingle<TeamMember>(),
@@ -200,6 +202,17 @@ export default async function DashboardPage() {
       : Promise.resolve({ count: null }),
     // The number on the to-do list's button: open tasks for today and earlier days (lib/tasks.ts).
     supabase.from("tasks").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("done", false).lte("task_date", israelTodayIso()),
+    // "אלבום נשלח לדפוס בתאריך" on the event's row (lib/printCheck.ts): finished print-house sends,
+    // with their gallery's event.
+    supabase
+      .from("gallery_album_export_jobs")
+      .select("created_at, gallery:galleries(event_id)")
+      .eq("photographer_id", user.id)
+      .not("send_to_email", "is", null)
+      .eq("status", "ready")
+      .order("created_at", { ascending: false })
+      .limit(500)
+      .returns<PrintSendRow[]>(),
   ]);
 
   if (!photographer && !teamMember) redirect("/login");
@@ -648,6 +661,7 @@ export default async function DashboardPage() {
         isPhotographer={isPhotographer}
         needsReviewColorId={photographer?.google_calendar_import_color_id}
         attentionByEvent={attentionByEvent}
+        printSentByEvent={latestPrintSendByEvent(printSends ?? [])}
         initialView={parseHomeEventsView(photographer?.home_events_view)}
         saveView={!!photographer}
         initialLayout={parseEventsLayout((await cookies()).get(EVENTS_LAYOUT_COOKIE)?.value)}

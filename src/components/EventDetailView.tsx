@@ -114,14 +114,12 @@ function ProcessHero({
   descriptors,
   stages,
   curIdx,
-  albumDesignFilename,
   pending,
   onDone,
 }: {
   descriptors: StageDescriptor[];
   stages: EventStageRow[];
   curIdx: number;
-  albumDesignFilename: string | null;
   pending: Set<string>;
   onDone: (key: string) => void;
 }) {
@@ -131,14 +129,11 @@ function ProcessHero({
   const current = allDone ? null : descriptors[curIdx];
   const next = descriptors[curIdx + 1] ?? null;
   const doneByKey = new Map(stages.map((st) => [st.stage_key ?? `custom:${st.custom_stage_id}`, st.done]));
-  // Same rules as the row toggle in FilmStrip: an album-approval stage needs its PDF first.
-  // event_closing can be marked by hand too (owner, 2026-10-05): an event that came from the
-  // calendar or was closed with the client outside the app had no way past this stage, so every
-  // later stage stayed hidden behind it.
-  const canMark =
-    !!current &&
-    !(current.requiresAlbumPdf && !(current.key === "album_approval" && albumDesignFilename)) &&
-    !pending.has(current.key);
+  // Same rules as the row toggle in FilmStrip: every stage can be marked by hand. event_closing
+  // (owner, 2026-10-05): an event that came from the calendar or was closed with the client outside
+  // the app had no way past this stage. An album stage without its PDF (owner, 2026-10-27): the
+  // client approved outside the app (lib/albumStageMark.ts).
+  const canMark = !!current && !pending.has(current.key);
 
   return (
     <section aria-label={t("מצב האירוע")} className="surface-hero p-[18px] mb-5">
@@ -1113,7 +1108,6 @@ export default function EventDetailView({
           descriptors={stageDescriptors}
           stages={stages}
           curIdx={curIdx}
-          albumDesignFilename={albumDesignFilename}
           pending={pendingStageKeys}
           onDone={toggleStage}
         />
@@ -1726,13 +1720,11 @@ function FilmStrip({
         const isNotifyPending = pendingStageKeys.has(`notify:${d.key}`);
         // Stages can be marked done in any order — clients often pick photos before songs for
         // the clip, etc. "current" is only a suggestion for what's typically next, never a lock.
-        // A stage requiring an album-design PDF can't be toggled directly from the header until a
-        // PDF exists — for the standard "אישור עיצוב אלבום" checkpoint specifically, uploading no
-        // longer auto-completes it (the client confirms via their portal), so once a file has been
-        // attached the toggle opens up for a manual override too.
+        // A stage that takes the album-design PDF can be marked by hand too, with or without the
+        // file (owner, 2026-10-27): the client may have approved outside the app.
         const canUndo = st.done;
         const albumPdfAttached = d.key === "album_approval" && !!albumDesignFilename;
-        const disabled = (requiresAlbumPdf && !st.done && !albumPdfAttached) || isTogglePending;
+        const disabled = isTogglePending;
 
         return (
           <div
@@ -1769,7 +1761,7 @@ function FilmStrip({
                   {requiresAlbumPdf && st.done && albumDesignFilename ? `, ${albumDesignFilename}` : ""}
                 </span>
               </span>
-              {isCurrent && !st.done && !requiresAlbumPdf && (
+              {isCurrent && !st.done && (
                 <span className="text-[10px] px-2.5 py-1 rounded-full shrink-0 bg-amber text-white">
                   {t("לסמן בוצע")}
                 </span>
@@ -1827,8 +1819,8 @@ function FilmStrip({
                 )}
                 <p className="text-[11px] text-ink-soft mt-1.5 text-center">
                   {d.key === "album_approval"
-                    ? t("לאחר ההעלאה הקובץ יישלח ללקוח בוואטסאפ, והלקוח יוכל לאשר את העיצוב דרך הפורטל שלו (או שאפשר לסמן כבוצע ידנית כאן)")
-                    : t("לאחר ההעלאה הקובץ יישלח אוטומטית ללקוח בוואטסאפ והשלב יסומן כבוצע")}
+                    ? t("לאחר ההעלאה הקובץ יישלח ללקוח בוואטסאפ, והלקוח יוכל לאשר את העיצוב דרך הפורטל שלו. אפשר גם לסמן כבוצע ידנית, עם קובץ או בלי.")
+                    : t("לאחר ההעלאה הקובץ יישלח אוטומטית ללקוח בוואטסאפ והשלב יסומן כבוצע. אפשר גם לסמן כבוצע בלי קובץ.")}
                 </p>
               </div>
             )}
