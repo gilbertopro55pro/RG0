@@ -90,7 +90,6 @@ const dict: AreaDict = {
       "For example: canvas, glass block, to tell your photographer what you'd like done with this photo.",
     "קנבס": "Canvas",
     // Album proofing
-    "שער": "Cover",
     "האלבום אושר": "Album approved",
     "העמוד הקודם": "Previous page",
     "העמוד הבא": "Next page",
@@ -219,7 +218,6 @@ const dict: AreaDict = {
       "Например: холст, стеклянный блок — чтобы рассказать фотографу, что вы хотите сделать с этим фото.",
     "קנבס": "Холст",
     // Album proofing
-    "שער": "Обложка",
     "האלבום אושר": "Альбом утверждён",
     "העמוד הקודם": "Предыдущая страница",
     "העמוד הבא": "Следующая страница",

@@ -321,6 +321,14 @@ function useFitBox(aspect: number) {
   return { ref, box };
 }
 
+function PageArrow({ towards }: { towards: "left" | "right" }) {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={towards === "left" ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"} />
+    </svg>
+  );
+}
+
 function pageAspectOf(spread: ClientAlbumSpread): number {
   const a = spread.widthCm / spread.heightCm;
   return Number.isFinite(a) && a > 0 ? a : 1.5;
@@ -495,22 +503,19 @@ const CORRECTION_GUIDE_STEPS = [
 export default function GalleryAlbumProofing({
   token,
   status,
-  title,
-  coverUrl,
   spreads,
   onClose,
 }: {
   token: string;
   status: "sent" | "approved" | "changes_requested";
-  title: string;
-  coverUrl: string | null;
   spreads: ClientAlbumSpread[];
   onClose: () => void;
 }) {
   const t = useT();
   const isRtl = dirOf(useLang()) === "rtl";
-  const hasCover = !!coverUrl;
-  const [index, setIndex] = useState(hasCover ? -1 : 0);
+  // Opens on the album's first page, its cover. There used to be a title screen before it (a photo
+  // and the album's name), which clients took for the cover (owner, 2026-10-27).
+  const [index, setIndex] = useState(0);
   // Natural aspect ratio per photo (the client doesn't get one from the DB), learned from each
   // <img>'s own onLoad.
   const [photoAspects, setPhotoAspects] = useState<Record<string, number>>({});
@@ -531,7 +536,7 @@ export default function GalleryAlbumProofing({
   const [sendError, setSendError] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
 
-  const spread = index >= 0 ? (spreads[index] ?? null) : null;
+  const spread = spreads[index] ?? null;
   const pageAspect = spread ? pageAspectOf(spread) : 1.5;
   const { ref: stageRef, box } = useFitBox(pageAspect);
 
@@ -558,9 +563,8 @@ export default function GalleryAlbumProofing({
   }, [index, spreads]);
 
   if (spreads.length === 0) return null;
-  const onCover = index === -1;
   const lastIndex = spreads.length - 1;
-  const firstIndex = mode === "mark" || !hasCover ? 0 : -1;
+  const firstIndex = 0;
   const approved = currentStatus === "approved";
   const marking = mode === "mark";
   const comments = spread?.comments ?? [];
@@ -584,7 +588,6 @@ export default function GalleryAlbumProofing({
     setMode("mark");
     setJustSent(false);
     setSendError(null);
-    if (index < 0) setIndex(0);
     if (!guideShown.current) {
       guideShown.current = true;
       setGuideOpen(true);
@@ -670,47 +673,18 @@ export default function GalleryAlbumProofing({
   };
 
   const toolBtn = (active: boolean) =>
-    `h-9 px-3 rounded-full text-[13px] font-semibold flex items-center gap-1.5 border ${active ? "bg-ink text-white border-ink" : "bg-white text-ink border-line"}`;
+    `h-9 px-3 rounded-full text-[13px] font-semibold flex items-center gap-1.5 border phone-landscape:h-8 phone-landscape:w-8 phone-landscape:px-0 phone-landscape:justify-center ${active ? "bg-ink text-white border-ink" : "bg-white text-ink border-line"}`;
+  // Sideways on a phone the tools sit in a narrow column beside the page: icons only, so the
+  // whole panel fits next to the page without scrolling. The names stay for screen readers.
+  const landscapeIconOnly = "phone-landscape:sr-only";
 
   return (
-    <div className={`fixed inset-0 z-[80] bg-black flex flex-col select-none ${ALBUM_FONT_CLASS_NAMES}`}>
-      <div className="flex items-center justify-between gap-2 px-4 py-3 shrink-0">
-        <button onClick={requestClose} aria-label={t("סגירה")} className="h-10 w-10 shrink-0 rounded-full bg-white/10 text-white flex items-center justify-center text-lg">
-          <IconClose className="h-5 w-5" />
-        </button>
-        {marking && <span className="min-w-0 truncate text-sm font-semibold text-white">{t("סימון תיקונים")}</span>}
-        <div className="flex items-center gap-2 shrink-0">
-          {marking && (
-            <button onClick={() => setGuideOpen(true)} className="h-8 px-3 rounded-full bg-white/15 text-white text-xs font-semibold">
-              {t("איך מסמנים?")}
-            </button>
-          )}
-          <span dir="ltr" className="text-xs font-semibold text-white/70 font-data">
-            {onCover ? t("שער") : `${index + 1} / ${spreads.length}`}
-          </span>
-        </div>
-      </div>
-
-      {approved && <div className="mx-4 mb-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-center bg-sage-bg text-sage">✓ {t("האלבום אושר")}</div>}
-      {!approved && !marking && currentStatus === "changes_requested" && (
-        <div className="mx-4 mb-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-center bg-amber-bg text-amber-deep">
-          {justSent ? `✓ ${t("התיקונים נשלחו לצלם. העיצוב המעודכן יישלח אליכם שוב.")}` : t("שלחתם תיקונים לעיצוב. הצלם יעדכן אותו וישלח אליכם שוב.")}
-        </div>
-      )}
-
-      <div className="flex-1 min-h-0 px-3 py-1">
+    <div className={`fixed inset-0 z-[80] bg-black flex flex-col phone-landscape:flex-row select-none ${ALBUM_FONT_CLASS_NAMES}`}>
+      {/* The page: between the header and the panel below it, or, on a phone turned sideways, on
+          about 80% of the screen with the controls in a column beside it (owner, 2026-10-27). */}
+      <div className="order-3 flex-1 min-h-0 px-3 py-1 phone-landscape:order-1 phone-landscape:min-w-0 phone-landscape:px-2 phone-landscape:py-2">
         <div ref={stageRef} className="h-full w-full flex items-center justify-center">
-          {onCover ? (
-            <div className="relative h-full w-full flex items-center justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={coverUrl ?? undefined} alt="" className="h-full w-full object-contain" />
-              <div className="absolute bottom-6 inset-x-0 text-center px-6">
-                <p className="text-white text-lg font-bold font-display" style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}>
-                  {title}
-                </p>
-              </div>
-            </div>
-          ) : spread ? (
+          {spread ? (
             <div
               className="relative overflow-hidden shrink-0"
               style={{
@@ -737,42 +711,74 @@ export default function GalleryAlbumProofing({
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-4 py-2 shrink-0">
+      {/* The controls. Sideways on a phone they're a column beside the page; otherwise this wrapper
+          drops out of the layout (display: contents) and they stack above and below the page. */}
+      <div className="contents phone-landscape:order-2 phone-landscape:flex phone-landscape:flex-col phone-landscape:w-1/5 phone-landscape:min-w-[184px] phone-landscape:shrink-0 phone-landscape:overflow-y-auto phone-landscape:py-2">
+      <div className="order-1 flex items-center justify-between gap-2 px-4 py-3 shrink-0 phone-landscape:px-2 phone-landscape:py-1">
+        <button onClick={requestClose} aria-label={t("סגירה")} className="h-10 w-10 shrink-0 rounded-full bg-white/10 text-white flex items-center justify-center text-lg">
+          <IconClose className="h-5 w-5" />
+        </button>
+        {marking && <span className="min-w-0 truncate text-sm font-semibold text-white phone-landscape:hidden">{t("סימון תיקונים")}</span>}
+        <div className="flex items-center gap-2 shrink-0">
+          {marking && (
+            <button onClick={() => setGuideOpen(true)} aria-label={t("איך מסמנים?")} className="h-8 px-3 rounded-full bg-white/15 text-white text-xs font-semibold phone-landscape:w-8 phone-landscape:px-0">
+              <span className="phone-landscape:hidden">{t("איך מסמנים?")}</span>
+              <span className="hidden phone-landscape:inline" aria-hidden="true">?</span>
+            </button>
+          )}
+          <span dir="ltr" className="text-xs font-semibold text-white/70 font-data">
+            {`${index + 1} / ${spreads.length}`}
+          </span>
+        </div>
+      </div>
+
+      {approved && <div className="order-2 mx-4 mb-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-center bg-sage-bg text-sage phone-landscape:mx-2">✓ {t("האלבום אושר")}</div>}
+      {!approved && !marking && currentStatus === "changes_requested" && (
+        <div className="order-2 mx-4 mb-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-center bg-amber-bg text-amber-deep phone-landscape:mx-2">
+          {justSent ? `✓ ${t("התיקונים נשלחו לצלם. העיצוב המעודכן יישלח אליכם שוב.")}` : t("שלחתם תיקונים לעיצוב. הצלם יעדכן אותו וישלח אליכם שוב.")}
+        </div>
+      )}
+
+      {/* Turning pages like a book in the reader's language: in Hebrew the next page is on the left,
+          with an arrow pointing left, and the previous page on the right (owner, 2026-10-27). The
+          arrows are drawn: the ‹ › characters used before get mirrored in a right-to-left line, so
+          each arrow pointed at the other side. */}
+      <div dir={isRtl ? "rtl" : "ltr"} className="order-4 flex items-center justify-center gap-4 py-2 shrink-0">
         <button
           onClick={() => goTo(index - 1)}
           disabled={index === firstIndex}
           aria-label={t("העמוד הקודם")}
-          className="h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center text-xl disabled:opacity-30"
+          className="h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center disabled:opacity-30"
         >
-          {isRtl ? "›" : "‹"}
+          <PageArrow towards={isRtl ? "right" : "left"} />
         </button>
         <button
           onClick={() => goTo(index + 1)}
           disabled={index === lastIndex}
           aria-label={t("העמוד הבא")}
-          className="h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center text-xl disabled:opacity-30"
+          className="h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center disabled:opacity-30"
         >
-          {isRtl ? "‹" : "›"}
+          <PageArrow towards={isRtl ? "left" : "right"} />
         </button>
       </div>
 
-      <div className="bg-white rounded-t-3xl p-4 pb-6 shrink-0 max-h-[42vh] overflow-y-auto">
+      <div className="order-5 bg-white rounded-t-3xl p-4 pb-6 shrink-0 max-h-[42vh] overflow-y-auto phone-landscape:mx-2 phone-landscape:p-3 phone-landscape:rounded-2xl phone-landscape:max-h-none phone-landscape:shrink phone-landscape:min-h-0">
         {marking ? (
           <>
-            <div className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="flex flex-wrap items-center gap-2 mb-3 phone-landscape:gap-1 phone-landscape:mb-2">
               <button onClick={() => setTool("pen")} aria-pressed={tool === "pen"} className={toolBtn(tool === "pen")}>
                 <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M4 20l4-1 11-11-3-3L5 16l-1 4z" />
                 </svg>
-                {t("עיפרון")}
+                <span className={landscapeIconOnly}>{t("עיפרון")}</span>
               </button>
               <button onClick={() => setTool("rect")} aria-pressed={tool === "rect"} className={toolBtn(tool === "rect")}>
                 <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                   <rect x="4" y="6" width="16" height="12" />
                 </svg>
-                {t("מלבן")}
+                <span className={landscapeIconOnly}>{t("מלבן")}</span>
               </button>
-              <div className="flex items-center gap-1.5 px-1">
+              <div className="flex items-center gap-1.5 px-1 phone-landscape:order-last phone-landscape:px-0 phone-landscape:gap-2">
                 {CORRECTION_COLORS.map((c) => (
                   <button
                     key={c}
@@ -786,11 +792,24 @@ export default function GalleryAlbumProofing({
                   </button>
                 ))}
               </div>
-              <button onClick={undo} disabled={pageMarks.length === 0} className="h-9 px-3 rounded-full text-[13px] font-semibold border border-line bg-white text-ink disabled:opacity-40">
-                ↶ {t("ביטול הסימון")}
+              <button
+                onClick={undo}
+                disabled={pageMarks.length === 0}
+                title={t("ביטול הסימון")}
+                className="h-9 px-3 rounded-full text-[13px] font-semibold border border-line bg-white text-ink disabled:opacity-40 phone-landscape:h-8 phone-landscape:w-8 phone-landscape:px-0"
+              >
+                ↶ <span className={landscapeIconOnly}>{t("ביטול הסימון")}</span>
               </button>
-              <button onClick={clearPage} disabled={pageMarks.length === 0} className="h-9 px-3 rounded-full text-[13px] font-semibold border border-line bg-white text-ink-soft disabled:opacity-40">
-                {t("ניקוי העמוד")}
+              <button
+                onClick={clearPage}
+                disabled={pageMarks.length === 0}
+                title={t("ניקוי העמוד")}
+                className="h-9 px-3 rounded-full text-[13px] font-semibold border border-line bg-white text-ink-soft disabled:opacity-40 phone-landscape:h-8 phone-landscape:w-8 phone-landscape:px-0 phone-landscape:flex phone-landscape:items-center phone-landscape:justify-center"
+              >
+                <svg className="hidden phone-landscape:block" viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3" />
+                </svg>
+                <span className={landscapeIconOnly}>{t("ניקוי העמוד")}</span>
               </button>
             </div>
             {spread && (
@@ -799,22 +818,22 @@ export default function GalleryAlbumProofing({
                 onChange={(e) => setNotes((prev) => ({ ...prev, [spread.id]: e.target.value.slice(0, CORRECTION_LIMITS.note) }))}
                 placeholder={t("הערה לעמוד הזה (לא חובה)")}
                 rows={2}
-                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none mb-3"
+                className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white resize-none mb-3 phone-landscape:h-9 phone-landscape:py-1.5 phone-landscape:mb-2"
               />
             )}
             <p className="text-xs font-semibold text-ink-soft mb-2">
               {markedPages > 0 ? t("עמודים עם תיקונים: {n}", { n: markedPages }) : t("עוד לא סימנתם תיקונים")}
             </p>
             {sendError && <p className="text-sm text-rose mb-2">{sendError}</p>}
-            <div className="flex gap-2">
+            <div className="flex gap-2 phone-landscape:flex-col">
               <button
                 onClick={submit}
                 disabled={sending || markedPages === 0}
-                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60 phone-landscape:py-2 phone-landscape:leading-tight"
               >
                 {sending ? t("שולח...") : t("אישור ושליחת התיקונים")}
               </button>
-              <button onClick={exitMarking} className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold bg-card border border-line text-ink-soft">
+              <button onClick={exitMarking} className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold bg-card border border-line text-ink-soft phone-landscape:py-2">
                 {t("יציאה")}
               </button>
             </div>
@@ -835,7 +854,7 @@ export default function GalleryAlbumProofing({
                 <>
                   <p className="text-sm font-semibold text-center mb-3">{t("זה העמוד האחרון. מה דעתכם על העיצוב?")}</p>
                   {approveFailed && <p className="text-sm text-rose text-center mb-2">{t("האישור לא נשמר. נסו שוב")}</p>}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 phone-landscape:flex-col">
                     {/* After corrections the design waits for the photographer's update: approving it
                         now would send the old design to print (the approval sends it by itself). */}
                     {currentStatus !== "changes_requested" && (
@@ -858,6 +877,7 @@ export default function GalleryAlbumProofing({
               ))}
           </>
         )}
+      </div>
       </div>
 
       {guideOpen && (
