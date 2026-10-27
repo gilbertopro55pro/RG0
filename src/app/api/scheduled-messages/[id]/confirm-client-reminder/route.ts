@@ -6,6 +6,7 @@ import { reminderStillNeeded, type ClientReminderKind } from "@/lib/clientRemind
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 import { shortClientUrl } from "@/lib/shortLinks";
+import { ALBUM_CLIENT_SEARCH } from "@/lib/albumApproval";
 
 // The photographer's answer to the dashboard prompt for an album-approval / song-selection
 // reminder (lib/clientReminders.ts). send=true → the ready WhatsApp text to the client (opened
@@ -63,9 +64,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const t = makeT(messagesFor(clientLangFor(user.email, event.client_lang)));
-  const link = shortClientUrl(request.nextUrl.origin, "portal", event.client_access_token);
+  // An album sent from the album tool waits in the client's gallery: the reminder links right to it
+  // (it opens on the album, lib/albumApproval.ts). Otherwise the portal, as before.
+  const { data: albumGallery } = album
+    ? await supabase
+        .from("galleries")
+        .select("access_token, gallery_albums!inner(status)")
+        .eq("event_id", message.event_id)
+        .eq("published", true)
+        .is("archived_at", null)
+        .in("gallery_albums.status", ["sent", "changes_requested"])
+        .limit(1)
+        .maybeSingle<{ access_token: string }>()
+    : { data: null };
+  const link = albumGallery
+    ? shortClientUrl(request.nextUrl.origin, "gallery", albumGallery.access_token, ALBUM_CLIENT_SEARCH)
+    : shortClientUrl(request.nextUrl.origin, "portal", event.client_access_token);
   let text = album
-    ? t("היי {name} 😊\nרק מזכירים שעיצוב האלבום מחכה לאישור שלכם. אפשר לצפות ולאשר בפורטל האישי:\n{link}\n\nרוצים לשנות משהו? פשוט כתבו לי כאן.", { name: event.client_name, link })
+    ? albumGallery
+      ? t("היי {name} 😊\nרק מזכירים שעיצוב האלבום מחכה לאישור שלכם. אפשר לדפדף בו כאן, ובסוף לאשר או לסמן תיקונים:\n{link}", { name: event.client_name, link })
+      : t("היי {name} 😊\nרק מזכירים שעיצוב האלבום מחכה לאישור שלכם. אפשר לצפות ולאשר בפורטל האישי:\n{link}\n\nרוצים לשנות משהו? פשוט כתבו לי כאן.", { name: event.client_name, link })
     : t("היי {name} 😊\nרק מזכירים שהסרט המלא מחכה לכם להורדה בפורטל האישי.\nוגם, אשמח שתבחרו שיר או שניים לקליפ: שיר שקט ושיר קצבי 🎵\n{link}", { name: event.client_name, link });
   const signature = event.photographers?.whatsapp_signature?.trim();
   if (signature) text += `\n\n${signature}`;

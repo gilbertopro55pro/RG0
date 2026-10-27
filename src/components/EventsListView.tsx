@@ -19,6 +19,7 @@ import EventQuickActions from "@/components/EventQuickActions";
 import ViewToggle from "@/components/ViewToggle";
 import { eventsLayoutCookie, type EventsLayout } from "@/lib/eventQuickActions";
 import { printSentDate } from "@/lib/printCheck";
+import type { AlbumApprovalLine } from "@/lib/albumApproval";
 
 // event_stages: embedded by page.tsx's events query; only the vivid look reads it (the thin
 // progress bar under each row).
@@ -66,6 +67,7 @@ export default function EventsListView({
   needsReviewColorId,
   attentionByEvent = {},
   printSentByEvent = {},
+  albumByEvent = {},
   initialView = DEFAULT_HOME_VIEW,
   saveView = false,
   initialLayout = "list",
@@ -73,6 +75,8 @@ export default function EventsListView({
   attentionByEvent?: Record<string, EventAttention>;
   // When each event's album was last sent to the print house (lib/printCheck.ts).
   printSentByEvent?: Record<string, string>;
+  // Where each event's album design stands with the client (lib/albumApproval.ts).
+  albumByEvent?: Record<string, AlbumApprovalLine>;
   // Rows or blocks (owner, 2026-10-26), remembered on this device in a cookie the server reads.
   initialLayout?: EventsLayout;
   // The view saved on the account (photographers.home_events_view); "the coming week" by default.
@@ -361,6 +365,7 @@ export default function EventsListView({
                     event={event}
                     nextStage={nextStageByEvent[event.id] ?? null}
                     printSentAt={printSentByEvent[event.id] ?? null}
+                    albumLine={albumByEvent[event.id] ?? null}
                     unreadCount={unreadCountByEvent[event.id] ?? 0}
                     canClose={isPhotographer}
                   />
@@ -376,6 +381,7 @@ export default function EventsListView({
                     event={event}
                     nextStage={nextStageByEvent[event.id] ?? null}
                     printSentAt={printSentByEvent[event.id] ?? null}
+                    albumLine={albumByEvent[event.id] ?? null}
                     unreadCount={unreadCountByEvent[event.id] ?? 0}
                     canClose={isPhotographer}
                   />
@@ -569,6 +575,7 @@ export default function EventsListView({
                   event={event}
                   nextStage={nextStageByEvent[event.id] ?? null}
                     printSentAt={printSentByEvent[event.id] ?? null}
+                    albumLine={albumByEvent[event.id] ?? null}
                   unreadCount={unreadCountByEvent[event.id] ?? 0}
                   needsReviewColorId={needsReviewColorId}
                   canClose={isPhotographer}
@@ -585,6 +592,7 @@ export default function EventsListView({
                   event={event}
                   nextStage={nextStageByEvent[event.id] ?? null}
                     printSentAt={printSentByEvent[event.id] ?? null}
+                    albumLine={albumByEvent[event.id] ?? null}
                   unreadCount={unreadCountByEvent[event.id] ?? 0}
                   needsReviewColorId={needsReviewColorId}
                   canClose={isPhotographer}
@@ -625,6 +633,7 @@ function EventCard({
   event,
   nextStage,
   printSentAt,
+  albumLine,
   unreadCount,
   needsReviewColorId,
   canClose,
@@ -634,6 +643,7 @@ function EventCard({
   event: EventWithCustomPackage;
   nextStage: string | null;
   printSentAt: string | null;
+  albumLine: AlbumApprovalLine | null;
   unreadCount: number;
   needsReviewColorId?: string | null;
   // Photographer only — assistants never get a close button.
@@ -694,7 +704,7 @@ function EventCard({
             <PlainTags event={event} attention={attention} needsReviewColorId={needsReviewColorId} />
           </div>
         )}
-        {printSentAt && <PrintSentLine at={printSentAt} className="mt-1.5" />}
+        <AlbumLine printSentAt={printSentAt} album={albumLine} className="mt-1.5" />
       </div>
 
       <div className="shrink-0 self-start mt-0.5 flex flex-col items-end gap-1.5 max-w-[104px]">
@@ -774,6 +784,7 @@ function VividEventCard({
   event,
   nextStage,
   printSentAt,
+  albumLine,
   unreadCount,
   canClose,
   attention,
@@ -782,6 +793,7 @@ function VividEventCard({
   event: EventWithCustomPackage;
   nextStage: string | null;
   printSentAt: string | null;
+  albumLine: AlbumApprovalLine | null;
   unreadCount: number;
   canClose: boolean;
   attention?: EventAttention;
@@ -841,7 +853,7 @@ function VividEventCard({
                   <VividTags event={event} attention={attention} />
                 </div>
               )}
-              {printSentAt && <PrintSentLine at={printSentAt} className="mt-1.5" />}
+              <AlbumLine printSentAt={printSentAt} album={albumLine} className="mt-1.5" />
             </div>
 
             <div className="shrink-0 mt-0.5 flex flex-col items-end gap-1.5 max-w-[104px]">
@@ -961,7 +973,35 @@ function VividTags({ event, attention }: { event: EventWithCustomPackage; attent
 // One event as a block (owner, 2026-10-26: "כמו בגלריות"): the date, the client, the tags, the next
 // stage and the quick actions, in either look. The whole card opens the event (a link stretched under
 // it); the buttons sit above that link.
-// "אלבום נשלח לדפוס בתאריך: …" (lib/printCheck.ts), under the event's tags in a row or a block.
+// The album's line under the event's tags in a row or a block, whichever happened last:
+// "אלבום נשלח לדפוס בתאריך: …" (lib/printCheck.ts), or where the design stands with the client
+// (lib/albumApproval.ts): sent for approval, approved, or corrections asked for.
+function AlbumLine({ printSentAt, album, className = "" }: { printSentAt: string | null; album: AlbumApprovalLine | null; className?: string }) {
+  const t = useT();
+  const locale = dateLocale(useLang());
+  if (printSentAt && (!album || printSentAt >= album.at)) return <PrintSentLine at={printSentAt} className={className} />;
+  if (!album) return null;
+  const changes = album.kind === "changes";
+  return (
+    <div className={`flex items-start gap-1 text-[11.5px] leading-snug ${changes ? "font-semibold" : "text-ink-soft"} ${className}`} style={changes ? { color: "var(--color-rose)" } : undefined}>
+      <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 mt-px">
+        {album.kind === "approved" ? <path d="M20 6 9 17l-5-5" /> : <path d="M4 5h7a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4zM20 5h-7a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h7z" />}
+      </svg>
+      <span className="min-w-0">
+        {album.kind === "changes" ? (
+          t("הלקוח ביקש תיקונים בעיצוב האלבום")
+        ) : (
+          <>
+            {album.kind === "approved" ? t("עיצוב האלבום אושר בתאריך:") : t("עיצוב האלבום נשלח לאישור בתאריך:")}{" "}
+            <span className="whitespace-nowrap font-data">{printSentDate(album.at, locale)}</span>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
+// "אלבום נשלח לדפוס בתאריך: …" (lib/printCheck.ts).
 function PrintSentLine({ at, className = "" }: { at: string; className?: string }) {
   const t = useT();
   const locale = dateLocale(useLang());
@@ -982,6 +1022,7 @@ function EventBlock({
   event,
   nextStage,
   printSentAt,
+  albumLine,
   unreadCount,
   canClose,
   attention,
@@ -991,6 +1032,7 @@ function EventBlock({
   event: EventWithCustomPackage;
   nextStage: string | null;
   printSentAt: string | null;
+  albumLine: AlbumApprovalLine | null;
   unreadCount: number;
   canClose: boolean;
   attention?: EventAttention;
@@ -1054,7 +1096,7 @@ function EventBlock({
             {vivid ? <VividTags event={event} attention={attention} /> : <PlainTags event={event} attention={attention} needsReviewColorId={needsReviewColorId} />}
           </div>
         )}
-        {printSentAt && <PrintSentLine at={printSentAt} className="relative pointer-events-none mt-2" />}
+        <AlbumLine printSentAt={printSentAt} album={albumLine} className="relative pointer-events-none mt-2" />
         <div className="relative pointer-events-none mt-auto pt-2.5 flex items-center justify-between gap-2">
           <span className="min-w-0 truncate text-[11.5px]" style={{ color: done ? (vivid ? "var(--tone-paid-ink)" : "var(--color-sage)") : "var(--color-ink-soft)" }} title={!done && nextStage ? t("השלב הבא") : undefined}>
             {done ? t("נסגר") : nextStage ? t(nextStage) : ""}

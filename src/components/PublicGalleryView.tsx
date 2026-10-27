@@ -10,7 +10,7 @@ import { IconGallery } from "@/components/icons/NavIcons";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { resolveGalleryTheme, titleFontFamily } from "@/lib/galleryTheme";
 import GallerySlideshow from "@/components/GallerySlideshow";
-import GalleryAlbumProofing, { type ClientAlbumElement } from "@/components/GalleryAlbumProofing";
+import GalleryAlbumProofing, { type ClientAlbumSpread } from "@/components/GalleryAlbumProofing";
 import { ALLOWED_ACCEPT, isAllowedImageFile, convertHeicIfNeeded } from "@/lib/imageUpload";
 import { readDataTransferItems, folderNameFromPath, isHiddenFileName } from "@/lib/fileDrop";
 import { useLang, useT } from "@/i18n/client";
@@ -78,6 +78,7 @@ export default function PublicGalleryView({
   slideshowPhotoIds = [],
   album = null,
   albumSpreads = [],
+  openAlbumOnLoad = false,
   restrictedQuality = null,
   studioName = null,
   brandLogoUrl = null,
@@ -104,19 +105,9 @@ export default function PublicGalleryView({
   gridStyleOverride?: string | null;
   slideshowPhotoIds?: string[];
   album?: { status: "sent" | "approved" | "changes_requested"; title: string; coverUrl: string | null } | null;
-  albumSpreads?: {
-    id: string;
-    photo1: { id: string; url: string };
-    photo2: { id: string; url: string } | null;
-    layout: "split" | "feature" | "stack" | "custom";
-    focalX1: number;
-    focalY1: number;
-    focalX2: number;
-    focalY2: number;
-    elements: ClientAlbumElement[];
-    background: { url: string; blur: number; opacity: number } | null;
-    comments: { id: string; text: string }[];
-  }[];
+  albumSpreads?: ClientAlbumSpread[];
+  // ?album=1 on the link (the photographer's "send for approval" message): the album opens on load.
+  openAlbumOnLoad?: boolean;
   // Alt text for the logo in the premium theme's sticky bar and footer. Without a logo nothing shows there.
   studioName?: string | null;
   brandLogoUrl?: string | null;
@@ -338,7 +329,7 @@ export default function PublicGalleryView({
     await uploadResolvedItems(items);
   };
   const [slideshowOpen, setSlideshowOpen] = useState(false);
-  const [albumOpen, setAlbumOpen] = useState(false);
+  const [albumOpen, setAlbumOpen] = useState(() => openAlbumOnLoad && !!album && albumSpreads.length > 0);
   const [aspectRatios, setAspectRatios] = useState<Record<string, number>>({});
   const [savedFavoriteIds, setSavedFavoriteIds] = useState(
     () => new Set(initialPhotos.filter((p) => p.is_favorite).map((p) => p.id))
@@ -2664,7 +2655,15 @@ export default function PublicGalleryView({
           title={album.title}
           coverUrl={album.coverUrl}
           spreads={albumSpreads}
-          onClose={() => setAlbumOpen(false)}
+          onClose={() => {
+            setAlbumOpen(false);
+            // Opened by ?album=1: closing it leaves the plain gallery link, so a refresh stays on the gallery.
+            const url = new URL(window.location.href);
+            if (url.searchParams.has("album")) {
+              url.searchParams.delete("album");
+              window.history.replaceState(window.history.state, "", url.toString());
+            }
+          }}
         />
       )}
     </>

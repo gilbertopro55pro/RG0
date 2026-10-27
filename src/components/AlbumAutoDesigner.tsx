@@ -4,7 +4,7 @@ import { useBusy } from "@/lib/updateResume";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
-import { detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
+import { detectFaceBoxes, detectFacesInImageUrl, type DetectedFace } from "@/lib/faceRecognition";
 import LiquidProgressBar from "@/components/LiquidProgressBar";
 import { AUTO_STYLES, type AutoPhoto, type AutoStyleId, type CellPeople, type EventKind, type FamilyCellId, type LayoutPhoto, type PhotoFaces } from "@/lib/albumAuto/types";
 import { bleedIdsOf, bookPagesWithoutCover, fadeOwnHeroes, fillBookTemplate, frameElements, ownTemplatePlan, tidyOwnFrames } from "@/lib/albumAuto/templateFill";
@@ -28,6 +28,8 @@ import {
   type NamesOrder,
 } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
+import { headSafeElements } from "@/lib/albumAuto/headSafe";
+import { isDoublePage } from "@/lib/albumAuto/qualityCheck";
 import { endAutoDesignSession, getAutoDesignSession, mountAutoDesigner, useSessionState, waitForAutoDesigner } from "@/lib/albumAuto/session";
 import type { AlbumElement } from "@/lib/types";
 import { useLang, useT } from "@/i18n/client";
@@ -403,30 +405,40 @@ export default function AlbumAutoDesigner({
         list.push(box);
         boxesByPhoto.set(photoId, list);
       };
-      if (cellPeople.length > 0) {
-        setProgress("faces", 0, t("טוען זיהוי קודם"));
-        const candidateIds = new Set(candidates.map((p) => p.id));
-        const cachedIds = new Set<string>();
-        for (let from = 0; ; from += PAGE_SIZE) {
-          const { data, error } = await supabase
-            .from("gallery_photo_faces")
-            .select("id, photo_id, box_x, box_y, box_width, box_height, descriptor")
-            .eq("gallery_id", galleryId)
-            .order("id")
-            .range(from, from + PAGE_SIZE - 1)
-            .returns<{ id: string; photo_id: string; box_x: number; box_y: number; box_width: number; box_height: number; descriptor: number[] }[]>();
-          if (error) break; // no cache is fine, everything just gets detected below
-          for (const row of data ?? []) {
-            if (!candidateIds.has(row.photo_id) || !Array.isArray(row.descriptor)) continue;
-            cachedIds.add(row.photo_id);
-            addBox(row.photo_id, { x: row.box_x, y: row.box_y, width: row.box_width, height: row.box_height });
-            const list = facesByPhoto.get(row.photo_id) ?? [];
-            list.push({ descriptor: row.descriptor.map(Number), area: row.box_width * row.box_height });
-            facesByPhoto.set(row.photo_id, list);
-          }
-          if (!data || data.length < PAGE_SIZE) break;
+      // Every photo's face boxes, with or without the family cells (owner, 2026-10-27: heads were cut
+      // in albums designed without cells, since the boxes were only read for the cells' matching,
+      // while "עיצוב מחדש" crops by the stored ones). The descriptors are only needed to match the
+      // cells' people.
+      const withCells = cellPeople.length > 0;
+      setProgress("faces", 0, t("טוען זיהוי קודם"));
+      const candidateIds = new Set(candidates.map((p) => p.id));
+      // Photos with stored boxes, and (with cells) those with stored descriptors too.
+      const boxedIds = new Set<string>();
+      const describedIds = new Set<string>();
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data, error } = await supabase
+          .from("gallery_photo_faces")
+          .select(withCells ? "id, photo_id, box_x, box_y, box_width, box_height, descriptor" : "id, photo_id, box_x, box_y, box_width, box_height")
+          .eq("gallery_id", galleryId)
+          .order("id")
+          .range(from, from + PAGE_SIZE - 1)
+          .returns<{ id: string; photo_id: string; box_x: number; box_y: number; box_width: number; box_height: number; descriptor?: number[] }[]>();
+        if (error) break; // no cache is fine, everything just gets detected below
+        for (const row of data ?? []) {
+          if (!candidateIds.has(row.photo_id)) continue;
+          boxedIds.add(row.photo_id);
+          addBox(row.photo_id, { x: row.box_x, y: row.box_y, width: row.box_width, height: row.box_height });
+          if (!withCells || !Array.isArray(row.descriptor)) continue;
+          describedIds.add(row.photo_id);
+          const list = facesByPhoto.get(row.photo_id) ?? [];
+          list.push({ descriptor: row.descriptor.map(Number), area: row.box_width * row.box_height });
+          facesByPhoto.set(row.photo_id, list);
         }
-        const toDetect = candidates.filter((p) => !cachedIds.has(p.id));
+        if (!data || data.length < PAGE_SIZE) break;
+      }
+      if (withCells) {
+        // The cells' matching needs descriptors: the full detection, whose boxes replace any stored.
+        const toDetect = candidates.filter((p) => !describedIds.has(p.id));
         for (let i = 0; i < toDetect.length; i++) {
           checkCancel();
           if (skipFacesRef.current) break;
@@ -434,11 +446,33 @@ export default function AlbumAutoDesigner({
           try {
             const faces = await detectFacesInImageUrl(`/api/galleries/${galleryId}/photos/${toDetect[i].id}/image?size=${PHOTO_IMAGE_SIZE}`);
             if (faces.length > 0) facesByPhoto.set(toDetect[i].id, faces.map((f) => ({ descriptor: f.descriptor, area: f.box.width * f.box.height })));
+            boxesByPhoto.delete(toDetect[i].id);
             for (const f of faces) addBox(toDetect[i].id, f.box);
           } catch {
             // One unreadable photo shouldn't stop the whole design.
           }
         }
+      } else {
+        // Only where the heads are: the light box detector on the small preview (as the admin's
+        // swap does), two photos at a time. A photo it can't read keeps no faces (the crop then
+        // leans to the upper middle, as before).
+        const toDetect = candidates.filter((p) => !boxedIds.has(p.id));
+        let next = 0;
+        let done = 0;
+        const worker = async () => {
+          while (next < toDetect.length) {
+            if (cancelRef.current || skipFacesRef.current) return;
+            const id = toDetect[next++].id;
+            try {
+              for (const box of await detectFaceBoxes(`/api/galleries/${galleryId}/photos/${id}/image?size=640&fast=1`)) addBox(id, box);
+            } catch {
+              // One unreadable photo shouldn't stop the whole design.
+            }
+            done++;
+            setProgress("faces", done / toDetect.length, t("{n} מתוך {total} תמונות", { n: done, total: toDetect.length }));
+          }
+        };
+        await Promise.all([worker(), worker()]);
       }
       setProgress("faces", 1);
       checkCancel();
@@ -542,6 +576,19 @@ export default function AlbumAutoDesigner({
               })(),
             }
           : null;
+      // No head cut by a frame: a crop that cuts one is moved by the faces, where that fixes it
+      // (headSafeElements, the quality check's own safe fix).
+      const facesOf = (id: string) => boxesByPhoto.get(id);
+      const aspectOfPhoto = (id: string) => aspectOf.get(id) ?? null;
+      const safeOpts = { safeMarginCm: size.margin, aspectOf: aspectOfPhoto, facesOf };
+      const fold = isDoublePage({ id: "", elements: null, width_cm: null, height_cm: null }, { width_cm: size.width, height_cm: size.height });
+      const safeSpreads = spreads.map((s) => ({
+        ...s,
+        elements: headSafeElements({ elements: s.elements, bleedIds: s.bleedIds, widthCm: size.width, heightCm: size.height }, { ...safeOpts, fold }),
+      }));
+      const safeCover = cover
+        ? { ...cover, elements: headSafeElements({ elements: cover.elements, bleedIds: cover.bleedIds, widthCm: cover.widthCm, heightCm: cover.heightCm }, { ...safeOpts, fold: false }) }
+        : null;
       setProgress("layout", 1, t("{n} עמודים", { n: spreads.length + (cover ? 1 : 0) }));
       checkCancel();
 
@@ -551,7 +598,7 @@ export default function AlbumAutoDesigner({
       // that finished in portrait waits until the phone is turned back.
       await waitForAutoDesigner(session);
       checkCancel();
-      await (session.onCreate as (r: AutoDesignResult) => Promise<void>)({ size, style, cover, spreads });
+      await (session.onCreate as (r: AutoDesignResult) => Promise<void>)({ size, style, cover: safeCover, spreads: safeSpreads });
       setProgress("save", 1);
       endAutoDesignSession(galleryId);
     } catch (e) {

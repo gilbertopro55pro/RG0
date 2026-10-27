@@ -22,6 +22,7 @@ type ScheduledMessage = {
   lead_id: string | null;
   kind: "review_request" | "payment_reminder" | "lead_follow_up" | "lead_quote_followup" | "shoot_day_reminder" | "song_stage_reminder" | ClientReminderKind;
   sequence_step: number | null;
+  created_at: string;
 };
 
 export async function GET(request: NextRequest) {
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
 
   const { data: due } = await supabase
     .from("scheduled_messages")
-    .select("id, event_id, lead_id, kind, sequence_step")
+    .select("id, event_id, lead_id, kind, sequence_step, created_at")
     .eq("status", "pending")
     .lte("send_at", new Date().toISOString())
     .returns<ScheduledMessage[]>();
@@ -414,28 +415,45 @@ async function processClientReminder(supabase: SupabaseClient<any>, message: Sch
   }
   const { data: event } = await supabase
     .from("events")
-    .select("id, client_name, client_phone, photographer_id, photographers(ui_lang)")
+    .select("id, client_name, client_phone, photographer_id, photographers(ui_lang, album_approval_reminder)")
     .eq("id", message.event_id)
-    .maybeSingle<{ id: string; client_name: string; client_phone: string | null; photographer_id: string; photographers: { ui_lang: string | null } | null }>();
+    .maybeSingle<{
+      id: string;
+      client_name: string;
+      client_phone: string | null;
+      photographer_id: string;
+      photographers: { ui_lang: string | null; album_approval_reminder: boolean | null } | null;
+    }>();
+  // Switched off after it was scheduled (Settings › Notifications & automation).
+  if (kind === "album_approval_reminder" && event?.photographers?.album_approval_reminder === false) {
+    await supabase.from("scheduled_messages").update({ status: "canceled" }).eq("id", message.id);
+    return { id: message.id, status: "canceled", reason: "reminder switched off" };
+  }
   if (!event?.client_phone) {
     await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", message.id);
     return { id: message.id, status: "failed", reason: "no client phone" };
   }
 
   await supabase.from("scheduled_messages").update({ status: "awaiting_confirmation" }).eq("id", message.id);
+  const lang = photographerLang(event.photographers?.ui_lang);
+  // The album reminder's days are the photographer's (1–14), so it names the send's date instead.
+  const sentOn = new Date(message.created_at).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "numeric", timeZone: "Asia/Jerusalem" });
+  const sentOnHe = new Date(message.created_at).toLocaleDateString("he-IL", { day: "numeric", month: "numeric", timeZone: "Asia/Jerusalem" });
   // Activity log (stored, Hebrew like every other log line).
   await supabase.from("event_notifications").insert({
     event_id: event.id,
     text: kind === "album_approval_reminder"
-      ? "עברו 3 ימים ועיצוב האלבום עוד לא אושר. ממתין לאישורך לשליחת תזכורת ללקוח"
+      ? `עיצוב האלבום שנשלח ב-${sentOnHe} עוד לא אושר. ממתין לאישורך לשליחת תזכורת ללקוח`
       : "עברו 3 ימים והלקוח עוד לא בחר שירים לקליפ. ממתין לאישורך לשליחת תזכורת",
   });
-  const t = makeT(messagesFor(photographerLang(event.photographers?.ui_lang)));
+  const t = makeT(messagesFor(lang));
   await sendPushToPhotographer(event.photographer_id, {
     title: kind === "album_approval_reminder"
       ? t("{name} עוד לא אישרו את עיצוב האלבום", { name: event.client_name })
       : t("{name} עוד לא בחרו שירים לקליפ", { name: event.client_name }),
-    body: t("עברו 3 ימים מאז ההודעה. לחצו לשליחת תזכורת בוואטסאפ"),
+    body: kind === "album_approval_reminder"
+      ? t("העיצוב נשלח ב-{date}. לחצו לשליחת תזכורת בוואטסאפ", { date: sentOn })
+      : t("עברו 3 ימים מאז ההודעה. לחצו לשליחת תזכורת בוואטסאפ"),
     url: "/",
     tag: `${kind}-${event.id}`,
   });
