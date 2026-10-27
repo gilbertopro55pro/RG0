@@ -11,7 +11,7 @@ import type {
   GalleryRow,
   Photographer,
 } from "@/lib/types";
-import type { ClientAlbumElement } from "@/components/GalleryAlbumProofing";
+import type { ClientAlbumElement, ClientAlbumSpread } from "@/components/GalleryAlbumProofing";
 import PublicGalleryView from "@/components/PublicGalleryView";
 import GalleryCoverBanner from "@/components/GalleryCoverBanner";
 import GalleryPremiumCover from "@/components/GalleryPremiumCover";
@@ -143,10 +143,10 @@ export default async function PublicGalleryPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ folders?: string; photos?: string; quality?: string }>;
+  searchParams: Promise<{ folders?: string; photos?: string; quality?: string; album?: string }>;
 }) {
   const { token } = await params;
-  const { folders: foldersParam, photos: photosParam, quality: qualityParam } = await searchParams;
+  const { folders: foldersParam, photos: photosParam, quality: qualityParam, album: albumParam } = await searchParams;
   const supabase = createServiceRoleClient();
 
   // The client's own link, or a read-only share link whose scope is enforced here, not by the URL
@@ -301,19 +301,7 @@ export default async function PublicGalleryPage({
         .neq("status", "draft")
         .maybeSingle<GalleryAlbumRow>();
 
-  let albumSpreadsForClient: {
-    id: string;
-    photo1: { id: string; url: string };
-    photo2: { id: string; url: string } | null;
-    layout: GalleryAlbumSpreadRow["layout"];
-    focalX1: number;
-    focalY1: number;
-    focalX2: number;
-    focalY2: number;
-    elements: ClientAlbumElement[];
-    background: { url: string; blur: number; opacity: number } | null;
-    comments: { id: string; text: string }[];
-  }[] = [];
+  let albumSpreadsForClient: ClientAlbumSpread[] = [];
   let albumCoverUrl: string | null = null;
   if (album) {
     const [{ data: spreadsRaw }, { data: commentsRaw }] = await Promise.all([
@@ -407,6 +395,9 @@ export default async function PublicGalleryPage({
           elements,
           background: backgroundPhoto ? { url: backgroundPhoto.url, blur: s.background_blur, opacity: s.background_opacity } : null,
           comments: (commentsRaw ?? []).filter((c) => c.spread_id === s.id).map((c) => ({ id: c.id, text: c.text })),
+          // The page's printed size: its own (a cover made at its own size) or the album's.
+          widthCm: Number(s.width_cm ?? album.width_cm),
+          heightCm: Number(s.height_cm ?? album.height_cm),
         };
       })
       .filter((s): s is NonNullable<typeof s> => s !== null);
@@ -503,6 +494,9 @@ export default async function PublicGalleryPage({
           : null
       }
       albumSpreads={albumSpreadsForClient}
+      // The link the photographer sends with the album for approval ends in ?album=1: the album
+      // opens right away.
+      openAlbumOnLoad={albumParam === "1"}
       restrictedQuality={restrictedQuality}
       studioName={brandingPhotographer?.name ?? null}
       brandLogoUrl={brandLogoUrl}
