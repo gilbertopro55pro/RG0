@@ -162,7 +162,7 @@ export default async function SettingsPage({
           },
           {
             id: "automation",
-            label: t("אוטומציה"),
+            label: t("התראות ואוטומציה"),
             content: (
               <>
               <PushNotificationsSettings />

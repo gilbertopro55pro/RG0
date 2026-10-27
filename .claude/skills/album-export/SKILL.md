@@ -327,3 +327,9 @@ worker with 6 photos and 2 texts on the test page: PDF (7 images), JPG 3543×236
 3. Reproduce on the test account with `export-test.js` before and after the fix, and check the
    files as in step 4 above.
 4. Once a new procedure or fix is verified, add it to this file (what failed, why, what passed).
+
+### Red dots from the album selection are never exported (2026-10-27)
+
+- A changed album selection (`lib/albumSelection.ts`) marks the frames it filled or left empty in `gallery_album_spreads.marked_frames`, drawn as red dots by `MarkedFrameDots` in the album preview and the editor only. It is its own column, not part of `elements`, so the worker and every export (PDF, JPG, PSD, print-house send) never see it. No worker change, no redeploy of Fly.
+- A frame the photographer chose to leave empty (photoId null) still exports as an empty frame, like any empty frame; the quality check flags it.
+

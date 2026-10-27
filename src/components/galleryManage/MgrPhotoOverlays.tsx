@@ -11,6 +11,7 @@ export function MgrPhotoOverlays({
   onSetCover,
   offset = 4,
   quiet = false,
+  albumPick,
 }: {
   photo: PhotoWithUrl;
   isCover: boolean;
@@ -20,6 +21,9 @@ export function MgrPhotoOverlays({
   offset?: number;
   // Hide the action icons until hover on mouse devices (the tile carries the "group" class).
   quiet?: boolean;
+  // While narrowing the favorites for the album (lib/albumSelection.ts): whether this photo is
+  // picked. A tick in place of the favorite mark, and a photo left out is dimmed.
+  albumPick?: boolean;
 }) {
   const t = useT();
   const hoverOnly = quiet ? " transition-opacity [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : "";
@@ -64,7 +68,19 @@ export function MgrPhotoOverlays({
           </svg>
         </span>
       )}
-      {selectedIds.size > 0 ? (
+      {albumPick !== undefined ? (
+        <>
+          {!albumPick && <span aria-hidden="true" className="absolute inset-0 bg-white/55 pointer-events-none" />}
+          <span
+            className="absolute h-6 w-6 rounded-full border-2 flex items-center justify-center"
+            style={{ top: offset, left: offset, borderColor: "#ffffff", background: albumPick ? "var(--color-sage)" : "rgba(0,0,0,0.35)" }}
+            role="img"
+            aria-label={albumPick ? t("נבחרה לאלבום") : t("לא נבחרה לאלבום")}
+          >
+            {albumPick && <span className="text-white text-[12px] leading-none">✓</span>}
+          </span>
+        </>
+      ) : selectedIds.size > 0 ? (
         <span
           className="absolute h-5 w-5 rounded-full border-2 flex items-center justify-center"
           style={{

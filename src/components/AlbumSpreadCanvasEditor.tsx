@@ -13,6 +13,7 @@ import { sharpenSvgFilter } from "@/lib/albumSharpen";
 import { resizedPhotoUrl } from "@/lib/galleryPhotoUrls";
 import AlbumEditorGuideModal from "@/components/AlbumEditorGuideModal";
 import AlbumSpreadThumbnail from "@/components/AlbumSpreadThumbnail";
+import MarkedFrameDots from "@/components/galleryManage/MarkedFrameDots";
 import { useT } from "@/i18n/client";
 import type { TFn } from "@/i18n/translate";
 import {
@@ -2185,6 +2186,8 @@ export default function AlbumSpreadCanvasEditor({
   draft,
   isAdmin = false,
   bookSize,
+  poolIsSelection = false,
+  markedFrames = [],
 }: {
   spread: GalleryAlbumSpreadRow;
   // Physical print dimensions plus the album's own configured safe-margin (cm) — used to size the
@@ -2242,6 +2245,12 @@ export default function AlbumSpreadCanvasEditor({
   // Omitted-safe: while a page with its own size is open, the other pages then fall back to its
   // size, as the strip always did.
   bookSize?: { width_cm: number; height_cm: number };
+  // The album tools offer the photographer's final selection for the album, not all the favorites
+  // (lib/albumSelection.ts): the photos come in with is_favorite set to it, and the labels say so.
+  poolIsSelection?: boolean;
+  // Frames a changed album selection filled or left empty, each with a red dot until this page is
+  // saved (gallery_album_spreads.marked_frames). Drawn on screen only.
+  markedFrames?: string[];
 }) {
   const t = useT();
   // This editor's whole layout below (two columns, canvas sizing, sidebar, page switcher) is the
@@ -5455,6 +5464,8 @@ export default function AlbumSpreadCanvasEditor({
           <div className="absolute pointer-events-none" style={{ left: "50%", top: 0, bottom: 0, width: 0, borderRight: "2px solid #2fae5c", opacity: 0.55 }} />
           <div className="absolute pointer-events-none" style={{ top: "50%", left: 0, right: 0, height: 0, borderBottom: "2px solid #2fae5c", opacity: 0.55 }} />
 
+          <MarkedFrameDots elements={elements} marked={markedFrames} size={14} />
+
           {/* Smart alignment guides — page-center and edge/center lines against other elements,
               shown only while actively dragging a frame. */}
           {guides.map((g, i) => (
@@ -5848,7 +5859,7 @@ export default function AlbumSpreadCanvasEditor({
                 fixed 380px now too (previously it had the full main-content width to work with),
                 so the label + toggle + buttons need the same wrapping room there. */}
             <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
-              <p className={`font-bold text-ink-soft ${isPhone ? "text-[9px]" : "text-[11px]"}`}>{t("גררו תמונה מועדפת אל המסגרת הרצויה")}</p>
+              <p className={`font-bold text-ink-soft ${isPhone ? "text-[9px]" : "text-[11px]"}`}>{poolIsSelection ? t("גררו תמונה מהבחירה לאלבום אל המסגרת הרצויה") : t("גררו תמונה מועדפת אל המסגרת הרצויה")}</p>
               <div className="flex items-center gap-2 shrink-0">
                 {/* The switch itself has no visible label text (just a bare pill), so its native
                     title tooltip is easy to miss entirely — this adds an always-discoverable (?)
@@ -5959,7 +5970,11 @@ export default function AlbumSpreadCanvasEditor({
               const visibleGroups = effectiveTab === "__all__" ? dragPanelGroups : dragPanelGroups.filter((g) => g.id === effectiveTab);
               return dragPanelGroups.length === 0 ? (
               <p className="text-[11px] text-ink-soft text-center py-3">
-                {favoritePhotos.length === 0 ? t("אין תמונות מועדפות בגלריה הזו עדיין.") : t("כל התמונות המועדפות כבר שובצו בעמוד.")}
+                {favoritePhotos.length === 0
+                  ? t("אין תמונות מועדפות בגלריה הזו עדיין.")
+                  : poolIsSelection
+                    ? t("כל התמונות מהבחירה לאלבום כבר שובצו בעמוד.")
+                    : t("כל התמונות המועדפות כבר שובצו בעמוד.")}
               </p>
             ) : (
               // Own inner scroll dropped below — .gf-album-dragpanel (the actual outer scroller
@@ -6445,12 +6460,12 @@ export default function AlbumSpreadCanvasEditor({
               <h3 className="text-sm font-bold">
                 {pickingBackground ? `${t("בחירת תמונת רקע")} ` : ""}
                 {addingMultiplePhotos ? `${t("בחירת תמונות להוספה")} ` : ""}
-                {showAllInPicker || favoritePhotos.length === 0 ? t("כל התמונות") : t("תמונות מועדפות")}
+                {showAllInPicker || favoritePhotos.length === 0 ? t("כל התמונות") : poolIsSelection ? t("הבחירה לאלבום") : t("תמונות מועדפות")}
               </h3>
               <div className="flex items-center gap-2 shrink-0">
                 {favoritePhotos.length > 0 && (
                   <button onClick={() => setShowAllInPicker((v) => !v)} className="text-xs font-semibold text-ink-soft underline">
-                    {showAllInPicker ? t("רק מועדפות") : t("כל התמונות")}
+                    {showAllInPicker ? (poolIsSelection ? t("רק הבחירה לאלבום") : t("רק מועדפות")) : t("כל התמונות")}
                   </button>
                 )}
                 <button onClick={() => setPhotoPickerOpen(false)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
