@@ -14,6 +14,7 @@ import { useLang, useT } from "@/i18n/client";
 import { dirOf } from "@/i18n/config";
 import AlbumTextLines, { albumTextBoxAlign } from "@/components/AlbumTextLines";
 import AlbumCorrectionMarks from "@/components/AlbumCorrectionMarks";
+import { pagesToPreload, spreadImageUrls } from "@/lib/albumProofingPreload";
 import {
   CORRECTION_COLORS,
   CORRECTION_LIMITS,
@@ -32,6 +33,9 @@ export type ClientAlbumElement =
       id: string;
       type: "photo";
       url: string;
+      // The photo's proportions from the server (its preview's), so the frame crops right before
+      // the photo arrives. Learned from the <img> when missing.
+      aspect?: number | null;
       xPct: number;
       yPct: number;
       widthPct: number;
@@ -371,7 +375,7 @@ function ProofPage({
                 // The frame's real proportions: its share of the page times the page's own
                 // proportions (the album's size, or the cover's own), as in the exports.
                 const frameAspect = (el.widthPct / el.heightPct) * pageAspect || 1;
-                const imgAspect = photoAspects[el.url] ?? frameAspect;
+                const imgAspect = photoAspects[el.url] ?? el.aspect ?? frameAspect;
                 const framing = computePhotoFraming(imgAspect, frameAspect, el.zoom ?? 100, el.focalX, el.focalY);
                 return (
                   /* eslint-disable-next-line @next/next/no-img-element */
@@ -530,6 +534,28 @@ export default function GalleryAlbumProofing({
   const spread = index >= 0 ? (spreads[index] ?? null) : null;
   const pageAspect = spread ? pageAspectOf(spread) : 1.5;
   const { ref: stageRef, box } = useFitBox(pageAspect);
+
+  // The photos of the pages around this one load ahead (lib/albumProofingPreload.ts), so turning
+  // the page shows it at once, from the browser's cache. Each photo is requested once; the <img> is
+  // kept only until it arrives, so a long album doesn't stay in memory.
+  const requested = useRef(new Set<string>());
+  const loading = useRef(new Map<string, HTMLImageElement>());
+  useEffect(() => {
+    for (const i of pagesToPreload(index, spreads.length)) {
+      const page = spreads[i];
+      if (!page) continue;
+      for (const url of spreadImageUrls(page)) {
+        if (requested.current.has(url)) continue;
+        requested.current.add(url);
+        const img = new Image();
+        img.decoding = "async";
+        img.fetchPriority = "low";
+        img.onload = img.onerror = () => loading.current.delete(url);
+        loading.current.set(url, img);
+        img.src = url;
+      }
+    }
+  }, [index, spreads]);
 
   if (spreads.length === 0) return null;
   const onCover = index === -1;
