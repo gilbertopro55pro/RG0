@@ -375,3 +375,23 @@ trial end**.
   logins, auth user, `deleted_accounts_log` with `reason = 'admin_deleted'`).
 - **Events and Google Calendar:** deletion doesn't touch the photographer's Google Calendar. Fine for
   a trial or test account; for anything else, ask the owner first.
+
+## Receipt retry when Finbot is unreachable (2026-10-28)
+
+- **What happened:** account `78a97d91`'s renewal (₪50, 04:31) was charged, but the receipt failed on a bare
+  `fetch failed`: Finbot didn't answer, and `issueReceipt` gave up on the first try. Issued by hand.
+- **Now** (`sendToFinbot` in `lib/finbot.ts`):
+  - A connection error that never reached Finbot (`ENOTFOUND`, `EAI_AGAIN`, `ECONNREFUSED`, `EHOSTUNREACH`,
+    `ENETUNREACH`, `ETIMEDOUT`, `UND_ERR_CONNECT_TIMEOUT`) is retried after 2s, 6s, 15s, then thrown as
+    `FinbotUnreachable`.
+  - Any other network error (reset mid-request, or no code) may have issued the document, so it's never
+    resent. The message says to check Finbot before issuing by hand. The error code is now in the message.
+- **Subscription receipts still unreachable after that:** the webhook sets `receipt_status='retry'` with
+  `receipt_plan` / `receipt_amount` (migration 0203), and the admin email says not to issue by hand.
+  The hourly cron `api/cron/retry-receipts` (:17) claims each row (`retrying`, `receipt_retry_started_at`),
+  issues through `issueSubscriptionReceipt` (`lib/subscriptionReceipt.ts`, shared with the webhook), and
+  emails on success, or `failed` after 24h. A `retrying` row older than 30 minutes (run died after sending)
+  becomes `failed` with an email to check Finbot first. Never resent.
+- Intake packs and photographers' client receipts get the in-request retry only.
+- **Not verified against Finbot itself** (keys are sensitive). Check after the next outage:
+  `select receipt_status, receipt_attempts, receipt_error from payplus_webhook_events where receipt_status <> 'issued' order by created_at desc;`
