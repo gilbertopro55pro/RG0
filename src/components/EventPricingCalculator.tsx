@@ -8,6 +8,7 @@ import { formatDateDMYFromInput } from "@/lib/dateInputFormat";
 import type { LeadRow, PriceQuoteItem, PriceQuoteRow, PriceQuoteTemplateRow, PricingSupplier } from "@/lib/types";
 import type { LeadQuotePrefill } from "@/lib/leadQuotePrefill";
 import CompactGuideModal from "@/components/CompactGuideModal";
+import PdfPreviewModal, { isMobileOs } from "@/components/PdfPreviewModal";
 import { IconClose } from "@/components/icons/AlbumIcons";
 import { IconArrowRight } from "@/components/icons/NavIcons";
 import ClientLangSelect from "@/components/ClientLangSelect";
@@ -212,6 +213,8 @@ export default function EventPricingCalculator({
   useEffect(() => () => {
     if (quoteFileUrl) URL.revokeObjectURL(quoteFileUrl);
   }, [quoteFileUrl]);
+  // Desktop shows the file in PdfPreviewModal instead of following the link (see there for why).
+  const [showQuotePreview, setShowQuotePreview] = useState(false);
   const [savePromptStep, setSavePromptStep] = useState<"ask" | "name">("ask");
   const [saveQuoteName, setSaveQuoteName] = useState("");
   const [savingQuote, setSavingQuote] = useState(false);
@@ -1539,6 +1542,11 @@ export default function EventPricingCalculator({
                 href={quoteFileUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (isMobileOs()) return;
+                  e.preventDefault();
+                  setShowQuotePreview(true);
+                }}
                 className="flex w-full items-center justify-center rounded-lg py-2.5 mb-2 text-sm font-semibold bg-white border border-line text-ink"
               >
                 {t("צפייה בהצעה כפי שהלקוח יקבל")}
@@ -1547,6 +1555,9 @@ export default function EventPricingCalculator({
               <div className="flex w-full items-center justify-center rounded-lg py-2.5 mb-2 text-sm font-semibold bg-white border border-line text-ink-soft opacity-60">
                 {sendingQuote ? t("מכין את הקובץ...") : t("הקובץ לא מוכן")}
               </div>
+            )}
+            {showQuotePreview && quoteFileUrl && (
+              <PdfPreviewModal url={quoteFileUrl} title={t("צפייה בהצעה כפי שהלקוח יקבל")} onClose={() => setShowQuotePreview(false)} />
             )}
             <div className="flex gap-2">
               {linkTarget ? (
