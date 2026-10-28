@@ -77,3 +77,57 @@ export function trialDeletionFinalWarningEmail(lang: Lang, p: { name: string; si
     ),
   };
 }
+
+// The automatic unpaid-subscription emails (lib/dunning.ts), one per stage. Stage 2 says why: a
+// declined renewal (a recurring on file) or a period with nothing to renew it.
+export function dunningEmail(
+  lang: Lang,
+  stage: 1 | 2 | 3 | 4,
+  p: { name: string; periodEnd: string; lockDate: Date; declined: boolean; siteUrl: string },
+): Email {
+  const t = makeT(messagesFor(lang));
+  const fmt = (d: Date) => d.toLocaleDateString(dateLocale(lang), { timeZone: "Asia/Jerusalem" });
+  const vars = { name: p.name, date: fmt(new Date(p.periodEnd)), lockDate: fmt(p.lockDate), url: p.siteUrl };
+  if (stage === 1) {
+    return {
+      subject: t("המנוי שלך בגילברטו מסתיים ב-{date}", vars),
+      text: t(
+        "שלום {name},\n\nלמנוי שלך בגילברטו אין חיוב חודשי פעיל, ולכן הוא לא יתחדש לבד. כדי להמשיך לעבוד בלי הפסקה אחרי {date}, משלמים כאן:\n{url}/billing\n\nצוות גילברטו",
+        vars,
+      ),
+    };
+  }
+  if (stage === 2) {
+    return p.declined
+      ? {
+          subject: t("החיוב החודשי בגילברטו לא עבר"),
+          text: t(
+            "שלום {name},\n\nהחיוב החודשי על המנוי שלך בגילברטו לא עבר. כדי להמשיך, מעדכנים אמצעי תשלום ומשלמים כאן:\n{url}/billing\n\nבלי תשלום עד {lockDate}, הגישה לחשבון תיחסם. הנתונים שלך נשמרים.\n\nצוות גילברטו",
+            vars,
+          ),
+        }
+      : {
+          subject: t("המנוי שלך בגילברטו הסתיים"),
+          text: t(
+            "שלום {name},\n\nהתקופה ששולמה של המנוי שלך בגילברטו הסתיימה ב-{date}, ואין חיוב חודשי שיחדש אותה. כדי להמשיך, משלמים כאן:\n{url}/billing\n\nבלי תשלום עד {lockDate}, הגישה לחשבון תיחסם. הנתונים שלך נשמרים.\n\nצוות גילברטו",
+            vars,
+          ),
+        };
+  }
+  if (stage === 3) {
+    return {
+      subject: t("תזכורת אחרונה: הגישה לגילברטו תיחסם מחר"),
+      text: t(
+        "שלום {name},\n\nעדיין לא התקבל תשלום על המנוי שלך בגילברטו, ומחר הגישה לחשבון תיחסם. כדי להמשיך בלי הפסקה, משלמים היום:\n{url}/billing\n\nהנתונים שלך נשמרים גם אחרי החסימה, ותשלום פותח את החשבון מיד.\n\nצוות גילברטו",
+        vars,
+      ),
+    };
+  }
+  return {
+    subject: t("הגישה לחשבון שלך בגילברטו נחסמה"),
+    text: t(
+      "שלום {name},\n\nהגישה לחשבון נחסמה כי לא התקבל תשלום על המנוי. הנתונים שלך שמורים, ותשלום פותח את החשבון מיד:\n{url}/billing\n\nצוות גילברטו",
+      vars,
+    ),
+  };
+}
