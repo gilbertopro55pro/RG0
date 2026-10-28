@@ -94,6 +94,28 @@ export function dropTarget(folders: readonly GalleryFolderLike[], activeFolderId
   return { kind: "tab", name: path.main, parent: eventWithSubTabs && main ? { id: main } : null };
 }
 
+export type TabTarget = Extract<DropTarget, { kind: "tab" }>;
+
+// The tabs a drop opens, each once, in the order of their names: a new tab goes after its last
+// sibling, so the order they're made in is the order they show. Made in the order the browser
+// read the files, "2.תפילה" came before "1.חתן" (owner, 2026-10-28). Numbers count as numbers:
+// "10.ריקודים" after "9.ברכות".
+const naturalOrder = new Intl.Collator("he", { numeric: true });
+export function tabsInOrder(targets: readonly DropTarget[]): TabTarget[] {
+  const place = (t: TabTarget) => (!t.parent ? [t.name] : "id" in t.parent ? [`#${t.parent.id}`, t.name] : [t.parent.name, t.name]);
+  const unique = new Map<string, TabTarget>();
+  for (const t of targets) if (t.kind === "tab") unique.set(tabKey(t.name, t.parent), t);
+  return [...unique.values()].sort((a, b) => {
+    const pa = place(a);
+    const pb = place(b);
+    for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
+      const c = naturalOrder.compare(pa[i], pb[i]);
+      if (c) return c;
+    }
+    return pa.length - pb.length;
+  });
+}
+
 // A cache key for a tab by its place: "<parent id or name>/<name>". Main tabs: "/<name>".
 export function tabKey(name: string, parent: null | { id: string } | { name: string }): string {
   if (!parent) return `/${name}`;

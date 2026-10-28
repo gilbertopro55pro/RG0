@@ -12,6 +12,7 @@ import {
   tabCheckState,
   tabKey,
   tabPathFromRelPath,
+  tabsInOrder,
   toggleTabKey,
   zipFolderSegments,
 } from "@/lib/galleryFolders";
@@ -103,6 +104,22 @@ describe("a dropped folder", () => {
   it("puts a loose photo in the open tab", () => {
     expect(dropTarget(folders, "beach", "1.jpg")).toEqual({ kind: "open", folderId: "beach" });
     expect(dropTarget(folders, null, "1.jpg")).toEqual({ kind: "open", folderId: null });
+  });
+
+  it("opens its tabs in the order of their names, whatever order the files came in (2026-10-28)", () => {
+    const paths = ["עלייה לתורה/2.תפילה/a.jpg", "בוק/חוף/a.jpg", "עלייה לתורה/10.ריקודים/a.jpg", "עלייה לתורה/1.חתן/a.jpg", "עלייה לתורה/2.תפילה/b.jpg", "עלייה לתורה/3.אורחים/a.jpg", "a.jpg"];
+    const order = tabsInOrder(paths.map((p) => dropTarget([], null, p))).map((t) => (t.parent && "name" in t.parent ? `${t.parent.name}/${t.name}` : t.name));
+    expect(order).toEqual(["בוק/חוף", "עלייה לתורה/1.חתן", "עלייה לתורה/2.תפילה", "עלייה לתורה/3.אורחים", "עלייה לתורה/10.ריקודים"]);
+  });
+
+  it("orders flat folders by their numbers too, and joins the open event in that order", () => {
+    const flat = tabsInOrder(["03 - חופה/a.jpg", "1.הכנות/a.jpg", "ריקודים/a.jpg"].map((p) => dropTarget([], null, p))).map((t) => t.name);
+    expect(flat).toEqual(["1.הכנות", "03 - חופה", "ריקודים"]);
+    const joined = tabsInOrder(["4.ברכות/a.jpg", "3.משפחה/a.jpg"].map((p) => dropTarget(folders, "aliyah", p)));
+    expect(joined).toEqual([
+      { kind: "tab", name: "3.משפחה", parent: { id: "aliyah" } },
+      { kind: "tab", name: "4.ברכות", parent: { id: "aliyah" } },
+    ]);
   });
 
   it("keeps tabs apart by their place, so both events can have a 1.אוירה", () => {

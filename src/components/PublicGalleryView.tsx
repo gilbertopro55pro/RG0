@@ -22,6 +22,7 @@ import {
   orderedFolders,
   tabCheckState,
   tabKey,
+  tabsInOrder,
   toggleTabKey,
   type DropTarget,
   type GalleryFolderNode,
@@ -245,10 +246,15 @@ export default function PublicGalleryView({
   // Where a file from a dropped or chosen folder goes (lib/galleryFolders.ts dropTarget). In a
   // gallery that is one event in a main tab of its own, "הכל" is that event, so a new folder joins
   // it as a sub-tab instead of standing beside it.
-  const folderIdForPath = async (relativePath: string, cache: Map<string, string>): Promise<string | null> => {
+  // The tabs are made first, in the order of their names (tabsInOrder), so "1.חתן" sits before
+  // "2.תפילה" whatever order the browser read the files in.
+  const folderIdsForPaths = async (relativePaths: string[], cache: Map<string, string>): Promise<(string | null)[]> => {
     const lonely = lonelyMain(folderTree(folders));
-    const target = dropTarget(folders, activeFolderId ?? lonely?.folder.id ?? null, relativePath);
-    return target.kind === "open" ? activeFolderId : ensureTab(target, cache);
+    const targets = relativePaths.map((p) => dropTarget(folders, activeFolderId ?? lonely?.folder.id ?? null, p));
+    for (const t of tabsInOrder(targets)) await ensureTab(t, cache);
+    const ids: (string | null)[] = [];
+    for (const t of targets) ids.push(t.kind === "open" ? activeFolderId : await ensureTab(t, cache));
+    return ids;
   };
 
   // Mirrors the photographer's own upload flow (GalleryManageView.tsx) one-for-one — same
@@ -328,15 +334,9 @@ export default function PublicGalleryView({
 
   const handleUploadDirectory = async (fileList: FileList | null) => {
     if (!fileList) return;
-    const cache = tabCache(folders);
-    const items: UploadItem[] = [];
-    for (const file of Array.from(fileList)) {
-      if (isHiddenFileName(file.name) || !isAllowedImageFile(file)) continue;
-      const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || "";
-      const folderId = await folderIdForPath(relPath, cache);
-      items.push({ file, folderId });
-    }
-    await uploadResolvedItems(items);
+    const files = Array.from(fileList).filter((file) => !isHiddenFileName(file.name) && isAllowedImageFile(file));
+    const ids = await folderIdsForPaths(files.map((file) => (file as File & { webkitRelativePath?: string }).webkitRelativePath || ""), tabCache(folders));
+    await uploadResolvedItems(files.map((file, i) => ({ file, folderId: ids[i] })));
   };
 
   const handleUploadDrop = async (e: DragEvent<HTMLDivElement>) => {
@@ -345,13 +345,8 @@ export default function PublicGalleryView({
     const dropped = await readDataTransferItems(e.dataTransfer.items);
     if (dropped.length === 0) return;
     const allowed = dropped.filter((d) => isAllowedImageFile(d.file));
-    const cache = tabCache(folders);
-    const items: UploadItem[] = [];
-    for (const { file, relativePath } of allowed) {
-      const folderId = await folderIdForPath(relativePath, cache);
-      items.push({ file, folderId });
-    }
-    await uploadResolvedItems(items);
+    const ids = await folderIdsForPaths(allowed.map((d) => d.relativePath), tabCache(folders));
+    await uploadResolvedItems(allowed.map(({ file }, i) => ({ file, folderId: ids[i] })));
   };
   const [slideshowOpen, setSlideshowOpen] = useState(false);
   const [albumOpen, setAlbumOpen] = useState(() => openAlbumOnLoad && !!album && albumSpreads.length > 0);
