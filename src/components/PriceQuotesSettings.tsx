@@ -7,6 +7,7 @@ import { openWhatsApp } from "@/lib/waLink";
 import { formatDateDMY } from "@/lib/priceQuoteFormat";
 import { quoteTotals } from "@/lib/quoteDiscount";
 import { IconClose } from "@/components/icons/AlbumIcons";
+import PdfPreviewModal, { isMobileOs } from "@/components/PdfPreviewModal";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
 
@@ -206,6 +207,12 @@ export default function PriceQuotesSettings({
   const [previewing, setPreviewing] = useState(false);
   // Set only when the browser refused to open the preview window: shown as a link to tap instead.
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Desktop shows the preview in PdfPreviewModal rather than a new tab (see there for why).
+  const [modalPreviewUrl, setModalPreviewUrl] = useState<string | null>(null);
+  const closeModalPreview = () => {
+    if (modalPreviewUrl) URL.revokeObjectURL(modalPreviewUrl);
+    setModalPreviewUrl(null);
+  };
   const [formError, setFormError] = useState<string | null>(null);
 
   const [sendOpenFor, setSendOpenFor] = useState<string | "draft" | null>(null);
@@ -377,7 +384,7 @@ export default function PriceQuotesSettings({
     setPreviewUrl(null);
     // Opened right on the tap: iOS Safari blocks a window.open that comes after an await (the PDF
     // fetch), so the preview button did nothing on a phone. The file is loaded into it when ready.
-    const previewWindow = window.open("", "_blank");
+    const previewWindow = isMobileOs() ? window.open("", "_blank") : null;
     try {
       const items = cleanItems(draft.items);
       const { subtotal, vatAmount, total } = computeTotals(items, exempt);
@@ -402,7 +409,8 @@ export default function PriceQuotesSettings({
       if (!res.ok) throw new Error(t("יצירת התצוגה המקדימה נכשלה"));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      if (previewWindow && !previewWindow.closed) previewWindow.location.href = url;
+      if (!isMobileOs()) setModalPreviewUrl(url);
+      else if (previewWindow && !previewWindow.closed) previewWindow.location.href = url;
       else setPreviewUrl(url);
     } catch (err) {
       previewWindow?.close();
@@ -997,6 +1005,7 @@ export default function PriceQuotesSettings({
               {t("התצוגה המקדימה מוכנה, לחצו לפתיחה")}
             </a>
           )}
+          {modalPreviewUrl && <PdfPreviewModal url={modalPreviewUrl} title={t("תצוגה מקדימה")} onClose={closeModalPreview} />}
 
           <div className="flex gap-2">
             <button
