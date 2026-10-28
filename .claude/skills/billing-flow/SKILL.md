@@ -395,3 +395,23 @@ trial end**.
 - Intake packs and photographers' client receipts get the in-request retry only.
 - **Not verified against Finbot itself** (keys are sensitive). Check after the next outage:
   `select receipt_status, receipt_attempts, receipt_error from payplus_webhook_events where receipt_status <> 'issued' order by created_at desc;`
+
+## Unpaid subscriptions: automatic emails and lock (2026-10-28, owner's decision)
+
+- **Owner:** "the messages go out on their own; I step in only for a real problem, to unlock an account".
+  Replaces cron step 6's admin-only "חידוש מנוי לא נקלט" alert and the manual lock as the default.
+- **Logic:** `lib/dunning.ts` (`nextDunningStage`), run by `subscription-lifecycle` step 6 (daily 07:00 UTC),
+  one stage per account per run, recorded in `photographers.dunning_for` / `dunning_stage` (migration 0204,
+  server-only in the guard trigger). Emails: `dunningEmail` in `lib/billingEmails.ts`, he/en/ru.
+  - Due date: `current_period_end` with no recurring; +2 days with a recurring (a declined renewal sends
+    no callback; a late success moves the period and ends it).
+  - 1: 3 days before the period ends, no recurring only. 2: on the due date. 3: the day before the lock.
+    4: 7 days after the due date, `past_due`, an email to the customer and an info email to the admin.
+  - Catch-up after skipped runs is one step per run, so the final warning always precedes the lock.
+  - Skipped: admin, `keep_account`, cancelling, any status but active. A manual unlock from the admin
+    dashboard sticks for that period (stage 4 is already recorded); a payment starts over.
+- **Paying after a declined renewal:** `renewalPaymentDue` / `renewalMissed` (`lib/subscription.ts`) open
+  /billing and the checkout to an active account whose recurring is 2+ days late; the new checkout's
+  webhook cancels the old recurring.
+- **First real case:** `146ad19b` (rudyaz), paid through 28.10.2026, no recurring: due email on 29.10,
+  final warning 3.11, lock 4.11 (Israel dates), unless he pays.

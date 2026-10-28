@@ -1,5 +1,6 @@
 import type { Photographer } from "@/lib/types";
 import type { SubscriptionPlan } from "@/lib/stages";
+import { dunningDueDate } from "@/lib/dunning";
 
 // Free trial (2026-09-24): 14 days, no payment details, full Pro+ features (the account's `plan`
 // is set to TRIAL_PLAN for the trial; the plan picked at signup is kept in `signup_plan`), with
@@ -43,10 +44,23 @@ export const RENEWAL_PAYMENT_DAYS_BEFORE = 3;
 // or a recurring removed in PayPlus. /billing is open to it and Settings › Subscription links there,
 // so the person can pay without the emailed link. Not offered earlier: PayPlus starts the new
 // recurring on the payment day, so paying early would give up the days already paid for.
+// Also an account whose recurring's renewal never landed (its due date in lib/dunning.ts passed): the
+// card was declined, and the dunning emails send it here to pay with another one. The new checkout
+// cancels the old recurring (the PayPlus webhook), so two never charge in parallel.
 export function renewalPaymentDue(
   p: Pick<Photographer, "subscription_status" | "payplus_recurring_uid" | "cancel_at_period_end" | "current_period_end">,
   now = new Date()
 ): boolean {
-  if (p.subscription_status !== "active" || p.payplus_recurring_uid || p.cancel_at_period_end || !p.current_period_end) return false;
+  if (p.subscription_status !== "active" || p.cancel_at_period_end || !p.current_period_end) return false;
+  if (p.payplus_recurring_uid) return renewalMissed(p, now);
   return new Date(p.current_period_end).getTime() - now.getTime() <= RENEWAL_PAYMENT_DAYS_BEFORE * 86_400_000;
+}
+
+// A recurring that should have renewed the account and didn't.
+export function renewalMissed(
+  p: Pick<Photographer, "payplus_recurring_uid" | "current_period_end">,
+  now = new Date()
+): boolean {
+  const due = dunningDueDate(p);
+  return !!p.payplus_recurring_uid && !!due && now >= due;
 }

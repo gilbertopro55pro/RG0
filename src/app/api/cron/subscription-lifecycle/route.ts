@@ -8,7 +8,8 @@ import type { Photographer } from "@/lib/types";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { alertBillingAdmin } from "@/lib/billingAlerts";
 import { photographerLang } from "@/lib/clientLang";
-import { planSwitchEmail, renewalReminderEmail, trialDeletionFinalWarningEmail, trialDeletionWarningEmail, trialEndingEmail } from "@/lib/billingEmails";
+import { nextDunningStage, dunningLockDate, UPCOMING_DAYS_BEFORE, type DunningFields } from "@/lib/dunning";
+import { dunningEmail, planSwitchEmail, renewalReminderEmail, trialDeletionFinalWarningEmail, trialDeletionWarningEmail, trialEndingEmail } from "@/lib/billingEmails";
 import { deleteExpiredTrialAccount, isTrialDeletionCandidate, trialDeletionDate, TRIAL_RETENTION_DAYS, WARN_DAYS_BEFORE } from "@/lib/accountDeletion";
 
 // The public site, for every link this cron puts in an email or hands to PayPlus. Not the request's
@@ -121,7 +122,7 @@ export async function GET(request: NextRequest) {
     try {
       // Once the old recurring is really gone, the account has none until the new checkout is paid:
       // no renewal reminder for a charge that won't come, /billing open for the payment, and the
-      // missed-renewal alert (step 6) if it never comes. If cancelling failed, the uid stays, so the
+      // automatic unpaid-subscription emails (step 6) if it never comes. If cancelling failed, the uid stays, so the
       // webhook cancels it as superseded when the new checkout is paid, and the admin is told.
       let oldRecurringGone = !photographer.payplus_recurring_uid;
       if (photographer.payplus_recurring_uid) {
@@ -271,47 +272,64 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 6. Missed renewals. PayPlus sends no callback when a recurring charge fails (a card decline
-  // showed up only in PayPlus's own failed report, 2026-09-28), so nothing in the app changed and
-  // nobody knew. An active account whose paid period ended more than MISSED_RENEWAL_GRACE_DAYS ago
-  // means the expected charge never landed (a success would have moved current_period_end forward),
-  // or there's no recurring left to make it (removed in PayPlus). Access is untouched: locking is the
-  // admin's call, from the admin dashboard (owner's decision, 2026-09-29). This only tells the
-  // admin, once per period (missed_renewal_alerted_for).
-  const MISSED_RENEWAL_GRACE_DAYS = 2;
-  const missedCutoff = new Date(now.getTime() - MISSED_RENEWAL_GRACE_DAYS * 24 * 60 * 60 * 1000);
-  const { data: missedCandidates } = await supabase
+  // 6. Unpaid subscriptions, automatically (lib/dunning.ts, owner's decision 2026-10-28): emails the
+  // customer a payment link before and on the due date and the day before the lock, then locks the
+  // account (past_due) and tells the admin, who steps in only to unlock. One stage per account per
+  // run. PayPlus sends no callback when a recurring charge fails (a card decline showed up only in
+  // PayPlus's own failed report, 2026-09-28), so a declined renewal is known only by the paid period
+  // passing without a charge. A manual unlock from the admin dashboard sticks: the stage for that
+  // period is already "locked".
+  const { data: dunningCandidates } = await supabase
     .from("photographers")
-    .select("id, name, email, plan, current_period_end, payplus_recurring_uid, missed_renewal_alerted_for")
+    .select("id, name, email, ui_lang, subscription_status, cancel_at_period_end, current_period_end, payplus_recurring_uid, keep_account, dunning_for, dunning_stage")
     .eq("subscription_status", "active")
     .eq("cancel_at_period_end", false)
     .not("current_period_end", "is", null)
-    .lt("current_period_end", missedCutoff.toISOString())
-    .returns<(Pick<Photographer, "id" | "name" | "email" | "plan" | "current_period_end" | "payplus_recurring_uid"> & { missed_renewal_alerted_for: string | null })[]>();
+    .lte("current_period_end", new Date(now.getTime() + UPCOMING_DAYS_BEFORE * 24 * 60 * 60 * 1000).toISOString())
+    .returns<(Pick<Photographer, "id" | "name" | "email" | "ui_lang"> & DunningFields)[]>();
 
-  let missedAlerted = 0;
-  for (const p of missedCandidates ?? []) {
-    const periodEnd = p.current_period_end!;
-    if (p.missed_renewal_alerted_for && new Date(p.missed_renewal_alerted_for).getTime() === new Date(periodEnd).getTime()) continue;
-    const periodEndHe = new Date(periodEnd).toLocaleDateString("he-IL");
+  const dunningSent: Record<number, number> = {};
+  for (const p of dunningCandidates ?? []) {
+    const stage = nextDunningStage(p, p.email.toLowerCase() === ADMIN_EMAIL.toLowerCase(), now);
+    if (!stage) continue;
     try {
+      // The stage is recorded first: a run that dies after it never emails the same stage twice.
+      const { data: claimed } = await supabase
+        .from("photographers")
+        .update({
+          dunning_for: p.current_period_end,
+          dunning_stage: stage,
+          ...(stage === 4 ? { subscription_status: "past_due" } : {}),
+        })
+        .eq("id", p.id)
+        .eq("subscription_status", "active")
+        .eq("current_period_end", p.current_period_end!)
+        .select("id")
+        .maybeSingle();
+      if (!claimed) continue;
       await sendEmail({
-        to: ADMIN_EMAIL,
-        subject: `[חיובים] חידוש מנוי לא נקלט: ${p.name}`,
-        text:
-          (p.payplus_recurring_uid
-            ? `למנוי של ${p.name} (${p.email}, ${p.id}) הייתה אמורה להיות הוראת קבע שמחדשת אותו עד ${periodEndHe}, ` +
-              `ועברו יותר מ-${MISSED_RENEWAL_GRACE_DAYS} ימים בלי חיוב שנקלט.\n\n` +
-              `מה לבדוק: ב-PayPlus › עסקאות ודו״חות › דו״ח נכשלים, אם החיוב נדחה ולמה, ` +
-              `וב-הוראות קבע › רשימת הוראות קבע, שההוראה של הלקוח עדיין פעילה.\n`
-            : `התקופה ששולמה של ${p.name} (${p.email}, ${p.id}) הסתיימה ב-${periodEndHe}, ואין לו הוראת קבע שתחדש אותה.\n\n`) +
-          `החשבון לא ננעל. לנעילה (הלקוח יופנה לעדכון אמצעי תשלום): לוח בקרה למנהל › חשבונות שלא העבירו תשלום. ` +
-          `ההתראה נשלחת פעם אחת לכל תקופה.`,
+        to: notificationEmailFor(p.email),
+        ...dunningEmail(photographerLang(p.ui_lang), stage, {
+          name: p.name,
+          periodEnd: p.current_period_end!,
+          lockDate: dunningLockDate(p)!,
+          declined: !!p.payplus_recurring_uid,
+          siteUrl: SITE_URL,
+        }),
       });
-      await supabase.from("photographers").update({ missed_renewal_alerted_for: periodEnd }).eq("id", p.id);
-      missedAlerted++;
+      if (stage === 4) {
+        await alertBillingAdmin(
+          `חשבון ננעל אוטומטית: ${p.name}`,
+          `החשבון של ${p.name} (${p.email}, ${p.id}) ננעל כי לא התקבל תשלום על המנוי ` +
+            `(${p.payplus_recurring_uid ? "החיוב החודשי לא עבר" : "אין חיוב חודשי שמחדש אותו"}; ` +
+            `התקופה ששולמה הסתיימה ב-${new Date(p.current_period_end!).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" })}). ` +
+            `הלקוח קיבל 2–3 מיילים עם קישור תשלום לפני הנעילה, ועכשיו מייל שהחשבון נחסם. תשלום פותח את החשבון לבד.\n\n` +
+            `אין צורך לעשות דבר. רק אם הלקוח אומר ששילם, או שצריך לתת לו עוד זמן: לוח בקרה למנהל › חשבונות שלא העבירו תשלום › הסרת נעילה.`
+        );
+      }
+      dunningSent[stage] = (dunningSent[stage] ?? 0) + 1;
     } catch (e) {
-      console.error("Missed renewal alert failed:", p.id, e);
+      console.error("Dunning step failed:", p.id, stage, e);
     }
   }
 
@@ -339,7 +357,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     stuckWebhookEvents: stuckEvents?.length ?? 0,
-    missedRenewalAlerted: missedAlerted,
+    dunning: dunningSent,
     finalized: finalizedCount,
     reminded: remindedCount,
     switched: switchedCount,
