@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import TabPicker from "@/components/galleryManage/TabPicker";
 import GalleryShareModal from "@/components/GalleryShareModal";
 import type { GalleryListItem } from "@/components/GalleriesListView";
 import { useT } from "@/i18n/client";
@@ -35,7 +36,7 @@ export default function GalleryQuickActionsMenu({
   const [error, setError] = useState<string | null>(null);
 
   const [loadingFolders, setLoadingFolders] = useState(false);
-  const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
+  const [folders, setFolders] = useState<{ id: string; name: string; sort_order: number; parent_id: string | null }[]>([]);
   const [hasUnfoldered, setHasUnfoldered] = useState(false);
   const [selectedFolderKeys, setSelectedFolderKeys] = useState<Set<string>>(new Set());
 
@@ -56,7 +57,7 @@ export default function GalleryQuickActionsMenu({
     setError(null);
     try {
       const [{ data: foldersData, error: foldersError }, { data: photosData, error: photosError }] = await Promise.all([
-        supabase.from("gallery_folders").select("id, name").eq("gallery_id", item.id).order("sort_order", { ascending: true }),
+        supabase.from("gallery_folders").select("id, name, sort_order, parent_id").eq("gallery_id", item.id).order("sort_order", { ascending: true }),
         supabase.from("gallery_photos").select("folder_id").eq("gallery_id", item.id),
       ]);
       if (foldersError || photosError) {
@@ -95,15 +96,6 @@ export default function GalleryQuickActionsMenu({
   const openShare = async () => {
     setStep("share");
     await loadFolders();
-  };
-
-  const toggleFolderKey = (key: string) => {
-    setSelectedFolderKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
   };
 
   const confirmAddToPortfolio = async () => {
@@ -215,20 +207,7 @@ export default function GalleryQuickActionsMenu({
               {folders.length > 0 && (
                 <div className="mb-4">
                   <p className="text-xs text-ink-soft mb-2.5">{t("אילו לשוניות להוסיף לפורטפוליו?")}</p>
-                  <div className="space-y-1.5">
-                    {folders.map((f) => (
-                      <label key={f.id} className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
-                        <input type="checkbox" checked={selectedFolderKeys.has(f.id)} onChange={() => toggleFolderKey(f.id)} />
-                        {f.name}
-                      </label>
-                    ))}
-                    {hasUnfoldered && (
-                      <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
-                        <input type="checkbox" checked={selectedFolderKeys.has(NO_FOLDER_KEY)} onChange={() => toggleFolderKey(NO_FOLDER_KEY)} />
-                        {t("כללי (ללא לשונית)")}
-                      </label>
-                    )}
-                  </div>
+                  <TabPicker folders={folders} selected={selectedFolderKeys} onChange={setSelectedFolderKeys} noFolderKey={NO_FOLDER_KEY} hasUnfoldered={hasUnfoldered} />
                 </div>
               )}
               <div className="mb-5">

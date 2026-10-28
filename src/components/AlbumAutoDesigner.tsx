@@ -1,5 +1,6 @@
 "use client";
 
+import { folderLabel } from "@/lib/galleryFolders";
 import { useBusy } from "@/lib/updateResume";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -49,7 +50,8 @@ export type AutoDesignerPhoto = {
   folder_id?: string | null;
 };
 
-export type AutoDesignerFolder = { id: string; name: string };
+// A gallery tab; parent_id is its main tab when it is a sub-tab (lib/galleryFolders.ts).
+export type AutoDesignerFolder = { id: string; name: string; parent_id?: string | null };
 
 type AlbumSize = { width: number; height: number; margin: number };
 
@@ -823,7 +825,12 @@ export default function AlbumAutoDesigner({
           <p className="text-xs text-ink-soft">{t("בחרו תמונה שבה רואים את הפנים בבירור.")}</p>
           {folders.length > 0 && (
             <div className="flex gap-1.5 overflow-x-auto pb-1">
-              {[{ id: "all", name: t("הכל") }, ...folders, ...(hasUnfiled ? [{ id: "none", name: t("ללא לשונית") }] : [])].map((tab) => (
+              {[
+                { id: "all", name: t("הכל") },
+                // A main tab whose photos are all in its sub-tabs has nothing to pick from.
+                ...folders.filter((f) => photos.some((p) => p.folder_id === f.id)).map((f) => ({ id: f.id, name: folderLabel(folders, f) })),
+                ...(hasUnfiled ? [{ id: "none", name: t("ללא לשונית") }] : []),
+              ].map((tab) => (
                 <button
                   key={tab.id}
                   type="button"

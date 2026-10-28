@@ -11,6 +11,7 @@ const dict: AreaDict = {
     // Premium theme: cover, sticky bar, chapters, footer
     "גלילה לתמונות": "Scroll to the photos",
     "פרקים בגלריה": "Gallery chapters",
+    "לשוניות של {name}": "Tabs of {name}",
     "מצגת": "Slideshow",
     "תמונה אחת": "1 photo",
     "יצירת קשר": "Contact",
@@ -172,6 +173,7 @@ const dict: AreaDict = {
     // Premium theme: cover, sticky bar, chapters, footer
     "גלילה לתמונות": "Перейти к фотографиям",
     "פרקים בגלריה": "Разделы галереи",
+    "לשוניות של {name}": "Вкладки «{name}»",
     "מצגת": "Слайд-шоу",
     "תמונה אחת": "1 фото",
     "יצירת קשר": "Связаться",

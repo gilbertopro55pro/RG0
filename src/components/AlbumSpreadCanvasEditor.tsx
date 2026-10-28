@@ -1,5 +1,6 @@
 "use client";
 
+import { folderLabel } from "@/lib/galleryFolders";
 import { useResumeState } from "@/lib/updateResume";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AlbumElement, AlbumFrame, AlbumOrnamentElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement, AlbumTemplateRow, GalleryAlbumSpreadRow } from "@/lib/types";
@@ -2196,7 +2197,7 @@ export default function AlbumSpreadCanvasEditor({
   photos: PhotoWithUrl[];
   // Gallery tabs/folders, used only to group the draggable favorites panel below the save button
   // — an empty/omitted list just renders that panel as one flat, ungrouped area.
-  folders?: { id: string; name: string }[];
+  folders?: { id: string; name: string; parent_id?: string | null }[];
   photo1: PhotoWithUrl | undefined;
   photo2: PhotoWithUrl | undefined | null;
   mode: "overlay" | "custom";
@@ -2867,7 +2868,7 @@ export default function AlbumSpreadCanvasEditor({
   const dragPanelGroups: { id: string; name: string | null; items: PhotoWithUrl[] }[] =
     folders && folders.length > 0
       ? [
-          ...folders.map((f) => ({ id: f.id, name: f.name, items: dragPanelPool.filter((p) => p.folder_id === f.id) })),
+          ...folders.map((f) => ({ id: f.id, name: folderLabel(folders, f), items: dragPanelPool.filter((p) => p.folder_id === f.id) })),
           { id: "__none__", name: t("ללא לשונית"), items: dragPanelPool.filter((p) => !p.folder_id) },
         ].filter((g) => g.items.length > 0)
       : dragPanelPool.length > 0
