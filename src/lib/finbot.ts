@@ -182,7 +182,8 @@ export async function issueReceipt({
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
       // Only Finbot's own validation rejections (JSON, status != 1) are worth another price; an
-      // invalid key or a network failure would fail the same way every time.
+      // invalid key or a network failure would fail the same way every time (a network failure was
+      // already retried inside postIncomeDocument).
       if (!(e instanceof FinbotRejection)) throw lastError;
     }
   }
@@ -191,12 +192,64 @@ export async function issueReceipt({
 
 class FinbotRejection extends Error {}
 
+// Finbot couldn't be reached at all, so the request certainly created no document and is safe to
+// send again (by the caller now, or by the receipt retry cron later). 2026-10-28 04:31: a renewal's
+// receipt failed on a bare "fetch failed" and the code gave up on the first try.
+export class FinbotUnreachable extends Error {}
+
+// Errors raised before the request left this server: DNS, refused or timed-out connection, no route.
+// Anything else (a reset or closed socket mid-request) may have reached Finbot and issued the
+// document, so it's never sent again automatically: a second חשבונית מס קבלה is worse than a missing one.
+const UNSENT_CODES = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+// Waits between attempts when Finbot is unreachable: about 25 seconds in all, well inside the
+// webhook's maxDuration. A longer outage is left to the hourly retry cron.
+export const UNREACHABLE_RETRY_DELAYS_MS = [2000, 6000, 15000];
+
+function networkErrorCode(e: unknown): string | null {
+  const cause = (e as { cause?: { code?: unknown; errors?: { code?: unknown }[] } } | null)?.cause;
+  if (typeof cause?.code === "string") return cause.code;
+  // Node's happy-eyeballs wraps one error per address in an AggregateError.
+  const inner = cause?.errors?.find((x) => typeof x?.code === "string")?.code;
+  return typeof inner === "string" ? inner : null;
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function sendToFinbot(key: string, body: Record<string, unknown>): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(FINBOT_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", secret: key },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      const code = networkErrorCode(e);
+      const detail = `${e instanceof Error ? e.message : String(e)}${code ? ` (${code})` : ""}`;
+      if (!code || !UNSENT_CODES.has(code)) {
+        throw new Error(
+          `החיבור ל-Finbot נכשל באמצע הבקשה: ${detail}. ייתכן שהמסמך כן הופק, לבדוק ב-Finbot לפני הפקה ידנית`
+        );
+      }
+      if (attempt >= UNREACHABLE_RETRY_DELAYS_MS.length) {
+        throw new FinbotUnreachable(`Finbot לא זמין: ${detail}, אחרי ${attempt + 1} ניסיונות`);
+      }
+      await sleep(UNREACHABLE_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+}
+
 async function postIncomeDocument(key: string, body: Record<string, unknown>): Promise<{ documentLink: string }> {
-  const res = await fetch(FINBOT_API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", secret: key },
-    body: JSON.stringify(body),
-  });
+  const res = await sendToFinbot(key, body);
 
   // An invalid/expired API key gets rejected before Finbot's own JSON-aware logic runs — the
   // response body is a plain-text "Unauthorized", not JSON. Handle that case explicitly instead

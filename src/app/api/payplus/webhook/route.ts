@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { verifyPayplusWebhookSignature, deletePayplusRecurring, PAYPLUS_BILLING } from "@/lib/payplus";
 import { issueReceipt, documentTypeForTaxStatus } from "@/lib/finbot";
+import { issueSubscriptionReceipt, receiptFailureStatus } from "@/lib/subscriptionReceipt";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/stages";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { alertBillingAdmin as alertAdmin } from "@/lib/billingAlerts";
@@ -258,7 +259,6 @@ export async function POST(request: NextRequest) {
   // already got to the receipt (receiptHandled) doesn't issue a second one. Failure here is logged
   // but never fails the webhook response: the charge itself already succeeded regardless of Finbot.
   if (!receiptHandled) {
-    const planInfo = SUBSCRIPTION_PLANS[effectivePlan];
     // The REAL amount PayPlus charged in this specific transaction — not a lookup of the
     // CURRENT price for the plan. Those quietly diverge the moment prices ever change: an existing
     // subscriber's recurring charge keeps billing whatever amount was baked in when they first
@@ -266,25 +266,32 @@ export async function POST(request: NextRequest) {
     // lookup only if PayPlus's callback is ever missing "amount".
     const amount = chargedAmount || PAYPLUS_BILLING[effectivePlan].amount;
     try {
-      const { documentLink } = await issueReceipt({
-        // The platform itself is עוסק מורשה, so every subscription document is a חשבונית מס קבלה
-        // (with VAT). There's no per-photographer setting for "the platform's own" tax status (that
-        // column is each photographer's own business status).
-        documentType: documentTypeForTaxStatus("licensed"),
-        customerName: photographerRow.name,
-        customerEmail: notificationEmailFor(photographerRow.email),
-        customerPhone: photographerRow.phone,
+      const { documentLink } = await issueSubscriptionReceipt({
+        name: photographerRow.name,
+        email: photographerRow.email,
+        phone: photographerRow.phone,
+        plan: effectivePlan,
         amount,
-        description: `מנוי ${planInfo.label} למערכת גילברטו - ניהול צילום אירועים`,
       });
       await markEvent({ receipt_status: "issued", receipt_link: documentLink });
     } catch (e) {
-      await markEvent({ receipt_status: "failed", receipt_error: e instanceof Error ? e.message.slice(0, 500) : "unknown" });
+      const message = e instanceof Error ? e.message : "לא ידועה";
+      // Finbot unreachable (after the in-request retries): the retry-receipts cron tries again every
+      // hour with the same plan and amount, so the owner shouldn't issue it by hand meanwhile.
+      const status = receiptFailureStatus(e, new Date(), new Date());
+      await markEvent({
+        receipt_status: status,
+        receipt_error: message.slice(0, 500),
+        receipt_plan: effectivePlan,
+        receipt_amount: String(amount),
+      });
       await alertAdmin(
-        "הפקת קבלה על מנוי נכשלה",
+        status === "retry" ? "קבלה על מנוי תופק בניסיון חוזר" : "הפקת קבלה על מנוי נכשלה",
         `החשבון ${who} שילם ₪${amount}, אבל הפקת הקבלה ב-Finbot נכשלה.\n\n` +
-          `שגיאה: ${e instanceof Error ? e.message : "לא ידועה"}\nמזהה עסקה: ${transactionUid ?? "?"}\n\n` +
-          `מה לעשות: להפיק קבלה ידנית ב-Finbot ולשלוח ללקוח.`
+          `שגיאה: ${message}\nמזהה עסקה: ${transactionUid ?? "?"}\n\n` +
+          (status === "retry"
+            ? `Finbot לא היה זמין, ולכן הבקשה לא הגיעה אליו. המערכת תנסה שוב כל שעה במשך 24 שעות, ותשלח מייל כשהקבלה תופק או אם לא. אין צורך להפיק ידנית.`
+            : `מה לעשות: להפיק קבלה ידנית ב-Finbot ולשלוח ללקוח.`)
       );
       console.error(`Finbot receipt issuance failed for photographer ${photographerId}:`, e);
     }
