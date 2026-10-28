@@ -26,7 +26,7 @@ import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
 import PrintHouseSendsHistory from "@/components/PrintHouseSendsHistory";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { readDroppedEntries, isHiddenFileName, fileOfEntry } from "@/lib/fileDrop";
-import { dropTarget, folderTree, folderWithChildren, mainFolderId, nextSortOrder, orderedFolders, tabKey, type GalleryFolderNode } from "@/lib/galleryFolders";
+import { dropTarget, folderTree, folderWithChildren, mainFolderId, nextSortOrder, orderedFolders, tabKey, tabsInOrder, type GalleryFolderNode } from "@/lib/galleryFolders";
 import { ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
 import { STARTER_BOOK_TEMPLATES, generateStarterBookPages, type StarterTemplateId } from "@/lib/albumStarterTemplates";
 import { usePinchSize } from "@/lib/usePinchColumns";
@@ -2104,9 +2104,14 @@ export default function GalleryManageView({
     setFolders((prev) => orderedFolders([...prev, folderRow]));
     return folderRow.id;
   };
-  const folderForPath = (relativePath: string, ctx: TabLookup): Promise<string | null> => {
-    const target = dropTarget(ctx.known, activeFolderId, relativePath);
-    return target.kind === "open" ? Promise.resolve(target.folderId) : ensureTab(target.name, target.parent, ctx);
+  // The tab of every dropped file, its tabs made first in the order of their names (tabsInOrder),
+  // so "1.חתן" sits before "2.תפילה" whatever order the browser read the files in.
+  const foldersForPaths = async (relativePaths: string[], ctx: TabLookup): Promise<(string | null)[]> => {
+    const targets = relativePaths.map((p) => dropTarget(ctx.known, activeFolderId, p));
+    for (const t of tabsInOrder(targets)) await ensureTab(t.name, t.parent, ctx);
+    const ids: (string | null)[] = [];
+    for (const t of targets) ids.push(t.kind === "open" ? t.folderId : await ensureTab(t.name, t.parent, ctx));
+    return ids;
   };
 
   // True when the upload started (or joined this gallery's running one).
@@ -2301,11 +2306,8 @@ export default function GalleryManageView({
     const allowed = all.filter(isAllowedImageFile);
     const rejected = all.filter((f) => !isAllowedImageFile(f));
     const lookup = newTabLookup();
-    const items: { file: File; folderId: string | null }[] = [];
-    for (const file of allowed) {
-      const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || "";
-      items.push({ file, folderId: await folderForPath(relPath, lookup) });
-    }
+    const ids = await foldersForPaths(allowed.map((file) => (file as File & { webkitRelativePath?: string }).webkitRelativePath || ""), lookup);
+    const items = allowed.map((file, i) => ({ file, folderId: ids[i] }));
     if (await uploadResolvedFiles(items)) showUploadTab(items, lookup.known);
     reportRejectedFormats(rejected.map((f) => f.name));
     if (directoryInputRef.current) directoryInputRef.current.value = "";
@@ -2338,12 +2340,12 @@ export default function GalleryManageView({
       }
     }
     const lookup = newTabLookup();
+    const ids = await foldersForPaths(allowed.map((d) => d.relativePath), lookup);
     const resolved: GalleryUploadItem[] = [];
-    for (const d of allowed) {
-      const folderId = await folderForPath(d.relativePath, lookup);
-      if (d.entry) resolved.push({ entry: d.entry, name: d.name, folderId });
-      else if (d.file) resolved.push({ file: d.file, folderId });
-    }
+    allowed.forEach((d, i) => {
+      if (d.entry) resolved.push({ entry: d.entry, name: d.name, folderId: ids[i] });
+      else if (d.file) resolved.push({ file: d.file, folderId: ids[i] });
+    });
     if (await uploadResolvedFiles(resolved)) showUploadTab(resolved, lookup.known);
     reportRejectedFormats(rejected);
   };
