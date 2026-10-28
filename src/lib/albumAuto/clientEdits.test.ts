@@ -211,6 +211,16 @@ describe("עיצוב מחדש and חזרה", () => {
   it("the cover isn't redesigned", () => {
     expect(applyClientEdit(album(), { action: "redesign", spreadId: COVER, count: -1, seen: [] })).toMatchObject({ ok: false, code: "cover" });
   });
+  // Page 1 is the cover whatever its size (owner, 2026-10-28): in a 30×20 album it has the album's size.
+  it("nor is the first page when it has the album's size, though a photo that fits can still swap in", () => {
+    const base = album();
+    const ctx: ClientEditContext = { ...base, spreads: base.spreads.slice(1) };
+    expect(applyClientEdit(ctx, { action: "redesign", spreadId: S1, count: -1, seen: [] })).toMatchObject({ ok: false, status: 422, code: "cover" });
+    expect(applyClientEdit(ctx, { action: "redesign", spreadId: S2, count: -1, seen: [] }).ok).toBe(true);
+    const across = applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "d" }, redesign: true });
+    expect(across).toMatchObject({ ok: false, status: 422, code: "cover" });
+    expect(applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false }).ok).toBe(true);
+  });
 });
 
 describe("the designs a client gets", () => {
@@ -220,7 +230,9 @@ describe("the designs a client gets", () => {
     const four: ClientEditContext = {
       ...album(),
       album: { width_cm: 30, height_cm: 20, safe_margin_cm: 0.5, auto_style: "clean" },
+      // The cover first: the client never redesigns the first page.
       spreads: [
+        album().spreads[0],
         {
           ...album().spreads[1],
           elements: [
@@ -232,7 +244,7 @@ describe("the designs a client gets", () => {
         },
       ],
     };
-    const page = { widthCm: 30, heightCm: 20 };
+    const size = { widthCm: 30, heightCm: 20 };
     const aspect = (id: string) => four.photos.get(id)?.aspect ?? 1.5;
     let ctx = four;
     let cycle = { count: -1, seen: [] as string[] };
@@ -242,7 +254,7 @@ describe("the designs a client gets", () => {
     if (!swapped.ok) throw new Error(swapped.error);
     cycle = swapped.cycles[S1];
     ctx = saved(ctx, swapped);
-    expect(worstCrop(ctx.spreads[0].elements ?? [], page, aspect)).toBeLessThanOrEqual(CLIENT_DESIGN_MAX_CROP);
+    expect(worstCrop(page(ctx, S1).elements ?? [], size, aspect)).toBeLessThanOrEqual(CLIENT_DESIGN_MAX_CROP);
     // Then "עיצוב מחדש": a few designs to choose from, none past the error line.
     const shapes = new Set<string>();
     for (let i = 0; i < 6; i++) {
@@ -250,8 +262,8 @@ describe("the designs a client gets", () => {
       if (!out.ok) throw new Error(out.error);
       cycle = out.cycles[S1];
       ctx = saved(ctx, out);
-      shapes.add(designShape(photoEls(ctx.spreads[0])));
-      expect(worstCrop(ctx.spreads[0].elements ?? [], page, aspect)).toBeLessThanOrEqual(CLIENT_DESIGN_LIMIT_CROP);
+      shapes.add(designShape(photoEls(page(ctx, S1))));
+      expect(worstCrop(page(ctx, S1).elements ?? [], size, aspect)).toBeLessThanOrEqual(CLIENT_DESIGN_LIMIT_CROP);
     }
     expect(shapes.size).toBeGreaterThanOrEqual(3);
   });

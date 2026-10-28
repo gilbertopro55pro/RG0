@@ -167,11 +167,11 @@ export function resetPagesLine(numbers: readonly number[], t: TFn): string {
   const others = numbers.filter((n) => n !== 1);
   if (!numbers.includes(1)) {
     return others.length === 1
-      ? t("עמוד {n} יחזור בדיוק לעיצוב שהצלם שלח.", { n: others[0] })
-      : t("עמודים {pages} יחזרו בדיוק לעיצוב שהצלם שלח.", { pages: others.join(", ") });
+      ? t("עמוד {n} יחזור לעיצוב שהצלם שלח.", { n: others[0] })
+      : t("עמודים {pages} יחזרו לעיצוב שהצלם שלח.", { pages: others.join(", ") });
   }
-  if (!others.length) return t("הכריכה תחזור בדיוק לעיצוב שהצלם שלח.");
+  if (!others.length) return t("הכריכה תחזור לעיצוב שהצלם שלח.");
   return others.length === 1
-    ? t("הכריכה ועמוד {n} יחזרו בדיוק לעיצוב שהצלם שלח.", { n: others[0] })
-    : t("הכריכה ועמודים {pages} יחזרו בדיוק לעיצוב שהצלם שלח.", { pages: others.join(", ") });
+    ? t("הכריכה ועמוד {n} יחזרו לעיצוב שהצלם שלח.", { n: others[0] })
+    : t("הכריכה ועמודים {pages} יחזרו לעיצוב שהצלם שלח.", { pages: others.join(", ") });
 }

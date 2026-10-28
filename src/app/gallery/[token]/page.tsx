@@ -350,7 +350,7 @@ export default async function PublicGalleryPage({
     // Every photo on a page is the screen-size preview (clientScreenUrl), never photo.url: that is
     // the camera original, several MB each, and a page of 10 photos took seconds to show.
     albumSpreadsForClient = (spreadsRaw ?? [])
-      .map((s) => {
+      .map((s, i) => {
         const photo1 = photoById.get(s.photo_id_1);
         if (!photo1) return null;
         const photo2 = s.photo_id_2 ? photoById.get(s.photo_id_2) : null;
@@ -404,9 +404,10 @@ export default async function PublicGalleryPage({
           // The page's printed size: its own (a cover made at its own size) or the album's.
           widthCm: Number(s.width_cm ?? album.width_cm),
           heightCm: Number(s.height_cm ?? album.height_cm),
-          // The client's own changes (lib/albumClientEdit.ts): a cover (its own size) is never
-          // redesigned; "edited" pages differ from the photographer's, and some have a design to go back to.
-          isCover: s.width_cm != null,
+          // The client's own changes (lib/albumClientEdit.ts): the cover (the first page, owner
+          // 2026-10-28) is never redesigned; "edited" pages differ from the photographer's, and some
+          // have a design to go back to.
+          isCover: i === 0 || s.width_cm != null,
           edited: !!edits.client_edited_at,
           canBack: Array.isArray(edits.client_history) && edits.client_history.length > 0,
           canOriginal: !!edits.client_edited_at && canReturnToOriginal(edits.client_original, s.elements),
