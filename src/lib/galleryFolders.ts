@@ -144,3 +144,10 @@ export function tabCheckState(selected: ReadonlySet<string>, folders: readonly G
   const children = folders.filter((x) => x.parent_id === id);
   return children.some((c) => selected.has(c.id)) ? "some" : "off";
 }
+
+// The place of a new tab among its siblings: after the last one. A count isn't enough, since the
+// orders have gaps once a tab was deleted or moved.
+export function nextSortOrder(folders: readonly GalleryFolderLike[], parentId: string | null): number {
+  const siblings = folders.filter((f) => (f.parent_id ?? null) === parentId);
+  return siblings.length ? Math.max(...siblings.map((f) => f.sort_order)) + 1 : 0;
+}

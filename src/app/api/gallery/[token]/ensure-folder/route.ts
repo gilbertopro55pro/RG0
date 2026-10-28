@@ -43,11 +43,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   const getOrCreate = async (name: string, parentId: string | null): Promise<{ folder: Folder | null; error?: string }> => {
     const found = await findFolder(name, parentId);
     if (found) return { folder: found };
-    const siblings = supabase.from("gallery_folders").select("id", { count: "exact", head: true }).eq("gallery_id", gallery.id);
-    const { count } = await (parentId ? siblings.eq("parent_id", parentId) : siblings.is("parent_id", null));
+    // After the last sibling (orders have gaps once a tab was deleted or moved).
+    const siblings = supabase.from("gallery_folders").select("sort_order").eq("gallery_id", gallery.id);
+    const { data: last } = await (parentId ? siblings.eq("parent_id", parentId) : siblings.is("parent_id", null))
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ sort_order: number }>();
     const { data: folder, error } = await supabase
       .from("gallery_folders")
-      .insert({ gallery_id: gallery.id, photographer_id: gallery.photographer_id, name, sort_order: count ?? 0, parent_id: parentId })
+      .insert({ gallery_id: gallery.id, photographer_id: gallery.photographer_id, name, sort_order: last ? last.sort_order + 1 : 0, parent_id: parentId })
       .select("*")
       .single<Folder>();
     if (!error && folder) return { folder };

@@ -26,7 +26,7 @@ import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
 import PrintHouseSendsHistory from "@/components/PrintHouseSendsHistory";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { readDroppedEntries, isHiddenFileName, fileOfEntry } from "@/lib/fileDrop";
-import { dropTarget, folderTree, folderWithChildren, mainFolderId, orderedFolders, tabKey, type GalleryFolderNode } from "@/lib/galleryFolders";
+import { dropTarget, folderTree, folderWithChildren, mainFolderId, nextSortOrder, orderedFolders, tabKey, type GalleryFolderNode } from "@/lib/galleryFolders";
 import { ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
 import { STARTER_BOOK_TEMPLATES, generateStarterBookPages, type StarterTemplateId } from "@/lib/albumStarterTemplates";
 import { usePinchSize } from "@/lib/usePinchColumns";
@@ -2084,7 +2084,7 @@ export default function GalleryManageView({
         photographer_id: user.id,
         name,
         parent_id: parentId,
-        sort_order: ctx.known.filter((f) => (f.parent_id ?? null) === parentId).length,
+        sort_order: nextSortOrder(ctx.known, parentId),
       })
       .select()
       .single<GalleryFolderNode>();
@@ -2416,7 +2416,7 @@ export default function GalleryManageView({
     const patch: { name: string; parent_id?: string | null; sort_order?: number } = { name };
     if (moved) {
       patch.parent_id = parentId;
-      patch.sort_order = folders.filter((f) => (f.parent_id ?? null) === parentId).length;
+      patch.sort_order = nextSortOrder(folders, parentId);
     }
     const { error: updateError } = await supabase.from("gallery_folders").update(patch).eq("id", folder.id);
     if (updateError) return tabSaveError(updateError.code, updateError.message);

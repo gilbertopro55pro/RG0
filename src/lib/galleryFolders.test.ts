@@ -7,6 +7,7 @@ import {
   folderWithChildren,
   lonelyMain,
   mainFolderId,
+  nextSortOrder,
   orderedFolders,
   tabCheckState,
   tabKey,
@@ -131,5 +132,13 @@ describe("choosing tabs to share or download", () => {
     const flat = [f("a", "1.אוירה", 0), f("b", "2.חתן", 1)];
     expect([...toggleTabKey(new Set(["a", "b"]), flat, "a")]).toEqual(["b"]);
     expect(tabCheckState(new Set(), flat, "a")).toBe("off");
+  });
+});
+
+describe("a new tab", () => {
+  it("goes after the last of its siblings, also when the orders have gaps", () => {
+    expect(nextSortOrder([f("a", "x", 0), f("b", "y", 2)], null)).toBe(3);
+    expect(nextSortOrder(folders, "book")).toBe(2);
+    expect(nextSortOrder(folders, "nothing")).toBe(0);
   });
 });
