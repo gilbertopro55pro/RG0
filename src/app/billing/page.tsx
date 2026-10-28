@@ -59,7 +59,9 @@ export default async function BillingPage({
           <LogoutButton />
         </div>
         <p className="text-sm mb-4 text-ink-soft">
-          {renewalDue
+          {renewalDue && photographer.payplus_recurring_uid
+            ? t("החיוב האחרון נכשל. יש לעדכן אמצעי תשלום כדי להמשיך להשתמש במערכת.")
+            : renewalDue
             ? t("למנוי שלך אין חיוב חוזר פעיל, ולכן הוא לא יתחדש לבד. כדי להמשיך אחרי {date}, יש להשלים תשלום.", {
                 date: new Date(photographer.current_period_end!).toLocaleDateString(dateLocale(lang)),
               })

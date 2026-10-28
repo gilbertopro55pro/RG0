@@ -4,6 +4,21 @@ import type { AreaDict } from "@/i18n/types";
 // photographer (src/lib/billingEmails.ts). Hebrew source text → translation.
 const dict: AreaDict = {
   en: {
+    "המנוי שלך בגילברטו מסתיים ב-{date}": "Your Gilberto subscription ends on {date}",
+    "שלום {name},\n\nלמנוי שלך בגילברטו אין חיוב חודשי פעיל, ולכן הוא לא יתחדש לבד. כדי להמשיך לעבוד בלי הפסקה אחרי {date}, משלמים כאן:\n{url}/billing\n\nצוות גילברטו":
+      "Hi {name},\n\nYour Gilberto subscription has no active monthly charge, so it won't renew on its own. To keep working without a break after {date}, pay here:\n{url}/billing\n\nThe Gilberto team",
+    "החיוב החודשי בגילברטו לא עבר": "Your Gilberto monthly payment didn't go through",
+    "שלום {name},\n\nהחיוב החודשי על המנוי שלך בגילברטו לא עבר. כדי להמשיך, מעדכנים אמצעי תשלום ומשלמים כאן:\n{url}/billing\n\nבלי תשלום עד {lockDate}, הגישה לחשבון תיחסם. הנתונים שלך נשמרים.\n\nצוות גילברטו":
+      "Hi {name},\n\nThe monthly charge for your Gilberto subscription didn't go through. To continue, update your payment method and pay here:\n{url}/billing\n\nWithout a payment by {lockDate}, access to the account will be blocked. Your data is kept.\n\nThe Gilberto team",
+    "המנוי שלך בגילברטו הסתיים": "Your Gilberto subscription has ended",
+    "שלום {name},\n\nהתקופה ששולמה של המנוי שלך בגילברטו הסתיימה ב-{date}, ואין חיוב חודשי שיחדש אותה. כדי להמשיך, משלמים כאן:\n{url}/billing\n\nבלי תשלום עד {lockDate}, הגישה לחשבון תיחסם. הנתונים שלך נשמרים.\n\nצוות גילברטו":
+      "Hi {name},\n\nThe paid period of your Gilberto subscription ended on {date}, and there's no monthly charge to renew it. To continue, pay here:\n{url}/billing\n\nWithout a payment by {lockDate}, access to the account will be blocked. Your data is kept.\n\nThe Gilberto team",
+    "תזכורת אחרונה: הגישה לגילברטו תיחסם מחר": "Final reminder: your Gilberto access will be blocked tomorrow",
+    "שלום {name},\n\nעדיין לא התקבל תשלום על המנוי שלך בגילברטו, ומחר הגישה לחשבון תיחסם. כדי להמשיך בלי הפסקה, משלמים היום:\n{url}/billing\n\nהנתונים שלך נשמרים גם אחרי החסימה, ותשלום פותח את החשבון מיד.\n\nצוות גילברטו":
+      "Hi {name},\n\nWe still haven't received a payment for your Gilberto subscription, and tomorrow access to the account will be blocked. To continue without a break, pay today:\n{url}/billing\n\nYour data is kept after the block too, and a payment reopens the account right away.\n\nThe Gilberto team",
+    "הגישה לחשבון שלך בגילברטו נחסמה": "Access to your Gilberto account has been blocked",
+    "שלום {name},\n\nהגישה לחשבון נחסמה כי לא התקבל תשלום על המנוי. הנתונים שלך שמורים, ותשלום פותח את החשבון מיד:\n{url}/billing\n\nצוות גילברטו":
+      "Hi {name},\n\nAccess to the account has been blocked because no payment was received for the subscription. Your data is kept, and a payment reopens the account right away:\n{url}/billing\n\nThe Gilberto team",
     "המנוי שלך יחודש בקרוב | {date}": "Your subscription renews soon | {date}",
     "שלום {name},\n\nהמנוי {plan} שלך במערכת גילברטו יחודש אוטומטית בתאריך {date} בסך ₪{amount}.\nאם ברצונך לכבות את החידוש האוטומטי, ניתן לעשות זאת בכל עת מתוך הגדרות > מנוי.\n\nתודה שאת/ה חלק מהמערכת!":
       "Hi {name},\n\nYour Gilberto {plan} subscription will renew automatically on {date} for ₪{amount}.\nIf you'd like to turn off auto-renewal, you can do it any time in Settings > Subscription.\n\nThank you for being part of Gilberto!",
@@ -25,6 +40,21 @@ const dict: AreaDict = {
       "Hi {name},\n\nTomorrow your Gilberto account and all its data will be permanently deleted, because the free trial has ended and no plan was chosen. Once deleted, they can't be restored.\n\nTo keep everything, choose a plan today:\n{url}/billing\n\nThe Gilberto team",
   },
   ru: {
+    "המנוי שלך בגילברטו מסתיים ב-{date}": "Ваша подписка Гилберто заканчивается {date}",
+    "שלום {name},\n\nלמנוי שלך בגילברטו אין חיוב חודשי פעיל, ולכן הוא לא יתחדש לבד. כדי להמשיך לעבוד בלי הפסקה אחרי {date}, משלמים כאן:\n{url}/billing\n\nצוות גילברטו":
+      "Здравствуйте, {name}!\n\nУ вашей подписки Гилберто нет активного ежемесячного списания, поэтому она не продлится сама. Чтобы продолжить работу без перерыва после {date}, оплатите здесь:\n{url}/billing\n\nКоманда Гилберто",
+    "החיוב החודשי בגילברטו לא עבר": "Ежемесячный платёж Гилберто не прошёл",
+    "שלום {name},\n\nהחיוב החודשי על המנוי שלך בגילברטו לא עבר. כדי להמשיך, מעדכנים אמצעי תשלום ומשלמים כאן:\n{url}/billing\n\nבלי תשלום עד {lockDate}, הגישה לחשבון תיחסם. הנתונים שלך נשמרים.\n\nצוות גילברטו":
+      "Здравствуйте, {name}!\n\nЕжемесячное списание за вашу подписку Гилберто не прошло. Чтобы продолжить, обновите способ оплаты и оплатите здесь:\n{url}/billing\n\nБез оплаты до {lockDate} доступ к аккаунту будет заблокирован. Ваши данные сохраняются.\n\nКоманда Гилберто",
+    "המנוי שלך בגילברטו הסתיים": "Ваша подписка Гилберто закончилась",
+    "שלום {name},\n\nהתקופה ששולמה של המנוי שלך בגילברטו הסתיימה ב-{date}, ואין חיוב חודשי שיחדש אותה. כדי להמשיך, משלמים כאן:\n{url}/billing\n\nבלי תשלום עד {lockDate}, הגישה לחשבון תיחסם. הנתונים שלך נשמרים.\n\nצוות גילברטו":
+      "Здравствуйте, {name}!\n\nОплаченный период вашей подписки Гилберто закончился {date}, и нет ежемесячного списания, которое бы его продлило. Чтобы продолжить, оплатите здесь:\n{url}/billing\n\nБез оплаты до {lockDate} доступ к аккаунту будет заблокирован. Ваши данные сохраняются.\n\nКоманда Гилберто",
+    "תזכורת אחרונה: הגישה לגילברטו תיחסם מחר": "Последнее напоминание: завтра доступ к Гилберто будет заблокирован",
+    "שלום {name},\n\nעדיין לא התקבל תשלום על המנוי שלך בגילברטו, ומחר הגישה לחשבון תיחסם. כדי להמשיך בלי הפסקה, משלמים היום:\n{url}/billing\n\nהנתונים שלך נשמרים גם אחרי החסימה, ותשלום פותח את החשבון מיד.\n\nצוות גילברטו":
+      "Здравствуйте, {name}!\n\nОплата за вашу подписку Гилберто всё ещё не поступила, и завтра доступ к аккаунту будет заблокирован. Чтобы продолжить без перерыва, оплатите сегодня:\n{url}/billing\n\nВаши данные сохраняются и после блокировки, а оплата сразу открывает аккаунт.\n\nКоманда Гилберто",
+    "הגישה לחשבון שלך בגילברטו נחסמה": "Доступ к вашему аккаунту Гилберто заблокирован",
+    "שלום {name},\n\nהגישה לחשבון נחסמה כי לא התקבל תשלום על המנוי. הנתונים שלך שמורים, ותשלום פותח את החשבון מיד:\n{url}/billing\n\nצוות גילברטו":
+      "Здравствуйте, {name}!\n\nДоступ к аккаунту заблокирован, потому что оплата за подписку не поступила. Ваши данные сохранены, а оплата сразу открывает аккаунт:\n{url}/billing\n\nКоманда Гилберто",
     "המנוי שלך יחודש בקרוב | {date}": "Ваша подписка скоро продлится | {date}",
     "שלום {name},\n\nהמנוי {plan} שלך במערכת גילברטו יחודש אוטומטית בתאריך {date} בסך ₪{amount}.\nאם ברצונך לכבות את החידוש האוטומטי, ניתן לעשות זאת בכל עת מתוך הגדרות > מנוי.\n\nתודה שאת/ה חלק מהמערכת!":
       "Здравствуйте, {name}!\n\nВаша подписка Гилберто ({plan}) будет автоматически продлена {date} на сумму ₪{amount}.\nЕсли вы хотите отключить автопродление, это можно сделать в любое время в разделе Настройки > Подписка.\n\nСпасибо, что вы с Гилберто!",
