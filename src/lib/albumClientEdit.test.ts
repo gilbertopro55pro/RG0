@@ -125,11 +125,11 @@ describe("naming page 1 the cover", () => {
     expect(pageList([2, 3], "הכריכה")).toBe("2, 3");
   });
   it("says which pages undo-all returns, with the right grammar", () => {
-    expect(resetPagesLine([1], t)).toBe("הכריכה תחזור בדיוק לעיצוב שהצלם שלח.");
-    expect(resetPagesLine([1, 2], t)).toBe("הכריכה ועמוד 2 יחזרו בדיוק לעיצוב שהצלם שלח.");
-    expect(resetPagesLine([1, 2, 3], t)).toBe("הכריכה ועמודים 2, 3 יחזרו בדיוק לעיצוב שהצלם שלח.");
-    expect(resetPagesLine([4], t)).toBe("עמוד 4 יחזור בדיוק לעיצוב שהצלם שלח.");
-    expect(resetPagesLine([2, 5], t)).toBe("עמודים 2, 5 יחזרו בדיוק לעיצוב שהצלם שלח.");
+    expect(resetPagesLine([1], t)).toBe("הכריכה תחזור לעיצוב שהצלם שלח.");
+    expect(resetPagesLine([1, 2], t)).toBe("הכריכה ועמוד 2 יחזרו לעיצוב שהצלם שלח.");
+    expect(resetPagesLine([1, 2, 3], t)).toBe("הכריכה ועמודים 2, 3 יחזרו לעיצוב שהצלם שלח.");
+    expect(resetPagesLine([4], t)).toBe("עמוד 4 יחזור לעיצוב שהצלם שלח.");
+    expect(resetPagesLine([2, 5], t)).toBe("עמודים 2, 5 יחזרו לעיצוב שהצלם שלח.");
   });
 });
 

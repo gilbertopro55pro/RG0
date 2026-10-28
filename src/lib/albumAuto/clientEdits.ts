@@ -22,7 +22,8 @@ import { AUTO_STYLES, type AutoStyleId, type LayoutPhoto } from "./types";
 //
 // - A swap puts each photo in the other's frame, its crop following the faces (fitPhotoInFrame). A
 //   page whose new photo doesn't fit its frame is redesigned, only when the client confirmed it
-//   ("redesign": true), and never the cover (its own size): a photo for it must fit its frame.
+//   ("redesign": true), and never the cover (the first page, owner 2026-10-28): a photo for it must
+//   fit its frame.
 // - "back" returns to the page's previous design. Designs of the same photos only: a swap between
 //   pages starts both pages' history over.
 // - "original" returns one page to the photographer's design, only while it holds the photos it was
@@ -76,7 +77,10 @@ export const CLIENT_DESIGN_MAX_CROP = 1.6;
 export const CLIENT_DESIGN_LIMIT_CROP = 1.8;
 const CLIENT_DESIGN_CHOICES = 4;
 
+// A cover made at its own size; the engine counts pages after it.
 const isCover = (sp: EditSpread) => sp.width_cm != null;
+// The client never redesigns the cover (owner, 2026-10-28): the first page, whatever its size.
+const isCoverPage = (ctx: ClientEditContext, sp: EditSpread) => isCover(sp) || ctx.spreads[0]?.id === sp.id;
 
 // The most any photo of a page is cropped in its frame.
 export function worstCrop(elements: readonly AlbumElement[], page: { widthCm: number; heightCm: number }, aspect: (photoId: string) => number): number {
@@ -260,7 +264,7 @@ export function applyClientEdit(ctx: ClientEditContext, req: ClientEditRequest):
   if (req.action === "redesign") {
     const sp = byId.get(req.spreadId);
     if (!sp) return notFound;
-    if (isCover(sp)) return { ok: false, status: 422, error: "הכריכה לא מעוצבת מחדש", code: "cover" };
+    if (isCoverPage(ctx, sp)) return { ok: false, status: 422, error: "הכריכה לא מעוצבת מחדש", code: "cover" };
     const next = redesignPage(ctx, sp, sp.elements ?? [], { count: req.count, seen: req.seen });
     if (!next.elements) return { ok: false, status: 409, error: "אין עיצוב אחר לעמוד הזה", code: "no_design" };
     const update = finalize(sp, { elements: next.elements, background_photo_id: sp.background_photo_id }, pushHistory(sp.client_history, stateOf(sp)), true);
@@ -280,7 +284,7 @@ export function applyClientEdit(ctx: ClientEditContext, req: ClientEditRequest):
     { spreadId: sa.id, frame: ea, page: pageOf(ctx, sa), photoAspect: aspectOf(ctx, ea.photoId) },
     { spreadId: sb.id, frame: eb, page: pageOf(ctx, sb), photoAspect: aspectOf(ctx, eb.photoId) }
   );
-  if (need.some((id) => isCover(byId.get(id) as EditSpread))) {
+  if (need.some((id) => isCoverPage(ctx, byId.get(id) as EditSpread))) {
     return { ok: false, status: 422, error: "התמונה לא מתאימה למסגרת בכריכה", code: "cover", pages: need };
   }
   if (need.length > 0 && !req.redesign) {
