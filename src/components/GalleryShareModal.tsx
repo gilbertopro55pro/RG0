@@ -7,6 +7,7 @@ import type { Lang } from "@/i18n/config";
 import clientEmails from "@/i18n/dict/clientEmails";
 import { makeT } from "@/i18n/translate";
 import { galleryShareSearch, shortClientUrl } from "@/lib/shortLinks";
+import TabPicker from "@/components/galleryManage/TabPicker";
 
 const NO_FOLDER_KEY = "none";
 // One specific account's own wording, requested verbatim — every other photographer gets a
@@ -88,7 +89,7 @@ export function galleryShareTitle(lang: Lang = "he"): string {
   return clientT(lang)("גלריה מהאירוע");
 }
 
-type GalleryFolderOption = { id: string; name: string };
+type GalleryFolderOption = { id: string; name: string; sort_order: number; parent_id?: string | null };
 
 // Shared by GalleryManageView (sharing from inside a gallery) and GalleriesListView's double-click
 // quick-actions menu (sharing without opening the gallery) — a single implementation so the
@@ -125,15 +126,6 @@ export default function GalleryShareModal({
   const [shareQuality, setShareQuality] = useState<"full" | "web">("full");
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
-
-  const toggleShareFolder = (key: string) => {
-    setShareSelectedFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
 
   const showFolderPicker = folders.length > 0;
   const shareDisabled = showFolderPicker && shareSelectedFolders.size === 0;
@@ -185,20 +177,7 @@ export default function GalleryShareModal({
               {showFolderPicker && (
                 <div className="mb-5">
                   <p className="text-xs text-ink-soft mb-2.5">{t("אילו לשוניות לשתף?")}</p>
-                  <div className="space-y-1.5">
-                    {folders.map((folder) => (
-                      <label key={folder.id} className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
-                        <input type="checkbox" checked={shareSelectedFolders.has(folder.id)} onChange={() => toggleShareFolder(folder.id)} />
-                        {folder.name}
-                      </label>
-                    ))}
-                    {hasUnfoldered && (
-                      <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
-                        <input type="checkbox" checked={shareSelectedFolders.has(NO_FOLDER_KEY)} onChange={() => toggleShareFolder(NO_FOLDER_KEY)} />
-                        {t("כללי (ללא לשונית)")}
-                      </label>
-                    )}
-                  </div>
+                  <TabPicker folders={folders} selected={shareSelectedFolders} onChange={setShareSelectedFolders} noFolderKey={NO_FOLDER_KEY} hasUnfoldered={hasUnfoldered} />
                   {shareDisabled && <p className="text-xs text-rose mt-2">{t("יש לבחור לפחות לשונית אחת לשיתוף")}</p>}
                 </div>
               )}

@@ -3,7 +3,8 @@ import { Readable } from "node:stream";
 import sharp from "sharp";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { downloadObjectBuffer, uploadObjectStream } from "@/lib/storage";
-import type { GalleryFolderRow, GalleryPhotoRow, GalleryRow, GalleryZipJobRow } from "@/lib/types";
+import type { GalleryPhotoRow, GalleryRow, GalleryZipJobRow } from "@/lib/types";
+import { zipFolderSegments, type GalleryFolderLike } from "@/lib/galleryFolders";
 
 // A part is bounded by total SOURCE bytes (not a flat photo count) — that's what actually
 // predicts how long a part takes, since fetching the originals from storage dominates the wall
@@ -147,14 +148,15 @@ export async function processZipJobPart(jobId: string, origin: string): Promise<
       ),
       supabase
         .from("gallery_folders")
-        .select("id, name")
+        .select("id, name, sort_order, parent_id")
         .eq("gallery_id", gallery.id)
-        .returns<Pick<GalleryFolderRow, "id" | "name">[]>(),
+        .returns<GalleryFolderLike[]>(),
     ]);
     const photos = photoChunkResults.flatMap((r) => r.data ?? []);
     if (photos.length === 0) throw new Error("התמונות לא נמצאו");
 
-    const folderNameById = new Map((folders ?? []).map((f) => [f.id, f.name]));
+    // A sub-tab's photos go to "<main tab>/<sub-tab>" (lib/galleryFolders.ts).
+    const folderDirById = new Map((folders ?? []).map((f) => [f.id, zipFolderSegments(folders ?? [], f.id).map(sanitizeZipSegment).join("/")]));
     const distinctFolderIds = new Set(photos.map((p) => p.folder_id ?? null));
     const useSubfolders = distinctFolderIds.size > 1;
 
@@ -250,8 +252,8 @@ export async function processZipJobPart(jobId: string, origin: string): Promise<
             // full size rather than being silently dropped from the archive.
           }
         }
-        const folderName = photo.folder_id ? folderNameById.get(photo.folder_id) ?? NO_FOLDER_LABEL : NO_FOLDER_LABEL;
-        const dir = useSubfolders ? `${rootDir}/${sanitizeZipSegment(folderName)}` : rootDir;
+        const folderDir = (photo.folder_id && folderDirById.get(photo.folder_id)) || sanitizeZipSegment(NO_FOLDER_LABEL);
+        const dir = useSubfolders ? `${rootDir}/${folderDir}` : rootDir;
         archive.append(buffer, { name: `${dir}/${uniqueName(dir, photo.original_filename)}` });
         bytesAppended += buffer.length;
         completed++;

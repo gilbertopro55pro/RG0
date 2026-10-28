@@ -34,6 +34,7 @@ import { collageSource, faceSample, type PhotoFacesFound, type PickablePhoto } f
 import { coverRotationIds, ROTATION_FOCAL, type CoverRotationPhoto } from "@/lib/galleryCoverRotation";
 import { clientOriginalUrl, clientScreenUrl } from "@/lib/galleryPhotoUrls";
 import { selectionTargetFor, type SelectionTargets } from "@/lib/selectionTarget";
+import { orderedFolders, type GalleryFolderNode } from "@/lib/galleryFolders";
 
 // The client's language for this gallery (UI languages phase 2): the event's client_lang, gated by
 // clientLangFor (Hebrew for every non-admin photographer). A gallery with no event stays Hebrew.
@@ -209,7 +210,7 @@ export default async function PublicGalleryPage({
       .select("*")
       .eq("gallery_id", gallery.id)
       .order("sort_order", { ascending: true })
-      .returns<GalleryFolderRow[]>(),
+      .returns<GalleryFolderNode[]>(),
     // Studio Pro's "full branding" perk — see BrandingSettings.tsx and the render below.
     supabase
       .from("photographers")
@@ -227,7 +228,9 @@ export default async function PublicGalleryPage({
   // A share link can restrict the visible tabs or an exact set of photos (see the share modals in
   // GalleryManageView and PublicGalleryView) — filter folders/photos down before signing URLs, so
   // excluded photos never even get a signed URL generated or sent to the client.
-  let folders = foldersRaw ?? [];
+  // Main tabs, each followed by its sub-tabs (lib/galleryFolders.ts): the tab rows, the chapters and
+  // the cover rotation all read the gallery's tabs in this order.
+  let folders = orderedFolders(foldersRaw ?? []);
   let photos = photosRaw ?? [];
   // A read-only share link: only what it was shared with, whatever the URL says. The client's own
   // favorites aren't shown to whoever it was shared with.
@@ -238,6 +241,8 @@ export default async function PublicGalleryPage({
     else if (scope.folderKeys) folders = folders.filter((f) => scope.folderKeys!.includes(f.id));
   }
   if (foldersParam) {
+    // The keys are explicit (a main tab's id stands for its own photos; its sub-tabs come with their
+    // own ids when they were chosen), so nothing is expanded here.
     const selected = new Set(foldersParam.split(","));
     folders = folders.filter((f) => selected.has(f.id));
     photos = photos.filter((p) => (p.folder_id ? selected.has(p.folder_id) : selected.has("none")));

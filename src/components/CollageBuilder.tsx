@@ -1,5 +1,6 @@
 "use client";
 
+import { folderLabel } from "@/lib/galleryFolders";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/i18n/client";
 import { createClient } from "@/lib/supabase/client";
@@ -86,7 +87,7 @@ export default function CollageBuilder({
   galleryTitle: string;
   eventType: string | null;
   photos: CollageBuilderPhoto[];
-  folders: { id: string; name: string }[];
+  folders: { id: string; name: string; parent_id?: string | null }[];
   onClose: () => void;
 }) {
   const t = useT();
@@ -586,7 +587,7 @@ export default function CollageBuilder({
                 <option value="auto">{t("אוטומטי: הדמות המרכזית")}</option>
                 {usedFolders.map((f) => (
                   <option key={f.id} value={`tab:${f.id}`}>
-                    {t("לשונית: {name}", { name: f.name })}
+                    {t("לשונית: {name}", { name: folderLabel(folders, f) })}
                   </option>
                 ))}
                 {photos.some((p) => p.is_favorite) && <option value="favorites">{t("המועדפות של הלקוח")}</option>}

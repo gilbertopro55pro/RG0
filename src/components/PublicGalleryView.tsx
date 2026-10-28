@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
-import type { GalleryFolderRow, GalleryPhotoRow } from "@/lib/types";
+import type { GalleryPhotoRow } from "@/lib/types";
 import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import { usePinchSize } from "@/lib/usePinchColumns";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
@@ -12,7 +12,21 @@ import { resolveGalleryTheme, titleFontFamily } from "@/lib/galleryTheme";
 import GallerySlideshow from "@/components/GallerySlideshow";
 import GalleryAlbumProofing, { type ClientAlbumSpread } from "@/components/GalleryAlbumProofing";
 import { ALLOWED_ACCEPT, isAllowedImageFile, convertHeicIfNeeded } from "@/lib/imageUpload";
-import { readDataTransferItems, folderNameFromPath, isHiddenFileName } from "@/lib/fileDrop";
+import { readDataTransferItems, isHiddenFileName } from "@/lib/fileDrop";
+import {
+  dropTarget,
+  folderTree,
+  folderWithChildren,
+  lonelyMain,
+  mainFolderId,
+  orderedFolders,
+  tabCheckState,
+  tabKey,
+  toggleTabKey,
+  type DropTarget,
+  type GalleryFolderNode,
+} from "@/lib/galleryFolders";
+import { ensureFolderBody, tabCache } from "@/lib/galleryFolderEnsure";
 import { useLang, useT } from "@/i18n/client";
 import ConfettiBurst from "@/components/ConfettiBurst";
 import { selectionTargetState, shouldCelebrate } from "@/lib/selectionTarget";
@@ -90,7 +104,7 @@ export default function PublicGalleryView({
 }: {
   token: string;
   initialPhotos: PhotoWithUrl[];
-  initialFolders: GalleryFolderRow[];
+  initialFolders: GalleryFolderNode[];
   initiallyConfirmed: boolean;
   allowDownloads: boolean;
   allowClientUpload?: boolean;
@@ -208,20 +222,33 @@ export default function PublicGalleryView({
   };
 
   // Client-facing counterpart to GalleryManageView.tsx's ensureFolderId — same get-or-create
-  // pattern, just via the token-scoped route since there's no photographer session here.
-  const ensureFolderId = async (folderName: string, cache: Map<string, string>): Promise<string | null> => {
-    const existing = cache.get(folderName);
+  // pattern, just via the token-scoped route since there's no photographer session here. A sub-tab
+  // of a dropped top folder brings its main tab, which the route makes first when it's new.
+  const ensureTab = async (target: Extract<DropTarget, { kind: "tab" }>, cache: Map<string, string>): Promise<string | null> => {
+    const key = tabKey(target.name, target.parent);
+    const existing = cache.get(key);
     if (existing) return existing;
     const res = await fetch(`/api/gallery/${token}/ensure-folder`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ folderName }),
+      body: JSON.stringify(ensureFolderBody(target)),
     });
-    const data = await res.json();
+    const data: { folder?: GalleryFolderNode; parent?: GalleryFolderNode | null } = await res.json().catch(() => ({}));
     if (!res.ok || !data.folder) return null;
-    cache.set(folderName, data.folder.id);
-    setFolders((prev) => (prev.some((f) => f.id === data.folder.id) ? prev : [...prev, data.folder]));
+    const made = [data.parent, data.folder].filter((f): f is GalleryFolderNode => !!f);
+    cache.set(key, data.folder.id);
+    if (data.parent) cache.set(tabKey(data.parent.name, null), data.parent.id);
+    setFolders((prev) => orderedFolders([...prev, ...made.filter((f) => !prev.some((p) => p.id === f.id))]));
     return data.folder.id;
+  };
+
+  // Where a file from a dropped or chosen folder goes (lib/galleryFolders.ts dropTarget). In a
+  // gallery that is one event in a main tab of its own, "הכל" is that event, so a new folder joins
+  // it as a sub-tab instead of standing beside it.
+  const folderIdForPath = async (relativePath: string, cache: Map<string, string>): Promise<string | null> => {
+    const lonely = lonelyMain(folderTree(folders));
+    const target = dropTarget(folders, activeFolderId ?? lonely?.folder.id ?? null, relativePath);
+    return target.kind === "open" ? activeFolderId : ensureTab(target, cache);
   };
 
   // Mirrors the photographer's own upload flow (GalleryManageView.tsx) one-for-one — same
@@ -301,13 +328,12 @@ export default function PublicGalleryView({
 
   const handleUploadDirectory = async (fileList: FileList | null) => {
     if (!fileList) return;
-    const cache = new Map(folders.map((f) => [f.name, f.id]));
+    const cache = tabCache(folders);
     const items: UploadItem[] = [];
     for (const file of Array.from(fileList)) {
       if (isHiddenFileName(file.name) || !isAllowedImageFile(file)) continue;
       const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || "";
-      const folderName = relPath ? folderNameFromPath(relPath) : null;
-      const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
+      const folderId = await folderIdForPath(relPath, cache);
       items.push({ file, folderId });
     }
     await uploadResolvedItems(items);
@@ -319,11 +345,10 @@ export default function PublicGalleryView({
     const dropped = await readDataTransferItems(e.dataTransfer.items);
     if (dropped.length === 0) return;
     const allowed = dropped.filter((d) => isAllowedImageFile(d.file));
-    const cache = new Map(folders.map((f) => [f.name, f.id]));
+    const cache = tabCache(folders);
     const items: UploadItem[] = [];
     for (const { file, relativePath } of allowed) {
-      const folderName = folderNameFromPath(relativePath);
-      const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
+      const folderId = await folderIdForPath(relativePath, cache);
       items.push({ file, folderId });
     }
     await uploadResolvedItems(items);
@@ -872,23 +897,46 @@ export default function PublicGalleryView({
     setGalleryShareOpen(true);
   };
 
-  const toggleShareFolder = (key: string) => {
-    setShareSelectedFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
+  // The keys are explicit (lib/galleryFolders.ts toggleTabKey): a main tab's box checks it and all
+  // its sub-tabs, a sub-tab's box only it.
+  const toggleShareFolder = (key: string) => setShareSelectedFolders((prev) => toggleTabKey(prev, folders, key));
 
-  const toggleDownloadFolder = (key: string) => {
-    setDownloadSelectedFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
+  const toggleDownloadFolder = (key: string) => setDownloadSelectedFolders((prev) => toggleTabKey(prev, folders, key));
+
+  // The tab checkboxes of the share and download panels: each main tab, its sub-tabs indented under
+  // it. A main tab with only some of its sub-tabs chosen shows a dash.
+  const renderTabChoices = (selected: ReadonlySet<string>, onToggle: (key: string) => void) =>
+    folderTree(folders).map((n) => {
+      const state = tabCheckState(selected, folders, n.folder.id);
+      return (
+        <div key={n.folder.id} className="space-y-1.5">
+          <label
+            className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
+            style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
+          >
+            <input
+              type="checkbox"
+              checked={state === "on"}
+              ref={(el) => {
+                if (el) el.indeterminate = state === "some";
+              }}
+              onChange={() => onToggle(n.folder.id)}
+            />
+            {n.folder.name}
+          </label>
+          {n.children.map((c) => (
+            <label
+              key={c.id}
+              className="ms-6 flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
+              style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
+            >
+              <input type="checkbox" checked={selected.has(c.id)} onChange={() => onToggle(c.id)} />
+              {c.name}
+            </label>
+          ))}
+        </div>
+      );
     });
-  };
 
   const downloadSelectedFolderPhotoIds = photos
     .filter((p) => (p.folder_id ? downloadSelectedFolders.has(p.folder_id) : downloadSelectedFolders.has(NO_FOLDER_KEY)))
@@ -943,19 +991,36 @@ export default function PublicGalleryView({
   // before); filtering by a diamond-icon label switches to every photo carrying that label,
   // favorited or not — a label is its own tag, not just a sub-filter of the favorites set.
   const panelPhotos = activeLabelFilter ? photos.filter((p) => p.custom_label === activeLabelFilter) : favorites;
-  const folderPhotos = activeFolderId ? photos.filter((p) => p.folder_id === activeFolderId) : photos;
+  // The tabs (lib/galleryFolders.ts): the main tabs, and under the open one its sub-tabs. A gallery
+  // that is one event in a main tab of its own shows that event's sub-tabs as its only row, as a
+  // gallery with one level of tabs always looked. Opening a main tab shows its sub-tabs' photos too.
+  const tree = folderTree(folders);
+  const lonely = lonelyMain(tree);
+  const topTabs = lonely ? lonely.children : tree.map((n) => n.folder);
+  const openMainId = lonely ? null : mainFolderId(folders, activeFolderId);
+  const openMain = openMainId ? (tree.find((n) => n.folder.id === openMainId) ?? null) : null;
+  const subTabs = openMain?.children ?? [];
+  const topTabActive = (id: string) => (lonely ? activeFolderId === id : openMainId === id);
+  const activeTabIds = activeFolderId ? folderWithChildren(folders, activeFolderId) : null;
+  const folderPhotos = activeTabIds ? photos.filter((p) => !!p.folder_id && activeTabIds.has(p.folder_id)) : photos;
   // Premium shows each folder as a chapter with its own title, so the photos are ordered folder by
   // folder (photos outside any folder first, untitled) — and the lightbox steps through them in
-  // that same order. Other themes keep the plain sort order.
-  const chapters: { key: string; name: string | null; photos: PhotoWithUrl[] }[] =
+  // that same order. Other themes keep the plain sort order. A sub-tab's chapter names its event
+  // above the title, unless the gallery is that one event.
+  const chapters: { key: string; name: string | null; eyebrow?: string | null; photos: PhotoWithUrl[] }[] =
     theme.chapterHeaders && folders.length > 0
       ? [
           ...(activeFolderId
             ? []
             : [{ key: NO_FOLDER_KEY, name: null, photos: photos.filter((p) => !p.folder_id || !folders.some((f) => f.id === p.folder_id)) }]),
-          ...folders
-            .filter((f) => !activeFolderId || f.id === activeFolderId)
-            .map((f) => ({ key: f.id, name: f.name, photos: photos.filter((p) => p.folder_id === f.id) })),
+          ...orderedFolders(folders)
+            .filter((f) => !activeTabIds || activeTabIds.has(f.id))
+            .map((f) => ({
+              key: f.id,
+              name: f.name,
+              eyebrow: !lonely && f.parent_id ? (folders.find((m) => m.id === f.parent_id)?.name ?? null) : null,
+              photos: photos.filter((p) => p.folder_id === f.id),
+            })),
         ].filter((c) => c.photos.length > 0)
       : [{ key: "all", name: null, photos: folderPhotos }];
   const visiblePhotos = theme.chapterHeaders && folders.length > 0 ? chapters.flatMap((c) => c.photos) : folderPhotos;
@@ -1042,8 +1107,8 @@ export default function PublicGalleryView({
   const renderChapterNav = (className: string) =>
     folders.length > 0 ? (
       <nav aria-label={t("פרקים בגלריה")} className={`${className} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
-        {[{ id: null as string | null, name: t("הכל") }, ...folders.map((f) => ({ id: f.id as string | null, name: f.name }))].map((f) => {
-          const active = activeFolderId === f.id;
+        {[{ id: null as string | null, name: t("הכל") }, ...topTabs.map((f) => ({ id: f.id as string | null, name: f.name }))].map((f) => {
+          const active = f.id === null ? activeFolderId === null : topTabActive(f.id);
           return (
             <button
               key={f.id ?? "all"}
@@ -1060,6 +1125,35 @@ export default function PublicGalleryView({
           );
         })}
       </nav>
+    ) : null;
+
+  // The open event's sub-tabs, a quieter row under the chapters: "הכל" is the whole event.
+  const renderSubChapterNav = () =>
+    openMain && subTabs.length > 0 ? (
+      <div className="border-t border-[var(--gt-border)]">
+        <nav
+          aria-label={t("לשוניות של {name}", { name: openMain.folder.name })}
+          className="mx-auto max-w-[1600px] flex h-10 items-center gap-5 overflow-x-auto px-4 sm:px-6 lg:px-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {[{ id: openMain.folder.id, name: t("הכל") }, ...subTabs.map((f) => ({ id: f.id, name: f.name }))].map((f) => {
+            const active = activeFolderId === f.id;
+            return (
+              <button
+                key={f.id}
+                onClick={() => selectChapter(f.id)}
+                aria-current={active ? "true" : undefined}
+                className="shrink-0 whitespace-nowrap py-1 text-[12px] sm:text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gt-ink)]"
+                style={{
+                  color: active ? "var(--gt-ink)" : "var(--gt-ink-soft)",
+                  boxShadow: active ? "inset 0 -1px 0 var(--gt-ink)" : undefined,
+                }}
+              >
+                {f.name}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
     ) : null;
 
   const barBtn =
@@ -1120,6 +1214,7 @@ export default function PublicGalleryView({
           </div>
         </div>
         {renderChapterNav("md:hidden flex h-11 items-center gap-5 overflow-x-auto px-4 border-t border-[var(--gt-border)]")}
+        {renderSubChapterNav()}
       </div>
     </>
   );
@@ -1255,6 +1350,11 @@ export default function PublicGalleryView({
           <section key={c.key} aria-labelledby={c.name ? `chapter-${c.key}` : undefined}>
             {c.name && (
               <div className={`px-3 sm:px-0 flex flex-wrap items-baseline gap-x-4 gap-y-1 pb-4 sm:pb-7 ${ci === 0 ? "pt-6 sm:pt-6" : "pt-16 sm:pt-28"}`}>
+                {c.eyebrow && (
+                  <p className="w-full text-xs sm:text-sm tracking-wide" style={{ color: "var(--gt-ink-soft)" }}>
+                    {c.eyebrow}
+                  </p>
+                )}
                 <h2
                   id={`chapter-${c.key}`}
                   style={{
@@ -1606,17 +1706,36 @@ export default function PublicGalleryView({
           >
             {t("הכל")}
           </button>
-          {folders.map((folder) => (
+          {topTabs.map((folder) => (
             <button
               key={folder.id}
               onClick={() => setActiveFolderId(folder.id)}
               className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
               style={{
-                background: activeFolderId === folder.id ? "var(--gt-accent)" : "var(--gt-surface-soft)",
-                color: activeFolderId === folder.id ? "var(--gt-accent-ink)" : "var(--gt-ink-soft)",
+                background: topTabActive(folder.id) ? "var(--gt-accent)" : "var(--gt-surface-soft)",
+                color: topTabActive(folder.id) ? "var(--gt-accent-ink)" : "var(--gt-ink-soft)",
               }}
             >
               {folder.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* The open event's sub-tabs, quieter than the main tabs: "הכל" is the whole event. */}
+      {!premium && openMain && subTabs.length > 0 && (
+        <div className="flex items-center gap-1.5 -mt-2 mb-4 overflow-x-auto" aria-label={t("לשוניות של {name}", { name: openMain.folder.name })}>
+          {[{ id: openMain.folder.id, name: t("הכל") }, ...subTabs].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveFolderId(tab.id)}
+              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium border ${BTN_PRESS}`}
+              style={{
+                borderColor: activeFolderId === tab.id ? "var(--gt-accent)" : "var(--gt-border)",
+                background: activeFolderId === tab.id ? "var(--gt-surface-soft)" : "transparent",
+                color: activeFolderId === tab.id ? "var(--gt-accent)" : "var(--gt-ink-soft)",
+              }}
+            >
+              {tab.name}
             </button>
           ))}
         </div>
@@ -2302,16 +2421,7 @@ export default function PublicGalleryView({
                   <div className="mb-5">
                     <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>{t("אילו לשוניות לשתף?")}</p>
                     <div className="space-y-1.5">
-                      {folders.map((folder) => (
-                        <label
-                          key={folder.id}
-                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
-                          style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
-                        >
-                          <input type="checkbox" checked={shareSelectedFolders.has(folder.id)} onChange={() => toggleShareFolder(folder.id)} />
-                          {folder.name}
-                        </label>
-                      ))}
+                      {renderTabChoices(shareSelectedFolders, toggleShareFolder)}
                       {hasUnfoldered && (
                         <label
                           className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
@@ -2419,16 +2529,7 @@ export default function PublicGalleryView({
               <div className="mb-5">
                 <p className="text-xs mb-2.5" style={{ color: "var(--gt-ink-soft)" }}>{t("אילו לשוניות להוריד?")}</p>
                 <div className="space-y-1.5">
-                  {folders.map((folder) => (
-                    <label
-                      key={folder.id}
-                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"
-                      style={{ background: "var(--gt-surface)", borderColor: "var(--gt-border)" }}
-                    >
-                      <input type="checkbox" checked={downloadSelectedFolders.has(folder.id)} onChange={() => toggleDownloadFolder(folder.id)} />
-                      {folder.name}
-                    </label>
-                  ))}
+                  {renderTabChoices(downloadSelectedFolders, toggleDownloadFolder)}
                   {hasUnfoldered && (
                     <label
                       className="flex items-center gap-2.5 rounded-lg px-3 py-2 border text-sm"

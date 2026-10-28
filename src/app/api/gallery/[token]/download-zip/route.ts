@@ -6,7 +6,8 @@ import { createClient as createServerSupabaseClient } from "@/lib/supabase/serve
 import { downloadObjectBuffer } from "@/lib/storage";
 import { resizeForWebQuality } from "@/lib/zipJobs";
 import { photoInScope, resolveGalleryToken } from "@/lib/galleryAccess";
-import type { GalleryFolderRow, GalleryPhotoRow } from "@/lib/types";
+import type { GalleryPhotoRow } from "@/lib/types";
+import { zipFolderSegments, type GalleryFolderLike } from "@/lib/galleryFolders";
 
 const NO_FOLDER_LABEL = "כללי";
 
@@ -104,9 +105,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     ),
     supabase
       .from("gallery_folders")
-      .select("id, name")
+      .select("id, name, sort_order, parent_id")
       .eq("gallery_id", gallery.id)
-      .returns<Pick<GalleryFolderRow, "id" | "name">[]>(),
+      .returns<GalleryFolderLike[]>(),
   ]);
   const photos = photoChunkResults.flatMap((r) => r.data ?? []).filter((p) => photoInScope(p, access.scope));
   const webQuality = access.scope?.quality === "web";
@@ -129,7 +130,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
   }
 
-  const folderNameById = new Map((folders ?? []).map((f) => [f.id, f.name]));
+  // A sub-tab's photos go to "<main tab>/<sub-tab>" (lib/galleryFolders.ts), so the zip keeps the
+  // gallery's structure.
+  const folderDirById = new Map((folders ?? []).map((f) => [f.id, zipFolderSegments(folders ?? [], f.id).map(sanitizeSegment).join("/")]));
   const distinctFolderIds = new Set(photos.map((p) => p.folder_id ?? null));
   // Only nest into per-tab subfolders when the selection actually spans more than one tab —
   // a single-tab (or tab-less) download stays a flat archive, matching what the person expects
@@ -176,8 +179,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (!buffer) continue;
         // A share link at web quality never hands out originals (same resize as a web zip job).
         if (webQuality) buffer = await resizeForWebQuality(buffer).catch(() => buffer as Buffer);
-        const folderName = photo.folder_id ? folderNameById.get(photo.folder_id) ?? NO_FOLDER_LABEL : NO_FOLDER_LABEL;
-        const dir = useSubfolders ? `${rootDir}/${sanitizeSegment(folderName)}` : rootDir;
+        const folderDir = (photo.folder_id && folderDirById.get(photo.folder_id)) || sanitizeSegment(NO_FOLDER_LABEL);
+        const dir = useSubfolders ? `${rootDir}/${folderDir}` : rootDir;
         archive.append(buffer, { name: `${dir}/${uniqueName(dir, photo.original_filename)}` });
       }
     };

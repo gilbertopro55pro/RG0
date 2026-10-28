@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -25,7 +25,8 @@ import { withViewTransition, BTN_PRESS } from "@/lib/viewTransition";
 import PrintHouseEmailsSettings from "@/components/PrintHouseEmailsSettings";
 import PrintHouseSendsHistory from "@/components/PrintHouseSendsHistory";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { readDroppedEntries, folderNameFromPath, isHiddenFileName, fileOfEntry } from "@/lib/fileDrop";
+import { readDroppedEntries, isHiddenFileName, fileOfEntry } from "@/lib/fileDrop";
+import { dropTarget, folderTree, folderWithChildren, mainFolderId, orderedFolders, tabKey, type GalleryFolderNode } from "@/lib/galleryFolders";
 import { ALBUM_STYLE_OPTIONS, type AlbumStyleId } from "@/lib/albumStyleGenerator";
 import { STARTER_BOOK_TEMPLATES, generateStarterBookPages, type StarterTemplateId } from "@/lib/albumStarterTemplates";
 import { usePinchSize } from "@/lib/usePinchColumns";
@@ -121,7 +122,9 @@ import { MgrPhotoOverlays } from "@/components/galleryManage/MgrPhotoOverlays";
 import { GallerySettingsModal } from "@/components/galleryManage/GallerySettingsModal";
 import { UploadCount, UploadPct } from "@/components/galleryManage/UploadProgress";
 import { GridThumb } from "@/components/galleryManage/GridThumb";
-import { DeleteFolderConfirmModal } from "@/components/galleryManage/DeleteFolderConfirmModal";
+import { DeleteFolderConfirmModal, type DeleteFolderMode } from "@/components/galleryManage/DeleteFolderConfirmModal";
+import TabEditSheet from "@/components/galleryManage/TabEditSheet";
+import TabPicker from "@/components/galleryManage/TabPicker";
 import { SlideshowManageModal } from "@/components/galleryManage/SlideshowManageModal";
 import AnchoredMenu, { type AnchoredMenuItem } from "@/components/AnchoredMenu";
 import PhotoActionSheet from "@/components/galleryManage/PhotoActionSheet";
@@ -194,13 +197,19 @@ export default function GalleryManageView({
     const pool = new Set(albumPoolIds(photos, albumSelection));
     return photos.map((p) => (p.is_favorite === pool.has(p.id) ? p : { ...p, is_favorite: pool.has(p.id) }));
   }, [photos, albumSelection]);
-  const [folders, setFolders] = useState(initialFolders);
+  // Main tabs and sub-tabs (owner, 2026-10-28; lib/galleryFolders.ts), in the order they read.
+  const [folders, setFolders] = useState<GalleryFolderNode[]>(() => orderedFolders(initialFolders as GalleryFolderNode[]));
+  const folderNodes = useMemo(() => folderTree(folders), [folders]);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
-  const [addingFolder, setAddingFolder] = useState(false);
+  // Opening a main tab shows its sub-tabs' photos too.
+  const activeFolderIds = useMemo(() => (activeFolderId ? folderWithChildren(folders, activeFolderId) : null), [folders, activeFolderId]);
+  const activeMainId = mainFolderId(folders, activeFolderId);
+  const activeSubTabs = activeMainId ? folderNodes.find((n) => n.folder.id === activeMainId)?.children ?? [] : [];
+  // "+" on the main row adds a main tab, "+" on the sub-tab row a sub-tab of the open main tab.
+  const [addingFolder, setAddingFolder] = useState<"main" | "sub" | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
-  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
-  const [editFolderName, setEditFolderName] = useState("");
-  const [deleteFolderConfirm, setDeleteFolderConfirm] = useState<GalleryFolderRow | null>(null);
+  const [editTab, setEditTab] = useState<GalleryFolderNode | null>(null);
+  const [deleteFolderConfirm, setDeleteFolderConfirm] = useState<GalleryFolderNode | null>(null);
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   // The last upload stopped because the browser couldn't read the files: the error offers picking
@@ -2045,9 +2054,25 @@ export default function GalleryManageView({
     setLightboxIndex(index);
   };
 
-  const ensureFolderId = async (folderName: string, cache: Map<string, string>): Promise<string | null> => {
-    const existing = cache.get(folderName);
-    if (existing) return existing;
+  // Get or create a tab by its place (lib/galleryFolders.ts, dropTarget): a main tab by name, or a
+  // sub-tab under a main tab given by id or by name. `known` holds the tabs made during this drop,
+  // ahead of the state update.
+  type TabLookup = { cache: Map<string, string>; known: GalleryFolderNode[] };
+  const newTabLookup = (): TabLookup => ({ cache: new Map(), known: [...folders] });
+  const ensureTab = async (name: string, parent: null | { id: string } | { name: string }, ctx: TabLookup): Promise<string | null> => {
+    const key = tabKey(name, parent);
+    const cached = ctx.cache.get(key);
+    if (cached) return cached;
+    let parentId: string | null = null;
+    if (parent) {
+      parentId = "id" in parent ? parent.id : await ensureTab(parent.name, null, ctx);
+      if (!parentId) return null;
+    }
+    const found = ctx.known.find((f) => f.name === name && (f.parent_id ?? null) === parentId);
+    if (found) {
+      ctx.cache.set(key, found.id);
+      return found.id;
+    }
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -2057,27 +2082,31 @@ export default function GalleryManageView({
       .insert({
         gallery_id: gallery.id,
         photographer_id: user.id,
-        name: folderName,
-        sort_order: folders.length + cache.size,
+        name,
+        parent_id: parentId,
+        sort_order: ctx.known.filter((f) => (f.parent_id ?? null) === parentId).length,
       })
       .select()
-      .single<GalleryFolderRow>();
+      .single<GalleryFolderNode>();
     if (error || !folderRow) {
-      const { data: existingRow } = await supabase
-        .from("gallery_folders")
-        .select("*")
-        .eq("gallery_id", gallery.id)
-        .eq("name", folderName)
-        .maybeSingle<GalleryFolderRow>();
-      if (existingRow) {
-        cache.set(folderName, existingRow.id);
-        return existingRow.id;
-      }
-      return null;
+      // Made meanwhile (another device, or a race): use that one.
+      let q = supabase.from("gallery_folders").select("*").eq("gallery_id", gallery.id).eq("name", name);
+      q = parentId ? q.eq("parent_id", parentId) : q.is("parent_id", null);
+      const { data: existingRow } = await q.maybeSingle<GalleryFolderNode>();
+      if (!existingRow) return null;
+      ctx.known.push(existingRow);
+      ctx.cache.set(key, existingRow.id);
+      setFolders((prev) => (prev.some((f) => f.id === existingRow.id) ? prev : orderedFolders([...prev, existingRow])));
+      return existingRow.id;
     }
-    cache.set(folderName, folderRow.id);
-    setFolders((prev) => [...prev, folderRow]);
+    ctx.known.push(folderRow);
+    ctx.cache.set(key, folderRow.id);
+    setFolders((prev) => orderedFolders([...prev, folderRow]));
     return folderRow.id;
+  };
+  const folderForPath = (relativePath: string, ctx: TabLookup): Promise<string | null> => {
+    const target = dropTarget(ctx.known, activeFolderId, relativePath);
+    return target.kind === "open" ? Promise.resolve(target.folderId) : ensureTab(target.name, target.parent, ctx);
   };
 
   // True when the upload started (or joined this gallery's running one).
@@ -2121,10 +2150,15 @@ export default function GalleryManageView({
   // A dropped folder lands in a tab named after it (ensureFolderId), also when another tab is open
   // (owner, 2026-10-17). The page moves to that tab, so the photographer sees the photos arrive
   // there instead of an open tab that stays the same. Several folders at once: "הכל".
-  const showUploadTab = (items: { folderId: string | null }[]) => {
+  // Tabs of one main tab (a dropped event folder) show that main tab.
+  const showUploadTab = (items: { folderId: string | null }[], known: GalleryFolderNode[]) => {
     const ids = new Set(items.map((i) => i.folderId));
-    if (ids.size > 1) setActiveFolderId(null);
-    else if (ids.size === 1) setActiveFolderId([...ids][0]);
+    if (ids.size === 1) {
+      setActiveFolderId([...ids][0]);
+      return;
+    }
+    const mains = new Set([...ids].map((id) => mainFolderId(known, id)));
+    setActiveFolderId(mains.size === 1 ? [...mains][0] : null);
   };
 
   // This gallery's new photos appear as they land, also after leaving the page and coming back.
@@ -2266,15 +2300,13 @@ export default function GalleryManageView({
     const all = Array.from(files).filter((f) => !isHiddenFileName(f.name));
     const allowed = all.filter(isAllowedImageFile);
     const rejected = all.filter((f) => !isAllowedImageFile(f));
-    const cache = new Map(folders.map((f) => [f.name, f.id]));
+    const lookup = newTabLookup();
     const items: { file: File; folderId: string | null }[] = [];
     for (const file of allowed) {
       const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || "";
-      const folderName = relPath ? folderNameFromPath(relPath) : null;
-      const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
-      items.push({ file, folderId });
+      items.push({ file, folderId: await folderForPath(relPath, lookup) });
     }
-    if (await uploadResolvedFiles(items)) showUploadTab(items);
+    if (await uploadResolvedFiles(items)) showUploadTab(items, lookup.known);
     reportRejectedFormats(rejected.map((f) => f.name));
     if (directoryInputRef.current) directoryInputRef.current.value = "";
   };
@@ -2305,15 +2337,14 @@ export default function GalleryManageView({
         return;
       }
     }
-    const cache = new Map(folders.map((f) => [f.name, f.id]));
+    const lookup = newTabLookup();
     const resolved: GalleryUploadItem[] = [];
     for (const d of allowed) {
-      const folderName = folderNameFromPath(d.relativePath);
-      const folderId = folderName ? await ensureFolderId(folderName, cache) : activeFolderId;
+      const folderId = await folderForPath(d.relativePath, lookup);
       if (d.entry) resolved.push({ entry: d.entry, name: d.name, folderId });
       else if (d.file) resolved.push({ file: d.file, folderId });
     }
-    if (await uploadResolvedFiles(resolved)) showUploadTab(resolved);
+    if (await uploadResolvedFiles(resolved)) showUploadTab(resolved, lookup.known);
     reportRejectedFormats(rejected);
   };
 
@@ -2364,58 +2395,64 @@ export default function GalleryManageView({
   const createFolder = async () => {
     const name = newFolderName.trim();
     if (!name) return;
-
-    // A tab with this name may already exist (gallery_folders has a unique gallery_id+name
-    // constraint) — reuse it instead of round-tripping to a duplicate-key error.
-    const existingFolder = folders.find((f) => f.name === name);
-    if (existingFolder) {
-      setActiveFolderId(existingFolder.id);
-      setNewFolderName("");
-      setAddingFolder(false);
+    const parent = addingFolder === "sub" && activeMainId ? { id: activeMainId } : null;
+    const id = await ensureTab(name, parent, newTabLookup());
+    if (!id) {
+      setError(t("שגיאה ביצירת התיקייה"));
       return;
     }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data: folderRow, error: insertError } = await supabase
-      .from("gallery_folders")
-      .insert({ gallery_id: gallery.id, photographer_id: user.id, name, sort_order: folders.length })
-      .select()
-      .single<GalleryFolderRow>();
-    if (insertError || !folderRow) {
-      setError(insertError?.code === "23505" ? t("כבר קיימת לשונית בשם הזה") : insertError?.message ?? t("שגיאה ביצירת התיקייה"));
-      return;
-    }
-    setFolders((prev) => [...prev, folderRow]);
-    setActiveFolderId(folderRow.id);
+    setActiveFolderId(id);
     setNewFolderName("");
-    setAddingFolder(false);
+    setAddingFolder(null);
   };
 
-  const renameFolder = async () => {
-    const folderId = editingFolderId;
-    const name = editFolderName.trim();
-    setEditingFolderId(null);
-    if (!folderId) return;
-    const current = folders.find((f) => f.id === folderId);
-    if (!name || !current || name === current.name) return;
-    const { error: updateError } = await supabase.from("gallery_folders").update({ name }).eq("id", folderId);
-    if (updateError) {
-      setError(updateError.code === "23505" ? t("כבר קיימת לשונית בשם הזה") : updateError.message ?? t("שגיאה בשינוי שם התיקייה"));
-      return;
+  const tabSaveError = (code: string | undefined, message: string | undefined) =>
+    code === "23505" ? t("כבר קיימת לשונית בשם הזה") : message?.startsWith("folder_") ? t("אי אפשר להעביר את הלשונית לשם") : message ?? t("שגיאה בשינוי שם התיקייה");
+
+  // "עריכת לשונית": the name and the main tab it sits in. A tab moved to another main tab goes last there.
+  const saveTab = async (folder: GalleryFolderNode, name: string, parentId: string | null): Promise<string | null> => {
+    const moved = (folder.parent_id ?? null) !== parentId;
+    if (name === folder.name && !moved) return null;
+    const patch: { name: string; parent_id?: string | null; sort_order?: number } = { name };
+    if (moved) {
+      patch.parent_id = parentId;
+      patch.sort_order = folders.filter((f) => (f.parent_id ?? null) === parentId).length;
     }
-    setFolders((prev) => prev.map((f) => (f.id === folderId ? { ...f, name } : f)));
+    const { error: updateError } = await supabase.from("gallery_folders").update(patch).eq("id", folder.id);
+    if (updateError) return tabSaveError(updateError.code, updateError.message);
+    setFolders((prev) => orderedFolders(prev.map((f) => (f.id === folder.id ? { ...f, ...patch } : f))));
+    return null;
   };
 
-  // Deleting a folder never deletes its photos — the DB column has `on delete set null`, so
-  // photos just fall back to "הכל" (ungrouped). Local state is mirrored manually here to match,
-  // same as every other folder/photo mutation in this component.
-  const deleteFolder = async () => {
+  const addSubTab = async (parent: GalleryFolderNode, name: string): Promise<string | null> => {
+    if (folders.some((f) => f.parent_id === parent.id && f.name === name)) return t("כבר קיימת לשונית בשם הזה");
+    const id = await ensureTab(name, { id: parent.id }, newTabLookup());
+    if (!id) return t("שגיאה ביצירת התיקייה");
+    setActiveFolderId(id);
+    return null;
+  };
+
+  // Deleting a tab (owner, 2026-10-28): the photographer chose either the tab alone, whose photos
+  // stay in the gallery without a tab (`on delete set null`), or the tab and its photos. A main tab's
+  // sub-tabs go with it (`on delete cascade`). The photos go first, so a failure leaves the tab.
+  const deleteFolder = async (mode: DeleteFolderMode) => {
     const folder = deleteFolderConfirm;
     if (!folder) return;
+    const ids = folderWithChildren(folders, folder.id);
     setDeletingFolder(true);
+    if (mode === "photos") {
+      const inTab = photos.filter((p) => p.folder_id && ids.has(p.folder_id));
+      const failed = await deletePhotoRows(inTab).then(
+        () => null,
+        (e: unknown) => (e instanceof Error ? e.message : t("שגיאה במחיקת התמונות. נסו שוב"))
+      );
+      if (failed) {
+        setDeletingFolder(false);
+        setDeleteFolderConfirm(null);
+        setError(failed);
+        return;
+      }
+    }
     const { error: deleteError } = await supabase.from("gallery_folders").delete().eq("id", folder.id);
     setDeletingFolder(false);
     setDeleteFolderConfirm(null);
@@ -2423,10 +2460,9 @@ export default function GalleryManageView({
       setError(deleteError.message ?? t("שגיאה במחיקת התיקייה"));
       return;
     }
-    setFolders((prev) => prev.filter((f) => f.id !== folder.id));
-    setPhotos((prev) => prev.map((p) => (p.folder_id === folder.id ? { ...p, folder_id: null } : p)));
-    if (activeFolderId === folder.id) setActiveFolderId(null);
-    if (editingFolderId === folder.id) setEditingFolderId(null);
+    setFolders((prev) => prev.filter((f) => !ids.has(f.id)));
+    setPhotos((prev) => prev.map((p) => (p.folder_id && ids.has(p.folder_id) ? { ...p, folder_id: null } : p)));
+    if (activeFolderId && ids.has(activeFolderId)) setActiveFolderId(null);
   };
 
   // Storage cleanup happens FIRST and is checked before either the DB row or local UI state is
@@ -2477,6 +2513,46 @@ export default function GalleryManageView({
     }
   };
 
+  // Deletes photos for good: the files first, then the rows (throws, leaving them, if the files
+  // couldn't be removed). Used by "delete selected" and by deleting a tab with its photos.
+  const deletePhotoRows = async (selected: PhotoWithUrl[]) => {
+    if (selected.length === 0) return;
+    const ids = selected.map((p) => p.id);
+    const gone = new Set(ids);
+    const paths = selected.flatMap((p) => [
+      p.storage_path,
+      p.preview_storage_path && !isNewPreviewPath(p.preview_storage_path) ? p.preview_storage_path : null,
+    ]).filter((x): x is string => !!x);
+    const previewPaths = selected
+      .map((p) => p.preview_storage_path)
+      .filter((x): x is string => !!x && isNewPreviewPath(x));
+    const removeRes = await fetch("/api/storage/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bucket: "galleries", paths, previewPaths }),
+    });
+    if (!removeRes.ok) {
+      const data = await removeRes.json().catch(() => null);
+      throw new Error(data?.error ?? t("שגיאה במחיקת התמונות מהאחסון. נסו שוב"));
+    }
+    // PostgREST encodes an .in() filter straight into the request URL's query string — a few
+    // hundred UUIDs is already tens of KB, and the underlying infrastructure rejects the request
+    // outright (400, before it ever reaches Postgres) well before Supabase's own row-count limits
+    // would matter. Deleting in bounded chunks keeps every request's URL short regardless of how
+    // many photos were selected.
+    const DELETE_ID_BATCH_SIZE = 200;
+    for (let i = 0; i < ids.length; i += DELETE_ID_BATCH_SIZE) {
+      const batch = ids.slice(i, i + DELETE_ID_BATCH_SIZE);
+      const { error: dbError } = await supabase.from("gallery_photos").delete().in("id", batch);
+      if (dbError) throw new Error(t("שגיאה במחיקת התמונות. נסו שוב"));
+    }
+    setPhotos((prev) => prev.filter((p) => !gone.has(p.id)));
+    if (gallery.cover_photo_id && ids.includes(gallery.cover_photo_id)) {
+      await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
+      setGallery((g) => ({ ...g, cover_photo_id: null }));
+    }
+  };
+
   const confirmDeleteSelectedPhotos = async () => {
     const selected = photos.filter((p) => selectedIds.has(p.id));
     if (selected.length === 0) return;
@@ -2484,40 +2560,8 @@ export default function GalleryManageView({
     setDeletePhotosError(null);
     setDeletingPhotos(true);
     try {
-      const ids = selected.map((p) => p.id);
-      const paths = selected.flatMap((p) => [
-        p.storage_path,
-        p.preview_storage_path && !isNewPreviewPath(p.preview_storage_path) ? p.preview_storage_path : null,
-      ]).filter((x): x is string => !!x);
-      const previewPaths = selected
-        .map((p) => p.preview_storage_path)
-        .filter((x): x is string => !!x && isNewPreviewPath(x));
-      const removeRes = await fetch("/api/storage/remove", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bucket: "galleries", paths, previewPaths }),
-      });
-      if (!removeRes.ok) {
-        const data = await removeRes.json().catch(() => null);
-        throw new Error(data?.error ?? t("שגיאה במחיקת התמונות מהאחסון. נסו שוב"));
-      }
-      // PostgREST encodes an .in() filter straight into the request URL's query string — a few
-      // hundred UUIDs is already tens of KB, and the underlying infrastructure rejects the request
-      // outright (400, before it ever reaches Postgres) well before Supabase's own row-count limits
-      // would matter. Deleting in bounded chunks keeps every request's URL short regardless of how
-      // many photos were selected.
-      const DELETE_ID_BATCH_SIZE = 200;
-      for (let i = 0; i < ids.length; i += DELETE_ID_BATCH_SIZE) {
-        const batch = ids.slice(i, i + DELETE_ID_BATCH_SIZE);
-        const { error: dbError } = await supabase.from("gallery_photos").delete().in("id", batch);
-        if (dbError) throw new Error(t("שגיאה במחיקת התמונות. נסו שוב"));
-      }
-      setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+      await deletePhotoRows(selected);
       clearSelection();
-      if (gallery.cover_photo_id && ids.includes(gallery.cover_photo_id)) {
-        await supabase.from("galleries").update({ cover_photo_id: null }).eq("id", gallery.id);
-        setGallery((g) => ({ ...g, cover_photo_id: null }));
-      }
     } catch (e) {
       setDeletePhotosError(e instanceof Error ? e.message : t("שגיאה במחיקת התמונות. נסו שוב"));
     } finally {
@@ -2728,15 +2772,6 @@ export default function GalleryManageView({
     setShareOpen(true);
   };
 
-  const toggleShareFolder = (key: string) => {
-    setShareSelectedFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
   const showFolderPicker = folders.length > 0;
   const shareDisabled = showFolderPicker && shareSelectedFolders.size === 0;
 
@@ -2891,12 +2926,17 @@ export default function GalleryManageView({
   ).sort((a, b) => a.localeCompare(b, "he"));
   const activeFaceCluster = faceFilterClusterId ? faceClusters.find((c) => c.clusterId === faceFilterClusterId) : null;
   const premiumTheme = galleryThemeById(gallery.theme).coverStyle === "fullbleed";
+  // A sub-tab's chapter reads with its main tab: "בוק בר מצווה · חוף".
+  const chapterName = (f: GalleryFolderNode) => {
+    const parent = f.parent_id ? folders.find((x) => x.id === f.parent_id) : null;
+    return parent ? `${parent.name} · ${f.name}` : f.name;
+  };
   const filteredPhotos = photos
     .filter((p) => (showFavoritesOnly ? p.is_favorite : true))
     .filter((p) => (showFavoritesOnly && activeLabelFilter ? p.custom_label === activeLabelFilter : true))
     .filter((p) => (!albumFilterOn || albumSel.view === "all" ? true : albumSel.picks.has(p.id) === (albumSel.view === "picked")))
     .filter((p) => (showRejectedOnly ? p.culling_status === "rejected" : true))
-    .filter((p) => (activeFolderId ? p.folder_id === activeFolderId : true))
+    .filter((p) => (activeFolderIds ? !!p.folder_id && activeFolderIds.has(p.folder_id) : true))
     .filter((p) => (activeFaceCluster ? activeFaceCluster.photoIds.has(p.id) : true));
   // Premium: like the client's page, "הכל" shows the photos chapter by chapter (photos outside any
   // folder first, then each folder under its own heading), and the lightbox follows that order.
@@ -2904,14 +2944,14 @@ export default function GalleryManageView({
     premiumTheme && folders.length > 0 && !activeFolderId
       ? [
           { key: "none", name: null, photos: filteredPhotos.filter((p) => !p.folder_id || !folders.some((f) => f.id === p.folder_id)) },
-          ...folders.map((f) => ({ key: f.id, name: f.name, photos: filteredPhotos.filter((p) => p.folder_id === f.id) })),
+          ...folders.map((f) => ({ key: f.id, name: chapterName(f), photos: filteredPhotos.filter((p) => p.folder_id === f.id) })),
         ].filter((c) => c.photos.length > 0)
       : null;
   const visiblePhotos = chapters ? chapters.flatMap((c) => c.photos) : filteredPhotos;
   // A tab with no photos yet gets the drop zone too (owner, 2026-10-16: after uploading to one tab,
   // the next, empty tab showed nothing to drop on). Files dropped while it's open go to that tab.
   const activeFolderName = activeFolderId ? folders.find((f) => f.id === activeFolderId)?.name ?? null : null;
-  const folderEmpty = !!activeFolderId && photos.length > 0 && !photos.some((p) => p.folder_id === activeFolderId);
+  const folderEmpty = !!activeFolderIds && photos.length > 0 && !photos.some((p) => !!p.folder_id && activeFolderIds.has(p.folder_id));
   const visibleIndex = new Map(visiblePhotos.map((p, i) => [p.id, i]));
   // The photographer's own management grid mirrors the same resolved style the client actually
   // sees — no separate local toggle, so there's only ever one layout control to reason about.
@@ -3270,85 +3310,108 @@ export default function GalleryManageView({
   });
   const chapterTabClass = "shrink-0 whitespace-nowrap py-1.5 text-[13px] sm:text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gt-ink)]";
 
-  // Premium: the folders read as the client's chapter tabs. Double-click still renames or deletes a
-  // folder and "+" still adds one, as on the regular folder chips.
-  const renderChapterTabs = (className: string) => (
-    <nav aria-label={t("פרקים בגלריה")} className={`${className} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
-      <button onClick={() => setActiveFolderId(null)} className={chapterTabClass} style={chapterTab(activeFolderId === null)}>
-        {t("הכל")}
+  // The tab rows (owner, 2026-10-28): main tabs, and under them the open main tab's sub-tabs.
+  // Double-click opens "עריכת לשונית" (name, main tab, a new sub-tab, delete). "+" adds a tab on its row.
+  const chipButton = (label: string, active: boolean, onClick: () => void, folder?: GalleryFolderNode, small = false) => (
+    <button
+      onClick={onClick}
+      onDoubleClick={folder ? () => setEditTab(folder) : undefined}
+      title={folder ? t("לחיצה כפולה לשינוי שם או מחיקה") : undefined}
+      className={`shrink-0 rounded-full font-semibold ${small ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs"} ${BTN_PRESS}`}
+      style={{
+        background: active ? "var(--color-amber-deep)" : "var(--color-chip)",
+        color: active ? "#fff" : "var(--color-ink-soft)",
+      }}
+    >
+      {label}
+    </button>
+  );
+  const newTabInput = (inputClass: string, buttonClass: string) => (
+    <div className="shrink-0 flex items-center gap-1">
+      <input
+        autoFocus
+        value={newFolderName}
+        onChange={(e) => setNewFolderName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") createFolder();
+          if (e.key === "Escape") {
+            setAddingFolder(null);
+            setNewFolderName("");
+          }
+        }}
+        placeholder={addingFolder === "sub" ? t("שם תת-הלשונית") : t("שם התיקייה")}
+        className={inputClass}
+      />
+      <button onClick={createFolder} className={buttonClass}>
+        ✓
       </button>
-      {folders.map((folder) =>
-        editingFolderId === folder.id ? (
-          <div key={folder.id} className="shrink-0 flex items-center gap-1">
-            <input
-              autoFocus
-              value={editFolderName}
-              onChange={(e) => setEditFolderName(e.target.value)}
-              onBlur={renameFolder}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") renameFolder();
-                if (e.key === "Escape") setEditingFolderId(null);
-              }}
-              className="w-28 rounded-[2px] px-2 py-1 text-[13px] border border-line bg-white text-ink"
-            />
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setDeleteFolderConfirm(folder)}
-              aria-label={t("מחיקת התיקייה")}
-              title={t("מחיקת התיקייה")}
-              className="shrink-0 h-7 w-7 flex items-center justify-center text-rose"
-            >
-              <IconTrash className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ) : (
+    </div>
+  );
+  const addTabButton = (kind: "main" | "sub", className?: string, style?: React.CSSProperties) => (
+    <button
+      onClick={() => {
+        setNewFolderName("");
+        setAddingFolder(kind);
+      }}
+      aria-label={kind === "sub" ? t("הוספת תת-לשונית") : t("הוספת תיקייה חדשה")}
+      title={kind === "sub" ? t("הוספת תת-לשונית") : t("הוספת תיקייה חדשה")}
+      className={
+        className ??
+        `shrink-0 rounded-full border border-dashed border-line text-ink-soft flex items-center justify-center ${kind === "sub" ? "h-6 w-6 text-[11px]" : "h-7 w-7 text-xs"} ${BTN_PRESS}`
+      }
+      style={style}
+    >
+      +
+    </button>
+  );
+
+  // Premium: the folders read as the client's chapter tabs, the main tabs on one row and the open
+  // main tab's sub-tabs on a row under it.
+  const renderChapterTabs = (className: string) => (
+    <>
+      <nav aria-label={t("פרקים בגלריה")} className={`${className} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+        <button onClick={() => setActiveFolderId(null)} className={chapterTabClass} style={chapterTab(activeFolderId === null)}>
+          {t("הכל")}
+        </button>
+        {folderNodes.map(({ folder }) => (
           <button
             key={folder.id}
             onClick={() => setActiveFolderId(folder.id)}
-            onDoubleClick={() => {
-              setEditingFolderId(folder.id);
-              setEditFolderName(folder.name);
-            }}
+            onDoubleClick={() => setEditTab(folder)}
             title={t("לחיצה כפולה לשינוי שם או מחיקה")}
             className={chapterTabClass}
-            style={chapterTab(activeFolderId === folder.id)}
+            style={chapterTab(activeMainId === folder.id)}
           >
             {folder.name}
           </button>
-        )
-      )}
-      {addingFolder ? (
-        <div className="shrink-0 flex items-center gap-1">
-          <input
-            autoFocus
-            value={newFolderName}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") createFolder();
-              if (e.key === "Escape") {
-                setAddingFolder(false);
-                setNewFolderName("");
-              }
-            }}
-            placeholder={t("שם התיקייה")}
-            className="w-28 rounded-[2px] px-2 py-1 text-[13px] border border-line bg-white text-ink"
-          />
-          <button onClick={createFolder} className="shrink-0 h-7 w-7 bg-ink text-white text-xs">
-            ✓
+        ))}
+        {addingFolder === "main"
+          ? newTabInput("w-28 rounded-[2px] px-2 py-1 text-[13px] border border-line bg-white text-ink", "shrink-0 h-7 w-7 bg-ink text-white text-xs")
+          : addTabButton("main", `${chapterTabClass} px-1`, { color: "var(--gt-ink-soft)" })}
+      </nav>
+      {activeMainId && activeSubTabs.length > 0 && (
+        <nav aria-label={t("תת-לשוניות")} className={`${className} h-9 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+          <button onClick={() => setActiveFolderId(activeMainId)} className={chapterTabClass} style={chapterTab(activeFolderId === activeMainId)}>
+            {t("הכל")}
           </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => setAddingFolder(true)}
-          aria-label={t("הוספת תיקייה חדשה")}
-          title={t("הוספת תיקייה חדשה")}
-          className={`${chapterTabClass} px-1`}
-          style={{ color: "var(--gt-ink-soft)" }}
-        >
-          +
-        </button>
+          {activeSubTabs.map((sub) => (
+            <button
+              key={sub.id}
+              onClick={() => setActiveFolderId(sub.id)}
+              onDoubleClick={() => setEditTab(sub)}
+              title={t("לחיצה כפולה לשינוי שם או מחיקה")}
+              className={chapterTabClass}
+              style={chapterTab(activeFolderId === sub.id)}
+            >
+              {sub.name}
+            </button>
+          ))}
+          {addingFolder === "sub"
+            ? newTabInput("w-28 rounded-[2px] px-2 py-1 text-[13px] border border-line bg-white text-ink", "shrink-0 h-7 w-7 bg-ink text-white text-xs")
+            : addTabButton("sub", `${chapterTabClass} px-1`, { color: "var(--gt-ink-soft)" })}
+        </nav>
       )}
-    </nav>
+    </>
   );
 
   // Premium: the screen opens the way the client's page does: the full cover, then the gallery's
@@ -3839,93 +3902,23 @@ export default function GalleryManageView({
 
       {!premiumTheme && (
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1.5 mb-3">
-        <div className="flex items-center gap-1.5 overflow-x-auto sm:flex-1 sm:min-w-0">
-          <button
-            onClick={() => setActiveFolderId(null)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
-            style={{
-              background: activeFolderId === null ? "var(--color-amber-deep)" : "var(--color-chip)",
-              color: activeFolderId === null ? "#fff" : "var(--color-ink-soft)",
-            }}
-          >
-            {t("הכל")}
-          </button>
-          {folders.map((folder) =>
-            editingFolderId === folder.id ? (
-              <div
-                key={folder.id}
-                ref={(el) => el?.scrollIntoView({ block: "nearest", inline: "nearest" })}
-                className="shrink-0 flex items-center gap-1"
-              >
-                <input
-                  autoFocus
-                  value={editFolderName}
-                  onChange={(e) => setEditFolderName(e.target.value)}
-                  onBlur={renameFolder}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") renameFolder();
-                    if (e.key === "Escape") setEditingFolderId(null);
-                  }}
-                  className="w-24 rounded-full px-3 py-1.5 text-xs border border-line"
-                />
-                <button
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setDeleteFolderConfirm(folder)}
-                  aria-label={t("מחיקת התיקייה")}
-                  title={t("מחיקת התיקייה")}
-                  className={`shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-rose border border-line bg-white ${BTN_PRESS}`}
-                >
-                  <IconTrash className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ) : (
-              <button
-                key={folder.id}
-                onClick={() => setActiveFolderId(folder.id)}
-                onDoubleClick={() => {
-                  setEditingFolderId(folder.id);
-                  setEditFolderName(folder.name);
-                }}
-                title={t("לחיצה כפולה לשינוי שם או מחיקה")}
-                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${BTN_PRESS}`}
-                style={{
-                  background: activeFolderId === folder.id ? "var(--color-amber-deep)" : "var(--color-chip)",
-                  color: activeFolderId === folder.id ? "#fff" : "var(--color-ink-soft)",
-                }}
-              >
-                {folder.name}
-              </button>
-            )
-          )}
-          {addingFolder ? (
-            <div className="shrink-0 flex items-center gap-1">
-              <input
-                autoFocus
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") createFolder();
-                  if (e.key === "Escape") {
-                    setAddingFolder(false);
-                    setNewFolderName("");
-                  }
-                }}
-                placeholder={t("שם התיקייה")}
-                className="w-24 rounded-full px-3 py-1.5 text-xs border border-line"
-              />
-              <button onClick={createFolder} className={`shrink-0 h-7 w-7 rounded-full bg-ink text-white text-xs ${BTN_PRESS}`}>
-                ✓
-              </button>
+        <div className="flex flex-col gap-1.5 sm:flex-1 sm:min-w-0">
+          <div className="flex items-center gap-1.5 overflow-x-auto">
+            {chipButton(t("הכל"), activeFolderId === null, () => setActiveFolderId(null))}
+            {folderNodes.map(({ folder }) => (
+              <Fragment key={folder.id}>{chipButton(folder.name, activeMainId === folder.id, () => setActiveFolderId(folder.id), folder)}</Fragment>
+            ))}
+            {addingFolder === "main" ? newTabInput("w-24 rounded-full px-3 py-1.5 text-xs border border-line", `shrink-0 h-7 w-7 rounded-full bg-ink text-white text-xs ${BTN_PRESS}`) : addTabButton("main")}
+          </div>
+          {/* The open main tab's sub-tabs (owner, 2026-10-28): "הכל" is the whole main tab. */}
+          {activeMainId && activeSubTabs.length > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto ps-2 border-s-2 border-line">
+              {chipButton(t("הכל"), activeFolderId === activeMainId, () => setActiveFolderId(activeMainId), undefined, true)}
+              {activeSubTabs.map((sub) => (
+                <Fragment key={sub.id}>{chipButton(sub.name, activeFolderId === sub.id, () => setActiveFolderId(sub.id), sub, true)}</Fragment>
+              ))}
+              {addingFolder === "sub" ? newTabInput("w-24 rounded-full px-3 py-1 text-[11px] border border-line", `shrink-0 h-6 w-6 rounded-full bg-ink text-white text-[11px] ${BTN_PRESS}`) : addTabButton("sub")}
             </div>
-          ) : (
-            <button
-              onClick={() => setAddingFolder(true)}
-              aria-label={t("הוספת תיקייה חדשה")}
-              title={t("הוספת תיקייה חדשה")}
-              className={`shrink-0 h-7 w-7 rounded-full border border-dashed border-line text-ink-soft text-xs flex items-center justify-center ${BTN_PRESS}`}
-            >
-              +
-            </button>
           )}
         </div>
         <button
@@ -4184,7 +4177,7 @@ export default function GalleryManageView({
           const countByKey = new Map<string, number>();
           for (const p of pending) countByKey.set(p.folder_id ?? ZIP_NO_FOLDER_KEY, (countByKey.get(p.folder_id ?? ZIP_NO_FOLDER_KEY) ?? 0) + 1);
           const tabRows = [
-            ...folders.filter((f) => countByKey.has(f.id)).map((f) => ({ key: f.id, name: f.name, count: countByKey.get(f.id) ?? 0 })),
+            ...folders.filter((f) => countByKey.has(f.id)).map((f) => ({ key: f.id, name: chapterName(f), count: countByKey.get(f.id) ?? 0 })),
             ...(countByKey.has(ZIP_NO_FOLDER_KEY) ? [{ key: ZIP_NO_FOLDER_KEY, name: t("כללי (ללא לשונית)"), count: countByKey.get(ZIP_NO_FOLDER_KEY) ?? 0 }] : []),
           ];
           const selectedPhotoIds = pending.filter((p) => downloadSelectedFolders.has(p.folder_id ?? ZIP_NO_FOLDER_KEY)).map((p) => p.id);
@@ -4582,12 +4575,31 @@ export default function GalleryManageView({
         </div>
       )}
 
+      {editTab && (
+        <TabEditSheet
+          folder={editTab}
+          folders={folders}
+          onSave={(name, parentId) => saveTab(editTab, name, parentId)}
+          onAddSubTab={(name) => addSubTab(editTab, name)}
+          onDelete={() => {
+            setDeleteFolderConfirm(editTab);
+            setEditTab(null);
+          }}
+          onClose={() => setEditTab(null)}
+        />
+      )}
+
       {deleteFolderConfirm && (
         <DeleteFolderConfirmModal
-          deleteFolderConfirm={deleteFolderConfirm}
-          deletingFolder={deletingFolder}
-          deleteFolder={deleteFolder}
-          setDeleteFolderConfirm={setDeleteFolderConfirm}
+          folder={deleteFolderConfirm}
+          subTabs={folders.filter((f) => f.parent_id === deleteFolderConfirm.id).length}
+          photoCount={(() => {
+            const ids = folderWithChildren(folders, deleteFolderConfirm.id);
+            return photos.filter((p) => !!p.folder_id && ids.has(p.folder_id)).length;
+          })()}
+          deleting={deletingFolder}
+          onDelete={(mode) => void deleteFolder(mode)}
+          onCancel={() => setDeleteFolderConfirm(null)}
         />
       )}
 
@@ -5686,31 +5698,7 @@ export default function GalleryManageView({
                 {showFolderPicker && (
                   <div className="mb-5">
                     <p className="text-xs text-ink-soft mb-2.5">{t("אילו לשוניות לשתף?")}</p>
-                    <div className="space-y-1.5">
-                      {folders.map((folder) => (
-                        <label
-                          key={folder.id}
-                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={shareSelectedFolders.has(folder.id)}
-                            onChange={() => toggleShareFolder(folder.id)}
-                          />
-                          {folder.name}
-                        </label>
-                      ))}
-                      {hasUnfoldered && (
-                        <label className="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-white border border-line text-sm">
-                          <input
-                            type="checkbox"
-                            checked={shareSelectedFolders.has(NO_FOLDER_KEY)}
-                            onChange={() => toggleShareFolder(NO_FOLDER_KEY)}
-                          />
-                          {t("כללי (ללא לשונית)")}
-                        </label>
-                      )}
-                    </div>
+                    <TabPicker folders={folders} selected={shareSelectedFolders} onChange={setShareSelectedFolders} noFolderKey={NO_FOLDER_KEY} hasUnfoldered={hasUnfoldered} />
                     {shareDisabled && <p className="text-xs text-rose mt-2">{t("יש לבחור לפחות לשונית אחת לשיתוף")}</p>}
                   </div>
                 )}
