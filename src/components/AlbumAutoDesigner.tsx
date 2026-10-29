@@ -16,19 +16,22 @@ import {
   cellLabel,
   cellPeopleFromReferences,
   cellsFor,
+  combinedCoverLines,
+  combinedParts,
   countNames,
   coverTitleLines,
   detectEventKind,
   followsTabs,
   ownersCountFor,
   planAlbum,
+  planCombined,
   tabLabel,
   tabRoles,
   type CellFaceUse,
   type CellReference,
   type NamesOrder,
 } from "@/lib/albumAuto/planner";
-import { layoutCover, layoutSpread } from "@/lib/albumAuto/layouts";
+import { layoutCover, layoutOpener, layoutSpread } from "@/lib/albumAuto/layouts";
 import { headSafeElements } from "@/lib/albumAuto/headSafe";
 import { isDoublePage } from "@/lib/albumAuto/qualityCheck";
 import { endAutoDesignSession, getAutoDesignSession, mountAutoDesigner, useSessionState, waitForAutoDesigner } from "@/lib/albumAuto/session";
@@ -196,6 +199,11 @@ export default function AlbumAutoDesigner({
   }, []);
   const chosenTemplate = choice.startsWith("tpl:") ? bookTemplates.find((tpl) => tpl.id === choice.slice(4)) ?? null : null;
   const [spreadCount, setSpreadCount] = useSessionState(session, "spreadCount", "");
+  // A gallery of two events in two main tabs, a "בוק" and the event (owner, 2026-10-28): the combined
+  // album, on unless the photographer turns it off, and the book's share of the pages ("" = by the
+  // photo counts).
+  const [combinedOn, setCombinedOn] = useSessionState(session, "combined", true);
+  const [bookSpreads, setBookSpreads] = useSessionState(session, "bookSpreads", "");
   const [cellStates, setCells] = useSessionState<Record<FamilyCellId, CellState>>(
     session,
     "cells",
@@ -223,9 +231,35 @@ export default function AlbumAutoDesigner({
   const detectedKind = useMemo(() => detectEventKind(galleryTitle, eventType), [galleryTitle, eventType]);
   // The photographer's own choice, when the detected kind is wrong (null = the detected one).
   const [kindChoice, setKindChoice] = useSessionState<EventKind | null>(session, "kind", null);
-  const eventKind = kindChoice ?? detectedKind;
+  const favorites = useMemo(() => photos.filter((p) => p.is_favorite), [photos]);
+  const candidates = favorites.length > 0 ? favorites : photos;
+  // Each photo's gallery tab and main tab, for the planner: the book follows the tabs when the photos
+  // are sorted into them (owner, 2026-10-21; see followsTabs in planner.ts), and two main tabs, a book
+  // and the event, make the combined album (combinedParts).
+  const tabOf = useMemo(() => {
+    const byId = new Map(folders.map((f, i) => [f.id, { key: f.id, name: f.name, order: i }] as const));
+    return (p: AutoDesignerPhoto) => (p.folder_id ? (byId.get(p.folder_id) ?? null) : null);
+  }, [folders]);
+  const mainOf = useMemo(() => {
+    const byId = new Map(folders.map((f, i) => [f.id, { key: f.id, name: f.name, order: i, parent: f.parent_id ?? null }] as const));
+    return (p: AutoDesignerPhoto) => {
+      const f = p.folder_id ? byId.get(p.folder_id) : undefined;
+      const main = f?.parent ? (byId.get(f.parent) ?? f) : f;
+      return main ? { key: main.key, name: main.name, order: main.order } : null;
+    };
+  }, [folders]);
+  const autoLike = useMemo(
+    () => candidates.map((p): AutoPhoto => ({ id: p.id, aspect: 1.5, takenAt: null, filename: "", tab: tabOf(p), main: mainOf(p) })),
+    [candidates, tabOf, mainOf]
+  );
+  const parts = useMemo(() => combinedParts(autoLike, detectedKind), [autoLike, detectedKind]);
+  const combined = combinedOn && parts ? parts : null;
+  // In the combined album the kind is the second event's (its tab's name tells it), and the cells
+  // are that event's family.
+  // (A "book" picked before the combined album was on isn't the second event's kind.)
+  const eventKind = combined ? (kindChoice && kindChoice !== "book" ? kindChoice : combined.event.kind) : (kindChoice ?? detectedKind);
   // A photo-book session: no family cells, the whole book by shooting time.
-  const isBook = eventKind === "book";
+  const isBook = eventKind === "book" && !combined;
   // The cells shown for the kind (two parents' cells at a wedding, none in a book): only these count.
   const shownCells = useMemo(() => cellsFor(eventKind), [eventKind]);
   // The names are written in the order the people stand: right to left in Hebrew, left to right in
@@ -240,31 +274,25 @@ export default function AlbumAutoDesigner({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cellRefs reads only these
     [cells, shownCells, eventKind, namesOrder]
   );
-  const favorites = useMemo(() => photos.filter((p) => p.is_favorite), [photos]);
-  const candidates = favorites.length > 0 ? favorites : photos;
   const hasUnfiled = folders.length > 0 && photos.some((p) => !p.folder_id);
   const pickerPhotos = useMemo(
     () => (pickerTab === "all" ? photos : pickerTab === "none" ? photos.filter((p) => !p.folder_id) : photos.filter((p) => p.folder_id === pickerTab)),
     [photos, pickerTab]
   );
   const photoById = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos]);
-  // Each photo's gallery tab, for the planner: the book follows the tabs when the photos are sorted
-  // into them (owner, 2026-10-21; see followsTabs in planner.ts).
-  const tabOf = useMemo(() => {
-    const byId = new Map(folders.map((f, i) => [f.id, { key: f.id, name: f.name, order: i }] as const));
-    return (p: AutoDesignerPhoto) => (p.folder_id ? (byId.get(p.folder_id) ?? null) : null);
-  }, [folders]);
-  // The tabs the book will follow, in its order (the atmosphere last), or null when it won't.
+  // The tabs the book (in the combined album, its second event) will follow, in its order (the
+  // atmosphere last), or null when it won't.
   const tabOrder = useMemo(() => {
-    const auto = candidates.map((p) => ({ id: p.id, aspect: 1.5, takenAt: null, filename: "", tab: tabOf(p) }));
+    const inPart = combined ? new Set(combined.event.ids) : null;
+    const auto = autoLike.filter((p) => !inPart || inPart.has(p.id));
     if (!followsTabs(auto)) return null;
-    const used = folders.filter((f) => candidates.some((p) => p.folder_id === f.id));
+    const used = folders.filter((f) => auto.some((p) => p.tab?.key === f.id));
     const roles = tabRoles(used.map((f) => f.name));
     return {
       main: used.filter((_, i) => roles[i] !== "atmosphere").map((f) => tabLabel(f.name)),
       last: used.filter((_, i) => roles[i] === "atmosphere").map((f) => tabLabel(f.name)),
     };
-  }, [candidates, folders, tabOf]);
+  }, [autoLike, combined, folders]);
 
   const singlePage = singlePageOf(size);
   const coverPresets = useMemo(() => {
@@ -494,17 +522,27 @@ export default function AlbumAutoDesigner({
         takenAt: takenAt.get(p.id) ?? null,
         filename: p.original_filename ?? "",
         tab: tabOf(p),
+        main: mainOf(p),
+        faceArea: Math.max(0, ...(boxesByPhoto.get(p.id) ?? []).map((b) => b.width * b.height)),
       }));
       const photoFaces: PhotoFaces[] = [...facesByPhoto.entries()].map(([photoId, faces]) => ({ photoId, faces }));
       const target = parseInt(spreadCount, 10);
       const referencePhotos = shownCells.filter((id) => cells[id].photoId).map((id) => ({ id, photoId: cells[id].photoId }));
-      const plan = planAlbum(
-        autoPhotos,
-        photoFaces,
-        cellPeople,
-        { style, targetSpreads: Number.isFinite(target) && target > 0 ? Math.min(30, target) : null, hasCover: coverMode === "on", kind: eventKind },
-        referencePhotos
-      );
+      const planOpts = { style, targetSpreads: Number.isFinite(target) && target > 0 ? Math.min(30, target) : null, hasCover: coverMode === "on", kind: eventKind };
+      // The combined album (owner, 2026-10-28): the book, an opening page and the event, each by its
+      // own rules (planCombined).
+      const runParts = combinedOn ? combinedParts(autoPhotos, detectedKind) : null;
+      const bookTarget = parseInt(bookSpreads, 10);
+      const plan = runParts
+        ? planCombined(
+            autoPhotos,
+            photoFaces,
+            cellPeople,
+            { ...runParts, event: { ...runParts.event, kind: eventKind } },
+            { ...planOpts, bookSpreads: Number.isFinite(bookTarget) && bookTarget > 0 ? bookTarget : null },
+            referencePhotos
+          )
+        : planAlbum(autoPhotos, photoFaces, cellPeople, planOpts, referencePhotos);
       if (plan.spreads.length === 0) throw new Error("empty");
       setProgress("plan", 1);
       checkCancel();
@@ -538,6 +576,11 @@ export default function AlbumAutoDesigner({
               { marginCm: size.margin }
             );
             return plan.spreads.map((s, i) => {
+              if (s.opener) {
+                // The combined album's opening page for its second event: its photo and its name.
+                const out = layoutOpener({ style, photo: layoutPhoto(s.photoIds[0]), title: s.opener.title, spreadIndex: i, widthCm: size.width, heightCm: size.height });
+                return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...(out.background ? { background: out.background } : {}) };
+              }
               const out = layoutSpread({
                 style,
                 photos: s.photoIds.map(layoutPhoto),
@@ -570,7 +613,7 @@ export default function AlbumAutoDesigner({
                   style,
                   photo: plan.coverPhotoId ? layoutPhoto(plan.coverPhotoId) : null,
                   title: galleryTitle,
-                  lines: coverTitleLines(galleryTitle, eventDate),
+                  lines: runParts ? combinedCoverLines(galleryTitle, runParts, eventDate) : coverTitleLines(galleryTitle, eventDate),
                   widthCm: coverSize.width,
                   heightCm: coverSize.height,
                 });
@@ -782,6 +825,45 @@ export default function AlbumAutoDesigner({
               />
               <span className="text-xs text-ink-soft">{t("מספר עמודים רצוי באלבום, כולל הכריכה (ריק: אוטומטי, עד 30)")}</span>
             </label>
+
+            {parts && (
+              // The combined album (owner, 2026-10-28): the gallery's two main tabs, the book and the
+              // event, in one album, each part by its own rules.
+              <div className="rounded-lg border border-line bg-chip p-3 space-y-2.5">
+                <label className="flex items-start gap-2.5">
+                  <input type="checkbox" checked={combinedOn} onChange={(e) => setCombinedOn(e.target.checked)} className="mt-0.5" />
+                  <span className="text-sm font-semibold">{t("אלבום משולב: {book} ו{event}", { book: tabLabel(parts.book.name), event: tabLabel(parts.event.name) })}</span>
+                </label>
+                {combinedOn ? (
+                  <>
+                    <p className="text-xs text-ink-soft leading-relaxed">
+                      {t("קודם {book}, לפי המקומות שצולמו. אחריו דף פתיחה ל{event}, עם תמונה גדולה והשם, ואז {event} לפי הלשוניות שלו. הכריכה מהבוק.", {
+                        book: tabLabel(parts.book.name),
+                        event: tabLabel(parts.event.name),
+                      })}
+                    </p>
+                    <label className="flex items-center gap-2 flex-wrap">
+                      <input
+                        type="number"
+                        min={1}
+                        max={28}
+                        inputMode="numeric"
+                        value={bookSpreads}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/[^0-9]/g, "");
+                          setBookSpreads(v && parseInt(v, 10) > 28 ? "28" : v);
+                        }}
+                        placeholder={t("אוטומטי")}
+                        className="w-24 rounded-lg border border-line px-2.5 py-2 text-sm text-center bg-white"
+                      />
+                      <span className="text-xs text-ink-soft">{t("עמודים לבוק (ריק: לפי כמות התמונות בכל חלק)")}</span>
+                    </label>
+                  </>
+                ) : (
+                  <p className="text-xs text-ink-soft leading-relaxed">{t("האלבום ייבנה מכל הלשוניות כאלבום אחד.")}</p>
+                )}
+              </div>
+            )}
           </section>
 
           <p className="text-xs text-ink-soft">
@@ -886,24 +968,34 @@ export default function AlbumAutoDesigner({
         <>
           <section className="rounded-lg border border-line bg-white p-3.5 space-y-2">
             <label className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold">{t("סוג האירוע")}</span>
+              <span className="text-sm font-semibold">{combined ? t("סוג האירוע בחלק השני") : t("סוג האירוע")}</span>
               <select
                 value={eventKind}
                 onChange={(e) => setKindChoice(e.target.value as EventKind)}
                 className="min-w-0 rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
               >
-                {KIND_OPTIONS.map((k) => (
+                {KIND_OPTIONS.filter((k) => !combined || k.id !== "book").map((k) => (
                   <option key={k.id} value={k.id}>
                     {t(k.label)}
                   </option>
                 ))}
               </select>
             </label>
+            {combined && (
+              <p className="text-xs text-ink-soft leading-relaxed">
+                {t("האלבום משולב: קודם {book}, אחריו דף פתיחה, ואז {event}. התאים למטה הם של {event}.", {
+                  book: tabLabel(combined.book.name),
+                  event: tabLabel(combined.event.name),
+                })}
+              </p>
+            )}
             <p className="text-xs text-ink-soft leading-relaxed">
               {isBook
                 ? t("בבוק אין חלקי משפחה: כל התמונות נכנסות לאלבום לפי שעת הצילום.")
                 : tabOrder
-                  ? t("האלבום נבנה לפי הלשוניות בגלריה, בסדר שלהן: {tabs}. בכל לשונית התמונות לפי שעת הצילום.", { tabs: tabOrder.main.join(", ") })
+                  ? combined
+                    ? t("החלק של {event} נבנה לפי הלשוניות שלו, בסדר שלהן: {tabs}. בכל לשונית התמונות לפי שעת הצילום.", { event: tabLabel(combined.event.name), tabs: tabOrder.main.join(", ") })
+                    : t("האלבום נבנה לפי הלשוניות בגלריה, בסדר שלהן: {tabs}. בכל לשונית התמונות לפי שעת הצילום.", { tabs: tabOrder.main.join(", ") })
                   : t("סדר האלבום: {owners}, ההורים, אחים ואחיות, סבא וסבתא, ואז שאר התמונות לפי שעת הצילום.", { owners: t(cellLabel("owners", eventKind)) })}
               {!isBook && tabOrder && tabOrder.last.length > 0 && <> {t("{tabs} בדף האחרון.", { tabs: tabOrder.last.join(", ") })}</>}
             </p>

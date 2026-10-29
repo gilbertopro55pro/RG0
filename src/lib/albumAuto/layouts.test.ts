@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { layoutCover } from "@/lib/albumAuto/layouts";
-import type { AlbumShapeElement, AlbumTextElement } from "@/lib/types";
+import { layoutCover, layoutOpener } from "@/lib/albumAuto/layouts";
+import type { AlbumPhotoElement, AlbumShapeElement, AlbumTextElement } from "@/lib/types";
 
 // The photo cover as the owner corrected the first auto album ("עלייה לתורה - אורי", 32×32,
 // 2026-10-21): the band at 45%, "אורי" at 187pt and "עלייה לתורה | 5.10.2026" at 50pt in Bodoni Moda,
@@ -40,5 +40,55 @@ describe("layoutCover: the photo cover's title", () => {
     expect(rest).toHaveLength(0);
     expect(one.text).toBe("עלייה לתורה - אורי");
     expect(one.yPct + one.heightPct! / 2).toBeCloseTo(84.5, 1);
+  });
+});
+
+// The combined album's opening page for its second part (2026-10-28): the event's photo large and
+// its name.
+describe("layoutOpener: the opening page of the album's second event", () => {
+  const opener = (style: "clean" | "catalog" | "scribble" | "modern", widthCm = 60, heightCm = 30) =>
+    layoutOpener({ style, photo: { id: "p", aspect: 0.67, faces: [{ x: 0.4, y: 0.2, width: 0.2, height: 0.15 }] }, title: "עלייה לתורה", spreadIndex: 9, widthCm, heightCm });
+  const photoOf = (els: ReturnType<typeof opener>["elements"]) => els.find((e): e is AlbumPhotoElement => e.type === "photo")!;
+  const textOf = (els: ReturnType<typeof opener>["elements"]) => els.find((e): e is AlbumTextElement => e.type === "text")!;
+
+  it("on a double page: the photo fills the left page, the name on the right page's band", () => {
+    const out = opener("clean");
+    const photo = photoOf(out.elements);
+    expect(photo).toMatchObject({ photoId: "p", xPct: 0, yPct: 0, widthPct: 50, heightPct: 100 });
+    expect(out.bleedIds).toContain(photo.id);
+    const name = textOf(out.elements);
+    expect(name).toMatchObject({ text: "עלייה לתורה", fontFamily: "bodoni-moda", align: "center" });
+    expect(name.xPct).toBeGreaterThanOrEqual(50);
+    expect(name.xPct + name.widthPct).toBeLessThanOrEqual(100);
+    const band = out.elements.find((e): e is AlbumShapeElement => e.id.endsWith("-band"))!;
+    expect(band).toMatchObject({ xPct: 50, widthPct: 50, opacity: 45 });
+    expect(name.yPct).toBeGreaterThanOrEqual(band.yPct);
+    expect(name.yPct + name.heightPct!).toBeLessThanOrEqual(band.yPct + band.heightPct + 0.01);
+    expect(out.background).toEqual({ photoId: "p", blur: 40, opacity: 55 });
+  });
+
+  it("keeps nothing at the edge in catalog: the photo framed inside equal margins", () => {
+    const out = opener("catalog");
+    const photo = photoOf(out.elements);
+    expect(out.bleedIds).not.toContain(photo.id);
+    expect(photo.borderWidth).toBe(5);
+    expect(photo.xPct).toBeGreaterThan(0);
+    expect(photo.xPct + photo.widthPct).toBeLessThan(50);
+    expect((photo.xPct / 100) * 60).toBeCloseTo((photo.yPct / 100) * 30, 5);
+  });
+
+  it("puts scribble on its kraft paper, without the band", () => {
+    const out = opener("scribble");
+    expect(out.elements[0]).toMatchObject({ type: "shape", xPct: 0, yPct: 0, widthPct: 100, heightPct: 100, color: "#efe6d6" });
+    expect(out.elements.some((e) => e.id.endsWith("-band"))).toBe(false);
+    expect(textOf(out.elements).fontFamily).toBe("amatic-sc");
+  });
+
+  it("on a single page is the photo cover with the name, its ids its own", () => {
+    const out = opener("clean", 30, 20);
+    expect(textOf(out.elements).text).toBe("עלייה לתורה");
+    const ids = out.elements.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.every((id) => id.startsWith("auto-9-opener"))).toBe(true);
   });
 });

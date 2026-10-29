@@ -1,6 +1,6 @@
 import type { AlbumElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement } from "@/lib/types";
 import { textHeightPctForFontSize } from "@/lib/albumTextSizing";
-import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput, LayoutPhoto } from "./types";
+import type { AutoStyleId, CoverInput, LayoutInput, LayoutOutput, LayoutPhoto, OpenerInput } from "./types";
 
 // The layout engine of the auto album designer (see types.ts for the contract). Pure and
 // deterministic: the same input always gives the same spread; variety between consecutive spreads
@@ -2351,3 +2351,75 @@ export function layoutCover(input: CoverInput): LayoutOutput {
   return { elements: els };
 }
 
+
+// The combined album's opening page for its second part (owner, 2026-10-28; OpenerInput in
+// types.ts): the event's photo large and its name. On a double page the photo fills the left page to
+// its edges (framed inside equal margins in catalog, where nothing bleeds), faces kept off the fold,
+// and the name sits on the right page, read first in a right-to-left book, on a translucent white
+// band across it, over the photo blurred as the spread's background (kraft paper in scribble). On a
+// single page: as the photo cover, with the name on its band.
+const OPENER_FONT: Record<AutoStyleId, string> = { clean: "bodoni-moda", modern: "bodoni-moda", catalog: "frank-ruhl-libre", scribble: "amatic-sc" };
+const OPENER_BAND_H = 0.24;
+
+export function layoutOpener(input: OpenerInput): LayoutOutput {
+  const geo = geoFor(input.widthCm, input.heightCm);
+  const title = input.title.trim() || "אלבום";
+  const prefix = `auto-${input.spreadIndex}-opener`;
+  if (!geo.double) {
+    const out = layoutCover({ style: input.style, photo: input.photo, title, lines: { main: title, sub: null }, widthCm: input.widthCm, heightCm: input.heightCm });
+    const rename = (id: string) => id.replace(/^auto-cover/, prefix);
+    return { elements: out.elements.map((e) => ({ ...e, id: rename(e.id) })), bleedIds: (out.bleedIds ?? []).map(rename), ...(out.background ? { background: out.background } : {}) };
+  }
+  const { W, H, pageW } = geo;
+  const style = OPENER_FONT[input.style] ? input.style : "clean";
+  const photo = { id: input.photo.id, aspect: safeAspect(input.photo.aspect) };
+  const els: AlbumElement[] = [];
+  const bleedIds: string[] = [];
+  const paper = PAGE_COLOR[style];
+  if (paper) {
+    const bg = shapeEl(`${prefix}-${paper.suffix}`, { x: 0, y: 0, w: W, h: H }, geo, paper.color);
+    els.push(bg);
+    bleedIds.push(bg.id);
+  }
+  const framed = style === "catalog";
+  const m = framed ? 0.07 * Math.min(pageW, H) : 0;
+  const r = { x: m, y: m, w: pageW - 2 * m, h: H - 2 * m };
+  const faces = validFaces(input.photo);
+  const off = faceCropFocal(photo.aspect, r.w / r.h, faces, { x0: 0.04, x1: 0.9 });
+  const c = off.fits ? off : faceCropFocal(photo.aspect, r.w / r.h, faces);
+  const finish = framed ? FRAME_FINISH.catalog : null;
+  const pe = photoEl(`${prefix}-photo`, photo.id, r, geo, { focalX: c.focalX, focalY: c.focalY, zoom: 100, ...(finish ?? {}) });
+  els.push(pe);
+  if (!framed) bleedIds.push(pe.id);
+  const album = { width_cm: W, height_cm: H };
+  if (style !== "scribble") {
+    const band = shapeEl(`${prefix}-band`, { x: pageW, y: (0.5 - OPENER_BAND_H / 2) * H, w: pageW, h: OPENER_BAND_H * H }, geo, "#ffffff", { opacity: 45 });
+    els.push(band);
+    bleedIds.push(band.id);
+  }
+  const perPt = textHeightPctForFontSize(1, album);
+  const chars = Math.max(3, [...title].length) * (style === "scribble" ? 0.42 : 0.62);
+  const fs = Math.round(Math.max(24, Math.min(150, (0.6 * OPENER_BAND_H * 100) / perPt, (0.75 * (pageW / W) * 1600) / chars)));
+  const th = textHeightPctForFontSize(fs, album);
+  const text: AlbumTextElement = {
+    id: `${prefix}-title`,
+    type: "text",
+    text: title,
+    xPct: r3(((pageW + 0.1 * pageW) / W) * 100),
+    yPct: r3(50 - th / 2),
+    widthPct: r3(((0.8 * pageW) / W) * 100),
+    heightPct: r3(th),
+    fontSize: fs,
+    fontFamily: OPENER_FONT[style],
+    color: "#2b2b2b",
+    align: "center",
+  };
+  els.push(text);
+  const background =
+    style === "clean" || style === "modern"
+      ? { photoId: photo.id, blur: SIGNATURE_BACKGROUND.blur, opacity: SIGNATURE_BACKGROUND.opacity }
+      : style === "catalog"
+        ? { photoId: photo.id, blur: CLEAN_BACKGROUND_BLUR }
+        : undefined;
+  return { elements: els, bleedIds, ...(background ? { background } : {}) };
+}
