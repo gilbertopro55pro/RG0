@@ -4,6 +4,9 @@ import {
   cellLabel,
   cellPeopleFromReferences,
   cellsFor,
+  combinedBookShare,
+  combinedCoverLines,
+  combinedParts,
   coverTitleLines,
   countNames,
   detectEventKind,
@@ -15,6 +18,7 @@ import {
   pageCap,
   pickCellFaces,
   planAlbum,
+  planCombined,
   splitSection,
   tabLabel,
   tabRoles,
@@ -1252,5 +1256,118 @@ describe("coverTitleLines", () => {
 
   it("doesn't split a hyphen inside a word, and reads the date without a time zone", () => {
     expect(coverTitleLines("בת-מצווה של נועה", "2026-03-01T00:00:00Z")).toEqual({ main: "בת-מצווה של נועה", sub: "1.3.2026" });
+  });
+});
+
+// The combined album (CLAUDE.md, "אלבום משולב"): a gallery of two events in two main tabs, the book
+// first by the book's rules, then an opening page and the event by its tabs.
+describe("the combined album", () => {
+  const BOOK = { key: "book", name: "בוק בת מצווה", order: 0 };
+  const EVENT = { key: "aliyah", name: "עלייה לתורה", order: 4 };
+  const inTab = (prefix: string, from: number, n: number, main: typeof BOOK, tab: { key: string; name: string; order: number }, aspect = 1.5): AutoPhoto[] =>
+    shots(prefix, from, n, aspect).map((p) => ({ ...p, main, tab }));
+  // As the gallery "ניסוי בדיקה" (2026-10-28): 8, 8 and 3 photos under each main tab.
+  const gallery = (): AutoPhoto[] => [
+    ...inTab("b", 1, 8, BOOK, { key: "b1", name: "1.עין צורים", order: 1 }),
+    ...inTab("b", 9, 8, BOOK, { key: "b2", name: "2.גרפיטי", order: 2 }),
+    ...inTab("b", 17, 3, BOOK, { key: "b3", name: "3.ים", order: 3 }, 0.67),
+    ...inTab("e", 1, 8, EVENT, { key: "e1", name: "1.חתן", order: 5 }, 0.67),
+    ...inTab("e", 9, 8, EVENT, { key: "e2", name: "2.תפילה", order: 6 }),
+    ...inTab("e", 17, 3, EVENT, { key: "e3", name: "3.אורחים", order: 7 }),
+  ];
+  const tabOf = (photos: AutoPhoto[]) => new Map(photos.map((p) => [p.id, p.tab?.key] as const));
+
+  it("finds the book and the event, the book first whatever the tabs' order", () => {
+    const parts = combinedParts(gallery(), "other");
+    expect(parts?.book.name).toBe("בוק בת מצווה");
+    expect(parts?.event).toMatchObject({ name: "עלייה לתורה", kind: "bar_mitzvah" });
+    expect(parts?.book.ids).toHaveLength(19);
+    const flipped = gallery().map((p) => ({ ...p, main: p.main!.key === "book" ? { ...BOOK, order: 9 } : EVENT }));
+    expect(combinedParts(flipped, "other")?.book.key).toBe("book");
+  });
+
+  it("isn't a combined gallery without exactly a book and another event", () => {
+    const one = gallery().map((p) => ({ ...p, main: BOOK }));
+    expect(combinedParts(one, "other")).toBeNull();
+    const twoBooks = gallery().map((p) => ({ ...p, main: p.main!.key === "aliyah" ? { ...EVENT, name: "בוק עלייה לתורה" } : BOOK }));
+    expect(combinedParts(twoBooks, "other")).toBeNull();
+    const noBook = gallery().map((p) => ({ ...p, main: p.main!.key === "book" ? { ...BOOK, name: "ריקודים" } : EVENT }));
+    expect(combinedParts(noBook, "other")).toBeNull();
+    expect(combinedParts(shots("x", 1, 10), "book")).toBeNull();
+  });
+
+  it("names the event by the gallery when its tab doesn't, and closes it with the photos outside the tabs", () => {
+    const photos = [...gallery().map((p) => (p.main!.key === "aliyah" ? { ...p, main: { ...EVENT, name: "יום חמישי" } } : p)), ...shots("loose", 1, 2)];
+    const parts = combinedParts(photos, "bat_mitzvah");
+    expect(parts?.event.kind).toBe("bat_mitzvah");
+    expect(parts?.event.ids.slice(-2)).toEqual(["loose1", "loose2"]);
+  });
+
+  it("20 pages: the cover, the book, an opening page and the event by its tabs, every photo once", () => {
+    const photos = gallery();
+    const parts = combinedParts(photos, "other")!;
+    const plan = planCombined(photos, [], [], parts, { style: "clean", targetSpreads: 20 });
+    expect(plan.spreads.length).toBeLessThanOrEqual(19);
+    expectEveryPhotoOnce(plan, photos);
+    const book = plan.spreads.slice(0, plan.bookSpreads);
+    expect(book.flatMap((s) => s.photoIds).every((id) => id.startsWith("b"))).toBe(true);
+    expect(book.flatMap((s) => s.photoIds)).toHaveLength(19);
+    // The book by its places in their order, a page never mixing two (2026-10-28).
+    const places = book.map((s) => [...new Set(s.photoIds.map((id) => tabOf(photos).get(id)))]);
+    expect(places.every((p) => p.length === 1)).toBe(true);
+    expect(places.flat()).toEqual([...places.flat()].sort());
+    const opener = plan.spreads[plan.bookSpreads];
+    expect(opener.opener).toEqual({ title: "עלייה לתורה" });
+    expect(opener.photoIds).toHaveLength(1);
+    // The opening page's photo is the owners' shot, from "1.חתן".
+    expect(tabOf(photos).get(opener.photoIds[0])).toBe("e1");
+    // The event follows its tabs in their order.
+    const tabs = tabOf(photos);
+    const order = plan.spreads.slice(plan.bookSpreads + 1).flatMap((s) => s.photoIds.map((id) => tabs.get(id)));
+    expect(order).toEqual([...order].sort());
+    expect(plan.bookSpreads + plan.eventSpreads).toBe(plan.spreads.length);
+    // The same number of photos in each part: about as many pages each.
+    expect(Math.abs(plan.bookSpreads - (plan.eventSpreads - 1))).toBeLessThanOrEqual(1);
+  });
+
+  it("gives the book the pages the photographer set, and the event the rest", () => {
+    const photos = gallery();
+    const parts = combinedParts(photos, "other")!;
+    const plan = planCombined(photos, [], [], parts, { style: "clean", targetSpreads: 12, bookSpreads: 3 });
+    expect(plan.bookSpreads).toBe(3);
+    expect(plan.spreads.length).toBeLessThanOrEqual(11);
+    expect(plan.eventSpreads).toBe(plan.spreads.length - 3);
+    expectEveryPhotoOnce(plan, photos);
+  });
+
+  it("with no pages typed keeps each part's natural pages within 30", () => {
+    const photos = gallery();
+    const plan = planCombined(photos, [], [], combinedParts(photos, "other")!, { style: "clean", targetSpreads: null });
+    expect(plan.spreads.length).toBeLessThanOrEqual(29);
+    expectEveryPhotoOnce(plan, photos);
+    const big = [...inTab("b", 1, 200, BOOK, { key: "b1", name: "1.חוף", order: 1 }), ...inTab("e", 1, 150, EVENT, { key: "e1", name: "1.חתן", order: 5 })];
+    const full = planCombined(big, [], [], combinedParts(big, "other")!, { style: "clean", targetSpreads: null });
+    expect(full.spreads.length).toBeLessThanOrEqual(29);
+    expectEveryPhotoOnce(full, big);
+  });
+
+  it("covers the album with the book's closest portrait", () => {
+    const photos = gallery().map((p) => (p.id === "b18" ? { ...p, faceArea: 0.2 } : p.id === "b17" ? { ...p, faceArea: 0.05 } : p));
+    expect(planCombined(photos, [], [], combinedParts(photos, "other")!, CLEAN).coverPhotoId).toBe("b18");
+    // Faces unknown: the book's first portrait.
+    expect(planCombined(gallery(), [], [], combinedParts(gallery(), "other")!, CLEAN).coverPhotoId).toBe("b17");
+  });
+
+  it("writes both events and the date under the name on the cover", () => {
+    const parts = combinedParts(gallery(), "other")!;
+    expect(combinedCoverLines("רומי - בוק בת מצווה", parts, "2026-10-05")).toEqual({ main: "רומי", sub: "בוק בת מצווה ועלייה לתורה | 5.10.2026" });
+    expect(combinedCoverLines("ניסוי בדיקה", parts, null)).toEqual({ main: "ניסוי בדיקה", sub: "בוק בת מצווה ועלייה לתורה" });
+  });
+
+  it("shares the pages by the photo counts, at least one each", () => {
+    expect(combinedBookShare(18, 19, 18)).toBe(9);
+    expect(combinedBookShare(18, 100, 1)).toBe(17);
+    expect(combinedBookShare(18, 1, 100)).toBe(1);
+    expect(combinedBookShare(2, 10, 10)).toBe(1);
   });
 });

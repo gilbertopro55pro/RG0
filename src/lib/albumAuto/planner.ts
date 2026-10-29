@@ -1059,7 +1059,7 @@ export function planAlbum(
   const info = new Map<string, PhotoInfo>();
   for (const p of allPhotos) info.set(p.id, analyzeFaces(facesById.get(p.id) ?? [], people));
 
-  if (!isBook && followsTabs(allPhotos)) return planByTabs(allPhotos, info, cellSize, orderIdx, time, bounds, opts, refs);
+  if ((!isBook || opts.bookTabs) && followsTabs(allPhotos)) return planByTabs(allPhotos, info, cellSize, orderIdx, time, bounds, opts, refs);
 
   // 2. Family sections, in priority order. Which other cells may share the frame: owners only with
   // themselves; the groom's parents with the owners; the bride's parents with the owners and the
@@ -1275,7 +1275,8 @@ function planByTabs(
     t.ids.push(p.id);
   }
   const tabs = [...tabMap.values()].sort((a, b) => a.order - b.order);
-  const roles = tabRoles(tabs.map((t) => (t.key === UNTABBED ? "" : t.name)));
+  // A book's tabs are the places it was shot at: each one a stage, whatever its name.
+  const roles: TabRole[] = opts.kind === "book" ? tabs.map(() => "stage") : tabRoles(tabs.map((t) => (t.key === UNTABBED ? "" : t.name)));
   const ordered = [
     ...tabs.filter((_, i) => roles[i] !== "atmosphere"),
     ...tabs.filter((_, i) => roles[i] === "atmosphere"),
@@ -1368,4 +1369,130 @@ function planByTabs(
   }
   coverPhotoId ??= spreads[0]?.photoIds[0] ?? null;
   return { coverPhotoId, spreads };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The combined album (owner, 2026-10-28): one gallery holds two events in two main tabs, a "בוק"
+// with its locations as sub-tabs and the event itself ("עלייה לתורה" with "1.חתן", "2.תפילה"…). The
+// book comes first, by the book's rules (no family pages; its places in their tabs' order, each by
+// shooting time, a page never mixing two places), then an opening page for
+// the event (its photo large and its name), then the event by its own rules (its tabs in their order,
+// the family cells). "20 דפים": the cover, the book's pages, the opening page and the event's pages.
+
+export type CombinedPart = { key: string; name: string; kind: EventKind; ids: string[] };
+export type CombinedParts = { book: CombinedPart; event: CombinedPart };
+
+// The two parts, when the photos sit in exactly two main tabs and one of them is a book while the
+// other isn't (the book first, whatever the tabs' order). The event's kind comes from its tab's name,
+// else the gallery's kind when that isn't the book. Photos outside the main tabs close the event.
+// null: not a combined gallery.
+export function combinedParts(photos: AutoPhoto[], galleryKind: EventKind): CombinedParts | null {
+  const mains = new Map<string, { key: string; name: string; order: number; ids: string[] }>();
+  const loose: string[] = [];
+  for (const p of photos) {
+    if (!p.main) {
+      loose.push(p.id);
+      continue;
+    }
+    let m = mains.get(p.main.key);
+    if (!m) mains.set(p.main.key, (m = { key: p.main.key, name: p.main.name, order: p.main.order, ids: [] }));
+    m.ids.push(p.id);
+  }
+  if (mains.size !== 2) return null;
+  const [a, b] = [...mains.values()].sort((x, y) => x.order - y.order);
+  const kindA = kindOfText(a.name);
+  const kindB = kindOfText(b.name);
+  if ((kindA === "book") === (kindB === "book")) return null;
+  const [book, event] = kindA === "book" ? [a, b] : [b, a];
+  const own = kindA === "book" ? kindB : kindA;
+  const kind = own !== "other" ? own : galleryKind !== "book" ? galleryKind : "other";
+  if (book.ids.length < 2 || event.ids.length + loose.length < 2) return null;
+  return {
+    book: { key: book.key, name: book.name, kind: "book", ids: book.ids },
+    event: { key: event.key, name: event.name, kind, ids: [...event.ids, ...loose] },
+  };
+}
+
+// The cover's two lines in the combined album: the name large (as coverTitleLines reads the gallery's
+// title), and "בוק בת מצווה ועלייה לתורה | 5.10.2026" small under it.
+export function combinedCoverLines(title: string, parts: CombinedParts, date?: string | null): { main: string; sub: string | null } {
+  const { main } = coverTitleLines(title);
+  const event = tabLabel(parts.event.name);
+  const both = `${tabLabel(parts.book.name)}${/^[א-ת]/.test(event) ? " ו" : " & "}${event}`;
+  const day = coverTitleLines("", date).sub;
+  return { main, sub: [both, day].filter(Boolean).join(" | ") };
+}
+
+// The book's spreads when the photographer didn't set them: the room left after the opening page,
+// shared by the parts' photo counts, each part at least one spread.
+export function combinedBookShare(room: number, bookPhotos: number, eventPhotos: number): number {
+  if (room <= 2) return 1;
+  const share = Math.round((room * bookPhotos) / Math.max(1, bookPhotos + eventPhotos));
+  return Math.max(1, Math.min(room - 1, share));
+}
+
+// The book's cover: its closest portrait (the largest face, when the faces are known), else its first
+// portrait in shooting order, else its first photo.
+function bookCoverPhoto(ordered: AutoPhoto[]): string | null {
+  const portraits = ordered.filter((p) => p.aspect < 1);
+  let best: AutoPhoto | null = null;
+  for (const p of portraits) if ((p.faceArea ?? 0) > (best?.faceArea ?? 0)) best = p;
+  return best?.id ?? portraits[0]?.id ?? ordered[0]?.id ?? null;
+}
+
+export type CombinedOptions = PlanOptions & { bookSpreads?: number | null };
+export type CombinedPlan = AlbumPlan & { bookSpreads: number; eventSpreads: number };
+
+/**
+ * Plans the combined album: the book part as a book (planAlbum, kind "book"), the opening page, and
+ * the event part with its kind, the family cells and their reference photos (planAlbum, which
+ * follows the event's tabs). The page limit holds for the whole album: the pages typed (or 30),
+ * minus the cover and the opening page, are shared by the parts — the book's by `bookSpreads` when
+ * the photographer set it, else by the photo counts (combinedBookShare). With no pages typed, each
+ * part takes its natural pages while the whole stays within 30. The event part's best owners shot
+ * (its own plan's cover) is the opening page's photo, and isn't repeated on its pages.
+ */
+export function planCombined(
+  photos: AutoPhoto[],
+  faces: PhotoFaces[],
+  cells: CellPeople[],
+  parts: CombinedParts,
+  opts: CombinedOptions,
+  referencePhotos?: Pick<FamilyCell, "id" | "photoId">[]
+): CombinedPlan {
+  const byId = new Map(photos.map((p) => [p.id, p] as const));
+  const pick = (ids: string[]) => ids.map((id) => byId.get(id)).filter((p): p is AutoPhoto => !!p);
+  const bookPhotos = pick(parts.book.ids);
+  const eventAll = pick(parts.event.ids);
+  const typed = opts.targetSpreads && opts.targetSpreads > 0 ? Math.min(AUTO_MAX_PAGES, Math.floor(opts.targetSpreads)) : null;
+  const maxSpreads = Math.max(1, (typed ?? AUTO_MAX_PAGES) - (opts.hasCover === false ? 0 : 1));
+  const base = { style: opts.style, hasCover: false } as const;
+  const planBook = (target: number | null) => planAlbum(bookPhotos, faces, [], { ...base, kind: "book", bookTabs: true, targetSpreads: target });
+
+  // The opening page's photo: the event's best owners shot, out of its pages.
+  const openerId = eventAll.length >= 3 ? planAlbum(eventAll, faces, cells, { ...base, kind: parts.event.kind, targetSpreads: null }, referencePhotos).coverPhotoId : null;
+  const eventPhotos = openerId ? eventAll.filter((p) => p.id !== openerId) : eventAll;
+  const planEvent = (target: number | null) => planAlbum(eventPhotos, faces, cells, { ...base, kind: parts.event.kind, targetSpreads: target }, referencePhotos);
+  const room = Math.max(2, maxSpreads - (openerId ? 1 : 0));
+  const chosen = opts.bookSpreads && opts.bookSpreads > 0 ? Math.max(1, Math.min(room - 1, Math.floor(opts.bookSpreads))) : null;
+  const share = () => chosen ?? combinedBookShare(room, bookPhotos.length, eventPhotos.length);
+
+  // The book first; the event takes the pages it leaves (a book with too few photos for its share
+  // uses fewer pages, and the event gets them).
+  let book = planBook(typed || chosen ? share() : null);
+  let event = planEvent(typed || chosen ? Math.max(1, room - book.spreads.length) : null);
+  if (!typed && book.spreads.length + event.spreads.length > room) {
+    // No pages typed, but the natural pages go past the limit: shared as with a typed count.
+    book = planBook(share());
+    event = planEvent(Math.max(1, room - book.spreads.length));
+  }
+
+  const opener: PlannedSpread[] = openerId ? [{ section: "owners", photoIds: [openerId], heroId: openerId, opener: { title: tabLabel(parts.event.name) } }] : [];
+  const { ordered } = shootingOrder(bookPhotos);
+  return {
+    coverPhotoId: bookCoverPhoto(ordered) ?? event.coverPhotoId,
+    spreads: [...book.spreads, ...opener, ...event.spreads],
+    bookSpreads: book.spreads.length,
+    eventSpreads: event.spreads.length + opener.length,
+  };
 }

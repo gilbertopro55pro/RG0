@@ -58,6 +58,13 @@ export type AutoPhoto = {
   // gallery's tabs. When the photos are sorted into tabs, the book follows them (planner.ts, owner
   // 2026-10-21).
   tab?: { key: string; name: string; order: number } | null;
+  // The main tab the photo's tab sits in (itself for a photo right in a main tab), when the gallery
+  // has main tabs and sub-tabs (lib/galleryFolders.ts). A gallery of two events, a "בוק" and the
+  // event itself, makes the combined album (planCombined in planner.ts).
+  main?: { key: string; name: string; order: number } | null;
+  // The largest face's box as a fraction of the photo (0-1), when face boxes are known: the combined
+  // album's cover is the book's closest portrait.
+  faceArea?: number;
 };
 
 // Faces found in one photo: 128-d descriptors (see lib/faceRecognition.ts) with their box area as a
@@ -72,7 +79,9 @@ export type SectionKind = "owners" | "parents" | "parents2" | "siblings" | "gran
 // One spread (a full double page) of the plan. heroId, when set, is the photo the layout should
 // make the largest on that spread.
 // `tab`: the gallery tab the spread belongs to, when the book follows the tabs.
-export type PlannedSpread = { section: SectionKind; photoIds: string[]; heroId?: string; tab?: string };
+// `opener`: the opening page of the combined album's second part (one photo and the event's name,
+// layoutOpener in layouts.ts) instead of a spread of the style.
+export type PlannedSpread = { section: SectionKind; photoIds: string[]; heroId?: string; tab?: string; opener?: { title: string } };
 
 export type AlbumPlan = { coverPhotoId: string | null; spreads: PlannedSpread[] };
 
@@ -87,6 +96,10 @@ export type PlanOptions = {
   // The event kind (detectEventKind, or the photographer's choice). "book" ignores the family cells
   // and orders the whole book by shooting time. Other kinds (and undefined) keep the family order.
   kind?: EventKind;
+  // A book that follows its tabs (the combined album's book, owner 2026-10-28): each tab is a place
+  // it was shot at, in the tabs' order, and a page never mixes two places. Without it a book runs by
+  // shooting time only.
+  bookTabs?: boolean;
 };
 
 // A photo as the layouts see it. faces: face boxes as fractions of the photo (0-1, x/y = top-left),
@@ -118,6 +131,17 @@ export type LayoutInput = {
 // background: the spread's background photo (gallery_album_spreads.background_photo_id) and its blur
 // (0-100, same scale as the editor's slider). Clean style: one of the spread's own photos at 45%.
 export type LayoutOutput = { elements: AlbumElement[]; bleedIds?: string[]; background?: { photoId: string; blur: number; opacity?: number } };
+
+// The combined album's opening page for its second part (owner, 2026-10-28): its photo large and the
+// event's name ("עלייה לתורה"), so it's clear the book moves on to the second event.
+export type OpenerInput = {
+  style: AutoStyleId;
+  photo: LayoutPhoto;
+  title: string;
+  spreadIndex: number;
+  widthCm: number;
+  heightCm: number;
+};
 
 export type CoverInput = {
   style: AutoStyleId;
