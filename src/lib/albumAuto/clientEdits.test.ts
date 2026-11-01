@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CLIENT_DESIGN_LIMIT_CROP, CLIENT_DESIGN_MAX_CROP, applyClientEdit, clientDesigns, worstCrop, type ClientEditContext, type ClientEditOutcome, type EditSpread } from "@/lib/albumAuto/clientEdits";
 import { collageTemplates, designShape, engineLayouts, redesignDesigns } from "@/lib/albumAuto/redesign";
 import { marginInsetPctFor } from "@/lib/albumSafeArea";
-import { pagePhotoIds } from "@/lib/albumClientEdit";
+import { pagePhotoIds, sameDesign } from "@/lib/albumClientEdit";
 import type { AlbumElement, AlbumPhotoElement, AlbumTextElement } from "@/lib/types";
 
 // The server's side of the client's changes to the album (CLAUDE.md, "עריכת האלבום על ידי הלקוח"):
@@ -452,5 +452,208 @@ describe("what the client can't do", () => {
     const ctx = album();
     expect(applyClientEdit(ctx, { action: "swap", a: { spreadId: "44444444-4444-4444-8444-444444444444", elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false })).toMatchObject({ status: 404 });
     expect(applyClientEdit(ctx, { action: "swap", a: { spreadId: S1, elId: "t1" }, b: { spreadId: S2, elId: "c" }, redesign: false })).toMatchObject({ status: 404 });
+  });
+});
+
+// The client changes the photos' outline color for the whole album (owner, 2026-11-01).
+describe("the photos' outline color", () => {
+  // A photo running to the page's edge without an outline: it keeps having none.
+  const bleed = photo("bl", "lan3", { xPct: 0, yPct: 0, widthPct: 100, heightPct: 100 }, { borderWidth: undefined, shadow: undefined });
+  const withBleed = (): ClientEditContext => {
+    const base = album();
+    return {
+      ...base,
+      spreads: base.spreads.map((sp) => (sp.id === S2 ? { ...sp, elements: [bleed, ...(sp.elements ?? [])] } : sp)),
+      photos: new Map([...base.photos, ["lan3", { aspect: 3 / 2 }]]),
+    };
+  };
+  const outlineColors = (sp: EditSpread) => photoEls(sp).map((el) => [el.id, el.borderWidth ?? 0, el.borderColor]);
+  const run = (ctx: ClientEditContext, req: Parameters<typeof applyClientEdit>[1]) => {
+    const out = applyClientEdit(ctx, req);
+    if (!out.ok) throw new Error(out.error);
+    return { out, after: saved(ctx, out) };
+  };
+
+  it("recolors every outlined photo on every page, the cover too, and nothing else", () => {
+    const ctx = withBleed();
+    const { out, after } = run(ctx, { action: "outline", color: "#000000" });
+    if (!out.ok) throw new Error();
+    expect(out.updates.map((u) => u.id)).toEqual([COVER, S1, S2]);
+    expect(outlineColors(page(after, COVER))).toEqual([["cv", 3, "#000000"]]);
+    expect(outlineColors(page(after, S1))).toEqual([
+      ["a", 3, "#000000"],
+      ["b", 3, "#000000"],
+    ]);
+    // The edge-to-edge photo without an outline still has none.
+    expect(outlineColors(page(after, S2))).toEqual([
+      ["bl", 0, undefined],
+      ["c", 3, "#000000"],
+      ["d", 3, "#000000"],
+    ]);
+    // Same photos in the same frames, the text as it was.
+    for (const id of [COVER, S1, S2]) {
+      const strip = (sp: EditSpread) => (sp.elements ?? []).map((el) => (el.type === "photo" ? { ...el, borderColor: undefined } : el));
+      expect(strip(page(after, id))).toEqual(strip(page(ctx, id)));
+      expect(page(after, id).background_photo_id).toBe(page(ctx, id).background_photo_id);
+    }
+    expect(out.cycles).toEqual({});
+  });
+
+  it("keeps the photographer's page, adds no red dots, and leaves nothing for back or original", () => {
+    const ctx = withBleed();
+    const { out } = run(ctx, { action: "outline", color: "#d4af37" });
+    if (!out.ok) throw new Error();
+    for (const u of out.updates) {
+      const sent = page(ctx, u.id);
+      expect(u.edited).toBe(true);
+      expect(u.client_original).toEqual({ elements: sent.elements, background_photo_id: sent.background_photo_id, marked_frames: sent.marked_frames });
+      // No frame moved or changed photo: the photographer's dots as they were (S2 had one).
+      expect(u.marked_frames).toEqual(sent.marked_frames);
+      expect(u.client_history).toBeNull();
+      expect(u.canOriginal).toBe(false);
+      expect(u.layout).toBeUndefined();
+    }
+  });
+
+  it("keeps the red dots of an earlier swap", () => {
+    let ctx = album();
+    ctx = run(ctx, { action: "swap", a: { spreadId: S1, elId: "a" }, b: { spreadId: S2, elId: "c" }, redesign: false }).after;
+    const { out } = run(ctx, { action: "outline", color: "#000000" });
+    if (!out.ok) throw new Error();
+    expect(out.updates.find((u) => u.id === S1)?.marked_frames).toEqual(["a"]);
+    expect(out.updates.find((u) => u.id === S2)?.marked_frames).toEqual(["c"]);
+  });
+
+  it("undo all my changes brings back the photographer's colors", () => {
+    const ctx = withBleed();
+    const changed = run(ctx, { action: "outline", color: "#000000" }).after;
+    const { out, after } = run(changed, { action: "reset" });
+    if (!out.ok) throw new Error();
+    expect(out.updates.map((u) => u.id).sort()).toEqual([COVER, S1, S2].sort());
+    for (const id of [COVER, S1, S2]) {
+      expect(page(after, id).elements).toEqual(page(ctx, id).elements);
+      expect(page(after, id).marked_frames).toEqual(page(ctx, id).marked_frames);
+      expect(page(after, id).client_original).toBeNull();
+    }
+    expect(out.updates.every((u) => !u.edited)).toBe(true);
+  });
+
+  it("choosing the photographer's color again makes the pages theirs again", () => {
+    const ctx = withBleed();
+    const changed = run(ctx, { action: "outline", color: "#000000" }).after;
+    // The test album's outlines have no color saved: the white every renderer draws.
+    const { out, after } = run(changed, { action: "outline", color: "#ffffff" });
+    if (!out.ok) throw new Error();
+    expect(out.updates.map((u) => [u.id, u.edited, u.client_original])).toEqual([
+      [COVER, false, null],
+      [S1, false, null],
+      [S2, false, null],
+    ]);
+    for (const id of [COVER, S1, S2]) expect(page(after, id).elements).toEqual(page(ctx, id).elements);
+  });
+
+  it("a page already in that color isn't touched", () => {
+    const out = applyClientEdit(album(), { action: "outline", color: "#ffffff" });
+    expect(out).toEqual({ ok: true, updates: [], cycles: {} });
+  });
+
+  it("isn't offered by the server when no photo has an outline", () => {
+    const base = album();
+    const bare: ClientEditContext = {
+      ...base,
+      spreads: base.spreads.map((sp) => ({ ...sp, elements: (sp.elements ?? []).map((el) => (el.type === "photo" ? { ...el, borderWidth: 0 } : el)) })),
+    };
+    expect(applyClientEdit(bare, { action: "outline", color: "#000000" })).toMatchObject({ ok: false, status: 422, code: "no_outline" });
+  });
+
+  it("leaves a page of the old builder's fixed layouts alone (drawn without outlines)", () => {
+    const base = album();
+    const ctx: ClientEditContext = { ...base, spreads: base.spreads.map((sp) => (sp.id === S2 ? { ...sp, layout: "split" } : sp)) };
+    const { out } = run(ctx, { action: "outline", color: "#000000" });
+    if (!out.ok) throw new Error();
+    expect(out.updates.map((u) => u.id)).toEqual([COVER, S1]);
+  });
+
+  it("stays through a redesign, back and the photographer's design, page by page", () => {
+    const RED = "#b03a2e";
+    const reds = (sp: EditSpread) => photoEls(sp).filter((el) => el.borderWidth).map((el) => el.borderColor);
+    let ctx = album();
+    // A redesign before the color change: its "back" holds the photographer's design, in white.
+    let cycle = { count: -1, seen: [] as string[] };
+    const first = run(ctx, { action: "redesign", spreadId: S1, ...cycle });
+    if (!first.out.ok) throw new Error();
+    cycle = first.out.cycles[S1];
+    ctx = first.after;
+    ctx = run(ctx, { action: "outline", color: RED }).after;
+    expect(reds(page(ctx, S1)).every((c) => c === RED)).toBe(true);
+    expect(page(ctx, S1).client_history).toHaveLength(1);
+
+    // Back: the photographer's design, in the client's color. Changed only by its color, so
+    // "לעיצוב המקורי" isn't offered (and the server says it's already the original).
+    const back = run(ctx, { action: "back", spreadId: S1 });
+    if (!back.out.ok) throw new Error();
+    ctx = back.after;
+    expect(reds(page(ctx, S1))).toEqual([RED, RED]);
+    expect(back.out.updates[0]).toMatchObject({ edited: true, canOriginal: false, marked_frames: [] });
+    expect(applyClientEdit(ctx, { action: "original", spreadId: S1 })).toMatchObject({ ok: false, status: 409, code: "unchanged" });
+
+    // Another design keeps the color, whatever the engine's own.
+    const again = run(ctx, { action: "redesign", spreadId: S1, ...cycle });
+    if (!again.out.ok) throw new Error();
+    ctx = again.after;
+    expect(reds(page(ctx, S1)).length).toBeGreaterThan(0);
+    expect(reds(page(ctx, S1)).every((c) => c === RED)).toBe(true);
+    expect(again.out.updates[0].canOriginal).toBe(true);
+
+    // The photographer's design, in the client's color: the album keeps one color.
+    const original = run(ctx, { action: "original", spreadId: S1 });
+    if (!original.out.ok) throw new Error();
+    ctx = original.after;
+    expect(reds(page(ctx, S1))).toEqual([RED, RED]);
+    expect(original.out.updates[0]).toMatchObject({ edited: true, canOriginal: false, marked_frames: [] });
+
+    // Undo all: the photographer's pages and colors.
+    const reset = run(ctx, { action: "reset" }).after;
+    for (const sp of album().spreads) expect(page(reset, sp.id).elements).toEqual(sp.elements);
+  });
+
+  // A client redesign made before this change could come in the engine's own color (black in the
+  // clean style) on one page only: that isn't the album's color, and doesn't spread.
+  it("brings the photographer's design back as sent when the album has no one color", () => {
+    let ctx = album();
+    ctx = run(ctx, { action: "redesign", spreadId: S1, count: -1, seen: [] }).after;
+    ctx = {
+      ...ctx,
+      spreads: ctx.spreads.map((sp) => (sp.id === S1 ? { ...sp, elements: (sp.elements ?? []).map((el) => (el.type === "photo" && el.borderWidth ? { ...el, borderColor: "#000000" } : el)) } : sp)),
+    };
+    const original = run(ctx, { action: "original", spreadId: S1 });
+    if (!original.out.ok) throw new Error();
+    expect(original.out.updates[0]).toMatchObject({ edited: false, client_original: null });
+    expect(page(original.after, S1).elements).toEqual(page(album(), S1).elements);
+    // The album has one color again (the photographer's white): "back" brings the design in it.
+    const redesigned = page(ctx, S1).elements ?? [];
+    const back = run(original.after, { action: "back", spreadId: S1 });
+    expect(sameDesign(page(back.after, S1).elements ?? [], redesigned)).toBe(true);
+    expect(photoEls(page(back.after, S1)).map((el) => [el.borderWidth ?? 0, el.borderColor])).toEqual(photoEls({ ...page(ctx, S1), elements: redesigned }).map((el) => [el.borderWidth ?? 0, el.borderWidth ? "#ffffff" : el.borderColor]));
+  });
+
+  it("never writes the red dots column as null", () => {
+    let ctx = withBleed();
+    const seen: unknown[] = [];
+    for (const req of [
+      { action: "outline", color: "#000000" },
+      { action: "redesign", spreadId: S1, count: -1, seen: [] },
+      { action: "outline", color: "#ffffff" },
+      { action: "back", spreadId: S1 },
+      { action: "outline", color: "#d4af37" },
+      { action: "reset" },
+    ] as Parameters<typeof applyClientEdit>[1][]) {
+      const { out, after } = run(ctx, req);
+      if (!out.ok) throw new Error();
+      for (const u of out.updates) seen.push(u.marked_frames);
+      ctx = after;
+    }
+    expect(seen.length).toBeGreaterThan(6);
+    expect(seen.every((m) => Array.isArray(m))).toBe(true);
   });
 });

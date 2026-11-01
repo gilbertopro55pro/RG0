@@ -1,18 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { ALLOWED_ACCEPT } from "@/lib/imageUpload";
 import { cancelUpload, dismissUpload, getUploadsSnapshot, isUploadActive, onUploadItem, subscribeUploads, useGalleryUploads } from "@/lib/galleryUploads";
 import { readDataTransferItems, type DroppedFile } from "@/lib/fileDrop";
-import { droppedFromFileList, groupPortfolioFiles, portfolioImages, queuePortfolioUpload } from "@/lib/portfolioUploads";
+import { droppedFromFileList, groupPortfolioFiles, loadPortfolioPhotoTabs, portfolioImages, queuePortfolioUpload } from "@/lib/portfolioUploads";
 import { sortSubTabs, subTabLabel } from "@/lib/portfolioNames";
 import type { GalleryPhotoRow } from "@/lib/types";
 import { useT } from "@/i18n/client";
-
-// Sentinel for the dropdown's last option — picking it reveals a free-text input instead of
-// picking one of the existing tabs. Never sent to the DB (see `chosenTab`). Same for sub-tabs.
-const CUSTOM_CATEGORY = "__custom__";
+import PortfolioMainTabSelect, { StepBadge, chosenMainTab } from "@/components/PortfolioMainTabSelect";
 
 const sortHe = (list: string[]) => list.sort((a, b) => a.localeCompare(b, "he"));
 // The list with `value` added (sorted), or the same list when it's there already.
@@ -27,14 +23,13 @@ const withOption = (list: string[] | undefined, value: string) => (list?.include
 // joins it. Photos and folders can also be dragged in: like a gallery, a dragged folder becomes a
 // tab named after it (lib/portfolioUploads.ts); loose photos go to the tab chosen above.
 export default function PortfolioUploadPanel({ photographerId }: { photographerId: string }) {
-  const supabase = createClient();
   const t = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
 
-  // "" means no tab (shows under "כללי"); CUSTOM_CATEGORY means the free-text input below is the
+  // "" means no tab (shows under "כללי"); NEW_MAIN_TAB means the free-text input below is the
   // real source of truth instead — see chosenTab below.
   const [category, setCategory] = useState("");
   const [customCategory, setCustomCategory] = useState("");
@@ -54,12 +49,7 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
   // Loaded up front (not on-focus) — a <select> needs its options ready the moment it opens,
   // unlike the old text input + datalist combo this replaced.
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.from("gallery_photos").select("portfolio_category").eq("photographer_id", photographerId).not("portfolio_category", "is", null);
-      const rows = (data ?? []) as Pick<GalleryPhotoRow, "portfolio_category">[];
-      setCategoryOptions(sortHe(Array.from(new Set(rows.map((r) => r.portfolio_category as string).filter(Boolean)))));
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    })();
+    void loadPortfolioPhotoTabs(photographerId).then(setCategoryOptions);
   }, [photographerId]);
 
   // Listening while this panel is open makes the upload count as watched (no email or phone
@@ -114,7 +104,7 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
   }, [t]);
 
   // The main tab the upload goes to ("" = none: loose photos only, under "כללי").
-  const chosenTab = (category === CUSTOM_CATEGORY ? customCategory : category).trim();
+  const chosenTab = chosenMainTab(category, customCategory);
 
   // Owner, 2026-10-10: choose the main tab, then drag the event's folders in — each folder becomes
   // a sub-tab inside that tab, named after the folder; loose photos go to the tab itself. Folders
@@ -149,48 +139,24 @@ export default function PortfolioUploadPanel({ photographerId }: { photographerI
   const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
   // The zone's main action: the folder picker once there's a main tab, single photos before that.
   const pick = () => (chosenTab ? folderInputRef : fileInputRef).current?.click();
-  const stepBadge = (n: number) => (
-    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-paper text-[11px] font-bold" aria-hidden="true">
-      {n}
-    </span>
-  );
 
   return (
     <div className="mt-3.5 pt-3.5 border-t border-line">
       <p className="text-sm font-semibold mb-1">{t("העלאת תמונות ישירות לפורטפוליו")}</p>
       <p className="text-xs text-ink-soft mb-3.5">{t("בוחרים לשונית ראשית (למשל \"חתונה\"), וגוררים אליה את התיקיות של האירוע.")}</p>
 
-      <label htmlFor="portfolio-main-tab" className="flex items-center gap-2 text-xs font-semibold mb-1.5">
-        {stepBadge(1)}
-        {t("הלשונית הראשית")}
-      </label>
-      <select
+      <PortfolioMainTabSelect
         id="portfolio-main-tab"
+        options={categoryOptions}
         value={category}
-        onChange={(e) => setCategory(e.target.value)}
-        className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mb-1"
-      >
-        <option value="">{t("כללי (ללא נושא)")}</option>
-        {categoryOptions.map((c) => (
-          <option key={c} value={c}>
-            {c}
-          </option>
-        ))}
-        <option value={CUSTOM_CATEGORY}>{t("+ לשונית חדשה...")}</option>
-      </select>
-      {category === CUSTOM_CATEGORY && (
-        <input
-          value={customCategory}
-          onChange={(e) => setCustomCategory(e.target.value)}
-          placeholder={t("שם הלשונית החדשה, לדוגמה: חתונות")}
-          autoFocus
-          className="w-full rounded-lg px-3 py-2 text-sm border border-line bg-white mt-1 mb-1"
-        />
-      )}
-      <p className="text-[11px] text-ink-soft mb-3.5">{t("אפשר לבחור לשונית קיימת, או \"+ לשונית חדשה\" ולכתוב שם.")}</p>
+        onChange={setCategory}
+        custom={customCategory}
+        onCustomChange={setCustomCategory}
+        noneLabel={t("כללי (ללא נושא)")}
+      />
 
       <p className="flex items-center gap-2 text-xs font-semibold mb-1.5">
-        {stepBadge(2)}
+        <StepBadge n={2} />
         {t("גוררים את התיקיות")}
       </p>
       <input

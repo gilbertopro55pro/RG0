@@ -8,8 +8,9 @@ import type { AlbumElement, AlbumPhotoElement } from "@/lib/types";
 // goes back one, up to 3. Everything is saved by the server (api/gallery/[token]/album/edit,
 // lib/albumAuto/clientEdits.ts), never from what the browser sends: the request only names the
 // action. "עיצוב מחדש" works on any page but the cover, and "לעיצוב המקורי" returns one page to the
-// photographer's design (owner, 2026-10-27). This file holds what the browser needs too, so it stays
-// light (no layout engine).
+// photographer's design (owner, 2026-10-27). The photos' outline color can be changed for the whole
+// album (2026-11-01, below). This file holds what the browser needs too, so it stays light (no
+// layout engine).
 
 // The most a photo may be cropped in the frame it moves into before its page is redesigned. A frame
 // already cropping its photo more than this keeps doing so: only worse than before counts.
@@ -95,13 +96,137 @@ export function pagePhotoIds(elements: readonly AlbumElement[]): string[] {
     .sort();
 }
 
+// --- The photos' outline color (owner, 2026-11-01) ----------------------------------------------
+// The client can change the color of the outline around the album's photos (borderWidth /
+// borderColor), on every page at once, the cover included: a photo with an outline takes the new
+// color, and a photo without one (an edge-to-edge photo) stays without. It's the album's color, not
+// a page's design: a redesign, "לעיצוב הקודם" and "לעיצוב המקורי" keep the page's outline color,
+// and only "ביטול כל השינויים שלי" (or choosing that color again) brings back the photographer's.
+
+type Outlinable = { id: string; type: string; borderWidth?: number; borderColor?: string };
+
+// The colors offered to the client, each named for the screen and for the photographer's email
+// (Hebrew keys, translated with t()).
+export const OUTLINE_SWATCHES = [
+  { color: "#ffffff", name: "לבן" },
+  { color: "#f3ece0", name: "שמנת" },
+  { color: "#d4af37", name: "זהב" },
+  { color: "#9a9a9a", name: "אפור" },
+  { color: "#3a3a3a", name: "אפור כהה" },
+  { color: "#000000", name: "שחור" },
+] as const;
+
+export const OUTLINE_COLOR_RE = /^#[0-9a-f]{6}$/i;
+
+// A color as compared: lowercase "#rrggbb". A photo with an outline and no color has the white
+// every renderer draws it in.
+export function normalizeOutlineColor(color: string | null | undefined): string {
+  const c = (color ?? "#ffffff").trim().toLowerCase();
+  return /^#[0-9a-f]{3}$/.test(c) ? `#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}` : c;
+}
+
+export function hasOutline(el: Outlinable): boolean {
+  return el.type === "photo" && (el.borderWidth ?? 0) > 0;
+}
+
+// The one color of a page's outlines; null when no photo has one, or when they differ.
+export function outlineColorOf(elements: readonly Outlinable[]): string | null {
+  let color: string | null = null;
+  for (const el of elements) {
+    if (!hasOutline(el)) continue;
+    const c = normalizeOutlineColor(el.borderColor);
+    if (color && c !== color) return null;
+    color = c;
+  }
+  return color;
+}
+
+// The album's outline color, as the client's control shows it: the most common one (null when no
+// photo in the album has an outline), and whether there are others.
+export function albumOutline(pages: readonly (readonly Outlinable[])[]): { color: string | null; mixed: boolean } {
+  const counts = new Map<string, number>();
+  for (const els of pages) {
+    for (const el of els) {
+      if (!hasOutline(el)) continue;
+      const c = normalizeOutlineColor(el.borderColor);
+      counts.set(c, (counts.get(c) ?? 0) + 1);
+    }
+  }
+  let color: string | null = null;
+  let most = 0;
+  for (const [c, n] of counts) {
+    if (n > most) {
+      color = c;
+      most = n;
+    }
+  }
+  return { color, mixed: counts.size > 1 };
+}
+
+// The elements with every outline in `color`. A photo already in that color stays as it is, and one
+// whose frame on the photographer's page (`sent`, by id) had that color takes back exactly what was
+// saved there, so choosing the photographer's color again leaves the page as sent.
+export function withOutlineColor<T extends Outlinable>(elements: readonly T[], color: string, sent: readonly Outlinable[] = []): T[] {
+  const target = normalizeOutlineColor(color);
+  const before = new Map(sent.map((el) => [el.id, el] as const));
+  return elements.map((el) => {
+    if (!hasOutline(el) || normalizeOutlineColor(el.borderColor) === target) return el;
+    const o = before.get(el.id);
+    return { ...el, borderColor: o && hasOutline(o) && normalizeOutlineColor(o.borderColor) === target ? o.borderColor : target };
+  });
+}
+
+// A design put in place of the page's current one (a redesign, the previous design, the
+// photographer's) in `color`, when the design's outlines have one color and it's another: the color
+// the client chose for the album stays, and the auto engine's own colors don't replace the page's.
+// The server passes the page's color for a redesign, and the album's one color (albumOutlineColor)
+// for a design brought back.
+export function keepOutlineColor<T extends Outlinable>(next: readonly T[], color: string | null, sent: readonly Outlinable[] = []): T[] {
+  const n = outlineColorOf(next);
+  return color && n && n !== color ? withOutlineColor(next, color, sent) : [...next];
+}
+
+// The album's one outline color: every outline in it has the same (the color the client chose, or
+// the photographer's when they used one); null when they differ or there's none.
+export function albumOutlineColor(pages: readonly (readonly Outlinable[])[]): string | null {
+  const o = albumOutline(pages);
+  return o.mixed ? null : o.color;
+}
+
+// Two pages laid out the same, whatever the color of their photos' outlines.
+export function sameDesign(a: readonly AlbumElement[], b: readonly AlbumElement[]): boolean {
+  const layout = (els: readonly AlbumElement[]) => els.map((el) => (el.type === "photo" ? { ...el, borderColor: undefined } : el));
+  return canonical(layout(a)) === canonical(layout(b));
+}
+
+// Whether the client changed the page's outline color: its one color against the photographer's,
+// else frame by frame.
+export function outlineColorChanged(sent: readonly Outlinable[], current: readonly Outlinable[]): boolean {
+  const a = outlineColorOf(sent);
+  const b = outlineColorOf(current);
+  if (a && b) return a !== b;
+  const before = new Map(sent.map((el) => [el.id, el] as const));
+  return current.some((el) => {
+    const o = before.get(el.id);
+    return hasOutline(el) && !!o && hasOutline(o) && normalizeOutlineColor(o.borderColor) !== normalizeOutlineColor(el.borderColor);
+  });
+}
+
+// A color's name among the swatches (a Hebrew key), or null for another color.
+export function outlineColorName(color: string): string | null {
+  const c = normalizeOutlineColor(color);
+  return OUTLINE_SWATCHES.find((s) => s.color === c)?.name ?? null;
+}
+
 export type ClientEditRequest =
   | { action: "swap"; a: { spreadId: string; elId: string }; b: { spreadId: string; elId: string }; redesign: boolean }
   | { action: "redesign"; spreadId: string; count: number; seen: string[] }
   | { action: "back"; spreadId: string }
   // One page back to how the photographer sent it, while it holds the photos it was sent with.
   | { action: "original"; spreadId: string }
-  | { action: "reset" };
+  | { action: "reset" }
+  // The outline of every photo that has one, on every page, in this color ("#rrggbb", lowercase).
+  | { action: "outline"; color: string };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isId = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
@@ -135,25 +260,58 @@ export function parseClientEditRequest(body: unknown): ClientEditRequest | null 
       return isId(o.spreadId) ? { action: "original", spreadId: o.spreadId } : null;
     case "reset":
       return { action: "reset" };
+    case "outline":
+      return typeof o.color === "string" && OUTLINE_COLOR_RE.test(o.color) ? { action: "outline", color: o.color.toLowerCase() } : null;
     default:
       return null;
   }
 }
 
-// Whether "לעיצוב המקורי" is offered on a page (owner, 2026-10-27): the client changed it, and it
-// still holds the photos it was sent with (redesigns, swaps within the page). A page that swapped
-// photos with another page doesn't: going back alone would show a photo twice and lose another.
+// Whether "לעיצוב המקורי" is offered on a page (owner, 2026-10-27): the client changed its design,
+// and it still holds the photos it was sent with (redesigns, swaps within the page). A page that
+// swapped photos with another page doesn't: going back alone would show a photo twice and lose
+// another. Nor does a page whose only change is the album's outline color (2026-11-01): it isn't
+// returned page by page, so the album keeps one color.
 export function canReturnToOriginal(original: Pick<PageState, "elements"> | null | undefined, elements: readonly AlbumElement[] | null | undefined): boolean {
   if (!original) return false;
   const a = pagePhotoIds(original.elements);
   const b = pagePhotoIds(elements ?? []);
-  return a.length === b.length && a.every((id, i) => id === b[i]);
+  return a.length === b.length && a.every((id, i) => id === b[i]) && !sameDesign(original.elements, elements ?? []);
 }
 
 // The page numbers (1-based, in the album's order) the client changed, for the photographer's
 // email and the event's log when the client approves or sends corrections.
 export function clientChangedPages(spreads: readonly { client_edited_at?: string | null }[]): number[] {
   return spreads.flatMap((sp, i) => (sp.client_edited_at ? [i + 1] : []));
+}
+
+// What the client changed themselves, for the photographer when the client approves or sends
+// corrections: the pages whose design they changed (1-based), and the photos' outline color when
+// they changed it (its color, null when the pages don't share one). A page whose only change is the
+// outline color isn't listed: the color is told once, for the whole album.
+export type ClientChanges = { pages: number[]; outline: { color: string | null } | null };
+export function clientChanges(
+  spreads: readonly { client_edited_at?: string | null; elements?: AlbumElement[] | null; client_original?: OriginalPage | null }[]
+): ClientChanges {
+  const pages: number[] = [];
+  let outline: ClientChanges["outline"] = null;
+  spreads.forEach((sp, i) => {
+    if (!sp.client_edited_at) return;
+    const now = sp.elements ?? [];
+    const sent = sp.client_original;
+    // The blurred background only changes with a photo swapped in from another page, which changes
+    // the elements too.
+    if (!sent || !sameDesign(sent.elements, now)) pages.push(i + 1);
+    if (sent && outlineColorChanged(sent.elements, now)) outline = { color: outline?.color ?? outlineColorOf(now) };
+  });
+  return { pages, outline };
+}
+
+// The color as the photographer reads it: its name when it's one of the swatches, else its code.
+export function outlineColorLabel(color: string | null, t: TFn): string | null {
+  if (!color) return null;
+  const name = outlineColorName(color);
+  return name ? t(name) : normalizeOutlineColor(color);
 }
 
 // Page 1 of an album is its cover (owner, 2026-10-27), so wherever pages are listed it's named so:

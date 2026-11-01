@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import type { GalleryRow } from "@/lib/types";
+import { isSelectionUpdateText, selectionUpdateText } from "@/lib/selectionNotice";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CHUNK = 200;
@@ -61,8 +62,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     }
   }
 
-  // Only notify the photographer for post-confirmation edits — the first-ever confirmation
-  // already sends its own (louder) email via /confirm-selection, so this stays in-app only.
+  // Post-confirmation edits go to the event's log, but don't raise the event card's counter (owner,
+  // 2026-11-01: only the final confirmation counts, /confirm-selection). One line with the latest
+  // count: a pick right after the previous one updates it instead of adding a line per photo.
   // Standalone galleries (no event) have no event_notifications feed to write to.
   if (gallery.selection_confirmed_at && gallery.event_id) {
     const { count } = await supabase
@@ -70,11 +72,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       .select("id", { count: "exact", head: true })
       .eq("gallery_id", gallery.id)
       .eq("is_favorite", true);
-    await supabase.from("event_notifications").insert({
-      event_id: gallery.event_id,
-      text: `הלקוח/ה עדכנו את בחירת התמונות מהגלריה, נבחרו כעת ${count ?? 0} תמונות`,
-      is_client_action: true,
-    });
+    const now = new Date().toISOString();
+    const text = selectionUpdateText(count ?? 0);
+    const { data: last } = await supabase
+      .from("event_notifications")
+      .select("id, text")
+      .eq("event_id", gallery.event_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string; text: string }>();
+    if (last && isSelectionUpdateText(last.text)) {
+      await supabase.from("event_notifications").update({ text, created_at: now, read_at: now }).eq("id", last.id);
+    } else {
+      await supabase.from("event_notifications").insert({ event_id: gallery.event_id, text, is_client_action: true, read_at: now });
+    }
   }
 
   return NextResponse.json({ ok: true });

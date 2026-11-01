@@ -1,13 +1,19 @@
 import type { AlbumElement, AlbumFrame, AlbumPhotoElement } from "@/lib/types";
 import { marginInsetPctFor } from "@/lib/albumSafeArea";
 import {
+  albumOutline,
+  albumOutlineColor,
   canReturnToOriginal,
   changedFrameIds,
   cropOf,
+  keepOutlineColor,
+  outlineColorOf,
   pagePhotoIds,
   pushHistory,
+  sameDesign,
   samePage,
   swapRedesignPages,
+  withOutlineColor,
   type ClientEditRequest,
   type OriginalPage,
   type PageState,
@@ -28,11 +34,19 @@ import { AUTO_STYLES, type AutoStyleId, type LayoutPhoto } from "./types";
 //   pages starts both pages' history over.
 // - "original" returns one page to the photographer's design, only while it holds the photos it was
 //   sent with: after a swap with another page it isn't offered (owner, 2026-10-27).
+// - "outline" puts the outline of every photo that has one, on every page (the cover too), in the
+//   client's color (owner, 2026-11-01). It's the album's color, not a page design: no red dots (no
+//   frame moved or changed photo), nothing for "back" to step through. A redesign keeps the page's
+//   outline color, and "back" and "original" bring a design back in the album's one color, when it
+//   has one (keepOutlineColor). "reset" brings back the photographer's colors with everything else.
 // - Every page keeps how the photographer sent it (client_original) until the client's page is the
 //   same again; the frames the client changed get the photographer's red dot.
 
 export type EditSpread = {
   id: string;
+  // The old builder's fixed layouts draw their photos without outlines; only "custom" pages are drawn
+  // from their elements.
+  layout?: string | null;
   elements: AlbumElement[] | null;
   background_photo_id: string | null;
   width_cm: number | string | null;
@@ -69,7 +83,13 @@ export type RedesignCycle = { count: number; seen: string[] };
 
 export type ClientEditOutcome =
   | { ok: true; updates: SpreadUpdate[]; cycles: Record<string, RedesignCycle> }
-  | { ok: false; status: number; error: string; code?: "needs_redesign" | "cover" | "no_design" | "no_history" | "photos_moved" | "unchanged"; pages?: string[] };
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      code?: "needs_redesign" | "cover" | "no_design" | "no_history" | "photos_moved" | "unchanged" | "no_outline";
+      pages?: string[];
+    };
 
 // How much a client's redesign may crop a photo: up to the album quality check's warning line
 // (qualityCheck.ts), and up to its error line only to have a few designs to choose from.
@@ -173,7 +193,9 @@ function redesignPage(
   // again for them, is a new design too.
   const current = opts.newPhotos ? "" : designShape(photoEls);
   const choice = chooseRedesign(designs, { current, seen: new Set(cycle.seen), neighbours, count: cycle.count });
-  return { elements: choice.design ? choice.design.build() : null, count: choice.count, seen: [...choice.seen] };
+  // In the page's outline color: the engine's designs come in their style's own color.
+  const built = choice.design ? keepOutlineColor(choice.design.build(), outlineColorOf(elements), sp.client_original?.elements ?? sp.elements ?? []) : null;
+  return { elements: built, count: choice.count, seen: [...choice.seen] };
 }
 
 // A double page with a framed photo across its fold (at least 15% of it on each side), where the
@@ -231,21 +253,46 @@ function restored(sp: EditSpread): SpreadUpdate {
 export function applyClientEdit(ctx: ClientEditContext, req: ClientEditRequest): ClientEditOutcome {
   const byId = new Map(ctx.spreads.map((sp) => [sp.id, sp] as const));
   const notFound: ClientEditOutcome = { ok: false, status: 404, error: "העמוד לא נמצא" };
+  // The pages drawn from their elements (the old builder's fixed layouts draw no outlines).
+  const customPages = ctx.spreads.filter((sp) => !sp.layout || sp.layout === "custom");
+  // The album's one outline color, which a design brought back takes. Only when every outline in the
+  // album has it: a page of the engine's own color, from before (2026-11-01), doesn't spread it.
+  const albumColor = () => albumOutlineColor(customPages.map((sp) => sp.elements ?? []));
 
   if (req.action === "reset") {
     return { ok: true, updates: ctx.spreads.filter((sp) => sp.client_original).map(restored), cycles: {} };
   }
 
+  if (req.action === "outline") {
+    if (!albumOutline(customPages.map((sp) => sp.elements ?? [])).color) {
+      return { ok: false, status: 422, error: "אין באלבום תמונות עם קו מתאר", code: "no_outline" };
+    }
+    // Every page saved together by the route; a page already in the color isn't touched. Its
+    // designs to go back to stay as they are: "back" brings them in the album's color.
+    const updates = customPages.flatMap((sp) => {
+      const els = sp.elements ?? [];
+      const next = withOutlineColor(els, req.color, sp.client_original?.elements ?? els);
+      if (next.every((el, i) => el === els[i])) return [];
+      return [finalize(sp, { elements: next, background_photo_id: sp.background_photo_id }, sp.client_history)];
+    });
+    return { ok: true, updates, cycles: {} };
+  }
+
   if (req.action === "original") {
     const sp = byId.get(req.spreadId);
     if (!sp) return notFound;
-    if (!sp.client_original) return { ok: false, status: 409, error: "העמוד כבר בעיצוב המקורי", code: "unchanged" };
+    // A page whose only change is the album's outline color is in the photographer's design.
+    if (!sp.client_original || sameDesign(sp.client_original.elements, sp.elements ?? [])) {
+      return { ok: false, status: 409, error: "העמוד כבר בעיצוב המקורי", code: "unchanged" };
+    }
     if (!canReturnToOriginal(sp.client_original, sp.elements)) {
       return { ok: false, status: 409, error: "בעמוד הזה הוחלפו תמונות עם עמוד אחר", code: "photos_moved" };
     }
-    // The original is one more design of the same photos, and "back" returns from it.
+    // The original is one more design of the same photos, and "back" returns from it. In the album's
+    // one outline color (the client's, when they chose one).
     const o = sp.client_original;
-    const update = finalize(sp, { elements: o.elements, background_photo_id: o.background_photo_id }, pushHistory(sp.client_history, stateOf(sp)));
+    const elements = keepOutlineColor(o.elements, albumColor(), o.elements);
+    const update = finalize(sp, { elements, background_photo_id: o.background_photo_id }, pushHistory(sp.client_history, stateOf(sp)));
     return { ok: true, updates: [update], cycles: {} };
   }
 
@@ -258,7 +305,9 @@ export function applyClientEdit(ctx: ClientEditContext, req: ClientEditRequest):
     if (!prev || !sameSet(pagePhotoIds(prev.elements), pagePhotoIds(sp.elements ?? []))) {
       return { ok: false, status: 409, error: "אין עיצוב קודם לחזור אליו", code: "no_history" };
     }
-    return { ok: true, updates: [finalize(sp, prev, history.slice(0, -1))], cycles: {} };
+    // In the album's outline color: the client may have changed it since that design.
+    const elements = keepOutlineColor(prev.elements, albumColor(), sp.client_original?.elements ?? []);
+    return { ok: true, updates: [finalize(sp, { elements, background_photo_id: prev.background_photo_id }, history.slice(0, -1))], cycles: {} };
   }
 
   if (req.action === "redesign") {

@@ -1,8 +1,9 @@
 // The daily to-do list (owner, 2026-10-26, "עדכון ללא"): the photographer's own tasks by date, from
 // the "משימות" button in the home screen's header (TasksButton → TasksPanel, api/tasks, table
-// `tasks`, migration 0193). A row per task with its notes on a smaller line, or blocks. Tick the box
-// or swipe right to mark it done; swipe left or double-tap to delete; a single tap edits it. The
-// rules are here, shared by the panel and the routes.
+// `tasks`, migration 0193), and from the top nav on every other screen (owner, 2026-11-01:
+// TopNav, useNavTasks, api/tasks/summary). A row per task with its notes on a smaller line, or
+// blocks. Tick the box or swipe right to mark it done; swipe left or double-tap to delete; a single
+// tap edits it. The rules are here, shared by the panel and the routes.
 
 export const TASK_TITLE_MAX = 200;
 export const TASK_NOTES_MAX = 2000;
@@ -110,4 +111,42 @@ export function dayName(date: string, today: string): "today" | "tomorrow" | "ye
   if (date === shiftDate(today, 1)) return "tomorrow";
   if (date === shiftDate(today, -1)) return "yesterday";
   return "other";
+}
+
+// What the top nav needs for its tasks entry (api/tasks/summary): whether the account is a
+// photographer (a team member gets no tasks entry, like on the home screen), the open count
+// (openTasksDue, counted in the database) and the daily reminder's settings for the panel.
+export type MorningDigestPref = { enabled: boolean; minutes: number };
+export type TasksSummary =
+  | { photographer: false }
+  | { photographer: true; photographerId: string; openCount: number; morningDigest: MorningDigestPref };
+
+// The route's answer, checked. Anything else (a login page after the session ran out, a broken
+// answer) is null: unknown.
+export function parseTasksSummary(data: unknown): TasksSummary | null {
+  if (!data || typeof data !== "object") return null;
+  const o = data as Record<string, unknown>;
+  if (o.photographer === false) return { photographer: false };
+  if (o.photographer !== true) return null;
+  const digest = (o.morningDigest && typeof o.morningDigest === "object" ? o.morningDigest : {}) as Record<string, unknown>;
+  if (
+    typeof o.photographerId !== "string" ||
+    !o.photographerId ||
+    typeof o.openCount !== "number" ||
+    !Number.isInteger(o.openCount) ||
+    o.openCount < 0 ||
+    typeof digest.enabled !== "boolean" ||
+    typeof digest.minutes !== "number" ||
+    !Number.isInteger(digest.minutes) ||
+    digest.minutes < 0 ||
+    digest.minutes >= 24 * 60
+  ) {
+    return null;
+  }
+  return {
+    photographer: true,
+    photographerId: o.photographerId,
+    openCount: o.openCount,
+    morningDigest: { enabled: digest.enabled, minutes: digest.minutes },
+  };
 }

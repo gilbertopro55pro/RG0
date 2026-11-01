@@ -24,6 +24,8 @@ import {
   tabRoles,
   ownersTabIndexes,
   significantFaces,
+  bookSpreadCount,
+  splitExact,
   TOGETHER,
   weddingAutoPages,
   weddingSpreads,
@@ -1343,8 +1345,10 @@ describe("the combined album", () => {
     const order = plan.spreads.slice(plan.bookSpreads + 1).flatMap((s) => s.photoIds.map((id) => tabs.get(id)));
     expect(order).toEqual([...order].sort());
     expect(plan.bookSpreads + plan.eventSpreads).toBe(plan.spreads.length);
-    // The same number of photos in each part: about as many pages each.
-    expect(Math.abs(plan.bookSpreads - (plan.eventSpreads - 1))).toBeLessThanOrEqual(1);
+    // The book fills its share of the pages exactly (owner, 2026-11-01), 2 photos or more a page:
+    // 19 photos and an even share of 18 inner pages make 9.
+    expect(plan.bookSpreads).toBe(Math.min(combinedBookShare(18, 19, 18), 9));
+    expect(book.every((s) => s.book && s.photoIds.length >= 2)).toBe(true);
   });
 
   it("gives the book the pages the photographer set, and the event the rest", () => {
@@ -1540,5 +1544,50 @@ describe("the wedding album (owner, 2026-11-01)", () => {
   it("counts only the people clearly in the photo", () => {
     expect(significantFaces([{ height: 0.3 }, { height: 0.28 }, { height: 0.05 }])).toBe(2);
     expect(significantFaces([])).toBe(0);
+  });
+});
+
+describe("the book fills the pages typed (owner, 2026-11-01)", () => {
+  const BOOK: PlanOptions = { style: "clean", targetSpreads: 20, kind: "book" };
+  const mixed = (n: number) => shots("b", 1, n).map((p, i) => ({ ...p, aspect: i % 3 === 0 ? 1.5 : 0.67 }));
+
+  it("builds 20 pages from 50 photos, 2 or 3 on each, in shooting order", () => {
+    const photos = mixed(50);
+    const plan = planAlbum(photos, [], [], BOOK);
+    expect(plan.spreads).toHaveLength(19);
+    expect(plan.spreads.flatMap((s) => s.photoIds)).toEqual(photos.map((p) => p.id));
+    expect(new Set(sizes(plan))).toEqual(new Set([2, 3]));
+    expect(plan.spreads.every((s) => s.book)).toBe(true);
+  });
+
+  it("never makes a one-photo page: fewer photos than twice the pages take fewer pages", () => {
+    const plan = planAlbum(mixed(30), [], [], BOOK);
+    expect(plan.spreads).toHaveLength(15);
+    expect(sizes(plan).every((n) => n === 2)).toBe(true);
+    expect(planAlbum(mixed(3), [], [], BOOK).spreads.map((s) => s.photoIds.length)).toEqual([3]);
+  });
+
+  it("puts what the page caps can't hold on the last pages, up to 20, and drops nothing", () => {
+    const photos = mixed(250);
+    const plan = planAlbum(photos, [], [], BOOK);
+    expect(plan.spreads).toHaveLength(19);
+    expectEveryPhotoOnce(plan, photos);
+    plan.spreads.forEach((s, i) => expect(s.photoIds.length).toBeLessThanOrEqual(Math.max(pageCap(i + 1), 20)));
+  });
+
+  it("with no count typed takes about 2-3 photos a page, up to 30 pages", () => {
+    expect(bookSpreadCount(50, null)).toBe(20);
+    expect(bookSpreadCount(200, null)).toBe(29);
+    expect(bookSpreadCount(50, 20)).toBe(19);
+    expect(bookSpreadCount(50, 20, false)).toBe(20);
+    expect(planAlbum(mixed(50), [], [], { ...BOOK, targetSpreads: null }).spreads).toHaveLength(20);
+  });
+
+  it("splits a run over exactly the pages asked, as even as the caps allow", () => {
+    const ids = Array.from({ length: 40 }, (_, i) => `p${i}`);
+    // Pages 1-4 hold 6 each: the other 16 go to the last pages, up to 20.
+    expect(splitExact(ids, 1, 4).map((p) => p.length)).toEqual([6, 6, 8, 20]);
+    expect(splitExact(ids, 1, 4).flat()).toEqual(ids);
+    expect(splitExact(ids.slice(0, 7), 11, 3).map((p) => p.length)).toEqual([3, 2, 2]);
   });
 });

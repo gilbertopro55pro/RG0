@@ -45,6 +45,7 @@ import { clipSongLines, type ClipSongs } from "@/lib/clipSongs";
 import { allowsTwoSongs } from "@/lib/clipSongChoice";
 import { stageRole } from "@/lib/clientReminders";
 import ClipSongsStagePanel from "@/components/ClipSongsStagePanel";
+import ClipSongsReminder from "@/components/ClipSongsReminder";
 import ClipNotesView from "@/components/ClipNotesView";
 import { packageHasClip, type ClipNotesFields } from "@/lib/clipNotes";
 import SendUpdateButton from "@/components/SendUpdateButton";
@@ -444,6 +445,8 @@ export default function EventDetailView({
   const descriptorRole = (d: StageDescriptor) =>
     d.key.startsWith("custom:") ? stageRole(null, { name: d.label, requires_album_pdf: d.requiresAlbumPdf }) : stageRole(d.key);
   const songStageKey = stageDescriptors.find((d) => descriptorRole(d) === "client_song_selection")?.key ?? null;
+  const songStageLabel = stageDescriptors.find((d) => d.key === songStageKey)?.label ?? "";
+  const songStageDone = !!songStageKey && stages.some((s) => (s.stage_key ?? `custom:${s.custom_stage_id}`) === songStageKey && s.done);
   // The client's notes for the clip, from the portal (owner, 2026-10-25): to read and copy, under the
   // song stage, or in a card of their own in a package with a clip but no song stage.
   const hasClip = packageHasClip(stageDescriptors.map((d) => ({ role: descriptorRole(d), label: d.label })));
@@ -479,8 +482,11 @@ export default function EventDetailView({
       arrivalTime: event.arrival_time,
       depositAmount: payments ? payments.deposit_amount : null,
       balanceAmount: payments ? payments.balance_amount : null,
-      // The booking confirmation always links to the portal (owner, 2026-10-19).
-      linkUrl: linkUrl ?? ((key !== "event_closing" && galleryLink) || shortClientUrl(window.location.origin, "portal", event.client_access_token)),
+      // The booking confirmation always links to the portal (owner, 2026-10-19), and so does the
+      // song selection: the songs are chosen in the portal, not in the gallery (owner, 2026-11-01).
+      linkUrl:
+        linkUrl ?? ((key !== "event_closing" && key !== songStageKey && galleryLink) || shortClientUrl(window.location.origin, "portal", event.client_access_token)),
+      alwaysLink: key === songStageKey,
       whatsappSignature,
       senderName,
       lang: clientMessageLang,
@@ -1414,6 +1420,18 @@ export default function EventDetailView({
                       }}
                     />
                     <ClipNotesView notes={event.clip_notes ?? null} at={event.clip_notes_at ?? null} />
+                    {isOwner && !songStageDone && clipSongLines(clipSongs).length === 0 && (
+                      <ClipSongsReminder
+                        eventId={event.id}
+                        stageLabel={songStageLabel}
+                        clientName={event.client_name}
+                        lang={clientMessageLang}
+                        phone={event.client_phone}
+                        email={clientEmail}
+                        buildMessage={() => buildClientUpdateMessage(songStageKey, songStageLabel)}
+                        onSent={() => void refreshNotifications()}
+                      />
+                    )}
                   </>
                 ),
               }

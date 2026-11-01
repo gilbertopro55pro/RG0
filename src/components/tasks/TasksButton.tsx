@@ -1,19 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useT } from "@/i18n/client";
 import { useVivid } from "@/components/VividProvider";
 import { VIVID_HEADER_BUTTON_STYLE } from "@/components/homeVividStyles";
-
-// The panel loads only when opened.
-const TasksPanel = dynamic(() => import("@/components/tasks/TasksPanel"), { ssr: false });
+import LazyTasksPanel from "@/components/tasks/LazyTasksPanel";
+import TasksIcon from "@/components/tasks/TasksIcon";
+import { publishTasksSummary, updateTasksSummary } from "@/components/tasks/tasksSummary";
 
 // The daily to-do list's button in the home screen's header (owner, 2026-10-26, lib/tasks.ts), beside
 // the calendar and settings buttons, with the number of open tasks for today and earlier days.
 // ?tasks=1 (the daily tasks reminder, lib/morningDigest.ts) opens the panel; the parameter is then
-// dropped from the address so a refresh doesn't open it again.
+// dropped from the address so a refresh doesn't open it again. What it knows from the server render
+// goes to the shared summary (tasksSummary.ts), so the top nav on the next screen shows the same
+// number without asking (TopNav is hidden on the home screen).
 export default function TasksButton({
   initialOpenCount,
   photographerId,
@@ -37,7 +38,28 @@ export default function TasksButton({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [count, setCount] = useState(initialOpenCount);
+  // A refresh of the home screen brings a new count (a task changed from the nav on another
+  // screen, then back here): the button follows it.
+  const [renderedCount, setRenderedCount] = useState(initialOpenCount);
+  if (renderedCount !== initialOpenCount) {
+    setRenderedCount(initialOpenCount);
+    setCount(initialOpenCount);
+  }
   const [changed, setChanged] = useState(false);
+
+  const { enabled: digestEnabled, minutes: digestMinutes } = initialMorningDigest;
+  useEffect(() => {
+    publishTasksSummary({ photographer: true, photographerId, openCount: initialOpenCount, morningDigest: { enabled: digestEnabled, minutes: digestMinutes } });
+  }, [photographerId, initialOpenCount, digestEnabled, digestMinutes]);
+
+  const onCount = useCallback((n: number) => {
+    setCount(n);
+    updateTasksSummary({ openCount: n });
+  }, []);
+  const onMorningDigest = useCallback((next: { enabled: boolean; minutes: number }) => {
+    setMorningDigest(next);
+    updateTasksSummary({ morningDigest: next });
+  }, []);
 
   return (
     <>
@@ -49,10 +71,7 @@ export default function TasksButton({
         className={`relative shrink-0 rounded-xl flex items-center justify-center gap-1.5 px-2.5 sm:px-3 ${vivid ? "h-[42px] min-w-[42px]" : "h-10 min-w-10 bg-card text-ink"}`}
         style={vivid ? VIVID_HEADER_BUTTON_STYLE : undefined}
       >
-        <svg viewBox="0 0 24 24" className="h-[19px] w-[19px] shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <rect x="3.5" y="4" width="17" height="17" rx="2.5" />
-          <path d="m7.5 9.5 1.5 1.5 3-3M14.5 10h2.5M7.5 15.5l1.5 1.5 3-3M14.5 16h2.5" />
-        </svg>
+        <TasksIcon className="h-[19px] w-[19px] shrink-0" />
         <span className="hidden sm:inline text-[13px] font-semibold">{t("משימות")}</span>
         {count > 0 && (
           <span
@@ -64,11 +83,11 @@ export default function TasksButton({
         )}
       </button>
       {open && (
-        <TasksPanel
+        <LazyTasksPanel
           photographerId={photographerId}
           morningDigest={morningDigest}
-          onMorningDigest={setMorningDigest}
-          onCount={setCount}
+          onMorningDigest={onMorningDigest}
+          onCount={onCount}
           onChanged={() => setChanged(true)}
           onClose={() => {
             setOpen(false);

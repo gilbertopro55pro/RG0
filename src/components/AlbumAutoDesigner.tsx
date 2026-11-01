@@ -37,9 +37,11 @@ import {
 } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutOpener, layoutSpread } from "@/lib/albumAuto/layouts";
 import { headSafeElements } from "@/lib/albumAuto/headSafe";
+import { bookElements, bookPage } from "@/lib/albumAuto/bookLayout";
+import { pageFinish } from "@/lib/albumAuto/redesign";
 import { isDoublePage } from "@/lib/albumAuto/qualityCheck";
 import { endAutoDesignSession, getAutoDesignSession, mountAutoDesigner, useSessionState, waitForAutoDesigner } from "@/lib/albumAuto/session";
-import type { AlbumElement } from "@/lib/types";
+import type { AlbumElement, AlbumPhotoElement } from "@/lib/types";
 import { useLang, useT } from "@/i18n/client";
 
 // Auto album design (admin only while it's being polished, 2026-09-29): the photographer picks the
@@ -590,17 +592,19 @@ export default function AlbumAutoDesigner({
         : (() => {
             // Mostly the photographer's own page templates (70%), the style's layout for the rest
             // (owner, 2026-10-06) — see ownTemplatePlan.
+            // Centred, with near edges lined up, as the owner corrected them (tidyOwnFrames).
+            const ownFrames = pageTemplates
+              .map((tpl) => tpl.frames)
+              .filter((f) => Array.isArray(f) && f.length > 0)
+              .map(tidyOwnFrames);
             const ownPlan = ownTemplatePlan(
               plan.spreads.map((s) => [...new Set(s.photoIds)].map(layoutPhoto)),
-              // Centred, with near edges lined up, as the owner corrected them (tidyOwnFrames).
-              pageTemplates
-                .map((tpl) => tpl.frames)
-                .filter((f) => Array.isArray(f) && f.length > 0)
-                .map(tidyOwnFrames),
+              ownFrames,
               size.width,
               size.height,
               { marginCm: size.margin }
             );
+            let lastBookShape: string | null = null;
             return plan.spreads.map((s, i) => {
               if (s.opener) {
                 // The combined album's opening page for its second event: its photo and its name.
@@ -617,11 +621,24 @@ export default function AlbumAutoDesigner({
                 heightCm: size.height,
               });
               const background = out.background ? { background: out.background } : {};
+              const pageShapes = out.elements.filter((e) => e.type === "shape" && e.xPct <= 0.5 && e.yPct <= 0.5 && e.widthPct >= 99.5 && e.heightPct >= 99.5);
+              if (s.book) {
+                // A book's page (owner, 2026-11-01): its photos as large as the page holds, none cut
+                // (bookPage), the photographer's own templates for this many photos among the
+                // layouts weighed. The style's page colour, blurred background and photo finish stay.
+                const photos = [...new Set(s.photoIds)].map(layoutPhoto);
+                const page = bookPage(photos, { widthCm: size.width, heightCm: size.height, marginCm: size.margin, spreadIndex: i, extra: ownFrames, avoidShape: lastBookShape });
+                if (page) {
+                  lastBookShape = page.shape;
+                  const finish = pageFinish(out.elements.filter((e): e is AlbumPhotoElement => e.type === "photo" && !!e.photoId));
+                  const placed = bookElements(page, size.width, size.height, size.margin, `book-${i}`, finish);
+                  return { elements: [...pageShapes, ...placed], bleedIds: pageShapes.map((e) => e.id), ...background };
+                }
+              }
               const own = ownPlan[i];
               if (!own) return { elements: out.elements, bleedIds: out.bleedIds ?? [], ...background };
               // The style's page colour (a full-page shape) and blurred background stay, so own pages
               // sit in the same book; the photos take the template's frames and its own finish.
-              const pageShapes = out.elements.filter((e) => e.type === "shape" && e.xPct <= 0.5 && e.yPct <= 0.5 && e.widthPct >= 99.5 && e.heightPct >= 99.5);
               const placed = frameElements(own, [...new Set(s.photoIds)].map(layoutPhoto), size.width, size.height, `own-${i}`);
               // A main photo that ends just at the frames beside it fades into them (fadeOwnHeroes), in
               // the two styles whose main photos fade.
@@ -1031,7 +1048,7 @@ export default function AlbumAutoDesigner({
             ) : (
             <p className="text-xs text-ink-soft leading-relaxed">
               {isBook
-                ? t("בבוק אין חלקי משפחה: כל התמונות נכנסות לאלבום לפי שעת הצילום.")
+                ? t("בבוק אין חלקי משפחה: כל התמונות נכנסות לאלבום לפי שעת הצילום, גדולות ככל שהדף מאפשר ובלי לחתוך את הדמות. האלבום נבנה בדיוק במספר העמודים שנבחר, 2 תמונות לפחות בכל דף.")
                 : tabOrder
                   ? combined
                     ? t("החלק של {event} נבנה לפי הלשוניות שלו, בסדר שלהן: {tabs}. בכל לשונית התמונות לפי שעת הצילום.", { event: tabLabel(combined.event.name), tabs: tabOrder.main.join(", ") })

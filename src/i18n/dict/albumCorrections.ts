@@ -3,7 +3,9 @@ import type { AreaDict } from "@/i18n/types";
 // Area "albumCorrections" (see src/i18n/dict/index.ts): the client's corrections on the album design,
 // as the photographer gets them — the email and phone notification (api/gallery/[token]/album/
 // corrections) and the corrections page (app/album-corrections/[id], AlbumCorrectionsView). The
-// client's own side of the tool is in clientGallery.ts.
+// client's own side of the tool is in clientGallery.ts, except the photos' outline color
+// (2026-11-01), here on both sides: the client's control in GalleryAlbumProofing, and the line the
+// photographer gets about it.
 const dict: AreaDict = {
   en: {
     "יש תיקונים לביצוע באלבום {name}": "There are changes to make in the album: {name}",
@@ -21,6 +23,18 @@ const dict: AreaDict = {
     "הלקוח אישר בינתיים את העיצוב.": "The client has since approved the design.",
     "הם גם שינו בעצמם את העיצוב בעמודים: {pages}.": "They also changed the design themselves on pages: {pages}.",
     "לפני האישור הם שינו בעצמם את העיצוב בעמודים: {pages}.": "Before approving, they changed the design themselves on pages: {pages}.",
+    "הם גם שינו את צבע קו המתאר של התמונות ({color}).": "They also changed the photos' outline color ({color}).",
+    "הם גם שינו את צבע קו המתאר של התמונות.": "They also changed the photos' outline color.",
+    "לפני האישור הם שינו את צבע קו המתאר של התמונות ({color}).": "Before approving, they changed the photos' outline color ({color}).",
+    "לפני האישור הם שינו את צבע קו המתאר של התמונות.": "Before approving, they changed the photos' outline color.",
+    "צבע קו המתאר": "Outline color",
+    "השינוי חל על כל התמונות באלבום שיש להן קו מתאר.": "The change applies to every photo in the album that has an outline.",
+    "אפור": "Gray",
+    "אפור כהה": "Dark gray",
+    "הצבע הנוכחי": "Current color",
+    "הצבע שהצלם בחר": "The photographer's color",
+    "צבע קו המתאר עודכן בכל האלבום.": "The outline color was updated across the album.",
+    "צבע קו המתאר יחזור לצבע שהצלם בחר.": "The outline color will go back to the photographer's color.",
   },
   ru: {
     "יש תיקונים לביצוע באלבום {name}": "Есть правки в альбоме: {name}",
@@ -38,6 +52,18 @@ const dict: AreaDict = {
     "הלקוח אישר בינתיים את העיצוב.": "Клиент тем временем утвердил дизайн.",
     "הם גם שינו בעצמם את העיצוב בעמודים: {pages}.": "Они также сами изменили дизайн на страницах: {pages}.",
     "לפני האישור הם שינו בעצמם את העיצוב בעמודים: {pages}.": "Перед утверждением они сами изменили дизайн на страницах: {pages}.",
+    "הם גם שינו את צבע קו המתאר של התמונות ({color}).": "Они также изменили цвет контура фотографий ({color}).",
+    "הם גם שינו את צבע קו המתאר של התמונות.": "Они также изменили цвет контура фотографий.",
+    "לפני האישור הם שינו את צבע קו המתאר של התמונות ({color}).": "Перед утверждением они изменили цвет контура фотографий ({color}).",
+    "לפני האישור הם שינו את צבע קו המתאר של התמונות.": "Перед утверждением они изменили цвет контура фотографий.",
+    "צבע קו המתאר": "Цвет контура",
+    "השינוי חל על כל התמונות באלבום שיש להן קו מתאר.": "Изменение применяется ко всем фото в альбоме, у которых есть контур.",
+    "אפור": "Серый",
+    "אפור כהה": "Тёмно-серый",
+    "הצבע הנוכחי": "Текущий цвет",
+    "הצבע שהצלם בחר": "Цвет, выбранный фотографом",
+    "צבע קו המתאר עודכן בכל האלבום.": "Цвет контура обновлён во всём альбоме.",
+    "צבע קו המתאר יחזור לצבע שהצלם בחר.": "Цвет контура вернётся к цвету, выбранному фотографом.",
   },
 };
 

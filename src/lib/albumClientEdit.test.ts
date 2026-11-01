@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   CLIENT_HISTORY_MAX,
+  albumOutline,
+  albumOutlineColor,
   canReturnToOriginal,
   changedFrameIds,
+  clientChanges,
   cropOf,
   fitsFrame,
+  keepOutlineColor,
+  outlineColorLabel,
+  outlineColorOf,
   pageList,
   pagePhotoIds,
   parseClientEditRequest,
@@ -12,6 +18,7 @@ import {
   resetPagesLine,
   samePage,
   swapRedesignPages,
+  withOutlineColor,
 } from "@/lib/albumClientEdit";
 import type { AlbumElement, AlbumPhotoElement } from "@/lib/types";
 
@@ -166,5 +173,80 @@ describe("parseClientEditRequest", () => {
     expect(parseClientEditRequest({ action: "original", spreadId: id1 })).toEqual({ action: "original", spreadId: id1 });
     expect(parseClientEditRequest({ action: "original" })).toBeNull();
     expect(parseClientEditRequest({ action: "reset" })).toEqual({ action: "reset" });
+  });
+});
+
+// The photos' outline color, changed by the client for the whole album (owner, 2026-11-01).
+describe("the photos' outline color", () => {
+  const framed = (id: string, photoId: string, color?: string) => photo(id, photoId, { borderWidth: 3, ...(color ? { borderColor: color } : {}) });
+  const bare = photo("bl", "p9", { xPct: 0, yPct: 0, widthPct: 100, heightPct: 100 });
+
+  it("parses only a #rrggbb color, lowercase", () => {
+    expect(parseClientEditRequest({ action: "outline", color: "#ABCdef" })).toEqual({ action: "outline", color: "#abcdef" });
+    for (const color of ["#fff", "red", "#12345g", "#1234567", " #123456", "url(x)", 7, null, undefined]) {
+      expect(parseClientEditRequest({ action: "outline", color })).toBeNull();
+    }
+  });
+
+  it("recolors only photos with an outline, and gives back the photographer's own value for their color", () => {
+    const els = [framed("a", "p1"), framed("b", "p2", "#D4AF37"), bare] as AlbumElement[];
+    const black = withOutlineColor(els, "#000000", els);
+    expect(black.map((el) => (el as AlbumPhotoElement).borderColor)).toEqual(["#000000", "#000000", undefined]);
+    expect(black[2]).toBe(els[2]);
+    // Back to white: "a" had no color saved (white), and takes back exactly that.
+    const white = withOutlineColor(black, "#ffffff", els);
+    expect(samePage({ elements: white, background_photo_id: null }, { elements: [els[0], { ...(els[1] as AlbumPhotoElement), borderColor: "#ffffff" }, els[2]], background_photo_id: null })).toBe(true);
+    expect(withOutlineColor(black, "#d4af37", els)[1]).toEqual(els[1]);
+  });
+
+  it("reads a page's one color, and the album's most common", () => {
+    expect(outlineColorOf([framed("a", "p1"), framed("b", "p2", "#FFF"), bare])).toBe("#ffffff");
+    expect(outlineColorOf([framed("a", "p1"), framed("b", "p2", "#000000")])).toBeNull();
+    expect(outlineColorOf([bare])).toBeNull();
+    expect(albumOutline([[framed("a", "p1", "#000000"), framed("b", "p2", "#000000")], [framed("c", "p3")]])).toEqual({ color: "#000000", mixed: true });
+    expect(albumOutline([[bare]])).toEqual({ color: null, mixed: false });
+  });
+
+  it("puts a design in the page's or the album's color", () => {
+    const now = [framed("a", "p1", "#b03a2e"), framed("b", "p2", "#b03a2e")];
+    const engine = [framed("x", "p2", "#000000"), framed("y", "p1", "#000000"), bare];
+    expect(keepOutlineColor(engine, outlineColorOf(now)).map((el) => el.borderColor)).toEqual(["#b03a2e", "#b03a2e", undefined]);
+    // No one color (outlines that differ, or none) leaves the design's own.
+    expect(keepOutlineColor(engine, outlineColorOf([framed("a", "p1", "#b03a2e"), framed("b", "p2")]))).toEqual(engine);
+    expect(albumOutlineColor([now, [framed("c", "p3", "#B03A2E"), bare]])).toBe("#b03a2e");
+    expect(albumOutlineColor([now, [framed("c", "p3")]])).toBeNull();
+    expect(albumOutlineColor([[bare]])).toBeNull();
+  });
+
+  it("doesn't offer the photographer's design for a page whose only change is the color", () => {
+    const sent = { elements: [framed("a", "p1"), framed("b", "p2")] as AlbumElement[] };
+    expect(canReturnToOriginal(sent, withOutlineColor(sent.elements, "#000000"))).toBe(false);
+    expect(canReturnToOriginal(sent, [framed("a", "p2", "#000000"), framed("b", "p1", "#000000")])).toBe(true);
+  });
+
+  it("tells the photographer the pages whose design changed, and the color once for the album", () => {
+    const sent = (els: AlbumElement[]) => ({ elements: els, background_photo_id: null, marked_frames: [] });
+    const p1 = [framed("a", "p1"), framed("b", "p2")] as AlbumElement[];
+    const p2 = [framed("c", "p3"), framed("d", "p4")] as AlbumElement[];
+    const p3 = [framed("e", "p5")] as AlbumElement[];
+    const changes = clientChanges([
+      // The cover: only its color.
+      { client_edited_at: "2026-11-01", elements: withOutlineColor(p1, "#000000"), client_original: sent(p1) },
+      // Page 2: redesigned (new frames), in the new color.
+      { client_edited_at: "2026-11-01", elements: [framed("n1", "p4", "#000000"), framed("n2", "p3", "#000000")], client_original: sent(p2) },
+      // Page 3: as sent.
+      { client_edited_at: null, elements: p3, client_original: null },
+    ]);
+    expect(changes).toEqual({ pages: [2], outline: { color: "#000000" } });
+    expect(clientChanges([{ client_edited_at: "2026-11-01", elements: [framed("b", "p2"), framed("a", "p1")], client_original: sent(p1) }])).toEqual({ pages: [1], outline: null });
+    expect(clientChanges([{ client_edited_at: null, elements: p1, client_original: null }])).toEqual({ pages: [], outline: null });
+  });
+
+  it("names a swatch's color for the photographer, and gives another color's code", () => {
+    const t = (key: string) => `[${key}]`;
+    expect(outlineColorLabel("#000000", t)).toBe("[שחור]");
+    expect(outlineColorLabel("#D4AF37", t)).toBe("[זהב]");
+    expect(outlineColorLabel("#123abc", t)).toBe("#123abc");
+    expect(outlineColorLabel(null, t)).toBeNull();
   });
 });
