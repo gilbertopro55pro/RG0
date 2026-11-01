@@ -70,9 +70,12 @@ describe("shareCodeFor / tabsForShareCode", () => {
 describe("portfolioShareMessage", () => {
   const url = "https://myframeflow.com/p/gilberto/Oeb";
 
-  it("signs with the saved signature", () => {
+  const BODY = "מצורף קישור לתיק העבודות שלנו 📸\nנשמח שתתרשמו, ונהיה זמינים לכל שאלה.";
+
+  // The fixed client-message shape (owner, 2026-11-01): greeting, body, "קישור:" line, blank line, signature.
+  it("has the fixed shape and signs with the saved signature", () => {
     expect(portfolioShareMessage(url, "רועי גלברט\n050-0000000", "רועי גלברט - צילום אירועים 📸")).toBe(
-      `היי, אשמח שתעיפו מבט בתיק העבודות שלי 📸\n${url}\n\nרועי גלברט\n050-0000000`
+      `שלום,\n${BODY}\nקישור: ${url}\n\nרועי גלברט\n050-0000000`
     );
   });
 
@@ -83,6 +86,6 @@ describe("portfolioShareMessage", () => {
   });
 
   it("leaves the signature line out when there's neither", () => {
-    expect(portfolioShareMessage(url, null, null)).toBe(`היי, אשמח שתעיפו מבט בתיק העבודות שלי 📸\n${url}`);
+    expect(portfolioShareMessage(url, null, null)).toBe(`שלום,\n${BODY}\nקישור: ${url}`);
   });
 });

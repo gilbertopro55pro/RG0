@@ -6,8 +6,8 @@ describe("albumApprovalMessage", () => {
   it("greets the client, carries the link and signs once", () => {
     const text = albumApprovalMessage({ clientName: "דנה כהן", link: "https://myframeflow.com/s/gAbc?album=1", signature: "סטודיו אור", senderName: "אור", lang: "he" });
     expect(text.startsWith("שלום דנה,\n")).toBe(true);
-    expect(text).toContain("https://myframeflow.com/s/gAbc?album=1");
-    expect(text).toContain("לאשר אותו או לסמן תיקונים");
+    expect(text).toContain("\nקישור: https://myframeflow.com/s/gAbc?album=1\n");
+    expect(text).toContain("לאשר את העיצוב או לסמן תיקונים");
     expect(text.endsWith("\n\nסטודיו אור")).toBe(true);
     expect(text).not.toContain("\nאור");
   });
@@ -20,9 +20,9 @@ describe("albumApprovalMessage", () => {
     expect(albumApprovalMessage({ clientName: "Dana Cohen", link: "L", signature: null, senderName: null, lang: "en" }).startsWith("Hi Dana,")).toBe(true);
     expect(albumApprovalMessage({ clientName: "Анна", link: "L", signature: null, senderName: null, lang: "ru" }).startsWith("Здравствуйте, Анна!")).toBe(true);
   });
-  it("drops the greeting line when there's no name", () => {
+  it("greets without a name when there's none (every client message opens with a greeting)", () => {
     const text = albumApprovalMessage({ clientName: "", link: "L", signature: null, senderName: null, lang: "he" });
-    expect(text.startsWith("עיצוב האלבום מוכן")).toBe(true);
+    expect(text).toBe("שלום,\nעיצוב האלבום שלכם מוכן 🎉\nאפשר לדפדף בו, ובסוף לאשר את העיצוב או לסמן תיקונים.\nקישור: L");
   });
 });
 

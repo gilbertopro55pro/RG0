@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isInvoiceProviderConnected, issueClientDocument } from "@/lib/invoicing";
 import type { InvoiceProvider } from "@/lib/types";
 import { amountToDocument, documentedOnLeg, paymentMethodLabel, receivedOnLeg, RECEIPT_PAYMENT_METHODS, type PaymentLegDocState, type ReceiptPaymentMethod } from "@/lib/paymentDocuments";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
@@ -149,7 +150,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // A short link for the message (myframeflow.com/r/<token>) instead of the provider's long URL.
     const shortLink = await createReceiptLink(request, { photographerId: user.id, eventId, documentUrl: documentLink, amount, customerName });
     const ils = `₪${amount.toLocaleString("he-IL")}`;
-    const shareText = `שלום ${customerName}, מצורפת קבלה על תשלום בסך ${ils}.\nלצפייה בקבלה: ${shortLink ?? documentLink}\nתודה,\n${photographer.name}`;
+    // The fixed client-message shape (lib/clientMessageFormat.ts), signed with the name as before.
+    const shareText = formatClientMessage({
+      lang: "he",
+      name: customerName,
+      body: `מצורפת קבלה על התשלום בסך ${ils}. תודה רבה.`,
+      link: shortLink ?? documentLink,
+      senderName: photographer.name,
+    });
     return NextResponse.json({ documentUrl: documentLink, documentedAmount, amount, patch, shareText });
   } catch (e) {
     return NextResponse.json(

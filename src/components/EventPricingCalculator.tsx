@@ -253,8 +253,9 @@ export default function EventPricingCalculator({
         data: { user },
       } = await sb.auth.getUser();
       if (!user) return;
-      const { data } = await sb.from("photographers").select("whatsapp_signature").eq("id", user.id).maybeSingle<{ whatsapp_signature: string | null }>();
-      if (alive) setSignature(data?.whatsapp_signature ?? null);
+      // The WhatsApp signature, or the photographer's name without one (every client message ends so).
+      const { data } = await sb.from("photographers").select("whatsapp_signature, name").eq("id", user.id).maybeSingle<{ whatsapp_signature: string | null; name: string | null }>();
+      if (alive) setSignature(data?.whatsapp_signature?.trim() || data?.name?.trim() || null);
     })();
     return () => {
       alive = false;
@@ -731,11 +732,13 @@ export default function EventPricingCalculator({
   const messageFor = (withContract: boolean) =>
     linkTarget
       ? quoteLinkMessage(
-          quoteShareCaption(quoteClientName, quoteEventType, formatDateDMY(quoteEventDate), messageLang, quoteEventDate),
+          quoteShareCaption("", quoteEventType, formatDateDMY(quoteEventDate), messageLang, quoteEventDate),
           shortClientUrl(typeof window === "undefined" ? "" : window.location.origin, "quote", linkTarget.token),
           signature,
           withContract,
-          messageLang
+          messageLang,
+          false,
+          { clientName: quoteClientName }
         )
       : "";
   const linkMessage = messageFor(sentWithContract);

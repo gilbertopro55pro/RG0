@@ -54,11 +54,14 @@ export default function GalleriesListView({
   initialView,
   photographerName,
   photographerEmail,
+  photographerSignature = null,
 }: {
   items: GalleryListItem[];
   initialView: GalleriesView;
   photographerName: string;
   photographerEmail: string;
+  // For the gallery share message (signed with the name without a signature).
+  photographerSignature?: string | null;
 }) {
   const t = useT();
   const lang = useLang();
@@ -398,6 +401,7 @@ export default function GalleriesListView({
           item={quickActionsItem}
           photographerName={photographerName}
           photographerEmail={photographerEmail}
+          photographerSignature={photographerSignature}
           onClose={() => setQuickActionsItem(null)}
           onDeleted={() => setQuickActionsItem(null)}
         />

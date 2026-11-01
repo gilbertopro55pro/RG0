@@ -26,14 +26,14 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
     supabase
       .from("galleries")
       .select(
-        "*, events(client_name, event_date, client_lang), gallery_folders(*), photographers(name, email, plan, subscription_status, trial_ends_at, logo_storage_path)"
+        "*, events(client_name, event_date, client_lang), gallery_folders(*), photographers(name, email, plan, subscription_status, trial_ends_at, logo_storage_path, whatsapp_signature)"
       )
       .eq("id", id)
       .maybeSingle<
         GalleryRow & {
           events: Pick<EventRow, "client_name" | "event_date" | "client_lang"> | null;
           gallery_folders: GalleryFolderRow[];
-          photographers: Pick<Photographer, "name" | "email" | "plan" | "subscription_status" | "trial_ends_at" | "logo_storage_path"> | null;
+          photographers: Pick<Photographer, "name" | "email" | "plan" | "subscription_status" | "trial_ends_at" | "logo_storage_path" | "whatsapp_signature"> | null;
         }
       >(),
     fetchAllRowsCounted<GalleryPhotoRow>((from, to) =>
@@ -106,6 +106,7 @@ export default async function GalleryManagePage({ params }: { params: Promise<{ 
         initialFolders={folders ?? []}
         photographerName={photographer?.name ?? ""}
         photographerEmail={photographer?.email ?? ""}
+        photographerSignature={photographer?.whatsapp_signature ?? null}
         photographerPlan={photographer?.plan ?? "monthly"}
         clientLang={clientLangFor(photographer?.email, event?.client_lang)}
       />

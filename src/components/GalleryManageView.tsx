@@ -164,6 +164,7 @@ export default function GalleryManageView({
   photographerPlan,
   clientLang = "he",
   brandLogoUrl = null,
+  photographerSignature = null,
 }: {
   eventId: string | null;
   clientName: string;
@@ -179,6 +180,8 @@ export default function GalleryManageView({
   clientLang?: Lang;
   // The photographer's logo when gallery branding applies (see galleryBrandingAllowed), else null.
   brandLogoUrl?: string | null;
+  // The photographer's WhatsApp signature, for the messages to the client (their name without one).
+  photographerSignature?: string | null;
 }) {
   const t = useT();
   const lang = useLang();
@@ -1935,6 +1938,8 @@ export default function GalleryManageView({
       allowSaveDialog: exportRangeFormat === "pdf",
       clientPhone: gallery.client_phone,
       clientLang,
+      clientName,
+      signature: photographerSignature?.trim() || photographerName?.trim() || null,
     });
   };
 
@@ -2783,7 +2788,7 @@ export default function GalleryManageView({
   // The text itself lives in GalleryShareModal (shared with the galleries list's quick share): one
   // specific account's own wording, a generic one for everyone else, in the client's language.
   const buildShareMessage = (url: string) =>
-    buildGalleryShareMessage({ url, clientName, photographerName, photographerEmail, expiryDays, lang: clientLang });
+    buildGalleryShareMessage({ url, clientName, photographerName, photographerEmail, expiryDays, lang: clientLang, signature: photographerSignature });
 
   const shareViaWhatsapp = () => {
     const text = buildShareMessage(buildShareUrl());
@@ -2816,7 +2821,7 @@ export default function GalleryManageView({
     if (!gallery.client_phone) return;
     setSendingUploadUpdate(true);
     const url = buildShareUrl();
-    const text = buildGalleryPhotosUploadedMessage({ url, clientName, count, lang: clientLang });
+    const text = buildGalleryPhotosUploadedMessage({ url, clientName, count, lang: clientLang, signature: photographerSignature, senderName: photographerName });
     openWhatsApp(gallery.client_phone, text);
     if (eventId) {
       fetch(`/api/events/${eventId}/notify`, {

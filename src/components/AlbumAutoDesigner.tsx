@@ -37,7 +37,9 @@ import {
 } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutOpener, layoutSpread } from "@/lib/albumAuto/layouts";
 import { headSafeElements } from "@/lib/albumAuto/headSafe";
-import { bookElements, bookPage } from "@/lib/albumAuto/bookLayout";
+import { bookElements, bookFadePage, bookPage } from "@/lib/albumAuto/bookLayout";
+import { AUTO_OUTLINE_DEFAULT, AUTO_OUTLINE_MAX, clampOutlineWidth, withAutoOutline, type AutoOutline } from "@/lib/albumAuto/outline";
+import { OUTLINE_SWATCHES } from "@/lib/albumClientEdit";
 import { pageFinish } from "@/lib/albumAuto/redesign";
 import { isDoublePage } from "@/lib/albumAuto/qualityCheck";
 import { endAutoDesignSession, getAutoDesignSession, mountAutoDesigner, useSessionState, waitForAutoDesigner } from "@/lib/albumAuto/session";
@@ -186,6 +188,8 @@ export default function AlbumAutoDesigner({
   // pages are filled with the photos — owner, 2026-09-30).
   const [choice, setChoice] = useSessionState<string>(session, "choice", "style:clean");
   const style: AutoStyleId = choice.startsWith("style:") ? (choice.slice(6) as AutoStyleId) : "clean";
+  // The photos' outline (owner, 2026-11-01): null = the style's own; width 0 = none.
+  const [outline, setOutline] = useSessionState<AutoOutline>(session, "outline", null);
   const [bookTemplates, setBookTemplates] = useState<AlbumBookTemplateRow[]>([]);
   const [pageTemplates, setPageTemplates] = useState<AlbumTemplateRow[]>([]);
   useEffect(() => {
@@ -605,6 +609,8 @@ export default function AlbumAutoDesigner({
               { marginCm: size.margin }
             );
             let lastBookShape: string | null = null;
+            // The faded pages in turn, so the faded photo's side alternates between them.
+            let fadeTurn = 0;
             return plan.spreads.map((s, i) => {
               if (s.opener) {
                 // The combined album's opening page for its second event: its photo and its name.
@@ -627,6 +633,14 @@ export default function AlbumAutoDesigner({
                 // (bookPage), the photographer's own templates for this many photos among the
                 // layouts weighed. The style's page colour, blurred background and photo finish stay.
                 const photos = [...new Set(s.photoIds)].map(layoutPhoto);
+                // First choice (owner, 2026-11-01): a large faded photo, the others in rows on its
+                // faded strip, as the clean line lays them out (clean and modern; 2+ photos).
+                const fade = bookFadePage({ style, photos, section: s.section, spreadIndex: i, bookTurn: fadeTurn, widthCm: size.width, heightCm: size.height }, size.margin);
+                if (fade) {
+                  lastBookShape = null;
+                  fadeTurn++;
+                  return { elements: fade.elements, bleedIds: fade.bleedIds ?? [], ...(fade.background ? { background: fade.background } : {}) };
+                }
                 const page = bookPage(photos, { widthCm: size.width, heightCm: size.height, marginCm: size.margin, spreadIndex: i, extra: ownFrames, avoidShape: lastBookShape });
                 if (page) {
                   lastBookShape = page.shape;
@@ -677,6 +691,9 @@ export default function AlbumAutoDesigner({
       const safeCover = cover
         ? { ...cover, elements: headSafeElements({ elements: cover.elements, bleedIds: cover.bleedIds, widthCm: cover.widthCm, heightCm: cover.heightCm }, { ...safeOpts, fold: false }) }
         : null;
+      // The outline the photographer chose, on every framed photo (withAutoOutline).
+      const outlinedSpreads = safeSpreads.map((s) => ({ ...s, elements: withAutoOutline(s.elements, s.bleedIds, outline) }));
+      const outlinedCover = safeCover ? { ...safeCover, elements: withAutoOutline(safeCover.elements, safeCover.bleedIds, outline) } : null;
       setProgress("layout", 1, t("{n} עמודים", { n: spreads.length + (cover ? 1 : 0) }));
       checkCancel();
 
@@ -686,7 +703,7 @@ export default function AlbumAutoDesigner({
       // that finished in portrait waits until the phone is turned back.
       await waitForAutoDesigner(session);
       checkCancel();
-      await (session.onCreate as (r: AutoDesignResult) => Promise<void>)({ size, style, cover: safeCover, spreads: safeSpreads });
+      await (session.onCreate as (r: AutoDesignResult) => Promise<void>)({ size, style, cover: outlinedCover, spreads: outlinedSpreads });
       setProgress("save", 1);
       endAutoDesignSession(galleryId);
     } catch (e) {
@@ -849,6 +866,7 @@ export default function AlbumAutoDesigner({
                   ? t("התמונות ייכנסו לפי התבנית ({n} עמודים). עמודים עודפים יימחקו, והעמוד האחרון יותאם לתמונות שנשארו.", { n: chosenTemplate.pages.filter((pg) => pg.length > 0).length })
                   : t(AUTO_STYLES.find((st) => st.id === style)?.description ?? "")}
               </p>
+              <OutlinePicker value={outline} onChange={setOutline} />
             </div>
           </div>
 
@@ -1048,7 +1066,7 @@ export default function AlbumAutoDesigner({
             ) : (
             <p className="text-xs text-ink-soft leading-relaxed">
               {isBook
-                ? t("בבוק אין חלקי משפחה: כל התמונות נכנסות לאלבום לפי שעת הצילום, גדולות ככל שהדף מאפשר ובלי לחתוך את הדמות. האלבום נבנה בדיוק במספר העמודים שנבחר. כשאין מספיק תמונות ל-2 בכל דף, בחלק מהדפים תהיה תמונה אחת.")
+                ? t("בבוק אין חלקי משפחה: כל התמונות נכנסות לאלבום לפי שעת הצילום, גדולות ככל שהדף מאפשר ובלי לחתוך את הדמות. בקו נקי ובמודרני כל דף נפתח בתמונה גדולה עם דהייה, והתמונות האחרות על החלק הדהוי שלה. האלבום נבנה בדיוק במספר העמודים שנבחר. כשאין מספיק תמונות ל-2 בכל דף, בחלק מהדפים תהיה תמונה אחת.")
                 : tabOrder
                   ? combined
                     ? t("החלק של {event} נבנה לפי הלשוניות שלו, בסדר שלהן: {tabs}. בכל לשונית התמונות לפי שעת הצילום.", { event: tabLabel(combined.event.name), tabs: tabOrder.main.join(", ") })
@@ -1400,4 +1418,86 @@ function thumbOf(p: AutoDesignerPhoto) {
 
 function nextFrame() {
   return new Promise<void>((r) => requestAnimationFrame(() => r()));
+}
+
+// The photos' outline (owner, 2026-11-01): the style's own, none, or a colour and width of the
+// photographer's, on every framed photo of the album.
+function OutlinePicker({ value, onChange }: { value: AutoOutline; onChange: (v: AutoOutline) => void }) {
+  const t = useT();
+  const mode = value === null ? "style" : value.width === 0 ? "none" : "custom";
+  const custom = value && value.width > 0 ? value : null;
+  return (
+    <div className="space-y-2">
+      <label className="block min-w-0">
+        <span className="block text-xs text-ink-soft mb-1.5">{t("קו מתאר לתמונות")}</span>
+        <select
+          value={mode}
+          onChange={(e) => {
+            const v = e.target.value;
+            onChange(v === "style" ? null : v === "none" ? { width: 0, color: custom?.color ?? AUTO_OUTLINE_DEFAULT.color } : { width: custom?.width ?? AUTO_OUTLINE_DEFAULT.width, color: custom?.color ?? AUTO_OUTLINE_DEFAULT.color });
+          }}
+          className="w-full rounded-lg border border-line px-2.5 py-2 text-sm bg-white"
+        >
+          <option value="style">{t("לפי הסגנון")}</option>
+          <option value="custom">{t("צבע ועובי לבחירה")}</option>
+          <option value="none">{t("בלי קו מתאר")}</option>
+        </select>
+      </label>
+      {custom && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label={t("צבע קו המתאר")}>
+            {OUTLINE_SWATCHES.map((sw) => (
+              <button
+                key={sw.color}
+                type="button"
+                role="radio"
+                aria-checked={custom.color.toLowerCase() === sw.color}
+                title={t(sw.name)}
+                onClick={() => onChange({ ...custom, color: sw.color })}
+                className="h-7 w-7 rounded-full"
+                style={{
+                  background: sw.color,
+                  boxShadow: custom.color.toLowerCase() === sw.color ? "0 0 0 2px #fff, 0 0 0 4px var(--color-amber-deep)" : "0 0 0 1px var(--color-line)",
+                }}
+              />
+            ))}
+            <label className="relative h-7 w-7 rounded-full overflow-hidden cursor-pointer" title={t("צבע אחר")} style={{ boxShadow: "0 0 0 1px var(--color-line)", background: "conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)" }}>
+              <input
+                type="color"
+                value={custom.color}
+                onChange={(e) => onChange({ ...custom, color: e.target.value })}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+                aria-label={t("צבע אחר")}
+              />
+            </label>
+          </div>
+          <label className="flex items-center gap-2">
+            <span className="text-xs text-ink-soft">{t("עובי")}</span>
+            <input
+              type="range"
+              min={1}
+              max={AUTO_OUTLINE_MAX}
+              value={custom.width}
+              onChange={(e) => onChange({ ...custom, width: Math.max(1, clampOutlineWidth(Number(e.target.value))) })}
+              className="flex-1 min-w-0"
+            />
+            <input
+              type="number"
+              min={1}
+              max={AUTO_OUTLINE_MAX}
+              inputMode="numeric"
+              value={custom.width}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v) && v >= 1) onChange({ ...custom, width: Math.max(1, clampOutlineWidth(v)) });
+              }}
+              className="w-14 rounded-lg border border-line px-1.5 py-1.5 text-sm text-center bg-white"
+            />
+            <span className="text-xs text-ink-soft">px</span>
+          </label>
+        </div>
+      )}
+      {mode !== "style" && <p className="text-xs text-ink-soft leading-relaxed">{t("על כל התמונות הממוסגרות באלבום, כולל הכריכה. תמונות שיוצאות לקצה הדף ותמונות עם דהייה נשארות בלי קו.")}</p>}
+    </div>
+  );
 }

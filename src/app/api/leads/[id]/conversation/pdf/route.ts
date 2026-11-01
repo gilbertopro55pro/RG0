@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { uploadObject, getSignedDownloadUrl } from "@/lib/storage";
 import { shortFileUrl } from "@/lib/shortFileLinks";
 import { conversationPdf, conversationPdfName, studioName, type IntakeConversation, type IntakePhotographer } from "@/lib/intakeAssistant";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     getSignedDownloadUrl("price-quotes", path, ttl, filename),
   );
   const first = (details.clientName ?? "").trim().split(/\s+/)[0];
-  const message = `${first ? `היי ${first}, ` : "היי, "}מצורף סיכום השיחה שלנו עם כל פרטי האירוע:\n${url}\n\n${studioName(photographer)}`;
+  // The fixed client-message shape (lib/clientMessageFormat.ts), signed with the studio name as before.
+  const message = formatClientMessage({
+    lang: "he",
+    name: first || null,
+    body: "תודה על הפנייה. מצורף סיכום השיחה שלנו עם כל פרטי האירוע.",
+    link: url,
+    senderName: studioName(photographer),
+  });
   return NextResponse.json({ url, message, phone: lead.phone ?? details.phone ?? null });
 }

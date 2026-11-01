@@ -52,12 +52,13 @@ export default function EventQuoteSection({
   // The site's own address, not window.location: the link is in the page from the server render on.
   const linkMessage = quote.token
     ? quoteLinkMessage(
-          quoteShareCaption(clientName, d?.eventType ?? "", quoteDateDMY(d?.eventDate) ?? "", clientLang, d?.eventDate),
+          quoteShareCaption("", d?.eventType ?? "", quoteDateDMY(d?.eventDate) ?? "", clientLang, d?.eventDate),
           shortClientUrl(SITE_URL, "quote", quote.token),
           signature,
           false,
           clientLang,
-          !!quote.approvedAt
+          !!quote.approvedAt,
+          { clientName }
         )
       : null;
 

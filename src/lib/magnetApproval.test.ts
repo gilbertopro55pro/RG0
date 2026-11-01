@@ -113,7 +113,7 @@ describe("magnetApprovalMessage", () => {
 
   it("greets, links and signs with the signature", () => {
     expect(magnetApprovalMessage({ clientName: "דנה כהן", link, signature: "סטודיו אור 📸", senderName: "אור", lang: "he" })).toBe(
-      `שלום דנה,\nעיצוב המגנטים לאירוע מוכן. אפשר לראות ולאשר אותו כאן:\n${link}\n\nסטודיו אור 📸`
+      `שלום דנה,\nעיצוב המגנטים לאירוע שלכם מוכן.\nאפשר לראות אותו ולאשר, או להשאיר הערה.\nקישור: ${link}\n\nסטודיו אור 📸`
     );
   });
 
@@ -124,7 +124,7 @@ describe("magnetApprovalMessage", () => {
 
   it("is in the client's language", () => {
     expect(magnetApprovalMessage({ clientName: "Dana Cohen", link, signature: null, senderName: "Or", lang: "en" })).toBe(
-      `Hi Dana,\nThe magnet design for your event is ready. You can see and approve it here:\n${link}\n\nOr`
+      `Hi Dana,\nThe magnet design for your event is ready.\nYou can view it and approve it, or leave a note.\nLink: ${link}\n\nOr`
     );
     expect(magnetApprovalMessage({ clientName: "Анна", link, signature: null, senderName: null, lang: "ru" }).startsWith("Здравствуйте, Анна!")).toBe(true);
     expect(magnetApprovalSubject("he")).toBe("עיצוב המגנטים לאירוע");

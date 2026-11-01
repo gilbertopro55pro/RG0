@@ -1,5 +1,6 @@
 import type { Lang } from "@/i18n/config";
 import { clientGreetingName } from "@/lib/magnetApproval";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 // Sending the album design to the client for approval (owner, 2026-10-27). The album tool's
 // "שליחה לאישור הלקוח/ה" opens the message in ClientMessageSheet (WhatsApp, SMS, email or copy);
@@ -21,15 +22,15 @@ export function isAlbumReminderDays(value: unknown): value is number {
 
 const TEXT: Record<Lang, { body: string; subject: string }> = {
   he: {
-    body: "שלום {name},\nעיצוב האלבום מוכן 🎉\nאפשר לדפדף בו כאן, ובסוף העיצוב לאשר אותו או לסמן תיקונים:\n{link}",
+    body: "עיצוב האלבום שלכם מוכן 🎉\nאפשר לדפדף בו, ובסוף לאשר את העיצוב או לסמן תיקונים.",
     subject: "עיצוב האלבום שלכם",
   },
   en: {
-    body: "Hi {name},\nYour album design is ready 🎉\nYou can flip through it here, and at the end approve it or mark corrections:\n{link}",
+    body: "Your album design is ready 🎉\nYou can flip through it, and at the end approve the design or mark corrections.",
     subject: "Your album design",
   },
   ru: {
-    body: "Здравствуйте, {name}!\nДизайн вашего альбома готов 🎉\nЕго можно пролистать здесь, а в конце утвердить или отметить исправления:\n{link}",
+    body: "Дизайн вашего альбома готов 🎉\nЕго можно пролистать, а в конце утвердить или отметить исправления.",
     subject: "Дизайн вашего альбома",
   },
 };
@@ -43,11 +44,7 @@ export function albumApprovalMessage(p: {
   senderName: string | null | undefined;
   lang: Lang;
 }): string {
-  const name = clientGreetingName(p.clientName);
-  const body = TEXT[p.lang].body.replace("{link}", p.link);
-  const text = name ? body.replace("{name}", name) : body.replace(/^.*\{name\}.*\n/, "");
-  const signature = p.signature?.trim() || p.senderName?.trim();
-  return signature ? `${text}\n\n${signature}` : text;
+  return formatClientMessage({ lang: p.lang, name: clientGreetingName(p.clientName), body: TEXT[p.lang].body, link: p.link, signature: p.signature, senderName: p.senderName });
 }
 
 export function albumApprovalSubject(lang: Lang): string {

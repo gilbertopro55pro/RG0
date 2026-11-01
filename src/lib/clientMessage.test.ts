@@ -30,7 +30,7 @@ const count = (s: string, sub: string) => s.split(sub).length - 1;
 describe("buildClientMessageText: the booking confirmation (event_closing)", () => {
   it("fills the built-in template: the name, and the portal link after 'קישור:'", () => {
     const text = buildClientMessageText(params());
-    expect(text.startsWith("שלום דנה,\nהאירוע שלכם רשמית סגור אצלנו ביומן")).toBe(true);
+    expect(text.startsWith("שלום דנה,\nהאירוע שלכם נסגר ונרשם אצלנו ביומן")).toBe(true);
     expect(text).toContain(`\nקישור: ${URL_}`);
     expect(count(text, "קישור:")).toBe(1);
     expect(count(text, "דנה")).toBe(1);
@@ -144,7 +144,7 @@ describe("buildClientMessageText: tokens", () => {
 describe("buildClientMessageText: English and Russian clients", () => {
   it("uses the English built-in template and the English link marker", () => {
     const text = buildClientMessageText(params({ clientName: "Dana", lang: "en" }));
-    expect(text.startsWith("Hi Dana,\nYour event is officially booked")).toBe(true);
+    expect(text.startsWith("Hi Dana,\nYour event is booked")).toBe(true);
     expect(text).toContain(`\nLink: ${URL_}`);
     expect(text).not.toContain("קישור");
   });
@@ -201,16 +201,22 @@ describe("clientTemplateKey / isLangTemplateKey", () => {
 describe("buildStageNoticeText", () => {
   it("is the server's Hebrew text as before for a Hebrew client", () => {
     expect(buildStageNoticeText({ stageKey: "album_approval", serverText: "עיצוב האלבום מוכן לאישור", clientName: "דנה", url: URL_ })).toBe(
-      `שלום דנה,\nעיצוב האלבום מוכן לאישור ✓\n${URL_}`,
+      `שלום דנה,\nעיצוב האלבום מוכן לאישור ✓\nקישור: ${URL_}`,
     );
+  });
+
+  it("ends with the signature, or the name without one (the shape of every client message)", () => {
+    const base = { stageKey: "album_approval" as const, serverText: "עיצוב האלבום מוכן לאישור", clientName: "דנה", url: URL_ };
+    expect(buildStageNoticeText({ ...base, signature: "סטודיו אור", senderName: "אור" })).toBe(`שלום דנה,\nעיצוב האלבום מוכן לאישור ✓\nקישור: ${URL_}\n\nסטודיו אור`);
+    expect(buildStageNoticeText({ ...base, signature: "  ", senderName: "אור" }).endsWith(`\n\nאור`)).toBe(true);
   });
 
   it("uses the stage's own wording for an English or Russian client", () => {
     expect(buildStageNoticeText({ stageKey: "album_approval", serverText: "עברית", clientName: "Dana", url: URL_, lang: "en" })).toBe(
-      `Hi Dana,\nYour album design is ready for approval ✓\n${URL_}`,
+      `Hi Dana,\nYour album design is ready to view and approve ✓\nLink: ${URL_}`,
     );
     expect(buildStageNoticeText({ stageKey: "gallery_upload", serverText: "עברית", clientName: "Анна", url: URL_, lang: "ru" })).toBe(
-      `Здравствуйте, Анна!\nВаша галерея готова. Можно выбирать фотографии ✓\n${URL_}`,
+      `Здравствуйте, Анна!\nВаша галерея готова к просмотру, в ней можно выбрать фотографии ✓\nСсылка: ${URL_}`,
     );
   });
 

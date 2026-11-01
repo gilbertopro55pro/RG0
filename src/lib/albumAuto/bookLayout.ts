@@ -1,8 +1,8 @@
-import type { AlbumFrame, AlbumPhotoElement } from "@/lib/types";
-import { faceCropFocal } from "./layouts";
+import type { AlbumElement, AlbumFrame, AlbumPhotoElement } from "@/lib/types";
+import { faceCropFocal, layoutBookFade } from "./layouts";
 import { collageTemplates, designShape } from "./redesign";
 import { assignToFrames, type FrameFinish } from "./templateFill";
-import type { LayoutPhoto } from "./types";
+import type { LayoutInput, LayoutOutput, LayoutPhoto } from "./types";
 
 // A book's page (בוק בר/בת מצווה, owner 2026-11-01: "העדיפות באלבום בוק לתמונות גדולות ככל הניתן
 // ובלי שהדמות תחתך"): the page's photos as large as the page holds, none cut. The frames come from
@@ -103,4 +103,28 @@ export function bookElements(page: BookPage, widthCm: number, heightCm: number, 
       ...(finish ?? {}),
     } as AlbumPhotoElement;
   });
+}
+
+// A book's page with a large faded photo first (owner, 2026-11-01): the clean line's faded photo
+// and rows on its strip (layoutBookFade), each framed photo then shown whole as on every book page
+// (a frame that would crop it past BOOK_FILL_CROP takes its shape, centred where it was; rows keep
+// lining up, since a row's photos share one stretch). Null when the page can't have a faded photo:
+// the caller lays it out with bookPage.
+export function bookFadePage(input: Omit<LayoutInput, "book">, marginCm: number): LayoutOutput | null {
+  const out = layoutBookFade({ ...input, book: true });
+  if (!out) return null;
+  const sw = Math.max(1e-6, input.widthCm - 2 * marginCm);
+  const sh = Math.max(1e-6, input.heightCm - 2 * marginCm);
+  const bleed = new Set(out.bleedIds ?? []);
+  const byId = new Map(input.photos.map((p) => [p.id, p] as const));
+  const elements = out.elements.map((el): AlbumElement => {
+    if (el.type !== "photo" || bleed.has(el.id) || !el.photoId) return el;
+    const photo = byId.get(el.photoId);
+    if (!photo) return el;
+    const r = whole(el, photo.aspect, sw, sh);
+    if (r.frame === el) return el;
+    const crop = faceCropFocal(photo.aspect, (r.frame.widthPct * sw) / Math.max(1e-6, r.frame.heightPct * sh), photo.faces ?? []);
+    return { ...el, xPct: r.frame.xPct, yPct: r.frame.yPct, widthPct: r.frame.widthPct, heightPct: r.frame.heightPct, focalX: crop.focalX, focalY: crop.focalY };
+  });
+  return { ...out, elements };
 }

@@ -229,7 +229,7 @@ describe("magnet frames API", () => {
       subject: "עיצוב המגנטים לאירוע",
     });
     expect(info.portalUrl).toMatch(/^https?:\/\/[^/]+\/s\/p[0-9A-Za-z]{11}#magnets$/);
-    expect(info.message).toBe(`שלום דנה,\nעיצוב המגנטים לאירוע מוכן. אפשר לראות ולאשר אותו כאן:\n${info.portalUrl}\n\nאור`);
+    expect(info.message).toBe(`שלום דנה,\nעיצוב המגנטים לאירוע שלכם מוכן.\nאפשר לראות אותו ולאשר, או להשאיר הערה.\nקישור: ${info.portalUrl}\n\nאור`);
     // Only the photographer's own frame and event.
     expect(ops.find((o) => o.table === "magnet_frame_designs")!.filters).toContainEqual(["photographer_id", USER]);
     expect(ops.find((o) => o.table === "events")!.filters).toContainEqual(["photographer_id", USER]);

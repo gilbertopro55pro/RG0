@@ -11,6 +11,7 @@ import { dateLocale, type Lang } from "@/i18n/config";
 // Only the common area (stage and package labels), not the whole dictionary: this file is bundled
 // into client components (EventDetailView, NewEventModal).
 import common from "@/i18n/dict/common";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 import { makeT } from "@/i18n/translate";
 
 // Where a stage's template is saved for a client language (UI languages phase 3, no migration):
@@ -39,20 +40,21 @@ export function galleryStageOf(stages: { key: string; label: string }[]): { key:
   return found ? { key: found.key, label: found.label } : { key: "gallery_upload", label: STAGE_LABELS.gallery_upload };
 }
 
-// The short "stage ready" notice sent with a file link (the album-design upload). Hebrew: the text
-// the server returned, exactly as before.
+// The short "stage ready" notice sent with a file link (the album-design upload), in the shape of
+// every client message (formatClientMessage): the greeting, the stage's line, "קישור:" with the
+// file's link, the signature. Hebrew: the text the server returned.
 export function buildStageNoticeText(params: {
   stageKey: StageKey;
   serverText: string;
   clientName: string;
   url: string;
   lang?: Lang;
+  signature?: string | null;
+  senderName?: string | null;
 }): string {
   const lang = params.lang ?? "he";
-  if (lang === "he") return `שלום ${params.clientName},\n${params.serverText} ✓\n${params.url}`;
-  const strings = STAGE_NOTIFY_CLIENT_I18N[lang];
-  const text = strings[params.stageKey] ?? STAGE_NOTIFY_CLIENT[params.stageKey] ?? params.serverText;
-  return `${strings.greeting.replace("{name}", params.clientName)}\n${text} ✓\n${params.url}`;
+  const text = lang === "he" ? params.serverText : (STAGE_NOTIFY_CLIENT_I18N[lang][params.stageKey] ?? STAGE_NOTIFY_CLIENT[params.stageKey] ?? params.serverText);
+  return formatClientMessage({ lang, name: params.clientName, body: `${text.replace(/\s*✓\s*$/, "")} ✓`, link: params.url, signature: params.signature, senderName: params.senderName });
 }
 
 // The single source of truth for "what text does a client-update WhatsApp message actually

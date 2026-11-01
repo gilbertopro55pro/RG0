@@ -14,9 +14,9 @@ const base = {
 };
 
 describe("paymentReminderMessage", () => {
-  it("writes the owner's Hebrew wording: greeting, the open amount, the portal link, then the name", () => {
+  it("has the shape of every client message (owner, 2026-11-01): greeting, body, the link line, then the name", () => {
     expect(paymentReminderMessage(base)).toBe(
-      ["שלום דנה,", "נשארה יתרה של ₪3,500 לתשלום עבור האירוע שלכם.", "", "לצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:", PORTAL, "", "סטודיו אור"].join("\n")
+      ["שלום דנה,", "רצינו לעדכן שנותרה יתרה של ₪3,500 לתשלום עבור האירוע.", "את פרטי התשלום אפשר לראות בפורטל האישי שלכם.", `קישור: ${PORTAL}`, "", "סטודיו אור"].join("\n")
     );
   });
 
@@ -45,8 +45,8 @@ describe("paymentReminderMessage", () => {
   });
 
   it("ends at the link when there's neither a signature nor a name", () => {
-    expect(paymentReminderMessage({ ...base, senderName: "  " }).endsWith(`\n${PORTAL}`)).toBe(true);
-    expect(paymentReminderMessage({ ...base, senderName: null }).endsWith(`\n${PORTAL}`)).toBe(true);
+    expect(paymentReminderMessage({ ...base, senderName: "  " }).endsWith(`\nקישור: ${PORTAL}`)).toBe(true);
+    expect(paymentReminderMessage({ ...base, senderName: null }).endsWith(`\nקישור: ${PORTAL}`)).toBe(true);
   });
 
   it("trims the client's name", () => {
@@ -54,13 +54,13 @@ describe("paymentReminderMessage", () => {
   });
 
   it("writes the amount in shekels with thousands separators", () => {
-    expect(paymentReminderMessage({ ...base, amount: 12500 })).toContain("נשארה יתרה של ₪12,500 לתשלום");
-    expect(paymentReminderMessage({ ...base, amount: 800 })).toContain("נשארה יתרה של ₪800 לתשלום");
+    expect(paymentReminderMessage({ ...base, amount: 12500 })).toContain("נותרה יתרה של ₪12,500 לתשלום");
+    expect(paymentReminderMessage({ ...base, amount: 800 })).toContain("נותרה יתרה של ₪800 לתשלום");
   });
 
   it("writes English for an English-speaking client", () => {
     expect(paymentReminderMessage({ ...base, clientName: "Dana", amount: 3500, lang: "en", signature: "Or Studio" })).toBe(
-      ["Hi Dana,", "A balance of ₪3,500 is still due for your event.", "", "You can see the payment details in your personal portal:", PORTAL, "", "Or Studio"].join("\n")
+      ["Hi Dana,", "We wanted to let you know that a balance of ₪3,500 remains for your event.", "You can see the payment details in your personal portal.", `Link: ${PORTAL}`, "", "Or Studio"].join("\n")
     );
   });
 
@@ -68,7 +68,7 @@ describe("paymentReminderMessage", () => {
     const msg = paymentReminderMessage({ ...base, clientName: "Анна", amount: 3500, lang: "ru" });
     expect(msg.startsWith("Здравствуйте, Анна!\n")).toBe(true);
     expect(msg).toMatch(/остаётся к оплате ₪3\s500\./);
-    expect(msg).toContain(`\n${PORTAL}\n\nסטודיו אור`);
+    expect(msg).toContain(`\nСсылка: ${PORTAL}\n\nסטודיו אור`);
   });
 });
 

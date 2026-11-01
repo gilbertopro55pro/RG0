@@ -171,7 +171,7 @@ function ExportCard({ task }: { task: AlbumExport }) {
             {task.clientPhone && task.downloadUrl && (
               <button
                 onClick={() => {
-                  openWhatsApp(task.clientPhone!, buildExportReadyMessage({ label: ALBUM_EXPORT_LABEL[task.format], url: task.downloadUrl!, lang: task.clientLang }));
+                  openWhatsApp(task.clientPhone!, buildExportReadyMessage({ label: ALBUM_EXPORT_LABEL[task.format], url: task.downloadUrl!, lang: task.clientLang, clientName: task.clientName, signature: task.signature }));
                   dismissAlbumExport(task.id);
                 }}
                 className="flex-1 rounded-lg px-3.5 py-2 text-xs font-semibold text-white"

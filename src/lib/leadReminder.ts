@@ -1,4 +1,5 @@
 import { dateLocale, type Lang } from "@/i18n/config";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 // "שליחת תזכורת" on the leads page (owner, 2026-10-19): two days after the quote was sent or the
 // lead was marked "יצרתי קשר" (leads.quote_sent_at / contacted_at, migration 0186), the lead gets a
@@ -60,23 +61,21 @@ export function leadReminderDue(lead: LeadReminderLead, now: number): boolean {
   return at !== null && now >= at;
 }
 
-const TEXT: Record<Lang, { hi: string; quote: string; quoteLink: string; contact: string; contactOn: string; subjectQuote: string; subjectQuoteOnly: string; subjectContact: string }> = {
+const TEXT: Record<Lang, { hi: string; quote: string; contact: string; contactOn: string; subjectQuote: string; subjectQuoteOnly: string; subjectContact: string }> = {
   he: {
     hi: "שלום {name},",
-    quote: "רציתי לבדוק אם יצא לכם לעבור על הצעת המחיר ששלחתי. אשמח לענות על כל שאלה, ולשריין לכם את התאריך.",
-    quoteLink: "להצעת המחיר: {url}",
-    contact: "רציתי לחזור אליכם בהמשך לשיחה שלנו. אשמח לשמוע אם יש שאלות, או אם תרצו להתקדם ולשריין את התאריך.",
-    contactOn: "רציתי לחזור אליכם בהמשך לשיחה שלנו על האירוע ב-{date}. אשמח לשמוע אם יש שאלות, או אם תרצו להתקדם ולשריין את התאריך.",
+    quote: "רצינו לבדוק אם יצא לכם לעבור על הצעת המחיר ששלחנו. נשמח לענות על כל שאלה ולשריין לכם את התאריך.",
+    contact: "רצינו לחזור אליכם בהמשך לשיחה שלנו. נשמח לענות על כל שאלה, וכשתרצו להתקדם, לשריין לכם את התאריך.",
+    contactOn: "רצינו לחזור אליכם בהמשך לשיחה שלנו על האירוע ב-{date}. נשמח לענות על כל שאלה, וכשתרצו להתקדם, לשריין לכם את התאריך.",
     subjectQuote: "הצעת המחיר מ{studio}",
     subjectQuoteOnly: "הצעת המחיר",
     subjectContact: "בהמשך לשיחה שלנו",
   },
   en: {
     hi: "Hi {name},",
-    quote: "I wanted to check whether you had a chance to look at the price quote I sent. I'm happy to answer any questions and hold the date for you.",
-    quoteLink: "Your quote: {url}",
-    contact: "Following up on our conversation. Let me know if you have any questions, or if you'd like to go ahead and book the date.",
-    contactOn: "Following up on our conversation about your event on {date}. Let me know if you have any questions, or if you'd like to go ahead and book the date.",
+    quote: "We wanted to check whether you had a chance to look at the price quote we sent. We'd be happy to answer any questions and hold the date for you.",
+    contact: "We wanted to follow up on our conversation. We'd be happy to answer any questions, and whenever you'd like to go ahead, to book the date for you.",
+    contactOn: "We wanted to follow up on our conversation about your event on {date}. We'd be happy to answer any questions, and whenever you'd like to go ahead, to book the date for you.",
     subjectQuote: "Your price quote from {studio}",
     subjectQuoteOnly: "Your price quote",
     subjectContact: "Following up on our conversation",
@@ -84,7 +83,6 @@ const TEXT: Record<Lang, { hi: string; quote: string; quoteLink: string; contact
   ru: {
     hi: "Здравствуйте, {name}!",
     quote: "Хотели уточнить, удалось ли вам посмотреть ценовое предложение, которое мы отправили. С радостью ответим на вопросы и забронируем для вас дату.",
-    quoteLink: "Ваше предложение: {url}",
     contact: "Пишем в продолжение нашего разговора. Будем рады ответить на вопросы, а если вы готовы, забронировать дату.",
     contactOn: "Пишем в продолжение нашего разговора о вашем мероприятии {date}. Будем рады ответить на вопросы, а если вы готовы, забронировать дату.",
     subjectQuote: "Ваше ценовое предложение от {studio}",
@@ -108,18 +106,17 @@ export function leadReminderMessage(p: {
 }): string {
   const tx = TEXT[p.lang];
   const first = p.lead.name.trim().split(/\s+/)[0] || p.lead.name.trim();
-  const lines = [fill(tx.hi, { name: first })];
-  if (p.kind === "quote") {
-    lines.push(tx.quote);
-    if (p.quoteUrl) lines.push(fill(tx.quoteLink, { url: p.quoteUrl }));
-  } else {
+  let body: string;
+  if (p.kind === "quote") body = tx.quote;
+  else {
     const date = p.lead.event_date_interest && /^\d{4}-\d{2}-\d{2}/.test(p.lead.event_date_interest)
       ? new Date(`${p.lead.event_date_interest.slice(0, 10)}T12:00:00`).toLocaleDateString(dateLocale(p.lang))
       : null;
-    lines.push(date ? fill(tx.contactOn, { date }) : tx.contact);
+    body = date ? fill(tx.contactOn, { date }) : tx.contact;
   }
-  const signature = p.signature?.trim() || p.senderName?.trim();
-  return signature ? `${lines.join("\n")}\n\n${signature}` : lines.join("\n");
+  // The shape of every client message (lib/clientMessageFormat.ts): the quote's short link on the
+  // "קישור:" line when the quote has a page.
+  return formatClientMessage({ lang: p.lang, name: first, body, link: p.kind === "quote" ? p.quoteUrl : null, signature: p.signature, senderName: p.senderName });
 }
 
 export function leadReminderSubject(kind: LeadReminderKind, studio: string | null | undefined, lang: Lang): string {
