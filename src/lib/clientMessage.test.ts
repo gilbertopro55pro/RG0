@@ -33,11 +33,13 @@ describe("buildClientMessageText: the booking confirmation (event_closing)", () 
     expect(text.startsWith("שלום דנה,\nהאירוע שלכם נסגר ונרשם אצלנו ביומן")).toBe(true);
     expect(text).toContain(`\nקישור: ${URL_}`);
     expect(count(text, "קישור:")).toBe(1);
+    // The template's "קישור: " leaves no space after the link.
+    expect(text.split("\n").every((l) => l === l.trimEnd())).toBe(true);
     expect(count(text, "דנה")).toBe(1);
   });
 
   it("opens with the client's name when the saved template has no {{שם}}", () => {
-    expect(buildClientMessageText(params({ savedTemplate: "האירוע סגור!\nקישור: " }))).toBe(`דנה,\nהאירוע סגור!\nקישור: ${URL_} `);
+    expect(buildClientMessageText(params({ savedTemplate: "האירוע סגור!\nקישור: " }))).toBe(`דנה,\nהאירוע סגור!\nקישור: ${URL_}`);
   });
 
   it("adds the link line when the saved template has none", () => {
@@ -67,7 +69,7 @@ describe("buildClientMessageText: alwaysLink (the clip songs reminder, 2026-10-2
 
   it("keeps a template's own link line, once", () => {
     const text = buildClientMessageText(params({ ...songs, savedTemplate: "{{שם}}, בחרו שירים\nקישור: " }));
-    expect(text).toBe(`דנה, בחרו שירים\nקישור: ${URL_} `);
+    expect(text).toBe(`דנה, בחרו שירים\nקישור: ${URL_}`);
     expect(count(text, URL_)).toBe(1);
   });
 
