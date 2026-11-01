@@ -27,7 +27,14 @@ export function bookPage(
   const sh = Math.max(1e-6, p.heightCm - 2 * p.marginCm);
   const list = [...photos];
   const candidates = [...collageTemplates(list, p.widthCm, p.heightCm, p.marginCm), ...(p.extra ?? []).filter((f) => f.length === list.length)];
-  if (list.length === 1) candidates.push([{ id: "one", xPct: 5, yPct: 5, widthPct: 90, heightPct: 90 }]);
+  const double = p.widthCm / p.heightCm >= 1.6;
+  // A page of one photo (a book whose pages outnumber twice its photos): the photo on its own, as
+  // large as the page holds; on a double page on one side of the fold, the sides taking turns.
+  if (list.length === 1) {
+    candidates.length = 0;
+    if (!double) candidates.push([{ id: "one", xPct: 3, yPct: 3, widthPct: 94, heightPct: 94 }]);
+    else candidates.push([{ id: "one", xPct: p.spreadIndex % 2 === 0 ? 52 : 2, yPct: 3, widthPct: 46, heightPct: 94 }]);
+  }
   const scored = candidates.map((frames) => {
     const { pairs } = assignToFrames(frames, list, sw, sh);
     let worst = 1;
@@ -42,6 +49,9 @@ export function bookPage(
     const frs = placed.map((x) => x.frame);
     return { frames: frs, photos: placed.map((x) => x.photo), score, worst, shape: designShape(frs) };
   });
+  // Never a photo on a double page's fold (the photographer's own templates may run across it).
+  const offFold = double ? scored.filter((c) => c.frames.every((f) => f.xPct + f.widthPct <= 50.01 || f.xPct >= 49.99)) : scored;
+  if (offFold.length) scored.splice(0, scored.length, ...offFold);
   if (scored.length === 0) return null;
   scored.sort((a, b) => b.score - a.score);
   const best = scored[0].score;

@@ -34,6 +34,17 @@ describe("a book's page", () => {
     });
   }
 
+  it("lays a page of one photo on one side of the fold, the sides taking turns, or centred on a single page", () => {
+    const a = bookPage([photo("a", 1.5)], { widthCm: 60, heightCm: 30, marginCm: 1, spreadIndex: 0 })!;
+    const b = bookPage([photo("a", 0.667)], { widthCm: 60, heightCm: 30, marginCm: 1, spreadIndex: 1 })!;
+    expect(a.frames[0].xPct).toBeGreaterThanOrEqual(50);
+    expect(b.frames[0].xPct + b.frames[0].widthPct).toBeLessThanOrEqual(50);
+    expect(crop(a.frames[0], 1.5, 58, 28)).toBeLessThanOrEqual(BOOK_FILL_CROP + 1e-6);
+    const one = bookPage([photo("a", 0.667)], { widthCm: 30, heightCm: 20, marginCm: 1, spreadIndex: 0 })!;
+    expect(one.frames[0].heightPct).toBeGreaterThan(90);
+    expect(Math.abs(one.frames[0].xPct + one.frames[0].widthPct / 2 - 50)).toBeLessThan(0.5);
+  });
+
   it("changes shape from the page before when another near-best layout exists", () => {
     const photos = [photo("a", 0.667), photo("b", 1.5), photo("c", 0.667)];
     const first = bookPage(photos, { widthCm: 30, heightCm: 20, marginCm: 1, spreadIndex: 0 })!;

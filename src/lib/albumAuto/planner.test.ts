@@ -1560,11 +1560,22 @@ describe("the book fills the pages typed (owner, 2026-11-01)", () => {
     expect(plan.spreads.every((s) => s.book)).toBe(true);
   });
 
-  it("never makes a one-photo page: fewer photos than twice the pages take fewer pages", () => {
-    const plan = planAlbum(mixed(30), [], [], BOOK);
-    expect(plan.spreads).toHaveLength(15);
-    expect(sizes(plan).every((n) => n === 2)).toBe(true);
-    expect(planAlbum(mixed(3), [], [], BOOK).spreads.map((s) => s.photoIds.length)).toEqual([3]);
+  it("fills every page typed, with one photo on a page when there are too few for 2 (owner, 2026-11-01)", () => {
+    const photos = mixed(30);
+    const plan = planAlbum(photos, [], [], BOOK);
+    expect(plan.spreads).toHaveLength(19);
+    expect(plan.spreads.flatMap((s) => s.photoIds)).toEqual(photos.map((p) => p.id));
+    expect(sizes(plan).filter((n) => n === 2)).toHaveLength(11);
+    expect(sizes(plan).filter((n) => n === 1)).toHaveLength(8);
+    // The one-photo pages spread through the book, not all at its end.
+    expect(sizes(plan).slice(0, 10).filter((n) => n === 1).length).toBeGreaterThanOrEqual(3);
+    // Never more pages than photos.
+    expect(planAlbum(mixed(3), [], [], BOOK).spreads.map((s) => s.photoIds.length)).toEqual([1, 1, 1]);
+  });
+
+  it("with no count typed never makes a one-photo page", () => {
+    const plan = planAlbum(mixed(30), [], [], { ...BOOK, targetSpreads: null });
+    expect(sizes(plan).every((n) => n >= 2)).toBe(true);
   });
 
   it("puts what the page caps can't hold on the last pages, up to 20, and drops nothing", () => {
@@ -1580,6 +1591,7 @@ describe("the book fills the pages typed (owner, 2026-11-01)", () => {
     expect(bookSpreadCount(200, null)).toBe(29);
     expect(bookSpreadCount(50, 20)).toBe(19);
     expect(bookSpreadCount(50, 20, false)).toBe(20);
+    expect(bookSpreadCount(12, 20)).toBe(12);
     expect(planAlbum(mixed(50), [], [], { ...BOOK, targetSpreads: null }).spreads).toHaveLength(20);
   });
 
@@ -1588,6 +1600,9 @@ describe("the book fills the pages typed (owner, 2026-11-01)", () => {
     // Pages 1-4 hold 6 each: the other 16 go to the last pages, up to 20.
     expect(splitExact(ids, 1, 4).map((p) => p.length)).toEqual([6, 6, 8, 20]);
     expect(splitExact(ids, 1, 4).flat()).toEqual(ids);
-    expect(splitExact(ids.slice(0, 7), 11, 3).map((p) => p.length)).toEqual([3, 2, 2]);
+    expect(splitExact(ids.slice(0, 7), 11, 3).map((p) => p.length)).toEqual([2, 2, 3]);
+    // One photo a page allowed: as many pages as asked, up to one per photo.
+    expect(splitExact(ids.slice(0, 7), 1, 10, 1).map((p) => p.length)).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    expect(splitExact(ids.slice(0, 7), 1, 5, 1).map((p) => p.length)).toEqual([1, 1, 2, 1, 2]);
   });
 });
