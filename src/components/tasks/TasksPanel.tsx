@@ -25,7 +25,9 @@ import { currentPushStatus, type PushStatus } from "@/lib/pushStatus";
 // Tick the box or swipe right: done (again: not done). Swipe left or double-tap: delete, with undo.
 // A single tap edits the title and the notes. On today, open tasks left from earlier days come
 // after, with "to today". At the bottom, the daily tasks reminder: on/off and its time
-// (lib/morningDigest.ts), with a pointer to settings when phone notifications are off here.
+// (lib/morningDigest.ts), with a pointer to settings when phone notifications are off here. Opened
+// from the home screen's header (TasksButton) and from the top nav on every other screen
+// (useNavTasks).
 
 const VIEW_KEY = "tasks_view";
 const DOUBLE_TAP_MS = 260;
@@ -41,7 +43,8 @@ export default function TasksPanel({
   onChanged,
 }: {
   photographerId: string;
-  morningDigest: { enabled: boolean; minutes: number };
+  // null while the nav is still asking for it (useNavTasks): the reminder's card waits for it.
+  morningDigest: { enabled: boolean; minutes: number } | null;
   onMorningDigest: (next: { enabled: boolean; minutes: number }) => void;
   onClose: () => void;
   // The header button's number, whenever today's list is on screen.
@@ -348,23 +351,25 @@ export default function TasksPanel({
                   </div>
                 )}
 
-                <div className="mt-6">
-                  <MorningDigestSettings
-                    photographerId={photographerId}
-                    initialEnabled={morningDigest.enabled}
-                    initialMinutes={morningDigest.minutes}
-                    compact
-                    onChange={onMorningDigest}
-                  />
-                  {morningDigest.enabled && (pushStatus === "off" || pushStatus === "denied" || pushStatus === "ios-install") && (
-                    <p className="mt-1.5 text-xs text-ink-soft">
-                      {t("ההתראות לטלפון לא מופעלות במכשיר הזה.")}{" "}
-                      <Link href="/settings?tab=automation" onClick={onClose} className="font-semibold underline underline-offset-2 text-ink">
-                        {t("להפעלה בהגדרות")}
-                      </Link>
-                    </p>
-                  )}
-                </div>
+                {morningDigest && (
+                  <div className="mt-6">
+                    <MorningDigestSettings
+                      photographerId={photographerId}
+                      initialEnabled={morningDigest.enabled}
+                      initialMinutes={morningDigest.minutes}
+                      compact
+                      onChange={onMorningDigest}
+                    />
+                    {morningDigest.enabled && (pushStatus === "off" || pushStatus === "denied" || pushStatus === "ios-install") && (
+                      <p className="mt-1.5 text-xs text-ink-soft">
+                        {t("ההתראות לטלפון לא מופעלות במכשיר הזה.")}{" "}
+                        <Link href="/settings?tab=automation" onClick={onClose} className="font-semibold underline underline-offset-2 text-ink">
+                          {t("להפעלה בהגדרות")}
+                        </Link>
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <p className="mt-4 text-[11px] leading-relaxed text-ink-soft">
                   {t("לחיצה על משימה לעריכה. החלקה ימינה או הצ׳קבוקס מסמנים שהושלמה. החלקה שמאלה או לחיצה כפולה מוחקות.")}

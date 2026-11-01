@@ -5,6 +5,9 @@ import { usePathname } from "next/navigation";
 import GlassTabStrip from "@/components/GlassTabStrip";
 import { useT } from "@/i18n/client";
 import { IconHome, IconGallery, IconLink, IconLeads, IconWaitlist, IconAnalytics, IconSettings } from "@/components/icons/NavIcons";
+import TasksIcon from "@/components/tasks/TasksIcon";
+import { useNavTasks } from "@/components/tasks/useNavTasks";
+import type { GlassTabStripItem } from "@/components/GlassTabStrip";
 
 // Single-color line icons (the gradient badges were retired with the pastel palette, 2026-09-23);
 // the active page is marked by GlassTabStrip's brass tint and indicator.
@@ -68,7 +71,34 @@ export default function TopNav({ currentVersion: CURRENT_VERSION }: { currentVer
 
   const isHidden =
     pathname === "/" || HIDDEN_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  // The to-do list from every screen (owner, 2026-11-01): opens the panel in place, beside settings
+  // like the home screen's header (tasks, calendar, settings). Photographers only (useNavTasks).
+  const tasks = useNavTasks(!isHidden);
   if (isHidden) return null;
+
+  const items: GlassTabStripItem[] = NAV_ITEMS.map((item) => {
+    const Icon = item.icon;
+    return {
+      key: item.href,
+      label: t(item.label),
+      href: item.href,
+      active: pathname === item.href || pathname.startsWith(`${item.href}/`),
+      badge: item.href === "/settings" ? (hasUnseenUpdate ? 1 : 0) : item.href === "/" ? unreadEvents : undefined,
+      icon: <Icon className="h-[19px] w-[19px]" />,
+      hideLabel: true,
+    };
+  });
+  if (tasks.show) {
+    items.splice(items.length - 1, 0, {
+      key: "tasks",
+      label: tasks.count > 0 ? t("משימות, {n} פתוחות", { n: tasks.count }) : t("משימות"),
+      active: false,
+      onClick: tasks.openPanel,
+      badge: tasks.count,
+      icon: <TasksIcon className="h-[19px] w-[19px]" strokeWidth={1.6} />,
+      hideLabel: true,
+    });
+  }
 
   return (
     <div
@@ -81,21 +111,9 @@ export default function TopNav({ currentVersion: CURRENT_VERSION }: { currentVer
       }}
     >
       <nav className="px-3 py-2 mx-auto w-full sm:w-[85%] lg:w-[80%]">
-        <GlassTabStrip
-          items={NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            return {
-              key: item.href,
-              label: t(item.label),
-              href: item.href,
-              active: pathname === item.href || pathname.startsWith(`${item.href}/`),
-              badge: item.href === "/settings" ? (hasUnseenUpdate ? 1 : 0) : item.href === "/" ? unreadEvents : undefined,
-              icon: <Icon className="h-[19px] w-[19px]" />,
-              hideLabel: true,
-            };
-          })}
-        />
+        <GlassTabStrip items={items} />
       </nav>
+      {tasks.panel}
     </div>
   );
 }

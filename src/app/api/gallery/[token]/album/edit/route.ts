@@ -9,7 +9,8 @@ import type { AlbumFrame, AlbumPhotoElement, GalleryAlbumRow, GalleryRow } from 
 export const runtime = "nodejs";
 
 // The client changes the album design in the gallery (owner, 2026-10-27; lib/albumClientEdit.ts):
-// swaps photos, redesigns a page, goes back a design, or undoes all their changes. Only the
+// swaps photos, redesigns a page, goes back a design, changes the photos' outline color for the whole
+// album (2026-11-01), or undoes all their changes. Only the
 // client's own gallery link (galleries.access_token, published, not archived), and only while the
 // album waits for their approval ("sent"). The request only names the action and the frames; the
 // pages are computed and saved here (lib/albumAuto/clientEdits.ts), so the album keeps exactly its
@@ -52,8 +53,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (!spreads?.length) return NextResponse.json({ error: "האלבום לא נמצא" }, { status: 404 });
 
   // The photos (proportions, faces) of the pages this action can change, and the photographer's own
-  // page templates when a page may be redesigned.
-  const pageIds = req.action === "swap" ? [req.a.spreadId, req.b.spreadId] : req.action === "reset" ? [] : [req.spreadId];
+  // page templates when a page may be redesigned. Undoing everything and the outline color need none.
+  const pageIds = req.action === "swap" ? [req.a.spreadId, req.b.spreadId] : req.action === "reset" || req.action === "outline" ? [] : [req.spreadId];
   const photoIds = [
     ...new Set(
       spreads
@@ -96,8 +97,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   );
   if (!outcome.ok) return NextResponse.json({ error: outcome.error, code: outcome.code, pages: outcome.pages }, { status: outcome.status });
 
-  // Saved together: a swap between pages that saved only one of them would show a photo twice. A
-  // page that failed puts the ones that saved back as they were.
+  // Saved together: a swap between pages that saved only one of them would show a photo twice, and an
+  // outline color saved on some pages only would leave the album in two colors. A page that failed
+  // puts the ones that saved back as they were.
   const now = new Date().toISOString();
   const before = new Map(spreads.map((sp) => [sp.id, sp] as const));
   const results = await Promise.all(

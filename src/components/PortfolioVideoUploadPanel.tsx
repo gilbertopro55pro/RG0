@@ -12,22 +12,35 @@ import {
   otherTabUpload,
   subscribeUploads,
   uploadKey,
+  useGalleryUploads,
   useUpload,
   type GalleryVideoUploadRow,
 } from "@/lib/galleryUploads";
 import { readDataTransferItems, type DroppedFile } from "@/lib/fileDrop";
-import { droppedFromFileList, getOrCreatePortfolioGallery, portfolioVideos } from "@/lib/portfolioUploads";
+import {
+  droppedFromFileList,
+  getOrCreatePortfolioGallery,
+  loadPortfolioPhotoTabs,
+  portfolioTabOptions,
+  portfolioVideoTabs,
+  portfolioVideos,
+  type PortfolioVideoTabSummary,
+} from "@/lib/portfolioUploads";
 import { sortSubTabs, subTabLabel } from "@/lib/portfolioNames";
 import { PORTFOLIO_VIDEO_MAX_BYTES } from "@/lib/stages";
 import { useT } from "@/i18n/client";
 import { captureVideoPoster } from "@/lib/videoPoster";
+import PortfolioMainTabSelect, { NEW_MAIN_TAB, StepBadge, chosenMainTab } from "@/components/PortfolioMainTabSelect";
 
 // Videos straight to the public portfolio (owner, 2026-10-16), under "העלאת תמונות ישירות
 // לפורטפוליו". פרו and פרו+ (this screen's portfolio section is closed to the entry tier), up to
-// 400MB a file (PORTFOLIO_VIDEO_MAX_BYTES, enforced again by migration 0176). Like the photos, a
-// dragged folder opens a tab named after it, and a folder inside it a sub-tab
-// (lib/portfolioUploads.ts). The videos live in the hidden portfolio gallery (gallery_videos with
-// in_portfolio) and upload in the background engine, like a gallery's videos.
+// 400MB a file (PORTFOLIO_VIDEO_MAX_BYTES, enforced again by migration 0176). Step 1 is the same
+// main-tab dropdown as the photo box (owner, 2026-11-01): with a tab chosen, loose videos go into it
+// and each dragged folder becomes a sub-tab inside it; without one, a dragged folder opens a tab
+// named after it, and a folder inside it a sub-tab (lib/portfolioUploads.ts). The dropdown lists
+// the photo tabs and the video tabs together: on the public page a tab shows both. The videos live
+// in the hidden portfolio gallery (gallery_videos with in_portfolio) and upload in the background
+// engine, like a gallery's videos.
 
 type Video = GalleryVideoUploadRow & { portfolio_category: string | null; portfolio_subcategory: string | null; poster_path?: string | null };
 
@@ -51,11 +64,31 @@ export default function PortfolioVideoUploadPanel({ photographerId }: { photogra
   const [galleryId, setGalleryId] = useState<string | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
   const [error, setError] = useState<string | null>(null);
-  // The tabs (and their sub-tabs) the last drop opens, with how many videos go to each.
-  const [created, setCreated] = useState<{ tab: string; count: number; subs: { name: string; count: number }[] }[] | null>(null);
+  // Step 1: "" = no main tab (the folders name the tabs), an existing tab, or NEW_MAIN_TAB with the
+  // name typed in `customCategory` (PortfolioMainTabSelect).
+  const [category, setCategory] = useState("");
+  const [customCategory, setCustomCategory] = useState("");
+  const [photoTabs, setPhotoTabs] = useState<string[]>([]);
+  // The tabs (and their sub-tabs) the last drop opens, with how many videos go to each. `into` is the
+  // main tab chosen for it (null: the folders named the tabs).
+  const [created, setCreated] = useState<{ into: string | null; tabs: PortfolioVideoTabSummary[] } | null>(null);
   const [addedCount, setAddedCount] = useState(0);
   const [playing, setPlaying] = useState<{ id: string; url: string } | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+
+  // The photo tabs for the dropdown (the video tabs come from `videos` below), and any new one the
+  // photo box above opens meanwhile, so videos can join the tab its photos just went into.
+  useEffect(() => {
+    void loadPortfolioPhotoTabs(photographerId).then(setPhotoTabs);
+  }, [photographerId]);
+  const photoJobKey = useGalleryUploads().find((u) => u.kind === "portfolio")?.key ?? null;
+  useEffect(() => {
+    if (!photoJobKey) return;
+    return onUploadItem(photoJobKey, (value) => {
+      const tab = (value as { portfolio_category?: string | null }).portfolio_category;
+      if (tab) setPhotoTabs((prev) => (prev.includes(tab) ? prev : [...prev, tab]));
+    });
+  }, [photoJobKey]);
 
   // The portfolio gallery, if there is one yet (created on the first upload), and its videos.
   useEffect(() => {
@@ -165,9 +198,25 @@ export default function PortfolioVideoUploadPanel({ photographerId }: { photogra
     };
   }, []);
 
+  // The main tab the upload goes to ("" = none: the folders name the tabs, as before).
+  const chosenTab = chosenMainTab(category, customCategory);
+  // Every tab the portfolio has (photos' and videos'), and the one picked even if its last video was
+  // just deleted, so the <select> keeps showing it.
+  const tabOptions = portfolioTabOptions(
+    photoTabs,
+    videos.map((v) => v.portfolio_category),
+    category && category !== NEW_MAIN_TAB ? [category] : []
+  );
+
   const send = async (dropped: DroppedFile[]) => {
     if (dropped.length === 0) return;
-    const { videos: entries, rejected, tooBig } = portfolioVideos(dropped, PORTFOLIO_VIDEO_MAX_BYTES);
+    // "+ לשונית חדשה" with no name yet: not the folder-named tabs the empty choice means.
+    if (category === NEW_MAIN_TAB && !chosenTab) {
+      setError(t("קודם כותבים את שם הלשונית החדשה בשלב 1"));
+      return;
+    }
+    const mainTab = chosenTab || null;
+    const { videos: entries, rejected, tooBig } = portfolioVideos(dropped, PORTFOLIO_VIDEO_MAX_BYTES, mainTab);
     setAddedCount(0);
     const notes: string[] = [];
     if (tooBig.length > 0) {
@@ -210,23 +259,10 @@ export default function PortfolioVideoUploadPanel({ photographerId }: { photogra
       },
     });
 
-    const tabs = new Map<string, { count: number; subs: Map<string, number> }>();
-    for (const e of entries) {
-      if (!e.tab) continue;
-      const tab = tabs.get(e.tab) ?? { count: 0, subs: new Map<string, number>() };
-      tab.count++;
-      if (e.sub) tab.subs.set(e.sub, (tab.subs.get(e.sub) ?? 0) + 1);
-      tabs.set(e.tab, tab);
-    }
-    setCreated(
-      tabs.size > 0
-        ? [...tabs.entries()].map(([tab, v]) => ({
-            tab,
-            count: v.count,
-            subs: sortSubTabs([...v.subs.entries()].map(([name, count]) => ({ name, count })), (s) => s.name),
-          }))
-        : null
-    );
+    const tabs = portfolioVideoTabs(entries);
+    // Into a chosen tab, only its new sub-tabs are worth listing (like the photo box).
+    if (mainTab) setCreated(tabs[0]?.subs.length ? { into: mainTab, tabs } : null);
+    else setCreated(tabs.length > 0 ? { into: null, tabs } : null);
   };
 
   const play = async (video: Video) => {
@@ -284,7 +320,22 @@ export default function PortfolioVideoUploadPanel({ photographerId }: { photogra
   return (
     <div className="mt-3.5 pt-3.5 border-t border-line">
       <p className="text-sm font-semibold mb-1">{t("העלאת סרטונים לפורטפוליו")}</p>
-      <p className="text-xs text-ink-soft mb-3.5">{t("גוררים סרטונים או תיקייה. כל תיקייה תהפוך ללשונית בשם שלה, ותיקיות שבתוכה לתת-לשוניות. עד {mb}MB לקובץ.", { mb: MAX_MB })}</p>
+      <p className="text-xs text-ink-soft mb-3.5">{t("בוחרים לשונית ראשית (למשל \"חתונה\"), וגוררים אליה סרטונים או תיקיות. עד {mb}MB לקובץ.", { mb: MAX_MB })}</p>
+
+      <PortfolioMainTabSelect
+        id="portfolio-video-main-tab"
+        options={tabOptions}
+        value={category}
+        onChange={setCategory}
+        custom={customCategory}
+        onCustomChange={setCustomCategory}
+        noneLabel={t("בלי לשונית ראשית: לפי שמות התיקיות")}
+      />
+
+      <p className="flex items-center gap-2 text-xs font-semibold mb-1.5">
+        <StepBadge n={2} />
+        {t("גוררים סרטונים או תיקיות")}
+      </p>
 
       <input
         ref={fileInputRef}
@@ -342,12 +393,27 @@ export default function PortfolioVideoUploadPanel({ photographerId }: { photogra
           dragging ? "border-amber-deep bg-amber-bg" : "border-line bg-white"
         }`}
       >
-        <span className="text-base font-bold">{dragging ? t("שחררו כאן, והסרטונים ייכנסו לפורטפוליו") : t("גררו לכאן סרטונים או תיקייה")}</span>
-        <span className="text-xs text-ink-soft leading-relaxed max-w-md">
-          <b className="text-ink">{t("תיקייה תהפוך ללשונית בשם שלה, ותיקייה בתוכה לתת-לשונית.")}</b>
-          <br />
-          {t("סרטונים בודדים (לא בתוך תיקייה) ייכנסו ל\"כללי\".")}
-        </span>
+        {chosenTab ? (
+          <>
+            <span className="max-w-full text-base font-bold break-words">
+              {dragging ? t("שחררו כאן, והסרטונים ייכנסו ל\"{tab}\"", { tab: chosenTab }) : t("גררו לכאן סרטונים או תיקיות של \"{tab}\"", { tab: chosenTab })}
+            </span>
+            <span className="text-xs text-ink-soft leading-relaxed max-w-md break-words">
+              <b className="text-ink">{t("כל תיקייה תהפוך לתת-לשונית בתוך \"{tab}\", בשם של התיקייה.", { tab: chosenTab })}</b>
+              <br />
+              {t("סרטונים בודדים (לא בתוך תיקייה) ייכנסו ישירות ל\"{tab}\".", { tab: chosenTab })}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-base font-bold">{dragging ? t("שחררו כאן, והסרטונים ייכנסו לפורטפוליו") : t("גררו לכאן סרטונים או תיקייה")}</span>
+            <span className="text-xs text-ink-soft leading-relaxed max-w-md">
+              <b className="text-ink">{t("תיקייה תהפוך ללשונית בשם שלה, ותיקייה בתוכה לתת-לשונית.")}</b>
+              <br />
+              {t("סרטונים בודדים (לא בתוך תיקייה) ייכנסו ל\"כללי\".")}
+            </span>
+          </>
+        )}
         <span className="flex flex-wrap justify-center gap-2 mt-1">
           <button
             type="button"
@@ -390,11 +456,27 @@ export default function PortfolioVideoUploadPanel({ photographerId }: { photogra
         </div>
       )}
       {!active && addedCount > 0 && <p className="text-xs text-sage mt-2">{t("{n} סרטונים נוספו לפורטפוליו", { n: addedCount })}</p>}
-      {created && (active || addedCount > 0) && (
+      {created?.into && (active || addedCount > 0) && (
+        <div className="mt-2 rounded-lg bg-chip px-3 py-2.5">
+          <p className="text-xs font-semibold mb-1.5 break-words">
+            {active
+              ? t("נפתחות {n} תת-לשוניות בתוך \"{tab}\":", { n: created.tabs[0].subs.length, tab: created.into })
+              : t("נפתחו {n} תת-לשוניות בתוך \"{tab}\":", { n: created.tabs[0].subs.length, tab: created.into })}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {created.tabs[0].subs.map((sub) => (
+              <span key={sub.name} className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-0.5 text-xs font-semibold">
+                {subTabLabel(sub.name)} <span className="font-data text-ink-soft">({sub.count})</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {created && !created.into && (active || addedCount > 0) && (
         <div className="mt-2 rounded-lg bg-chip px-3 py-2.5">
           <p className="text-xs font-semibold mb-1.5">{active ? t("נפתחות לשוניות בפורטפוליו:") : t("נפתחו לשוניות בפורטפוליו:")}</p>
           <div className="flex flex-col gap-1.5">
-            {created.map((c) => (
+            {created.tabs.map((c) => (
               <div key={c.tab} className="flex flex-wrap items-center gap-1.5">
                 <span className="inline-flex items-center gap-1 rounded-full bg-ink text-paper px-2.5 py-0.5 text-xs font-semibold">
                   {c.tab} <span className="font-data opacity-70">({c.count})</span>

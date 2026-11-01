@@ -17,7 +17,7 @@ import AlbumCorrectionMarks from "@/components/AlbumCorrectionMarks";
 import { pagesToPreload, spreadImageUrls } from "@/lib/albumProofingPreload";
 import { optimizedImageUrl } from "@/lib/imageOptimize";
 import { fitPhotoInFrame } from "@/lib/albumAuto/swapPhotos";
-import { resetPagesLine, swapRedesignPages } from "@/lib/albumClientEdit";
+import { OUTLINE_SWATCHES, albumOutline, normalizeOutlineColor, resetPagesLine, swapRedesignPages, withOutlineColor } from "@/lib/albumClientEdit";
 import type { AlbumElement } from "@/lib/types";
 import {
   CORRECTION_COLORS,
@@ -546,6 +546,9 @@ const CORRECTION_GUIDE_STEPS = [
   "בסוף: \"אישור ושליחת התיקונים\".",
 ] as const;
 
+// The ring around the chosen outline color: dark, so a white swatch shows it too.
+const SWATCH_RING = "0 0 0 2px #fff, 0 0 0 4px #1c1b19";
+
 type Status = "sent" | "approved" | "changes_requested";
 type Pick = { spreadId: string; elId: string };
 type ServerPage = { id: string; elements: AlbumElement[]; backgroundPhotoId: string | null; edited: boolean; canBack: boolean; canOriginal: boolean };
@@ -555,7 +558,7 @@ type PhotoInfo = { url: string; aspect: number | null };
 
 // The pages as the client left them stay when the album view is closed and opened again on the same
 // page load (the page's own data is from before the changes).
-const sessions = new Map<string, { pages: ClientAlbumSpread[]; status: Status }>();
+const sessions = new Map<string, { pages: ClientAlbumSpread[]; status: Status; outlineChanged: boolean }>();
 // The notes and marks not sent yet stay on the device until sent, even if the album is closed.
 const notesKey = (token: string) => `album-notes:${token}`;
 
@@ -635,7 +638,9 @@ function swapLocally(pages: ClientAlbumSpread[], a: Pick, b: Pick): ClientAlbumS
 // its new frame redesigns the page, after a confirmation; "עיצוב מחדש" shows another design and
 // "לעיצוב הקודם" goes back one, up to 3. A note per page, drawn marks included, can be added on any
 // page; the notes stay on the device until sent, all at once, to the photographer
-// (api/gallery/[token]/album/corrections, lib/albumCorrections.ts).
+// (api/gallery/[token]/album/corrections, lib/albumCorrections.ts). "צבע קו המתאר" changes the color of
+// the photos' outlines on every page at once (2026-11-01): the panel shows the color on the pages
+// while the client picks it, and "החלה על כל דפי האלבום" saves it.
 export default function GalleryAlbumProofing({
   token,
   status,
@@ -660,7 +665,11 @@ export default function GalleryAlbumProofing({
   const [approving, setApproving] = useState(false);
   const [approveFailed, setApproveFailed] = useState(false);
   const [confirmApproveOpen, setConfirmApproveOpen] = useState(false);
-  const [mode, setMode] = useState<"view" | "mark">("view");
+  const [mode, setMode] = useState<"view" | "mark" | "outline">("view");
+  // The outline color being picked, shown on the pages until applied or cancelled.
+  const [outlineDraft, setOutlineDraft] = useState<string | null>(null);
+  // The client changed the outline color on this page load (the reset dialog says it goes back).
+  const [outlineChanged, setOutlineChanged] = useState(() => sessions.get(token)?.outlineChanged ?? false);
   const [tool, setTool] = useState<"pen" | "rect">("pen");
   const [color, setColor] = useState<CorrectionColor>(CORRECTION_COLORS[0]);
   const [marks, setMarks] = useState<Record<string, CorrectionMark[]>>({});
@@ -674,11 +683,37 @@ export default function GalleryAlbumProofing({
   // The swap: the photo picked first, a swap waiting for the client's OK to redesign, what's being saved.
   const [selected, setSelected] = useState<Pick | null>(null);
   const [confirmSwap, setConfirmSwap] = useState<{ a: Pick; b: Pick; pages: string[] } | null>(null);
-  const [busy, setBusy] = useState<null | "swap" | "redesign" | "back" | "reset">(null);
+  const [busy, setBusy] = useState<null | "swap" | "redesign" | "back" | "reset" | "outline">(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const cycles = useRef<Record<string, Cycle>>({});
   const photoInfo = useMemo(() => photoInfoOf(spreads), [spreads]);
+
+  // The album's outline color (the old builder's fixed layouts draw no outlines). The control shows
+  // only when a photo has one.
+  const outline = useMemo(() => albumOutline(pages.filter((p) => p.layout === "custom").map((p) => p.elements)), [pages]);
+  // The photographer's color, known when the album opened with no page changed by the client.
+  const sentOutline = useMemo(
+    () => (spreads.some((p) => p.edited) ? null : albumOutline(spreads.filter((p) => p.layout === "custom").map((p) => p.elements)).color),
+    [spreads]
+  );
+  const outlineSwatches = useMemo(() => {
+    const list: { color: string; name: string }[] = [];
+    const add = (color: string | null, name: string) => {
+      if (color && !list.some((s) => s.color === color) && !OUTLINE_SWATCHES.some((s) => s.color === color)) list.push({ color, name });
+    };
+    add(outline.color, "הצבע הנוכחי");
+    add(sentOutline, "הצבע שהצלם בחר");
+    return [...list, ...OUTLINE_SWATCHES];
+  }, [outline.color, sentOutline]);
+  // The pages as drawn: while a color is being picked, in that color (nothing saved yet).
+  const shownPages = useMemo(
+    () =>
+      mode === "outline" && outlineDraft
+        ? pages.map((p) => (p.layout === "custom" ? { ...p, elements: withOutlineColor(p.elements, outlineDraft) } : p))
+        : pages,
+    [pages, mode, outlineDraft]
+  );
 
   const spread = pages[index] ?? null;
   const pageAspect = spread ? pageAspectOf(spread) : 1.5;
@@ -686,8 +721,8 @@ export default function GalleryAlbumProofing({
   const stripRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    sessions.set(token, { pages, status: currentStatus });
-  }, [token, pages, currentStatus]);
+    sessions.set(token, { pages, status: currentStatus, outlineChanged });
+  }, [token, pages, currentStatus, outlineChanged]);
 
   // The notes not sent yet, back from this device. Read after the first render: the album can open
   // in the server's HTML (?album=1), which knows nothing of this device.
@@ -756,6 +791,7 @@ export default function GalleryAlbumProofing({
   // waits for the photographer.
   const editable = currentStatus === "sent";
   const marking = mode === "mark";
+  const outlining = mode === "outline";
   const comments = spread?.comments ?? [];
   const pageMarks = spread ? (marks[spread.id] ?? []) : [];
   const hasNote = (id: string) => (marks[id]?.length ?? 0) > 0 || !!notes[id]?.trim();
@@ -782,7 +818,7 @@ export default function GalleryAlbumProofing({
     }
   };
   const failed = (status: number, reply: EditReply) => {
-    if (status === 409 && !["needs_redesign", "no_design", "no_history", "photos_moved", "unchanged"].includes(reply.code ?? "")) {
+    if (status === 409 && !["needs_redesign", "no_design", "no_history", "photos_moved", "unchanged", "no_outline"].includes(reply.code ?? "")) {
       // The album isn't waiting for approval any more (approved on another device, or corrections sent).
       setNotice(t("העיצוב כבר לא פתוח לשינויים. רעננו את הדף."));
       return;
@@ -820,7 +856,7 @@ export default function GalleryAlbumProofing({
   };
 
   const tapPhoto = (spreadId: string, el: PhotoEl) => {
-    if (!editable || busy || marking) return;
+    if (!editable || busy || mode !== "view") return;
     if (!selected) {
       setSelected({ spreadId, elId: el.id });
       return;
@@ -888,8 +924,39 @@ export default function GalleryAlbumProofing({
     if (ok) {
       applyServerPages(reply);
       cycles.current = {};
+      setOutlineChanged(false);
       setNotice(t("כל העמודים חזרו לעיצוב של הצלם."));
     } else failed(status, reply);
+  };
+
+  // The photos' outline color, on every page at once. Shown at once, while the server saves it.
+  const openOutline = () => {
+    setSelected(null);
+    setOutlineDraft(outline.color);
+    setMode("outline");
+  };
+  const closeOutline = () => {
+    setMode("view");
+    setOutlineDraft(null);
+  };
+  const applyOutline = async () => {
+    const color = outlineDraft;
+    if (!color || busy) return;
+    closeOutline();
+    if (color === outline.color && !outline.mixed) return;
+    const before = pages;
+    setPages((prev) => prev.map((p) => (p.layout === "custom" ? { ...p, elements: withOutlineColor(p.elements, color) } : p)));
+    setBusy("outline");
+    const { ok, status, reply } = await sendEdit({ action: "outline", color });
+    setBusy(null);
+    if (ok) {
+      applyServerPages(reply);
+      setOutlineChanged(true);
+      setNotice(t("צבע קו המתאר עודכן בכל האלבום."));
+      return;
+    }
+    setPages((prev) => prev.map((p) => before.find((x) => x.id === p.id) ?? p));
+    failed(status, reply);
   };
 
   // --- Approval and corrections ---------------------------------------------------------------
@@ -1023,12 +1090,12 @@ export default function GalleryAlbumProofing({
                 }}
               >
                 <ProofPage
-                  spread={spread}
+                  spread={shownPages[index] ?? spread}
                   photoAspects={photoAspects}
                   onPhotoAspect={onPhotoAspect}
                   selectedElId={selected?.spreadId === spread.id ? selected.elId : null}
                   picking={!!selected}
-                  onPhotoTap={editable && !marking ? (el) => tapPhoto(spread.id, el) : undefined}
+                  onPhotoTap={editable && mode === "view" ? (el) => tapPhoto(spread.id, el) : undefined}
                 />
                 <AlbumCorrectionMarks marks={draftMark ? [...pageMarks, draftMark] : pageMarks} pageAspect={pageAspect} />
                 {marking && (
@@ -1068,7 +1135,7 @@ export default function GalleryAlbumProofing({
           style={{ scrollbarWidth: "none" }}
         >
           <div className="flex gap-2 px-3 py-2 w-max phone-landscape:py-1.5">
-            {pages.map((p, i) => {
+            {shownPages.map((p, i) => {
               const current = i === index;
               const holdsPick = selected?.spreadId === p.id;
               return (
@@ -1126,7 +1193,7 @@ export default function GalleryAlbumProofing({
           {justSent ? `✓ ${t("התיקונים נשלחו לצלם. העיצוב המעודכן יישלח אליכם שוב.")}` : t("שלחתם תיקונים לעיצוב. הצלם יעדכן אותו וישלח אליכם שוב.")}
         </div>
       )}
-      {selected && !marking && (
+      {selected && mode === "view" && (
         <div
           className="order-2 mx-4 mb-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold flex items-center justify-between gap-3 text-white phone-landscape:mx-2 phone-landscape:flex-col phone-landscape:items-stretch phone-landscape:text-center"
           style={{ background: SWAP_PURPLE }}
@@ -1238,6 +1305,66 @@ export default function GalleryAlbumProofing({
               </button>
             </div>
           </>
+        ) : outlining ? (
+          <>
+            {/* The whole album's outline color: the pages show the color picked, and only "החלה"
+                saves it. Photos without an outline keep having none. */}
+            <p className="text-sm font-semibold mb-1">{t("צבע קו המתאר")}</p>
+            <p className="text-xs text-ink-soft leading-snug mb-3 phone-landscape:mb-2">{t("השינוי חל על כל התמונות באלבום שיש להן קו מתאר.")}</p>
+            <div className="flex flex-wrap items-center gap-2 mb-4 phone-landscape:gap-1.5 phone-landscape:mb-3">
+              {outlineSwatches.map((sw) => (
+                <button
+                  key={sw.color}
+                  onClick={() => setOutlineDraft(sw.color)}
+                  aria-label={t(sw.name)}
+                  title={t(sw.name)}
+                  aria-pressed={outlineDraft === sw.color}
+                  className="h-9 w-9 rounded-full flex items-center justify-center phone-landscape:h-8 phone-landscape:w-8"
+                  style={{ boxShadow: outlineDraft === sw.color ? SWATCH_RING : undefined }}
+                >
+                  <span className="h-7 w-7 rounded-full block phone-landscape:h-6 phone-landscape:w-6" style={{ background: sw.color, boxShadow: "inset 0 0 0 1px rgba(0, 0, 0, 0.2)" }} />
+                </button>
+              ))}
+              {(() => {
+                // Any other color, from the device's own picker: its swatch shows the color once picked.
+                const custom = !!outlineDraft && !outlineSwatches.some((sw) => sw.color === outlineDraft);
+                return (
+                  <label
+                    title={t("צבע אחר")}
+                    className="relative h-9 w-9 rounded-full flex items-center justify-center cursor-pointer phone-landscape:h-8 phone-landscape:w-8"
+                    style={{ boxShadow: custom ? SWATCH_RING : undefined }}
+                  >
+                    <span
+                      className="h-7 w-7 rounded-full flex items-center justify-center phone-landscape:h-6 phone-landscape:w-6"
+                      style={{ background: "conic-gradient(#e5322d, #f59e0b, #16a34a, #0ea5e9, #2563eb, #9333ea, #e5322d)" }}
+                      aria-hidden="true"
+                    >
+                      {custom && <span className="h-4 w-4 rounded-full block" style={{ background: outlineDraft ?? undefined, boxShadow: "0 0 0 1.5px #fff" }} />}
+                    </span>
+                    <input
+                      type="color"
+                      value={outlineDraft ?? outline.color ?? "#ffffff"}
+                      onChange={(e) => setOutlineDraft(normalizeOutlineColor(e.target.value))}
+                      aria-label={t("צבע אחר")}
+                      className="absolute inset-0 h-full w-full opacity-0 cursor-pointer"
+                    />
+                  </label>
+                );
+              })()}
+            </div>
+            <div className="flex gap-2 phone-landscape:flex-col">
+              <button
+                onClick={() => void applyOutline()}
+                disabled={!outlineDraft || !!busy}
+                className="flex-1 rounded-lg py-3 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60 phone-landscape:py-2 phone-landscape:leading-tight"
+              >
+                {t("החלה על כל דפי האלבום")}
+              </button>
+              <button onClick={closeOutline} className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold bg-card border border-line text-ink-soft phone-landscape:py-2">
+                {t("ביטול")}
+              </button>
+            </div>
+          </>
         ) : (
           <>
             {comments.length > 0 && (
@@ -1275,6 +1402,17 @@ export default function GalleryAlbumProofing({
                   {editable && spread.canOriginal && (
                     <button onClick={originalPage} disabled={!!busy} className={pageBtn}>
                       ⟲ {t("לעיצוב המקורי")}
+                    </button>
+                  )}
+                  {/* The whole album's, so on every page; only when a photo has an outline. */}
+                  {editable && outline.color && (
+                    <button onClick={openOutline} disabled={!!busy} className={pageBtn}>
+                      <span
+                        className="h-3.5 w-3.5 shrink-0 rounded-[3px]"
+                        style={{ boxShadow: `inset 0 0 0 3px ${outline.color}, 0 0 0 1px rgba(0, 0, 0, 0.3)` }}
+                        aria-hidden="true"
+                      />
+                      {t("צבע קו המתאר")}
                     </button>
                   )}
                 </div>
@@ -1386,6 +1524,7 @@ export default function GalleryAlbumProofing({
             <ul className="list-disc ps-5 space-y-1.5 text-sm text-ink-soft mb-5">
               <li>{resetPagesLine(editedNumbers, t)}</li>
               <li>{t("ההחלפות והעיצובים שבחרתם יבוטלו, והתמונות יחזרו למקום שלהן.")}</li>
+              {outlineChanged && <li>{t("צבע קו המתאר יחזור לצבע שהצלם בחר.")}</li>}
               <li className="font-semibold text-ink">{t("לא ניתן לשחזר את השינויים אחרי הביטול.")}</li>
               <li>{t("ההערות לעמודים נשמרות.")}</li>
             </ul>

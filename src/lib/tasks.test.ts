@@ -7,6 +7,7 @@ import {
   israelToday,
   openTasksDue,
   parseTaskInput,
+  parseTasksSummary,
   shiftDate,
   sortTasks,
   swipeAction,
@@ -113,5 +114,30 @@ describe("swipeAction", () => {
     expect(swipeAction(100, 800)).toBeNull(); // 30% of 800 is capped at 140
     expect(swipeAction(141, 800)).toBe("toggle");
     expect(swipeAction(72, 100)).toBe("toggle"); // at least 72px
+  });
+});
+
+describe("parseTasksSummary", () => {
+  const ok = { photographer: true, photographerId: "u1", openCount: 3, morningDigest: { enabled: true, minutes: 480 } };
+
+  it("a photographer's summary, as the route sends it", () => {
+    expect(parseTasksSummary(ok)).toEqual(ok);
+    expect(parseTasksSummary({ ...ok, extra: 1 })).toEqual(ok);
+  });
+
+  it("not a photographer (a team member)", () => {
+    expect(parseTasksSummary({ photographer: false })).toEqual({ photographer: false });
+  });
+
+  it("anything else is unknown, not 'no tasks'", () => {
+    expect(parseTasksSummary(null)).toBeNull();
+    expect(parseTasksSummary("<html>")).toBeNull();
+    expect(parseTasksSummary({ error: "שגיאה בטעינה" })).toBeNull();
+    expect(parseTasksSummary({ ...ok, photographerId: "" })).toBeNull();
+    expect(parseTasksSummary({ ...ok, openCount: -1 })).toBeNull();
+    expect(parseTasksSummary({ ...ok, openCount: 1.5 })).toBeNull();
+    expect(parseTasksSummary({ ...ok, morningDigest: null })).toBeNull();
+    expect(parseTasksSummary({ ...ok, morningDigest: { enabled: true, minutes: 1440 } })).toBeNull();
+    expect(parseTasksSummary({ ...ok, morningDigest: { enabled: "yes", minutes: 480 } })).toBeNull();
   });
 });

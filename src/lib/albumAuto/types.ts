@@ -85,7 +85,16 @@ export type SectionKind = "owners" | "parents" | "parents2" | "siblings" | "gran
 // `tab`: the gallery tab the spread belongs to, when the book follows the tabs.
 // `opener`: the opening page of the combined album's second part (one photo and the event's name,
 // layoutOpener in layouts.ts) instead of a spread of the style.
-export type PlannedSpread = { section: SectionKind; photoIds: string[]; heroId?: string; tab?: string; opener?: { title: string } };
+export type PlannedSpread = {
+  section: SectionKind;
+  photoIds: string[];
+  heroId?: string;
+  tab?: string;
+  opener?: { title: string };
+  // A book's page (planBook): laid out with its photos as large as the page holds, none cut
+  // (bookPage in bookLayout.ts).
+  book?: boolean;
+};
 
 export type AlbumPlan = { coverPhotoId: string | null; spreads: PlannedSpread[] };
 

@@ -1063,7 +1063,8 @@ export function planAlbum(
     const wedding = planWedding(allPhotos, info, orderIdx, bounds, opts, refs);
     if (wedding) return wedding;
   }
-  if ((!isBook || opts.bookTabs) && followsTabs(allPhotos)) return planByTabs(allPhotos, info, cellSize, orderIdx, time, bounds, opts, refs);
+  if (isBook) return planBook(allPhotos, orderIdx, opts);
+  if (followsTabs(allPhotos)) return planByTabs(allPhotos, info, cellSize, orderIdx, time, bounds, opts, refs);
 
   // 2. Family sections, in priority order. Which other cells may share the frame: owners only with
   // themselves; the groom's parents with the owners; the bride's parents with the owners and the
@@ -1510,15 +1511,28 @@ export function weddingSpreads(counts: number[], weights: number[], total: numbe
 }
 
 // `ids` over exactly `k` pages from book position `pos`, as even as the page caps allow, in order.
-function splitExact(ids: string[], pos: number, k: number): string[][] {
+// What the caps can't hold goes to the last pages, up to HARD_MAX_PER_SPREAD each (as fitPages
+// does), then evenly over all of them: a photo is never dropped.
+export function splitExact(ids: string[], pos: number, k: number): string[][] {
   const n = ids.length;
   const pages = Math.max(1, Math.min(k, Math.floor(n / 2) || 1));
   const caps = Array.from({ length: pages }, (_, i) => pageCap(pos + i));
   const sizes = new Array(pages).fill(0);
-  for (let j = 0; j < n; j++) {
+  let left = n;
+  for (; left > 0; left--) {
     let best = -1;
     for (let i = 0; i < pages; i++) if (sizes[i] < caps[i] && (best < 0 || sizes[i] < sizes[best])) best = i;
-    sizes[best < 0 ? pages - 1 : best]++;
+    if (best < 0) break;
+    sizes[best]++;
+  }
+  for (let i = pages - 1; i >= 0 && left > 0; i--) {
+    const add = Math.min(left, Math.max(0, HARD_MAX_PER_SPREAD - sizes[i]));
+    sizes[i] += add;
+    left -= add;
+  }
+  for (let i = pages - 1; left > 0; i = (i - 1 + pages) % pages) {
+    sizes[i]++;
+    left--;
   }
   const out: string[][] = [];
   let at = 0;
@@ -1644,6 +1658,60 @@ function planWedding(
   }
   coverPhotoId ??= spreads[0]?.photoIds[0] ?? null;
   return { coverPhotoId, spreads };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The book (בוק בר/בת מצווה, owner 2026-11-01): the pages the photographer typed, exactly — "if he
+// chose 20 pages, the tool builds 20 pages and sets the photos on each so the album holds 20, even
+// when one page has 2 photos and another 3". The book wants its photos large: never a page of one
+// photo, at most half the photo count in pages (so 2 or more on each), and as even as the page caps
+// allow (pageCap). With no count typed, about 2–3 photos a page (BOOK_PER_PAGE), up to 30 pages. The
+// photos run in shooting order; in the combined album (bookTabs) by the places it was shot at, a page
+// never mixing two, each place taking pages by its share of the photos. Each page is marked `book`,
+// so the designer lays it out with its photos as large as the page holds, none cut (bookPage).
+const BOOK_PER_PAGE = 2.5;
+
+export function bookSpreadCount(photos: number, typedPages: number | null, hasCover = true): number {
+  const room = Math.max(1, (typedPages ?? AUTO_MAX_PAGES) - (hasCover ? 1 : 0));
+  const most = Math.max(1, Math.floor(photos / 2));
+  return typedPages ? Math.min(room, most) : Math.min(room, most, Math.max(1, Math.round(photos / BOOK_PER_PAGE)));
+}
+
+function planBook(allPhotos: AutoPhoto[], orderIdx: Map<string, number>, opts: PlanOptions): AlbumPlan {
+  const byId = new Map(allPhotos.map((p) => [p.id, p] as const));
+  const shot = (id: string) => orderIdx.get(id) as number;
+  const ordered = [...allPhotos].sort((a, b) => shot(a.id) - shot(b.id));
+  let groups: { key: string; ids: string[] }[] = [{ key: "book", ids: ordered.map((p) => p.id) }];
+  if (opts.bookTabs && followsTabs(allPhotos)) {
+    const map = new Map<string, { key: string; order: number; ids: string[] }>();
+    for (const p of ordered) {
+      const key = p.tab?.key ?? UNTABBED;
+      let g = map.get(key);
+      if (!g) map.set(key, (g = { key, order: p.tab ? p.tab.order : Number.MAX_SAFE_INTEGER, ids: [] }));
+      g.ids.push(p.id);
+    }
+    groups = [...map.values()].sort((a, b) => a.order - b.order);
+    // A place of a single photo opens the next one (or closes the one before): never a one-photo page.
+    for (let i = 0; i < groups.length && groups.length > 1; i++) {
+      if (groups[i].ids.length !== 1) continue;
+      const next = groups[i + 1];
+      if (next) next.ids = [...groups[i].ids, ...next.ids];
+      else groups[i - 1].ids.push(...groups[i].ids);
+      groups.splice(i, 1);
+      i--;
+    }
+  }
+  const typed = opts.targetSpreads && opts.targetSpreads > 0 ? Math.min(AUTO_MAX_PAGES, Math.floor(opts.targetSpreads)) : null;
+  const total = Math.max(groups.length, bookSpreadCount(allPhotos.length, typed, opts.hasCover !== false));
+  const counts = groups.map((g) => g.ids.length);
+  const alloc = groups.length === 1 ? [Math.min(total, Math.max(1, Math.floor(counts[0] / 2)))] : weddingSpreads(counts, counts, total);
+  const spreads: PlannedSpread[] = [];
+  groups.forEach((g, i) => {
+    for (const ids of splitExact(g.ids, spreads.length + 1, alloc[i])) {
+      spreads.push({ section: "event", photoIds: ids, heroId: ids.find((id) => isLandscape(byId.get(id))) ?? ids[0], tab: g.key, book: true });
+    }
+  });
+  return { coverPhotoId: bookCoverPhoto(ordered), spreads };
 }
 
 // ---------------------------------------------------------------------------------------------

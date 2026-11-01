@@ -2,7 +2,7 @@ import { NextResponse, after } from "next/server";
 import { checkRateLimit, clientIpFrom } from "@/lib/rateLimit";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { correctedPageNumbers, parseCorrectionPages } from "@/lib/albumCorrections";
-import { clientChangedPages, pageList } from "@/lib/albumClientEdit";
+import { clientChanges, outlineColorLabel, pageList, type ClientChanges, type OriginalPage } from "@/lib/albumClientEdit";
 import { sendPushToPhotographer } from "@/lib/push";
 import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
@@ -10,7 +10,7 @@ import { photographerLang } from "@/lib/clientLang";
 import { PAGE_LINK_TTL, shortPageUrl } from "@/lib/shortFileLinks";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
-import type { GalleryAlbumRow, GalleryRow } from "@/lib/types";
+import type { AlbumElement, GalleryAlbumRow, GalleryRow } from "@/lib/types";
 
 // The client's corrections on the album design (owner, 2026-10-27): "צריך תיקונים" in the gallery's
 // album view, marks drawn on the pages and a note per page, sent at once (lib/albumCorrections.ts).
@@ -47,10 +47,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   const { data: spreads } = await supabase
     .from("gallery_album_spreads")
-    .select("id, client_edited_at")
+    .select("id, client_edited_at, elements, client_original")
     .eq("album_id", album.id)
     .order("sort_order", { ascending: true })
-    .returns<{ id: string; client_edited_at: string | null }[]>();
+    .returns<{ id: string; client_edited_at: string | null; elements: AlbumElement[] | null; client_original: OriginalPage | null }[]>();
   const spreadOrder = (spreads ?? []).map((s) => s.id);
   const pages = parseCorrectionPages(body, spreadOrder);
   if (!pages) return NextResponse.json({ error: "בקשה לא חוקית" }, { status: 400 });
@@ -75,15 +75,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   }
 
   const pageNumbers = correctedPageNumbers(pages, spreadOrder);
-  // Pages the client also changed themselves (lib/albumClientEdit.ts), which stay as they left them.
-  const changedPages = clientChangedPages(spreads ?? []);
-  after(() => notifyPhotographer(gallery, row.id, pageNumbers, changedPages).catch((e) => console.error("[album/corrections] notify failed", e)));
+  // Pages the client also changed themselves, and the photos' outline color if they changed it
+  // (lib/albumClientEdit.ts), which stay as they left them.
+  const changes = clientChanges(spreads ?? []);
+  after(() => notifyPhotographer(gallery, row.id, pageNumbers, changes).catch((e) => console.error("[album/corrections] notify failed", e)));
   return NextResponse.json({ ok: true });
 }
 
 // An email and a phone notification, in the photographer's language, with a short link to the marks.
 // Best-effort: the client's corrections are saved either way.
-async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pageNumbers: number[], changedPages: number[]) {
+async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pageNumbers: number[], changes: ClientChanges) {
+  const changedPages = changes.pages;
   const supabase = createServiceRoleClient();
   const [{ data: photographer }, { data: event }] = await Promise.all([
     supabase.from("photographers").select("name, email, ui_lang").eq("id", gallery.photographer_id).maybeSingle<{ name: string | null; email: string | null; ui_lang: string | null }>(),
@@ -97,6 +99,12 @@ async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pag
   const title = t("יש תיקונים לביצוע באלבום {name}", { name });
   const cover = t("הכריכה");
   const pagesLine = t("עמודים עם תיקונים: {pages}", { pages: pageList(pageNumbers, cover) });
+  const color = changes.outline ? outlineColorLabel(changes.outline.color, t) : null;
+  const outlineText = !changes.outline
+    ? ""
+    : color
+      ? t("הם גם שינו את צבע קו המתאר של התמונות ({color}).", { color })
+      : t("הם גם שינו את צבע קו המתאר של התמונות.");
 
   await sendPushToPhotographer(gallery.photographer_id, {
     title,
@@ -115,6 +123,7 @@ async function notifyPhotographer(gallery: GalleryRow, correctionId: string, pag
       `${t("{client} סימנו תיקונים בעיצוב האלבום.", { client: name })}\n` +
       `${pagesLine}\n` +
       (changedPages.length ? `${t("הם גם שינו בעצמם את העיצוב בעמודים: {pages}.", { pages: pageList(changedPages, cover) })}\n` : "") +
+      (outlineText ? `${outlineText}\n` : "") +
       "\n" +
       `${t("לצפייה בתיקונים:")}\n${link}`,
   });
