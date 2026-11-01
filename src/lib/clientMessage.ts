@@ -118,7 +118,9 @@ export function buildClientMessageText(params: {
     .split("{{שעת_הגעה}}").join(hhmm(params.arrivalTime))
     .split("{{מקדמה}}").join(params.depositAmount != null ? currency(params.depositAmount) : "")
     .split("{{יתרה}}").join(params.balanceAmount != null ? currency(params.balanceAmount) : "")
-    .split(marker).join(`${marker} ${params.linkUrl}`);
+    .split(marker).join(`${marker} ${params.linkUrl}`)
+    // A template's "קישור: " left its space after the link: no line ends in spaces.
+    .replace(/[ \t]+$/gm, "");
   // The booking confirmation always opens with the client's name and carries the portal link
   // (owner, 2026-10-19), even when a saved template left out the {{שם}} token or the link line.
   if (params.stageKey === "event_closing" && !template.includes("{{שם}}")) text = `${params.clientName},\n${text}`;
