@@ -1462,10 +1462,12 @@ export function significantFaces(boxes: { height: number }[]): number {
 // The spreads of each stage, in order: `want` (from the shares) adjusted so each stage holds its
 // photos within the page caps of its positions in the book and never gets a page of a single photo
 // (at most half its photo count in pages), the spreads moving to where they're needed.
-export function weddingSpreads(counts: number[], weights: number[], total: number): number[] {
+// `minPerPage`: 2 keeps every page at 2 photos or more; a book with a typed count takes 1 (owner,
+// 2026-11-01: "למלא את כל העמודים גם עם תמונה אחת בדף").
+export function weddingSpreads(counts: number[], weights: number[], total: number, minPerPage = 2): number[] {
   const k = counts.length;
   if (k === 0) return [];
-  const maxOf = (i: number) => Math.max(1, Math.floor(counts[i] / 2));
+  const maxOf = (i: number) => Math.max(1, Math.floor(counts[i] / minPerPage));
   const sumW = weights.reduce((a, b) => a + b, 0) || 1;
   const raw = weights.map((w) => (total * w) / sumW);
   const alloc = raw.map((r, i) => Math.min(maxOf(i), Math.max(1, Math.floor(r))));
@@ -1513,12 +1515,15 @@ export function weddingSpreads(counts: number[], weights: number[], total: numbe
 // `ids` over exactly `k` pages from book position `pos`, as even as the page caps allow, in order.
 // What the caps can't hold goes to the last pages, up to HARD_MAX_PER_SPREAD each (as fitPages
 // does), then evenly over all of them: a photo is never dropped.
-export function splitExact(ids: string[], pos: number, k: number): string[][] {
+export function splitExact(ids: string[], pos: number, k: number, minPerPage = 2): string[][] {
   const n = ids.length;
-  const pages = Math.max(1, Math.min(k, Math.floor(n / 2) || 1));
+  const pages = Math.max(1, Math.min(k, Math.floor(n / minPerPage) || 1));
   const caps = Array.from({ length: pages }, (_, i) => pageCap(pos + i));
-  const sizes = new Array(pages).fill(0);
-  let left = n;
+  // Evenly spaced when the caps allow: the bigger pages spread through the run (2, 1, 2, 1… rather
+  // than all the 2s first).
+  const even = Array.from({ length: pages }, (_, i) => Math.floor(((i + 1) * n) / pages) - Math.floor((i * n) / pages));
+  const sizes = even.every((size, i) => size <= caps[i]) ? even : new Array(pages).fill(0);
+  let left = n - sizes.reduce((a, b) => a + b, 0);
   for (; left > 0; left--) {
     let best = -1;
     for (let i = 0; i < pages; i++) if (sizes[i] < caps[i] && (best < 0 || sizes[i] < sizes[best])) best = i;
@@ -1663,9 +1668,10 @@ function planWedding(
 // ---------------------------------------------------------------------------------------------
 // The book (בוק בר/בת מצווה, owner 2026-11-01): the pages the photographer typed, exactly — "if he
 // chose 20 pages, the tool builds 20 pages and sets the photos on each so the album holds 20, even
-// when one page has 2 photos and another 3". The book wants its photos large: never a page of one
-// photo, at most half the photo count in pages (so 2 or more on each), and as even as the page caps
-// allow (pageCap). With no count typed, about 2–3 photos a page (BOOK_PER_PAGE), up to 30 pages. The
+// when one page has 2 photos and another 3". Every page typed is filled, a page of a single photo
+// when there are too few photos for 2 on each (owner, 2026-11-01: "למלא את כל העמודים גם עם תמונה
+// אחת בדף"), only never more pages than photos; as even as the page caps allow (pageCap). With no
+// count typed, about 2–3 photos a page (BOOK_PER_PAGE), never a page of one photo, up to 30. The
 // photos run in shooting order; in the combined album (bookTabs) by the places it was shot at, a page
 // never mixing two, each place taking pages by its share of the photos. Each page is marked `book`,
 // so the designer lays it out with its photos as large as the page holds, none cut (bookPage).
@@ -1673,11 +1679,13 @@ const BOOK_PER_PAGE = 2.5;
 
 export function bookSpreadCount(photos: number, typedPages: number | null, hasCover = true): number {
   const room = Math.max(1, (typedPages ?? AUTO_MAX_PAGES) - (hasCover ? 1 : 0));
-  const most = Math.max(1, Math.floor(photos / 2));
-  return typedPages ? Math.min(room, most) : Math.min(room, most, Math.max(1, Math.round(photos / BOOK_PER_PAGE)));
+  if (typedPages) return Math.max(1, Math.min(room, photos));
+  return Math.min(room, Math.max(1, Math.floor(photos / 2)), Math.max(1, Math.round(photos / BOOK_PER_PAGE)));
 }
 
 function planBook(allPhotos: AutoPhoto[], orderIdx: Map<string, number>, opts: PlanOptions): AlbumPlan {
+  const typedCount = !!(opts.targetSpreads && opts.targetSpreads > 0);
+  const minPerPage = typedCount ? 1 : 2;
   const byId = new Map(allPhotos.map((p) => [p.id, p] as const));
   const shot = (id: string) => orderIdx.get(id) as number;
   const ordered = [...allPhotos].sort((a, b) => shot(a.id) - shot(b.id));
@@ -1691,8 +1699,9 @@ function planBook(allPhotos: AutoPhoto[], orderIdx: Map<string, number>, opts: P
       g.ids.push(p.id);
     }
     groups = [...map.values()].sort((a, b) => a.order - b.order);
-    // A place of a single photo opens the next one (or closes the one before): never a one-photo page.
-    for (let i = 0; i < groups.length && groups.length > 1; i++) {
+    // With no count typed, a place of a single photo opens the next one (or closes the one before):
+    // never a one-photo page there.
+    for (let i = 0; !typedCount && i < groups.length && groups.length > 1; i++) {
       if (groups[i].ids.length !== 1) continue;
       const next = groups[i + 1];
       if (next) next.ids = [...groups[i].ids, ...next.ids];
@@ -1704,10 +1713,10 @@ function planBook(allPhotos: AutoPhoto[], orderIdx: Map<string, number>, opts: P
   const typed = opts.targetSpreads && opts.targetSpreads > 0 ? Math.min(AUTO_MAX_PAGES, Math.floor(opts.targetSpreads)) : null;
   const total = Math.max(groups.length, bookSpreadCount(allPhotos.length, typed, opts.hasCover !== false));
   const counts = groups.map((g) => g.ids.length);
-  const alloc = groups.length === 1 ? [Math.min(total, Math.max(1, Math.floor(counts[0] / 2)))] : weddingSpreads(counts, counts, total);
+  const alloc = groups.length === 1 ? [Math.min(total, Math.max(1, Math.floor(counts[0] / minPerPage)))] : weddingSpreads(counts, counts, total, minPerPage);
   const spreads: PlannedSpread[] = [];
   groups.forEach((g, i) => {
-    for (const ids of splitExact(g.ids, spreads.length + 1, alloc[i])) {
+    for (const ids of splitExact(g.ids, spreads.length + 1, alloc[i], minPerPage)) {
       spreads.push({ section: "event", photoIds: ids, heroId: ids.find((id) => isLandscape(byId.get(id))) ?? ids[0], tab: g.key, book: true });
     }
   });
