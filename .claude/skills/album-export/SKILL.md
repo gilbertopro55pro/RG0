@@ -191,6 +191,19 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
     right-aligned 2-line text, a long line in a narrow box, a left-aligned 2-line text and a 2-line
     text turned 30°): both files show the same lines and sides as the editor. The page was set
     with an UPDATE on `gallery_album_spreads.elements` and set back to `[]` after.
+- **A masked photo exports as the editor shows it** (2026-11-01, found exporting the 20 new
+  creative masks live). In the editor the outline is the frame's own (an inset box-shadow on the
+  box) and the drop shadow is a CSS box-shadow, which is never painted under its own box; the mask
+  only shapes the photo inside. Until then the JPG cut the outline with the mask, and the JPG and
+  PDF drew the shadow as a full rectangle under the frame, so a masked photo's cut-out parts showed
+  a gray rectangle instead of the page.
+  - JPG: `composePhotoTile` applies the mask first, then the outline. `shadowLayerPng(..., outsideOnly)`
+    cuts the (turned) frame out of the shadow layer, for masked photos.
+  - PDF: `drawPhotoShadow(..., outsideOnly)` clips the shadow to outside the frame (even-odd), for
+    masked photos. The PDF already drew the outline after the masked image.
+  - PSD unchanged on purpose: the shadow and stroke are live Photoshop layer effects that follow the
+    layer's silhouette.
+  - Tests in `albumRaster.test.ts` (they fail on the old code). Unmasked photos are unchanged.
 - **PDF page = the album's real size** (since 2026-09-24). Pages are drawn 1600 "design points"
   wide with the height following the album's proportions, then each new page is scaled with
   `page.scale` to its physical cm size (a 30×20 album gives 30.0×20.0 cm pages). Before that,

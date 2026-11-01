@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
-import { albumTextEffects, resolvePageElements, svgTextLayer } from "@/lib/albumRaster";
+import { albumTextEffects, composePhotoTile, resolvePageElements, shadowLayerPng, svgTextLayer } from "@/lib/albumRaster";
 import type { AlbumTextElement, GalleryAlbumSpreadRow } from "@/lib/types";
 
 vi.mock("@/lib/storage", () => ({ downloadObjectBuffer: vi.fn(async () => null) }));
@@ -199,5 +199,61 @@ describe("svgTextLayer lines", () => {
     expect(turned.cy).toBeCloseTo(250, -1);
     expect(turned.w).toBeGreaterThan(100);
     expect(turned.h).toBeGreaterThan(turned.w);
+  });
+});
+
+// A masked photo in the JPG export looks as in the editor (2026-11-01, found exporting the new
+// creative masks): the outline is the frame's, around the whole frame, and the shadow is only
+// outside the frame, so the cut-out parts show the page, not a gray rectangle.
+describe("a masked photo in the export", () => {
+  const photo = () => sharp({ create: { width: 400, height: 300, channels: 3, background: { r: 200, g: 30, b: 30 } } }).jpeg().toBuffer();
+  const at = (tile: { data: Buffer; width: number }, x: number, y: number) => {
+    const i = (y * tile.width + x) * 4;
+    return { r: tile.data[i], g: tile.data[i + 1], b: tile.data[i + 2], a: tile.data[i + 3] };
+  };
+
+  it("keeps the outline around the whole frame, and the mask shapes only the photo", async () => {
+    const tile = (await composePhotoTile(await photo(), 200, 120, 50, 50, undefined, true, { maskId: "shape-circle", borderWidth: 6, borderColor: "#000000" }))!;
+    expect(at(tile, 2, 2)).toMatchObject({ r: 0, g: 0, b: 0, a: 255 }); // the outline at the corner
+    expect(at(tile, 100, 2)).toMatchObject({ a: 255 }); // and along the top
+    expect(at(tile, 18, 18).a).toBe(0); // inside the frame, outside the circle: the page
+    const mid = at(tile, 100, 60);
+    expect(mid.a).toBe(255);
+    expect(mid.r).toBeGreaterThan(150); // the photo in the circle
+  });
+
+  it("a photo without a mask is as before: outline and photo", async () => {
+    const tile = (await composePhotoTile(await photo(), 200, 120, 50, 50, undefined, true, { borderWidth: 6, borderColor: "#000000" }))!;
+    expect(at(tile, 2, 2)).toMatchObject({ r: 0, g: 0, b: 0, a: 255 });
+    expect(at(tile, 18, 18)).toMatchObject({ a: 255 });
+  });
+
+  async function alphaAt(layer: { buffer: Buffer; left: number; top: number }, pageX: number, pageY: number) {
+    const { data, info } = await sharp(layer.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const x = pageX - layer.left;
+    const y = pageY - layer.top;
+    if (x < 0 || y < 0 || x >= info.width || y >= info.height) return 0;
+    return data[(y * info.width + x) * 4 + 3];
+  }
+
+  it("the shadow of a masked photo is only outside its frame", async () => {
+    // A 200x120 frame at (100, 100), on a 600x400 page.
+    const full = (await shadowLayerPng(200, 120, 60, 100, 100, undefined, undefined, undefined, undefined, 600, 400))!;
+    const outside = (await shadowLayerPng(200, 120, 60, 100, 100, undefined, undefined, undefined, undefined, 600, 400, true))!;
+    expect(await alphaAt(full, 200, 160)).toBeGreaterThan(40); // under the frame, before
+    expect(await alphaAt(outside, 200, 160)).toBe(0); // not any more
+    expect(await alphaAt(outside, 120, 120)).toBe(0);
+    // Below and to the right of the frame, the shadow is as it was.
+    expect(await alphaAt(outside, 250, 226)).toBe(await alphaAt(full, 250, 226));
+    expect(await alphaAt(outside, 250, 226)).toBeGreaterThan(20);
+  });
+
+  it("a turned frame cuts its turned shape out of the shadow", async () => {
+    const outside = (await shadowLayerPng(200, 60, 60, 200, 170, 30, undefined, undefined, undefined, 600, 400, true))!;
+    // The frame's center (300, 200), and a point 80px along its long side, turned 30° clockwise.
+    expect(await alphaAt(outside, 300, 200)).toBe(0);
+    expect(await alphaAt(outside, Math.round(300 + 80 * Math.cos(Math.PI / 6)), Math.round(200 + 80 * Math.sin(Math.PI / 6)))).toBe(0);
+    // Off the turned frame, just below its center, the shadow shows.
+    expect(await alphaAt(outside, 300, 240)).toBeGreaterThan(10);
   });
 });

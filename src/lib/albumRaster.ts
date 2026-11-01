@@ -761,6 +761,13 @@ async function composePhotoTile(
   let w = width;
   let h = height;
 
+  // The mask first, then the outline: in the editor the outline is the frame's own (an inset
+  // box-shadow on the box), around the whole frame, and the mask only shapes the photo inside it.
+  // The PDF draws it the same way. (Until 2026-11-01 the mask cut the outline here too.)
+  if (extra.maskId) {
+    data = await applyMaskToRaw(data, w, h, extra.maskId);
+  }
+
   if (extra.borderWidth) {
     const strokeSvg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect x="${extra.borderWidth / 2}" y="${extra.borderWidth / 2}" width="${w - extra.borderWidth}" height="${h - extra.borderWidth}" fill="none" stroke="${extra.borderColor ?? "#ffffff"}" stroke-width="${extra.borderWidth}"/></svg>`;
     data = await sharp(data, { raw: { width: w, height: h, channels: 4 } })
@@ -768,10 +775,6 @@ async function composePhotoTile(
       .ensureAlpha()
       .raw()
       .toBuffer();
-  }
-
-  if (extra.maskId) {
-    data = await applyMaskToRaw(data, w, h, extra.maskId);
   }
 
   let left = 0;
@@ -830,7 +833,10 @@ async function shadowLayerPng(
   blurPct?: number,
   angleDeg?: number,
   pageWidth?: number,
-  pageHeight?: number
+  pageHeight?: number,
+  // Only outside the frame, like the editor's CSS box-shadow, which is never painted under its own
+  // box: a masked photo shows the page through its cut-out parts, not a gray rectangle.
+  outsideOnly?: boolean
 ): Promise<{ buffer: Buffer; left: number; top: number } | null> {
   if (!shadowPct) return null;
   const blurPx = Math.max(1, ((blurPct ?? shadowPct) / 100) * 24);
@@ -860,6 +866,13 @@ async function shadowLayerPng(
   const centerY = frameY + height / 2;
   let left = Math.round(centerX + offsetX - canvasW / 2);
   let top = Math.round(centerY + offsetY - canvasH / 2);
+  if (outsideOnly) {
+    // The frame (turned with it) in this layer's own pixels: the layer sits shifted by the offset.
+    const cx = centerX - left;
+    const cy = centerY - top;
+    const hole = `<svg width="${canvasW}" height="${canvasH}" xmlns="http://www.w3.org/2000/svg"><rect x="${cx - width / 2}" y="${cy - height / 2}" width="${width}" height="${height}" fill="#000"${rotationDeg ? ` transform="rotate(${rotationDeg} ${cx} ${cy})"` : ""}/></svg>`;
+    buffer = await sharp(buffer).composite([{ input: Buffer.from(hole), blend: "dest-out" }]).png().toBuffer();
+  }
   const cropLeft = Math.max(0, -left);
   const cropTop = Math.max(0, -top);
   const cropRight = pageWidth != null ? Math.max(0, left + canvasW - pageWidth) : 0;
@@ -1089,7 +1102,7 @@ export async function renderAlbumPageJpeg({
       sharpness: el.sharpness,
     });
     if (!tile) continue;
-    const shadow = await shadowLayerPng(width, height, el.shadow, frameX, frameY, el.rotation, el.shadowDistance, el.shadowBlur, el.shadowAngle, pageWidthPx, pageHeightPx);
+    const shadow = await shadowLayerPng(width, height, el.shadow, frameX, frameY, el.rotation, el.shadowDistance, el.shadowBlur, el.shadowAngle, pageWidthPx, pageHeightPx, !!el.maskId);
     if (shadow) composites.push({ input: shadow.buffer, left: shadow.left, top: shadow.top });
     composites.push({ input: tile.data, raw: { width: tile.width, height: tile.height, channels: 4 }, left: Math.round(frameX + tile.left), top: Math.round(frameY + tile.top) });
   }

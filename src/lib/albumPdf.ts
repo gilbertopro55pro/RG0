@@ -14,6 +14,7 @@ import {
   lineTo,
   closePath,
   clip,
+  clipEvenOdd,
   endPath,
   concatTransformationMatrix,
 } from "pdf-lib";
@@ -226,7 +227,10 @@ function drawPhotoShadow(
   shadowPct: number | undefined,
   distancePct?: number,
   blurPct?: number,
-  angleDeg?: number
+  angleDeg?: number,
+  // Only outside the frame, like the editor's CSS box-shadow (never painted under its own box): a
+  // masked photo shows the page through its cut-out parts, not a gray rectangle.
+  outsideOnly?: boolean
 ) {
   if (!shadowPct) return;
   const offsetPt = ((distancePct ?? shadowPct) / 100) * 10;
@@ -237,6 +241,18 @@ function drawPhotoShadow(
   const offsetX = magnitude * Math.cos(angleRad);
   const offsetY = magnitude * Math.sin(angleRad);
   const layers = 4;
+  if (outsideOnly) {
+    // Everything around the frame, minus the frame itself (even-odd).
+    const m = maxSpread + magnitude + 2;
+    const { x, y, width: w, height: h } = rect;
+    page.pushOperators(
+      pushGraphicsState(),
+      moveTo(x - m, y - m), lineTo(x + w + m, y - m), lineTo(x + w + m, y + h + m), lineTo(x - m, y + h + m), closePath(),
+      moveTo(x, y), lineTo(x + w, y), lineTo(x + w, y + h), lineTo(x, y + h), closePath(),
+      clipEvenOdd(),
+      endPath()
+    );
+  }
   for (let i = layers; i >= 1; i--) {
     const spread = (maxSpread * i) / layers;
     page.drawRectangle({
@@ -248,6 +264,7 @@ function drawPhotoShadow(
       opacity: (baseAlpha / layers) * 0.9,
     });
   }
+  if (outsideOnly) page.pushOperators(popGraphicsState());
 }
 
 // `el.fontSize` is points on the album's 1600pt-wide REFERENCE canvas (see the AlbumFontSizePt
@@ -760,7 +777,7 @@ export async function generateAlbumPdf({
           );
           if (!maskedImage) continue;
           pushFrameRotation(page, rect, el.rotation);
-          drawPhotoShadow(page, rect, el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle);
+          drawPhotoShadow(page, rect, el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle, true);
           page.drawImage(maskedImage, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
           if (el.borderWidth) {
             page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
