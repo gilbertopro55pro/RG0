@@ -23,7 +23,12 @@ import {
   tabLabel,
   tabRoles,
   ownersTabIndexes,
+  significantFaces,
   TOGETHER,
+  weddingAutoPages,
+  weddingSpreads,
+  weddingStageOf,
+  weddingStages,
 } from "@/lib/albumAuto/planner";
 import type { AlbumPlan, AutoPhoto, AutoStyleId, CellPeople, EventKind, PhotoFaces, PlanOptions, SectionKind } from "@/lib/albumAuto/types";
 
@@ -996,9 +1001,21 @@ describe("the cells of both sides (owner 2026-10-21)", () => {
       const who = people[p.id.replace(/\d+$/, "")];
       return who ? [{ photoId: p.id, faces: who.map((w) => ({ descriptor: face(w), area: 0.05 })) }] : [];
     });
-    const plan = planAlbum(photos, faces, WEDDING_CELLS, { ...CLEAN, kind: "wedding" });
+    // A henna follows the tabs (a wedding runs its stages, below), with the same cells.
+    const plan = planAlbum(photos, faces, WEDDING_CELLS, { ...CLEAN, kind: "henna" });
     const familyIds = plan.spreads.filter((sp) => sp.tab === "t3").flatMap((sp) => sp.photoIds);
     expect(familyIds.map((id) => id.replace(/\d+$/, ""))).toEqual(["gp", "gp", "gp", "bp", "bp", "bp", "gb", "gb", "gb"]);
+    // A wedding's family stage: the groom's side, then the bride's (owner, 2026-11-01).
+    const wedding = planAlbum(photos, faces, WEDDING_CELLS, { ...CLEAN, kind: "wedding" });
+    const weddingFamily = wedding.spreads.filter((sp) => sp.tab === "wedding:family").flatMap((sp) => sp.photoIds);
+    expect(weddingFamily.map((id) => id.replace(/\d+$/, ""))).toEqual(["gp", "gp", "gp", "bp", "bp", "bp", "gb", "gb", "gb"]);
+    expectEveryPhotoOnce(wedding, photos);
+    // The groom's grandparents join his side, before the bride's parents.
+    const withGrandma = [...photos.filter((p) => p.tab?.key !== "t4"), ...tabbed("gg", 3, family), ...tabbed("e", 20, event)].map((p, i) => ({ ...p, filename: `IMG_${String(i).padStart(4, "0")}.jpg` }));
+    const ggFaces = [...faces, ...withGrandma.filter((p) => p.id.startsWith("gg")).map((p) => ({ photoId: p.id, faces: [GROOM, GRANDMA].map((w) => ({ descriptor: face(w), area: 0.05 })) }))];
+    const sides = planAlbum(withGrandma, ggFaces, WEDDING_CELLS, { ...CLEAN, kind: "wedding" });
+    const sideIds = sides.spreads.filter((sp) => sp.tab === "wedding:family").flatMap((sp) => sp.photoIds);
+    expect(sideIds.map((id) => id.replace(/\d+$/, ""))).toEqual(["gp", "gp", "gp", "gg", "gg", "gg", "bp", "bp", "bp", "gb", "gb", "gb"]);
   });
 });
 
@@ -1369,5 +1386,159 @@ describe("the combined album", () => {
     expect(combinedBookShare(18, 100, 1)).toBe(17);
     expect(combinedBookShare(18, 1, 100)).toBe(1);
     expect(combinedBookShare(2, 10, 10)).toBe(1);
+  });
+});
+
+describe("the wedding album (owner, 2026-11-01)", () => {
+  const WEDDING: PlanOptions = { style: "clean", targetSpreads: null, kind: "wedding" };
+  const tab = (key: string, name: string, order: number) => ({ key, name, order });
+  const inTab = (prefix: string, n: number, t: ReturnType<typeof tab>, extra: Partial<AutoPhoto> = {}): AutoPhoto[] =>
+    shots(prefix, 1, n).map((p) => ({ ...p, filename: `${prefix}_${p.filename}`, tab: t, ...extra }));
+  // A wedding gallery by the stages: the bride's and the groom's preparations, the outdoor shoot
+  // (the couple, then 14 shots with the bridesmaids and groomsmen), the ketubah, the chuppah, the
+  // dancing and the guests at the tables. Shooting order follows the file names, prefixed by stage.
+  const gallery = (): AutoPhoto[] => [
+    ...inTab("a", 8, tab("t1", "1.הכנות כלה", 1)),
+    ...inTab("b", 8, tab("t2", "2.הכנות חתן", 2)),
+    ...inTab("c", 40, tab("t3", "3.מפגש וצילומי חוץ", 3), { faceCount: 2 }).map((p, i) => (i % 5 === 0 ? { ...p, aspect: 0.67 } : p)),
+    ...inTab("d", 14, tab("t3", "3.מפגש וצילומי חוץ", 3), { faceCount: 4 }),
+    ...inTab("e", 10, tab("t4", "4.כתובה", 4)),
+    ...inTab("f", 30, tab("t5", "5.חופה", 5)),
+    ...inTab("g", 60, tab("t6", "6.ריקודים", 6)),
+    ...inTab("h", 20, tab("t7", "7.אורחים ושולחנות", 7)),
+  ];
+  const stagesOf = (plan: AlbumPlan) => plan.spreads.map((s) => s.tab);
+  const runs = (plan: AlbumPlan) => {
+    const out: [string, number][] = [];
+    for (const t of stagesOf(plan)) {
+      const last = out[out.length - 1];
+      if (last && last[0] === t) last[1]++;
+      else out.push([t ?? "", 1]);
+    }
+    return out;
+  };
+
+  it("reads the stages from the tabs' names", () => {
+    expect(weddingStageOf("1.התארגנות כלה")).toBe("prep");
+    expect(weddingStageOf("הכנות חתן")).toBe("prep");
+    expect(weddingStageOf("2.מפגש")).toBe("outdoor");
+    expect(weddingStageOf("צילומי חוץ")).toBe("outdoor");
+    expect(weddingStageOf("צילומי זוג")).toBe("outdoor");
+    expect(weddingStageOf("חתן כלה באולם")).toBe("venueCouple");
+    expect(weddingStageOf("משפחת הכלה")).toBe("family");
+    expect(weddingStageOf("צד חתן")).toBe("family");
+    expect(weddingStageOf("כתובה")).toBe("ceremony");
+    expect(weddingStageOf("6.חופה")).toBe("ceremony");
+    expect(weddingStageOf("ריקודים")).toBe("party");
+    expect(weddingStageOf("ריקודי זוגות")).toBe("party");
+    expect(weddingStageOf("מסיבה")).toBe("party");
+    expect(weddingStageOf("אורחים")).toBe("guests");
+    expect(weddingStageOf("קבלת פנים")).toBe("guests");
+    expect(weddingStageOf("1.אוירה")).toBe("atmosphere");
+    expect(weddingStageOf("ברכות")).toBeNull();
+  });
+
+  it("gives an unknown tab the stage before it, and the couple's tab the venue when there's an outdoor tab", () => {
+    expect(weddingStages(["1.הכנות", "2.מפגש", "3.זוג", "4.חופה", "5.ברכות", "6.ריקודים"])).toEqual(["prep", "outdoor", "venueCouple", "ceremony", "ceremony", "party"]);
+    expect(weddingStages(["1.ברכות", "2.חופה", "3.ריקודים"])).toEqual(["ceremony", "ceremony", "party"]);
+    expect(weddingStages(["1.אוירה", "2.ריקודים", "3.ברכות"])).toBeNull();
+  });
+
+  it("splits 30 pages as the owner set: preparations 2-4, outdoor 5-13, ceremony 14-20, dancing 21-30", () => {
+    const photos = gallery();
+    const plan = planAlbum(photos, [], [], { ...WEDDING, targetSpreads: 30 });
+    expectEveryPhotoOnce(plan, photos);
+    expect(plan.spreads).toHaveLength(29);
+    expect(runs(plan)).toEqual([
+      ["wedding:prep", 3],
+      ["wedding:outdoor", 9],
+      ["wedding:ceremony", 7],
+      ["wedding:party", 8],
+      ["wedding:guests", 2],
+    ]);
+    plan.spreads.forEach((s, i) => {
+      expect(s.photoIds.length).toBeGreaterThanOrEqual(2);
+      expect(s.photoIds.length).toBeLessThanOrEqual(pageCap(i + 1));
+    });
+  });
+
+  it("mixes the bride's and the groom's preparations on every page", () => {
+    const plan = planAlbum(gallery(), [], [], { ...WEDDING, targetSpreads: 30 });
+    for (const s of plan.spreads.filter((x) => x.tab === "wedding:prep")) {
+      expect(s.photoIds.some((id) => id.startsWith("a"))).toBe(true);
+      expect(s.photoIds.some((id) => id.startsWith("b"))).toBe(true);
+    }
+  });
+
+  it("puts the shots with the bridesmaids and groomsmen on the outdoor shoot's last pages", () => {
+    const plan = planAlbum(gallery(), [], [], { ...WEDDING, targetSpreads: 30 });
+    const outdoor = plan.spreads.filter((s) => s.tab === "wedding:outdoor").flatMap((s) => s.photoIds);
+    const firstEscort = outdoor.findIndex((id) => id.startsWith("d"));
+    expect(outdoor.slice(firstEscort).every((id) => id.startsWith("d"))).toBe(true);
+    expect(outdoor.slice(-14).every((id) => id.startsWith("d"))).toBe(true);
+  });
+
+  it("opens the ceremony with the ketubah, and closes the book with the guests", () => {
+    const plan = planAlbum(gallery(), [], [], { ...WEDDING, targetSpreads: 30 });
+    const ceremony = plan.spreads.filter((s) => s.tab === "wedding:ceremony").flatMap((s) => s.photoIds);
+    expect(ceremony.slice(0, 10).every((id) => id.startsWith("e"))).toBe(true);
+    const last = plan.spreads.slice(-2).flatMap((s) => s.photoIds);
+    expect(last).toHaveLength(20);
+    expect(last.every((id) => id.startsWith("h"))).toBe(true);
+  });
+
+  it("covers the book with the couple from the outdoor shoot, a portrait of the two", () => {
+    const photos = gallery();
+    const plan = planAlbum(photos, [], [], { ...WEDDING, targetSpreads: 30 });
+    const cover = photos.find((p) => p.id === plan.coverPhotoId);
+    expect(cover?.tab?.key).toBe("t3");
+    expect(cover?.faceCount).toBe(2);
+    expect(cover?.aspect).toBeLessThan(1);
+  });
+
+  it("makes a wedding 25-30 pages when no count is typed", () => {
+    expect(weddingAutoPages(80)).toBe(25);
+    expect(weddingAutoPages(208)).toBe(27);
+    expect(weddingAutoPages(400)).toBe(30);
+    const photos = gallery();
+    const plan = planAlbum(photos, [], [], WEDDING);
+    expect(plan.spreads).toHaveLength(weddingAutoPages(photos.length) - 1);
+    expectEveryPhotoOnce(plan, photos);
+  });
+
+  it("puts the family after the couple, the groom's side before the bride's", () => {
+    const photos = [
+      ...inTab("a", 10, tab("t1", "1.התארגנות", 1)),
+      ...inTab("c", 30, tab("t2", "2.צילומי חוץ", 2), { faceCount: 2 }),
+      ...inTab("k", 12, tab("t3", "3.משפחת הכלה", 3)),
+      ...inTab("j", 12, tab("t4", "4.משפחת החתן", 4)),
+      ...inTab("f", 30, tab("t5", "5.חופה", 5)),
+      ...inTab("g", 50, tab("t6", "6.ריקודים", 6)),
+    ];
+    const plan = planAlbum(photos, [], [], { ...WEDDING, targetSpreads: 30 });
+    expectEveryPhotoOnce(plan, photos);
+    expect(runs(plan).map(([t]) => t)).toEqual(["wedding:prep", "wedding:outdoor", "wedding:family", "wedding:ceremony", "wedding:party"]);
+    const family = plan.spreads.filter((s) => s.tab === "wedding:family").flatMap((s) => s.photoIds);
+    expect(family.slice(0, 12).every((id) => id.startsWith("j"))).toBe(true);
+    expect(runs(plan).find(([t]) => t === "wedding:family")?.[1]).toBe(2);
+  });
+
+  it("follows the tabs as before when the stages can't be read, and isn't for other events", () => {
+    const photos = [...inTab("a", 12, tab("t1", "1.אוירה", 1)), ...inTab("g", 30, tab("t2", "2.ריקודים", 2)), ...inTab("x", 20, tab("t3", "3.ברכות", 3))];
+    expect(planAlbum(photos, [], [], WEDDING).spreads.some((s) => s.tab?.startsWith("wedding:"))).toBe(false);
+    const bar = planAlbum(gallery(), [], [], { ...WEDDING, kind: "bar_mitzvah" });
+    expect(bar.spreads.some((s) => s.tab?.startsWith("wedding:"))).toBe(false);
+  });
+
+  it("moves a spread to a stage past its pages' caps", () => {
+    // 3 pages of preparations hold 18 at most (6 a page on pages 1-5): 30 need a fourth.
+    const alloc = weddingSpreads([30, 54, 40, 80], [3, 9, 7, 10], 29);
+    expect(alloc.reduce((a, b) => a + b, 0)).toBe(29);
+    expect(alloc[0]).toBeGreaterThanOrEqual(5);
+  });
+
+  it("counts only the people clearly in the photo", () => {
+    expect(significantFaces([{ height: 0.3 }, { height: 0.28 }, { height: 0.05 }])).toBe(2);
+    expect(significantFaces([])).toBe(0);
   });
 });

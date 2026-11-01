@@ -25,11 +25,15 @@ import {
   ownersCountFor,
   planAlbum,
   planCombined,
+  significantFaces,
   tabLabel,
   tabRoles,
+  WEDDING_STAGE_ORDER,
+  weddingStages,
   type CellFaceUse,
   type CellReference,
   type NamesOrder,
+  type WeddingStage,
 } from "@/lib/albumAuto/planner";
 import { layoutCover, layoutOpener, layoutSpread } from "@/lib/albumAuto/layouts";
 import { headSafeElements } from "@/lib/albumAuto/headSafe";
@@ -294,6 +298,27 @@ export default function AlbumAutoDesigner({
     };
   }, [autoLike, combined, folders]);
 
+  // A wedding read from its tabs (owner, 2026-11-01): each stage with the tabs it got, in the book's
+  // order, so a tab read as the wrong stage shows before the design (planWedding).
+  const weddingPlan = useMemo(() => {
+    if (combined || eventKind !== "wedding" || !followsTabs(autoLike)) return null;
+    const used = folders.filter((f) => autoLike.some((p) => p.tab?.key === f.id));
+    const stages = weddingStages(used.map((f) => f.name));
+    if (!stages) return null;
+    return WEDDING_STAGE_ORDER.map((stage) => ({ stage, tabs: used.filter((_, i) => stages[i] === stage).map((f) => tabLabel(f.name)) })).filter((x) => x.tabs.length > 0);
+  }, [autoLike, combined, eventKind, folders]);
+  const weddingStageName = (stage: WeddingStage): string =>
+    ({
+      prep: t("הכנות"),
+      outdoor: t("מפגש וצילומי חוץ"),
+      venueCouple: t("חתן וכלה באולם"),
+      family: t("משפחה: צד החתן ואז צד הכלה"),
+      ceremony: t("כתובה וחופה"),
+      party: t("ריקודים"),
+      guests: t("אורחים ליד השולחנות"),
+      atmosphere: t("אווירה"),
+    })[stage];
+
   const singlePage = singlePageOf(size);
   const coverPresets = useMemo(() => {
     const list = [{ label: t("כמו עמוד ({size})", { size: `${fmt(singlePage.width)}×${fmt(singlePage.height)}` }), width: singlePage.width, height: singlePage.height }];
@@ -524,6 +549,7 @@ export default function AlbumAutoDesigner({
         tab: tabOf(p),
         main: mainOf(p),
         faceArea: Math.max(0, ...(boxesByPhoto.get(p.id) ?? []).map((b) => b.width * b.height)),
+        faceCount: boxesByPhoto.has(p.id) ? significantFaces(boxesByPhoto.get(p.id) ?? []) : undefined,
       }));
       const photoFaces: PhotoFaces[] = [...facesByPhoto.entries()].map(([photoId, faces]) => ({ photoId, faces }));
       const target = parseInt(spreadCount, 10);
@@ -989,6 +1015,20 @@ export default function AlbumAutoDesigner({
                 })}
               </p>
             )}
+            {weddingPlan ? (
+              <div className="text-xs text-ink-soft leading-relaxed">
+                <p>{t("אלבום חתונה לפי השלבים: הכריכה מצילומי החוץ, ואז כל שלב בדפים משלו. השלבים מזוהים לפי שמות הלשוניות:")}</p>
+                <ol className="mt-1 list-decimal ps-5">
+                  {weddingPlan.map((x) => (
+                    <li key={x.stage}>
+                      {weddingStageName(x.stage)} ({x.tabs.join(", ")})
+                    </li>
+                  ))}
+                </ol>
+                {tabOrder && tabOrder.last.length > 0 && <p className="mt-1">{t("{tabs} בדף האחרון.", { tabs: tabOrder.last.join(", ") })}</p>}
+                <p className="mt-1">{t("התאים למטה מסדרים את המשפחה לפי הצדדים, ואת צילומי החוץ: החתן והכלה לבד וביחד, ובסוף עם המלווים.")}</p>
+              </div>
+            ) : (
             <p className="text-xs text-ink-soft leading-relaxed">
               {isBook
                 ? t("בבוק אין חלקי משפחה: כל התמונות נכנסות לאלבום לפי שעת הצילום.")
@@ -999,7 +1039,8 @@ export default function AlbumAutoDesigner({
                   : t("סדר האלבום: {owners}, ההורים, אחים ואחיות, סבא וסבתא, ואז שאר התמונות לפי שעת הצילום.", { owners: t(cellLabel("owners", eventKind)) })}
               {!isBook && tabOrder && tabOrder.last.length > 0 && <> {t("{tabs} בדף האחרון.", { tabs: tabOrder.last.join(", ") })}</>}
             </p>
-            {!isBook && tabOrder && (
+            )}
+            {!isBook && tabOrder && !weddingPlan && (
               <p className="text-xs text-ink-soft leading-relaxed">{t("עם לשוניות, התאים למטה רק מסדרים את לשונית המשפחה: הורים, אחים ואחיות, ואז סבא וסבתא.")}</p>
             )}
           </section>
