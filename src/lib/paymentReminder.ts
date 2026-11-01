@@ -1,4 +1,5 @@
 import { dateLocale, type Lang } from "@/i18n/config";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 // The payment reminder to a client, in the client's language: from the dashboard's open balances
 // (owner, 2026-10-19, admin only for now) and from the home screen's prompt
@@ -15,15 +16,15 @@ export const PAYMENT_REMINDER_LOG_MARK = "תזכורת תשלום";
 
 const TEXT: Record<Lang, { body: string; subject: string }> = {
   he: {
-    body: "שלום {name},\nנשארה יתרה של {amount} לתשלום עבור האירוע שלכם.\n\nלצפייה בפרטי התשלום ניתן להיכנס לפורטל האישי שלכם:\n{link}",
+    body: "רצינו לעדכן שנותרה יתרה של {amount} לתשלום עבור האירוע.\nאת פרטי התשלום אפשר לראות בפורטל האישי שלכם.",
     subject: "תזכורת תשלום",
   },
   en: {
-    body: "Hi {name},\nA balance of {amount} is still due for your event.\n\nYou can see the payment details in your personal portal:\n{link}",
+    body: "We wanted to let you know that a balance of {amount} remains for your event.\nYou can see the payment details in your personal portal.",
     subject: "Payment reminder",
   },
   ru: {
-    body: "Здравствуйте, {name}!\nПо вашему мероприятию остаётся к оплате {amount}.\n\nПодробности оплаты — в вашем личном кабинете:\n{link}",
+    body: "Хотим сообщить, что по вашему мероприятию остаётся к оплате {amount}.\nПодробности оплаты — в вашем личном кабинете.",
     subject: "Напоминание об оплате",
   },
 };
@@ -38,9 +39,8 @@ export function paymentReminderMessage(p: {
 }): string {
   // Agorot, when there are any, always as two digits (₪1,234.50, not ₪1,234.5).
   const amount = `₪${p.amount.toLocaleString(dateLocale(p.lang), Number.isInteger(p.amount) ? undefined : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const body = TEXT[p.lang].body.replace("{name}", p.clientName.trim()).replace("{amount}", amount).replace("{link}", p.portalUrl);
-  const signature = p.signature?.trim() || p.senderName?.trim();
-  return signature ? `${body}\n\n${signature}` : body;
+  // The shape of every client message (lib/clientMessageFormat.ts).
+  return formatClientMessage({ lang: p.lang, name: p.clientName, body: TEXT[p.lang].body.replace("{amount}", amount), link: p.portalUrl, signature: p.signature, senderName: p.senderName });
 }
 
 export function paymentReminderSubject(lang: Lang): string {

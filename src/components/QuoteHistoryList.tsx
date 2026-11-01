@@ -178,11 +178,13 @@ export default function QuoteHistoryList({ signature }: { signature: string | nu
           const pdf = pdfState[r.id];
           const linkMessage = lead
             ? quoteLinkMessage(
-                quoteShareCaption(r.client_name, d.eventType ?? "", eventDate ?? "", clientLang, d.eventDate),
+                quoteShareCaption("", d.eventType ?? "", eventDate ?? "", clientLang, d.eventDate),
                 shortClientUrl(window.location.origin, "quote", lead.quote_token!),
                 signature,
                 !!d.withContract,
-                clientLang
+                clientLang,
+                false,
+                { clientName: r.client_name }
               )
             : null;
           return (

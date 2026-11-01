@@ -54,9 +54,12 @@ export type AlbumExport = {
   // PDF from the album tool: lets the photographer pick the folder (downloadBlob).
   allowSaveDialog: boolean;
   error: string | null;
-  // For "שיתוף בוואטסאפ" on the card.
+  // For "שיתוף בוואטסאפ" on the card: the client's chat, language and name (the greeting), and the
+  // photographer's WhatsApp signature or name (the message's last line).
   clientPhone: string | null;
   clientLang: Lang;
+  clientName: string | null;
+  signature: string | null;
   // A print-house send: where it goes (the address's label, or the address), for the card.
   printTarget: string | null;
   startedAt: number;
@@ -71,6 +74,8 @@ export type StartAlbumExport = {
   allowSaveDialog?: boolean;
   clientPhone?: string | null;
   clientLang?: Lang;
+  clientName?: string | null;
+  signature?: string | null;
   // Format "print": the print house's address, what to call it, and the notes for it.
   print?: { email: string; target: string; notes?: string };
 };
@@ -187,6 +192,8 @@ export function startAlbumExport(input: StartAlbumExport): AlbumExport {
     error: null,
     clientPhone: input.clientPhone ?? null,
     clientLang: input.clientLang ?? "he",
+    clientName: input.clientName ?? null,
+    signature: input.signature ?? null,
     printTarget: input.print?.target ?? null,
     startedAt: Date.now(),
   };
@@ -374,14 +381,14 @@ export async function freshDownloadUrl(task: AlbumExport): Promise<string | null
 
 type Stored = Pick<
   AlbumExport,
-  "id" | "jobId" | "galleryId" | "galleryTitle" | "format" | "allowSaveDialog" | "clientPhone" | "clientLang" | "printTarget" | "startedAt"
+  "id" | "jobId" | "galleryId" | "galleryTitle" | "format" | "allowSaveDialog" | "clientPhone" | "clientLang" | "clientName" | "signature" | "printTarget" | "startedAt"
 >;
 
 function persist() {
   if (typeof window === "undefined") return;
   const stored: Stored[] = exports
     .filter((e) => e.jobId && e.phase !== "failed")
-    .map(({ id, jobId, galleryId, galleryTitle, format, allowSaveDialog, clientPhone, clientLang, printTarget, startedAt }) => ({
+    .map(({ id, jobId, galleryId, galleryTitle, format, allowSaveDialog, clientPhone, clientLang, clientName, signature, printTarget, startedAt }) => ({
       id,
       jobId,
       galleryId,
@@ -390,6 +397,8 @@ function persist() {
       allowSaveDialog,
       clientPhone,
       clientLang,
+      clientName,
+      signature,
       printTarget,
       startedAt,
     }));
@@ -449,6 +458,8 @@ function resumeStored() {
         error: null,
         clientPhone: s.clientPhone ?? null,
         clientLang: s.clientLang ?? "he",
+        clientName: s.clientName ?? null,
+        signature: s.signature ?? null,
         printTarget: s.printTarget ?? null,
         galleryTitle: s.galleryTitle ?? null,
       })

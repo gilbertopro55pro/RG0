@@ -1782,6 +1782,8 @@ function composeCatalog(ctx: Ctx): Cand | null {
 type SigKind = "fade" | "two" | "grid" | "feature";
 const SIG_MAX_CROP = 1.35;
 const SIG_HERO_CROP = 1.6;
+// A book's faded photo is cut less (owner, 2026-11-01: "בלי שהדמות תחתך").
+const SIG_BOOK_HERO_CROP = 1.4;
 type SigGrid = { rects: Placed[]; bounds: Rect; crop: number; score: number; fill: number };
 
 // Justified rows filling `box`: each row as wide as the grid, the rows' heights scaled together to
@@ -1880,12 +1882,13 @@ function sigPlan(ctx: Ctx, kind: SigKind, side: 0 | 1): SigPlan | null {
       const crop = cropOf(p.aspect, { x: 0, y: 0, w: widthFor(i), h: H }) * (i === ctx.heroIdx ? 0.95 : 1) * (p.aspect > 1.05 ? 0.8 : 1);
       if (!hero || crop < hero.crop) hero = { idx: i, crop };
     });
-    if (!hero || (hero as { crop: number }).crop > SIG_HERO_CROP) return null;
+    if (!hero || (hero as { crop: number }).crop > (ctx.input.book ? SIG_BOOK_HERO_CROP : SIG_HERO_CROP)) return null;
     const hp = hero as { idx: number; crop: number };
     const hw = widthFor(hp.idx);
     const r = { x: left ? 0 : W - hw, y: 0, w: hw, h: H };
-    // The grid reaches over the hero's faded strip (the last ~20% of it), never past it.
-    const near = 0.8 * hw;
+    // The grid reaches over the hero's faded strip (the last ~20% of it), never past it. A book's
+    // page keeps it off a double page's fold (its framed photos whole on one side).
+    const near = ctx.input.book && geo.double ? Math.max(0.8 * hw, 0.53 * W) : 0.8 * hw;
     const box = left ? { x: near, y: my, w: W - mx - near, h: H - 2 * my } : { x: mx, y: my, w: W - near - mx, h: H - 2 * my };
     const grid = sigRows(photos, all.filter((i) => i !== hp.idx), box, g);
     if (!grid) return null;
@@ -1963,8 +1966,9 @@ function sigCycle(n: number): SigKind[] {
 function composeSignature(ctx: Ctx): AlbumElement[] | null {
   const { geo, photos, input } = ctx;
   const n = photos.length;
-  const turn = input.spreadIndex + (input.variant ?? 0);
-  const cycle = sigCycle(n);
+  const turn = input.book && input.bookTurn !== undefined ? input.bookTurn : input.spreadIndex + (input.variant ?? 0);
+  // A book's page always opens with the faded photo (owner, 2026-11-01), its side alternating.
+  const cycle = input.book ? (["fade"] as SigKind[]) : sigCycle(n);
   const want = cycle[turn % cycle.length];
   // The side flips every time the same kind comes round again, so consecutive faded heroes (and
   // feature photos) alternate sides through the book.
@@ -1972,8 +1976,10 @@ function composeSignature(ctx: Ctx): AlbumElement[] | null {
   const side = (seen % 2) as 0 | 1;
   // The page's own kind when it works; else the best of the others.
   let plan = sigPlan(ctx, want, side);
+  // A book's page without a faded photo that works is left to the book's own layouts (the caller).
+  if (input.book && (!plan || plan.grid.crop > SIG_MAX_CROP)) return null;
   // A grid that had to shrink well inside its space (white on both sides) gives way too.
-  if (!plan || plan.grid.crop > SIG_MAX_CROP || plan.grid.fill < 0.8) {
+  if (!input.book && (!plan || plan.grid.crop > SIG_MAX_CROP || plan.grid.fill < 0.8)) {
     const alts = (["fade", "grid", "feature", "two"] as SigKind[])
       .filter((k) => k !== want)
       .map((k) => sigPlan(ctx, k, side))
@@ -2238,6 +2244,27 @@ const COVER_TYPE: Record<AutoStyleId, CoverStyle> = {
 // The translucent band across the photo cover's lower part (clean, modern), in fractions of the height.
 const BAND_Y = 0.72;
 const BAND_H = 0.25;
+
+// A book's page in the signature styles (owner, 2026-11-01: "בבוק בעדיפות לתמונה גדולה עם מסכה של
+// שקיפות"): a large faded photo at one side, the page's other photos in rows on its faded strip, as
+// the clean line lays them out (composeSignature's "fade", its side alternating page by page), with
+// the style's finish, page colour and blurred background. Null when the style has no faded photo
+// (catalog, scribble), the page holds one photo, or no photo makes a faded photo without being cut
+// much (all portraits on a double page): the caller lays the page out as a book's collage then.
+export function layoutBookFade(input: LayoutInput): LayoutOutput | null {
+  if (input.style !== "clean" && input.style !== "modern") return null;
+  const seen = new Set<string>();
+  const photos = input.photos.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+  if (photos.length < 2) return null;
+  const ctx = makeCtx({ ...input, photos, book: true });
+  const elements = composeSignature(ctx);
+  const placed = (elements ?? []).filter((e): e is AlbumPhotoElement => e.type === "photo");
+  if (!elements || placed.length !== photos.length || !photos.every((p) => placed.some((e) => e.photoId === p.id))) return null;
+  if (!placed.some((e) => e.maskId?.startsWith("fade"))) return null;
+  const out = finalizeSpread(ctx, elements);
+  out.background = { photoId: ctx.photos[ctx.heroIdx ?? pickHero(ctx.photos)].id, blur: SIGNATURE_BACKGROUND.blur, opacity: SIGNATURE_BACKGROUND.opacity };
+  return out;
+}
 
 export function layoutCover(input: CoverInput): LayoutOutput {
   const geo = geoFor(input.widthCm, input.heightCm);

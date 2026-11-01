@@ -5,13 +5,15 @@ import { GALLERY_EXPIRY_OPTIONS } from "@/lib/stages";
 import { useT } from "@/i18n/client";
 import type { Lang } from "@/i18n/config";
 import clientEmails from "@/i18n/dict/clientEmails";
+import clientMessages from "@/i18n/dict/clientMessages";
 import { makeT } from "@/i18n/translate";
 import { galleryShareSearch, shortClientUrl } from "@/lib/shortLinks";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 import TabPicker from "@/components/galleryManage/TabPicker";
 
 const NO_FOLDER_KEY = "none";
-// One specific account's own wording, requested verbatim — every other photographer gets a
-// generic message instead, signed with their own name rather than a hardcoded one.
+// One specific account's own wording (the owner's, now in the fixed client-message shape) — every
+// other photographer gets a generic message instead, signed with their own signature or name.
 const OWNER_ACCOUNT_EMAIL = "gilbertopro_admin@gmail.com";
 
 type ExpiryDays = 7 | 14 | 30 | 90 | 180 | 365;
@@ -22,16 +24,19 @@ const EXPIRY_PERIOD: Record<"en" | "ru", Record<ExpiryDays, string>> = {
   ru: { 7: "неделю", 14: "14 дней", 30: "месяц", 90: "3 месяца", 180: "6 месяцев", 365: "год" },
 };
 
-// Only this area's dictionary (not messagesFor's merged one), so the client bundle stays small.
+// Only these areas' dictionaries (not messagesFor's merged one), so the client bundle stays small.
 function clientT(lang: Lang) {
-  return makeT(lang === "he" ? {} : clientEmails[lang]);
+  return makeT(lang === "he" ? {} : { ...clientEmails[lang], ...clientMessages[lang] });
 }
 
 const OWNER_NAME_FALLBACK: Record<Lang, string> = { he: "רועי גלברט", en: "Roei Gelbert", ru: "Рои Гелберт" };
 
 // The WhatsApp / share-sheet text the photographer sends a client with the gallery link — shared
-// by this modal and GalleryManageView (share button + "gallery published" update). The text is in
-// the client's language (UI languages phase 3); Hebrew output is exactly what it always was.
+// by this modal and GalleryManageView (share button + "gallery published" update), in the client's
+// language (UI languages phase 3). The fixed client-message shape (owner, 2026-11-01,
+// lib/clientMessageFormat.ts): "שלום {name},", the body, the "קישור:" line, a blank line, then the
+// photographer's WhatsApp signature, or their name without one (never "<name> - צילום אירועים",
+// which doubled up when the name already says it).
 export function buildGalleryShareMessage({
   url,
   clientName,
@@ -39,6 +44,7 @@ export function buildGalleryShareMessage({
   photographerEmail,
   expiryDays,
   lang = "he",
+  signature = null,
 }: {
   url: string;
   clientName: string;
@@ -46,6 +52,7 @@ export function buildGalleryShareMessage({
   photographerEmail: string;
   expiryDays: ExpiryDays | null;
   lang?: Lang;
+  signature?: string | null;
 }): string {
   const t = clientT(lang);
   // The full option list, not the tier-filtered one — a gallery can carry a value from a plan
@@ -53,35 +60,78 @@ export function buildGalleryShareMessage({
   // should still label correctly rather than silently show nothing.
   const heLabel = expiryDays ? GALLERY_EXPIRY_OPTIONS.find((o) => o.value === expiryDays)?.label : null;
   const period = heLabel && expiryDays ? (lang === "he" ? heLabel : EXPIRY_PERIOD[lang][expiryDays]) : null;
-  const expiry = period ? t("הקישור בתוקף ל-{period}, ", { period }) : "";
-  if (photographerEmail === OWNER_ACCOUNT_EMAIL) {
-    return t(
-      "היי,\nהיה אירוע מעולה, תודה על הזכות לצלם לכם, שנפגש רק בשמחות 🙏🏼😊\nקישור לגלריית התמונות: {url}\n\n{expiry}ניתן להוריד את התמונות, לשתף ולא לשכוח לתייג 😁\n{name} - צילום אירועים",
-      { url, expiry, name: photographerName || OWNER_NAME_FALLBACK[lang] }
-    );
-  }
-  const body = clientName
-    ? t("{name}, הגלריה מהאירוע שלכם מוכנה לצפייה ובחירת תמונות 📸\nקישור לגלריית התמונות: {url}\n\n{expiry}אפשר להוריד ולשתף את התמונות בכל שלב.", { name: clientName, url, expiry })
-    : t("הגלריה מהאירוע שלכם מוכנה לצפייה ובחירת תמונות 📸\nקישור לגלריית התמונות: {url}\n\n{expiry}אפשר להוריד ולשתף את התמונות בכל שלב.", { url, expiry });
-  const signOff = photographerName ? `\n\n${t("{name} - צילום אירועים", { name: photographerName })}` : "";
-  return body + signOff;
+  const expiry = period ? ` ${t("הגלריה זמינה למשך {period}.", { period })}` : "";
+  // One specific account's own wording (the owner's), in the same shape.
+  const owner = photographerEmail === OWNER_ACCOUNT_EMAIL;
+  const body = owner
+    ? t("היה אירוע מעולה, תודה על הזכות לצלם לכם. שנפגש רק בשמחות 🙏🏼\nאפשר להוריד את התמונות ולשתף, ולא לשכוח לתייג.")
+    : t("הגלריה מהאירוע שלכם מוכנה לצפייה 📸\nאפשר ליהנות מהתמונות, לבחור את האהובות עליכם, להוריד ולשתף.");
+  return formatClientMessage({
+    lang,
+    name: clientName,
+    body: body + expiry,
+    link: url,
+    signature,
+    senderName: photographerName || (owner ? OWNER_NAME_FALLBACK[lang] : null),
+  });
 }
 
 // "{n} new photos" update, sent to a published gallery's client after more photos were uploaded.
-export function buildGalleryPhotosUploadedMessage({ url, clientName, count, lang = "he" }: { url: string; clientName: string; count: number; lang?: Lang }): string {
+export function buildGalleryPhotosUploadedMessage({
+  url,
+  clientName,
+  count,
+  lang = "he",
+  signature = null,
+  senderName = null,
+}: {
+  url: string;
+  clientName: string;
+  count: number;
+  lang?: Lang;
+  signature?: string | null;
+  senderName?: string | null;
+}): string {
   const t = clientT(lang);
-  return clientName
-    ? t("{name}, עודכנו {count} תמונות חדשות בגלריה שלכם 📸\n{url}", { name: clientName, count, url })
-    : t("עודכנו {count} תמונות חדשות בגלריה שלכם 📸\n{url}", { count, url });
+  return formatClientMessage({
+    lang,
+    name: clientName,
+    body: t("רצינו לעדכן שנוספו לגלריה שלכם {count} תמונות חדשות 📸", { count }),
+    link: url,
+    signature,
+    senderName,
+  });
 }
 
 // A finished album export shared with the client. `label` is the Hebrew export label
-// ("ייצוא PDF" / "ייצוא JPG" / "ייצוא PSD" / "ייצוא הקבצים"), kept verbatim in Hebrew.
-export function buildExportReadyMessage({ label, url, lang = "he" }: { label: string; url: string; lang?: Lang }): string {
-  if (lang === "he") return `${label} מוכן להורדה:\n${url}`;
+// ("ייצוא PDF" / "ייצוא JPG" / "ייצוא PSD" / "ייצוא הקבצים"); the message names only the format.
+// The export task carries the client's name and the photographer's signature (or name) from the
+// gallery page; an export started elsewhere (the home screen's quick access) opens with "שלום,".
+export function buildExportReadyMessage({
+  label,
+  url,
+  lang = "he",
+  clientName = null,
+  signature = null,
+  senderName = null,
+}: {
+  label: string;
+  url: string;
+  lang?: Lang;
+  clientName?: string | null;
+  signature?: string | null;
+  senderName?: string | null;
+}): string {
   const t = clientT(lang);
   const format = label.match(/\b(PDF|JPG|PSD)\b/)?.[1];
-  return format ? t("{label} מוכן להורדה:\n{url}", { label: format, url }) : t("הקבצים מוכנים להורדה:\n{url}", { url });
+  return formatClientMessage({
+    lang,
+    name: clientName,
+    body: format ? t("האלבום שלכם מוכן להורדה בפורמט {format}.", { format }) : t("קבצי האלבום שלכם מוכנים להורדה."),
+    link: url,
+    signature,
+    senderName,
+  });
 }
 
 // The native share sheet's title.
@@ -104,6 +154,7 @@ export default function GalleryShareModal({
   photographerEmail,
   expiryDays,
   clientLang = "he",
+  signature = null,
   onClose,
 }: {
   accessToken: string;
@@ -116,6 +167,8 @@ export default function GalleryShareModal({
   // The client's language (UI languages phase 3), computed on the server with clientLangFor —
   // "he" for every non-admin account, so their share text is unchanged.
   clientLang?: Lang;
+  // The photographer's WhatsApp signature; the message is signed with the name without one.
+  signature?: string | null;
   onClose: () => void;
 }) {
   const t = useT();
@@ -134,7 +187,7 @@ export default function GalleryShareModal({
     shortClientUrl(window.location.origin, "gallery", accessToken, galleryShareSearch(showFolderPicker ? allShareOptionKeys : null, shareSelectedFolders, shareQuality));
 
   const buildShareMessage = (url: string) =>
-    buildGalleryShareMessage({ url, clientName, photographerName, photographerEmail, expiryDays, lang: clientLang });
+    buildGalleryShareMessage({ url, clientName, photographerName, photographerEmail, expiryDays, lang: clientLang, signature });
 
   const shareViaWhatsapp = () => {
     const text = buildShareMessage(buildShareUrl());

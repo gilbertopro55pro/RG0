@@ -7,6 +7,7 @@ import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
 import { shortClientUrl } from "@/lib/shortLinks";
 import { ALBUM_CLIENT_SEARCH } from "@/lib/albumApproval";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 // The photographer's answer to the dashboard prompt for an album-approval / song-selection
 // reminder (lib/clientReminders.ts). send=true → the ready WhatsApp text to the client (opened
@@ -49,21 +50,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const { data: event } = await supabase
     .from("events")
-    .select("client_name, client_phone, client_lang, client_access_token, photographers(whatsapp_signature)")
+    .select("client_name, client_phone, client_lang, client_access_token, photographers(whatsapp_signature, name)")
     .eq("id", message.event_id)
     .maybeSingle<{
       client_name: string;
       client_phone: string | null;
       client_lang: string | null;
       client_access_token: string;
-      photographers: { whatsapp_signature: string | null } | null;
+      photographers: { whatsapp_signature: string | null; name: string | null } | null;
     }>();
   if (!event?.client_phone) {
     await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", message.id);
     return NextResponse.json({ error: "לא הוזן טלפון לקוח" }, { status: 400 });
   }
 
-  const t = makeT(messagesFor(clientLangFor(user.email, event.client_lang)));
+  const lang = clientLangFor(user.email, event.client_lang);
+  const t = makeT(messagesFor(lang));
   // An album sent from the album tool waits in the client's gallery: the reminder links right to it
   // (it opens on the album, lib/albumApproval.ts). Otherwise the portal, as before.
   const { data: albumGallery } = album
@@ -80,13 +82,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const link = albumGallery
     ? shortClientUrl(request.nextUrl.origin, "gallery", albumGallery.access_token, ALBUM_CLIENT_SEARCH)
     : shortClientUrl(request.nextUrl.origin, "portal", event.client_access_token);
-  let text = album
+  // The fixed client-message shape (lib/clientMessageFormat.ts): greeting, body, "קישור:" line,
+  // blank line, the photographer's signature (or name).
+  const body = album
     ? albumGallery
-      ? t("היי {name} 😊\nרק מזכירים שעיצוב האלבום מחכה לאישור שלכם. אפשר לדפדף בו כאן, ובסוף לאשר או לסמן תיקונים:\n{link}", { name: event.client_name, link })
-      : t("היי {name} 😊\nרק מזכירים שעיצוב האלבום מחכה לאישור שלכם. אפשר לצפות ולאשר בפורטל האישי:\n{link}\n\nרוצים לשנות משהו? פשוט כתבו לי כאן.", { name: event.client_name, link })
-    : t("היי {name} 😊\nרק מזכירים שהסרט המלא מחכה לכם להורדה בפורטל האישי.\nוגם, אשמח שתבחרו שיר או שניים לקליפ: שיר שקט ושיר קצבי 🎵\n{link}", { name: event.client_name, link });
-  const signature = event.photographers?.whatsapp_signature?.trim();
-  if (signature) text += `\n\n${signature}`;
+      ? t("עיצוב האלבום שלכם ממתין לאישורכם.\nאפשר לדפדף בו, ובסוף לאשר את העיצוב או לסמן תיקונים, כשיתאפשר לכם.")
+      : t("עיצוב האלבום שלכם ממתין לאישורכם.\nאפשר לצפות בו ולאשר אותו בפורטל האישי שלכם, ואם תרצו לשנות משהו, נשמח לשמוע.")
+    : t("רצינו לעדכן שהסרט המלא ממתין לכם להורדה בפורטל האישי שלכם.\nכדי שנוכל להתחיל בעריכת הקליפ, נשמח שתבחרו שיר או שניים: שיר שקט ושיר קצבי 🎵");
+  const text = formatClientMessage({
+    lang,
+    name: event.client_name,
+    body,
+    link,
+    signature: event.photographers?.whatsapp_signature,
+    senderName: event.photographers?.name,
+  });
 
   // A preview (dryRun): the prompt fetches the message when it shows, so the send button opens
   // WhatsApp right in the tap (iPhone blocks it after a request) and only then records the send.

@@ -103,12 +103,12 @@ describe("the reminder options on the quote follow-up", () => {
 
 describe("leadQuoteFollowUpMessage", () => {
   it("greets the lead and asks about the quote", () => {
-    expect(leadQuoteFollowUpMessage("דנה", null)).toBe("שלום דנה,\nשלחתי אלייך הצעת מחיר ואשמח לשמוע אם יש שאלות או שתרצו לתאם את תאריך האירוע.");
+    expect(leadQuoteFollowUpMessage("דנה", null)).toBe("שלום דנה,\nרצינו לבדוק אם יצא לכם לעבור על הצעת המחיר ששלחנו. נשמח לענות על כל שאלה ולתאם איתכם את תאריך האירוע.");
   });
 
   it("adds the signature as its own paragraph, trimmed", () => {
     expect(leadQuoteFollowUpMessage("דנה", "  סטודיו אור  ")).toBe(
-      "שלום דנה,\nשלחתי אלייך הצעת מחיר ואשמח לשמוע אם יש שאלות או שתרצו לתאם את תאריך האירוע.\n\nסטודיו אור",
+      "שלום דנה,\nרצינו לבדוק אם יצא לכם לעבור על הצעת המחיר ששלחנו. נשמח לענות על כל שאלה ולתאם איתכם את תאריך האירוע.\n\nסטודיו אור",
     );
     expect(leadQuoteFollowUpMessage("דנה", "   ")).not.toContain("\n\n");
     expect(leadQuoteFollowUpMessage("דנה", undefined)).not.toContain("\n\n");

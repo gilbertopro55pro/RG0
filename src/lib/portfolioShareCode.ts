@@ -5,6 +5,8 @@
 // opens WhatsApp (iPhone blocks opening it after waiting on the server) and nothing is stored: the
 // page matches the code against the photographer's current tabs (app/p/[slug]/[code]).
 
+import { formatClientMessage } from "@/lib/clientMessageFormat";
+
 const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const SPACE = 62 ** 3;
 
@@ -45,10 +47,18 @@ export function tabsForShareCode(code: string, allTabs: string[]): string[] {
   return allTabs.filter((t) => codes.has(tabCode(t)));
 }
 
-// The message the share sheet sends with the link: signed with the photographer's saved signature,
-// or else their name, never both (owner, 2026-10-20, like every message to a client). It used to add
-// "<name> - צילום אירועים", which doubled up when the name already says it.
+// The message the share sheet sends with the link, in the fixed client-message shape (owner,
+// 2026-11-01, lib/clientMessageFormat.ts): "שלום," (it goes to someone not in the system yet, so no
+// name), the body, the "קישור:" line, a blank line, then the photographer's saved signature, or
+// else their name, never both (owner, 2026-10-20). It used to add "<name> - צילום אירועים", which
+// doubled up when the name already says it.
 export function portfolioShareMessage(url: string, signature: string | null | undefined, name: string | null | undefined): string {
-  const sign = signature?.trim() || name?.trim();
-  return `היי, אשמח שתעיפו מבט בתיק העבודות שלי 📸\n${url}${sign ? `\n\n${sign}` : ""}`;
+  return formatClientMessage({
+    lang: "he",
+    name: null,
+    body: "מצורף קישור לתיק העבודות שלנו 📸\nנשמח שתתרשמו, ונהיה זמינים לכל שאלה.",
+    link: url,
+    signature,
+    senderName: name,
+  });
 }

@@ -614,7 +614,6 @@ const dict: AreaDict = {
     "עיצוב האלבום נשלח לאישור בתאריך:": "Album design sent for approval on:",
     "שלחת ל{name} את עיצוב האלבום ב-{date}, והוא עוד לא אושר. לשלוח תזכורת בוואטסאפ?": "You sent {name} the album design on {date}, and it isn't approved yet. Send a reminder on WhatsApp?",
     "העיצוב נשלח ב-{date}. לחצו לשליחת תזכורת בוואטסאפ": "The design was sent on {date}. Tap to send a reminder on WhatsApp",
-    "היי {name} 😊\nרק מזכירים שעיצוב האלבום מחכה לאישור שלכם. אפשר לדפדף בו כאן, ובסוף לאשר או לסמן תיקונים:\n{link}": "Hi {name} 😊\nJust a reminder that your album design is waiting for your approval. You can flip through it here, and at the end approve it or mark corrections:\n{link}",
   },
   ru: {
     "קבלה ללקוח/ה": "Квитанция клиенту",
@@ -1226,7 +1225,6 @@ const dict: AreaDict = {
     "עיצוב האלבום נשלח לאישור בתאריך:": "Дизайн альбома отправлен на утверждение:",
     "שלחת ל{name} את עיצוב האלבום ב-{date}, והוא עוד לא אושר. לשלוח תזכורת בוואטסאפ?": "Вы отправили {name} дизайн альбома {date}, и он ещё не утверждён. Отправить напоминание в WhatsApp?",
     "העיצוב נשלח ב-{date}. לחצו לשליחת תזכורת בוואטסאפ": "Дизайн отправлен {date}. Нажмите, чтобы отправить напоминание в WhatsApp",
-    "היי {name} 😊\nרק מזכירים שעיצוב האלבום מחכה לאישור שלכם. אפשר לדפדף בו כאן, ובסוף לאשר או לסמן תיקונים:\n{link}": "Привет, {name} 😊\nНапоминаем, что дизайн альбома ждёт вашего утверждения. Его можно пролистать здесь, а в конце утвердить или отметить исправления:\n{link}",
   },
 };
 export default dict;

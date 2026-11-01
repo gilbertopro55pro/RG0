@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/resend";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { fetchReceiptPdf } from "@/lib/receiptFile";
 import { findReceiptLink } from "@/lib/receiptLinks";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
@@ -46,7 +47,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await sendEmail({
       to: email,
       subject: `קבלה על תשלום | ${name}`,
-      text: `שלום ${event.client_name},\n\nמצורפת קבלה על התשלום שהתקבל.\nלצפייה בקבלה: ${viewLink}\n\nתודה,\n${name}`,
+      // The fixed client-message shape (lib/clientMessageFormat.ts), signed with the name as before.
+      text: formatClientMessage({
+        lang: "he",
+        name: event.client_name,
+        body: "מצורפת קבלה על התשלום שהתקבל. תודה רבה.",
+        link: viewLink,
+        senderName: name,
+      }),
       fromName: name,
       replyTo: photographer?.email ? notificationEmailFor(photographer.email) : undefined,
       attachments: pdf ? [{ filename: "receipt.pdf", content: Buffer.from(pdf).toString("base64") }] : undefined,

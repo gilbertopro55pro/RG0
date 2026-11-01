@@ -4,18 +4,24 @@ import { useState } from "react";
 import { openWhatsApp } from "@/lib/waLink";
 import { useT } from "@/i18n/client";
 import { shortClientUrl } from "@/lib/shortLinks";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 export default function PortalLinkSection({
   token,
   eventId,
   clientName,
   clientPhone,
+  signature = null,
+  senderName = null,
   onSent,
 }: {
   token: string;
   eventId: string;
   clientName: string;
   clientPhone: string | null;
+  // Signed like every client message: the WhatsApp signature, or the photographer's name without one.
+  signature?: string | null;
+  senderName?: string | null;
   onSent?: () => void;
 }) {
   const t = useT();
@@ -38,7 +44,17 @@ export default function PortalLinkSection({
   const sendLink = async () => {
     if (sending || !clientPhone) return;
     setSending(true);
-    openWhatsApp(clientPhone, `שלום ${clientName},\nהפורטל האישי שלכם מוכן לצפייה בסטטוס האירוע והתשלומים:\n${portalLink()}`);
+    openWhatsApp(
+      clientPhone,
+      formatClientMessage({
+        lang: "he",
+        name: clientName,
+        body: "הפורטל האישי שלכם מוכן.\nבפורטל אפשר לעקוב אחרי סטטוס האירוע והתשלומים בכל עת.",
+        link: portalLink(),
+        signature,
+        senderName,
+      })
+    );
     await fetch(`/api/events/${eventId}/send-portal-link`, { method: "POST" }).catch(() => {});
     setSent(true);
     setTimeout(() => setSent(false), 2000);

@@ -20,12 +20,14 @@ export default function GalleryQuickActionsMenu({
   item,
   photographerName,
   photographerEmail,
+  photographerSignature = null,
   onClose,
   onDeleted,
 }: {
   item: GalleryListItem;
   photographerName: string;
   photographerEmail: string;
+  photographerSignature?: string | null;
   onClose: () => void;
   onDeleted: (id: string) => void;
 }) {
@@ -162,6 +164,7 @@ export default function GalleryQuickActionsMenu({
         photographerEmail={photographerEmail}
         expiryDays={item.expiryDays}
         clientLang={item.clientLang}
+        signature={photographerSignature}
         onClose={onClose}
       />
     );

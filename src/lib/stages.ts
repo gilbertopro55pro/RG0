@@ -67,9 +67,9 @@ export const STAGE_TYPE: Record<StageKey, "internal" | "checkpoint"> = {
 };
 
 export const STAGE_NOTIFY_CLIENT: Partial<Record<StageKey, string>> = {
-  gallery_upload: "הגלריה מוכנה. אפשר לבחור תמונות",
-  video_approval: "הוידאו מוכן לצפייה ואישור",
-  album_approval: "עיצוב האלבום מוכן לאישור",
+  gallery_upload: "הגלריה שלכם מוכנה לצפייה, ואפשר לבחור בה תמונות",
+  video_approval: "הווידאו שלכם מוכן לצפייה ולאישור",
+  album_approval: "עיצוב האלבום שלכם מוכן לצפייה ולאישור",
   // final_delivery deliberately has NO entry: marking "מסירה סופית" done only marks it done — it no
   // longer jumps straight into a WhatsApp message. The photographer sends the update themselves with
   // the normal per-stage "שליחת עדכון" button that appears on every done stage.
@@ -79,7 +79,10 @@ export const STAGE_NOTIFY_CLIENT: Partial<Record<StageKey, string>> = {
 // when a stage has neither a saved override nor a topic-specific recommendation below.
 // {{שם}} and {{שלב}} are substituted at send time; every occurrence of the literal word "קישור:"
 // gets the client's portal link appended right after it.
-export const DEFAULT_CLIENT_MESSAGE_TEMPLATE = "שלום {{שם}},\nעדכון לגבי האירוע שלכם: {{שלב}} ✓\nקישור: ";
+// Every message to a client has one shape (owner, 2026-11-01, lib/clientMessageFormat.ts): "שלום
+// {name},", the body, "קישור:" with the link, a blank line, the signature (added at send time), in
+// refined, warm language, never cynical or pushy.
+export const DEFAULT_CLIENT_MESSAGE_TEMPLATE = "שלום {{שם}},\nרצינו לעדכן שהשלב \"{{שלב}}\" באירוע שלכם הושלם ✓\nקישור: ";
 
 // The five stages a photographer can actually customize in Settings → הודעות ללקוח/ה — the ones
 // worth a real client-facing message, in flow order. Every other stage's SendUpdateButton still
@@ -97,15 +100,15 @@ export const CUSTOMIZABLE_MESSAGE_STAGES: StageKey[] = [
 // so even an unsaved default reads like a real message instead of the generic one above.
 export const RECOMMENDED_CLIENT_MESSAGE_TEMPLATES: Partial<Record<StageKey, string>> = {
   event_closing:
-    "שלום {{שם}},\nהאירוע שלכם רשמית סגור אצלנו ביומן 🎉 נרגשים לצלם אתכם!\nבהמשך נעדכן אתכם כאן בכל שלב חשוב לקראת האירוע.\nקישור: ",
+    "שלום {{שם}},\nהאירוע שלכם נסגר ונרשם אצלנו ביומן 🎉 אנחנו שמחים ומתרגשים לצלם אתכם.\nבפורטל האישי תוכלו לעקוב אחרי כל שלב בדרך לאירוע.\nקישור: ",
   shoot_day:
-    "שלום {{שם}},\nהיום הגדול מתקרב! מחכה לצלם אתכם ולתעד את הרגעים הכי משמעותיים שלכם 📸\nנתראה ב-{{תאריך}}.\nקישור: ",
+    "שלום {{שם}},\nהאירוע שלכם מתקרב, ואנחנו מצפים לצלם אתכם ולתעד את הרגעים המיוחדים שלכם 📸\nנתראה ב-{{תאריך}}.\nקישור: ",
   gallery_upload:
-    "שלום {{שם}},\nהגלריה מהאירוע שלכם עלתה ומוכנה לצפייה! אפשר להיכנס עכשיו ולבחור את התמונות האהובות עליכם.\nקישור: ",
+    "שלום {{שם}},\nהגלריה מהאירוע שלכם מוכנה לצפייה.\nאפשר ליהנות מהתמונות ולסמן בה את האהובות עליכם.\nקישור: ",
   client_song_selection:
-    "שלום {{שם}},\nהגיע הזמן לבחור את השיר שילווה את קליפ הוידאו שלכם 🎵 כנסו ובחרו את השיר שהכי מדבר אליכם.\nקישור: ",
+    "שלום {{שם}},\nכדי שנוכל להתחיל בעריכת קליפ הווידאו, נשמח שתבחרו את השיר שילווה אותו 🎵\nאת הבחירה אפשר לעשות בפורטל האישי שלכם.\nקישור: ",
   album_design:
-    "שלום {{שם}},\nעיצוב האלבום שלכם מוכן לצפייה! נשמח לשמוע מה אתם חושבים ולקבל הערות לפני שממשיכים להדפסה.\nקישור: ",
+    "שלום {{שם}},\nעיצוב האלבום שלכם מוכן לצפייה.\nנשמח לשמוע מה דעתכם, וכל שינוי שתבקשו נעשה לפני ההדפסה.\nקישור: ",
 };
 
 // UI languages, phase 3 (2026-10-04): the same built-in templates for a client whose language is
@@ -115,34 +118,34 @@ export const RECOMMENDED_CLIENT_MESSAGE_TEMPLATES: Partial<Record<StageKey, stri
 export const CLIENT_MESSAGE_LINK_MARKER: Record<Lang, string> = { he: "קישור:", en: "Link:", ru: "Ссылка:" };
 
 export const DEFAULT_CLIENT_MESSAGE_TEMPLATE_I18N: Record<"en" | "ru", string> = {
-  en: "Hi {{שם}},\nAn update on your event: {{שלב}} ✓\nLink: ",
-  ru: "Здравствуйте, {{שם}}!\nНовости по вашему мероприятию: {{שלב}} ✓\nСсылка: ",
+  en: "Hi {{שם}},\nWe wanted to let you know that the \"{{שלב}}\" stage of your event is complete ✓\nLink: ",
+  ru: "Здравствуйте, {{שם}}!\nХотим сообщить, что этап «{{שלב}}» вашего мероприятия завершён ✓\nСсылка: ",
 };
 
 export const RECOMMENDED_CLIENT_MESSAGE_TEMPLATES_I18N: Record<"en" | "ru", Partial<Record<StageKey, string>>> = {
   en: {
     event_closing:
-      "Hi {{שם}},\nYour event is officially booked in our calendar 🎉 We can't wait to photograph you!\nWe'll keep you posted here on every important step along the way.\nLink: ",
+      "Hi {{שם}},\nYour event is booked and in our calendar 🎉 We're delighted to be photographing you.\nIn your personal portal you can follow every step on the way to the event.\nLink: ",
     shoot_day:
-      "Hi {{שם}},\nThe big day is almost here! I can't wait to photograph you and capture your most meaningful moments 📸\nSee you on {{תאריך}}.\nLink: ",
+      "Hi {{שם}},\nYour event is coming up, and we're looking forward to photographing you and capturing your special moments 📸\nSee you on {{תאריך}}.\nLink: ",
     gallery_upload:
-      "Hi {{שם}},\nThe gallery from your event is up and ready to view! You can go in now and pick your favorite photos.\nLink: ",
+      "Hi {{שם}},\nThe gallery from your event is ready to view.\nEnjoy the photos, and mark your favorites in it.\nLink: ",
     client_song_selection:
-      "Hi {{שם}},\nIt's time to choose the song for your video clip 🎵 Have a listen and pick the one that speaks to you most.\nLink: ",
+      "Hi {{שם}},\nSo we can start editing your video clip, we'd love for you to choose the song that will go with it 🎵\nYou can make your choice in your personal portal.\nLink: ",
     album_design:
-      "Hi {{שם}},\nYour album design is ready to view! We'd love to hear what you think and get your notes before we send it to print.\nLink: ",
+      "Hi {{שם}},\nYour album design is ready to view.\nWe'd love to hear what you think, and any change you ask for will be made before printing.\nLink: ",
   },
   ru: {
     event_closing:
-      "Здравствуйте, {{שם}}!\nВаше мероприятие официально у нас в календаре 🎉 Мы с нетерпением ждём съёмки!\nЗдесь мы будем сообщать вам о каждом важном этапе подготовки.\nСсылка: ",
+      "Здравствуйте, {{שם}}!\nВаше мероприятие подтверждено и внесено в наш календарь 🎉 Мы рады, что будем вас снимать.\nВ личном кабинете вы сможете следить за каждым этапом подготовки.\nСсылка: ",
     shoot_day:
-      "Здравствуйте, {{שם}}!\nБольшой день уже совсем скоро! Жду встречи, чтобы запечатлеть ваши самые важные моменты 📸\nДо встречи {{תאריך}}.\nСсылка: ",
+      "Здравствуйте, {{שם}}!\nВаше мероприятие уже скоро, и мы с нетерпением ждём съёмки ваших особенных моментов 📸\nДо встречи {{תאריך}}.\nСсылка: ",
     gallery_upload:
-      "Здравствуйте, {{שם}}!\nГалерея с вашего мероприятия готова к просмотру! Вы уже можете зайти и выбрать любимые фотографии.\nСсылка: ",
+      "Здравствуйте, {{שם}}!\nГалерея с вашего мероприятия готова к просмотру.\nНаслаждайтесь фотографиями и отмечайте в ней любимые.\nСсылка: ",
     client_song_selection:
-      "Здравствуйте, {{שם}}!\nПришло время выбрать песню для вашего видеоклипа 🎵 Послушайте и выберите ту, что ближе всего вам.\nСсылка: ",
+      "Здравствуйте, {{שם}}!\nЧтобы мы могли начать монтаж видеоклипа, просим вас выбрать песню, которая будет его сопровождать 🎵\nСделать выбор можно в вашем личном кабинете.\nСсылка: ",
     album_design:
-      "Здравствуйте, {{שם}}!\nДизайн вашего альбома готов к просмотру! Будем рады узнать ваше мнение и получить замечания перед печатью.\nСсылка: ",
+      "Здравствуйте, {{שם}}!\nДизайн вашего альбома готов к просмотру.\nБудем рады узнать ваше мнение, а любые изменения внесём до печати.\nСсылка: ",
   },
 };
 
@@ -165,15 +168,15 @@ export function resolveClientMessageTemplate(stageKey: string, savedOverride: st
 export const STAGE_NOTIFY_CLIENT_I18N: Record<"en" | "ru", Partial<Record<StageKey, string>> & { greeting: string }> = {
   en: {
     greeting: "Hi {name},",
-    gallery_upload: "Your gallery is ready. You can pick your photos now",
+    gallery_upload: "Your gallery is ready to view, and you can choose your photos in it",
     video_approval: "Your video is ready to watch and approve",
-    album_approval: "Your album design is ready for approval",
+    album_approval: "Your album design is ready to view and approve",
   },
   ru: {
     greeting: "Здравствуйте, {name}!",
-    gallery_upload: "Ваша галерея готова. Можно выбирать фотографии",
+    gallery_upload: "Ваша галерея готова к просмотру, в ней можно выбрать фотографии",
     video_approval: "Ваше видео готово к просмотру и утверждению",
-    album_approval: "Дизайн вашего альбома готов к утверждению",
+    album_approval: "Дизайн вашего альбома готов к просмотру и утверждению",
   },
 };
 

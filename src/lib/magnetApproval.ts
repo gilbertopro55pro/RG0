@@ -1,4 +1,5 @@
 import type { Lang } from "@/i18n/config";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 // The client approves a magnet frame in the portal (stage 3 of the magnet tool, owner 2026-10-22),
 // like the album design: the photographer sends the portal link, the client sees the frames of their
@@ -82,15 +83,15 @@ export function clientGreetingName(clientName: string): string {
 
 const TEXT: Record<Lang, { body: string; subject: string }> = {
   he: {
-    body: "שלום {name},\nעיצוב המגנטים לאירוע מוכן. אפשר לראות ולאשר אותו כאן:\n{link}",
+    body: "עיצוב המגנטים לאירוע שלכם מוכן.\nאפשר לראות אותו ולאשר, או להשאיר הערה.",
     subject: "עיצוב המגנטים לאירוע",
   },
   en: {
-    body: "Hi {name},\nThe magnet design for your event is ready. You can see and approve it here:\n{link}",
+    body: "The magnet design for your event is ready.\nYou can view it and approve it, or leave a note.",
     subject: "Your magnet design",
   },
   ru: {
-    body: "Здравствуйте, {name}!\nДизайн магнитов для вашего мероприятия готов. Посмотреть и утвердить его можно здесь:\n{link}",
+    body: "Дизайн магнитов для вашего мероприятия готов.\nЕго можно посмотреть и утвердить или оставить комментарий.",
     subject: "Дизайн магнитов",
   },
 };
@@ -104,9 +105,7 @@ export function magnetApprovalMessage(p: {
   senderName: string | null | undefined;
   lang: Lang;
 }): string {
-  const body = TEXT[p.lang].body.replace("{name}", clientGreetingName(p.clientName)).replace("{link}", p.link);
-  const signature = p.signature?.trim() || p.senderName?.trim();
-  return signature ? `${body}\n\n${signature}` : body;
+  return formatClientMessage({ lang: p.lang, name: clientGreetingName(p.clientName), body: TEXT[p.lang].body, link: p.link, signature: p.signature, senderName: p.senderName });
 }
 
 export function magnetApprovalSubject(lang: Lang): string {

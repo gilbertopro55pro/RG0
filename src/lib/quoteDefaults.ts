@@ -6,6 +6,9 @@ import type { Messages } from "@/i18n/types";
 import clientQuote from "@/i18n/dict/clientQuote";
 import clientQuoteSend from "@/i18n/dict/clientQuoteSend";
 import eventTypes from "@/i18n/dict/eventTypes";
+import clientMessages from "@/i18n/dict/clientMessages";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
+import { clientGreetingName } from "@/lib/magnetApproval";
 
 // Admin-only quote extras for now (owner, 2026-10-01, "עדכון אדמין"):
 // - the notes field starts with the delivery times, and its lines follow what the quote holds: the
@@ -19,7 +22,7 @@ import eventTypes from "@/i18n/dict/eventTypes";
 const messageCache: Partial<Record<Exclude<Lang, "he">, Messages>> = {};
 function quoteT(lang: Lang) {
   if (lang === "he") return makeT({});
-  return makeT((messageCache[lang] ??= { ...clientQuote[lang], ...clientQuoteSend[lang], ...eventTypes[lang] }));
+  return makeT((messageCache[lang] ??= { ...clientQuote[lang], ...clientQuoteSend[lang], ...eventTypes[lang], ...clientMessages[lang] }));
 }
 
 export function quoteExtrasFor(email: string | null | undefined): boolean {
@@ -77,29 +80,33 @@ function localDate(isoDate: string, lang: Lang): string | null {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(dateLocale(lang), { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
-// The WhatsApp message that sends the client the quote link (admin only, owner 2026-10-01): the
-// caption, the /quotes/<token> link, and the photographer's signature from Settings when set.
-// withContract: the quote page ends with signing the contract, so the message says so.
+// The WhatsApp message that sends the client the quote link, in the fixed client-message shape
+// (owner, 2026-11-01, lib/clientMessageFormat.ts): "שלום {name}," (the first name, or a couple's
+// whole name, clientGreetingName), the caption, what the client can do there (approve, and sign the
+// contract when withContract), the "קישור:" line with the /quotes/<token> link, a blank line, then
+// the photographer's WhatsApp signature (or their name without one).
 // lang: the client's language (UI languages phase 3); the signature stays as the photographer wrote it.
 // approved: sent again from the event page after the client approved it (owner, 2026-10-22), so
 // it asks to view the quote, not to approve it.
+// opts.clientName: the name for the greeting ("שלום," without one); opts.senderName: the
+// photographer's name, signed when there's no WhatsApp signature.
 export function quoteLinkMessage(
   caption: string,
   url: string,
   signature: string | null | undefined,
   withContract = false,
   lang: Lang = "he",
-  approved = false
+  approved = false,
+  opts: { clientName?: string | null; senderName?: string | null } = {}
 ): string {
   const t = quoteT(lang);
-  return [
-    caption,
-    "",
-    t("קישור להצעת המחיר: {url}", { url }),
-    approved ? t("יש ללחוץ על הקישור לצפייה בהצעת המחיר.") : t("יש ללחוץ על הקישור לצפייה ואישור הצעת המחיר."),
-    withContract && !approved ? t("אחרי האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור.") : null,
-    signature?.trim() || null,
+  const body = [
+    caption.trim() || null,
+    approved ? t("בקישור אפשר לצפות בהצעת המחיר.") : t("בקישור אפשר לצפות בהצעת המחיר ולאשר אותה."),
+    withContract && !approved ? t("לאחר האישור ממלאים כמה פרטים קצרים על האירוע וחותמים על החוזה, הכל באותו קישור.") : null,
   ]
     .filter((l) => l !== null)
     .join("\n");
+  const name = opts.clientName?.trim() ? clientGreetingName(opts.clientName) : null;
+  return formatClientMessage({ lang, name, body, link: url, signature, senderName: opts.senderName });
 }

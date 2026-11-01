@@ -5,6 +5,9 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { LEAD_FOLLOW_UP_TEMPLATES } from "@/lib/stages";
 import { friendlyWhatsAppError, sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { sendEmail } from "@/lib/resend";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
+import { shortClientUrl } from "@/lib/shortLinks";
+import { SITE_URL } from "@/lib/siteUrl";
 import { notificationEmailFor } from "@/lib/notificationEmail";
 import { clientLangFor, photographerLang } from "@/lib/clientLang";
 import { dateLocale } from "@/i18n/config";
@@ -337,9 +340,9 @@ type FollowUpLead = {
 async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: ScheduledMessage) {
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, name, phone, email, event_date_interest, event_type_name, quoted_amount, status, photographer_id, archived_at, client_lang, quote_approved_at")
+    .select("id, name, phone, email, event_date_interest, event_type_name, quoted_amount, status, photographer_id, archived_at, client_lang, quote_approved_at, quote_token")
     .eq("id", message.lead_id)
-    .single<FollowUpLead>();
+    .single<FollowUpLead & { quote_token: string | null }>();
 
   // An approved quote needs no nudge (the client was emailed "our quote is still open" after
   // approving it).
@@ -350,9 +353,9 @@ async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: 
 
   const { data: photographer } = await supabase
     .from("photographers")
-    .select("email, name, ui_lang")
+    .select("email, name, ui_lang, whatsapp_signature")
     .eq("id", lead.photographer_id)
-    .maybeSingle<{ email: string; name: string | null; ui_lang: string | null }>();
+    .maybeSingle<{ email: string; name: string | null; ui_lang: string | null; whatsapp_signature: string | null }>();
 
   if (photographer?.email) {
     // The reminder to the photographer, in their own language (photographers.ui_lang).
@@ -379,15 +382,25 @@ async function processLeadQuoteFollowup(supabase: SupabaseClient<any>, message: 
   // Bonus: a gentle automatic nudge straight to the client too, when we actually have an email
   // for them — free-form, so no WhatsApp-template limitation applies here.
   if (lead.email) {
-    // In the lead's language (UI languages phase 3); "he" for every non-admin account.
-    const t = makeT(messagesFor(clientLangFor(photographer?.email, lead.client_lang)));
+    // In the lead's language (UI languages phase 3). The fixed client-message shape
+    // (lib/clientMessageFormat.ts): greeting, body, the quote link (as the leads page sends it,
+    // when the quote has an amount), blank line, the photographer's signature or name.
+    const lang = clientLangFor(photographer?.email, lead.client_lang);
+    const t = makeT(messagesFor(lang));
     try {
       await sendEmail({
         to: lead.email,
         fromName: photographer?.name ?? undefined,
         replyTo: photographer?.email ? notificationEmailFor(photographer.email) : undefined,
-        subject: t("רק מזכירים את ההצעה שלנו"),
-        text: t("שלום {name},\n\nרצינו להזכיר שההצעת מחיר ששלחנו לכם עדיין פתוחה, ונשמח לעמוד לרשותכם לכל שאלה או לתיאום.", { name: lead.name }),
+        subject: t("בהמשך להצעת המחיר ששלחנו לכם"),
+        text: formatClientMessage({
+          lang,
+          name: lead.name,
+          body: t("רצינו לעדכן שהצעת המחיר ששלחנו לכם עדיין בתוקף.\nנשמח לענות על כל שאלה ולתאם איתכם את הפרטים, כשיתאפשר לכם."),
+          link: lead.quoted_amount && lead.quote_token ? shortClientUrl(SITE_URL, "quote", lead.quote_token) : null,
+          signature: photographer?.whatsapp_signature,
+          senderName: photographer?.name,
+        }),
       });
     } catch (e) {
       console.error("Lead quote follow-up email to lead failed:", e);

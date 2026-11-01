@@ -6,6 +6,7 @@ import type { EventRow } from "@/lib/types";
 import { clientLangFor } from "@/lib/clientLang";
 import { messagesFor } from "@/i18n/dict";
 import { makeT } from "@/i18n/translate";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 // Attaching the album design PDF is deliberately separate from marking "אישור עיצוב אלבום" done —
 // the file needs to reach the client (and the portal needs to offer the approve button) *before*
@@ -36,8 +37,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       album_design_pdf_filename: albumDesignPdfFilename ?? "album-design.pdf",
     })
     .eq("id", eventId)
-    .select("client_name, client_phone, client_lang")
-    .single<Pick<EventRow, "client_name" | "client_phone" | "client_lang">>();
+    .select("client_name, client_phone, client_lang, photographers(whatsapp_signature, name)")
+    .single<
+      Pick<EventRow, "client_name" | "client_phone" | "client_lang"> & {
+        photographers: { whatsapp_signature: string | null; name: string | null } | null;
+      }
+    >();
 
   if (updateError || !event) {
     return NextResponse.json({ error: updateError?.message ?? "האירוע לא נמצא" }, { status: 404 });
@@ -60,11 +65,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       () => getSignedDownloadUrl("album-designs", albumDesignPdfPath, ttl, filename),
     );
     if (signedUrl) {
-      const t = makeT(messagesFor(clientLangFor(user.email, event.client_lang)));
+      const lang = clientLangFor(user.email, event.client_lang);
+      const t = makeT(messagesFor(lang));
       notify = {
         text: "עיצוב האלבום מוכן לאישור",
         downloadUrl: signedUrl,
-        message: t("שלום {name},\nעיצוב האלבום מוכן לאישור ✓\n{url}", { name: event.client_name, url: signedUrl }),
+        // The fixed client-message shape (lib/clientMessageFormat.ts), signed with the signature or name.
+        message: formatClientMessage({
+          lang,
+          name: event.client_name,
+          body: t("עיצוב האלבום שלכם מוכן לאישור 🎉\nבקישור אפשר לצפות בקובץ העיצוב, ונשמח לשמוע מה דעתכם."),
+          link: signedUrl,
+          signature: event.photographers?.whatsapp_signature,
+          senderName: event.photographers?.name,
+        }),
       };
     } else {
       await supabase

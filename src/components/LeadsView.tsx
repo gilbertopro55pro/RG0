@@ -289,7 +289,7 @@ export default function LeadsView({
         ))}
       </div>
 
-      {tab === "quotes" && <QuoteHistoryList signature={signature} />}
+      {tab === "quotes" && <QuoteHistoryList signature={signature?.trim() || senderName?.trim() || null} />}
 
       {tab === "leads" && (
       <>

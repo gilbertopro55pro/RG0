@@ -120,9 +120,9 @@ export function quickReminderBlock(
 // The photos reminder when the photographer saved no message of their own for the stage: the
 // built-in one for it is the generic "an update on your event: <stage> ✓", which reads as done.
 export const PHOTO_SELECTION_REMINDER: Record<Lang, string> = {
-  he: "שלום {{שם}},\nתזכורת קטנה: מחכים לבחירת התמונות שלכם לאלבום 📸\nנכנסים לגלריה ובוחרים את התמונות שתרצו שיהיו באלבום.\nקישור: ",
-  en: "Hi {{שם}},\nA quick reminder: we're waiting for your photo picks for the album 📸\nGo into the gallery and choose the photos you'd like in it.\nLink: ",
-  ru: "Здравствуйте, {{שם}}!\nНебольшое напоминание: ждём, когда вы выберете фотографии для альбома 📸\nЗайдите в галерею и отметьте снимки, которые хотите видеть в альбоме.\nСсылка: ",
+  he: "שלום {{שם}},\nנשמח שתבחרו את התמונות לאלבום כשיתאפשר לכם 📸\nבגלריה מסמנים את התמונות שתרצו שייכנסו לאלבום, ומשם נמשיך לעיצוב.\nקישור: ",
+  en: "Hi {{שם}},\nWhenever it suits you, we'd love for you to choose the photos for your album 📸\nIn the gallery, mark the photos you'd like in it, and we'll take it from there to the design.\nLink: ",
+  ru: "Здравствуйте, {{שם}}!\nКогда вам будет удобно, выберите, пожалуйста, фотографии для альбома 📸\nВ галерее отметьте снимки, которые хотите видеть в альбоме, и мы перейдём к дизайну.\nСсылка: ",
 };
 
 // The event log line of a reminder sent from the quick actions. The song and photo ones name the

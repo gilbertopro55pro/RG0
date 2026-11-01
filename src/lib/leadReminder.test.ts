@@ -139,14 +139,14 @@ describe("leadReminderMessage", () => {
       leadReminderMessage({ ...base, lead: lead({ name: "  Dana   Levi " }), kind: "quote", quoteUrl: "https://myframeflow.com/s/q00000000001" }),
     ).toBe(
       "שלום Dana,\n" +
-        "רציתי לבדוק אם יצא לכם לעבור על הצעת המחיר ששלחתי. אשמח לענות על כל שאלה, ולשריין לכם את התאריך.\n" +
-        "להצעת המחיר: https://myframeflow.com/s/q00000000001",
+        "רצינו לבדוק אם יצא לכם לעבור על הצעת המחיר ששלחנו. נשמח לענות על כל שאלה ולשריין לכם את התאריך.\n" +
+        "קישור: https://myframeflow.com/s/q00000000001",
     );
   });
 
   it("leaves out the link line when there's no quote page", () => {
     const text = leadReminderMessage({ ...base, lead: lead(), kind: "quote" });
-    expect(text).not.toContain("להצעת המחיר");
+    expect(text).not.toContain("קישור:");
     expect(text.split("\n")).toHaveLength(2);
   });
 
@@ -156,10 +156,10 @@ describe("leadReminderMessage", () => {
 
   it("follows up on the conversation, with the event date when known", () => {
     expect(leadReminderMessage({ ...base, lead: lead(), kind: "contact" })).toBe(
-      "שלום Dana,\nרציתי לחזור אליכם בהמשך לשיחה שלנו. אשמח לשמוע אם יש שאלות, או אם תרצו להתקדם ולשריין את התאריך.",
+      "שלום Dana,\nרצינו לחזור אליכם בהמשך לשיחה שלנו. נשמח לענות על כל שאלה, וכשתרצו להתקדם, לשריין לכם את התאריך.",
     );
     expect(leadReminderMessage({ ...base, lead: lead({ event_date_interest: "2026-12-03" }), kind: "contact" })).toBe(
-      "שלום Dana,\nרציתי לחזור אליכם בהמשך לשיחה שלנו על האירוע ב-3.12.2026. אשמח לשמוע אם יש שאלות, או אם תרצו להתקדם ולשריין את התאריך.",
+      "שלום Dana,\nרצינו לחזור אליכם בהמשך לשיחה שלנו על האירוע ב-3.12.2026. נשמח לענות על כל שאלה, וכשתרצו להתקדם, לשריין לכם את התאריך.",
     );
   });
 
@@ -187,17 +187,17 @@ describe("leadReminderMessage", () => {
     expect(
       leadReminderMessage({ lead: lead({ event_date_interest: "2026-12-03" }), kind: "contact", quoteUrl: null, signature: null, senderName: "Or", lang: "en" }),
     ).toBe(
-      "Hi Dana,\nFollowing up on our conversation about your event on 03/12/2026. Let me know if you have any questions, or if you'd like to go ahead and book the date.\n\nOr",
+      "Hi Dana,\nWe wanted to follow up on our conversation about your event on 03/12/2026. We'd be happy to answer any questions, and whenever you'd like to go ahead, to book the date for you.\n\nOr",
     );
     expect(leadReminderMessage({ lead: lead(), kind: "quote", quoteUrl: "https://x/s/q1", signature: null, senderName: null, lang: "en" })).toBe(
-      "Hi Dana,\nI wanted to check whether you had a chance to look at the price quote I sent. I'm happy to answer any questions and hold the date for you.\nYour quote: https://x/s/q1",
+      "Hi Dana,\nWe wanted to check whether you had a chance to look at the price quote we sent. We'd be happy to answer any questions and hold the date for you.\nLink: https://x/s/q1",
     );
   });
 
   it("writes in Russian", () => {
     const text = leadReminderMessage({ lead: lead({ name: "Анна Иванова" }), kind: "quote", quoteUrl: "https://x/s/q1", signature: "Студия", senderName: "Or", lang: "ru" });
     expect(text.split("\n")[0]).toBe("Здравствуйте, Анна!");
-    expect(text).toContain("Ваше предложение: https://x/s/q1");
+    expect(text).toContain("\nСсылка: https://x/s/q1\n");
     expect(text.endsWith("\n\nСтудия")).toBe(true);
     expect(leadReminderMessage({ lead: lead({ event_date_interest: "2026-12-03" }), kind: "contact", quoteUrl: null, signature: null, senderName: null, lang: "ru" })).toContain(
       "о вашем мероприятии 03.12.2026.",

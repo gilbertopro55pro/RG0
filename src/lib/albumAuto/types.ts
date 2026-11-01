@@ -134,6 +134,12 @@ export type LayoutInput = {
   // "עיצוב מחדש": 0/undefined = the best layout; n = the n-th best STRUCTURALLY different one (a
   // different hero variant or grid template, not just a mirror image), cycling.
   variant?: number;
+  // A book's page (owner, 2026-11-01): the signature styles open every page that holds 2+ photos
+  // with a large faded photo, the others in rows on its faded strip (never on a double page's fold).
+  book?: boolean;
+  // A book's faded pages counted on their own (pages of one photo between them don't count), so the
+  // faded photo's side alternates from one faded page to the next. Defaults to spreadIndex.
+  bookTurn?: number;
 };
 
 // Output: elements in percent of the whole spread (0-100), same model the editor uses

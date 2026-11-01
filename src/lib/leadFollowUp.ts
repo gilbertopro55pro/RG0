@@ -1,11 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { LEAD_FOLLOW_UP_TEMPLATES } from "@/lib/stages";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 // The WhatsApp text sent to a lead after a price quote — greeting, one short line, then the
 // photographer's own signature (photographers.whatsapp_signature) on its own paragraph when set.
 export function leadQuoteFollowUpMessage(leadName: string, signature: string | null | undefined): string {
-  const body = `שלום ${leadName},\nשלחתי אלייך הצעת מחיר ואשמח לשמוע אם יש שאלות או שתרצו לתאם את תאריך האירוע.`;
-  return signature?.trim() ? `${body}\n\n${signature.trim()}` : body;
+  return formatClientMessage({
+    lang: "he",
+    name: leadName,
+    body: "רצינו לבדוק אם יצא לכם לעבור על הצעת המחיר ששלחנו. נשמח לענות על כל שאלה ולתאם איתכם את תאריך האירוע.",
+    signature,
+  });
 }
 
 // "תזכורת" on the quote follow-up prompt (owner, 2026-10-15): the quick times the photographer can

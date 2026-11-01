@@ -89,7 +89,13 @@ export default async function GalleriesPage() {
 
   return (
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <GalleriesListView items={items} initialView={view} photographerName={photographer.name} photographerEmail={photographer.email} />
+      <GalleriesListView
+        items={items}
+        initialView={view}
+        photographerName={photographer.name}
+        photographerEmail={photographer.email}
+        photographerSignature={photographer.whatsapp_signature}
+      />
     </div>
   );
 }

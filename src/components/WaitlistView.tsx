@@ -12,6 +12,7 @@ import RowMenu from "@/components/RowMenu";
 import { useT, useLang } from "@/i18n/client";
 import { dateLocale } from "@/i18n/config";
 import { shortClientUrl } from "@/lib/shortLinks";
+import { formatClientMessage } from "@/lib/clientMessageFormat";
 
 const NewEventModal = dynamic(() => import("@/components/NewEventModal"), { ssr: false });
 
@@ -20,9 +21,14 @@ const RESOLUTION_OPTIONS = ["שלחתי צלם אחר", "שלחתי צוות ש�
 export default function WaitlistView({
   initialEntries,
   customPackages,
+  signature = null,
+  senderName = null,
 }: {
   initialEntries: WaitlistRow[];
   customPackages: CustomPackageRow[];
+  // The booking message is signed like every client message: the WhatsApp signature, or the name.
+  signature?: string | null;
+  senderName?: string | null;
 }) {
   const router = useRouter();
   const t = useT();
@@ -103,6 +109,8 @@ export default function WaitlistView({
       {confirmEntry && (
         <ConfirmEventDialog
           entry={confirmEntry}
+          signature={signature}
+          senderName={senderName}
           onClose={() => setConfirmEntry(null)}
           onConfirmed={() => {
             router.push("/");
@@ -143,10 +151,14 @@ export default function WaitlistView({
 
 function ConfirmEventDialog({
   entry,
+  signature,
+  senderName,
   onClose,
   onConfirmed,
 }: {
   entry: WaitlistRow;
+  signature: string | null;
+  senderName: string | null;
   onClose: () => void;
   onConfirmed: () => void;
 }) {
@@ -178,10 +190,14 @@ function ConfirmEventDialog({
     if (entry.client_phone) {
       const formattedDate = new Date(entry.requested_date).toLocaleDateString("he-IL");
       const portalLink = shortClientUrl(window.location.origin, "portal", data.clientAccessToken);
-      const message =
-        `שלום ${entry.client_name},\nהאירוע שלכם נסגר במערכת בהצלחה 🎉\n\n` +
-        `תאריך: ${formattedDate}\n\n` +
-        `הפורטל האישי שלכם לצפייה בפרטי האירוע והתשלומים:\n${portalLink}`;
+      const message = formatClientMessage({
+        lang: "he",
+        name: entry.client_name,
+        body: `שמחים לאשר את האירוע שלכם בתאריך ${formattedDate} 🎉\nבפורטל האישי שלכם אפשר לראות את פרטי האירוע והתשלומים.`,
+        link: portalLink,
+        signature,
+        senderName,
+      });
       openWhatsApp(entry.client_phone, message);
       fetch(`/api/events/${data.id}/log-notification`, {
         method: "POST",

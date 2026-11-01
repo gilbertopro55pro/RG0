@@ -646,6 +646,8 @@ export default function EventDetailView({
             clientName: event.client_name,
             url: result.notify.downloadUrl ?? "",
             lang: clientMessageLang,
+            signature: whatsappSignature,
+            senderName,
           }),
           stageKey: "album_approval",
         };
@@ -1281,6 +1283,8 @@ export default function EventDetailView({
           eventId={event.id}
           clientName={event.client_name}
           clientPhone={event.client_phone}
+          signature={whatsappSignature}
+          senderName={senderName}
           onSent={refreshNotifications}
         />
       )}
@@ -1305,7 +1309,7 @@ export default function EventDetailView({
           quote={eventQuote}
           clientName={event.client_name}
           clientPhone={event.client_phone}
-          signature={whatsappSignature}
+          signature={whatsappSignature?.trim() || senderName?.trim() || null}
           clientLang={clientMessageLang}
         />
       )}

@@ -19,7 +19,12 @@ export default async function WaitlistPage() {
 
   return (
     <div className="max-w-md sm:max-w-none sm:w-[85%] lg:w-[80%] mx-auto px-4 pt-7 pb-10 w-full">
-      <WaitlistView initialEntries={entries ?? []} customPackages={customPackages ?? []} />
+      <WaitlistView
+        initialEntries={entries ?? []}
+        customPackages={customPackages ?? []}
+        signature={photographer.whatsapp_signature}
+        senderName={photographer.name}
+      />
     </div>
   );
 }
