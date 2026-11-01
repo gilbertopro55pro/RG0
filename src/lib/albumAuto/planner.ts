@@ -1059,6 +1059,10 @@ export function planAlbum(
   const info = new Map<string, PhotoInfo>();
   for (const p of allPhotos) info.set(p.id, analyzeFaces(facesById.get(p.id) ?? [], people));
 
+  if (opts.kind === "wedding" && followsTabs(allPhotos)) {
+    const wedding = planWedding(allPhotos, info, orderIdx, bounds, opts, refs);
+    if (wedding) return wedding;
+  }
   if ((!isBook || opts.bookTabs) && followsTabs(allPhotos)) return planByTabs(allPhotos, info, cellSize, orderIdx, time, bounds, opts, refs);
 
   // 2. Family sections, in priority order. Which other cells may share the frame: owners only with
@@ -1366,6 +1370,277 @@ function planByTabs(
       }
       coverPhotoId ??= ownersTab.ids.find((id) => (byId.get(id) as AutoPhoto).aspect < 1) ?? ownersTab.ids[0] ?? null;
     }
+  }
+  coverPhotoId ??= spreads[0]?.photoIds[0] ?? null;
+  return { coverPhotoId, spreads };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The wedding album (owner, 2026-11-01): the book runs the wedding's stages in their order, each on
+// pages of its own, in the share of the pages the owner set for 30 pages: the cover (the couple from
+// the outdoor shoot), the preparations on pages 2-4 (the bride's and the groom's mixed), the meeting
+// and outdoor shoot on 5-13 (each alone and together, the shots with the bridesmaids and groomsmen on
+// its last pages), the ketubah and chuppah on 14-20 (the ketubah first), the dancing on 21-30 (the
+// guests and the tables on its last pages). The couple at the venue joins the outdoor shoot's share,
+// and the family at the venue (the groom's side, then the bride's) takes about two pages of its own
+// between them and the ceremony. A wedding has 25-30 pages; with no count typed, as many as the
+// photos need in that range. The stages are read from the gallery's tabs (weddingStageOf); without
+// two recognized stages the book follows the tabs as any other.
+
+export type WeddingStage = "prep" | "outdoor" | "venueCouple" | "family" | "ceremony" | "party" | "guests" | "atmosphere";
+export const WEDDING_STAGE_ORDER: WeddingStage[] = ["prep", "outdoor", "venueCouple", "family", "ceremony", "party", "guests"];
+
+const PREP_RE = /(הכנות|הכנה|התארגנות|התארגנ|איפור|getting ready|prep)/i;
+const VENUE_RE = /(אולם|גן אירועים|venue)/i;
+const OUTDOOR_RE = /(מפגש|חוץ|לוקיישן|לוקיישנים|first look|outdoor)/i;
+const CEREMONY_RE = /(כתובה|חופה|חופת|טקס|קידושין|ceremony|chuppah|ketubah)/i;
+const KETUBAH_RE = /(כתובה|ketubah)/i;
+const GUESTS_RE = /(אורחים|שולחנות|שולחן|קבלת פנים|guests|tables)/i;
+const PARTY_RE = /(ריקוד|מסיבה|רחבה|הרקדה|party|danc)/i;
+const SIDE_FAMILY_RE = /(צד ה?חתן|צד ה?כלה|הורים)/;
+
+// A wedding tab's stage by its name, or null when the name doesn't tell. Checked from the most
+// specific: "הכנות כלה" is the preparations, "משפחת החתן" the family, "ריקודי זוגות" the dancing,
+// "צילומי זוג באולם" the couple at the venue; any other couple tab ("צילומי זוג", "חתן כלה") is the
+// outdoor shoot.
+export function weddingStageOf(name: string): WeddingStage | null {
+  const l = tabLabel(name);
+  if (PREP_RE.test(l)) return "prep";
+  if (FAMILY_RE.test(l) || SIDE_FAMILY_RE.test(l)) return "family";
+  if (CEREMONY_RE.test(l)) return "ceremony";
+  if (GUESTS_RE.test(l)) return "guests";
+  if (PARTY_RE.test(l)) return "party";
+  if (ATMOSPHERE_RE.test(l)) return "atmosphere";
+  if (VENUE_RE.test(l)) return "venueCouple";
+  if (OUTDOOR_RE.test(l) || OWNERS_RE.test(l)) return "outdoor";
+  return null;
+}
+
+// Each tab's stage, in the tabs' order. A tab whose name doesn't tell joins the stage of the tab
+// before it (or after it, at the start). A couple tab that isn't named for the outdoors is the couple
+// at the venue when the gallery has an outdoor tab of its own. null: fewer than two stages known, not
+// a wedding the stages can be read from.
+export function weddingStages(names: string[]): (WeddingStage | null)[] | null {
+  const own = names.map(weddingStageOf);
+  const outdoorByName = names.some((n) => OUTDOOR_RE.test(tabLabel(n)) && weddingStageOf(n) === "outdoor");
+  if (outdoorByName) {
+    names.forEach((n, i) => {
+      if (own[i] === "outdoor" && !OUTDOOR_RE.test(tabLabel(n))) own[i] = "venueCouple";
+    });
+  }
+  if (new Set(own.filter((x) => x && x !== "atmosphere")).size < 2) return null;
+  const out = own.slice();
+  for (let i = 0; i < out.length; i++) if (!out[i]) out[i] = out.slice(0, i).reverse().find((x) => x && x !== "atmosphere") ?? null;
+  for (let i = out.length - 1; i >= 0; i--) if (!out[i]) out[i] = out.slice(i + 1).find((x) => x && x !== "atmosphere") ?? null;
+  return out;
+}
+
+// The owner's share of the pages for each part of a wedding (2026-11-01, for 30 pages): the
+// preparations 3, the couple 9 (the outdoor shoot and the couple at the venue together), the family 2,
+// the ceremony 7, the dancing 10 (with the guests). A part with no photos takes no pages.
+const WEDDING_BLOCKS: { stages: WeddingStage[]; weight: number }[] = [
+  { stages: ["prep"], weight: 3 },
+  { stages: ["outdoor", "venueCouple"], weight: 9 },
+  { stages: ["family"], weight: 2 },
+  { stages: ["ceremony"], weight: 7 },
+  { stages: ["party", "guests"], weight: 10 },
+];
+
+// A wedding's pages with no count typed: 25-30 (owner, 2026-11-01), about 8 photos a spread.
+export function weddingAutoPages(photos: number): number {
+  return Math.min(AUTO_MAX_PAGES, Math.max(25, Math.round(photos / 8) + 1));
+}
+
+// How many people are clearly in a photo: the faces at least half the height of the largest one (a
+// guest far behind the couple doesn't count).
+export function significantFaces(boxes: { height: number }[]): number {
+  const top = Math.max(0, ...boxes.map((b) => b.height));
+  return top > 0 ? boxes.filter((b) => b.height >= top * 0.5).length : 0;
+}
+
+// The spreads of each stage, in order: `want` (from the shares) adjusted so each stage holds its
+// photos within the page caps of its positions in the book and never gets a page of a single photo
+// (at most half its photo count in pages), the spreads moving to where they're needed.
+export function weddingSpreads(counts: number[], weights: number[], total: number): number[] {
+  const k = counts.length;
+  if (k === 0) return [];
+  const maxOf = (i: number) => Math.max(1, Math.floor(counts[i] / 2));
+  const sumW = weights.reduce((a, b) => a + b, 0) || 1;
+  const raw = weights.map((w) => (total * w) / sumW);
+  const alloc = raw.map((r, i) => Math.min(maxOf(i), Math.max(1, Math.floor(r))));
+  // Largest remainder for what's left, within each stage's maximum.
+  const order = raw.map((r, i) => ({ i, rem: r - Math.floor(r) })).sort((a, b) => b.rem - a.rem || a.i - b.i);
+  let left = total - alloc.reduce((a, b) => a + b, 0);
+  for (let pass = 0; left > 0 && pass < 4; pass++) {
+    for (const { i } of order) {
+      if (left > 0 && alloc[i] < maxOf(i)) {
+        alloc[i]++;
+        left--;
+      }
+    }
+  }
+  const capacity = () => {
+    let pos = 1;
+    return alloc.map((a) => {
+      let c = 0;
+      for (let j = 0; j < a; j++) c += pageCap(pos++);
+      return c;
+    });
+  };
+  // A stage past its pages' caps takes a spread from the stage with the most room to spare.
+  for (let guard = 0; guard < 60; guard++) {
+    const cap = capacity();
+    const short = alloc.findIndex((a, i) => counts[i] > cap[i] && a < maxOf(i));
+    if (short < 0) break;
+    let donor = -1;
+    let spare = 0;
+    alloc.forEach((a, i) => {
+      if (i === short || a <= 1) return;
+      const room = cap[i] - pageCap(1) - counts[i];
+      if (room > spare) {
+        spare = room;
+        donor = i;
+      }
+    });
+    if (donor >= 0) alloc[donor]--;
+    else if (alloc.reduce((a, b) => a + b, 0) >= total) break;
+    alloc[short]++;
+  }
+  return alloc;
+}
+
+// `ids` over exactly `k` pages from book position `pos`, as even as the page caps allow, in order.
+function splitExact(ids: string[], pos: number, k: number): string[][] {
+  const n = ids.length;
+  const pages = Math.max(1, Math.min(k, Math.floor(n / 2) || 1));
+  const caps = Array.from({ length: pages }, (_, i) => pageCap(pos + i));
+  const sizes = new Array(pages).fill(0);
+  for (let j = 0; j < n; j++) {
+    let best = -1;
+    for (let i = 0; i < pages; i++) if (sizes[i] < caps[i] && (best < 0 || sizes[i] < sizes[best])) best = i;
+    sizes[best < 0 ? pages - 1 : best]++;
+  }
+  const out: string[][] = [];
+  let at = 0;
+  for (const size of sizes) {
+    out.push(ids.slice(at, at + size));
+    at += size;
+  }
+  return out;
+}
+
+// Lists merged so each one's items spread evenly through the whole (item i of n at (i + ½) / n), the
+// first list leading on ties: the bride's and the groom's preparations on every page.
+function interleave(lists: string[][]): string[] {
+  const placed: { id: string; at: number; l: number; i: number }[] = [];
+  lists.forEach((list, l) => list.forEach((id, i) => placed.push({ id, at: (i + 0.5) / list.length, l, i })));
+  placed.sort((a, b) => a.at - b.at || a.l - b.l || a.i - b.i);
+  return placed.map((p) => p.id);
+}
+
+function planWedding(
+  allPhotos: AutoPhoto[],
+  info: Map<string, PhotoInfo>,
+  orderIdx: Map<string, number>,
+  bounds: Record<SectionGroup, Bounds>,
+  opts: PlanOptions,
+  refs?: Pick<FamilyCell, "id" | "photoId">[]
+): AlbumPlan | null {
+  const byId = new Map(allPhotos.map((p) => [p.id, p] as const));
+  const shot = (id: string) => orderIdx.get(id) as number;
+  const tabMap = new Map<string, { key: string; name: string; order: number; ids: string[] }>();
+  for (const p of allPhotos) {
+    const key = p.tab?.key ?? UNTABBED;
+    let t = tabMap.get(key);
+    if (!t) tabMap.set(key, (t = { key, name: p.tab?.name ?? "", order: p.tab ? p.tab.order : Number.MAX_SAFE_INTEGER, ids: [] }));
+    t.ids.push(p.id);
+  }
+  const tabs = [...tabMap.values()].sort((a, b) => a.order - b.order);
+  const stageOfTab = weddingStages(tabs.map((t) => (t.key === UNTABBED ? "" : t.name)));
+  if (!stageOfTab) return null;
+  for (const t of tabs) t.ids.sort((a, b) => shot(a) - shot(b));
+  const stageTabs = (s: WeddingStage) => tabs.filter((_, i) => stageOfTab[i] === s);
+  const facesIn = (id: string) => (byId.get(id) as AutoPhoto).faceCount ?? (info.get(id) as PhotoInfo).faceCount;
+
+  // Each stage's photos in its order.
+  const couple = (ids: string[]): string[] => {
+    // Each alone and together (mixOwnersShots when the owners are known), then the shots with the
+    // bridesmaids and groomsmen.
+    const escorts = ids.filter((id) => facesIn(id) >= 3);
+    const rest = ids.filter((id) => facesIn(id) < 3);
+    const owners = (id: string) => (info.get(id) as PhotoInfo).owners;
+    const known = rest.some((id) => owners(id).length > 0);
+    const main = known
+      ? mixOwnersShots(
+          [...rest].sort((a, b) => (info.get(b) as PhotoInfo).cellArea.owners - (info.get(a) as PhotoInfo).cellArea.owners || shot(a) - shot(b)),
+          rest.length,
+          (id) => (owners(id).length >= 2 ? TOGETHER : (owners(id)[0] ?? TOGETHER)),
+          shot
+        )
+      : rest;
+    return [...main, ...escorts];
+  };
+  const familyRank = (id: string): number => {
+    const c = (info.get(id) as PhotoInfo).cells;
+    return c.has("grandparents2") ? 3 : c.has("parents2") ? 2 : c.has("grandparents") ? 1 : c.has("parents") ? 0 : c.has("siblings") ? 4 : 5;
+  };
+  const sideRank = (name: string) => (/כלה|bride/i.test(name) ? 1 : 0);
+  const stageIds = (s: WeddingStage): string[] => {
+    const ts = stageTabs(s);
+    if (s === "prep") return interleave(ts.map((t) => t.ids));
+    if (s === "outdoor" || s === "venueCouple") return couple(ts.flatMap((t) => t.ids));
+    if (s === "family") {
+      const ids = [...ts].sort((a, b) => sideRank(tabLabel(a.name)) - sideRank(tabLabel(b.name)) || a.order - b.order).flatMap((t) => t.ids);
+      return ts.length === 1 ? [...ids].sort((a, b) => familyRank(a) - familyRank(b) || shot(a) - shot(b)) : ids;
+    }
+    if (s === "ceremony") return [...ts].sort((a, b) => (KETUBAH_RE.test(tabLabel(b.name)) ? 1 : 0) - (KETUBAH_RE.test(tabLabel(a.name)) ? 1 : 0) || a.order - b.order).flatMap((t) => t.ids);
+    return ts.flatMap((t) => t.ids);
+  };
+  let stages = WEDDING_STAGE_ORDER.map((s) => ({ s, ids: stageIds(s) })).filter((x) => x.ids.length > 0);
+  // A stage of a single photo opens the next stage (or closes the one before): never a one-photo page.
+  for (let i = 0; i < stages.length; i++) {
+    if (stages[i].ids.length !== 1 || stages.length === 1) continue;
+    const into = stages[i + 1] ?? stages[i - 1];
+    into.ids = stages[i + 1] ? [...stages[i].ids, ...into.ids] : [...into.ids, ...stages[i].ids];
+    stages = stages.filter((_, j) => j !== i);
+    i--;
+  }
+
+  const typed = opts.targetSpreads && opts.targetSpreads > 0 ? Math.min(AUTO_MAX_PAGES, Math.floor(opts.targetSpreads)) : null;
+  const pages = typed ?? weddingAutoPages(allPhotos.length);
+  const atmosphereIds = stageTabs("atmosphere").flatMap((t) => t.ids);
+  const atmospherePage = atmosphereIds.length >= Math.max(2, bounds.event.min);
+  const total = Math.max(1, Math.min(pages - (opts.hasCover === false ? 0 : 1), Math.floor(allPhotos.length / 2)) - (atmospherePage ? 1 : 0));
+  if (stages.length === 0 || stages.length > total) return null;
+  if (!atmospherePage && atmosphereIds.length > 0) stages[stages.length - 1].ids.push(...atmosphereIds);
+
+  const blockOf = (s: WeddingStage) => WEDDING_BLOCKS.find((b) => b.stages.includes(s)) as (typeof WEDDING_BLOCKS)[number];
+  const blockCount = (s: WeddingStage) => stages.filter((x) => blockOf(s).stages.includes(x.s)).reduce((n, x) => n + x.ids.length, 0);
+  const weights = stages.map((x) => (blockOf(x.s).weight * x.ids.length) / blockCount(x.s));
+  const alloc = weddingSpreads(stages.map((x) => x.ids.length), weights, total);
+
+  const sectionOf = (s: WeddingStage): SectionKind => (s === "outdoor" || s === "venueCouple" ? "owners" : s === "family" ? "parents" : "event");
+  const heroOf = (section: SectionKind, ids: string[]) =>
+    section === "event" ? (ids.find((id) => isLandscape(byId.get(id))) ?? ids[0]) : ids.reduce((best, id) => ((info.get(id) as PhotoInfo).identifiedArea > (info.get(best) as PhotoInfo).identifiedArea ? id : best));
+  const spreads: PlannedSpread[] = [];
+  stages.forEach((x, i) => {
+    const section = sectionOf(x.s);
+    for (const ids of splitExact(x.ids, spreads.length + 1, alloc[i])) spreads.push({ section, photoIds: ids, heroId: heroOf(section, ids), tab: `wedding:${x.s}` });
+  });
+  if (atmospherePage) spreads.push({ section: "event", photoIds: atmosphereIds, heroId: heroOf("event", atmosphereIds), tab: "wedding:atmosphere" });
+
+  // The cover: the couple from the outdoor shoot (the owners' reference photo when it's there), the
+  // two of them in the frame, a portrait, the closest.
+  const coupleIds = [...stageIds("outdoor"), ...stageIds("venueCouple")];
+  const ref = refs?.find((r) => r.id === "owners")?.photoId;
+  let coverPhotoId: string | null = ref && coupleIds.includes(ref) ? ref : null;
+  if (!coverPhotoId && coupleIds.length > 0) {
+    const score = (id: string) => {
+      const p = byId.get(id) as AutoPhoto;
+      const two = facesIn(id) === 2 || (info.get(id) as PhotoInfo).owners.length >= 2;
+      return (two ? 4 : 0) + (p.aspect < 1 ? 2 : 0) + (p.faceArea ?? (info.get(id) as PhotoInfo).cellArea.owners);
+    };
+    coverPhotoId = coupleIds.reduce((best, id) => (score(id) > score(best) ? id : best));
   }
   coverPhotoId ??= spreads[0]?.photoIds[0] ?? null;
   return { coverPhotoId, spreads };

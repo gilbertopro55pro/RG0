@@ -65,6 +65,10 @@ export type AutoPhoto = {
   // The largest face's box as a fraction of the photo (0-1), when face boxes are known: the combined
   // album's cover is the book's closest portrait.
   faceArea?: number;
+  // How many people are clearly in the photo (significantFaces in planner.ts), when face boxes are
+  // known: in a wedding's outdoor shoot the shots with the bridesmaids and groomsmen (3 or more) go
+  // last, and the cover is a shot of the two.
+  faceCount?: number;
 };
 
 // Faces found in one photo: 128-d descriptors (see lib/faceRecognition.ts) with their box area as a
