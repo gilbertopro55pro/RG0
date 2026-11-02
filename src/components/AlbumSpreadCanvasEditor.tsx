@@ -8,7 +8,7 @@ import type { AlbumElement, AlbumFrame, AlbumOrnamentElement, AlbumPhotoElement,
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { TEXT_COLOR_PALETTE } from "@/lib/textColor";
 import { TEMPLATE_TABS, TEMPLATE_BANK, templateTabFor, type TemplateTabKey } from "@/lib/albumTemplateBank";
-import { ALBUM_MASKS, maskCssUrl, findMask } from "@/lib/albumMasks";
+import { ALBUM_MASKS, PACK_MASK_IDS, maskCssUrl, findMask } from "@/lib/albumMasks";
 import { ALBUM_ORNAMENTS, ORNAMENT_TABS, findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
 import { hasAdjustments, adjustmentsSvgFilter } from "@/lib/albumAdjustments";
 import { sharpenSvgFilter } from "@/lib/albumSharpen";
@@ -6933,7 +6933,7 @@ export default function AlbumSpreadCanvasEditor({
                 </div>
                 <span className={`font-semibold ${isPhone ? "text-[9px]" : "text-[10px]"}`}>{t("הסרת מסכה")}</span>
               </button>
-              {ALBUM_MASKS.map((mask) => (
+              {ALBUM_MASKS.filter((mask) => isAdmin || !PACK_MASK_IDS.has(mask.id)).map((mask) => (
                 <div
                   key={mask.id}
                   draggable
