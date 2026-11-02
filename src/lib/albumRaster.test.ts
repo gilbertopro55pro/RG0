@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import { albumTextEffects, composePhotoTile, erodeAlpha, maskOutlineAlpha, resolvePageElements, shadowLayerPng, silhouetteShadowPng, svgTextLayer } from "@/lib/albumRaster";
+import { outlineCss, outlineWidthAt } from "@/lib/albumRender";
 import type { AlbumTextElement, GalleryAlbumSpreadRow } from "@/lib/types";
 
 vi.mock("@/lib/storage", () => ({ downloadObjectBuffer: vi.fn(async () => null) }));
@@ -289,5 +290,37 @@ describe("a masked photo's outline and shadow", () => {
     const layer = (await silhouetteShadowPng(tile, 0, 0, 60, undefined, undefined, undefined, undefined, undefined, 2))!;
     expect(layer.left).toBeLessThan(0);
     expect(layer.width).toBeGreaterThan(100);
+  });
+});
+
+// An outline is the same share of the page everywhere (2026-11-02, user request: "the print should
+// come out exactly like the editor"): its width is px on a page 1000px wide. The JPG drew it as
+// raw pixels at 300 DPI, so a 3 on a 60cm page (7087px) came out 7 times thinner than the editor.
+describe("outline width is a share of the page", () => {
+  it("outlineWidthAt", () => {
+    expect(outlineWidthAt(3, 1000)).toBe(3);
+    expect(outlineWidthAt(3, 7087)).toBeCloseTo(21.26, 2);
+    expect(outlineWidthAt(3, 1600)).toBeCloseTo(4.8, 5); // the PDF's page
+    expect(outlineWidthAt(undefined, 7087)).toBe(0);
+    expect(outlineCss(3)).toBe("calc(3 * 100cqw / 1000)");
+  });
+
+  it("resolvePageElements scales photo, shape and ornament outlines to the page's pixels", () => {
+    const row: GalleryAlbumSpreadRow = {
+      id: "s", album_id: "a", sort_order: 0, photo_id_1: "x", photo_id_2: null, layout: "custom",
+      focal_x_1: 50, focal_y_1: 50, focal_x_2: 50, focal_y_2: 50,
+      background_photo_id: null, background_blur: 0, background_opacity: 100, background_zoom: 100, width_cm: null, height_cm: null, created_at: "",
+      elements: [
+        { id: "p", type: "photo", photoId: "x", xPct: 0, yPct: 0, widthPct: 50, heightPct: 50, focalX: 50, focalY: 50, borderWidth: 3, borderColor: "#000" },
+        { id: "q", type: "photo", photoId: "y", xPct: 50, yPct: 0, widthPct: 50, heightPct: 50, focalX: 50, focalY: 50 },
+        { id: "o", type: "shape", shapeStyle: "rect-outline", xPct: 0, yPct: 50, widthPct: 50, heightPct: 50, color: "#fff", rotation: 0, opacity: 100 },
+        { id: "r", type: "shape", xPct: 50, yPct: 50, widthPct: 50, heightPct: 50, color: "#fff", rotation: 0, opacity: 100, borderWidth: 6 },
+      ] as GalleryAlbumSpreadRow["elements"],
+    };
+    const [photo, bare, outlineShape, shape] = resolvePageElements(row, 7087, 3543) as Array<{ borderWidth?: number }>;
+    expect(photo.borderWidth).toBeCloseTo(21.26, 2);
+    expect(bare.borderWidth).toBeUndefined();
+    expect(outlineShape.borderWidth).toBeCloseTo(35.435, 3); // the editor's default 5
+    expect(shape.borderWidth).toBeCloseTo(42.52, 2);
   });
 });

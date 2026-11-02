@@ -23,6 +23,7 @@ import {
   computePhotoFraming,
   cssFilterFor,
   boxShadowFor,
+  outlineCss,
   textEffectsCss,
   textShadowDistance,
   TEXT_SHADOW_MAX_DISTANCE,
@@ -4159,17 +4160,17 @@ export default function AlbumSpreadCanvasEditor({
           opacity: (el.opacity ?? 100) / 100,
           transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
           borderRadius: el.shapeStyle === "circle-outline" ? "50%" : undefined,
-          border: isOutline ? `${el.borderWidth ?? 5}px solid ${el.borderColor ?? el.color}` : undefined,
+          border: isOutline ? `${outlineCss(el.borderWidth ?? 5)} solid ${el.borderColor ?? el.color}` : undefined,
           outline: isOutline
             ? isSelected
               ? "2px dashed var(--color-amber-deep)"
               : "none"
             : el.borderWidth
-            ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}`
+            ? `${outlineCss(el.borderWidth)} solid ${el.borderColor ?? "#fff"}`
             : isSelected
             ? "2px dashed var(--color-amber-deep)"
             : "none",
-          outlineOffset: isOutline ? "2px" : el.borderWidth ? `-${el.borderWidth}px` : undefined,
+          outlineOffset: isOutline ? "2px" : el.borderWidth ? `calc(-1 * ${outlineCss(el.borderWidth)})` : undefined,
           boxShadow: boxShadowFor(el.shadow, undefined, undefined, el.shadowAngle),
         }}
       >
@@ -5239,7 +5240,7 @@ export default function AlbumSpreadCanvasEditor({
                       // context edge cases. See the parent's boxShadow comment for the full story.
                       <div
                         className="absolute inset-0 pointer-events-none"
-                        style={{ boxShadow: `inset 0 0 0 ${el.borderWidth}px ${el.borderColor ?? "#fff"}` }}
+                        style={{ boxShadow: `inset 0 0 0 ${outlineCss(el.borderWidth)} ${el.borderColor ?? "#fff"}` }}
                       />
                     )}
                     {isSelected && !el.locked && renderResizeHandles(el, startDrag)}
@@ -5269,11 +5270,11 @@ export default function AlbumSpreadCanvasEditor({
                       opacity: (el.opacity ?? 100) / 100,
                       transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
                       outline: el.borderWidth
-                        ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}`
+                        ? `${outlineCss(el.borderWidth)} solid ${el.borderColor ?? "#fff"}`
                         : isSelected
                         ? "2px dashed var(--color-amber-deep)"
                         : "none",
-                      outlineOffset: el.borderWidth ? `-${el.borderWidth}px` : undefined,
+                      outlineOffset: el.borderWidth ? `calc(-1 * ${outlineCss(el.borderWidth)})` : undefined,
                       boxShadow: boxShadowFor(el.shadow, undefined, undefined, el.shadowAngle),
                     }}
                   >
