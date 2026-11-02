@@ -2,7 +2,8 @@
 
 import { folderLabel } from "@/lib/galleryFolders";
 import { useResumeState } from "@/lib/updateResume";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { AlbumElement, AlbumFrame, AlbumOrnamentElement, AlbumPhotoElement, AlbumShapeElement, AlbumTextElement, AlbumTemplateRow, GalleryAlbumSpreadRow } from "@/lib/types";
 import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { TEXT_COLOR_PALETTE } from "@/lib/textColor";
@@ -1662,6 +1663,69 @@ function panelMaxHeight(anchorTopPx: number): number {
   return Math.max(160, window.innerHeight - anchorTopPx - 20);
 }
 
+// The free-design tools as tags on the screen's right edge (owner, 2026-11-02, admin for now), in
+// place of the button bar above the canvas: vertical colored tags like the corrections tag, one
+// panel at a time sliding in from the right (and out to it), the editor shrinking beside it. On a
+// computer only (from 1024px); a tablet and a phone keep the buttons.
+type SideTool = "photo" | "background" | "frame" | "templates" | "text" | "masks" | "ornaments" | "shapes" | "saveTemplate";
+const SIDE_TOOLS: { key: SideTool; label: string; color: string }[] = [
+  { key: "photo", label: "תמונה", color: "#2c6aa0" },
+  { key: "background", label: "תמונת רקע", color: "#2e7d6f" },
+  { key: "frame", label: "מסגרת", color: "#5f6f2c" },
+  { key: "templates", label: "תבניות", color: "#9a5b14" },
+  { key: "text", label: "טקסט", color: "#7b4597" },
+  { key: "masks", label: "מסכות", color: "#b0425e" },
+  { key: "ornaments", label: "עיטורים", color: "#8a6a1c" },
+  { key: "shapes", label: "צורות", color: "#b4532a" },
+  { key: "saveTemplate", label: "שמירה כתבנית", color: "#4a4f5c" },
+];
+// "+ תמונה": the new photo's frame, before picking the photo.
+const PHOTO_SIZE_OPTIONS = [
+  { size: "auto", label: "אוטומטי: לפי צורת התמונה" },
+  { size: "rect", label: "מלבן 10x7.5 ס״מ" },
+  { size: "circle", label: "עיגול Ø5 ס״מ" },
+  { size: "square", label: "ריבוע 5x5 ס״מ" },
+] as const;
+// The same as the corrections panel (CORRECTIONS_PANEL_MS), so both sides move alike.
+const SIDE_PANEL_MS = 300;
+const SIDE_TAG_WIDTH = 30;
+// The editor remounts on every page switch: the open tool stays open on the next page.
+let lastSideTool: SideTool | null = null;
+
+// A tool's panel: the old flyout under its button, or (side tools) inside the side panel.
+function EditorToolPanel({
+  sideShell,
+  onClose,
+  className,
+  style,
+  children,
+}: {
+  sideShell: HTMLElement | null | undefined;
+  onClose: () => void;
+  className: string;
+  style?: CSSProperties;
+  children: ReactNode;
+}) {
+  if (sideShell !== undefined) return sideShell ? createPortal(<div className="p-4">{children}</div>, sideShell) : null;
+  return (
+    <>
+      <style>{`
+        @keyframes maskPanelSlideDown { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes maskPanelSlideUp { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-8px); opacity: 0; } }
+        .mask-panel-opening { animation: maskPanelSlideDown 160ms ease forwards; }
+        .mask-panel-closing { animation: maskPanelSlideUp 160ms ease forwards; }
+      `}</style>
+      {/* A transparent click-catcher for closing on outside click — the panel itself is anchored
+          directly below its button, not a full-screen overlay, so this stays invisible rather than
+          dimming the canvas. */}
+      <div className="fixed inset-0 z-[84]" onClick={onClose} />
+      <div className={className} style={style} onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </>
+  );
+}
+
 type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 // Resizes a frame from any of its 8 handles, anchored at the OPPOSITE edge/corner (dragging the
@@ -2296,6 +2360,24 @@ export default function AlbumSpreadCanvasEditor({
   // Only used for the button-size nudge below (cosmetic, not hit-testing-critical) — a brief stale
   // read here just means a button is very slightly under/over-sized for a moment, never a mis-click.
   const isPhone = viewportSize.w < 1024 && Math.min(viewportSize.w, viewportSize.h) <= 500;
+  // The tools as tags on the right edge (SIDE_TOOLS): the admin, free design, a computer.
+  const sideTools = isAdmin && mode === "custom" && viewportSize.w >= 1024;
+  const [sideToolState, setSideToolState] = useState<SideTool | null>(() => lastSideTool);
+  const sideTool = sideTools ? sideToolState : null;
+  // What the panel shows: the open tool, and the last one while the panel slides out after closing.
+  const [sidePanelTool, setSidePanelTool] = useState<SideTool | null>(() => lastSideTool);
+  const setSideTool = (tool: SideTool | null) => {
+    lastSideTool = tool;
+    setSideToolState(tool);
+    if (tool) setSidePanelTool(tool);
+  };
+  // The panel's own element, for the tools' content (EditorToolPanel); undefined when the tools are
+  // buttons, null until it mounts.
+  const [sideShellEl, setSideShellEl] = useState<HTMLElement | null>(null);
+  const sideShell = (tool: SideTool) => (sideTools ? (sidePanelTool === tool ? sideShellEl : null) : undefined);
+  const sidePanelPx = Math.round(Math.min(380, Math.max(300, viewportSize.w * 0.25)));
+  // The room on the right: the tags always, and the panel while a tool is open.
+  const sideInsetPx = sideTools ? SIDE_TAG_WIDTH + (sideTool ? sidePanelPx : 0) : 0;
   // Broader than isPhone (any width under the desktop breakpoint, tablet included, e.g. an iPad
   // running this as a standalone PWA) — drives the "never grow taller than the photo area" clamp on
   // the photo-edit panels below. That clamp used to be gated to isPhone specifically, which meant a
@@ -3140,6 +3222,8 @@ export default function AlbumSpreadCanvasEditor({
   };
 
   const closeTemplatePanel = () => {
+    // As side tags the panel stays open after a pick (the X or the tag closes it).
+    if (sideTools) return;
     setTemplatePickerClosing(true);
     setTimeout(() => {
       setTemplatePickerOpen(false);
@@ -3148,6 +3232,8 @@ export default function AlbumSpreadCanvasEditor({
   };
 
   const closeMasksPicker = () => {
+    // As side tags the panel stays open after a pick (the X or the tag closes it).
+    if (sideTools) return;
     setMasksPickerClosing(true);
     setTimeout(() => {
       setMasksPickerOpen(false);
@@ -3156,6 +3242,8 @@ export default function AlbumSpreadCanvasEditor({
   };
 
   const closeOrnamentsPicker = () => {
+    // As side tags the panel stays open after a pick (the X or the tag closes it).
+    if (sideTools) return;
     setOrnamentsPickerClosing(true);
     setTimeout(() => {
       setOrnamentsPickerOpen(false);
@@ -3192,6 +3280,8 @@ export default function AlbumSpreadCanvasEditor({
   };
 
   const closeShapesPicker = () => {
+    // As side tags the panel stays open after a pick (the X or the tag closes it).
+    if (sideTools) return;
     setShapesPickerClosing(true);
     setTimeout(() => {
       setShapesPickerOpen(false);
@@ -4314,6 +4404,7 @@ export default function AlbumSpreadCanvasEditor({
       if (photoShadowPanelOpen) return setPhotoShadowPanelOpen(false);
       if (photoAdjustPanelOpen) return setPhotoAdjustPanelOpen(false);
       if (textPanelOpen) return setTextPanelOpen(false);
+      if (sideTool) return setSideTool(null);
       if (panModeId) return setPanModeId(null);
       if (selectedIds.size > 0) return setSelectedIds(new Set());
       handleCloseAttempt();
@@ -4360,6 +4451,37 @@ export default function AlbumSpreadCanvasEditor({
     );
   }
 
+  // The background's fine-tuning: in its flyout on the canvas, and in the side panel (SIDE_TOOLS).
+  const backgroundSliders = (
+    <>
+      <SliderControl label={t("שקיפות רקע")} value={backgroundOpacity} min={0} max={100} unit="%" onChange={setBackgroundOpacity} />
+      <SliderControl label={t("טשטוש רקע (Blur)")} value={backgroundBlur} min={0} max={100} unit="%" onChange={setBackgroundBlur} />
+      <SliderControl label={t("זום רקע")} value={backgroundZoom} min={100} max={400} unit="%" onChange={setBackgroundZoom} />
+      {onApplyBackgroundToAll && backgroundPhotoId && (
+        <>
+          <button
+            onClick={async () => {
+              setBackgroundAllStatus("busy");
+              try {
+                await onApplyBackgroundToAll({ photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom });
+                setBackgroundAllStatus("done");
+              } catch {
+                setBackgroundAllStatus("error");
+              }
+              setTimeout(() => setBackgroundAllStatus("idle"), 3500);
+            }}
+            disabled={backgroundAllStatus === "busy"}
+            className="w-full rounded-lg py-2 text-[11px] font-semibold bg-white border border-line text-amber-deep disabled:opacity-60"
+          >
+            {backgroundAllStatus === "busy" ? t("מחיל על כל הדפים...") : t("החלה על כל דפי האלבום")}
+          </button>
+          {backgroundAllStatus === "done" && <p className="text-[10px] text-ink-soft text-center">{t("הרקע הוחל על כל דפי האלבום")}</p>}
+          {backgroundAllStatus === "error" && <p className="text-[10px] text-rose text-center">{t("לא הצלחנו להחיל על כל הדפים, נסו שוב")}</p>}
+        </>
+      )}
+    </>
+  );
+
   return (
     <div
       className={`fixed inset-0 z-[80] flex items-center justify-center p-4 overflow-hidden ${ALBUM_FONT_CLASS_NAMES}`}
@@ -4368,10 +4490,14 @@ export default function AlbumSpreadCanvasEditor({
           background: "rgba(28, 27, 25, 0.55)",
           backdropFilter: "blur(16px)",
           WebkitBackdropFilter: "blur(16px)",
-          // The corrections panel's room (leftInsetPx): the editor slides with the panel.
+          // The corrections panel's room (leftInsetPx): the editor slides with the panel. The tools'
+          // tags and panel on the right (sideInsetPx) take their room as padding, so they stay
+          // inside this element (it is their containing block: backdrop-filter).
           left: leftInsetPx,
-          transition: "left 300ms ease",
-          "--gf-editor-inset": `${leftInsetPx}px`,
+          paddingRight: sideTools ? 16 + sideInsetPx : undefined,
+          transition: `left 300ms ease, padding-right ${SIDE_PANEL_MS}ms ease`,
+          "--gf-editor-inset": `${leftInsetPx + sideInsetPx}px`,
+          "--gf-dragpanel-w": sideTool ? `${Math.round(Math.min(380, Math.max(240, (viewportSize.w - sideInsetPx) * 0.26)))}px` : undefined,
         } as CSSProperties
       }
       // Right-click (and the page's own custom menu, if it ever grows one) does nothing here —
@@ -4620,7 +4746,9 @@ export default function AlbumSpreadCanvasEditor({
         @media (min-width: 1024px) {
           .gf-album-editor-card {
             display: grid !important;
-            grid-template-columns: minmax(0, 1fr) 380px;
+            /* The favorites column narrows while a side tool's panel is open (--gf-dragpanel-w), so
+               the canvas keeps a usable size beside the panel. */
+            grid-template-columns: minmax(0, 1fr) var(--gf-dragpanel-w, 380px);
             grid-template-rows: auto auto auto minmax(0, 1fr) auto;
             gap: 14px 20px !important;
             /* Needed so .gf-album-selection-info's position:absolute (below) resolves against
@@ -4654,7 +4782,7 @@ export default function AlbumSpreadCanvasEditor({
             top: 40px;
             /* Logical sides (src/i18n): in RTL the sidebar column is on the left, in LTR on the right. */
             inset-inline-start: 0;
-            inset-inline-end: 400px;
+            inset-inline-end: calc(var(--gf-dragpanel-w, 380px) + 20px);
             z-index: 30;
             background: var(--color-paper);
             border-radius: 4px;
@@ -4726,7 +4854,7 @@ export default function AlbumSpreadCanvasEditor({
           }
         }
       `}</style>
-      <div className="gf-album-editor-card w-full max-w-sm lg:max-w-none lg:w-[calc(95vw-var(--gf-editor-inset,0px))] lg:transition-[width] lg:duration-300 lg:h-[92vh] rounded-3xl p-4 lg:px-6 lg:pt-2 lg:pb-4 bg-paper shadow-sheet max-h-[92vh] overflow-y-auto overscroll-contain lg:overflow-visible lg:flex lg:flex-row lg:gap-6">
+      <div className="gf-album-editor-card w-full max-w-sm lg:max-w-none lg:w-[calc(95vw-var(--gf-editor-inset,0px))] lg:transition-[width,grid-template-columns] lg:duration-300 lg:h-[92vh] rounded-3xl p-4 lg:px-6 lg:pt-2 lg:pb-4 bg-paper shadow-sheet max-h-[92vh] overflow-y-auto overscroll-contain lg:overflow-visible lg:flex lg:flex-row lg:gap-6">
         <div className="gf-album-editor-main flex-1 flex flex-col min-w-0 min-h-0">
         <div className="gf-album-header flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
@@ -4740,6 +4868,16 @@ export default function AlbumSpreadCanvasEditor({
               >
                 <IconPlusSmall size={13} />
                 {t("עמוד חדש")}
+              </button>
+            )}
+            {/* With the tools as tags (SIDE_TOOLS), saving stays a button: here, next to "עמוד חדש". */}
+            {sideTools && (
+              <button
+                onClick={() => onSave(elements, { photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom })}
+                className="h-8 ps-3.5 pe-3 rounded-full flex items-center gap-1.5 bg-ink text-white text-xs font-bold whitespace-nowrap border-2 border-[var(--color-sage)] shadow-card"
+              >
+                <IconSave size={13} />
+                {t("שמירה")}
               </button>
             )}
             {mode === "custom" && (
@@ -6177,7 +6315,7 @@ export default function AlbumSpreadCanvasEditor({
             photo control is simplified to a plain toggle here (matching the phone bar) rather than
             the old always-visible opacity/blur sliders — a genuine feature reduction, but the same
             trade-off already made for phone, now applied consistently on desktop too. */}
-        {!isPhone && (
+        {!isPhone && !sideTools && (
         <div className="gf-album-desktop-buttons space-y-2">
           <div className="flex gap-2">
             {mode === "custom" && (
@@ -6659,31 +6797,7 @@ export default function AlbumSpreadCanvasEditor({
                 <IconClose size={13} />
               </button>
             </div>
-            <SliderControl label={t("שקיפות רקע")} value={backgroundOpacity} min={0} max={100} unit="%" onChange={setBackgroundOpacity} />
-            <SliderControl label={t("טשטוש רקע (Blur)")} value={backgroundBlur} min={0} max={100} unit="%" onChange={setBackgroundBlur} />
-            <SliderControl label={t("זום רקע")} value={backgroundZoom} min={100} max={400} unit="%" onChange={setBackgroundZoom} />
-            {onApplyBackgroundToAll && backgroundPhotoId && (
-              <>
-                <button
-                  onClick={async () => {
-                    setBackgroundAllStatus("busy");
-                    try {
-                      await onApplyBackgroundToAll({ photoId: backgroundPhotoId, blur: backgroundBlur, opacity: backgroundOpacity, zoom: backgroundZoom });
-                      setBackgroundAllStatus("done");
-                    } catch {
-                      setBackgroundAllStatus("error");
-                    }
-                    setTimeout(() => setBackgroundAllStatus("idle"), 3500);
-                  }}
-                  disabled={backgroundAllStatus === "busy"}
-                  className="w-full rounded-lg py-2 text-[11px] font-semibold bg-white border border-line text-amber-deep disabled:opacity-60"
-                >
-                  {backgroundAllStatus === "busy" ? t("מחיל על כל הדפים...") : t("החלה על כל דפי האלבום")}
-                </button>
-                {backgroundAllStatus === "done" && <p className="text-[10px] text-ink-soft text-center">{t("הרקע הוחל על כל דפי האלבום")}</p>}
-                {backgroundAllStatus === "error" && <p className="text-[10px] text-rose text-center">{t("לא הצלחנו להחיל על כל הדפים, נסו שוב")}</p>}
-              </>
-            )}
+            {backgroundSliders}
           </div>
         </>
       )}
@@ -6726,25 +6840,18 @@ export default function AlbumSpreadCanvasEditor({
         </>
       )}
 
-      {(templatePickerOpen || templatePickerClosing) && templatePanelRect && (
-        <>
-          <style>{`
-            @keyframes maskPanelSlideDown { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-            @keyframes maskPanelSlideUp { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-8px); opacity: 0; } }
-            .mask-panel-opening { animation: maskPanelSlideDown 160ms ease forwards; }
-            .mask-panel-closing { animation: maskPanelSlideUp 160ms ease forwards; }
-          `}</style>
-          <div className="fixed inset-0 z-[84]" onClick={closeTemplatePanel} />
-          <div
-            className={`fixed z-[85] rounded-xl bg-paper shadow-sheet max-h-[65vh] overflow-y-auto overscroll-contain ${isPhone ? "p-2.5" : "p-4"} ${
-              templatePickerClosing ? "mask-panel-closing" : "mask-panel-opening"
-            }`}
-            style={{ top: templatePanelRect.top + 4, left: templatePanelRect.left, width: templatePanelRect.width }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      {(sideTools ? sidePanelTool === "templates" : (templatePickerOpen || templatePickerClosing) && !!templatePanelRect) && (
+        <EditorToolPanel
+          sideShell={sideShell("templates")}
+          onClose={closeTemplatePanel}
+          className={`fixed z-[85] rounded-xl bg-paper shadow-sheet max-h-[65vh] overflow-y-auto overscroll-contain ${isPhone ? "p-2.5" : "p-4"} ${
+            templatePickerClosing ? "mask-panel-closing" : "mask-panel-opening"
+          }`}
+          style={templatePanelRect ? { top: templatePanelRect.top + 4, left: templatePanelRect.left, width: templatePanelRect.width } : undefined}
+        >
             <div className="flex items-center justify-between mb-3">
               <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>{t("תבניות מובנות")}</p>
-              <button onClick={closeTemplatePanel} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+              <button onClick={sideTools ? () => setSideTool(null) : closeTemplatePanel} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
             </div>
@@ -6794,32 +6901,21 @@ export default function AlbumSpreadCanvasEditor({
                 </button>
               ))}
             </div>
-          </div>
-        </>
+        </EditorToolPanel>
       )}
 
-      {(masksPickerOpen || masksPickerClosing) && masksPanelRect && (
-        <>
-          <style>{`
-            @keyframes maskPanelSlideDown { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-            @keyframes maskPanelSlideUp { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-8px); opacity: 0; } }
-            .mask-panel-opening { animation: maskPanelSlideDown 160ms ease forwards; }
-            .mask-panel-closing { animation: maskPanelSlideUp 160ms ease forwards; }
-          `}</style>
-          {/* A transparent click-catcher for closing on outside click — the panel itself is
-              anchored directly below the מסכות button (see masksPanelRect), not a full-screen
-              overlay, so this stays invisible rather than dimming the canvas. */}
-          <div className="fixed inset-0 z-[84]" onClick={closeMasksPicker} />
-          <div
-            className={`fixed z-[85] rounded-xl bg-paper shadow-sheet overflow-y-auto overscroll-contain ${isPhone ? "p-2.5" : "p-4"} ${
-              masksPickerClosing ? "mask-panel-closing" : "mask-panel-opening"
-            }`}
-            style={{ top: masksPanelRect.top + 4, left: masksPanelRect.left, width: masksPanelRect.width, maxHeight: masksPanelRect.maxHeight }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      {(sideTools ? sidePanelTool === "masks" : (masksPickerOpen || masksPickerClosing) && !!masksPanelRect) && (
+        <EditorToolPanel
+          sideShell={sideShell("masks")}
+          onClose={closeMasksPicker}
+          className={`fixed z-[85] rounded-xl bg-paper shadow-sheet overflow-y-auto overscroll-contain ${isPhone ? "p-2.5" : "p-4"} ${
+            masksPickerClosing ? "mask-panel-closing" : "mask-panel-opening"
+          }`}
+          style={masksPanelRect ? { top: masksPanelRect.top + 4, left: masksPanelRect.left, width: masksPanelRect.width, maxHeight: masksPanelRect.maxHeight } : undefined}
+        >
             <div className="flex items-center justify-between mb-3">
               <p className={`font-bold ${isPhone ? "text-[10px]" : "text-sm"}`}>{t("מסכות: גררו מסכה אל תמונה/צורה, או לחצו כשתמונה/צורה נבחרת")}</p>
-              <button onClick={closeMasksPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+              <button onClick={sideTools ? () => setSideTool(null) : closeMasksPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
             </div>
@@ -6864,29 +6960,21 @@ export default function AlbumSpreadCanvasEditor({
                 </div>
               ))}
             </div>
-          </div>
-        </>
+        </EditorToolPanel>
       )}
 
-      {(ornamentsPickerOpen || ornamentsPickerClosing) && ornamentsPanelRect && (
-        <>
-          <style>{`
-            @keyframes ornamentPanelSlideDown { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-            @keyframes ornamentPanelSlideUp { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-8px); opacity: 0; } }
-            .ornament-panel-opening { animation: ornamentPanelSlideDown 160ms ease forwards; }
-            .ornament-panel-closing { animation: ornamentPanelSlideUp 160ms ease forwards; }
-          `}</style>
-          <div className="fixed inset-0 z-[84]" onClick={closeOrnamentsPicker} />
-          <div
-            className={`fixed z-[85] rounded-xl bg-paper shadow-sheet overflow-y-auto overscroll-contain ${isPhone ? "p-2.5" : "p-4"} ${
-              ornamentsPickerClosing ? "ornament-panel-closing" : "ornament-panel-opening"
-            }`}
-            style={{ top: ornamentsPanelRect.top + 4, left: ornamentsPanelRect.left, width: ornamentsPanelRect.width, maxHeight: ornamentsPanelRect.maxHeight }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      {(sideTools ? sidePanelTool === "ornaments" : (ornamentsPickerOpen || ornamentsPickerClosing) && !!ornamentsPanelRect) && (
+        <EditorToolPanel
+          sideShell={sideShell("ornaments")}
+          onClose={closeOrnamentsPicker}
+          className={`fixed z-[85] rounded-xl bg-paper shadow-sheet overflow-y-auto overscroll-contain ${isPhone ? "p-2.5" : "p-4"} ${
+            ornamentsPickerClosing ? "mask-panel-closing" : "mask-panel-opening"
+          }`}
+          style={ornamentsPanelRect ? { top: ornamentsPanelRect.top + 4, left: ornamentsPanelRect.left, width: ornamentsPanelRect.width, maxHeight: ornamentsPanelRect.maxHeight } : undefined}
+        >
             <div className="flex items-center justify-between mb-3">
               <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>{t("עיטורים. לחצו כדי להוסיף לעמוד")}</p>
-              <button onClick={closeOrnamentsPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+              <button onClick={sideTools ? () => setSideTool(null) : closeOrnamentsPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
             </div>
@@ -7036,29 +7124,21 @@ export default function AlbumSpreadCanvasEditor({
                 )}
               </div>
             )}
-          </div>
-        </>
+        </EditorToolPanel>
       )}
 
-      {(shapesPickerOpen || shapesPickerClosing) && shapesPanelRect && (
-        <>
-          <style>{`
-            @keyframes shapePanelSlideDown { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-            @keyframes shapePanelSlideUp { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-8px); opacity: 0; } }
-            .shape-panel-opening { animation: shapePanelSlideDown 160ms ease forwards; }
-            .shape-panel-closing { animation: shapePanelSlideUp 160ms ease forwards; }
-          `}</style>
-          <div className="fixed inset-0 z-[84]" onClick={closeShapesPicker} />
-          <div
-            className={`fixed z-[85] rounded-xl bg-paper shadow-sheet overflow-y-auto overscroll-contain ${isPhone ? "p-2.5" : "p-4"} ${
-              shapesPickerClosing ? "shape-panel-closing" : "shape-panel-opening"
-            }`}
-            style={{ top: shapesPanelRect.top + 4, left: shapesPanelRect.left, width: shapesPanelRect.width, maxHeight: shapesPanelRect.maxHeight }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      {(sideTools ? sidePanelTool === "shapes" : (shapesPickerOpen || shapesPickerClosing) && !!shapesPanelRect) && (
+        <EditorToolPanel
+          sideShell={sideShell("shapes")}
+          onClose={closeShapesPicker}
+          className={`fixed z-[85] rounded-xl bg-paper shadow-sheet overflow-y-auto overscroll-contain ${isPhone ? "p-2.5" : "p-4"} ${
+            shapesPickerClosing ? "mask-panel-closing" : "mask-panel-opening"
+          }`}
+          style={shapesPanelRect ? { top: shapesPanelRect.top + 4, left: shapesPanelRect.left, width: shapesPanelRect.width, maxHeight: shapesPanelRect.maxHeight } : undefined}
+        >
             <div className="flex items-center justify-between mb-3">
               <p className={`font-bold ${isPhone ? "text-[11px]" : "text-sm"}`}>{t("צורות. לחצו כדי להוסיף לעמוד")}</p>
-              <button onClick={closeShapesPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+              <button onClick={sideTools ? () => setSideTool(null) : closeShapesPicker} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
                 <IconClose />
               </button>
             </div>
@@ -7127,8 +7207,7 @@ export default function AlbumSpreadCanvasEditor({
                 </button>
               ))}
             </div>
-          </div>
-        </>
+        </EditorToolPanel>
       )}
 
       {photoSizePickerOpen && photoSizePanelRect && (
@@ -7139,14 +7218,7 @@ export default function AlbumSpreadCanvasEditor({
             style={{ top: photoSizePanelRect.top + 4, left: photoSizePanelRect.left, width: photoSizePanelRect.width }}
             onClick={(e) => e.stopPropagation()}
           >
-            {(
-              [
-                { size: "auto", label: "אוטומטי: לפי צורת התמונה" },
-                { size: "rect", label: "מלבן 10x7.5 ס״מ" },
-                { size: "circle", label: "עיגול Ø5 ס״מ" },
-                { size: "square", label: "ריבוע 5x5 ס״מ" },
-              ] as const
-            ).map(({ size, label }) => (
+            {PHOTO_SIZE_OPTIONS.map(({ size, label }) => (
               <button
                 key={size}
                 onClick={() => {
@@ -7225,6 +7297,166 @@ export default function AlbumSpreadCanvasEditor({
           </div>
         </div>
       )}
+
+      {/* The tools as tags on the right edge (SIDE_TOOLS, admin): the panel slides in from the right
+          for the open tool, and out to the right when it closes; the tags ride on its edge. One tool
+          at a time: a tag opens its tool in place of the open one, and closes it when it's open. */}
+      {sideTools && (
+        <>
+          <aside
+            ref={setSideShellEl}
+            aria-label={sideTool ? t(SIDE_TOOLS.find((x) => x.key === sideTool)!.label) : undefined}
+            aria-hidden={!sideTool}
+            className="fixed top-0 bottom-0 right-0 z-[82] bg-paper shadow-sheet overflow-y-auto overscroll-contain"
+            style={{
+              width: sidePanelPx,
+              borderLeft: "1px solid var(--color-line)",
+              transform: sideTool ? "translateX(0)" : "translateX(100%)",
+              // visibility waits for the slide out to end, and comes back as it starts.
+              transition: `transform ${SIDE_PANEL_MS}ms ease, visibility ${SIDE_PANEL_MS}ms`,
+              visibility: sideTool ? "visible" : "hidden",
+            }}
+          />
+          <div
+            className="fixed z-[83] top-1/2 flex flex-col items-end gap-1"
+            style={{ right: sideTool ? sidePanelPx : 0, transform: "translateY(-50%)", transition: `right ${SIDE_PANEL_MS}ms ease` }}
+          >
+            {SIDE_TOOLS.map((tool) => {
+              const active = sideTool === tool.key;
+              return (
+                <button
+                  key={tool.key}
+                  onClick={() => setSideTool(active ? null : tool.key)}
+                  aria-expanded={active}
+                  title={t(tool.label)}
+                  className="flex items-center justify-center py-2.5 text-white text-[12px] font-semibold shadow-sheet transition-[width,opacity] duration-200"
+                  style={{
+                    width: active ? SIDE_TAG_WIDTH + 6 : SIDE_TAG_WIDTH,
+                    background: tool.color,
+                    opacity: sideTool && !active ? 0.8 : 1,
+                    borderTopLeftRadius: 10,
+                    borderBottomLeftRadius: 10,
+                    borderTopRightRadius: 0,
+                    borderBottomRightRadius: 0,
+                    boxShadow: active ? "inset -3px 0 0 rgba(255,255,255,0.85), 0 4px 14px rgba(28,27,25,0.25)" : undefined,
+                  }}
+                >
+                  <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>{t(tool.label)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {sideTools &&
+        sideShellEl &&
+        sidePanelTool &&
+        ["photo", "background", "frame", "text", "saveTemplate"].includes(sidePanelTool) &&
+        createPortal(
+          <div className="p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-bold">
+                {sidePanelTool === "photo"
+                  ? t("+ תמונה")
+                  : sidePanelTool === "background"
+                    ? t("תמונת רקע")
+                    : sidePanelTool === "frame"
+                      ? t("+ מסגרת")
+                      : sidePanelTool === "text"
+                        ? t("הוספת טקסט")
+                        : t("שמירה כתבנית")}
+              </p>
+              <button onClick={() => setSideTool(null)} className="h-8 w-8 rounded-full flex items-center justify-center bg-white border border-line shrink-0">
+                <IconClose />
+              </button>
+            </div>
+            {sidePanelTool === "photo" && (
+              <>
+                <p className="text-xs text-ink-soft leading-relaxed">{t("בחרו את צורת המסגרת, ואז את התמונות להוספה.")}</p>
+                <div className="space-y-1.5">
+                  {PHOTO_SIZE_OPTIONS.map(({ size, label }) => (
+                    <button
+                      key={size}
+                      onClick={() => {
+                        setPendingPhotoSize(size);
+                        openPickerForNewPhoto();
+                      }}
+                      className="w-full text-start rounded-lg px-3 py-2.5 text-sm font-semibold bg-white border border-line text-ink hover:bg-chip"
+                    >
+                      {t(label)}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {sidePanelTool === "background" &&
+              (backgroundPhoto ? (
+                <>
+                  <div className="h-28 rounded-lg overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={resizedPhotoUrl(backgroundPhoto, 640)} alt="" className="w-full h-full object-cover" style={{ opacity: backgroundOpacity / 100 }} />
+                  </div>
+                  <div className="space-y-2.5">{backgroundSliders}</div>
+                  <div className="flex gap-2">
+                    <button onClick={openPickerForBackground} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-ink">
+                      {t("החלפת תמונת הרקע")}
+                    </button>
+                    <button onClick={removeBackground} className="flex-1 rounded-lg py-2 text-xs font-semibold bg-white border border-line text-rose">
+                      {t("הסרת תמונת הרקע")}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-ink-soft leading-relaxed">{t("תמונה מאחורי כל העמוד, עם שקיפות, טשטוש וזום לבחירה.")}</p>
+                  <button onClick={openPickerForBackground} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
+                    {t("בחירת תמונת רקע")}
+                  </button>
+                </>
+              ))}
+            {sidePanelTool === "frame" && (
+              <>
+                <p className="text-xs text-ink-soft leading-relaxed">{t("מסגרת ריקה על העמוד. אחר כך גוררים אליה תמונה מהפאנל.")}</p>
+                <button onClick={addFrame} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
+                  {t("+ מסגרת")}
+                </button>
+              </>
+            )}
+            {sidePanelTool === "text" && (
+              <>
+                <p className="text-xs text-ink-soft leading-relaxed">{t("טקסט חדש באמצע העמוד. העיצוב שלו בפאנל הטקסט, ולחיצה כפולה עורכת אותו.")}</p>
+                <button onClick={() => addDefaultText()} className="w-full rounded-lg py-2.5 text-sm font-semibold bg-ink text-white">
+                  {t("הוספת טקסט")}
+                </button>
+              </>
+            )}
+            {sidePanelTool === "saveTemplate" &&
+              (elements.some((e) => e.type === "photo") ? (
+                <>
+                  <p className="text-xs text-ink-soft leading-relaxed">{t("המסגרות של העמוד נשמרות בספריית התבניות, בלשונית של מספר התמונות.")}</p>
+                  <input
+                    value={templateNameDraft}
+                    onChange={(e) => setTemplateNameDraft(e.target.value)}
+                    placeholder={t("שם התבנית")}
+                    className="w-full rounded-lg px-3 py-2.5 text-sm border border-line bg-white"
+                  />
+                  <button
+                    onClick={async () => {
+                      await saveCurrentAsTemplate();
+                      setSideTool(null);
+                    }}
+                    disabled={!templateNameDraft.trim() || savingTemplate}
+                    className="w-full rounded-lg py-2.5 text-sm font-semibold bg-amber-deep text-white disabled:opacity-60"
+                  >
+                    {savingTemplate ? t("שומר...") : t("שמירה בספריית התבניות")}
+                  </button>
+                </>
+              ) : (
+                <p className="text-xs text-ink-soft leading-relaxed">{t("אין בעמוד מסגרות לתמונות, ולכן אין מה לשמור כתבנית.")}</p>
+              ))}
+          </div>,
+          sideShellEl,
+        )}
     </div>
   );
 }
