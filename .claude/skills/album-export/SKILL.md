@@ -213,6 +213,10 @@ Fallback: the `retry-stuck-zip-jobs` cron (every minute) re-triggers album jobs 
   - **Verified** browser (Chromium) vs `composePhotoTile` for 10 masks (circle, heart, flower, star,
     torn sides, halftone, fade, vignette, brush, arch), 8px outline: mean difference 0.2–0.9/255.
     In the editor locally on the test album: the outline follows brush, arch and filmstrip.
+  - **Verified live** (2026-11-02, test account, "יעל ואיתי", 7 masked photos with outline 3 and
+    shadow 35, set with an UPDATE on `gallery_album_spreads.elements` and removed after): JPG and
+    PDF exports, the outline follows brush, arch, filmstrip, stamp, halftone and bokeh; the soft
+    watercolor mask gets no line over the photo; no gray rectangles.
   - Not verified in Safari (no WebKit here). `filter: url(#…)` on HTML is supported there.
   - A mask with parts thinner than twice the outline (halftone dots, brush bristles) gets those
     parts filled with the outline color: that is what an outline following the shape does.
