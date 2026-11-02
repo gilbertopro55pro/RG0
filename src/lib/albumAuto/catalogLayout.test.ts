@@ -70,14 +70,15 @@ describe("catalogSpread", () => {
     expect(types.size).toBeGreaterThan(1);
   });
 
-  it("names the place on the spread when a title is given", () => {
+  it("writes the page's line in the handwriting it is given", () => {
     let titled = 0;
     for (let seed = 0; seed < 6; seed++) {
-      const out = catalogSpread({ style: "catalog", photos: photosOf(4, seed), section: "event", spreadIndex: seed, widthCm: 60, heightCm: 30, title: "חוף ים" })!;
+      const out = catalogSpread({ style: "catalog", photos: photosOf(4, seed), section: "event", spreadIndex: seed, widthCm: 60, heightCm: 30, title: "Draw your world", titleFont: "pacifico" })!;
       const text = out.elements.find((e): e is AlbumTextElement => e.type === "text");
       if (text) {
         titled++;
-        expect(text.text).toBe("חוף ים");
+        expect(text.text).toBe("Draw your world");
+        expect(text.fontFamily).toBe("pacifico");
       }
     }
     expect(titled).toBeGreaterThan(3);
@@ -106,7 +107,7 @@ describe("catalogCover's name", () => {
     const texts = out.elements.filter((e): e is AlbumTextElement => e.type === "text");
     expect(texts.map((t) => t.text)).toEqual(["יעל ואיתי", "חתונה | 5.10.2026"]);
     expect(texts[1].fontSize).toBeLessThan(texts[0].fontSize);
-    // Each fits its box's width on one line (about half a letter's size per letter).
+    // Each fits its box's width on one line (a letter of Gveret Levin is about half its size wide).
     for (const t of texts) expect(t.fontSize * 0.52 * [...t.text].length).toBeLessThanOrEqual((t.widthPct / 100) * 1600 + 1);
   });
 });
