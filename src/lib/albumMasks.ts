@@ -1,4 +1,4 @@
-// 77 photo mask effects for the album editor's "מסכות" tool. Every mask is a single self-contained
+// 80 photo mask effects for the album editor's "מסכות" tool. Every mask is a single self-contained
 // SVG string (viewBox 0-100, white shapes/gradients on a transparent background, using opacity —
 // never color luminance — to encode "how visible") so the exact same string can be used two ways
 // without any duplicated logic:
@@ -335,6 +335,108 @@ function heartPattern(): string {
   );
 }
 
+// --- Masks from the owner's reference album (a bat mitzvah book, 2026-11-02) -------------------------
+
+// A regular polygon whose corners are round arcs of radius `corner`, tangent to both sides.
+function roundedPolygon(sides: number, r: number, corner: number, rotDeg = -90): string {
+  const v = Array.from({ length: sides }, (_, i) => {
+    const a = ((rotDeg + (360 / sides) * i) * Math.PI) / 180;
+    return [50 + r * Math.cos(a), 50 + r * Math.sin(a)];
+  });
+  const edge = 2 * r * Math.sin(Math.PI / sides);
+  // How far from each vertex its arc starts, along both sides.
+  const cut = corner / Math.tan((Math.PI - (2 * Math.PI) / sides) / 2);
+  const toward = (a: number[], b: number[]) =>
+    `${(a[0] + ((b[0] - a[0]) * cut) / edge).toFixed(2)},${(a[1] + ((b[1] - a[1]) * cut) / edge).toFixed(2)}`;
+  let d = "";
+  v.forEach((p, i) => {
+    d += `${i === 0 ? "M" : "L"}${toward(p, v[(i + sides - 1) % sides])} A${corner},${corner} 0 0 1 ${toward(p, v[(i + 1) % sides])} `;
+  });
+  return pathShape(`${d}Z`);
+}
+
+// A full circle as a path, so two of them make a ring (evenodd): geometry, not a stroke, so it
+// stretches with the frame the same way in both renderers.
+function circlePath(cx: number, cy: number, r: number): string {
+  return `M${f1(cx - r)},${f1(cy)} A${r},${r} 0 1 0 ${f1(cx + r)},${f1(cy)} A${r},${r} 0 1 0 ${f1(cx - r)},${f1(cy)} Z`;
+}
+function ringPath(cx: number, cy: number, r0: number, r1: number, opacity: number): string {
+  return `<path d="${circlePath(cx, cy, r1)} ${circlePath(cx, cy, r0)}" fill-rule="evenodd" fill-opacity="${opacity}"/>`;
+}
+
+// A solid circle and, past a small gap, a translucent ring around it (the reference's cover).
+function circleWithRing(): string {
+  return svg(`<g fill="#fff"><circle cx="50" cy="50" r="38"/>${ringPath(50, 50, 42, 48, 0.45)}</g>`);
+}
+
+// The photo fills the frame up to a wide arc on one side, and past it two thinner translucent bands
+// of the photo follow the same curve (a circle centered far off the other side).
+function arcBands(side: "right" | "left"): string {
+  const cx = side === "right" ? -60 : 160;
+  return svg(`<g fill="#fff"><circle cx="${cx}" cy="50" r="146"/>${ringPath(cx, 50, 148.5, 153.5, 0.5)}${ringPath(cx, 50, 155.5, 159, 0.25)}</g>`);
+}
+
+// Spray paint / ice: a rectangle whose edges are dense, sharp spikes and notches of uneven depth,
+// with a few loose specks just past the edge.
+function grungeEdges(): string {
+  const r = seeded(61);
+  const lo = 4;
+  const hi = 96;
+  // How far a point sits past the edge line (+ out, - in). The line itself wanders a little, and
+  // every other point is a tooth: mostly shallow, now and then a deep spike or notch.
+  const phase = [r() * 6.28, r() * 6.28, r() * 6.28, r() * 6.28];
+  let tooth = false;
+  const offset = (t: number, edge: number) => {
+    const wander = Math.sin(t / 7 + phase[edge]) * 0.5 + Math.sin(t / 2.3 + phase[edge] * 2) * 0.3;
+    tooth = !tooth;
+    if (!tooth) return Math.max(-3.8, Math.min(3.6, wander + (r() - 0.5) * 0.8));
+    const depth = 0.5 + Math.pow(r(), 2.4) * 3.5;
+    return Math.max(-4, Math.min(3.8, wander + (r() < 0.55 ? depth : -depth)));
+  };
+  const pts: string[] = [];
+  const walk = (edge: number, at: (t: number, off: number) => string) => {
+    for (let t = lo; t < hi; t += 0.55 + r() * 0.7) pts.push(at(t, offset(t, edge)));
+  };
+  walk(0, (t, o) => `${f1(t)},${f1(lo - o)}`);
+  walk(1, (t, o) => `${f1(hi + o)},${f1(t)}`);
+  walk(2, (t, o) => `${f1(100 - t)},${f1(hi + o)}`);
+  walk(3, (t, o) => `${f1(lo - o)},${f1(100 - t)}`);
+  let specks = "";
+  for (let i = 0; i < 34; i++) {
+    const edge = Math.floor(r() * 4);
+    const along = lo + r() * (hi - lo);
+    const out = 1.2 + r() * 2.2;
+    const size = 0.25 + r() * 0.55;
+    const [x, y] = edge === 0 ? [along, lo - out] : edge === 1 ? [hi + out, along] : edge === 2 ? [along, hi + out] : [lo - out, along];
+    const corners: string[] = [];
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2 + r();
+      const rad = size * (0.6 + r() * 0.6);
+      corners.push(`${f1(x + Math.cos(a) * rad)},${f1(y + Math.sin(a) * rad)}`);
+    }
+    specks += `<polygon points="${corners.join(" ")}"/>`;
+  }
+  return svg(`<g fill="#fff"><polygon points="${pts.join(" ")}"/>${specks}</g>`);
+}
+
+// The whole photo with a narrow soft edge: opacity rises from 0 at the frame's edge to full
+// `feather` units in (an eased ramp, no hard line), on all four sides.
+function softEdges(feather: number): string {
+  const ramp = [
+    [0, 0],
+    [0.25, 0.16],
+    [0.5, 0.5],
+    [0.75, 0.84],
+    [1, 1],
+  ];
+  const stops = [...ramp, ...ramp.slice().reverse().map(([t, o]) => [100 / feather - t, o])]
+    .map(([t, o]) => `<stop offset="${(t * feather).toFixed(2)}%" stop-color="#fff" stop-opacity="${o}"/>`)
+    .join("");
+  return svg(
+    `<defs><linearGradient id="h" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="100" y2="0">${stops}</linearGradient><linearGradient id="v" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="100">${stops}</linearGradient><mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="url(#v)"/></mask></defs><rect width="100" height="100" fill="url(#h)" mask="url(#m)"/>`
+  );
+}
+
 export const ALBUM_MASKS: AlbumMask[] = [
   // The 5 required directional fades.
   { id: "fade-right-25", label: "דהייה ימינה 25%", svg: fadeRight(25) },
@@ -386,6 +488,14 @@ export const ALBUM_MASKS: AlbumMask[] = [
   { id: "creative-filmstrip", label: "סרט צילום", svg: filmStrip() },
   { id: "creative-cameo", label: "מדליון רך", svg: blurred(`<ellipse cx="50" cy="50" rx="38" ry="43"/>`, 3.5) },
   { id: "pattern-hearts", label: "לבבות", svg: heartPattern() },
+
+  // From the owner's reference album (2026-11-02).
+  { id: "shape-hexagon-rounded", label: "משושה מעוגל", svg: roundedPolygon(6, 47, 5) },
+  { id: "shape-circle-ring", label: "עיגול עם טבעת", svg: circleWithRing() },
+  { id: "creative-grunge", label: "שוליים מחוספסים", svg: grungeEdges() },
+  { id: "creative-arc-right", label: "קשתות בצד ימין", svg: arcBands("right") },
+  { id: "creative-arc-left", label: "קשתות בצד שמאל", svg: arcBands("left") },
+  { id: "soft-edge-narrow", label: "קצוות רכים עדינים", svg: softEdges(3.5) },
 
   // More directional fades.
   { id: "fade-top-25", label: "דהייה למעלה 25%", svg: fadeTop(25) },
