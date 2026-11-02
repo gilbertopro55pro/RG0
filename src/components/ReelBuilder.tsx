@@ -35,6 +35,9 @@ import { ALBUM_FONTS, ALBUM_FONT_CLASS_NAMES } from "@/lib/albumFonts";
 import { exportReelMp4, ReelCancelledError, ReelUnsupportedError } from "@/lib/reels/encode";
 import { FIT_MIN_VISIBLE } from "@/lib/reels/scene";
 import { useBusy } from "@/lib/updateResume";
+import { READ_ONLY_HEADER } from "@/lib/dataChanges";
+import { SONG_LINK_MAX_BYTES } from "@/lib/songLink";
+import type { TFn } from "@/i18n/translate";
 
 // Reels from a gallery (owner, 2026-10-07, admin only while it's polished): pick photos, a
 // platform, a template and a length, set each photo's time on the timeline, add music, edit the
@@ -52,6 +55,26 @@ type Tab = "style" | "photos" | "transitions" | "music" | "text";
 
 // The photographer's own music file: at most this size (a few minutes of a normal song).
 const MAX_MUSIC_BYTES = 40 * 1024 * 1024;
+
+// Why a song link didn't load (api/reels/song-link's `problem`), for the photographer.
+function songLinkProblemText(problem: string | undefined, t: TFn): string {
+  switch (problem) {
+    case "social":
+      return t("זה קישור לפוסט (אינסטגרם, טיקטוק, יוטיוב וכו'). מהם אי אפשר לקחת את המוזיקה: הם לא מאפשרים את זה, וזה גם נגד התנאים שלהם. צריך קישור ישיר לקובץ, או להעלות את הקובץ.");
+    case "page":
+      return t("הקישור מוביל לדף ולא לקובץ. צריך קישור ישיר לקובץ השיר או הסרטון.");
+    case "type":
+      return t("בקישור אין קובץ שיר או סרטון.");
+    case "large":
+      return t("הקובץ גדול מדי (עד 60MB).");
+    case "unreachable":
+      return t("לא הצלחנו להגיע לקישור. כדאי לבדוק שהוא פתוח לכולם.");
+    case "busy":
+      return t("יותר מדי ניסיונות. אפשר לנסות שוב בעוד כמה דקות.");
+    default:
+      return t("הקישור לא תקין. צריך קישור מלא, שמתחיל ב-https.");
+  }
+}
 // Video clips (owner, 2026-10-07 from the device; 2026-10-15 also the gallery's own videos): a
 // few, a device file up to this size (a gallery video is already within its plan's limit).
 const MAX_VIDEOS = 10;
@@ -507,15 +530,17 @@ export default function ReelBuilder({
     setSettings((s) => ({ ...s, music: { ...s.music, source: "upload", offset: 0 } }));
   };
   // The song for Instagram or TikTok: same checks, its own slot, and it starts at 0:00.
-  const chooseSyncSong = (file: File | undefined) => {
+  // The song for the app's music: a song file, or a video with the song in it (owner, 2026-11-02),
+  // picked from the device or fetched from a direct link (loadSongLink). Only its sound is used.
+  const chooseSyncSong = (file: File | undefined, maxBytes = MAX_MUSIC_BYTES) => {
     setMusicError(null);
     if (!file) return;
-    if (!file.type.startsWith("audio/") && !/\.(mp3|m4a|aac|wav|ogg|oga|flac)$/i.test(file.name)) {
-      setMusicError(t("זה לא נראה כמו קובץ מוזיקה. אפשר MP3, M4A, WAV או AAC."));
+    if (!file.type.startsWith("audio/") && !file.type.startsWith("video/") && !/\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|mp4|m4v|mov|webm)$/i.test(file.name)) {
+      setMusicError(t("זה לא נראה כמו קובץ שיר או סרטון. אפשר MP3, M4A, WAV, AAC או MP4."));
       return;
     }
-    if (file.size > MAX_MUSIC_BYTES) {
-      setMusicError(t("הקובץ גדול מדי (עד 40MB)."));
+    if (file.size > maxBytes) {
+      setMusicError(maxBytes > MAX_MUSIC_BYTES ? t("הקובץ גדול מדי (עד 60MB).") : t("הקובץ גדול מדי (עד 40MB)."));
       return;
     }
     if (syncSong) URL.revokeObjectURL(syncSong.url);
@@ -523,6 +548,41 @@ export default function ReelBuilder({
     setSettings((s) => ({ ...s, music: { ...s.music, source: "sync", offset: 0 } }));
     setPlaying(true);
     seek(0);
+  };
+  // A direct link to the song, or to a video with it (owner, 2026-11-02): the server fetches the
+  // file (api/reels/song-link) and it's used like a file from the device. A post on Instagram,
+  // TikTok or YouTube is a page, not a file: those get an explanation (lib/songLink.ts).
+  const [songLink, setSongLink] = useState("");
+  const [songLinkBusy, setSongLinkBusy] = useState(false);
+  const loadSongLink = async () => {
+    if (!songLink.trim() || songLinkBusy) return;
+    setMusicError(null);
+    setSongLinkBusy(true);
+    try {
+      const res = await fetch("/api/reels/song-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", [READ_ONLY_HEADER]: "1" },
+        body: JSON.stringify({ url: songLink }),
+      });
+      if (!res.ok) {
+        const data: { problem?: string } = await res.json().catch(() => ({}));
+        setMusicError(songLinkProblemText(data.problem, t));
+        return;
+      }
+      const blob = await res.blob();
+      let name = "song";
+      try {
+        name = decodeURIComponent(res.headers.get("X-Song-Name") ?? "") || name;
+      } catch {
+        // Keep the plain name.
+      }
+      chooseSyncSong(new File([blob], name, { type: blob.type }), SONG_LINK_MAX_BYTES);
+      setSongLink("");
+    } catch {
+      setMusicError(t("לא הצלחנו לטעון את הקישור. אפשר לנסות שוב."));
+    } finally {
+      setSongLinkBusy(false);
+    }
   };
   const addVideos = async (files: FileList | null) => {
     setVideoError(null);
@@ -1084,7 +1144,7 @@ export default function ReelBuilder({
                 <section>
                   <p className={sectionTitle}>{t("שיר שאוסיף באינסטגרם או בטיקטוק")}</p>
                   <p className={sectionHint}>
-                    {t("לשירים טרנדיים. מעלים כאן את קובץ השיר רק כדי שהחיתוכים ייפלו על הביט שלו, ושומעים אותו בתצוגה. הקובץ לא עולה לשרת, והסרטון ייצא בלי מוזיקה. את השיר מוסיפים באפליקציה, מאותה שנייה.")}
+                    {t("לשירים טרנדיים. מעלים כאן את קובץ השיר או סרטון עם השיר, או מדביקים קישור ישיר אליו, רק כדי שהחיתוכים ייפלו על הביט שלו, ושומעים אותו בתצוגה. הקובץ לא נשמר אצלנו, והסרטון ייצא בלי מוזיקה. את השיר מוסיפים באפליקציה, מאותה שנייה.")}
                   </p>
                   <label className={`flex items-center justify-between gap-3 rounded-md border p-3 cursor-pointer ${syncMode ? "border-amber-deep bg-amber-bg" : "border-line bg-white hover:border-amber-deep"}`}>
                     <span className="min-w-0">
@@ -1094,7 +1154,7 @@ export default function ReelBuilder({
                     <span className="shrink-0 text-xs font-semibold text-amber-deep">{syncSong ? t("החלפה") : t("העלאה")}</span>
                     <input
                       type="file"
-                      accept="audio/*,.mp3,.m4a,.aac,.wav"
+                      accept="audio/*,video/*,.mp3,.m4a,.aac,.wav,.mp4,.mov"
                       className="hidden"
                       onChange={(e) => {
                         chooseSyncSong(e.target.files?.[0]);
@@ -1109,6 +1169,28 @@ export default function ReelBuilder({
                       }}
                     />
                   </label>
+                  <form
+                    className="mt-2 flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      loadSongLink();
+                    }}
+                  >
+                    <input
+                      type="url"
+                      inputMode="url"
+                      dir="ltr"
+                      value={songLink}
+                      onChange={(e) => setSongLink(e.target.value)}
+                      placeholder={t("או קישור ישיר לקובץ השיר או לסרטון")}
+                      aria-label={t("או קישור ישיר לקובץ השיר או לסרטון")}
+                      className="min-w-0 flex-1 rounded-md border border-line bg-white px-3 py-2 text-sm placeholder:text-right"
+                    />
+                    <button type="submit" disabled={!songLink.trim() || songLinkBusy} className="shrink-0 rounded-md px-3 py-2 text-xs font-semibold bg-ink text-white disabled:opacity-50">
+                      {songLinkBusy ? t("טוען…") : t("טעינה")}
+                    </button>
+                  </form>
+                  <p className="text-[11px] text-ink-soft mt-1">{t("קישור שמוביל ישר לקובץ (למשל שנגמר ב-mp3 או mp4). מפוסט באינסטגרם, בטיקטוק או ביוטיוב אי אפשר לקחת את המוזיקה.")}</p>
                 </section>
                 <section>
                   <p className={sectionTitle}>{t("מוזיקה משלי")}</p>
