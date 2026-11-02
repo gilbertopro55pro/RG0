@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { GalleryAlbumSpreadRow } from "@/lib/types";
-import { boxShadowFor, cssFilterFor, computePhotoFraming, textEffectsCss, ALBUM_BLUR_MAX_PX, type PhotoWithUrl } from "@/lib/albumRender";
+import { boxShadowFor, cssFilterFor, computePhotoFraming, outlineCss, textEffectsCss, ALBUM_BLUR_MAX_PX, type PhotoWithUrl } from "@/lib/albumRender";
 import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
 import { maskCssUrl, findMask } from "@/lib/albumMasks";
 import MaskedPhotoArt from "@/components/MaskedPhotoArt";
@@ -86,7 +86,8 @@ export default function AlbumSpreadThumbnail({
     <button
       onClick={onClick}
       className={`relative block w-full bg-line overflow-hidden ${exactText ? ALBUM_FONT_CLASS_NAMES : ""} ${className ?? ""}`}
-      style={{ aspectRatio: pageAspectRatio, containerType: exactText ? "inline-size" : undefined }}
+      // A size container always: outlines are a share of the page's width (outlineCss), like text.
+      style={{ aspectRatio: pageAspectRatio, containerType: "inline-size" }}
     >
       {spread.background_photo_id &&
         (() => {
@@ -167,7 +168,7 @@ export default function AlbumSpreadThumbnail({
               borderRadius: el.type === "shape" && el.shapeStyle === "circle-outline" ? "50%" : undefined,
               border:
                 el.type === "shape" && (el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline")
-                  ? `${el.borderWidth ?? 5}px solid ${el.borderColor ?? el.color}`
+                  ? `${outlineCss(el.borderWidth ?? 5)} solid ${el.borderColor ?? el.color}`
                   : undefined,
               // Drop shadow only — the border used to be folded into this same box-shadow (as an
               // inset segment), but a full-bleed photo/ornament <img> child paints on top of a
@@ -289,7 +290,7 @@ export default function AlbumSpreadThumbnail({
               !!el.borderWidth && (
                 <div
                   className="absolute inset-0 pointer-events-none"
-                  style={{ boxShadow: `inset 0 0 0 ${el.borderWidth}px ${el.borderColor ?? "#fff"}` }}
+                  style={{ boxShadow: `inset 0 0 0 ${outlineCss(el.borderWidth)} ${el.borderColor ?? "#fff"}` }}
                 />
               )}
           </div>

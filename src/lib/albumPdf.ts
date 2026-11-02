@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { textShadowSpecs } from "@/lib/albumRender";
+import { outlineWidthAt, textShadowSpecs } from "@/lib/albumRender";
 import path from "node:path";
 import {
   PDFDocument,
@@ -205,6 +205,22 @@ function drawCoverImage(
   page.pushOperators(pushGraphicsState(), moveTo(x, y), lineTo(x + w, y), lineTo(x + w, y + h), lineTo(x, y + h), closePath(), clip(), endPath());
   page.drawImage(image, { x: dx, y: dy, width: drawW, height: drawH, opacity: opts?.opacity });
   page.pushOperators(popGraphicsState());
+}
+
+// A frame's outline, inside the frame like the editor's inset outline: the stroke runs along a
+// rect inset by half its width (pdf-lib centers a rectangle's border on its edge, so half of it
+// fell outside the frame). `widthPt` is already in this page's points (outlineWidthAt).
+function drawFrameBorder(page: PDFPage, rect: { x: number; y: number; width: number; height: number }, widthPt: number, color: string | undefined) {
+  if (!widthPt) return;
+  const half = widthPt / 2;
+  page.drawRectangle({
+    x: rect.x + half,
+    y: rect.y + half,
+    width: Math.max(0, rect.width - widthPt),
+    height: Math.max(0, rect.height - widthPt),
+    borderWidth: widthPt,
+    borderColor: rgb(...hexToRgbTuple(color ?? "#ffffff")),
+  });
 }
 
 // pdf-lib has no blur primitive, so a true Gaussian-soft shadow (like the CSS box-shadow the
@@ -715,9 +731,7 @@ export async function generateAlbumPdf({
           pushFrameRotation(page, rect, el.rotation);
           drawPhotoShadow(page, rect, el.shadow, undefined, undefined, el.shadowAngle);
           page.drawImage(image, { x, y, width, height, opacity: el.opacity !== undefined ? el.opacity / 100 : undefined });
-          if (el.borderWidth) {
-            page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
-          }
+          drawFrameBorder(page, rect, outlineWidthAt(el.borderWidth, pageW), el.borderColor);
           popFrameRotation(page);
           continue;
         }
@@ -727,7 +741,9 @@ export async function generateAlbumPdf({
           const x = (el.xPct / 100) * pageW;
           const y = pageH - (el.yPct / 100) * pageH - height;
           const isOutlineShape = el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline";
-          const image = await embedShape(el.color, el.maskId, width, height, el.shapeStyle, el.borderWidth, el.borderColor);
+          // An outline shape's stroke is 5 when none was set, as the editor draws it.
+          const shapeBorder = outlineWidthAt(el.borderWidth ?? (isOutlineShape ? 5 : 0), pageW);
+          const image = await embedShape(el.color, el.maskId, width, height, el.shapeStyle, shapeBorder || undefined, el.borderColor);
           if (!image) continue;
           const rect = { x, y, width, height };
           pushFrameRotation(page, rect, el.rotation);
@@ -736,9 +752,7 @@ export async function generateAlbumPdf({
           // The stroke is already baked into the image itself for outline shapes (see embedShape) —
           // drawing the usual decorative rect border on top would double it, and would be flatly
           // wrong-shaped for a circle outline.
-          if (el.borderWidth && !isOutlineShape) {
-            page.drawRectangle({ x, y, width, height, borderWidth: el.borderWidth, borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")) });
-          }
+          if (!isOutlineShape) drawFrameBorder(page, rect, shapeBorder, el.borderColor);
           popFrameRotation(page);
           continue;
         }
@@ -775,7 +789,7 @@ export async function generateAlbumPdf({
               saturation2: el.saturation2,
             },
             el.sharpness,
-            { width: el.borderWidth, color: el.borderColor },
+            { width: outlineWidthAt(el.borderWidth, pageW), color: el.borderColor },
             { pct: el.shadow, distance: el.shadowDistance, blur: el.shadowBlur, angle: el.shadowAngle }
           );
           if (!masked) continue;
@@ -813,16 +827,7 @@ export async function generateAlbumPdf({
         pushFrameRotation(page, rect, el.rotation);
         drawPhotoShadow(page, rect, el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle);
         drawCoverImage(page, image, rect, el.focalX, el.focalY, { opacity: el.opacity !== undefined ? el.opacity / 100 : undefined, zoom: el.zoom });
-        if (el.borderWidth) {
-          page.drawRectangle({
-            x,
-            y,
-            width,
-            height,
-            borderWidth: el.borderWidth,
-            borderColor: rgb(...hexToRgbTuple(el.borderColor ?? "#ffffff")),
-          });
-        }
+        drawFrameBorder(page, rect, outlineWidthAt(el.borderWidth, pageW), el.borderColor);
         popFrameRotation(page);
       }
       continue;

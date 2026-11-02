@@ -114,7 +114,8 @@ function buildLayerEffects(shadowPct: number | undefined, borderWidth: number | 
         color: hexToRgb(borderColor ?? "#ffffff"),
         opacity: 1,
         blendMode: "normal",
-        size: { units: "Pixels", value: borderWidth },
+        // Already in this page's pixels (resolvePageElements); Photoshop takes whole pixels.
+        size: { units: "Pixels", value: Math.max(1, Math.round(borderWidth)) },
         overprint: false,
       },
     ];

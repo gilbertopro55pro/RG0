@@ -3,7 +3,7 @@
 import { textEffectsCss } from "@/lib/albumRender";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ALBUM_FONT_CLASS_NAMES, albumFontFamilyCss } from "@/lib/albumFonts";
-import { ALBUM_BLUR_MAX_PX, computePhotoFraming } from "@/lib/albumRender";
+import { ALBUM_BLUR_MAX_PX, computePhotoFraming, outlineCss } from "@/lib/albumRender";
 import { maskCssUrl, findMask } from "@/lib/albumMasks";
 import MaskedPhotoArt from "@/components/MaskedPhotoArt";
 import { findOrnament, ornamentDataUrl } from "@/lib/albumOrnaments";
@@ -241,8 +241,8 @@ function OrnamentOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "orna
         height: `${el.heightPct}%`,
         opacity: (el.opacity ?? 100) / 100,
         transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
-        outline: el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
-        outlineOffset: el.borderWidth ? `-${el.borderWidth}px` : undefined,
+        outline: el.borderWidth ? `${outlineCss(el.borderWidth)} solid ${el.borderColor ?? "#fff"}` : undefined,
+        outlineOffset: el.borderWidth ? `calc(-1 * ${outlineCss(el.borderWidth)})` : undefined,
         boxShadow: boxShadowFor(el.shadow, undefined, undefined, el.shadowAngle),
       }}
     >
@@ -283,9 +283,9 @@ function ShapeOverlay({ el }: { el: Extract<ClientAlbumElement, { type: "shape" 
         opacity: (el.opacity ?? 100) / 100,
         transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
         borderRadius: el.shapeStyle === "circle-outline" ? "50%" : undefined,
-        border: isOutline ? `${el.borderWidth ?? 5}px solid ${el.borderColor ?? el.color}` : undefined,
-        outline: isOutline ? undefined : el.borderWidth ? `${el.borderWidth}px solid ${el.borderColor ?? "#fff"}` : undefined,
-        outlineOffset: !isOutline && el.borderWidth ? `-${el.borderWidth}px` : undefined,
+        border: isOutline ? `${outlineCss(el.borderWidth ?? 5)} solid ${el.borderColor ?? el.color}` : undefined,
+        outline: isOutline ? undefined : el.borderWidth ? `${outlineCss(el.borderWidth)} solid ${el.borderColor ?? "#fff"}` : undefined,
+        outlineOffset: !isOutline && el.borderWidth ? `calc(-1 * ${outlineCss(el.borderWidth)})` : undefined,
         boxShadow: boxShadowFor(el.shadow, undefined, undefined, el.shadowAngle),
       }}
     >
@@ -454,7 +454,7 @@ function ProofPage({
                 return el.maskId ? (
                   <MaskedPhotoArt
                     maskId={el.maskId}
-                    outlineWidth={el.borderWidth ? (thumb ? 1 : el.borderWidth) : undefined}
+                    outlineWidth={el.borderWidth}
                     outlineColor={el.borderColor}
                     shadow={thumb ? undefined : boxShadowFor(el.shadow, el.shadowDistance, el.shadowBlur, el.shadowAngle)}
                   >
@@ -467,7 +467,7 @@ function ProofPage({
               {!!el.borderWidth && !el.maskId && (
                 <div
                   className="absolute inset-0 pointer-events-none"
-                  style={{ boxShadow: `inset 0 0 0 ${thumb ? 1 : el.borderWidth}px ${el.borderColor ?? "#fff"}` }}
+                  style={{ boxShadow: `inset 0 0 0 ${outlineCss(el.borderWidth)} ${el.borderColor ?? "#fff"}` }}
                 />
               )}
               {el.id === selectedElId ? (

@@ -1,7 +1,8 @@
 "use client";
 
-import { useId, type CSSProperties, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { findMask, maskCssUrl } from "@/lib/albumMasks";
+import { OUTLINE_REF_WIDTH } from "@/lib/albumRender";
 
 export function maskLayerStyle(svg: string): CSSProperties {
   return {
@@ -33,6 +34,7 @@ export default function MaskedPhotoArt({
   children,
 }: {
   maskId: string;
+  // The element's borderWidth: px on a page 1000px wide (outlineWidthAt), like every renderer.
   outlineWidth?: number;
   outlineColor?: string;
   // A box-shadow value (boxShadowFor): offset, blur and color, which drop-shadow takes as is.
@@ -41,13 +43,32 @@ export default function MaskedPhotoArt({
 }) {
   const svg = findMask(maskId)?.svg ?? "";
   const filterId = `mask-outline-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  // The SVG filter takes the band's width in CSS px, so the page's width is measured: a probe
+  // 100cqw wide (the page canvas is a size container) tells it, and follows resizes.
+  const probeRef = useRef<HTMLDivElement>(null);
+  const [pageWidth, setPageWidth] = useState(0);
+  const outlined = !!outlineWidth;
+  useLayoutEffect(() => {
+    const probe = probeRef.current;
+    if (!outlined || !probe) return;
+    const measure = () => setPageWidth(probe.offsetWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(probe);
+    return () => observer.disconnect();
+  }, [outlined]);
+  // At least 1px: a radius that rounds to 0 turns the erode off, and the whole shape would fill in.
+  const radius = outlineWidth && pageWidth ? Math.max(1, (outlineWidth * pageWidth) / OUTLINE_REF_WIDTH) : 0;
   return (
     <>
-      {!!outlineWidth && (
+      {outlined && (
+        <div ref={probeRef} aria-hidden="true" className="absolute left-0 top-0 h-0 invisible pointer-events-none" style={{ width: "100cqw" }} />
+      )}
+      {radius > 0 && (
         <svg width="0" height="0" className="absolute" aria-hidden="true">
           {/* The region reaches past the frame, so the frame's own edge erodes like the outside. */}
           <filter id={filterId} x="-10%" y="-10%" width="120%" height="120%" colorInterpolationFilters="sRGB">
-            <feMorphology in="SourceGraphic" operator="erode" radius={outlineWidth} result="inner" />
+            <feMorphology in="SourceGraphic" operator="erode" radius={radius} result="inner" />
             <feComposite in="SourceGraphic" in2="inner" operator="arithmetic" k1={0} k2={1} k3={-1} k4={0} result="band" />
             {/* Squared: a soft edge (a fade) barely differs from its eroded self, and leaves no haze. */}
             <feComponentTransfer in="band">
@@ -60,7 +81,7 @@ export default function MaskedPhotoArt({
         <div className="absolute inset-0 overflow-hidden" style={maskLayerStyle(svg)}>
           {children}
         </div>
-        {!!outlineWidth && (
+        {radius > 0 && (
           <div className="absolute inset-0" style={{ filter: `url(#${filterId})` }}>
             <div className="absolute inset-0" style={{ backgroundColor: outlineColor ?? "#fff", ...maskLayerStyle(svg) }} />
           </div>

@@ -65,6 +65,21 @@ export function cssFilterFor(
   return parts.length ? parts.join(" ") : undefined;
 }
 
+// An outline's width (borderWidth: photos, shapes, ornaments) is in px on a page 1000px wide
+// (2026-11-02, user request: "the print should come out exactly like the editor"). Before, each
+// renderer took the number as its own raw unit: CSS px on the editor canvas (≈900–1000px wide on a
+// computer), pixels at 300 DPI in the JPG/PSD (a 60cm page is 7087px, so 3 came out 7× thinner)
+// and points on the PDF's 1600-wide page. 1000 keeps the editor as it looked on a computer screen,
+// and every renderer now draws the same share of the page.
+export const OUTLINE_REF_WIDTH = 1000;
+export function outlineWidthAt(borderWidth: number | undefined, pageWidth: number): number {
+  return ((borderWidth ?? 0) * pageWidth) / OUTLINE_REF_WIDTH;
+}
+// The same width in CSS, inside the page canvas (a size container: 100cqw = the page's width).
+export function outlineCss(borderWidth: number): string {
+  return `calc(${borderWidth} * 100cqw / ${OUTLINE_REF_WIDTH})`;
+}
+
 // box-shadow (unlike filter: drop-shadow on a descendant) isn't clipped by the frame's own
 // overflow-hidden, so it's the one that can actually bleed outside a cropped photo frame.
 // distancePct/blurPct independently override the offset/softness that would otherwise be derived

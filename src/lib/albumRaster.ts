@@ -10,7 +10,7 @@ import { ALBUM_MASKS } from "@/lib/albumMasks";
 import { findOrnament } from "@/lib/albumOrnaments";
 import { applyAdjustmentsToRgba, type PhotoAdjustments } from "@/lib/albumAdjustments";
 import { sharpSharpenOptions } from "@/lib/albumSharpen";
-import { textShadowSpecs, type TextShadowSpec } from "@/lib/albumRender";
+import { outlineWidthAt, textShadowSpecs, type TextShadowSpec } from "@/lib/albumRender";
 import { albumLineBaselines, albumTextLines } from "@/lib/albumTextSizing";
 
 export const DPI = 300;
@@ -406,7 +406,8 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
           focalX: el.focalX,
           focalY: el.focalY,
           filter: el.filter,
-          borderWidth: el.borderWidth,
+          // In this page's own pixels: the same share of the page as in the editor (outlineWidthAt).
+          borderWidth: el.borderWidth ? outlineWidthAt(el.borderWidth, pageWidthPx) : undefined,
           borderColor: el.borderColor,
           rotation: el.rotation,
           opacity: el.opacity,
@@ -446,11 +447,14 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
           opacity: el.opacity,
           shadow: el.shadow,
           shadowAngle: el.shadowAngle,
-          borderWidth: el.borderWidth,
+          borderWidth: el.borderWidth ? outlineWidthAt(el.borderWidth, pageWidthPx) : undefined,
           borderColor: el.borderColor,
         };
       }
       if (el.type === "shape") {
+        // An outline shape's stroke is 5 when none was set, as the editor draws it.
+        const isOutlineShape = el.shapeStyle === "rect-outline" || el.shapeStyle === "circle-outline";
+        const shapeBorder = el.borderWidth ?? (isOutlineShape ? 5 : undefined);
         return {
           kind: "shape",
           maskId: el.maskId,
@@ -463,7 +467,7 @@ function resolvePageElements(spread: GalleryAlbumSpreadRow, pageWidthPx: number,
           opacity: el.opacity,
           shadow: el.shadow,
           shadowAngle: el.shadowAngle,
-          borderWidth: el.borderWidth,
+          borderWidth: shapeBorder ? outlineWidthAt(shapeBorder, pageWidthPx) : undefined,
           borderColor: el.borderColor,
           shapeStyle: el.shapeStyle,
         };
